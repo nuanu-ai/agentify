@@ -15,7 +15,7 @@
  * the order it made, in the document the agent's own door answers with.
  */
 
-import { outcomeFor } from "@coinslot/core";
+import { outcomeFor } from "@agentify/commerce-core";
 import type {
   IssueKeyRequest,
   OrderListQuery,

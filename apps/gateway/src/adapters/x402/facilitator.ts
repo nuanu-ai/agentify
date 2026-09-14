@@ -33,7 +33,7 @@
  * refused, only about which of three shapes the refusal had.
  */
 
-import type { PaymentVerificationFailure } from "@coinslot/core";
+import type { PaymentVerificationFailure } from "@agentify/commerce-core";
 import { decodePaymentSignatureHeader } from "@x402/core/http";
 import type { FacilitatorClient } from "@x402/core/server";
 import {

@@ -116,7 +116,7 @@ const KEPT_CHUNK = /\/(framework|theme)\.[^/]+\.js$|\.md\.[^/]+\.js$/
 const SURFACE_MARKER = [
   // The attribute on the outer element and the band on the paragraph, so a
   // live page carries a marker and no empty box (apps/cabinet/src/html.ts says
-  // why). Style .surface-words in theme/coinslot.css, never this div.
+  // why). Style .surface-words in theme/agentify.css, never this div.
   '<div data-coinslot-surface="<!--{{env `COINSLOT_SURFACE_MODE`}}-->">',
   '<!--{{if eq (env "COINSLOT_SURFACE_MODE") "test"}}-->',
   '<p class="surface-words">Test environment. Payments settle on Base Sepolia with test funds, and every order and receipt here is marked as a test. The live site is coinslot.nuanu.ai.</p>',

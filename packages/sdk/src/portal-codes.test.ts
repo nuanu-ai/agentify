@@ -23,7 +23,7 @@ import { ORDER_CALL_ERROR_CODES } from "@nuanu-ai/coinslot-contracts";
 import { describe, expect, it } from "vitest";
 import { ANSWER_NOT_UNDERSTOOD, CALL_DID_NOT_REACH_US, OUTCOME_UNKNOWN } from "./client.js";
 
-const page = fileURLToPath(new URL("../../../portal/orders.md", import.meta.url));
+const page = fileURLToPath(new URL("../../../apps/docs/orders.md", import.meta.url));
 
 /** The three this package produces where no answer it could read came back. */
 const FROM_THE_TOOLS = [CALL_DID_NOT_REACH_US, ANSWER_NOT_UNDERSTOOD, OUTCOME_UNKNOWN];

@@ -12,7 +12,7 @@
  * failure this exists for, because the merchant reads the built page and
  * nothing else.
  *
- * Run it after `pnpm run docs:build` in `portal/`. It compares the file against
+ * Run it after `pnpm run docs:build` in `apps/docs/`. It compares the file against
  * the page whole rather than sampling: the built HTML, with its tags taken off
  * and its entities decoded, has to contain the example's own text. Whitespace
  * is collapsed on both sides, because the highlighter lays the JSON out in
@@ -24,7 +24,7 @@ import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
-const PORTAL = join(ROOT, "portal");
+const PORTAL = join(ROOT, "apps", "docs");
 const EXAMPLES = join(PORTAL, "examples");
 const DIST = join(PORTAL, ".vitepress", "dist");
 
@@ -87,7 +87,7 @@ let built;
 try {
   built = builtPages(DIST);
 } catch {
-  die(`no built portal at ${DIST}; run "pnpm run docs:build" in portal/ first`);
+  die(`no built portal at ${DIST}; run "pnpm run docs:build" in apps/docs/ first`);
 }
 
 /** Which pages name each example, and the built page each of those became. */
@@ -120,7 +120,7 @@ for (const file of files) {
   const where = shownBy.get(`examples/${file}`) ?? [];
 
   if (where.length === 0) {
-    complaints.push(`portal/examples/${file} is included by no page, so no page can show it`);
+    complaints.push(`apps/docs/examples/${file} is included by no page, so no page can show it`);
     continue;
   }
 
@@ -128,14 +128,14 @@ for (const file of files) {
 
   for (const html of where) {
     if (!built.includes(html)) {
-      complaints.push(`${html} includes portal/examples/${file} and was never built`);
+      complaints.push(`${html} includes apps/docs/examples/${file} and was never built`);
       continue;
     }
 
     const shown = textOf(readFileSync(join(DIST, html), "utf8"));
 
     if (shown.includes(wanted)) {
-      console.log(`ok   ${html} shows portal/examples/${file}`);
+      console.log(`ok   ${html} shows apps/docs/examples/${file}`);
       continue;
     }
 
@@ -144,7 +144,7 @@ for (const file of files) {
     complaints.push(
       printedAsText
         ? `${html} printed the include line as text instead of the file: VitePress no longer understands "<<<", and every example on the site is gone`
-        : `${html} does not show portal/examples/${file}; the page was built without it`,
+        : `${html} does not show apps/docs/examples/${file}; the page was built without it`,
     );
   }
 }

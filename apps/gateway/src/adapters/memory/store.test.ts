@@ -19,7 +19,7 @@
  * not a shared sentence.
  */
 
-import type { Order } from "@coinslot/core";
+import type { Order } from "@agentify/commerce-core";
 import { describe, expect, it } from "vitest";
 import type { StoredOrder } from "../../ports/store.js";
 import { describeStore } from "../../testing/store-contract.js";

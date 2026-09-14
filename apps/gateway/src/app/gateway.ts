@@ -11,8 +11,8 @@
  * mode, exactly as ADR-0002 §3 says.
  */
 
-import type { Environment, MerchantSelling, TransitionRejection } from "@coinslot/core";
-import { createOrder, fulfillmentDeadline, isOpen, outcomeFor } from "@coinslot/core";
+import type { Environment, MerchantSelling, TransitionRejection } from "@agentify/commerce-core";
+import { createOrder, fulfillmentDeadline, isOpen, outcomeFor } from "@agentify/commerce-core";
 import {
   type Acceptance,
   CARD_REJECTED,

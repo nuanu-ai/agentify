@@ -28,7 +28,7 @@
       "!prettier.scanner.config.json",
       "!.prettierignore.scanner",
       "!.env.scanner.example",
-      "!portal",
+      "!apps/docs",
       "!spikes",
       "!apps/gateway/drizzle",
       "!pnpm-lock.yaml"

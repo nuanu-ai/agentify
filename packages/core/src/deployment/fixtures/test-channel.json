@@ -15,7 +15,7 @@
       "command": [
         "pnpm",
         "--filter",
-        "@coinslot/cabinet",
+        "@agentify/commerce-cabinet",
         "start"
       ],
       "depends_on": {
@@ -73,7 +73,7 @@
       "command": [
         "pnpm",
         "--filter",
-        "@coinslot/gateway",
+        "@agentify/commerce-gateway",
         "start"
       ],
       "depends_on": {

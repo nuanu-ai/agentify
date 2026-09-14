@@ -17,7 +17,7 @@
  * already holds and which the page has nothing else to identify them by.
  */
 
-import type { SurfaceMode } from "@coinslot/core";
+import type { SurfaceMode } from "@agentify/commerce-core";
 import { bare, escaped } from "./html.js";
 
 export const signInScreen = (base: string, mode: SurfaceMode, problem?: string): string =>

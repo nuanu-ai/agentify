@@ -36,7 +36,7 @@
  * a decision nobody took.
  */
 
-import { environmentOfKeyPrefix, keyPrefixFor, SITES } from "@coinslot/core";
+import { environmentOfKeyPrefix, keyPrefixFor, SITES } from "@agentify/commerce-core";
 import {
   type AuthMode,
   type ErrorCode,

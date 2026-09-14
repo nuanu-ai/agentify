@@ -33,7 +33,7 @@ import {
   type Served,
   serve,
   theMerchantKey,
-} from "@coinslot/gateway/testing";
+} from "@agentify/commerce-gateway/testing";
 import {
   type Card,
   checksummedAddressOf,
@@ -1109,7 +1109,7 @@ describe("getting into the cabinet", () => {
     // one would stop being where the palette lives. Comments are stripped
     // first: this file names the tokens it uses in prose, and prose is not a
     // declaration.
-    const own = readFileSync(new URL("./coinslot.css", import.meta.url), "utf8").replaceAll(
+    const own = readFileSync(new URL("./agentify.css", import.meta.url), "utf8").replaceAll(
       /\/\*[\s\S]*?\*\//g,
       "",
     );

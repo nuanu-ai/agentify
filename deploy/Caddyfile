@@ -23,7 +23,7 @@
 # outside Docker still works, with the roots pointed at the repository:
 #
 #   COINSLOT_LANDING_ROOT=apps/landing/public \
-#   COINSLOT_PORTAL_ROOT=portal/.vitepress/dist \
+#   COINSLOT_PORTAL_ROOT=apps/docs/.vitepress/dist \
 #   COINSLOT_CABINET_UPSTREAM=127.0.0.1:3001 \
 #   COINSLOT_GATEWAY_UPSTREAM=127.0.0.1:3000 \
 #     caddy run --config deploy/Caddyfile
@@ -168,7 +168,7 @@
 	# path and links its own pages the same way, so the portal has to be built
 	# knowing where it lives:
 	#
-	#   pnpm --dir portal exec vitepress build --base /docs/
+	#   pnpm --dir apps/docs exec vitepress build --base /docs/
 	#
 	# Built without that flag, every page comes out asking for /assets/... at
 	# the root of the origin, where the landing answers and has nothing by that

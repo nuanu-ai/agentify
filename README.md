@@ -1,4 +1,4 @@
-# Coinslot
+# Agentify
 
 The gateway through which an ordinary online business sells its goods to AI
 agents, paid in stablecoins over the x402 protocol. The money goes from the
@@ -251,7 +251,7 @@ SDK's own polling and the gateway's internal steps are not in it.
   and runtime test inputs. The production health monitor under
   `ops/deploy/workflows/` is retained configuration and is not an active GitHub
   workflow.
-- `portal/` — the merchant documentation, installed from the shared root
+- `apps/docs/` — the merchant documentation, installed from the shared root
   workspace and lockfile.
 - `docs/decisions/` — the numbered decisions; `docs/research/` — the working
   material behind them.
@@ -308,7 +308,7 @@ Three more cost something and are kept apart for that reason:
 
 - `docs/vision.md` — what the product is, for whoever is deciding whether to
   connect.
-- `portal/` — what a merchant reads: the owner's decision, the engineer's
+- `apps/docs/` — what a merchant reads: the owner's decision, the engineer's
   integration, the operator's questions.
 - `docs/decisions/` — what is expensive to reverse, and why it was decided that
   way.

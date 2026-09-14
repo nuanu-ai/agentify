@@ -26,7 +26,12 @@
  */
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { assertNever, type Environment, keyPrefixFor, type SurfaceMode } from "@coinslot/core";
+import {
+  assertNever,
+  type Environment,
+  keyPrefixFor,
+  type SurfaceMode,
+} from "@agentify/commerce-core";
 import {
   checksummedAddressOf,
   EvmAddressSchema,

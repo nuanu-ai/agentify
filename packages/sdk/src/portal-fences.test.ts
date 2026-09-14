@@ -57,7 +57,7 @@ const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const README = "packages/sdk/README.md";
 
 /** The card that front page publishes: the smallest one that sells. */
-const CARD = "portal/examples/card/access-monthly-short.json";
+const CARD = "apps/docs/examples/card/access-monthly-short.json";
 
 /**
  * The values and functions the examples use that are the merchant's own.
@@ -125,9 +125,9 @@ interface Page {
 }
 
 const PAGES: readonly Page[] = [
-  { file: "portal/quickstart.md", fences: 6 },
-  { file: "portal/orders.md", fences: 4 },
-  { file: "portal/cards.md", fences: 2, pieces: { 0: asCardResult } },
+  { file: "apps/docs/quickstart.md", fences: 6 },
+  { file: "apps/docs/orders.md", fences: 4 },
+  { file: "apps/docs/cards.md", fences: 2, pieces: { 0: asCardResult } },
   { file: README, fences: 3 },
 ];
 
@@ -170,7 +170,7 @@ const examplesOf = (page: Page): Example[] => {
 
   return fences.map((body, index) => ({
     // The path, flattened: these become file names in one directory, so a page
-    // outside `portal/` must not put a directory separator in one.
+    // outside `apps/docs/` must not put a directory separator in one.
     name: `${page.file.replace(/\.md$/, "").replaceAll("/", "-")}-${index + 1}`,
     source: page.pieces?.[index]?.(body) ?? `${body}\n`,
   }));

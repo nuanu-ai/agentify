@@ -7,8 +7,8 @@
  * dropped. `description` and `result` are not optional, so the only code on our
  * public page was a card our own door would have refused — under a header
  * comment promising that every claim on the page is traceable. Nobody was
- * careless: the fixture test read `portal/*.md`, the landing does not live in
- * `portal/`, and no test in this repository had ever opened it. The example
+ * careless: the fixture test read `apps/docs/*.md`, the landing does not live in
+ * `apps/docs/`, and no test in this repository had ever opened it. The example
  * drifted because nothing read it.
  *
  * What read it next was a reader for JavaScript object literals, two hundred
@@ -18,7 +18,7 @@
  * answer to both is one file with two readers.
  *
  * So the card is not written on this page at all, and it is not written here
- * either. `portal/examples/card/access-monthly-short.json` is the card: the
+ * either. `apps/docs/examples/card/access-monthly-short.json` is the card: the
  * card reference prints it as JSON, `portal-fixtures.test.ts` holds it to
  * `CardSchema`, and what this file renders is that same file as the call a
  * merchant would write. Nothing here needs to check that the landing shows a
@@ -56,10 +56,10 @@ const repoRoot = new URL("../../../", import.meta.url);
 const LANDING = "apps/landing/public/index.html";
 
 /** The card the shop window shows: the smallest one that sells, written short. */
-const CARD = "portal/examples/card/access-monthly-short.json";
+const CARD = "apps/docs/examples/card/access-monthly-short.json";
 
 /** The same card as the reference prints it, with nothing left short. */
-const REFERENCE_CARD = "portal/examples/card/access-monthly.json";
+const REFERENCE_CARD = "apps/docs/examples/card/access-monthly.json";
 
 const fileOf = (path: string): string => readFileSync(new URL(path, repoRoot), "utf8");
 

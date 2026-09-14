@@ -13,7 +13,11 @@
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "@coinslot/gateway/testing/database";
+import {
+  noDatabaseHere,
+  readyDatabase,
+  testDatabaseUrl,
+} from "@agentify/commerce-gateway/testing/database";
 import { Pool } from "pg";
 import { afterAll, describe, it } from "vitest";
 import { migrateAccounts } from "./database.js";

@@ -27,7 +27,7 @@
 
 import DefaultTheme from "vitepress/theme";
 import { h } from "vue";
-import "./coinslot.css";
+import "./agentify.css";
 
 export default {
   extends: DefaultTheme,

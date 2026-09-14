@@ -11,7 +11,7 @@
  * there, disabling a key twice, running a verb with half its arguments.
  */
 
-import type { Environment } from "@coinslot/core";
+import type { Environment } from "@agentify/commerce-core";
 import { describe, expect, it } from "vitest";
 import { MemoryStore } from "./adapters/memory/store.js";
 import { issueCabinetKey, keyDigest } from "./app/merchants.js";

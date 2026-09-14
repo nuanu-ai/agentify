@@ -11,7 +11,7 @@
  * weaker thing. `words.ts` carries those cases and the reasons.
  */
 
-import type { SurfaceMode } from "@coinslot/core";
+import type { SurfaceMode } from "@agentify/commerce-core";
 import {
   API_ROUTES,
   expandPath,

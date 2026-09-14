@@ -88,7 +88,7 @@ PUBLIC_BASE_URL=https://cabinet \
 COOKIE_SECURE=true \
 AUTH_SECRET=a-sandbox-secret-nobody-should-reuse-anywhere \
 PAYMENT_NETWORK=eip155:84532 FACILITATOR_URL=sandbox:scripted \
-PORT=3001 pnpm --filter @coinslot/cabinet start
+PORT=3001 pnpm --filter @agentify/commerce-cabinet start
 ```
 
 It says what it is doing:
@@ -197,7 +197,7 @@ scale beside them: the tote bag's `"2500"` at a scale of two is `25.00`, not
 From the root of the checkout, in another terminal:
 
 ```sh
-GATEWAY_URL=http://localhost:8080 pnpm --filter @coinslot/slice buy "Canvas tote bag"
+GATEWAY_URL=http://localhost:8080 pnpm --filter @agentify/commerce-slice buy "Canvas tote bag"
 ```
 
 ```

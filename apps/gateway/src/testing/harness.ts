@@ -13,7 +13,7 @@
  */
 
 import type { AddressInfo } from "node:net";
-import { type Environment, keyPrefixFor } from "@coinslot/core";
+import { type Environment, keyPrefixFor } from "@agentify/commerce-core";
 import type { HandlerAnswer, Order, QuoteResponse } from "@nuanu-ai/coinslot-contracts";
 import { decodePaymentRequiredHeader, encodePaymentSignatureHeader } from "@x402/core/http";
 import type { PaymentPayload } from "@x402/core/types";

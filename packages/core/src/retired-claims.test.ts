@@ -36,7 +36,7 @@ const root = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
  * dependency added for one search is a dependency somebody has to justify at
  * every release afterwards.
  */
-const LOOK_IN = ["apps", "packages", "portal", "docs/research"];
+const LOOK_IN = ["apps", "packages", "docs/research"];
 const READABLE = /\.(ts|md)$/;
 const SKIP = new Set(["node_modules", "dist", ".vitepress", "cache"]);
 
@@ -127,7 +127,7 @@ describe("sentences this repository has retired", () => {
       "packages/sdk/src/worker.ts",
       "apps/gateway/src/ports/queue.ts",
       "apps/gateway/src/adapters/pgboss/queue.ts",
-      "portal/orders.md",
+      "apps/docs/orders.md",
     ]) {
       expect(files).toContain(wanted);
     }

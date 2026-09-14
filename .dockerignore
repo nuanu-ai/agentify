@@ -13,8 +13,8 @@ node_modules
 **/.local
 
 # Build output, rebuilt inside the image.
-portal/.vitepress/dist
-portal/.vitepress/cache
+apps/docs/.vitepress/dist
+apps/docs/.vitepress/cache
 **/dist
 
 # A developer's own environment and editor leavings.

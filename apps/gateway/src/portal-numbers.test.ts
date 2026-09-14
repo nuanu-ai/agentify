@@ -113,7 +113,7 @@ const PINS: readonly Pin[] = [
   // --- how long we wait for a price, and how long the answer lives ----------
   {
     what: "how long a price the merchant named goes on being good",
-    page: "portal/orders.md",
+    page: "apps/docs/orders.md",
     anchor: /A price holds for (\w+) seconds/,
     reads: "seconds",
     is: deadlines.quoteTtlMs,
@@ -126,7 +126,7 @@ const PINS: readonly Pin[] = [
     // life, because the life cannot start until the answer lands. A pin that
     // read the number alone would have gone on certifying that pairing.
     what: "how long a price holds, and the moment it is counted from",
-    page: "portal/cards.md",
+    page: "apps/docs/cards.md",
     anchor:
       /A price you name holds for (\w+) seconds, counted from the moment your answer reaches us/,
     reads: "seconds",
@@ -134,21 +134,21 @@ const PINS: readonly Pin[] = [
   },
   {
     what: "how long a price question may go unanswered before it counts as silence",
-    page: "portal/failures.md",
+    page: "apps/docs/failures.md",
     anchor: /no answer within (\w+) seconds/,
     reads: "seconds",
     is: deadlines.quoteResponseMs,
   },
   {
     what: "the same wait, said again where the page says whose setting it is",
-    page: "portal/failures.md",
+    page: "apps/docs/failures.md",
     anchor: /(\w+) seconds is what the system you are connecting to allows/,
     reads: "seconds",
     is: deadlines.quoteResponseMs,
   },
   {
     what: "the same wait, on the page a price handler is written from",
-    page: "portal/cards.md",
+    page: "apps/docs/cards.md",
     anchor: /We wait (\w+) seconds for an answer/,
     reads: "seconds",
     is: deadlines.quoteResponseMs,
@@ -160,7 +160,7 @@ const PINS: readonly Pin[] = [
   // was hardest to find a sentence for: before this, no page named it at all.
   {
     what: "how long a synchronous answer has, in the deadline reference",
-    page: "portal/orders.md",
+    page: "apps/docs/orders.md",
     anchor: /A synchronous answer has (\w+) seconds/,
     reads: "seconds",
     is: deadlines.syncResponseMs,
@@ -173,49 +173,49 @@ const PINS: readonly Pin[] = [
     // already run out. Both were wrong together, which is why this pin quotes
     // the moment and not just the eight.
     what: "the same, where the page explains what the clock covers",
-    page: "portal/orders.md",
+    page: "apps/docs/orders.md",
     anchor: /The (\w+) seconds run from the moment the payment checked out/,
     reads: "seconds",
     is: deadlines.syncResponseMs,
   },
   {
     what: "the same, on the card reference",
-    page: "portal/cards.md",
+    page: "apps/docs/cards.md",
     anchor: /the same for every product: (\w+) seconds/,
     reads: "seconds",
     is: deadlines.syncResponseMs,
   },
   {
     what: "the same, where the handler is written",
-    page: "portal/quickstart.md",
+    page: "apps/docs/quickstart.md",
     anchor: /as one number for everybody, and it is (\w+) seconds/,
     reads: "seconds",
     is: deadlines.syncResponseMs,
   },
   {
     what: "the same, said again where the page says whose seconds they are",
-    page: "portal/quickstart.md",
+    page: "apps/docs/quickstart.md",
     anchor: /they are the (\w+) seconds your handler has/,
     reads: "seconds",
     is: deadlines.syncResponseMs,
   },
   {
     what: "the same, on the page about what goes wrong",
-    page: "portal/failures.md",
+    page: "apps/docs/failures.md",
     anchor: /(\w+) seconds, counted from the moment the payment checked out/,
     reads: "seconds",
     is: deadlines.syncResponseMs,
   },
   {
     what: "the whole purchase the agent is promised, which the answer sits inside",
-    page: "portal/orders.md",
+    page: "apps/docs/orders.md",
     anchor: /fit inside the (\w+) seconds we promise the agent/,
     reads: "seconds",
     is: deadlines.syncBudgetMs,
   },
   {
     what: "the same promise, where the handler is written",
-    page: "portal/quickstart.md",
+    page: "apps/docs/quickstart.md",
     anchor: /the (\w+) seconds we promise the agent/,
     reads: "seconds",
     is: deadlines.syncBudgetMs,
@@ -224,42 +224,42 @@ const PINS: readonly Pin[] = [
   // --- what a card that names no deadline of its own is held to -------------
   {
     what: "the delivery deadline a card leaves out, in the deadline reference",
-    page: "portal/orders.md",
+    page: "apps/docs/orders.md",
     anchor: /leave it out and a (\w+) applies/,
     reads: "period",
     is: deadlines.defaultAsyncFulfillmentMs,
   },
   {
     what: "the same, on the card reference",
-    page: "portal/cards.md",
+    page: "apps/docs/cards.md",
     anchor: /A (\w+) applies instead/,
     reads: "period",
     is: deadlines.defaultAsyncFulfillmentMs,
   },
   {
     what: "the same, where the handler is written",
-    page: "portal/quickstart.md",
+    page: "apps/docs/quickstart.md",
     anchor: /A card that names none is held to a (\w+)\./,
     reads: "period",
     is: deadlines.defaultAsyncFulfillmentMs,
   },
   {
     what: "the same, in the worked case of a delivery that never arrived",
-    page: "portal/failures.md",
+    page: "apps/docs/failures.md",
     anchor: /so the (\w+) we hold it to is the one running/,
     reads: "period",
     is: deadlines.defaultAsyncFulfillmentMs,
   },
   {
     what: "the confirmation deadline a card leaves out, in the deadline reference",
-    page: "portal/orders.md",
+    page: "apps/docs/orders.md",
     anchor: /a deadline of its own — an (\w+), where the card names none/,
     reads: "period",
     is: deadlines.defaultConfirmationResponseMs,
   },
   {
     what: "the same, on the card reference",
-    page: "portal/cards.md",
+    page: "apps/docs/cards.md",
     anchor: /a deadline of its own — an (\w+), where the card names none/,
     reads: "period",
     is: deadlines.defaultConfirmationResponseMs,
@@ -268,21 +268,21 @@ const PINS: readonly Pin[] = [
   // --- how many times an order that never reached the handler is sent again --
   {
     what: "the attempt cap, where the three answers a handler has are set out",
-    page: "portal/orders.md",
+    page: "apps/docs/orders.md",
     anchor: /we have delivered it (\w+) times/,
     reads: "count",
     is: redelivery.maxAttempts,
   },
   {
     what: "the same cap, said again as the number this deployment is set to",
-    page: "portal/orders.md",
+    page: "apps/docs/orders.md",
     anchor: /(\w+) is what this system is set to/,
     reads: "count",
     is: redelivery.maxAttempts,
   },
   {
     what: "the same cap, on the page about a handler that threw",
-    page: "portal/failures.md",
+    page: "apps/docs/failures.md",
     anchor: /until we have tried (\w+) times/,
     reads: "count",
     is: redelivery.maxAttempts,
@@ -334,37 +334,37 @@ describe("a number the portal publishes is not also called undecided", () => {
     readonly truth: string;
   }[] = [
     {
-      page: "portal/orders.md",
+      page: "apps/docs/orders.md",
       claim: /how long we wait for a synchronous answer/,
       truth: "eight seconds, named in “Time ran out”",
     },
     {
-      page: "portal/quickstart.md",
+      page: "apps/docs/quickstart.md",
       claim: /how long we wait for a synchronous answer/,
       truth: "eight seconds, named on step 3",
     },
     {
-      page: "portal/orders.md",
+      page: "apps/docs/orders.md",
       claim: /how many times we do it/,
       truth: "five attempts, named where a handler's three answers are set out",
     },
     {
-      page: "portal/failures.md",
+      page: "apps/docs/failures.md",
       claim: /how many times we repeat it/,
       truth: "five attempts, named under “The handler crashed without answering”",
     },
     {
-      page: "portal/failures.md",
+      page: "apps/docs/failures.md",
       claim: /freshness threshold/,
       truth: "there is no such check: the timestamp on a price answer is carried and never weighed",
     },
     {
-      page: "portal/cards.md",
+      page: "apps/docs/cards.md",
       claim: /how long we wait for an answer/,
       truth: "five seconds, named under “Asking the price and availability”",
     },
     {
-      page: "portal/quickstart.md",
+      page: "apps/docs/quickstart.md",
       claim: /the build that would let the command start/,
       truth: "the SDK builds and `npx coinslot verify` runs; `scripts/outside.sh` runs it",
     },
@@ -375,13 +375,13 @@ describe("a number the portal publishes is not also called undecided", () => {
     // was the same half-claim the deadlines were, and what settled it was
     // deleting the bullet rather than naming a schedule.
     {
-      page: "portal/orders.md",
+      page: "apps/docs/orders.md",
       claim: /The delay before we resend/,
       truth:
         "settled in configuration and deliberately unpublished as internal mechanics: the repeating is automatic and is bounded by the deadline and the attempt count, and both of those are named",
     },
     {
-      page: "portal/failures.md",
+      page: "apps/docs/failures.md",
       claim: /The delay before we repeat/,
       truth:
         "settled in configuration and deliberately unpublished as internal mechanics: the page says the pauses grow, which is the whole of what a handler needs",
@@ -407,10 +407,10 @@ describe("a number the portal publishes is not also called undecided", () => {
   it("is reading the sections and not an empty string", () => {
     // The negative control for the guard above: every one of those assertions
     // passes against nothing at all.
-    for (const page of ["portal/orders.md", "portal/cards.md", "portal/failures.md"]) {
+    for (const page of ["apps/docs/orders.md", "apps/docs/cards.md", "apps/docs/failures.md"]) {
       expect(unsettledSection(page).length).toBeGreaterThan(200);
     }
-    expect(() => unsettledSection("portal/WRITING.md")).toThrowError(
+    expect(() => unsettledSection("apps/docs/WRITING.md")).toThrowError(
       /no "What is not settled yet"/,
     );
   });

@@ -130,7 +130,7 @@ const NO_MERCHANT =
   "This account was made before an account named the merchant it signs in for, so there is" +
   " nothing here for it to show. A new one is made by somebody holding that merchant's key," +
   " with the key piped in rather than typed on the line:" +
-  " ... | pnpm --filter @coinslot/cabinet account add <address> <merchant>." +
+  " ... | pnpm --filter @agentify/commerce-cabinet account add <address> <merchant>." +
   " A merchant who has an invitation and no account registers below instead.";
 
 /**
@@ -222,7 +222,7 @@ function readTokens(): string {
     );
   }
 }
-const STYLESHEET = `${TOKENS}\n${readFileSync(new URL("./coinslot.css", import.meta.url), "utf8")}`;
+const STYLESHEET = `${TOKENS}\n${readFileSync(new URL("./agentify.css", import.meta.url), "utf8")}`;
 
 /** What the cabinet is built out of, beyond its configuration. */
 export interface CabinetParts {

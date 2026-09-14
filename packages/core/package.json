@@ -1,9 +1,9 @@
 {
-  "name": "@coinslot/core",
+  "name": "@agentify/commerce-core",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Coinslot domain core — orders, receipts, the state machine; pure logic with no IO",
+  "description": "Agentify commerce domain core — orders, receipts, the state machine; pure logic with no IO",
   "exports": {
     ".": "./src/index.ts"
   },

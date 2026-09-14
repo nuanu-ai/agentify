@@ -27,7 +27,7 @@
  * the stream.
  */
 
-import type { Order } from "@coinslot/core";
+import type { Order } from "@agentify/commerce-core";
 import type { Card } from "@nuanu-ai/coinslot-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Harness, harness, workOnce } from "../testing/harness.js";

@@ -17,7 +17,7 @@
  * reserved word in Postgres.
  *
  * The migrations generated from this file live in `drizzle/` and are applied by
- * `pnpm --filter @coinslot/cabinet db:migrate`. They keep their bookkeeping in a
+ * `pnpm --filter @agentify/commerce-cabinet db:migrate`. They keep their bookkeeping in a
  * table of their own, `drizzle.cabinet_migrations`, because the gateway's
  * migrations keep theirs in the default one and two independent histories
  * writing one journal would each conclude the other's migrations were its own

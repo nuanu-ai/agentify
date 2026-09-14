@@ -30,7 +30,7 @@ export interface Template {
 }
 
 const portalExample = (file: string): (() => Promise<string>) => {
-  const at = fileURLToPath(new URL(`../../../portal/examples/card/${file}`, import.meta.url));
+  const at = fileURLToPath(new URL(`../../../apps/docs/examples/card/${file}`, import.meta.url));
   return async () => {
     let text: string;
     try {

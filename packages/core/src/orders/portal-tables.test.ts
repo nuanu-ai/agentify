@@ -49,9 +49,12 @@ import { outcomeFor } from "./outcome.js";
  * cover.
  */
 
-const ORDERS_PAGE = readFileSync(new URL("../../../../portal/orders.md", import.meta.url), "utf8");
+const ORDERS_PAGE = readFileSync(
+  new URL("../../../../apps/docs/orders.md", import.meta.url),
+  "utf8",
+);
 const FAILURES_PAGE = readFileSync(
-  new URL("../../../../portal/failures.md", import.meta.url),
+  new URL("../../../../apps/docs/failures.md", import.meta.url),
   "utf8",
 );
 
@@ -104,7 +107,7 @@ function paidAsync(): Order {
   ]);
 }
 
-// --- portal/orders.md, "How an order can end" -----------------------------
+// --- apps/docs/orders.md, "How an order can end" -----------------------------
 
 const ENDINGS = [
   "You delivered the goods",
@@ -117,7 +120,7 @@ const ENDINGS = [
   "The payment network did not say whether the money was charged",
 ] as const;
 
-describe('portal/orders.md, "How an order can end"', () => {
+describe('apps/docs/orders.md, "How an order can end"', () => {
   it(`${ENDINGS[0]}: the money is the merchant's, the agent has goods and a receipt`, () => {
     const { order } = must(paidAsync(), { kind: "deliver_called", at: T0 + 60 });
 
@@ -278,7 +281,7 @@ describe('portal/orders.md, "How an order can end"', () => {
   });
 });
 
-// --- portal/orders.md, "Time ran out" --------------------------------------
+// --- apps/docs/orders.md, "Time ran out" --------------------------------------
 
 const TIMEOUTS = [
   "The agent has the price and is thinking",
@@ -288,7 +291,7 @@ const TIMEOUTS = [
   "You are delivering an asynchronous order",
 ] as const;
 
-describe('portal/orders.md, "Time ran out"', () => {
+describe('apps/docs/orders.md, "Time ran out"', () => {
   it(`${TIMEOUTS[0]}: the price stops holding`, () => {
     const { order } = must(newOrder("sync"), {
       kind: "deadline_expired",
@@ -352,7 +355,7 @@ describe('portal/orders.md, "Time ran out"', () => {
   });
 });
 
-// --- portal/orders.md, "Events on the same subscription" -------------------
+// --- apps/docs/orders.md, "Events on the same subscription" -------------------
 
 const EVENTS = [
   "An order was marked as needing a refund",
@@ -360,7 +363,7 @@ const EVENTS = [
   "A payment did not execute after a synchronous delivery",
 ] as const;
 
-describe('portal/orders.md, "Events on the same subscription"', () => {
+describe('apps/docs/orders.md, "Events on the same subscription"', () => {
   it("emits exactly the three events the portal promises, and no others", () => {
     expect(MERCHANT_EVENTS).toStrictEqual([
       "order.refund_due",
@@ -412,7 +415,7 @@ describe('portal/orders.md, "Events on the same subscription"', () => {
   });
 });
 
-// --- portal/failures.md -----------------------------------------------------
+// --- apps/docs/failures.md -----------------------------------------------------
 
 const FAILURES = [
   "The price check is silent",
@@ -425,7 +428,7 @@ const FAILURES = [
   "Your side went quiet for a long time",
 ] as const;
 
-describe("portal/failures.md", () => {
+describe("apps/docs/failures.md", () => {
   it(`${FAILURES[0]}: the sale goes on where the money is still ahead of it`, () => {
     const sync = must(newOrder("sync", { priceCheck: "merchant" }), {
       kind: "quote_silent",

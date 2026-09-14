@@ -39,7 +39,7 @@ output
 /packages/remediation
 /packages/sdk
 /packages/slice
-/portal
+/apps/docs
 /deploy
 /docs
 /scripts

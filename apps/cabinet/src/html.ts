@@ -10,7 +10,7 @@
  * it appears on.
  */
 
-import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@coinslot/core";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/commerce-core";
 
 /** Text on its way into a page, with the five characters that are not text. */
 export const escaped = (value: string): string =>
@@ -110,7 +110,7 @@ const surface = (mode: SurfaceMode): string => {
  *
  * It is the other half of the way out of the documentation, which is a link in
  * the bar of the portal reading "← Coinslot"
- * (portal/.vitepress/theme/index.mjs). The two are one solution and are meant
+ * (apps/docs/.vitepress/theme/index.mjs). The two are one solution and are meant
  * to read as one: the same class name, the same shape — an arrow and the name
  * the destination wears in its own corner — the same muted colour until it is
  * hovered, and the same place, at the edge of the bar beside the navigation
@@ -125,7 +125,7 @@ const surface = (mode: SurfaceMode): string => {
  * the control that signs a merchant out.
  *
  * The word is "Docs" and not "Documentation" because the page it lands on says
- * "Docs" in its own corner (portal/.vitepress/config.mjs). Whoever presses it
+ * "Docs" in its own corner (apps/docs/.vitepress/config.mjs). Whoever presses it
  * arrives at the word they pressed.
  *
  * The address is absolute and carries no base path: ADR-0005 §1 puts the

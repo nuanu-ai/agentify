@@ -109,7 +109,7 @@ The stand is ready. Three things are left, and DEMO.md walks them in order.
          COOKIE_SECURE=true \\
          AUTH_SECRET=a-sandbox-secret-nobody-should-reuse-anywhere \\
          PAYMENT_NETWORK=eip155:84532 FACILITATOR_URL=sandbox:scripted \\
-         PORT=3001 pnpm --filter @coinslot/cabinet start
+         PORT=3001 pnpm --filter @agentify/commerce-cabinet start
 
      Then open https://cabinet/register.
 

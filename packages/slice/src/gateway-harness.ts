@@ -18,7 +18,7 @@
 
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { type Environment, keyPrefixFor } from "@coinslot/core";
+import { type Environment, keyPrefixFor } from "@agentify/commerce-core";
 import {
   buildApp,
   type Facilitator,
@@ -33,7 +33,7 @@ import {
   seedSandboxKey,
   setPayoutWallet,
   systemClock,
-} from "@coinslot/gateway";
+} from "@agentify/commerce-gateway";
 
 /**
  * The key the merchant in this harness opens the door with, for the site the

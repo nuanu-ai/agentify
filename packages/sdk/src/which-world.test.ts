@@ -3,7 +3,7 @@
  * against, and whether the money there is real.
  *
  * The keys these tests connect with are built from `keyPrefixFor` in
- * `@coinslot/core`, which is the home of the rule (ADR-0020), and that is
+ * `@agentify/commerce-core`, which is the home of the rule (ADR-0020), and that is
  * deliberate rather than convenient. The SDK cannot import that module — it is
  * private to this workspace and this package is published with the runtime
  * dependency tree ADR-0003 §8 writes down — so it carries its own copy of the
@@ -14,7 +14,7 @@
  * that is published — `files` ships `dist`, and the build excludes the tests.
  */
 
-import { keyPrefixFor } from "@coinslot/core";
+import { keyPrefixFor } from "@agentify/commerce-core";
 import type { Order, WorkerEnvelope } from "@nuanu-ai/coinslot-contracts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createClient } from "./client.js";

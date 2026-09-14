@@ -43,7 +43,7 @@ export {
  * The order state machine. The design it implements is
  * `docs/research/16-order-state-machine.md` with all three of its addition
  * sections, and the merchant-facing half of the same model is
- * `portal/orders.md` and `portal/failures.md`.
+ * `apps/docs/orders.md` and `apps/docs/failures.md`.
  *
  * The gateway is expected to use it like this: build an order with
  * `createOrder`, feed it events with `transition`, run the effects that come

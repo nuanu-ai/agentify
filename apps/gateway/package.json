@@ -1,9 +1,9 @@
 {
-  "name": "@coinslot/gateway",
+  "name": "@agentify/commerce-gateway",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Coinslot gateway — the 402 edge, the order queue, receipts",
+  "description": "Agentify commerce gateway — the 402 edge, the order queue, receipts",
   "exports": {
     ".": "./src/index.ts",
     "./testing": "./src/testing/harness.ts",
@@ -20,7 +20,7 @@
   "dependencies": {
     "@coinbase/cdp-sdk": "1.55.0",
     "@nuanu-ai/coinslot-contracts": "workspace:*",
-    "@coinslot/core": "workspace:*",
+    "@agentify/commerce-core": "workspace:*",
     "@x402/core": "2.23.0",
     "@x402/evm": "2.23.0",
     "@x402/extensions": "2.23.0",

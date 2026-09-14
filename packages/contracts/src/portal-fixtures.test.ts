@@ -18,7 +18,7 @@
  * compared against anything, because there is only one of everything.
  *
  * The convention the checks below rest on: an example lives at
- * `portal/examples/<schema>/<name>.json`, and the directory names the schema
+ * `apps/docs/examples/<schema>/<name>.json`, and the directory names the schema
  * the file is held to. `SCHEMAS` is that map, and a directory missing from it
  * fails rather than becoming a place where files sit unvalidated.
  *
@@ -60,7 +60,7 @@ import type { z } from "zod";
 import { CardSchema, deliveryCheckFor } from "./card.js";
 import { QuoteRequestSchema, QuoteResponseSchema } from "./quote.js";
 
-const PORTAL = fileURLToPath(new URL("../../../portal/", import.meta.url));
+const PORTAL = fileURLToPath(new URL("../../../apps/docs/", import.meta.url));
 const EXAMPLES = join(PORTAL, "examples");
 
 /**
@@ -124,7 +124,7 @@ const jsonOf = (file: string): unknown => {
   try {
     return JSON.parse(text);
   } catch (failure) {
-    throw new Error(`portal/examples/${file} is not valid JSON: ${(failure as Error).message}`);
+    throw new Error(`apps/docs/examples/${file} is not valid JSON: ${(failure as Error).message}`);
   }
 };
 
@@ -134,7 +134,7 @@ describe("the portal's examples are files, and every file is checked", () => {
     // generated from. A portal that moved, an include syntax that changed, a
     // filter that quietly matched nothing — any of those would leave the checks
     // below with nothing to say and read as a clean run.
-    expect(files.length, "no example files found under portal/examples").toBeGreaterThan(0);
+    expect(files.length, "no example files found under apps/docs/examples").toBeGreaterThan(0);
     expect(included.size, "no page includes anything").toBeGreaterThan(0);
   });
 
@@ -166,7 +166,7 @@ describe("the portal's examples are files, and every file is checked", () => {
 
     expect(
       result?.success === true ? "" : JSON.stringify(result?.error?.issues),
-      `portal/examples/${file} does not pass ${directory}`,
+      `apps/docs/examples/${file} does not pass ${directory}`,
     ).toBe("");
   });
 
@@ -175,7 +175,7 @@ describe("the portal's examples are files, and every file is checked", () => {
     // passing its schema long after the page that once showed it moved on.
     expect(
       included.get(`examples/${file}`) ?? [],
-      `no portal page includes portal/examples/${file}; include it or delete it`,
+      `no portal page includes apps/docs/examples/${file}; include it or delete it`,
     ).not.toStrictEqual([]);
   });
 
@@ -188,7 +188,7 @@ describe("the portal's examples are files, and every file is checked", () => {
       .filter(([path]) => !known.has(path))
       .map(([path, where]) => `${path} (included by ${where.join(", ")})`);
 
-    expect(missing, "a page includes a file that is not in portal/examples").toStrictEqual([]);
+    expect(missing, "a page includes a file that is not in apps/docs/examples").toStrictEqual([]);
   });
 
   it.each(pages)("%s writes no payload inline", (page) => {
@@ -201,7 +201,7 @@ describe("the portal's examples are files, and every file is checked", () => {
 
     expect(
       inline,
-      `${page} writes a payload in a fence; put it in portal/examples and include it with <<<`,
+      `${page} writes a payload in a fence; put it in apps/docs/examples and include it with <<<`,
     ).toStrictEqual([]);
   });
 });

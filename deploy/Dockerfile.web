@@ -8,7 +8,7 @@
 # The portal is built here, and with the mount point passed in: built without
 # `--base /docs/` every page asks for /assets/... at the root of the origin,
 # where the landing answers and has nothing by that name. The flag is a build
-# argument and not an edit to portal/.vitepress/config.mjs on purpose — where
+# argument and not an edit to apps/docs/.vitepress/config.mjs on purpose — where
 # the documentation is mounted is this directory's business, and the portal
 # should not carry the answer in a file of its own (deploy/Caddyfile).
 
@@ -17,14 +17,14 @@ RUN corepack enable && corepack prepare pnpm@11.12.0 --activate
 WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY portal/package.json portal/package.json
-RUN pnpm install --frozen-lockfile --filter @coinslot/portal...
+COPY apps/docs/package.json apps/docs/package.json
+RUN pnpm install --frozen-lockfile --filter @agentify/commerce-docs...
 
-COPY portal portal
-RUN pnpm --filter @coinslot/portal exec vitepress build --base /docs/
+COPY apps/docs apps/docs
+RUN pnpm --filter @agentify/commerce-docs exec vitepress build --base /docs/
 
 FROM caddy:2-alpine
 
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
 COPY apps/landing/public /srv/landing
-COPY --from=portal /app/portal/.vitepress/dist /srv/docs
+COPY --from=portal /app/apps/docs/.vitepress/dist /srv/docs

@@ -36,7 +36,7 @@ output
 /packages/sdk
 /packages/slice
 /packages/remediation
-/portal
+/apps/docs
 /deploy
 /docs
 /scripts

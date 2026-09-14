@@ -17,7 +17,7 @@ const LANDING = readFileSync(
   "utf8",
 );
 const PORTAL_CONFIG = readFileSync(
-  new URL("../../../../portal/.vitepress/config.mjs", import.meta.url),
+  new URL("../../../../apps/docs/.vitepress/config.mjs", import.meta.url),
   "utf8",
 );
 

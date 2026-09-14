@@ -89,7 +89,7 @@ returned answer himself. On the answer route it does not: the fixed
 synchronous answer comes back as a success carrying the word
 `purchase_already_closed`, and the SDK reports only the answers we refuse,
 so the word is dropped and nothing reaches his code. The gap is listed as
-open on `portal/orders.md`.
+open on `apps/docs/orders.md`.
 
 Carrying answers inside the next poll request was rejected: it would couple
 the latency-critical synchronous answer — the agent is waiting on it — to
@@ -123,7 +123,7 @@ for the order and not for the event.
 What makes the lost event survivable is that no event is the only record of
 anything. The order it is about stays in `orders.list({ open: true })` until
 whatever it owes is settled, an order owing a refund among them. That was
-always true and was never connected to the loss; `portal/orders.md` now
+always true and was never connected to the loss; `apps/docs/orders.md` now
 connects them.
 
 The consequence worth naming: a merchant who treats events as a complete

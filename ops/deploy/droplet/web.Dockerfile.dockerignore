@@ -35,7 +35,7 @@ output
 /packages/core
 /packages/sdk
 /packages/slice
-/portal
+/apps/docs
 /deploy
 /docs
 /scripts

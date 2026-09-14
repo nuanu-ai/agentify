@@ -2,7 +2,7 @@
  * The Coinslot gateway: the 402 edge, the order queue and the receipts.
  *
  * It is an interpreter and not a second brain. The order machine in
- * `@coinslot/core` decides everything about an order — whether a silence sells,
+ * `@agentify/commerce-core` decides everything about an order — whether a silence sells,
  * whether the money moves, whether there is another delivery — and everything
  * here loads an order, hands it one event, writes down what comes back and
  * carries out the effects. The HTTP surface is mounted from the table in

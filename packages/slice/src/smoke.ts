@@ -31,13 +31,17 @@
  * testnet settlement.
  */
 
-import { CDP_FACILITATOR_URL, isTestnetChain, PUBLIC_X402_FACILITATOR_URL } from "@coinslot/core";
+import {
+  CDP_FACILITATOR_URL,
+  isTestnetChain,
+  PUBLIC_X402_FACILITATOR_URL,
+} from "@agentify/commerce-core";
 import {
   type Facilitator,
   type GatewayConfig,
   PaymentEdge,
   X402Facilitator,
-} from "@coinslot/gateway";
+} from "@agentify/commerce-gateway";
 import type { Card } from "@nuanu-ai/coinslot-contracts";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { getDefaultAsset } from "@x402/evm";

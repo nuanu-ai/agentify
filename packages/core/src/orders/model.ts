@@ -4,8 +4,8 @@
  *
  * The design this file implements is `docs/research/16-order-state-machine.md`
  * together with all three of its addition sections, and the two portal pages
- * that speak the same model to the merchant — `portal/orders.md` and
- * `portal/failures.md`. Where the two disagreed, the choice and the reason are
+ * that speak the same model to the merchant — `apps/docs/orders.md` and
+ * `apps/docs/failures.md`. Where the two disagreed, the choice and the reason are
  * written down at the state or the field that carries it.
  *
  * Two rules hold everywhere in this package. Time is a value: every event
@@ -262,7 +262,7 @@ export type DeadlineKind = (typeof DEADLINE_KINDS)[number];
 export type DeadlinePolicy = {
   /**
    * Ours: how long we wait for the merchant to answer what the goods cost and
-   * whether they exist. Running out of it is the silence of `portal/failures.md`
+   * whether they exist. Running out of it is the silence of `apps/docs/failures.md`
    * and is answered by the per-mode policy of ADR-0002 §3, not by closing the
    * order — which is why it is a different number from `quoteTtlMs` and a
    * different deadline from `quote_expiry`.

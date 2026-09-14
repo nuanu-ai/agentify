@@ -11,7 +11,7 @@
  * says so; a test about something else should not have to.
  */
 
-import type { PaymentVerificationFailure } from "@coinslot/core";
+import type { PaymentVerificationFailure } from "@agentify/commerce-core";
 import { decodePaymentSignatureHeader } from "@x402/core/http";
 import type { Charge, Facilitator, SettleOutcome, VerifyOutcome } from "../../ports/facilitator.js";
 

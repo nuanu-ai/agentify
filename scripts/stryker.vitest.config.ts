@@ -5,7 +5,7 @@
  * runs vitest there, so that the working tree is never touched. Inside the
  * sandbox every `node_modules` is a symlink back to the real one, and under
  * pnpm a workspace package is itself a symlink inside `node_modules`:
- * `apps/gateway/node_modules/@coinslot/core` points at `../../../packages/core`
+ * `apps/gateway/node_modules/@agentify/commerce-core` points at `../../../packages/core`
  * of the real checkout, not of the sandbox. Left alone, every test outside
  * `packages/core` would import the unmutated core and kill nothing, and the
  * test that killed a mutant the spike named (`packages/slice/src/stand.test.ts`)

@@ -37,14 +37,14 @@
  * keys being rows is for.
  */
 
-import type { Environment } from "@coinslot/core";
+import type { Environment } from "@agentify/commerce-core";
 import { ZodError } from "zod";
 import { issueKey, makeMerchant, setPayoutWallet, setServiceName } from "./app/merchants.js";
 import type { Ids } from "./ports/clock.js";
 import type { Store, StoredKey, StoredMerchant } from "./ports/store.js";
 
 const USAGE = [
-  "Usage: pnpm --filter @coinslot/gateway merchant <command>",
+  "Usage: pnpm --filter @agentify/commerce-gateway merchant <command>",
   "",
   "  add <name>                 make a merchant and print the identifier it got",
   "  list                       the merchants there are, and how many keys work",
@@ -156,7 +156,9 @@ async function addMerchant(
   say("");
   say(`    ${made.id}`);
   say("");
-  say(`They have no keys yet: pnpm --filter @coinslot/gateway merchant key ${made.id} "a name"`);
+  say(
+    `They have no keys yet: pnpm --filter @agentify/commerce-gateway merchant key ${made.id} "a name"`,
+  );
   return 0;
 }
 
@@ -263,7 +265,7 @@ async function listMerchants(store: Store, say: (line: string) => void): Promise
   const merchants = await store.merchants();
   if (merchants.length === 0) {
     say("There are no merchants, so nothing can be published and no key opens anything.");
-    say('Make one: pnpm --filter @coinslot/gateway merchant add "Someone\'s shop"');
+    say('Make one: pnpm --filter @agentify/commerce-gateway merchant add "Someone\'s shop"');
     return 0;
   }
 

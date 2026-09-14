@@ -174,7 +174,7 @@ read -r -p 'Test merchant payout wallet (0x address): ' TEST_PAYOUT_WALLET
 (
   cd "$HOME/coinslot-test"
   docker compose --project-name coinslot-test exec -T gateway \
-    pnpm --filter @coinslot/gateway merchant \
+    pnpm --filter @agentify/commerce-gateway merchant \
       pays-to the_merchant "$TEST_PAYOUT_WALLET"
 )
 
@@ -182,7 +182,7 @@ read -r -p 'Live merchant payout wallet (0x address): ' LIVE_PAYOUT_WALLET
 (
   cd "$HOME/coinslot"
   docker compose --project-name coinslot exec -T gateway \
-    pnpm --filter @coinslot/gateway merchant \
+    pnpm --filter @agentify/commerce-gateway merchant \
       pays-to the_merchant "$LIVE_PAYOUT_WALLET"
 )
 
@@ -191,7 +191,7 @@ read -r -p 'Live merchant public trading name: ' LIVE_SELLER_NAME
 (
   cd "$HOME/coinslot"
   docker compose --project-name coinslot exec -T gateway \
-    pnpm --filter @coinslot/gateway merchant \
+    pnpm --filter @agentify/commerce-gateway merchant \
       listed-as the_merchant "$LIVE_SELLER_NAME"
 )
 ```
@@ -302,7 +302,7 @@ IFS= read -r -s -p 'Live seeded merchant key: ' SEEDED_KEY
 printf '\n'
 export MERCHANT_API_KEY="$SEEDED_KEY"
 export GATEWAY_URL='https://coinslot.nuanu.ai'
-pnpm --filter @coinslot/slice serve
+pnpm --filter @agentify/commerce-slice serve
 ```
 
 Wait for `two cards published` and a live subscription before continuing in

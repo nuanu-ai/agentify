@@ -6,7 +6,7 @@
 # Nothing here needs a build on the host first: the documentation is built
 # inside its image, and the four services that share one image — the
 # migration, the gateway, the cabinet and the mock merchant — run their
-# TypeScript through tsx, the same way `pnpm --filter @coinslot/gateway start`
+# TypeScript through tsx, the same way `pnpm --filter @agentify/commerce-gateway start`
 # does on a laptop.
 #
 #   docker compose up --build
@@ -44,7 +44,7 @@
 # prints a generated password once:
 #
 #   docker compose exec cabinet \
-#     pnpm --filter @coinslot/cabinet account add you@example.com
+#     pnpm --filter @agentify/commerce-cabinet account add you@example.com
 #
 # Then http://localhost:8080/cabinet takes that address and that password. The
 # same command has three more verbs — `list`, `password`, `revoke` — and running
@@ -205,7 +205,7 @@ services:
 
   gateway:
     <<: *app
-    command: ["pnpm", "--filter", "@coinslot/gateway", "start"]
+    command: ["pnpm", "--filter", "@agentify/commerce-gateway", "start"]
     environment:
       DATABASE_URL: postgres://coinslot:coinslot@postgres:5432/coinslot
       PORT: "3000"
@@ -309,7 +309,7 @@ services:
 
   cabinet:
     <<: *app
-    command: ["pnpm", "--filter", "@coinslot/cabinet", "start"]
+    command: ["pnpm", "--filter", "@agentify/commerce-cabinet", "start"]
     environment:
       PORT: "3001"
       # The cabinet's own two tables: the people who sign in and their sessions
@@ -404,7 +404,7 @@ services:
   # rather than a demonstration written to look like it.
   merchant:
     <<: *app
-    command: ["pnpm", "--filter", "@coinslot/slice", "serve"]
+    command: ["pnpm", "--filter", "@agentify/commerce-slice", "serve"]
     environment:
       GATEWAY_URL: http://gateway:3000
       # The same key the gateway seeds above: one merchant, one key, and on a
