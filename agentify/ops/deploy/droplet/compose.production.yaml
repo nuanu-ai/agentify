@@ -36,11 +36,11 @@ services:
 
   migrate:
     build:
-      context: ../../..
-      dockerfile: ops/deploy/scanner-worker.Dockerfile
+      context: ../../../..
+      dockerfile: agentify/ops/deploy/scanner-worker.Dockerfile
     environment:
       DATABASE_URL: ${ADMIN_DATABASE_URL:-postgresql://agentify_admin:${POSTGRES_ADMIN_PASSWORD}@postgres:5432/agentify}
-    command: ["node", "packages/db/dist/migrate-cli.js"]
+    command: ["node", "agentify/packages/db/dist/migrate-cli.js"]
     depends_on:
       roles-reconcile:
         condition: service_completed_successfully
@@ -78,11 +78,11 @@ services:
 
   queue-init:
     build:
-      context: ../../..
-      dockerfile: ops/deploy/scanner-worker.Dockerfile
+      context: ../../../..
+      dockerfile: agentify/ops/deploy/scanner-worker.Dockerfile
     environment:
       DATABASE_URL: ${ADMIN_DATABASE_URL:-postgresql://agentify_admin:${POSTGRES_ADMIN_PASSWORD}@postgres:5432/agentify}
-    command: ["node", "apps/scanner-worker/dist/queue-init-cli.js"]
+    command: ["node", "agentify/apps/scanner-worker/dist/queue-init-cli.js"]
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -164,8 +164,8 @@ services:
 
   web:
     build:
-      context: ../../..
-      dockerfile: ops/deploy/droplet/web.Dockerfile
+      context: ../../../..
+      dockerfile: agentify/ops/deploy/droplet/web.Dockerfile
       args:
         NEXT_PUBLIC_APP_BASE_URL: https://agentify.ad
         NEXT_PUBLIC_DISPLAY_BRAND: Agentify
@@ -219,8 +219,8 @@ services:
     profiles: [jobs]
     image: agentify-privacy-cleanup:latest
     build:
-      context: ../../..
-      dockerfile: ops/deploy/droplet/web.Dockerfile
+      context: ../../../..
+      dockerfile: agentify/ops/deploy/droplet/web.Dockerfile
       target: privacy-jobs
       args:
         NEXT_PUBLIC_APP_BASE_URL: https://agentify.ad
@@ -250,8 +250,8 @@ services:
 
   worker:
     build:
-      context: ../../..
-      dockerfile: ops/deploy/scanner-worker.Dockerfile
+      context: ../../../..
+      dockerfile: agentify/ops/deploy/scanner-worker.Dockerfile
     restart: unless-stopped
     environment:
       DATABASE_URL: ${WORKER_DATABASE_URL:-postgresql://agentify_worker:${POSTGRES_WORKER_PASSWORD}@postgres:5432/agentify}

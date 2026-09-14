@@ -10,11 +10,11 @@ The production health monitor definition is retained under
 `ops/deploy/workflows/` as inactive deployment configuration. GitHub does not
 discover workflows at that path; activating it is a later deployment step.
 
-Agentify retains Node 24.18.0 and pnpm 11.12.0 while the repositories are
-consolidated. CoinSlot retains its root toolchain. From the repository root:
+The repository uses Node 24.21.x, pnpm 11.12.x, TypeScript 5.9.3 and one root
+workspace lockfile. From the repository root:
 
 ```sh
-pnpm agentify:install
+pnpm install --frozen-lockfile
 cp agentify/.env.example agentify/.env
 pnpm agentify:db:up
 pnpm agentify:db:migrate
@@ -35,3 +35,8 @@ the pinned Playwright Chromium installed for the Agentify workspace. The
 self-readiness command checks the canonical public surface, so it must follow a
 build made with `NEXT_PUBLIC_APP_BASE_URL=https://agentify.ad`; CI supplies that
 candidate environment explicitly.
+
+Scanner worker, web and Actor images use the repository root as their build
+context so the shared lockfile is available. Their Dockerfile-specific ignore
+files keep local plans, commerce code and unrelated scanner components out of
+each context.

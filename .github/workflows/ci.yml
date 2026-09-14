@@ -32,7 +32,7 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           # setup-node v5 otherwise infers pnpm from packageManager and tries to
           # cache it before the next step has enabled Corepack.
           package-manager-cache: false
@@ -42,21 +42,19 @@ jobs:
       - run: corepack enable
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm check
-      - run: pnpm typecheck
-      - run: pnpm test
+      - run: pnpm check:commerce
+      - run: pnpm typecheck:commerce
+      - run: pnpm test:commerce
       # `build` and `typecheck` compile different sets of files. The former uses
       # the package tsconfig that decides what ships; the latter reads the whole
       # source tree including tests and emits nothing.
-      - run: pnpm build
+      - run: pnpm build:commerce
 
       # test:db stays outside this free, deterministic gate. It runs against the
       # deployment host's own `coinslot_test` database before activation.
 
-  # The portal is a job of its own because it is a project of its own: a
-  # separate vitepress build with its own lockfile, deliberately outside the
-  # workspace so that releasing the documentation is not tied to releasing the
-  # code. Folding it into the gate would install it twice and undo that.
+  # The portal keeps a separate gate because its rendered examples are a
+  # distinct release promise. It installs from the same workspace lockfile.
   portal:
     name: portal
     runs-on: ubuntu-latest
@@ -65,27 +63,14 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           package-manager-cache: false
 
       - run: corepack enable
 
-      # `--ignore-workspace` is not decoration. pnpm searches upwards for a
-      # workspace file, finds the repository's, and installs the eight packages
-      # of the monorepo instead of vitepress — leaving the build with nothing to
-      # run and the failure two steps away from its cause.
-      - run: pnpm install --frozen-lockfile --ignore-workspace
-        working-directory: portal
+      - run: pnpm install --frozen-lockfile
 
-      - run: pnpm run docs:build
-        working-directory: portal
-
-      # The build's exit code says the site compiled, not that it kept its
-      # examples. The pages carry theirs by reference — one file, read by the
-      # merchant and by `portal-fixtures.test.ts` — and a snippet syntax that
-      # changed under an upgrade would print the reference as text while every
-      # test stayed green. This is the step the job exists for.
-      - run: node scripts/check-portal-render.mjs
+      - run: pnpm build:portal
 
   # The decision log needs neither Node nor dependencies — only bash and files.
   decisions:
@@ -95,9 +80,8 @@ jobs:
       - uses: actions/checkout@v5
       - run: ./scripts/check-decisions.sh
 
-  # Agentify remains an independent workspace during repository consolidation.
-  # Keeping its original runtime and checks here makes the temporary boundary
-  # explicit without changing the CoinSlot package graph or release jobs.
+  # Scanner checks keep their own job and database service while sharing the
+  # repository toolchain and lockfile with commerce and the portal.
   agentify:
     name: agentify
     runs-on: ubuntu-24.04
@@ -123,34 +107,23 @@ jobs:
       NEXT_PUBLIC_APP_BASE_URL: https://agentify.ad
       NEXT_PUBLIC_DISPLAY_BRAND: Agentify
 
-    defaults:
-      run:
-        working-directory: agentify
-
     steps:
       - uses: actions/checkout@v5
 
       - uses: actions/setup-node@v5
         with:
-          node-version-file: agentify/.nvmrc
+          node-version-file: .nvmrc
           package-manager-cache: false
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.12.0
-          run_install: false
-          package_json_file: agentify/package.json
+      - run: corepack enable
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @b2a/browser-observer-actor exec playwright install --with-deps chromium
-      - run: pnpm format:check
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm test:unit
-      - run: pnpm ops:test
-      - run: pnpm --filter @b2a/browser-observer-actor test:integration
-      - run: pnpm test:integration
-      - run: pnpm db:check
-      - run: pnpm db:test:migrations
-      - run: pnpm build
-      - run: pnpm self-readiness:candidate
+      - run: pnpm check:agentify
+      - run: pnpm typecheck:agentify
+      - run: pnpm test:agentify
+      - run: pnpm agentify:test:actor
+      - run: pnpm agentify:test:integration
+      - run: pnpm agentify:test:db
+      - run: pnpm build:agentify
+      - run: pnpm agentify:self-readiness

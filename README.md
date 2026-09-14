@@ -241,8 +241,8 @@ SDK's own polling and the gateway's internal steps are not in it.
   contracts package and zod, and nothing else.
 - `packages/slice` — a mock merchant and a buyer, driving the offline gate and
   the two commands above, and the stand.
-- `portal/` — the merchant documentation, a vitepress project of its own with
-  its own lockfile, outside the workspace.
+- `portal/` — the merchant documentation, installed from the shared root
+  workspace and lockfile.
 - `docs/decisions/` — the numbered decisions; `docs/research/` — the working
   material behind them.
 - `spikes/` — experiments living on their own dependencies.

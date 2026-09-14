@@ -1,8 +1,24 @@
-# What the monorepo is made of. `portal/` is deliberately left out: it is a
-# separate vitepress project with its own lockfile and its own build, and
-# pulling it into the shared install would tie the release of the
-# documentation to the release of the code. `spikes/` is outside too — spikes
-# live on their own dependencies and die together with their conclusions.
+# Product code and documentation share one reproducible install. Agentify's
+# command package remains at its temporary path until the structure migration;
+# its recursive scripts explicitly select @b2a packages to avoid invoking the
+# whole workspace twice. Spikes remain isolated experiments.
 packages:
   - packages/*
   - apps/*
+  - agentify
+  - agentify/packages/*
+  - agentify/apps/*
+  - portal
+
+allowBuilds:
+  core-js: false
+  esbuild: true
+  sharp: true
+
+minimumReleaseAgeExclude:
+  - "@supabase/auth-js@2.110.3"
+  - "@supabase/functions-js@2.110.3"
+  - "@supabase/postgrest-js@2.110.3"
+  - "@supabase/realtime-js@2.110.3"
+  - "@supabase/storage-js@2.110.3"
+  - "@supabase/supabase-js@2.110.3"

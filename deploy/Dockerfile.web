@@ -12,23 +12,19 @@
 # the documentation is mounted is this directory's business, and the portal
 # should not carry the answer in a file of its own (deploy/Caddyfile).
 
-FROM node:24-alpine AS portal
-# The version is pinned rather than left to corepack's default: portal's own
-# package.json carries no packageManager field, and an install run by whichever
-# pnpm the image happened to ship is an install nobody can reproduce.
-RUN corepack enable && corepack prepare pnpm@10.33.3 --activate
-WORKDIR /portal
+FROM node:24.21.0-alpine AS portal
+RUN corepack enable && corepack prepare pnpm@11.12.0 --activate
+WORKDIR /app
 
-# The portal is its own project with its own lockfile, deliberately outside the
-# workspace (pnpm-workspace.yaml): the documentation releases on its own clock.
-COPY portal/package.json portal/pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY portal/package.json portal/package.json
+RUN pnpm install --frozen-lockfile --filter @coinslot/portal...
 
-COPY portal/ ./
-RUN pnpm exec vitepress build --base /docs/
+COPY portal portal
+RUN pnpm --filter @coinslot/portal exec vitepress build --base /docs/
 
 FROM caddy:2-alpine
 
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
 COPY apps/landing/public /srv/landing
-COPY --from=portal /portal/.vitepress/dist /srv/docs
+COPY --from=portal /app/portal/.vitepress/dist /srv/docs

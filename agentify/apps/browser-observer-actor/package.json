@@ -8,10 +8,10 @@
     "clean": "rm -rf dist coverage",
     "start": "node dist/index.js",
     "pretest": "pnpm --filter @b2a/contracts --filter @b2a/scanner-core build",
-    "test": "vitest run --exclude src/actor.integration.test.ts",
+    "test": "../../node_modules/.bin/vitest run --exclude src/actor.integration.test.ts",
     "pretest:unit": "pnpm --filter @b2a/contracts --filter @b2a/scanner-core build",
-    "test:unit": "vitest run --exclude src/actor.integration.test.ts",
-    "test:integration": "vitest run src/actor.integration.test.ts",
+    "test:unit": "../../node_modules/.bin/vitest run --exclude src/actor.integration.test.ts",
+    "test:integration": "../../node_modules/.bin/vitest run src/actor.integration.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

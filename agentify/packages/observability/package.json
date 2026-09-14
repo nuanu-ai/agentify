@@ -12,8 +12,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist coverage",
-    "test": "vitest run",
-    "test:unit": "vitest run",
+    "test": "../../node_modules/.bin/vitest run",
+    "test:unit": "../../node_modules/.bin/vitest run",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

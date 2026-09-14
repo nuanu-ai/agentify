@@ -13,8 +13,8 @@
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist coverage",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:unit": "vitest run"
+    "test": "../../node_modules/.bin/vitest run",
+    "test:unit": "../../node_modules/.bin/vitest run"
   },
   "dependencies": {
     "@b2a/contracts": "workspace:*"

@@ -1,0 +1,25 @@
+# The Actor CLI runs from the repository root so the shared lockfile is part of
+# the uploaded Docker context. Keep the upload limited to the Actor build graph.
+*
+!/package.json
+!/pnpm-lock.yaml
+!/pnpm-workspace.yaml
+!/.npmrc
+!/agentify/package.json
+!/agentify/tsconfig.base.json
+!/agentify/packages/contracts/package.json
+!/agentify/packages/contracts/tsconfig.json
+!/agentify/packages/contracts/tsconfig.build.json
+!/agentify/packages/contracts/src/**
+!/agentify/packages/scanner-core/package.json
+!/agentify/packages/scanner-core/tsconfig.json
+!/agentify/packages/scanner-core/tsconfig.build.json
+!/agentify/packages/scanner-core/src/**
+!/agentify/apps/browser-observer-actor/.actor/**
+!/agentify/apps/browser-observer-actor/ACTOR.md
+!/agentify/apps/browser-observer-actor/Dockerfile
+!/agentify/apps/browser-observer-actor/package.json
+!/agentify/apps/browser-observer-actor/tsconfig.json
+!/agentify/apps/browser-observer-actor/tsconfig.build.json
+!/agentify/apps/browser-observer-actor/fixtures/**
+!/agentify/apps/browser-observer-actor/src/**

@@ -10,9 +10,9 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "pretest": "pnpm --filter @b2a/contracts --filter @b2a/db --filter @b2a/analytics --filter @b2a/observability --filter @b2a/scanner-core build",
-    "test": "vitest run",
+    "test": "../../node_modules/.bin/vitest run",
     "pretest:unit": "pnpm --filter @b2a/contracts --filter @b2a/db --filter @b2a/analytics --filter @b2a/observability --filter @b2a/scanner-core build",
-    "test:unit": "vitest run",
+    "test:unit": "../../node_modules/.bin/vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

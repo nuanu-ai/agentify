@@ -91,7 +91,7 @@ async function startServer() {
   const port = new URL(baseUrl).port;
   server = spawn(
     process.execPath,
-    ["apps/web/.next/standalone/apps/web/server.js"],
+    ["apps/web/.next/standalone/agentify/apps/web/server.js"],
     {
       cwd: process.cwd(),
       detached: true,

@@ -11,11 +11,11 @@
 # what runs in the container is the same source a developer edits and there is
 # no build output to be stale.
 
-FROM node:24-alpine
+FROM node:24.21.0-alpine
 
 # The version is pinned so the install inside the image is the install the
-# lockfile was written by. corepack would otherwise read it out of the root
-# package.json, which is not in the context yet when the fetch below runs.
+# lockfile was written by. Corepack would otherwise select whatever version the
+# base image happened to provide before package.json reaches the context.
 #
 # COREPACK_HOME is set away from the home directory for a reason found by
 # running it: corepack caches the package manager it downloads under the home
@@ -25,7 +25,7 @@ FROM node:24-alpine
 # which is what "comes up with no network" has to mean.
 ENV COREPACK_HOME=/usr/local/share/corepack
 RUN corepack enable \
-  && corepack prepare pnpm@10.33.3 --activate \
+  && corepack prepare pnpm@11.12.0 --activate \
   && chmod -R a+rX "${COREPACK_HOME}"
 
 WORKDIR /app

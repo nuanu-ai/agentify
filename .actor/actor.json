@@ -8,10 +8,10 @@
     "templateId": "ts-playwright-chrome"
   },
   "dockerContextDir": "..",
-  "dockerfile": "../apps/browser-observer-actor/Dockerfile",
-  "readme": "../apps/browser-observer-actor/ACTOR.md",
-  "input": "../apps/browser-observer-actor/.actor/input_schema.json",
-  "output": "../apps/browser-observer-actor/.actor/output_schema.json",
+  "dockerfile": "../agentify/apps/browser-observer-actor/Dockerfile",
+  "readme": "../agentify/apps/browser-observer-actor/ACTOR.md",
+  "input": "../agentify/apps/browser-observer-actor/.actor/input_schema.json",
+  "output": "../agentify/apps/browser-observer-actor/.actor/output_schema.json",
   "minMemoryMbytes": 512,
   "maxMemoryMbytes": 2048,
   "usesStandbyMode": false
