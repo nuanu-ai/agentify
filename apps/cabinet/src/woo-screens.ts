@@ -321,19 +321,36 @@ const theConnection = (
   </form>
 `;
 
-/** One card the publish door accepted, or the findings that stopped it. */
-export interface ImportOutcome {
+/** A product an import sent through the publish door, named as the shop names it. */
+interface Sent {
   /** The shop's own identifier for the product. */
   readonly id: string;
   /** The product's name in the shop. */
   readonly title: string;
-  /** Our catalogue identifier, where the card went through. */
-  readonly published?: string;
-  /** What the door said, word for word, where it did not. */
-  readonly problems?: readonly string[];
-  /** Where the gateway itself could not be reached or would not answer. */
-  readonly failed?: string;
 }
+
+/** The door took it: our catalogue identifier for the card. */
+interface Published extends Sent {
+  readonly published: string;
+}
+
+/** The door refused it: what it said, word for word, one finding per field. */
+interface Refused extends Sent {
+  readonly problems: readonly string[];
+}
+
+/** The door never answered about it: what came back instead of an answer. */
+interface Unanswered extends Sent {
+  readonly failed: string;
+}
+
+/**
+ * What came of one product sent through the publish door: one of three, and
+ * never none of them. The third is the one a merchant cannot repair in their
+ * shop, and it is a shape of its own so that no screen can fold it into the
+ * one they can.
+ */
+export type ImportOutcome = Published | Refused | Unanswered;
 
 export interface ImportView {
   readonly shopUrl: string;
@@ -350,22 +367,25 @@ export interface ImportView {
  * own sentence about one field of one card, which is the only thing that tells
  * a merchant what to go and change in their shop — folded into "some cards were
  * refused" it would be a page saying something went wrong and nothing else.
+ * And a product the door never answered about is listed apart from those,
+ * because its next move is not in the shop at all.
  */
 export const wooImportScreen = (viewer: Viewer, view: ImportView): string => {
-  const went = view.outcomes.filter((one) => one.published !== undefined);
-  const stopped = view.outcomes.filter((one) => one.published === undefined);
+  const went = view.outcomes.filter((one): one is Published => "published" in one);
+  const refused = view.outcomes.filter((one): one is Refused => "problems" in one);
+  const unanswered = view.outcomes.filter((one): one is Unanswered => "failed" in one);
 
   const body = `
   <div class="lede">
     <div>
       <h1>What came over from ${escaped(view.shopUrl)}</h1>
-      <p>${escaped(summaryOf(went.length, stopped.length, view.skipped.length))}</p>
+      <p>${escaped(summaryOf(went.length, refused.length, unanswered.length, view.skipped.length))}</p>
       <p class="quiet"><a href="${escaped(viewer.base)}/cards">Your cards</a> · <a href="${escaped(viewer.base)}/woocommerce">Back to the shop</a></p>
     </div>
   </div>
-${went.length === 0 ? "" : publishedBlock(went)}${stopped.length === 0 ? "" : refusedBlock(stopped)}${
-  view.skipped.length === 0 ? "" : skippedBlock(view.skipped)
-}`;
+${went.length === 0 ? "" : publishedBlock(went)}${refused.length === 0 ? "" : refusedBlock(refused)}${
+  unanswered.length === 0 ? "" : unansweredBlock(unanswered)
+}${view.skipped.length === 0 ? "" : skippedBlock(view.skipped)}`;
 
   return page({
     mode: viewer.mode,
@@ -378,11 +398,17 @@ ${went.length === 0 ? "" : publishedBlock(went)}${stopped.length === 0 ? "" : re
   });
 };
 
-/** One line of counts, written so that none of the three is hidden. */
-const summaryOf = (published: number, refused: number, skipped: number): string => {
+/** One line of counts, written so that none of the four is hidden. */
+const summaryOf = (
+  published: number,
+  refused: number,
+  unanswered: number,
+  skipped: number,
+): string => {
   const parts = [
     `${published} ${published === 1 ? "product" : "products"} published`,
-    ...(refused === 0 ? [] : [`${refused} could not be published`]),
+    ...(refused === 0 ? [] : [`${refused} refused by our publishing rules`]),
+    ...(unanswered === 0 ? [] : [`${unanswered} got no verdict`]),
     ...(skipped === 0 ? [] : [`${skipped} could not be turned into a card at all`]),
   ];
   return `${parts.join(", ")}.`;
@@ -396,14 +422,14 @@ const summaryOf = (published: number, refused: number, skipped: number): string 
  * card a merchant went out of their way to hold back. Where the selling state
  * is drawn is the cards screen, and the line under the heading says so.
  */
-const publishedBlock = (outcomes: readonly ImportOutcome[]): string => `  <div class="lede">
+const publishedBlock = (outcomes: readonly Published[]): string => `  <div class="lede">
     <div>
       <h2>Published</h2>
       <p class="quiet">Each is one of your cards, carrying what this import read from your shop. Which of them can be bought this page does not say; your cards screen does. A card you paused stays paused through an import, and while all selling is stopped no card takes an order.</p>
       <ul>${outcomes
         .map(
           (one) =>
-            `<li>${escaped(one.title)} <span class="quiet">— product ${escaped(one.id)} in your shop, card ${escaped(one.published ?? "")}</span></li>`,
+            `<li>${escaped(one.title)} <span class="quiet">— product ${escaped(one.id)} in your shop, card ${escaped(one.published)}</span></li>`,
         )
         .join("")}</ul>
     </div>
@@ -418,9 +444,9 @@ const publishedBlock = (outcomes: readonly ImportOutcome[]): string => `  <div c
  * characters, a title the catalogue will not carry — and a paraphrase of ours
  * would be a second description of a rule that already has one.
  */
-const refusedBlock = (outcomes: readonly ImportOutcome[]): string => `  <div class="lede">
+const refusedBlock = (outcomes: readonly Refused[]): string => `  <div class="lede">
     <div>
-      <h2>Not published</h2>
+      <h2>Refused</h2>
       <p class="quiet">These are our own publishing rules, and the sentences under each product are the ones the publish door gave. Change what they name in your shop and import again.</p>
       <p class="quiet">Where one of them counts the characters in a description, the number is of your product's description with the formatting taken out and the runs of whitespace collapsed: the tags your shop stores around the words are not part of what a card carries, so they are not part of what is counted. Your shop's own editor will show you a larger number than this page does, and the difference is the markup.</p>
       <ul>${outcomes
@@ -428,9 +454,36 @@ const refusedBlock = (outcomes: readonly ImportOutcome[]): string => `  <div cla
           (
             one,
           ) => `<li>${escaped(one.title)} <span class="quiet">— product ${escaped(one.id)}</span>
-        <ul>${(one.problems ?? [one.failed ?? "It was not published and nothing said why."])
-          .map((problem) => `<li>${escaped(problem)}</li>`)
-          .join("")}</ul></li>`,
+        <ul>${one.problems.map((problem) => `<li>${escaped(problem)}</li>`).join("")}</ul></li>`,
+        )
+        .join("")}</ul>
+    </div>
+  </div>
+`;
+
+/**
+ * The products the door never answered about, apart from the ones it refused.
+ *
+ * A refusal is a sentence about a field of the product, and the merchant's
+ * next move is in their shop. These are not that: the product may be perfect
+ * for all anybody knows, because nobody read it — the gateway was not there,
+ * or answered with something that is not its answer to a publish, a refusal
+ * of the key among them — and no move in the shop helps. Folded into the list
+ * above, this page sent a merchant to edit a product nobody had read. The
+ * line printed under each product says "the gateway", which to a WooCommerce
+ * merchant is the payment plugin on their own Payments tab, so the paragraph
+ * binds the word before the line is read.
+ */
+const unansweredBlock = (outcomes: readonly Unanswered[]): string => `  <div class="lede">
+    <div>
+      <h2>No verdict</h2>
+      <p class="quiet">Nothing here is a finding about the product, and nothing in your shop needs changing: the part of Coinslot that keeps your cards — the lines below call it the gateway — did not answer when each was sent to it, or answered with something other than its verdict on the product, and the line under each product is what came back. Import again later; importing again does not double them. If it keeps happening, nothing in your shop or on this page will change it: tell whoever runs this Coinslot, and show them the line.</p>
+      <ul>${outcomes
+        .map(
+          (
+            one,
+          ) => `<li>${escaped(one.title)} <span class="quiet">— product ${escaped(one.id)}</span>
+        <ul><li>${escaped(one.failed)}</li></ul></li>`,
         )
         .join("")}</ul>
     </div>

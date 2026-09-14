@@ -1546,7 +1546,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
 
       noted(
         person,
-        `imported ${outcomes.filter((one) => one.published !== undefined).length} of` +
+        `imported ${outcomes.filter((one) => "published" in one).length} of` +
           ` ${read.products.length} products from ${connection.shopUrl}`,
       );
       // Answered with a page rather than a redirect: a redirect carries a flag
