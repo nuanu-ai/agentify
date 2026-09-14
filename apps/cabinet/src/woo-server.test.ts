@@ -593,18 +593,30 @@ describe("what the settings screen says about a shop", () => {
     expect(await settings(running)).toContain("less than a minute ago");
   });
 
-  it("says the shop could not reach us once the fifteen minutes are up", async () => {
-    // The other half of the same state, and it is a different sentence because
-    // it is a different move: the request is not coming, and what stops it is
-    // on the merchant's own server.
+  it("says only that no keys came in the fifteen minutes, and does not guess why", async () => {
+    // The other half of the same state, and a different sentence because it
+    // is a different move: the request is not coming on this Connect, and the
+    // one move that fits every way it can have gone is another Connect.
+    //
+    // What the page may not do is name a cause. Nothing here records whether
+    // the merchant approved, declined or closed their shop's screen, and a
+    // post that never got through leaves the same nothing as a post never
+    // made. "Your shop could not reach us", which this page once said, was one
+    // of three guesses presented as the fact, and it sent a merchant who had
+    // declined off to repair a firewall that was fine.
     const running = await started();
     await running.signIn();
     await startedMinutesAgo(running, 40);
 
-    const text = await settings(running);
+    const screen = await running.get("/settings");
+    const text = readable(screen.html);
 
-    expect(text).toMatch(/could not reach us/);
-    expect(text).toMatch(/firewall/);
+    expect(text).toContain(SHOP);
+    expect(text).toMatch(/no keys arrived .* 15 minutes/);
+    expect(text).toContain("Connect again");
+    expect(screen.html).toContain(`href="/woocommerce"`);
+    expect(text).not.toMatch(/could not reach us/);
+    expect(text).not.toMatch(/firewall/);
     // And not the sentence for a Connect still running, which would have the
     // merchant sitting and reloading a page that will never change.
     expect(text).not.toContain("Reload this page in a moment");
