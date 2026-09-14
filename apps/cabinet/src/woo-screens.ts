@@ -67,6 +67,24 @@ export type ShopState =
   /** Nothing was ever started. */
   | { readonly kind: "none" };
 
+/**
+ * What the settings block is drawn from: where the channel is, or that where
+ * it is could not be read just now.
+ *
+ * The fifth case is a state of what we know, not of the channel, and it stays
+ * out of `ShopState` because the shop screen is never drawn without a read. A
+ * read that fails there is the page failing, and a type that let the shop
+ * screen be handed "unread" would be a state it has no honest sentence for.
+ * The settings screen is different: three of its four subjects are the
+ * merchant's name, their money and their account, and our own shops table
+ * being down must not stand between a merchant and the box for their payout
+ * address. So the block is drawn with the fifth case, saying so, rather than
+ * dropped — a block that simply vanishes reads as "no shop is connected" to a
+ * merchant who connected one yesterday, and "I don't know" has to be
+ * distinguishable from "there is none".
+ */
+export type ShopTile = ShopState | { readonly kind: "unread" };
+
 /** What the page is drawn from: where the channel is, and anything just refused. */
 export interface WooView {
   /** Where this account's channel has got to, read off our own rows. */
@@ -424,27 +442,35 @@ const skippedBlock = (skipped: readonly SkippedProduct[]): string => `  <div cla
  * different things by two pages about one row is worse than being told nothing.
  * What a merchant does about any of it — the import, the disconnect, the form
  * that starts another Connect — is on the shop screen, and this block is the
- * way in from all four.
+ * way in from all four. The fifth case, `unread`, is this screen's alone: the
+ * rows could not be read just now, and the block says so rather than going
+ * away, because a block that vanishes reads as "no shop is connected".
  *
  * A shop that granted less than read and write is said here too, for the same
  * reason the third state exists: that channel cannot deliver a single order,
  * and a line reading only "connected" over it is this page being reassuring
  * about something that is broken.
  */
-export const wooSettingsBlock = (base: string, state: ShopState): string => {
+export const wooSettingsBlock = (base: string, state: ShopTile): string => {
+  // The unread state is the one with no link to the shop screen. That page
+  // needs the same read and would answer with an error page, so a link would
+  // be the settings screen offering something that cannot be drawn.
   const said =
-    state.kind === "connected"
-      ? `<p>${escaped(state.shop.shopUrl)}, connected ${escaped(moment(state.shop.connectedAt.toISOString()))}.</p>
+    state.kind === "unread"
+      ? `<p>Whether a shop is connected to this account could not be read just now.</p>
+      <p class="quiet">The fault is on our side, not in your shop, and nothing was disconnected by it. Reload this page in a moment.</p>`
+      : state.kind === "connected"
+        ? `<p>${escaped(state.shop.shopUrl)}, connected ${escaped(moment(state.shop.connectedAt.toISOString()))}.</p>
       ${
         state.shop.permissions === "read_write"
           ? ""
           : `<p class="problem">Your shop granted ${escaped(state.shop.permissions)} access rather than read and write, so every sale would be refused at the moment of delivery. Connect again and approve read and write access.</p>`
       }
       <p><a href="${escaped(base)}/woocommerce">Your shop</a></p>`
-      : state.kind === "none"
-        ? `<p>If your products live in a WooCommerce shop, connect it and your catalogue is published here for agents to buy. Orders are created in your shop, marked paid.</p>
+        : state.kind === "none"
+          ? `<p>If your products live in a WooCommerce shop, connect it and your catalogue is published here for agents to buy. Orders are created in your shop, marked paid.</p>
       <p><a href="${escaped(base)}/woocommerce">Connect a WooCommerce shop</a></p>`
-        : `${noKeysYet(state)}
+          : `${noKeysYet(state)}
       <p><a href="${escaped(base)}/woocommerce">${state.kind === "waiting" ? "Check the connection" : "Connect again"}</a></p>`;
 
   return `  <div class="lede">

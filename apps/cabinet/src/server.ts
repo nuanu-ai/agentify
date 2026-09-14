@@ -77,6 +77,7 @@ import {
 import {
   type ImportOutcome,
   type ShopState,
+  type ShopTile,
   wooImportScreen,
   wooReturnScreen,
   wooScreen,
@@ -313,14 +314,14 @@ const people = new WeakMap<Request, Person>();
  *
  * The shop is optional and the other two are not, because the first two are
  * always asked for and the third exists only where this cabinet has somewhere
- * to keep a connection — and where the read of it came back at all. Absent
- * means no block about a shop; the four states of one that is there are
- * `ShopState`.
+ * to keep a connection. Absent means a cabinet with no store for connections,
+ * and no block about a shop. The four states of a shop that is there are
+ * `ShopState`, and the fifth, `unread`, is a store that did not answer.
  */
 interface Settings {
   readonly sellerName: string | null;
   readonly payoutWallet: string | null;
-  readonly shop?: ShopState;
+  readonly shop?: ShopTile;
 }
 
 /** The whole cabinet on an express app. */
@@ -1257,8 +1258,10 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    * own table, it holds one block on a page whose other three subjects are the
    * merchant's name, their money and their account, and a merchant whose payout
    * address is wrong must be able to reach the box for it while our shops table
-   * is unreachable. So a read that throws is logged and drawn as no block, which
-   * is what a cabinet with no store for connections draws anyway.
+   * is unreachable. So a read that throws is logged and drawn as the block
+   * saying it could not be read, rather than as no block: a block that vanishes
+   * reads as no connection to a merchant who has one, and "we could not read
+   * it" has a different next move from "there is none".
    */
   const settingsOf = async (request: Request): Promise<Answer<Settings>> => {
     const gateway = gatewayAs(request);
@@ -1266,12 +1269,12 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     const [name, wallet, shop] = await Promise.all([
       gateway.sellerName(),
       gateway.payoutWallet(),
-      shopStateFor(person.id).catch((thrown: unknown) => {
+      shopStateFor(person.id).catch((thrown: unknown): ShopTile => {
         console.error(
           "[cabinet] the WooCommerce connection could not be read for a settings screen",
           thrown,
         );
-        return undefined;
+        return { kind: "unread" };
       }),
     ]);
     if (!name.ok) {
