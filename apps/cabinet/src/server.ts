@@ -67,7 +67,12 @@ import {
   theStateToken,
   whatIsWrongWithTheShopUrl,
 } from "./woo-connect.js";
-import { type ImportOutcome, wooImportScreen, wooScreen } from "./woo-screens.js";
+import {
+  type ConnectedShop,
+  type ImportOutcome,
+  wooImportScreen,
+  wooScreen,
+} from "./woo-screens.js";
 import { type CatalogueRead, catalogueOf } from "./woo-shop.js";
 import type { WooShops } from "./woo-shops.js";
 
@@ -295,6 +300,20 @@ const PRODUCTS_AT_MOST = 200;
  */
 const people = new WeakMap<Request, Person>();
 
+/**
+ * The three answers the settings screen is drawn from.
+ *
+ * The shop is optional and the other two are not, because the first two are
+ * always asked for and the third exists only where this cabinet has somewhere
+ * to keep a connection. Absent means no block about a shop at all; present with
+ * a null connection means the block, offering to connect one.
+ */
+interface Settings {
+  readonly sellerName: string | null;
+  readonly payoutWallet: string | null;
+  readonly shop?: { readonly connection: ConnectedShop | null };
+}
+
 /** The whole cabinet on an express app. */
 export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   const app = express();
@@ -304,14 +323,9 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   const viewingSettings = (
     request: Request,
     pageBase: string,
-    settings: { sellerName: string | null; payoutWallet: string | null },
+    settings: Settings,
     walletProblem?: string,
-  ): Viewer => ({
-    ...viewingSettingsAt(request, pageBase, config.surfaceMode, settings, walletProblem),
-    // The settings screen draws a link into the shop screens, and those are
-    // mounted only where there is somewhere to keep a connection.
-    canConnectAShop: parts.wooShops !== undefined,
-  });
+  ): Viewer => viewingSettingsAt(request, pageBase, config.surfaceMode, settings, walletProblem);
   const problemPage = (pageBase: string, said: string): string =>
     problemPageAt(pageBase, config.surfaceMode, said);
   const trouble = (response: Response, pageBase: string, answer: Answer<unknown>): void =>
@@ -1115,23 +1129,29 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   /**
    * Everything the settings screen is drawn from, asked for in one place.
    *
-   * The screen shows two things a merchant has set, and it is reached three
+   * The screen shows three things a merchant has set, and it is reached three
    * ways: opened, and redrawn after either of its two forms was refused. Asking
-   * for both in each of those by hand is how one of them comes to be forgotten
-   * in one of them — and the page that results does not look broken, it looks
-   * like a merchant who has set nothing.
+   * for each of them in each of those by hand is how one comes to be forgotten
+   * in one — and the page that results does not look broken, it looks like a
+   * merchant who has set nothing.
    *
-   * Both calls go out together rather than one after the other, because a
-   * merchant waiting for a page should wait for the slower of the two rather
-   * than for their sum. Either one failing is the whole page failing: a
-   * settings screen drawn without one of its answers would be claiming
-   * something about a field nobody asked about.
+   * The calls go out together rather than one after another, because a merchant
+   * waiting for a page should wait for the slowest of them rather than for their
+   * sum. Either of the gateway's failing is the whole page failing: a settings
+   * screen drawn without one of its answers would be claiming something about a
+   * field nobody asked about. The third is our own table and is a read that does
+   * not fail on its own — a cabinet with no store for connections has no
+   * WooCommerce block at all, which is the `undefined` below rather than a null.
    */
-  const settingsOf = async (
-    request: Request,
-  ): Promise<Answer<{ sellerName: string | null; payoutWallet: string | null }>> => {
+  const settingsOf = async (request: Request): Promise<Answer<Settings>> => {
     const gateway = gatewayAs(request);
-    const [name, wallet] = await Promise.all([gateway.sellerName(), gateway.payoutWallet()]);
+    const person = whoIs(request);
+    const shops = parts.wooShops;
+    const [name, wallet, connection] = await Promise.all([
+      gateway.sellerName(),
+      gateway.payoutWallet(),
+      shops === undefined ? Promise.resolve(null) : shops.connectionOf(person.id),
+    ]);
     if (!name.ok) {
       return name;
     }
@@ -1140,7 +1160,28 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     }
     return {
       ok: true,
-      document: { sellerName: name.document, payoutWallet: wallet.document },
+      document: {
+        sellerName: name.document,
+        payoutWallet: wallet.document,
+        ...(shops === undefined
+          ? {}
+          : {
+              shop: {
+                // The three fields a screen may know, never the row: the key and
+                // the secret are a stranger's credential at rest (ADR-0023), and
+                // the settings screen has no more business holding them than the
+                // shop screen does.
+                connection:
+                  connection === null
+                    ? null
+                    : {
+                        shopUrl: connection.shopUrl,
+                        permissions: connection.permissions,
+                        connectedAt: connection.connectedAt,
+                      },
+              },
+            }),
+      },
     };
   };
 
@@ -1816,7 +1857,7 @@ const viewingSettingsAt = (
   request: Request,
   base: string,
   mode: Viewer["mode"],
-  settings: { sellerName: string | null; payoutWallet: string | null },
+  settings: Settings,
   walletProblem?: string,
 ): Viewer => ({
   ...viewingAt(request, base, mode, settings.sellerName),
@@ -1824,6 +1865,9 @@ const viewingSettingsAt = (
     wallet: settings.payoutWallet,
     ...(walletProblem === undefined ? {} : { problem: walletProblem }),
   },
+  // Carried straight through, absence included: a cabinet with no store for
+  // connections hands no shop here and the screen draws no block about one.
+  ...(settings.shop === undefined ? {} : { shop: settings.shop }),
 });
 
 /**

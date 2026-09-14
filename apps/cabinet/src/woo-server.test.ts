@@ -518,3 +518,70 @@ describe("importing the catalogue", () => {
     expect(imported.html).toContain("Forbidden");
   });
 });
+
+describe("what the settings screen says about a shop", () => {
+  /** Connects a shop the way a merchant does, through both halves of the flow. */
+  const connect = async (running: Running): Promise<void> => {
+    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    await running.postJson("/woocommerce/callback", {
+      user_id: tokenIn(pressed.to ?? ""),
+      consumer_key: "ck_a-key-nobody-may-read",
+      consumer_secret: "cs_a-secret-nobody-may-read",
+      key_permissions: "read_write",
+    });
+  };
+
+  it("offers to connect one where none is connected", async () => {
+    const running = await started();
+    await running.signIn();
+
+    const screen = await running.get("/settings");
+
+    expect(screen.status).toBe(200);
+    expect(readable(screen.html)).toContain("Connect a WooCommerce shop");
+    expect(screen.html).toContain(`href="/woocommerce"`);
+  });
+
+  it("names the shop and when it was connected once one is", async () => {
+    // The promise this exists for: a merchant who has just finished the Connect
+    // flow opens Settings and reads whether it took. A block that says "Connect
+    // a WooCommerce shop" over a connected shop reads as the connect having
+    // failed, and the merchant's next move is to do it all again.
+    const running = await started();
+    await running.signIn();
+    await connect(running);
+
+    const text = readable((await running.get("/settings")).html);
+
+    expect(text).toContain(SHOP);
+    expect(text).toMatch(/connected 20\d\d-\d\d-\d\d/);
+    expect(text).not.toContain("Connect a WooCommerce shop");
+  });
+
+  it("leads to the shop screen either way", async () => {
+    // Connected or not, the block is the one way in to the page that does
+    // something about it: the import, the disconnect, the form.
+    const running = await started();
+    await running.signIn();
+    const before = await running.get("/settings");
+    await connect(running);
+    const after = await running.get("/settings");
+
+    for (const screen of [before, after]) {
+      expect(screen.html).toContain(`href="/woocommerce"`);
+    }
+  });
+
+  it("carries no key of the shop's onto the settings screen", async () => {
+    // The same promise the shop screen keeps (ADR-0023), on the screen that
+    // now reads the connection too.
+    const running = await started();
+    await running.signIn();
+    await connect(running);
+
+    const screen = await running.get("/settings");
+
+    expect(screen.html).not.toContain("ck_a-key-nobody-may-read");
+    expect(screen.html).not.toContain("cs_a-secret-nobody-may-read");
+  });
+});

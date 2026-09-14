@@ -291,18 +291,33 @@ const skippedBlock = (skipped: readonly SkippedProduct[]): string => `  <div cla
 `;
 
 /**
- * The block on the settings screen that says this exists.
+ * The block on the settings screen that says whether a shop is connected.
  *
- * A link rather than the state, because the state is a row and a read, and the
- * settings screen is drawn from two calls to the gateway that have nothing to
- * do with a shop. What it has to do is be findable: a merchant who has a
- * WooCommerce shop has no other reason to guess at an address.
+ * It draws the connection rather than a standing invitation, and that is the
+ * whole of why it reads a row. A merchant comes back from approving in their
+ * own shop, opens Settings, and finds out there whether it took; a block that
+ * says "connect a WooCommerce shop" over a shop that is already connected is
+ * not merely out of date, it is this page telling them the Connect failed and
+ * sending them round the loop again.
+ *
+ * What it says about a connected shop is the address and the moment, which is
+ * the shortest true answer to "did it work". Everything a merchant then does
+ * about it — the import, the disconnect, the warning about read-only access —
+ * is on the shop screen, and this block is the way in either way.
  */
-export const wooSettingsBlock = (base: string): string => `  <div class="lede">
+export const wooSettingsBlock = (
+  base: string,
+  connection: ConnectedShop | null,
+): string => `  <div class="lede">
     <div>
       <h2>WooCommerce</h2>
-      <p>If your products live in a WooCommerce shop, connect it and your catalogue is published here for agents to buy. Orders are created in your shop, marked paid.</p>
-      <p><a href="${escaped(base)}/woocommerce">Connect a WooCommerce shop</a></p>
+      ${
+        connection === null
+          ? `<p>If your products live in a WooCommerce shop, connect it and your catalogue is published here for agents to buy. Orders are created in your shop, marked paid.</p>
+      <p><a href="${escaped(base)}/woocommerce">Connect a WooCommerce shop</a></p>`
+          : `<p>${escaped(connection.shopUrl)}, connected ${escaped(moment(connection.connectedAt.toISOString()))}.</p>
+      <p><a href="${escaped(base)}/woocommerce">Your shop</a></p>`
+      }
     </div>
   </div>
 `;
