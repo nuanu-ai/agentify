@@ -308,14 +308,14 @@ const theConnection = (
     <div>
       <label>Import the catalogue</label>
       <p class="quiet">Reads every product your shop offers for sale and publishes each one as a card. Running it again republishes those cards rather than making a second set, so a price or a description you changed in your shop comes over: a card is keyed by the product's own identifier there.</p>
-      <p class="quiet">What it does not do is take anything off sale. A product you delete in your shop, or one that goes out of stock, is simply not in what this reads — the card published for it earlier stays where it is, and taking it off sale is one press on your cards screen.</p>
+      <p class="quiet">What it does not do is change what is on sale. A product you delete in your shop, or one that goes out of stock, is simply not in what this reads — the card published for it earlier stays where it is, and taking it off sale is one press on your cards screen.</p>
     </div>
     <button class="primary" type="submit">Import the catalogue</button>
   </form>
   <form class="issue" method="post" action="${escaped(base)}/woocommerce/disconnect">
     <div>
       <label>Disconnect</label>
-      <p class="quiet">Forgets the keys your shop gave us. The cards already published stay on sale and their orders will then fail, so pause your selling first if that is what you meant. The keys themselves are revoked in your own shop, under WooCommerce → Settings → Advanced → REST API.</p>
+      <p class="quiet">Forgets the keys your shop gave us. Nothing changes about your cards: they stay published, paused or not, and any still taking orders goes on taking them — but with no keys, no order can be filled from your shop, and each one fails. Stop all selling first if that is what you meant. The keys themselves are revoked in your own shop, under WooCommerce → Settings → Advanced → REST API.</p>
     </div>
     <button type="submit">Forget this shop</button>
   </form>
@@ -381,16 +381,25 @@ ${went.length === 0 ? "" : publishedBlock(went)}${stopped.length === 0 ? "" : re
 /** One line of counts, written so that none of the three is hidden. */
 const summaryOf = (published: number, refused: number, skipped: number): string => {
   const parts = [
-    `${published} ${published === 1 ? "product is" : "products are"} on sale`,
+    `${published} ${published === 1 ? "product" : "products"} published`,
     ...(refused === 0 ? [] : [`${refused} could not be published`]),
     ...(skipped === 0 ? [] : [`${skipped} could not be turned into a card at all`]),
   ];
   return `${parts.join(", ")}.`;
 };
 
+/**
+ * The cards the door took, named for what the door did and not for what it
+ * did not. The answer to a publish carries the catalogue identifier and
+ * nothing about selling, and a card the merchant paused stays paused through a
+ * publish — so "on sale" here would be this page's guess, made over the one
+ * card a merchant went out of their way to hold back. Where the selling state
+ * is drawn is the cards screen, and the line under the heading says so.
+ */
 const publishedBlock = (outcomes: readonly ImportOutcome[]): string => `  <div class="lede">
     <div>
-      <h2>On sale</h2>
+      <h2>Published</h2>
+      <p class="quiet">Each is one of your cards, carrying what this import read from your shop. Which of them can be bought this page does not say; your cards screen does. A card you paused stays paused through an import, and while all selling is stopped no card takes an order.</p>
       <ul>${outcomes
         .map(
           (one) =>
