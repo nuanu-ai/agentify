@@ -3,7 +3,7 @@
  *
  * Two things in this cabinet write lines somebody reads in a terminal: the
  * account command, whose whole output is read there, and the process log, which
- * is the only record of who stopped a merchant's selling (ADR-0009 §7). Both
+ * is the only record of who stopped a merchant's selling. Both
  * put text into those lines that somebody else wrote — an address out of a
  * form, the name a merchant gave a key — and a line is not a safe place for it
  * as it stands.

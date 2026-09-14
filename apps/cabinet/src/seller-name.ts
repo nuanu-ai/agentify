@@ -190,7 +190,7 @@ export const settingsScreen = (viewer: Viewer, problem?: string): string => {
     <button class="primary" type="submit">Save it</button>
     ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
   </form>
-${payoutWalletBlock(viewer)}${viewer.shop === undefined ? "" : wooSettingsBlock(base, viewer.shop.connection)}${accountSettings(viewer)}`;
+${payoutWalletBlock(viewer)}${viewer.shop === undefined ? "" : wooSettingsBlock(base, viewer.shop)}${accountSettings(viewer)}`;
 
   return page({
     mode: viewer.mode,

@@ -49,6 +49,7 @@ export const wooShopsContract = (
           token: "a-token",
           accountId: accounts.one,
           shopUrl: "https://shop.example.com",
+          startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
         const spent = await shops.spendGrant("a-token", NOW);
@@ -66,6 +67,7 @@ export const wooShopsContract = (
           token: "a-token",
           accountId: accounts.one,
           shopUrl: "https://shop.example.com",
+          startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
         expect(await shops.spendGrant("a-token", NOW)).not.toBeNull();
@@ -84,6 +86,7 @@ export const wooShopsContract = (
           token: "a-token",
           accountId: accounts.one,
           shopUrl: "https://shop.example.com",
+          startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
         const arrived = await Promise.all(
@@ -105,6 +108,7 @@ export const wooShopsContract = (
           token: "a-token",
           accountId: accounts.one,
           shopUrl: "https://shop.example.com",
+          startedAt: NOW,
           expiresAt: LATER,
         });
         expect(await shops.spendGrant("a-token", MUCH_LATER)).toBeNull();
@@ -120,16 +124,106 @@ export const wooShopsContract = (
           token: "stale",
           accountId: accounts.one,
           shopUrl: "https://shop.example.com",
+          startedAt: NOW,
           expiresAt: LATER,
         });
         await shops.beginGrant({
           token: "live",
           accountId: accounts.one,
           shopUrl: "https://shop.example.com",
+          startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
         expect(await shops.sweepGrants(new Date(MUCH_LATER.getTime() - 1))).toBe(1);
         expect(await shops.spendGrant("live", NOW)).not.toBeNull();
+      });
+    });
+
+    it("hands back the Connect an account is waiting on, with the moment it started", async () => {
+      // The promise: a merchant whose keys never arrived can be told so. The
+      // screens read this, and without the moment there is no way to tell "a
+      // minute ago, wait" from "a quarter of an hour ago, your shop could not
+      // reach us".
+      await using(async (shops, accounts) => {
+        await shops.beginGrant({
+          token: "a-token",
+          accountId: accounts.one,
+          shopUrl: "https://shop.example.com",
+          startedAt: NOW,
+          expiresAt: MUCH_LATER,
+        });
+
+        const waiting = await shops.grantFor(accounts.one);
+
+        expect(waiting?.shopUrl).toBe("https://shop.example.com");
+        expect(waiting?.startedAt.toISOString()).toBe(NOW.toISOString());
+      });
+    });
+
+    it("keeps one account's Connect out of another's", async () => {
+      await using(async (shops, accounts) => {
+        await shops.beginGrant({
+          token: "a-token",
+          accountId: accounts.one,
+          shopUrl: "https://shop.example.com",
+          startedAt: NOW,
+          expiresAt: MUCH_LATER,
+        });
+
+        expect(await shops.grantFor(accounts.other)).toBeNull();
+      });
+    });
+
+    it("hands back the Connect a merchant pressed last, not the one before it", async () => {
+      await using(async (shops, accounts) => {
+        await shops.beginGrant({
+          token: "first",
+          accountId: accounts.one,
+          shopUrl: "https://first.example.com",
+          startedAt: NOW,
+          expiresAt: LATER,
+        });
+        await shops.beginGrant({
+          token: "second",
+          accountId: accounts.one,
+          shopUrl: "https://second.example.com",
+          startedAt: LATER,
+          expiresAt: MUCH_LATER,
+        });
+
+        expect((await shops.grantFor(accounts.one))?.shopUrl).toBe("https://second.example.com");
+      });
+    });
+
+    it("still hands back a Connect whose time is up, because that is the case worth saying", async () => {
+      // Not filtered here. A Connect that expired with no keys is exactly the
+      // one a merchant needs a sentence about, and the clock is read by the
+      // screen rather than by the store.
+      await using(async (shops, accounts) => {
+        await shops.beginGrant({
+          token: "a-token",
+          accountId: accounts.one,
+          shopUrl: "https://shop.example.com",
+          startedAt: NOW,
+          expiresAt: LATER,
+        });
+
+        expect(await shops.grantFor(accounts.one)).not.toBeNull();
+      });
+    });
+
+    it("has nothing for an account whose Connect was spent", async () => {
+      await using(async (shops, accounts) => {
+        await shops.beginGrant({
+          token: "a-token",
+          accountId: accounts.one,
+          shopUrl: "https://shop.example.com",
+          startedAt: NOW,
+          expiresAt: MUCH_LATER,
+        });
+        await shops.spendGrant("a-token", NOW);
+
+        expect(await shops.grantFor(accounts.one)).toBeNull();
       });
     });
   });

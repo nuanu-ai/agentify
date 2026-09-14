@@ -64,6 +64,11 @@ interface Running {
   readonly harnessed: Harness;
   readonly identity: Identity;
   readonly shops: WooShops;
+  /**
+   * The account the tests sign in as, for the two that put a Connect in the
+   * past rather than waiting a quarter of an hour for one to expire.
+   */
+  readonly accountId: string;
   readonly url: string;
   /** Every authorize address the preflight was asked about. */
   readonly asked: string[];
@@ -88,6 +93,8 @@ interface Running {
    */
   postJson(path: string, body: unknown): Promise<Visit>;
   signIn(): Promise<void>;
+  /** Ends the session, so the next visit is a stranger's until they sign in. */
+  signOut(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -101,6 +108,16 @@ afterEach(async () => {
 interface Standing {
   readonly grantScreen?: (authorizeUrl: string) => Promise<Preflight>;
   readonly catalogue?: (shopUrl: string) => Promise<CatalogueRead>;
+  /**
+   * Makes every read of the connections table fail, the way an unreachable
+   * Postgres does.
+   *
+   * The real store and the memory one both answer from somewhere that can stop
+   * answering, and nothing else in this suite can produce that. Only the reads
+   * the screens make are broken: the writes on the Connect path are left alone,
+   * so a test can still put a row there to be read.
+   */
+  readonly breakTheShopsRead?: () => never;
 }
 
 const started = async (standing: Standing = {}): Promise<Running> => {
@@ -122,9 +139,21 @@ const started = async (standing: Standing = {}): Promise<Running> => {
       cabinet_verifications: [],
     },
   });
-  await identity.make(PERSON, PASSWORD, { id: harnessed.merchant.id, key: KEY });
+  const person = await identity.make(PERSON, PASSWORD, { id: harnessed.merchant.id, key: KEY });
+  if (person === null) {
+    throw new Error("the test account could not be made");
+  }
 
-  const shops = memoryWooShops();
+  const kept = memoryWooShops();
+  const breakRead = standing.breakTheShopsRead;
+  const shops: WooShops =
+    breakRead === undefined
+      ? kept
+      : {
+          ...kept,
+          connectionOf: async () => breakRead(),
+          grantFor: async () => breakRead(),
+        };
   const asked: string[] = [];
   const app: Express = buildApp(config, {
     identity,
@@ -184,6 +213,7 @@ const started = async (standing: Standing = {}): Promise<Running> => {
     harnessed,
     identity,
     shops,
+    accountId: person.id,
     url,
     asked,
     get: (path) => visit("GET", path),
@@ -203,6 +233,10 @@ const started = async (standing: Standing = {}): Promise<Running> => {
       await visit("POST", "/sign-in", {
         body: new URLSearchParams({ email: PERSON, password: PASSWORD }).toString(),
       });
+    },
+    async signOut() {
+      await visit("POST", "/sign-out");
+      jar.clear();
     },
     async close() {
       await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -372,13 +406,19 @@ describe("the keys arriving from the shop", () => {
   });
 });
 
-describe("the page the shop sends the browser back to", () => {
+describe("the page the shop sends the browser back to, with a session on the request", () => {
+  // One test, and one is right. A real return carries no session — the cookie
+  // is SameSite=Strict and the navigation begins on the merchant's own shop —
+  // so this describe covers the branch a merchant reaches only by typing the
+  // address into a cabinet they are already signed into. What that branch owes
+  // is the redirect, and what it redirects to is covered where a merchant
+  // actually lands: on the settings screen and on the shop screen.
   it("takes the state token out of the address bar", async () => {
     // WooCommerce hands user_id back on this redirect, and in the case this
     // page exists for — the keys never arrived — that token is unspent and good
     // for the rest of its fifteen minutes. Left in the address it is in the
-    // browser's history and in the log of everything between the merchant and
-    // us.
+    // browser's history, in the Referer of everything the page then loads, and
+    // in the address bar of a laptop somebody else can walk up to.
     const running = await started();
     await running.signIn();
     const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
@@ -387,63 +427,7 @@ describe("the page the shop sends the browser back to", () => {
     const came = await running.get(`/woocommerce/return?success=1&user_id=${token}`);
 
     expect(came.status).toBe(303);
-    expect(came.to).not.toContain(token);
-  });
-
-  it("says the keys have not arrived where they have not", async () => {
-    // `success=1` is the shop telling the browser what it did. The keys travel
-    // separately, and a page that read the redirect would be announcing
-    // something it has never seen.
-    const running = await started();
-    await running.signIn();
-    await running.post("/woocommerce/connect", { shop_url: SHOP });
-
-    const came = await running.get("/woocommerce/return?success=1&user_id=whatever");
-    const seen = await running.get(came.to ?? "");
-
-    expect(seen.status).toBe(200);
-    expect(seen.html).toContain("no keys have reached us yet");
-  });
-
-  it("says the shop is connected where the keys did arrive", async () => {
-    const running = await started();
-    await running.signIn();
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
-    const token = tokenIn(pressed.to ?? "");
-    await running.postJson("/woocommerce/callback", {
-      user_id: token,
-      consumer_key: "ck_a",
-      consumer_secret: "cs_b",
-      key_permissions: "read_write",
-    });
-
-    const came = await running.get("/woocommerce/return?success=1");
-    const seen = await running.get(came.to ?? "");
-
-    // The sentence the connected page draws, with the shop in it — and not the
-    // address on its own, which the disconnected form carries as the
-    // placeholder in its box and would answer this assertion either way.
-    expect(seen.html).toContain(`${SHOP}, connected`);
-    expect(seen.html).toContain("Your shop is connected");
-  });
-
-  it("carries no key of the shop's onto the page", async () => {
-    // The screen is handed three fields rather than the row, and this is the
-    // promise that shape exists to keep.
-    const running = await started();
-    await running.signIn();
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
-    await running.postJson("/woocommerce/callback", {
-      user_id: tokenIn(pressed.to ?? ""),
-      consumer_key: "ck_a-key-nobody-may-read",
-      consumer_secret: "cs_a-secret-nobody-may-read",
-      key_permissions: "read_write",
-    });
-
-    const seen = await running.get("/woocommerce");
-
-    expect(seen.html).not.toContain("ck_a-key-nobody-may-read");
-    expect(seen.html).not.toContain("cs_a-secret-nobody-may-read");
+    expect(came.to).toBe("/woocommerce?from=shop");
   });
 });
 
@@ -531,18 +515,38 @@ describe("importing the catalogue", () => {
 });
 
 describe("what the settings screen says about a shop", () => {
-  /** Connects a shop the way a merchant does, through both halves of the flow. */
-  const connect = async (running: Running): Promise<void> => {
+  // The promise, and it is the whole reason this block reads rows at all: the
+  // settings screen is where a merchant lands after their shop sends them back,
+  // and it has to be able to tell them apart the four things that can have
+  // happened. Three of them are not "connected", and a merchant told "connect a
+  // WooCommerce shop" in any of the other three is being told their Connect
+  // failed when two of those are not a failure and one has a different cure.
+  const approve = async (running: Running, permissions = "read_write"): Promise<void> => {
     const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
     await running.postJson("/woocommerce/callback", {
       user_id: tokenIn(pressed.to ?? ""),
       consumer_key: "ck_a-key-nobody-may-read",
       consumer_secret: "cs_a-secret-nobody-may-read",
-      key_permissions: "read_write",
+      key_permissions: permissions,
     });
   };
 
-  it("offers to connect one where none is connected", async () => {
+  /** A Connect that was pressed this long ago and never answered. */
+  const startedMinutesAgo = async (running: Running, minutes: number): Promise<void> => {
+    const began = Date.now() - minutes * 60_000;
+    await running.shops.beginGrant({
+      token: `token-from-${minutes}-minutes-ago`,
+      accountId: running.accountId,
+      shopUrl: SHOP,
+      startedAt: new Date(began),
+      expiresAt: new Date(began + 15 * 60_000),
+    });
+  };
+
+  const settings = async (running: Running): Promise<string> =>
+    readable((await running.get("/settings")).html);
+
+  it("offers to connect one where nothing was ever started", async () => {
     const running = await started();
     await running.signIn();
 
@@ -553,47 +557,116 @@ describe("what the settings screen says about a shop", () => {
     expect(screen.html).toContain(`href="/woocommerce"`);
   });
 
-  it("names the shop and when it was connected once one is", async () => {
-    // The promise this exists for: a merchant who has just finished the Connect
-    // flow opens Settings and reads whether it took. A block that says "Connect
-    // a WooCommerce shop" over a connected shop reads as the connect having
-    // failed, and the merchant's next move is to do it all again.
+  it("names the shop and when it was connected once the keys are here", async () => {
     const running = await started();
     await running.signIn();
-    await connect(running);
+    await approve(running);
 
-    const text = readable((await running.get("/settings")).html);
+    const text = await settings(running);
 
     expect(text).toContain(SHOP);
     expect(text).toMatch(/connected 20\d\d-\d\d-\d\d/);
     expect(text).not.toContain("Connect a WooCommerce shop");
   });
 
-  it("leads to the shop screen either way", async () => {
-    // Connected or not, the block is the one way in to the page that does
-    // something about it: the import, the disconnect, the form.
+  it("says a Connect is still running, and how long it has been", async () => {
+    // The state the whole finding was about. The merchant approved in their own
+    // shop and their shop's keys have not arrived; the honest answer inside the
+    // fifteen minutes is "wait", and a page that said "connect a shop" here
+    // sends them round the loop for nothing.
     const running = await started();
     await running.signIn();
-    const before = await running.get("/settings");
-    await connect(running);
-    const after = await running.get("/settings");
+    await startedMinutesAgo(running, 4);
 
-    for (const screen of [before, after]) {
+    const text = await settings(running);
+
+    expect(text).toContain("4 minutes ago");
+    expect(text).toMatch(/no keys have reached us yet/);
+    expect(text).not.toContain("Connect a WooCommerce shop");
+  });
+
+  it("counts a Connect pressed moments ago without claiming a whole minute", async () => {
+    const running = await started();
+    await running.signIn();
+    await running.post("/woocommerce/connect", { shop_url: SHOP });
+
+    expect(await settings(running)).toContain("less than a minute ago");
+  });
+
+  it("says the shop could not reach us once the fifteen minutes are up", async () => {
+    // The other half of the same state, and it is a different sentence because
+    // it is a different move: the request is not coming, and what stops it is
+    // on the merchant's own server.
+    const running = await started();
+    await running.signIn();
+    await startedMinutesAgo(running, 40);
+
+    const text = await settings(running);
+
+    expect(text).toMatch(/could not reach us/);
+    expect(text).toMatch(/firewall/);
+    // And not the sentence for a Connect still running, which would have the
+    // merchant sitting and reloading a page that will never change.
+    expect(text).not.toContain("Reload this page in a moment");
+  });
+
+  it("says a connected shop granted less than it needs to sell anything", async () => {
+    // A channel that cannot create an order is broken, and a settings line
+    // reading only "connected" over it is this page being reassuring about
+    // something that refuses every sale at delivery.
+    const running = await started();
+    await running.signIn();
+    await approve(running, "read");
+
+    const text = await settings(running);
+
+    expect(text).toContain(SHOP);
+    expect(text).toMatch(/read and write/);
+  });
+
+  it("leads to the shop screen from every state", async () => {
+    const running = await started();
+    await running.signIn();
+    const nothing = await running.get("/settings");
+    await startedMinutesAgo(running, 4);
+    const waiting = await running.get("/settings");
+    await approve(running);
+    const connected = await running.get("/settings");
+
+    for (const screen of [nothing, waiting, connected]) {
       expect(screen.html).toContain(`href="/woocommerce"`);
     }
   });
 
   it("carries no key of the shop's onto the settings screen", async () => {
-    // The same promise the shop screen keeps (ADR-0023), on the screen that
-    // now reads the connection too.
+    // The screen is handed the fields it may know rather than the row, and this
+    // is the promise that shape exists to keep (ADR-0023).
     const running = await started();
     await running.signIn();
-    await connect(running);
+    await approve(running);
 
     const screen = await running.get("/settings");
 
     expect(screen.html).not.toContain("ck_a-key-nobody-may-read");
     expect(screen.html).not.toContain("cs_a-secret-nobody-may-read");
+  });
+
+  it("draws the whole page without a WooCommerce block when the shops table is unreachable", async () => {
+    // A settings screen is where a merchant fixes the address their money
+    // arrives at. Our own shops table being down must not stand between them
+    // and that box — so the block goes and the page stays.
+    const running = await started({
+      breakTheShopsRead: () => {
+        throw new Error("the shops table is not answering");
+      },
+    });
+    await running.signIn();
+
+    const screen = await running.get("/settings");
+
+    expect(screen.status).toBe(200);
+    expect(readable(screen.html)).toContain("Where your money arrives");
+    expect(readable(screen.html)).not.toContain("WooCommerce");
   });
 });
 
@@ -610,23 +683,16 @@ describe("coming back from the shop with no session on the request", () => {
   const cameBack = (running: Running, query = "?success=1&user_id=whatever"): Promise<Visit> =>
     running.getWithoutCookie(`/woocommerce/return${query}`);
 
-  it("does not send the merchant to a sign-in", async () => {
+  it("answers a page rather than sending the merchant to a sign-in", async () => {
     const running = await started();
     await running.signIn();
-
-    const came = await cameBack(running);
-
-    expect(came.to).not.toBe("/sign-in");
-  });
-
-  it("answers a page rather than a locked door", async () => {
-    const running = await started();
 
     const stripped = await cameBack(running);
     const seen = await running.getWithoutCookie(stripped.to ?? "/woocommerce/return");
 
+    expect(stripped.to).not.toBe("/sign-in");
     expect(seen.status).toBe(200);
-    expect(readable(seen.html)).toContain("WooCommerce shop sends you");
+    expect(readable(seen.html)).toContain("WooCommerce shop");
   });
 
   it("still takes the state token out of the address bar", async () => {
@@ -643,14 +709,31 @@ describe("coming back from the shop with no session on the request", () => {
 
     expect(came.status).toBe(303);
     expect(came.to).toBe("/woocommerce/return");
-    expect(came.to).not.toContain(token);
+  });
+
+  it("reads nothing at all, so there is nothing for it to answer differently", async () => {
+    // The narrow property this route rests on, and it is stronger than "the two
+    // pages happen to match": a handler that touches no row cannot vary by one.
+    // The store here fails every read, and the page still comes out — which it
+    // could not do if the route consulted anything.
+    const running = await started({
+      breakTheShopsRead: () => {
+        throw new Error("nothing on this route may read a row");
+      },
+    });
+    await running.signIn();
+
+    const stripped = await cameBack(running);
+    const seen = await running.getWithoutCookie(stripped.to ?? "/woocommerce/return");
+
+    expect(seen.status).toBe(200);
+    expect(readable(seen.html)).toContain("WooCommerce shop");
   });
 
   it("says the same thing whether or not a shop is connected", async () => {
-    // The whole of what a stranger may learn from this address: nothing. Not
-    // whether an account exists, not which shop it named, not whether the keys
-    // arrived. Two runs, one with a connection and one without, and the page
-    // is the same page.
+    // The other half: not merely that it reads nothing, but that a stranger and
+    // an owner are handed the same bytes. Two runs, one with a connection and
+    // one without.
     const withNothing = await started();
     const before = await withNothing.getWithoutCookie("/woocommerce/return");
     await withNothing.close();
@@ -668,10 +751,27 @@ describe("coming back from the shop with no session on the request", () => {
 
     expect(after.status).toBe(before.status);
     expect(after.html).toBe(before.html);
-    expect(after.html).not.toContain(SHOP);
-    expect(after.html).not.toContain("shop.example.com");
-    expect(after.html).not.toContain("ck_a-key-nobody-may-read");
-    expect(after.html).not.toContain(PERSON);
+  });
+
+  it("sends the merchant on to a settings screen that says where the connection got to", async () => {
+    // The promise the return page makes, walked the way a merchant walks it:
+    // back from the shop with no session, on to the sign-in the page offers,
+    // and into the settings screen it names. If this fails, the return page is
+    // promising a diagnosis nobody can reach.
+    const running = await started();
+    await running.signIn();
+    await running.post("/woocommerce/connect", { shop_url: SHOP });
+    await running.signOut();
+
+    const stripped = await cameBack(running);
+    const landed = await running.getWithoutCookie(stripped.to ?? "/woocommerce/return");
+    expect(landed.html).toContain(`href="/sign-in"`);
+
+    await running.signIn();
+    const text = readable((await running.get("/settings")).html);
+
+    expect(text).toMatch(/no keys have reached us yet/);
+    expect(text).not.toContain("Connect a WooCommerce shop");
   });
 
   it("shows the merchant their real state once the cookie does travel", async () => {

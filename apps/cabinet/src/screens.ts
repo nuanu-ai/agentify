@@ -25,7 +25,7 @@ import type { PayoutWallet } from "./payout-wallet.js";
 // A type and nothing else, so this leaves no import behind once it is compiled
 // and the two files are not a cycle at run time. The shape belongs beside the
 // screen that draws a shop, and the viewer that carries it belongs here.
-import type { ConnectedShop } from "./woo-screens.js";
+import type { ShopState } from "./woo-screens.js";
 import {
   FULFILLMENT_WORDS,
   moment,
@@ -89,22 +89,24 @@ export interface Viewer {
    */
   readonly linkSent?: boolean;
   /**
-   * The WooCommerce shop this account has connected, where the screen asked.
+   * Where this account's WooCommerce channel has got to, where the screen
+   * asked.
    *
-   * Absent is a cabinet built with nowhere to keep a connection: it mounts none
-   * of those routes, which is a deliberate absence rather than a failure, and a
-   * link into them would be the settings screen offering something that answers
-   * "there is no such page". Present with a null connection is a cabinet that
-   * can connect a shop and has none.
+   * Absent is a cabinet built with nowhere to keep a connection — it mounts
+   * none of those routes, which is a deliberate absence rather than a failure,
+   * and a link into them would be the settings screen offering something that
+   * answers "there is no such page" — or one whose store could not be read just
+   * now. Either way the screen draws no block about a shop, which is the honest
+   * answer to a question nobody could ask.
    *
-   * Two states rather than a flag and a lookup, because a block saying "connect
-   * a shop" over a shop that is connected is not a missing detail — it is the
-   * page telling a merchant their Connect failed. The shape here is the screen's
-   * own (`ConnectedShop`), never the stored row: the row also holds the shop's
-   * key and its secret, and a screen with no way to reach them cannot leak them
+   * Four states rather than a flag, because a block saying "connect a shop"
+   * over a Connect that is halfway through is not a missing detail: it is the
+   * page telling a merchant their Connect failed. `ShopState` carries only what
+   * a screen may know, never the stored row — the row also holds the shop's key
+   * and its secret, and a screen with no way to reach them cannot leak them
    * (ADR-0023).
    */
-  readonly shop?: { readonly connection: ConnectedShop | null };
+  readonly shop?: ShopState;
 }
 
 interface Frame {

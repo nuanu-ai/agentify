@@ -845,7 +845,7 @@ describe("the description a listing carries", () => {
     // The promise: a refusal that names only the ceiling leaves a merchant
     // counting characters by hand in a shop's editor. The number they are
     // over by is the one thing we can see and they cannot.
-    expect(errorOf(CardSchema, { ...syncCard, description: "d".repeat(863) })).toContain("863");
+    expect(errorOf(CardSchema, { ...syncCard, description: "d".repeat(742) })).toContain("742");
     expect(errorOf(CardSchema, { ...syncCard, description: "d".repeat(501) })).toContain("501");
   });
 
@@ -856,16 +856,27 @@ describe("the description a listing carries", () => {
     expect(errorOf(CardSchema, { ...syncCard, description: "д".repeat(501) })).toContain("501");
   });
 
+  it("counts what the ceiling is measured in, even where that is not what a person sees", () => {
+    // The honest edge of "characters". Both the count in the message and the
+    // comparison behind the refusal are of UTF-16 units, so a character outside
+    // the basic plane counts as two in each — the number a merchant is told is
+    // always the number they were refused for, which is the property that
+    // matters, and it is not always the number of things on their screen.
+    const astral = "𝄞".repeat(251); // 502 units, one over, from 251 glyphs.
+
+    expect(errorOf(CardSchema, { ...syncCard, description: astral })).toContain("502");
+    expect(CardSchema.safeParse({ ...syncCard, description: "𝄞".repeat(250) }).success).toBe(true);
+  });
+
   it("names whose ceiling it is, so nobody reads it as ours or the protocol's", () => {
     // This is the finding that produced the sentence: read on its own, "a
     // description is at most 500 characters" could be our rule, the payment
     // protocol's, or something about the alphabet. It is none of those, and a
-    // merchant deciding whether to argue with us needs to know which.
-    const said = errorOf(CardSchema, { ...syncCard, description: "d".repeat(501) });
-
-    expect(said).toContain("discovery catalog");
-    expect(said).toMatch(/not ours/);
-    expect(said).toMatch(/payment protocol/);
+    // merchant deciding whether to argue with us needs to know which — so the
+    // catalog is named. The rest of the wording is free to be rewritten.
+    expect(errorOf(CardSchema, { ...syncCard, description: "d".repeat(501) })).toContain(
+      "discovery catalog",
+    );
   });
 
   it("refuses with the same sentence wherever the description is read", () => {

@@ -14,7 +14,7 @@
  * carries the part that is different here: the secret belongs to a third party.
  */
 
-import { and, eq, isNull, lt } from "drizzle-orm";
+import { and, desc, eq, isNull, lt } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import { wooGrants, wooOrders, wooShops } from "./schema.js";
@@ -25,6 +25,15 @@ export interface WooGrant {
   readonly token: string;
   readonly accountId: string;
   readonly shopUrl: string;
+  /**
+   * When the merchant pressed Connect.
+   *
+   * Written by the caller rather than by the store, so that the two
+   * implementations cannot disagree about it and so that a test can put a
+   * Connect in the past without waiting a quarter of an hour. It is what the
+   * screens count "started four minutes ago" from.
+   */
+  readonly startedAt: Date;
   readonly expiresAt: Date;
 }
 
@@ -73,6 +82,20 @@ export interface WooShops {
    * callback would be holding.
    */
   spendGrant(token: string, now: Date): Promise<WooGrant | null>;
+  /**
+   * The Connect this account started and nothing has come back for, or null.
+   *
+   * Read by the screens and by nothing on the callback path, which is what
+   * keeps it from being a second way to spend a token: it answers by account
+   * and never by token, so holding one tells nobody anything they can use.
+   * Expired is not filtered out here — a Connect whose fifteen minutes ran out
+   * with no keys is precisely the case a merchant needs a sentence about, and
+   * the screen is where the clock is read.
+   *
+   * The newest, where a merchant pressed Connect twice: it is the one they are
+   * waiting on, and the older rows go on the next press anyway.
+   */
+  grantFor(accountId: string): Promise<WooGrant | null>;
   /** Clears out the Connects nobody came back for. Answers how many. */
   sweepGrants(now: Date): Promise<number>;
 
@@ -118,7 +141,7 @@ export const postgresWooShops = (pool: Pool): WooShops => {
         accountId: grant.accountId,
         shopUrl: grant.shopUrl,
         expiresAt: grant.expiresAt,
-        createdAt: new Date(),
+        createdAt: grant.startedAt,
       });
     },
 
@@ -133,8 +156,27 @@ export const postgresWooShops = (pool: Pool): WooShops => {
         token: row.token,
         accountId: row.accountId,
         shopUrl: row.shopUrl,
+        startedAt: row.createdAt,
         expiresAt: row.expiresAt,
       };
+    },
+
+    async grantFor(accountId) {
+      const [row] = await db
+        .select()
+        .from(wooGrants)
+        .where(eq(wooGrants.accountId, accountId))
+        .orderBy(desc(wooGrants.createdAt))
+        .limit(1);
+      return row === undefined
+        ? null
+        : {
+            token: row.token,
+            accountId: row.accountId,
+            shopUrl: row.shopUrl,
+            startedAt: row.createdAt,
+            expiresAt: row.expiresAt,
+          };
     },
 
     async sweepGrants(now) {
@@ -250,6 +292,21 @@ export const memoryWooShops = (): WooShops => {
         return null;
       }
       return found;
+    },
+
+    async grantFor(accountId) {
+      // The newest, which is the one the merchant is waiting on. A Map keeps
+      // insertion order, so the last match is the last one written.
+      let newest: WooGrant | null = null;
+      for (const grant of grants.values()) {
+        if (grant.accountId !== accountId) {
+          continue;
+        }
+        if (newest === null || grant.startedAt.getTime() >= newest.startedAt.getTime()) {
+          newest = grant;
+        }
+      }
+      return newest;
     },
 
     async sweepGrants(now) {

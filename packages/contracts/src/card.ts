@@ -213,7 +213,12 @@ const LISTED_DESCRIPTION_MAX = 500;
  *
  * The count is of characters and not of bytes, which is what a merchant writing
  * in Cyrillic would otherwise have to work out from a number twice the size of
- * their text.
+ * their text. It is UTF-16 units, precisely: a character outside the basic
+ * plane — an emoji, a musical symbol — counts as two. That is not what a person
+ * sees on their screen, and it is deliberately the same unit the ceiling is
+ * measured in, so the number a merchant is told is always the number they were
+ * refused for. Reporting glyphs and refusing on units would be a message that
+ * disagrees with the rule it is explaining.
  */
 const DescriptionSchema = z
   .string()
