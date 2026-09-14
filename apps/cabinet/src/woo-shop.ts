@@ -30,14 +30,20 @@ const SHOP_ANSWERS_WITHIN_MS = 15_000;
 const PER_PAGE = 100;
 
 /**
- * How many pages we will walk before giving up on a shop.
+ * How many products the caller is willing to be handed, where it does not say.
  *
- * Ten thousand products is past any catalogue this pilot is for, and the bound
- * exists so that a shop answering a full page forever — a misconfigured proxy
- * repeating one response — is a refusal rather than a loop with a merchant
- * watching it.
+ * The ceiling is a parameter rather than a constant read here because the
+ * caller is the one that knows what it can do with them — the import publishes
+ * every one of them through the door while somebody holds a page open. Asked
+ * for at all, it stops the walk as soon as it is passed: a shop with five
+ * thousand products would otherwise be read whole, fifty round trips to
+ * somebody else's server, and then refused for being too large.
+ *
+ * Ten thousand is the default and it is a guard rather than a policy: it stops
+ * a shop answering a full page forever — a misconfigured proxy repeating one
+ * response — from being a loop with a merchant watching it.
  */
-const PAGES_WALKED = 100;
+const AT_MOST = 10_000;
 
 export type CatalogueRead =
   | { readonly ok: true; readonly products: readonly StoreProduct[] }
@@ -85,10 +91,14 @@ export type OrderMade =
  * no more: it carries a header with the total, and reading the header would be
  * one more thing to be wrong about on a shop behind a proxy that strips it.
  */
-export const catalogueOf = async (shopUrl: string): Promise<CatalogueRead> => {
+export const catalogueOf = async (
+  shopUrl: string,
+  atMost: number = AT_MOST,
+): Promise<CatalogueRead> => {
   const products: StoreProduct[] = [];
+  const pages = Math.ceil(atMost / PER_PAGE) + 1;
 
-  for (let page = 1; page <= PAGES_WALKED; page += 1) {
+  for (let page = 1; page <= pages; page += 1) {
     const at = `${shopUrl}/wp-json/wc/store/v1/products?per_page=${PER_PAGE}&page=${page}`;
     let answered: Response;
     try {
@@ -139,13 +149,19 @@ export const catalogueOf = async (shopUrl: string): Promise<CatalogueRead> => {
     if (read.data.length < PER_PAGE) {
       return { ok: true, products };
     }
+    if (products.length > atMost) {
+      // Stopped here rather than after the whole catalogue has been read: the
+      // answer is the same either way, and the difference is how many round
+      // trips somebody else's shop makes for a refusal.
+      break;
+    }
   }
 
   return {
     ok: false,
     why:
-      `Your shop kept answering with a full page of products after ${PAGES_WALKED} of them, which` +
-      " is more than this can read. Nothing was imported.",
+      `Your shop offers more than ${atMost} products, which is more than this brings over in one` +
+      " go. Nothing was imported.",
   };
 };
 

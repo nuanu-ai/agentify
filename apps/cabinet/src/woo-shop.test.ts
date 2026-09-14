@@ -111,6 +111,23 @@ describe("reading the catalogue", () => {
     expect(read.ok === true && read.products).toHaveLength(101);
   });
 
+  it("stops as soon as the shop has more products than the caller wants", async () => {
+    // The refusal is the same either way; the difference is how many round
+    // trips somebody else's shop makes for it. Read whole and refused at the
+    // end, a five-thousand-product shop is fifty requests for one "no".
+    stand = await shopAnswering(() => ({
+      status: 200,
+      body: Array.from({ length: 100 }, (_, i) => aProduct(i + 1)),
+    }));
+
+    const read = await catalogueOf(stand.url, 150);
+
+    expect(read.ok).toBe(false);
+    expect(read.ok === false && read.why).toContain("150");
+    // Two pages to know there are more than a hundred and fifty, and no more.
+    expect(stand.asked).toHaveLength(2);
+  });
+
   it("says what a shop that refused looked like rather than showing nothing", async () => {
     stand = await shopAnswering(() => ({
       status: 404,

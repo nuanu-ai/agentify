@@ -268,7 +268,7 @@ export interface CabinetParts {
     /** Whether an authorize address actually reaches wc-auth. */
     readonly grantScreen: (authorizeUrl: string) => Promise<Preflight>;
     /** Everything a shop offers for sale, off its Store API. */
-    readonly catalogue: (shopUrl: string) => Promise<CatalogueRead>;
+    readonly catalogue: (shopUrl: string, atMost?: number) => Promise<CatalogueRead>;
   };
 }
 
@@ -1328,22 +1328,12 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
         return;
       }
 
-      const read = await catalogue(connection.shopUrl);
+      // The ceiling goes in rather than being checked on the way out, so that a
+      // catalogue too large to bring over is refused after three round trips to
+      // somebody else's shop rather than after fifty.
+      const read = await catalogue(connection.shopUrl, PRODUCTS_AT_MOST);
       if (!read.ok) {
         return await drawTheShop(request, response, { problem: read.why }, 502);
-      }
-      if (read.products.length > PRODUCTS_AT_MOST) {
-        return await drawTheShop(
-          request,
-          response,
-          {
-            problem:
-              `Your shop offers ${read.products.length} products and this brings over at most` +
-              ` ${PRODUCTS_AT_MOST} in one go. Nothing was published. Bringing a catalogue this` +
-              " size over is not built yet.",
-          },
-          400,
-        );
       }
 
       const { cards, skipped } = cardsFromTheShop(read.products);

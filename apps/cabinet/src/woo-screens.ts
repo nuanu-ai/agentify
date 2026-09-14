@@ -21,6 +21,7 @@ import { escaped, page } from "./html.js";
 import type { Viewer } from "./screens.js";
 import type { SkippedProduct } from "./woo-catalog.js";
 import type { WooConnection } from "./woo-shops.js";
+import { moment } from "./words.js";
 
 /** What the page is drawn from: the connection, and anything just refused. */
 export interface WooView {
@@ -122,7 +123,7 @@ const theConnection = (
 ): string => `  <div class="lede">
     <div>
       <h2>Your shop</h2>
-      <p>${escaped(connection.shopUrl)}, connected ${escaped(connection.connectedAt.toISOString())}.</p>
+      <p>${escaped(connection.shopUrl)}, connected ${escaped(moment(connection.connectedAt.toISOString()))}.</p>
       ${view.problem === undefined ? "" : `<p class="problem">${escaped(view.problem)}</p>`}
       ${
         connection.permissions === "read_write"
