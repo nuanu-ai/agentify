@@ -443,6 +443,20 @@ describe("importing the catalogue", () => {
     });
   };
 
+  interface Held {
+    readonly id: string;
+    readonly paused: boolean;
+    readonly card: { readonly title: string; readonly price: { readonly amount: string } };
+  }
+
+  /** The merchant's own cards as the gateway holds them, read with their key. */
+  const cardsOf = async (running: Running): Promise<readonly Held[]> => {
+    const answered = await running.gateway.call("GET", "/v0/cards", {
+      headers: { authorization: `Bearer ${KEY}` },
+    });
+    return (answered.body as { cards: Held[] }).cards;
+  };
+
   it("publishes what it found, through the door every card goes through", async () => {
     const running = await started({
       catalogue: async () => ({ ok: true, products: [aProduct()] }),
@@ -455,12 +469,39 @@ describe("importing the catalogue", () => {
     expect(imported.html).toContain("Canvas tote bag");
     // And the card is really in the merchant's catalogue, priced at the scale
     // the shop sent rather than at a hundred times it.
-    const cards = await running.gateway.call("GET", "/v0/cards", {
-      headers: { authorization: `Bearer ${KEY}` },
-    });
-    const listed = (cards.body as { cards: { card: { price: { amount: string } } }[] }).cards;
+    const listed = await cardsOf(running);
     expect(listed).toHaveLength(1);
     expect(listed[0]?.card.price.amount).toBe("25.00");
+  });
+
+  it("counts a card it published again and does not call it on sale while it is paused", async () => {
+    // Publishing a paused card again changes the card and leaves it paused —
+    // a merchant editing a price in their shop is not asking for a product
+    // they took off sale to go back on it — and the door's answer says nothing
+    // about selling either way. A page that reads "on sale" over that card
+    // tells the merchant that agents can buy it, and they cannot. Two products
+    // and one pause, which is the list a merchant actually reads: the paused
+    // card beside one that is not, with nothing on this page to tell them
+    // apart, and the count in the plural the demo runbook shows.
+    const running = await started({
+      catalogue: async () => ({
+        ok: true,
+        products: [aProduct(), aProduct({ id: 10, name: "Access code", sku: "coinslot-code" })],
+      }),
+    });
+    await connected(running);
+    await running.post("/woocommerce/import");
+    const tote = (await cardsOf(running)).find((one) => one.card.title === "Canvas tote bag");
+    await running.post(`/cards/${encodeURIComponent(tote?.id ?? "")}/pause`);
+
+    const imported = await running.post("/woocommerce/import");
+    const text = readable(imported.html);
+
+    expect(imported.status).toBe(200);
+    expect(text).toContain("2 products published");
+    expect(text).toContain("Canvas tote bag");
+    expect(text).not.toMatch(/on sale/i);
+    expect((await cardsOf(running)).find((one) => one.id === tote?.id)?.paused).toBe(true);
   });
 
   it("shows the door's own refusal word for word", async () => {
