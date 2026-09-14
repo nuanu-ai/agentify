@@ -1,0 +1,4 @@
+# Everything the stand generates while it runs: certificates, the keys a grant
+# delivered, the instrument's logs. None of it is reproducible input and none of
+# it belongs in git.
+var/
