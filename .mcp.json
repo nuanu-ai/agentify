@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "plan": {
+      "type": "http",
+      "url": "https://plan.nuanu.ai/mcp"
+    }
+  }
+}
