@@ -2,7 +2,10 @@
   "mcpServers": {
     "plan": {
       "type": "http",
-      "url": "https://plan.nuanu.ai/mcp"
+      "url": "https://plan.nuanu.ai/mcp",
+      "headers": {
+        "Authorization": "Bearer ${PLAN_MCP_TOKEN}"
+      }
     }
   }
 }
