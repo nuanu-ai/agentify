@@ -25,6 +25,7 @@ import { accountSettings } from "./account-settings.js";
 import { bare, escaped, page } from "./html.js";
 import { payoutWalletBlock } from "./payout-wallet.js";
 import type { Viewer } from "./screens.js";
+import { wooSettingsBlock } from "./woo-screens.js";
 
 /**
  * What a name has to be, said in words a person can act on.
@@ -126,22 +127,26 @@ export const chooseNameScreen = (base: string, mode: Viewer["mode"], problem?: s
   );
 
 /**
- * The cabinet's settings, which hold three subjects.
+ * The cabinet's settings, which hold four subjects.
  *
  * A page of its own rather than controls tucked onto the cards screen: none of
- * these is about a card, all three are about the merchant. The name buyers read
- * is here; under it the address the merchant's money arrives at, which lives in
- * `payout-wallet.ts`; and under that the merchant's own account, which lives in
- * `account-settings.ts`. That last one arrived because the address in the corner
- * of every page is the one thing on a screen that says "this is you" — pressing
- * it has to lead somewhere that answers that, and the answer is a page with the
+ * these is about a card, all of them are about the merchant. The name buyers
+ * read is here; under it the address the merchant's money arrives at, which
+ * lives in `payout-wallet.ts`; under that the WooCommerce shop a merchant can
+ * sell the catalogue of, which is a link into `woo-screens.ts` rather than a
+ * block of its own, because the state of a connection is a row and this page is
+ * drawn from the gateway; and last the merchant's own account, which lives in
+ * `account-settings.ts`. That one arrived because the address in the corner of
+ * every page is the one thing on a screen that says "this is you" — pressing it
+ * has to lead somewhere that answers that, and the answer is a page with the
  * account on it.
  *
- * The order is the two things about selling first and the account last, because
- * a merchant setting themselves up works down the page: what they are called,
- * where they are paid, and only then how they get back in.
+ * The order is the things about selling first and the account last, because a
+ * merchant setting themselves up works down the page: what they are called,
+ * where they are paid, where their products come from, and only then how they
+ * get back in.
  *
- * The three are not the same kind of thing, so each is under a heading that
+ * The four are not the same kind of thing, so each is under a heading that
  * names which it is. Somebody landing here should be able to tell which part
  * they came for without reading the others.
  *
@@ -186,7 +191,7 @@ export const settingsScreen = (viewer: Viewer, problem?: string): string => {
     <button class="primary" type="submit">Save it</button>
     ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
   </form>
-${payoutWalletBlock(viewer)}${accountSettings(viewer)}`;
+${payoutWalletBlock(viewer)}${viewer.canConnectAShop === true ? wooSettingsBlock(base) : ""}${accountSettings(viewer)}`;
 
   return page({
     mode: viewer.mode,

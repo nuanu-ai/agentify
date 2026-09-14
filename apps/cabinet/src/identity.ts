@@ -220,6 +220,16 @@ export interface Identity {
   /** Sets a password from the command, ending every session that person had. */
   replacePassword(email: string, password: string): Promise<boolean>;
   byEmail(email: string): Promise<Person | null>;
+  /**
+   * One account by its identifier, for the one reader that has an identifier
+   * and no session: the worker that fills a WooCommerce merchant's orders.
+   *
+   * It is not a session and must never stand in for one. What it answers is
+   * "which merchant does this row sell as, and with which key", asked about a
+   * row the cabinet itself wrote down earlier — the connection to somebody's
+   * shop — rather than about whoever is holding a browser.
+   */
+  byId(personId: string): Promise<Person | null>;
   endEverySessionFor(email: string): Promise<number>;
   list(now: Date): Promise<readonly AccountSummary[]>;
   close(): Promise<void>;
@@ -792,6 +802,11 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
     async byEmail(email) {
       const found = await (await contextOf()).internalAdapter.findUserByEmail(emailAs(email));
       return found === null ? null : personFrom(found.user);
+    },
+
+    async byId(personId) {
+      const found = await (await contextOf()).internalAdapter.findUserById(personId);
+      return found === null || found === undefined ? null : personFrom(found);
     },
 
     async endEverySessionFor(email) {

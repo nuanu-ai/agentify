@@ -9,8 +9,9 @@
  * it is gated behind a flag file so a probe can measure the difference:
  *
  *   /var/probe/allow-private-callback    Two things stand between this shop
- *     and the callback receiver next to it, and both exist only because the
- *     whole stand is on one laptop:
+ *     and the two receivers next to it — the probes' own, and the Coinslot
+ *     cabinet the demo runbook puts behind a terminator on this network — and
+ *     both exist only because the whole stand is on one laptop:
  *       - wp_safe_remote_post() refuses a URL that resolves to a private
  *         address, and the receiver is on the compose network at 172.x;
  *       - the receiver's certificate is self-signed, and WordPress verifies
@@ -120,8 +121,24 @@ add_action(
 );
 
 /**
- * The behaviour changes, and only while the flag file is present. Both are
- * scoped to the single host `callback`: nothing else in the shop is affected.
+ * The two hosts on the stand that WordPress would otherwise refuse to reach,
+ * and the certificate each of them is verified against.
+ *
+ * `callback` is the probes' key receiver. `cabinet` is the Coinslot cabinet as
+ * the demo runbook arranges it — a TLS terminator on this network in front of
+ * the cabinet running on the laptop, which is where the wc-auth callback goes
+ * when a person walks the flow by hand rather than running the probes.
+ *
+ * Nothing else in the shop is affected, and neither entry does anything at all
+ * while the flag file is absent.
+ */
+const COINSLOT_LOCAL_HOSTS = array(
+	'callback' => '/var/certs/callback-cert.pem',
+	'cabinet'  => '/var/certs/cabinet-cert.pem',
+);
+
+/**
+ * The behaviour changes, and only while the flag file is present.
  */
 function coinslot_probe_local_callback_allowed() {
 	$path = COINSLOT_PROBE_DIR . '/allow-private-callback';
@@ -136,7 +153,7 @@ function coinslot_probe_local_callback_allowed() {
 add_filter(
 	'http_request_host_is_external',
 	function ( $is_external, $host, $url ) {
-		if ( 'callback' !== $host || ! coinslot_probe_local_callback_allowed() ) {
+		if ( ! isset( COINSLOT_LOCAL_HOSTS[ $host ] ) || ! coinslot_probe_local_callback_allowed() ) {
 			return $is_external;
 		}
 		coinslot_probe_append(
@@ -157,10 +174,10 @@ add_filter(
 	'http_request_args',
 	function ( $args, $url ) {
 		$host = wp_parse_url( $url, PHP_URL_HOST );
-		if ( 'callback' !== $host || ! coinslot_probe_local_callback_allowed() ) {
+		if ( ! isset( COINSLOT_LOCAL_HOSTS[ $host ] ) || ! coinslot_probe_local_callback_allowed() ) {
 			return $args;
 		}
-		$cert = '/var/certs/callback-cert.pem';
+		$cert = COINSLOT_LOCAL_HOSTS[ $host ];
 		if ( ! file_exists( $cert ) ) {
 			return $args;
 		}

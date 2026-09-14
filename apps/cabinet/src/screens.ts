@@ -84,6 +84,17 @@ export interface Viewer {
    * a send actually happened and was taken.
    */
   readonly linkSent?: boolean;
+  /**
+   * Whether this cabinet can connect a WooCommerce shop at all.
+   *
+   * One screen draws a block about it and the block is a link, so the flag is
+   * what keeps that link from pointing at an address this cabinet does not
+   * serve. A cabinet built without somewhere to keep a connection mounts none
+   * of those routes, which is a deliberate absence rather than a failure — and
+   * a link into it would be the settings screen offering something that answers
+   * "there is no such page".
+   */
+  readonly canConnectAShop?: boolean;
 }
 
 interface Frame {

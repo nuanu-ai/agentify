@@ -25,7 +25,17 @@ directory is meant to be deleted once its conclusions are recorded.
 ./setup.sh           # bring the stand up and configure it; safe to re-run
 ./setup.sh --reset   # destroy the volumes and build it again from nothing
 ./probe.mjs          # run the three probes and print a verdict for each
+./demo.sh            # arrange the stand for walking the flow by hand
 ```
+
+The first three are the probe and its subject, and they are what the verdicts
+below were measured on. `demo.sh` and `DEMO.md` are a second use of the same
+stand: a person at a laptop connecting this shop to a Coinslot cabinet through
+the screens, importing its catalogue, buying one of its products as an agent and
+finding the paid order in wp-admin. It changes three things about the stand —
+the shop moves onto https, a TLS terminator goes up in front of the cabinet, and
+the mu-plugin's two allowances are switched on — and each is explained where it
+happens. `./setup.sh --reset` puts the stand back to what the probes measure.
 
 `setup.sh` needs Docker and `openssl`; `probe.mjs` needs Node. Everything else
 lives in containers. A verdict is `PASS`, `FAIL` or `BLOCKED(reason)`; `PASS`
@@ -81,7 +91,10 @@ One file on the stand is not stock WooCommerce: `mu-plugins/coinslot-probe.php`
 records every outbound HTTP request and every mail attempt the shop makes, so
 the probes can quote the shop rather than infer from the outside. It also holds
 the two local allowances described under probe 1, both gated behind a flag file
-so the probes can measure what happens without them first.
+so the probes can measure what happens without them first. The allowances name
+two hosts on this network — the probes' own key receiver, and the TLS terminator
+`demo.sh` puts in front of a cabinet running on the laptop — and nothing else in
+the shop is affected by either.
 
 ## Results
 
