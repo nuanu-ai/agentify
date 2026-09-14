@@ -168,13 +168,15 @@ On sale
 
 Not published
   Абонемент на месяц — product 12
-    description: a description is at most 500 characters, which is what a listing carries
+    description: this description is 856 characters and a listing carries at most 500 — the ceiling is the one the discovery catalog documents, not ours and not the payment protocol's
 ```
 
 That third line is the point of the screen. The card was refused by the ordinary
 publish door, in the door's own words, and nothing shortened the merchant's
-description to make it fit. The seeded product has an 863-character description
-on purpose.
+description to make it fit. The seeded product carries 863 characters in its
+description field, which is 856 characters of prose inside a `<p>` and its
+closing tag; the card is made from the prose, so 856 is the number the refusal
+counts and 500 is the number it is measured against.
 
 The two that went through are priced from the Store API's minor units and the
 scale beside them: the tote bag's `"2500"` at a scale of two is `25.00`, not

@@ -28,6 +28,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
 import { type Identity, identityFor } from "./identity.js";
 import { buildApp } from "./server.js";
+import { readable } from "./testing/html.js";
 import type { StoreProduct } from "./woo-catalog.js";
 import type { Preflight } from "./woo-connect.js";
 import type { CatalogueRead } from "./woo-shop.js";
@@ -482,7 +483,11 @@ describe("importing the catalogue", () => {
     const imported = await running.post("/woocommerce/import");
 
     expect(imported.html).toContain("Not published");
-    expect(imported.html).toContain("500 characters");
+    // Both halves of the door's sentence reach the merchant: the ceiling, and
+    // the length of the text they wrote in their own shop. The second is what
+    // tells them how much to cut, and it is the half a summary would lose.
+    expect(readable(imported.html)).toContain("at most 500");
+    expect(readable(imported.html)).toContain("900 characters");
   });
 
   it("names the products it could not turn into a card at all", async () => {

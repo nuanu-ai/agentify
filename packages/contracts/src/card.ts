@@ -197,14 +197,36 @@ const LISTED_DESCRIPTION_MAX = 500;
  * with a description past its limit — cut it, refuse the record, keep it whole
  * — a merchant would learn of it from a listing rather than from us. So the
  * limit is here, at the publish, where somebody is reading the answer.
+ *
+ * The refusal is written as a function of what arrived rather than as a fixed
+ * sentence, and it says two things a fixed one could not. It says how long the
+ * text actually is, because the merchant is the only party who cannot see that
+ * number and the only one who has to act on it — a shop's editor does not count
+ * characters, and "at most 500" with nothing beside it is an instruction to go
+ * and count by hand. And it says whose ceiling this is: read on its own, a
+ * sentence about five hundred characters could be our rule, the payment
+ * protocol's, or something about an alphabet, and a merchant deciding whether
+ * to argue with us cannot tell which. It is the discovery catalog's, it is
+ * documented rather than enforced by anything of theirs we can run (see the
+ * comment on the number above), and the word "documents" in the sentence is
+ * carrying that and not decoration.
+ *
+ * The count is of characters and not of bytes, which is what a merchant writing
+ * in Cyrillic would otherwise have to work out from a number twice the size of
+ * their text.
  */
 const DescriptionSchema = z
   .string()
   .regex(/\S/, "a description must not be empty or blank")
-  .max(
-    LISTED_DESCRIPTION_MAX,
-    `a description is at most ${LISTED_DESCRIPTION_MAX} characters, which is what a listing carries`,
-  );
+  .max(LISTED_DESCRIPTION_MAX, {
+    // `input` is the string this check ran against: zod reaches a length check
+    // only once the value is known to be a string, so there is no other case
+    // here to write a branch for.
+    error: (issue) =>
+      `this description is ${String(issue.input).length} characters and a listing carries at` +
+      ` most ${LISTED_DESCRIPTION_MAX} — the ceiling is the one the discovery catalog documents,` +
+      " not ours and not the payment protocol's",
+  });
 
 /**
  * What the agent receives when the delivery goes through. Never empty: a
