@@ -1,0 +1,31 @@
+{
+  "name": "@agentify/browser-observer-actor",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist coverage",
+    "start": "node dist/index.js",
+    "pretest": "pnpm --filter @agentify/scanner-contracts --filter @agentify/scanner build",
+    "test": "vitest run --config ../../vitest.scanner.config.ts --exclude src/actor.integration.test.ts",
+    "pretest:unit": "pnpm --filter @agentify/scanner-contracts --filter @agentify/scanner build",
+    "test:unit": "vitest run --config ../../vitest.scanner.config.ts --exclude src/actor.integration.test.ts",
+    "test:integration": "vitest run --config ../../vitest.scanner.config.ts src/actor.integration.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agentify/scanner-contracts": "workspace:*",
+    "@agentify/scanner": "workspace:*",
+    "apify": "3.7.2",
+    "playwright": "1.61.1",
+    "tldts": "7.4.8",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10",
+    "vite": "7.3.6"
+  }
+}

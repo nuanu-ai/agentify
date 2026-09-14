@@ -1,0 +1,36 @@
+{
+  "name": "@agentify/scanner-worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist coverage",
+    "predev": "pnpm --filter @agentify/scanner-contracts --filter @agentify/scanner-database --filter @agentify/analytics --filter @agentify/observability build",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "pretest": "pnpm --filter @agentify/scanner-contracts --filter @agentify/scanner-database --filter @agentify/analytics --filter @agentify/observability --filter @agentify/scanner build",
+    "test": "vitest run --config ../../vitest.scanner.config.ts",
+    "pretest:unit": "pnpm --filter @agentify/scanner-contracts --filter @agentify/scanner-database --filter @agentify/analytics --filter @agentify/observability --filter @agentify/scanner build",
+    "test:unit": "vitest run --config ../../vitest.scanner.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agentify/analytics": "workspace:*",
+    "@agentify/scanner-contracts": "workspace:*",
+    "@agentify/scanner-database": "workspace:*",
+    "@agentify/observability": "workspace:*",
+    "@agentify/scanner": "workspace:*",
+    "apify-client": "2.23.4",
+    "pg-boss": "12.26.0",
+    "tldts": "7.4.8",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "tsx": "4.23.0",
+    "@types/node": "24.13.3",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10",
+    "vite": "7.3.6"
+  }
+}

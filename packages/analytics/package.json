@@ -1,0 +1,33 @@
+{
+  "name": "@agentify/analytics",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./browser": {
+      "types": "./src/browser-entry.ts",
+      "default": "./dist/browser-entry.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist coverage",
+    "test": "vitest run --config ../../vitest.scanner.config.ts",
+    "test:unit": "vitest run --config ../../vitest.scanner.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agentify/scanner-contracts": "workspace:*",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10",
+    "vite": "7.3.6"
+  }
+}

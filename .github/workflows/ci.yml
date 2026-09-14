@@ -118,7 +118,7 @@ jobs:
       - run: corepack enable
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @b2a/browser-observer-actor exec playwright install --with-deps chromium
+      - run: pnpm --filter @agentify/browser-observer-actor exec playwright install --with-deps chromium
       - run: pnpm check:agentify
       - run: pnpm typecheck:agentify
       - run: pnpm test:agentify

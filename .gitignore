@@ -18,17 +18,17 @@ docs/superpowers/
 # Secrets and environment
 .env
 .env.*
-!agentify/.env.example
+!.env.scanner.example
 
 # Build and dependencies
 node_modules/
 dist/
 coverage/
 *.tsbuildinfo
-agentify/**/.next/
-agentify/output/
-agentify/.playwright-cli/
-agentify/**/*.log
+**/.next/
+output/
+.playwright-cli/
+**/*.log
 
 # pnpm keeps a content-addressed store here when a build fetches into the
 # repository rather than into the user store. It is a cache, not a source.

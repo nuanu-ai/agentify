@@ -1,13 +1,10 @@
 # Product code and documentation share one reproducible install. Agentify's
-# command package remains at its temporary path until the structure migration;
-# its recursive scripts explicitly select @b2a packages to avoid invoking the
-# whole workspace twice. Spikes remain isolated experiments.
+# scanner and commerce components share this workspace while their scoped
+# commands keep their different compiler, lint and test policies separate.
+# Spikes remain isolated experiments.
 packages:
   - packages/*
   - apps/*
-  - agentify
-  - agentify/packages/*
-  - agentify/apps/*
   - portal
 
 allowBuilds:

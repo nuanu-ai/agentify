@@ -233,6 +233,9 @@ SDK's own polling and the gateway's internal steps are not in it.
 - `apps/cabinet` — the merchant's screens: cards, orders, receipts, keys.
   Server-rendered, no client build (ADR-0005).
 - `apps/landing` — the public page, static.
+- `apps/web` — Agentify's public scanner and report application.
+- `apps/scanner-worker` and `apps/browser-observer-actor` — the scanner's
+  background and passive browser-observation processes.
 - `packages/contracts` — every shape that crosses a boundary, as zod schemas,
   and the route table both sides import instead of transcribing.
 - `packages/core` — the order state machine: pure logic, zero IO, zero runtime
@@ -241,6 +244,13 @@ SDK's own polling and the gateway's internal steps are not in it.
   contracts package and zod, and nothing else.
 - `packages/slice` — a mock merchant and a buyer, driving the offline gate and
   the two commands above, and the stand.
+- `packages/scanner-contracts`, `packages/scanner-database` and
+  `packages/scanner` — the scanner's private contracts, storage and evaluation
+  engine; analytics, observability and remediation remain separate packages.
+- `ops/` and `fixtures/` — scanner deployment definitions, operational checks
+  and runtime test inputs. The production health monitor under
+  `ops/deploy/workflows/` is retained configuration and is not an active GitHub
+  workflow.
 - `portal/` — the merchant documentation, installed from the shared root
   workspace and lockfile.
 - `docs/decisions/` — the numbered decisions; `docs/research/` — the working
@@ -249,6 +259,28 @@ SDK's own polling and the gateway's internal steps are not in it.
 
 Gateway and cabinet share one Postgres and each owns its migrations under
 `drizzle/`; `pnpm db:migrate` runs both.
+
+The scanner uses a separate PostgreSQL 16.9 database on `127.0.0.1:55432` and
+never reads the commerce `.env`. Start its local processes from the repository
+root:
+
+```sh
+cp .env.scanner.example .env.scanner
+pnpm agentify:db:up
+pnpm agentify:db:migrate
+pnpm agentify:dev
+```
+
+The web application listens on port 3000 and worker health on port 8081.
+`pnpm agentify:db:down` stops the scanner database without deleting its named
+volume. Scanner verification is exposed through `agentify:check`,
+`agentify:test:integration`, `agentify:test:actor`, `agentify:test:db`,
+`agentify:build` and `agentify:self-readiness`.
+
+The scanner code was imported from `nuanu-ai/agent-first-project` commit
+`33f3385d2be825022133b55d889f8a690f736e69` under the repository's
+Apache-2.0 terms. Private research, meetings, marketing and release evidence,
+local configuration, secrets and source history are not part of the import.
 
 ## Checks
 

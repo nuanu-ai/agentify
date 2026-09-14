@@ -11,7 +11,6 @@ node_modules
 .claude
 .local
 **/.local
-agentify
 
 # Build output, rebuilt inside the image.
 portal/.vitepress/dist
@@ -21,5 +20,35 @@ portal/.vitepress/cache
 # A developer's own environment and editor leavings.
 .env
 .env.*
+**/.env
+**/.env.*
 **/*.log
 .DS_Store
+
+# Scanner sources have their own Dockerfile-specific contexts. Keep them out
+# of the commerce images that use this default repository context.
+/apps/web
+/apps/scanner-worker
+/apps/browser-observer-actor
+/packages/scanner-contracts
+/packages/scanner-database
+/packages/scanner
+/packages/analytics
+/packages/observability
+/packages/remediation
+/ops
+/fixtures
+/tsconfig.scanner.json
+/vitest.scanner.config.ts
+/eslint.scanner.config.mjs
+/prettier.scanner.config.json
+/.prettierignore.scanner
+/.env.scanner.example
+/.actor
+/.actorignore
+
+# Private working material never belongs in an image context.
+/06-design/reference
+/research
+/01-research
+/02-meetings

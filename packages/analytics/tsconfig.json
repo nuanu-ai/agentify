@@ -1,0 +1,7 @@
+{
+  "extends": "../../tsconfig.scanner.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"]
+}
