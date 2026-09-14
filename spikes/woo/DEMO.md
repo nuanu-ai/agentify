@@ -162,9 +162,9 @@ Press **Import the catalogue**. On the stand's three seeded products the answer
 is:
 
 ```
-2 products are on sale, 1 could not be published.
+2 products published, 1 could not be published.
 
-On sale
+Published
   Canvas tote bag — product 11 in your shop, card item_…
   Access code — product 10 in your shop, card item_…
 
@@ -173,9 +173,11 @@ Not published
     description: this description is 856 characters and a listing carries at most 500 — the ceiling is the one the discovery catalog documents, not ours and not the payment protocol's
 ```
 
-The refusal in that block is reconstructed and not quoted. The walk this runbook
-records was made against an earlier wording of the same refusal; the sentence
-above is what the publish door says today, and the 856 is `setup.sh`'s
+The refusal in that block is reconstructed and not quoted, and so are the line
+of counts and the heading over the first list: the walk this runbook records
+was made against earlier wordings of all three, and what stands above is
+today's. The paragraph the screen draws under each heading is left out of the
+block. The 856 is `setup.sh`'s
 `LONG_RU_DESC` measured through the cabinet's own `plainTextOf`. The rest of the
 block is as it came back. Rerunning section 6 would settle it, and nobody has.
 
