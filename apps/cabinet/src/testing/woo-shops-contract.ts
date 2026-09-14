@@ -142,8 +142,7 @@ export const wooShopsContract = (
     it("hands back the Connect an account is waiting on, with the moment it started", async () => {
       // The promise: a merchant whose keys never arrived can be told so. The
       // screens read this, and without the moment there is no way to tell "a
-      // minute ago, wait" from "a quarter of an hour ago, your shop could not
-      // reach us".
+      // minute ago, wait" from "a quarter of an hour ago, press Connect again".
       await using(async (shops, accounts) => {
         await shops.beginGrant({
           token: "a-token",

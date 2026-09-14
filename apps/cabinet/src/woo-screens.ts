@@ -11,8 +11,9 @@
  * comes back from their own shop having pressed Approve, and the shop's
  * redirect says `success=1` — but that is the shop telling the browser what it
  * did, and the keys travel separately, on a request from the shop's own server
- * to ours. Those two can come apart: a shop that cannot reach us posts nothing
- * and still sends the browser back with `success=1`. So the return page says
+ * to ours. The redirect is a claim and the row is the evidence: anybody can
+ * type `success=1` into an address bar, and a post that never got through
+ * leaves the same nothing here as a post never made. So the return page says
  * what is actually here rather than what the redirect claims, and where nothing
  * is here it says that, rather than "it failed" — which it does not know.
  */
@@ -21,6 +22,7 @@ import type { SurfaceMode } from "@coinslot/core";
 import { bare, escaped, page } from "./html.js";
 import type { Viewer } from "./screens.js";
 import type { SkippedProduct } from "./woo-catalog.js";
+import { GRANT_MINUTES } from "./woo-connect.js";
 import { moment } from "./words.js";
 
 /**
@@ -41,14 +43,19 @@ export interface ConnectedShop {
  * Where this account's WooCommerce channel has got to, in the four states a
  * merchant can be in and can be told apart.
  *
- * Three of them, not two, and the third is the one this shape exists for. A
- * merchant presses Connect, approves in their own shop, and their shop then
- * posts the keys to us from its own server — a request that can simply not
- * arrive, and when it does not, nothing about the merchant's side looks
- * different from never having started. "Not connected" covers both "you have
- * not tried" and "you tried and your shop could not reach us", and those have
- * opposite next moves: one is press the button, the other is let your shop out
- * through its firewall.
+ * Four of them, not two, and the two in the middle are what this shape exists
+ * for. A merchant presses Connect, approves in their own shop, and their shop
+ * then posts the keys to us from its own server — a request that can simply
+ * not arrive, and when it does not, our rows look no different from a merchant
+ * who never pressed the button. "Not connected" would cover both "you have not
+ * tried" and "you tried and nothing came", and those have different next
+ * moves: one is press the button, the other is wait, and then press it again.
+ *
+ * What the rows do not say is why nothing came. A merchant who declined in
+ * their shop, one who closed its screen, and one whose shop tried to post and
+ * failed all leave the same nothing here, so the third state names none of
+ * them: the one thing it knows is that no keys arrived in the time we hold a
+ * Connect open.
  *
  * The clock is read before this is built, not after, so that both screens draw
  * one answer rather than each doing its own arithmetic on a row.
@@ -62,7 +69,7 @@ export type ShopState =
       readonly shopUrl: string;
       readonly startedMinutesAgo: number;
     }
-  /** The fifteen minutes ran out with nothing posted. The shop could not reach us. */
+  /** The fifteen minutes ran out with no keys written down here. Why is not known here. */
   | { readonly kind: "unanswered"; readonly shopUrl: string }
   /** Nothing was ever started. */
   | { readonly kind: "none" };
@@ -110,10 +117,26 @@ const minutesAgo = (minutes: number): string =>
  * The two sentences a Connect that produced no keys is worth.
  *
  * They are two and not one because the merchant's move differs. Inside the
- * fifteen minutes the answer is to wait, and saying "your shop could not reach
- * us" there would be us announcing a failure we have not seen. Past them the
- * request is not coming, and the one thing that stops it is on the merchant's
- * own server — so that is what the second sentence names.
+ * fifteen minutes the answer is to wait. Past them the request is not coming
+ * on this Connect — a post arriving now would meet an expired token and be
+ * refused — and the answer is to press Connect again.
+ *
+ * Neither sentence names a cause, because none is known here. Past the
+ * fifteen minutes there are three ways it can have gone: the merchant
+ * declined, and their shop sent the browser back with nothing posted; they
+ * closed the shop's screen; or they approved and the shop's post to us
+ * failed. The rows hold the same nothing in all three, and "your shop could
+ * not reach us", which the second sentence once said, was the third guess
+ * presented as the fact — it sent a merchant who had declined off to repair a
+ * firewall that was fine. What the sentence may say is the one thing that is
+ * WooCommerce's own behaviour rather than a guess about the merchant's
+ * network: a shop whose post fails, or whose post our own door refuses, shows
+ * the merchant an error on its own screen and deletes the key it minted
+ * (`class-wc-auth.php`, `post_consumer_data` and `maybe_delete_key`). So a
+ * merchant who saw an error there was stopped at the post, and one who was
+ * sent back here, or who closed the page, never sent anything. What the
+ * error says is not promised: on a post our door refused, WooCommerce's
+ * message names nothing.
  */
 const noKeysYet = (state: ShopState): string => {
   if (state.kind === "waiting") {
@@ -121,8 +144,8 @@ const noKeysYet = (state: ShopState): string => {
       <p class="quiet">The keys do not travel with your browser: your shop sends them to us in a request of its own, and it may not have arrived yet. Reload this page in a moment.</p>`;
   }
   if (state.kind === "unanswered") {
-    return `<p>You started connecting ${escaped(state.shopUrl)}, and its keys never arrived.</p>
-      <p class="quiet">Your shop could not reach us. That request has to leave your own server and arrive here over https, and a shop behind a firewall that blocks outgoing requests never sends it. Connect again once your shop can make them.</p>`;
+    return `<p>You started connecting ${escaped(state.shopUrl)}, and no keys arrived from it in the ${GRANT_MINUTES} minutes we wait for them.</p>
+      <p class="quiet">Your shop sends the keys in a request of its own, and nothing from that request was written down here, so whether the connection was approved, declined or never answered cannot be seen from this page. If you still want to connect it, press Connect again and your shop will ask you to approve afresh. If your shop showed you an error page of its own instead of sending you back here, the keys were stopped between your shop and us, and your shop took them back.</p>`;
   }
   return "";
 };

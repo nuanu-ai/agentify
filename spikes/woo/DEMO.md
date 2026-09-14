@@ -146,10 +146,12 @@ the first is visible:
 and the page says **Your shop is connected. The keys arrived from your shop's
 own server, which is what settles it.**
 
-If it says the keys have not reached us yet, that is the honest answer and not a
-failure: the keys travel on a request from your shop's server, separately from
-your browser, and that request either has not arrived or did not get through.
-Reload.
+If it says instead that no keys have reached us yet, the page is reporting what
+is in its own rows rather than what the redirect claims: the keys travel on a
+request from your shop's server, separately from your browser, and the page
+cannot see whether that request is still on its way, was never made, or did not
+get through. Reload. After fifteen minutes the page stops waiting for that
+Connect, says no keys arrived in that time, and offers Connect again.
 
 The keys are now visible to you as the merchant, in your own shop, under
 WooCommerce → Settings → Advanced → REST API, named `Coinslot`.
