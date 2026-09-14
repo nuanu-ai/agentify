@@ -118,13 +118,19 @@ interface Standing {
    * so a test can still put a row there to be read.
    */
   readonly breakTheShopsRead?: () => never;
+  /**
+   * Where the cabinet is told the gateway is, instead of the one this harness
+   * serves. Pointed at an address nothing answers at, it is the one way this
+   * suite can ask what an import says when the publish door is not there.
+   */
+  readonly gatewayAt?: string;
 }
 
 const started = async (standing: Standing = {}): Promise<Running> => {
   const harnessed = await harness();
   const gateway = await serve(harnessed);
   const config = loadConfig({
-    GATEWAY_URL: gateway.url,
+    GATEWAY_URL: standing.gatewayAt ?? gateway.url,
     DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
     AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
     PAYMENT_NETWORK: "eip155:84532",
@@ -251,6 +257,19 @@ const started = async (standing: Standing = {}): Promise<Running> => {
 /** The token in the authorize address the preflight was asked about. */
 const tokenIn = (authorizeUrl: string): string =>
   new URL(authorizeUrl).searchParams.get("user_id") ?? "";
+
+/**
+ * An address on this machine that nothing answers at: a port taken and given
+ * back, so that a connection to it is refused rather than left hanging.
+ */
+const nowhere = async (): Promise<string> => {
+  const taken = createServer();
+  taken.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => taken.once("listening", resolve));
+  const { port } = taken.address() as AddressInfo;
+  await new Promise<void>((resolve) => taken.close(() => resolve()));
+  return `http://127.0.0.1:${port}`;
+};
 
 describe("the shop screens are behind the sign-in", () => {
   it("sends a stranger to the sign-in", async () => {
@@ -467,6 +486,8 @@ describe("importing the catalogue", () => {
 
     expect(imported.status).toBe(200);
     expect(imported.html).toContain("Canvas tote bag");
+    // An import the door answered in full claims no other kind of outcome.
+    expect(readable(imported.html)).not.toContain("no verdict");
     // And the card is really in the merchant's catalogue, priced at the scale
     // the shop sent rather than at a hundred times it.
     const listed = await cardsOf(running);
@@ -518,12 +539,36 @@ describe("importing the catalogue", () => {
 
     const imported = await running.post("/woocommerce/import");
 
-    expect(imported.html).toContain("Not published");
+    expect(imported.html).toContain("Refused");
     // Both halves of the door's sentence reach the merchant: the ceiling, and
     // the length of the text they wrote in their own shop. The second is what
     // tells them how much to cut, and it is the half a summary would lose.
     expect(readable(imported.html)).toContain("at most 500");
     expect(readable(imported.html)).toContain("900 characters");
+  });
+
+  it("says the door did not answer, and does not send the merchant to their shop to fix it", async () => {
+    // A valid product and a gateway that is not there. Nothing about the
+    // product is wrong and nothing in the shop can repair it, so a page that
+    // puts it under "change what they name in your shop" sends the merchant
+    // to edit a product nobody read. What the page can say is what came back
+    // instead of an answer, and what to do about that.
+    const running = await started({
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
+      gatewayAt: await nowhere(),
+    });
+    await connected(running);
+
+    const imported = await running.post("/woocommerce/import");
+    const text = readable(imported.html);
+
+    expect(imported.status).toBe(200);
+    expect(text).toContain("1 got no verdict");
+    expect(text).toContain("Canvas tote bag");
+    expect(text).toContain("the gateway could not be reached");
+    // Not under the door's rules: neither their heading nor their count.
+    expect(text).not.toContain("Refused");
+    expect(text).not.toContain("publishing rules");
   });
 
   it("names the products it could not turn into a card at all", async () => {
