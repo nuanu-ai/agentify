@@ -1258,11 +1258,33 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       response
         .status(status)
         .type("html")
-        .send(wooScreen(viewing(request, base, name.document), { ...view, connection }));
+        .send(
+          wooScreen(viewing(request, base, name.document), {
+            ...view,
+            // The three fields a screen draws and not the row. The key and the
+            // secret are a stranger's credential at rest (ADR-0023), and the
+            // rule that they never reach a page is held by the screen having no
+            // way to draw them rather than by whoever writes the next one
+            // remembering.
+            connection:
+              connection === null
+                ? null
+                : {
+                    shopUrl: connection.shopUrl,
+                    permissions: connection.permissions,
+                    connectedAt: connection.connectedAt,
+                  },
+          }),
+        );
     };
 
     app.get(`${base}/woocommerce`, async (request, response) => {
-      await drawTheShop(request, response, {});
+      // Where the redirect from the shop lands, and the only route that reads
+      // this. It is spent by being drawn: a merchant who opens this page again
+      // tomorrow is not told their browser has just come back from anywhere.
+      // The flag and not the token, which is the whole point of the redirect
+      // that set it.
+      await drawTheShop(request, response, { cameBack: request.query.from === "shop" });
     });
 
     /**
@@ -1271,12 +1293,22 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
      * What the shop's redirect says — `success=1` — is read and deliberately
      * not acted on. The keys travel on a separate request from the shop's own
      * server to ours, and a shop that approved and could not reach us sends the
-     * browser back saying success all the same. So this draws the connection we
-     * actually hold, and where we hold none it says the keys have not arrived
+     * browser back saying success all the same. So the page draws the connection
+     * we actually hold, and where we hold none it says the keys have not arrived
      * rather than that anything failed, which it does not know.
+     *
+     * It answers with a redirect rather than with that page, and the reason is
+     * what the shop puts in the address it sends the browser to. WooCommerce
+     * hands `user_id` back on this redirect, so the address bar is holding the
+     * state token — and in the very case this page exists for, the one where
+     * the keys never arrived, that token is unspent and good for the rest of
+     * its fifteen minutes. Left there it is in the browser's history and in the
+     * log of everything between the merchant and us. One redirect and it is
+     * gone, and what carries the news to the page it lands on is a flag naming
+     * nothing.
      */
-    app.get(`${base}/woocommerce/return`, async (request, response) => {
-      await drawTheShop(request, response, { cameBack: true });
+    app.get(`${base}/woocommerce/return`, (_request, response) => {
+      response.redirect(303, `${base}/woocommerce?from=shop`);
     });
 
     app.post(`${base}/woocommerce/connect`, async (request, response) => {
@@ -1288,6 +1320,33 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
         return await drawTheShop(request, response, { problem: wrong, typed }, 400);
       }
       const shopUrl = shopUrlAs(typed);
+
+      // Our own address, checked before the merchant's. WooCommerce refuses a
+      // callback_url that is not https, so on a deployment whose public address
+      // is http every Connect ends at the shop's own 401 about SSL — a merchant
+      // reading a refusal about their shop for something that is ours. Said
+      // here, at the door, before anybody is sent anywhere.
+      if (!whereWeAre.startsWith("https://")) {
+        return await drawTheShop(
+          request,
+          response,
+          {
+            problem:
+              `This Coinslot is reachable at ${whereWeAre}, which is not https, and WooCommerce` +
+              " will not send a shop's keys to an address that is not. Nothing here can connect a" +
+              " shop until whoever runs this deployment puts it behind https.",
+            typed,
+          },
+          400,
+        );
+      }
+
+      // The Connects nobody came back for, cleared as one is made. It is the
+      // one moment a row is written here, which makes it the one place the
+      // table can be kept bounded without a schedule of its own.
+      void shops.sweepGrants(new Date()).catch((thrown: unknown) => {
+        console.error("[cabinet] the abandoned WooCommerce grants could not be cleared", thrown);
+      });
 
       // The token is minted before the shop is asked anything, so the address
       // we check is character for character the address the browser is sent to.

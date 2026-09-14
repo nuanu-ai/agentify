@@ -73,6 +73,26 @@ export const wooShopsContract = (
       });
     });
 
+    it("spends a token once even when several callbacks arrive at the same moment", async () => {
+      // The sequential case above passes with a read followed by a write, and
+      // this one does not: two callbacks in flight together would both read a
+      // live row and both write a connection, which is how a token that is
+      // supposed to work once works twice. What makes it hold is that the
+      // spending is one statement, and that cannot be seen one call at a time.
+      await using(async (shops, accounts) => {
+        await shops.beginGrant({
+          token: "a-token",
+          accountId: accounts.one,
+          shopUrl: "https://shop.example.com",
+          expiresAt: MUCH_LATER,
+        });
+        const arrived = await Promise.all(
+          Array.from({ length: 10 }, () => shops.spendGrant("a-token", NOW)),
+        );
+        expect(arrived.filter((one) => one !== null)).toHaveLength(1);
+      });
+    });
+
     it("knows nothing about a token nobody issued", async () => {
       await using(async (shops) => {
         expect(await shops.spendGrant("not-a-token", NOW)).toBeNull();
@@ -178,6 +198,20 @@ export const wooShopsContract = (
     it("gives the first attempt the sale", async () => {
       await using(async (shops, accounts) => {
         expect(await shops.claimOrder(accounts.one, "ord_1", NOW)).toEqual({ kind: "ours" });
+      });
+    });
+
+    it("gives one sale to one attempt when several arrive at the same moment", async () => {
+      // A redelivery landing while the first attempt is still in flight. Two
+      // attempts that both read "nobody has this" and both went on to call the
+      // shop would be two orders in a merchant's shop for one payment, which is
+      // the thing this ledger exists to stop — and the sequential cases above
+      // cannot see it.
+      await using(async (shops, accounts) => {
+        const claims = await Promise.all(
+          Array.from({ length: 10 }, () => shops.claimOrder(accounts.one, "ord_1", NOW)),
+        );
+        expect(claims.filter((one) => one.kind === "ours")).toHaveLength(1);
       });
     });
 

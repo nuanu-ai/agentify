@@ -153,6 +153,21 @@ export const theStateToken = (): string => randomBytes(32).toString("base64url")
 /** What the preflight came to. */
 export type Preflight = { readonly ok: true } | { readonly ok: false; readonly why: string };
 
+/**
+ * The mark wc-auth leaves on a page it served.
+ *
+ * It is a class name and not the bare word, and the difference is the whole
+ * check. WooCommerce's own templates wrap both of their screens in an element
+ * carrying `wc-auth` as a class (`templates/auth/header.php`, and
+ * `wc-auth-approve` on the button of the grant screen itself). The word on its
+ * own appears in the address we asked for — so a WordPress theme that echoes
+ * the request URI anywhere on its front page, in a canonical link, a search
+ * heading or an admin-bar edit link, would carry it too. Matched on the bare
+ * word, such a shop passes the preflight and its merchant is sent to their own
+ * front page, which is precisely the trap this exists to close.
+ */
+const SERVED_BY_WC_AUTH = /class="[^"]*wc-auth/i;
+
 /** How long we wait on a shop before deciding it is not answering. */
 const SHOP_ANSWERS_WITHIN_MS = 10_000;
 
@@ -237,7 +252,7 @@ export const isTheGrantScreen = async (authorizeUrl: string): Promise<Preflight>
       continue;
     }
 
-    if (answered.ok && /wc-auth/i.test(body)) {
+    if (answered.ok && SERVED_BY_WC_AUTH.test(body)) {
       return { ok: true };
     }
 

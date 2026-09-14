@@ -146,14 +146,21 @@ export const catalogueOf = async (
     }
 
     products.push(...read.data);
-    if (read.data.length < PER_PAGE) {
-      return { ok: true, products };
-    }
+    // The ceiling is read before the short page is, and the order of these two
+    // is the whole of whether the ceiling means anything. The other way round,
+    // a shop of two hundred and fifty products against a ceiling of two hundred
+    // answers its third page short, and the short page returns them all — so
+    // the number only ever bit on a catalogue that happened to be an exact
+    // multiple of the page size, and everything in between came over whole with
+    // nobody told.
     if (products.length > atMost) {
       // Stopped here rather than after the whole catalogue has been read: the
       // answer is the same either way, and the difference is how many round
       // trips somebody else's shop makes for a refusal.
       break;
+    }
+    if (read.data.length < PER_PAGE) {
+      return { ok: true, products };
     }
   }
 
@@ -243,9 +250,7 @@ export const createTheOrderInTheShop = async (
     return {
       ok: false,
       why: `The shop answered ${answered.status}: ${whatTheShopSaid(said, answered.status)}`,
-      // A 5xx is the shop having a bad moment; everything else is the shop
-      // having read the request and said no, and it will say no again.
-      again: answered.status >= 500,
+      again: worthAskingAgain(answered.status),
     };
   }
 
@@ -277,6 +282,22 @@ export const createTheOrderInTheShop = async (
   const number = typeof made.number === "string" && made.number !== "" ? made.number : id;
   return { ok: true, id, number };
 };
+
+/**
+ * Whether a shop that answered with this status is worth asking again.
+ *
+ * A 5xx is the shop having a bad moment. So are the two below, and they are
+ * named rather than left to fall through with the rest: a shop behind a rate
+ * limiter or a proxy answers `429 Too Many Requests` and `408 Request Timeout`,
+ * both of which mean "ask again in a moment" and neither of which is a 5xx.
+ * Read as final, they close a sale for good and hand the buyer a refusal —
+ * which is what a shop having a busy afternoon would cost its own merchant.
+ *
+ * Everything else is the shop having read the request and said no, and it will
+ * say no again.
+ */
+const worthAskingAgain = (status: number): boolean =>
+  status >= 500 || status === 408 || status === 429;
 
 /** The key pair as WooCommerce takes it over https. */
 const basicFor = (keys: ShopKeys): string =>

@@ -68,7 +68,13 @@ interface Running {
   readonly asked: string[];
   get(path: string): Promise<Visit>;
   post(path: string, form?: Record<string, string>): Promise<Visit>;
-  /** A JSON post, which is what a WooCommerce shop sends to the callback. */
+  /**
+   * A JSON post carrying no cookie, which is what a WooCommerce shop sends.
+   *
+   * The absence is the point: the callback comes from the merchant's own web
+   * server, with no session of ours on it, and the route being above the
+   * sign-in gate is what makes it reachable at all.
+   */
   postJson(path: string, body: unknown): Promise<Visit>;
   signIn(): Promise<void>;
   close(): Promise<void>;
@@ -133,13 +139,13 @@ const started = async (standing: Standing = {}): Promise<Running> => {
   const visit = async (
     method: string,
     path: string,
-    options: { body?: string; type?: string } = {},
+    options: { body?: string; type?: string; noCookie?: boolean } = {},
   ): Promise<Visit> => {
     const answered = await fetch(`${url}${path}`, {
       method,
       redirect: "manual",
       headers: {
-        ...(jar.size === 0
+        ...(jar.size === 0 || options.noCookie === true
           ? {}
           : { cookie: [...jar].map(([name, value]) => `${name}=${value}`).join("; ") }),
         ...(options.body === undefined
@@ -172,7 +178,15 @@ const started = async (standing: Standing = {}): Promise<Running> => {
     get: (path) => visit("GET", path),
     post: (path, form = {}) => visit("POST", path, { body: new URLSearchParams(form).toString() }),
     postJson: (path, body) =>
-      visit("POST", path, { body: JSON.stringify(body), type: "application/json;charset=UTF-8" }),
+      // No cookie, which is the whole shape of this request: WooCommerce posts
+      // the keys from the shop's own web server, carrying no session of ours.
+      // Sent with one, every callback test would pass with the route mounted
+      // below the sign-in — and every real Connect would break in silence.
+      visit("POST", path, {
+        body: JSON.stringify(body),
+        type: "application/json;charset=UTF-8",
+        noCookie: true,
+      }),
     async signIn() {
       await visit("POST", "/sign-in", {
         body: new URLSearchParams({ email: PERSON, password: PASSWORD }).toString(),
@@ -347,6 +361,23 @@ describe("the keys arriving from the shop", () => {
 });
 
 describe("the page the shop sends the browser back to", () => {
+  it("takes the state token out of the address bar", async () => {
+    // WooCommerce hands user_id back on this redirect, and in the case this
+    // page exists for — the keys never arrived — that token is unspent and good
+    // for the rest of its fifteen minutes. Left in the address it is in the
+    // browser's history and in the log of everything between the merchant and
+    // us.
+    const running = await started();
+    await running.signIn();
+    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const token = tokenIn(pressed.to ?? "");
+
+    const came = await running.get(`/woocommerce/return?success=1&user_id=${token}`);
+
+    expect(came.status).toBe(303);
+    expect(came.to).not.toContain(token);
+  });
+
   it("says the keys have not arrived where they have not", async () => {
     // `success=1` is the shop telling the browser what it did. The keys travel
     // separately, and a page that read the redirect would be announcing
@@ -355,7 +386,8 @@ describe("the page the shop sends the browser back to", () => {
     await running.signIn();
     await running.post("/woocommerce/connect", { shop_url: SHOP });
 
-    const seen = await running.get("/woocommerce/return?success=1&user_id=whatever");
+    const came = await running.get("/woocommerce/return?success=1&user_id=whatever");
+    const seen = await running.get(came.to ?? "");
 
     expect(seen.status).toBe(200);
     expect(seen.html).toContain("no keys have reached us yet");
@@ -373,10 +405,33 @@ describe("the page the shop sends the browser back to", () => {
       key_permissions: "read_write",
     });
 
-    const seen = await running.get("/woocommerce/return?success=1");
+    const came = await running.get("/woocommerce/return?success=1");
+    const seen = await running.get(came.to ?? "");
 
-    expect(seen.html).toContain("connected");
-    expect(seen.html).toContain(SHOP);
+    // The sentence the connected page draws, with the shop in it — and not the
+    // address on its own, which the disconnected form carries as the
+    // placeholder in its box and would answer this assertion either way.
+    expect(seen.html).toContain(`${SHOP}, connected`);
+    expect(seen.html).toContain("Your shop is connected");
+  });
+
+  it("carries no key of the shop's onto the page", async () => {
+    // The screen is handed three fields rather than the row, and this is the
+    // promise that shape exists to keep.
+    const running = await started();
+    await running.signIn();
+    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    await running.postJson("/woocommerce/callback", {
+      user_id: tokenIn(pressed.to ?? ""),
+      consumer_key: "ck_a-key-nobody-may-read",
+      consumer_secret: "cs_a-secret-nobody-may-read",
+      key_permissions: "read_write",
+    });
+
+    const seen = await running.get("/woocommerce");
+
+    expect(seen.html).not.toContain("ck_a-key-nobody-may-read");
+    expect(seen.html).not.toContain("cs_a-secret-nobody-may-read");
   });
 });
 

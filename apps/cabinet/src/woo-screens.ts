@@ -20,13 +20,26 @@
 import { escaped, page } from "./html.js";
 import type { Viewer } from "./screens.js";
 import type { SkippedProduct } from "./woo-catalog.js";
-import type { WooConnection } from "./woo-shops.js";
 import { moment } from "./words.js";
+
+/**
+ * A connected shop as a screen may know it.
+ *
+ * Three fields, and a shape of its own rather than the stored row for one
+ * reason: the row also holds the shop's key and its secret, and the rule that
+ * those never reach a page is worth holding in a type rather than in whoever
+ * writes the next screen remembering it (ADR-0023).
+ */
+export interface ConnectedShop {
+  readonly shopUrl: string;
+  readonly permissions: string;
+  readonly connectedAt: Date;
+}
 
 /** What the page is drawn from: the connection, and anything just refused. */
 export interface WooView {
   /** The shop this account has connected, or null for none. */
-  readonly connection: WooConnection | null;
+  readonly connection: ConnectedShop | null;
   /** What was wrong with what the merchant just typed, where anything was. */
   readonly problem?: string;
   /** What they typed, so a refusal leaves the box as they left it. */
@@ -118,7 +131,7 @@ const theForm = (base: string, view: WooView): string => `  <div class="lede">
  */
 const theConnection = (
   base: string,
-  connection: WooConnection,
+  connection: ConnectedShop,
   view: WooView,
 ): string => `  <div class="lede">
     <div>
@@ -135,7 +148,8 @@ const theConnection = (
   <form class="issue" method="post" action="${escaped(base)}/woocommerce/import">
     <div>
       <label>Import the catalogue</label>
-      <p class="quiet">Reads every product your shop offers for sale and publishes each one as a card. Running it again brings your cards up to date with your shop rather than making a second set: a card is keyed by the product's own identifier in your shop.</p>
+      <p class="quiet">Reads every product your shop offers for sale and publishes each one as a card. Running it again republishes those cards rather than making a second set, so a price or a description you changed in your shop comes over: a card is keyed by the product's own identifier there.</p>
+      <p class="quiet">What it does not do is take anything off sale. A product you delete in your shop, or one that goes out of stock, is simply not in what this reads — the card published for it earlier stays where it is, and taking it off sale is one press on your cards screen.</p>
     </div>
     <button class="primary" type="submit">Import the catalogue</button>
   </form>

@@ -65,6 +65,21 @@ if (databaseUrl === null) {
     await pool.end();
   });
 
+  /**
+   * Opens every connection the pool will hold, before anything is measured.
+   *
+   * The two cases in the contract that fire ten calls at once are measuring
+   * whether one statement settles a race, and they can only measure it if the
+   * ten calls really do overlap. A pool starts empty and opens connections as
+   * they are asked for, so without this the first call finishes its whole round
+   * trip while the second is still waiting for a socket — the calls serialise,
+   * a read followed by a write passes, and the case reports green over the
+   * defect it exists for. Measured: with a select-then-delete standing in for
+   * the single statement, the grant case passes on a cold pool and fails on a
+   * warm one.
+   */
+  await Promise.all(Array.from({ length: 10 }, () => pool.query("select 1")));
+
   /** Two accounts for the rows to hang off, made fresh for each run. */
   let issued = 0;
   const anAccount = async (): Promise<string> => {

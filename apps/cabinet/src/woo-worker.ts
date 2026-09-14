@@ -66,23 +66,27 @@ export interface Filling {
 export const fillFromTheShop = async (
   order: Order,
   connection: WooConnection,
-  buyerEmail: string,
+  orderEmail: string,
   parts: Filling,
 ): Promise<HandlerAnswer | null> => {
   const place = parts.placeOrder ?? createTheOrderInTheShop;
 
   if (connection.permissions !== "read_write") {
-    // The shop granted less than we asked for. Every sale on this connection
-    // ends here, and saying so in the refusal is the only way the merchant ever
-    // finds out why — the alternative is the shop's own 401, which talks about
-    // listing resources and names no cause.
+    // The shop granted less than we asked for, so every sale on this connection
+    // ends here. The merchant is told which it is, in their own log and on
+    // their own connection screen; the agent is told the fact and no more,
+    // because who granted what to whom is the merchant's business and nothing
+    // an agent could act on.
+    console.error(
+      `[cabinet] the shop at ${connection.shopUrl} granted ${JSON.stringify(connection.permissions)}` +
+        " access, which cannot create an order, so every sale on it is refused",
+    );
     return {
       refused: {
         code: "cannot_fulfill",
         message:
-          `The shop at ${connection.shopUrl} granted us ${JSON.stringify(connection.permissions)}` +
-          " access, which cannot create an order. Connect the shop again and approve read and" +
-          " write access.",
+          "The shop this product is sold from cannot take an order from us, so nothing was" +
+          " delivered and the sale did not go through.",
       },
     };
   }
@@ -117,11 +121,12 @@ export const fillFromTheShop = async (
   const made = await place(connection, {
     orderId: order.id,
     productId: order.merchant_item_id,
-    // The merchant's own address, because creating an order makes WooCommerce
-    // send mail to whatever is on it and nothing in the request can stop that.
-    // Whose address belongs here is a product question nobody has answered; the
-    // decision record says so rather than this pretending it is settled.
-    email: buyerEmail,
+    // Not the buyer's, which is why the parameter is not called that. Creating
+    // an order makes WooCommerce send mail to whatever is on it and nothing in
+    // the request can stop that, so whose address belongs here is a product
+    // question nobody has answered; until somebody does it is the merchant's
+    // own, and ADR-0023 says so rather than this pretending it is settled.
+    email: orderEmail,
     price: { amount: order.price.amount, currency: order.price.currency },
   });
 
@@ -141,10 +146,20 @@ export const fillFromTheShop = async (
   // The shop answered and said no, before anything of ours was written into it.
   // The claim goes, so the same sale tomorrow is a sale this merchant can make.
   await parts.shops.releaseOrder(order.id);
+  // What the shop actually said goes to the merchant, in their own cabinet's
+  // log, and not to the agent. A WordPress refusal carries whatever the plugin
+  // that raised it chose to say, which on a shop with debugging on is a file
+  // path — and the reader of the refusal below is a stranger's agent, which
+  // can do nothing with a merchant's internals but forward them. What the
+  // agent is told is the one thing it can act on: this merchant's shop refused
+  // the sale, so try somewhere else.
+  console.error(`[cabinet] the shop refused ${order.id}: ${made.why}`);
   return {
     refused: {
       code: "cannot_fulfill",
-      message: `The shop would not take this order. ${made.why}`,
+      message:
+        "The shop this product is sold from would not accept the order, so nothing was" +
+        " delivered and the sale did not go through.",
     },
   };
 };
@@ -258,9 +273,33 @@ export const startWooWorker = (
         try {
           const connection = await parts.shops.connectionOf(accountId);
           if (connection === null) {
-            return;
+            // Waited out rather than returned from, which is not tidiness. The
+            // watcher below starts a loop for an account that has none, and it
+            // decides that by asking whether this map holds one — so a loop
+            // that ended on its own would leave an entry nothing is running
+            // behind, and a merchant who disconnected and connected again
+            // inside one pass would have their orders filled by nobody until
+            // the cabinet was restarted. Ending a loop is the watcher's, and
+            // it is the only thing that takes the entry away with it.
+            await new Promise((resolve) =>
+              setTimeout(resolve, parts.betweenTurnsMs ?? BETWEEN_TURNS_MS),
+            );
+            continue;
           }
-          await turnOnce(connection, parts);
+          const filled = await turnOnce(connection, parts);
+          if (filled === 0) {
+            // A turn that drew nothing waits before the next one. The poll
+            // ordinarily holds its own request open for seconds, so this is
+            // usually zero extra waiting — but a gateway that answers a poll
+            // at once, because it refused it or because the wait was asked for
+            // as nothing, would otherwise be asked again as fast as this
+            // process can ask, which is a cabinet hammering a gateway that is
+            // already having a bad afternoon. A turn that did fill something
+            // comes straight back, because there may be more waiting.
+            await new Promise((resolve) =>
+              setTimeout(resolve, parts.betweenTurnsMs ?? BETWEEN_TURNS_MS),
+            );
+          }
         } catch (thrown) {
           // A turn that threw must not take the loop with it: what is on the
           // other end is somebody else's shop and somebody else's network.

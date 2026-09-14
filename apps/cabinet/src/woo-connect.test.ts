@@ -141,7 +141,7 @@ describe("the preflight", () => {
     // to wc-auth's own sign-in page, which is the shape this has to accept.
     shop = await shopAnswering((path) =>
       path.startsWith("/wc-auth/v1/login")
-        ? { status: 200, body: '<body class="wc-auth"><form>Sign in</form></body>' }
+        ? { status: 200, body: '<body class="wc-auth wp-core-ui"><form>Sign in</form></body>' }
         : { status: 302, location: "/wc-auth/v1/login/?x=1" },
     );
     const looked = await isTheGrantScreen(`${shop.url}/wc-auth/v1/authorize?x=1`);
@@ -166,6 +166,20 @@ describe("the preflight", () => {
     // The merchant can only act on this if it names the setting, in the words
     // WordPress uses for it.
     expect(looked.ok === false && looked.why).toMatch(/permalink/i);
+  });
+
+  it("refuses a front page that happens to quote the address we asked for", async () => {
+    // A WordPress theme echoing the request URI — a canonical link, a search
+    // heading, an admin-bar edit link — puts the words "wc-auth" on the shop's
+    // own front page. Checked for the bare word, such a shop passes and its
+    // merchant is sent to their own front page: the trap, with the guard
+    // against it satisfied by the trap itself.
+    shop = await shopAnswering((url) => ({
+      status: 200,
+      body: `<html><head><link rel="canonical" href="https://shop.example.com${url}"></head><body><h1>Nothing found for ${url}</h1></body></html>`,
+    }));
+    const looked = await isTheGrantScreen(`${shop.url}/wc-auth/v1/authorize?x=1`);
+    expect(looked.ok).toBe(false);
   });
 
   it("carries back what wc-auth said when it refused the request itself", async () => {

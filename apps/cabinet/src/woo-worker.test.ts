@@ -30,7 +30,7 @@ import { gatewayFor } from "./gateway.js";
 import { cardsFromTheShop, type StoreProduct } from "./woo-catalog.js";
 import type { OrderMade, ShopKeys, SoldItem } from "./woo-shop.js";
 import { memoryWooShops, type WooConnection, type WooShops } from "./woo-shops.js";
-import { fillFromTheShop, turnOnce } from "./woo-worker.js";
+import { fillFromTheShop, startWooWorker, turnOnce } from "./woo-worker.js";
 
 const KEY = theMerchantKey("test");
 const MERCHANT_EMAIL = "merchant@example.com";
@@ -132,7 +132,11 @@ describe("one paid order, in the merchant's own shop", () => {
     expect(again).toEqual(first);
   });
 
-  it("refuses in the shop's own words when the shop says no", async () => {
+  it("refuses the sale when the shop says no, without quoting the shop to the buyer", async () => {
+    // A WordPress refusal carries whatever the plugin that raised it chose to
+    // say, and on a shop with debugging on that is a file path. The reader here
+    // is a stranger's agent, which can do nothing with a merchant's internals
+    // but forward them.
     const shops = memoryWooShops();
     const answer = await fillFromTheShop(
       anOrder(),
@@ -140,15 +144,16 @@ describe("one paid order, in the merchant's own shop", () => {
       MERCHANT_EMAIL,
       filling(shops, async () => ({
         ok: false,
-        why: "The shop answered 400: Product ID is invalid.",
+        why: "The shop answered 400: Fatal error in /var/www/html/wp-content/plugins/x.php",
         again: false,
       })),
     );
 
     expect(answer).not.toBeNull();
-    expect(answer && "refused" in answer && answer.refused.message).toContain(
-      "Product ID is invalid.",
-    );
+    const said = answer && "refused" in answer ? answer.refused.message : "";
+    expect(said).toMatch(/\S/);
+    expect(said).not.toContain("/var/www");
+    expect(said).not.toContain("Fatal error");
   });
 
   it("gives the sale back when the shop refused before anything was placed", async () => {
@@ -354,5 +359,106 @@ describe("the whole way through, against a real gateway", () => {
     expect(turned).toBe(1);
     expect((bought.body as AgentOrderStatus).delivered).toEqual({ order_number: "13" });
     expect(shop.orders).toHaveLength(1);
+  });
+});
+
+describe("the worker that keeps every connected shop served", () => {
+  /**
+   * A gateway that answers a poll with nothing and counts who asked.
+   *
+   * The subject here is the loop rather than what one turn does with an order,
+   * so the stream is empty on purpose: what is being checked is that somebody
+   * is still drawing it.
+   */
+  const countingGateway = () => {
+    let polls = 0;
+    return {
+      polls: () => polls,
+      client: {
+        pollWorker: async () => {
+          polls += 1;
+          return {
+            ok: true as const,
+            document: { contract_version: "1", envelopes: [] },
+          };
+        },
+      },
+    };
+  };
+
+  const untilPolled = async (
+    polls: () => number,
+    atLeast: number,
+    within = 2_000,
+  ): Promise<number> => {
+    const until = Date.now() + within;
+    while (polls() < atLeast && Date.now() < until) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    return polls();
+  };
+
+  it("keeps serving a shop that was disconnected and connected again", async () => {
+    // The loop for one account is started once and kept in a map keyed by the
+    // account. A loop that ended by itself while its entry stayed would leave
+    // that merchant's orders drawn by nobody until the cabinet was restarted —
+    // and a merchant who disconnects and reconnects is an ordinary afternoon.
+    const shops = memoryWooShops();
+    const gateway = countingGateway();
+    const worker = startWooWorker({
+      shops,
+      now: () => new Date(),
+      identity: {
+        byId: async () => ({
+          id: "acc_1",
+          email: MERCHANT_EMAIL,
+          confirmed: true,
+          merchant: { id: "mer_1", key: KEY },
+        }),
+      },
+      clientFor: () => gateway.client as never,
+      waitSeconds: 0,
+      betweenTurnsMs: 5,
+    });
+
+    try {
+      await shops.connect(connection());
+      const first = await untilPolled(gateway.polls, 1);
+      expect(first).toBeGreaterThanOrEqual(1);
+
+      await shops.forget("acc_1");
+      // Long enough for the loop to notice there is nothing to draw.
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      const whileGone = gateway.polls();
+
+      await shops.connect(connection());
+      const afterwards = await untilPolled(gateway.polls, whileGone + 1);
+      expect(afterwards).toBeGreaterThan(whileGone);
+    } finally {
+      await worker.stop();
+    }
+  });
+
+  it("stops drawing when there is nothing connected", async () => {
+    const shops = memoryWooShops();
+    const gateway = countingGateway();
+    const worker = startWooWorker({
+      shops,
+      now: () => new Date(),
+      identity: {
+        byId: async () => ({
+          id: "acc_1",
+          email: MERCHANT_EMAIL,
+          confirmed: true,
+          merchant: { id: "mer_1", key: KEY },
+        }),
+      },
+      clientFor: () => gateway.client as never,
+      waitSeconds: 0,
+      betweenTurnsMs: 5,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    await worker.stop();
+    expect(gateway.polls()).toBe(0);
   });
 });

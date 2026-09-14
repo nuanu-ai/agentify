@@ -90,6 +90,15 @@ export interface WooShops {
    * same order — a redelivery arriving while the first attempt is still in
    * flight — must not both come back `ours`, and that is settled by the
    * database's own uniqueness rather than by a read followed by a write.
+   *
+   * The order's own identifier is the key and the account is written beside it
+   * rather than being part of it. That is right because an order identifier is
+   * issued by the gateway from a random source and is unique across every
+   * merchant on it, so two merchants cannot name one sale — and it is worth
+   * saying out loud, because the account column reads like half of a key and is
+   * not one. Anything that ever made order identifiers unique per merchant
+   * instead would make this row the place two merchants' sales meet, and one
+   * buyer would be handed the other merchant's shop order number.
    */
   claimOrder(accountId: string, orderId: string, now: Date): Promise<OrderClaim>;
   /** Completes a claim with what the shop answered. */

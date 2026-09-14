@@ -128,6 +128,43 @@ describe("reading the catalogue", () => {
     expect(stand.asked).toHaveLength(2);
   });
 
+  it("refuses a catalogue over the ceiling whose last page is a short one", async () => {
+    // The case that matters most and the one a shop is most likely to be: a
+    // catalogue that is not an exact multiple of the page size. Read with the
+    // short page checked first, every shop between the ceiling and the next
+    // hundred came over whole and nobody was told the number had been passed.
+    const page = (n: number) =>
+      n <= 2
+        ? Array.from({ length: 100 }, (_, i) => aProduct(i + 1))
+        : Array.from({ length: 50 }, (_, i) => aProduct(200 + i + 1));
+    stand = await shopAnswering((asked) => ({
+      status: 200,
+      body: page(Number(new URL(asked.url, "http://x").searchParams.get("page") ?? "1")),
+    }));
+
+    const read = await catalogueOf(stand.url, 200);
+
+    expect(read.ok).toBe(false);
+    expect(read.ok === false && read.why).toContain("200");
+  });
+
+  it("takes a catalogue that is exactly the ceiling", async () => {
+    // The other side of the same line: two hundred products against a ceiling
+    // of two hundred is a catalogue that fits, and refusing it would be a shop
+    // turned away for being exactly the size we said we take.
+    const page = (n: number) =>
+      n <= 2 ? Array.from({ length: 100 }, (_, i) => aProduct(i + 1)) : [];
+    stand = await shopAnswering((asked) => ({
+      status: 200,
+      body: page(Number(new URL(asked.url, "http://x").searchParams.get("page") ?? "1")),
+    }));
+
+    const read = await catalogueOf(stand.url, 200);
+
+    expect(read.ok).toBe(true);
+    expect(read.ok === true && read.products).toHaveLength(200);
+  });
+
   it("says what a shop that refused looked like rather than showing nothing", async () => {
     stand = await shopAnswering(() => ({
       status: 404,
@@ -210,6 +247,19 @@ describe("creating the order", () => {
     const made = await createTheOrderInTheShop(connectionTo("http://127.0.0.1:1"), order);
     expect(made.ok).toBe(false);
     expect(made.ok === false && made.again).toBe(true);
+  });
+
+  it("says a shop that is busy is worth asking again", async () => {
+    // A shop behind a rate limiter answers 429, which is not a 5xx. Read as
+    // final it closes the sale for good and hands the buyer a refusal, which
+    // is a busy afternoon costing the merchant the sale.
+    for (const status of [408, 429, 502]) {
+      stand = await shopAnswering(() => ({ status, body: { message: "later" } }));
+      const made = await createTheOrderInTheShop(connectionTo(stand.url), order);
+      expect(made.ok === false && made.again).toBe(true);
+      await stand.close();
+      stand = null;
+    }
   });
 
   it("treats a shop that refused our keys as final", async () => {
