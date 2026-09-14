@@ -1,11 +1,11 @@
 /**
  * The screens a merchant connects a WooCommerce shop on.
  *
- * Three of them, and they are three because the flow genuinely has three
- * moments: before the shop knows anything about us, the moment the merchant's
- * browser comes back from approving, and the import. None of them fetches
- * anything or decides anything, which is what lets a test read the page a
- * merchant would be looking at.
+ * Four of them: before the shop knows anything about us, the moment the
+ * merchant's browser comes back from approving, the import, and the block on
+ * the settings screen that says which of those the account is in. None of them
+ * fetches anything or decides anything, which is what lets a test read the page
+ * a merchant would be looking at.
  *
  * The one thing these pages are careful about is what they claim. A merchant
  * comes back from their own shop having pressed Approve, and the shop's
@@ -17,7 +17,8 @@
  * is here it says that, rather than "it failed" — which it does not know.
  */
 
-import { escaped, page } from "./html.js";
+import type { SurfaceMode } from "@coinslot/core";
+import { bare, escaped, page } from "./html.js";
 import type { Viewer } from "./screens.js";
 import type { SkippedProduct } from "./woo-catalog.js";
 import { moment } from "./words.js";
@@ -101,6 +102,44 @@ const cameBackNote = (view: WooView): string =>
     <div class="what">Your shop is connected. The keys arrived from your shop's own server, which is what settles it.</div>
   </div>
 `;
+
+/**
+ * What the return address answers a browser that arrives carrying no session.
+ *
+ * Which, on a real return, is every browser. The cabinet's cookie is
+ * `SameSite=Strict` (ADR-0009) and the navigation back is started by the
+ * merchant's own shop, so the request that lands here has nothing on it even
+ * for somebody signed in on that very browser. Behind the sign-in gate that
+ * ends a working flow on a sign-in form, and a merchant reads the form as the
+ * connect having failed — it happened twice on the way to writing this.
+ *
+ * So the page is drawn for anybody, and every word of it is chosen so that
+ * anybody may read it. It says what this address is for, which is true of the
+ * address rather than of the visitor; it does not say that a connection
+ * happened, because for whoever typed the address in by hand none did, and
+ * because what the shop's `success=1` claims is not something we have seen. It
+ * names no account, no shop and no key, and the same page is served whether
+ * this cabinet holds a connection or holds nothing — a stranger who walks up to
+ * this address learns that the address exists, and that is all there is here to
+ * learn.
+ *
+ * Nothing on it is a link into a cabinet the reader may have no account in.
+ * The sign-in is the way on, and it is the one door that tells them nothing
+ * either.
+ */
+export const wooReturnScreen = (base: string, mode: SurfaceMode): string =>
+  bare(
+    base,
+    "Back from your shop",
+    `<div class="gate">
+  <h1>Coinslot</h1>
+  <p>This is the address a WooCommerce shop sends you to when it has finished with a connection.</p>
+  <p>Nothing about it can be shown here. Arriving from another site does not carry your sign-in with it, which is deliberate and is why you are reading this page rather than your own settings.</p>
+  <p>Sign in and the WooCommerce page under Settings says what this Coinslot actually holds: which shop is connected, and whether its keys have arrived.</p>
+  <p class="quiet"><a href="${escaped(base)}/sign-in">Sign in</a></p>
+</div>`,
+    mode,
+  );
 
 /** The box the shop's address is typed into. */
 const theForm = (base: string, view: WooView): string => `  <div class="lede">

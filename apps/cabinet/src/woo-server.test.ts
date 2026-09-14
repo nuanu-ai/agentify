@@ -68,6 +68,16 @@ interface Running {
   /** Every authorize address the preflight was asked about. */
   readonly asked: string[];
   get(path: string): Promise<Visit>;
+  /**
+   * A GET carrying no cookie, which is what the browser sends on the way back
+   * from a merchant's own shop.
+   *
+   * The session cookie is `SameSite=Strict` (ADR-0009), so a navigation that
+   * starts on somebody else's site arrives here with nothing on it — even for a
+   * merchant who is signed in on that very browser. Sent with a cookie, a test
+   * of the return page would be testing the one case that never happens.
+   */
+  getWithoutCookie(path: string): Promise<Visit>;
   post(path: string, form?: Record<string, string>): Promise<Visit>;
   /**
    * A JSON post carrying no cookie, which is what a WooCommerce shop sends.
@@ -177,6 +187,7 @@ const started = async (standing: Standing = {}): Promise<Running> => {
     url,
     asked,
     get: (path) => visit("GET", path),
+    getWithoutCookie: (path) => visit("GET", path, { noCookie: true }),
     post: (path, form = {}) => visit("POST", path, { body: new URLSearchParams(form).toString() }),
     postJson: (path, body) =>
       // No cookie, which is the whole shape of this request: WooCommerce posts
@@ -583,5 +594,123 @@ describe("what the settings screen says about a shop", () => {
 
     expect(screen.html).not.toContain("ck_a-key-nobody-may-read");
     expect(screen.html).not.toContain("cs_a-secret-nobody-may-read");
+  });
+});
+
+describe("coming back from the shop with no session on the request", () => {
+  /**
+   * The shape of the real return, and the reason this describe exists.
+   *
+   * The cabinet's session cookie is `SameSite=Strict` (ADR-0009), so the
+   * navigation a merchant's own shop starts arrives here carrying nothing —
+   * whether or not they are signed in on that browser. Behind the gate, that
+   * lands the merchant on a sign-in at the end of a flow that worked, and what
+   * they read is "it broke".
+   */
+  const cameBack = (running: Running, query = "?success=1&user_id=whatever"): Promise<Visit> =>
+    running.getWithoutCookie(`/woocommerce/return${query}`);
+
+  it("does not send the merchant to a sign-in", async () => {
+    const running = await started();
+    await running.signIn();
+
+    const came = await cameBack(running);
+
+    expect(came.to).not.toBe("/sign-in");
+  });
+
+  it("answers a page rather than a locked door", async () => {
+    const running = await started();
+
+    const stripped = await cameBack(running);
+    const seen = await running.getWithoutCookie(stripped.to ?? "/woocommerce/return");
+
+    expect(seen.status).toBe(200);
+    expect(readable(seen.html)).toContain("WooCommerce shop sends you");
+  });
+
+  it("still takes the state token out of the address bar", async () => {
+    // The property the redirect was written for, and the one this change could
+    // silently have dropped: with the cookie held back by SameSite, the visit
+    // with no session is now the only visit a real merchant makes, so an
+    // unspent token left in the address would be left there every time.
+    const running = await started();
+    await running.signIn();
+    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const token = tokenIn(pressed.to ?? "");
+
+    const came = await cameBack(running, `?success=1&user_id=${token}`);
+
+    expect(came.status).toBe(303);
+    expect(came.to).toBe("/woocommerce/return");
+    expect(came.to).not.toContain(token);
+  });
+
+  it("says the same thing whether or not a shop is connected", async () => {
+    // The whole of what a stranger may learn from this address: nothing. Not
+    // whether an account exists, not which shop it named, not whether the keys
+    // arrived. Two runs, one with a connection and one without, and the page
+    // is the same page.
+    const withNothing = await started();
+    const before = await withNothing.getWithoutCookie("/woocommerce/return");
+    await withNothing.close();
+
+    const withAShop = await started();
+    await withAShop.signIn();
+    const pressed = await withAShop.post("/woocommerce/connect", { shop_url: SHOP });
+    await withAShop.postJson("/woocommerce/callback", {
+      user_id: tokenIn(pressed.to ?? ""),
+      consumer_key: "ck_a-key-nobody-may-read",
+      consumer_secret: "cs_a-secret-nobody-may-read",
+      key_permissions: "read_write",
+    });
+    const after = await withAShop.getWithoutCookie("/woocommerce/return");
+
+    expect(after.status).toBe(before.status);
+    expect(after.html).toBe(before.html);
+    expect(after.html).not.toContain(SHOP);
+    expect(after.html).not.toContain("shop.example.com");
+    expect(after.html).not.toContain("ck_a-key-nobody-may-read");
+    expect(after.html).not.toContain(PERSON);
+  });
+
+  it("shows the merchant their real state once the cookie does travel", async () => {
+    const running = await started();
+    await running.signIn();
+    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    await running.postJson("/woocommerce/callback", {
+      user_id: tokenIn(pressed.to ?? ""),
+      consumer_key: "ck_a",
+      consumer_secret: "cs_b",
+      key_permissions: "read_write",
+    });
+
+    const came = await running.get("/woocommerce/return?success=1");
+    const seen = await running.get(came.to ?? "");
+
+    expect(came.to).toBe("/woocommerce?from=shop");
+    expect(seen.html).toContain("Your shop is connected");
+  });
+
+  it("leaves every other cabinet address behind the sign-in", async () => {
+    // The narrowing is one address. A gate that had been opened a crack wider
+    // than that is the defect this test exists to catch.
+    const running = await started();
+
+    for (const path of [
+      "/woocommerce",
+      "/woocommerce/import",
+      "/cards",
+      "/orders",
+      "/receipts",
+      "/keys",
+      "/settings",
+      "/",
+      "/no-such-page",
+    ]) {
+      const seen = await running.getWithoutCookie(path);
+      expect(seen.status, path).toBe(303);
+      expect(seen.to, path).toBe("/sign-in");
+    }
   });
 });

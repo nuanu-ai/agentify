@@ -39,6 +39,17 @@ switch telemetry off explicitly anyway: a default we depend on can change.
 **Tenancy stays ours.** The merchant on the account, that merchant's key, the
 gateway client built per request from it, the key screens, the gate above every
 route. None of that is identity and no component would know what to do with it.
+The gate denies by default, and what stands above it is listed here rather than
+discovered by reading the routing: the sign-in, the registration, the pages a
+mailed link lands on, the stylesheet, the health probe, the callback a connected
+shop posts its keys to, and the address that shop sends the merchant's browser
+back to. The last of those is above the gate because the cookie is
+`SameSite=Strict` and a navigation begun on somebody else's site therefore
+carries no session at all — behind the gate, a connection that worked ends on a
+sign-in form and reads as a failure. It is safe there because it reads nothing
+and answers every visitor the same page. That is the test for anything else
+proposed for this list: a session cannot reach the route, and its answer is the
+same for a stranger as for the owner.
 
 **The screens stay server-rendered forms.** Our handlers call the component's
 server API and pass on the cookie it makes, so the cabinet keeps working without

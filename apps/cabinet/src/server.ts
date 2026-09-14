@@ -22,6 +22,13 @@
  * a visitor with no session is answered identically at every address, including
  * the ones that do not exist, so the cabinet's inventory of pages is not
  * something a stranger can read off it.
+ *
+ * What stands above the gate is written out in that decision and is short: the
+ * sign-in, the registration, the pages a mailed link lands on, the stylesheet,
+ * the health probe, the shop's own callback and the address a shop sends a
+ * browser back to. Each is there because a session cannot reach it, and each
+ * answers the same thing to everybody — which is the property that makes the
+ * list safe to add to, and the one to check before adding to it.
  */
 
 import { readFileSync } from "node:fs";
@@ -71,6 +78,7 @@ import {
   type ConnectedShop,
   type ImportOutcome,
   wooImportScreen,
+  wooReturnScreen,
   wooScreen,
 } from "./woo-screens.js";
 import { type CatalogueRead, catalogueOf } from "./woo-shop.js";
@@ -491,6 +499,47 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       }
     });
   });
+
+  /**
+   * The address a merchant's own shop sends their browser back to.
+   *
+   * Above the gate, and that is the whole of this route's reason for being
+   * written out here rather than beside the shop screens. The session cookie is
+   * `SameSite=Strict` (ADR-0009 §5): a navigation begun on the merchant's own
+   * shop is cross-site, so the request that lands here carries nothing — for a
+   * merchant signed in on that very browser, every time. Behind the gate it
+   * ended a flow that had worked on a sign-in form, and what a merchant read
+   * there was that the connect had failed.
+   *
+   * Taking the address out from behind the gate costs nothing because there is
+   * nothing behind it to take: with no session this route reads no row, asks the
+   * gateway nothing and draws a page that is the same page for everybody. A
+   * stranger who walks up to it learns that the address exists. That is the only
+   * claim on it, and it is true before anybody has connected anything.
+   *
+   * The token still comes out of the address bar first. WooCommerce hands
+   * `user_id` back on this redirect, and in the case the page exists for — the
+   * keys never arrived — it is unspent and good for the rest of its fifteen
+   * minutes; left in the address it is in the browser's history and in the log
+   * of everything between the merchant and us. Now that a real return arrives
+   * with no session every time, this is the path that has to strip it, so it is
+   * stripped by a redirect to this same address with the query gone rather than
+   * by the redirect into the cabinet that a signed-in visitor still gets.
+   */
+  if (parts.wooShops !== undefined) {
+    const returnPath = `${base}/woocommerce/return`;
+    app.get(returnPath, async (request, response) => {
+      if ((await identity.whoIs(request.headers.cookie)) !== null) {
+        response.redirect(303, `${base}/woocommerce?from=shop`);
+        return;
+      }
+      if (Object.keys(request.query).length > 0) {
+        response.redirect(303, returnPath);
+        return;
+      }
+      response.type("html").send(wooReturnScreen(base, config.surfaceMode));
+    });
+  }
 
   app.get(`${base}/sign-in`, async (request, response) => {
     // Cleared here rather than anywhere else, because this is the one page
@@ -946,8 +995,9 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
 
   /**
    * The gate. Everything below this line needs a session; everything above it
-   * is the sign-in, the registration, the pages a link lands on, the stylesheet
-   * and the health probe.
+   * is the sign-in, the registration, the pages a link lands on, the stylesheet,
+   * the health probe, the shop's callback and the address a shop sends a browser
+   * back to.
    *
    * A visitor without one is answered the same way at every address, which is
    * why this is a middleware and not a check inside each handler: a page added
@@ -1326,30 +1376,6 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       // The flag and not the token, which is the whole point of the redirect
       // that set it.
       await drawTheShop(request, response, { cameBack: request.query.from === "shop" });
-    });
-
-    /**
-     * The page the merchant's own shop sends their browser back to.
-     *
-     * What the shop's redirect says — `success=1` — is read and deliberately
-     * not acted on. The keys travel on a separate request from the shop's own
-     * server to ours, and a shop that approved and could not reach us sends the
-     * browser back saying success all the same. So the page draws the connection
-     * we actually hold, and where we hold none it says the keys have not arrived
-     * rather than that anything failed, which it does not know.
-     *
-     * It answers with a redirect rather than with that page, and the reason is
-     * what the shop puts in the address it sends the browser to. WooCommerce
-     * hands `user_id` back on this redirect, so the address bar is holding the
-     * state token — and in the very case this page exists for, the one where
-     * the keys never arrived, that token is unspent and good for the rest of
-     * its fifteen minutes. Left there it is in the browser's history and in the
-     * log of everything between the merchant and us. One redirect and it is
-     * gone, and what carries the news to the page it lands on is a flag naming
-     * nothing.
-     */
-    app.get(`${base}/woocommerce/return`, (_request, response) => {
-      response.redirect(303, `${base}/woocommerce?from=shop`);
     });
 
     app.post(`${base}/woocommerce/connect`, async (request, response) => {
