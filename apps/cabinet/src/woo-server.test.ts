@@ -651,10 +651,14 @@ describe("what the settings screen says about a shop", () => {
     expect(screen.html).not.toContain("cs_a-secret-nobody-may-read");
   });
 
-  it("draws the whole page without a WooCommerce block when the shops table is unreachable", async () => {
+  it("says the WooCommerce state could not be read, rather than nothing, when the shops table is unreachable", async () => {
     // A settings screen is where a merchant fixes the address their money
     // arrives at. Our own shops table being down must not stand between them
-    // and that box — so the block goes and the page stays.
+    // and that box, so the page stays. The block stays too, saying what
+    // happened, because a block that simply vanishes reads as "no shop is
+    // connected" to a merchant who connected one yesterday — and that is a
+    // different sentence with a different next move from "we could not read
+    // it". The two must be told apart on the page, not in our logs.
     const running = await started({
       breakTheShopsRead: () => {
         throw new Error("the shops table is not answering");
@@ -666,7 +670,9 @@ describe("what the settings screen says about a shop", () => {
 
     expect(screen.status).toBe(200);
     expect(readable(screen.html)).toContain("Where your money arrives");
-    expect(readable(screen.html)).not.toContain("WooCommerce");
+    expect(readable(screen.html)).toContain("could not be read just now");
+    expect(readable(screen.html)).toContain("Reload this page in a moment");
+    expect(readable(screen.html)).not.toContain("Connect a WooCommerce shop");
   });
 });
 
