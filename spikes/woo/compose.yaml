@@ -99,6 +99,30 @@ services:
       - ./var/callback:/var/callback
       - ./var/certs:/var/certs:ro
 
+  # TLS in front of the Coinslot cabinet running on the laptop, for the demo
+  # runbook (DEMO.md) and for nothing the probes do — which is why it is behind
+  # a profile and `./setup.sh` never starts it.
+  #
+  # Two constraints fix its shape and both are the shop's rather than ours:
+  # WooCommerce refuses a callback_url that is not https, and WordPress only
+  # lets an outgoing request reach ports 80, 443 and 8080. So it listens on 443,
+  # and it is published on 443 of the loopback as well — the shop reaches it by
+  # the service name on this network, a browser reaches the same name through
+  # one line in /etc/hosts, and WooCommerce is handed one address that works
+  # from both sides.
+  cabinet:
+    image: nginx:alpine
+    profiles: ["demo"]
+    ports:
+      - "127.0.0.1:443:443"
+    extra_hosts:
+      # Docker Desktop provides this name already; naming it here is what makes
+      # the same file work on a Linux host.
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./cabinet/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./var/certs:/var/certs:ro
+
 volumes:
   db_data:
   wp_data:
