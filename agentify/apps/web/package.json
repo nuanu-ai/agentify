@@ -1,0 +1,51 @@
+{
+  "name": "@b2a/web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "prebuild": "pnpm --filter @b2a/contracts --filter @b2a/analytics --filter @b2a/db --filter @b2a/observability --filter @b2a/scanner-core --filter @b2a/remediation build",
+    "build": "next build",
+    "clean": "rm -rf .next",
+    "predev": "pnpm --filter @b2a/contracts --filter @b2a/analytics --filter @b2a/db --filter @b2a/observability --filter @b2a/scanner-core --filter @b2a/remediation build",
+    "dev": "next dev",
+    "start": "next start",
+    "pretest:unit": "pnpm --filter @b2a/contracts --filter @b2a/analytics --filter @b2a/db --filter @b2a/observability --filter @b2a/scanner-core --filter @b2a/remediation build",
+    "test:unit": "vitest run --passWithNoTests --exclude lib/server/p4.integration.test.ts --exclude lib/server/p5.integration.test.ts --exclude lib/server/merchant-applications.integration.test.ts",
+    "test:integration": "vitest run lib/server/p4.integration.test.ts",
+    "test:p5-integration": "vitest run lib/server/p5.integration.test.ts",
+    "typecheck": "tsc --noEmit",
+    "privacy:cleanup": "tsx scripts/privacy-cleanup.ts",
+    "e2e:seed": "tsx scripts/seed-local-browser-evidence.ts",
+    "test:merchant-integration": "vitest run lib/server/merchant-applications.integration.test.ts"
+  },
+  "dependencies": {
+    "@b2a/analytics": "workspace:*",
+    "@b2a/contracts": "workspace:*",
+    "@b2a/db": "workspace:*",
+    "@b2a/observability": "workspace:*",
+    "@b2a/remediation": "workspace:*",
+    "@b2a/scanner-core": "workspace:*",
+    "@fontsource-variable/schibsted-grotesk": "5.2.8",
+    "@fontsource/ibm-plex-mono": "5.2.7",
+    "@fontsource/schibsted-grotesk": "5.2.8",
+    "@supabase/supabase-js": "2.110.3",
+    "drizzle-orm": "0.45.2",
+    "next": "16.2.10",
+    "pg-boss": "12.26.0",
+    "posthog-js": "1.399.2",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "resend": "6.17.2",
+    "stripe": "22.3.1",
+    "@stripe/react-stripe-js": "6.7.0",
+    "@stripe/stripe-js": "9.9.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "typescript": "5.9.3",
+    "tsx": "4.23.0"
+  }
+}

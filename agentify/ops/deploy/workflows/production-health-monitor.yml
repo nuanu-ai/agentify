@@ -1,0 +1,124 @@
+name: Production health monitor
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Live check or controlled alert-lifecycle test"
+        required: true
+        default: live
+        type: choice
+        options:
+          - live
+          - test_failure
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: production-health-monitor
+  cancel-in-progress: true
+
+jobs:
+  health:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Check public readiness and core route
+        id: check
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.mode }}" == "test_failure" ]]; then
+            exit 1
+          fi
+          health="$(curl --silent --show-error --fail --max-time 15 https://agentify.ad/api/health)"
+          node --input-type=module - "$health" <<'NODE'
+          const payload = JSON.parse(process.argv[2] ?? "{}");
+          const required = [
+            "database",
+            "scanner_worker",
+            "worker_heartbeat",
+            "worker_database",
+            "worker_queue",
+            "scanner_capacity",
+            "analytics_outbox",
+          ];
+          if (payload.status !== "ok") process.exit(1);
+          if (!required.every((key) => payload.dependencies?.[key] === "ok"))
+            process.exit(1);
+          NODE
+          curl --silent --show-error --fail --max-time 15 --output /dev/null https://agentify.ad/store
+
+      - name: Open one incident issue on transition to unhealthy
+        if: steps.check.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = "[Production] Agentify health degraded";
+            const testMode =
+              context.eventName === "workflow_dispatch" &&
+              context.payload.inputs?.mode === "test_failure";
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100,
+            });
+            const existing = issues.find(
+              (issue) => !issue.pull_request && issue.title === title,
+            );
+            if (!existing) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body: [
+                  testMode
+                    ? "Controlled alert-lifecycle test; production was not intentionally degraded."
+                    : "The privacy-safe public health check or `/store` failed.",
+                  "",
+                  `First failing run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                  "",
+                  "Follow `ops/runbooks/scanner-and-queue.md`. Do not paste response bodies, URLs, tokens, IPs, or contact data into this issue.",
+                ].join("\n"),
+              });
+            }
+
+      - name: Close the incident issue after recovery
+        if: steps.check.outcome == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = "[Production] Agentify health degraded";
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100,
+            });
+            const existing = issues.find(
+              (issue) => !issue.pull_request && issue.title === title,
+            );
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: `Recovered in ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}.`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                state: "closed",
+              });
+            }
+
+      - name: Keep the workflow red while production is unhealthy
+        if: steps.check.outcome == 'failure'
+        run: exit 1

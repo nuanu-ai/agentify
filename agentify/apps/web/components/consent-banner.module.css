@@ -1,0 +1,141 @@
+.banner,
+.dialog {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.banner {
+  position: fixed;
+  z-index: 80;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 24px;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  padding: 14px clamp(16px, 4vw, 32px);
+  box-shadow: 0 -8px 24px rgb(26 25 23 / 8%);
+}
+
+.bannerCopy {
+  flex: 1 1 320px;
+  min-width: 240px;
+}
+
+.bannerCopy strong {
+  font-size: 0.9375rem;
+}
+
+.copy {
+  margin: 2px 0 0;
+  color: var(--ink-2);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.copy a {
+  color: var(--accent);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 0;
+}
+
+.dialog .actions {
+  margin-top: 18px;
+}
+
+.actions button {
+  min-height: 44px;
+}
+
+.error {
+  margin: 12px 0 0;
+  color: var(--fail);
+  font-size: 0.875rem;
+}
+
+.backdrop {
+  position: fixed;
+  z-index: 90;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(26 25 23 / 42%);
+}
+
+.dialog {
+  width: min(560px, 100%);
+  max-height: min(720px, calc(100vh - 40px));
+  overflow: auto;
+  border-radius: 20px;
+  padding: 24px;
+}
+
+.dialog h2 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.option {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 4px 12px;
+  margin-top: 20px;
+}
+
+.option input {
+  width: 20px;
+  height: 20px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+
+.option strong,
+.option span {
+  grid-column: 2;
+}
+
+.option strong {
+  grid-row: 1;
+}
+
+.option span {
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 600px) {
+  .banner {
+    padding: 14px 16px;
+  }
+
+  .actions {
+    display: grid;
+    width: 100%;
+  }
+
+  .actions button {
+    width: 100%;
+  }
+
+  .backdrop {
+    align-items: end;
+    padding: 12px;
+  }
+
+  .dialog {
+    max-height: calc(100vh - 24px);
+    padding: 20px;
+  }
+}

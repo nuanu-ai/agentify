@@ -1,0 +1,218 @@
+.panel {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px 24px;
+  padding: clamp(20px, 4vw, 28px);
+}
+
+.header h2 {
+  margin: 8px 0 0;
+  font-size: clamp(1.15rem, 3vw, 1.45rem);
+  letter-spacing: -0.015em;
+}
+
+.lifecycle {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  padding: 4px 10px;
+  background: var(--paper);
+  color: var(--muted);
+  font: 500 0.6875rem/1.4 var(--font-mono);
+  text-transform: uppercase;
+}
+
+.lifecycle > span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.lifecycle.queued,
+.lifecycle.running {
+  color: var(--accent);
+}
+
+.lifecycle.completed {
+  color: var(--pass);
+}
+
+.lifecycle.partial {
+  color: var(--partial);
+}
+
+.lifecycle.blocked,
+.lifecycle.unavailable {
+  color: var(--faint);
+}
+
+.lifecycle.running > span {
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 10px clamp(20px, 4vw, 28px);
+  color: var(--muted);
+  font: 0.6875rem/1.5 var(--font-mono);
+}
+
+.meta span:first-child {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.notice {
+  margin: 0;
+  padding: 18px clamp(20px, 4vw, 28px);
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.findings {
+  display: grid;
+}
+
+.finding {
+  min-width: 0;
+  border-top: 1px solid var(--border);
+}
+
+.findings > .finding:first-child {
+  border-top: 0;
+}
+
+.findingHeader {
+  min-height: 60px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 12px clamp(20px, 4vw, 28px);
+}
+
+summary.findingHeader {
+  cursor: pointer;
+}
+
+summary.findingHeader::marker {
+  color: var(--accent);
+}
+
+.findingHeader > strong {
+  min-width: 0;
+  font-size: 0.9375rem;
+  overflow-wrap: anywhere;
+}
+
+.experimental {
+  border-radius: var(--radius-pill);
+  padding: 3px 8px;
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+  font: 0.625rem/1.4 var(--font-mono);
+  text-transform: uppercase;
+}
+
+.findingBody {
+  display: grid;
+  gap: 10px;
+  padding: 0 clamp(20px, 4vw, 28px) 24px;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.findingBody p {
+  margin: 0;
+}
+
+.findingBody strong {
+  color: var(--ink-2);
+}
+
+.findingBody dl {
+  display: grid;
+  gap: 6px;
+  margin: 2px 0 4px;
+  border-radius: var(--radius-control);
+  padding: 12px;
+  background: var(--paper);
+  font: 0.75rem/1.5 var(--font-mono);
+}
+
+.findingBody dl div {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.35fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.findingBody dt {
+  color: var(--ink-2);
+}
+
+.findingBody dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+    transform: scale(0.75);
+  }
+}
+
+@media (max-width: 620px) {
+  .header {
+    display: grid;
+  }
+
+  .lifecycle {
+    justify-self: start;
+  }
+
+  .findingHeader {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .experimental {
+    grid-column: 1;
+    justify-self: start;
+  }
+
+  .findingHeader > :last-child {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  .findingBody dl div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lifecycle.running > span {
+    animation: none;
+  }
+}

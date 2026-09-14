@@ -26,7 +26,18 @@
     "buy": "pnpm --filter @coinslot/slice run buy",
     "stand": "pnpm --filter @coinslot/slice run stand",
     "changeset": "changeset",
-    "mutate": "node scripts/mutate.mjs"
+    "mutate": "node scripts/mutate.mjs",
+    "agentify:install": "cd agentify && corepack pnpm install --frozen-lockfile",
+    "agentify:check": "cd agentify && corepack pnpm format:check && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test:unit && corepack pnpm ops:test",
+    "agentify:test:integration": "cd agentify && corepack pnpm test:integration",
+    "agentify:test:actor": "cd agentify && corepack pnpm --filter @b2a/browser-observer-actor test:integration",
+    "agentify:test:db": "cd agentify && corepack pnpm db:check && corepack pnpm db:test:migrations",
+    "agentify:build": "cd agentify && corepack pnpm build",
+    "agentify:self-readiness": "cd agentify && corepack pnpm self-readiness:candidate",
+    "agentify:db:up": "cd agentify && docker compose up -d --wait postgres",
+    "agentify:db:down": "cd agentify && docker compose down",
+    "agentify:db:migrate": "cd agentify && corepack pnpm db:migrate",
+    "agentify:dev": "cd agentify && corepack pnpm dev"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.10",

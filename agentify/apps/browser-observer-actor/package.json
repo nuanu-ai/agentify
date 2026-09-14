@@ -1,0 +1,30 @@
+{
+  "name": "@b2a/browser-observer-actor",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist coverage",
+    "start": "node dist/index.js",
+    "pretest": "pnpm --filter @b2a/contracts --filter @b2a/scanner-core build",
+    "test": "vitest run --exclude src/actor.integration.test.ts",
+    "pretest:unit": "pnpm --filter @b2a/contracts --filter @b2a/scanner-core build",
+    "test:unit": "vitest run --exclude src/actor.integration.test.ts",
+    "test:integration": "vitest run src/actor.integration.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@b2a/contracts": "workspace:*",
+    "@b2a/scanner-core": "workspace:*",
+    "apify": "3.7.2",
+    "playwright": "1.61.1",
+    "tldts": "7.4.8",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  }
+}

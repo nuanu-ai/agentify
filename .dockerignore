@@ -9,6 +9,9 @@ node_modules
 .git
 .github
 .claude
+.local
+**/.local
+agentify
 
 # Build output, rebuilt inside the image.
 portal/.vitepress/dist

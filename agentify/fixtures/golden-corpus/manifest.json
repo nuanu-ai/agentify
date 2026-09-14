@@ -1,0 +1,147 @@
+{
+  "version": "golden-corpus-v1",
+  "rubric_version": "gtm-v1.0.0",
+  "live_run_status": "not_run_requires_authorized_calibration_window",
+  "sites": [
+    {
+      "id": "store-01",
+      "segment": "store",
+      "category": "woo_or_custom_store",
+      "target": "https://woocommerce.com/",
+      "review_status": "pending"
+    },
+    {
+      "id": "store-02",
+      "segment": "store",
+      "category": "woo_or_custom_store",
+      "target": "https://www.allbirds.com/",
+      "review_status": "pending"
+    },
+    {
+      "id": "store-03",
+      "segment": "store",
+      "category": "woo_or_custom_store",
+      "target": "https://www.ikea.com/",
+      "review_status": "pending"
+    },
+    {
+      "id": "store-04",
+      "segment": "store",
+      "category": "woo_or_custom_store",
+      "target": "https://www.patagonia.com/",
+      "review_status": "pending"
+    },
+    {
+      "id": "store-05",
+      "segment": "store",
+      "category": "woo_or_custom_store",
+      "target": "https://www.lego.com/",
+      "review_status": "pending"
+    },
+    {
+      "id": "store-06",
+      "segment": "store",
+      "category": "woo_or_custom_store",
+      "target": "https://www.bhphotovideo.com/",
+      "review_status": "pending"
+    },
+    {
+      "id": "hosted-01",
+      "segment": "store",
+      "category": "hosted_commerce_control",
+      "target": "https://shopify.com/",
+      "review_status": "pending"
+    },
+    {
+      "id": "hosted-02",
+      "segment": "store",
+      "category": "hosted_commerce_control",
+      "target": "https://www.gymshark.com/",
+      "review_status": "pending"
+    },
+    {
+      "id": "hosted-03",
+      "segment": "store",
+      "category": "hosted_commerce_control",
+      "target": "https://colourpop.com/",
+      "review_status": "pending"
+    },
+    {
+      "id": "hosted-04",
+      "segment": "store",
+      "category": "hosted_commerce_control",
+      "target": "https://www.kyliecosmetics.com/",
+      "review_status": "pending"
+    },
+    {
+      "id": "local-01",
+      "segment": "local",
+      "category": "local_service",
+      "target": "https://www.marriott.com/",
+      "review_status": "pending"
+    },
+    {
+      "id": "local-02",
+      "segment": "local",
+      "category": "local_service",
+      "target": "https://www.hilton.com/",
+      "review_status": "pending"
+    },
+    {
+      "id": "local-03",
+      "segment": "local",
+      "category": "local_service",
+      "target": "https://www.mayoclinic.org/",
+      "review_status": "pending"
+    },
+    {
+      "id": "local-04",
+      "segment": "local",
+      "category": "local_service",
+      "target": "https://www.servicemasterclean.com/",
+      "review_status": "pending"
+    },
+    {
+      "id": "local-05",
+      "segment": "local",
+      "category": "local_service",
+      "target": "https://www.midas.com/",
+      "review_status": "pending"
+    },
+    {
+      "id": "owner-01",
+      "segment": "owner",
+      "category": "generic_owner_saas",
+      "target": "https://linear.app/",
+      "review_status": "pending"
+    },
+    {
+      "id": "owner-02",
+      "segment": "owner",
+      "category": "generic_owner_saas",
+      "target": "https://www.notion.com/",
+      "review_status": "pending"
+    },
+    {
+      "id": "owner-03",
+      "segment": "owner",
+      "category": "generic_owner_saas",
+      "target": "https://www.figma.com/",
+      "review_status": "pending"
+    },
+    {
+      "id": "agent-01",
+      "segment": "owner",
+      "category": "agent_ready_technical_control",
+      "target": "https://modelcontextprotocol.io/",
+      "review_status": "pending"
+    },
+    {
+      "id": "agent-02",
+      "segment": "owner",
+      "category": "agent_ready_technical_control",
+      "target": "https://a2a-protocol.org/",
+      "review_status": "pending"
+    }
+  ]
+}

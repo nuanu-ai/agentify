@@ -1,0 +1,18 @@
+{
+  "actorSpecification": 1,
+  "name": "agentify-browser-observer",
+  "title": "Agentify Browser Observer",
+  "version": "1.0",
+  "buildTag": "browser-public-v1.0.0",
+  "meta": {
+    "templateId": "ts-playwright-chrome"
+  },
+  "dockerContextDir": "..",
+  "dockerfile": "../apps/browser-observer-actor/Dockerfile",
+  "readme": "../apps/browser-observer-actor/ACTOR.md",
+  "input": "../apps/browser-observer-actor/.actor/input_schema.json",
+  "output": "../apps/browser-observer-actor/.actor/output_schema.json",
+  "minMemoryMbytes": 512,
+  "maxMemoryMbytes": 2048,
+  "usesStandbyMode": false
+}

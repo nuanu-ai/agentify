@@ -94,3 +94,63 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: ./scripts/check-decisions.sh
+
+  # Agentify remains an independent workspace during repository consolidation.
+  # Keeping its original runtime and checks here makes the temporary boundary
+  # explicit without changing the CoinSlot package graph or release jobs.
+  agentify:
+    name: agentify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16.9-alpine
+        env:
+          POSTGRES_USER: b2a
+          POSTGRES_PASSWORD: ci-only
+          POSTGRES_DB: b2a_migration_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U b2a -d b2a_migration_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+
+    env:
+      DATABASE_URL: postgresql://b2a:ci-only@127.0.0.1:5432/b2a_migration_test
+      MIGRATION_TEST_DATABASE_URL: postgresql://b2a:ci-only@127.0.0.1:5432/b2a_migration_test
+      NEXT_PUBLIC_APP_BASE_URL: https://agentify.ad
+      NEXT_PUBLIC_DISPLAY_BRAND: Agentify
+
+    defaults:
+      run:
+        working-directory: agentify
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: agentify/.nvmrc
+          package-manager-cache: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.12.0
+          run_install: false
+          package_json_file: agentify/package.json
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @b2a/browser-observer-actor exec playwright install --with-deps chromium
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test:unit
+      - run: pnpm ops:test
+      - run: pnpm --filter @b2a/browser-observer-actor test:integration
+      - run: pnpm test:integration
+      - run: pnpm db:check
+      - run: pnpm db:test:migrations
+      - run: pnpm build
+      - run: pnpm self-readiness:candidate

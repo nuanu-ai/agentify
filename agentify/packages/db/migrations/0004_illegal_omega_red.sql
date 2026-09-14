@@ -1,0 +1,1 @@
+ALTER TABLE "leads" ADD COLUMN "data_access_requested_at" timestamp with time zone;

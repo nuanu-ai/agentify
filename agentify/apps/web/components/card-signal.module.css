@@ -1,0 +1,145 @@
+.panel {
+  margin-top: 20px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: clamp(24px, 5vw, 36px);
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.heading h2 {
+  margin: 8px 0 0;
+  font-size: clamp(1.35rem, 3vw, 1.8rem);
+}
+
+.heading > strong {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: var(--paper);
+  color: var(--accent);
+  font: 700 0.8rem var(--font-mono);
+}
+
+.disclosures {
+  display: grid;
+  gap: 8px;
+  margin: 22px 0;
+  padding-left: 20px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.consent,
+.localForm,
+.stripeForm,
+.attached {
+  display: grid;
+  gap: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+}
+
+.consent label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  line-height: 1.45;
+}
+
+.consent input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+
+.consent button,
+.localForm button,
+.stripeForm button,
+.attached > button {
+  justify-self: start;
+}
+
+.localForm p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.attached {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.attached > strong,
+.detached {
+  color: var(--accent);
+}
+
+.detachConfirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.detachConfirm span {
+  width: 100%;
+  color: var(--muted);
+  text-align: right;
+  font-size: 0.85rem;
+}
+
+.textButton {
+  border: 0;
+  padding: 8px;
+  background: transparent;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.detached {
+  display: block;
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+}
+
+.status {
+  min-height: 1.3em;
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 650px) {
+  .heading,
+  .attached {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .heading > strong,
+  .attached > button {
+    justify-self: start;
+  }
+
+  .detachConfirm {
+    justify-content: flex-start;
+  }
+
+  .detachConfirm span {
+    text-align: left;
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://apify-projects.github.io/actor-json-schemas/output.json?v=0.3",
+  "actorOutputSchemaVersion": 1,
+  "title": "Agentify sanitized browser observation output",
+  "description": "One versioned JSON object containing only aggregate signals and allowlisted finding evidence. It never contains raw HTML, text, URLs, headers, cookies, console messages, screenshots, or accessibility snapshots.",
+  "properties": {
+    "observation": {
+      "type": "string",
+      "title": "Sanitized observation",
+      "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/OUTPUT"
+    }
+  }
+}

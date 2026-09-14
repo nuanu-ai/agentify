@@ -1,0 +1,32 @@
+{
+  "name": "@b2a/scanner-worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist coverage",
+    "predev": "pnpm --filter @b2a/contracts --filter @b2a/db --filter @b2a/analytics --filter @b2a/observability build",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "pretest": "pnpm --filter @b2a/contracts --filter @b2a/db --filter @b2a/analytics --filter @b2a/observability --filter @b2a/scanner-core build",
+    "test": "vitest run",
+    "pretest:unit": "pnpm --filter @b2a/contracts --filter @b2a/db --filter @b2a/analytics --filter @b2a/observability --filter @b2a/scanner-core build",
+    "test:unit": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@b2a/analytics": "workspace:*",
+    "@b2a/contracts": "workspace:*",
+    "@b2a/db": "workspace:*",
+    "@b2a/observability": "workspace:*",
+    "@b2a/scanner-core": "workspace:*",
+    "apify-client": "2.23.4",
+    "pg-boss": "12.26.0",
+    "tldts": "7.4.8",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "tsx": "4.23.0"
+  }
+}

@@ -1,0 +1,102 @@
+.bar {
+  min-width: 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-left: 6px;
+  color: var(--muted);
+  font: 0.75rem/1.5 var(--font-mono);
+}
+
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: var(--pass);
+}
+
+.revoke {
+  min-height: 32px;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.revoke:hover,
+.revoke:focus-visible {
+  color: var(--fail);
+}
+
+.revoke:disabled {
+  color: var(--faint);
+  cursor: wait;
+}
+
+.status {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font: 0.75rem/1.5 var(--font-mono);
+}
+
+.status:empty {
+  display: none;
+}
+
+.manualCopy {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.manualCopy label {
+  color: var(--ink-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.manualCopy textarea {
+  width: 100%;
+  resize: vertical;
+  border: 1.5px solid var(--input-border);
+  border-radius: var(--radius-control);
+  padding: 12px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 0.75rem/1.5 var(--font-mono);
+}
+
+@media (max-width: 560px) {
+  .actions {
+    flex-direction: column;
+  }
+
+  .actions > a,
+  .actions > button {
+    width: 100%;
+    min-width: 0;
+  }
+}

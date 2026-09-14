@@ -1,0 +1,103 @@
+.wrap {
+  min-width: 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.button {
+  min-height: 44px;
+  border-radius: var(--radius-control);
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font: 600 0.875rem/1.2 var(--font-human);
+  cursor: pointer;
+}
+
+.small {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.button:disabled {
+  border-color: var(--input-border);
+  background: var(--surface-sunken);
+  color: var(--faint);
+  cursor: wait;
+}
+
+.primary {
+  border: 1.5px solid var(--accent);
+  background: var(--accent);
+  color: var(--surface);
+}
+
+.primary:hover,
+.primary:focus-visible {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
+}
+
+.secondary,
+.download {
+  border: 1.5px solid var(--input-border);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.secondary:hover,
+.secondary:focus-visible,
+.download:hover,
+.download:focus-visible {
+  border-color: var(--accent);
+}
+
+.checkIcon {
+  flex: none;
+}
+
+.status {
+  display: block;
+  min-height: 1.2em;
+  margin-top: 8px;
+  color: var(--muted);
+  font: 0.75rem/1.5 var(--font-mono);
+}
+
+.fallback {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.fallback label {
+  color: var(--ink-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.fallback textarea {
+  width: 100%;
+  min-height: 148px;
+  resize: vertical;
+  border: 1.5px solid var(--input-border);
+  border-radius: var(--radius-control);
+  padding: 12px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 0.75rem/1.5 var(--font-mono);
+}
+
+@media (max-width: 560px) {
+  .button {
+    width: 100%;
+  }
+}

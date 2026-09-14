@@ -1,0 +1,52 @@
+{
+  "name": "agentify",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@11.12.0",
+  "engines": {
+    "node": "24.18.x",
+    "pnpm": "11.12.x"
+  },
+  "scripts": {
+    "build": "pnpm -r --if-present build",
+    "clean": "pnpm -r --if-present clean",
+    "dev": "node ops/scripts/with-env.mjs pnpm --parallel --filter @b2a/web --filter @b2a/scanner-worker dev",
+    "dev:web": "node ops/scripts/with-env.mjs pnpm --filter @b2a/web dev",
+    "dev:worker": "node ops/scripts/with-env.mjs pnpm --filter @b2a/scanner-worker dev",
+    "format": "prettier --write \"{apps,packages}/**/*.{ts,tsx,json}\" \"*.{json,yaml,yml,mjs}\"",
+    "format:check": "prettier --check \"{apps,packages}/**/*.{ts,tsx,json}\" \"*.{json,yaml,yml,mjs}\"",
+    "lint": "eslint apps packages --max-warnings=0",
+    "test": "pnpm --filter @b2a/contracts build && pnpm -r --if-present test",
+    "test:unit": "pnpm --filter @b2a/contracts build && pnpm -r --if-present test:unit",
+    "test:integration": "node ops/scripts/with-env.mjs pnpm run test:integration:inner",
+    "test:integration:inner": "pnpm --filter @b2a/contracts build && pnpm --filter @b2a/analytics build && pnpm --filter @b2a/observability build && pnpm --filter @b2a/scanner-core build && pnpm --filter @b2a/web test:integration && pnpm --filter @b2a/web test:p5-integration && pnpm --filter @b2a/web test:merchant-integration",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "db:generate": "pnpm --filter @b2a/db db:generate",
+    "db:check": "pnpm --filter @b2a/db db:check",
+    "db:migrate": "node ops/scripts/with-env.mjs pnpm --filter @b2a/db db:migrate",
+    "db:test:migrations": "node ops/scripts/with-env.mjs pnpm --filter @b2a/db test:migrations",
+    "db:local:up": "docker compose up -d postgres",
+    "db:local:down": "docker compose down",
+    "ops:static": "bash ops/scripts/static-release-check.sh",
+    "ops:runtime": "node ops/scripts/with-env.mjs bash ops/scripts/runtime-smoke.sh",
+    "ops:browser": "node ops/scripts/with-env.mjs bash ops/scripts/browser-smoke.sh",
+    "ops:load": "node ops/scripts/with-env.mjs node ops/scripts/load-scan.mjs",
+    "ops:golden-corpus": "node ops/scripts/with-env.mjs node ops/scripts/golden-corpus.mjs",
+    "ops:test": "node --test ops/scripts/*.test.mjs",
+    "release:check": "node ops/scripts/with-env.mjs bash ops/scripts/release-gate.sh",
+    "privacy:cleanup": "node ops/scripts/with-env.mjs bash ops/scripts/privacy-retention-cleanup.sh",
+    "ops:local-core": "node ops/scripts/with-env.mjs bash ops/scripts/local-core-flow-smoke.sh",
+    "self-readiness:candidate": "node ops/scripts/self-readiness-candidate.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.13.3",
+    "axe-core": "4.12.1",
+    "eslint": "10.0.1",
+    "globals": "17.7.0",
+    "prettier": "3.9.5",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.63.0",
+    "vitest": "4.1.10"
+  }
+}

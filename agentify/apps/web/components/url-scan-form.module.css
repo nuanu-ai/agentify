@@ -1,0 +1,86 @@
+.wrapper {
+  width: 100%;
+  max-width: 560px;
+}
+
+.form {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.inputWrap {
+  height: 56px;
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border: 1.5px solid var(--input-border);
+  border-radius: 12px;
+  padding: 0 16px;
+  background: var(--surface);
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.inputWrap:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.inputWrap span,
+.inputWrap input {
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+}
+
+.inputWrap span {
+  color: var(--muted);
+}
+
+.inputWrap input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+}
+
+.inputWrap input::placeholder {
+  color: var(--muted);
+}
+
+.form > button {
+  min-height: 56px;
+  flex: none;
+}
+
+.compact .inputWrap,
+.compact > button {
+  min-height: 52px;
+  height: 52px;
+}
+
+.status {
+  min-height: 22px;
+  margin-top: 8px;
+  color: var(--muted);
+  font: 0.75rem/1.5 var(--font-mono);
+}
+
+.error {
+  color: var(--fail);
+}
+
+@media (max-width: 600px) {
+  .form {
+    flex-direction: column;
+  }
+
+  .form > button {
+    width: 100%;
+  }
+}

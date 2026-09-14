@@ -1,0 +1,1 @@
+ALTER TABLE "scans" ADD COLUMN "submitted_without_scheme" boolean DEFAULT false NOT NULL;

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://apify-projects.github.io/actor-json-schemas/input.json",
+  "schemaVersion": 1,
+  "title": "Agentify passive browser observation input",
+  "description": "Versioned, no-action observation of public pages. No credentials, cookies, proxies, form submission, clicks, or mutations are supported.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "operation_id",
+    "target",
+    "representative_urls",
+    "policy",
+    "limits"
+  ],
+  "properties": {
+    "schema_version": {
+      "title": "Schema version",
+      "description": "Pinned public browser-observation contract version.",
+      "type": "string",
+      "enum": ["browser-public-v1.0.0"],
+      "default": "browser-public-v1.0.0",
+      "editor": "select"
+    },
+    "operation_id": {
+      "title": "Operation ID",
+      "description": "Opaque UUIDv7 used for idempotent orchestration.",
+      "type": "string",
+      "editor": "textfield",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "target": {
+      "title": "Target",
+      "description": "Public target URL, registrable domain, and Agentify segment.",
+      "type": "object",
+      "editor": "json"
+    },
+    "representative_urls": {
+      "title": "Representative URLs",
+      "description": "Up to two additional public URLs on the same registrable domain.",
+      "type": "array",
+      "editor": "stringList",
+      "default": [],
+      "minItems": 0,
+      "maxItems": 2,
+      "items": {
+        "type": "string"
+      }
+    },
+    "policy": {
+      "title": "Immutable safety policy",
+      "description": "Fail-closed passive browser policy that callers cannot loosen.",
+      "type": "object",
+      "editor": "json"
+    },
+    "limits": {
+      "title": "Hard execution limits",
+      "description": "Bounded page, request, transfer, and timeout budgets.",
+      "type": "object",
+      "editor": "json"
+    }
+  }
+}

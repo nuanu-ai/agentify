@@ -12,17 +12,23 @@
 # and what it explores belongs in docs/research.
 .claude/settings.local.json
 .claude/worktrees/
+/.local/
 docs/superpowers/
 
 # Secrets and environment
 .env
 .env.*
+!agentify/.env.example
 
 # Build and dependencies
 node_modules/
 dist/
 coverage/
 *.tsbuildinfo
+agentify/**/.next/
+agentify/output/
+agentify/.playwright-cli/
+agentify/**/*.log
 
 # pnpm keeps a content-addressed store here when a build fetches into the
 # repository rather than into the user store. It is a cache, not a source.

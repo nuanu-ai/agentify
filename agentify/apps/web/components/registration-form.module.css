@@ -1,0 +1,67 @@
+.form {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: 16px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.form > div {
+  display: grid;
+  gap: 6px;
+}
+.form label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.form input:not([type="checkbox"]),
+.form select {
+  min-height: 48px;
+  width: 100%;
+  border: 1.5px solid var(--input-border);
+  border-radius: 10px;
+  padding: 0 12px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.check {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+  font-weight: 400 !important;
+  line-height: 1.45;
+}
+.check input {
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  accent-color: var(--accent);
+}
+.form .hint {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+.error {
+  margin: 0;
+  color: var(--fail);
+  font-size: 0.8125rem;
+}
+.sent {
+  width: 100%;
+  border-radius: 12px;
+  padding: 18px;
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+.sent p {
+  margin: 6px 0;
+  color: var(--muted);
+}
+.sent a {
+  color: var(--accent-hover);
+  font-weight: 600;
+}

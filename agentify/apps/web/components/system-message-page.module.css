@@ -1,0 +1,30 @@
+.page {
+  min-height: 100vh;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 32px;
+  padding-block: 64px;
+}
+
+.card {
+  width: min(100%, 640px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  padding: clamp(28px, 6vw, 44px);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.card h1 {
+  margin: 0;
+  font-size: clamp(2rem, 7vw, 3.5rem);
+  letter-spacing: -0.035em;
+  line-height: 1;
+}
+
+.card p {
+  margin: 18px 0 28px;
+  color: var(--muted);
+  line-height: 1.65;
+}

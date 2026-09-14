@@ -1,0 +1,64 @@
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+
+import { ReportActionPanel } from "./report-action-panel";
+
+const baseProps = {
+  aiPrompt: "Complete prompt",
+  devBrief: "Developer brief",
+  downloadUrl: "/api/v1/reports/id/remediation-prompt/download",
+  preview: { hostLabel: "example.com", level: "readable", score: 46 } as const,
+  promptEnabled: true,
+  scanId: "018f3f56-2ec8-7b16-8f66-5b8f93f3251f",
+  shareEnabled: true,
+};
+
+describe("ReportActionPanel", () => {
+  it("keeps every primary action in one flat panel without card headings", () => {
+    const markup = renderToStaticMarkup(<ReportActionPanel {...baseProps} />);
+    expect(markup).toContain("Copy share link");
+    expect(markup).toContain("Copy AI fix prompt");
+    expect(markup).toContain("Download .md");
+    expect(markup).toContain("Copy developer brief");
+    expect(markup).not.toContain("Share this research");
+    expect(markup).not.toContain("Hand your results to an AI or a developer");
+    expect(markup).not.toContain("What do you want to do next?");
+    expect(markup).not.toContain("<h2");
+  });
+
+  it("keeps the explanatory copy to a single short caption", () => {
+    const markup = renderToStaticMarkup(<ReportActionPanel {...baseProps} />);
+    const text = markup
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    expect(text.split(" ").length).toBeLessThan(45);
+  });
+
+  it("shows a one-line verified notice when a download intent resumes", () => {
+    const markup = renderToStaticMarkup(
+      <ReportActionPanel {...baseProps} initialIntent="download-md" />,
+    );
+    expect(markup).toContain("download started");
+    expect(markup).not.toContain("You are verified");
+    expect(markup).toContain("Download again");
+  });
+
+  it("points a copy intent at the prompt button instead of a separate card", () => {
+    const markup = renderToStaticMarkup(
+      <ReportActionPanel {...baseProps} initialIntent="copy-prompt" />,
+    );
+    expect(markup).toContain("prompt is ready");
+    expect(markup.match(/Copy AI fix prompt/g)).toHaveLength(1);
+  });
+
+  it("drops prompt actions when the export flag is off", () => {
+    const markup = renderToStaticMarkup(
+      <ReportActionPanel {...baseProps} promptEnabled={false} />,
+    );
+    expect(markup).toContain("Copy share link");
+    expect(markup).not.toContain("Copy AI fix prompt");
+    expect(markup).not.toContain("Download .md");
+  });
+});

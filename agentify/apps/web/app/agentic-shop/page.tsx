@@ -1,0 +1,612 @@
+import type { Metadata } from "next";
+import Image from "next/image";
+import Link from "next/link";
+
+import { BrandMark } from "../../components/brand-mark";
+import { AgenticShopForm } from "../../components/agentic-shop-form";
+import { getPublicAppConfig } from "../../lib/app-config";
+import styles from "./shop.module.css";
+import { AGENTIC_SHOP_RESEARCH } from "../../content/agentic-shop";
+
+const adobeSource = AGENTIC_SHOP_RESEARCH.sourceUrl;
+
+export function generateMetadata(): Metadata {
+  const url = new URL("/agentic-shop", getPublicAppConfig().baseUrl).toString();
+  return {
+    title: "Agentic Shop — Make your business buyable by AI agents",
+    description:
+      "A new sales channel for your products and services. Agentify helps merchants prepare agent-ready offers, connect ordering and explore crypto payments with fiat settlement. Apply to connect.",
+    alternates: { canonical: url },
+    openGraph: {
+      title: "Your next customer sends an agent. Be ready.",
+      description:
+        "Agentic Shop by Agentify. Your products and services, ready for a new way to buy.",
+      url,
+      type: "website",
+    },
+  };
+}
+
+function Arrow({ diagonal = false }: { diagonal?: boolean }) {
+  return <span aria-hidden="true">{diagonal ? "↗" : "→"}</span>;
+}
+
+const categories = [
+  [
+    "01",
+    "Products",
+    "Your catalog, ready for agent orders.",
+    "Retail · e-commerce · made to order",
+  ],
+  [
+    "02",
+    "Places to stay",
+    "Rooms and experiences, easier to book.",
+    "Hotels · villas · hospitality",
+  ],
+  [
+    "03",
+    "Food & experiences",
+    "A table, a ticket, a reason to visit.",
+    "Restaurants · activities · attractions",
+  ],
+  [
+    "04",
+    "Everyday services",
+    "Turn available time into bookable offers.",
+    "Wellness · fitness · coworking",
+  ],
+];
+
+const questions = [
+  [
+    "Do I need to understand crypto or build an API?",
+    "No crypto expertise is needed to apply. We review the systems you already use and propose a connection: an existing API, an approved booking interface or a process for confirming orders. The first step is a small, clearly defined offer.",
+  ],
+  [
+    "Can you connect a local business?",
+    "Yes, local businesses are part of the model: restaurants, hospitality, activities, wellness, clubs and more. We assess your location, availability, booking process and the legal payment options for your market before agreeing to launch.",
+  ],
+  [
+    "Will I receive money in my bank account?",
+    "Fiat settlement is a proposed option, not an active service on this page. We first need to confirm the operating entity, select a suitable payment partner and agree the supported country, currency, fees and payout timing with you. Submitting an application does not confirm bank-payout availability or a payment partnership.",
+  ],
+  [
+    "Do you guarantee sales or placement in an AI assistant?",
+    "No. We prepare a supported ordering channel and publish agreed offers through compatible discovery surfaces. Visibility, traffic and sales depend on adoption and demand. No specific AI assistant is guaranteed to recommend or buy your products.",
+  ],
+  [
+    "Who controls prices, availability and cancellations?",
+    "You agree the products, pricing, availability and cancellation rules with us. Our role—reseller or authorised booking agent—is set out in the merchant agreement. We only promise instant confirmation when your system or an agreed allocation supports it.",
+  ],
+  [
+    "How would agent loyalty work?",
+    "The proposed model combines merchant-funded cashback with a record of reliable service. You set a funded reward budget and clear terms that an agent can compare for its customer. A reward becomes payable only after verified delivery, subject to agreed return rules. The benefit belongs to the customer; a bigger reward does not guarantee an agent’s recommendation. This program is not live yet.",
+  ],
+  [
+    "What does it cost, and what happens after I apply?",
+    "There is no payment required to submit an application. We review your business, propose an initial offer and discuss the connection, commercial terms and settlement options. Fees are agreed before you commit; applying does not create a merchant contract.",
+  ],
+];
+
+export default function AgenticShopPage() {
+  return (
+    <div className={styles.page}>
+      <a className={styles.skip} href="#main">
+        Skip to content
+      </a>
+      <header className={styles.header}>
+        <div className={styles.container}>
+          <Link
+            className={styles.brand}
+            href="/agentic-shop"
+            aria-label="Agentify Agentic Shop home"
+          >
+            <BrandMark className={styles.mark} />
+            <span>
+              Agentify<span className={styles.subbrand}>Agentic Shop</span>
+            </span>
+          </Link>
+          <nav aria-label="Agentic Shop navigation" className={styles.nav}>
+            <a href="#opportunity">The opportunity</a>
+            <a href="#how-it-works">How it works</a>
+            <a href="#loyalty">Agent loyalty</a>
+            <a href="#questions">Questions</a>
+          </nav>
+          <a href="#apply" className={styles.headerCta}>
+            Let’s connect <Arrow diagonal />
+          </a>
+        </div>
+      </header>
+
+      <main id="main">
+        <section className={`${styles.container} ${styles.hero}`}>
+          <div className={styles.heroCopy}>
+            <p className={styles.eyebrow}>
+              <span className={styles.dot} /> Meet your next sales channel
+            </p>
+            <h1>
+              Your next
+              <br />
+              customer sends
+              <br />
+              <span>an agent.</span>
+            </h1>
+            <p className={styles.heroDescription}>
+              Make your products and services ready for a new way to buy. We
+              help connect your business to AI agents—from the first offer to
+              the final order.
+            </p>
+            <div className={styles.heroActions}>
+              <a className={styles.primary} href="#apply">
+                Apply to connect <Arrow diagonal />
+              </a>
+              <a className={styles.textLink} href="#how-it-works">
+                See how it works <Arrow />
+              </a>
+            </div>
+            <p className={styles.heroNote}>
+              Merchant applications open. Onboarding by agreement.
+            </p>
+          </div>
+          <div className={styles.heroVisual}>
+            <Image
+              src="/agentic-shop/merchant-still-life.png"
+              alt="A teal shopping bag, espresso, hotel key card, ticket and folded towel on sunlit stone."
+              width={1448}
+              height={1086}
+              sizes="(max-width: 800px) calc(100vw - 40px), 50vw"
+              priority
+              className={styles.heroImage}
+            />
+            <div className={styles.imageLabel}>
+              Real businesses.
+              <br />A new way to reach them.
+            </div>
+            <div className={styles.offerCard}>
+              <div className={styles.offerIcon}>
+                <BrandMark />
+              </div>
+              <div>
+                <span className={styles.offerSmall}>
+                  THE AGENTIC SHOP MODEL
+                </span>
+                <strong>Your business, agent-ready.</strong>
+                <span>Discover → order → fulfil</span>
+              </div>
+              <Arrow diagonal />
+            </div>
+          </div>
+        </section>
+
+        <div className={`${styles.container} ${styles.promiseStrip}`}>
+          <p>
+            You run your business.
+            <br />
+            <strong>We help open the next channel.</strong>
+          </p>
+          <span>Your products</span>
+          <span>Your pricing</span>
+          <span>Agreed terms</span>
+          <span>Payment options to agree</span>
+        </div>
+
+        <section className={styles.opportunity} id="opportunity">
+          <div className={styles.container}>
+            <div className={styles.sectionTop}>
+              <p className={styles.eyebrow}>
+                01 / The shift is already happening
+              </p>
+              <span className={styles.sectionMeta}>
+                Independent market data · Adobe
+              </span>
+            </div>
+            <div className={styles.marketGrid}>
+              <div className={styles.marketCopy}>
+                <h2>
+                  The buying journey
+                  <br />
+                  is changing.
+                  <br />
+                  <span>Don’t sit this one out.</span>
+                </h2>
+                <p>
+                  Customers are already using AI to find what to buy. The next
+                  opportunity is making your business easier for their agents to
+                  order from.
+                </p>
+                <a href="#apply" className={styles.lightLink}>
+                  Build your next channel <Arrow diagonal />
+                </a>
+              </div>
+              <div className={styles.chartCard}>
+                <div className={styles.chartHeading}>
+                  <span>AI-referred retail traffic</span>
+                  <span>U.S. · Q1 · year over year</span>
+                </div>
+                <div className={styles.growth}>
+                  <strong>
+                    +{AGENTIC_SHOP_RESEARCH.traffic.growthPercent}
+                    <span>%</span>
+                  </strong>
+                  <p>
+                    More visits from AI sources
+                    <br />
+                    in Q1 2026 vs. Q1 2025
+                  </p>
+                </div>
+                <figure
+                  className={styles.chart}
+                  aria-label="Indexed AI-referred traffic: Q1 2025 equals 100; Q1 2026 equals 493, a 393 percent increase."
+                >
+                  <div className={styles.chartLines} aria-hidden="true">
+                    <i />
+                    <i />
+                    <i />
+                    <i />
+                  </div>
+                  <div className={styles.barColumn}>
+                    <span>100</span>
+                    <div className={styles.barOld} />
+                    <b>Q1 2025</b>
+                  </div>
+                  <div className={styles.barColumn}>
+                    <span>{AGENTIC_SHOP_RESEARCH.traffic.comparisonIndex}</span>
+                    <div className={styles.barNew} />
+                    <b>Q1 2026</b>
+                  </div>
+                  <figcaption>Traffic index · Q1 2025 = 100</figcaption>
+                </figure>
+                <p className={styles.source}>
+                  Source:{" "}
+                  <a
+                    href={adobeSource}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Adobe Digital Insights, April 16, 2026 <Arrow diagonal />
+                  </a>
+                  . Measures AI-referred visits to U.S. retail sites, not
+                  autonomous purchases or x402 volume.
+                </p>
+              </div>
+            </div>
+            <div className={styles.marketBottom}>
+              <strong>
+                +{AGENTIC_SHOP_RESEARCH.conversion.relativeLiftPercent}
+                <span>%</span>
+              </strong>
+              <p>
+                Higher conversion for AI-referred visits vs. non-AI traffic.
+                <span>
+                  U.S. retail · March 2026 · Adobe. Purchases after a visit to a
+                  retailer’s website, not checkout inside an AI chat. This does
+                  not establish demand for x402 orders.
+                </span>
+              </p>
+              <a href={adobeSource} target="_blank" rel="noopener noreferrer">
+                Read the research <Arrow diagonal />
+              </a>
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="how-it-works"
+          className={`${styles.container} ${styles.section}`}
+        >
+          <p className={styles.eyebrow}>02 / We do the connecting</p>
+          <div className={styles.sectionHeading}>
+            <h2>
+              A new channel.
+              <br />A familiar business.
+            </h2>
+            <p>
+              Your existing products, systems and team. A clear plan to make
+              them work for agent-led orders.
+            </p>
+          </div>
+          <div className={styles.steps}>
+            <article>
+              <span className={styles.stepNumber}>01</span>
+              <div className={styles.stepSymbol} aria-hidden="true">
+                ↗
+              </div>
+              <h3>Start with your offer.</h3>
+              <p>
+                Tell us what you sell and where. We choose a practical first
+                product or service and agree the pricing, scope and merchant
+                terms with you.
+              </p>
+              <span className={styles.stepOutput}>
+                One clear offer. Agreed terms.
+              </span>
+            </article>
+            <article>
+              <span className={styles.stepNumber}>02</span>
+              <div className={styles.stepSymbol} aria-hidden="true">
+                ⇄
+              </div>
+              <h3>We connect the pieces.</h3>
+              <p>
+                We prepare your catalog, connect a supported order or booking
+                process and make the offer discoverable through compatible agent
+                directories.
+              </p>
+              <span className={styles.stepOutput}>
+                Catalog. Ordering. Confirmation.
+              </span>
+            </article>
+            <article>
+              <span className={styles.stepNumber}>03</span>
+              <div className={styles.stepSymbol} aria-hidden="true">
+                ✓
+              </div>
+              <h3>You deliver the value.</h3>
+              <p>
+                Orders follow the rules we agreed. Your team fulfils the product
+                or service; payment and settlement follow the approved setup for
+                your business.
+              </p>
+              <span className={styles.stepOutput}>
+                Clear orders. Traceable outcomes.
+              </span>
+            </article>
+          </div>
+          <div className={styles.protocols}>
+            <p>Built around open agent commerce.</p>
+            <span>x402</span>
+            <span>Agent discovery</span>
+            <span>Merchant integrations</span>
+            <a
+              href="https://docs.cdp.coinbase.com/x402/welcome"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              About x402 <Arrow diagonal />
+            </a>
+          </div>
+        </section>
+
+        <section className={styles.settlement}>
+          <div className={`${styles.container} ${styles.settlementGrid}`}>
+            <div>
+              <p className={styles.eyebrow}>03 / A proposed payment option</p>
+              <h2>
+                Plan your payment setup.
+                <br />
+                <span>Keep payouts familiar.</span>
+              </h2>
+              <p>
+                The intended option is crypto payment by the customer’s agent
+                and fiat settlement for your business. We first need to confirm
+                the operating entity, select a suitable payment partner and
+                establish availability for your market. Bank payouts are not
+                active through this page.
+              </p>
+              <a className={styles.textLink} href="#apply">
+                Explore your settlement options <Arrow />
+              </a>
+            </div>
+            <div
+              className={styles.paymentDiagram}
+              role="group"
+              aria-label="Proposed payment setup, not active: customer agent, crypto payment, payment partner to be selected, merchant settlement if supported."
+            >
+              <div className={styles.paymentLabel}>
+                SETUP AGREED BEFORE ACTIVATION
+              </div>
+              <div className={styles.paymentRow}>
+                <span className={styles.nodeIcon}>01</span>
+                <div>
+                  <strong>Customer’s agent</strong>
+                  <span>Supported crypto payment</span>
+                </div>
+                <span aria-hidden="true">↓</span>
+              </div>
+              <div className={styles.paymentRow}>
+                <span className={styles.nodeIcon}>02</span>
+                <div>
+                  <strong>Payment partner to be selected</strong>
+                  <span>Processing and conversion subject to approval</span>
+                </div>
+                <span aria-hidden="true">↓</span>
+              </div>
+              <div className={styles.paymentRow}>
+                <span className={styles.nodeIcon}>03</span>
+                <div>
+                  <strong>Proposed merchant settlement</strong>
+                  <span>Your bank account, where supported and agreed</span>
+                </div>
+                <span aria-hidden="true">✓</span>
+              </div>
+              <p>
+                Availability depends on your country, business, verification and
+                partner approval. Currencies, fees and payout timing are
+                confirmed before launch.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section
+          className={`${styles.container} ${styles.section}`}
+          id="loyalty"
+          aria-labelledby="loyalty-title"
+        >
+          <p className={styles.eyebrow}>
+            04 / Agent loyalty · Proposed program
+          </p>
+          <div className={styles.sectionHeading}>
+            <h2 id="loyalty-title">Reward the customer behind the agent.</h2>
+            <p>
+              Give their agent a reason to choose your business again: clear
+              cashback terms and a track record of delivering what you promise.
+            </p>
+          </div>
+          <div className={styles.steps}>
+            <article>
+              <span className={styles.stepSymbol} aria-hidden="true">
+                01
+              </span>
+              <h3>You fund the reward.</h3>
+              <p>
+                After merchant verification, agree a cashback rate, budget and
+                return rules. Agents can read the offer and compare its value
+                for their customer.
+              </p>
+            </article>
+            <article>
+              <span className={styles.stepSymbol} aria-hidden="true">
+                02
+              </span>
+              <h3>Delivery unlocks it.</h3>
+              <p>
+                Cashback becomes payable to the customer only after verified
+                delivery of the product or service, under the agreed terms.
+                Payment alone does not trigger a reward.
+              </p>
+            </article>
+            <article>
+              <span className={styles.stepSymbol} aria-hidden="true">
+                03
+              </span>
+              <h3>Reliability earns trust.</h3>
+              <p>
+                Delivery success, service quality and refund speed build a
+                record that agents can weigh alongside price and cashback.
+              </p>
+            </article>
+          </div>
+          <div className={styles.localNote}>
+            <p>
+              <strong>A loyalty model we’re developing.</strong> Reward funding
+              and refund reserves would be accounted for separately. Program
+              terms and availability must be agreed before activation.
+            </p>
+            <a href="#apply">
+              Discuss loyalty for your business <Arrow diagonal />
+            </a>
+          </div>
+        </section>
+
+        <section
+          className={`${styles.container} ${styles.section}`}
+          id="businesses"
+        >
+          <p className={styles.eyebrow}>05 / More than an online store</p>
+          <div className={styles.sectionHeading}>
+            <h2>
+              If people can buy it,
+              <br />
+              let’s explore an agent offer.
+            </h2>
+            <p>
+              From a digital product to a day in Bali. We start with a specific
+              service, a supported market and a process that can actually fulfil
+              the order.
+            </p>
+          </div>
+          <div className={styles.categories}>
+            {categories.map(([number, title, description, examples]) => (
+              <article key={number}>
+                <span>{number}</span>
+                <h3>{title}</h3>
+                <p>{description}</p>
+                <small>{examples}</small>
+              </article>
+            ))}
+          </div>
+          <div className={styles.localNote}>
+            <span className={styles.localMark} aria-hidden="true">
+              ↗
+            </span>
+            <p>
+              <strong>Local business. Agent-ready offer.</strong> A restaurant
+              table, a coworking pass or a hotel stay can be the starting point.
+              Local availability and payment rules always shape the setup.
+            </p>
+            <a href="#apply">
+              Tell us about yours <Arrow diagonal />
+            </a>
+          </div>
+        </section>
+
+        <section className={styles.application} id="apply">
+          <div className={`${styles.container} ${styles.applicationGrid}`}>
+            <div>
+              <p className={styles.eyebrow}>
+                06 / Let’s find your first agent-ready offer
+              </p>
+              <h2>
+                Make the next
+                <br />
+                move yours.
+              </h2>
+              <p>
+                Tell us about your business. We’ll review the fit and discuss
+                what it would take to connect your first product or service.
+              </p>
+              <ul>
+                <li>A practical starting offer</li>
+                <li>A connection plan for your existing setup</li>
+                <li>Commercial and payment options for your market</li>
+              </ul>
+              <div className={styles.applicationNote}>
+                Application only. No payment, wallet connection or merchant
+                commitment required.
+              </div>
+            </div>
+            <AgenticShopForm />
+          </div>
+        </section>
+
+        <section id="questions" className={`${styles.container} ${styles.faq}`}>
+          <div>
+            <p className={styles.eyebrow}>A few things worth knowing</p>
+            <h2>
+              Good questions.
+              <br />
+              Straight answers.
+            </h2>
+          </div>
+          <div>
+            {questions.map(([question, answer]) => (
+              <details key={question}>
+                <summary>
+                  {question}
+                  <span aria-hidden="true">+</span>
+                </summary>
+                <p>{answer}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+      </main>
+
+      <footer className={styles.footer}>
+        <div className={styles.container}>
+          <Link className={styles.brand} href="/agentic-shop">
+            <BrandMark className={styles.mark} />
+            <span>
+              Agentify<span className={styles.subbrand}>Agentic Shop</span>
+            </span>
+          </Link>
+          <p>
+            Ordinary businesses.
+            <br />
+            An extraordinary next chapter.
+          </p>
+          <div>
+            <a href="/agentic-shop/privacy">Application privacy</a>
+            <a href="#questions">Merchant questions</a>
+            <Link href="/owner">
+              Explore Agentify <Arrow diagonal />
+            </Link>
+            <span>© {new Date().getFullYear()} Agentify</span>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}

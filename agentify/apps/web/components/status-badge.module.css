@@ -1,0 +1,75 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font: 500 0.75rem/1.4 var(--font-mono);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+
+.pass {
+  color: var(--pass);
+}
+
+.partial {
+  color: var(--partial);
+}
+
+.fail {
+  color: var(--fail);
+}
+
+.unavailable,
+.not_applicable,
+.pending {
+  color: var(--muted);
+}
+
+.unavailable .dot,
+.not_applicable .dot,
+.pending .dot {
+  color: var(--faint);
+}
+
+.running {
+  color: var(--accent);
+}
+
+.complete {
+  color: var(--accent);
+}
+
+.complete .dot {
+  border: 0;
+  background: currentColor;
+}
+
+.running .dot {
+  border: 0;
+  background: currentColor;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.pass .dot,
+.partial .dot,
+.fail .dot,
+.unavailable .dot,
+.not_applicable .dot {
+  border: 0;
+  background: currentColor;
+}
+
+/* Local keyframe: CSS Modules scope the `animation: pulse` reference. */
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+    transform: scale(0.75);
+  }
+}
