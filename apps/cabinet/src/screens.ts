@@ -25,7 +25,7 @@ import type { PayoutWallet } from "./payout-wallet.js";
 // A type and nothing else, so this leaves no import behind once it is compiled
 // and the two files are not a cycle at run time. The shape belongs beside the
 // screen that draws a shop, and the viewer that carries it belongs here.
-import type { ShopState } from "./woo-screens.js";
+import type { ShopTile } from "./woo-screens.js";
 import {
   FULFILLMENT_WORDS,
   moment,
@@ -92,12 +92,13 @@ export interface Viewer {
    * Where this account's WooCommerce channel has got to, where the screen
    * asked.
    *
-   * Absent is a cabinet built with nowhere to keep a connection — it mounts
-   * none of those routes, which is a deliberate absence rather than a failure,
-   * and a link into them would be the settings screen offering something that
-   * answers "there is no such page" — or one whose store could not be read just
-   * now. Either way the screen draws no block about a shop, which is the honest
-   * answer to a question nobody could ask.
+   * Absent is only a cabinet built with nowhere to keep a connection — it
+   * mounts none of those routes, which is a deliberate absence rather than a
+   * failure, and a link into them would be the settings screen offering
+   * something that answers "there is no such page". That is the one case that
+   * draws no block about a shop. A read that failed is not absent: it is the
+   * fifth case, `unread`, and the block says so, because a block that vanishes
+   * reads as "no shop is connected" to a merchant who connected one.
    *
    * Four states rather than a flag, because a block saying "connect a shop"
    * over a Connect that is halfway through is not a missing detail: it is the
@@ -106,7 +107,7 @@ export interface Viewer {
    * and its secret, and a screen with no way to reach them cannot leak them
    * (ADR-0023).
    */
-  readonly shop?: ShopState;
+  readonly shop?: ShopTile;
 }
 
 interface Frame {
