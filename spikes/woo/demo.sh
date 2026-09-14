@@ -72,7 +72,11 @@ printf 'see mu-plugins/coinslot-probe.php\n' > "${HERE}/var/probe/allow-private-
 echo "  var/probe/allow-private-callback"
 
 say "starting the TLS terminator in front of the cabinet"
-docker compose --profile demo up -d cabinet >/dev/null
+# --force-recreate, because nginx reads the certificate once at start: after a
+# --reset has minted a fresh one, a surviving terminator would keep serving the
+# old certificate from memory and the shop's pinned verification would refuse
+# it — with the same words a real mismatch gets.
+docker compose --profile demo up -d --force-recreate cabinet >/dev/null
 echo "  listening on https://cabinet inside this network and on 127.0.0.1:443"
 
 REPO="$(cd "${HERE}/../.." && pwd)"
