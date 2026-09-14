@@ -84,6 +84,12 @@ the buyer receives, what task it is good for, what is not included, what the
 limits are. "The best offer on the market" is empty to a machine, while
 "incoming messages only" settles whether the product fits.
 
+A description is at most 500 characters. That ceiling is the one the discovery
+catalog documents, not ours and not the payment protocol's: the description is
+the one field of your prose that goes out to a catalog whole, and a card longer
+than this is refused at publication rather than being cut to fit somewhere you
+would never see it happen.
+
 ### Price
 
 A price in the card is required in every case: it is what the agent sees in a
@@ -424,7 +430,7 @@ required fields first.
 | `id` | string | not yours to fill in: we issue it at publication | `item_f9290a94590540088e90afef0fdfd175` |
 | `merchant_item_id` | string | required | `access-monthly` |
 | `title` | string | required | `One month of access to the service` |
-| `description` | string, up to 500 characters | required | `Access for 30 days from delivery, renewal not included` |
+| `description` | string, up to 500 characters — the discovery catalog's ceiling, not ours | required | `Access for 30 days from delivery, renewal not included` |
 | `price` | an amount as a string, and a currency; or the two as one string | required | `{ amount: '5.00', currency: 'USD' }`, or `'5.00 USD'` |
 | `result` | the shape of what the agent receives on delivery | required | `{ access_url: { type: 'string' } }`, or `{ access_url: 'string' }` |
 | `params` | the shape of the purchase parameters | required where the delivery needs input | `{ email: { type: 'string', required: true } }` |

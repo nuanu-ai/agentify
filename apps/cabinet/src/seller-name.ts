@@ -133,9 +133,8 @@ export const chooseNameScreen = (base: string, mode: Viewer["mode"], problem?: s
  * these is about a card, all of them are about the merchant. The name buyers
  * read is here; under it the address the merchant's money arrives at, which
  * lives in `payout-wallet.ts`; under that the WooCommerce shop a merchant can
- * sell the catalogue of, which is a link into `woo-screens.ts` rather than a
- * block of its own, because the state of a connection is a row and this page is
- * drawn from the gateway; and last the merchant's own account, which lives in
+ * sell the catalogue of, which is drawn by `woo-screens.ts` from the connection
+ * this page was handed; and last the merchant's own account, which lives in
  * `account-settings.ts`. That one arrived because the address in the corner of
  * every page is the one thing on a screen that says "this is you" — pressing it
  * has to lead somewhere that answers that, and the answer is a page with the
@@ -191,7 +190,7 @@ export const settingsScreen = (viewer: Viewer, problem?: string): string => {
     <button class="primary" type="submit">Save it</button>
     ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
   </form>
-${payoutWalletBlock(viewer)}${viewer.canConnectAShop === true ? wooSettingsBlock(base) : ""}${accountSettings(viewer)}`;
+${payoutWalletBlock(viewer)}${viewer.shop === undefined ? "" : wooSettingsBlock(base, viewer.shop)}${accountSettings(viewer)}`;
 
   return page({
     mode: viewer.mode,

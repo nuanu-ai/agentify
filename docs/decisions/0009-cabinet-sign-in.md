@@ -28,7 +28,7 @@ this will ever be.
 
 ## Decision
 
-**Identity comes from Better Auth, in our own process on our own Postgres
+**1. Identity comes from Better Auth, in our own process on our own Postgres
 through drizzle.** A library, not a service: nothing more to deploy, no second
 database, nobody else's availability in front of the screen a merchant opens
 when their selling has stopped. Verified before choosing rather than
@@ -36,34 +36,49 @@ remembered — it runs in a plain express app, its server API can be called from
 our handlers, mail is a function we supply, and telemetry is off by default. We
 switch telemetry off explicitly anyway: a default we depend on can change.
 
-**Tenancy stays ours.** The merchant on the account, that merchant's key, the
+**2. Tenancy stays ours.** The merchant on the account, that merchant's key, the
 gateway client built per request from it, the key screens, the gate above every
 route. None of that is identity and no component would know what to do with it.
+The gate denies by default, and what stands above it is listed here rather than
+discovered by reading the routing: the sign-in, the registration, the pages a
+mailed link lands on, the stylesheet, the health probe, the callback a connected
+shop posts its keys to, and the address that shop sends the merchant's browser
+back to. The last of those is above the gate because of the cookie in paragraph
+six: a navigation begun on somebody else's site carries no session at all, so
+behind the gate a connection that worked ends on a sign-in form and reads as a
+failure. It is safe there because it reads nothing and answers every visitor the
+same page. That is the test for anything else proposed for this list: a session
+cannot reach the route, and its answer is the same for a stranger as for the
+owner.
 
-**The screens stay server-rendered forms.** Our handlers call the component's
+**3. The screens stay server-rendered forms.** Our handlers call the component's
 server API and pass on the cookie it makes, so the cabinet keeps working without
 JavaScript and nothing pulls in a client framework.
 
-**Mail is a function we supply; with no provider it writes to the log.** Resend
+**4. Mail is a function we supply; with no provider it writes to the log.** Resend
 on a server, from a subdomain of its own so this product's reputation and the
 company's Workspace mail are not one basket. Locally the whole flow walks with
 no account, no domain and no network, and the suite stays offline. Nothing reads
 mail: receiving is off, and the address a person sees says replies go nowhere.
 
-**Nothing waits for a message.** Registering signs a person in where they stand,
+**5. Nothing waits for a message.** Registering signs a person in where they stand,
 with a banner saying the address is unconfirmed. Putting delivery in front of a
 working account turns every mail filter into somebody who has an account and
 cannot reach it, recoverable only by us at a terminal — which is the thing this
 decision exists to stop needing. Confirmation buys the right to be sent a new
 password, and later the retirement of the invitation code.
 
-**Two properties survive the swap because they are why the old version existed.**
+**6. Two properties survive the swap because they are why the old version existed.**
 A session is a row that can be ended one at a time, without touching the
 merchant's running code. And the cookie cannot take the `__Host-` prefix — the
 cabinet shares an origin with the landing, the docs and `/v0`, so it is scoped
 to the cabinet's path — which means a sibling subdomain is "same site" and the
 check that a form came from this host stays until the component covers that case
-with a token rather than with `SameSite` alone.
+with a token rather than with `SameSite` alone. The cookie is `Secure` wherever
+the cabinet is served over https and `SameSite=Strict` everywhere, which is what
+the paragraph above is reasoning from: a request that begins on another site
+carries no session, so a route that has to be reachable from one is reachable
+without a session or not at all.
 
 ## Consequences
 

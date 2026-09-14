@@ -22,6 +22,10 @@ import {
 } from "@nuanu-ai/coinslot-contracts";
 import { escaped, page, state, type Tab, table } from "./html.js";
 import type { PayoutWallet } from "./payout-wallet.js";
+// A type and nothing else, so this leaves no import behind once it is compiled
+// and the two files are not a cycle at run time. The shape belongs beside the
+// screen that draws a shop, and the viewer that carries it belongs here.
+import type { ShopState } from "./woo-screens.js";
 import {
   FULFILLMENT_WORDS,
   moment,
@@ -85,16 +89,24 @@ export interface Viewer {
    */
   readonly linkSent?: boolean;
   /**
-   * Whether this cabinet can connect a WooCommerce shop at all.
+   * Where this account's WooCommerce channel has got to, where the screen
+   * asked.
    *
-   * One screen draws a block about it and the block is a link, so the flag is
-   * what keeps that link from pointing at an address this cabinet does not
-   * serve. A cabinet built without somewhere to keep a connection mounts none
-   * of those routes, which is a deliberate absence rather than a failure — and
-   * a link into it would be the settings screen offering something that answers
-   * "there is no such page".
+   * Absent is a cabinet built with nowhere to keep a connection — it mounts
+   * none of those routes, which is a deliberate absence rather than a failure,
+   * and a link into them would be the settings screen offering something that
+   * answers "there is no such page" — or one whose store could not be read just
+   * now. Either way the screen draws no block about a shop, which is the honest
+   * answer to a question nobody could ask.
+   *
+   * Four states rather than a flag, because a block saying "connect a shop"
+   * over a Connect that is halfway through is not a missing detail: it is the
+   * page telling a merchant their Connect failed. `ShopState` carries only what
+   * a screen may know, never the stored row — the row also holds the shop's key
+   * and its secret, and a screen with no way to reach them cannot leak them
+   * (ADR-0023).
    */
-  readonly canConnectAShop?: boolean;
+  readonly shop?: ShopState;
 }
 
 interface Frame {

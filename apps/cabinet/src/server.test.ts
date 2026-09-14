@@ -68,8 +68,7 @@ const PERSON = "dmitry@example.com";
 /**
  * A second person with an account on the same cabinet.
  *
- * ADR-0009 §9 says the pilot has one merchant and one person, and this is the
- * fixture for the case that does not care: a request can carry a session that
+ * The fixture for the case nobody plans for: a request can carry a session that
  * belongs to somebody else, and "somebody else" cannot be tested with one
  * account in the store.
  */
@@ -104,9 +103,9 @@ const FRESH = { email: "fresh-merchant@example.com", password: "a-password-of-th
 /**
  * The merchant both of those accounts sign in as.
  *
- * One merchant with two people at it, which ADR-0009 §9 names as a shape the
- * cabinet does not really have — it is here because "somebody else's session"
- * cannot be tested with one account, and because the key on both rows is the
+ * One merchant with two people at it, which is not a shape anything sets up on
+ * purpose — it is here because "somebody else's session" cannot be tested with
+ * one account, and because the key on both rows is the
  * one the harness seeded, so every screen these tests read is drawn from the
  * real gateway.
  */
@@ -625,7 +624,7 @@ const paidInto = async (running: Running): Promise<string | null> =>
 
 describe("getting into the cabinet", () => {
   it("shows a visitor with no session the sign-in and nothing else at all", async () => {
-    // ADR-0009 §5: the gate denies by default, and every address answers the
+    // ADR-0009 §2: the gate denies by default, and every address answers the
     // same way whether or not there is a page behind it. A 404 for an address
     // the cabinet does not serve would let a stranger read off which ones it
     // does, and a route added later would have to remember to be guarded.
@@ -859,8 +858,7 @@ describe("getting into the cabinet", () => {
   });
 
   it("gives a session twelve hours and not a day, an hour or a year", async () => {
-    // ADR-0009 §6. The store honours whatever it is handed and the contract
-    // suite says so; this is the only place the number itself is written down,
+    // The store honours whatever it is handed and the contract suite says so; this is the only place the number itself is written down,
     // and a typo in it is a session that lasts a year.
     const { browser } = await started();
     const signedIn = await browser.post("/sign-in", { email: PERSON, password: PASSWORD });
@@ -1367,7 +1365,7 @@ describe("registering", () => {
   });
 
   it("is reachable without a session, and is linked from the sign-in", async () => {
-    // ADR-0009 §5 puts every other address behind the gate. This one cannot be:
+    // ADR-0009 §2 puts every other address behind the gate. This one cannot be:
     // somebody registering has no session by definition. The sign-in's own
     // comment used to say a link here would be a door onto a corridor that was
     // never built — the corridor is built.
@@ -2781,8 +2779,7 @@ describe("the keys screen", () => {
   });
 
   it("writes down who issued a key and who revoked one, and neither secret", async () => {
-    // ADR-0009 §7: every action that changes something names the person who did
-    // it. Issuing and revoking a key are two of the most consequential, and the
+    // Every action that changes something names the person who did it. Issuing and revoking a key are two of the most consequential, and the
     // secret itself must not travel with the sentence — a log goes places the
     // database does not.
     const said: string[] = [];
@@ -2812,7 +2809,7 @@ describe("the keys screen", () => {
     // The contract leaves a key's name unbounded and open to any alphabet on
     // purpose, so what arrives here is whatever a merchant typed. A name
     // carrying a newline and a plausible sentence after it would put a second
-    // line into the one record of who stopped the selling (ADR-0009 §7) — in
+    // line into the one record of who stopped the selling — in
     // this cabinet's voice, under a name of the writer's choosing, and
     // indistinguishable from a line the cabinet wrote.
     const said: string[] = [];
@@ -3017,7 +3014,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
 
   it("does not sign a person out when it is the cabinet's own key the gateway refuses", async () => {
     // The key is the cabinet's configuration now, not the person's password
-    // (ADR-0009 §4). Signing them out over a 401 would send them to type a
+    // (ADR-0014 §2). Signing them out over a 401 would send them to type a
     // password that cannot fix it, and they would land straight back here — a
     // loop with no way out and nothing said about the actual fault.
     const { browser, close } = await cabinetAnswering(async () => ({
@@ -3064,7 +3061,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
 
   it("says there is no such page rather than answering an address with nothing", async () => {
     // Only to somebody who is signed in. A stranger is told nothing about which
-    // addresses exist here (ADR-0009 §5), which is the test above this one.
+    // addresses exist here (ADR-0009 §2), which is the test above this one.
     const { browser } = await started();
     await browser.signIn();
 
@@ -3194,7 +3191,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
   it("ends both sessions rather than choosing when they belong to two people", async () => {
     // The case where the ambiguity actually matters: working inside a session
     // somebody else opened would put the wrong person on the one record of who
-    // stopped the selling (ADR-0009 §7). Nobody is signed in.
+    // stopped the selling. Nobody is signed in.
     //
     // And the sessions are ended, which is the half that decides whether this
     // rule is safe to have. The cabinet cannot take a cookie out of a browser —
@@ -3371,7 +3368,7 @@ describe("when the gateway will not answer", () => {
 
 describe("a session that is ended while somebody is looking at a page", () => {
   it("stops the open tab from doing anything, and does not do what it asked", async () => {
-    // The reason a session is a row at all (ADR-0009 §3). Before this, ending
+    // The reason a session is a row at all (ADR-0009 §6). Before this, ending
     // one meant rotating the merchant's key — which also stops the merchant's
     // own code, in the same instant.
     const { browser, gateway, identity } = await started();
@@ -3406,7 +3403,7 @@ describe("a session that is ended while somebody is looking at a page", () => {
   });
 
   it("refuses a session whose time is up, without anybody ending it", async () => {
-    // Twelve hours from the moment it opens, never extended (ADR-0009 §6). The
+    // Twelve hours from the moment it opens, never extended. The
     // cookie in the browser is untouched and still carries a good signature;
     // what has run out is the row, and the row is what decides.
     const { browser } = await started();
@@ -3873,7 +3870,7 @@ describe("what the cabinet writes down about what people do", () => {
   };
 
   it("names the person who changed something, not just that something changed", async () => {
-    // ADR-0009 §7. This is not an audit trail and the decision says so — but a
+    // This is not an audit trail and nothing here pretends otherwise — but a
     // merchant asking who stopped their selling has to be answerable at all,
     // and with one key and no person there was nothing to answer with.
     const { browser, gateway } = await started();

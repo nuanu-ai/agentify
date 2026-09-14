@@ -1,11 +1,11 @@
 /**
  * The screens a merchant connects a WooCommerce shop on.
  *
- * Three of them, and they are three because the flow genuinely has three
- * moments: before the shop knows anything about us, the moment the merchant's
- * browser comes back from approving, and the import. None of them fetches
- * anything or decides anything, which is what lets a test read the page a
- * merchant would be looking at.
+ * Four of them: before the shop knows anything about us, the moment the
+ * merchant's browser comes back from approving, the import, and the block on
+ * the settings screen that says which of those the account is in. None of them
+ * fetches anything or decides anything, which is what lets a test read the page
+ * a merchant would be looking at.
  *
  * The one thing these pages are careful about is what they claim. A merchant
  * comes back from their own shop having pressed Approve, and the shop's
@@ -17,7 +17,8 @@
  * is here it says that, rather than "it failed" — which it does not know.
  */
 
-import { escaped, page } from "./html.js";
+import type { SurfaceMode } from "@coinslot/core";
+import { bare, escaped, page } from "./html.js";
 import type { Viewer } from "./screens.js";
 import type { SkippedProduct } from "./woo-catalog.js";
 import { moment } from "./words.js";
@@ -36,10 +37,40 @@ export interface ConnectedShop {
   readonly connectedAt: Date;
 }
 
-/** What the page is drawn from: the connection, and anything just refused. */
+/**
+ * Where this account's WooCommerce channel has got to, in the four states a
+ * merchant can be in and can be told apart.
+ *
+ * Three of them, not two, and the third is the one this shape exists for. A
+ * merchant presses Connect, approves in their own shop, and their shop then
+ * posts the keys to us from its own server — a request that can simply not
+ * arrive, and when it does not, nothing about the merchant's side looks
+ * different from never having started. "Not connected" covers both "you have
+ * not tried" and "you tried and your shop could not reach us", and those have
+ * opposite next moves: one is press the button, the other is let your shop out
+ * through its firewall.
+ *
+ * The clock is read before this is built, not after, so that both screens draw
+ * one answer rather than each doing its own arithmetic on a row.
+ */
+export type ShopState =
+  /** The keys arrived. This is the only state in which anything can be sold. */
+  | { readonly kind: "connected"; readonly shop: ConnectedShop }
+  /** Approved or not, the fifteen minutes are still running. Wait, or reload. */
+  | {
+      readonly kind: "waiting";
+      readonly shopUrl: string;
+      readonly startedMinutesAgo: number;
+    }
+  /** The fifteen minutes ran out with nothing posted. The shop could not reach us. */
+  | { readonly kind: "unanswered"; readonly shopUrl: string }
+  /** Nothing was ever started. */
+  | { readonly kind: "none" };
+
+/** What the page is drawn from: where the channel is, and anything just refused. */
 export interface WooView {
-  /** The shop this account has connected, or null for none. */
-  readonly connection: ConnectedShop | null;
+  /** Where this account's channel has got to, read off our own rows. */
+  readonly state: ShopState;
   /** What was wrong with what the merchant just typed, where anything was. */
   readonly problem?: string;
   /** What they typed, so a refusal leaves the box as they left it. */
@@ -48,10 +79,35 @@ export interface WooView {
    * Whether this is the page their browser came back to from their own shop.
    *
    * It changes what the page says and nothing about what it claims: the state
-   * below is read off our own rows either way.
+   * above is read off our own rows either way.
    */
   readonly cameBack?: boolean;
 }
+
+/** How long ago a Connect was pressed, as a merchant would say it. */
+const minutesAgo = (minutes: number): string =>
+  minutes < 1 ? "less than a minute ago" : `${minutes} ${minutes === 1 ? "minute" : "minutes"} ago`;
+
+/**
+ * The two sentences a Connect that produced no keys is worth.
+ *
+ * They are two and not one because the merchant's move differs. Inside the
+ * fifteen minutes the answer is to wait, and saying "your shop could not reach
+ * us" there would be us announcing a failure we have not seen. Past them the
+ * request is not coming, and the one thing that stops it is on the merchant's
+ * own server — so that is what the second sentence names.
+ */
+const noKeysYet = (state: ShopState): string => {
+  if (state.kind === "waiting") {
+    return `<p>You started connecting ${escaped(state.shopUrl)} ${escaped(minutesAgo(state.startedMinutesAgo))}, and no keys have reached us yet.</p>
+      <p class="quiet">The keys do not travel with your browser: your shop sends them to us in a request of its own, and it may not have arrived yet. Reload this page in a moment.</p>`;
+  }
+  if (state.kind === "unanswered") {
+    return `<p>You started connecting ${escaped(state.shopUrl)}, and its keys never arrived.</p>
+      <p class="quiet">Your shop could not reach us. That request has to leave your own server and arrive here over https, and a shop behind a firewall that blocks outgoing requests never sends it. Connect again once your shop can make them.</p>`;
+  }
+  return "";
+};
 
 const WHAT_CONNECTING_DOES = `<p>Connecting reads your shop's catalogue and publishes what it finds as cards, so agents can buy your products. When one is bought, the order is created in your shop, marked paid, and appears in WooCommerce → Orders like any other.</p>
   <p class="quiet">Your shop asks you to approve this in its own screen, and it is your shop that hands us the keys — nothing here asks for a password of yours. The keys appear afterwards in WooCommerce → Settings → Advanced → REST API under the name Coinslot, where you can revoke them whenever you like.</p>`;
@@ -67,7 +123,9 @@ export const wooScreen = (viewer: Viewer, view: WooView): string => {
     </div>
   </div>
 ${view.cameBack === true ? cameBackNote(view) : ""}${
-  view.connection === null ? theForm(base, view) : theConnection(base, view.connection, view)
+  view.state.kind === "connected"
+    ? theConnection(base, view.state.shop, view)
+    : `${waitingBlock(view.state)}${theForm(base, view)}`
 }`;
 
   return page({
@@ -89,18 +147,77 @@ ${view.cameBack === true ? cameBackNote(view) : ""}${
  * they are two: their shop said it approved, and the keys either arrived here
  * or did not. A page that read the redirect and announced success would be
  * announcing something it has not seen.
+ *
+ * Where they did not arrive it says only that the shop claims to have approved.
+ * The diagnosis is in the block below rather than repeated here, because that
+ * block is drawn on a reload and on the settings screen as well, and a merchant
+ * who comes back to this page tomorrow needs the same sentence they got today.
  */
 const cameBackNote = (view: WooView): string =>
-  view.connection === null
-    ? `  <div class="callout">
-    <div class="what">Your shop says it approved the connection, and no keys have reached us yet.</div>
-    <div class="why">The keys do not travel with your browser: your shop sends them to us in a request of its own, and that request has either not arrived or did not get through. Reload this page in a moment. If it stays like this, your shop could not reach us — that request has to leave your server and arrive over https, and a shop behind a firewall that blocks outgoing requests never sends it.</div>
-  </div>
-`
-    : `  <div class="callout done">
+  view.state.kind === "connected"
+    ? `  <div class="callout done">
     <div class="what">Your shop is connected. The keys arrived from your shop's own server, which is what settles it.</div>
   </div>
+`
+    : `  <div class="callout">
+    <div class="what">Your shop says it approved the connection.</div>
+    <div class="why">What that settles is its half. The keys travel separately, on a request from your shop's own server to ours, and what follows is what has actually reached us.</div>
+  </div>
 `;
+
+/** The Connect that produced no keys, drawn above the form that starts another. */
+const waitingBlock = (state: ShopState): string => {
+  const said = noKeysYet(state);
+  return said === ""
+    ? ""
+    : `  <div class="lede">
+    <div>
+      <h2>The connection you started</h2>
+      ${said}
+    </div>
+  </div>
+`;
+};
+
+/**
+ * What the return address answers a browser that arrives carrying no session.
+ *
+ * Which, on a real return, is every browser. The cabinet's cookie is
+ * `SameSite=Strict` (ADR-0009) and the navigation back is started by the
+ * merchant's own shop, so the request that lands here has nothing on it even
+ * for somebody signed in on that very browser. Behind the sign-in gate that
+ * ends a working flow on a sign-in form, and a merchant reads the form as the
+ * connect having failed — which is what happened, twice, when this flow was
+ * walked by hand.
+ *
+ * So the page is drawn for anybody, and every word of it is chosen so that
+ * anybody may read it. It says what this address is for, which is true of the
+ * address rather than of the visitor; it does not say that a connection
+ * happened, because for whoever typed the address in by hand none did, and
+ * because what the shop's `success=1` claims is not something we have seen. It
+ * names no account, no shop and no key, and the same page is served whether
+ * this cabinet holds a connection or holds nothing — a stranger who walks up to
+ * this address learns that the address exists, and that is all there is here to
+ * learn.
+ *
+ * The one link on it is the sign-in, which is the door that answers everybody
+ * the same way too. A link straight into the cabinet would be an invitation
+ * into a place the reader may have no account in, and it would end where this
+ * page started: on a form nobody was expecting.
+ */
+export const wooReturnScreen = (base: string, mode: SurfaceMode): string =>
+  bare(
+    base,
+    "Back from your shop",
+    `<div class="gate">
+  <h1>Coinslot</h1>
+  <p>This is the address a WooCommerce shop sends you to when it has finished with a connection.</p>
+  <p>Nothing about it can be shown here. Arriving from another site does not carry your sign-in with it, which is deliberate and is why you are reading this page rather than your own settings.</p>
+  <p>Sign in and your settings say where the connection got to: which shop is connected, or that one was started and its keys have not reached us.</p>
+  <p class="quiet"><a href="${escaped(base)}/sign-in">Sign in</a></p>
+</div>`,
+    mode,
+  );
 
 /** The box the shop's address is typed into. */
 const theForm = (base: string, view: WooView): string => `  <div class="lede">
@@ -254,6 +371,7 @@ const refusedBlock = (outcomes: readonly ImportOutcome[]): string => `  <div cla
     <div>
       <h2>Not published</h2>
       <p class="quiet">These are our own publishing rules, and the sentences under each product are the ones the publish door gave. Change what they name in your shop and import again.</p>
+      <p class="quiet">Where one of them counts the characters in a description, the number is of your product's description with the formatting taken out and the runs of whitespace collapsed: the tags your shop stores around the words are not part of what a card carries, so they are not part of what is counted. Your shop's own editor will show you a larger number than this page does, and the difference is the markup.</p>
       <ul>${outcomes
         .map(
           (
@@ -291,18 +409,49 @@ const skippedBlock = (skipped: readonly SkippedProduct[]): string => `  <div cla
 `;
 
 /**
- * The block on the settings screen that says this exists.
+ * The block on the settings screen that says where the channel has got to.
  *
- * A link rather than the state, because the state is a row and a read, and the
- * settings screen is drawn from two calls to the gateway that have nothing to
- * do with a shop. What it has to do is be findable: a merchant who has a
- * WooCommerce shop has no other reason to guess at an address.
+ * It draws the state rather than a standing invitation, and that is the whole
+ * of why it reads rows. A merchant comes back from approving in their own shop,
+ * opens Settings, and finds out there whether it took; a block that says
+ * "connect a WooCommerce shop" over a shop that is already connected is not
+ * merely out of date, it is this page telling them the Connect failed and
+ * sending them round the loop again.
+ *
+ * The same four states as the shop screen and the same sentences for the two
+ * that are neither connected nor nothing, because this is the screen a merchant
+ * looks at after being sent here from the return page, and being told two
+ * different things by two pages about one row is worse than being told nothing.
+ * What a merchant does about any of it — the import, the disconnect, the form
+ * that starts another Connect — is on the shop screen, and this block is the
+ * way in from all four.
+ *
+ * A shop that granted less than read and write is said here too, for the same
+ * reason the third state exists: that channel cannot deliver a single order,
+ * and a line reading only "connected" over it is this page being reassuring
+ * about something that is broken.
  */
-export const wooSettingsBlock = (base: string): string => `  <div class="lede">
+export const wooSettingsBlock = (base: string, state: ShopState): string => {
+  const said =
+    state.kind === "connected"
+      ? `<p>${escaped(state.shop.shopUrl)}, connected ${escaped(moment(state.shop.connectedAt.toISOString()))}.</p>
+      ${
+        state.shop.permissions === "read_write"
+          ? ""
+          : `<p class="problem">Your shop granted ${escaped(state.shop.permissions)} access rather than read and write, so every sale would be refused at the moment of delivery. Connect again and approve read and write access.</p>`
+      }
+      <p><a href="${escaped(base)}/woocommerce">Your shop</a></p>`
+      : state.kind === "none"
+        ? `<p>If your products live in a WooCommerce shop, connect it and your catalogue is published here for agents to buy. Orders are created in your shop, marked paid.</p>
+      <p><a href="${escaped(base)}/woocommerce">Connect a WooCommerce shop</a></p>`
+        : `${noKeysYet(state)}
+      <p><a href="${escaped(base)}/woocommerce">${state.kind === "waiting" ? "Check the connection" : "Connect again"}</a></p>`;
+
+  return `  <div class="lede">
     <div>
       <h2>WooCommerce</h2>
-      <p>If your products live in a WooCommerce shop, connect it and your catalogue is published here for agents to buy. Orders are created in your shop, marked paid.</p>
-      <p><a href="${escaped(base)}/woocommerce">Connect a WooCommerce shop</a></p>
+      ${said}
     </div>
   </div>
 `;
+};

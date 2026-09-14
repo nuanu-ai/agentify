@@ -17,11 +17,18 @@
  * §3). A screen that cannot be drawn is API the merchant does not have either.
  *
  * Who is allowed in is one middleware and not a check per handler, and that is
- * ADR-0009 §5. The gate sits above every route below it, so a page added later
+ * ADR-0009 §2. The gate sits above every route below it, so a page added later
  * is guarded because it is a page rather than because somebody remembered — and
  * a visitor with no session is answered identically at every address, including
  * the ones that do not exist, so the cabinet's inventory of pages is not
  * something a stranger can read off it.
+ *
+ * What stands above the gate is written out in that decision and is short: the
+ * sign-in, the registration, the pages a mailed link lands on, the stylesheet,
+ * the health probe, the shop's own callback and the address a shop sends a
+ * browser back to. Each is there because a session cannot reach it, and each
+ * answers the same thing to everybody — which is the property that makes the
+ * list safe to add to, and the one to check before adding to it.
  */
 
 import { readFileSync } from "node:fs";
@@ -67,7 +74,13 @@ import {
   theStateToken,
   whatIsWrongWithTheShopUrl,
 } from "./woo-connect.js";
-import { type ImportOutcome, wooImportScreen, wooScreen } from "./woo-screens.js";
+import {
+  type ImportOutcome,
+  type ShopState,
+  wooImportScreen,
+  wooReturnScreen,
+  wooScreen,
+} from "./woo-screens.js";
 import { type CatalogueRead, catalogueOf } from "./woo-shop.js";
 import type { WooShops } from "./woo-shops.js";
 
@@ -295,6 +308,21 @@ const PRODUCTS_AT_MOST = 200;
  */
 const people = new WeakMap<Request, Person>();
 
+/**
+ * The three answers the settings screen is drawn from.
+ *
+ * The shop is optional and the other two are not, because the first two are
+ * always asked for and the third exists only where this cabinet has somewhere
+ * to keep a connection — and where the read of it came back at all. Absent
+ * means no block about a shop; the four states of one that is there are
+ * `ShopState`.
+ */
+interface Settings {
+  readonly sellerName: string | null;
+  readonly payoutWallet: string | null;
+  readonly shop?: ShopState;
+}
+
 /** The whole cabinet on an express app. */
 export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   const app = express();
@@ -304,14 +332,9 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   const viewingSettings = (
     request: Request,
     pageBase: string,
-    settings: { sellerName: string | null; payoutWallet: string | null },
+    settings: Settings,
     walletProblem?: string,
-  ): Viewer => ({
-    ...viewingSettingsAt(request, pageBase, config.surfaceMode, settings, walletProblem),
-    // The settings screen draws a link into the shop screens, and those are
-    // mounted only where there is somewhere to keep a connection.
-    canConnectAShop: parts.wooShops !== undefined,
-  });
+  ): Viewer => viewingSettingsAt(request, pageBase, config.surfaceMode, settings, walletProblem);
   const problemPage = (pageBase: string, said: string): string =>
     problemPageAt(pageBase, config.surfaceMode, said);
   const trouble = (response: Response, pageBase: string, answer: Answer<unknown>): void =>
@@ -477,6 +500,52 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       }
     });
   });
+
+  /**
+   * The address a merchant's own shop sends their browser back to.
+   *
+   * Above the gate, and that is the whole of this route's reason for being
+   * written out here rather than beside the shop screens. The session cookie is
+   * `SameSite=Strict` (ADR-0009): a navigation begun on the merchant's own
+   * shop is cross-site, so the request that lands here carries nothing — for a
+   * merchant signed in on that very browser, every time. Behind the gate it
+   * ended a flow that had worked on a sign-in form, and what a merchant read
+   * there was that the connect had failed.
+   *
+   * Taking the address out from behind the gate costs nothing because there is
+   * nothing behind it to take: with no session this route reads no row, asks the
+   * gateway nothing and draws a page that is the same page for everybody. A
+   * stranger who walks up to it learns that the address exists. That is the only
+   * claim on it, and it is true before anybody has connected anything.
+   *
+   * The token still comes out of the address bar first. WooCommerce hands
+   * `user_id` back on this redirect, and in the case the page exists for — the
+   * keys never arrived — it is unspent and good for the rest of its fifteen
+   * minutes. What the redirect buys is what a redirect can buy: the address bar
+   * and the browser's back history hold the stripped address rather than the
+   * one with the token in it, and nothing the page then loads carries the token
+   * in a `Referer`. What it does not buy is the request that already happened —
+   * the token was in the address line of that one, so it is in this process's
+   * own log and in the log of anything between the merchant and us, and only
+   * spending or expiry ends that. Now that a real return arrives with no
+   * session every time, this is the path that has to do the stripping, so it is
+   * a redirect to this same address with the query gone rather than the
+   * redirect into the cabinet that a signed-in visitor still gets.
+   */
+  if (parts.wooShops !== undefined) {
+    const returnPath = `${base}/woocommerce/return`;
+    app.get(returnPath, async (request, response) => {
+      if ((await identity.whoIs(request.headers.cookie)) !== null) {
+        response.redirect(303, `${base}/woocommerce?from=shop`);
+        return;
+      }
+      if (Object.keys(request.query).length > 0) {
+        response.redirect(303, returnPath);
+        return;
+      }
+      response.type("html").send(wooReturnScreen(base, config.surfaceMode));
+    });
+  }
 
   app.get(`${base}/sign-in`, async (request, response) => {
     // Cleared here rather than anywhere else, because this is the one page
@@ -932,8 +1001,9 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
 
   /**
    * The gate. Everything below this line needs a session; everything above it
-   * is the sign-in, the registration, the pages a link lands on, the stylesheet
-   * and the health probe.
+   * is the sign-in, the registration, the pages a link lands on, the stylesheet,
+   * the health probe, the shop's callback and the address a shop sends a browser
+   * back to.
    *
    * A visitor without one is answered the same way at every address, which is
    * why this is a middleware and not a check inside each handler: a page added
@@ -1113,25 +1183,97 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   });
 
   /**
+   * Where one account's WooCommerce channel has got to, for the two screens
+   * that draw it.
+   *
+   * One function and not two, because the settings block and the shop screen
+   * are the same four states and a merchant reads both about one row. It is the
+   * only place the clock is held against a Connect: the screens are handed a
+   * state that has already been decided, so neither of them can decide it
+   * differently.
+   *
+   * The connection wins over a Connect still on the table. A merchant who is
+   * connected and pressed Connect again for a second shop is connected until
+   * the new keys arrive, and saying otherwise would tell them their working
+   * channel had stopped.
+   *
+   * `undefined` is a cabinet with nowhere to keep a connection, which draws no
+   * block at all rather than an empty one.
+   */
+  const shopStateFor = async (accountId: string): Promise<ShopState | undefined> => {
+    const shops = parts.wooShops;
+    if (shops === undefined) {
+      return undefined;
+    }
+    const connection = await shops.connectionOf(accountId);
+    if (connection !== null) {
+      return {
+        kind: "connected",
+        // The three fields a screen may know, never the row: the key and the
+        // secret are a stranger's credential at rest (ADR-0023), and the rule
+        // that they never reach a page is held by the screens having no way to
+        // draw them rather than by whoever writes the next one remembering.
+        shop: {
+          shopUrl: connection.shopUrl,
+          permissions: connection.permissions,
+          connectedAt: connection.connectedAt,
+        },
+      };
+    }
+    const waiting = await shops.grantFor(accountId);
+    if (waiting === null) {
+      return { kind: "none" };
+    }
+    const now = Date.now();
+    if (waiting.expiresAt.getTime() <= now) {
+      return { kind: "unanswered", shopUrl: waiting.shopUrl };
+    }
+    return {
+      kind: "waiting",
+      shopUrl: waiting.shopUrl,
+      // Rounded down, so a Connect pressed forty seconds ago is "less than a
+      // minute" rather than "one minute": a number a merchant can watch climb
+      // is worth more than one that is right on average.
+      startedMinutesAgo: Math.floor((now - waiting.startedAt.getTime()) / 60_000),
+    };
+  };
+
+  /**
    * Everything the settings screen is drawn from, asked for in one place.
    *
-   * The screen shows two things a merchant has set, and it is reached three
+   * The screen shows three things a merchant has set, and it is reached three
    * ways: opened, and redrawn after either of its two forms was refused. Asking
-   * for both in each of those by hand is how one of them comes to be forgotten
-   * in one of them — and the page that results does not look broken, it looks
-   * like a merchant who has set nothing.
+   * for each of them in each of those by hand is how one comes to be forgotten
+   * in one — and the page that results does not look broken, it looks like a
+   * merchant who has set nothing.
    *
-   * Both calls go out together rather than one after the other, because a
-   * merchant waiting for a page should wait for the slower of the two rather
-   * than for their sum. Either one failing is the whole page failing: a
-   * settings screen drawn without one of its answers would be claiming
-   * something about a field nobody asked about.
+   * The calls go out together rather than one after another, because a merchant
+   * waiting for a page should wait for the slowest of them rather than for their
+   * sum. Either of the gateway's failing is the whole page failing: a settings
+   * screen drawn without one of its answers would be claiming something about a
+   * field nobody asked about.
+   *
+   * The shop is the exception and does not take the page down with it. It is our
+   * own table, it holds one block on a page whose other three subjects are the
+   * merchant's name, their money and their account, and a merchant whose payout
+   * address is wrong must be able to reach the box for it while our shops table
+   * is unreachable. So a read that throws is logged and drawn as no block, which
+   * is what a cabinet with no store for connections draws anyway.
    */
-  const settingsOf = async (
-    request: Request,
-  ): Promise<Answer<{ sellerName: string | null; payoutWallet: string | null }>> => {
+  const settingsOf = async (request: Request): Promise<Answer<Settings>> => {
     const gateway = gatewayAs(request);
-    const [name, wallet] = await Promise.all([gateway.sellerName(), gateway.payoutWallet()]);
+    const person = whoIs(request);
+    const [name, wallet, shop] = await Promise.all([
+      gateway.sellerName(),
+      gateway.payoutWallet(),
+      shopStateFor(person.id).catch((thrown: unknown) => {
+        console.error(
+          "[cabinet] the WooCommerce connection could not be read for a settings screen",
+          thrown,
+        );
+        return undefined;
+      }),
+    ]);
     if (!name.ok) {
       return name;
     }
@@ -1140,7 +1282,11 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     }
     return {
       ok: true,
-      document: { sellerName: name.document, payoutWallet: wallet.document },
+      document: {
+        sellerName: name.document,
+        payoutWallet: wallet.document,
+        ...(shop === undefined ? {} : { shop }),
+      },
     };
   };
 
@@ -1240,7 +1386,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     const grantScreen = parts.shop?.grantScreen ?? isTheGrantScreen;
     const catalogue = parts.shop?.catalogue ?? catalogueOf;
 
-    /** The page, drawn from the connection and from what buyers read. */
+    /** The page, drawn from where the channel is and from what buyers read. */
     const drawTheShop = async (
       request: Request,
       response: Response,
@@ -1248,34 +1394,25 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       status = 200,
     ): Promise<void> => {
       const person = whoIs(request);
-      const [connection, name] = await Promise.all([
-        shops.connectionOf(person.id),
+      const [state, name] = await Promise.all([
+        shopStateFor(person.id),
         gatewayAs(request).sellerName(),
       ]);
       if (!name.ok) {
         return trouble(response, base, name);
       }
+      if (state === undefined) {
+        // Unreachable: these routes are mounted only where there is a store,
+        // and that is the one thing `shopStateFor` answers `undefined` for.
+        throw new Error(
+          "the shop screens ran on a cabinet with no store for connections, which means the" +
+            " routes were mounted where they should not have been",
+        );
+      }
       response
         .status(status)
         .type("html")
-        .send(
-          wooScreen(viewing(request, base, name.document), {
-            ...view,
-            // The three fields a screen draws and not the row. The key and the
-            // secret are a stranger's credential at rest (ADR-0023), and the
-            // rule that they never reach a page is held by the screen having no
-            // way to draw them rather than by whoever writes the next one
-            // remembering.
-            connection:
-              connection === null
-                ? null
-                : {
-                    shopUrl: connection.shopUrl,
-                    permissions: connection.permissions,
-                    connectedAt: connection.connectedAt,
-                  },
-          }),
-        );
+        .send(wooScreen(viewing(request, base, name.document), { ...view, state }));
     };
 
     app.get(`${base}/woocommerce`, async (request, response) => {
@@ -1285,30 +1422,6 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       // The flag and not the token, which is the whole point of the redirect
       // that set it.
       await drawTheShop(request, response, { cameBack: request.query.from === "shop" });
-    });
-
-    /**
-     * The page the merchant's own shop sends their browser back to.
-     *
-     * What the shop's redirect says — `success=1` — is read and deliberately
-     * not acted on. The keys travel on a separate request from the shop's own
-     * server to ours, and a shop that approved and could not reach us sends the
-     * browser back saying success all the same. So the page draws the connection
-     * we actually hold, and where we hold none it says the keys have not arrived
-     * rather than that anything failed, which it does not know.
-     *
-     * It answers with a redirect rather than with that page, and the reason is
-     * what the shop puts in the address it sends the browser to. WooCommerce
-     * hands `user_id` back on this redirect, so the address bar is holding the
-     * state token — and in the very case this page exists for, the one where
-     * the keys never arrived, that token is unspent and good for the rest of
-     * its fifteen minutes. Left there it is in the browser's history and in the
-     * log of everything between the merchant and us. One redirect and it is
-     * gone, and what carries the news to the page it lands on is a flag naming
-     * nothing.
-     */
-    app.get(`${base}/woocommerce/return`, (_request, response) => {
-      response.redirect(303, `${base}/woocommerce?from=shop`);
     });
 
     app.post(`${base}/woocommerce/connect`, async (request, response) => {
@@ -1369,11 +1482,16 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       // Written down only now: a Connect nobody could have completed is a row
       // nobody comes back for.
       const person = whoIs(request);
+      // One reading of the clock for both fields, so that "started four minutes
+      // ago" and "the fifteen minutes are up" can never disagree by the width
+      // of the statement between them.
+      const startedAt = new Date();
       await shops.beginGrant({
         token,
         accountId: person.id,
         shopUrl,
-        expiresAt: new Date(Date.now() + GRANT_MINUTES * 60_000),
+        startedAt,
+        expiresAt: new Date(startedAt.getTime() + GRANT_MINUTES * 60_000),
       });
       noted(person, `started connecting the WooCommerce shop at ${shopUrl}`);
       response.redirect(303, authorize);
@@ -1699,7 +1817,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
  * Dropping it costs the distinction between a page served over http and one
  * served over https on the same host, and that distinction is already made
  * where it can be made without trusting anybody: the session cookie is
- * `Secure` wherever the cabinet is served over https (ADR-0009 §3), so a page
+ * `Secure` wherever the cabinet is served over https (ADR-0009 §6), so a page
  * on the http origin has no session to forge a post with. A guard cannot be
  * the reason a merchant is locked out.
  */
@@ -1816,7 +1934,7 @@ const viewingSettingsAt = (
   request: Request,
   base: string,
   mode: Viewer["mode"],
-  settings: { sellerName: string | null; payoutWallet: string | null },
+  settings: Settings,
   walletProblem?: string,
 ): Viewer => ({
   ...viewingAt(request, base, mode, settings.sellerName),
@@ -1824,6 +1942,9 @@ const viewingSettingsAt = (
     wallet: settings.payoutWallet,
     ...(walletProblem === undefined ? {} : { problem: walletProblem }),
   },
+  // Carried straight through, absence included: a cabinet with no store for
+  // connections hands no shop here and the screen draws no block about one.
+  ...(settings.shop === undefined ? {} : { shop: settings.shop }),
 });
 
 /**
@@ -1856,9 +1977,9 @@ const walletIn = (request: Request): string => {
 /**
  * One line saying who changed something.
  *
- * ADR-0009 §7 is honest about what this is: a process log, not an audit trail.
- * It rotates, it goes with the container, and it is written by the same process
- * it is a record of. What it answers is "who stopped the selling", which before
+ * Be honest about what this is: a process log, not an audit trail. It rotates,
+ * it goes with the container, and it is written by the same process it is a
+ * record of. What it answers is "who stopped the selling", which before
  * there was a person in the system could not be answered at all.
  *
  * What never goes in: a password, a session identifier, the merchant key. A log
