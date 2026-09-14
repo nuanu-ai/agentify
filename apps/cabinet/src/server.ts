@@ -56,6 +56,20 @@ import {
   registerScreen,
   signInScreen,
 } from "./sign-in.js";
+import { cardsFromTheShop } from "./woo-catalog.js";
+import {
+  APP_NAME,
+  authorizeUrlFor,
+  GRANT_MINUTES,
+  isTheGrantScreen,
+  type Preflight,
+  shopUrlAs,
+  theStateToken,
+  whatIsWrongWithTheShopUrl,
+} from "./woo-connect.js";
+import { type ImportOutcome, wooImportScreen, wooScreen } from "./woo-screens.js";
+import { type CatalogueRead, catalogueOf } from "./woo-shop.js";
+import type { WooShops } from "./woo-shops.js";
 
 /**
  * The cookies the cabinet used to keep something live in.
@@ -229,7 +243,47 @@ export interface CabinetParts {
    * registering is not a merchant yet and there is no key to bind a client to.
    */
   readonly registrar?: Registrar;
+  /**
+   * Where a merchant's connected WooCommerce shop is kept, for the cabinet that
+   * has one.
+   *
+   * Optional, and absent is a cabinet with no WooCommerce screens at all rather
+   * than screens that fail: a deployment without the tables has nothing to draw
+   * them from, and a page offering to connect a shop it cannot write down would
+   * be a button that loses somebody's keys.
+   */
+  readonly wooShops?: WooShops;
+  /**
+   * How a merchant's own shop is reached, with the real calls as the default.
+   *
+   * The same shape as the gateway client above and there for the same reason:
+   * only a test ever passes anything else, and what a deployment runs is the
+   * two calls in `woo-shop.ts` and `woo-connect.ts`. It is a part rather than a
+   * module a test replaces because both of them reach a shop over https, and a
+   * shop these tests could stand up on a loopback port would be refused at the
+   * door before either of them ran — which is the door working correctly and a
+   * fixture that cannot be built.
+   */
+  readonly shop?: {
+    /** Whether an authorize address actually reaches wc-auth. */
+    readonly grantScreen: (authorizeUrl: string) => Promise<Preflight>;
+    /** Everything a shop offers for sale, off its Store API. */
+    readonly catalogue: (shopUrl: string) => Promise<CatalogueRead>;
+  };
 }
+
+/**
+ * The most products one import brings over.
+ *
+ * A number rather than paging, and it is named on the page it refuses rather
+ * than being a silent cut. Every product is a separate call to the publish
+ * door, made while a merchant is holding a page open, so the honest ceiling is
+ * the one a page can carry — and a shop past it is told that its catalogue is
+ * larger than this brings over in one go, which is a gap somebody can act on,
+ * rather than being handed the first two hundred as though that were all of
+ * them.
+ */
+const PRODUCTS_AT_MOST = 200;
 
 /**
  * Whose session a request arrived on.
@@ -252,7 +306,12 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     pageBase: string,
     settings: { sellerName: string | null; payoutWallet: string | null },
     walletProblem?: string,
-  ): Viewer => viewingSettingsAt(request, pageBase, config.surfaceMode, settings, walletProblem);
+  ): Viewer => ({
+    ...viewingSettingsAt(request, pageBase, config.surfaceMode, settings, walletProblem),
+    // The settings screen draws a link into the shop screens, and those are
+    // mounted only where there is somewhere to keep a connection.
+    canConnectAShop: parts.wooShops !== undefined,
+  });
   const problemPage = (pageBase: string, said: string): string =>
     problemPageAt(pageBase, config.surfaceMode, said);
   const trouble = (response: Response, pageBase: string, answer: Answer<unknown>): void =>
@@ -332,6 +391,91 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
 
   app.get(`${base}/coinslot.css`, (_request, response) => {
     response.type("text/css").send(STYLESHEET);
+  });
+
+  /**
+   * Where a merchant's WooCommerce shop delivers the keys it just minted.
+   *
+   * Above the gate, because it has to be: this is a request from the merchant's
+   * own web server, carrying no cookie of ours and no key of ours, and a route
+   * behind the sign-in would simply never be reached. What stands in for a
+   * session is the one-time token the shop hands back as `user_id` — it was
+   * written down when the merchant pressed Connect, bound to their account and
+   * to the shop they typed, and it is spent by arriving here. Without it this
+   * address is a way for anybody to put their own shop's keys on somebody
+   * else's account, which is the whole of why the token exists.
+   *
+   * The status is the answer and the body is not. WooCommerce deletes the key
+   * it minted when the post fails (`class-wc-auth.php`, `maybe_delete_key`), so
+   * a refusal here is not merely us declining to write a row: it takes the key
+   * back out of the merchant's shop. That is the right outcome for a token we
+   * do not recognise, and the reason nothing below answers 200 out of
+   * politeness.
+   *
+   * It parses its own body. Everything else in this cabinet is a form and the
+   * body parser above reads forms; this one arrives as JSON from WordPress, and
+   * a JSON parser mounted at the top would be a second parser on every form
+   * post the merchant makes.
+   */
+  app.post(`${base}/woocommerce/callback`, express.json({ limit: "16kb" }), (request, response) => {
+    void (async () => {
+      const shops = parts.wooShops;
+      if (shops === undefined) {
+        response.status(404).json({ ok: false });
+        return;
+      }
+      const body = (request.body ?? {}) as Record<string, unknown>;
+      const token = typeof body.user_id === "string" ? body.user_id : "";
+      const consumerKey = typeof body.consumer_key === "string" ? body.consumer_key : "";
+      const consumerSecret = typeof body.consumer_secret === "string" ? body.consumer_secret : "";
+      const permissions = typeof body.key_permissions === "string" ? body.key_permissions : "";
+
+      if (token === "" || consumerKey === "" || consumerSecret === "") {
+        console.log("[cabinet] a WooCommerce callback arrived without the keys it has to carry");
+        response.status(400).json({ ok: false });
+        return;
+      }
+
+      // Spent, not merely looked at. A token that worked twice would let
+      // anybody who ever saw one — in a shop's own logs, in a browser's
+      // history — put a second shop's keys on that account afterwards.
+      const grant = await shops.spendGrant(token, new Date());
+      if (grant === null) {
+        // One answer for a token nobody issued, one already spent and one whose
+        // fifteen minutes are up. Telling them apart here would be answering
+        // questions about somebody else's account to whoever asked.
+        console.log("[cabinet] a WooCommerce callback arrived with a token we do not hold");
+        response.status(401).json({ ok: false });
+        return;
+      }
+
+      await shops.connect({
+        accountId: grant.accountId,
+        // The shop the merchant typed and we checked, not one named in this
+        // request: the callback is unauthenticated, so a shop address read out
+        // of it would be a shop of the caller's choosing.
+        shopUrl: grant.shopUrl,
+        consumerKey,
+        consumerSecret,
+        permissions,
+        connectedAt: new Date(),
+      });
+      // The address and the scope, never the keys: a log goes places the
+      // database does not.
+      console.log(
+        printable(
+          `[cabinet] a WooCommerce shop was connected for an account: ${grant.shopUrl}, ${permissions}`,
+        ),
+      );
+      response.json({ ok: true });
+    })().catch((thrown) => {
+      // Answered as a failure so the shop takes its key back rather than
+      // leaving one nothing here knows about.
+      console.error("[cabinet] a WooCommerce callback could not be written down", thrown);
+      if (!response.headersSent) {
+        response.status(500).json({ ok: false });
+      }
+    });
   });
 
   app.get(`${base}/sign-in`, async (request, response) => {
@@ -1080,6 +1224,179 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     noted(whoIs(request), "changed the address their money arrives at");
     response.redirect(303, `${base}/settings`);
   });
+
+  /**
+   * The shop screens, and the one thing they all need.
+   *
+   * A cabinet built without a place to keep connections has no WooCommerce
+   * screens at all: the routes below are mounted only where there is a store,
+   * so a deployment whose tables are not there answers "there is no such page"
+   * rather than drawing a form whose button loses somebody's keys.
+   */
+  const shops = parts.wooShops;
+  if (shops !== undefined) {
+    /** The address a shop is told to send a merchant back to, and the keys to. */
+    const whereWeAre = `${config.publicBaseUrl}${base}`;
+    const grantScreen = parts.shop?.grantScreen ?? isTheGrantScreen;
+    const catalogue = parts.shop?.catalogue ?? catalogueOf;
+
+    /** The page, drawn from the connection and from what buyers read. */
+    const drawTheShop = async (
+      request: Request,
+      response: Response,
+      view: { problem?: string; typed?: string; cameBack?: boolean },
+      status = 200,
+    ): Promise<void> => {
+      const person = whoIs(request);
+      const [connection, name] = await Promise.all([
+        shops.connectionOf(person.id),
+        gatewayAs(request).sellerName(),
+      ]);
+      if (!name.ok) {
+        return trouble(response, base, name);
+      }
+      response
+        .status(status)
+        .type("html")
+        .send(wooScreen(viewing(request, base, name.document), { ...view, connection }));
+    };
+
+    app.get(`${base}/woocommerce`, async (request, response) => {
+      await drawTheShop(request, response, {});
+    });
+
+    /**
+     * The page the merchant's own shop sends their browser back to.
+     *
+     * What the shop's redirect says — `success=1` — is read and deliberately
+     * not acted on. The keys travel on a separate request from the shop's own
+     * server to ours, and a shop that approved and could not reach us sends the
+     * browser back saying success all the same. So this draws the connection we
+     * actually hold, and where we hold none it says the keys have not arrived
+     * rather than that anything failed, which it does not know.
+     */
+    app.get(`${base}/woocommerce/return`, async (request, response) => {
+      await drawTheShop(request, response, { cameBack: true });
+    });
+
+    app.post(`${base}/woocommerce/connect`, async (request, response) => {
+      const form = (request.body ?? {}) as { shop_url?: unknown };
+      const typed = typeof form.shop_url === "string" ? form.shop_url.trim() : "";
+
+      const wrong = whatIsWrongWithTheShopUrl(typed);
+      if (wrong !== null) {
+        return await drawTheShop(request, response, { problem: wrong, typed }, 400);
+      }
+      const shopUrl = shopUrlAs(typed);
+
+      // The token is minted before the shop is asked anything, so the address
+      // we check is character for character the address the browser is sent to.
+      const token = theStateToken();
+      const authorize = authorizeUrlFor(shopUrl, {
+        appName: APP_NAME,
+        userId: token,
+        returnUrl: `${whereWeAre}/woocommerce/return`,
+        callbackUrl: `${whereWeAre}/woocommerce/callback`,
+      });
+
+      // Asked before anybody is sent anywhere. A shop with plain permalinks
+      // answers this address with its own front page and a 200, so a merchant
+      // sent there lands on their own shop with nothing to report.
+      const looked = await grantScreen(authorize);
+      if (!looked.ok) {
+        return await drawTheShop(request, response, { problem: looked.why, typed }, 400);
+      }
+
+      // Written down only now: a Connect nobody could have completed is a row
+      // nobody comes back for.
+      const person = whoIs(request);
+      await shops.beginGrant({
+        token,
+        accountId: person.id,
+        shopUrl,
+        expiresAt: new Date(Date.now() + GRANT_MINUTES * 60_000),
+      });
+      noted(person, `started connecting the WooCommerce shop at ${shopUrl}`);
+      response.redirect(303, authorize);
+    });
+
+    app.post(`${base}/woocommerce/import`, async (request, response) => {
+      const person = whoIs(request);
+      const connection = await shops.connectionOf(person.id);
+      if (connection === null) {
+        response.redirect(303, `${base}/woocommerce`);
+        return;
+      }
+
+      const read = await catalogue(connection.shopUrl);
+      if (!read.ok) {
+        return await drawTheShop(request, response, { problem: read.why }, 502);
+      }
+      if (read.products.length > PRODUCTS_AT_MOST) {
+        return await drawTheShop(
+          request,
+          response,
+          {
+            problem:
+              `Your shop offers ${read.products.length} products and this brings over at most` +
+              ` ${PRODUCTS_AT_MOST} in one go. Nothing was published. Bringing a catalogue this` +
+              " size over is not built yet.",
+          },
+          400,
+        );
+      }
+
+      const { cards, skipped } = cardsFromTheShop(read.products);
+      const gateway = gatewayAs(request);
+      const outcomes: ImportOutcome[] = [];
+      for (const one of cards) {
+        const published = await gateway.publishCard(one.card);
+        if (!published.ok) {
+          // The gateway did not answer, or answered something that is not this
+          // route's document. Not a refused card, and said as what it is.
+          outcomes.push({ id: one.id, title: one.title, failed: published.why });
+          continue;
+        }
+        if (published.document.ok) {
+          outcomes.push({ id: one.id, title: one.title, published: published.document.id });
+          continue;
+        }
+        // The door's own findings, word for word. They are what tells the
+        // merchant which field of which product to change in their shop.
+        outcomes.push({
+          id: one.id,
+          title: one.title,
+          problems: published.document.error.problems.map((problem) =>
+            problem.path.length === 0
+              ? problem.message
+              : `${problem.path.join(".")}: ${problem.message}`,
+          ),
+        });
+      }
+
+      noted(
+        person,
+        `imported ${outcomes.filter((one) => one.published !== undefined).length} of` +
+          ` ${read.products.length} products from ${connection.shopUrl}`,
+      );
+      // Answered with a page rather than a redirect: a redirect carries a flag
+      // and this has to carry the door's findings, one per card.
+      response.type("html").send(
+        wooImportScreen(viewing(request, base), {
+          shopUrl: connection.shopUrl,
+          outcomes,
+          skipped,
+        }),
+      );
+    });
+
+    app.post(`${base}/woocommerce/disconnect`, async (request, response) => {
+      const person = whoIs(request);
+      await shops.forget(person.id);
+      noted(person, "forgot the keys their WooCommerce shop had given");
+      response.redirect(303, `${base}/woocommerce`);
+    });
+  }
 
   app.get(`${base}/cards`, async (request, response) => {
     const gateway = gatewayAs(request);

@@ -211,3 +211,110 @@ export const verifications = pgTable(
   },
   (table) => [index("cabinet_verifications_identifier_idx").on(table.identifier)],
 );
+
+/**
+ * A Connect somebody started and nobody has finished.
+ *
+ * One row per press of the Connect button, holding the token that went to the
+ * shop as `user_id` and the merchant it belongs to. It is the whole of what
+ * stands between a stranger and somebody else's account: WooCommerce posts the
+ * granted keys from the shop's own server, carrying no session of ours, so the
+ * callback is unauthenticated by nature and the token coming back in it is the
+ * only thing that says whose Connect this was.
+ *
+ * A row is deleted as it is spent, which is what makes the token single-use: a
+ * value that worked twice would let anybody who saw one — in a shop's logs, in
+ * a browser's history — plant a second pair of keys on that account later.
+ *
+ * The shop address is kept beside it because it is the address the merchant
+ * typed and had checked, and the keys that come back are for that shop and no
+ * other. Read out of the callback instead, it would be a shop of the caller's
+ * choosing.
+ */
+export const wooGrants = pgTable(
+  "cabinet_woo_grants",
+  {
+    /** The token itself, as it travelled. Unguessable, and spent once. */
+    token: text("token").primaryKey(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    shopUrl: text("shop_url").notNull(),
+    expiresAt: moment("expires_at"),
+    createdAt: moment("created_at"),
+  },
+  // The sweep of the ones nobody came back for reads by this.
+  (table) => [index("cabinet_woo_grants_expires_idx").on(table.expiresAt)],
+);
+
+/**
+ * One merchant's connected WooCommerce shop.
+ *
+ * The key and the secret are the shop's own credentials, stored as the shop
+ * issued them, which makes this a secret at rest of somebody else's. It is the
+ * same bargain ADR-0014 §2 makes for the merchant key on the account row and it
+ * is written down again in the decision record for this channel, because the
+ * secret here belongs to a third party rather than to us: what a copy of this
+ * table buys is write access to a stranger's shop until they revoke the key,
+ * which they can do from their own WooCommerce settings, where it appears under
+ * the name we asked for it under.
+ *
+ * The rule that follows for everything above this table is the same one: these
+ * two columns never reach a page, a log or the text of an error.
+ *
+ * One row per account rather than per merchant, keyed by the account, because
+ * the account is what the Connect was pressed from and what the callback's
+ * token is bound to.
+ */
+export const wooShops = pgTable("cabinet_woo_shops", {
+  accountId: text("account_id")
+    .primaryKey()
+    .references(() => accounts.id, { onDelete: "cascade" }),
+  /** The shop's address, without a trailing slash, exactly as it was checked. */
+  shopUrl: text("shop_url").notNull(),
+  consumerKey: text("consumer_key").notNull(),
+  consumerSecret: text("consumer_secret").notNull(),
+  /**
+   * What the shop says the keys are good for, in the shop's own word.
+   *
+   * Kept rather than assumed. We ask for `read_write` and a shop is free to
+   * grant less; a connection whose keys can only read is one where every sale
+   * fails at the moment of delivery, and the screen says so beforehand instead
+   * of letting the merchant find out from a refunded buyer.
+   */
+  permissions: text("permissions").notNull(),
+  connectedAt: moment("connected_at"),
+});
+
+/**
+ * What we have already placed in a shop, and what we tried to.
+ *
+ * A delivery is at least once: an order whose answer never reached the gateway
+ * is handed to us again, and without this table the second attempt would place
+ * a second order in the merchant's shop for one sale. So a row is written
+ * before the shop is called and completed after it answers.
+ *
+ * The row with no order number on it is the honest half. It means an attempt
+ * reached the point of calling the shop and we never learned the outcome — the
+ * process died, the connection dropped after the request went out — so whether
+ * that shop holds an order for this sale is something nobody here knows. The
+ * next attempt reads that and refuses rather than ordering again, because a
+ * second order in a merchant's shop is a second thing they pick, pack and post.
+ */
+export const wooOrders = pgTable(
+  "cabinet_woo_orders",
+  {
+    /** Our own order identifier, which is what a repeat arrives carrying. */
+    orderId: text("order_id").primaryKey(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    /** The shop's row identifier for the order, once the shop has answered. */
+    wooOrderId: text("woo_order_id"),
+    /** The number the merchant reads on their own screen. */
+    wooOrderNumber: text("woo_order_number"),
+    attemptedAt: moment("attempted_at"),
+    placedAt: timestamp("placed_at", { withTimezone: true, mode: "date" }),
+  },
+  (table) => [index("cabinet_woo_orders_account_idx").on(table.accountId)],
+);

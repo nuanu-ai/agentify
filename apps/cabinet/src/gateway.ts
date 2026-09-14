@@ -18,10 +18,12 @@
 import {
   API_ROUTES,
   CabinetKeySchema,
+  type CardInput,
   DisabledKeySchema,
   expandPath,
   type ForgottenCabinetKey,
   ForgottenCabinetKeySchema,
+  type HandlerAnswer,
   type IssuedKey,
   IssuedKeySchema,
   MERCHANT_KEY_HEADER,
@@ -33,14 +35,20 @@ import {
   type MerchantKeyList,
   MerchantKeyListSchema,
   merchantKeyHeaderValue,
+  type OrderCallResponse,
+  OrderCallResponseSchema,
   type OrderList,
   OrderListSchema,
   PayoutWalletSchema,
+  type PublishResult,
+  PublishResultSchema,
   type ReceiptList,
   ReceiptListSchema,
   type RegisteredMerchant,
   RegisteredMerchantSchema,
   SellerNameSchema,
+  type WorkerPollResponse,
+  WorkerPollResponseSchema,
 } from "@nuanu-ai/coinslot-contracts";
 /** What a call came to, in the two shapes a page has to draw differently. */
 export type Answer<T> =
@@ -87,6 +95,31 @@ export interface GatewayClient {
   /** The address this merchant's money arrives at, or null for none. */
   payoutWallet(): Promise<Answer<string | null>>;
   setPayoutWallet(address: string): Promise<Answer<string | null>>;
+  /**
+   * Publishes one card, and hands back what the door said about it — including
+   * its refusal, which is the answer the caller most needs.
+   *
+   * It is the one call on this client whose failure is a document rather than a
+   * status, and it has its own shape for that reason. Every other call here
+   * turns a refusal into a sentence for a page; a refused publish carries a list
+   * of findings, one per thing standing between this card and the catalogue, and
+   * that list is what a merchant importing a catalogue reads. Folded into a
+   * sentence it would be one line saying a card was refused, with the reasons in
+   * a log nobody can see.
+   */
+  publishCard(card: CardInput): Promise<Answer<PublishResult>>;
+  /**
+   * Draws the next batch off this merchant's stream.
+   *
+   * The cabinet is not ordinarily a worker, and this exists for the one thing
+   * that makes it one: a merchant whose catalogue came from a WooCommerce shop
+   * has no code of their own to fill orders with, so their orders are filled
+   * here, from the shop. Every other screen in the cabinet draws and does not
+   * wait.
+   */
+  pollWorker(waitSeconds: number, max: number): Promise<Answer<WorkerPollResponse>>;
+  /** What the handler returned for one order: the goods, or a refusal. */
+  answerOrder(orderId: string, answer: HandlerAnswer): Promise<Answer<OrderCallResponse>>;
 }
 
 /**
@@ -256,7 +289,73 @@ export const gatewayFor = (
       });
       return answered.ok ? { ok: true, document: answered.document.payout_wallet } : answered;
     },
+    publishCard: (card) =>
+      // A refused card is the answer and not the absence of one, so this is the
+      // one route read through `answering` rather than through `call`.
+      answering(baseUrl, key, answerWithinMs, API_ROUTES.publish_card, PublishResultSchema, card),
+    pollWorker: (waitSeconds, max) =>
+      call(API_ROUTES.poll_worker, WorkerPollResponseSchema, {
+        body: { wait_seconds: waitSeconds, max },
+      }),
+    answerOrder: (orderId, answer) =>
+      call(API_ROUTES.answer_order, OrderCallResponseSchema, {
+        values: { order_id: orderId },
+        body: answer,
+      }),
   };
+};
+
+/**
+ * One call whose refusal is a document of its own.
+ *
+ * The publish is the only one. Its answer says `ok: false` and carries the
+ * findings, and the gateway sends it under a status that says the document was
+ * not accepted — so a caller that read the status first and stopped would throw
+ * away the only thing the merchant can act on. What is still a failure here is a
+ * gateway that did not answer, or one that answered something this schema does
+ * not recognise, and those come back as they do everywhere else.
+ */
+const answering = async <T>(
+  baseUrl: string,
+  key: string,
+  answerWithinMs: number,
+  route: { readonly method: string; readonly path: string },
+  schema: { safeParse: (value: unknown) => { success: boolean; data?: T } },
+  body: unknown,
+): Promise<Answer<T>> => {
+  let answered: Response;
+  try {
+    answered = await fetch(`${baseUrl}${route.path}`, {
+      method: route.method,
+      headers: {
+        [MERCHANT_KEY_HEADER]: merchantKeyHeaderValue(key),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(answerWithinMs),
+    });
+  } catch (thrown) {
+    const late = thrown instanceof Error && thrown.name === "TimeoutError";
+    const why = late ? "the gateway did not answer in time" : "the gateway could not be reached";
+    console.error(`[cabinet] ${why}`, thrown);
+    return { ok: false, status: 0, why };
+  }
+
+  let document: unknown;
+  try {
+    document = await answered.json();
+  } catch {
+    return { ok: false, status: answered.status, why: `the gateway answered ${answered.status}` };
+  }
+
+  const read = schema.safeParse(document);
+  if (!read.success || read.data === undefined) {
+    // Not this route's own answer. A proxy's page, a 401 from the door, a
+    // gateway speaking a dialect this cabinet does not: all of them arrive here,
+    // and none of them is a refused card.
+    return { ok: false, status: answered.status, why: reasonWritten(document, answered.status) };
+  }
+  return { ok: true, document: read.data };
 };
 
 /**
@@ -293,12 +392,14 @@ export const registrarFor = (
  */
 const reasonIn = async (answered: Response): Promise<string> => {
   try {
-    const body = (await answered.json()) as { error?: { message?: unknown } };
-    const message = body.error?.message;
-    return typeof message === "string" && message !== ""
-      ? message
-      : `the gateway answered ${answered.status}`;
+    return reasonWritten(await answered.json(), answered.status);
   } catch {
     return `the gateway answered ${answered.status}`;
   }
+};
+
+/** The same, for a body somebody has already read off the response. */
+const reasonWritten = (document: unknown, status: number): string => {
+  const message = (document as { error?: { message?: unknown } } | null)?.error?.message;
+  return typeof message === "string" && message !== "" ? message : `the gateway answered ${status}`;
 };
