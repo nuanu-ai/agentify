@@ -1419,11 +1419,11 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     };
 
     app.get(`${base}/woocommerce`, async (request, response) => {
-      // Where the redirect from the shop lands, and the only route that reads
-      // this. It is spent by being drawn: a merchant who opens this page again
-      // tomorrow is not told their browser has just come back from anywhere.
-      // The flag and not the token, which is the whole point of the redirect
-      // that set it.
+      // Where the redirect from the return address lands, and the only route
+      // that reads this. It is spent by being drawn: a merchant who opens this
+      // page again tomorrow is not told their browser has just come back from
+      // anywhere. The flag and not the token, which is the whole point of the
+      // redirect that set it.
       await drawTheShop(request, response, { cameBack: request.query.from === "shop" });
     });
 

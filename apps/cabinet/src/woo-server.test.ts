@@ -810,6 +810,45 @@ describe("coming back from the shop with no session on the request", () => {
     expect(seen.html).toContain("Your shop is connected");
   });
 
+  it("does not say the shop approved merely because the browser came through the return address", async () => {
+    // The return route reads nothing off the redirect on purpose, so the page
+    // it lands on has nothing to add for the arrival — and until now it added
+    // "your shop says it approved", the redirect's claim presented as read.
+    // Here the redirect says the opposite, `success=0`, the shape WooCommerce
+    // sends when the merchant declined. What the page may claim about approval
+    // and keys is what our rows hold, a Connect started and no keys yet, and
+    // the check is that it is the very page a plain reload gives.
+    const running = await started();
+    await running.signIn();
+    await running.post("/woocommerce/connect", { shop_url: SHOP });
+
+    const came = await running.get("/woocommerce/return?success=0&user_id=anything");
+    const back = await running.get(came.to ?? "");
+    const reloaded = await running.get("/woocommerce");
+
+    expect(came.to).toBe("/woocommerce?from=shop");
+    expect(readable(back.html)).toMatch(/no keys have reached us yet/);
+    expect(back.html).toBe(reloaded.html);
+  });
+
+  it("offers Connect and adds nothing when the return address is opened by hand", async () => {
+    // Nothing was started and no shop sent this browser anywhere: a merchant
+    // signed in on it typed the address in. What they land on is the shop
+    // screen as it always is for them, the form — a note that a shop approved
+    // something, or that the browser came back from one, would be a note about
+    // an event that did not happen.
+    const running = await started();
+    await running.signIn();
+
+    const came = await running.get("/woocommerce/return");
+    const back = await running.get(came.to ?? "");
+    const reloaded = await running.get("/woocommerce");
+
+    expect(came.to).toBe("/woocommerce?from=shop");
+    expect(readable(back.html)).toContain("Connect your shop");
+    expect(back.html).toBe(reloaded.html);
+  });
+
   it("leaves every other cabinet address behind the sign-in", async () => {
     // The narrowing is one address. A gate that had been opened a crack wider
     // than that is the defect this test exists to catch.
