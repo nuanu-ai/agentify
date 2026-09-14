@@ -2,10 +2,10 @@
  * The screens a merchant connects a WooCommerce shop on.
  *
  * Four of them: before the shop knows anything about us, the moment the
- * merchant's browser comes back from approving, the import, and the block on
- * the settings screen that says which of those the account is in. None of them
- * fetches anything or decides anything, which is what lets a test read the page
- * a merchant would be looking at.
+ * merchant's browser comes back through the return address, the import, and
+ * the block on the settings screen that says which of those the account is
+ * in. None of them fetches anything or decides anything, which is what lets a
+ * test read the page a merchant would be looking at.
  *
  * The one thing these pages are careful about is what they claim. A merchant
  * comes back from their own shop having pressed Approve, and the shop's
@@ -101,10 +101,14 @@ export interface WooView {
   /** What they typed, so a refusal leaves the box as they left it. */
   readonly typed?: string;
   /**
-   * Whether this is the page their browser came back to from their own shop.
+   * Whether the browser reached this page through the return address.
    *
-   * It changes what the page says and nothing about what it claims: the state
-   * above is read off our own rows either way.
+   * That is the whole of what it means. The return route sets it for any
+   * browser with a session, whatever query it carried or none, so a merchant
+   * who typed the address in sets it as surely as a shop that sent them — and
+   * a real return sets it only where the cookie travels (ADR-0009). It changes
+   * what the page says and nothing about what it claims: the state above is
+   * read off our own rows either way.
    */
   readonly cameBack?: boolean;
 }
@@ -163,7 +167,7 @@ export const wooScreen = (viewer: Viewer, view: WooView): string => {
       ${WHAT_CONNECTING_DOES}
     </div>
   </div>
-${view.cameBack === true ? cameBackNote(view) : ""}${
+${view.cameBack === true && view.state.kind === "connected" ? KEYS_ARRIVED : ""}${
   view.state.kind === "connected"
     ? theConnection(base, view.state.shop, view)
     : `${waitingBlock(view.state)}${theForm(base, view)}`
@@ -182,27 +186,24 @@ ${view.cameBack === true ? cameBackNote(view) : ""}${
 };
 
 /**
- * What a merchant is told on the page their shop sent them back to.
+ * What the page adds when the browser came through the return address and the
+ * keys are here: the sentence a merchant went out to their shop for.
  *
- * It separates the two facts on purpose, because the merchant cannot see that
- * they are two: their shop said it approved, and the keys either arrived here
- * or did not. A page that read the redirect and announced success would be
- * announcing something it has not seen.
- *
- * Where they did not arrive it says only that the shop claims to have approved.
- * The diagnosis is in the block below rather than repeated here, because that
- * block is drawn on a reload and on the settings screen as well, and a merchant
- * who comes back to this page tomorrow needs the same sentence they got today.
+ * It is drawn off the row, never off the redirect. WooCommerce puts
+ * `success=1` or `success=0` on its redirect and the return route reads
+ * neither, so nothing here knows what the shop said, and a merchant signed in
+ * on this browser reaches this page by typing the address in as surely as by
+ * being sent. In every other state the arrival adds nothing. "Your shop says
+ * it approved", which the page once said there, was the redirect's claim
+ * presented as read — drawn over a redirect saying `success=0` and over no
+ * redirect at all — and its honest replacement, "your browser arrived through
+ * the return address", was a sentence the page had to disclaim in the next
+ * one, and said nothing the block below does not. That block is drawn off our
+ * rows and is the same sentence on a reload and on the settings screen, so
+ * what a merchant reads on coming back is what they read tomorrow.
  */
-const cameBackNote = (view: WooView): string =>
-  view.state.kind === "connected"
-    ? `  <div class="callout done">
+const KEYS_ARRIVED = `  <div class="callout done">
     <div class="what">Your shop is connected. The keys arrived from your shop's own server, which is what settles it.</div>
-  </div>
-`
-    : `  <div class="callout">
-    <div class="what">Your shop says it approved the connection.</div>
-    <div class="why">What that settles is its half. The keys travel separately, on a request from your shop's own server to ours, and what follows is what has actually reached us.</div>
   </div>
 `;
 
