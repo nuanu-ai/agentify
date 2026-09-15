@@ -33,6 +33,21 @@ function validExternal() {
   };
 }
 
+function privateUrl(role, database = "agentify_scanner") {
+  return `postgresql://${role}:private-password@agentify-scanner-postgres:5432/${database}`;
+}
+
+function validPrivate() {
+  return {
+    DATABASE_MODE: "private",
+    ADMIN_DATABASE_URL: privateUrl("coinslot"),
+    WEB_DATABASE_URL: privateUrl("agentify_web"),
+    WORKER_DATABASE_URL: privateUrl("agentify_worker"),
+    PRIVACY_DATABASE_URL: privateUrl("agentify_privacy"),
+    DASHBOARD_DATABASE_URL: privateUrl("agentify_dashboard"),
+  };
+}
+
 test("local database mode rejects external overrides", () => {
   assert.equal(run({ DATABASE_MODE: "local" }).status, 0);
   const invalid = run({
@@ -91,4 +106,35 @@ test("validation failures never echo credentials", () => {
   const result = run(invalid);
   assert.notEqual(result.status, 0);
   assert.equal(`${result.stdout}${result.stderr}`.includes(secret), false);
+});
+
+test("private scanner mode accepts only its separate database and least-privilege roles", () => {
+  assert.equal(run(validPrivate()).status, 0);
+  const wrongDatabase = validPrivate();
+  wrongDatabase.WORKER_DATABASE_URL = privateUrl("agentify_worker", "coinslot");
+  assert.notEqual(run(wrongDatabase).status, 0);
+  const wrongAdmin = validPrivate();
+  wrongAdmin.ADMIN_DATABASE_URL = privateUrl("postgres");
+  assert.notEqual(run(wrongAdmin).status, 0);
+  const splitHost = validPrivate();
+  splitHost.PRIVACY_DATABASE_URL = "postgresql://agentify_privacy:secret@other-postgres:5432/agentify_scanner";
+  assert.notEqual(run(splitHost).status, 0);
+  const missingRole = validPrivate();
+  delete missingRole.DASHBOARD_DATABASE_URL;
+  assert.notEqual(run(missingRole).status, 0);
+});
+
+test("private admin scope needs no runtime secrets and never prints a password", () => {
+  const accepted = run({
+    DATABASE_MODE: "private",
+    DATABASE_CONFIG_SCOPE: "admin",
+    ADMIN_DATABASE_URL: privateUrl("coinslot"),
+  });
+  assert.equal(accepted.status, 0, accepted.stderr);
+  const rejected = run({
+    DATABASE_MODE: "private",
+    ADMIN_DATABASE_URL: "postgresql://coinslot:do-not-print@agentify-scanner-postgres:5432/coinslot",
+  });
+  assert.notEqual(rejected.status, 0);
+  assert.equal(`${rejected.stdout}${rejected.stderr}`.includes("do-not-print"), false);
 });

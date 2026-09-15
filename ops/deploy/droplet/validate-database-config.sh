@@ -64,6 +64,26 @@ validate_supabase_url() {
   VALIDATED_PROJECT_REF="$project_ref"
 }
 
+validate_private_url() {
+  expected_role="$1"
+  value="$2"
+  case "$value" in
+    postgresql://*) ;;
+    *) fail "$expected_role URL must use postgresql://" ;;
+  esac
+  remainder="${value#postgresql://}"
+  credentials="${remainder%%@*}"
+  target="${remainder#*@}"
+  [ "$target" != "$remainder" ] || fail "$expected_role URL has no host"
+  case "$target" in *@*) fail "$expected_role URL contains an unencoded @ character" ;; esac
+  username="${credentials%%:*}"
+  password="${credentials#*:}"
+  [ "$username" = "$expected_role" ] && [ "$password" != "$credentials" ] && [ -n "$password" ] || \
+    fail "$expected_role URL has the wrong role or no password"
+  [ "$target" = 'agentify-scanner-postgres:5432/agentify_scanner' ] || \
+    fail "$expected_role URL must target only the private scanner DB alias and database"
+}
+
 case "$mode" in
   local)
     [ -z "${ADMIN_DATABASE_URL:-}${WEB_DATABASE_URL:-}${WORKER_DATABASE_URL:-}${PRIVACY_DATABASE_URL:-}${DASHBOARD_DATABASE_URL:-}" ] || \
@@ -98,7 +118,21 @@ case "$mode" in
       [ "$VALIDATED_PROJECT_REF" = "$shared_project_ref" ] || fail "dashboard URL uses a different project ref"
     fi
     ;;
-  *) fail "DATABASE_MODE must be local or external" ;;
+  private)
+    : "${ADMIN_DATABASE_URL:?ADMIN_DATABASE_URL is required for DATABASE_MODE=private}"
+    validate_private_url coinslot "$ADMIN_DATABASE_URL"
+    if [ "$scope" = "all" ]; then
+      : "${WEB_DATABASE_URL:?WEB_DATABASE_URL is required for DATABASE_MODE=private}"
+      : "${WORKER_DATABASE_URL:?WORKER_DATABASE_URL is required for DATABASE_MODE=private}"
+      : "${PRIVACY_DATABASE_URL:?PRIVACY_DATABASE_URL is required for DATABASE_MODE=private}"
+      : "${DASHBOARD_DATABASE_URL:?DASHBOARD_DATABASE_URL is required for DATABASE_MODE=private}"
+      validate_private_url agentify_web "$WEB_DATABASE_URL"
+      validate_private_url agentify_worker "$WORKER_DATABASE_URL"
+      validate_private_url agentify_privacy "$PRIVACY_DATABASE_URL"
+      validate_private_url agentify_dashboard "$DASHBOARD_DATABASE_URL"
+    fi
+    ;;
+  *) fail "DATABASE_MODE must be local, external, or private" ;;
 esac
 
 echo "Database configuration validated for $mode mode ($scope scope)."

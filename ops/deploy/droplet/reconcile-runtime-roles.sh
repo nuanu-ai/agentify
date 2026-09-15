@@ -15,7 +15,7 @@ roles_script="${RUNTIME_ROLES_SCRIPT:-/runtime-roles/10-runtime-roles.sh}"
 mode="${DATABASE_MODE:-local}"
 reconcile_passwords="${RECONCILE_RUNTIME_ROLE_PASSWORDS:-}"
 if [ -z "$reconcile_passwords" ]; then
-  if [ "$mode" = "external" ]; then
+  if [ "$mode" = "external" ] || [ "$mode" = "private" ]; then
     reconcile_passwords=false
   else
     reconcile_passwords=true
@@ -30,7 +30,7 @@ case "$reconcile_passwords" in
 esac
 export RECONCILE_RUNTIME_ROLE_PASSWORDS="$reconcile_passwords"
 
-if [ "$mode" = "external" ]; then
+if [ "$mode" = "external" ] || [ "$mode" = "private" ]; then
   export POSTGRES_CONNECTION_URL="$ADMIN_DATABASE_URL"
   export PGCONNECT_TIMEOUT=3
 

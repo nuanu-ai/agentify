@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
 set -eu
 
-[ "${DATABASE_MODE:-local}" = "external" ] || {
-  echo "External database verification requires DATABASE_MODE=external." >&2
+[ "${DATABASE_MODE:-local}" = "external" ] || [ "${DATABASE_MODE:-local}" = "private" ] || {
+  echo "Database verification requires DATABASE_MODE=external or private." >&2
   exit 1
 }
 /runtime-validate-database-config.sh
@@ -17,7 +17,11 @@ check_identity() {
   }
 }
 
-check_identity postgres "$ADMIN_DATABASE_URL"
+if [ "${DATABASE_MODE:-local}" = "private" ]; then
+  check_identity coinslot "$ADMIN_DATABASE_URL"
+else
+  check_identity postgres "$ADMIN_DATABASE_URL"
+fi
 check_identity agentify_web "$WEB_DATABASE_URL"
 check_identity agentify_worker "$WORKER_DATABASE_URL"
 check_identity agentify_privacy "$PRIVACY_DATABASE_URL"
