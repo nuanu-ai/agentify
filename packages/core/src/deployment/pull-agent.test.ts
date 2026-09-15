@@ -45,8 +45,8 @@ const workflowRun = (overrides: Record<string, unknown> = {}) => ({
   conclusion: "success",
   created_at: "2026-09-03T10:00:00Z",
   updated_at: "2026-09-03T10:05:00Z",
-  url: "https://api.github.com/repos/nuanu-ai/coinslot/actions/runs/123456",
-  html_url: "https://github.com/nuanu-ai/coinslot/actions/runs/123456",
+  url: "https://api.github.com/repos/nuanu-ai/agentify/actions/runs/123456",
+  html_url: "https://github.com/nuanu-ai/agentify/actions/runs/123456",
   ...overrides,
 });
 
@@ -78,7 +78,7 @@ describe("the test deployment pull agent", () => {
       join(fakeBin, "git"),
       `#!/usr/bin/env bash
 set -euo pipefail
-[[ "$*" == "ls-remote --exit-code --refs https://github.com/nuanu-ai/coinslot.git refs/heads/main" ]]
+[[ "$*" == "ls-remote --exit-code --refs https://github.com/nuanu-ai/agentify.git refs/heads/main" ]]
 printf '%s\\trefs/heads/main\\n' "\${FAKE_HEAD_SHA}"
 `,
     );
@@ -121,7 +121,7 @@ exit "\${FAKE_RELEASE_EXIT:-0}"
 `,
     );
 
-    archiveRoot = join(root, `nuanu-ai-coinslot-${REVISION.slice(0, 7)}`);
+    archiveRoot = join(root, `nuanu-ai-agentify-${REVISION.slice(0, 7)}`);
     mkdirSync(join(archiveRoot, "deploy"), { recursive: true });
     writeFileSync(join(archiveRoot, "compose.yaml"), "name: exact-revision\n");
     writeFileSync(join(archiveRoot, "deploy", "compose.public.yaml"), "services: {}\n");

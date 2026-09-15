@@ -64,7 +64,7 @@ operator.
   commit leaves the repository in a valid state (docs read, builds build). The
   single declared exception is the red `test(...)` commit of a red→green pair,
   from the code stage onward.
-- Remote: `github.com/nuanu-ai/coinslot` (public). We push when we commit.
+- Remote: `github.com/nuanu-ai/agentify` (public). We push when we commit.
 - Agent worktrees live under `.claude/worktrees/<topic>` on branches named
   `agent/<topic>` — the name says what the work is, not which process did it.
   Acceptance of an agent branch ends with the worktree removed and the branch

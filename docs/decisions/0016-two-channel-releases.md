@@ -1,4 +1,4 @@
-# 0016. The VM pulls test releases; live releases remain paused
+# 0016. CI proves releases; delivery remains paused
 
 Date: 2026-08-28
 Status: accepted (Dmitry's live word)
@@ -17,9 +17,10 @@ on GitHub-hosted runners. The public repository contains no job that reads a
 deployment key, connects to Nuanu AI infrastructure or sends an archive to a
 host.
 
-On `dmitry-dev`, a system timer reads the exact head of `main`, independently
-requires the completed successful `CI` run for that SHA and `push` event, and
-downloads the immutable SHA archive. The installed receiver accepts that archive
+When test delivery is explicitly enabled, a system timer on `dmitry-dev` reads
+the exact head of `main`, independently requires the completed successful `CI`
+run for that SHA and `push` event, and downloads the immutable SHA archive.
+The installed receiver accepts that archive
 through a local test-only door. The archive is rejected before extraction unless
 every member is a regular file, directory or relative symbolic link confined to
 one root. Failed releases are not retried until `main` moves. After an interrupted
@@ -30,6 +31,11 @@ the VM.
 
 There is no automatic live caller. A `v*` tag proves the release checks but does
 not deploy the live channel.
+
+Dmitry has paused all CoinSlot delivery. The test timer must remain disabled;
+no test or live release is initiated while this pause is in force. The current
+server revision is retained. Delivery resumes only on Dmitry's explicit word.
+The timer state and retained revision require separate verification on the host.
 
 ## Consequences
 
