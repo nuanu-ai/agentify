@@ -315,10 +315,10 @@
         path: "{{ item.path }}"
         state: directory
         owner: "{{ item.owner }}"
-        group: "{{ item.owner }}"
+        group: "{{ item.group | default(omit) }}"
         mode: '0700'
       loop:
-        - {path: "{{ backup_dir }}", owner: dmitry, host: codex-vm}
+        - {path: "{{ backup_dir }}", owner: dmitry, group: dmitry, host: codex-vm}
         - {path: "{{ controller_dir }}", owner: dmitry, host: localhost}
       delegate_to: "{{ item.host }}"
       when: not ansible_check_mode
