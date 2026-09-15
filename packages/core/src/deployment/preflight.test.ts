@@ -17,8 +17,35 @@ import { problemsWith } from "./preflight.mjs";
 const fixture = (name: string): ResolvedCompose =>
   JSON.parse(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
 
+const envFor = (resolved: ResolvedCompose, service: string): Record<string, string | undefined> => {
+  const environment = resolved.services[service]?.environment;
+  if (environment === undefined) {
+    throw new Error(`the fixture has no ${service} environment`);
+  }
+  return environment;
+};
+
 const TEST_CHANNEL = fixture("test-channel");
 const LIVE_CHANNEL = fixture("live-channel");
+const COMMERCE_CHANNEL: ResolvedCompose = structuredClone(LIVE_CHANNEL);
+envFor(COMMERCE_CHANNEL, "gateway").PUBLIC_BASE_URL = "https://commerce.agentify.ad";
+envFor(COMMERCE_CHANNEL, "cabinet").PUBLIC_BASE_URL = "https://commerce.agentify.ad";
+envFor(COMMERCE_CHANNEL, "web").COINSLOT_SITE_ADDRESS = "commerce.agentify.ad";
+COMMERCE_CHANNEL.services.web.ports = [
+  { mode: "ingress", host_ip: "0.0.0.0", target: 443, published: "443", protocol: "tcp" },
+];
+envFor(COMMERCE_CHANNEL, "cabinet").MAIL_URL = "https://api.resend.com";
+envFor(COMMERCE_CHANNEL, "cabinet").MAIL_API_KEY = "re_synthetic-provider-key";
+envFor(COMMERCE_CHANNEL, "cabinet").MAIL_FROM = "Agentify <no-reply@mail.example.com>";
+COMMERCE_CHANNEL.services.postgres.environment = {
+  POSTGRES_USER: "coinslot",
+  POSTGRES_PASSWORD: "synthetic-new-database-password",
+  POSTGRES_DB: "coinslot",
+};
+for (const service of ["migrate", "gateway", "cabinet"]) {
+  envFor(COMMERCE_CHANNEL, service).DATABASE_URL =
+    "postgres://coinslot:synthetic-new-database-password@postgres:5432/coinslot";
+}
 
 /** The release entry point, run in a separate Node process with controlled stdin. */
 const runCli = (channel: string, input: string) =>
@@ -70,6 +97,72 @@ describe("a channel that is what it claims to be", () => {
 
   it("passes the live channel", () => {
     expect(problemsWith("live", LIVE_CHANNEL)).toEqual([]);
+  });
+
+  it("accepts the new commerce door only with a private, consistently credentialed database", () => {
+    expect(problemsWith("commerce", COMMERCE_CHANNEL)).toEqual([]);
+    expect(problemsWith("live", COMMERCE_CHANNEL).length).toBeGreaterThan(0);
+  });
+
+  it("refuses old/default database credentials or a differently wired process without printing secrets", () => {
+    for (const change of [
+      (wrong: ResolvedCompose) => {
+        envFor(wrong, "postgres").POSTGRES_PASSWORD = "coinslot";
+      },
+      (wrong: ResolvedCompose) => {
+        envFor(wrong, "postgres").POSTGRES_PASSWORD =
+          "REPLACE_WITH_NEW_HEX_PASSWORD_AT_LEAST_24_CHARACTERS";
+      },
+      (wrong: ResolvedCompose) => {
+        envFor(wrong, "cabinet").DATABASE_URL =
+          "postgres://coinslot:other-secret@postgres:5432/coinslot";
+      },
+      (wrong: ResolvedCompose) => {
+        envFor(wrong, "migrate").DATABASE_URL =
+          "postgres://coinslot:other-secret@postgres:5432/coinslot";
+      },
+    ]) {
+      const wrong = structuredClone(COMMERCE_CHANNEL);
+      change(wrong);
+      const problems = problemsWith("commerce", wrong).join("\n");
+      expect(problems).toMatch(/postgres|DATABASE_URL/);
+      expect(problems).not.toContain("synthetic-new-database-password");
+      expect(problems).not.toContain("other-secret");
+    }
+  });
+
+  it("refuses unresolved production environment placeholders", () => {
+    const wrong = withEnv(
+      COMMERCE_CHANNEL,
+      "cabinet",
+      "AUTH_SECRET",
+      "REPLACE_FROM_EXISTING_LIVE_CONFIG",
+    );
+    expect(problemsWith("commerce", wrong)).toContainEqual(
+      expect.stringMatching(/AUTH_SECRET.*placeholder/),
+    );
+  });
+
+  it("refuses a live commerce cabinet that logs reset links or names a local mail sender", () => {
+    for (const [name, value] of [
+      ["MAIL_URL", "sandbox:log"],
+      ["MAIL_FROM", "Coinslot <no-reply@localhost>"],
+      ["MAIL_FROM", "no-reply@127.0.0.1"],
+    ] as const) {
+      const wrong = withEnv(COMMERCE_CHANNEL, "cabinet", name, value);
+      const problems = problemsWith("commerce", wrong).join("\n");
+      expect(problems).toMatch(new RegExp(name));
+      expect(problems).not.toContain(value);
+    }
+  });
+
+  it("refuses an absent or empty live mail provider, key or sender", () => {
+    for (const name of ["MAIL_URL", "MAIL_API_KEY", "MAIL_FROM"]) {
+      for (const value of [null, "", " "]) {
+        const wrong = withEnv(COMMERCE_CHANNEL, "cabinet", name, value);
+        expect(problemsWith("commerce", wrong)).toContainEqual(expect.stringMatching(name));
+      }
+    }
   });
 
   it("refuses each channel's configuration presented as the other", () => {

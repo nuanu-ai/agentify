@@ -122,7 +122,7 @@ export function surfaceModeOf(network: string, facilitatorUrl: string): SurfaceM
 /** Where each environment's keys work, for the words the door refuses in. */
 export const SITES: Readonly<Record<Environment, string>> = {
   test: "test.coinslot.nuanu.ai",
-  live: "coinslot.nuanu.ai",
+  live: "commerce.agentify.ad",
 };
 
 const KEY_PREFIXES: Readonly<Record<Environment, string>> = {
@@ -177,6 +177,6 @@ export const SURFACE_WORDS: Readonly<Record<SurfaceMode, string | null>> = {
     "arrives at the address in a challenge, and no receipt it writes points at a transfer.",
   test:
     "Test environment. Payments settle on Base Sepolia with test funds, and every order and " +
-    "receipt here is marked as a test. The live site is coinslot.nuanu.ai.",
+    "receipt here is marked as a test. The live site is commerce.agentify.ad.",
   live: null,
 };

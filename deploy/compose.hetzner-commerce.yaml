@@ -1,0 +1,26 @@
+# The new commerce stack keeps the application's existing service and database
+# boundaries. Its project name is supplied by the operator, never by this file.
+# Use with compose.yaml and deploy/compose.public.yaml, in that order.
+services:
+  postgres:
+    environment:
+      POSTGRES_USER: coinslot
+      POSTGRES_DB: coinslot
+      POSTGRES_PASSWORD: "${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}"
+
+  migrate:
+    environment:
+      DATABASE_URL: "postgres://coinslot:${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}@postgres:5432/coinslot"
+
+  gateway:
+    environment:
+      DATABASE_URL: "postgres://coinslot:${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}@postgres:5432/coinslot"
+
+  cabinet:
+    environment:
+      DATABASE_URL: "postgres://coinslot:${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}@postgres:5432/coinslot"
+
+  web:
+    # Caddy's existing issuer uses TLS-ALPN on 443. Port 80 need not be bound.
+    ports: !override
+      - "0.0.0.0:443:443"

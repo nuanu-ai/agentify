@@ -71,7 +71,7 @@ You make the key yourself, in your cabinet, on the API Keys screen: press
 "Issue a key", name it so you can tell it from the next one, and copy it — it
 is shown once and never again. The address is the environment you are working
 in: `https://test.coinslot.nuanu.ai` while you are building, and
-`https://coinslot.nuanu.ai` when you go live. Give the client the address and
+`https://commerce.agentify.ad` when you go live. Give the client the address and
 nothing after it; it adds the rest of the path itself. A key made in one
 environment does not open the other, and a key you issued on the test address
 starts with `csk_test_` so you can see at a glance which one you are holding.

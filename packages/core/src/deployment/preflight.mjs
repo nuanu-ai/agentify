@@ -38,6 +38,16 @@ const CHANNELS = {
     publishedPort: "443",
     credentials: true,
   },
+  commerce: {
+    network: "eip155:8453",
+    facilitator: "https://api.cdp.coinbase.com/platform/v2/x402",
+    surfaceMode: "live",
+    origin: "https://commerce.agentify.ad",
+    siteAddress: "commerce.agentify.ad",
+    hostIp: "0.0.0.0",
+    publishedPort: "443",
+    credentials: true,
+  },
 };
 
 /** The strings this repository publishes to the world. None may be deployed. */
@@ -52,7 +62,7 @@ const envOf = (resolved, service) => resolved.services?.[service]?.environment ?
 export function problemsWith(channel, resolved) {
   const wanted = CHANNELS[channel];
   if (wanted === undefined) {
-    return [`${channel} is not a release channel; the channels are test and live`];
+    return [`${channel} is not a release channel; the channels are test, live and commerce`];
   }
 
   const problems = [];
@@ -131,6 +141,59 @@ export function problemsWith(channel, resolved) {
       "postgres publishes a port on the host: two stacks cannot both take one, and nothing " +
         "outside the Compose network has any business reaching either database",
     );
+  }
+
+  if (channel === "commerce") {
+    const postgres = envOf(resolved, "postgres");
+    const password = postgres.POSTGRES_PASSWORD;
+    if (
+      postgres.POSTGRES_USER !== "coinslot" ||
+      postgres.POSTGRES_DB !== "coinslot" ||
+      typeof password !== "string" ||
+      !/^[A-Za-z0-9._~-]{24,}$/.test(password) ||
+      password.startsWith("REPLACE_") ||
+      password === "coinslot"
+    ) {
+      problems.push(
+        "postgres: commerce needs a distinct URL-safe password of at least 24 characters",
+      );
+    } else {
+      const databaseUrl = `postgres://coinslot:${password}@postgres:5432/coinslot`;
+      for (const service of ["migrate", "gateway", "cabinet"]) {
+        if (envOf(resolved, service).DATABASE_URL !== databaseUrl) {
+          problems.push(`${service}: DATABASE_URL is not wired to this private commerce Postgres`);
+        }
+      }
+    }
+    for (const [service, names] of [
+      [
+        "gateway",
+        ["CDP_API_KEY_ID", "CDP_API_KEY_SECRET", "SANDBOX_MERCHANT_KEY", "REGISTRATION_INVITATION"],
+      ],
+      ["cabinet", ["AUTH_SECRET", "MAIL_URL", "MAIL_API_KEY", "MAIL_FROM"]],
+    ]) {
+      for (const name of names) {
+        if ((envOf(resolved, service)[name] ?? "").startsWith("REPLACE_")) {
+          problems.push(`${service}: ${name} still contains a template placeholder`);
+        }
+      }
+    }
+    const mailUrl = cabinet.MAIL_URL;
+    const mailFrom = cabinet.MAIL_FROM;
+    const mailApiKey = cabinet.MAIL_API_KEY;
+    if (typeof mailUrl !== "string" || mailUrl.trim() === "" || mailUrl === "sandbox:log") {
+      problems.push("cabinet: MAIL_URL needs a live provider to send confirmation and reset links");
+    }
+    if (typeof mailApiKey !== "string" || mailApiKey.trim() === "") {
+      problems.push("cabinet: MAIL_API_KEY is required for the live mail provider");
+    }
+    if (
+      typeof mailFrom !== "string" ||
+      mailFrom.trim() === "" ||
+      /@(?:localhost|127\.0\.0\.1)(?:\b|$)/i.test(mailFrom)
+    ) {
+      problems.push("cabinet: MAIL_FROM needs a non-local sender for live merchant mail");
+    }
   }
 
   if ((gateway.SANDBOX_MERCHANT_KEY ?? "") === "") {

@@ -34,7 +34,7 @@ const coinslot = createClient({
 
 There are two addresses, one per world. At `https://test.coinslot.nuanu.ai` you
 build: payments settle on a test chain and the money there is not real. At
-`https://coinslot.nuanu.ai` you sell, and it is. A key issued in one does not
+`https://commerce.agentify.ad` you sell, and it is. A key issued in one does not
 open the other, and the key says which one you are holding: `csk_test_` for the
 first, `csk_live_` for the second. This package picks neither address for you,
 and the worker's first log line names the one it started against and whether
@@ -107,17 +107,17 @@ in files.
 That is one half of checking yourself. The other half — whether your handler
 holds against a real order, and against that same order arriving twice — is a
 test purchase on the test site rather than anything this command can do; the
-[quickstart](https://coinslot.nuanu.ai/docs/quickstart) walks you through one.
+[quickstart](https://commerce.agentify.ad/docs/quickstart) walks you through one.
 
 ## Where the rest of it is written
 
 The merchant documentation is public. [The first test
-sale](https://coinslot.nuanu.ai/docs/quickstart) walks from an empty project to
+sale](https://commerce.agentify.ad/docs/quickstart) walks from an empty project to
 a test purchase your side runs end to end; the other three pages are [the
-product card](https://coinslot.nuanu.ai/docs/cards) field by field, [orders and
-fulfillment modes](https://coinslot.nuanu.ai/docs/orders) for delivering later
+product card](https://commerce.agentify.ad/docs/cards) field by field, [orders and
+fulfillment modes](https://commerce.agentify.ad/docs/orders) for delivering later
 rather than in the answer to the purchase, and [what can go
-wrong](https://coinslot.nuanu.ai/docs/failures).
+wrong](https://commerce.agentify.ad/docs/failures).
 
 ## Versions
 
