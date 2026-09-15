@@ -158,6 +158,16 @@
       become: true
       when: transfer_needed and not ansible_check_mode and not prior_export.stat.exists
 
+    - name: Restore protected owner and mode after Docker writes the export
+      ansible.builtin.file:
+        path: "{{ production_archive_tmp }}"
+        state: file
+        owner: dmitry
+        group: dmitry
+        mode: '0600'
+      become: true
+      when: transfer_needed and not ansible_check_mode and not prior_export.stat.exists
+
     - name: Validate the completed Docker archive before publishing it
       ansible.builtin.command:
         argv: [tar, -tf, "{{ production_archive_tmp }}", manifest.json]
