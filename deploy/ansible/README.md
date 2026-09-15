@@ -136,6 +136,30 @@ free space on all three machines and retains the controller archive. Test data,
 writer handoff and the new hostname's HTTPS acceptance remain a separate step
 coordinated with the human-merged Comino ingress change.
 
+After production is accepted and both test images are delivered, run
+`activate-test.yml` once with the reviewed release SHA. Preview and apply are
+separate operator steps:
+
+```sh
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/activate-test.yml \
+  -e release_sha=b7cf3cecb5836465370e533463b8c56899005ba6 --check
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/activate-test.yml \
+  -e release_sha=b7cf3cecb5836465370e533463b8c56899005ba6
+```
+
+The apply briefly closes the existing test listener, stops its gateway and
+cabinet, and snapshots the retained PostgreSQL volume. It saves a custom dump,
+both protected environments and the frozen row proof on codex-vm and in
+`.local/test-backups/` on the controller before starting the b7 gateway,
+cabinet and web. The existing `coinslot-test` project, database and Caddy
+volumes remain; open refund-due orders and queued jobs are preserved. After a
+failed candidate acceptance, Ansible attempts to stop test writers and reports
+whether any remain; the recovery artifacts stay intact for reviewed
+reconciliation. Its readiness marker proves the
+private backend on `10.20.10.20:8443`; public TLS for `test.agentify.ad` is
+pending the human-merged Comino ingress change. Verify the new hostname and
+certificate only after that change is applied.
+
 The scanner runtime move retains its existing external Supabase database and
 Supabase Auth project. `prepare-scanner-production.yml` reads the donor's
 protected environment, verifies it is in external-database mode, preserves its
