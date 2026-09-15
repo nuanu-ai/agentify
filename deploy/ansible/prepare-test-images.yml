@@ -1,0 +1,335 @@
+---
+- name: Transfer reviewed commerce images to test without rebuilding or starting it
+  hosts: production
+  gather_facts: false
+  vars:
+    test_host: codex-vm
+    production_app_image: "agentify-commerce-app:{{ release_sha }}"
+    production_web_image: "agentify-commerce-web:{{ release_sha }}"
+    test_app_image: "agentify-test-app:{{ release_sha }}"
+    test_web_image: "agentify-test-web:{{ release_sha }}"
+    candidate_dir: /home/dmitry/agentify-test-candidate
+    production_export_dir: /home/dmitry/agentify-image-transfer
+    test_import_dir: /home/dmitry/agentify-image-transfer
+    archive_name: "commerce-{{ release_sha }}.tar"
+    production_archive: "{{ production_export_dir }}/{{ archive_name }}"
+    production_archive_tmp: "{{ production_archive }}.tmp"
+    controller_export_dir: "{{ playbook_dir }}/../../.local/image-transfer"
+    controller_archive: "{{ controller_export_dir }}/{{ archive_name }}"
+    test_archive: "{{ test_import_dir }}/{{ archive_name }}"
+    free_space_reserve_bytes: 2147483648
+  tasks:
+    - name: Require the exact reviewed release and test inventory host
+      ansible.builtin.assert:
+        that:
+          - release_sha is defined
+          - release_sha | default('') is match('^[0-9a-f]{40}$')
+          - test_host in groups['test']
+        fail_msg: Pass the reviewed 40-character release_sha and test inventory.
+
+    - name: Inspect already-built production application and web images
+      ansible.builtin.command:
+        argv: [docker, image, inspect, "{{ production_app_image }}", "{{ production_web_image }}"]
+      become: true
+      register: source_images
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Verify the prepared test candidate revision
+      ansible.builtin.command:
+        argv: [git, rev-parse, HEAD]
+        chdir: "{{ candidate_dir }}"
+      delegate_to: "{{ test_host }}"
+      register: candidate_sha
+      changed_when: false
+      check_mode: false
+
+    - name: Refuse image delivery to another test revision
+      ansible.builtin.assert:
+        that: candidate_sha.stdout == release_sha
+        fail_msg: Prepare the test candidate at the reviewed SHA before image transfer.
+
+    - name: Inspect any existing exact-SHA test tags
+      ansible.builtin.command:
+        argv: [docker, image, inspect, "{{ item }}"]
+      loop:
+        - "{{ test_app_image }}"
+        - "{{ test_web_image }}"
+      delegate_to: "{{ test_host }}"
+      become: true
+      register: existing_test_images
+      changed_when: false
+      failed_when: existing_test_images.rc not in [0, 1]
+      check_mode: false
+      no_log: true
+
+    - name: Refuse a test tag that points to different image content
+      ansible.builtin.assert:
+        that:
+          - existing_test_images.results[0].rc == 1 or (existing_test_images.results[0].stdout | from_json | first).Id == (source_images.stdout | from_json)[0].Id
+          - existing_test_images.results[1].rc == 1 or (existing_test_images.results[1].stdout | from_json | first).Id == (source_images.stdout | from_json)[1].Id
+        fail_msg: An exact-SHA test tag already points to different content; investigate before replacing it.
+      no_log: true
+
+    - name: Decide whether any reviewed image is missing on test
+      ansible.builtin.set_fact:
+        transfer_needed: "{{ existing_test_images.results[0].rc == 1 or existing_test_images.results[1].rc == 1 }}"
+
+    - name: Measure free bytes on the test filesystem before transfer
+      ansible.builtin.command:
+        argv: [df, -PB1, /]
+      delegate_to: "{{ test_host }}"
+      register: test_free_before
+      changed_when: false
+      check_mode: false
+      when: transfer_needed
+
+    - name: Reserve space for an archive, loaded layers and continued operation
+      ansible.builtin.assert:
+        that:
+          - (test_free_before.stdout_lines[-1].split()[3] | int) > (((source_images.stdout | from_json)[0].Size | int) + ((source_images.stdout | from_json)[1].Size | int)) * 2 + free_space_reserve_bytes
+        fail_msg: Test host lacks room for the two images plus a 2 GiB safety reserve; do not build or prune there.
+      when: transfer_needed
+
+    - name: Measure production free bytes before making a multi-GB export
+      ansible.builtin.command:
+        argv: [df, -PB1, /home/dmitry]
+      register: production_free_before
+      changed_when: false
+      check_mode: false
+      when: transfer_needed
+
+    - name: Refuse an export that could exhaust the public production VM
+      ansible.builtin.assert:
+        that:
+          - (production_free_before.stdout_lines[-1].split()[3] | int) > (((source_images.stdout | from_json)[0].Size | int) + ((source_images.stdout | from_json)[1].Size | int)) + free_space_reserve_bytes
+        fail_msg: Production lacks room for the image export plus a 2 GiB reserve.
+      when: transfer_needed
+
+    - name: Create a protected production export directory
+      ansible.builtin.file:
+        path: "{{ production_export_dir }}"
+        state: directory
+        owner: dmitry
+        group: dmitry
+        mode: '0700'
+      when: transfer_needed and not ansible_check_mode
+
+    - name: Inspect a prior protected export
+      ansible.builtin.stat:
+        path: "{{ production_archive }}"
+      register: prior_export
+      when: transfer_needed and not ansible_check_mode
+
+    - name: Refuse a prior exposed or empty export
+      ansible.builtin.assert:
+        that:
+          - not prior_export.stat.exists or prior_export.stat.isreg
+          - not prior_export.stat.exists or prior_export.stat.mode == '0600'
+          - not prior_export.stat.exists or prior_export.stat.size > 0
+        fail_msg: Existing production image archive is exposed or empty.
+      when: transfer_needed and not ansible_check_mode
+
+    - name: Remove an abandoned incomplete export before retrying
+      ansible.builtin.file:
+        path: "{{ production_archive_tmp }}"
+        state: absent
+      when: transfer_needed and not ansible_check_mode and not prior_export.stat.exists
+
+    - name: Reserve a 0600 temporary file before Docker opens the export
+      ansible.builtin.file:
+        path: "{{ production_archive_tmp }}"
+        state: touch
+        owner: dmitry
+        group: dmitry
+        mode: '0600'
+      when: transfer_needed and not ansible_check_mode and not prior_export.stat.exists
+
+    - name: Export both already-built images to the protected temporary file
+      ansible.builtin.command:
+        argv:
+          - docker
+          - save
+          - --output
+          - "{{ production_archive_tmp }}"
+          - "{{ production_app_image }}"
+          - "{{ production_web_image }}"
+      become: true
+      when: transfer_needed and not ansible_check_mode and not prior_export.stat.exists
+
+    - name: Validate the completed Docker archive before publishing it
+      ansible.builtin.command:
+        argv: [tar, -tf, "{{ production_archive_tmp }}", manifest.json]
+      changed_when: false
+      check_mode: false
+      when: transfer_needed and not ansible_check_mode and not prior_export.stat.exists
+
+    - name: Publish the complete 0600 archive atomically
+      ansible.builtin.command:
+        argv: [mv, "{{ production_archive_tmp }}", "{{ production_archive }}"]
+      when: transfer_needed and not ansible_check_mode and not prior_export.stat.exists
+
+    - name: Verify the protected export size and checksum
+      ansible.builtin.stat:
+        path: "{{ production_archive }}"
+        get_checksum: true
+        checksum_algorithm: sha256
+      register: production_export_stat
+      when: transfer_needed and not ansible_check_mode
+
+    - name: Measure actual test free bytes before copying the archive
+      ansible.builtin.command:
+        argv: [df, -PB1, /]
+      delegate_to: "{{ test_host }}"
+      register: test_free_for_archive
+      changed_when: false
+      check_mode: false
+      when: transfer_needed and not ansible_check_mode
+
+    - name: Refuse an archive whose actual size would exhaust test
+      ansible.builtin.assert:
+        that:
+          - production_export_stat.stat.mode == '0600'
+          - production_export_stat.stat.size > 0
+          - (test_free_for_archive.stdout_lines[-1].split()[3] | int) > (production_export_stat.stat.size | int) * 2 + free_space_reserve_bytes
+        fail_msg: Actual image archive exceeds the protected test disk budget.
+      when: transfer_needed and not ansible_check_mode
+
+    - name: Measure controller free KiB before fetching the archive
+      ansible.builtin.command:
+        argv: [df, -Pk, "{{ playbook_dir }}/../../.local"]
+      delegate_to: localhost
+      register: controller_free_before
+      changed_when: false
+      check_mode: false
+      when: transfer_needed and not ansible_check_mode
+
+    - name: Refuse a controller transfer without room for its protected copy
+      ansible.builtin.assert:
+        that:
+          - (controller_free_before.stdout_lines[-1].split()[3] | int) * 1024 > (production_export_stat.stat.size | int) + free_space_reserve_bytes
+        fail_msg: Controller .local lacks room for the image archive plus a 2 GiB reserve.
+      when: transfer_needed and not ansible_check_mode
+
+    - name: Protect the controller transfer directory before writing an archive
+      ansible.builtin.file:
+        path: "{{ controller_export_dir }}"
+        state: directory
+        mode: '0700'
+      delegate_to: localhost
+      when: transfer_needed and not ansible_check_mode
+
+    - name: Fetch the protected archive to the controller, never through the test VM
+      ansible.builtin.fetch:
+        src: "{{ production_archive }}"
+        dest: "{{ controller_archive }}"
+        flat: true
+      when: transfer_needed and not ansible_check_mode
+
+    - name: Restrict controller export permissions
+      ansible.builtin.file:
+        path: "{{ controller_archive }}"
+        state: file
+        mode: '0600'
+      delegate_to: localhost
+      when: transfer_needed and not ansible_check_mode
+
+    - name: Create a protected test import directory
+      ansible.builtin.file:
+        path: "{{ test_import_dir }}"
+        state: directory
+        owner: dmitry
+        group: dmitry
+        mode: '0700'
+      delegate_to: "{{ test_host }}"
+      when: transfer_needed and not ansible_check_mode
+
+    - name: Copy the archive from the controller to test
+      ansible.builtin.copy:
+        src: "{{ controller_archive }}"
+        dest: "{{ test_archive }}"
+        owner: dmitry
+        group: dmitry
+        mode: '0600'
+      delegate_to: "{{ test_host }}"
+      when: transfer_needed and not ansible_check_mode
+
+    - name: Verify archive bytes survived both SSH transfers
+      ansible.builtin.stat:
+        path: "{{ test_archive }}"
+        get_checksum: true
+        checksum_algorithm: sha256
+      delegate_to: "{{ test_host }}"
+      register: test_archive_stat
+      when: transfer_needed and not ansible_check_mode
+
+    - name: Refuse altered or exposed transferred bytes
+      ansible.builtin.assert:
+        that:
+          - test_archive_stat.stat.checksum == production_export_stat.stat.checksum
+          - test_archive_stat.stat.mode == '0600'
+        fail_msg: The image archive checksum or protection changed in transfer.
+      when: transfer_needed and not ansible_check_mode
+
+    - name: Load image layers on test without building or touching runtime containers
+      ansible.builtin.command:
+        argv: [docker, load, --input, "{{ test_archive }}"]
+      delegate_to: "{{ test_host }}"
+      become: true
+      when: transfer_needed and not ansible_check_mode
+
+    - name: Tag the application with its exact test name
+      ansible.builtin.command:
+        argv: [docker, tag, "{{ production_app_image }}", "{{ test_app_image }}"]
+      delegate_to: "{{ test_host }}"
+      become: true
+      when: transfer_needed and not ansible_check_mode
+
+    - name: Tag the web image with its exact test name
+      ansible.builtin.command:
+        argv: [docker, tag, "{{ production_web_image }}", "{{ test_web_image }}"]
+      delegate_to: "{{ test_host }}"
+      become: true
+      when: transfer_needed and not ansible_check_mode
+
+    - name: Verify test image IDs equal the reviewed production image IDs
+      ansible.builtin.command:
+        argv: [docker, image, inspect, "{{ test_app_image }}", "{{ test_web_image }}"]
+      delegate_to: "{{ test_host }}"
+      become: true
+      register: delivered_test_images
+      changed_when: false
+      check_mode: false
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Refuse another image ID under the exact test tags
+      ansible.builtin.assert:
+        that:
+          - (delivered_test_images.stdout | from_json)[0].Id == (source_images.stdout | from_json)[0].Id
+          - (delivered_test_images.stdout | from_json)[1].Id == (source_images.stdout | from_json)[1].Id
+        fail_msg: Test images do not match the already-built reviewed production images.
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Remove the test import tar after its image ID proof
+      ansible.builtin.file:
+        path: "{{ test_archive }}"
+        state: absent
+      delegate_to: "{{ test_host }}"
+      when: transfer_needed and not ansible_check_mode
+
+    - name: Remove the production export tar after controller custody
+      ansible.builtin.file:
+        path: "{{ production_archive }}"
+        state: absent
+      when: transfer_needed and not ansible_check_mode
+
+    - name: State image preparation's boundary
+      ansible.builtin.debug:
+        msg: >-
+          Both exact-SHA test tags match the production image IDs. No test image
+          was rebuilt, no container was changed and the coinslot-test database
+          volume was not opened. Public test TLS still needs the Comino SNI route.
+      when: not ansible_check_mode

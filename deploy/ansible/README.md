@@ -127,6 +127,15 @@ reconfigure the running test stack. The candidate binding is
 `test.agentify.ad` targets `153.124.160.16`. There is no production-to-test
 network path to establish.
 
+After preparing the candidate, run `prepare-test-images.yml` with the same
+`release_sha`, first with `--check` and then without it. It transfers the already
+built production app/web images through a protected controller directory at
+`.local/image-transfer`, checks archive checksums and exact image IDs, and creates
+the test image tags without rebuilding or changing running containers. It checks
+free space on all three machines and retains the controller archive. Test data,
+writer handoff and the new hostname's HTTPS acceptance remain a separate step
+coordinated with the human-merged Comino ingress change.
+
 The scanner runtime move retains its existing external Supabase database and
 Supabase Auth project. `prepare-scanner-production.yml` reads the donor's
 protected environment, verifies it is in external-database mode, preserves its
