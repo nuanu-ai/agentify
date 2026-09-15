@@ -74,18 +74,18 @@
           - commerce_env.stat.mode == '0600'
           - commerce_env.stat.pw_name == 'dmitry'
 
-    - name: Refuse a running final commerce or scanner project
+    - name: Refuse a running final commerce project
       ansible.builtin.command:
         argv: [docker, ps, --quiet, --filter, "label=com.docker.compose.project={{ item }}"]
       become: true
-      loop: [agentify-commerce, agentify]
+      loop: [agentify-commerce]
       register: final_projects
       changed_when: false
       check_mode: false
 
-    - name: Require final projects inactive
+    - name: Require final commerce inactive
       ansible.builtin.assert:
-        that: final_projects.results | selectattr('stdout', 'equalto', '') | list | length == 2
+        that: final_projects.results | selectattr('stdout', 'equalto', '') | list | length == 1
 
     - name: Require the prepared exact commerce images
       ansible.builtin.command:

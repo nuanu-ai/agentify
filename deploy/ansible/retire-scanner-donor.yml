@@ -1,0 +1,229 @@
+---
+- name: Retire donor scanner runtime only after the new public owner is accepted
+  hosts: production
+  gather_facts: false
+  vars:
+    donor_host: scanner-donor
+    donor_dir: /opt/agentify/current/ops/deploy/droplet
+    donor_env: /opt/agentify/shared/.env.production
+    target_dir: /home/dmitry/agentify-commerce/ops/deploy/droplet
+    target_env: /home/dmitry/agentify-scanner/.env.production
+    edge_dir: /home/dmitry/agentify-commerce/deploy/edge
+    release_dir: /home/dmitry/agentify-commerce
+    web_image: "agentify-scanner-web:{{ release_sha }}"
+    worker_image: "agentify-scanner-worker:{{ release_sha }}"
+    cron_content: |
+      SHELL=/bin/bash
+      17 3 * * * root /home/dmitry/agentify-scanner/scanner-jobs.sh backup
+      23 4 * * * root /home/dmitry/agentify-scanner/scanner-jobs.sh privacy
+    donor_compose_argv: [docker, compose, --env-file, /opt/agentify/shared/.env.production, -f, compose.production.yaml]
+  tasks:
+    - name: Require the reviewed runtime and explicit donor inventory entry
+      ansible.builtin.assert:
+        that:
+          - donor_host in groups['scanner_source']
+          - release_sha is defined
+          - release_sha | default('') is match('^[0-9a-f]{40}$')
+
+    - name: Verify the new VM still runs the reviewed scanner release checkout
+      ansible.builtin.command:
+        argv: [git, rev-parse, HEAD]
+        chdir: "{{ release_dir }}"
+      register: checkout_sha
+      changed_when: false
+      check_mode: false
+
+    - name: Refuse another runtime revision
+      ansible.builtin.assert:
+        that: checkout_sha.stdout == release_sha
+
+    - name: Verify the donor cron is archived outside cron and no longer active
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      delegate_to: "{{ donor_host }}"
+      become: true
+      loop:
+        - /etc/cron.d/agentify
+        - /etc/agentify-cron-retired
+      register: donor_cron_state
+
+    - name: Refuse retiring a donor that still owns scheduled jobs
+      ansible.builtin.assert:
+        that:
+          - not donor_cron_state.results[0].stat.exists
+          - donor_cron_state.results[1].stat.exists
+
+    - name: Inspect the new VM cron owner and mode
+      ansible.builtin.stat:
+        path: /etc/cron.d/agentify
+      become: true
+      register: new_cron_stat
+
+    - name: Require the new VM to own the exact reviewed schedule
+      ansible.builtin.assert:
+        that:
+          - new_cron_stat.stat.exists
+          - new_cron_stat.stat.isreg
+          - new_cron_stat.stat.pw_name == 'root'
+          - new_cron_stat.stat.mode == '0644'
+
+    - name: Read the exact new VM scheduled jobs
+      ansible.builtin.slurp:
+        src: /etc/cron.d/agentify
+      become: true
+      register: new_cron
+      no_log: true
+
+    - name: Refuse extra or changed target schedules
+      ansible.builtin.assert:
+        that: (new_cron.content | b64decode) == cron_content
+      no_log: true
+
+    - name: Require the replacement scanner worker to be running
+      ansible.builtin.command:
+        argv: [docker, ps, --quiet, --filter, label=com.docker.compose.project=agentify, --filter, label=com.docker.compose.service=worker]
+      become: true
+      register: new_worker
+      changed_when: false
+      check_mode: false
+
+    - name: Refuse absent or duplicate replacement workers
+      ansible.builtin.assert:
+        that: new_worker.stdout_lines | length == 1
+
+    - name: Require exactly one running new scanner web
+      ansible.builtin.command:
+        argv: [docker, ps, --quiet, --filter, label=com.docker.compose.project=agentify, --filter, label=com.docker.compose.service=web]
+      become: true
+      register: new_web
+      changed_when: false
+      check_mode: false
+
+    - name: Refuse absent or duplicate new scanner web processes
+      ansible.builtin.assert:
+        that: new_web.stdout_lines | length == 1
+
+    - name: Inspect actual new web and worker image and health states
+      ansible.builtin.command:
+        argv: [docker, inspect, "{{ item }}"]
+      become: true
+      loop:
+        - "{{ new_web.stdout }}"
+        - "{{ new_worker.stdout }}"
+      register: new_runtime_containers
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Refuse donor retirement with an unreviewed or unhealthy new image
+      ansible.builtin.assert:
+        that:
+          - (new_runtime_containers.results[0].stdout | from_json | first).Config.Image == web_image
+          - (new_runtime_containers.results[0].stdout | from_json | first).Config.Labels['com.docker.compose.service'] == 'web'
+          - (new_runtime_containers.results[0].stdout | from_json | first).State.Health.Status == 'healthy'
+          - (new_runtime_containers.results[1].stdout | from_json | first).Config.Image == worker_image
+          - (new_runtime_containers.results[1].stdout | from_json | first).Config.Labels['com.docker.compose.service'] == 'worker'
+          - (new_runtime_containers.results[1].stdout | from_json | first).State.Health.Status == 'healthy'
+        fail_msg: Running new web and worker must be exact-release healthy containers.
+      no_log: true
+
+    - name: Inspect the public scanner edge's active configuration mount
+      ansible.builtin.command:
+        argv: [docker, ps, --quiet, --filter, label=com.docker.compose.project=agentify-edge]
+      become: true
+      register: new_edge
+      changed_when: false
+      check_mode: false
+
+    - name: Require exactly one new public edge
+      ansible.builtin.assert:
+        that: new_edge.stdout_lines | length == 1
+
+    - name: Inspect the public edge Caddyfile mount
+      ansible.builtin.command:
+        argv: [docker, inspect, "{{ new_edge.stdout }}"]
+      become: true
+      register: new_edge_info
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Refuse donor retirement while the new edge is still maintenance-only
+      ansible.builtin.assert:
+        that: >-
+          (new_edge_info.stdout | from_json | first).Mounts
+          | selectattr('Destination', 'equalto', '/etc/caddy/Caddyfile')
+          | map(attribute='Source') | list == [edge_dir ~ '/Caddyfile.scanner-active']
+
+    - name: Refuse retirement if the donor worker resumed
+      ansible.builtin.command:
+        argv: [docker, ps, --quiet, --filter, label=com.docker.compose.project=agentify, --filter, label=com.docker.compose.service=worker]
+      delegate_to: "{{ donor_host }}"
+      become: true
+      register: donor_worker
+      changed_when: false
+      check_mode: false
+
+    - name: Require the old worker to remain stopped
+      ansible.builtin.assert:
+        that: donor_worker.stdout == ''
+
+    - name: Require old scheduled jobs fully drained before stopping the donor site
+      ansible.builtin.include_tasks: assert-donor-jobs-drained.yml
+
+    - name: Require the new public scanner to see its database and worker as ready
+      ansible.builtin.uri:
+        url: https://agentify.ad/api/health
+        method: GET
+        status_code: 200
+        validate_certs: true
+        return_content: false
+      delegate_to: localhost
+      changed_when: false
+
+    - name: Require commerce still to refuse traffic while data is pending
+      ansible.builtin.uri:
+        url: https://app.agentify.ad/healthz
+        method: GET
+        status_code: 503
+        validate_certs: true
+        return_content: false
+      delegate_to: localhost
+      changed_when: false
+
+    - name: Stop only the old web and Caddy after public acceptance
+      ansible.builtin.command:
+        argv: "{{ donor_compose_argv + ['stop', 'web', 'caddy'] }}"
+        chdir: "{{ donor_dir }}"
+      delegate_to: "{{ donor_host }}"
+      become: true
+      register: donor_stop
+      changed_when: "'Stopped' in donor_stop.stderr"
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Verify every donor scanner resident container is stopped
+      ansible.builtin.command:
+        argv: [docker, ps, --quiet, --filter, label=com.docker.compose.project=agentify]
+      delegate_to: "{{ donor_host }}"
+      become: true
+      register: donor_running_after
+      changed_when: false
+      check_mode: false
+      when: not ansible_check_mode
+
+    - name: Refuse a still-running donor scanner process
+      ansible.builtin.assert:
+        that: donor_running_after.stdout == ''
+      when: not ansible_check_mode
+
+    - name: Confirm new public readiness after the donor stops
+      ansible.builtin.uri:
+        url: https://agentify.ad/api/health
+        method: GET
+        status_code: 200
+        validate_certs: true
+        return_content: false
+      delegate_to: localhost
+      changed_when: false
+      when: not ansible_check_mode

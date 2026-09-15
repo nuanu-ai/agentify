@@ -102,8 +102,9 @@ declared Caddy image only if absent. A transient network-free container runs
 the release's `commerce` preflight against the resolved production config;
 its secret-bearing input and output are suppressed by Ansible. It does not
 start a resident service, create a production database volume, change a machine firewall, or
-touch either old live deployment. It refuses to run over an already active
-unified production project.
+touch either old live deployment. It refuses an active final commerce/scanner
+project or a nonmaintenance edge; a single reviewed maintenance edge may remain
+active while the next release is prepared.
 
 The scanner worker image can be prepared on the new VM without scanner secrets
 by explicitly passing `-e prepare_scanner_worker_image=true`. It is built only
@@ -125,17 +126,70 @@ reconfigure the running test stack. The candidate binding is
 `test.agentify.ad` targets `153.124.160.16`. There is no production-to-test
 network path to establish.
 
-Activation remains a separate, gated Ansible change. Before writing its
-playbooks or opening traffic, the operator needs the donor scanner's actual
-production environment, auth/provider and worker settings, and a fresh
-write-frozen backup of both production databases and protected keys stored off
-the new VM. Restores must be independently checked against the old systems;
-scanner jobs and mail/payment effects must not be duplicated. The scanner web
-image must be built with verified public auth settings. The edge needs its own
-protected `ADMIN_BASIC_AUTH_USER` and bcrypt `ADMIN_BASIC_AUTH_HASH` before its
-full Caddy config can run. Then an Ansible-controlled maintenance-window
-activation can start and verify the new systems and update the test stack.
-The coordinated external Namecheap change is `@` A `37.27.10.179`, `test` A
+The scanner runtime move retains its existing external Supabase database and
+Supabase Auth project. `prepare-scanner-production.yml` reads the donor's
+protected environment, verifies it is in external-database mode, preserves its
+exact bytes on the new VM, builds web/privacy images and verifies the existing
+scoped database roles without migrations or role reconciliation. Never substitute
+the old donor's local PostgreSQL volume for its current Supabase database.
+
+Run preparation with the reviewed release SHA and then `activate-scanner.yml`
+with that same SHA. Activation starts only web, verifies its database and the
+existing worker, and replaces the maintenance edge with the real scanner routes.
+Commerce remains at HTTP 503. The original HMAC/encryption keys, Supabase Auth
+settings and admin protection remain in use. A separate controlled worker and
+cron handoff is required before the donor can be retired; the two workers must
+never run concurrently with the same worker identity. Keep protected recovery
+copies of configuration and database backups, including the donor machine, until
+acceptance. Moving Supabase data or auth is a separate migration.
+
+Commerce production data has not moved as part of scanner activation. Its
+private warmup database is not a production restore target. Final commerce
+activation still needs a consistent source backup, verified restore, writer
+handoff and application acceptance; test keeps its separate existing database.
+
+The coordinated external Namecheap records are `@` A `37.27.10.179`, `test` A
 `153.124.160.16`, `app` CNAME `agentify.ad`, and `www` CNAME `agentify.ad`.
-Until those gates are met, neither these playbooks nor this document claim a
-working public production deployment.
+Public TLS, routing and application behavior must be checked independently after
+the switch. A running container is not evidence that data or user flows passed.
+
+The worker and scheduled-job handoff is run separately after scanner web and
+edge acceptance. The controller can hold a newer playbook commit while the new
+VM remains at its already prepared runtime SHA; pass that runtime SHA explicitly:
+
+```sh
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/handoff-scanner-worker.yml \
+  -e release_sha=PREPARED_RUNTIME_40_CHARACTER_SHA --check
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/handoff-scanner-worker.yml \
+  -e release_sha=PREPARED_RUNTIME_40_CHARACTER_SHA
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/handoff-scanner-worker.yml \
+  -e release_sha=PREPARED_RUNTIME_40_CHARACTER_SHA
+```
+
+Handoff checks equal protected donor/new-VM environment hashes, the actual
+donor container's worker ID, the same external database URL, exact images and
+public scanner readiness. It makes a recent backup on the new VM when needed,
+verifies the archive, and fetches the dump and matching protected scanner
+environment byte-identically to the controller's `.local/scanner-backups/`
+directory. It never probes privacy cleanup by running it. The donor's original
+cron file is archived outside `/etc/cron.d` and its
+already launched jobs must drain; the old worker stops before the new worker
+starts with `--no-deps`. The backup and privacy schedule appears on the new VM
+only after new worker readiness. The target job script and backup mount override
+live outside the clean runtime checkout.
+
+After handoff acceptance, retire the donor web and Caddy with a separate
+readiness gate:
+
+```sh
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/retire-scanner-donor.yml \
+  -e release_sha=PREPARED_RUNTIME_40_CHARACTER_SHA --check
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/retire-scanner-donor.yml \
+  -e release_sha=PREPARED_RUNTIME_40_CHARACTER_SHA
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/retire-scanner-donor.yml \
+  -e release_sha=PREPARED_RUNTIME_40_CHARACTER_SHA
+```
+
+Retirement leaves donor containers, credentials and backups intact for recovery,
+but stops its resident scanner processes and keeps its cron inactive. Supabase
+remains the single production database and Auth project.
