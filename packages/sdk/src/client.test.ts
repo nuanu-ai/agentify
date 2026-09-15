@@ -758,9 +758,7 @@ describe("what is thrown where a route has no failure branch", () => {
     await expect(coinslot.catalog.publish(card)).rejects.toThrow(
       /https:\/\/test\.coinslot\.nuanu\.ai/,
     );
-    await expect(coinslot.catalog.publish(card)).rejects.toThrow(
-      /https:\/\/app\.agentify\.ad/,
-    );
+    await expect(coinslot.catalog.publish(card)).rejects.toThrow(/https:\/\/app\.agentify\.ad/);
   });
 });
 
