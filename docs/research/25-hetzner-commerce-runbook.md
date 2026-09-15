@@ -58,7 +58,10 @@ test "$actual_images" = "$expected_images"
 "${compose[@]}" config --format json | sudo docker run --rm -i --network none \
   -v "$PWD:/app:ro" -w /app node:24.21.0-alpine \
   node packages/core/src/deployment/preflight.mjs commerce
-"${compose[@]}" build
+# Gateway, cabinet and migrate share one app image/tag. Build that image once
+# through gateway; web is the other distinct image. Building every service in
+# parallel races identical exports on Docker 29 / Compose 2.40.
+"${compose[@]}" build gateway web
 ```
 
 Run the dedicated database gate on a disposable Compose project, not on either
