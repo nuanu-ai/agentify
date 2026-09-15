@@ -1,0 +1,505 @@
+---
+- name: Restore frozen commerce data into the distinct final production volume
+  hosts: production
+  gather_facts: false
+  vars:
+    source_host: codex-vm
+    source_dir: /home/dmitry/coinslot
+    source_sha: a2c5b891224bcb9dd10b61f05ad7cc0f2f996940
+    target_dir: /home/dmitry/agentify-commerce
+    target_env: /home/dmitry/agentify-commerce/.env
+    final_volume: agentify-commerce_coinslot-postgres
+    backup_name: "commerce-{{ source_sha[0:8] }}-to-{{ release_sha[0:8] }}"
+    source_backup_dir: "/home/dmitry/coinslot-cutover/{{ backup_name }}"
+    target_backup_dir: "/home/dmitry/agentify-backups/{{ backup_name }}"
+    recovery_dir: "{{ playbook_dir }}/../../.local/commerce-backups/{{ backup_name }}"
+    target_dump: "{{ target_backup_dir }}/commerce-frozen.dump"
+    restore_marker: "{{ target_backup_dir }}/restore-verified.json"
+    compose_argv:
+      - docker
+      - compose
+      - --project-name
+      - agentify-commerce
+      - --env-file
+      - /home/dmitry/agentify-commerce/.env
+      - -f
+      - compose.yaml
+      - -f
+      - deploy/compose.public.yaml
+      - -f
+      - deploy/compose.hetzner-commerce.yaml
+    compose_environment:
+      COINSLOT_APP_IMAGE: "agentify-commerce-app:{{ release_sha }}"
+      COINSLOT_WEB_IMAGE: "agentify-commerce-web:{{ release_sha }}"
+    snapshot_sql: "{{ lookup('file', playbook_dir ~ '/commerce-snapshot.sql') }}"
+  tasks:
+    - name: Require the frozen source and exact prepared runtime release
+      ansible.builtin.assert:
+        that:
+          - release_sha is defined
+          - release_sha | default('') is match('^[0-9a-f]{40}$')
+          - source_host in groups['test']
+
+    - name: Verify the target checkout is the prepared immutable release
+      ansible.builtin.command:
+        argv: [git, rev-parse, HEAD]
+        chdir: "{{ target_dir }}"
+      register: checkout_sha
+      changed_when: false
+      check_mode: false
+
+    - name: Refuse another target revision
+      ansible.builtin.assert:
+        that: checkout_sha.stdout == release_sha
+
+    - name: Refuse edits inside the prepared runtime checkout
+      ansible.builtin.command:
+        argv: [git, status, --porcelain, --untracked-files=all]
+        chdir: "{{ target_dir }}"
+      register: checkout_status
+      changed_when: false
+      check_mode: false
+
+    - name: Require an unmodified prepared checkout
+      ansible.builtin.assert:
+        that: checkout_status.stdout == ''
+
+    - name: Require the exact frozen source release marker
+      ansible.builtin.slurp:
+        src: "{{ source_dir }}/.coinslot-revision"
+      delegate_to: "{{ source_host }}"
+      register: source_marker
+
+    - name: Refuse a changed old production release
+      ansible.builtin.assert:
+        that: >-
+          source_marker.content | b64decode | trim ==
+          'release-live v0.2.1 ' ~ source_sha ~ ' status=origin-verified'
+
+    - name: Inspect the old source Postgres identity and writer states
+      ansible.builtin.command:
+        argv: [docker, inspect, "{{ item }}"]
+      delegate_to: "{{ source_host }}"
+      become: true
+      loop:
+        - coinslot-postgres-1
+        - coinslot-gateway-1
+        - coinslot-cabinet-1
+        - coinslot-web-1
+      register: old_containers
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Refuse source writes that resumed after its final archive
+      ansible.builtin.assert:
+        that:
+          - (old_containers.results[0].stdout | from_json | first).State.Running
+          - (old_containers.results[0].stdout | from_json | first).Config.Labels['com.docker.compose.project'] == 'coinslot'
+          - (old_containers.results[0].stdout | from_json | first).Config.Image == 'postgres:17-alpine'
+          - ((old_containers.results[0].stdout | from_json | first).Mounts | selectattr('Destination', 'equalto', '/var/lib/postgresql/data') | map(attribute='Name') | list) == ['coinslot_coinslot-postgres']
+          - old_containers.results[1:4] | map(attribute='stdout') | map('from_json') | map('first') | selectattr('State.Running', 'equalto', true) | list | length == 0
+          - old_containers.results[1:4] | map(attribute='stdout') | map('from_json') | map('first') | map(attribute='HostConfig.RestartPolicy.Name') | unique | list == ['unless-stopped']
+        fail_msg: Old gateway, cabinet or web is running; source ownership must remain frozen.
+      no_log: true
+
+    - name: Require no other running source project process
+      ansible.builtin.command:
+        argv: [docker, ps, --quiet, --no-trunc, --filter, label=com.docker.compose.project=coinslot]
+      delegate_to: "{{ source_host }}"
+      become: true
+      register: source_running
+      changed_when: false
+      check_mode: false
+
+    - name: Assert old Postgres is the only source project process
+      ansible.builtin.assert:
+        that: source_running.stdout_lines == [(old_containers.results[0].stdout | from_json | first).Id]
+
+    - name: Inspect protected source, target and controller recovery artifacts
+      ansible.builtin.stat:
+        path: "{{ item.path }}"
+        get_checksum: true
+        checksum_algorithm: sha256
+      delegate_to: "{{ item.host }}"
+      become: "{{ item.host == 'agentify' and item.path.startswith(target_backup_dir) }}"
+      loop:
+        - {host: codex-vm, path: "{{ source_backup_dir }}/commerce-frozen.dump"}
+        - {host: codex-vm, path: "{{ source_backup_dir }}/source-snapshot.json"}
+        - {host: codex-vm, path: "{{ source_dir }}/.env"}
+        - {host: agentify, path: "{{ target_dump }}"}
+        - {host: agentify, path: "{{ target_backup_dir }}/source-snapshot.json"}
+        - {host: agentify, path: "{{ target_backup_dir }}/source.env"}
+        - {host: agentify, path: "{{ target_env }}"}
+        - {host: agentify, path: "{{ target_backup_dir }}/target.env"}
+        - {host: localhost, path: "{{ recovery_dir }}/commerce-frozen.dump"}
+        - {host: localhost, path: "{{ recovery_dir }}/source-snapshot.json"}
+        - {host: localhost, path: "{{ recovery_dir }}/source.env"}
+        - {host: localhost, path: "{{ recovery_dir }}/target.env"}
+      register: backup_stats
+      no_log: true
+
+    - name: Refuse any absent, exposed or drifted recovery copy
+      ansible.builtin.assert:
+        that:
+          - backup_stats.results | selectattr('stat.exists', 'equalto', true) | list | length == 12
+          - backup_stats.results | selectattr('stat.mode', 'equalto', '0600') | list | length == 12
+          - backup_stats.results[0].stat.checksum == backup_stats.results[3].stat.checksum == backup_stats.results[8].stat.checksum
+          - backup_stats.results[1].stat.checksum == backup_stats.results[4].stat.checksum == backup_stats.results[9].stat.checksum
+          - backup_stats.results[2].stat.checksum == backup_stats.results[5].stat.checksum == backup_stats.results[10].stat.checksum
+          - backup_stats.results[6].stat.checksum == backup_stats.results[7].stat.checksum == backup_stats.results[11].stat.checksum
+        fail_msg: A dump, source key file or target environment differs from its protected backup.
+      no_log: true
+
+    - name: Read the immutable frozen source fingerprint
+      ansible.builtin.slurp:
+        src: "{{ target_backup_dir }}/source-snapshot.json"
+      become: true
+      register: frozen_rows
+      no_log: true
+
+    - name: Verify source rows still equal the archive boundary
+      ansible.builtin.command:
+        argv: [docker, exec, -i, coinslot-postgres-1, psql, -U, coinslot, -d, coinslot, -At, -v, ON_ERROR_STOP=1]
+        stdin: "{{ snapshot_sql }}"
+      delegate_to: "{{ source_host }}"
+      become: true
+      register: current_source_rows
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Refuse any source row change after freeze
+      ansible.builtin.assert:
+        that: (current_source_rows.stdout_lines[-1] | from_json) == (frozen_rows.content | b64decode | from_json)
+      no_log: true
+
+    - name: Refuse any newly unfinished old-source order or job
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - coinslot-postgres-1
+          - psql
+          - -U
+          - coinslot
+          - -d
+          - coinslot
+          - -At
+          - -v
+          - ON_ERROR_STOP=1
+          - -c
+          - "SELECT (SELECT count(*) FROM public.orders WHERE open), (SELECT count(*) FROM pgboss.job WHERE state IN ('created','retry','active'))"
+      delegate_to: "{{ source_host }}"
+      become: true
+      register: source_unfinished
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Require old-source work still drained
+      ansible.builtin.assert:
+        that: source_unfinished.stdout | trim == '0|0'
+
+    - name: Validate the transferred dump archive offline
+      ansible.builtin.command:
+        argv: [docker, run, --rm, --network, none, --volume, "{{ target_backup_dir }}:/backups:ro", postgres:17-alpine, pg_restore, --list, /backups/commerce-frozen.dump]
+      become: true
+      changed_when: false
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Require scanner site and commerce maintenance to remain live
+      ansible.builtin.uri:
+        url: https://app.agentify.ad/healthz
+        method: GET
+        status_code: 503
+        validate_certs: true
+        return_content: false
+      delegate_to: localhost
+      register: app_maintenance
+      changed_when: false
+      check_mode: false
+
+    - name: Refuse a public app route before verified data restore
+      ansible.builtin.assert:
+        that:
+          - app_maintenance.retry_after == '300'
+          - app_maintenance.cache_control == 'no-store'
+
+    - name: Resolve the exact target database and image contract
+      ansible.builtin.command:
+        argv: "{{ compose_argv + ['config', '--format', 'json'] }}"
+        chdir: "{{ target_dir }}"
+      environment: "{{ compose_environment }}"
+      become: true
+      register: target_config
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Refuse another database volume, public Postgres port or image
+      ansible.builtin.assert:
+        that:
+          - (target_config.stdout | from_json).volumes['coinslot-postgres'].name == final_volume
+          - (target_config.stdout | from_json).services.postgres.image == 'postgres:17-alpine'
+          - (target_config.stdout | from_json).services.postgres.ports is not defined
+          - (target_config.stdout | from_json).services.migrate.image == compose_environment.COINSLOT_APP_IMAGE
+          - (target_config.stdout | from_json).services.gateway.image == compose_environment.COINSLOT_APP_IMAGE
+          - (target_config.stdout | from_json).services.cabinet.image == compose_environment.COINSLOT_APP_IMAGE
+          - (target_config.stdout | from_json).services.web.image == compose_environment.COINSLOT_WEB_IMAGE
+        fail_msg: Restore target differs from the prepared final commerce Compose project.
+      no_log: true
+
+    - name: Require the prepared exact commerce images before restore
+      ansible.builtin.command:
+        argv: [docker, image, inspect, "{{ item }}"]
+      become: true
+      loop:
+        - "{{ compose_environment.COINSLOT_APP_IMAGE }}"
+        - "{{ compose_environment.COINSLOT_WEB_IMAGE }}"
+        - postgres:17-alpine
+      register: prepared_images
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Inspect immutable image IDs in the already accepted private warmup
+      ansible.builtin.command:
+        argv: [docker, inspect, "{{ item }}"]
+      become: true
+      loop:
+        - agentify-commerce-warmup-gateway-1
+        - agentify-commerce-warmup-web-1
+      register: warmup_images
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Refuse locally retagged commerce images before importing production data
+      ansible.builtin.assert:
+        that:
+          - (warmup_images.results[0].stdout | from_json | first).Config.Labels['com.docker.compose.project'] == 'agentify-commerce-warmup'
+          - (warmup_images.results[1].stdout | from_json | first).Config.Labels['com.docker.compose.project'] == 'agentify-commerce-warmup'
+          - (warmup_images.results[0].stdout | from_json | first).Config.Image == compose_environment.COINSLOT_APP_IMAGE
+          - (warmup_images.results[1].stdout | from_json | first).Config.Image == compose_environment.COINSLOT_WEB_IMAGE
+          - (warmup_images.results[0].stdout | from_json | first).Image == (prepared_images.results[0].stdout | from_json | first).Id
+          - (warmup_images.results[1].stdout | from_json | first).Image == (prepared_images.results[1].stdout | from_json | first).Id
+        fail_msg: Exact SHA tags differ from the already accepted immutable warmup images.
+      no_log: true
+
+    - name: Inspect the final volume without creating it
+      ansible.builtin.command:
+        argv: [docker, volume, inspect, "{{ final_volume }}"]
+      become: true
+      register: target_volume
+      changed_when: false
+      failed_when: target_volume.rc not in [0, 1]
+      check_mode: false
+      no_log: true
+
+    - name: Refuse a foreign final-volume owner
+      ansible.builtin.assert:
+        that: (target_volume.stdout | from_json | first).Labels['com.docker.compose.project'] == 'agentify-commerce'
+        fail_msg: A nonfinal project owns the target volume; do not overwrite it.
+      when: target_volume.rc == 0
+      no_log: true
+
+    - name: Inspect existing final project containers, including stopped ones
+      ansible.builtin.command:
+        argv: [docker, ps, -a, --quiet, --no-trunc, --filter, label=com.docker.compose.project=agentify-commerce]
+      become: true
+      register: target_container_ids
+      changed_when: false
+      check_mode: false
+
+    - name: Inspect any existing final container identities
+      ansible.builtin.command:
+        argv: [docker, inspect, "{{ item }}"]
+      become: true
+      loop: "{{ target_container_ids.stdout_lines }}"
+      register: target_containers
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Refuse a started final application writer or unrelated service
+      ansible.builtin.assert:
+        that:
+          - (item.stdout | from_json | first).Config.Labels['com.docker.compose.service'] in ['postgres','migrate']
+          - not (item.stdout | from_json | first).State.Running or (item.stdout | from_json | first).Config.Labels['com.docker.compose.service'] == 'postgres'
+        fail_msg: No gateway, cabinet, Caddy or other final application service may exist before restore.
+      loop: "{{ target_containers.results }}"
+      no_log: true
+
+    - name: Inspect an existing verified restore marker
+      ansible.builtin.stat:
+        path: "{{ restore_marker }}"
+        get_checksum: false
+      become: true
+      register: marker_state
+      no_log: true
+
+    - name: Read existing restore proof on retry
+      ansible.builtin.slurp:
+        src: "{{ restore_marker }}"
+      become: true
+      register: existing_marker
+      no_log: true
+      when: marker_state.stat.exists
+
+    - name: Refuse a marker for a different source dump or runtime
+      ansible.builtin.assert:
+        that:
+          - marker_state.stat.isreg
+          - marker_state.stat.mode == '0600'
+          - (existing_marker.content | b64decode | from_json).release_sha == release_sha
+          - (existing_marker.content | b64decode | from_json).source_sha == source_sha
+          - (existing_marker.content | b64decode | from_json).dump_sha256 == backup_stats.results[3].stat.checksum
+          - (existing_marker.content | b64decode | from_json).source_snapshot_sha256 == backup_stats.results[4].stat.checksum
+          - (existing_marker.content | b64decode | from_json).app_image_id == (prepared_images.results[0].stdout | from_json | first).Id
+          - (existing_marker.content | b64decode | from_json).web_image_id == (prepared_images.results[1].stdout | from_json | first).Id
+        fail_msg: A prior restore marker refers to another frozen source or target release.
+      no_log: true
+      when: marker_state.stat.exists
+
+    - name: Start only the final private PostgreSQL container
+      ansible.builtin.command:
+        argv: "{{ compose_argv + ['up', '-d', '--wait', '--wait-timeout', '180', '--no-build', 'postgres'] }}"
+        chdir: "{{ target_dir }}"
+      environment: "{{ compose_environment }}"
+      become: true
+      register: postgres_up
+      changed_when: "'Created' in postgres_up.stderr or 'Started' in postgres_up.stderr or 'Recreated' in postgres_up.stderr"
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Prove final Postgres uses the owned production volume
+      ansible.builtin.command:
+        argv: [docker, inspect, agentify-commerce-postgres-1]
+      become: true
+      register: final_postgres
+      changed_when: false
+      check_mode: false
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Refuse an unexpected final database container or mount
+      ansible.builtin.assert:
+        that:
+          - (final_postgres.stdout | from_json | first).State.Running
+          - (final_postgres.stdout | from_json | first).Config.Image == 'postgres:17-alpine'
+          - (final_postgres.stdout | from_json | first).Config.Labels['com.docker.compose.project'] == 'agentify-commerce'
+          - (final_postgres.stdout | from_json | first).Config.Labels['com.docker.compose.service'] == 'postgres'
+          - ((final_postgres.stdout | from_json | first).Mounts | selectattr('Destination', 'equalto', '/var/lib/postgresql/data') | map(attribute='Name') | list) == [final_volume]
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Classify the final database before any restore
+      ansible.builtin.command:
+        argv:
+          - docker
+          - exec
+          - agentify-commerce-postgres-1
+          - psql
+          - -U
+          - coinslot
+          - -d
+          - coinslot
+          - -At
+          - -v
+          - ON_ERROR_STOP=1
+          - -c
+          - "SELECT (SELECT count(*) FROM pg_tables WHERE schemaname = 'public'), (SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tablename IN ('cabinet_accounts','cabinet_credentials','cabinet_sessions','cabinet_verifications','cards','merchant_keys','merchants','orders','payment_claims','receipts')), (SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tablename NOT IN ('cabinet_accounts','cabinet_credentials','cabinet_sessions','cabinet_verifications','cards','merchant_keys','merchants','orders','payment_claims','receipts','__drizzle_migrations','cabinet_migrations','cabinet_woo_grants','cabinet_woo_orders','cabinet_woo_shops'))"
+      become: true
+      register: target_table_shape
+      changed_when: false
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Refuse partly initialized or unrelated production data
+      ansible.builtin.assert:
+        that: target_table_shape.stdout | trim == '0|0|0' or ((target_table_shape.stdout | trim | split('|'))[1:3]) == ['10','0']
+        fail_msg: Existing final database is neither empty nor a complete previously restored commerce database.
+      when: not ansible_check_mode
+
+    - name: Snapshot a complete existing final database before retrying
+      ansible.builtin.command:
+        argv: [docker, exec, -i, agentify-commerce-postgres-1, psql, -U, coinslot, -d, coinslot, -At, -v, ON_ERROR_STOP=1]
+        stdin: "{{ snapshot_sql }}"
+      become: true
+      register: existing_target_rows
+      changed_when: false
+      no_log: true
+      when: not ansible_check_mode and target_table_shape.stdout | trim != '0|0|0'
+
+    - name: Refuse existing final rows that differ from the frozen source
+      ansible.builtin.assert:
+        that: (existing_target_rows.stdout_lines[-1] | from_json) == (frozen_rows.content | b64decode | from_json)
+        fail_msg: Existing production rows differ from the frozen dump; never overwrite them.
+      no_log: true
+      when: not ansible_check_mode and target_table_shape.stdout | trim != '0|0|0'
+
+    - name: Restore only a completely empty target database in one transaction
+      ansible.builtin.shell: |
+        set -euo pipefail
+        docker exec -i agentify-commerce-postgres-1 pg_restore --exit-on-error --single-transaction --no-owner --no-acl -U coinslot -d coinslot < {{ target_dump | quote }}
+      args:
+        executable: /bin/bash
+      become: true
+      no_log: true
+      when: not ansible_check_mode and target_table_shape.stdout | trim == '0|0|0'
+
+    - name: Compare restored original business rows before migrations
+      ansible.builtin.command:
+        argv: [docker, exec, -i, agentify-commerce-postgres-1, psql, -U, coinslot, -d, coinslot, -At, -v, ON_ERROR_STOP=1]
+        stdin: "{{ snapshot_sql }}"
+      become: true
+      register: restored_before_migrations
+      changed_when: false
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Refuse any missing or changed original row after restore
+      ansible.builtin.assert:
+        that: (restored_before_migrations.stdout_lines[-1] | from_json) == (frozen_rows.content | b64decode | from_json)
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Run both reviewed migrations synchronously against the restored database
+      ansible.builtin.command:
+        argv: "{{ compose_argv + ['run', '--rm', '--no-deps', '-T', 'migrate'] }}"
+        chdir: "{{ target_dir }}"
+      environment: "{{ compose_environment }}"
+      become: true
+      register: migrations_up
+      changed_when: false
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Compare original business rows after both migrations
+      ansible.builtin.command:
+        argv: [docker, exec, -i, agentify-commerce-postgres-1, psql, -U, coinslot, -d, coinslot, -At, -v, ON_ERROR_STOP=1]
+        stdin: "{{ snapshot_sql }}"
+      become: true
+      register: restored_after_migrations
+      changed_when: false
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Refuse a migration that altered the frozen original columns
+      ansible.builtin.assert:
+        that: (restored_after_migrations.stdout_lines[-1] | from_json) == (frozen_rows.content | b64decode | from_json)
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Preserve proof of the exact verified restore outside the checkout
+      ansible.builtin.copy:
+        content: "{{ {'release_sha': release_sha, 'source_sha': source_sha, 'dump_sha256': backup_stats.results[3].stat.checksum, 'source_snapshot_sha256': backup_stats.results[4].stat.checksum, 'app_image_id': (prepared_images.results[0].stdout | from_json | first).Id, 'web_image_id': (prepared_images.results[1].stdout | from_json | first).Id} | to_nice_json }}\n"
+        dest: "{{ restore_marker }}"
+        owner: dmitry
+        mode: '0600'
+        force: false
+      become: true
+      no_log: true
+      when: not ansible_check_mode and not marker_state.stat.exists
