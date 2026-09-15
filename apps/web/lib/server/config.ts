@@ -34,15 +34,6 @@ const schema = z.object({
   LOCAL_EMAIL_EVIDENCE_ENABLED: booleanEnv,
   RESEND_API_KEY: optionalNonEmpty(z.string().min(1)),
   RESEND_FROM: z.email().default("reports@agentify.ad"),
-  SUPABASE_AUTH_URL: optionalNonEmpty(z.url({ protocol: /^https$/ })),
-  SUPABASE_AUTH_PUBLISHABLE_KEY: optionalNonEmpty(z.string().min(20)),
-  SUPABASE_AUTH_SERVICE_ROLE_KEY: optionalNonEmpty(z.string().min(20)),
-  NEXT_PUBLIC_SUPABASE_AUTH_URL: optionalNonEmpty(
-    z.url({ protocol: /^https$/ }),
-  ),
-  NEXT_PUBLIC_SUPABASE_AUTH_PUBLISHABLE_KEY: optionalNonEmpty(
-    z.string().min(20),
-  ),
   TURNSTILE_ENFORCED: booleanEnv,
   TURNSTILE_SECRET_KEY: optionalNonEmpty(z.string().min(1)),
   NEXT_PUBLIC_TURNSTILE_SITE_KEY: optionalNonEmpty(z.string().min(1)),
@@ -68,25 +59,12 @@ export function getServerConfig() {
   if (parsed.EMAIL_PROVIDER === "resend" && !parsed.RESEND_API_KEY) {
     throw new Error("resend_api_key_missing");
   }
-  const supabaseAuthUrl = parsed.SUPABASE_AUTH_URL;
-  const supabaseAuthPublishableKey = parsed.SUPABASE_AUTH_PUBLISHABLE_KEY;
-  if (parsed.REGISTRATION_ENABLED) {
-    if (
-      !supabaseAuthUrl ||
-      !supabaseAuthPublishableKey ||
-      !parsed.SUPABASE_AUTH_SERVICE_ROLE_KEY ||
-      !parsed.NEXT_PUBLIC_SUPABASE_AUTH_URL ||
-      !parsed.NEXT_PUBLIC_SUPABASE_AUTH_PUBLISHABLE_KEY
-    ) {
-      throw new Error("registration_requires_supabase_auth");
-    }
-    if (
-      supabaseAuthUrl !== parsed.NEXT_PUBLIC_SUPABASE_AUTH_URL ||
-      supabaseAuthPublishableKey !==
-        parsed.NEXT_PUBLIC_SUPABASE_AUTH_PUBLISHABLE_KEY
-    ) {
-      throw new Error("registration_supabase_auth_project_mismatch");
-    }
+  if (
+    production &&
+    parsed.REGISTRATION_ENABLED &&
+    parsed.EMAIL_PROVIDER === "disabled"
+  ) {
+    throw new Error("registration_requires_email_delivery");
   }
   if (
     parsed.TURNSTILE_ENFORCED &&
@@ -114,8 +92,6 @@ export function getServerConfig() {
       "http://localhost:3000",
     hmacSecret,
     encryptionKey,
-    supabaseAuthUrl,
-    supabaseAuthPublishableKey,
     production,
   };
 }

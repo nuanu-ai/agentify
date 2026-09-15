@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 
-import type { Database } from "./client.js";
+import type { Database, DatabaseTransaction } from "./client.js";
 import { createUuidV7 } from "./ids.js";
 import {
   analyticsEvents,
@@ -109,19 +109,44 @@ export async function anonymizeLeadData(
   db: Database,
   leadId: string,
   now = new Date(),
+  beforeAnonymizeInTransaction?: (
+    tx: DatabaseTransaction,
+    leadId: string,
+  ) => Promise<void>,
+  retentionCutoff?: Date,
 ) {
   return await db.transaction(async (tx) => {
+    if (beforeAnonymizeInTransaction) {
+      const pending = await tx
+        .select({ emailLookupHash: leads.emailLookupHash })
+        .from(leads)
+        .where(eq(leads.id, leadId))
+        .limit(1);
+      if (pending[0])
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${pending[0].emailLookupHash}, 0))`,
+        );
+    }
     const locked = await tx.execute<{
       id: string;
       email_lookup_hash: string;
       anonymized_at: Date | null;
+      verified_at: Date | null;
+      created_at: Date;
     }>(
-      sql`select id, email_lookup_hash, anonymized_at from leads where id = ${leadId} for update`,
+      sql`select id, email_lookup_hash, anonymized_at, verified_at, created_at from leads where id = ${leadId} for update`,
     );
     const lead = locked.rows[0];
     if (!lead) return { status: "not_found" as const, scanCount: 0 };
     if (lead.anonymized_at)
       return { status: "already_anonymized" as const, scanCount: 0 };
+    if (
+      retentionCutoff &&
+      (lead.verified_at || lead.created_at >= retentionCutoff)
+    )
+      return { status: "no_longer_eligible" as const, scanCount: 0 };
+    if (beforeAnonymizeInTransaction)
+      await beforeAnonymizeInTransaction(tx, leadId);
 
     const linkedRows = await tx
       .select({ scanId: leadScans.scanId })
@@ -261,6 +286,7 @@ export async function anonymizeLeadData(
       .update(leads)
       .set({
         supabaseUserId: null,
+        scannerAuthUserId: null,
         emailNormalizedCiphertext: "deleted",
         emailLookupHash: `deleted:${leadId}`,
         phoneE164Ciphertext: null,
@@ -284,6 +310,10 @@ export async function runRetentionCleanup(
   db: Database,
   input: {
     beforeLeadAnonymize: (leadId: string) => Promise<void>;
+    beforeLeadAnonymizeInTransaction?: (
+      tx: DatabaseTransaction,
+      leadId: string,
+    ) => Promise<void>;
     now?: Date;
     batchSize?: number;
   },
@@ -309,7 +339,13 @@ export async function runRetentionCleanup(
   let leadsAnonymized = 0;
   for (const candidate of candidates) {
     await input.beforeLeadAnonymize(candidate.id);
-    const result = await anonymizeLeadData(db, candidate.id, now);
+    const result = await anonymizeLeadData(
+      db,
+      candidate.id,
+      now,
+      input.beforeLeadAnonymizeInTransaction,
+      new Date(now.getTime() - UNVERIFIED_LEAD_RETENTION_MS),
+    );
     if (result.status === "anonymized") leadsAnonymized += 1;
   }
   return {

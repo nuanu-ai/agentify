@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getServerConfig } from "./config";
 import { getStripeCardSignalConfig } from "./stripe-card-signal-config";
@@ -15,11 +15,6 @@ const keys = [
   "SCAN_ACCEPTANCE_ENABLED",
   "LOCAL_EMAIL_EVIDENCE_ENABLED",
   "RESEND_API_KEY",
-  "SUPABASE_AUTH_URL",
-  "SUPABASE_AUTH_PUBLISHABLE_KEY",
-  "SUPABASE_AUTH_SERVICE_ROLE_KEY",
-  "NEXT_PUBLIC_SUPABASE_AUTH_URL",
-  "NEXT_PUBLIC_SUPABASE_AUTH_PUBLISHABLE_KEY",
   "TURNSTILE_ENFORCED",
   "TURNSTILE_SECRET_KEY",
   "NEXT_PUBLIC_TURNSTILE_SITE_KEY",
@@ -36,6 +31,7 @@ const keys = [
 const original = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const key of keys) {
     const value = original[key];
     if (value === undefined) delete process.env[key];
@@ -56,13 +52,6 @@ describe("clean-clone environment", () => {
       SCAN_ACCEPTANCE_ENABLED: "true",
       LOCAL_EMAIL_EVIDENCE_ENABLED: "false",
       RESEND_API_KEY: "",
-      SUPABASE_AUTH_URL: "https://project.supabase.co",
-      SUPABASE_AUTH_PUBLISHABLE_KEY: "sb_publishable_local_test_key_1234567890",
-      SUPABASE_AUTH_SERVICE_ROLE_KEY:
-        "sb_secret_local_test_key_12345678901234567890",
-      NEXT_PUBLIC_SUPABASE_AUTH_URL: "https://project.supabase.co",
-      NEXT_PUBLIC_SUPABASE_AUTH_PUBLISHABLE_KEY:
-        "sb_publishable_local_test_key_1234567890",
       TURNSTILE_ENFORCED: "false",
       TURNSTILE_SECRET_KEY: "",
       NEXT_PUBLIC_TURNSTILE_SITE_KEY: "",
@@ -100,36 +89,24 @@ describe("clean-clone environment", () => {
     expect(config.REGISTRATION_ENABLED).toBe(false);
   });
 
-  it("rejects registration-on without Supabase Auth project credentials", () => {
+  it("allows registration with local mail and no hosted auth credentials", () => {
     Object.assign(process.env, {
       DATABASE_URL: "postgresql://b2a:b2a@localhost:5432/b2a",
+      EMAIL_PROVIDER: "local",
       REGISTRATION_ENABLED: "true",
-      SUPABASE_AUTH_URL: "",
-      SUPABASE_AUTH_PUBLISHABLE_KEY: "",
-      SUPABASE_AUTH_SERVICE_ROLE_KEY: "",
-      NEXT_PUBLIC_SUPABASE_AUTH_URL: "",
-      NEXT_PUBLIC_SUPABASE_AUTH_PUBLISHABLE_KEY: "",
     });
-    expect(() => getServerConfig()).toThrow(
-      "registration_requires_supabase_auth",
-    );
+    expect(getServerConfig().REGISTRATION_ENABLED).toBe(true);
   });
 
-  it("rejects registration-on when browser and server Supabase projects differ", () => {
+  it("refuses production registration with disabled mail", () => {
     Object.assign(process.env, {
       DATABASE_URL: "postgresql://b2a:b2a@localhost:5432/b2a",
+      EMAIL_PROVIDER: "disabled",
       REGISTRATION_ENABLED: "true",
-      SUPABASE_AUTH_URL: "https://server-project.supabase.co",
-      SUPABASE_AUTH_PUBLISHABLE_KEY:
-        "sb_publishable_server_test_key_1234567890",
-      SUPABASE_AUTH_SERVICE_ROLE_KEY:
-        "sb_secret_local_test_key_12345678901234567890",
-      NEXT_PUBLIC_SUPABASE_AUTH_URL: "https://browser-project.supabase.co",
-      NEXT_PUBLIC_SUPABASE_AUTH_PUBLISHABLE_KEY:
-        "sb_publishable_browser_test_key_1234567890",
     });
+    vi.stubEnv("NODE_ENV", "production");
     expect(() => getServerConfig()).toThrow(
-      "registration_supabase_auth_project_mismatch",
+      "registration_requires_email_delivery",
     );
   });
 

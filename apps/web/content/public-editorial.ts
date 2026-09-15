@@ -404,7 +404,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
         {
           kind: "paragraph",
           content:
-            "The architecture supports Supabase/Postgres for storage and Supabase Auth with custom SMTP for passwordless confirmation, PostHog for explicit product analytics, Meta Pixel/CAPI for consented ads measurement, Cloudflare Turnstile for abuse challenges, and Stripe for an optional $0 card signal. Apify acts as the isolated processor for optional passive public-page rendering; the API token is worker-only, the Actor is private and build-pinned, and output storage is deleted after validated ingestion. Provider adapters and destinations are disabled until configured; local success is not evidence of production delivery.",
+            "The architecture supports private Postgres storage and in-process Better Auth with Resend for passwordless confirmation, PostHog for explicit product analytics, Meta Pixel/CAPI for consented ads measurement, Cloudflare Turnstile for abuse challenges, and Stripe for an optional $0 card signal. Apify acts as the isolated processor for optional passive public-page rendering; the API token is worker-only, the Actor is private and build-pinned, and output storage is deleted after validated ingestion. Provider adapters and destinations are disabled until configured; local success is not evidence of production delivery.",
         },
       ],
     },

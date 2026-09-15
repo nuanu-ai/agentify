@@ -14,6 +14,9 @@ import {
   rateWindows,
   registrationIntents,
   reportSessions,
+  runRetentionCleanup,
+  scannerAuthUsers,
+  scannerAuthVerifications,
   scanShares,
   scans,
   sessions,
@@ -24,7 +27,8 @@ import {
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { sha256 } from "./crypto";
+import { encryptEmail, hmacHex, sha256 } from "./crypto";
+import { getServerConfig } from "./config";
 import { getDatabase } from "./database";
 import { completeLeadDeletion, executeRetentionCleanup } from "./privacy";
 import { localWebhookSignature } from "./stripe-card-signal-crypto";
@@ -67,18 +71,7 @@ const provider = new LocalStripeCardSignalProvider(
 );
 const sessionToken = "p5-report-session-token";
 const supabaseUserId = "550e8400-e29b-41d4-a716-446655440000";
-const deletedSupabaseUsers: string[] = [];
-const supabaseProvider = {
-  async deleteUserIfStillStale() {
-    return false;
-  },
-  async listStaleUnconfirmedUserIds() {
-    return [];
-  },
-  async deleteUser(userId: string) {
-    deletedSupabaseUsers.push(userId);
-  },
-};
+const scannerAuthUserId = "scanner-p5-test-user";
 let leadId = "";
 let scanId = "";
 let originalSessionId = "";
@@ -89,6 +82,7 @@ beforeAll(async () => {
   );
   await migrateDatabase(admin.db, migrationsFolder);
   const { db } = getDatabase();
+  const config = getServerConfig();
   const sessionId = createUuidV7();
   originalSessionId = sessionId;
   const initialConsentId = createUuidV7();
@@ -117,11 +111,25 @@ beforeAll(async () => {
     .update(sessions)
     .set({ consentSnapshotId: initialConsentId })
     .where(eq(sessions.id, sessionId));
+  await db.insert(scannerAuthUsers).values({
+    id: scannerAuthUserId,
+    email: "p5-scanner@example.com",
+    emailVerified: true,
+    name: "",
+  });
   await db.insert(leads).values({
     id: leadId,
     supabaseUserId,
-    emailNormalizedCiphertext: "encrypted-test-email",
-    emailLookupHash: "p5-email-hash",
+    scannerAuthUserId,
+    emailNormalizedCiphertext: encryptEmail(
+      "p5-scanner@example.com",
+      config.encryptionKey,
+    ),
+    emailLookupHash: hmacHex(
+      config.hmacSecret,
+      "email",
+      "p5-scanner@example.com",
+    ),
     role: "business_owner",
     verifiedAt: new Date(),
     firstSegment: "store",
@@ -288,14 +296,37 @@ describe("P5 card signal flow", () => {
     });
 
     const setupReadback = await provider.retrieveSetup(signal.setupIntentId);
+    await getDatabase()
+      .db.insert(scannerAuthVerifications)
+      .values([
+        {
+          id: "pending-p5-linked-link",
+          identifier: "pending-linked-hash",
+          value: JSON.stringify({ email: "p5-scanner@example.com" }),
+          expiresAt: new Date(Date.now() + 3_600_000),
+        },
+        {
+          id: "pending-p5-unrelated-link",
+          identifier: "pending-unrelated-hash",
+          value: JSON.stringify({ email: "unrelated@example.com" }),
+          expiresAt: new Date(Date.now() + 3_600_000),
+        },
+      ]);
     await expect(
-      completeLeadDeletion({ leadId, provider, supabaseProvider }),
+      completeLeadDeletion({ leadId, provider }),
     ).resolves.toMatchObject({
       provider: { detachedCount: 1, customersDeleted: 1 },
-      supabase: { status: "deleted" },
+      identity: { status: "deleted" },
       database: { status: "anonymized", scanCount: 1 },
     });
-    expect(deletedSupabaseUsers).toEqual([supabaseUserId]);
+    expect(
+      (await getDatabase().db.select().from(scannerAuthUsers)).length,
+    ).toBe(0);
+    expect(
+      (await getDatabase().db.select().from(scannerAuthVerifications)).map(
+        (row) => row.id,
+      ),
+    ).toEqual(["pending-p5-unrelated-link"]);
     expect(
       await provider.retrievePaymentMethod(setupReadback.paymentMethodId!),
     ).toMatchObject({ customerId: null });
@@ -344,13 +375,174 @@ describe("P5 card signal flow", () => {
       getOwnedCardSignalForReport(scanId, sessionToken),
     ).resolves.toBeUndefined();
     await expect(
-      completeLeadDeletion({ leadId, provider, supabaseProvider }),
+      completeLeadDeletion({ leadId, provider }),
     ).resolves.toMatchObject({
       provider: { detachedCount: 0, customersDeleted: 0 },
-      supabase: { status: "not_linked" },
+      identity: { status: "not_linked" },
       database: { status: "already_anonymized" },
     });
-    expect(deletedSupabaseUsers).toEqual([supabaseUserId]);
+    expect(
+      (await getDatabase().db.select().from(scannerAuthUsers)).length,
+    ).toBe(0);
+  });
+
+  it("removes an unlinked old scanner identity and pending link when deleting its lead", async () => {
+    const { db } = getDatabase();
+    const config = getServerConfig();
+    const email = "old-orphan-scanner@example.com";
+    const id = createUuidV7();
+    const sessionId = createUuidV7();
+    const userId = createUuidV7();
+    await db.insert(sessions).values({
+      id: sessionId,
+      anonymousIdHash: `orphan-session-${sessionId}`,
+    });
+    await db.insert(scannerAuthUsers).values({
+      id: userId,
+      email,
+      emailVerified: true,
+      name: "",
+    });
+    await db.insert(leads).values({
+      id,
+      scannerAuthUserId: null,
+      emailNormalizedCiphertext: encryptEmail(email, config.encryptionKey),
+      emailLookupHash: hmacHex(config.hmacSecret, "email", email),
+      role: "developer",
+      firstSegment: "owner",
+      firstSessionId: sessionId,
+      verifiedAt: new Date(),
+    });
+    await db.insert(reportSessions).values({
+      id: createUuidV7(),
+      leadId: id,
+      sessionTokenHash: sha256("old-orphan-report-cookie"),
+      expiresAt: new Date(Date.now() + 86_400_000),
+    });
+    await db.insert(scannerAuthVerifications).values({
+      id: `pending-old-orphan-${id}`,
+      identifier: `pending-old-orphan-${id}`,
+      value: JSON.stringify({ email }),
+      expiresAt: new Date(Date.now() + 3_600_000),
+    });
+    await expect(completeLeadDeletion({ leadId: id })).resolves.toMatchObject({
+      identity: { status: "deleted" },
+      database: { status: "anonymized" },
+    });
+    expect(
+      await db
+        .select()
+        .from(scannerAuthUsers)
+        .where(eq(scannerAuthUsers.id, userId)),
+    ).toHaveLength(0);
+    expect(
+      await db
+        .select()
+        .from(scannerAuthVerifications)
+        .where(eq(scannerAuthVerifications.id, `pending-old-orphan-${id}`)),
+    ).toHaveLength(0);
+    expect(
+      (
+        await db
+          .select()
+          .from(reportSessions)
+          .where(eq(reportSessions.leadId, id))
+      )[0]?.revokedAt,
+    ).toBeInstanceOf(Date);
+  });
+
+  it("refuses to delete a linked identity whose email differs from the lead", async () => {
+    const { db } = getDatabase();
+    const config = getServerConfig();
+    const id = createUuidV7();
+    const sessionId = createUuidV7();
+    const userId = createUuidV7();
+    await db.insert(sessions).values({
+      id: sessionId,
+      anonymousIdHash: `mismatch-session-${sessionId}`,
+    });
+    await db.insert(scannerAuthUsers).values({
+      id: userId,
+      email: "unrelated-identity@example.com",
+      emailVerified: true,
+      name: "",
+    });
+    await db.insert(leads).values({
+      id,
+      scannerAuthUserId: userId,
+      emailNormalizedCiphertext: encryptEmail(
+        "correct-lead@example.com",
+        config.encryptionKey,
+      ),
+      emailLookupHash: hmacHex(
+        config.hmacSecret,
+        "email",
+        "correct-lead@example.com",
+      ),
+      role: "developer",
+      firstSegment: "owner",
+      firstSessionId: sessionId,
+    });
+    await expect(completeLeadDeletion({ leadId: id })).rejects.toThrow(
+      "lead_email_identity_mismatch",
+    );
+    expect(
+      await db
+        .select()
+        .from(scannerAuthUsers)
+        .where(eq(scannerAuthUsers.id, userId)),
+    ).toHaveLength(1);
+    expect(
+      (await db.select().from(leads).where(eq(leads.id, id)))[0]?.anonymizedAt,
+    ).toBeNull();
+  });
+
+  it("rechecks retention eligibility after a lead verifies while cleanup waits", async () => {
+    const { db } = getDatabase();
+    const id = createUuidV7();
+    const sessionId = createUuidV7();
+    const now = new Date();
+    await db.insert(sessions).values({
+      id: sessionId,
+      anonymousIdHash: `retention-race-${sessionId}`,
+    });
+    await db.insert(leads).values({
+      id,
+      emailNormalizedCiphertext: "synthetic-retention-race",
+      emailLookupHash: `retention-race-${id}`,
+      role: "developer",
+      firstSegment: "owner",
+      firstSessionId: sessionId,
+      createdAt: new Date(now.getTime() - 31 * 86_400_000),
+    });
+    let markWaiting!: () => void;
+    let releaseWaiting!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      markWaiting = resolve;
+    });
+    const continueCleanup = new Promise<void>((resolve) => {
+      releaseWaiting = resolve;
+    });
+    const cleanup = runRetentionCleanup(db, {
+      now,
+      beforeLeadAnonymize: async () => {
+        markWaiting();
+        await continueCleanup;
+      },
+      beforeLeadAnonymizeInTransaction: async () => {},
+    });
+    await waiting;
+    await db
+      .update(leads)
+      .set({ verifiedAt: new Date() })
+      .where(eq(leads.id, id));
+    releaseWaiting();
+    expect((await cleanup).leadsAnonymized).toBe(0);
+    const retained = (
+      await db.select().from(leads).where(eq(leads.id, id))
+    )[0]!;
+    expect(retained.verifiedAt).toBeInstanceOf(Date);
+    expect(retained.anonymizedAt).toBeNull();
   });
 
   it("executes 7-day token and 30-day unverified-lead retention idempotently", async () => {
@@ -383,8 +575,15 @@ describe("P5 card signal flow", () => {
       },
       {
         id: unverifiedLeadId,
-        emailNormalizedCiphertext: "old-unverified-encrypted",
-        emailLookupHash: "retention-unverified-email",
+        emailNormalizedCiphertext: encryptEmail(
+          "retention-unverified@example.com",
+          getServerConfig().encryptionKey,
+        ),
+        emailLookupHash: hmacHex(
+          getServerConfig().hmacSecret,
+          "email",
+          "retention-unverified@example.com",
+        ),
         role: "owner",
         createdAt: new Date(now.getTime() - 31 * 86_400_000),
         firstSegment: "owner",
@@ -453,35 +652,24 @@ describe("P5 card signal flow", () => {
       expiresAt: new Date(now.getTime() - 86_400_000),
     });
 
-    const staleSupabaseUserId = "550e8400-e29b-41d4-a716-446655440099";
-    const confirmedDuringCleanupId = "550e8400-e29b-41d4-a716-446655440098";
-    const pendingStaleSupabaseUsers = [
-      staleSupabaseUserId,
-      confirmedDuringCleanupId,
-    ];
-    const retentionSupabaseProvider = {
-      async listStaleUnconfirmedUserIds() {
-        return [...pendingStaleSupabaseUsers];
-      },
-      async deleteUser(userId: string) {
-        const index = pendingStaleSupabaseUsers.indexOf(userId);
-        if (index >= 0) pendingStaleSupabaseUsers.splice(index, 1);
-      },
-      async deleteUserIfStillStale(userId: string) {
-        const index = pendingStaleSupabaseUsers.indexOf(userId);
-        if (index < 0) return false;
-        pendingStaleSupabaseUsers.splice(index, 1);
-        if (userId === confirmedDuringCleanupId) return false;
-        return true;
-      },
-    };
+    await db.insert(scannerAuthVerifications).values({
+      id: "expired-p5-scanner-link",
+      identifier: "expired-link-hash",
+      value: JSON.stringify({ email: "pending@example.com" }),
+      expiresAt: new Date(now.getTime() - 8 * 86_400_000),
+    });
+    await db.insert(scannerAuthVerifications).values({
+      id: "pending-p5-legacy-link",
+      identifier: "pending-legacy-hash",
+      value: JSON.stringify({ email: "retention-unverified@example.com" }),
+      expiresAt: new Date(now.getTime() + 3_600_000),
+    });
 
     await expect(
       executeRetentionCleanup({
         now,
         batchSize: 10,
         provider,
-        supabaseProvider: retentionSupabaseProvider,
       }),
     ).resolves.toEqual({
       merchantApplicationsDeleted: 0,
@@ -490,7 +678,7 @@ describe("P5 card signal flow", () => {
       rateLimitRowsDeleted: 2,
       leadsAnonymized: 1,
       candidatesProcessed: 1,
-      supabaseUsersDeleted: 1,
+      expiredScannerAuthLinks: 1,
     });
     expect(
       (
@@ -508,12 +696,17 @@ describe("P5 card signal flow", () => {
           .where(eq(leads.id, unverifiedLeadId))
       )[0]?.anonymizedAt,
     ).toBeInstanceOf(Date);
+    expect(
+      await db
+        .select()
+        .from(scannerAuthVerifications)
+        .where(eq(scannerAuthVerifications.id, "pending-p5-legacy-link")),
+    ).toHaveLength(0);
     await expect(
       executeRetentionCleanup({
         now,
         batchSize: 10,
         provider,
-        supabaseProvider: retentionSupabaseProvider,
       }),
     ).resolves.toEqual({
       merchantApplicationsDeleted: 0,
@@ -522,17 +715,15 @@ describe("P5 card signal flow", () => {
       rateLimitRowsDeleted: 0,
       leadsAnonymized: 0,
       candidatesProcessed: 0,
-      supabaseUsersDeleted: 0,
+      expiredScannerAuthLinks: 0,
     });
 
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("EMAIL_PROVIDER", "disabled");
     vi.stubEnv("REGISTRATION_ENABLED", "false");
-    vi.stubEnv("SUPABASE_AUTH_URL", "");
-    vi.stubEnv("SUPABASE_AUTH_SERVICE_ROLE_KEY", "");
     await expect(
       executeRetentionCleanup({ now, batchSize: 10, provider }),
-    ).rejects.toThrow("supabase_auth_admin_required_for_privacy_cleanup");
+    ).resolves.toMatchObject({ expiredScannerAuthLinks: 0 });
     vi.unstubAllEnvs();
   });
 });

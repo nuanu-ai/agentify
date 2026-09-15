@@ -106,6 +106,28 @@ try {
     GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public
       TO agentify_privacy;
 
+    DO $scanner_identity_grants$
+    DECLARE table_name text;
+    DECLARE role_name text;
+    BEGIN
+      FOREACH table_name IN ARRAY ARRAY[
+        'scanner_auth_users', 'scanner_auth_sessions',
+        'scanner_auth_accounts', 'scanner_auth_verifications'
+      ] LOOP
+        IF to_regclass(format('public.%I', table_name)) IS NOT NULL THEN
+          EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON public.%I TO agentify_web', table_name);
+          EXECUTE format('REVOKE ALL ON public.%I FROM agentify_privacy', table_name);
+          EXECUTE format('GRANT SELECT, DELETE ON public.%I TO agentify_privacy', table_name);
+          FOREACH role_name IN ARRAY ARRAY['agentify_worker', 'agentify_dashboard'] LOOP
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = role_name) THEN
+              EXECUTE format('REVOKE ALL ON public.%I FROM %I', table_name, role_name);
+            END IF;
+          END LOOP;
+        END IF;
+      END LOOP;
+    END
+    $scanner_identity_grants$;
+
     GRANT SELECT, UPDATE ON public.scans TO agentify_worker;
     GRANT SELECT, INSERT, UPDATE, DELETE ON public.scan_checks TO agentify_worker;
     GRANT SELECT, INSERT, UPDATE ON public.scan_fingerprints TO agentify_worker;
@@ -145,7 +167,12 @@ try {
         WHERE n.nspname = 'public' AND c.relrowsecurity
       LOOP
         EXECUTE format('DROP POLICY IF EXISTS agentify_privacy_service ON %I.%I', row.schema_name, row.table_name);
-        EXECUTE format('CREATE POLICY agentify_privacy_service ON %I.%I TO agentify_privacy USING (true) WITH CHECK (true)', row.schema_name, row.table_name);
+        IF row.table_name <> ALL (ARRAY[
+          'scanner_auth_users', 'scanner_auth_sessions',
+          'scanner_auth_accounts', 'scanner_auth_verifications'
+        ]) THEN
+          EXECUTE format('CREATE POLICY agentify_privacy_service ON %I.%I TO agentify_privacy USING (true) WITH CHECK (true)', row.schema_name, row.table_name);
+        END IF;
       END LOOP;
 
       FOR row IN

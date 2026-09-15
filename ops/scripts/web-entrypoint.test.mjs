@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,18 +10,11 @@ const entrypoint = new URL(
   import.meta.url,
 ).pathname;
 
-function runEntrypoint(overrides = {}) {
+function runEntrypoint(overrides = {}, bakedFlag = "true") {
   const directory = mkdtempSync(join(tmpdir(), "agentify-web-entrypoint-"));
   const flagFile = join(directory, "registration-flag");
-  const fingerprintFile = join(directory, "auth-fingerprint");
   const command = join(directory, "command.sh");
-  const authUrl = "https://project.supabase.co";
-  const authKey = "sb_publishable_test_key_12345678901234567890";
-  writeFileSync(flagFile, "true\n");
-  writeFileSync(
-    fingerprintFile,
-    `${createHash("sha256").update(`${authUrl}\0${authKey}`).digest("hex")}\n`,
-  );
+  writeFileSync(flagFile, `${bakedFlag}\n`);
   writeFileSync(command, "#!/bin/sh\nexit 0\n");
   chmodSync(command, 0o700);
   return spawnSync("/bin/sh", [entrypoint, command], {
@@ -30,37 +22,37 @@ function runEntrypoint(overrides = {}) {
     env: {
       PATH: process.env.PATH,
       REGISTRATION_BUILD_FLAG_FILE: flagFile,
-      SUPABASE_AUTH_BUILD_FINGERPRINT_FILE: fingerprintFile,
       REGISTRATION_ENABLED: "true",
-      SUPABASE_AUTH_URL: authUrl,
-      SUPABASE_AUTH_PUBLISHABLE_KEY: authKey,
-      SUPABASE_AUTH_SERVICE_ROLE_KEY: "sb_secret_test_key_12345678901234567890",
-      NEXT_PUBLIC_SUPABASE_AUTH_URL: authUrl,
-      NEXT_PUBLIC_SUPABASE_AUTH_PUBLISHABLE_KEY: authKey,
+      APP_BASE_URL: "https://agentify.ad",
+      DATABASE_URL: "postgresql://agentify_web:synthetic@agentify-scanner-postgres:5432/agentify_scanner",
+      TOKEN_HMAC_SECRET: "synthetic-hmac-key-000000000000000000000000",
+      EMAIL_PROVIDER: "resend",
+      RESEND_API_KEY: "synthetic-resend-key",
+      RESEND_FROM: "reports@agentify.ad",
       ...overrides,
     },
   });
 }
 
-test("web entrypoint accepts the exact Supabase project baked into the build", () => {
+test("web entrypoint starts registration with private DB and Resend, without Supabase Auth", () => {
   const result = runEntrypoint();
   assert.equal(result.status, 0, result.stderr);
 });
 
-test("web entrypoint rejects server/browser Supabase drift", () => {
-  const result = runEntrypoint({
-    SUPABASE_AUTH_URL: "https://different.supabase.co",
-  });
+test("web entrypoint rejects changed registration build/runtime flag", () => {
+  const result = runEntrypoint({ REGISTRATION_ENABLED: "false" });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /server\/browser URLs do not match/);
+  assert.match(result.stderr, /build\/runtime flags do not match/);
 });
 
-test("web entrypoint rejects runtime credentials not baked into the client", () => {
-  const replacement = "sb_publishable_replacement_key_123456789012345";
-  const result = runEntrypoint({
-    SUPABASE_AUTH_PUBLISHABLE_KEY: replacement,
-    NEXT_PUBLIC_SUPABASE_AUTH_PUBLISHABLE_KEY: replacement,
-  });
+test("web entrypoint refuses enabled registration without a production mail provider", () => {
+  const result = runEntrypoint({ EMAIL_PROVIDER: "disabled" });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /build\/runtime projects do not match/);
+  assert.match(result.stderr, /production mail provider/);
+});
+
+test("web entrypoint refuses enabled registration without the Resend key", () => {
+  const result = runEntrypoint({ RESEND_API_KEY: "" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /RESEND_API_KEY/);
 });

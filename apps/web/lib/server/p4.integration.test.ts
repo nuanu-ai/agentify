@@ -10,6 +10,10 @@ import {
   leads,
   leadScans,
   registrationIntents,
+  reportSessions,
+  scannerAuthSessions,
+  scannerAuthUsers,
+  scannerAuthVerifications,
   migrateDatabase,
   scanChecks,
   scanShares,
@@ -31,17 +35,22 @@ import { GET as previewShare } from "../../app/api/v1/scans/[id]/share-preview/r
 import { POST as publishShare } from "../../app/api/v1/scans/[id]/share/route";
 import { POST as acceptScan } from "../../app/api/v1/scans/route";
 import { GET as getContactAccess } from "../../app/api/v2/scans/[id]/contact-access/route";
+import { POST as finalizeScannerAuth } from "../../app/api/v2/auth/finalize/route";
+import { POST as requestScannerRegistration } from "../../app/api/v2/scans/[id]/registrations/route";
 import { REPORT_SESSION_COOKIE } from "./auth";
-import { hmacHex, sha256 } from "./crypto";
+import { encryptEmail, hmacHex, sha256 } from "./crypto";
+import { getServerConfig } from "./config";
 import { getDatabase } from "./database";
 import { getLocalEmailEvidence } from "./email";
 import { enqueueScanInTransaction, stopScanQueue } from "./queue";
+import { completeLeadDeletion } from "./privacy";
+import { sendScannerMagicLink } from "./scanner-auth";
 import { consumeScanRateLimits, readRateCount } from "./rate-limit";
 import { registerForReport, verifyEmailToken } from "./registration";
 import {
-  createSupabaseRegistrationIntent,
-  finalizeSupabaseRegistration,
-} from "./supabase-registration";
+  createScannerRegistrationIntent,
+  finalizeScannerRegistration,
+} from "./scanner-registration";
 import {
   createPublicShare,
   getFullReport,
@@ -76,6 +85,35 @@ const migrationsFolder = fileURLToPath(
 let scanId = "";
 let scanAccessToken = "";
 const anonymousToken = "p4-attribution-anonymous-token";
+
+async function createFreshCompletedScan(label: string) {
+  const { db } = getDatabase();
+  const source = (
+    await db.select().from(scans).where(eq(scans.id, scanId))
+  )[0]!;
+  const sessionId = createUuidV7();
+  const id = createUuidV7();
+  const accessToken = `fresh-${label}-private-access-token-with-more-than-192-bits`;
+  await db.insert(sessions).values({
+    id: sessionId,
+    anonymousIdHash: `fresh-${label}-${sessionId}`,
+  });
+  await db.insert(scans).values({
+    ...source,
+    id,
+    sessionId,
+    leadId: null,
+    targetHash: `fresh-${label}-target`,
+    accessTokenHash: sha256(accessToken),
+    accessTokenExpiresAt: new Date(Date.now() + 86_400_000),
+    idempotencyKeyHash: `fresh-${label}-idem`,
+    idempotencyBodyHash: `fresh-${label}-body`,
+  });
+  return {
+    scan: (await db.select().from(scans).where(eq(scans.id, id)))[0]!,
+    accessToken,
+  };
+}
 
 beforeAll(async () => {
   await admin.pool.query(
@@ -399,7 +437,7 @@ describe("P4 verified report funnel", () => {
     expect(JSON.stringify(storedToken)).not.toContain("api/v1/auth/verify");
   });
 
-  it("stores phone only encrypted and finalizes Supabase identity once", async () => {
+  it("stores phone only encrypted and finalizes verified scanner identity once", async () => {
     const { db } = getDatabase();
     const sourceScan = (
       await db.select().from(scans).where(eq(scans.id, scanId)).limit(1)
@@ -451,7 +489,7 @@ describe("P4 verified report funnel", () => {
       .set({ consentSnapshotId: partnerConsentId })
       .where(eq(sessions.id, scan.sessionId));
     let redirectUrl = "";
-    await createSupabaseRegistrationIntent(
+    await createScannerRegistrationIntent(
       scan,
       {
         email: supabaseEmail,
@@ -492,7 +530,7 @@ describe("P4 verified report funnel", () => {
     expect(JSON.stringify(intent)).not.toContain(partnerClickId);
 
     await expect(
-      createSupabaseRegistrationIntent(
+      createScannerRegistrationIntent(
         scan,
         {
           email: supabaseEmail,
@@ -509,7 +547,7 @@ describe("P4 verified report funnel", () => {
           },
         },
       ),
-    ).rejects.toThrow("supabase_auth_email_unavailable");
+    ).rejects.toThrow("scanner_auth_email_unavailable");
     expect(
       (
         await db
@@ -525,24 +563,32 @@ describe("P4 verified report funnel", () => {
       )[0]?.callbackStateHash,
     ).toBe(intent.callbackStateHash);
     await expect(
-      finalizeSupabaseRegistration(
-        state!,
-        "supabase-access-token-not-stored",
-        async () => ({
-          id: "550e8400-e29b-41d4-a716-446655440001",
-          email: "wrong@example.com",
-        }),
-      ),
+      finalizeScannerRegistration(state!, {
+        id: "550e8400-e29b-41d4-a716-446655440001",
+        email: "wrong@example.com",
+      }),
     ).resolves.toBeUndefined();
 
-    const finalized = await finalizeSupabaseRegistration(
-      state!,
-      "supabase-access-token-not-stored",
-      async () => ({
+    await db.insert(scannerAuthUsers).values({
+      id: "550e8400-e29b-41d4-a716-446655440000",
+      email: supabaseEmail,
+      emailVerified: false,
+      name: "",
+    });
+    await expect(
+      finalizeScannerRegistration(state!, {
         id: "550e8400-e29b-41d4-a716-446655440000",
         email: supabaseEmail,
       }),
-    );
+    ).resolves.toBeUndefined();
+    await db
+      .update(scannerAuthUsers)
+      .set({ emailVerified: true })
+      .where(eq(scannerAuthUsers.id, "550e8400-e29b-41d4-a716-446655440000"));
+    const finalized = await finalizeScannerRegistration(state!, {
+      id: "550e8400-e29b-41d4-a716-446655440000",
+      email: supabaseEmail,
+    });
     expect(finalized?.scanId).toBe(supabaseScanId);
     const unauthorizedContact = await getContactAccess(
       new NextRequest(
@@ -599,7 +645,7 @@ describe("P4 verified report funnel", () => {
         .from(leads)
         .where(eq(leads.emailLookupHash, emailLookupHash))
     )[0]!;
-    expect(lead.supabaseUserId).toBe("550e8400-e29b-41d4-a716-446655440000");
+    expect(lead.scannerAuthUserId).toBe("550e8400-e29b-41d4-a716-446655440000");
     expect(lead.phoneE164Ciphertext).not.toContain("+14155550123");
     expect(lead.phoneLookupHash).toMatch(/^[a-f0-9]{64}$/);
     const partnerRows = await db
@@ -612,18 +658,14 @@ describe("P4 verified report funnel", () => {
       event: "reg",
     });
     expect(
-      await finalizeSupabaseRegistration(
-        state!,
-        "supabase-access-token-not-stored",
-        async () => ({
-          id: "550e8400-e29b-41d4-a716-446655440000",
-          email: supabaseEmail,
-        }),
-      ),
+      await finalizeScannerRegistration(state!, {
+        id: "550e8400-e29b-41d4-a716-446655440000",
+        email: supabaseEmail,
+      }),
     ).toBeUndefined();
 
     let repeatRedirectUrl = "";
-    await createSupabaseRegistrationIntent(
+    await createScannerRegistrationIntent(
       scan,
       {
         email: supabaseEmail,
@@ -641,13 +683,12 @@ describe("P4 verified report funnel", () => {
       },
     );
     await expect(
-      finalizeSupabaseRegistration(
+      finalizeScannerRegistration(
         new URL(repeatRedirectUrl).searchParams.get("state")!,
-        "supabase-access-token-not-stored",
-        async () => ({
+        {
           id: "550e8400-e29b-41d4-a716-446655440000",
           email: supabaseEmail,
-        }),
+        },
       ),
     ).resolves.toMatchObject({ scanId: supabaseScanId });
     expect(
@@ -659,7 +700,7 @@ describe("P4 verified report funnel", () => {
 
     let revokedRedirectUrl = "";
     const revokedEmail = "revoked-partner@example.com";
-    await createSupabaseRegistrationIntent(
+    await createScannerRegistrationIntent(
       scan,
       {
         email: revokedEmail,
@@ -695,14 +736,19 @@ describe("P4 verified report funnel", () => {
       .update(sessions)
       .set({ consentSnapshotId: revokedConsentId })
       .where(eq(sessions.id, scan.sessionId));
+    await db.insert(scannerAuthUsers).values({
+      id: "550e8400-e29b-41d4-a716-446655440003",
+      email: revokedEmail,
+      emailVerified: true,
+      name: "",
+    });
     await expect(
-      finalizeSupabaseRegistration(
+      finalizeScannerRegistration(
         new URL(revokedRedirectUrl).searchParams.get("state")!,
-        "supabase-access-token-not-stored",
-        async () => ({
+        {
           id: "550e8400-e29b-41d4-a716-446655440003",
           email: revokedEmail,
-        }),
+        },
       ),
     ).resolves.toMatchObject({ scanId: supabaseScanId });
     expect(
@@ -714,7 +760,7 @@ describe("P4 verified report funnel", () => {
 
     let expiredRedirectUrl = "";
     const expiredEmail = "expired-supabase@example.com";
-    await createSupabaseRegistrationIntent(
+    await createScannerRegistrationIntent(
       scan,
       {
         email: expiredEmail,
@@ -736,14 +782,10 @@ describe("P4 verified report funnel", () => {
       .set({ expiresAt: new Date(Date.now() - 1_000) })
       .where(eq(registrationIntents.callbackStateHash, sha256(expiredState)));
     await expect(
-      finalizeSupabaseRegistration(
-        expiredState,
-        "supabase-access-token-not-stored",
-        async () => ({
-          id: "550e8400-e29b-41d4-a716-446655440002",
-          email: expiredEmail,
-        }),
-      ),
+      finalizeScannerRegistration(expiredState, {
+        id: "550e8400-e29b-41d4-a716-446655440002",
+        email: expiredEmail,
+      }),
     ).resolves.toBeUndefined();
   });
 
@@ -1121,5 +1163,499 @@ describe("P4 verified report funnel", () => {
     expect(await readRateCount(ipKey, "scan_ip_hour", afterRollingExpiry)).toBe(
       1,
     );
+  });
+  it("spends a scanner mail link once and refuses a mismatched or cross-site confirmation", async () => {
+    const { db } = getDatabase();
+    const { scan } = await createFreshCompletedScan("magic-link");
+    const requestLink = async (email: string) => {
+      await createScannerRegistrationIntent(scan, {
+        email,
+        phone: "+14155550130",
+        role: "business_owner",
+        site_is_mine: true,
+        marketing_email_opt_in: false,
+        dataset_reuse_acknowledged: true,
+      });
+      const url = new URL(getLocalEmailEvidence()?.evidenceUrl ?? "");
+      const fragment = new URLSearchParams(url.hash.slice(1));
+      return { state: fragment.get("state")!, token: fragment.get("token")! };
+    };
+    const first = await requestLink("scanner-live@example.com");
+    const second = await requestLink("scanner-mismatch@example.com");
+    expect(first.state).toHaveLength(43);
+    expect(first.token).toHaveLength(32);
+    expect(
+      await db
+        .select()
+        .from(leads)
+        .where(
+          eq(
+            leads.emailLookupHash,
+            hmacHex(
+              process.env.TOKEN_HMAC_SECRET!,
+              "email",
+              "scanner-live@example.com",
+            ),
+          ),
+        ),
+    ).toHaveLength(0);
+
+    const post = (body: unknown, origin = "http://localhost:3000") =>
+      finalizeScannerAuth(
+        new NextRequest("http://localhost:3000/api/v2/auth/finalize", {
+          method: "POST",
+          headers: { origin, "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+      );
+    expect((await post(first, "https://foreign.example")).status).toBe(403);
+    expect(
+      (await post({ state: second.state, token: first.token })).status,
+    ).toBe(401);
+    const [winner, replay] = await Promise.all([post(first), post(first)]);
+    expect([winner.status, replay.status].sort()).toEqual([200, 401]);
+    const successful = winner.status === 200 ? winner : replay;
+    expect(successful.headers.get("set-cookie")).toContain(
+      REPORT_SESSION_COOKIE,
+    );
+    expect(successful.headers.get("set-cookie")).not.toContain("scanner-auth");
+    expect((await post(first)).status).toBe(401);
+    const linked = (
+      await db
+        .select()
+        .from(leads)
+        .where(
+          eq(
+            leads.emailLookupHash,
+            hmacHex(
+              process.env.TOKEN_HMAC_SECRET!,
+              "email",
+              "scanner-live@example.com",
+            ),
+          ),
+        )
+    )[0]!;
+    expect(linked.verifiedAt).toBeInstanceOf(Date);
+    expect(linked.scannerAuthUserId).toBeTruthy();
+    expect(
+      await db
+        .select()
+        .from(scannerAuthSessions)
+        .where(eq(scannerAuthSessions.userId, linked.scannerAuthUserId!)),
+    ).toHaveLength(0);
+
+    const expiring = await requestLink("scanner-expired@example.com");
+    await db
+      .update(registrationIntents)
+      .set({ expiresAt: new Date(Date.now() - 1_000) })
+      .where(eq(registrationIntents.callbackStateHash, sha256(expiring.state)));
+    expect((await post(expiring)).status).toBe(401);
+  });
+
+  it("keeps the verification usable when report-session creation fails", async () => {
+    const { db } = getDatabase();
+    const { scan } = await createFreshCompletedScan("rollback");
+    const email = "scanner-rollback@example.com";
+    await createScannerRegistrationIntent(scan, {
+      email,
+      phone: "+14155550131",
+      role: "developer",
+      site_is_mine: false,
+      marketing_email_opt_in: false,
+      dataset_reuse_acknowledged: true,
+    });
+    const fragment = new URLSearchParams(
+      new URL(getLocalEmailEvidence()!.evidenceUrl!).hash.slice(1),
+    );
+    const body = { state: fragment.get("state"), token: fragment.get("token") };
+    const post = () =>
+      finalizeScannerAuth(
+        new NextRequest("http://localhost:3000/api/v2/auth/finalize", {
+          method: "POST",
+          headers: {
+            origin: "http://localhost:3000",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(body),
+        }),
+      );
+    const beforeVerification = await db.select().from(scannerAuthVerifications);
+    await admin.pool
+      .query(`create function fail_scanner_report_session() returns trigger
+      language plpgsql as $$ begin raise exception 'forced_report_failure'; end $$`);
+    await admin.pool
+      .query(`create trigger fail_scanner_report_session before insert on report_sessions
+      for each row execute function fail_scanner_report_session()`);
+    try {
+      expect((await post()).status).toBe(503);
+      expect(await db.select().from(scannerAuthVerifications)).toEqual(
+        beforeVerification,
+      );
+      expect(
+        await db
+          .select()
+          .from(scannerAuthUsers)
+          .where(eq(scannerAuthUsers.email, email)),
+      ).toHaveLength(0);
+      expect(
+        await db
+          .select()
+          .from(leads)
+          .where(
+            eq(
+              leads.emailLookupHash,
+              hmacHex(process.env.TOKEN_HMAC_SECRET!, "email", email),
+            ),
+          ),
+      ).toHaveLength(0);
+    } finally {
+      await admin.pool.query(
+        "drop trigger fail_scanner_report_session on report_sessions",
+      );
+      await admin.pool.query("drop function fail_scanner_report_session()");
+    }
+    expect((await post()).status).toBe(200);
+    expect((await post()).status).toBe(401);
+  });
+
+  it("converges two distinct valid links for one email on one identity and lead", async () => {
+    const { db } = getDatabase();
+    const email = "scanner-concurrent@example.com";
+    const linkBodies: { state: string | null; token: string | null }[] = [];
+    const scanIds: string[] = [];
+    for (let index = 0; index < 2; index++) {
+      const { scan } = await createFreshCompletedScan(`concurrent-${index}`);
+      scanIds.push(scan.id);
+      await createScannerRegistrationIntent(scan, {
+        email,
+        phone: "+14155550132",
+        role: "business_owner",
+        site_is_mine: true,
+        marketing_email_opt_in: false,
+        dataset_reuse_acknowledged: true,
+      });
+      const fragment = new URLSearchParams(
+        new URL(getLocalEmailEvidence()!.evidenceUrl!).hash.slice(1),
+      );
+      linkBodies.push({
+        state: fragment.get("state"),
+        token: fragment.get("token"),
+      });
+    }
+    const responses = await Promise.all(
+      linkBodies.map((body) =>
+        finalizeScannerAuth(
+          new NextRequest("http://localhost:3000/api/v2/auth/finalize", {
+            method: "POST",
+            headers: {
+              origin: "http://localhost:3000",
+              "content-type": "application/json",
+            },
+            body: JSON.stringify(body),
+          }),
+        ),
+      ),
+    );
+    expect(responses.map((response) => response.status)).toEqual([200, 200]);
+    const users = await db
+      .select()
+      .from(scannerAuthUsers)
+      .where(eq(scannerAuthUsers.email, email));
+    expect(users).toHaveLength(1);
+    const lead = (
+      await db
+        .select()
+        .from(leads)
+        .where(
+          eq(
+            leads.emailLookupHash,
+            hmacHex(process.env.TOKEN_HMAC_SECRET!, "email", email),
+          ),
+        )
+    )[0]!;
+    expect(lead.scannerAuthUserId).toBe(users[0]!.id);
+    expect(
+      (await db.select().from(leadScans).where(eq(leadScans.leadId, lead.id)))
+        .map((row) => row.scanId)
+        .sort(),
+    ).toEqual(scanIds.sort());
+    expect(
+      await db
+        .select()
+        .from(reportSessions)
+        .where(eq(reportSessions.leadId, lead.id)),
+    ).toHaveLength(2);
+  });
+
+  it("does not revive an anonymized scan when a request was already sending a link", async () => {
+    const { db } = getDatabase();
+    const { scan: original } = await createFreshCompletedScan("deletion-race");
+    const email = "scanner-deletion-race@example.com";
+    const config = getServerConfig();
+    const leadId = createUuidV7();
+    await db.insert(leads).values({
+      id: leadId,
+      emailNormalizedCiphertext: encryptEmail(email, config.encryptionKey),
+      emailLookupHash: hmacHex(config.hmacSecret, "email", email),
+      role: "developer",
+      firstSegment: "owner",
+      firstSessionId: original.sessionId,
+    });
+    await db.update(scans).set({ leadId }).where(eq(scans.id, original.id));
+    const scan = (
+      await db.select().from(scans).where(eq(scans.id, original.id))
+    )[0]!;
+    await createScannerRegistrationIntent(scan, {
+      email,
+      phone: "+14155550134",
+      role: "developer",
+      site_is_mine: false,
+      marketing_email_opt_in: false,
+      dataset_reuse_acknowledged: true,
+    });
+    const firstFragment = new URLSearchParams(
+      new URL(getLocalEmailEvidence()!.evidenceUrl!).hash.slice(1),
+    );
+    let markSending!: () => void;
+    let releaseSending!: () => void;
+    const sending = new Promise<void>((resolve) => {
+      markSending = resolve;
+    });
+    const continueSending = new Promise<void>((resolve) => {
+      releaseSending = resolve;
+    });
+    const lateRequest = createScannerRegistrationIntent(
+      scan,
+      {
+        email,
+        phone: "+14155550134",
+        role: "developer",
+        site_is_mine: false,
+        marketing_email_opt_in: false,
+        dataset_reuse_acknowledged: true,
+      },
+      {
+        sendMagicLink: async () => {
+          markSending();
+          await continueSending;
+        },
+      },
+    );
+    await sending;
+    await expect(completeLeadDeletion({ leadId })).resolves.toMatchObject({
+      database: { status: "anonymized" },
+    });
+    releaseSending();
+    await expect(lateRequest).rejects.toThrow("registration_scan_unavailable");
+    const response = await finalizeScannerAuth(
+      new NextRequest("http://localhost:3000/api/v2/auth/finalize", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:3000",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          state: firstFragment.get("state"),
+          token: firstFragment.get("token"),
+        }),
+      }),
+    );
+    expect(response.status).toBe(401);
+    expect(
+      (await db.select().from(scans).where(eq(scans.id, scan.id)))[0]?.leadId,
+    ).toBeNull();
+    expect(
+      (await db.select().from(leads).where(eq(leads.id, leadId)))[0]?.role,
+    ).toBe("deleted");
+  });
+
+  it("keeps an admitted link valid when its scan bearer expires during email delivery", async () => {
+    const { db } = getDatabase();
+    const { scan } = await createFreshCompletedScan("bearer-expiry");
+    const email = "scanner-bearer-expiry@example.com";
+    const result = await createScannerRegistrationIntent(
+      scan,
+      {
+        email,
+        phone: "+14155550135",
+        role: "developer",
+        site_is_mine: false,
+        marketing_email_opt_in: false,
+        dataset_reuse_acknowledged: true,
+      },
+      {
+        sendMagicLink: async (address, redirect) => {
+          await sendScannerMagicLink(
+            address,
+            new URL(redirect).searchParams.get("state")!,
+          );
+          await db
+            .update(scans)
+            .set({
+              accessTokenExpiresAt: new Date(Date.now() - 1_000),
+            })
+            .where(eq(scans.id, scan.id));
+        },
+      },
+    );
+    expect(result.sent).toBe(true);
+    const fragment = new URLSearchParams(
+      new URL(getLocalEmailEvidence()!.evidenceUrl!).hash.slice(1),
+    );
+    const response = await finalizeScannerAuth(
+      new NextRequest("http://localhost:3000/api/v2/auth/finalize", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:3000",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          state: fragment.get("state"),
+          token: fragment.get("token"),
+        }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toContain(REPORT_SESSION_COOKIE);
+  });
+
+  it("serializes cross-email confirmation with deletion of the scan's old owner", async () => {
+    const { db, pool } = getDatabase();
+    const { scan: original } =
+      await createFreshCompletedScan("cross-email-delete");
+    const oldEmail = "scanner-old-owner@example.com";
+    const newEmail = "scanner-new-owner@example.com";
+    const config = getServerConfig();
+    const oldLeadId = createUuidV7();
+    await db.insert(leads).values({
+      id: oldLeadId,
+      emailNormalizedCiphertext: encryptEmail(oldEmail, config.encryptionKey),
+      emailLookupHash: hmacHex(config.hmacSecret, "email", oldEmail),
+      role: "developer",
+      firstSegment: "owner",
+      firstSessionId: original.sessionId,
+    });
+    await db
+      .update(scans)
+      .set({ leadId: oldLeadId })
+      .where(eq(scans.id, original.id));
+    const scan = (
+      await db.select().from(scans).where(eq(scans.id, original.id))
+    )[0]!;
+    await createScannerRegistrationIntent(scan, {
+      email: newEmail,
+      phone: "+14155550136",
+      role: "developer",
+      site_is_mine: false,
+      marketing_email_opt_in: false,
+      dataset_reuse_acknowledged: true,
+    });
+    const fragment = new URLSearchParams(
+      new URL(getLocalEmailEvidence()!.evidenceUrl!).hash.slice(1),
+    );
+    await admin.pool
+      .query(`create function hold_scanner_consume() returns trigger
+      language plpgsql as $$ begin perform pg_advisory_xact_lock(479925); return old; end $$`);
+    await admin.pool.query(`create trigger hold_scanner_consume before delete
+      on scanner_auth_verifications for each row
+      when ((old.value::jsonb ->> 'email') = 'scanner-new-owner@example.com')
+      execute function hold_scanner_consume()`);
+    const blocker = await admin.pool.connect();
+    await blocker.query("begin");
+    await blocker.query("select pg_advisory_xact_lock(479925)");
+    let confirm: Promise<Response> | undefined;
+    let deletion: ReturnType<typeof completeLeadDeletion> | undefined;
+    try {
+      confirm = finalizeScannerAuth(
+        new NextRequest("http://localhost:3000/api/v2/auth/finalize", {
+          method: "POST",
+          headers: {
+            origin: "http://localhost:3000",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            state: fragment.get("state"),
+            token: fragment.get("token"),
+          }),
+        }),
+      );
+      let consumeBlocked = false;
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const state = await pool.query<{ count: number }>(
+          `select count(*)::int as count from pg_stat_activity
+           where datname = current_database() and wait_event_type = 'Lock'
+             and query like '%scanner_auth_verifications%'`,
+        );
+        if ((state.rows[0]?.count ?? 0) > 0) {
+          consumeBlocked = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(consumeBlocked).toBe(true);
+      deletion = completeLeadDeletion({ leadId: oldLeadId });
+      const deletionFinishedBeforeRelease = await Promise.race([
+        deletion.then(() => true),
+        new Promise<false>((resolve) => setTimeout(() => resolve(false), 150)),
+      ]);
+      expect(deletionFinishedBeforeRelease).toBe(false);
+    } finally {
+      await blocker.query("commit");
+      blocker.release();
+      await Promise.allSettled([confirm, deletion]);
+      await admin.pool.query(
+        "drop trigger hold_scanner_consume on scanner_auth_verifications",
+      );
+      await admin.pool.query("drop function hold_scanner_consume()");
+    }
+    expect((await confirm!).status).toBe(200);
+    await expect(deletion!).resolves.toMatchObject({
+      database: { status: "anonymized" },
+    });
+    const after = (
+      await db.select().from(scans).where(eq(scans.id, scan.id))
+    )[0]!;
+    expect(after.leadId).toBeNull();
+    expect(after.sessionId).not.toBe(scan.sessionId);
+    expect(after.submittedUrlRedacted).toBe("redacted://deleted");
+  });
+
+  it("reports a registration limit instead of claiming that email was sent", async () => {
+    const { scan, accessToken } = await createFreshCompletedScan("rate-limit");
+    const email = "scanner-rate-limit@example.com";
+    const body = {
+      email,
+      phone: "+14155550133",
+      role: "developer",
+      site_is_mine: false,
+      marketing_email_opt_in: false,
+      dataset_reuse_acknowledged: true,
+    } as const;
+    for (let index = 0; index < 3; index++)
+      expect((await createScannerRegistrationIntent(scan, body)).sent).toBe(
+        true,
+      );
+    process.env.REGISTRATION_ENABLED = "true";
+    try {
+      const response = await requestScannerRegistration(
+        new NextRequest(
+          `http://localhost:3000/api/v2/scans/${scan.id}/registrations`,
+          {
+            method: "POST",
+            headers: {
+              origin: "http://localhost:3000",
+              "content-type": "application/json",
+              authorization: `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify(body),
+          },
+        ),
+        { params: Promise.resolve({ id: scan.id }) },
+      );
+      expect(response.status).toBe(429);
+      expect(await response.text()).not.toContain("verification_sent");
+    } finally {
+      process.env.REGISTRATION_ENABLED = "false";
+    }
   });
 });

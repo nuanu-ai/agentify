@@ -11,7 +11,7 @@ import {
   hasSameOrigin,
 } from "../../../../../../lib/server/http";
 import { authorizeScan } from "../../../../../../lib/server/scans";
-import { createSupabaseRegistrationIntent } from "../../../../../../lib/server/supabase-registration";
+import { createScannerRegistrationIntent } from "../../../../../../lib/server/scanner-registration";
 import { PARTNER_CLICK_ID_COOKIE } from "../../../../../../lib/server/attribution";
 
 export const runtime = "nodejs";
@@ -76,11 +76,20 @@ export async function POST(
     const partnerClickId = partnerClickIdSchema.safeParse(
       request.cookies.get(PARTNER_CLICK_ID_COOKIE)?.value,
     );
-    await createSupabaseRegistrationIntent(scan, parsed.data, {
+    const result = await createScannerRegistrationIntent(scan, parsed.data, {
       ...(partnerClickId.success
         ? { partnerClickId: partnerClickId.data }
         : {}),
     });
+    if (!result.sent)
+      return errorResponse(
+        request,
+        429,
+        "registration_rate_limited",
+        "Too many verification requests. Please try again later.",
+        true,
+        3600,
+      );
     return NextResponse.json(
       { status: "verification_sent" },
       { status: 202, headers: { "Cache-Control": "no-store" } },

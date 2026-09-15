@@ -4,13 +4,13 @@ import {
   rateLimitEvents,
   rateWindows,
   registrationIntents,
+  scannerAuthVerifications,
   verificationTokens,
 } from "@agentify/scanner-database";
 import { sql } from "drizzle-orm";
 
 import { getDatabase } from "../lib/server/database";
 import { executeRetentionCleanup } from "../lib/server/privacy";
-import { getSupabaseAuthAdminProvider } from "../lib/server/supabase-auth";
 
 if (process.env.PRIVACY_CLEANUP_ACK !== "yes") {
   throw new Error("Refusing privacy cleanup without PRIVACY_CLEANUP_ACK=yes");
@@ -44,16 +44,10 @@ async function main() {
         sql`select count(*)::int as count from ${registrationIntents}
           where coalesce(${registrationIntents.consumedAt}, ${registrationIntents.expiresAt}) < now() - interval '7 days'`,
       );
-      const supabaseProvider = getSupabaseAuthAdminProvider();
-      if (process.env.NODE_ENV === "production" && !supabaseProvider) {
-        throw new Error("supabase_auth_admin_required_for_privacy_cleanup");
-      }
-      const staleSupabaseUsers = supabaseProvider
-        ? await supabaseProvider.listStaleUnconfirmedUserIds(
-            new Date(now.getTime() - 30 * 86_400_000),
-            batchSize,
-          )
-        : [];
+      const expiredScannerAuthLinks = await db.execute<{ count: number }>(
+        sql`select count(*)::int as count from ${scannerAuthVerifications}
+          where ${scannerAuthVerifications.expiresAt} < now() - interval '7 days'`,
+      );
       process.stdout.write(
         `${JSON.stringify({
           dryRun: true,
@@ -61,7 +55,7 @@ async function main() {
           overdueVerificationTokens: overdueTokens.rows[0]?.count ?? 0,
           overdueRegistrationIntents:
             overdueRegistrationIntents.rows[0]?.count ?? 0,
-          staleUnconfirmedSupabaseUsers: staleSupabaseUsers.length,
+          expiredScannerAuthLinks: expiredScannerAuthLinks.rows[0]?.count ?? 0,
           expiredRateLimitRows: expiredRateLimits.rows[0]?.count ?? 0,
           unverifiedLeadCandidates: candidates.length,
         })}\n`,

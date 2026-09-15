@@ -159,11 +159,83 @@ export const consentSnapshots = pgTable(
   ],
 );
 
+// Scanner identity is isolated from the commerce cabinet's Better Auth rows.
+export const scannerAuthUsers = pgTable("scanner_auth_users", {
+  id: text("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  emailVerified: boolean("email_verified").notNull().default(false),
+  name: text("name").notNull().default(""),
+  createdAt: utcTimestamp("created_at").notNull().defaultNow(),
+  updatedAt: utcTimestamp("updated_at").notNull().defaultNow(),
+});
+
+export const scannerAuthSessions = pgTable(
+  "scanner_auth_sessions",
+  {
+    id: text("id").primaryKey(),
+    token: text("token").notNull().unique(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => scannerAuthUsers.id, { onDelete: "cascade" }),
+    expiresAt: utcTimestamp("expires_at").notNull(),
+    createdAt: utcTimestamp("created_at").notNull().defaultNow(),
+    updatedAt: utcTimestamp("updated_at").notNull().defaultNow(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+  },
+  (table) => [
+    index("scanner_auth_sessions_user_idx").on(table.userId),
+    index("scanner_auth_sessions_expires_idx").on(table.expiresAt),
+  ],
+);
+
+export const scannerAuthAccounts = pgTable(
+  "scanner_auth_accounts",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => scannerAuthUsers.id, { onDelete: "cascade" }),
+    providerId: text("provider_id").notNull(),
+    accountId: text("account_id").notNull(),
+    issuer: text("issuer").notNull(),
+    password: text("password"),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: utcTimestamp("access_token_expires_at"),
+    refreshTokenExpiresAt: utcTimestamp("refresh_token_expires_at"),
+    scope: text("scope"),
+    createdAt: utcTimestamp("created_at").notNull().defaultNow(),
+    updatedAt: utcTimestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [index("scanner_auth_accounts_user_idx").on(table.userId)],
+);
+
+export const scannerAuthVerifications = pgTable(
+  "scanner_auth_verifications",
+  {
+    id: text("id").primaryKey(),
+    identifier: text("identifier").notNull(),
+    value: text("value").notNull(),
+    expiresAt: utcTimestamp("expires_at").notNull(),
+    createdAt: utcTimestamp("created_at").notNull().defaultNow(),
+    updatedAt: utcTimestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("scanner_auth_verifications_identifier_idx").on(table.identifier),
+  ],
+);
+
 export const leads = pgTable(
   "leads",
   {
     id: uuid("id").primaryKey(),
     supabaseUserId: uuid("supabase_user_id"),
+    scannerAuthUserId: text("scanner_auth_user_id").references(
+      () => scannerAuthUsers.id,
+      { onDelete: "set null" },
+    ),
     emailNormalizedCiphertext: text("email_normalized_ciphertext").notNull(),
     emailLookupHash: text("email_lookup_hash").notNull(),
     phoneE164Ciphertext: text("phone_e164_ciphertext"),
@@ -188,6 +260,9 @@ export const leads = pgTable(
     uniqueIndex("leads_supabase_user_id_uidx")
       .on(table.supabaseUserId)
       .where(sql`${table.supabaseUserId} is not null`),
+    uniqueIndex("leads_scanner_auth_user_id_uidx")
+      .on(table.scannerAuthUserId)
+      .where(sql`${table.scannerAuthUserId} is not null`),
     index("leads_verified_at_idx").on(table.verifiedAt),
     index("leads_retention_idx").on(
       table.verifiedAt,

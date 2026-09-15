@@ -104,7 +104,9 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
     } else {
       setState("error");
       setMessage(
-        "Verification email is temporarily unavailable. Please retry.",
+        response.status === 429
+          ? "Too many verification requests. Please try again later."
+          : "Verification email is temporarily unavailable. Please retry.",
       );
     }
   }

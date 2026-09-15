@@ -1,19 +1,17 @@
-import {
-  authFinalizeRequestSchema,
-  authFinalizeResponseSchema,
-} from "@agentify/scanner-contracts";
+import { authFinalizeResponseSchema } from "@agentify/scanner-contracts";
 import { type NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 
 import { REPORT_SESSION_COOKIE } from "../../../../../lib/server/auth";
 import { getServerConfig } from "../../../../../lib/server/config";
-import {
-  bearerToken,
-  errorResponse,
-  hasSameOrigin,
-} from "../../../../../lib/server/http";
-import { finalizeSupabaseRegistration } from "../../../../../lib/server/supabase-registration";
+import { errorResponse, hasSameOrigin } from "../../../../../lib/server/http";
+import { verifyAndFinalizeScannerRegistration } from "../../../../../lib/server/scanner-registration";
 
 export const runtime = "nodejs";
+const verificationRequestSchema = z.object({
+  state: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+  token: z.string().regex(/^[A-Za-z0-9]{32}$/),
+});
 
 export function attachReportSessionCookie(
   response: NextResponse,
@@ -37,11 +35,10 @@ export async function POST(request: NextRequest) {
       "invalid_origin",
       "The request origin is not allowed.",
     );
-  const accessToken = bearerToken(request);
-  const parsed = authFinalizeRequestSchema.safeParse(
+  const parsed = verificationRequestSchema.safeParse(
     await request.json().catch(() => null),
   );
-  if (!accessToken || !parsed.success)
+  if (!parsed.success)
     return errorResponse(
       request,
       401,
@@ -49,9 +46,9 @@ export async function POST(request: NextRequest) {
       "The verification link is invalid or expired.",
     );
   try {
-    const finalized = await finalizeSupabaseRegistration(
+    const finalized = await verifyAndFinalizeScannerRegistration(
       parsed.data.state,
-      accessToken,
+      parsed.data.token,
     );
     if (!finalized)
       return errorResponse(

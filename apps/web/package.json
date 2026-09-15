@@ -28,7 +28,7 @@
     "@fontsource-variable/schibsted-grotesk": "5.2.8",
     "@fontsource/ibm-plex-mono": "5.2.7",
     "@fontsource/schibsted-grotesk": "5.2.8",
-    "@supabase/supabase-js": "2.110.3",
+    "better-auth": "1.7.2",
     "drizzle-orm": "0.45.2",
     "next": "16.2.10",
     "pg-boss": "12.26.0",

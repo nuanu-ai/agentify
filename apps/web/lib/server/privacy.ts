@@ -2,59 +2,121 @@ import {
   anonymizeLeadData,
   leads,
   runRetentionCleanup,
-  UNVERIFIED_LEAD_RETENTION_MS,
+  scannerAuthUsers,
+  scannerAuthVerifications,
+  type DatabaseTransaction,
 } from "@agentify/scanner-database";
-import { eq } from "drizzle-orm";
+import { and, eq, lt, ne, sql } from "drizzle-orm";
 
+import { decryptEmail, hmacHex, normalizeEmail } from "./crypto";
 import { getDatabase } from "./database";
+import { getServerConfig } from "./config";
 import { detachLeadCardSignalsForDeletion } from "./stripe-card-signal";
 import type { StripeCardSignalProvider } from "./stripe-card-signal-provider";
-import {
-  getSupabaseAuthAdminProvider,
-  type SupabaseAuthAdminProvider,
-} from "./supabase-auth";
 
-async function deleteLinkedSupabaseUser(
+async function deleteLinkedScannerUser(
+  tx: DatabaseTransaction,
   leadId: string,
-  provider = getSupabaseAuthAdminProvider(),
 ) {
   const linked = (
-    await getDatabase()
-      .db.select({ supabaseUserId: leads.supabaseUserId })
+    await tx
+      .select({
+        scannerAuthUserId: leads.scannerAuthUserId,
+        emailLookupHash: leads.emailLookupHash,
+        emailNormalizedCiphertext: leads.emailNormalizedCiphertext,
+      })
       .from(leads)
       .where(eq(leads.id, leadId))
       .limit(1)
   )[0];
-  if (!linked?.supabaseUserId) return { status: "not_linked" as const };
-  if (!provider) throw new Error("supabase_auth_admin_unavailable");
-  await provider.deleteUser(linked.supabaseUserId);
+  if (!linked) return { status: "not_linked" as const };
+  let email: string | undefined;
+  if (linked.emailNormalizedCiphertext !== "deleted") {
+    const config = getServerConfig();
+    email = normalizeEmail(
+      decryptEmail(linked.emailNormalizedCiphertext, config.encryptionKey),
+    );
+    if (hmacHex(config.hmacSecret, "email", email) !== linked.emailLookupHash) {
+      throw new Error("lead_email_identity_mismatch");
+    }
+    // BA verification values contain the address but have no account FK: a
+    // pending link for a legacy-only lead must be erased with that lead too.
+    await tx
+      .delete(scannerAuthVerifications)
+      .where(
+        sql`${scannerAuthVerifications.value}::jsonb ->> 'email' = ${email}`,
+      );
+  }
+  // Include an identity left unlinked by an older split-transaction failure.
+  const byEmail = email
+    ? (
+        await tx
+          .select({ id: scannerAuthUsers.id })
+          .from(scannerAuthUsers)
+          .where(sql`lower(${scannerAuthUsers.email}) = ${email}`)
+          .limit(1)
+      )[0]
+    : undefined;
+  const linkedUser = linked.scannerAuthUserId
+    ? (
+        await tx
+          .select({ email: scannerAuthUsers.email })
+          .from(scannerAuthUsers)
+          .where(eq(scannerAuthUsers.id, linked.scannerAuthUserId))
+          .limit(1)
+      )[0]
+    : undefined;
+  if (
+    linked.scannerAuthUserId &&
+    (!email || !linkedUser || normalizeEmail(linkedUser.email) !== email)
+  )
+    throw new Error("lead_email_identity_mismatch");
+  if (
+    linked.scannerAuthUserId &&
+    byEmail &&
+    linked.scannerAuthUserId !== byEmail.id
+  )
+    throw new Error("lead_email_identity_mismatch");
+  const userId = linked.scannerAuthUserId ?? byEmail?.id;
+  // A report belonging to another lead cannot lose its identity here.
+  if (!userId) return { status: "not_linked" as const };
+  const anotherLead = (
+    await tx
+      .select({ id: leads.id })
+      .from(leads)
+      .where(and(eq(leads.scannerAuthUserId, userId), ne(leads.id, leadId)))
+      .limit(1)
+  )[0];
+  if (anotherLead) throw new Error("scanner_identity_shared_by_leads");
+  await tx.delete(scannerAuthUsers).where(eq(scannerAuthUsers.id, userId));
   return { status: "deleted" as const };
 }
 
 export async function completeLeadDeletion(input: {
   leadId: string;
   provider?: StripeCardSignalProvider;
-  supabaseProvider?: SupabaseAuthAdminProvider;
   now?: Date;
 }) {
   const providerResult = await detachLeadCardSignalsForDeletion(
     input.leadId,
     input.provider,
   );
-  const supabaseResult = await deleteLinkedSupabaseUser(
-    input.leadId,
-    input.supabaseProvider,
-  );
+  let identityResult: { status: "deleted" | "not_linked" } = {
+    status: "not_linked",
+  };
   const databaseResult = await anonymizeLeadData(
     getDatabase().db,
     input.leadId,
     input.now,
+    async (tx, leadId) => {
+      identityResult = await deleteLinkedScannerUser(tx, leadId);
+    },
   );
   if (databaseResult.status === "not_found")
     throw new Error("lead_deletion_target_missing");
   return {
     provider: providerResult,
-    supabase: supabaseResult,
+    identity: identityResult,
     database: databaseResult,
   } as const;
 }
@@ -63,44 +125,22 @@ export async function executeRetentionCleanup(input: {
   now?: Date;
   batchSize?: number;
   provider?: StripeCardSignalProvider;
-  supabaseProvider?: SupabaseAuthAdminProvider;
 }) {
   const now = input.now ?? new Date();
-  const supabaseProvider =
-    input.supabaseProvider ?? getSupabaseAuthAdminProvider();
-  if (process.env.NODE_ENV === "production" && !supabaseProvider) {
-    throw new Error("supabase_auth_admin_required_for_privacy_cleanup");
-  }
-  const staleSupabaseCutoff = new Date(
-    now.getTime() - UNVERIFIED_LEAD_RETENTION_MS,
-  );
-  const staleSupabaseUserIds = supabaseProvider
-    ? await supabaseProvider.listStaleUnconfirmedUserIds(
-        staleSupabaseCutoff,
-        input.batchSize ?? 100,
-      )
-    : [];
-  let supabaseUsersDeleted = 0;
-  for (const userId of staleSupabaseUserIds) {
-    if (
-      await supabaseProvider?.deleteUserIfStillStale(
-        userId,
-        staleSupabaseCutoff,
-      )
-    ) {
-      supabaseUsersDeleted += 1;
-    }
-  }
   const database = await runRetentionCleanup(getDatabase().db, {
     now,
     batchSize: input.batchSize,
     beforeLeadAnonymize: async (leadId) => {
       await detachLeadCardSignalsForDeletion(leadId, input.provider);
-      await deleteLinkedSupabaseUser(leadId, supabaseProvider);
+    },
+    beforeLeadAnonymizeInTransaction: async (tx, leadId) => {
+      await deleteLinkedScannerUser(tx, leadId);
     },
   });
-  return {
-    ...database,
-    supabaseUsersDeleted,
-  };
+  const staleVerificationCutoff = new Date(now.getTime() - 7 * 86_400_000);
+  const expiredLinks = await getDatabase()
+    .db.delete(scannerAuthVerifications)
+    .where(lt(scannerAuthVerifications.expiresAt, staleVerificationCutoff))
+    .returning({ id: scannerAuthVerifications.id });
+  return { ...database, expiredScannerAuthLinks: expiredLinks.length };
 }
