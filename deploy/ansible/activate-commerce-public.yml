@@ -229,7 +229,7 @@
           - (full_edge_config.stdout | from_json).services.caddy.volumes | selectattr('target', 'equalto', '/etc/caddy/Caddyfile') | map(attribute='source') | list == [edge_dir ~ '/Caddyfile']
           - (existing_edge.stdout | from_json | first).Mounts | selectattr('Destination', 'in', ['/data','/config']) | map(attribute='Name') | sort | list == ['agentify-edge_caddy-config','agentify-edge_caddy-data']
           - (existing_edge.stdout | from_json | first).Config.Env | select('equalto', 'ADMIN_BASIC_AUTH_USER=' ~ (full_edge_config.stdout | from_json).services.caddy.environment.ADMIN_BASIC_AUTH_USER) | list | length == 1
-          - (existing_edge.stdout | from_json | first).Config.Env | select('equalto', 'ADMIN_BASIC_AUTH_HASH=' ~ (full_edge_config.stdout | from_json).services.caddy.environment.ADMIN_BASIC_AUTH_HASH) | list | length == 1
+          - (existing_edge.stdout | from_json | first).Config.Env | select('equalto', 'ADMIN_BASIC_AUTH_HASH=' ~ ((full_edge_config.stdout | from_json).services.caddy.environment.ADMIN_BASIC_AUTH_HASH | replace('$$', '$'))) | list | length == 1
         fail_msg: Full edge must preserve existing scanner admin credentials and TLS network.
       no_log: true
 
@@ -356,7 +356,7 @@
           - /etc/caddy/Caddyfile
       environment:
         ADMIN_BASIC_AUTH_USER: "{{ (full_edge_config.stdout | from_json).services.caddy.environment.ADMIN_BASIC_AUTH_USER }}"
-        ADMIN_BASIC_AUTH_HASH: "{{ (full_edge_config.stdout | from_json).services.caddy.environment.ADMIN_BASIC_AUTH_HASH }}"
+        ADMIN_BASIC_AUTH_HASH: "{{ (full_edge_config.stdout | from_json).services.caddy.environment.ADMIN_BASIC_AUTH_HASH | replace('$$', '$') }}"
       become: true
       changed_when: false
       no_log: true
