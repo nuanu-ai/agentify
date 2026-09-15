@@ -1,0 +1,22 @@
+(unavailable) {
+	header {
+		Content-Type "text/plain; charset=utf-8"
+		Cache-Control "no-store"
+		Retry-After "300"
+		X-Robots-Tag "noindex, nofollow"
+		-Server
+	}
+	respond "Service is being prepared. Merchant data and transactions are not available yet. Please retry later.\n" 503
+}
+
+agentify.ad {
+	import unavailable
+}
+
+www.agentify.ad {
+	redir https://agentify.ad{uri} permanent
+}
+
+app.agentify.ad {
+	import unavailable
+}
