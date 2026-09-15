@@ -1,5 +1,50 @@
 # Agentify server preparation
 
+The public records now point at the new production VM. Until merchant data and
+the scanner's real configuration are restored and accepted, the VM can answer
+honestly with the separate maintenance edge. Run `prepare-production.yml` for
+the reviewed release first, then:
+
+```sh
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/start-maintenance-edge.yml \
+  -e release_sha=REVIEWED_40_CHARACTER_SHA --check
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/start-maintenance-edge.yml \
+  -e release_sha=REVIEWED_40_CHARACTER_SHA
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/start-maintenance-edge.yml \
+  -e release_sha=REVIEWED_40_CHARACTER_SHA
+```
+
+The second real run must report `changed=0`. Check the public apex and app over
+HTTP and HTTPS: all nonredirected routes must return 503 with `Retry-After: 300`
+and `Cache-Control: no-store`; www redirects to the apex. HTTPS acceptance also
+requires an issued certificate for each hostname. This edge uses the existing
+`agentify-ingress` bridge and Caddy's persistent certificate volumes, but no
+database, scanner, or commerce process. It refuses to replace a different
+active Caddy configuration. All server changes, including this temporary edge,
+are made by Ansible.
+
+The commerce process can be checked independently of restored merchant data:
+
+```sh
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/warmup-commerce.yml \
+  -e release_sha=REVIEWED_40_CHARACTER_SHA --check
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/warmup-commerce.yml \
+  -e release_sha=REVIEWED_40_CHARACTER_SHA
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/warmup-commerce.yml \
+  -e release_sha=REVIEWED_40_CHARACTER_SHA
+```
+
+This starts only Postgres, migrations, gateway, cabinet, and inner Caddy in
+`agentify-commerce-warmup`. The new `agentify-commerce-warmup-postgres` volume
+is separate from the final commerce project's restore target and is never
+deleted or replaced by the playbook. Its Docker network is internal, and neither
+Postgres nor Caddy has a published port. Gateway seeding and registration are
+empty; cabinet mail is disabled. The empty database has no connected
+WooCommerce shops, so its cabinet worker has nothing to draw. Warmup proves
+startup and container health only; it does not prove existing accounts,
+catalogues, paid orders, or money movement. Do not import donor data into this
+warmup volume or route public traffic to it.
+
 These playbooks own the application-level server preparation for the coordinated
 `agentify.ad`, `www.agentify.ad`, `app.agentify.ad`, and `test.agentify.ad` switch.
 The machine baseline remains in `nuanu-ai/infra`. The production and test hosts

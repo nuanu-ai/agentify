@@ -1,0 +1,8 @@
+# Use with compose.yaml while the real scanner site is active and commerce
+# remains unavailable. The edge project and certificate volumes are preserved.
+services:
+  caddy:
+    volumes: !override
+      - ./Caddyfile.scanner-active:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config

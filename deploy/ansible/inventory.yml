@@ -12,3 +12,9 @@ all:
           ansible_host: codex-vm
           ansible_user: dmitry
           ansible_python_interpreter: /usr/bin/python3
+    scanner_source:
+      hosts:
+        scanner-donor:
+          ansible_host: 161.35.76.32
+          ansible_user: dima
+          ansible_python_interpreter: /usr/bin/python3

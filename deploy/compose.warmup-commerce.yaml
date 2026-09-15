@@ -1,0 +1,32 @@
+# The warmup project boots the reviewed commerce image against a new, isolated
+# database. It is never the restore target for production merchant data.
+# Use after compose.yaml, compose.public.yaml and compose.hetzner-commerce.yaml.
+services:
+  postgres:
+    volumes: !override
+      - warmup-postgres:/var/lib/postgresql/data
+      - ./deploy/postgres-init:/docker-entrypoint-initdb.d:ro
+
+  gateway:
+    environment:
+      SANDBOX_MERCHANT_KEY: ""
+      REGISTRATION_INVITATION: ""
+
+  cabinet:
+    environment:
+      MAIL_URL: sandbox:log
+      MAIL_API_KEY: ""
+
+  web:
+    # The ordinary Hetzner override attaches this service to the public edge.
+    # During warmup every commerce process stays on the same internal network.
+    networks: !override
+      - default
+
+networks:
+  default:
+    internal: true
+
+volumes:
+  warmup-postgres:
+    name: agentify-commerce-warmup-postgres

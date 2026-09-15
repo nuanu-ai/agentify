@@ -1,0 +1,305 @@
+---
+- name: Activate the existing scanner site while commerce remains unavailable
+  hosts: production
+  gather_facts: false
+  vars:
+    release_dir: /home/dmitry/agentify-commerce
+    donor_host: scanner-donor
+    donor_env: /opt/agentify/shared/.env.production
+    scanner_env: /home/dmitry/agentify-scanner/.env.production
+    scanner_dir: /home/dmitry/agentify-commerce/ops/deploy/droplet
+    edge_dir: /home/dmitry/agentify-commerce/deploy/edge
+    scanner_web_image: "agentify-scanner-web:{{ release_sha }}"
+    scanner_worker_image: "agentify-scanner-worker:{{ release_sha }}"
+    scanner_privacy_image: "agentify-scanner-privacy:{{ release_sha }}"
+    scanner_compose_argv:
+      - docker
+      - compose
+      - --env-file
+      - "{{ scanner_env }}"
+      - -f
+      - compose.production.yaml
+      - -f
+      - compose.hetzner.yaml
+    scanner_compose_environment:
+      AGENTIFY_SCANNER_WEB_IMAGE: "{{ scanner_web_image }}"
+      AGENTIFY_SCANNER_WORKER_IMAGE: "{{ scanner_worker_image }}"
+      AGENTIFY_SCANNER_PRIVACY_IMAGE: "{{ scanner_privacy_image }}"
+    edge_compose_argv:
+      - docker
+      - compose
+      - --env-file
+      - "{{ scanner_env }}"
+      - -f
+      - compose.yaml
+      - -f
+      - compose.scanner-active.yaml
+    scanner_live_probe_js: "fetch('http://127.0.0.1:3000/api/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+    scanner_ready_probe_js: "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  tasks:
+    - name: Require the reviewed immutable release
+      ansible.builtin.assert:
+        that:
+          - release_sha is defined
+          - release_sha | default('') is match('^[0-9a-f]{40}$')
+
+    - name: Verify the prepared checkout revision
+      ansible.builtin.command:
+        argv: [git, rev-parse, HEAD]
+        chdir: "{{ release_dir }}"
+      register: checkout_sha
+      changed_when: false
+      check_mode: false
+
+    - name: Refuse another or edited release
+      ansible.builtin.assert:
+        that: checkout_sha.stdout == release_sha
+
+    - name: Inspect checkout changes
+      ansible.builtin.command:
+        argv: [git, status, --porcelain, --untracked-files=all]
+        chdir: "{{ release_dir }}"
+      register: checkout_status
+      changed_when: false
+      check_mode: false
+
+    - name: Refuse local source edits
+      ansible.builtin.assert:
+        that: checkout_status.stdout == ''
+
+    - name: Inspect the preserved scanner production configuration
+      ansible.builtin.stat:
+        path: "{{ scanner_env }}"
+        get_checksum: true
+        checksum_algorithm: sha256
+      register: scanner_env_stat
+      no_log: true
+
+    - name: Refuse missing or exposed scanner credentials
+      ansible.builtin.assert:
+        that:
+          - scanner_env_stat.stat.exists
+          - scanner_env_stat.stat.isreg
+          - scanner_env_stat.stat.mode == '0600'
+          - scanner_env_stat.stat.pw_name == 'dmitry'
+
+    - name: Inspect the current donor environment digest without reading its content
+      ansible.builtin.stat:
+        path: "{{ donor_env }}"
+        get_checksum: true
+        checksum_algorithm: sha256
+      delegate_to: "{{ donor_host }}"
+      become: true
+      register: donor_env_stat
+      no_log: true
+
+    - name: Refuse scanner activation after donor credential drift
+      ansible.builtin.assert:
+        that:
+          - donor_env_stat.stat.exists
+          - donor_env_stat.stat.isreg
+          - donor_env_stat.stat.mode == '0600'
+          - donor_env_stat.stat.pw_name == 'root'
+          - scanner_env_stat.stat.checksum == donor_env_stat.stat.checksum
+        fail_msg: Staged scanner env differs from the current donor bytes; restage intentionally before public activation.
+      no_log: true
+
+    - name: Inspect active new scanner project containers
+      ansible.builtin.command:
+        argv: [docker, ps, --quiet, --filter, label=com.docker.compose.project=agentify]
+      become: true
+      register: active_scanner
+      changed_when: false
+      check_mode: false
+
+    - name: Inspect an already running scanner container
+      ansible.builtin.command:
+        argv: [docker, inspect, "{{ active_scanner.stdout }}"]
+      become: true
+      register: existing_scanner
+      changed_when: false
+      check_mode: false
+      no_log: true
+      when: active_scanner.stdout_lines | length == 1
+
+    - name: Refuse other new scanner services during this website-only activation
+      ansible.builtin.assert:
+        that:
+          - active_scanner.stdout_lines | length <= 1
+          - active_scanner.stdout_lines | length == 0 or (existing_scanner.stdout | from_json | first).Config.Labels['com.docker.compose.service'] == 'web'
+        fail_msg: This playbook starts only scanner web; inspect any other active scanner service.
+
+    - name: Inspect the current maintenance edge
+      ansible.builtin.command:
+        argv: [docker, ps, --quiet, --filter, label=com.docker.compose.project=agentify-edge]
+      become: true
+      register: active_edge
+      changed_when: false
+      check_mode: false
+
+    - name: Require exactly one existing public edge
+      ansible.builtin.assert:
+        that: active_edge.stdout_lines | length == 1
+        fail_msg: Start the reviewed maintenance edge before scanner activation.
+
+    - name: Inspect the current edge mount
+      ansible.builtin.command:
+        argv: [docker, inspect, "{{ active_edge.stdout }}"]
+      become: true
+      register: current_edge
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Refuse replacement of an unrelated public edge
+      ansible.builtin.assert:
+        that: >-
+          (current_edge.stdout | from_json | first).Mounts
+          | selectattr('Destination', 'equalto', '/etc/caddy/Caddyfile')
+          | map(attribute='Source') | list in
+          [[edge_dir ~ '/Caddyfile.warmup'], [edge_dir ~ '/Caddyfile.scanner-active']]
+        fail_msg: This scanner step may replace only the maintenance or its own scanner edge.
+
+    - name: Require the prepared exact scanner website image
+      ansible.builtin.command:
+        argv: [docker, image, inspect, "{{ scanner_web_image }}"]
+      become: true
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Resolve protected scanner Compose without printing secrets
+      ansible.builtin.command:
+        argv: "{{ scanner_compose_argv + ['config', '--format', 'json'] }}"
+        chdir: "{{ scanner_dir }}"
+      environment: "{{ scanner_compose_environment }}"
+      become: true
+      register: scanner_config
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Refuse a scanner web with the wrong image or a host port
+      ansible.builtin.assert:
+        that:
+          - (scanner_config.stdout | from_json).services.web.image == scanner_web_image
+          - (scanner_config.stdout | from_json).services.web.ports is not defined
+          - (scanner_config.stdout | from_json).services.web.networks['agentify-ingress'].aliases is defined
+          - (scanner_config.stdout | from_json).services.web.environment.REGISTRATION_ENABLED is defined
+        fail_msg: Scanner web must use the reviewed image and private edge alias.
+      no_log: true
+
+    - name: Resolve the real scanner edge with original admin credentials
+      ansible.builtin.command:
+        argv: "{{ edge_compose_argv + ['config', '--format', 'json'] }}"
+        chdir: "{{ edge_dir }}"
+      become: true
+      register: edge_config
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Require the protected edge admin credentials to be present
+      ansible.builtin.assert:
+        that:
+          - (edge_config.stdout | from_json).services.caddy.environment.ADMIN_BASIC_AUTH_USER | length > 0
+          - (edge_config.stdout | from_json).services.caddy.environment.ADMIN_BASIC_AUTH_HASH | length > 0
+      no_log: true
+
+    - name: Start only scanner web, skipping all dependency and job services
+      ansible.builtin.command:
+        argv: "{{ scanner_compose_argv + ['up', '-d', '--no-deps', '--wait', '--wait-timeout', '180', '--no-build', 'web'] }}"
+        chdir: "{{ scanner_dir }}"
+      environment: "{{ scanner_compose_environment }}"
+      become: true
+      register: scanner_up
+      changed_when: "'Created' in scanner_up.stderr or 'Started' in scanner_up.stderr or 'Recreated' in scanner_up.stderr"
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Probe the new website's database-free live route from inside its container
+      ansible.builtin.command:
+        argv: "{{ scanner_compose_argv + ['exec', '-T', 'web', 'node', '-e', scanner_live_probe_js] }}"
+        chdir: "{{ scanner_dir }}"
+      environment: "{{ scanner_compose_environment }}"
+      become: true
+      changed_when: false
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Require the new website to see Supabase and the existing worker as ready
+      ansible.builtin.command:
+        argv: "{{ scanner_compose_argv + ['exec', '-T', 'web', 'node', '-e', scanner_ready_probe_js] }}"
+        chdir: "{{ scanner_dir }}"
+      environment: "{{ scanner_compose_environment }}"
+      become: true
+      changed_when: false
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Validate the real scanner edge with the preserved admin credentials
+      ansible.builtin.command:
+        argv:
+          - docker
+          - run
+          - --rm
+          - --network
+          - none
+          - --env
+          - ADMIN_BASIC_AUTH_USER
+          - --env
+          - ADMIN_BASIC_AUTH_HASH
+          - --volume
+          - "{{ edge_dir }}/Caddyfile.scanner-active:/etc/caddy/Caddyfile:ro"
+          - caddy:2.10.0-alpine
+          - caddy
+          - validate
+          - --config
+          - /etc/caddy/Caddyfile
+      environment:
+        ADMIN_BASIC_AUTH_USER: "{{ (edge_config.stdout | from_json).services.caddy.environment.ADMIN_BASIC_AUTH_USER }}"
+        ADMIN_BASIC_AUTH_HASH: "{{ (edge_config.stdout | from_json).services.caddy.environment.ADMIN_BASIC_AUTH_HASH }}"
+      become: true
+      changed_when: false
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Activate scanner routing while keeping app on explicit 503
+      ansible.builtin.command:
+        argv: "{{ edge_compose_argv + ['up', '-d', '--wait', '--wait-timeout', '180', '--no-build', 'caddy'] }}"
+        chdir: "{{ edge_dir }}"
+      become: true
+      register: edge_up
+      changed_when: "'Created' in edge_up.stderr or 'Started' in edge_up.stderr or 'Recreated' in edge_up.stderr"
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Require the public scanner live route through the new TLS edge
+      ansible.builtin.uri:
+        url: https://agentify.ad/api/health/live
+        method: GET
+        status_code: 200
+        validate_certs: true
+        return_content: false
+      delegate_to: localhost
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Check that public commerce still refuses traffic honestly
+      ansible.builtin.uri:
+        url: https://app.agentify.ad/healthz
+        method: GET
+        status_code: 503
+        validate_certs: true
+        return_content: false
+      delegate_to: localhost
+      register: app_maintenance
+      changed_when: false
+      when: not ansible_check_mode
+
+    - name: Require Retry-After on the unavailable commerce origin
+      ansible.builtin.assert:
+        that:
+          - app_maintenance.retry_after == '300'
+          - app_maintenance.cache_control == 'no-store'
+      when: not ansible_check_mode

@@ -1,0 +1,172 @@
+---
+- name: Boot commerce privately against a separate empty warmup database
+  hosts: production
+  gather_facts: false
+  vars:
+    release_dir: /home/dmitry/agentify-commerce
+    warmup_project: agentify-commerce-warmup
+    warmup_volume_name: agentify-commerce-warmup-postgres
+    app_image: "agentify-commerce-app:{{ release_sha }}"
+    web_image: "agentify-commerce-web:{{ release_sha }}"
+    compose_argv:
+      - docker
+      - compose
+      - --project-name
+      - "{{ warmup_project }}"
+      - --env-file
+      - "{{ release_dir }}/.env"
+      - -f
+      - compose.yaml
+      - -f
+      - deploy/compose.public.yaml
+      - -f
+      - deploy/compose.hetzner-commerce.yaml
+      - -f
+      - deploy/compose.warmup-commerce.yaml
+    compose_environment:
+      COINSLOT_APP_IMAGE: "{{ app_image }}"
+      COINSLOT_WEB_IMAGE: "{{ web_image }}"
+      COINSLOT_SEED_KEY: ""
+      COINSLOT_INVITATION: ""
+  tasks:
+    - name: Require the reviewed immutable release
+      ansible.builtin.assert:
+        that:
+          - release_sha is defined
+          - release_sha | default('') is match('^[0-9a-f]{40}$')
+        fail_msg: Pass the reviewed 40-character lowercase release_sha explicitly.
+
+    - name: Verify the prepared checkout revision
+      ansible.builtin.command:
+        argv: [git, rev-parse, HEAD]
+        chdir: "{{ release_dir }}"
+      register: checkout_sha
+      changed_when: false
+      check_mode: false
+
+    - name: Refuse a different or unprepared release
+      ansible.builtin.assert:
+        that: checkout_sha.stdout == release_sha
+
+    - name: Inspect checkout changes
+      ansible.builtin.command:
+        argv: [git, status, --porcelain, --untracked-files=all]
+        chdir: "{{ release_dir }}"
+      register: checkout_status
+      changed_when: false
+      check_mode: false
+
+    - name: Refuse release edits on the VM
+      ansible.builtin.assert:
+        that: checkout_status.stdout == ''
+
+    - name: Inspect the protected commerce environment
+      ansible.builtin.stat:
+        path: "{{ release_dir }}/.env"
+        get_checksum: false
+      register: commerce_env
+
+    - name: Refuse a missing or exposed commerce environment
+      ansible.builtin.assert:
+        that:
+          - commerce_env.stat.exists
+          - commerce_env.stat.isreg
+          - commerce_env.stat.mode == '0600'
+          - commerce_env.stat.pw_name == 'dmitry'
+
+    - name: Refuse a running final commerce or scanner project
+      ansible.builtin.command:
+        argv: [docker, ps, --quiet, --filter, "label=com.docker.compose.project={{ item }}"]
+      become: true
+      loop: [agentify-commerce, agentify]
+      register: final_projects
+      changed_when: false
+      check_mode: false
+
+    - name: Require final projects inactive
+      ansible.builtin.assert:
+        that: final_projects.results | selectattr('stdout', 'equalto', '') | list | length == 2
+
+    - name: Require the prepared exact commerce images
+      ansible.builtin.command:
+        argv: [docker, image, inspect, "{{ item }}"]
+      become: true
+      loop:
+        - "{{ app_image }}"
+        - "{{ web_image }}"
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Resolve the warmup Compose contract without exposing credentials
+      ansible.builtin.command:
+        argv: "{{ compose_argv + ['config', '--format', 'json'] }}"
+        chdir: "{{ release_dir }}"
+      environment: "{{ compose_environment }}"
+      become: true
+      register: warmup_config
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Refuse public networking, seeded merchants, registration or live mail
+      ansible.builtin.assert:
+        that:
+          - (warmup_config.stdout | from_json).networks.default.internal
+          - (warmup_config.stdout | from_json).services.keys() | list | sort == ['cabinet', 'gateway', 'migrate', 'postgres', 'web']
+          - (warmup_config.stdout | from_json).services.postgres.ports is not defined
+          - (warmup_config.stdout | from_json).services.web.ports is not defined
+          - (warmup_config.stdout | from_json).services.web.networks.keys() | list == ['default']
+          - (warmup_config.stdout | from_json).services.gateway.environment.SANDBOX_MERCHANT_KEY == ''
+          - (warmup_config.stdout | from_json).services.gateway.environment.REGISTRATION_INVITATION == ''
+          - (warmup_config.stdout | from_json).services.cabinet.environment.MAIL_URL == 'sandbox:log'
+          - (warmup_config.stdout | from_json).services.cabinet.environment.MAIL_API_KEY == ''
+          - (warmup_config.stdout | from_json).volumes['warmup-postgres'].name == warmup_volume_name
+        fail_msg: The warmup stack must stay private and effect-disabled.
+      no_log: true
+
+    - name: Verify the reviewed image set
+      ansible.builtin.command:
+        argv: "{{ compose_argv + ['config', '--images'] }}"
+        chdir: "{{ release_dir }}"
+      environment: "{{ compose_environment }}"
+      become: true
+      register: warmup_images
+      changed_when: false
+      check_mode: false
+
+    - name: Refuse unexpected or mutable images
+      ansible.builtin.assert:
+        that: warmup_images.stdout_lines | unique | sort == [app_image, web_image, 'postgres:17-alpine'] | sort
+
+    - name: Inspect any existing warmup database volume
+      ansible.builtin.command:
+        argv: [docker, volume, inspect, "{{ warmup_volume_name }}"]
+      become: true
+      register: warmup_volume
+      changed_when: false
+      failed_when: warmup_volume.rc not in [0, 1]
+      check_mode: false
+      no_log: true
+
+    - name: Refuse an unrelated volume at the warmup database name
+      ansible.builtin.assert:
+        that: (warmup_volume.stdout | from_json | first).Labels['com.docker.compose.project'] == warmup_project
+        fail_msg: Inspect the existing warmup database volume; this playbook never reinitializes it.
+      when: warmup_volume.rc == 0
+
+    - name: Start the private database, migrations, gateway, cabinet and Caddy
+      ansible.builtin.command:
+        argv: "{{ compose_argv + ['up', '-d', '--wait', '--wait-timeout', '180', '--no-build', 'postgres', 'migrate', 'gateway', 'cabinet', 'web'] }}"
+        chdir: "{{ release_dir }}"
+      environment: "{{ compose_environment }}"
+      become: true
+      register: commerce_up
+      changed_when: "'Created' in commerce_up.stderr or 'Started' in commerce_up.stderr or 'Recreated' in commerce_up.stderr"
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Explain what check mode cannot prove before first apply
+      ansible.builtin.debug:
+        msg: Check mode verifies the prepared release and resolved private Compose contract; database initialization and service health require a real Ansible run.
+      when: ansible_check_mode

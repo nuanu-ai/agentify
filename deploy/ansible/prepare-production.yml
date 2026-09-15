@@ -59,10 +59,34 @@
       changed_when: false
       check_mode: false
 
-    - name: Refuse preparation over an active production stack
+    - name: Refuse preparation over a final commerce or scanner stack
       ansible.builtin.assert:
-        that: active_production_projects.results | selectattr('stdout', 'equalto', '') | list | length == 3
-        fail_msg: A unified production project is running; use a controlled release playbook instead.
+        that: active_production_projects.results[0:2] | selectattr('stdout', 'equalto', '') | list | length == 2
+        fail_msg: A final commerce or scanner project is running; use a controlled release playbook instead.
+
+    - name: Refuse more than one existing edge container
+      ansible.builtin.assert:
+        that: active_production_projects.results[2].stdout_lines | length <= 1
+        fail_msg: Inspect the active edge project before preparing another release.
+
+    - name: Inspect an active edge before checking out another release
+      ansible.builtin.command:
+        argv: [docker, inspect, "{{ active_production_projects.results[2].stdout }}"]
+      become: true
+      register: preparation_edge
+      changed_when: false
+      check_mode: false
+      no_log: true
+      when: active_production_projects.results[2].stdout != ''
+
+    - name: Allow preparation only behind the reviewed maintenance edge
+      ansible.builtin.assert:
+        that: >-
+          (preparation_edge.stdout | from_json | first).Mounts
+          | selectattr('Destination', 'equalto', '/etc/caddy/Caddyfile')
+          | map(attribute='Source') | list == [release_dir ~ '/deploy/edge/Caddyfile.warmup']
+        fail_msg: A nonmaintenance public edge is active; use a controlled release playbook instead.
+      when: active_production_projects.results[2].stdout != ''
 
     - name: Check out the reviewed release in the existing production directory
       ansible.builtin.git:
