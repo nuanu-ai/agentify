@@ -1,7 +1,7 @@
 # Hetzner commerce migration
 
 This is an operator procedure for moving the existing live commerce database to
-`commerce.agentify.ad`. It does not authorize a server change or assert that a
+`app.agentify.ad`. It does not authorize a server change or assert that a
 cutover has happened. The test cabinet and its database remain on `dmitry-dev`.
 The scanner site, worker, database and credentials are a later, separate move;
 their production data must also be preserved. This procedure uses the existing
@@ -194,7 +194,7 @@ facilitator calls or other external effects. Unopened DNS is not evidence
 that the new database and external payment state stayed unchanged.
 
 The existing Caddy config issues via TLS-ALPN on port 443. The new VM's public
-443 is free, but before `commerce.agentify.ad` points at it Caddy cannot prove
+443 is free, but before `app.agentify.ad` points at it Caddy cannot prove
 control of the name and a valid public certificate is not established. Opening
 traffic is a later operator action: point the domain to the new VM, start
 `web`, wait for its certificate and container health, then check `/`, `/docs/`,

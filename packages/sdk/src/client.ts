@@ -109,7 +109,7 @@ export interface ClientOptions {
 
   /**
    * Where the gateway is: `https://test.coinslot.nuanu.ai` while the merchant
-   * is building, `https://commerce.agentify.ad` once they are live.
+   * is building, `https://app.agentify.ad` once they are live.
    *
    * Optional, and there is deliberately no default behind it. Both addresses
    * are settled and this package still refuses to pick one, because which of
@@ -637,7 +637,7 @@ export const createClient = (options: ClientOptions): CoinslotClient => {
   const reachable = (): void => {
     if (gateway.baseUrl === "") {
       throw new TypeError(
-        "this client has no gateway address: pass baseUrl to createClient — https://test.coinslot.nuanu.ai while you are building, https://commerce.agentify.ad once you are live. There is no default on purpose: which of the two you talk to is the difference between a sale and a rehearsal, and an address this package chose for you would point somebody's production at the wrong one without a word",
+        "this client has no gateway address: pass baseUrl to createClient — https://test.coinslot.nuanu.ai while you are building, https://app.agentify.ad once you are live. There is no default on purpose: which of the two you talk to is the difference between a sale and a rehearsal, and an address this package chose for you would point somebody's production at the wrong one without a word",
       );
     }
   };

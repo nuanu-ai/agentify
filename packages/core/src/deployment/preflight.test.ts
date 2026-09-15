@@ -28,9 +28,9 @@ const envFor = (resolved: ResolvedCompose, service: string): Record<string, stri
 const TEST_CHANNEL = fixture("test-channel");
 const LIVE_CHANNEL = fixture("live-channel");
 const COMMERCE_CHANNEL: ResolvedCompose = structuredClone(LIVE_CHANNEL);
-envFor(COMMERCE_CHANNEL, "gateway").PUBLIC_BASE_URL = "https://commerce.agentify.ad";
-envFor(COMMERCE_CHANNEL, "cabinet").PUBLIC_BASE_URL = "https://commerce.agentify.ad";
-envFor(COMMERCE_CHANNEL, "web").COINSLOT_SITE_ADDRESS = "commerce.agentify.ad";
+envFor(COMMERCE_CHANNEL, "gateway").PUBLIC_BASE_URL = "https://app.agentify.ad";
+envFor(COMMERCE_CHANNEL, "cabinet").PUBLIC_BASE_URL = "https://app.agentify.ad";
+envFor(COMMERCE_CHANNEL, "web").COINSLOT_SITE_ADDRESS = "app.agentify.ad";
 COMMERCE_CHANNEL.services.web.ports = [
   { mode: "ingress", host_ip: "0.0.0.0", target: 443, published: "443", protocol: "tcp" },
 ];
