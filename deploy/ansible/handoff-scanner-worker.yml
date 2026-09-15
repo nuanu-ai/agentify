@@ -133,6 +133,7 @@
         return_content: false
       delegate_to: localhost
       changed_when: false
+      check_mode: false
 
     - name: Query database readiness independently of worker heartbeat
       ansible.builtin.uri:
@@ -144,6 +145,7 @@
       delegate_to: localhost
       register: scanner_preflight_health
       changed_when: false
+      check_mode: false
       no_log: true
 
     - name: Refuse handoff without a reachable shared scanner database
