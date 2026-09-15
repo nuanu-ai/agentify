@@ -1,0 +1,317 @@
+---
+- name: Freeze the accepted DB bridge and take fresh private DB plus managed Auth custody
+  hosts: production
+  gather_facts: false
+  vars:
+    release_dir: /home/dmitry/agentify-commerce
+    scanner_dir: /home/dmitry/agentify-commerce/ops/deploy/droplet
+    private_jobs: /home/dmitry/agentify-scanner/scanner-jobs-private.sh
+    stage_dir: /home/dmitry/agentify-scanner-exit
+    custody_dir: /home/dmitry/agentify-backups/scanner-exit
+    auth_window_dir: /home/dmitry/agentify-backups/scanner-exit/auth-window
+    backup_dir: /home/dmitry/agentify-backups/scanner
+    held_auth_cron: /etc/agentify-cron-scanner-ba-held
+    controller_auth_window: "{{ playbook_dir }}/../../.local/scanner-exit/{{ bridge_release_sha[0:8] }}/auth-window"
+    source_images:
+      AGENTIFY_SCANNER_WEB_IMAGE: "agentify-scanner-web:{{ bridge_release_sha }}"
+      AGENTIFY_SCANNER_WORKER_IMAGE: "agentify-scanner-worker:{{ bridge_release_sha }}"
+      AGENTIFY_SCANNER_PRIVACY_IMAGE: "agentify-scanner-privacy:{{ bridge_release_sha }}"
+    private_compose: [docker, compose, --env-file, /home/dmitry/agentify-scanner/.env.private, -f, compose.production.yaml, -f, compose.hetzner.yaml, -f, compose.scanner-database.yaml]
+    external_compose: [docker, compose, --env-file, /home/dmitry/agentify-scanner/.env.production, -f, compose.production.yaml, -f, compose.hetzner.yaml]
+  tasks:
+    - name: Require exact accepted DB bridge and separate fresh-custody gate
+      ansible.builtin.assert:
+        that:
+          - bridge_release_sha | default('') == 'ebb8fce71c6767ab73c3e9b1e55639efbf9cda6f'
+          - source_release_sha | default('') == 'b7cf3cecb5836465370e533463b8c56899005ba6'
+          - auth_release_sha is defined and auth_release_sha | default('') is match('^[0-9a-f]{40}$')
+          - scanner_auth_freeze_ack | default('') == 'maintenance-hold-bridge-fresh-custody'
+        fail_msg: Freeze only the accepted DB bridge in scanner maintenance.
+    - ansible.builtin.stat:
+        path: "{{ auth_window_dir }}"
+      register: vm_auth_window_before
+      become: true
+    - ansible.builtin.stat:
+        path: "{{ controller_auth_window }}"
+      register: controller_auth_window_before
+      delegate_to: localhost
+      become: false
+    - ansible.builtin.assert:
+        that:
+          - not vm_auth_window_before.stat.exists
+          - not controller_auth_window_before.stat.exists
+        fail_msg: Fresh Auth-window custody already exists; inspect it rather than overwrite a backup or identity export.
+    - ansible.builtin.command:
+        argv: [git, rev-parse, HEAD]
+        chdir: "{{ release_dir }}"
+      register: bridge_checkout
+      changed_when: false
+      check_mode: false
+    - ansible.builtin.assert:
+        that: bridge_checkout.stdout == bridge_release_sha
+    - ansible.builtin.command:
+        argv: [git, status, --porcelain, --untracked-files=all]
+        chdir: "{{ release_dir }}"
+      register: bridge_dirty
+      changed_when: false
+      check_mode: false
+    - ansible.builtin.assert:
+        that: bridge_dirty.stdout == ''
+        fail_msg: Active bridge checkout differs before fresh backup.
+    - name: Require scanner edge already in 503 maintenance and current bridge/commerce identities
+      ansible.builtin.command:
+        argv: [docker, inspect, "{{ item }}"]
+      loop: [agentify-edge-caddy-1, agentify-web-1, agentify-worker-1, agentify-commerce-postgres-1]
+      register: live_before
+      changed_when: false
+      check_mode: false
+      become: true
+      no_log: true
+    - ansible.builtin.assert:
+        that:
+          - ((live_before.results[0].stdout | from_json | first).Mounts | selectattr('Destination', 'equalto', '/etc/caddy/Caddyfile') | map(attribute='Source') | list) == ['/home/dmitry/agentify-commerce/deploy/edge/Caddyfile.scanner-db-maintenance']
+          - (live_before.results[1].stdout | from_json | first).State.Running
+          - (live_before.results[2].stdout | from_json | first).State.Running
+          - (live_before.results[3].stdout | from_json | first).State.Running
+          - (live_before.results[1].stdout | from_json | first).Config.Image == source_images.AGENTIFY_SCANNER_WEB_IMAGE
+          - (live_before.results[2].stdout | from_json | first).Config.Image == source_images.AGENTIFY_SCANNER_WORKER_IMAGE
+          - "'agentify-scanner-postgres' in (live_before.results[3].stdout | from_json | first).NetworkSettings.Networks['agentify-scanner-db'].Aliases"
+        fail_msg: Bridge scanner, maintenance edge or commerce PG differs before fresh freeze.
+      no_log: true
+    - name: Require exactly the known active private cron and bridge wrapper
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop: [/etc/cron.d/agentify, "{{ private_jobs }}"]
+      register: source_schedule
+      become: true
+      no_log: true
+    - ansible.builtin.set_fact:
+        active_lines: "{{ source_schedule.results[0].content | b64decode | regex_findall('(?m)^[ \\t]*[^# \\t\\r\\n].*$') }}"
+      no_log: true
+    - ansible.builtin.assert:
+        that:
+          - active_lines == ['17 3 * * * root /home/dmitry/agentify-scanner/scanner-jobs-private.sh backup', '23 4 * * * root /home/dmitry/agentify-scanner/scanner-jobs-private.sh privacy']
+          - (source_schedule.results[1].content | b64decode) == lookup('template', playbook_dir ~ '/scanner-jobs-private.sh.j2')
+        fail_msg: Private scanner schedule or wrapper changed; hold nothing.
+      vars:
+        jobs_release_sha: "{{ bridge_release_sha }}"
+      no_log: true
+    - name: Confirm bridge web/worker still point to the current separate private DB
+      ansible.builtin.command:
+        argv: "{{ private_compose + ['--profile', '*', 'config', '--format', 'json'] }}"
+        chdir: "{{ scanner_dir }}"
+      environment: "{{ source_images }}"
+      register: bridge_config
+      changed_when: false
+      check_mode: false
+      become: true
+      no_log: true
+    - ansible.builtin.assert:
+        that:
+          - (bridge_config.stdout | from_json).services['database-config-check'].environment.DATABASE_MODE == 'private'
+          - (live_before.results[1].stdout | from_json | first).Config.Env | select('match', '^DATABASE_URL=') | list == ['DATABASE_URL=' ~ (bridge_config.stdout | from_json).services.web.environment.DATABASE_URL]
+          - (live_before.results[2].stdout | from_json | first).Config.Env | select('match', '^DATABASE_URL=') | list == ['DATABASE_URL=' ~ (bridge_config.stdout | from_json).services.worker.environment.DATABASE_URL]
+        fail_msg: Bridge runtime DB URLs differ from the protected private environment.
+      no_log: true
+    - ansible.builtin.stat:
+        path: "{{ held_auth_cron }}"
+      register: prior_hold
+      become: true
+    - ansible.builtin.assert:
+        that: not prior_hold.stat.exists
+        fail_msg: An Auth-window hold already exists; inspect it before any new stop.
+
+    - name: Copy only final Auth users-only SQL and transient Compose overlay outside checkout
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ stage_dir }}/{{ item }}"
+        owner: root
+        group: root
+        mode: '0600'
+      loop: [scanner-auth-users-only.sql, compose.scanner-freeze.yaml, scanner-lead-links.sql, scanner-auth-continuity.sql]
+      become: true
+      no_log: true
+      when: not ansible_check_mode
+    - name: Hold current private backup/privacy schedule and stop bridge scanner writers
+      ansible.builtin.command:
+        argv: [mv, /etc/cron.d/agentify, "{{ held_auth_cron }}"]
+      become: true
+      when: not ansible_check_mode
+    - ansible.builtin.command:
+        argv: "{{ private_compose + ['stop', '--timeout', '45', 'web', 'worker'] }}"
+        chdir: "{{ scanner_dir }}"
+      environment: "{{ source_images }}"
+      become: true
+      no_log: true
+      when: not ansible_check_mode
+    - name: Refuse any scanner web, worker or scheduled job still running
+      ansible.builtin.command:
+        argv: [docker, ps, --quiet, --filter, label=com.docker.compose.project=agentify, --filter, "label=com.docker.compose.service={{ item }}"]
+      loop: [web, worker, privacy-cleanup, database-backup]
+      register: remaining
+      changed_when: false
+      check_mode: false
+      become: true
+      when: not ansible_check_mode
+    - ansible.builtin.assert:
+        that: remaining.results | map(attribute='stdout') | select('ne', '') | list | length == 0
+        fail_msg: Scanner writer/job still runs after hold; no backup can be called frozen.
+      when: not ansible_check_mode
+    - name: Refuse pg-boss active jobs after bridge worker drained
+      ansible.builtin.shell: |
+        set -euo pipefail
+        docker exec -i agentify-commerce-postgres-1 psql -U coinslot -d agentify_scanner -At -v ON_ERROR_STOP=1 \
+          < {{ (stage_dir ~ '/scanner-queue-active.sql') | quote }}
+      args:
+        executable: /bin/bash
+      register: active_queue
+      changed_when: false
+      check_mode: false
+      become: true
+      no_log: true
+      when: not ansible_check_mode
+    - ansible.builtin.assert:
+        that: active_queue.stdout | trim == '0'
+        fail_msg: Active queue work must drain before Auth-window custody.
+      when: not ansible_check_mode
+
+    - name: Create immutable protected VM custody only after bridge jobs are held and drained
+      ansible.builtin.file:
+        path: "{{ auth_window_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+      become: true
+      when: not ansible_check_mode
+    - ansible.builtin.command:
+        argv: [date, -u, +%s]
+      register: backup_start
+      changed_when: false
+      check_mode: false
+      when: not ansible_check_mode
+    - name: Run existing bridge private-DB backup job under held cron
+      ansible.builtin.command:
+        argv: ["{{ private_jobs }}", backup]
+      become: true
+      no_log: true
+      when: not ansible_check_mode
+    - ansible.builtin.find:
+        paths: "{{ backup_dir }}"
+        patterns: agentify-*.dump
+        file_type: file
+      register: backups
+      become: true
+      no_log: true
+      when: not ansible_check_mode
+    - ansible.builtin.assert:
+        that:
+          - backups.files | length > 0
+          - (backups.files | sort(attribute='mtime') | last).mtime | int >= backup_start.stdout | int
+        fail_msg: Bridge private-DB dump was not freshly created.
+      when: not ansible_check_mode
+    - ansible.builtin.copy:
+        src: "{{ (backups.files | sort(attribute='mtime') | last).path }}"
+        dest: "{{ auth_window_dir }}/bridge-before-auth.dump"
+        remote_src: true
+        owner: root
+        group: root
+        mode: '0600'
+        force: false
+      become: true
+      no_log: true
+      when: not ansible_check_mode
+    - name: Export only fresh managed Auth ID, email and confirmation state
+      ansible.builtin.command:
+        argv: "{{ external_compose + ['-f', stage_dir ~ '/compose.scanner-freeze.yaml', '--profile', 'scanner-exit', 'run', '--rm', '--no-deps', '-T', 'scanner-auth-users-only'] }}"
+        chdir: "{{ scanner_dir }}"
+      environment: "{{ source_images | combine({'SCANNER_EXIT_CUSTODY_DIR': auth_window_dir}) }}"
+      become: true
+      no_log: true
+      when: not ansible_check_mode
+    - name: Export current private lead links without encrypted lead columns
+      ansible.builtin.shell: |
+        set -euo pipefail
+        docker exec -i agentify-commerce-postgres-1 psql -U coinslot -d agentify_scanner -At -v ON_ERROR_STOP=1 \
+          < {{ (stage_dir ~ '/scanner-lead-links.sql') | quote }} > {{ (auth_window_dir ~ '/private-lead-links.ndjson') | quote }}
+        chmod 600 {{ (auth_window_dir ~ '/private-lead-links.ndjson') | quote }}
+      args:
+        executable: /bin/bash
+      become: true
+      no_log: true
+      when: not ansible_check_mode
+    - name: Preserve old lead and report-session row continuity before migration 0015
+      ansible.builtin.shell: |
+        set -euo pipefail
+        docker exec -i agentify-commerce-postgres-1 psql -U coinslot -d agentify_scanner -At -F '|' -v ON_ERROR_STOP=1 \
+          < {{ (stage_dir ~ '/scanner-auth-continuity.sql') | quote }} > {{ (auth_window_dir ~ '/pre-auth.continuity') | quote }}
+        chmod 600 {{ (auth_window_dir ~ '/pre-auth.continuity') | quote }}
+      args:
+        executable: /bin/bash
+      become: true
+      no_log: true
+      when: not ansible_check_mode
+    - name: Hash all fresh VM recovery and identity artifacts
+      ansible.builtin.stat:
+        path: "{{ auth_window_dir }}/{{ item }}"
+        get_checksum: true
+        checksum_algorithm: sha256
+      loop: [bridge-before-auth.dump, source-auth-users.ndjson, private-lead-links.ndjson, pre-auth.continuity]
+      register: frozen_auth
+      become: true
+      no_log: true
+      when: not ansible_check_mode
+    - ansible.builtin.assert:
+        that:
+          - frozen_auth.results | selectattr('stat.exists', 'equalto', true) | list | length == 4
+          - frozen_auth.results | selectattr('stat.mode', 'equalto', '0600') | list | length == 4
+        fail_msg: Fresh Auth-window custody is missing or not 0600.
+      no_log: true
+      when: not ansible_check_mode
+    - name: Fetch immutable fresh DB/Auth custody off the VM before any migration
+      ansible.builtin.file:
+        path: "{{ controller_auth_window }}"
+        state: directory
+        mode: '0700'
+      delegate_to: localhost
+      become: false
+      when: not ansible_check_mode
+    - ansible.builtin.fetch:
+        src: "{{ auth_window_dir }}/{{ item }}"
+        dest: "{{ controller_auth_window }}/{{ item }}"
+        flat: true
+      loop: [bridge-before-auth.dump, source-auth-users.ndjson, private-lead-links.ndjson, pre-auth.continuity]
+      become: true
+      no_log: true
+      when: not ansible_check_mode
+    - ansible.builtin.file:
+        path: "{{ controller_auth_window }}/{{ item }}"
+        mode: '0600'
+      loop: [bridge-before-auth.dump, source-auth-users.ndjson, private-lead-links.ndjson, pre-auth.continuity]
+      delegate_to: localhost
+      become: false
+      when: not ansible_check_mode
+    - name: Reconcile fresh managed users against CURRENT PRIVATE lead-link baseline
+      ansible.builtin.command:
+        argv: [node, ops/scripts/scanner-auth-reconcile.mjs, "{{ controller_auth_window }}/source-auth-users.ndjson", "{{ controller_auth_window }}/private-lead-links.ndjson", "{{ controller_auth_window }}/identity-reconciliation.json", --private-baseline]
+        chdir: "{{ playbook_dir }}/../.."
+      register: identity_reconciliation
+      failed_when: identity_reconciliation.rc not in [0, 2]
+      delegate_to: localhost
+      become: false
+      no_log: true
+      when: not ansible_check_mode
+    - ansible.builtin.debug:
+        msg: "{{ identity_reconciliation.stdout }}"
+      when: not ansible_check_mode
+    - name: Mark one fresh Auth-window custody for operator review before final writer start
+      ansible.builtin.copy:
+        content: "{{ {'bridge_release_sha': bridge_release_sha, 'auth_release_sha': auth_release_sha, 'backup_sha256': frozen_auth.results[0].stat.checksum, 'source_auth_sha256': frozen_auth.results[1].stat.checksum, 'private_lead_links_sha256': frozen_auth.results[2].stat.checksum, 'continuity_sha256': frozen_auth.results[3].stat.checksum, 'identity_reconciliation_exit': identity_reconciliation.rc, 'link_count_baseline': 'current_private_leads'} | to_nice_json }}\n"
+        dest: "{{ auth_window_dir }}/auth-freeze-manifest.json"
+        owner: root
+        group: root
+        mode: '0600'
+        force: false
+      become: true
+      no_log: true
+      when: not ansible_check_mode

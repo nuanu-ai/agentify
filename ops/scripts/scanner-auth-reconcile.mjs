@@ -1,9 +1,15 @@
 import { readFileSync, writeFileSync, statSync, chmodSync } from "node:fs";
 
-const [sourcePath, targetPath, reportPath, newAuthPath] = process.argv.slice(2);
+const [sourcePath, targetPath, reportPath, ...extras] = process.argv.slice(2);
+const privateBaseline = extras.includes("--private-baseline");
+const newAuthPaths = extras.filter((arg) => arg !== "--private-baseline");
+const newAuthPath = newAuthPaths[0];
 if (!sourcePath || !targetPath || !reportPath) {
-  console.error("Usage: scanner-auth-reconcile.mjs SOURCE_AUTH_NDJSON TARGET_LEADS_NDJSON PROTECTED_REPORT [NEW_AUTH_NDJSON]");
+  console.error("Usage: scanner-auth-reconcile.mjs SOURCE_AUTH_NDJSON TARGET_LEADS_NDJSON PROTECTED_REPORT [--private-baseline] [NEW_AUTH_NDJSON]");
   process.exit(1);
+}
+if (newAuthPaths.length > 1 || (privateBaseline && extras.filter((arg) => arg === "--private-baseline").length !== 1)) {
+  throw new Error("Only one current-private baseline mode and one new Auth input are allowed.");
 }
 
 function records(path) {
@@ -31,10 +37,11 @@ for (const lead of links) {
   if (!users.has(lead.supabase_user_id)) foreignLeadLinks.push({ lead_id: lead.id, auth_id: lead.supabase_user_id });
   linkedCounts.set(lead.supabase_user_id, (linkedCounts.get(lead.supabase_user_id) ?? 0) + 1);
 }
-const changedLinks = source.filter((u) => Number(u.linked_leads) !== (linkedCounts.get(u.id) ?? 0));
-const confirmedUnlinked = source.filter((u) => u.confirmed && Number(u.linked_leads) === 0 && !freshVerifiedEmails.has(u.email.toLowerCase()));
+const changedLinks = privateBaseline ? [] : source.filter((u) => Number(u.linked_leads) !== (linkedCounts.get(u.id) ?? 0));
+const confirmedUnlinked = source.filter((u) => u.confirmed && (privateBaseline ? (linkedCounts.get(u.id) ?? 0) : Number(u.linked_leads)) === 0 && !freshVerifiedEmails.has(u.email.toLowerCase()));
 const pending = source.filter((u) => !u.confirmed);
 const report = {
+  link_count_baseline: privateBaseline ? "current_private_leads" : "source_public_leads",
   source_users: source.length,
   target_linked_leads: links.filter((l) => l.supabase_user_id).length,
   foreign_lead_links: foreignLeadLinks,

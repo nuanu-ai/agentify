@@ -4,11 +4,13 @@
   gather_facts: false
   vars:
     edge_dir: /home/dmitry/agentify-commerce/deploy/edge
-    edge_env: /home/dmitry/agentify-scanner/.env.private
+    edge_expected_release_sha: "{{ auth_release_sha if scanner_edge_release_phase | default('bridge') == 'auth' else release_sha }}"
+    edge_env: "{{ '/home/dmitry/agentify-scanner/.env.ba' if scanner_edge_release_phase | default('bridge') == 'auth' else '/home/dmitry/agentify-scanner/.env.private' }}"
   tasks:
     - ansible.builtin.assert:
         that:
-          - release_sha is defined and release_sha | default('') is match('^[0-9a-f]{40}$')
+          - scanner_edge_release_phase | default('bridge') in ['bridge', 'auth']
+          - edge_expected_release_sha is match('^[0-9a-f]{40}$')
           - scanner_edge_resume_ack | default('') == 'private-scanner-and-commerce-health-accepted'
         fail_msg: Return public scanner traffic only after both private scanner and commerce readiness.
     - ansible.builtin.command:
@@ -18,7 +20,7 @@
       changed_when: false
       check_mode: false
     - ansible.builtin.assert:
-        that: checkout.stdout == release_sha
+        that: checkout.stdout == edge_expected_release_sha
     - name: Require the scanner-only maintenance edge is still the current route
       ansible.builtin.command:
         argv: [docker, inspect, agentify-edge-caddy-1]

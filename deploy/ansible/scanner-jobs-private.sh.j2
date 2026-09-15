@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-readonly release_sha="{{ release_sha }}"
+readonly release_sha="{{ jobs_release_sha | default(release_sha) }}"
 readonly scanner_dir=/home/dmitry/agentify-commerce/ops/deploy/droplet
-readonly scanner_env=/home/dmitry/agentify-scanner/.env.private
+readonly scanner_env={{ jobs_env_path | default('/home/dmitry/agentify-scanner/.env.private') }}
 export AGENTIFY_SCANNER_WEB_IMAGE="agentify-scanner-web:$release_sha"
 export AGENTIFY_SCANNER_WORKER_IMAGE="agentify-scanner-worker:$release_sha"
 export AGENTIFY_SCANNER_PRIVACY_IMAGE="agentify-scanner-privacy:$release_sha"

@@ -33,7 +33,27 @@ CREATE DATABASE agentify_source;
 SQL
 export DATABASE_URL=postgresql://coinslot:synthetic-only@127.0.0.1:58433/agentify_source
 pnpm --filter @agentify/scanner-database build >/dev/null
-pnpm --filter @agentify/scanner-database db:migrate >"$tmp/migrate.log" 2>&1 || { cat "$tmp/migrate.log" >&2; exit 1; }
+cp -R packages/scanner-database/migrations "$tmp/base-migrations"
+export SCANNER_BASE_MIGRATIONS="$tmp/base-migrations"
+node --input-type=module <<'JS'
+import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { join } from 'node:path';
+const folder = process.env.SCANNER_BASE_MIGRATIONS;
+const journalPath = join(folder, 'meta', '_journal.json');
+const journal = JSON.parse(readFileSync(journalPath, 'utf8'));
+if (journal.entries.at(-1)?.tag !== '0015_noisy_gladiator') throw new Error('Expected BA migration at the end of the current scanner journal');
+journal.entries.pop();
+writeFileSync(journalPath, `${JSON.stringify(journal, null, 2)}\n`);
+unlinkSync(join(folder, '0015_noisy_gladiator.sql'));
+unlinkSync(join(folder, 'meta', '0015_snapshot.json'));
+JS
+node --input-type=module >"$tmp/migrate.log" 2>&1 <<'JS' || { cat "$tmp/migrate.log" >&2; exit 1; }
+import { createDatabase } from './packages/scanner-database/dist/client.js';
+import { migrateDatabase } from './packages/scanner-database/dist/migrate.js';
+const { db, pool } = createDatabase(process.env.DATABASE_URL, { max: 1 });
+try { await migrateDatabase(db, process.env.SCANNER_BASE_MIGRATIONS); }
+finally { await pool.end(); }
+JS
 pnpm --filter @agentify/scanner-worker exec tsx src/queue-init-cli.ts >"$tmp/queue.log" 2>&1 || { cat "$tmp/queue.log" >&2; exit 1; }
 docker exec -i "$container" psql -U coinslot -d agentify_source -v ON_ERROR_STOP=1 \
   < ops/dashboards/install-aggregate-views.sql >/dev/null
@@ -82,9 +102,32 @@ fi
 docker exec -i "$container" psql -U coinslot -d agentify_scanner -At -F '|' -v ON_ERROR_STOP=1 \
   < deploy/ansible/scanner-fingerprint.sql > "$tmp/after-queue.fingerprint"
 cmp "$tmp/source.fingerprint" "$tmp/after-queue.fingerprint"
+docker exec -i "$container" psql -U coinslot -d agentify_scanner -At -F '|' -v ON_ERROR_STOP=1 \
+  < deploy/ansible/scanner-auth-continuity.sql > "$tmp/pre-auth-continuity"
+DATABASE_URL=postgresql://coinslot:synthetic-only@127.0.0.1:58433/agentify_scanner \
+  pnpm --filter @agentify/scanner-database db:migrate >"$tmp/auth-migrate.log" 2>&1 || { cat "$tmp/auth-migrate.log" >&2; exit 1; }
+DATABASE_URL=postgresql://coinslot:synthetic-only@127.0.0.1:58433/agentify_scanner \
+  pnpm --filter @agentify/scanner-worker exec tsx src/queue-init-cli.ts >"$tmp/auth-queue.log" 2>&1 || { cat "$tmp/auth-queue.log" >&2; exit 1; }
+docker exec -i "$container" psql -U coinslot -d agentify_scanner -At -F '|' -v ON_ERROR_STOP=1 \
+  < deploy/ansible/scanner-auth-continuity.sql > "$tmp/post-auth-continuity"
+cmp "$tmp/pre-auth-continuity" "$tmp/post-auth-continuity"
+docker exec -i \
+  -e 'ADMIN_DATABASE_URL=postgresql:///agentify_scanner?user=coinslot' \
+  -e 'WEB_DATABASE_URL=postgresql:///agentify_scanner?user=agentify_web' \
+  -e 'WORKER_DATABASE_URL=postgresql:///agentify_scanner?user=agentify_worker' \
+  -e 'PRIVACY_DATABASE_URL=postgresql:///agentify_scanner?user=agentify_privacy' \
+  -e 'DASHBOARD_DATABASE_URL=postgresql:///agentify_scanner?user=agentify_dashboard' \
+  "$container" /bin/sh < deploy/ansible/verify-scanner-auth-access.sh
 [[ "$(docker exec "$container" psql -U coinslot -d coinslot -Atc 'select value from commerce_marker')" == synthetic-paid-order ]]
 [[ "$(docker exec "$container" psql -U coinslot -d agentify_scanner -Atc 'select count(*) from public.report_sessions')" == 1 ]]
 [[ "$(docker exec "$container" psql -U coinslot -d agentify_scanner -Atc 'select count(*) from pgboss.job')" =~ ^[0-9]+$ ]]
 [[ "$(docker exec "$container" psql -U coinslot -d agentify_scanner -Atc "select count(*) from pg_policy p join pg_class c on c.oid=p.polrelid where c.relname='leads' and p.polname='agentify_web_service'")" == 1 ]]
 [[ "$(docker exec "$container" psql -U coinslot -d agentify_scanner -Atc "select count(*) from pg_roles where rolname in ('agentify_web','agentify_worker','agentify_privacy','agentify_dashboard') and rolcanlogin and not (rolsuper or rolcreatedb or rolcreaterole or rolbypassrls)")" == 4 ]]
+docker exec "$container" psql -U coinslot -d agentify_scanner -v ON_ERROR_STOP=1 -c \
+  "update public.report_sessions set last_seen_at=last_seen_at + interval '1 second' where session_token_hash='synthetic-report-hash'" >/dev/null
+docker exec -i "$container" psql -U coinslot -d agentify_scanner -At -F '|' -v ON_ERROR_STOP=1 \
+  < deploy/ansible/scanner-auth-continuity.sql > "$tmp/mutated-auth-continuity"
+if cmp -s "$tmp/post-auth-continuity" "$tmp/mutated-auth-continuity"; then
+  echo 'Lead/report continuity check survived a report-session mutation.' >&2; exit 1
+fi
 printf 'Real scanner migrations, RLS role access, report session, queue data and commerce isolation survived restore/bootstrap.\n'

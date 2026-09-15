@@ -35,6 +35,17 @@ services:
       - ${SCANNER_EXIT_CUSTODY_DIR:-/home/dmitry/agentify-backups/scanner-exit}:/custody
     networks: [egress]
     restart: 'no'
+  scanner-auth-users-only:
+    profiles: [scanner-exit]
+    image: postgres:17.6-alpine
+    environment:
+      DATABASE_URL: ${ADMIN_DATABASE_URL:?source admin URL required}
+    command: [sh, -c, 'umask 077; psql "$$DATABASE_URL" -At -v ON_ERROR_STOP=1 -f /scanner-auth-users-only.sql > /custody/source-auth-users.ndjson']
+    volumes:
+      - /home/dmitry/agentify-scanner-exit/scanner-auth-users-only.sql:/scanner-auth-users-only.sql:ro
+      - ${SCANNER_EXIT_CUSTODY_DIR:-/home/dmitry/agentify-backups/scanner-exit}:/custody
+    networks: [egress]
+    restart: 'no'
   scanner-queue-active:
     profiles: [scanner-exit]
     image: postgres:17.6-alpine
