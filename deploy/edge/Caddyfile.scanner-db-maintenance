@@ -1,0 +1,24 @@
+agentify.ad {
+  encode zstd gzip
+  header {
+    Content-Type "text/plain; charset=utf-8"
+    Cache-Control "no-store"
+    Retry-After "300"
+    X-Robots-Tag "noindex, nofollow"
+    -Server
+  }
+  respond "Scanner is temporarily unavailable while its database is moved. Please retry later.\n" 503
+}
+
+www.agentify.ad {
+  redir https://agentify.ad{uri} permanent
+}
+
+app.agentify.ad {
+  encode zstd gzip
+  header {
+    Referrer-Policy same-origin
+    -Server
+  }
+  reverse_proxy agentify-commerce-web:8080
+}

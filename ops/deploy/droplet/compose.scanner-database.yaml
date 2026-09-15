@@ -1,0 +1,36 @@
+# Opt-in scanner application connectivity to the separate scanner DB.
+# The existing Supabase Auth settings remain in force for the DB-only release;
+# remove them only with the reviewed Better Auth application release.
+services:
+  migrate:
+    networks: [backend, egress, agentify-scanner-db]
+  roles-reconcile:
+    environment:
+      POSTGRES_HOST: agentify-scanner-postgres
+      POSTGRES_DB: agentify_scanner
+    networks: [backend, egress, agentify-scanner-db]
+  queue-init:
+    networks: [backend, egress, agentify-scanner-db]
+  database-dashboards-install:
+    networks: [backend, egress, agentify-scanner-db]
+  database-access-finalize:
+    networks: [backend, egress, agentify-scanner-db]
+  database-access-verify:
+    networks: [backend, egress, agentify-scanner-db]
+  web:
+    networks:
+      frontend:
+      backend:
+      agentify-scanner-db:
+      agentify-ingress:
+        aliases: [agentify-site]
+  worker:
+    networks: [backend, egress, agentify-scanner-db]
+  privacy-cleanup:
+    networks: [backend, egress, agentify-scanner-db]
+  database-backup:
+    networks: [backend, egress, agentify-scanner-db]
+networks:
+  agentify-scanner-db:
+    external: true
+    name: agentify-scanner-db

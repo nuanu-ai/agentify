@@ -1,0 +1,67 @@
+---
+- name: Refuse new scanner traffic intelligibly during the frozen handoff
+  hosts: production
+  gather_facts: false
+  vars:
+    edge_dir: /home/dmitry/agentify-commerce/deploy/edge
+    edge_env: /home/dmitry/agentify-scanner/.env.production
+    edge_container: agentify-edge-caddy-1
+    normal_config: /home/dmitry/agentify-commerce/deploy/edge/Caddyfile
+  tasks:
+    - ansible.builtin.assert:
+        that:
+          - bridge_release_sha is defined and bridge_release_sha | default('') is match('^[0-9a-f]{40}$')
+          - scanner_edge_maintenance_ack | default('') == 'scanner-503-commerce-remains-live'
+    - ansible.builtin.command:
+        argv: [git, rev-parse, HEAD]
+        chdir: /home/dmitry/agentify-commerce
+      register: checkout
+      changed_when: false
+      check_mode: false
+    - ansible.builtin.assert:
+        that: checkout.stdout == bridge_release_sha
+    - name: Require the current normal edge and unchanged commerce route
+      ansible.builtin.command:
+        argv: [docker, inspect, "{{ edge_container }}"]
+      register: edge_before
+      changed_when: false
+      check_mode: false
+      become: true
+      no_log: true
+    - ansible.builtin.assert:
+        that:
+          - (edge_before.stdout | from_json | first).Config.Labels['com.docker.compose.project'] == 'agentify-edge'
+          - (edge_before.stdout | from_json | first).State.Running
+          - (edge_before.stdout | from_json | first).Config.Image == 'caddy:2.10.0-alpine'
+          - ((edge_before.stdout | from_json | first).Mounts | selectattr('Destination', 'equalto', '/etc/caddy/Caddyfile') | map(attribute='Source') | list) == [normal_config]
+        fail_msg: Edge is not on the expected normal Caddyfile; route nothing.
+      no_log: true
+    - name: Validate scanner maintenance Caddyfile without routing it
+      ansible.builtin.command:
+        argv: [docker, run, --rm, --network, none, -v, /home/dmitry/agentify-commerce/deploy/edge/Caddyfile.scanner-db-maintenance:/etc/caddy/Caddyfile:ro, caddy:2.10.0-alpine, caddy, validate, --config, /etc/caddy/Caddyfile]
+      changed_when: false
+      check_mode: false
+      become: true
+    - name: Recreate only the edge Caddy on the opt-in scanner maintenance route
+      ansible.builtin.command:
+        argv: [docker, compose, --env-file, "{{ edge_env }}", -f, compose.yaml, -f, compose.scanner-db-maintenance.yaml, up, -d, --no-deps, --wait, --wait-timeout, '90', --no-build, caddy]
+        chdir: "{{ edge_dir }}"
+      become: true
+      no_log: true
+      when: not ansible_check_mode
+    - name: Prove scanner refusal and commerce health from ordinary TLS routes
+      ansible.builtin.command:
+        argv: [curl, --silent, --show-error, --output, /dev/null, --write-out, '%{http_code}', --resolve, "{{ item.host }}:443:127.0.0.1", "https://{{ item.host }}{{ item.path }}"]
+      loop:
+        - {host: agentify.ad, path: /, expected: '503'}
+        - {host: app.agentify.ad, path: /cabinet/health, expected: '200'}
+      register: edge_probes
+      changed_when: false
+      check_mode: false
+      when: not ansible_check_mode
+    - ansible.builtin.assert:
+        that:
+          - edge_probes.results[0].stdout == '503'
+          - edge_probes.results[1].stdout == '200'
+        fail_msg: Scanner maintenance or live commerce route failed TLS proof.
+      when: not ansible_check_mode

@@ -1,0 +1,54 @@
+---
+- name: Return scanner traffic to the accepted private DB runtime
+  hosts: production
+  gather_facts: false
+  vars:
+    edge_dir: /home/dmitry/agentify-commerce/deploy/edge
+    edge_env: /home/dmitry/agentify-scanner/.env.private
+  tasks:
+    - ansible.builtin.assert:
+        that:
+          - release_sha is defined and release_sha | default('') is match('^[0-9a-f]{40}$')
+          - scanner_edge_resume_ack | default('') == 'private-scanner-and-commerce-health-accepted'
+        fail_msg: Return public scanner traffic only after both private scanner and commerce readiness.
+    - ansible.builtin.command:
+        argv: [git, rev-parse, HEAD]
+        chdir: /home/dmitry/agentify-commerce
+      register: checkout
+      changed_when: false
+      check_mode: false
+    - ansible.builtin.assert:
+        that: checkout.stdout == release_sha
+    - name: Require the scanner-only maintenance edge is still the current route
+      ansible.builtin.command:
+        argv: [docker, inspect, agentify-edge-caddy-1]
+      register: edge_now
+      changed_when: false
+      check_mode: false
+      become: true
+      no_log: true
+    - ansible.builtin.assert:
+        that: ((edge_now.stdout | from_json | first).Mounts | selectattr('Destination', 'equalto', '/etc/caddy/Caddyfile') | map(attribute='Source') | list) == ['/home/dmitry/agentify-commerce/deploy/edge/Caddyfile.scanner-db-maintenance']
+        fail_msg: Edge route changed after maintenance; restore nothing.
+      no_log: true
+    - name: Restore the unchanged normal edge with persistent certificate volumes
+      ansible.builtin.command:
+        argv: [docker, compose, --env-file, "{{ edge_env }}", -f, compose.yaml, up, -d, --no-deps, --wait, --wait-timeout, '90', --no-build, caddy]
+        chdir: "{{ edge_dir }}"
+      become: true
+      no_log: true
+      when: not ansible_check_mode
+    - name: Prove both normal hostnames over validated TLS
+      ansible.builtin.command:
+        argv: [curl, --silent, --show-error, --output, /dev/null, --write-out, '%{http_code}', --resolve, "{{ item.host }}:443:127.0.0.1", "https://{{ item.host }}{{ item.path }}"]
+      loop:
+        - {host: agentify.ad, path: /api/health}
+        - {host: app.agentify.ad, path: /cabinet/health}
+      register: routes
+      changed_when: false
+      check_mode: false
+      when: not ansible_check_mode
+    - ansible.builtin.assert:
+        that: routes.results | map(attribute='stdout') | list == ['200', '200']
+        fail_msg: Scanner or commerce public TLS route failed after edge resume.
+      when: not ansible_check_mode

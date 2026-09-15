@@ -1,0 +1,169 @@
+# Scanner database and Auth exit
+
+This procedure is prepared but has not been run against production. The current
+scanner web and worker, on `agentify.ad`, still use the original Supabase
+PostgreSQL and Supabase Auth. Commerce merchant data stays in the `coinslot`
+database of `agentify-commerce-postgres-1`. The scanner moves into a new
+`agentify_scanner` database on that same PostgreSQL 17 server, with the four
+existing scanner runtime role names and its own `public`, `pgboss`, `drizzle`
+and `metabase` schemas. Nothing in this procedure restores into `coinslot` or
+deletes the Supabase project.
+
+The currently observed live runtime is
+`b7cf3cecb5836465370e533463b8c56899005ba6`. The private-mode code bridge
+begins at `4512fd86029a39f60d6f88291029f72069fb4224`; this commit alone
+does not contain the opt-in network and migration playbooks. Before any server
+step, use a later reviewed, CI-green forty-character `bridge_release_sha`
+that contains this procedure and rebuild the scanner web, worker and privacy
+images at that exact SHA. The existing b7 images reject the new private DB
+configuration, so a URL replacement with b7 cannot be the handoff. Supabase
+Auth remains in the browser and server during this database-only release.
+The final Better Auth application release is a separate reviewed SHA and a
+separate acceptance step.
+
+The only secret input is a local, ignored, 0600 YAML file such as
+`.local/scanner-exit/operation-vars.yml`. Its `scanner_operation_vars_path` is
+its own absolute path. Use the existing commerce database password as
+`admin_password`, and four newly generated, distinct URL-safe scanner role
+passwords. Do not paste the file, source environments, dump, Auth custody or
+identity report into an issue, CI output or command line. This is the required
+shape; the values below are placeholders:
+
+```yaml
+scanner_operation_vars_path: /ABSOLUTE/LOCAL/PATH/.local/scanner-exit/operation-vars.yml
+source_release_sha: b7cf3cecb5836465370e533463b8c56899005ba6
+bridge_release_sha: REVIEWED_40_CHARACTER_DB_BRIDGE_SHA
+release_sha: REVIEWED_40_CHARACTER_DB_BRIDGE_SHA
+scanner_private_credentials:
+  admin_password: EXISTING_COMMERCE_DB_PASSWORD
+  web_password: NEW_URL_SAFE_PASSWORD
+  worker_password: NEW_DIFFERENT_URL_SAFE_PASSWORD
+  privacy_password: NEW_DIFFERENT_URL_SAFE_PASSWORD
+  dashboard_password: NEW_DIFFERENT_URL_SAFE_PASSWORD
+scanner_stage_release_ack: source-containers-remain-running
+scanner_network_ack: existing-commerce-postgres-private-bridge
+scanner_edge_maintenance_ack: scanner-503-commerce-remains-live
+scanner_freeze_ack: source-web-worker-and-cron-maintenance
+scanner_restore_ack: new-scanner-database-only
+scanner_activate_ack: private-db-one-web-one-worker
+scanner_edge_resume_ack: private-scanner-and-commerce-health-accepted
+scanner_resume_ack: no-private-writer-ever-started
+```
+
+Run `bash ops/scripts/scanner-db-rehearsal.sh` and
+`bash ops/scripts/scanner-db-real-schema-rehearsal.sh` first. Each creates and removes
+only its task-prefixed disposable PostgreSQL container, restores synthetic lead,
+report, queue, migration and setting rows, proves that a commerce marker is
+unchanged, rejects a bad checksum and existing scanner DB, and detects a
+queue-row mutation. The real-schema rehearsal runs the scanner's actual
+migrations, queue grants and row policies and checks all four role access
+boundaries after full-schema restore. Then run the syntax checks with the pinned
+`ansible-core==2.19.13`. The rehearsal proves the helper's behavior with
+synthetic data; it does not prove live source access, a real mail flow, or
+production acceptance.
+
+Every production mutation below is performed by Ansible. Run each command
+with `--check` first, inspect its intended target, and then run that same
+command without `--check`. The stage-release check cannot fetch or build a
+prospective SHA; the freeze check cannot create a dump. Their real runs are
+the proof. Each command takes the same protected vars file:
+
+```sh
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/scanner-db-stage-release.yml -e @.local/scanner-exit/operation-vars.yml
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/scanner-db-stage-env.yml -e @.local/scanner-exit/operation-vars.yml
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/scanner-db-network.yml -e @.local/scanner-exit/operation-vars.yml
+```
+
+These three steps occur while the b7 scanner stays active. The first checks
+out the reviewed bridge and builds all three SHA-tagged images from that clean
+checkout, recording their image IDs in protected staging custody without replacing
+the running containers. The second preserves the original scanner environment
+and its HMAC, email-encryption, Resend and Supabase Auth settings, then appends
+private DB overrides in a new protected `.env.private`. The third creates one
+internal network and attaches the existing commerce PostgreSQL container by
+`agentify-scanner-postgres` alias without a PostgreSQL restart. The opt-in
+Compose overlays are the desired state for later commerce/scanner releases;
+all future Compose invocations and the cron wrapper must include them. If the
+PostgreSQL container is ever recreated without its overlay, the network alias
+vanishes and scanner deployment must stop until Ansible restores it.
+
+Inspect the public edge and commerce health before maintenance. The active
+scanner route must be the normal Caddyfile; the maintenance playbook refuses
+another route. Its Caddyfile returns 503 with `Retry-After: 300` for
+`agentify.ad` and keeps `app.agentify.ad` on the same commerce proxy. The
+certificate volumes remain attached:
+
+```sh
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/scanner-db-edge-maintenance.yml -e @.local/scanner-exit/operation-vars.yml
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/scanner-db-freeze.yml -e @.local/scanner-exit/operation-vars.yml
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/scanner-db-restore.yml -e @.local/scanner-exit/operation-vars.yml
+```
+
+Freeze checks that the running source web/worker are the exact b7 containers
+and still point at the rendered external DB. It requires the exact two-job cron
+schedule and source b7 wrapper. It tests Auth inventory read access and
+PostgreSQL major compatibility in protected scratch custody before creating
+frozen custody or stopping anything. A failed pre-stop probe can be corrected
+and the same Ansible freeze playbook retried. If the edge is already in
+maintenance, `scanner-db-edge-resume-source.yml` restores normal routing while
+the original b7 web and worker remain active. It holds
+the two known cron jobs, gracefully stops the scanner web/worker, refuses any
+running scanner job or pg-boss job still marked `active`, and produces a fresh
+application-schema dump, per-table count/data fingerprints, source PG major,
+and a minimal `auth.users` ID/email/confirmation inventory. The dump does not
+carry Auth credentials or sessions. Copies with SHA256 evidence are retained
+both in the protected VM custody directory and under the controller's ignored
+`.local/scanner-exit/<source-sha-prefix>/`, outside the VM. Ordinary source
+backups and the original Supabase DB/Auth remain untouched.
+
+Restore checks the frozen manifest and off-VM checksums, refuses a revived
+source writer and any existing `agentify_scanner` database, and creates the
+target exactly once. A failed restore leaves its named target for inspection;
+the playbook never clears or retries over it. It compares every application
+table's count and order-independent row digest, and proves the live commerce
+PostgreSQL container and data volume identity did not change. Commerce orders
+can continue to move during this operation, so row equality is not a guard.
+The linked-lead reconciliation
+produces a protected report. Confirmed Supabase users with no lead, pending
+emails that need a resend, changed lead links and foreign Auth references are
+listed there; no address appears in the Ansible log. A flagged source-only
+account does not invalidate the database-only move while Supabase Auth remains
+live, but it blocks silent final Auth retirement.
+
+Only after the restore and the scanner's role, queue and mail settings are
+reviewed, activate the DB-only bridge. It runs private role reconciliation,
+reviewed migrations, queue grants, dashboards, privilege finalization and
+the live database access verifier before starting a single web/worker pair.
+It checks that the original HMAC/email keys, Resend key, worker identity and
+staged image IDs are unchanged; it compares frozen rows again before the worker
+can make new effects. A durable marker is written before any private writer
+start attempt. The private backup/privacy cron wrapper is installed only after the
+new scanner's live and database-ready health routes pass:
+
+```sh
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/scanner-db-activate.yml -e @.local/scanner-exit/operation-vars.yml
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/scanner-db-edge-resume.yml -e @.local/scanner-exit/operation-vars.yml
+```
+
+Before the private web or worker has ever started, a failed freeze, restore or
+role setup can return to the unchanged Supabase source through Ansible. Resume
+the old web/worker and byte-identical held cron first, then return the normal
+edge. The `scanner_resume_ack` value is valid only when no private writer start
+has been attempted; the durable marker blocks revival even if new containers
+later stop. Once private writers have started, old and new databases may contain different
+effects; reconcile them before any rollback instead of reviving old writers:
+
+```sh
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/scanner-db-resume-source.yml -e @.local/scanner-exit/operation-vars.yml
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/scanner-db-edge-resume-source.yml -e @.local/scanner-exit/operation-vars.yml
+```
+
+The database handoff is accepted only after the live scanner, report sessions,
+registration, queue processing, backup/privacy schedule and commerce health
+are checked on the actual host. The later Better Auth release must separately
+prove a fresh real magic-link delivery, verified email login, existing lead
+and report-session continuity, privacy deletion, and the identity custody
+report's disposition. This preparation sends no email and makes no live
+submission. Retire Supabase PostgreSQL and Auth only after those checks and
+an explicit, separate retirement decision; no playbook here deletes the
+managed project or its recovery copies.

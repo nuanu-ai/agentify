@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+readonly release_sha="{{ release_sha }}"
+readonly scanner_dir=/home/dmitry/agentify-commerce/ops/deploy/droplet
+readonly scanner_env=/home/dmitry/agentify-scanner/.env.private
+export AGENTIFY_SCANNER_WEB_IMAGE="agentify-scanner-web:$release_sha"
+export AGENTIFY_SCANNER_WORKER_IMAGE="agentify-scanner-worker:$release_sha"
+export AGENTIFY_SCANNER_PRIVACY_IMAGE="agentify-scanner-privacy:$release_sha"
+cd "$scanner_dir"
+case "${1:-}" in
+  backup | privacy)
+    service=database-backup
+    [[ "$1" == backup ]] || service=privacy-cleanup
+    docker compose --profile jobs --env-file "$scanner_env" \
+      -f compose.production.yaml -f compose.hetzner.yaml \
+      -f compose.scanner-database.yaml \
+      -f /home/dmitry/agentify-scanner/compose.scanner-handoff.yaml \
+      run --rm --no-deps -T "$service"
+    ;;
+  *) echo 'Usage: scanner-jobs-private.sh backup|privacy' >&2; exit 2 ;;
+esac

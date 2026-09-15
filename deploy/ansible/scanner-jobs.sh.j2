@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly release_sha="{{ release_sha }}"
+readonly release_sha="{{ jobs_release_sha | default(release_sha) }}"
 readonly scanner_dir=/home/dmitry/agentify-commerce/ops/deploy/droplet
 readonly scanner_env=/home/dmitry/agentify-scanner/.env.production
 readonly backup_dir=/home/dmitry/agentify-backups/scanner

@@ -1,0 +1,173 @@
+---
+- name: Stage reviewed DB bridge source and scanner images without changing running services
+  hosts: production
+  gather_facts: false
+  vars:
+    release_dir: /home/dmitry/agentify-commerce
+    scanner_dir: /home/dmitry/agentify-commerce/ops/deploy/droplet
+    scanner_env: /home/dmitry/agentify-scanner/.env.production
+    commerce_env: /home/dmitry/agentify-commerce/.env
+    stage_dir: /home/dmitry/agentify-scanner-exit
+    image_manifest: /home/dmitry/agentify-scanner-exit/db-bridge-images.json
+    source_images:
+      AGENTIFY_SCANNER_WEB_IMAGE: "agentify-scanner-web:{{ source_release_sha }}"
+      AGENTIFY_SCANNER_WORKER_IMAGE: "agentify-scanner-worker:{{ source_release_sha }}"
+      AGENTIFY_SCANNER_PRIVACY_IMAGE: "agentify-scanner-privacy:{{ source_release_sha }}"
+    bridge_images:
+      AGENTIFY_SCANNER_WEB_IMAGE: "agentify-scanner-web:{{ bridge_release_sha }}"
+      AGENTIFY_SCANNER_WORKER_IMAGE: "agentify-scanner-worker:{{ bridge_release_sha }}"
+      AGENTIFY_SCANNER_PRIVACY_IMAGE: "agentify-scanner-privacy:{{ bridge_release_sha }}"
+    compose_argv: [docker, compose, --env-file, /home/dmitry/agentify-scanner/.env.production, -f, compose.production.yaml, -f, compose.hetzner.yaml]
+  tasks:
+    - name: Require both exact release identities and reviewed-image staging gate
+      ansible.builtin.assert:
+        that:
+          - source_release_sha is defined and source_release_sha | default('') is match('^[0-9a-f]{40}$')
+          - bridge_release_sha is defined and bridge_release_sha | default('') is match('^[0-9a-f]{40}$')
+          - scanner_stage_release_ack | default('') == 'source-containers-remain-running'
+        fail_msg: State the original running SHA and reviewed DB-bridge SHA before staging.
+    - name: Refuse a dirty checkout or exposed production environment
+      ansible.builtin.command:
+        argv: [git, status, --porcelain, --untracked-files=all]
+        chdir: "{{ release_dir }}"
+      register: dirty
+      changed_when: false
+      check_mode: false
+    - ansible.builtin.assert:
+        that: dirty.stdout == ''
+        fail_msg: Prepared release checkout has edits or untracked files.
+    - ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: ["{{ scanner_env }}", "{{ commerce_env }}"]
+      register: envs
+      no_log: true
+    - ansible.builtin.assert:
+        that: envs.results | selectattr('stat.mode', 'equalto', '0600') | list | length == 2
+        fail_msg: Existing source environments are missing or not 0600.
+
+    - name: Inspect running scanner and commerce identities before checkout staging
+      ansible.builtin.command:
+        argv: [docker, inspect, "{{ item }}"]
+      loop: [agentify-web-1, agentify-worker-1, agentify-commerce-postgres-1]
+      register: containers_before
+      changed_when: false
+      check_mode: false
+      become: true
+      no_log: true
+    - ansible.builtin.assert:
+        that:
+          - (containers_before.results[0].stdout | from_json | first).State.Running
+          - (containers_before.results[1].stdout | from_json | first).State.Running
+          - (containers_before.results[2].stdout | from_json | first).State.Running
+          - (containers_before.results[0].stdout | from_json | first).Config.Image == source_images.AGENTIFY_SCANNER_WEB_IMAGE
+          - (containers_before.results[1].stdout | from_json | first).Config.Image == source_images.AGENTIFY_SCANNER_WORKER_IMAGE
+          - (containers_before.results[2].stdout | from_json | first).Config.Labels['com.docker.compose.project'] == 'agentify-commerce'
+        fail_msg: A live scanner or commerce identity differs before image staging.
+      no_log: true
+
+    - name: Fetch only the reviewed public source commit
+      ansible.builtin.command:
+        argv: [git, fetch, --no-tags, origin, "{{ bridge_release_sha }}"]
+        chdir: "{{ release_dir }}"
+      when: not ansible_check_mode
+    - name: Require the fetched object to resolve to the exact reviewed commit
+      ansible.builtin.command:
+        argv: [git, rev-parse, "{{ bridge_release_sha }}^{commit}"]
+        chdir: "{{ release_dir }}"
+      register: resolved
+      changed_when: false
+      check_mode: false
+      when: not ansible_check_mode
+    - ansible.builtin.assert:
+        that: resolved.stdout == bridge_release_sha
+        fail_msg: Fetched source does not match reviewed bridge SHA.
+      when: not ansible_check_mode
+    - name: Check out the exact reviewed source without starting any service
+      ansible.builtin.command:
+        argv: [git, checkout, --detach, "{{ bridge_release_sha }}"]
+        chdir: "{{ release_dir }}"
+      when: not ansible_check_mode
+
+    - name: Resolve old external mode and the new opt-in DB overlay without activation
+      ansible.builtin.command:
+        argv: "{{ compose_argv + ['-f', 'compose.scanner-database.yaml', '--profile', '*', 'config', '--format', 'json'] }}"
+        chdir: "{{ scanner_dir }}"
+      environment: "{{ bridge_images }}"
+      register: staged_config
+      changed_when: false
+      check_mode: false
+      become: true
+      no_log: true
+      when: not ansible_check_mode
+    - ansible.builtin.assert:
+        that:
+          - (staged_config.stdout | from_json).services['database-config-check'].environment.DATABASE_MODE == 'external'
+          - (staged_config.stdout | from_json).services.web.image == bridge_images.AGENTIFY_SCANNER_WEB_IMAGE
+          - (staged_config.stdout | from_json).services.worker.image == bridge_images.AGENTIFY_SCANNER_WORKER_IMAGE
+        fail_msg: Staged bridge config no longer preserves the external source mode.
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Build each reviewed scanner image from the clean pinned checkout, with secret-bearing output suppressed
+      ansible.builtin.command:
+        argv: "{{ compose_argv + ['build', item.service] }}"
+        chdir: "{{ scanner_dir }}"
+      environment: "{{ bridge_images }}"
+      loop:
+        - {service: web}
+        - {service: worker}
+        - {service: privacy-cleanup}
+      become: true
+      no_log: true
+      when: not ansible_check_mode
+    - name: Require every reviewed image is present after the build
+      ansible.builtin.command:
+        argv: [docker, image, inspect, "{{ item }}"]
+      loop:
+        - "{{ bridge_images.AGENTIFY_SCANNER_WEB_IMAGE }}"
+        - "{{ bridge_images.AGENTIFY_SCANNER_WORKER_IMAGE }}"
+        - "{{ bridge_images.AGENTIFY_SCANNER_PRIVACY_IMAGE }}"
+      changed_when: false
+      check_mode: false
+      become: true
+      no_log: true
+      when: not ansible_check_mode
+      register: staged_images
+    - name: Create protected image staging custody outside the release checkout
+      ansible.builtin.file:
+        path: "{{ stage_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+      become: true
+      when: not ansible_check_mode
+    - name: Record the image IDs built from this reviewed source for activation
+      ansible.builtin.copy:
+        content: "{{ {'release_sha': bridge_release_sha, 'web_id': (staged_images.results[0].stdout | from_json | first).Id, 'worker_id': (staged_images.results[1].stdout | from_json | first).Id, 'privacy_id': (staged_images.results[2].stdout | from_json | first).Id} | to_nice_json }}\n"
+        dest: "{{ image_manifest }}"
+        owner: root
+        group: root
+        mode: '0600'
+      become: true
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Prove staging did not restart or replace any running container
+      ansible.builtin.command:
+        argv: [docker, inspect, "{{ item }}"]
+      loop: [agentify-web-1, agentify-worker-1, agentify-commerce-postgres-1]
+      register: containers_after
+      changed_when: false
+      check_mode: false
+      become: true
+      no_log: true
+      when: not ansible_check_mode
+    - ansible.builtin.assert:
+        that:
+          - (containers_after.results[0].stdout | from_json | first).Id == (containers_before.results[0].stdout | from_json | first).Id
+          - (containers_after.results[1].stdout | from_json | first).Id == (containers_before.results[1].stdout | from_json | first).Id
+          - (containers_after.results[2].stdout | from_json | first).Id == (containers_before.results[2].stdout | from_json | first).Id
+        fail_msg: Image staging changed a live container identity.
+      no_log: true
+      when: not ansible_check_mode

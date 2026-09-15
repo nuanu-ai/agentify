@@ -1,0 +1,103 @@
+---
+- name: Stage the private scanner DB bridge without recreating commerce PostgreSQL
+  hosts: production
+  gather_facts: false
+  vars:
+    network_name: agentify-scanner-db
+    target_container: agentify-commerce-postgres-1
+  tasks:
+    - name: Require the reviewed DB bridge checkout and an explicit network acknowledgement
+      ansible.builtin.assert:
+        that:
+          - bridge_release_sha is defined and bridge_release_sha | default('') is match('^[0-9a-f]{40}$')
+          - scanner_network_ack | default('') == 'existing-commerce-postgres-private-bridge'
+    - ansible.builtin.command:
+        argv: [git, rev-parse, HEAD]
+        chdir: /home/dmitry/agentify-commerce
+      register: checkout
+      changed_when: false
+      check_mode: false
+    - ansible.builtin.assert:
+        that: checkout.stdout == bridge_release_sha
+        fail_msg: Reviewed DB bridge checkout is not staged.
+
+    - name: Inspect exact existing commerce PostgreSQL identity before adding connectivity
+      ansible.builtin.command:
+        argv: [docker, inspect, "{{ target_container }}"]
+      register: target_info
+      changed_when: false
+      check_mode: false
+      become: true
+      no_log: true
+    - ansible.builtin.assert:
+        that:
+          - (target_info.stdout | from_json | first).Config.Labels['com.docker.compose.project'] == 'agentify-commerce'
+          - (target_info.stdout | from_json | first).Config.Labels['com.docker.compose.service'] == 'postgres'
+          - (target_info.stdout | from_json | first).State.Running
+          - (target_info.stdout | from_json | first).Config.Image == 'postgres:17-alpine'
+          - ((target_info.stdout | from_json | first).Mounts | selectattr('Destination', 'equalto', '/var/lib/postgresql/data') | map(attribute='Type') | list) == ['volume']
+        fail_msg: Commerce PostgreSQL identity, image or data volume differs; connect nothing.
+      no_log: true
+
+    - name: Inspect existing private bridge or observe absence
+      ansible.builtin.command:
+        argv: [docker, network, inspect, "{{ network_name }}"]
+      register: bridge_before
+      failed_when: bridge_before.rc not in [0, 1]
+      changed_when: false
+      check_mode: false
+      become: true
+      no_log: true
+    - ansible.builtin.assert:
+        that:
+          - bridge_before.rc == 1 or (bridge_before.stdout | from_json | first).Driver == 'bridge'
+          - bridge_before.rc == 1 or (bridge_before.stdout | from_json | first).Internal
+          - bridge_before.rc == 1 or (bridge_before.stdout | from_json | first).Labels['agentify.purpose'] == 'scanner-db'
+        fail_msg: Existing network is not the reviewed internal scanner DB bridge.
+      no_log: true
+
+    - name: Create only the absent internal bridge
+      ansible.builtin.command:
+        argv: [docker, network, create, --driver, bridge, --internal, --label, agentify.purpose=scanner-db, "{{ network_name }}"]
+      become: true
+      when: bridge_before.rc == 1 and not ansible_check_mode
+    - name: Inspect bridge membership after creation
+      ansible.builtin.command:
+        argv: [docker, network, inspect, "{{ network_name }}"]
+      register: bridge_now
+      changed_when: false
+      check_mode: false
+      become: true
+      no_log: true
+      when: not ansible_check_mode
+    - name: Connect the existing commerce Postgres container without restart
+      ansible.builtin.command:
+        argv: [docker, network, connect, --alias, agentify-scanner-postgres, "{{ network_name }}", "{{ target_container }}"]
+      become: true
+      when:
+        - not ansible_check_mode
+        - (target_info.stdout | from_json | first).NetworkSettings.Networks[network_name] is not defined
+    - name: Prove the scanner-only alias and persistent Compose desired-state file
+      ansible.builtin.command:
+        argv: [docker, inspect, "{{ target_container }}"]
+      register: bridged_target
+      changed_when: false
+      check_mode: false
+      become: true
+      no_log: true
+      when: not ansible_check_mode
+    - ansible.builtin.assert:
+        that:
+          - "'agentify-scanner-postgres' in (bridged_target.stdout | from_json | first).NetworkSettings.Networks[network_name].Aliases"
+        fail_msg: Scanner DB private alias is missing after bridge connection.
+      when: not ansible_check_mode
+
+    - name: Validate the durable commerce Compose network overlay without recreating services
+      ansible.builtin.command:
+        argv: [docker, compose, --project-name, agentify-commerce, --env-file, /home/dmitry/agentify-commerce/.env, -f, compose.yaml, -f, deploy/compose.public.yaml, -f, deploy/compose.hetzner-commerce.yaml, -f, deploy/compose.scanner-database.yaml, config, --quiet]
+        chdir: /home/dmitry/agentify-commerce
+      become: true
+      changed_when: false
+      check_mode: false
+      no_log: true
+      when: not ansible_check_mode

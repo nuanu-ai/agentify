@@ -1,0 +1,12 @@
+# Opt-in only after the guarded scanner restore. Keep the commerce database
+# unchanged; this adds one private bridge to its existing Postgres container.
+services:
+  postgres:
+    networks:
+      default:
+      agentify-scanner-db:
+        aliases: [agentify-scanner-postgres]
+networks:
+  agentify-scanner-db:
+    external: true
+    name: agentify-scanner-db
