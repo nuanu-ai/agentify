@@ -1,9 +1,10 @@
 # Agentify server preparation
 
-The public records now point at the new production VM. Until merchant data and
-the scanner's real configuration are restored and accepted, the VM can answer
-honestly with the separate maintenance edge. Run `prepare-production.yml` for
-the reviewed release first, then:
+The public records now point at the new production VM. The scanner uses its
+original external database and configuration; commerce merchant data still
+needs its final restore and acceptance. The maintenance edge answers unavailable
+routes honestly. For a new reviewed runtime release, run `prepare-production.yml`
+first, then:
 
 ```sh
 ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/start-maintenance-edge.yml \
@@ -193,3 +194,73 @@ ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/retire-scanner-d
 Retirement leaves donor containers, credentials and backups intact for recovery,
 but stops its resident scanner processes and keeps its cron inactive. Supabase
 remains the single production database and Auth project.
+
+The commerce data move uses the already prepared production runtime SHA. The
+controller may contain newer Ansible playbooks; it does not check out or rebuild
+that newer commit on the VM. The ordered stages are `freeze-backup-commerce`,
+`restore-commerce`, `start-commerce-private`, `activate-commerce-public`, and
+`retire-old-commerce`. Run one stage at a time, reviewing its `--check` output
+and the resulting recovery evidence before applying the next stage:
+
+```sh
+step=freeze-backup-commerce
+ansible-playbook -i deploy/ansible/inventory.yml "deploy/ansible/${step}.yml" \
+  -e release_sha=PREPARED_RUNTIME_40_CHARACTER_SHA --check
+```
+
+After the preview and its prerequisites pass, apply the same stage:
+
+```sh
+step=freeze-backup-commerce
+ansible-playbook -i deploy/ansible/inventory.yml "deploy/ansible/${step}.yml" \
+  -e release_sha=PREPARED_RUNTIME_40_CHARACTER_SHA
+```
+
+Keep the steps separate in practice. `freeze-backup-commerce.yml` pins the old
+live project's release, images, configuration, volume and actual running
+environment, and refuses unfinished orders or active queue jobs. It gracefully
+stops only its gateway, cabinet worker and web, leaving the old Postgres and the
+test stack intact. A final dump, the exact old and new protected environments,
+and a row fingerprint go to the source, new VM and ignored off-VM controller
+storage. The release-specific dump is never replaced on a retry. The ten
+original business tables are compared using the observed source column lists;
+later migration-added fields do not hide or falsely change an original row.
+
+`restore-commerce.yml` requires the old writers still stopped and all protected
+backup copies equal. It uses the distinct final `agentify-commerce` PostgreSQL
+volume, never the private warmup volume. It restores only an empty database in
+one transaction, verifies original-row counts and hashes, runs migrations
+as a synchronous one-off service, and verifies those original rows again before
+writing protected restore proof. A complete matching restore can be retried;
+partial, foreign or changed data is refused without deleting a volume.
+
+`start-commerce-private.yml` takes writer ownership only after restore proof and
+starts the final gateway, cabinet and inner Caddy in order. It probes health,
+the public catalog and documentation over the private Docker network while
+`app.agentify.ad` still returns 503. It refuses a connected WooCommerce shop in
+the new database before the first cabinet start and checks that original rows
+and the old stopped state remain intact. `activate-commerce-public.yml` then
+switches only the Caddyfile in the shared scanner/commerce edge project, keeping
+its admin credentials, certificate volumes and scanner routes. Valid HTTPS GET
+probes must pass for commerce and scanner. If acceptance fails or an unmarked
+public edge is found on retry, Ansible attempts both writer stop and the app
+maintenance route, then reports the observed result of each action. Both
+databases remain for reviewed reconciliation even if either recovery attempt
+fails.
+
+Only after the public probes pass does `retire-old-commerce.yml` stop the old
+Postgres and the private warmup containers. It keeps their volumes, original
+configurations and backups; it never runs `down -v` or prunes Docker data. The
+old commerce web has been stopped since freeze, so the old hostname no longer
+serves that application. Existing clients need the new `app.agentify.ad` origin;
+an HTTP redirect does not transfer payment or API requests safely.
+
+Each stage has a retry boundary. Freeze cannot be repeated if source rows or
+secrets drift from the protected dump; restore cannot be repeated after final
+writers change data; private startup requires app maintenance; public activation
+requires old Postgres still preserved and running; retirement can be rerun after
+all old processes stop. Never restore an earlier dump over newer target effects
+or restart the old writer set against stale data. The read-only probes and row
+hashes prove retained records and routes. Real account-password login and a
+purchase are not performed by these playbooks and require separate acceptance
+without using a production payment as a deployment probe.

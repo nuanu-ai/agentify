@@ -1,0 +1,47 @@
+---
+- name: Attempt to stop new commerce writers while preserving all target data
+  ansible.builtin.command:
+    argv: "{{ commerce_argv + ['stop', '--timeout', '60', 'gateway', 'cabinet', 'web'] }}"
+    chdir: "{{ release_dir }}"
+  environment: "{{ commerce_images }}"
+  become: true
+  register: recovery_writer_stop
+  changed_when: "'Stopped' in recovery_writer_stop.stderr"
+  failed_when: false
+  no_log: true
+  when: not ansible_check_mode
+
+- name: Attempt to return the app route to honest maintenance
+  ansible.builtin.command:
+    argv: "{{ maintenance_argv + ['up', '-d', '--wait', '--wait-timeout', '180', '--no-build', 'caddy'] }}"
+    chdir: "{{ edge_dir }}"
+  become: true
+  register: recovery_edge_close
+  changed_when: "'Created' in recovery_edge_close.stderr or 'Started' in recovery_edge_close.stderr or 'Recreated' in recovery_edge_close.stderr"
+  failed_when: false
+  no_log: true
+  when: not ansible_check_mode
+
+- name: Observe the app route after both recovery attempts
+  ansible.builtin.uri:
+    url: https://app.agentify.ad/healthz
+    method: GET
+    status_code: [503, 200, 502]
+    validate_certs: true
+    return_content: false
+  delegate_to: localhost
+  register: recovery_app_route
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: not ansible_check_mode
+
+- name: Refuse unverified public ownership and report actual recovery results
+  ansible.builtin.fail:
+    msg: >-
+      Public commerce acceptance is incomplete. Ansible attempted to stop new
+      writers (rc={{ recovery_writer_stop.rc | default('check-mode-skipped') }})
+      and restore app maintenance (rc={{ recovery_edge_close.rc | default('check-mode-skipped') }},
+      observed HTTP={{ recovery_app_route.status | default('not-probed') }}).
+      Preserve both databases and reconcile any newer target effects before retrying;
+      never restart old writers against an earlier dump.
