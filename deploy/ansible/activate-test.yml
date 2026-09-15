@@ -141,11 +141,19 @@
 
     - name: Resolve both Compose configurations without starting anything
       ansible.builtin.command:
-        argv: "{{ item.argv + ['config', '--format', 'json'] }}"
+        argv: "{{ item.argv + ['--profile', '*', 'config', '--format', 'json'] }}"
         chdir: "{{ item.dir }}"
       loop:
-        - {argv: "{{ source_argv }}", dir: "{{ source_dir }}"}
-        - {argv: "{{ candidate_argv }}", dir: "{{ candidate_dir }}"}
+        # The archived release.sh exported tags transiently; its .env did not.
+        - argv: "{{ source_argv }}"
+          dir: "{{ source_dir }}"
+          image_environment:
+            COINSLOT_APP_IMAGE: "{{ source_app_image }}"
+            COINSLOT_WEB_IMAGE: "{{ source_web_image }}"
+        - argv: "{{ candidate_argv }}"
+          dir: "{{ candidate_dir }}"
+          image_environment: {}
+      environment: "{{ item.image_environment }}"
       register: compose_configs
       become: true
       changed_when: false
