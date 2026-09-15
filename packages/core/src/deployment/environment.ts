@@ -121,7 +121,7 @@ export function surfaceModeOf(network: string, facilitatorUrl: string): SurfaceM
 
 /** Where each environment's keys work, for the words the door refuses in. */
 export const SITES: Readonly<Record<Environment, string>> = {
-  test: "test.coinslot.nuanu.ai",
+  test: "test.agentify.ad",
   live: "app.agentify.ad",
 };
 

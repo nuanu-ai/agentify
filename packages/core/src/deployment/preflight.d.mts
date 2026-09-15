@@ -18,6 +18,7 @@ export interface ResolvedCompose {
 interface ResolvedService {
   readonly image?: string;
   environment?: Record<string, string | undefined>;
+  networks?: Record<string, { aliases?: readonly string[] }>;
   ports?: readonly {
     readonly host_ip?: string;
     readonly mode?: string;

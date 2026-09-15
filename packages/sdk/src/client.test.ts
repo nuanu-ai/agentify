@@ -755,9 +755,7 @@ describe("what is thrown where a route has no failure branch", () => {
     // default, because choosing an environment is theirs to do on purpose.
     const coinslot = createClient({ apiKey: API_KEY });
 
-    await expect(coinslot.catalog.publish(card)).rejects.toThrow(
-      /https:\/\/test\.coinslot\.nuanu\.ai/,
-    );
+    await expect(coinslot.catalog.publish(card)).rejects.toThrow(/https:\/\/test\.agentify\.ad/);
     await expect(coinslot.catalog.publish(card)).rejects.toThrow(/https:\/\/app\.agentify\.ad/);
   });
 });

@@ -21,6 +21,18 @@ services:
       DATABASE_URL: "postgres://coinslot:${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}@postgres:5432/coinslot"
 
   web:
-    # Caddy's existing issuer uses TLS-ALPN on 443. Port 80 need not be bound.
-    ports: !override
-      - "0.0.0.0:443:443"
+    # The independently managed edge is the only public 80/443 listener.
+    # This Caddy still assembles the commerce routes, over private HTTP.
+    ports: !override []
+    environment:
+      COINSLOT_SITE_ADDRESS: ":8080"
+      COINSLOT_TRUSTED_EDGE_CIDR: "172.30.80.2/32"
+    networks:
+      default:
+      agentify-ingress:
+        aliases: [agentify-commerce-web]
+
+networks:
+  agentify-ingress:
+    external: true
+    name: agentify-ingress

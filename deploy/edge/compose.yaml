@@ -1,0 +1,34 @@
+name: agentify-edge
+
+services:
+  caddy:
+    image: caddy:2.10.0-alpine
+    restart: unless-stopped
+    environment:
+      ADMIN_BASIC_AUTH_USER: ${ADMIN_BASIC_AUTH_USER:?set the scanner admin user}
+      ADMIN_BASIC_AUTH_HASH: ${ADMIN_BASIC_AUTH_HASH:?set the scanner admin bcrypt hash}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      agentify-ingress:
+        ipv4_address: 172.30.80.2
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "14"
+
+networks:
+  agentify-ingress:
+    external: true
+    name: agentify-ingress
+
+volumes:
+  caddy-data:
+  caddy-config:

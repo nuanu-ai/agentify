@@ -30,9 +30,19 @@ const LIVE_CHANNEL = fixture("live-channel");
 const COMMERCE_CHANNEL: ResolvedCompose = structuredClone(LIVE_CHANNEL);
 envFor(COMMERCE_CHANNEL, "gateway").PUBLIC_BASE_URL = "https://app.agentify.ad";
 envFor(COMMERCE_CHANNEL, "cabinet").PUBLIC_BASE_URL = "https://app.agentify.ad";
-envFor(COMMERCE_CHANNEL, "web").COINSLOT_SITE_ADDRESS = "app.agentify.ad";
-COMMERCE_CHANNEL.services.web.ports = [
-  { mode: "ingress", host_ip: "0.0.0.0", target: 443, published: "443", protocol: "tcp" },
+envFor(COMMERCE_CHANNEL, "web").COINSLOT_SITE_ADDRESS = ":8080";
+envFor(COMMERCE_CHANNEL, "web").COINSLOT_TRUSTED_EDGE_CIDR = "172.30.80.2/32";
+COMMERCE_CHANNEL.services.web.ports = [];
+COMMERCE_CHANNEL.services.web.networks = {
+  "agentify-ingress": { aliases: ["agentify-commerce-web"] },
+  default: {},
+};
+const AGENTIFY_TEST_CHANNEL: ResolvedCompose = structuredClone(TEST_CHANNEL);
+envFor(AGENTIFY_TEST_CHANNEL, "gateway").PUBLIC_BASE_URL = "https://test.agentify.ad";
+envFor(AGENTIFY_TEST_CHANNEL, "cabinet").PUBLIC_BASE_URL = "https://test.agentify.ad";
+envFor(AGENTIFY_TEST_CHANNEL, "web").COINSLOT_SITE_ADDRESS = "test.agentify.ad";
+AGENTIFY_TEST_CHANNEL.services.web.ports = [
+  { mode: "ingress", host_ip: "10.20.10.20", target: 443, published: "8443", protocol: "tcp" },
 ];
 envFor(COMMERCE_CHANNEL, "cabinet").MAIL_URL = "https://api.resend.com";
 envFor(COMMERCE_CHANNEL, "cabinet").MAIL_API_KEY = "re_synthetic-provider-key";
@@ -102,6 +112,57 @@ describe("a channel that is what it claims to be", () => {
   it("accepts the new commerce door only with a private, consistently credentialed database", () => {
     expect(problemsWith("commerce", COMMERCE_CHANNEL)).toEqual([]);
     expect(problemsWith("live", COMMERCE_CHANNEL).length).toBeGreaterThan(0);
+  });
+
+  it("accepts the Agentify test channel only on the existing test ingress binding", () => {
+    expect(problemsWith("agentify-test", AGENTIFY_TEST_CHANNEL)).toEqual([]);
+    expect(problemsWith("test", AGENTIFY_TEST_CHANNEL).length).toBeGreaterThan(0);
+  });
+
+  it("refuses commerce when its Caddy publishes a host port or leaves the ingress network", () => {
+    const exposed = structuredClone(COMMERCE_CHANNEL);
+    exposed.services.web.ports = [
+      { mode: "ingress", host_ip: "0.0.0.0", target: 8080, published: "8080", protocol: "tcp" },
+    ];
+    expect(problemsWith("commerce", exposed).join("\n")).toMatch(/published bindings/);
+
+    const disconnected = structuredClone(COMMERCE_CHANNEL);
+    disconnected.services.web.networks = { default: {} };
+    expect(problemsWith("commerce", disconnected).join("\n")).toMatch(/agentify-ingress/);
+
+    const wrongAlias = structuredClone(COMMERCE_CHANNEL);
+    wrongAlias.services.web.networks = { "agentify-ingress": { aliases: ["web"] } };
+    expect(problemsWith("commerce", wrongAlias).join("\n")).toMatch(/agentify-commerce-web/);
+  });
+
+  it("trusts only the exact edge peer to carry browser scheme and client address", () => {
+    for (const cidr of ["private_ranges", "172.30.80.0/24", "0.0.0.0/0", ""]) {
+      expect(
+        problemsWith(
+          "commerce",
+          withEnv(COMMERCE_CHANNEL, "web", "COINSLOT_TRUSTED_EDGE_CIDR", cidr),
+        ).join("\n"),
+      ).toMatch(/COINSLOT_TRUSTED_EDGE_CIDR/);
+    }
+  });
+
+  it("refuses Agentify test on a public listener or an old public origin", () => {
+    const exposed = structuredClone(AGENTIFY_TEST_CHANNEL);
+    exposed.services.web.ports = [
+      { mode: "ingress", host_ip: "0.0.0.0", target: 443, published: "8443", protocol: "tcp" },
+    ];
+    expect(problemsWith("agentify-test", exposed).join("\n")).toMatch(/10\.20\.10\.20/);
+    expect(
+      problemsWith(
+        "agentify-test",
+        withEnv(
+          AGENTIFY_TEST_CHANNEL,
+          "cabinet",
+          "PUBLIC_BASE_URL",
+          "https://test.coinslot.nuanu.ai",
+        ),
+      ).join("\n"),
+    ).toMatch(/PUBLIC_BASE_URL/);
   });
 
   it("refuses old/default database credentials or a differently wired process without printing secrets", () => {

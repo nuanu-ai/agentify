@@ -797,7 +797,7 @@ describe("what a presented value's prefix says", () => {
     const said = refusalIn(answered);
     expect(said.code).toBe("not_authorised");
     expect(said.message).toContain("this value begins with csk_test_");
-    expect(said.message).toContain("keys with that prefix work on test.coinslot.nuanu.ai");
+    expect(said.message).toContain("keys with that prefix work on test.agentify.ad");
     expect(said.message).not.toContain("this is a test key");
   });
 

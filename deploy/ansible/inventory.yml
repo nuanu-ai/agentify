@@ -1,0 +1,14 @@
+all:
+  children:
+    production:
+      hosts:
+        agentify:
+          ansible_host: agentify
+          ansible_user: dmitry
+          ansible_python_interpreter: /usr/bin/python3
+    test:
+      hosts:
+        codex-vm:
+          ansible_host: codex-vm
+          ansible_user: dmitry
+          ansible_python_interpreter: /usr/bin/python3

@@ -620,7 +620,7 @@ rehearsal from a live sale: send such an order into your own test environment,
 answer with a stub, or serve it like any other.
 
 There are two environments, and the flag is the difference between them. The
-test one is at `https://test.coinslot.nuanu.ai`: its keys begin `csk_test_`, and
+test one is at `https://test.agentify.ad`: its keys begin `csk_test_`, and
 the payments it settles go over a test chain with test funds. The live one is at
 `https://app.agentify.ad`, where the money is real. The flag follows the chain
 the payment settled on rather than the key you called with, so every order from

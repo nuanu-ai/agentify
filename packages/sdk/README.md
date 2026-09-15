@@ -32,7 +32,7 @@ const coinslot = createClient({
 })
 ```
 
-There are two addresses, one per world. At `https://test.coinslot.nuanu.ai` you
+There are two addresses, one per world. At `https://test.agentify.ad` you
 build: payments settle on a test chain and the money there is not real. At
 `https://app.agentify.ad` you sell, and it is. A key issued in one does not
 open the other, and the key says which one you are holding: `csk_test_` for the

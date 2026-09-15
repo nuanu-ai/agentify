@@ -53,6 +53,13 @@
 	cert_issuer acme {
 		disable_http_challenge
 	}
+	# A second Caddy may terminate TLS before this one. Trust only that exact
+	# peer for X-Forwarded-Proto and X-Forwarded-For; broad private ranges would
+	# let another Docker service impersonate a browser's address.
+	servers {
+		trusted_proxies static {$COINSLOT_TRUSTED_EDGE_CIDR:127.0.0.1/32}
+		trusted_proxies_strict
+	}
 }
 
 {$COINSLOT_SITE_ADDRESS::8080} {

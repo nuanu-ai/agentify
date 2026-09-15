@@ -28,6 +28,16 @@ const CHANNELS = {
     publishedPort: "8443",
     credentials: false,
   },
+  "agentify-test": {
+    network: "eip155:84532",
+    facilitator: "https://x402.org/facilitator",
+    surfaceMode: "test",
+    origin: "https://test.agentify.ad",
+    siteAddress: "test.agentify.ad",
+    hostIp: "10.20.10.20",
+    publishedPort: "8443",
+    credentials: false,
+  },
   live: {
     network: "eip155:8453",
     facilitator: "https://api.cdp.coinbase.com/platform/v2/x402",
@@ -43,9 +53,9 @@ const CHANNELS = {
     facilitator: "https://api.cdp.coinbase.com/platform/v2/x402",
     surfaceMode: "live",
     origin: "https://app.agentify.ad",
-    siteAddress: "app.agentify.ad",
-    hostIp: "0.0.0.0",
-    publishedPort: "443",
+    siteAddress: ":8080",
+    privateIngress: true,
+    trustedEdgeCidr: "172.30.80.2/32",
     credentials: true,
   },
 };
@@ -62,7 +72,9 @@ const envOf = (resolved, service) => resolved.services?.[service]?.environment ?
 export function problemsWith(channel, resolved) {
   const wanted = CHANNELS[channel];
   if (wanted === undefined) {
-    return [`${channel} is not a release channel; the channels are test, live and commerce`];
+    return [
+      `${channel} is not a release channel; the channels are test, agentify-test, live and commerce`,
+    ];
   }
 
   const problems = [];
@@ -223,23 +235,39 @@ export function problemsWith(channel, resolved) {
   equal("gateway", "PUBLIC_BASE_URL", gateway.PUBLIC_BASE_URL, wanted.origin);
   equal("cabinet", "PUBLIC_BASE_URL", cabinet.PUBLIC_BASE_URL, wanted.origin);
   equal("web", "COINSLOT_SITE_ADDRESS", web.COINSLOT_SITE_ADDRESS, wanted.siteAddress);
+  if (wanted.trustedEdgeCidr !== undefined) {
+    equal(
+      "web",
+      "COINSLOT_TRUSTED_EDGE_CIDR",
+      web.COINSLOT_TRUSTED_EDGE_CIDR,
+      wanted.trustedEdgeCidr,
+    );
+  }
 
-  // The whole binding, not just the published number. The container side is
-  // 8080 only while COINSLOT_SITE_ADDRESS is a bare port; a hostname turns
-  // Caddy's automatic HTTPS on and it listens on 443 instead, so a mapping to
-  // 8080 on a public stack forwards to a port with no listener and the site
-  // answers nothing. The host IP is checked for the reason compose.yaml already
-  // gives: a door open to the edge that passes SNI to it and to nothing else on
-  // the machine.
+  // The public edge owns TLS for commerce. Its private Caddy has no host port
+  // and must be discoverable by the name the edge routes to. The other channels
+  // keep their direct SNI ingress bindings on the test host.
   const bindings = (resolved.services?.web?.ports ?? []).map(
     (port) => `${port.host_ip ?? ""}:${port.published ?? ""}:${port.target ?? ""}`,
   );
-  const wantedBinding = `${wanted.hostIp}:${wanted.publishedPort}:443`;
-  if (bindings.length !== 1 || bindings[0] !== wantedBinding) {
-    problems.push(
-      `web: the published bindings are ${JSON.stringify(bindings)} and the ${channel} channel is ` +
-        `${JSON.stringify(wantedBinding)}`,
-    );
+  if (wanted.privateIngress) {
+    if (bindings.length !== 0) {
+      problems.push(
+        `web: the published bindings are ${JSON.stringify(bindings)}; commerce publishes none`,
+      );
+    }
+    const aliases = resolved.services?.web?.networks?.["agentify-ingress"]?.aliases ?? [];
+    if (!aliases.includes("agentify-commerce-web")) {
+      problems.push("web: agentify-ingress must expose alias agentify-commerce-web to the edge");
+    }
+  } else {
+    const wantedBinding = `${wanted.hostIp}:${wanted.publishedPort}:443`;
+    if (bindings.length !== 1 || bindings[0] !== wantedBinding) {
+      problems.push(
+        `web: the published bindings are ${JSON.stringify(bindings)} and the ${channel} channel is ` +
+          `${JSON.stringify(wantedBinding)}`,
+      );
+    }
   }
 
   return problems;

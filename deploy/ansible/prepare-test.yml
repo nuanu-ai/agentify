@@ -1,0 +1,187 @@
+---
+- name: Stage test-channel source without changing its running deployment
+  hosts: test
+  gather_facts: false
+  vars:
+    candidate_dir: /home/dmitry/agentify-test-candidate
+    current_test_dir: /home/dmitry/coinslot-test
+    test_app_image: "agentify-test-app:{{ release_sha }}"
+    test_web_image: "agentify-test-web:{{ release_sha }}"
+  tasks:
+    - name: Require the same explicit reviewed release
+      ansible.builtin.assert:
+        that:
+          - release_sha is defined
+          - release_sha | default('') is match('^[0-9a-f]{40}$')
+        fail_msg: Pass the reviewed 40-character lowercase release_sha explicitly.
+
+    - name: Inspect the live test configuration without reading its values
+      ansible.builtin.stat:
+        path: "{{ current_test_dir }}/.env"
+        get_checksum: false
+      register: current_test_env
+
+    - name: Refuse to prepare against an absent or exposed test deployment
+      ansible.builtin.assert:
+        that:
+          - current_test_env.stat.exists
+          - current_test_env.stat.isreg
+          - current_test_env.stat.mode == '0600'
+        fail_msg: The existing test .env must remain a regular 0600 file.
+
+    - name: Stage source code in a separate candidate directory
+      ansible.builtin.git:
+        repo: https://github.com/nuanu-ai/agentify.git
+        dest: "{{ candidate_dir }}"
+        version: "{{ release_sha }}"
+        update: true
+        force: false
+
+    - name: Inspect whether candidate configuration already exists
+      ansible.builtin.stat:
+        path: "{{ candidate_dir }}/.env"
+        get_checksum: false
+      register: candidate_env
+
+    - name: Preserve existing test secrets in a separate protected candidate file
+      ansible.builtin.copy:
+        src: "{{ current_test_dir }}/.env"
+        dest: "{{ candidate_dir }}/.env"
+        remote_src: true
+        owner: dmitry
+        mode: '0600'
+      when: not candidate_env.stat.exists and not ansible_check_mode
+      no_log: true
+
+    - name: Refuse an exposed or wrongly owned candidate configuration
+      ansible.builtin.stat:
+        path: "{{ candidate_dir }}/.env"
+        get_checksum: false
+      register: protected_candidate_env
+
+    - name: Require the candidate configuration to remain protected
+      ansible.builtin.assert:
+        that:
+          - protected_candidate_env.stat.exists
+          - protected_candidate_env.stat.isreg
+          - protected_candidate_env.stat.mode == '0600'
+          - protected_candidate_env.stat.pw_name == 'dmitry'
+        fail_msg: Candidate test .env must be a regular dmitry-owned 0600 file.
+      when: not ansible_check_mode
+
+    - name: Set only the reviewed test address and existing ingress binding
+      ansible.builtin.lineinfile:
+        path: "{{ candidate_dir }}/.env"
+        regexp: "^{{ item.key }}="
+        line: "{{ item.key }}={{ item.value }}"
+        mode: '0600'
+      loop:
+        - { key: COINSLOT_SITE_ADDRESS, value: test.agentify.ad }
+        - { key: COINSLOT_PUBLIC_ORIGIN, value: 'https://test.agentify.ad' }
+        - { key: COINSLOT_WEB_PUBLISH, value: '10.20.10.20:8443:443' }
+        - { key: COINSLOT_APP_IMAGE, value: "{{ test_app_image }}" }
+        - { key: COINSLOT_WEB_IMAGE, value: "{{ test_web_image }}" }
+      no_log: true
+      when: protected_candidate_env.stat.exists | default(false)
+
+    - name: Inspect the direct test-ingress override
+      ansible.builtin.stat:
+        path: "{{ candidate_dir }}/deploy/compose.agentify-test.yaml"
+      register: direct_test_override
+
+    - name: Refuse a release without direct HTTPS test ingress
+      ansible.builtin.assert:
+        that: direct_test_override.stat.isreg | default(false)
+        fail_msg: The release must contain deploy/compose.agentify-test.yaml.
+      when: not ansible_check_mode
+
+    - name: Resolve candidate test Compose config without starting services
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - --project-name
+          - agentify-test-candidate
+          - --env-file
+          - "{{ candidate_dir }}/.env"
+          - -f
+          - compose.yaml
+          - -f
+          - deploy/compose.public.yaml
+          - -f
+          - deploy/compose.agentify-test.yaml
+          - config
+          - --quiet
+        chdir: "{{ candidate_dir }}"
+      become: true
+      changed_when: false
+      check_mode: false
+      no_log: true
+      when: not ansible_check_mode
+
+    - name: Inspect the candidate's resolved image tags
+      ansible.builtin.command:
+        argv:
+          - docker
+          - compose
+          - --project-name
+          - agentify-test-candidate
+          - --env-file
+          - "{{ candidate_dir }}/.env"
+          - -f
+          - compose.yaml
+          - -f
+          - deploy/compose.public.yaml
+          - -f
+          - deploy/compose.agentify-test.yaml
+          - config
+          - --images
+        chdir: "{{ candidate_dir }}"
+      become: true
+      register: candidate_images
+      changed_when: false
+      check_mode: false
+      when: not ansible_check_mode
+
+    - name: Refuse default or mixed test image tags
+      ansible.builtin.assert:
+        that: candidate_images.stdout_lines | unique | sort == [test_app_image, test_web_image, 'postgres:17-alpine'] | sort
+        fail_msg: Test Compose must resolve only the candidate SHA images and pinned Postgres.
+      when: not ansible_check_mode
+
+    - name: Verify the exact candidate commit
+      ansible.builtin.command:
+        argv: [git, rev-parse, HEAD]
+        chdir: "{{ candidate_dir }}"
+      register: test_candidate_sha
+      changed_when: false
+      check_mode: false
+      when: not ansible_check_mode
+
+    - name: Refuse another candidate revision
+      ansible.builtin.assert:
+        that: test_candidate_sha.stdout == release_sha
+      when: not ansible_check_mode
+
+    - name: Inspect every nonignored test candidate source change
+      ansible.builtin.command:
+        argv: [git, status, --porcelain, --untracked-files=all]
+        chdir: "{{ candidate_dir }}"
+      register: test_source_status
+      changed_when: false
+      check_mode: false
+      when: not ansible_check_mode
+
+    - name: Refuse a modified or untracked candidate checkout
+      ansible.builtin.assert:
+        that: test_source_status.stdout == ''
+        fail_msg: The test candidate source has nonignored changes.
+      when: not ansible_check_mode
+
+    - name: Explain the candidate limitations in check mode
+      ansible.builtin.debug:
+        msg: >-
+          Check mode previews candidate checkout and protected config edits.
+          The new release's direct HTTPS Compose config is validated after apply;
+          no test services or images are changed by this playbook.
+      when: ansible_check_mode
