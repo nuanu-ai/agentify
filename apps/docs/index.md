@@ -121,10 +121,11 @@ optional for selling, but it is what lets the cabinet send you a password-reset
 link later.
 
 After registration, the cabinet asks for the seller name buyers will see. From
-there you can issue an API key and publish cards with the SDK. On the live
-channel you must also save the wallet where your USDC payments arrive before a
-card can be published; the local sandbox moves no money and does not require a
-merchant wallet. [The first test sale](/quickstart) walks through those steps.
+there you can issue an API key and publish cards with the SDK. On both the test
+and live channels you must also save the wallet where your USDC payments arrive
+before a card can be published; the local scripted sandbox moves no money and
+does not require a merchant wallet. [The first test sale](/quickstart) walks
+through those steps.
 
 We still go through the four questions above with each invited merchant, decide
 which products go out first and how they are sold, and run the first test

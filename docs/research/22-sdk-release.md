@@ -2,8 +2,8 @@
 
 Status: the Agentify package names are prepared but unpublished. Dmitry
 authorized the one-time npm bootstrap and the exact contracts `0.3.2` / SDK
-`0.2.4` release on 2026-09-16, as recorded in ADR-0016. This authorization does
-also covers deprecating every version under the former package names after the
+`0.2.4` release on 2026-09-16, as recorded in ADR-0016. This authorization also
+covers deprecating every version under the former package names after the
 new registry artifacts pass acceptance; it does not authorize unpublishing
 registry history. Test and production host delivery are outside this release,
 and the namespace cutover remains paused.
@@ -89,6 +89,22 @@ npm publish "$release_dir/nuanu-ai-agentify-contracts-0.3.2.tgz" --access public
 npm publish "$release_dir/nuanu-ai-agentify-0.2.4.tgz" --access public --tag latest
 ```
 
+Keep those exact pnpm-packed tarballs until bootstrap acceptance is complete.
+Before publishing, record the npm-compatible SHA-1 shasum and SHA-512 SRI
+integrity of each tarball's bytes. After each exact version becomes readable
+from the registry, compare those recorded values with its `dist.shasum` and
+`dist.integrity`:
+
+```sh
+npm view @nuanu-ai/agentify-contracts@0.3.2 dist.shasum dist.integrity
+npm view @nuanu-ai/agentify@0.2.4 dist.shasum dist.integrity
+```
+
+Both pairs must match before installing the exact registry versions in a fresh
+directory. A clean external install and import then prove that the matching
+bytes are usable. The first tag workflow performs its own exact-version
+registry install, but it does not replace this bootstrap digest comparison.
+
 Do not save a token in the repository or GitHub. An interactive `npm login`
 session or another short-lived authenticated session is enough for this
 one-time command.
@@ -128,6 +144,9 @@ exact contracts and SDK versions back from npm, confirms that `latest` points
 at both versions, then installs and imports those exact registry artifacts in
 a fresh directory. An HTTP 200 from npm or a green build alone does not prove
 that a merchant can import the release.
+
+For the one-time bootstrap, acceptance also includes the recorded tarball
+shasum and integrity comparisons above before the fresh registry install.
 
 Only after that acceptance passes, deprecate every released version under the
 former package names with a message that directs installers to
