@@ -39,6 +39,7 @@ import type { Pool } from "pg";
 import type { CabinetConfig } from "./config.js";
 import { MINIMUM_PASSWORD_LENGTH } from "./credentials.js";
 import { type Handover, type Message, type Postman, postmanFor } from "./mail.js";
+import { transactionalEmailHtml } from "./mail-template.js";
 import { accounts, credentials, sessions, verifications } from "./schema.js";
 
 /**
@@ -909,38 +910,65 @@ function tooShort(thrown: unknown): boolean {
  * anybody — so the person reading it may be somebody who was typed in by
  * mistake, and the honest instruction to them is to do nothing.
  */
-const newPasswordMessage = (to: string, link: string): Message => ({
-  to,
-  subject: "A new password for your Coinslot account",
-  body: [
-    "Somebody asked for a new password for the Coinslot account at this address.",
-    "",
-    "Open this to choose one. It works once and stops working after an hour:",
-    "",
-    `    ${link}`,
-    "",
-    "If that was not you, nothing has happened and there is nothing to do.",
-    "Your password has not changed and nobody has been signed in.",
-    "",
-    "Nobody reads replies to this address.",
-  ].join("\n"),
-});
+const newPasswordMessage = (to: string, link: string): Message => {
+  const lead = "Somebody asked for a new password for the Agentify account at this address.";
+  const expiry = "This link works once and stops working after an hour.";
+  const security = "If that was not you, nothing has happened and there is nothing to do.";
+  const unchanged = "Your password has not changed and nobody has been signed in.";
+  const replies = "Nobody reads replies to this address.";
+
+  return {
+    to,
+    subject: "Choose a new password for Agentify",
+    body: [
+      lead,
+      "",
+      "Open this to choose a new password:",
+      "",
+      `    ${link}`,
+      "",
+      expiry,
+      "",
+      security,
+      unchanged,
+      "",
+      replies,
+    ].join("\n"),
+    html: transactionalEmailHtml({
+      preview: "Choose a new Agentify password. The link expires in one hour.",
+      eyebrow: "Account security",
+      title: "Choose a new password",
+      lead,
+      action: "Choose a new password",
+      link,
+      paragraphs: [expiry, security, unchanged, replies],
+    }),
+  };
+};
 
 /** The message that confirms an address. */
-const confirmMessage = (to: string, link: string): Message => ({
-  to,
-  subject: "Confirm your address for Coinslot",
-  body: [
-    "Open this to confirm that this address reaches you. It stops working an hour",
-    "after it is sent:",
-    "",
-    `    ${link}`,
-    "",
-    "Your Coinslot account already works without this. What confirming buys is",
-    "that a password you have lost can be replaced by a link sent here.",
-    "",
-    "If you did not ask for this, nothing has happened and there is nothing to do.",
-    "",
-    "Nobody reads replies to this address.",
-  ].join("\n"),
-});
+const confirmMessage = (to: string, link: string): Message => {
+  const lead = "Confirm that this email address reaches you.";
+  const expiry = "This link stops working one hour after it is sent.";
+  const benefit =
+    "Your Agentify account already works without confirmation. Confirming lets you replace a lost password with a link sent here.";
+  const security = "If you did not ask for this, nothing has happened and there is nothing to do.";
+  const replies = "Nobody reads replies to this address.";
+
+  return {
+    to,
+    subject: "Confirm your email address for Agentify",
+    body: [`${lead} ${expiry}`, "", `    ${link}`, "", benefit, "", security, "", replies].join(
+      "\n",
+    ),
+    html: transactionalEmailHtml({
+      preview: "Confirm your email address for Agentify. The link expires in one hour.",
+      eyebrow: "Email confirmation",
+      title: "Confirm your email address",
+      lead,
+      action: "Confirm my email address",
+      link,
+      paragraphs: [expiry, benefit, security, replies],
+    }),
+  };
+};

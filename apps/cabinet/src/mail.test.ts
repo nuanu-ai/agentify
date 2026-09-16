@@ -15,8 +15,9 @@ import { isSandboxMail, type Message, postmanFor, SANDBOX_MAIL } from "./mail.js
 
 const MESSAGE: Message = {
   to: "dmitry@example.com",
-  subject: "A new password for your Coinslot account",
-  body: "Open this to choose one:\n\n    https://coinslot.example.com/cabinet/password/new?token=abc\n",
+  subject: "Choose a new password",
+  body: "Open this to choose one:\n\n    https://agentify.example.com/password/new?token=abc&from=mail\n",
+  html: '<a href="https://agentify.example.com/password/new?token=abc&amp;from=mail">Choose a new password</a>',
 };
 
 /** Everything the process said while `during` ran. */
@@ -97,7 +98,7 @@ describe("a cabinet with no mail provider", () => {
     });
 
     expect(said).toContain("dmitry@example.com");
-    expect(said).toContain("https://coinslot.example.com/cabinet/password/new?token=abc");
+    expect(said).toContain("https://agentify.example.com/password/new?token=abc&from=mail");
     // And it says out loud that nothing was sent, so nobody reading this log
     // goes looking in a mailbox for it.
     expect(said).toMatch(/not sent|no mail provider/i);
@@ -110,12 +111,12 @@ describe("a cabinet with no mail provider", () => {
 });
 
 describe("a cabinet with a mail provider", () => {
-  it("sends one message, with the sender, the recipient and the text on it", async () => {
+  it("sends one message, with the sender, recipient, plaintext and HTML on it", async () => {
     const sending = await provider();
     const postman = postmanFor({
       mailUrl: sending.url,
       mailApiKey: "re_a_real_looking_key",
-      mailFrom: "Coinslot <no-reply@mail.example.com>",
+      mailFrom: "Agentify <no-reply@mail.example.com>",
     });
 
     await postman(MESSAGE);
@@ -129,11 +130,13 @@ describe("a cabinet with a mail provider", () => {
       to: string[];
       subject: string;
       text: string;
+      html: string;
     };
-    expect(document.from).toBe("Coinslot <no-reply@mail.example.com>");
+    expect(document.from).toBe("Agentify <no-reply@mail.example.com>");
     expect(document.to).toStrictEqual(["dmitry@example.com"]);
     expect(document.subject).toBe(MESSAGE.subject);
     expect(document.text).toBe(MESSAGE.body);
+    expect(document.html).toBe(MESSAGE.html);
   });
 
   it("says the provider took it, so the log can be read for an address that worked", async () => {
@@ -145,7 +148,7 @@ describe("a cabinet with a mail provider", () => {
     const postman = postmanFor({
       mailUrl: sending.url,
       mailApiKey: "re_a_real_looking_key",
-      mailFrom: "Coinslot <no-reply@mail.example.com>",
+      mailFrom: "Agentify <no-reply@mail.example.com>",
     });
 
     const said = await logged(async () => {
@@ -168,7 +171,7 @@ describe("a cabinet with a mail provider", () => {
     const postman = postmanFor({
       mailUrl: sending.url,
       mailApiKey: "re_a_real_looking_key",
-      mailFrom: "Coinslot <no-reply@mail.example.com>",
+      mailFrom: "Agentify <no-reply@mail.example.com>",
     });
 
     const said = await logged(async () => {
@@ -193,7 +196,7 @@ describe("a cabinet with a mail provider", () => {
     const postman = postmanFor({
       mailUrl: sending.url,
       mailApiKey: "re_a_real_looking_key",
-      mailFrom: "Coinslot <no-reply@mail.example.com>",
+      mailFrom: "Agentify <no-reply@mail.example.com>",
     });
 
     const said = await logged(async () => {

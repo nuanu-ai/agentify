@@ -265,7 +265,7 @@ export interface CabinetConfig {
  * written to a log rather than delivered. It says out loud that nobody reads
  * replies, which is the same thing the deployed address is asked to say.
  */
-const NOBODY_READS_THIS = "Coinslot <no-reply@localhost>";
+const NOBODY_READS_THIS = "Agentify <no-reply@localhost>";
 
 export function loadConfig(environment: Record<string, string | undefined>): CabinetConfig {
   const parsed = environmentSchema.safeParse(environment);

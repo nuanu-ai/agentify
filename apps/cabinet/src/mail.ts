@@ -43,8 +43,10 @@ export const isSandboxMail = (mailUrl: string): boolean => mailUrl === SANDBOX_M
 export interface Message {
   readonly to: string;
   readonly subject: string;
-  /** Plain text. Nothing the cabinet sends needs anything else. */
+  /** Plain text for clients that do not render HTML and for the local log. */
   readonly body: string;
+  /** Self-contained HTML with the same action and claims as the plain text. */
+  readonly html: string;
 }
 
 /**
@@ -133,6 +135,7 @@ function throughResend(config: MailConfig): Postman {
           to: [message.to],
           subject: message.subject,
           text: message.body,
+          html: message.html,
         }),
       });
       if (!answered.ok) {

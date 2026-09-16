@@ -177,7 +177,9 @@ describe("where the cabinet's two messages go", () => {
     // The whole flow — registering, confirming, losing a password — walks on a
     // laptop with no provider account, no domain and no network, because the
     // sandbox word writes every message to the log instead of sending it.
-    expect(loadConfig(given()).mailUrl).toBe("sandbox:log");
+    const config = loadConfig(given());
+    expect(config.mailUrl).toBe("sandbox:log");
+    expect(config.mailFrom).toMatch(/^Agentify </);
   });
 
   it("refuses a real credential beside the word that means nothing is sent", () => {
@@ -211,8 +213,8 @@ describe("where the cabinet's two messages go", () => {
       loadConfig(
         given({
           MAIL_URL: "https://api.resend.com",
-          MAIL_FROM: "Coinslot <no-reply@mail.example.com>",
-          PUBLIC_BASE_URL: "https://coinslot.example.com",
+          MAIL_FROM: "Agentify <no-reply@mail.example.com>",
+          PUBLIC_BASE_URL: "https://agentify.example.com",
         }),
       ),
     ).toThrow(/MAIL_API_KEY/);
@@ -221,7 +223,7 @@ describe("where the cabinet's two messages go", () => {
         given({
           MAIL_URL: "https://api.resend.com",
           MAIL_API_KEY: "re_a_real_looking_key",
-          PUBLIC_BASE_URL: "https://coinslot.example.com",
+          PUBLIC_BASE_URL: "https://agentify.example.com",
         }),
       ),
     ).toThrow(/MAIL_FROM/);
@@ -237,7 +239,7 @@ describe("where the cabinet's two messages go", () => {
         given({
           MAIL_URL: "https://api.resend.com",
           MAIL_API_KEY: "re_a_real_looking_key",
-          MAIL_FROM: "Coinslot <no-reply@mail.example.com>",
+          MAIL_FROM: "Agentify <no-reply@mail.example.com>",
         }),
       ),
     ).toThrow(/PUBLIC_BASE_URL/);
@@ -248,15 +250,15 @@ describe("where the cabinet's two messages go", () => {
       given({
         MAIL_URL: "https://api.resend.com",
         MAIL_API_KEY: "re_a_real_looking_key",
-        MAIL_FROM: "Coinslot <no-reply@mail.example.com>",
-        PUBLIC_BASE_URL: "https://coinslot.example.com/",
+        MAIL_FROM: "Agentify <no-reply@mail.example.com>",
+        PUBLIC_BASE_URL: "https://agentify.example.com/",
       }),
     );
 
     expect(config.mailUrl).toBe("https://api.resend.com");
     // The trailing slash comes off, because a path is joined onto this and two
     // slashes in the middle of a link is a link somebody has to think about.
-    expect(config.publicBaseUrl).toBe("https://coinslot.example.com");
+    expect(config.publicBaseUrl).toBe("https://agentify.example.com");
   });
 });
 
