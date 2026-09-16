@@ -1671,7 +1671,7 @@ describe("P4 verified report funnel", () => {
   });
 
   it("recovers an existing report with a purpose-bound fresh link", async () => {
-    const { db } = getDatabase();
+    const { db, pool } = getDatabase();
     const { scan } = await createFreshCompletedScan("legacy-recovery");
     const email = "legacy-report-owner@example.com";
     const config = getServerConfig();
@@ -1941,17 +1941,33 @@ describe("P4 verified report funnel", () => {
     );
     expect(replay.status).toBe(401);
 
-    await recoverScannerAuth(
-      new NextRequest("http://localhost:3000/api/v2/auth/recover", {
-        method: "POST",
-        headers: {
-          origin: "http://localhost:3000",
-          "content-type": "application/json",
-          "x-forwarded-for": "198.51.100.10, 127.0.0.1",
-        },
-        body: JSON.stringify({ action: "email", email, state: legacyState }),
-      }),
+    const heldConnections = await Promise.all(
+      Array.from({ length: 9 }, () => pool.connect()),
     );
+    let saturatedRequest: Promise<Response> | undefined;
+    try {
+      saturatedRequest = recoverScannerAuth(
+        new NextRequest("http://localhost:3000/api/v2/auth/recover", {
+          method: "POST",
+          headers: {
+            origin: "http://localhost:3000",
+            "content-type": "application/json",
+            "x-forwarded-for": "198.51.100.10, 127.0.0.1",
+          },
+          body: JSON.stringify({ action: "email", email, state: legacyState }),
+        }),
+      );
+      const completedWithOneConnection = await Promise.race([
+        saturatedRequest.then(() => true),
+        new Promise<false>((resolve) =>
+          setTimeout(() => resolve(false), 1_000),
+        ),
+      ]);
+      expect(completedWithOneConnection).toBe(true);
+    } finally {
+      for (const connection of heldConnections) connection.release();
+      await saturatedRequest;
+    }
     const expiringFragment = new URLSearchParams(
       new URL(getLocalEmailEvidence()!.evidenceUrl!).hash.slice(1),
     );

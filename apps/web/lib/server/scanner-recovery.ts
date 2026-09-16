@@ -182,6 +182,7 @@ export async function requestScannerReportRecovery(input: {
     await sendScannerRecoveryLink(
       normalizedEmail,
       input.state ?? randomCapability(),
+      tx,
     );
   });
 }

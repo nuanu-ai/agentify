@@ -111,8 +111,12 @@ export async function sendScannerMagicLink(email: string, state: string) {
   });
 }
 
-export async function sendScannerRecoveryLink(email: string, state: string) {
-  await getAuth().api.signInMagicLink({
+export async function sendScannerRecoveryLink(
+  email: string,
+  state: string,
+  tx: DatabaseTransaction,
+) {
+  await scannerAuth(tx).api.signInMagicLink({
     body: { email, metadata: { purpose: "recovery", state } },
     headers: headers(),
   });
