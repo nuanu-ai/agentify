@@ -37,7 +37,7 @@ const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.
   };
 };
 
-describe("@nuanu-ai/coinslot-contracts as a published package", () => {
+describe("@nuanu-ai/agentify-contracts as a published package", () => {
   it("publishes its build and develops against its source", () => {
     // Inside this repository every import reads `src` directly, so a change to
     // a schema is visible with no compile step. Outside it, a merchant's Node
@@ -72,7 +72,7 @@ describe("@nuanu-ai/coinslot-contracts as a published package", () => {
     // `dist` is absent produces a tarball holding nothing but this manifest —
     // no error, no warning — while the entry points above still name files
     // that are not in it.
-    expect(manifest.name).toBe("@nuanu-ai/coinslot-contracts");
+    expect(manifest.name).toBe("@nuanu-ai/agentify-contracts");
     expect(manifest.private).toBeUndefined();
     expect(manifest.version).not.toBe("0.0.0");
     expect(manifest.files).toStrictEqual(["dist", "LICENSE", "NOTICE"]);

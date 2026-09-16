@@ -62,7 +62,7 @@ import {
   QuoteResponseSchema,
   type WorkerEnvelope,
   type WorkerEnvelopeKind,
-} from "@nuanu-ai/coinslot-contracts";
+} from "@nuanu-ai/agentify-contracts";
 import { retryDelayMs } from "./backoff.js";
 import { contractVersion, speaksContract } from "./contract.js";
 import { describeProblems, problemsOf } from "./schema.js";

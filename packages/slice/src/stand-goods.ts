@@ -6,7 +6,7 @@
  * are acceptable at the boundary.
  */
 
-import type { FieldSpec, ParamSpec } from "@nuanu-ai/coinslot-contracts";
+import type { FieldSpec, ParamSpec } from "@nuanu-ai/agentify-contracts";
 
 const filledValueFor = (name: string, field: FieldSpec): unknown => {
   switch (field.type) {

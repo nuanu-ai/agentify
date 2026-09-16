@@ -28,7 +28,7 @@
  * published as something approximate.
  */
 
-import { type CardInput, CurrencyCodeSchema, IdentifierSchema } from "@nuanu-ai/coinslot-contracts";
+import { type CardInput, CurrencyCodeSchema, IdentifierSchema } from "@nuanu-ai/agentify-contracts";
 import { z } from "zod";
 
 /**

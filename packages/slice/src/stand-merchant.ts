@@ -15,8 +15,8 @@
  */
 
 import {
+  type AgentifyClient,
   type CardInput,
-  type CoinslotClient,
   createClient,
   type Delivery,
   type HandlerAnswer,
@@ -26,8 +26,8 @@ import {
   type OrderCallResponse,
   type PublishResult,
   type Refusal,
-} from "@nuanu-ai/coinslot";
-import type { ParamSpec } from "@nuanu-ai/coinslot-contracts";
+} from "@nuanu-ai/agentify";
+import type { ParamSpec } from "@nuanu-ai/agentify-contracts";
 import { filledFrom } from "./stand-goods.js";
 import type { Feed } from "./stand-log.js";
 
@@ -198,11 +198,11 @@ export const makeStandMerchant = (
   const answering = new Map<string, (answer: HeldAnswer | typeof RAN_OUT) => void>();
   const results = new Map<string, ParamSpec>();
   let deliverySession = makeDeliverySession();
-  let client: CoinslotClient | undefined;
+  let client: AgentifyClient | undefined;
   let address: string | null = null;
   let stoppedBecause: string | null = null;
 
-  const connectedClient = (): CoinslotClient => {
+  const connectedClient = (): AgentifyClient => {
     if (client === undefined) {
       throw new Error("Connect the stand merchant before asking it for anything.");
     }
@@ -415,7 +415,7 @@ export const makeStandMerchant = (
     }
   };
 
-  const register = (fresh: CoinslotClient): void => {
+  const register = (fresh: AgentifyClient): void => {
     fresh.on("order", async (order) => {
       feed.got("merchant", "The SDK handed the handler an order.", {
         order_id: order.id,

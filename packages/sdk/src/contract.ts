@@ -7,7 +7,7 @@
  * who wants to make it themselves.
  */
 
-import { CONTRACT_VERSION } from "@nuanu-ai/coinslot-contracts";
+import { CONTRACT_VERSION } from "@nuanu-ai/agentify-contracts";
 
 /** The contract version this SDK talks in. */
 export const contractVersion = CONTRACT_VERSION;

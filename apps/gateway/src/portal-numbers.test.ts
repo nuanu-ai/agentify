@@ -366,7 +366,7 @@ describe("a number the portal publishes is not also called undecided", () => {
     {
       page: "apps/docs/quickstart.md",
       claim: /the build that would let the command start/,
-      truth: "the SDK builds and `npx coinslot verify` runs; `scripts/outside.sh` runs it",
+      truth: "the SDK builds and `agentify verify` runs; `scripts/outside.sh` runs it",
     },
     // The two entries about a number the portal does not name, and the reason
     // they belong anyway: the pause between attempts is settled in `config.ts`

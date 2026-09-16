@@ -11,7 +11,7 @@
  * thousand.
  */
 
-import { CardSchema } from "@nuanu-ai/coinslot-contracts";
+import { CardSchema } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import {
   cardsFromTheShop,

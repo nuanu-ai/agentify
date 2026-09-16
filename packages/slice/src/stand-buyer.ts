@@ -21,7 +21,7 @@
  * that never landed, which is the only thing that throws.
  */
 
-import { CatalogPageSchema, type PublicCard } from "@nuanu-ai/coinslot-contracts";
+import { CatalogPageSchema, type PublicCard } from "@nuanu-ai/agentify-contracts";
 import { x402Client, x402HTTPClient } from "@x402/core/client";
 import type { PaymentRequired, SettleResponse } from "@x402/core/types";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";

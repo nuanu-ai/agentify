@@ -3,7 +3,7 @@
  *
  * It exists so that the SDK is exercised over a real socket against the real
  * addresses, with the real documents going each way, and without a network.
- * Everything it knows about the surface it reads out of `@nuanu-ai/coinslot-contracts`
+ * Everything it knows about the surface it reads out of `@nuanu-ai/agentify-contracts`
  * at startup: which routes may be served (`mountableRoutes`), at which
  * addresses, under which method, behind which door, and which schema each
  * body and each answer is held to. Nothing about the surface is written down
@@ -37,7 +37,7 @@ import {
   mountableRoutes,
   type RouteDefinition,
   type RouteName,
-} from "@nuanu-ai/coinslot-contracts";
+} from "@nuanu-ai/agentify-contracts";
 
 /** One request that reached the gateway, after it was matched and read. */
 export interface GatewayCall {

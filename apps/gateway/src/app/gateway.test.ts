@@ -1,10 +1,10 @@
-import type { Card } from "@nuanu-ai/coinslot-contracts";
+import type { Card } from "@nuanu-ai/agentify-contracts";
 import {
   CARD_REJECTED,
   CatalogPageSchema,
   PublishResultSchema,
   WorkerPollResponseSchema,
-} from "@nuanu-ai/coinslot-contracts";
+} from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { asTimestamp } from "../ports/clock.js";
 import {

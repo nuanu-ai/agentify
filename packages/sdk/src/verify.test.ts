@@ -37,7 +37,7 @@ const verifying = async (...argv: string[]): Promise<{ code: number; said: strin
   return { code, said: lines.join("\n") };
 };
 
-describe("npx coinslot verify", () => {
+describe("agentify verify", () => {
   it("checks the cards it is given and says both passed and did not run apart", async () => {
     // The fifth gate in one assertion: "I do not know" has to be
     // distinguishable from "I know that there is none", and a command that
@@ -151,7 +151,7 @@ describe("npx coinslot verify", () => {
   it("never answers with success while a check cannot be run", async () => {
     // The one answer a build must not receive from this command today. Zero
     // means every check passed; the idempotency run passes nothing because it
-    // never happens, and a merchant wiring `coinslot verify` into their
+    // never happens, and a merchant wiring `agentify verify` into their
     // pipeline would take a zero as a green light for both halves.
     //
     // Five inputs rather than a proof: one for each way out of runVerify —

@@ -24,9 +24,9 @@ import type {
   OrderWithStatus,
   QuoteRequest,
   WorkerEnvelope,
-} from "@nuanu-ai/coinslot-contracts";
+} from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { CoinslotClient, HandlerKind, OrderCalls } from "./client.js";
+import type { AgentifyClient, HandlerKind, OrderCalls } from "./client.js";
 import { createClient } from "./index.js";
 import { type FakeGateway, type GatewayAnswer, startFakeGateway } from "./testing/fake-gateway.js";
 import { waitUntil } from "./testing/waiting.js";
@@ -710,7 +710,7 @@ describe("what the surface still does without a stream", () => {
  * the build the day the line under it starts compiling, and every line
  * without one fails the build the day it stops.
  */
-const compilerHoldsTheseTrue = (agentify: CoinslotClient, kind: HandlerKind): void => {
+const compilerHoldsTheseTrue = (agentify: AgentifyClient, kind: HandlerKind): void => {
   // What a handler receives and what it may return are inferred from the kind,
   // with no annotation anywhere. This is the whole ergonomic claim.
   agentify.on("order", (order) => order.delivered({ access_url: order.id }));

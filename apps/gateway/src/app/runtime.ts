@@ -12,7 +12,7 @@
 
 import type { MerchantSelling, OrderMode, OrderPolicy } from "@agentify/commerce-core";
 import { modeOf } from "@agentify/commerce-core";
-import type { Card } from "@nuanu-ai/coinslot-contracts";
+import type { Card } from "@nuanu-ai/agentify-contracts";
 import { type GatewayConfig, isSandboxFacilitator } from "../config.js";
 import type { Clock, Ids } from "../ports/clock.js";
 import type { Facilitator } from "../ports/facilitator.js";

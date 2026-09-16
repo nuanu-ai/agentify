@@ -23,7 +23,7 @@
  * that a broken subscription would be a claim about the wrong thing.
  */
 
-import { WORKER_PROBLEM_KINDS, type WorkerProblem } from "@nuanu-ai/coinslot";
+import { WORKER_PROBLEM_KINDS, type WorkerProblem } from "@nuanu-ai/agentify";
 
 /**
  * How long one reported poll failure keeps the subscription in doubt.

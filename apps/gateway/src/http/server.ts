@@ -45,7 +45,7 @@ import {
   mountableRoutes,
   type RouteDefinition,
   type RouteName,
-} from "@nuanu-ai/coinslot-contracts";
+} from "@nuanu-ai/agentify-contracts";
 import express, { type Express, type Request, type Response } from "express";
 import type { ZodType } from "zod";
 import type { Gateway } from "../app/gateway.js";

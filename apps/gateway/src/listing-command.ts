@@ -39,7 +39,7 @@
  * if nobody writes it down, so it is written down here and it exits non-zero.
  */
 
-import { API_ROUTES, expandPath } from "@nuanu-ai/coinslot-contracts";
+import { API_ROUTES, expandPath } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { z } from "zod";
 import { PAYMENT_REQUIRED_HEADER } from "./http/x402.js";

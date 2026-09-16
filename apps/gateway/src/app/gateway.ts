@@ -46,7 +46,7 @@ import {
   type SellerName,
   type WorkerEnvelope,
   type WorkerPollResponse,
-} from "@nuanu-ai/coinslot-contracts";
+} from "@nuanu-ai/agentify-contracts";
 import { asTimestamp } from "../ports/clock.js";
 import type { Reminder } from "../ports/queue.js";
 import type { KeyPurpose, StoredCard, StoredKey, StoredOrder } from "../ports/store.js";

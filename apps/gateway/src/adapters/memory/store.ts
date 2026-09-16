@@ -27,7 +27,7 @@
  */
 
 import { isOpen, type MerchantSelling } from "@agentify/commerce-core";
-import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/coinslot-contracts";
+import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import type { Clock, Ids } from "../../ports/clock.js";
 import type {
   CatalogEntry,

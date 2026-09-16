@@ -67,11 +67,11 @@ const CARD = "apps/docs/examples/card/access-monthly-short.json";
  * into `order` — shadows the global instead of colliding with it.
  */
 const HARNESS = `
-import type { CoinslotClient, LiveOrder } from "@nuanu-ai/coinslot";
+import type { AgentifyClient, LiveOrder } from "@nuanu-ai/agentify";
 
 declare global {
   /** The client the quickstart builds on its first page. */
-  const agentify: CoinslotClient;
+  const agentify: AgentifyClient;
   /**
    * An order the merchant saved when they took it on — the object their
    * handler was given, which carries the calls that close it.
@@ -114,7 +114,7 @@ declare global {
 
 /** The card's result declaration, which is what that fence is a piece of. */
 const asCardResult = (body: string): string =>
-  `import type { Card } from "@nuanu-ai/coinslot";\nconst declared: Pick<Card, "result"> = {\n${body}\n};\nvoid declared;\n`;
+  `import type { Card } from "@nuanu-ai/agentify";\nconst declared: Pick<Card, "result"> = {\n${body}\n};\nvoid declared;\n`;
 
 interface Page {
   readonly file: string;
@@ -186,7 +186,7 @@ interface Compilation {
  * compiler over the lot in one pass.
  *
  * The configuration is the repository's own, with four differences and each
- * one is a decision. It resolves `@nuanu-ai/coinslot` to this package's source,
+ * one is a decision. It resolves `@nuanu-ai/agentify` to this package's source,
  * because the examples import it by the name a merchant installs. It carries
  * its own `package.json` saying the files are modules, because two of the
  * examples await at the top level and a directory with no such file would be
@@ -212,7 +212,7 @@ const compile = (examples: readonly Example[]): Compilation => {
           typeRoots: [join(repoRoot, "node_modules", "@types")],
           noUnusedLocals: false,
           noUnusedParameters: false,
-          paths: { "@nuanu-ai/coinslot": [join(repoRoot, "packages", "sdk", "src", "index.ts")] },
+          paths: { "@nuanu-ai/agentify": [join(repoRoot, "packages", "sdk", "src", "index.ts")] },
         },
         include: ["./*.ts"],
       }),

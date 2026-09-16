@@ -28,7 +28,7 @@ import {
   type Receipt,
   type Refusal,
   type SellingState,
-} from "@nuanu-ai/coinslot-contracts";
+} from "@nuanu-ai/agentify-contracts";
 import type { ChallengeView } from "./stand-buyer.js";
 import type { Entry } from "./stand-log.js";
 import type { HeldOrder, OrderMood, QuoteMood } from "./stand-merchant.js";

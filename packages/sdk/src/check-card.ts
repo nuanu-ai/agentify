@@ -22,7 +22,7 @@
  * this check makes no claim about any of that.
  */
 
-import { CardSchema, type Problem } from "@nuanu-ai/coinslot-contracts";
+import { CardSchema, type Problem } from "@nuanu-ai/agentify-contracts";
 import { problemsOf } from "./schema.js";
 
 export interface CardCheck {

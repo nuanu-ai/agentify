@@ -35,7 +35,7 @@ import {
   ReceiptListSchema,
   type Refusal,
   type SellingState,
-} from "@nuanu-ai/coinslot-contracts";
+} from "@nuanu-ai/agentify-contracts";
 import type { PaymentRequired } from "@x402/core/types";
 import { CATALOG } from "./cards.js";
 import {

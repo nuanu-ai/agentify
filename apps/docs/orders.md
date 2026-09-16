@@ -364,7 +364,7 @@ for the case where your process restarted and no record of the order is left on
 your side: the list of open orders shows what is still owed something, so the
 picture does not have to be rebuilt from your database alone. Neither has a
 failure branch to hand you — an order or a list is all they can answer with — so
-when they cannot reach us they throw, as a `CoinslotError` carrying a `code`
+when they cannot reach us they throw, as an `AgentifyError` carrying a `code`
 from the same set the closing calls return and the `route` it happened on. That
 is worth remembering about a loop that runs the moment a process comes back up.
 

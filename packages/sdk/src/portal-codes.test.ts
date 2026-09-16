@@ -19,7 +19,7 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { ORDER_CALL_ERROR_CODES } from "@nuanu-ai/coinslot-contracts";
+import { ORDER_CALL_ERROR_CODES } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import { ANSWER_NOT_UNDERSTOOD, CALL_DID_NOT_REACH_US, OUTCOME_UNKNOWN } from "./client.js";
 

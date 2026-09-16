@@ -40,7 +40,7 @@ import type {
   Order,
   OrderEvent,
   QuoteRequest,
-} from "@nuanu-ai/coinslot-contracts";
+} from "@nuanu-ai/agentify-contracts";
 import { afterEach, expect, it } from "vitest";
 import { checkCard } from "./check-card.js";
 import type { OrderHandle } from "./client.js";

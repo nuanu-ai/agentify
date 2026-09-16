@@ -15,7 +15,7 @@
  * whether an order is refused for good or handed back to be delivered again.
  */
 
-import type { Money } from "@nuanu-ai/coinslot-contracts";
+import type { Money } from "@nuanu-ai/agentify-contracts";
 import { type StoreProduct, StoreProductsSchema } from "./woo-catalog.js";
 
 /** How long we wait on a merchant's shop for one call. */

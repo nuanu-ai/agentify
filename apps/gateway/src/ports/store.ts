@@ -45,7 +45,7 @@
  */
 
 import type { MerchantSelling, Order } from "@agentify/commerce-core";
-import type { Card, Delivery, Receipt, WorkerEnvelope } from "@nuanu-ai/coinslot-contracts";
+import type { Card, Delivery, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 
 /** A card as its merchant published it, under the catalog identifier we issued. */
 export interface StoredCard {

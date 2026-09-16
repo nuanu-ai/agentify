@@ -29,14 +29,14 @@
  */
 
 import type {
-  CoinslotClient,
+  AgentifyClient,
   Delivery,
   LiveOrder,
   OrderCallResponse,
   OrderEvent,
   WorkerProblem,
-} from "@nuanu-ai/coinslot";
-import { createClient } from "@nuanu-ai/coinslot";
+} from "@nuanu-ai/agentify";
+import { createClient } from "@nuanu-ai/agentify";
 import {
   CATALOG,
   EUROPE_ESIM,
@@ -48,7 +48,7 @@ import {
 const asTimestamp = (at: number): string => new Date(at).toISOString();
 
 export interface MockMerchant {
-  readonly client: CoinslotClient;
+  readonly client: AgentifyClient;
   /** Order events the SDK handed to the event handler, in the order they arrived. */
   readonly events: readonly OrderEvent[];
   /** Anything the SDK reported it could not get through. Empty is the win. */

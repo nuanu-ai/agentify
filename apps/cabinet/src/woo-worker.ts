@@ -30,7 +30,7 @@
  * one".
  */
 
-import type { HandlerAnswer, Order } from "@nuanu-ai/coinslot-contracts";
+import type { HandlerAnswer, Order } from "@nuanu-ai/agentify-contracts";
 import type { GatewayClient } from "./gateway.js";
 import type { Identity } from "./identity.js";
 import {

@@ -20,7 +20,7 @@
  * test read the page a merchant would be looking at.
  */
 
-import { ServiceNameSchema } from "@nuanu-ai/coinslot-contracts";
+import { ServiceNameSchema } from "@nuanu-ai/agentify-contracts";
 import { accountSettings } from "./account-settings.js";
 import { bare, brandLockup, escaped, page } from "./html.js";
 import { payoutWalletBlock } from "./payout-wallet.js";

@@ -1,5 +1,5 @@
 ---
-"@nuanu-ai/coinslot-contracts": patch
+"@nuanu-ai/agentify-contracts": patch
 ---
 
 Say whose ceiling a description is held to, and how long the text actually is.

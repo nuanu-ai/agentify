@@ -72,7 +72,7 @@ repository adds is knowing which order a payment is for.
 The merchant's side is one process standing beside their existing API: a
 handler. It listens on no port — it opens a single outgoing subscription and
 receives paid orders, price questions and order events on that one stream
-(ADR-0004). Everything it is written against is `@nuanu-ai/coinslot`.
+(ADR-0004). Everything it is written against is `@nuanu-ai/agentify`.
 
 The order is a state machine of sixteen states in `packages/core`, a pure
 function with no IO. The gateway feeds it events and gets back the next state
@@ -187,7 +187,7 @@ one person sit in each of them in turn. It is our own instrument rather than a
 product surface — no merchant is handed it, it is not a second interface to the
 gateway, and it listens on loopback only — but its merchant half is written to
 be read by somebody integrating against the SDK. Everything a merchant's code
-can do there goes through `@nuanu-ai/coinslot`: the subscription, publishing,
+can do there goes through `@nuanu-ai/agentify`: the subscription, publishing,
 the orders and the calls that close them. Where a call is not on the SDK the
 console says so at the button, because those are the merchant's cabinet
 operations and the package does not carry them by decision.

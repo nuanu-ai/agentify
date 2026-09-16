@@ -22,7 +22,7 @@
  */
 
 import type { MerchantAnswer, MerchantAnswerError } from "@agentify/commerce-core";
-import type { OrderCallResponse } from "@nuanu-ai/coinslot-contracts";
+import type { OrderCallResponse } from "@nuanu-ai/agentify-contracts";
 
 const WHY: Record<MerchantAnswerError, string> = {
   refund_already_settled:

@@ -1,5 +1,5 @@
 {
-  "name": "@nuanu-ai/coinslot",
+  "name": "@nuanu-ai/agentify",
   "version": "0.2.3",
   "type": "module",
   "description": "Sell your existing products to AI agents: publish product cards to an x402 storefront and fill the paid orders from your own service.",
@@ -32,7 +32,7 @@
   "publishConfig": {
     "access": "public",
     "bin": {
-      "coinslot": "./dist/cli.js"
+      "agentify": "./dist/cli.js"
     },
     "exports": {
       ".": {
@@ -47,7 +47,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@nuanu-ai/coinslot-contracts": "workspace:*"
+    "@nuanu-ai/agentify-contracts": "workspace:*"
   },
   "devDependencies": {
     "@agentify/commerce-core": "workspace:*",

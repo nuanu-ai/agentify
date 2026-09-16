@@ -1,12 +1,12 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { Card, Order } from "@nuanu-ai/coinslot-contracts";
+import type { Card, Order } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  AgentifyError,
   ANSWER_NOT_UNDERSTOOD,
   CALL_DID_NOT_REACH_US,
   CARD_REJECTED,
-  CoinslotError,
   createClient,
   OUTCOME_UNKNOWN,
   WORKER_PROBLEM_KINDS,
@@ -564,13 +564,13 @@ describe("a refusal the gateway put into words", () => {
     );
 
     expect(returned.ok === false && returned.error.code).toBe("not_authorised");
-    expect(thrown instanceof CoinslotError && thrown.code).toBe("not_authorised");
+    expect(thrown instanceof AgentifyError && thrown.code).toBe("not_authorised");
     // And the same answer about calling again on both roads, for the same
     // reason: a merchant who catches one and branches on the other is looking
     // at one refusal, and it cannot be definitive in a `catch` and worth
     // repeating in an `if`.
     expect(returned.ok === false && returned.error.retryable).toBe(false);
-    expect(thrown instanceof CoinslotError && thrown.retryable).toBe(false);
+    expect(thrown instanceof AgentifyError && thrown.retryable).toBe(false);
   });
 
   it("takes the gateway's word about calling again rather than deciding for it", async () => {
@@ -690,9 +690,9 @@ describe("what is thrown where a route has no failure branch", () => {
       (failure: unknown) => failure,
     );
 
-    expect(thrown).toBeInstanceOf(CoinslotError);
-    expect(thrown instanceof CoinslotError && thrown.code).toBe("not_authorised");
-    expect(thrown instanceof CoinslotError && thrown.route).toBe("publish_card");
+    expect(thrown).toBeInstanceOf(AgentifyError);
+    expect(thrown instanceof AgentifyError && thrown.code).toBe("not_authorised");
+    expect(thrown instanceof AgentifyError && thrown.route).toBe("publish_card");
     expect(thrown instanceof Error && thrown.message).toContain("this key does not open this call");
   });
 
@@ -711,9 +711,9 @@ describe("what is thrown where a route has no failure branch", () => {
       (failure: unknown) => failure,
     );
 
-    expect(thrown).toBeInstanceOf(CoinslotError);
-    expect(thrown instanceof CoinslotError && thrown.code).toBe(CALL_DID_NOT_REACH_US);
-    expect(thrown instanceof CoinslotError && thrown.route).toBe("get_order");
+    expect(thrown).toBeInstanceOf(AgentifyError);
+    expect(thrown instanceof AgentifyError && thrown.code).toBe(CALL_DID_NOT_REACH_US);
+    expect(thrown instanceof AgentifyError && thrown.route).toBe("get_order");
   });
 
   it("carries the code for an answer that reached us and could not be read", async () => {
@@ -729,8 +729,8 @@ describe("what is thrown where a route has no failure branch", () => {
       (failure: unknown) => failure,
     );
 
-    expect(thrown instanceof CoinslotError && thrown.code).toBe(ANSWER_NOT_UNDERSTOOD);
-    expect(thrown instanceof CoinslotError && thrown.route).toBe("list_orders");
+    expect(thrown instanceof AgentifyError && thrown.code).toBe(ANSWER_NOT_UNDERSTOOD);
+    expect(thrown instanceof AgentifyError && thrown.route).toBe("list_orders");
   });
 
   it("leaves a client built wrong as a TypeError, which is a different thing", async () => {
@@ -746,7 +746,7 @@ describe("what is thrown where a route has no failure branch", () => {
     );
 
     expect(thrown).toBeInstanceOf(TypeError);
-    expect(thrown).not.toBeInstanceOf(CoinslotError);
+    expect(thrown).not.toBeInstanceOf(AgentifyError);
   });
 
   it("names both addresses when it is the address that is missing", async () => {

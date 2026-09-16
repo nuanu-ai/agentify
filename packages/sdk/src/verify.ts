@@ -1,5 +1,5 @@
 /**
- * `npx coinslot verify` — the check a merchant runs on themselves before they
+ * `agentify verify` — the check a merchant runs on themselves before they
  * ask us to look.
  *
  * The portal describes two checks. Is the card enough for an agent to assemble
@@ -22,7 +22,7 @@
 
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
-import type { Problem } from "@nuanu-ai/coinslot-contracts";
+import type { Problem } from "@nuanu-ai/agentify-contracts";
 import { checkCard } from "./check-card.js";
 import { describeProblems } from "./schema.js";
 
@@ -119,7 +119,7 @@ const nameOf = (file: string, card: unknown): string => {
 };
 
 const USAGE = [
-  "Usage: coinslot verify <card.json> [more-cards.json ...]",
+  "Usage: agentify verify <card.json> [more-cards.json ...]",
   "",
   "Checks each card against the published contract before it is published.",
   "",
@@ -132,7 +132,7 @@ const USAGE = [
 /**
  * Why the bare command the documentation shows does not run.
  *
- * `coinslot verify` with nothing after it would check the cards the merchant
+ * `agentify verify` with nothing after it would check the cards the merchant
  * has already published. The binding reason it cannot is the plainest one:
  * this command takes no key and no address, builds no client and asks the
  * gateway nothing, so it has no way to see anything that was published.
@@ -165,7 +165,7 @@ const USAGE = [
  * carries, whether the card is new or an edit to one already out.
  */
 const NOTHING_TO_CHECK = [
-  "coinslot verify was given no card files, and it does not go looking for them:",
+  "agentify verify was given no card files, and it does not go looking for them:",
   "  - this command takes no key and no address and builds no client, so it",
   "    cannot ask us anything about what you have published",
   "  - the call that would answer such a question does exist, list_merchant_cards,",
@@ -217,7 +217,7 @@ export const runVerify = async (argv: readonly string[], say: Say): Promise<numb
   const [command, ...files] = argv;
 
   if (command !== "verify") {
-    say(command === undefined ? USAGE : `coinslot does not know "${command}".\n\n${USAGE}`);
+    say(command === undefined ? USAGE : `agentify does not know "${command}".\n\n${USAGE}`);
     return VERIFY_EXIT.USAGE;
   }
 

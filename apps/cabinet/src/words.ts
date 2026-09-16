@@ -30,7 +30,7 @@
  * asked the payment network and heard nothing — not that nothing was charged.
  */
 
-import type { Fulfillment, OrderStatus, SellingState } from "@nuanu-ai/coinslot-contracts";
+import type { Fulfillment, OrderStatus, SellingState } from "@nuanu-ai/agentify-contracts";
 
 /** How a state reads to the eye, before any word is read. */
 export type Tone = "ok" | "warn" | "busy" | "quiet";

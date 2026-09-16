@@ -1,4 +1,4 @@
-# `@nuanu-ai/coinslot`
+# `@nuanu-ai/agentify`
 
 Agentify puts a merchant's existing products where AI agents buy. Each product
 gets a card in an agent-facing storefront and a paid address of its own,
@@ -15,7 +15,7 @@ public address and no open port are needed.
 ## Install
 
 ```sh
-npm install @nuanu-ai/coinslot
+npm install @nuanu-ai/agentify
 ```
 
 Node.js 24 or newer is required. What arrives with it is our own contracts
@@ -24,11 +24,11 @@ package and zod underneath that, and nothing else.
 ## The address you give it is the world you are in
 
 ```ts
-import { createClient } from '@nuanu-ai/coinslot'
+import { createClient } from '@nuanu-ai/agentify'
 
 const agentify = createClient({
-  apiKey: process.env.COINSLOT_API_KEY,
-  baseUrl: process.env.COINSLOT_URL,
+  apiKey: process.env.AGENTIFY_API_KEY,
+  baseUrl: process.env.AGENTIFY_URL,
 })
 ```
 
@@ -90,13 +90,13 @@ A call that can fail hands the failure back rather than throwing it, in one
 envelope: `ok` says which it was, and a failure carries a code, a sentence a
 person can read, and whether repeating could change the outcome. A card we
 would not publish carries its findings under `problems`, and what no envelope
-can carry — a call that reached nothing at all — is thrown as a `CoinslotError`
+can carry — a call that reached nothing at all — is thrown as an `AgentifyError`
 under those same codes.
 
 ## The check that needs no key
 
 ```sh
-npx coinslot verify card.json
+npm exec --offline --package=@nuanu-ai/agentify -- agentify verify card.json
 ```
 
 It reads a card the way we read it at publication and names what is wrong,

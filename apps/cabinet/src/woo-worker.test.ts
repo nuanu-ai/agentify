@@ -24,7 +24,7 @@ import {
   serve,
   theMerchantKey,
 } from "@agentify/commerce-gateway/testing";
-import type { AgentOrderStatus, Order } from "@nuanu-ai/coinslot-contracts";
+import type { AgentOrderStatus, Order } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { gatewayFor } from "./gateway.js";
 import { cardsFromTheShop, type StoreProduct } from "./woo-catalog.js";

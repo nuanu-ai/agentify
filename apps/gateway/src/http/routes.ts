@@ -26,8 +26,8 @@ import type {
   RouteName,
   SellerNameRequest,
   WorkerPollRequest,
-} from "@nuanu-ai/coinslot-contracts";
-import { PurchaseRequestSchema } from "@nuanu-ai/coinslot-contracts";
+} from "@nuanu-ai/agentify-contracts";
+import { PurchaseRequestSchema } from "@nuanu-ai/agentify-contracts";
 import type { Gateway, PurchaseAttempt } from "../app/gateway.js";
 import { agentOrderStatusOf, orderDocumentOf } from "../app/runner.js";
 import type { KeyPurpose } from "../ports/store.js";

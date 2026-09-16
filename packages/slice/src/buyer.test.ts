@@ -18,13 +18,13 @@
  * It holds the addresses, and the one distinction this buyer draws that no
  * gateway can be made to demonstrate: an answer that arrived and made no sense
  * against a call that never landed. What the answers have to look like when the
- * gateway is behaving is held by the schemas in `@nuanu-ai/coinslot-contracts` and by
+ * gateway is behaving is held by the schemas in `@nuanu-ai/agentify-contracts` and by
  * the offline gate in `slice.test.ts`, which buys through a real one.
  */
 
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { API_ROUTES, expandPath, MERCHANT_KEY_HEADER } from "@nuanu-ai/coinslot-contracts";
+import { API_ROUTES, expandPath, MERCHANT_KEY_HEADER } from "@nuanu-ai/agentify-contracts";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { makeBuyer } from "./buyer.js";
 

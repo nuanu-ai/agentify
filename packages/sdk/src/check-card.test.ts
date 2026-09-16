@@ -1,4 +1,4 @@
-import { ProblemSchema } from "@nuanu-ai/coinslot-contracts";
+import { ProblemSchema } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import { checkCard } from "./check-card.js";
 

@@ -26,7 +26,7 @@ const resolverFor = (
   contractsVersion: string,
   extraPublicPackage?: string,
 ): string => {
-  const root = mkdtempSync(join(tmpdir(), "coinslot-sdk-release-"));
+  const root = mkdtempSync(join(tmpdir(), "agentify-sdk-release-"));
   fixtures.push(root);
   mkdirSync(join(root, "scripts"));
   mkdirSync(join(root, "packages", "sdk"), { recursive: true });
@@ -37,11 +37,11 @@ const resolverFor = (
   chmodSync(executable, 0o755);
   writeFileSync(
     join(root, "packages", "sdk", "package.json"),
-    JSON.stringify({ name: "@nuanu-ai/coinslot", version: sdkVersion }),
+    JSON.stringify({ name: "@nuanu-ai/agentify", version: sdkVersion }),
   );
   writeFileSync(
     join(root, "packages", "contracts", "package.json"),
-    JSON.stringify({ name: "@nuanu-ai/coinslot-contracts", version: contractsVersion }),
+    JSON.stringify({ name: "@nuanu-ai/agentify-contracts", version: contractsVersion }),
   );
   if (extraPublicPackage) {
     mkdirSync(join(root, "packages", "extra"), { recursive: true });

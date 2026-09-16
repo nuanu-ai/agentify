@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@agentify/commerce-core": "workspace:*",
-    "@nuanu-ai/coinslot-contracts": "workspace:*",
+    "@nuanu-ai/agentify-contracts": "workspace:*",
     "better-auth": "1.7.2",
     "drizzle-orm": "0.45.2",
     "express": "5.2.1",

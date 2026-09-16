@@ -35,7 +35,7 @@ up and run the link to an online shop ourselves. Both are described on
   a link, a key, a set of fields. Its shape is declared in the card.
 
 ::: warning The tool surface is preliminary
-The package name is `@nuanu-ai/coinslot`. The function names and field names in the
+The package name is `@nuanu-ai/agentify`. The function names and field names in the
 examples below remain preliminary: of the machine names only
 `merchant_item_id`, `as_of` and our catalogue `id` are final. Changes arrive in
 a new package and contract version before the gateway speaks them.
@@ -48,7 +48,7 @@ listed outright: our contracts package, and zod, the library that validates
 data. Nothing beyond those arrives in your project.
 
 ```sh
-npm install @nuanu-ai/coinslot
+npm install @nuanu-ai/agentify
 ```
 
 Release tags publish this package to the public npm registry. A stable release
@@ -59,11 +59,11 @@ The client needs two things from you: a key, which you keep wherever you keep
 the rest of your secrets, and the address to call.
 
 ```ts
-import { createClient } from '@nuanu-ai/coinslot'
+import { createClient } from '@nuanu-ai/agentify'
 
 const agentify = createClient({
-  apiKey: process.env.COINSLOT_API_KEY,
-  baseUrl: process.env.COINSLOT_URL,
+  apiKey: process.env.AGENTIFY_API_KEY,
+  baseUrl: process.env.AGENTIFY_URL,
 })
 ```
 
@@ -131,7 +131,7 @@ the error says as much: its `retryable` flag is false, because what changes the
 answer is fixing what the findings name.
 
 A call that fails for some other reason — a key we do not accept, an address
-that does not answer — does throw, as a `CoinslotError`. It carries a `code`.
+that does not answer — does throw, as an `AgentifyError`. It carries a `code`.
 Where we refused the call in words, that word is the code: a key we will not
 take arrives as `not_authorised`, not as something about the network. Where no
 answer arrived, or none these tools could read, it is one of the three words
@@ -405,13 +405,13 @@ so a purchase parameter your delivery needs and the card does not name goes
 through unremarked. That one is yours to catch.
 
 ```sh
-npx coinslot verify card.json
+npm exec --offline --package=@nuanu-ai/agentify -- agentify verify card.json
 ```
 
-Run it from the project you installed into. The bare name `coinslot` belongs to
-somebody else's package on npm, so `npx` in a directory without our package
-fetches theirs; once `@nuanu-ai/coinslot` is installed beside you, `npx` finds ours
-first and the stranger's never enters it.
+Run it from the project where you installed `@nuanu-ai/agentify`. Naming the
+scoped package and requiring offline resolution makes npm use that local
+installation; it cannot substitute the unrelated unscoped `agentify` package
+from the registry if the command is missing.
 
 Name the card files. The command does not go looking for them: it takes no key
 and no address, so it cannot ask us what you have published, and nothing says

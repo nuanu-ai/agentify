@@ -56,7 +56,7 @@
  */
 
 import type { Order } from "@agentify/commerce-core";
-import type { Card, Receipt } from "@nuanu-ai/coinslot-contracts";
+import type { Card, Receipt } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import type { Store, StoredOrder } from "../ports/store.js";
 

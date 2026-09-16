@@ -15,12 +15,12 @@
  */
 
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/commerce-core";
-import type { OrderList, ReceiptList } from "@nuanu-ai/coinslot-contracts";
+import type { OrderList, ReceiptList } from "@nuanu-ai/agentify-contracts";
 import {
   MerchantCardListSchema,
   OrderListSchema,
   ReceiptListSchema,
-} from "@nuanu-ai/coinslot-contracts";
+} from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import { page } from "./html.js";
 import { ordersScreen, receiptsScreen, type Viewer } from "./screens.js";

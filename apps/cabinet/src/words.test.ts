@@ -13,7 +13,7 @@ import {
   ORDER_STATUSES,
   ReceiptOutcomeSchema,
   SELLING_STATES,
-} from "@nuanu-ai/coinslot-contracts";
+} from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import {
   FULFILLMENT_WORDS,

@@ -127,7 +127,7 @@ repeat in which mode is in [Telling a repeat apart](/orders).
 
 ### What do I check myself with before publishing?
 
-The check we ship, which these pages call `coinslot verify`. It reads your
+The check we ship, which these pages call `agentify verify`. It reads your
 cards and reports what an agent could not do with them. What it cannot do yet
 is send one order twice and watch for a second delivery: nothing on our surface
 raises a test order, so holding against repeats is yours to prove against your

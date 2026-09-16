@@ -1,8 +1,14 @@
 import { existsSync, readFileSync } from "node:fs";
-import { CONTRACT_VERSION } from "@nuanu-ai/coinslot-contracts";
+import { CONTRACT_VERSION } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import * as sdk from "./index.js";
 import { contractVersion, speaksContract } from "./index.js";
+
+// The rename is direct: a consumer must move to AgentifyClient rather than
+// keep compiling against a compatibility alias under the old brand.
+// @ts-expect-error CoinslotClient is intentionally not part of the package.
+const legacyClient: import("./index.js").CoinslotClient | undefined = undefined;
+void legacyClient;
 
 const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
   name?: string;
@@ -37,7 +43,7 @@ const sourceOf = (published: string): string =>
 
 const inPackage = (path: string): boolean => existsSync(new URL(`../${path}`, import.meta.url));
 
-describe("@nuanu-ai/coinslot", () => {
+describe("@nuanu-ai/agentify", () => {
   it("checks the contract version and refuses a foreign one", () => {
     // The promise to the merchant: a divergence of dialects is discovered at
     // worker startup, not on an order, where it costs the buyer money.
@@ -61,9 +67,9 @@ describe("@nuanu-ai/coinslot", () => {
     // `pnpm outside` type-checks it from a project installed off the tarball.
     expect(Object.keys(sdk).sort()).toStrictEqual([
       "ANSWER_NOT_UNDERSTOOD",
+      "AgentifyError",
       "CALL_DID_NOT_REACH_US",
       "CARD_REJECTED",
-      "CoinslotError",
       "ORDER_EVENT_TYPES",
       "OUTCOME_UNKNOWN",
       "RECOMMENDED_REFUSAL_CODES",
@@ -76,7 +82,7 @@ describe("@nuanu-ai/coinslot", () => {
   });
 
   it("declares no third-party dependency of its own", () => {
-    // The tree the merchant gets is `@nuanu-ai/coinslot-contracts` and `zod`, nothing
+    // The tree the merchant gets is `@nuanu-ai/agentify-contracts` and `zod`, nothing
     // else. This is one half of the pin — the SDK adds nothing of its own; the
     // other half is the contracts test, which holds contracts to exactly zod.
     // A failing check means a third-party package entered the merchant's
@@ -89,12 +95,12 @@ describe("@nuanu-ai/coinslot", () => {
   });
 
   it("advertises the command the documentation tells a merchant to run", () => {
-    // The promise: `npx coinslot verify` starts. npx finds a command through
+    // The promise: `agentify verify` starts. npx finds a command through
     // this field, so a package without it makes step 4 of the quickstart
     // impossible for everyone who is not us. What the field points at has to
     // be the built command and not the source, because Node runs the one and
     // not the other.
-    expect(manifest.publishConfig?.bin).toStrictEqual({ coinslot: "./dist/cli.js" });
+    expect(manifest.publishConfig?.bin).toStrictEqual({ agentify: "./dist/cli.js" });
   });
 
   it("publishes its build and develops against its source", () => {
@@ -138,7 +144,7 @@ describe("@nuanu-ai/coinslot", () => {
     // produces a tarball holding nothing but this manifest — no error, no
     // warning — while `publishConfig` still names an entry point and a command
     // that are not in it. That package installs and dies on first use.
-    expect(manifest.name).toBe("@nuanu-ai/coinslot");
+    expect(manifest.name).toBe("@nuanu-ai/agentify");
     expect(manifest.private).toBeUndefined();
     expect(manifest.version).not.toBe("0.0.0");
     expect(manifest.files).toStrictEqual(["dist", "LICENSE", "NOTICE"]);

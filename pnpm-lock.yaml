@@ -87,7 +87,7 @@ importers:
       '@agentify/commerce-core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@nuanu-ai/coinslot-contracts':
+      '@nuanu-ai/agentify-contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       better-auth:
@@ -145,7 +145,7 @@ importers:
       '@coinbase/cdp-sdk':
         specifier: 1.55.0
         version: 1.55.0(@x402/core@2.23.0)(@x402/evm@2.23.0(typescript@5.9.3))(@x402/extensions@2.23.0(typescript@5.9.3))(typescript@5.9.3)
-      '@nuanu-ai/coinslot-contracts':
+      '@nuanu-ai/agentify-contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       '@x402/core':
@@ -359,7 +359,7 @@ importers:
 
   packages/core:
     devDependencies:
-      '@nuanu-ai/coinslot-contracts':
+      '@nuanu-ai/agentify-contracts':
         specifier: workspace:*
         version: link:../contracts
       vitest:
@@ -483,7 +483,7 @@ importers:
 
   packages/sdk:
     dependencies:
-      '@nuanu-ai/coinslot-contracts':
+      '@nuanu-ai/agentify-contracts':
         specifier: workspace:*
         version: link:../contracts
     devDependencies:
@@ -502,10 +502,10 @@ importers:
       '@agentify/commerce-gateway':
         specifier: workspace:*
         version: link:../../apps/gateway
-      '@nuanu-ai/coinslot':
+      '@nuanu-ai/agentify':
         specifier: workspace:*
         version: link:../sdk
-      '@nuanu-ai/coinslot-contracts':
+      '@nuanu-ai/agentify-contracts':
         specifier: workspace:*
         version: link:../contracts
       '@x402/core':

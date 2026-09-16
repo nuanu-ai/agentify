@@ -1,4 +1,4 @@
-import { CatalogPageSchema, PublishResultSchema } from "@nuanu-ai/coinslot-contracts";
+import { CatalogPageSchema, PublishResultSchema } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { type Harness, harness } from "../testing/harness.js";
 

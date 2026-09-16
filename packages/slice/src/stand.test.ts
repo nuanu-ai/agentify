@@ -11,7 +11,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
-import { CONTRACT_VERSION } from "@nuanu-ai/coinslot-contracts";
+import { CONTRACT_VERSION } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 
 const waitUntil = async (that: () => boolean, within = 5_000): Promise<void> => {

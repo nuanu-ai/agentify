@@ -21,7 +21,7 @@
  */
 
 import { MERCHANT_SELLING } from "@agentify/commerce-core";
-import type { Card } from "@nuanu-ai/coinslot-contracts";
+import type { Card } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import { SANDBOX_FACILITATOR } from "../config.js";
 import type { StoredCard } from "../ports/store.js";

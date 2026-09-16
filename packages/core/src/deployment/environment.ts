@@ -9,7 +9,7 @@
  * against: a gateway that believes it is testing while it moves real money.
  *
  * This module is private to the workspace and deliberately not in
- * `@nuanu-ai/coinslot-contracts`. Its subject is our deployment policy, not
+ * `@nuanu-ai/agentify-contracts`. Its subject is our deployment policy, not
  * the wire: an integrator would gain a chain allowlist they can neither act on
  * nor rely on, and we would gain a public commitment to a list that should
  * stay easy to revisit. The wire's own answer travels where it always has, in

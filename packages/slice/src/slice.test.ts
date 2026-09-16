@@ -19,13 +19,13 @@
  */
 
 import { ScriptedFacilitator } from "@agentify/commerce-gateway";
-import { WORKER_PROBLEM_KINDS } from "@nuanu-ai/coinslot";
+import { WORKER_PROBLEM_KINDS } from "@nuanu-ai/agentify";
 import {
   AgentOrderStatusSchema,
   type Card,
   deliveryCheckFor,
   ReceiptSchema,
-} from "@nuanu-ai/coinslot-contracts";
+} from "@nuanu-ai/agentify-contracts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { makeBuyer } from "./buyer.js";
 import { EUROPE_ESIM, RENTED_NUMBER } from "./cards.js";

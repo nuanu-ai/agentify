@@ -16,7 +16,7 @@
 
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import type { CardInput } from "@nuanu-ai/coinslot";
+import type { CardInput } from "@nuanu-ai/agentify";
 import { CATALOG } from "./cards.js";
 
 export interface Template {

@@ -45,7 +45,7 @@
  * registered twice — is a `TypeError` at the line that is wrong, before
  * anything leaves the process. A call that went out and produced no answer of
  * the kind its route promises, where the route has nowhere to put one, is a
- * `CoinslotError` carrying the same code vocabulary the returned failures use.
+ * `AgentifyError` carrying the same code vocabulary the returned failures use.
  *
  * The one place that rule needed a decision rather than a reading is a
  * `deliver` or a `refuse` whose answer never arrived, or arrived in words this
@@ -71,7 +71,7 @@ import type {
   QuoteRequest,
   QuoteResponse,
   Refusal,
-} from "@nuanu-ai/coinslot-contracts";
+} from "@nuanu-ai/agentify-contracts";
 import {
   callRoute,
   type Gateway,
@@ -98,7 +98,7 @@ export interface ClientOptions {
    * The merchant's API key.
    *
    * It admits `undefined` because the thing a merchant actually writes is
-   * `process.env.COINSLOT_API_KEY`, which is `string | undefined` in every
+   * `process.env.AGENTIFY_API_KEY`, which is `string | undefined` in every
    * strict TypeScript project there is. Refusing that at the type level would
    * teach every merchant to silence it with a non-null assertion, which turns
    * an unset variable into an authorisation failure much later. It is refused
@@ -334,7 +334,7 @@ export interface OrdersNamespace {
   list(query?: { readonly open?: boolean }): Promise<readonly LiveOrderWithStatus[]>;
 }
 
-export interface CoinslotClient {
+export interface AgentifyClient {
   readonly catalog: CatalogNamespace;
   readonly orders: OrdersNamespace;
 
@@ -451,7 +451,7 @@ const CODE_FOR: Readonly<Record<Reach, string>> = {
  * and they stay `TypeError`. A merchant catching this class is catching calls
  * that went out.
  */
-export class CoinslotError extends Error {
+export class AgentifyError extends Error {
   /** Why the call did not go through, for the code that branches on it. */
   readonly code: string;
 
@@ -473,7 +473,7 @@ export class CoinslotError extends Error {
 
   constructor(code: string, route: string, message: string, retryable: boolean) {
     super(message);
-    this.name = "CoinslotError";
+    this.name = "AgentifyError";
     this.code = code;
     this.route = route;
     this.retryable = retryable;
@@ -628,7 +628,7 @@ const assertEveryKindIsRegistered = (kind: never): never => {
   throw new TypeError(`on() has no place to put a handler for ${JSON.stringify(kind)}`);
 };
 
-export const createClient = (options: ClientOptions): CoinslotClient => {
+export const createClient = (options: ClientOptions): AgentifyClient => {
   const gateway: Gateway = {
     apiKey: keyOf(options.apiKey),
     baseUrl: addressOf(options.baseUrl),
@@ -788,7 +788,7 @@ export const createClient = (options: ClientOptions): CoinslotClient => {
       // throw away the one thing they came here for. The same holds for its
       // answer about calling again — this is the rule `failedCall` applies for
       // the calls that return, applied here so the two roads agree.
-      throw new CoinslotError(
+      throw new AgentifyError(
         failure.refusal?.code ?? CODE_FOR[failure.reach],
         failure.route,
         failure.reason,

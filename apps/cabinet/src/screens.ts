@@ -19,7 +19,7 @@ import {
   type MerchantCardList,
   type OrderList,
   type ReceiptList,
-} from "@nuanu-ai/coinslot-contracts";
+} from "@nuanu-ai/agentify-contracts";
 import { escaped, page, state, type Tab, table } from "./html.js";
 import type { PayoutWallet } from "./payout-wallet.js";
 // A type and nothing else, so this leaves no import behind once it is compiled

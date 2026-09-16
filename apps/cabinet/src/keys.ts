@@ -32,7 +32,7 @@
  * a merchant would be looking at.
  */
 
-import type { MerchantKey, MerchantKeyList } from "@nuanu-ai/coinslot-contracts";
+import type { MerchantKey, MerchantKeyList } from "@nuanu-ai/agentify-contracts";
 import { escaped, page } from "./html.js";
 import type { Viewer } from "./screens.js";
 import { moment } from "./words.js";

@@ -9,7 +9,7 @@
  * closes orders they took on earlier off the orders themselves. Beside it,
  * `checkCard` is the check a merchant runs on their own cards before
  * publishing them — the same check the documentation calls
- * `npx coinslot verify`, which the published package installs as a command of
+ * `agentify verify`, which the published package installs as a command of
  * that name. The command's own insides are not exported: what a merchant calls
  * from their code is `checkCard`, and what they run from a terminal is the
  * command, and neither of those needs the other's exit codes.
@@ -18,10 +18,10 @@
  * failure carries one `error` with a code, a sentence, whether repeating could
  * help, and the findings under `problems` where the call is refusing what it
  * was handed. What throws instead is a call with no such branch, as
- * `CoinslotError`, under the same codes.
+ * `AgentifyError`, under the same codes.
  *
  * The runtime dependency tree is minimal and listed in full: our own
- * `@nuanu-ai/coinslot-contracts`, and zod underneath it, and nothing else. A merchant
+ * `@nuanu-ai/agentify-contracts`, and zod underneath it, and nothing else. A merchant
  * installing the SDK into their production should know exactly what arrives
  * with it, rather than inherit a foreign package tree they would then be
  * maintaining themselves. Every new third-party package in this tree is a
@@ -57,18 +57,18 @@ export type {
   Refusal,
   RefusalCode,
   SalePrice,
-} from "@nuanu-ai/coinslot-contracts";
+} from "@nuanu-ai/agentify-contracts";
 export {
   CARD_REJECTED,
   ORDER_EVENT_TYPES,
   RECOMMENDED_REFUSAL_CODES,
-} from "@nuanu-ai/coinslot-contracts";
+} from "@nuanu-ai/agentify-contracts";
 export type { CardCheck } from "./check-card.js";
 export { checkCard } from "./check-card.js";
 export type {
+  AgentifyClient,
   CatalogNamespace,
   ClientOptions,
-  CoinslotClient,
   HandlerKind,
   Handlers,
   LiveOrder,
@@ -82,9 +82,9 @@ export type {
   QuoteHandler,
 } from "./client.js";
 export {
+  AgentifyError,
   ANSWER_NOT_UNDERSTOOD,
   CALL_DID_NOT_REACH_US,
-  CoinslotError,
   createClient,
   OUTCOME_UNKNOWN,
 } from "./client.js";

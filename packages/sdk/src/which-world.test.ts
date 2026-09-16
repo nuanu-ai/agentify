@@ -15,7 +15,7 @@
  */
 
 import { keyPrefixFor } from "@agentify/commerce-core";
-import type { Order, WorkerEnvelope } from "@nuanu-ai/coinslot-contracts";
+import type { Order, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createClient } from "./client.js";
 import { type FakeGateway, startFakeGateway } from "./testing/fake-gateway.js";

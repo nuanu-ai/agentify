@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
-    "@nuanu-ai/coinslot-contracts": "workspace:*",
+    "@nuanu-ai/agentify-contracts": "workspace:*",
     "vitest": "^4.1.11"
   }
 }

@@ -9,7 +9,7 @@
  * survive the very validators the product applies to them, in both directions.
  */
 
-import { type ParamSpec, paramSpecToValidator } from "@nuanu-ai/coinslot-contracts";
+import { type ParamSpec, paramSpecToValidator } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import { filledFrom } from "./stand-goods.js";
 

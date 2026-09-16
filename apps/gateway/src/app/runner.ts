@@ -65,7 +65,7 @@ import type {
   Receipt,
   SalePrice,
   WorkerEnvelope,
-} from "@nuanu-ai/coinslot-contracts";
+} from "@nuanu-ai/agentify-contracts";
 import { asTimestamp } from "../ports/clock.js";
 import type { Reminder } from "../ports/queue.js";
 import type {

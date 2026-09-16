@@ -13,10 +13,10 @@
     "stand": "node --env-file-if-exists=../../.env.stand --import tsx src/stand.ts"
   },
   "devDependencies": {
-    "@nuanu-ai/coinslot-contracts": "workspace:*",
+    "@nuanu-ai/agentify-contracts": "workspace:*",
     "@agentify/commerce-core": "workspace:*",
     "@agentify/commerce-gateway": "workspace:*",
-    "@nuanu-ai/coinslot": "workspace:*",
+    "@nuanu-ai/agentify": "workspace:*",
     "@x402/core": "2.23.0",
     "@x402/evm": "2.23.0",
     "@x402/fetch": "2.23.0",

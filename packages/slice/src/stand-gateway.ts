@@ -24,7 +24,7 @@ import {
   MERCHANT_KEY_HEADER,
   merchantKeyHeaderValue,
   type RouteDefinition,
-} from "@nuanu-ai/coinslot-contracts";
+} from "@nuanu-ai/agentify-contracts";
 
 export interface GatewayAnswer {
   readonly status: number;

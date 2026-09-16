@@ -4,7 +4,7 @@
  * Without it, `pnpm test:db` with no Postgres reachable skips every file and
  * exits zero. A person watching the output sees the sentence explaining why and
  * is not misled — but a script reading the exit code, and CI, see a suite that
- * passed while nothing ran at all. That is the failure `coinslot verify`
+ * passed while nothing ran at all. That is the failure `agentify verify`
  * refuses by name: it will not report success for a check that never happened.
  *
  * So the absence of a database fails this command rather than quietly doing

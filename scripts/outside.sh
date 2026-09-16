@@ -4,7 +4,7 @@
 #
 # Everything else about the packaging can be green while the answer is no. The
 # unit tests read our own `package.json` and believe it; the type checker
-# resolves `@nuanu-ai/coinslot` through the workspace link and never looks at what
+# resolves `@nuanu-ai/agentify` through the workspace link and never looks at what
 # `files` would ship; `pnpm test` imports TypeScript that a merchant's Node
 # would refuse. Each of those passes on a package that installs into someone
 # else's project and dies on first use. So this check does the only thing that
@@ -16,15 +16,15 @@
 # is why it lives beside `pnpm smoke` and not inside `pnpm test`, which is free,
 # offline and fast and must stay that way.
 #
-# Two packages are packed and not one. `@nuanu-ai/coinslot` depends on
-# `@nuanu-ai/coinslot-contracts`, so a merchant who installs the SDK installs both, and a
+# Two packages are packed and not one. `@nuanu-ai/agentify` depends on
+# `@nuanu-ai/agentify-contracts`, so a merchant who installs the SDK installs both, and a
 # check that packed only the SDK would prove nothing about the half that carries
 # the schemas.
 
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-scratch="$(mktemp -d "${TMPDIR:-/tmp}/coinslot-outside.XXXXXX")"
+scratch="$(mktemp -d "${TMPDIR:-/tmp}/agentify-outside.XXXXXX")"
 
 failures=0
 
@@ -73,8 +73,8 @@ rm -rf "$repo/packages/sdk/dist" "$repo/packages/contracts/dist"
 # `pnpm pack` applies `publishConfig`, so these tarballs carry the built entry
 # points and the command — not the source paths the working tree develops
 # against — and `workspace:*` has become a real version range.
-pnpm --filter @nuanu-ai/coinslot-contracts exec pnpm pack --pack-destination "$scratch" >/dev/null
-pnpm --filter @nuanu-ai/coinslot exec pnpm pack --pack-destination "$scratch" >/dev/null
+pnpm --filter @nuanu-ai/agentify-contracts exec pnpm pack --pack-destination "$scratch" >/dev/null
+pnpm --filter @nuanu-ai/agentify exec pnpm pack --pack-destination "$scratch" >/dev/null
 ls -1 "$scratch"
 
 echo
@@ -90,7 +90,7 @@ echo "What the tarballs would ship"
 # compiled into it — which is a build that stopped excluding them, not a stray
 # file. The allowlist alone would pass exactly that, and nothing else pins the
 # exclusions in tsconfig.build.json.
-for tarball in "$scratch"/nuanu-ai-coinslot-*.tgz; do
+for tarball in "$scratch"/nuanu-ai-agentify-*.tgz; do
   unexpected="$(tar -tzf "$tarball" |
     grep -vE '^package/(package\.json|README\.md|LICENSE|NOTICE|dist/)' || true)"
   compiled_tests="$(tar -tzf "$tarball" | grep -E '\.test\.|/testing/' || true)"
@@ -103,7 +103,7 @@ for tarball in "$scratch"/nuanu-ai-coinslot-*.tgz; do
 done
 
 contains "the command is in it" "package/dist/cli.js" \
-  "$(tar -tzf "$scratch"/nuanu-ai-coinslot-[0-9]*.tgz)"
+  "$(tar -tzf "$scratch"/nuanu-ai-agentify-[0-9]*.tgz)"
 
 echo
 echo "Installing the tarballs into $scratch"
@@ -123,7 +123,7 @@ cat > package.json <<'JSON'
 JSON
 
 npm install --no-audit --no-fund \
-  ./nuanu-ai-coinslot-contracts-*.tgz ./nuanu-ai-coinslot-[0-9]*.tgz
+  ./nuanu-ai-agentify-contracts-*.tgz ./nuanu-ai-agentify-[0-9]*.tgz
 
 # The package is TypeScript even when the merchant's program is not. Its
 # declarations must stand on their own in a strict project rather than borrow
@@ -132,7 +132,7 @@ npm install --no-audit --no-fund \
 # the consumer declares that library explicitly while still excluding every
 # ambient package through `types: []`.
 cat > consumer.ts <<'TS'
-import { createClient } from "@nuanu-ai/coinslot";
+import { createClient } from "@nuanu-ai/agentify";
 
 const client = createClient({
   apiKey: "merchant_key_for_typechecking_only",
@@ -228,7 +228,7 @@ echo "Step 3 of the quickstart: importing the package"
 # out of it is the working code rather than an empty shape.
 imported="$(node --input-type=module -e '
   import { readFileSync } from "node:fs";
-  import { checkCard, createClient, contractVersion } from "@nuanu-ai/coinslot";
+  import { checkCard, createClient, contractVersion } from "@nuanu-ai/agentify";
   const read = (file) => JSON.parse(readFileSync(file, "utf8"));
   const complete = checkCard(read("card.json")).problems.length === 0;
   const short = checkCard(read("short-card.json")).problems.length === 0;
@@ -242,27 +242,32 @@ contains "the entry point imports and its exports are callable" \
 contains "the check runs on a real card" "complete=true" "$imported"
 contains "the check reads a card written short" "short=true" "$imported"
 
-echo
-echo "Step 4 of the quickstart: npx coinslot verify"
+set +e
+legacy_import="$(node --input-type=module -e 'await import("@nuanu-ai/coinslot")' 2>&1)"
+legacy_code=$?
+set -e
+check "the old package is not installed as a compatibility alias" "1" "$legacy_code"
+contains "the old import is absent" "Cannot find package '@nuanu-ai/coinslot'" "$legacy_import"
 
-# Where `npx coinslot` will resolve, checked before it is run. This matters more
-# than it looks: `coinslot` is an unscoped name and there is an unrelated package
-# under it on the public registry. If our `bin` wiring ever broke, npx would go
-# and fetch that one, and the runs below would fail with somebody else's output
-# instead of saying our command is missing.
-linked="$(readlink node_modules/.bin/coinslot 2>&1 || true)"
-check "npx will find our command and not a stranger's" \
-  "../@nuanu-ai/coinslot/dist/cli.js" "$linked"
+echo
+echo "Step 4 of the quickstart: the installed Agentify command"
+
+# Check the local link before invoking npm. The unscoped `agentify` package on
+# the public registry belongs to somebody else; explicit scoped-package and
+# offline flags below prevent npm from substituting it if this link is absent.
+linked="$(readlink node_modules/.bin/agentify 2>&1 || true)"
+check "npm will find our installed command and not a stranger's" \
+  "../@nuanu-ai/agentify/dist/cli.js" "$linked"
 
 run() {
   set +e
-  out="$(npx coinslot "$@" 2>&1)"
+  out="$(npm exec --offline --package=@nuanu-ai/agentify -- agentify "$@" 2>&1)"
   code=$?
   set -e
 }
 
 run verify card.json
-echo "--- npx coinslot verify card.json (exit $code) ---"
+echo "--- agentify verify card.json (exit $code) ---"
 echo "$out"
 check "a complete card answers 3, because idempotency never ran" "3" "$code"
 contains "it says the card is complete" "complete as far as the contract can tell" "$out"
@@ -270,26 +275,26 @@ contains "it claims nothing about the check that did not run" \
   "Nothing is claimed about idempotency" "$out"
 
 run verify short-card.json
-echo "--- npx coinslot verify short-card.json (exit $code) ---"
+echo "--- agentify verify short-card.json (exit $code) ---"
 echo "$out"
 check "a card written short answers 3, the same as one written out" "3" "$code"
 contains "it says the short card is complete too" \
   "complete as far as the contract can tell" "$out"
 
 run verify untitled-card.json
-echo "--- npx coinslot verify untitled-card.json (exit $code) ---"
+echo "--- agentify verify untitled-card.json (exit $code) ---"
 echo "$out"
 check "a card with a finding answers 1" "1" "$code"
 contains "it names the field that is missing" "title:" "$out"
 
 run verify miswritten-card.json
-echo "--- npx coinslot verify miswritten-card.json (exit $code) ---"
+echo "--- agentify verify miswritten-card.json (exit $code) ---"
 echo "$out"
 check "a card whose short price is not one answers 1" "1" "$code"
 contains "it names the half of the price that is wrong" "price.currency:" "$out"
 
 run verify
-echo "--- npx coinslot verify (exit $code) ---"
+echo "--- agentify verify (exit $code) ---"
 echo "$out"
 check "the bare command answers 3 and refuses" "3" "$code"
 contains "it explains itself to whoever typed it" \

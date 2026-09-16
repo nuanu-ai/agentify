@@ -42,7 +42,7 @@ import {
   PaymentEdge,
   X402Facilitator,
 } from "@agentify/commerce-gateway";
-import type { Card } from "@nuanu-ai/coinslot-contracts";
+import type { Card } from "@nuanu-ai/agentify-contracts";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { getDefaultAsset } from "@x402/evm";
 import { makeBuyer } from "./buyer.js";
