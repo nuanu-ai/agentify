@@ -40,7 +40,7 @@ import { connect, type Database, PostgresStore } from "./store.js";
  */
 const wanted = (() => {
   const url = new URL(testDatabaseUrl());
-  url.pathname = "/coinslot_test_migration";
+  url.pathname = "/agentify_commerce_test_migration";
   return url.toString();
 })();
 const databaseUrl = await readyDatabase(wanted);
@@ -347,7 +347,7 @@ if (databaseUrl === null) {
     const chargedTo = (payTo: unknown): string =>
       new PaymentEdge(
         testConfig({ PAY_TO_ADDRESS: "0x0000000000000000000000000000000000000009" }).payment,
-        "https://coinslot.example",
+        "https://agentify.example",
         300,
       ).requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", payTo as string | null)
         .payTo;

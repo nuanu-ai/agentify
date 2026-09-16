@@ -396,7 +396,7 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
     advanced: {
       // So that the cookie says whose it is in a browser that may be holding
       // cookies from the landing and the documentation on the same origin.
-      cookiePrefix: "coinslot",
+      cookiePrefix: "agentify",
       defaultCookieAttributes: {
         // Scoped to the cabinet's own path rather than the whole origin, which
         // is ADR-0009: behind Caddy the cabinet shares an origin with the

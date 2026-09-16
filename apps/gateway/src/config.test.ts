@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isSandboxFacilitator, loadConfig, SANDBOX_FACILITATOR } from "./config.js";
 
-const database = "postgres://coinslot:secret@localhost:5432/coinslot";
+const database = "postgres://agentify_commerce:secret@localhost:5432/agentify_commerce";
 
 /** The one variable that has no sensible default and must always be given. */
 const required = { DATABASE_URL: database };
@@ -380,7 +380,7 @@ describe("loadConfig", () => {
     expect(bothBroken).toThrowError(/PORT: must be a whole number/);
 
     expect(() =>
-      loadConfig({ ...required, DATABASE_URL: "mysql://localhost/coinslot" }),
+      loadConfig({ ...required, DATABASE_URL: "mysql://localhost/agentify_commerce" }),
     ).toThrowError(/DATABASE_URL: must be an address of the form postgres/);
     expect(() => loadConfig({ ...required, PORT: "70000" })).toThrowError(
       /PORT: must be within the range/,
@@ -536,12 +536,12 @@ describe("loadConfig", () => {
     const of = (PUBLIC_BASE_URL: string) =>
       loadConfig({ ...required, PUBLIC_BASE_URL }).publicBaseUrl;
 
-    expect(of("https://coinslot.example")).toBe("https://coinslot.example");
-    expect(of("https://coinslot.example/")).toBe("https://coinslot.example");
-    expect(of("https://coinslot.example//")).toBe("https://coinslot.example");
+    expect(of("https://agentify.example")).toBe("https://agentify.example");
+    expect(of("https://agentify.example/")).toBe("https://agentify.example");
+    expect(of("https://agentify.example//")).toBe("https://agentify.example");
     // A path in the base is left exactly as written: it is somebody's mount
     // point, not a stray keystroke, and taking it off would move every product.
-    expect(of("https://coinslot.example/gateway/")).toBe("https://coinslot.example/gateway");
+    expect(of("https://agentify.example/gateway/")).toBe("https://agentify.example/gateway");
   });
 
   it("refuses a base address that carries a question mark or a fragment", () => {
@@ -554,9 +554,9 @@ describe("loadConfig", () => {
     // silent trim of something they typed on purpose.
     const broken = (PUBLIC_BASE_URL: string) => () => loadConfig({ ...required, PUBLIC_BASE_URL });
 
-    expect(broken("https://coinslot.example/?utm=abc")).toThrowError(/PUBLIC_BASE_URL/);
-    expect(broken("https://coinslot.example?utm=abc")).toThrowError(/query/);
-    expect(broken("https://coinslot.example/#top")).toThrowError(/fragment/);
+    expect(broken("https://agentify.example/?utm=abc")).toThrowError(/PUBLIC_BASE_URL/);
+    expect(broken("https://agentify.example?utm=abc")).toThrowError(/query/);
+    expect(broken("https://agentify.example/#top")).toThrowError(/fragment/);
     // And the ordinary ones still start.
     expect(loadConfig({ ...required, PUBLIC_BASE_URL: "https://a.example/x" }).publicBaseUrl).toBe(
       "https://a.example/x",
@@ -574,16 +574,16 @@ describe("loadConfig", () => {
     // in front of the host would be published to every agent that asks a price.
     const broken = (PUBLIC_BASE_URL: string) => () => loadConfig({ ...required, PUBLIC_BASE_URL });
 
-    expect(broken("HTTPS://coinslot.example")).toThrowError(/http:\/\/ or https:\/\//);
-    expect(broken("ftp://coinslot.example")).toThrowError(/http:\/\/ or https:\/\//);
-    expect(broken("https://user:secret@coinslot.example")).toThrowError(/name and password/);
-    expect(broken("https://coinslot.example/a b")).toThrowError(/space/);
+    expect(broken("HTTPS://agentify.example")).toThrowError(/http:\/\/ or https:\/\//);
+    expect(broken("ftp://agentify.example")).toThrowError(/http:\/\/ or https:\/\//);
+    expect(broken("https://user:secret@agentify.example")).toThrowError(/name and password/);
+    expect(broken("https://agentify.example/a b")).toThrowError(/space/);
 
     // And the ordinary spellings still start, including a mount path.
     for (const good of [
       "http://localhost:3000",
-      "https://coinslot.example",
-      "https://coinslot.example/gateway",
+      "https://agentify.example",
+      "https://agentify.example/gateway",
     ]) {
       expect(loadConfig({ ...required, PUBLIC_BASE_URL: good }).publicBaseUrl, good).toBe(good);
     }

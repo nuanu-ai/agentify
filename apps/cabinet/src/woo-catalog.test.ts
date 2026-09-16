@@ -24,7 +24,7 @@ import {
 const product = (overrides: Partial<StoreProduct> = {}): StoreProduct => ({
   id: 11,
   name: "Canvas tote bag",
-  sku: "coinslot-tote",
+  sku: "agentify-tote",
   type: "simple",
   description: "<p>A physical item that has to be shipped somewhere.</p>\n",
   short_description: "<p>Physical goods, shipped.</p>\n",

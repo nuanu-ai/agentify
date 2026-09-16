@@ -4,12 +4,6 @@ import { describe, expect, it } from "vitest";
 import * as sdk from "./index.js";
 import { contractVersion, speaksContract } from "./index.js";
 
-// The rename is direct: a consumer must move to AgentifyClient rather than
-// keep compiling against a compatibility alias under the old brand.
-// @ts-expect-error CoinslotClient is intentionally not part of the package.
-const legacyClient: import("./index.js").CoinslotClient | undefined = undefined;
-void legacyClient;
-
 const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
   name?: string;
   version?: string;

@@ -94,8 +94,8 @@ describe("the authorize URL", () => {
       authorizeUrlFor("https://shop.example.com/store", {
         appName: "Agentify",
         userId: "a-state-token",
-        returnUrl: "https://coinslot.example.com/cabinet/woocommerce/return",
-        callbackUrl: "https://coinslot.example.com/cabinet/woocommerce/callback",
+        returnUrl: "https://agentify.example/cabinet/woocommerce/return",
+        callbackUrl: "https://agentify.example/cabinet/woocommerce/callback",
       }),
     );
 
@@ -109,10 +109,8 @@ describe("the authorize URL", () => {
     const query = url().searchParams;
     expect(query.get("app_name")).toBe("Agentify");
     expect(query.get("user_id")).toBe("a-state-token");
-    expect(query.get("return_url")).toBe("https://coinslot.example.com/cabinet/woocommerce/return");
-    expect(query.get("callback_url")).toBe(
-      "https://coinslot.example.com/cabinet/woocommerce/callback",
-    );
+    expect(query.get("return_url")).toBe("https://agentify.example/cabinet/woocommerce/return");
+    expect(query.get("callback_url")).toBe("https://agentify.example/cabinet/woocommerce/callback");
     expect(query.get("scope")).toBe("read_write");
   });
 });

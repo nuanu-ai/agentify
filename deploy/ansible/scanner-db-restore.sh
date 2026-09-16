@@ -25,7 +25,7 @@ if [[ "${SCANNER_REHEARSAL:-}" == 1 ]]; then
   expected_project=scanner-exit-rehearsal
 fi
 target_db=agentify_scanner
-source_db=coinslot
+source_db=agentify_commerce
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 
 [[ "$SCANNER_DUMP_SHA256" =~ ^[a-f0-9]{64}$ ]] || fail 'invalid dump checksum'
@@ -40,10 +40,10 @@ script_dir="$(cd "$(dirname "$0")" && pwd)"
 
 identity="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{.State.Running}}' "$container")"
 [[ "$identity" == "$expected_project|postgres|true" ]] || fail 'wrong or stopped target container'
-docker exec "$container" psql -U coinslot -d "$source_db" -At -v ON_ERROR_STOP=1 -c 'select current_database()' | grep -qx "$source_db" || fail 'commerce connection mismatch'
-target_major="$(docker exec "$container" psql -U coinslot -d "$source_db" -At -v ON_ERROR_STOP=1 -c "select current_setting('server_version_num')::int / 10000")"
+docker exec "$container" psql -U agentify_commerce -d "$source_db" -At -v ON_ERROR_STOP=1 -c 'select current_database()' | grep -qx "$source_db" || fail 'commerce connection mismatch'
+target_major="$(docker exec "$container" psql -U agentify_commerce -d "$source_db" -At -v ON_ERROR_STOP=1 -c "select current_setting('server_version_num')::int / 10000")"
 [[ "$target_major" == 17 && "$SCANNER_SOURCE_PG_MAJOR" -le "$target_major" ]] || fail 'source/target PostgreSQL majors require a reviewed compatible restore'
-db_count="$(docker exec "$container" psql -U coinslot -d "$source_db" -At -v ON_ERROR_STOP=1 -c "select count(*) from pg_database where datname='$target_db'")"
+db_count="$(docker exec "$container" psql -U agentify_commerce -d "$source_db" -At -v ON_ERROR_STOP=1 -c "select count(*) from pg_database where datname='$target_db'")"
 [[ "$db_count" == 0 ]] || fail 'scanner target database already exists; never overwrite or retry in place'
 
 restore_list="$(docker exec -i "$container" pg_restore --list < "$SCANNER_DUMP")"
@@ -57,7 +57,7 @@ done
 # PostgreSQL restores policy TO references even with --no-acl. Define only the
 # four scanner runtime principals before importing policy DDL; their grants
 # and login credentials are reconciled separately after the row comparison.
-docker exec -i "$container" psql -U coinslot -d "$source_db" -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
+docker exec -i "$container" psql -U agentify_commerce -d "$source_db" -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
 DO $scanner_roles$
 DECLARE role_name text;
 BEGIN
@@ -75,15 +75,15 @@ SQL
 
 # Creation is deliberately one-shot. A restore failure leaves a named database
 # for forensic inspection; an operator must resolve it before any retry.
-docker exec "$container" createdb -U coinslot -O coinslot "$target_db"
-docker exec "$container" psql -U coinslot -d "$target_db" -v ON_ERROR_STOP=1 -c \
+docker exec "$container" createdb -U agentify_commerce -O agentify_commerce "$target_db"
+docker exec "$container" psql -U agentify_commerce -d "$target_db" -v ON_ERROR_STOP=1 -c \
   'DROP SCHEMA public CASCADE' >/dev/null
-docker exec -i "$container" pg_restore -U coinslot -d "$target_db" \
+docker exec -i "$container" pg_restore -U agentify_commerce -d "$target_db" \
   --exit-on-error --single-transaction --no-owner --no-acl < "$SCANNER_DUMP"
 
 target_fingerprint="$(mktemp)"
 trap 'rm -f "$target_fingerprint"' EXIT
-docker exec -i "$container" psql -U coinslot -d "$target_db" -At -F '|' -v ON_ERROR_STOP=1 \
+docker exec -i "$container" psql -U agentify_commerce -d "$target_db" -At -F '|' -v ON_ERROR_STOP=1 \
   < "$script_dir/scanner-fingerprint.sql" > "$target_fingerprint"
 cmp -s "$SCANNER_SOURCE_FINGERPRINT" "$target_fingerprint" || fail 'restored table data differs from frozen source'
 printf 'Scanner DB restored and data fingerprints match. Target=%s; release=%s; dump_sha256=%s.\n' \

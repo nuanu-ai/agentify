@@ -16,6 +16,15 @@ import { A_NAME_PG_BOSS_ACCEPTS, ENVELOPES, REMINDERS, streamOf } from "./queue.
  * existed.
  */
 describe("the queue names", () => {
+  it("use the Agentify namespace for durable work", () => {
+    // Queue names survive process restarts in Postgres. A spelling change is a
+    // new queue with no reader for the previous one, so the exact names are a
+    // persistence boundary rather than an implementation detail.
+    expect(ENVELOPES).toBe("agentify_envelopes");
+    expect(REMINDERS).toBe("agentify_reminders");
+    expect(streamOf("mch_a")).toBe("agentify_envelopes_mch_a");
+  });
+
   it("are names pg-boss will take", () => {
     // pg-boss allows alphanumerics, underscores, hyphens, periods and forward
     // slashes in a queue name, and refuses everything else. These two use a
@@ -25,8 +34,8 @@ describe("the queue names", () => {
     }
     // The separators somebody would reach for that are genuinely refused. A
     // period is not among them, however natural it looks as one.
-    expect("coinslot envelopes").not.toMatch(A_NAME_PG_BOSS_ACCEPTS);
-    expect("coinslot:envelopes").not.toMatch(A_NAME_PG_BOSS_ACCEPTS);
+    expect("agentify envelopes").not.toMatch(A_NAME_PG_BOSS_ACCEPTS);
+    expect("agentify:envelopes").not.toMatch(A_NAME_PG_BOSS_ACCEPTS);
     expect("").not.toMatch(A_NAME_PG_BOSS_ACCEPTS);
   });
 

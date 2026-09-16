@@ -41,7 +41,7 @@ import type { Message } from "./mail.js";
  */
 const wanted = (() => {
   const url = new URL(testDatabaseUrl());
-  url.pathname = "/coinslot_test_cabinet_identity";
+  url.pathname = "/agentify_commerce_test_cabinet_identity";
   return url.toString();
 })();
 const databaseUrl = await readyDatabase(wanted);
@@ -443,7 +443,7 @@ if (databaseUrl === null) {
       // answer correctly with none: a link nobody signed and a cookie nobody
       // signed are both refused on the signature, before a query.
       await expect(identity.confirm("a-token")).resolves.toBe(false);
-      await expect(identity.whoIs("coinslot.session_token=nonsense")).resolves.toBeNull();
+      await expect(identity.whoIs("agentify.session_token=nonsense")).resolves.toBeNull();
     });
 
     it("asks the database nothing about a cookie it did not sign", async () => {
@@ -474,7 +474,7 @@ if (databaseUrl === null) {
       try {
         const planted = Array.from(
           { length: 50 },
-          (_, at) => `coinslot.session_token=${String(at).padStart(32, "a")}.${"b".repeat(43)}`,
+          (_, at) => `agentify.session_token=${String(at).padStart(32, "a")}.${"b".repeat(43)}`,
         ).join("; ");
 
         expect(await identity.whoIs(planted)).toBeNull();

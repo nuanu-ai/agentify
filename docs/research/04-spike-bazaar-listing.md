@@ -1,5 +1,9 @@
 # Спайк: путь листинга витрины в x402 Bazaar
 
+Примечание к архиву: прежние идентификаторы продукта в записях ниже
+обезличены как `historical-project`. Это исторические наблюдения,
+а не команды для текущего развёртывания и не повторный прогон Agentify.
+
 Ветка: `spike/bazaar-listing`, код в `spikes/bazaar-listing/`. Начат 2026-08-25.
 Цель: запротоколировать полный цикл «листинг → изменение → делистинг» для
 провайдера, экспонирующего множество мерчантов, и выяснить, что автоматизируемо.
@@ -49,7 +53,7 @@ extension (собирать сервер из `@x402/*` напрямую, мин
 бесплатной 1000/мес).
 
 **Non-custodial из коробки:** `payTo` задаётся per-ресурс → деньги идут
-напрямую агент → кошелёк мерчанта, Coinslot денег не касается. Вопрос
+напрямую агент → кошелёк мерчанта, historical-project денег не касается. Вопрос
 монетизации платформы (нет нативного сплита в x402) — отдельный, в backlog.
 
 ## Журнал
@@ -69,21 +73,21 @@ extension (собирать сервер из `@x402/*` напрямую, мин
 
 ### Phase 1 — валидация и листинг (в работе, 2026-08-25)
 
-Публичный URL: **https://coinslot.nuanu.ai** — инфраструктура подготовлена:
+Публичный URL: **https://historical-project.nuanu.ai** — инфраструктура подготовлена:
 - PR nuanu-ai/infra#283: DNS A-запись + четвёртый маршрут Comino ingress
   (SNI passthrough → dmitry-dev 10.20.10.20:443), запись заклеймлена как
   experiment с expiry 2026-10-25, decision
-  `2026-08-25-coinslot-spike-public-route`;
-- на VM dmitry-dev развёрнуто (docker compose, `~/coinslot-spike/`):
+  `2026-08-25-historical-project-spike-public-route`;
+- на VM dmitry-dev развёрнуто (docker compose, `~/historical-project-spike/`):
   Caddy (TLS-ALPN ACME, слушает 10.20.10.20:443) → spike-витрина
-  (node:22-alpine, `BASE_URL=https://coinslot.nuanu.ai`); UFW открыт 443
+  (node:22-alpine, `BASE_URL=https://historical-project.nuanu.ai`); UFW открыт 443
   из vswitch-сети. Caddy ретраит ACME до применения маршрута — по
   задокументированному прецеденту vibe.nuanu.ai.
 
 2026-08-25, продолжение: infra#283 смержен; DNS применился автоматически
 (gated-apply в CI), ansible-плейбук применён (changed=3 → повторно changed=0),
 Caddy получил LE-сертификат прямо в acceptance-окне плейбука. Витрина публично
-жива: https://coinslot.nuanu.ai/catalog.
+жива: https://historical-project.nuanu.ai/catalog.
 
 **Валидация пройдена**: официальный validate дал `valid=true`, 25/25 чеков,
 `simulation=accepted` по всем 4 ресурсам — но только после апгрейда wire-формата
@@ -307,7 +311,7 @@ Challenge несёт декларацию одним заголовком, и з
       вердикт «settled, not yet listed» с хешем транзакции и числом обходов —
       это и есть замер по этому вопросу.
 - [ ] Как быстро «eventually removed» на практике?
-- [ ] Стратегия доменов: один домен Coinslot (риск down-weight как shared?)
+- [ ] Стратегия доменов: один домен historical-project (риск down-weight как shared?)
       vs сабдомен на мерчанта — что считает «shared domain» ранкер?
 - [ ] Монетизация платформы при direct payTo мерчанту: markup в цене? свой
       фасилитатор? (в backlog, не для пилота)

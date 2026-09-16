@@ -61,7 +61,7 @@ const asMerchant = { authorization: `Bearer ${KEY}` };
 const PAY_TO = "0x0000000000000000000000000000000000000001";
 
 /** The name the session cookie travels under. */
-const COOKIE = "coinslot.session_token";
+const COOKIE = "agentify.session_token";
 
 /** The person whose account every test in this file signs in as. */
 const PERSON = "dmitry@example.com";
@@ -920,21 +920,6 @@ describe("getting into the cabinet", () => {
     // already holding, which is the one the gateway has just stopped taking. So
     // signing in again cannot be the advice.
     expect(readable(after.html)).toMatch(/signing in again does not help/i);
-  });
-
-  it("clears the old cookie that used to hold a live merchant key", async () => {
-    // Everybody who ever signed into the previous cabinet has one of these in
-    // their browser, and it is a working API key. Nothing reads it any more, so
-    // leaving it would merely be untidy — except that what it holds is the
-    // credential this whole decision exists to get out of browsers.
-    const { browser } = await started();
-
-    const gate = await browser.get("/sign-in");
-
-    expect(gate.headers.getSetCookie().join(" ")).toContain("coinslot_key=;");
-    // And the identifier the old cabinet issued, which nothing answers to any
-    // more. Left alone it is a value every browser keeps sending forever.
-    expect(gate.headers.getSetCookie().join(" ")).toContain("coinslot_session=;");
   });
 
   it("turns away a sign-in posted from another site", async () => {
@@ -3246,7 +3231,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
 
   it("lets a merchant in whatever the terminator in front of it says about the scheme", async () => {
     // The failure this pins happened on the first real deployment, and it made
-    // the site unusable: a browser signing in at https://coinslot.nuanu.ai was
+    // the site unusable: a browser signing in at the public HTTPS origin was
     // told its form came from somewhere else. The check used to build the
     // origin it expected out of `X-Forwarded-Proto`, so whatever is in front
     // decided whether a merchant could sign in, and when that header did not

@@ -677,7 +677,7 @@ export class PostgresStore implements Store {
     try {
       const taken = await client.query<{ got: boolean }>(
         "select pg_try_advisory_lock(hashtext($1)) as got",
-        [`coinslot.${name}`],
+        [`agentify.${name}`],
       );
       if (taken.rows[0]?.got !== true) {
         return { ran: false };
@@ -699,7 +699,7 @@ export class PostgresStore implements Store {
         // could not be released has usually been released already, by the
         // backend going away, which is also what broke the connection.
         try {
-          await client.query("select pg_advisory_unlock(hashtext($1))", [`coinslot.${name}`]);
+          await client.query("select pg_advisory_unlock(hashtext($1))", [`agentify.${name}`]);
         } catch (thrown) {
           console.error(`[gateway] could not let go of ${name}`, thrown);
           // And the connection goes with the failure, which is the only thing

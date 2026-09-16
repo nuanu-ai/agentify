@@ -7,7 +7,7 @@
  * --wait postgres` brings one up — and skips itself with a sentence saying so
  * when there is none.
  *
- * The database it runs against is `coinslot_test`, which is this suite's own
+ * The database it runs against is `agentify_commerce_test`, which is this suite's own
  * and not the one the stack runs on: see `testing/database.ts` for what
  * happened when they were the same.
  *
@@ -28,7 +28,7 @@
  * The queue's own promises — the delayed reminder, the retry after a handler
  * throws, the window after which an unanswered delivery is taken back — are
  * next door in `pgboss/queue.db-test.ts`. They cannot be checked here: this
- * file starts a gateway, a started gateway has a worker on `coinslot_reminders`
+ * file starts a gateway, a started gateway has a worker on `agentify_reminders`
  * already, and a test that waits for its own second consumer to be handed the
  * job is waiting for the queue to do the wrong thing.
  */

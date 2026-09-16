@@ -12,7 +12,7 @@ import { loadConfig } from "./config.js";
 
 /** What a deployment has to set for the cabinet to be able to do anything. */
 const REQUIRED = {
-  DATABASE_URL: "postgres://coinslot:coinslot@postgres:5432/coinslot",
+  DATABASE_URL: "postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_commerce",
   AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
   PAYMENT_NETWORK: "eip155:84532",
   FACILITATOR_URL: "sandbox:scripted",
@@ -65,7 +65,7 @@ describe("what the cabinet will not start without", () => {
 
 describe("the cabinet is told which stack it is in front of", () => {
   const required = {
-    DATABASE_URL: "postgres://coinslot@localhost:5432/coinslot",
+    DATABASE_URL: "postgres://agentify_commerce@localhost:5432/agentify_commerce",
     AUTH_SECRET: "a-secret-that-is-at-least-thirty-two-characters",
     PAYMENT_NETWORK: "eip155:84532",
     FACILITATOR_URL: "sandbox:scripted",
@@ -214,7 +214,7 @@ describe("where the cabinet's two messages go", () => {
         given({
           MAIL_URL: "https://api.resend.com",
           MAIL_FROM: "Agentify <no-reply@mail.example.com>",
-          PUBLIC_BASE_URL: "https://agentify.example.com",
+          PUBLIC_BASE_URL: "https://agentify.example",
         }),
       ),
     ).toThrow(/MAIL_API_KEY/);
@@ -223,7 +223,7 @@ describe("where the cabinet's two messages go", () => {
         given({
           MAIL_URL: "https://api.resend.com",
           MAIL_API_KEY: "re_a_real_looking_key",
-          PUBLIC_BASE_URL: "https://agentify.example.com",
+          PUBLIC_BASE_URL: "https://agentify.example",
         }),
       ),
     ).toThrow(/MAIL_FROM/);
@@ -251,14 +251,14 @@ describe("where the cabinet's two messages go", () => {
         MAIL_URL: "https://api.resend.com",
         MAIL_API_KEY: "re_a_real_looking_key",
         MAIL_FROM: "Agentify <no-reply@mail.example.com>",
-        PUBLIC_BASE_URL: "https://agentify.example.com/",
+        PUBLIC_BASE_URL: "https://agentify.example/",
       }),
     );
 
     expect(config.mailUrl).toBe("https://api.resend.com");
     // The trailing slash comes off, because a path is joined onto this and two
     // slashes in the middle of a link is a link somebody has to think about.
-    expect(config.publicBaseUrl).toBe("https://agentify.example.com");
+    expect(config.publicBaseUrl).toBe("https://agentify.example");
   });
 });
 
@@ -271,7 +271,8 @@ describe("what the configuration says about itself", () => {
       try {
         loadConfig({
           ...given({ PORT: "no" }),
-          DATABASE_URL: "postgres://coinslot:s3cret-database-password@postgres:5432/coinslot",
+          DATABASE_URL:
+            "postgres://agentify_commerce:s3cret-database-password@postgres:5432/agentify_commerce",
         });
         return "";
       } catch (error) {

@@ -16,7 +16,7 @@
  * key is one a cabinet may sign in with, so the address of the gateway has to
  * be there too:
  *
- *   DATABASE_URL=postgres://coinslot:coinslot@localhost:5432/coinslot \
+ *   DATABASE_URL=postgres://agentify_commerce:agentify_commerce@localhost:5432/agentify_commerce \
  *   GATEWAY_URL=http://localhost:8080 \
  *     pnpm --filter @agentify/commerce-cabinet account list
  *

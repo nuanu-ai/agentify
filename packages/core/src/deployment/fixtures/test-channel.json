@@ -1,15 +1,15 @@
 {
-  "name": "two-environments",
+  "name": "agentify-test",
   "networks": {
     "default": {
-      "name": "two-environments_default",
+      "name": "agentify-test_default",
       "ipam": {}
     }
   },
   "services": {
     "cabinet": {
       "build": {
-        "context": "/Users/dmitry/Dev/coinslot/.claude/worktrees/two-environments",
+        "context": "/workspace/agentify",
         "dockerfile": "deploy/Dockerfile.app"
       },
       "command": [
@@ -34,10 +34,10 @@
       },
       "entrypoint": null,
       "environment": {
-        "AUTH_SECRET": "not-the-secret-written-in-this-repository-either",
+        "AUTH_SECRET": "fixture-auth-secret",
         "BASE_PATH": "/cabinet",
         "COOKIE_SECURE": "true",
-        "DATABASE_URL": "postgres://coinslot:coinslot@postgres:5432/coinslot",
+        "DATABASE_URL": "postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_commerce",
         "FACILITATOR_URL": "https://x402.org/facilitator",
         "GATEWAY_URL": "http://gateway:3000",
         "MAIL_API_KEY": "",
@@ -45,7 +45,7 @@
         "MAIL_URL": "sandbox:log",
         "PAYMENT_NETWORK": "eip155:84532",
         "PORT": "3001",
-        "PUBLIC_BASE_URL": "https://test.coinslot.nuanu.ai"
+        "PUBLIC_BASE_URL": "https://test.agentify.ad"
       },
       "healthcheck": {
         "test": [
@@ -59,7 +59,7 @@
         "retries": 15,
         "start_period": "15s"
       },
-      "image": "coinslot-app",
+      "image": "agentify-test-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "networks": {
         "default": null
       },
@@ -67,7 +67,7 @@
     },
     "gateway": {
       "build": {
-        "context": "/Users/dmitry/Dev/coinslot/.claude/worktrees/two-environments",
+        "context": "/workspace/agentify",
         "dockerfile": "deploy/Dockerfile.app"
       },
       "command": [
@@ -90,14 +90,14 @@
       "environment": {
         "CDP_API_KEY_ID": "",
         "CDP_API_KEY_SECRET": "",
-        "DATABASE_URL": "postgres://coinslot:coinslot@postgres:5432/coinslot",
+        "DATABASE_URL": "postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_commerce",
         "FACILITATOR_URL": "https://x402.org/facilitator",
         "PAYMENT_NETWORK": "eip155:84532",
         "PAY_TO_ADDRESS": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
         "PORT": "3000",
-        "PUBLIC_BASE_URL": "https://test.coinslot.nuanu.ai",
-        "REGISTRATION_INVITATION": "",
-        "SANDBOX_MERCHANT_KEY": "csk_test_not-the-one-in-this-repository"
+        "PUBLIC_BASE_URL": "https://test.agentify.ad",
+        "REGISTRATION_INVITATION": "fixture-invitation",
+        "SANDBOX_MERCHANT_KEY": "csk_test_fixture-deployment-key"
       },
       "healthcheck": {
         "test": [
@@ -111,7 +111,7 @@
         "retries": 15,
         "start_period": "15s"
       },
-      "image": "coinslot-app",
+      "image": "agentify-test-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "networks": {
         "default": null
       },
@@ -119,7 +119,7 @@
     },
     "migrate": {
       "build": {
-        "context": "/Users/dmitry/Dev/coinslot/.claude/worktrees/two-environments",
+        "context": "/workspace/agentify",
         "dockerfile": "deploy/Dockerfile.app"
       },
       "command": [
@@ -134,9 +134,9 @@
       },
       "entrypoint": null,
       "environment": {
-        "DATABASE_URL": "postgres://coinslot:coinslot@postgres:5432/coinslot"
+        "DATABASE_URL": "postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_commerce"
       },
-      "image": "coinslot-app",
+      "image": "agentify-test-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "networks": {
         "default": null
       },
@@ -146,14 +146,14 @@
       "command": null,
       "entrypoint": null,
       "environment": {
-        "POSTGRES_DB": "coinslot",
-        "POSTGRES_PASSWORD": "coinslot",
-        "POSTGRES_USER": "coinslot"
+        "POSTGRES_DB": "agentify_commerce",
+        "POSTGRES_PASSWORD": "agentify_commerce",
+        "POSTGRES_USER": "agentify_commerce"
       },
       "healthcheck": {
         "test": [
           "CMD-SHELL",
-          "pg_isready -U coinslot -d coinslot"
+          "pg_isready -U agentify_commerce -d agentify_commerce"
         ],
         "timeout": "3s",
         "interval": "2s",
@@ -167,13 +167,13 @@
       "volumes": [
         {
           "type": "volume",
-          "source": "coinslot-postgres",
+          "source": "agentify-postgres",
           "target": "/var/lib/postgresql/data",
           "volume": {}
         },
         {
           "type": "bind",
-          "source": "/Users/dmitry/Dev/coinslot/.claude/worktrees/two-environments/deploy/postgres-init",
+          "source": "/workspace/agentify/deploy/postgres-init",
           "target": "/docker-entrypoint-initdb.d",
           "read_only": true,
           "bind": {}
@@ -182,7 +182,7 @@
     },
     "web": {
       "build": {
-        "context": "/Users/dmitry/Dev/coinslot/.claude/worktrees/two-environments",
+        "context": "/workspace/agentify",
         "dockerfile": "deploy/Dockerfile.web"
       },
       "command": null,
@@ -198,10 +198,10 @@
       },
       "entrypoint": null,
       "environment": {
-        "COINSLOT_SITE_ADDRESS": "test.coinslot.nuanu.ai",
-        "COINSLOT_SURFACE_MODE": "test"
+        "AGENTIFY_SITE_ADDRESS": "test.agentify.ad",
+        "AGENTIFY_SURFACE_MODE": "test"
       },
-      "image": "coinslot-web",
+      "image": "agentify-test-web:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "networks": {
         "default": null
       },
@@ -218,7 +218,7 @@
       "volumes": [
         {
           "type": "volume",
-          "source": "coinslot-caddy",
+          "source": "agentify-caddy",
           "target": "/data",
           "volume": {}
         }
@@ -226,11 +226,13 @@
     }
   },
   "volumes": {
-    "coinslot-caddy": {
-      "name": "two-environments_coinslot-caddy"
+    "agentify-caddy": {
+      "name": "agentify-test-caddy",
+      "external": true
     },
-    "coinslot-postgres": {
-      "name": "two-environments_coinslot-postgres"
+    "agentify-postgres": {
+      "name": "agentify-test-postgres",
+      "external": true
     }
   },
   "x-app": {
@@ -238,7 +240,7 @@
       "context": ".",
       "dockerfile": "deploy/Dockerfile.app"
     },
-    "image": "coinslot-app",
+    "image": "agentify-test-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "restart": "unless-stopped"
   }
 }

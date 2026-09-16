@@ -24,12 +24,12 @@ describe("release image retention", () => {
   let root: string;
 
   beforeEach(() => {
-    root = mkdtempSync(join(tmpdir(), "coinslot-release-retention-"));
+    root = mkdtempSync(join(tmpdir(), "agentify-release-retention-"));
     home = join(root, "home");
     dockerLog = join(root, "docker.log");
-    const deployment = join(home, "coinslot-test");
+    const deployment = join(home, "agentify-test");
     environmentFile = join(deployment, ".env");
-    marker = join(deployment, ".coinslot-revision");
+    marker = join(deployment, ".agentify-revision");
     const payload = join(root, "payload");
     archive = join(root, "release.tar");
 
@@ -38,6 +38,7 @@ describe("release image retention", () => {
     writeFileSync(environmentFile, "TEST_ONLY=true\n", { mode: 0o600 });
     writeFileSync(join(payload, "compose.yaml"), "services: {}\n");
     writeFileSync(join(payload, "deploy", "compose.public.yaml"), "services: {}\n");
+    writeFileSync(join(payload, "deploy", "compose.agentify-test.yaml"), "services: {}\n");
     writeFileSync(join(payload, "deploy", "smoke-paths"), "/healthz\n");
 
     const packed = spawnSync("tar", ["-cf", archive, "-C", payload, "."], {
@@ -76,8 +77,7 @@ describe("release image retention", () => {
       .split("\n")
       .filter((line) => line.startsWith("image prune"));
     expect(pruneCalls).toEqual([
-      "image prune -a -f --filter until=24h --filter label=com.docker.compose.project=coinslot ",
-      "image prune -a -f --filter until=24h --filter label=com.docker.compose.project=coinslot-test ",
+      "image prune -a -f --filter until=24h --filter label=com.docker.compose.project=agentify-test ",
     ]);
   });
 
@@ -85,8 +85,7 @@ describe("release image retention", () => {
     const result = runRelease(true);
 
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stderr).toContain("image retention failed for coinslot");
-    expect(result.stderr).toContain("image retention failed for coinslot-test");
+    expect(result.stderr).toContain("image retention failed for agentify-test");
     expect(readFileSync(marker, "utf8")).toBe(`release-test ${REVISION} status=origin-verified\n`);
   });
 });

@@ -15,6 +15,6 @@ with paths baked in; release-retention.test.ts sets them:
 
   FAKE_DOCKER_LOG        every docker argument list is appended here
   FAKE_ENV_FILE          the server .env path `stat` expects to be asked about
-  FAKE_MARKER            the .coinslot-revision file `docker image prune` reads
+  FAKE_MARKER            the .agentify-revision file `docker image prune` reads
   FAKE_VERIFIED_MARKER   the exact marker line that must be in it by then
   FAKE_PRUNE_FAILURE     "1" makes `docker image prune` fail

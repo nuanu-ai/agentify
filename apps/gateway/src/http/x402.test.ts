@@ -56,7 +56,7 @@ describe("what an agent is asked to pay", () => {
         cdpApiKeyId: null,
         cdpApiKeySecret: null,
       },
-      "https://coinslot.example",
+      "https://agentify.example",
       300,
     );
 
@@ -467,7 +467,7 @@ describe("the discovery declaration a challenge carries", () => {
         cdpApiKeyId: null,
         cdpApiKeySecret: null,
       },
-      "https://coinslot.example",
+      "https://agentify.example",
       300,
     );
 
@@ -490,7 +490,7 @@ describe("the discovery declaration a challenge carries", () => {
     // resource identity is what a listing is keyed on: two spellings would be
     // two listings, or one that flickers between them.
     expect(challenge({ serviceName: null }).resource.url).toBe(
-      "https://coinslot.example/x402/itm_4d21bb/purchase",
+      "https://agentify.example/x402/itm_4d21bb/purchase",
     );
   });
 
@@ -728,7 +728,7 @@ describe("the shape a live validation once accepted", () => {
         cdpApiKeyId: null,
         cdpApiKeySecret: null,
       },
-      "https://coinslot.example",
+      "https://agentify.example",
       300,
     );
     const decoded = decodePaymentRequiredHeader(

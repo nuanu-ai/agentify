@@ -205,7 +205,7 @@ export const createTheOrderInTheShop = async (
   }
 
   const body = {
-    payment_method: "coinslot",
+    payment_method: "agentify",
     payment_method_title: "Agentify",
     // The shop stores this string without checking it, and shows it on the
     // order screen — so it is our own order identifier, which is the one thread
@@ -214,7 +214,7 @@ export const createTheOrderInTheShop = async (
     set_paid: true,
     currency: sold.price.currency,
     billing: { email: sold.email },
-    meta_data: [{ key: "coinslot_order_id", value: sold.orderId }],
+    meta_data: [{ key: "agentify_order_id", value: sold.orderId }],
     line_items: [
       {
         product_id: productId,

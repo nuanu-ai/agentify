@@ -136,7 +136,7 @@ import { createClient } from "@nuanu-ai/agentify";
 
 const client = createClient({
   apiKey: "merchant_key_for_typechecking_only",
-  baseUrl: "https://coinslot.example",
+  baseUrl: "https://agentify.example",
 });
 
 void client;
@@ -241,13 +241,6 @@ contains "the entry point imports and its exports are callable" \
   "client=function" "$imported"
 contains "the check runs on a real card" "complete=true" "$imported"
 contains "the check reads a card written short" "short=true" "$imported"
-
-set +e
-legacy_import="$(node --input-type=module -e 'await import("@nuanu-ai/coinslot")' 2>&1)"
-legacy_code=$?
-set -e
-check "the old package is not installed as a compatibility alias" "1" "$legacy_code"
-contains "the old import is absent" "Cannot find package '@nuanu-ai/coinslot'" "$legacy_import"
 
 echo
 echo "Step 4 of the quickstart: the installed Agentify command"

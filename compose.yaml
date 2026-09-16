@@ -18,7 +18,7 @@
 # behind on the first query.
 #
 # The suite that needs a real database runs against a database of its own,
-# `coinslot_test`, on this same server. It needs the server and nothing else
+# `agentify_commerce_test`, on this same server. It needs the server and nothing else
 # from this file:
 #
 #   docker compose up -d --wait postgres
@@ -29,8 +29,9 @@
 # six of these. Nothing needs to be set for the suite to find its database — it
 # makes it if it is not there — as long as the server is on the 5432 this file
 # publishes it on. A host that publishes it somewhere else names it in
-# COINSLOT_TEST_DATABASE_URL, which the suite reads from the command rather than
-# from the `.env` below. Pointing either that or DATABASE_URL at `coinslot` is
+# AGENTIFY_TEST_DATABASE_URL, which the suite reads from the command rather than
+# from the `.env` below. Pointing either that or DATABASE_URL at
+# `agentify_commerce` is
 # refused rather than obeyed, because that is the database the cabinet is
 # showing and this suite empties what it is given.
 #
@@ -68,22 +69,22 @@
 # as its default, and a deployment sets them in a `.env` beside this file rather
 # than editing a copy of it — the same shape deploy/Caddyfile already uses.
 #
-#   COINSLOT_SITE_ADDRESS   what Caddy listens on            :8080
-#   COINSLOT_PUBLIC_ORIGIN  what a browser types             http://localhost:8080
-#   COINSLOT_WEB_PUBLISH    the published port of the door   8080:8080
-#   COINSLOT_COOKIE_SECURE  Secure on the session cookie     false
-#   COINSLOT_FACILITATOR_URL  how payments are facilitated   sandbox:scripted
-#   COINSLOT_PAYMENT_NETWORK  the chain payments use         eip155:84532
+#   AGENTIFY_SITE_ADDRESS   what Caddy listens on            :8080
+#   AGENTIFY_PUBLIC_ORIGIN  what a browser types             http://localhost:8080
+#   AGENTIFY_WEB_PUBLISH    the published port of the door   8080:8080
+#   AGENTIFY_COOKIE_SECURE  Secure on the session cookie     false
+#   AGENTIFY_FACILITATOR_URL  how payments are facilitated   sandbox:scripted
+#   AGENTIFY_PAYMENT_NETWORK  the chain payments use         eip155:84532
 #   CDP_API_KEY_ID             Coinbase facilitator key ID   absent
 #   CDP_API_KEY_SECRET         Coinbase facilitator secret   absent
-#   COINSLOT_SURFACE_MODE     what the static pages say       sandbox
-#   COINSLOT_MERCHANT_KEY   the key the mock merchant        csk_test_local-sandbox-merchant-key
+#   AGENTIFY_SURFACE_MODE     what the static pages say       sandbox
+#   AGENTIFY_MERCHANT_KEY   the key the mock merchant        csk_test_local-sandbox-merchant-key
 #                           sells with
-#   COINSLOT_SEED_KEY       the key the gateway writes at    csk_test_local-sandbox-merchant-key
+#   AGENTIFY_SEED_KEY       the key the gateway writes at    csk_test_local-sandbox-merchant-key
 #                           start-up, or nothing at all
-#   COINSLOT_INVITATION     the code registration is         register-on-this-laptop
+#   AGENTIFY_INVITATION     the code registration is         register-on-this-laptop
 #                           behind, or nothing at all
-#   COINSLOT_POSTGRES_PUBLISH  the published port of the     5432:5432
+#   AGENTIFY_POSTGRES_PUBLISH  the published port of the     5432:5432
 #                           database, or a narrower bind
 #
 # The first three move together and there is no arithmetic between them: an
@@ -92,7 +93,7 @@
 # has already made once — a challenge naming a door that answers nothing — so
 # they are written next to each other in one file where the mismatch is visible.
 #
-# On a host reached over https, COINSLOT_COOKIE_SECURE must be "true", and the
+# On a host reached over https, AGENTIFY_COOKIE_SECURE must be "true", and the
 # key must not be the one printed above: it is in a repository, and a merchant
 # key opens that merchant's cards, orders and receipts.
 #
@@ -116,20 +117,20 @@
 # disabled, and a database brought up from nothing is seeded off that same line
 # again. That is the reason to stop seeding once nothing presents that key any
 # more — once whatever sells on that host has a key of its own, issued with
-# `merchant key` and put in COINSLOT_MERCHANT_KEY, the deployment sets seeding
+# `merchant key` and put in AGENTIFY_MERCHANT_KEY, the deployment sets seeding
 # to nothing:
 #
-#   COINSLOT_SEED_KEY=
+#   AGENTIFY_SEED_KEY=
 #
 # The gateway reads a name set to nothing as a name never set, and says at
 # start-up which of the two it did.
 #
-# COINSLOT_INVITATION is the code somebody has to type to register a merchant
+# AGENTIFY_INVITATION is the code somebody has to type to register a merchant
 # here (ADR-0014 §3). On a laptop it is a word in this file, so `docker compose
 # up` gives a stack anybody can sign up on; a deployment hands out a code of its
 # own, and a deployment that wants no registrations at all sets it to nothing:
 #
-#   COINSLOT_INVITATION=
+#   AGENTIFY_INVITATION=
 #
 # The gateway then refuses every registration, in the same words and the same
 # status a wrong code gets — so the form is not a way of asking whether
@@ -145,7 +146,7 @@ x-app: &app
   build:
     context: .
     dockerfile: deploy/Dockerfile.app
-  image: "${COINSLOT_APP_IMAGE:-coinslot-app}"
+  image: "${AGENTIFY_APP_IMAGE:-agentify-commerce-app}"
   restart: unless-stopped
 
 services:
@@ -153,13 +154,13 @@ services:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: coinslot
-      POSTGRES_PASSWORD: coinslot
-      POSTGRES_DB: coinslot
+      POSTGRES_USER: agentify_commerce
+      POSTGRES_PASSWORD: agentify_commerce
+      POSTGRES_DB: agentify_commerce
     ports:
       # Published so that `pnpm test:db` and a psql from the terminal reach this
       # server. They reach a different database on it: the suite empties what it
-      # is given, and `coinslot` is what the cabinet is showing.
+      # is given, and `agentify_commerce` is what the cabinet is showing.
       #
       # A deployment binds it to the loopback instead — `127.0.0.1:55432:5432`
       # — because the password above is in a repository and nothing off the host
@@ -167,12 +168,12 @@ services:
       # an empty entry rather than dropping it, so the variable always names a
       # mapping and a deployment's answer is a narrower one. A suite run from a
       # terminal on such a host is told the port it moved to in
-      # COINSLOT_TEST_DATABASE_URL; the release script runs it inside this
+      # AGENTIFY_TEST_DATABASE_URL; the release script runs it inside this
       # network, where the port above is not involved at all.
-      - "${COINSLOT_POSTGRES_PUBLISH:-5432:5432}"
+      - "${AGENTIFY_POSTGRES_PUBLISH:-5432:5432}"
     volumes:
-      - coinslot-postgres:/var/lib/postgresql/data
-      # Makes `coinslot_test` beside `coinslot` on a volume that is new. On one
+      - agentify-postgres:/var/lib/postgresql/data
+      # Makes `agentify_commerce_test` beside `agentify_commerce` on a volume that is new. On one
       # that is not — which is every volume that has ever run this stack —
       # Postgres does not look at this directory at all, and the suite makes its
       # own database instead. See deploy/postgres-init/01-test-database.sql.
@@ -180,7 +181,7 @@ services:
     healthcheck:
       # The gateway's first query is what would otherwise discover that the
       # server is up and the database is not ready yet.
-      test: ["CMD-SHELL", "pg_isready -U coinslot -d coinslot"]
+      test: ["CMD-SHELL", "pg_isready -U agentify_commerce -d agentify_commerce"]
       interval: 2s
       timeout: 3s
       retries: 15
@@ -197,7 +198,7 @@ services:
     <<: *app
     command: ["pnpm", "db:migrate"]
     environment:
-      DATABASE_URL: postgres://coinslot:coinslot@postgres:5432/coinslot
+      DATABASE_URL: postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_commerce
     depends_on:
       postgres:
         condition: service_healthy
@@ -207,7 +208,7 @@ services:
     <<: *app
     command: ["pnpm", "--filter", "@agentify/commerce-gateway", "start"]
     environment:
-      DATABASE_URL: postgres://coinslot:coinslot@postgres:5432/coinslot
+      DATABASE_URL: postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_commerce
       PORT: "3000"
       # The key this sandbox comes up selling with. Keys are rows in the
       # database (ADR-0010), and this is not one the gateway compares anything
@@ -230,7 +231,7 @@ services:
       # The dash carries no colon on purpose: `${VAR-default}` gives the default
       # only when nobody named the variable, so a deployment naming it with
       # nothing after it gets nothing rather than the sandbox's key back.
-      SANDBOX_MERCHANT_KEY: "${COINSLOT_SEED_KEY-csk_test_local-sandbox-merchant-key}"
+      SANDBOX_MERCHANT_KEY: "${AGENTIFY_SEED_KEY-csk_test_local-sandbox-merchant-key}"
       # The code that stands in the door of registration. Nobody registering has
       # a key yet, so this is what is between a stranger who finds the hostname
       # and a merchant of their own — and the catalogue is one across merchants,
@@ -242,7 +243,7 @@ services:
       # `${VAR-default}` gives the default only when nobody named the variable,
       # so a deployment naming it with nothing after it takes no registrations
       # rather than getting this word back.
-      REGISTRATION_INVITATION: "${COINSLOT_INVITATION-register-on-this-laptop}"
+      REGISTRATION_INVITATION: "${AGENTIFY_INVITATION-register-on-this-laptop}"
       # The address an agent is sent back to in order to pay, which is the door
       # Caddy answers and not the port this process listens on. Given the
       # process's own port here, a payment challenge would name a door that is
@@ -256,7 +257,7 @@ services:
       # the port at all — the origin is https on 443 and the host publishes
       # whatever it publishes — which is why a deployment names the origin
       # itself rather than a number this line does arithmetic on.
-      PUBLIC_BASE_URL: "${COINSLOT_PUBLIC_ORIGIN:-http://localhost:${COINSLOT_HOST_PORT:-8080}}"
+      PUBLIC_BASE_URL: "${AGENTIFY_PUBLIC_ORIGIN:-http://localhost:${AGENTIFY_HOST_PORT:-8080}}"
       # The laptop's values are the defaults, and they are the reason this is a
       # variable at all: no chain behind this stack (ADR-0008), so a purchase
       # completes here with no network, no wallet and no faucet. A public
@@ -264,8 +265,8 @@ services:
       # holds each channel to the pair it declared — because a test chain must
       # keep accepting the scripted facilitator, so the runtime cannot make
       # this check for itself.
-      FACILITATOR_URL: "${COINSLOT_FACILITATOR_URL:-sandbox:scripted}"
-      PAYMENT_NETWORK: "${COINSLOT_PAYMENT_NETWORK:-eip155:84532}"
+      FACILITATOR_URL: "${AGENTIFY_FACILITATOR_URL:-sandbox:scripted}"
+      PAYMENT_NETWORK: "${AGENTIFY_PAYMENT_NETWORK:-eip155:84532}"
       # Absent on a laptop and on the test site, which settle through
       # facilitators that ask for nothing, and required on a live chain, where
       # the gateway refuses to start without both (ADR-0008). The dash carries
@@ -316,7 +317,7 @@ services:
       # (ADR-0009). The same server and the same database as the gateway's, and
       # nothing about a merchant's data — every card, order and receipt on every
       # screen still comes from the API.
-      DATABASE_URL: postgres://coinslot:coinslot@postgres:5432/coinslot
+      DATABASE_URL: postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_commerce
       # What signs a merchant's session cookie. The component behind the sign-in
       # ships a fallback of its own, and a deployment that leans on it signs
       # sessions with a value out of somebody else's public source — so the
@@ -325,7 +326,7 @@ services:
       # every other secret here is in this file; a deployment sets its own.
       # Changing it signs everybody out and does nothing worse: an account is
       # reached again by signing in.
-      AUTH_SECRET: "${COINSLOT_AUTH_SECRET:-a-sandbox-secret-nobody-should-reuse-anywhere}"
+      AUTH_SECRET: "${AGENTIFY_AUTH_SECRET:-a-sandbox-secret-nobody-should-reuse-anywhere}"
       # The address a merchant reaches this cabinet at, which is what the links
       # in a confirmation or a password reset are built on. Nothing else needs
       # it — every link on every page is relative — but a message is read on
@@ -335,7 +336,7 @@ services:
       # base path. A deployment that sends real mail and leaves this at the
       # laptop's answer is refused at startup, because every link it sent would
       # point at the reader's own computer.
-      PUBLIC_BASE_URL: "${COINSLOT_PUBLIC_ORIGIN:-http://localhost:${COINSLOT_HOST_PORT:-8080}}"
+      PUBLIC_BASE_URL: "${AGENTIFY_PUBLIC_ORIGIN:-http://localhost:${AGENTIFY_HOST_PORT:-8080}}"
       # How a message leaves, or that it does not. `sandbox:log` writes every
       # message into this service's log with its recipient and its link, so the
       # whole path — register, confirm, lose a password, set a new one — is
@@ -348,8 +349,8 @@ services:
       # The same two its gateway reads. The cabinet gives them no defaults of
       # its own and refuses to start without them; these lines are what a
       # compose deployment hands it.
-      FACILITATOR_URL: "${COINSLOT_FACILITATOR_URL:-sandbox:scripted}"
-      PAYMENT_NETWORK: "${COINSLOT_PAYMENT_NETWORK:-eip155:84532}"
+      FACILITATOR_URL: "${AGENTIFY_FACILITATOR_URL:-sandbox:scripted}"
+      PAYMENT_NETWORK: "${AGENTIFY_PAYMENT_NETWORK:-eip155:84532}"
       # There is no merchant key here, and its absence is the point rather than
       # an omission. The cabinet used to be given one and use it for the life of
       # the process, so every screen showed that merchant's money whoever was
@@ -362,7 +363,7 @@ services:
       # Secure cookie is never sent back and nobody can sign in at all. Anywhere
       # the cabinet is reached over https this is "true", and a server that
       # leaves it off is handing a merchant's session to anybody on the path.
-      COOKIE_SECURE: "${COINSLOT_COOKIE_SECURE:-false}"
+      COOKIE_SECURE: "${AGENTIFY_COOKIE_SECURE:-false}"
       # Its own process, reaching the gateway over the same public API a
       # merchant's own code uses (ADR-0005 §2) — this is the service name on the
       # internal network, not the origin a browser types.
@@ -420,7 +421,7 @@ services:
       # "MERCHANT_API_KEY is not set … there is no default for it" — which is
       # what a deployment that emptied the variable should get, rather than the
       # key printed in this file quietly selling on a server.
-      MERCHANT_API_KEY: "${COINSLOT_MERCHANT_KEY-csk_test_local-sandbox-merchant-key}"
+      MERCHANT_API_KEY: "${AGENTIFY_MERCHANT_KEY-csk_test_local-sandbox-merchant-key}"
     depends_on:
       gateway:
         condition: service_healthy
@@ -498,14 +499,14 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile.web
-    image: "${COINSLOT_WEB_IMAGE:-coinslot-web}"
+    image: "${AGENTIFY_WEB_IMAGE:-agentify-commerce-web}"
     restart: unless-stopped
     ports:
       # The host side is a variable because a laptop is not ours alone: an ssh
       # tunnel or another project can already hold 8080, and a tunnel bound to
       # 127.0.0.1 wins over Docker's wildcard for anything typed as localhost —
       # so the stack looks broken while being perfectly healthy. Set
-      # COINSLOT_HOST_PORT to move it; the inside of the network never changes.
+      # AGENTIFY_HOST_PORT to move it; the inside of the network never changes.
       #
       # It moves the stack and nothing else. The buy command above runs on the
       # host rather than in this file and reads none of these variables: it goes
@@ -518,18 +519,18 @@ services:
       # is a hostname, and the host side is one interface rather than every one
       # — `10.20.10.20:443:443` is a door open to the edge that passes SNI to it
       # and to nothing else on the machine.
-      - "${COINSLOT_WEB_PUBLISH:-${COINSLOT_HOST_PORT:-8080}:8080}"
+      - "${AGENTIFY_WEB_PUBLISH:-${AGENTIFY_HOST_PORT:-8080}:8080}"
     environment:
       # A bare port locally, which is what keeps Caddy's automatic HTTPS off; a
       # hostname on a server, which is what turns it on. deploy/Caddyfile says
       # why TLS-ALPN is the only challenge that can reach it here.
-      COINSLOT_SITE_ADDRESS: "${COINSLOT_SITE_ADDRESS:-:8080}"
+      AGENTIFY_SITE_ADDRESS: "${AGENTIFY_SITE_ADDRESS:-:8080}"
       # What the landing and the portal say about this stack. It is a variable
       # rather than a derivation because Caddy cannot read a CAIP-2 identifier
       # and cannot hold the list of chains (deploy/Caddyfile). Two fields can
       # disagree, so the release checks this one against the channel before
       # anything starts and against the rendered pages afterwards.
-      COINSLOT_SURFACE_MODE: "${COINSLOT_SURFACE_MODE:-sandbox}"
+      AGENTIFY_SURFACE_MODE: "${AGENTIFY_SURFACE_MODE:-sandbox}"
     volumes:
       # The landing and the routing are mounted over the copies baked into the
       # image so that editing either shows up on reload. The documentation is
@@ -542,7 +543,7 @@ services:
       # issuances: five for the same name in a week, and the sixth is refused
       # for the rest of it. Locally this directory stays empty — a bare port
       # runs no ACME at all.
-      - coinslot-caddy:/data
+      - agentify-caddy:/data
     # Waited for, but not required. Caddy in front of a process that has not
     # finished starting answers 502 to the first person who looks, so waiting
     # for a health check rather than for a container is right — and a service
@@ -564,5 +565,5 @@ services:
         required: false
 
 volumes:
-  coinslot-postgres:
-  coinslot-caddy:
+  agentify-postgres:
+  agentify-caddy:

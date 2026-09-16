@@ -1,13 +1,12 @@
-# Scanner database and Auth exit
+# Scanner database and Auth recovery rehearsal
 
-This procedure is prepared but has not been run against production. The current
-scanner web and worker, on `agentify.ad`, still use the original Supabase
-PostgreSQL and Supabase Auth. Commerce merchant data stays in the `coinslot`
-database of `agentify-commerce-postgres-1`. The scanner moves into a new
-`agentify_scanner` database on that same PostgreSQL 17 server, with the four
-existing scanner runtime role names and its own `public`, `pgboss`, `drizzle`
-and `metabase` schemas. Nothing in this procedure restores into `coinslot` or
-deletes the Supabase project.
+The scanner already runs from the separate `agentify_scanner` database and
+Better Auth. This document and its fail-closed playbooks remain as recovery and
+rehearsal evidence; they are not an instruction to repeat the production exit.
+Commerce merchant data stays in `agentify_commerce` after its namespace cutover.
+The scanner keeps its own `public`, `pgboss`, `drizzle`, and `metabase` schemas.
+Nothing here restores into `agentify_commerce` or deletes the retained Supabase
+project used for the bounded old-report recovery path.
 
 The currently observed live runtime is
 `b7cf3cecb5836465370e533463b8c56899005ba6`. The private-mode code bridge

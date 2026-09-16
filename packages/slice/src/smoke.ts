@@ -21,8 +21,8 @@
  * thing they guard against — signing a transfer nobody meant to send — is the
  * same.
  *
- *   COINSLOT_SMOKE=1 SMOKE_BUYER_KEY=0x… SMOKE_PAY_TO=0x… pnpm smoke
- *   COINSLOT_SMOKE=1 SMOKE_BUYER_KEY=0x… SMOKE_PAY_TO=0x… \
+ *   AGENTIFY_SMOKE=1 SMOKE_BUYER_KEY=0x… SMOKE_PAY_TO=0x… pnpm smoke
+ *   AGENTIFY_SMOKE=1 SMOKE_BUYER_KEY=0x… SMOKE_PAY_TO=0x… \
  *     CDP_API_KEY_ID=… CDP_API_KEY_SECRET=… pnpm smoke --confirm
  *
  * The first is a dry run: it boots the gateway, publishes the card, reads the
@@ -119,9 +119,9 @@ async function main(): Promise<void> {
 
   // --- the gates: any one of them refuses the run ---------------------------
 
-  if (process.env.COINSLOT_SMOKE !== "1") {
+  if (process.env.AGENTIFY_SMOKE !== "1") {
     die(
-      "set COINSLOT_SMOKE=1 to run the smoke — it touches the network and, with --confirm, moves testnet money",
+      "set AGENTIFY_SMOKE=1 to run the smoke — it touches the network and, with --confirm, moves testnet money",
     );
   }
 
@@ -287,7 +287,7 @@ async function main(): Promise<void> {
 // The run starts only where somebody typed the command. This file is now also
 // a module — `spending-gate.test.ts` asks `whyNotThisNetwork` what it thinks of
 // a chain — and a run that began on import would meet its own first gate,
-// COINSLOT_SMOKE, refuse, and take the importing process down with it through
+// AGENTIFY_SMOKE, refuse, and take the importing process down with it through
 // the exit below. `bootstrap.ts` buys the same separation by being a different
 // file from the command it runs; here one line does it.
 //

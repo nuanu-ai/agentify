@@ -176,7 +176,7 @@
       when: not ansible_check_mode
     - name: Observe target PostgreSQL major without changing commerce
       ansible.builtin.command:
-        argv: [docker, exec, agentify-commerce-postgres-1, psql, -U, coinslot, -d, coinslot, -At, -v, ON_ERROR_STOP=1, -c, "select current_setting('server_version_num')::int / 10000"]
+        argv: [docker, exec, agentify-commerce-postgres-1, psql, -U, agentify_commerce, -d, agentify_commerce, -At, -v, ON_ERROR_STOP=1, -c, "select current_setting('server_version_num')::int / 10000"]
       register: target_major_preflight
       changed_when: false
       check_mode: false

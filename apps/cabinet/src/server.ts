@@ -86,18 +86,6 @@ import { type CatalogueRead, catalogueOf } from "./woo-shop.js";
 import type { WooShops } from "./woo-shops.js";
 
 /**
- * The cookies the cabinet used to keep something live in.
- *
- * Nothing reads either any more. `coinslot_key` held a merchant key, which is
- * the credential ADR-0009 exists to get out of browsers, and `coinslot_session`
- * held an identifier of a kind this cabinet no longer issues. Both are cleared
- * at the sign-in, because that is the page everybody who used the old cabinet
- * lands on next, and a value a browser keeps sending forever is one more thing
- * in every request that means nothing.
- */
-const RETIRED = ["coinslot_key", "coinslot_session"];
-
-/**
  * How long the cabinet waits on the gateway for its own key, per call.
  *
  * Shorter than the deadline every screen gets, and that is the whole reason
@@ -549,12 +537,6 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   }
 
   app.get(`${base}/sign-in`, async (request, response) => {
-    // Cleared here rather than anywhere else, because this is the one page
-    // everybody who used the old cabinet lands on next.
-    for (const name of RETIRED) {
-      response.clearCookie(name, { path: cookiePath });
-    }
-
     if ((await identity.whoIs(request.headers.cookie)) !== null) {
       response.redirect(303, `${base}/cards`);
       return;
@@ -1810,8 +1792,8 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
  * of `X-Forwarded-Proto` and refused an origin that disagreed, and its own
  * comment said what that would cost: over https with a terminator that sets
  * nothing, every form post on the site is refused. On the first real
- * deployment that is what happened — a browser signing in at
- * `https://coinslot.nuanu.ai` was told its form came from somewhere else, while
+ * deployment that is what happened — a browser signing in at the public HTTPS
+ * origin was told its form came from somewhere else, while
  * the identical request from a command line was let through. That difference
  * was never explained; what it showed is that the scheme half of this check
  * turns a header set by whatever is in front into a merchant who cannot reach

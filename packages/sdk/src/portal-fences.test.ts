@@ -197,7 +197,7 @@ interface Compilation {
  * exactly what an excerpt does.
  */
 const compile = (examples: readonly Example[]): Compilation => {
-  const directory = mkdtempSync(join(tmpdir(), "coinslot-fences-"));
+  const directory = mkdtempSync(join(tmpdir(), "agentify-fences-"));
 
   try {
     writeFileSync(join(directory, "package.json"), JSON.stringify({ type: "module" }));

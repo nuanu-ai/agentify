@@ -48,7 +48,7 @@ const card = (id: string): CatalogPage["items"][number] => ({
 const challengeNaming = (method: string): string =>
   encodePaymentRequiredHeader({
     x402Version: 2,
-    resource: { url: "https://coinslot.example/x402/itm_1/purchase" },
+    resource: { url: "https://agentify.example/x402/itm_1/purchase" },
     accepts: [],
     extensions: { bazaar: { info: { input: { method, bodyType: "json" } } } },
   });
@@ -104,10 +104,10 @@ describe("asking the catalog whether it would take our resources", () => {
       answers: () => accepted,
     });
 
-    expect(await run.run("https://coinslot.example")).toBe(0);
+    expect(await run.run("https://agentify.example")).toBe(0);
     expect(run.asked).toStrictEqual([
-      "POST https://coinslot.example/x402/itm_1/purchase",
-      "POST https://coinslot.example/x402/itm_2/purchase",
+      "POST https://agentify.example/x402/itm_1/purchase",
+      "POST https://agentify.example/x402/itm_2/purchase",
     ]);
     expect(run.text()).toContain(
       "All 4 probes over the 2 products this catalog listed were accepted.",
@@ -117,8 +117,8 @@ describe("asking the catalog whether it would take our resources", () => {
   it("asks about the products it was named rather than the whole catalog", async () => {
     const run = aRun({ answers: () => accepted });
 
-    expect(await run.run("https://coinslot.example", "itm_9")).toBe(0);
-    expect(run.asked).toStrictEqual(["POST https://coinslot.example/x402/itm_9/purchase"]);
+    expect(await run.run("https://agentify.example", "itm_9")).toBe(0);
+    expect(run.asked).toStrictEqual(["POST https://agentify.example/x402/itm_9/purchase"]);
   });
 
   it("does not let a trailing slash make a second address for one product", async () => {
@@ -127,9 +127,9 @@ describe("asking the catalog whether it would take our resources", () => {
     // other.
     const run = aRun({ answers: () => accepted });
 
-    await run.run("https://coinslot.example/", "itm_9");
+    await run.run("https://agentify.example/", "itm_9");
 
-    expect(run.asked[0]).toBe("POST https://coinslot.example/x402/itm_9/purchase");
+    expect(run.asked[0]).toBe("POST https://agentify.example/x402/itm_9/purchase");
   });
 
   it("reports a refusal as a refusal and prints what was said", async () => {
@@ -141,7 +141,7 @@ describe("asking the catalog whether it would take our resources", () => {
       }),
     });
 
-    expect(await run.run("https://coinslot.example")).toBe(1);
+    expect(await run.run("https://agentify.example")).toBe(1);
     expect(run.text()).toContain("refused");
     expect(run.text()).toContain("1 of 2 probes were refused");
     // The endpoint's own words, whole. What it checks is theirs and changes
@@ -158,7 +158,7 @@ describe("asking the catalog whether it would take our resources", () => {
       answers: () => ({ kind: "unreachable", why: "fetch failed: ENOTFOUND" }),
     });
 
-    expect(await run.run("https://coinslot.example")).toBe(1);
+    expect(await run.run("https://agentify.example")).toBe(1);
     expect(run.text()).toContain("no verdict");
     expect(run.text()).toContain("1 of 2 probes got no verdict, so nothing is proven about them");
     expect(run.text()).not.toContain("were accepted");
@@ -170,7 +170,7 @@ describe("asking the catalog whether it would take our resources", () => {
       answers: () => ({ kind: "answered", status: 503, body: "<html>upstream</html>" }),
     });
 
-    expect(await run.run("https://coinslot.example")).toBe(1);
+    expect(await run.run("https://agentify.example")).toBe(1);
     expect(run.text()).toContain("the endpoint answered 503");
     expect(run.text()).not.toContain("were accepted");
   });
@@ -182,7 +182,7 @@ describe("asking the catalog whether it would take our resources", () => {
       answers: () => ({ kind: "answered", status: 200, body: { status: "ok" } }),
     });
 
-    expect(await run.run("https://coinslot.example")).toBe(1);
+    expect(await run.run("https://agentify.example")).toBe(1);
     expect(run.text()).toContain("no verdict");
   });
 
@@ -193,7 +193,7 @@ describe("asking the catalog whether it would take our resources", () => {
       answers: () => ({ kind: "answered", status: 200, body: { valid: "true" } }),
     });
 
-    expect(await run.run("https://coinslot.example")).toBe(1);
+    expect(await run.run("https://agentify.example")).toBe(1);
   });
 
   it("knocks on the door itself, with the plain unpaid GET an agent's own fetch is", async () => {
@@ -202,8 +202,8 @@ describe("asking the catalog whether it would take our resources", () => {
     // reading the resource by hand sends. One did, on 2026-09-10.
     const run = aRun({ answers: () => accepted });
 
-    expect(await run.run("https://coinslot.example")).toBe(0);
-    expect(run.knocked).toStrictEqual(["GET https://coinslot.example/x402/itm_1/purchase"]);
+    expect(await run.run("https://agentify.example")).toBe(0);
+    expect(run.knocked).toStrictEqual(["GET https://agentify.example/x402/itm_1/purchase"]);
     expect(run.text()).toContain("All 2 probes");
   });
 
@@ -216,7 +216,7 @@ describe("asking the catalog whether it would take our resources", () => {
       door: () => ({ kind: "answered", status: 200, challenge: null }),
     });
 
-    expect(await run.run("https://coinslot.example")).toBe(1);
+    expect(await run.run("https://agentify.example")).toBe(1);
     expect(run.text()).toContain("refused");
     expect(run.text()).toContain("1 of 2 probes were refused");
   });
@@ -231,7 +231,7 @@ describe("asking the catalog whether it would take our resources", () => {
       door: () => ({ kind: "answered", status: 402, challenge: challengeNaming("GET") }),
     });
 
-    expect(await run.run("https://coinslot.example")).toBe(1);
+    expect(await run.run("https://agentify.example")).toBe(1);
     expect(run.text()).toContain("1 of 2 probes were refused");
   });
 
@@ -245,13 +245,13 @@ describe("asking the catalog whether it would take our resources", () => {
         status: 402,
         challenge: encodePaymentRequiredHeader({
           x402Version: 2,
-          resource: { url: "https://coinslot.example/x402/itm_1/purchase" },
+          resource: { url: "https://agentify.example/x402/itm_1/purchase" },
           accepts: [],
         }),
       }),
     });
 
-    expect(await run.run("https://coinslot.example")).toBe(1);
+    expect(await run.run("https://agentify.example")).toBe(1);
     expect(run.text()).toContain("1 of 2 probes were refused");
   });
 
@@ -265,7 +265,7 @@ describe("asking the catalog whether it would take our resources", () => {
       door: () => ({ kind: "unreachable", why: "fetch failed: ECONNREFUSED" }),
     });
 
-    expect(await run.run("https://coinslot.example")).toBe(1);
+    expect(await run.run("https://agentify.example")).toBe(1);
     expect(run.text()).toContain("no verdict");
     expect(run.text()).toContain("1 of 2 probes got no verdict");
     expect(run.text()).toContain("ECONNREFUSED");
@@ -282,7 +282,7 @@ describe("asking the catalog whether it would take our resources", () => {
       door: () => ({ kind: "answered", status: 402, challenge: "not a challenge" }),
     });
 
-    expect(await run.run("https://coinslot.example")).toBe(1);
+    expect(await run.run("https://agentify.example")).toBe(1);
     expect(run.text()).toContain("1 of 2 probes were refused");
     expect(run.text()).toContain("would not decode");
   });
@@ -293,7 +293,7 @@ describe("asking the catalog whether it would take our resources", () => {
       door: () => ({ kind: "answered", status: 402, challenge: null }),
     });
 
-    expect(await run.run("https://coinslot.example")).toBe(1);
+    expect(await run.run("https://agentify.example")).toBe(1);
     expect(run.text()).toContain("1 of 2 probes were refused");
     expect(run.text()).toContain("set no PAYMENT-REQUIRED header");
   });
@@ -307,7 +307,7 @@ describe("asking the catalog whether it would take our resources", () => {
           : { kind: "unreachable", why: "timed out" },
     });
 
-    expect(await run.run("https://coinslot.example")).toBe(1);
+    expect(await run.run("https://agentify.example")).toBe(1);
     expect(run.text()).toContain("1 of 4 probes got no verdict");
     expect(run.text()).toContain("1 of 4 probes were refused");
   });
@@ -324,8 +324,8 @@ describe("asking the catalog whether it would take our resources", () => {
       answers: () => accepted,
     });
 
-    expect(await run.run("https://coinslot.example")).toBe(1);
-    expect(run.asked).toStrictEqual(["POST https://coinslot.example/x402/itm_2/purchase"]);
+    expect(await run.run("https://agentify.example")).toBe(1);
+    expect(run.asked).toStrictEqual(["POST https://agentify.example/x402/itm_2/purchase"]);
     expect(run.text()).toContain("no address could be built");
   });
 
@@ -335,7 +335,7 @@ describe("asking the catalog whether it would take our resources", () => {
     // person running this most needs to be told.
     const run = aRun({ catalog: { items: [] } });
 
-    expect(await run.run("https://coinslot.example")).toBe(1);
+    expect(await run.run("https://agentify.example")).toBe(1);
     expect(run.text()).toContain("nothing to check");
     expect(run.asked).toStrictEqual([]);
   });
@@ -343,7 +343,7 @@ describe("asking the catalog whether it would take our resources", () => {
   it("reports a catalog it could not read rather than checking nothing quietly", async () => {
     const run = aRun({ catalog: new Error("connect ECONNREFUSED") });
 
-    expect(await run.run("https://coinslot.example")).toBe(1);
+    expect(await run.run("https://agentify.example")).toBe(1);
     expect(run.text()).toContain("ECONNREFUSED");
     expect(run.text()).toContain("Nothing was checked.");
   });
@@ -356,13 +356,13 @@ describe("asking the catalog whether it would take our resources", () => {
     // wrong.
     const run = aRun({ answers: () => accepted });
 
-    expect(await run.run("https://coinslot.example/?utm=abc")).toBe(2);
+    expect(await run.run("https://agentify.example/?utm=abc")).toBe(2);
     expect(run.text()).toContain("query");
     expect(run.asked).toStrictEqual([]);
     expect(run.knocked).toStrictEqual([]);
 
     const hashed = aRun({ answers: () => accepted });
-    expect(await hashed.run("https://coinslot.example/#top")).toBe(2);
+    expect(await hashed.run("https://agentify.example/#top")).toBe(2);
     expect(hashed.text()).toContain("fragment");
     expect(hashed.asked).toStrictEqual([]);
   });
@@ -383,7 +383,7 @@ describe("asking the catalog whether it would take our resources", () => {
   it("says nothing of the kind about an https address", async () => {
     const run = aRun({ answers: () => accepted });
 
-    await run.run("https://coinslot.example", "itm_1");
+    await run.run("https://agentify.example", "itm_1");
 
     expect(run.text()).not.toContain("not an https address");
   });

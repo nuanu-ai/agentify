@@ -51,7 +51,7 @@ jobs:
       - run: pnpm build:commerce
 
       # test:db stays outside this free, deterministic gate. It runs against the
-      # deployment host's own `coinslot_test` database before activation.
+      # deployment host's own `agentify_commerce_test` database before activation.
 
   # The portal keeps a separate gate because its rendered examples are a
   # distinct release promise. It installs from the same workspace lockfile.

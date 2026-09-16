@@ -275,7 +275,7 @@
     - name: Refuse pg-boss jobs still active after worker graceful stop
       ansible.builtin.shell: |
         set -euo pipefail
-        docker exec -i agentify-commerce-postgres-1 psql -U coinslot -d agentify_scanner -At -v ON_ERROR_STOP=1 \
+        docker exec -i agentify-commerce-postgres-1 psql -U agentify_commerce -d agentify_scanner -At -v ON_ERROR_STOP=1 \
           < {{ (stage_dir ~ '/scanner-queue-active.sql') | quote }}
       args:
         executable: /bin/bash
@@ -292,7 +292,7 @@
     - name: Require frozen old lead/report rows are still unchanged before additive migration
       ansible.builtin.shell: |
         set -euo pipefail
-        docker exec -i agentify-commerce-postgres-1 psql -U coinslot -d agentify_scanner -At -F '|' -v ON_ERROR_STOP=1 \
+        docker exec -i agentify-commerce-postgres-1 psql -U agentify_commerce -d agentify_scanner -At -F '|' -v ON_ERROR_STOP=1 \
           < {{ (stage_dir ~ '/scanner-auth-continuity.sql') | quote }} > {{ (stage_dir ~ '/before-auth.continuity') | quote }}
         cmp {{ (auth_window_dir ~ '/pre-auth.continuity') | quote }} {{ (stage_dir ~ '/before-auth.continuity') | quote }}
       args:
@@ -374,7 +374,7 @@
     - name: Refuse any old lead field or report-session row changed by migration
       ansible.builtin.shell: |
         set -euo pipefail
-        docker exec -i agentify-commerce-postgres-1 psql -U coinslot -d agentify_scanner -At -F '|' -v ON_ERROR_STOP=1 \
+        docker exec -i agentify-commerce-postgres-1 psql -U agentify_commerce -d agentify_scanner -At -F '|' -v ON_ERROR_STOP=1 \
           < {{ (stage_dir ~ '/scanner-auth-continuity.sql') | quote }} > {{ (stage_dir ~ '/after-auth.continuity') | quote }}
         cmp {{ (auth_window_dir ~ '/pre-auth.continuity') | quote }} {{ (stage_dir ~ '/after-auth.continuity') | quote }}
       args:

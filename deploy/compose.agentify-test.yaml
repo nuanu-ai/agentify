@@ -5,4 +5,14 @@ services:
     ports: !override
       - "10.20.10.20:8443:443"
     environment:
-      COINSLOT_SITE_ADDRESS: "test.agentify.ad"
+      AGENTIFY_SITE_ADDRESS: "test.agentify.ad"
+
+# Test keeps its own data. These names appear only after the staged namespace
+# cutover has restored and verified the retained test database and Caddy state.
+volumes:
+  agentify-postgres:
+    external: true
+    name: agentify-test-postgres
+  agentify-caddy:
+    external: true
+    name: agentify-test-caddy

@@ -1,7 +1,14 @@
 # Walking the WooCommerce Connect flow by hand
 
+Operational examples below use the current Agentify identifiers. Product names
+and synthetic identifiers in recorded historical output have been normalized
+to match; this is not evidence of a new execution of the renamed stand.
+Other measured values are retained. Original transcripts remain in Git history.
+A pre-existing local stand must be handled separately; changing its Compose
+project name does not migrate its WordPress data.
+
 This is the runbook for one person at a laptop: bring up a WooCommerce shop and
-a Coinslot stack, connect the two through the cabinet, import the shop's
+a Agentify stack, connect the two through the cabinet, import the shop's
 catalogue, buy one of its products as an agent, and find the paid order in
 wp-admin. Every command below was run in this order on a clean stand, and the
 outputs quoted are what came back.
@@ -53,11 +60,11 @@ Three things it changed, all of them the laptop rather than the product:
   in `README.md` as artefacts of the laboratory.
 
 The shop is now at **https://localhost:8443**, and wp-admin at
-**https://localhost:8443/wp-admin** (`admin` / `coinslot-dev-admin`). The
+**https://localhost:8443/wp-admin** (`admin` / `agentify-dev-admin`). The
 certificate is self-signed, so the browser asks once. Sign in there now — the
 grant screen later needs your shop session.
 
-## 2. The Coinslot stack
+## 2. The Agentify stack
 
 From the root of the checkout:
 
@@ -82,7 +89,7 @@ trusted so that it can read the shop:
 
 ```sh
 NODE_EXTRA_CA_CERTS=$PWD/spikes/woo/var/certs/shop-cert.pem \
-DATABASE_URL=postgres://coinslot:coinslot@localhost:5432/coinslot \
+DATABASE_URL=postgres://agentify_commerce:agentify_commerce@localhost:5432/agentify_commerce \
 GATEWAY_URL=http://localhost:8080 \
 PUBLIC_BASE_URL=https://cabinet \
 COOKIE_SECURE=true \
@@ -132,7 +139,7 @@ the first is visible:
    report. If you want to see the refusal, set Settings → Permalinks to Plain in
    wp-admin and press Connect again: the page names the setting and sends you
    nowhere.
-2. Your browser goes to your shop's grant screen, which says what Coinslot is
+2. Your browser goes to your shop's grant screen, which says what Agentify is
    asking for. Press **Approve**.
 3. Your shop's own server posts the freshly minted key pair to the cabinet, and
    your browser comes back to a page that reads the connection rather than the
@@ -154,7 +161,7 @@ get through. Reload. After fifteen minutes the page stops waiting for that
 Connect, says no keys arrived in that time, and offers Connect again.
 
 The keys are now visible to you as the merchant, in your own shop, under
-WooCommerce → Settings → Advanced → REST API, named `Coinslot`.
+WooCommerce → Settings → Advanced → REST API, named `Agentify`.
 
 ## 6. Import the catalogue
 
@@ -220,11 +227,11 @@ has never heard of.
 
 **https://localhost:8443/wp-admin** → **WooCommerce → Orders**. The order is
 there, numbered as the agent was told, with the status `Processing`, the total
-`$25.00` and the payment method `Coinslot`.
+`$25.00` and the payment method `Agentify`.
 
 Open it. Two fields are worth reading:
 
-- **Transaction ID** is the Coinslot order identifier — `ord_e2bf32bc…` above.
+- **Transaction ID** is the Agentify order identifier — `ord_e2bf32bc…` above.
   It is the one thread between an order here and an order there, and it is what
   you search for if the two ever have to be reconciled by hand.
 - **Billing email** is your own account address, not the buyer's. Creating an
@@ -247,7 +254,7 @@ id               16
 status           processing
 currency         USD
 total            25.00
-payment_method   coinslot
+payment_method   agentify
 transaction_id   ord_e2bf32bcf0d24a459f9d0ce688bacccf
 date_paid        2026-09-14T07:57:09
 ```
@@ -258,7 +265,7 @@ And the same sale from the merchant's side, at **https://cabinet/orders**.
 
 ```sh
 cd spikes/woo && ./setup.sh --reset      # the shop, its volumes and its certificates
-cd ../.. && docker compose down          # the Coinslot stack
+cd ../.. && docker compose down          # the Agentify stack
 ```
 
 Stop the cabinet in its terminal. The `/etc/hosts` line is harmless and can

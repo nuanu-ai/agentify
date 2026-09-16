@@ -352,7 +352,7 @@ export const SEEDED_MERCHANT = { id: "the_merchant", name: "The pilot merchant" 
  *
  * It says what it is out loud on purpose: this name travels to a catalog, and
  * a listing that reads like a real seller is the one thing a sandbox must not
- * look like. `Coinslot sandbox` is right for the laptop, wrong for the test
+ * look like. `Agentify sandbox` is right for the laptop, wrong for the test
  * site, and wrong in a way that reaches strangers on the live one.
  *
  * A live stack is seeded with no name. A merchant with no name is off sale, so
@@ -363,9 +363,9 @@ export const SEEDED_MERCHANT = { id: "the_merchant", name: "The pilot merchant" 
 export function seededServiceNameFor(mode: SurfaceMode): string | null {
   switch (mode) {
     case "sandbox":
-      return "Coinslot sandbox";
+      return "Agentify sandbox";
     case "test":
-      return "Coinslot test site";
+      return "Agentify test site";
     case "live":
       return null;
     default: {

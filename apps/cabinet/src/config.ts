@@ -180,7 +180,7 @@ const environmentSchema = z.object({
    */
   PUBLIC_BASE_URL: z
     .string({ error: absentOrWrong("must be a string") })
-    .refine(isHttpUrl, "must be an address of the form https://agentify.example.com")
+    .refine(isHttpUrl, "must be an address of the form https://agentify.example")
     .default("http://localhost:3001")
     .transform((value) => value.replace(/\/+$/, "")),
 

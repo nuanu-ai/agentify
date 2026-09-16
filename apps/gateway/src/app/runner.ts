@@ -79,7 +79,7 @@ import type { Runtime } from "./runtime.js";
 import { purchaseOf, Waiting } from "./waiting.js";
 
 /** The queue's name for the daily sweep of what an order is still owed. */
-export const SWEEP_EFFECTS = "coinslot_sweep_effects";
+export const SWEEP_EFFECTS = "agentify_sweep_effects";
 
 /**
  * What is written down about the purchase alongside the machine's own order.

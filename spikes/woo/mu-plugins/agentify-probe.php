@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name: Coinslot probe instrument
+ * Plugin Name: Agentify probe instrument
  * Description: Records what the shop does on the way out — outbound HTTP, mail
  *              attempts — so the probes can cite evidence instead of guessing.
  *
@@ -9,7 +9,7 @@
  * it is gated behind a flag file so a probe can measure the difference:
  *
  *   /var/probe/allow-private-callback    Two things stand between this shop
- *     and the two receivers next to it — the probes' own, and the Coinslot
+ *     and the two receivers next to it — the probes' own, and the Agentify
  *     cabinet the demo runbook puts behind a terminator on this network — and
  *     both exist only because the whole stand is on one laptop:
  *       - wp_safe_remote_post() refuses a URL that resolves to a private
@@ -28,12 +28,12 @@
 
 defined( 'ABSPATH' ) || exit;
 
-const COINSLOT_PROBE_DIR = '/var/probe';
+const AGENTIFY_PROBE_DIR = '/var/probe';
 
-function coinslot_probe_append( $file, array $record ) {
+function agentify_probe_append( $file, array $record ) {
 	$record['at'] = gmdate( 'c' );
 	$line         = wp_json_encode( $record, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
-	@file_put_contents( COINSLOT_PROBE_DIR . '/' . $file, $line . "\n", FILE_APPEND | LOCK_EX );
+	@file_put_contents( AGENTIFY_PROBE_DIR . '/' . $file, $line . "\n", FILE_APPEND | LOCK_EX );
 }
 
 /**
@@ -50,7 +50,7 @@ add_action(
 			)
 			: array( 'status' => wp_remote_retrieve_response_code( $response ) );
 
-		coinslot_probe_append(
+		agentify_probe_append(
 			'http.jsonl',
 			array_merge(
 				array(
@@ -76,7 +76,7 @@ add_action(
 add_filter(
 	'pre_wp_mail',
 	function ( $short_circuit, $atts ) {
-		coinslot_probe_append(
+		agentify_probe_append(
 			'mail.jsonl',
 			array(
 				'event'   => 'attempted',
@@ -93,7 +93,7 @@ add_filter(
 add_action(
 	'wp_mail_succeeded',
 	function ( $mail_data ) {
-		coinslot_probe_append(
+		agentify_probe_append(
 			'mail.jsonl',
 			array(
 				'event'   => 'succeeded',
@@ -108,7 +108,7 @@ add_action(
 	'wp_mail_failed',
 	function ( $error ) {
 		$data = $error instanceof WP_Error ? $error->get_error_data() : array();
-		coinslot_probe_append(
+		agentify_probe_append(
 			'mail.jsonl',
 			array(
 				'event'   => 'failed',
@@ -124,7 +124,7 @@ add_action(
  * The two hosts on the stand that WordPress would otherwise refuse to reach,
  * and the certificate each of them is verified against.
  *
- * `callback` is the probes' key receiver. `cabinet` is the Coinslot cabinet as
+ * `callback` is the probes' key receiver. `cabinet` is the Agentify cabinet as
  * the demo runbook arranges it — a TLS terminator on this network in front of
  * the cabinet running on the laptop, which is where the wc-auth callback goes
  * when a person walks the flow by hand rather than running the probes.
@@ -132,7 +132,7 @@ add_action(
  * Nothing else in the shop is affected, and neither entry does anything at all
  * while the flag file is absent.
  */
-const COINSLOT_LOCAL_HOSTS = array(
+const AGENTIFY_LOCAL_HOSTS = array(
 	'callback' => '/var/certs/callback-cert.pem',
 	'cabinet'  => '/var/certs/cabinet-cert.pem',
 );
@@ -140,8 +140,8 @@ const COINSLOT_LOCAL_HOSTS = array(
 /**
  * The behaviour changes, and only while the flag file is present.
  */
-function coinslot_probe_local_callback_allowed() {
-	$path = COINSLOT_PROBE_DIR . '/allow-private-callback';
+function agentify_probe_local_callback_allowed() {
+	$path = AGENTIFY_PROBE_DIR . '/allow-private-callback';
 	// Without this, PHP's realpath cache can answer from up to realpath_cache_ttl
 	// seconds ago (120 by default), and the probe's first, deliberately
 	// unassisted attempt would silently inherit the previous run's allowance —
@@ -153,10 +153,10 @@ function coinslot_probe_local_callback_allowed() {
 add_filter(
 	'http_request_host_is_external',
 	function ( $is_external, $host, $url ) {
-		if ( ! isset( COINSLOT_LOCAL_HOSTS[ $host ] ) || ! coinslot_probe_local_callback_allowed() ) {
+		if ( ! isset( AGENTIFY_LOCAL_HOSTS[ $host ] ) || ! agentify_probe_local_callback_allowed() ) {
 			return $is_external;
 		}
-		coinslot_probe_append(
+		agentify_probe_append(
 			'http.jsonl',
 			array(
 				'url'  => $url,
@@ -174,10 +174,10 @@ add_filter(
 	'http_request_args',
 	function ( $args, $url ) {
 		$host = wp_parse_url( $url, PHP_URL_HOST );
-		if ( ! isset( COINSLOT_LOCAL_HOSTS[ $host ] ) || ! coinslot_probe_local_callback_allowed() ) {
+		if ( ! isset( AGENTIFY_LOCAL_HOSTS[ $host ] ) || ! agentify_probe_local_callback_allowed() ) {
 			return $args;
 		}
-		$cert = COINSLOT_LOCAL_HOSTS[ $host ];
+		$cert = AGENTIFY_LOCAL_HOSTS[ $host ];
 		if ( ! file_exists( $cert ) ) {
 			return $args;
 		}
@@ -185,7 +185,7 @@ add_filter(
 		// the bundled public CA list.
 		$args['sslverify']       = true;
 		$args['sslcertificates'] = $cert;
-		coinslot_probe_append(
+		agentify_probe_append(
 			'http.jsonl',
 			array(
 				'url'  => $url,

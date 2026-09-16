@@ -35,11 +35,11 @@ const aStore = () => new MemoryStore(countedIds());
 
 describe("the name a seeded merchant is listed under", () => {
   it("says sandbox out loud where nothing settles", () => {
-    expect(seededServiceNameFor("sandbox")).toBe("Coinslot sandbox");
+    expect(seededServiceNameFor("sandbox")).toBe("Agentify sandbox");
   });
 
   it("says test site where a test chain settles", () => {
-    expect(seededServiceNameFor("test")).toBe("Coinslot test site");
+    expect(seededServiceNameFor("test")).toBe("Agentify test site");
   });
 
   it("names a live stack nothing at all", () => {
@@ -63,7 +63,7 @@ describe("the name a seeded merchant is listed under", () => {
     const store = new MemoryStore(countedIds());
     await seedSandboxKey(store, countedIds(), "csk_test_a-key", 0, "test");
 
-    expect((await store.merchantById("the_merchant"))?.serviceName).toBe("Coinslot test site");
+    expect((await store.merchantById("the_merchant"))?.serviceName).toBe("Agentify test site");
   });
 });
 
@@ -220,7 +220,7 @@ describe("seeding the sandbox", () => {
     expect(seeded).toStrictEqual({
       kind: "issued",
       merchantId: SEEDED_MERCHANT.id,
-      listedAs: "Coinslot sandbox",
+      listedAs: "Agentify sandbox",
     });
     expect((await store.workingKey(keyDigest("the-sandbox-key")))?.merchantId).toBe(
       SEEDED_MERCHANT.id,
@@ -236,7 +236,7 @@ describe("seeding the sandbox", () => {
 
     await seedSandboxKey(store, countedIds(), "the-sandbox-key", 1_000, "sandbox");
 
-    expect((await store.merchantById(SEEDED_MERCHANT.id))?.serviceName).toBe("Coinslot sandbox");
+    expect((await store.merchantById(SEEDED_MERCHANT.id))?.serviceName).toBe("Agentify sandbox");
   });
 
   it("writes nothing the second time, so a restart is not a second key", async () => {

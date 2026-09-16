@@ -816,7 +816,7 @@ describe("what a presented value's prefix says", () => {
     expect(answered.status).toBe(401);
     const said = refusalIn(answered);
     expect(said.code).toBe("not_authorised");
-    expect(said.message).not.toContain("coinslot.nuanu.ai");
+    expect(said.message).not.toContain("agentify.ad");
   });
 
   it("turns away a key from before this change, whose digest is still in the database", async () => {

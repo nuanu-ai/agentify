@@ -12,7 +12,8 @@
  * afterwards either, which is the worst version of it — the evening is spent
  * looking for a bug in the cabinet.
  *
- * So the suite gets `coinslot_test` beside `coinslot`, on the same server, and
+ * So the suite gets `agentify_commerce_test` beside `agentify_commerce`, on the same
+ * server, and
  * takes it as its own.
  *
  * The database is created here rather than only by an init script on the
@@ -20,7 +21,7 @@
  * in `/docker-entrypoint-initdb.d` only when it initialises an empty data
  * directory, and the volume outlives `docker compose down`. Every developer who
  * has already run the stack — which is all of them — would find `pnpm test:db`
- * failing with "database coinslot_test does not exist" until somebody told them
+ * failing with "database agentify_commerce_test does not exist" until somebody told them
  * to destroy their volume. A safety change that arrives as a broken morning is
  * a safety change people work around. The init script is still there for a
  * fresh volume, so that a psql session finds the database without running the
@@ -30,13 +31,13 @@
 import { Pool } from "pg";
 
 /** The database this suite owns. */
-export const TEST_DATABASE = "coinslot_test";
+export const TEST_DATABASE = "agentify_commerce_test";
 
 /** The database the stack runs on, which this suite must never be given. */
-const THE_STACK_DATABASE = "coinslot";
+const THE_STACK_DATABASE = "agentify_commerce";
 
 /** Where the suite looks when nobody says otherwise. */
-export const DEFAULT_TEST_DATABASE_URL = `postgres://coinslot:coinslot@localhost:5432/${TEST_DATABASE}`;
+export const DEFAULT_TEST_DATABASE_URL = `postgres://agentify_commerce:agentify_commerce@localhost:5432/${TEST_DATABASE}`;
 
 /**
  * How a host that keeps its database somewhere else says so.
@@ -50,17 +51,18 @@ export const DEFAULT_TEST_DATABASE_URL = `postgres://coinslot:coinslot@localhost
  *
  * It is a name of its own rather than DATABASE_URL because DATABASE_URL is
  * already spoken for: it is what `db:migrate` and `account add` are handed, and
- * what it names for them is `coinslot` — the one database this suite refuses.
+ * what it names for them is `agentify_commerce` — the one database this suite
+ * refuses.
  * A variable with "test" in it cannot be mistaken for that one, so it is the
  * specific answer and wins when both are set.
  */
-const TEST_DATABASE_URL_VARIABLE = "COINSLOT_TEST_DATABASE_URL";
+const TEST_DATABASE_URL_VARIABLE = "AGENTIFY_TEST_DATABASE_URL";
 
 /** Postgres's own answer for "that database is not there". */
 const NO_SUCH_DATABASE = "3D000";
 
 /**
- * What the suite should run against: COINSLOT_TEST_DATABASE_URL when it names
+ * What the suite should run against: AGENTIFY_TEST_DATABASE_URL when it names
  * something, DATABASE_URL when it does and that one does not, and the suite's
  * own database on the laptop's port when neither says anything.
  *
@@ -95,7 +97,7 @@ export function testDatabaseUrl(
   if (database === "") {
     // Measured against postgres:17-alpine: an address that stops at the port,
     // and one ending in a bare slash, both connect to the database named after
-    // the user — `coinslot` on every stack this file is about. So an address
+    // the user — `agentify_commerce` on every stack this file is about. So an address
     // that looks finished is how the refusal above gets walked past.
     throw new Error(
       `${variable} stops at the server and names no database, and Postgres fills that in with the` +
@@ -114,7 +116,7 @@ export function testDatabaseUrl(
  * The two variables are read differently when they are set to nothing, and the
  * difference is which suite they belong to. DATABASE_URL is not this one's: an
  * unset variable and one emptied by a shell arrive the same way, and neither is
- * this suite's business, so both mean the default. COINSLOT_TEST_DATABASE_URL
+ * this suite's business, so both mean the default. AGENTIFY_TEST_DATABASE_URL
  * exists for nothing but this, and there is no run it could be describing when
  * it is empty — whoever set it is on a host where the default's localhost:5432
  * is the wrong server, so falling back there is either a connection error

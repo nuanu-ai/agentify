@@ -1,2 +1,2 @@
 #!/bin/sh
-printf '%s\n' '<html data-coinslot-surface="test"></html>'
+printf '%s\n' '<html data-agentify-surface="test"></html>'

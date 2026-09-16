@@ -40,8 +40,8 @@ not enable automatic delivery or release the subsequent naming-cleanup branch.
 The timer state and retained revision require separate verification on the host.
 
 The prepared public packages are `@nuanu-ai/agentify-contracts` and
-`@nuanu-ai/agentify`, with the `agentify` command. Releases under the old
-`@nuanu-ai/coinslot*` names remain immutable registry history; the new packages
+`@nuanu-ai/agentify`, with the `agentify` command. Releases under the former
+package names remain immutable registry history; the new packages
 do not export old names or install an old command. Preparing these names does
 not authorize their one-time npm bootstrap, a tag, or a workflow run. Those
 steps remain paused until Dmitry explicitly authorizes the registry release.

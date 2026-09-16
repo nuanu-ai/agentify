@@ -25,7 +25,7 @@ React PWA + Telegram Mini App, Supabase (auth + DB).
 Приём денег сегодня: USDT TRC20 (кошелёк), Telegram Stars, RUB-эквайринг
 (Lava: Card/SBP), крипто-инвойсы.
 
-## Ключевые факты для Coinslot
+## Ключевые факты для Agentify
 
 1. **Freeland уже agent-first по замыслу** — есть `skills/freeland/SKILL.md`,
    агентский гайд по API (`https://mf0.store/api`). Но:
@@ -38,7 +38,7 @@ React PWA + Telegram Mini App, Supabase (auth + DB).
 3. **Платёжная оркестрация провайдер-нейтральна**: контракт
    `capabilities → options (signed quote) → checkouts → status`, fail-closed,
    идемпотентность, immutable pricing snapshot. Архитектурно есть два пути:
-   x402 как новый payment method внутри этого контракта, либо Coinslot как
+   x402 как новый payment method внутри этого контракта, либо Agentify как
    внешняя витрина поверх выделенных SKU.
 4. **Кандидаты на первую x402-продажу** (не требуют аккаунта/KYC):
    - VPN: оплата → выдача WireGuard-конфига (чистая разовая сделка);
@@ -52,7 +52,7 @@ React PWA + Telegram Mini App, Supabase (auth + DB).
 
 - [ ] Готов ли Freeland продавать «без аккаунта» (эфемерная выдача ресурса по
       факту оплаты), или ресурс должен привязываться к какому-то владельцу?
-- [ ] Где граница Coinslot/Freeland: Coinslot — внешний шлюз-прокси или
+- [ ] Где граница Agentify/Freeland: Agentify — внешний шлюз-прокси или
       библиотека/сервис, который Freeland интегрирует у себя?
 - [ ] Юрисдикция/комплаенс: продажа eSIM/номеров анонимным агентам за
       стейблкоины — какие ограничения провайдеров (Yesim и др.)?

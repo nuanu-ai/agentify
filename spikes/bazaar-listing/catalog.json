@@ -1,5 +1,5 @@
 {
-  "comment": "Мок-каталог Coinslot: несколько мерчантов, у каждого свой payTo (non-custodial). Витрина целиком генерируется отсюда. serviceName/tags уходят в resource, их фасилитатор режет по printable ASCII (32 симв., ≤5 тегов). payTo — одноразовый seller-кошелёк спайка (buyer отдельный: CDP facilitator запрещает self-send). asset/assetMeta больше не задаём: официальный стек берёт дефолтный ассет сети (USDC на Base, EIP-712 name=USD Coin version=2).",
+  "comment": "Мок-каталог Agentify: несколько мерчантов, у каждого свой payTo (non-custodial). Витрина целиком генерируется отсюда. serviceName/tags уходят в resource, их фасилитатор режет по printable ASCII (32 симв., ≤5 тегов). payTo — одноразовый seller-кошелёк спайка (buyer отдельный: CDP facilitator запрещает self-send). asset/assetMeta больше не задаём: официальный стек берёт дефолтный ассет сети (USDC на Base, EIP-712 name=USD Coin version=2).",
   "defaults": {
     "network": "eip155:8453",
     "maxTimeoutSeconds": 300

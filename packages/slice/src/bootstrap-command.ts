@@ -47,9 +47,9 @@
  * Sepolia that settles and never appears is exactly the measurement, and the
  * verdict for it says so in as many words rather than reading as a fault.
  *
- *   COINSLOT_SMOKE=1 GATEWAY_URL=https://agentify.example \
+ *   AGENTIFY_SMOKE=1 GATEWAY_URL=https://agentify.example \
  *     SMOKE_BUYER_KEY=0x… pnpm smoke:bootstrap
- *   COINSLOT_SMOKE=1 GATEWAY_URL=https://agentify.example \
+ *   AGENTIFY_SMOKE=1 GATEWAY_URL=https://agentify.example \
  *     SMOKE_BUYER_KEY=0x… pnpm smoke:bootstrap itm_4d21bb --confirm
  *
  * The key is read from the environment and from nowhere else. It is never
@@ -526,7 +526,7 @@ const USAGE = [
   "It is read from the environment, and the key is never taken from a command",
   "line — ps shows those to everybody on the machine.",
   "",
-  "  COINSLOT_SMOKE=1        say out loud that this touches the network",
+  "  AGENTIFY_SMOKE=1        say out loud that this touches the network",
   "  GATEWAY_URL             the gateway to buy from",
   "  SMOKE_BUYER_KEY         the buyer's private key, 0x and 64 hex characters",
   `  SMOKE_MAX_USD           ceiling on one purchase (default $${DEFAULT_MAX_USD})`,
@@ -567,11 +567,11 @@ export function readSettings(
     };
   }
 
-  if (env.COINSLOT_SMOKE !== "1") {
+  if (env.AGENTIFY_SMOKE !== "1") {
     return {
       ok: false,
       why: [
-        "set COINSLOT_SMOKE=1 to run this — it touches the network and, with --confirm, spends real money.",
+        "set AGENTIFY_SMOKE=1 to run this — it touches the network and, with --confirm, spends real money.",
       ],
     };
   }

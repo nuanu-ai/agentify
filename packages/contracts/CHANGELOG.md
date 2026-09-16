@@ -1,4 +1,8 @@
-# @nuanu-ai/coinslot-contracts
+# Contracts release history
+
+These entries record releases published under the former package names.
+Version numbers and release facts are retained; former package and command
+identities are described generically. The original wording remains in Git history.
 
 ## 0.3.1
 
@@ -33,7 +37,7 @@
 ### Patch Changes
 
 - The package pages on npm say what the packages are. Nothing in the code
-  changes: the README of each package is rewritten for somebody meeting Coinslot
+  changes: the README of each package is rewritten for somebody meeting the product
   on the registry — what the merchant SDK sells and the two addresses it can be
   pointed at, and why the contracts package exists and who installs it directly —
   and both manifests gain a description written for the same reader, keywords,
@@ -63,7 +67,7 @@
   exported for the code above.
   
   A call with no failure branch of its own — publishing, `orders.get`,
-  `orders.list` — now throws `CoinslotError` with `code`, `route` and `retryable`
+  `orders.list` — now throws the SDK's named error class with `code`, `route` and `retryable`
   instead of a bare `Error`, under the same codes the order calls return. A client
   built wrong is still a `TypeError`.
   
@@ -74,8 +78,7 @@
   words, in place of the blanket `true` it used to claim.
   
   The verify command's internals (`runVerify`, `VERIFY_EXIT`, `NOT_JSON`,
-  `IDEMPOTENCY_IS_NOT_BUILDABLE`, `Say`) are no longer exported. Run the command
-  as `npx coinslot verify`; `checkCard` is what integration code calls.
+  `IDEMPOTENCY_IS_NOT_BUILDABLE`, `Say`) are no longer exported. Run the installed verification command; `checkCard` is what integration code calls.
   
   `CONTRACT_VERSION` is `"2"`. A worker on the previous version stops at its
   handshake against a gateway speaking this one, which is what that handshake is

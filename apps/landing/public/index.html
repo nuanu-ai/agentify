@@ -77,7 +77,7 @@
     </script>
   </head>
   <body class="page">
-    <!-- Which stack this is, rendered by Caddy from COINSLOT_SURFACE_MODE
+    <!-- Which stack this is, rendered by Caddy from AGENTIFY_SURFACE_MODE
          (deploy/Caddyfile, the `templates` directive). The delimiters are
          comment-shaped so that this file opened from disk shows text rather
          than a broken tag; the price is that such a copy shows both banners,
@@ -86,10 +86,10 @@
          The attribute is on every mode including the live one, and that is the
          point: an absence cannot tell a correct live page from a template that
          never ran. -->
-    <div data-coinslot-surface="<!--{{env `COINSLOT_SURFACE_MODE`}}-->">
-      <!--{{if eq (env "COINSLOT_SURFACE_MODE") "test"}}-->
+    <div data-agentify-surface="<!--{{env `AGENTIFY_SURFACE_MODE`}}-->">
+      <!--{{if eq (env "AGENTIFY_SURFACE_MODE") "test"}}-->
       <p class="surface-words">Test environment. Payments settle on Base Sepolia with test funds, and every order and receipt here is marked as a test. The live site is app.agentify.ad.</p>
-      <!--{{else if eq (env "COINSLOT_SURFACE_MODE") "sandbox"}}-->
+      <!--{{else if eq (env "AGENTIFY_SURFACE_MODE") "sandbox"}}-->
       <p class="surface-words">Sandbox. No chain stands behind this stack: every payment it accepts is pretend, nothing arrives at the address in a challenge, and no receipt it writes points at a transfer.</p>
       <!--{{end}}-->
     </div>

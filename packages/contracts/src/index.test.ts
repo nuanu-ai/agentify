@@ -229,9 +229,8 @@ describe("the contract as JSON Schema", () => {
     // readers furthest from us are the ones who cannot ask.
     const documents = toJsonSchemas();
 
-    expect(documents.card.$id).toBe(`urn:coinslot:contract:${CONTRACT_VERSION}:card`);
     for (const [name, document] of Object.entries(documents)) {
-      expect(document.$id, name).toContain(`:${CONTRACT_VERSION}:`);
+      expect(document.$id, name).toBe(`urn:agentify:contract:${CONTRACT_VERSION}:${name}`);
     }
   });
 

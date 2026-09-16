@@ -684,7 +684,7 @@ describe("a card as a discovery channel reads it", () => {
     bazaarDeclarationOf(CardSchema.parse(card), at);
 
   const at = {
-    url: "https://coinslot.example/x402/itm_4d21bb/purchase",
+    url: "https://agentify.example/x402/itm_4d21bb/purchase",
     serviceName: "The pilot merchant",
   };
 

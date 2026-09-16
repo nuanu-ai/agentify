@@ -163,7 +163,7 @@ if (complaints.length > 0) {
 // otherwise ship looking like a pass.
 const unmarked = builtPages(DIST).filter((page) => {
   const html = readFileSync(join(DIST, page), "utf8");
-  const marker = html.indexOf('data-coinslot-surface="');
+  const marker = html.indexOf('data-agentify-surface="');
   const app = html.indexOf('<div id="app"');
   return marker === -1 || app === -1 || marker > app;
 });

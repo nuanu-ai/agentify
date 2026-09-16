@@ -1,11 +1,15 @@
 # Метод покупки в объявлении на GET-пробе: эксперимент
 
+Примечание к архиву: прежние идентификаторы продукта в записях ниже
+обезличены как `historical-project`. Это исторические наблюдения,
+а не команды для текущего развёртывания и не повторный прогон Agentify.
+
 Дата: 2026-09-10. Повод: внешний покупатель (агент, платящий через MagicPay)
 прочитал discovery-объявление в ответе на GET и заплатил GET-ом. GET-ветка
 `purchase` в `apps/gateway/src/http/routes.ts` платёж не читает и всегда
 отвечает свежим 402, заказ не открылся, квитанции нет, резерв в $5 повис на
 стороне MagicPay. Диагноз покупателя лежит вне репозитория
-(`coinslot-vpn-payment-diagnosis-2026-09-10.md`); его вывод: объявление на
+(`historical-project-vpn-payment-diagnosis-2026-09-10.md`); его вывод: объявление на
 GET говорит `method: GET` без тела, а покупка — это POST с JSON-телом.
 
 ## Вопрос
@@ -23,7 +27,7 @@ GET говорит `method: GET` без тела, а покупка — это P
 - Спайк 04, п. 2: validate принимает поле `method`, и в списке чеков
   появляются условные вида `…method.matches_request`. Прошёл ли такой чек
   при расхождении объявленного метода с методом пробы — не записано.
-- 28.08.2026 (`00-open-questions.md`): GET-проба живого coinslot.nuanu.ai
+- 28.08.2026 (`00-open-questions.md`): GET-проба живого historical-project.nuanu.ai
   принята целиком; POST-проба отклонена, потому что валидатор шлёт POST без
   тела и получает 400.
 
@@ -50,12 +54,12 @@ GET говорит `method: GET` без тела, а покупка — это P
 
 ## Ход
 
-- Стенд: `https://test.coinslot.nuanu.ai`, до правки на ревизии
+- Стенд: `https://test.historical-project.nuanu.ai`, до правки на ревизии
   `16bfbe0005e1aa122ff970c876f3507b19368dbf`.
-- Команда: `pnpm smoke:listing https://test.coinslot.nuanu.ai`.
+- Команда: `pnpm smoke:listing https://test.historical-project.nuanu.ai`.
 - Правка: коммит `596a18d92f018e08f634c6cee340819b4c518f44`, стенд подтвердил
   ревизию (`status=origin-verified`), CI зелёный.
-- Запуск: 2026-09-10 ≈11:40Z, `pnpm smoke:listing https://test.coinslot.nuanu.ai`.
+- Запуск: 2026-09-10 ≈11:40Z, `pnpm smoke:listing https://test.historical-project.nuanu.ai`.
 
 ## Результат
 
@@ -163,7 +167,7 @@ GET-проба по эксперименту 1: провален только `m
 - Результат повтора, ревизия `ee007b3` (правило «счёт на что угодно
   неоплаченное»; сужение до «ничего или пустой документ» пришло коммитом
   позже и ответа валидатору не меняет — его форма и есть пустой документ):
-  `pnpm smoke:listing https://test.coinslot.nuanu.ai` — три POST-пробы из
+  `pnpm smoke:listing https://test.historical-project.nuanu.ai` — три POST-пробы из
   трёх `valid: true`, симуляция `accepted`, ни одного проваленного чека;
   `bazaar.info.input.method.matches_request`: «Declared method POST matches
   the probed method». Живая дверь на той же ревизии: GET → 402, объявлен

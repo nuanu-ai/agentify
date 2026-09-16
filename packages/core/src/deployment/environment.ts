@@ -1,7 +1,7 @@
 /**
  * Which environment a deployment is, derived from the chain it settles on.
  *
- * There is no `COINSLOT_ENV`. The chain is a field the gateway already takes,
+ * There is no `AGENTIFY_ENV`. The chain is a field the gateway already takes,
  * it holds one value, and a single field cannot disagree with itself — which
  * is the argument ADR-0008 made for the sandbox and the same one made again.
  * A flag beside the chain is a second field that survives a copied `.env`, can
@@ -155,7 +155,7 @@ export function environmentOfKeyPrefix(secret: string): Environment | null {
 }
 
 /** The attribute every surface carries, holding the mode it is rendering. */
-export const SURFACE_MARKER_ATTRIBUTE = "data-coinslot-surface";
+export const SURFACE_MARKER_ATTRIBUTE = "data-agentify-surface";
 
 /**
  * What each mode says to a reader, and nothing where there is nothing to warn

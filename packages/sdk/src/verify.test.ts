@@ -17,7 +17,7 @@ const validCard = {
 let directory: string | undefined;
 
 const fileHolding = (name: string, contents: unknown): string => {
-  directory ??= mkdtempSync(join(tmpdir(), "coinslot-verify-"));
+  directory ??= mkdtempSync(join(tmpdir(), "agentify-verify-"));
   const path = join(directory, name);
 
   writeFileSync(path, typeof contents === "string" ? contents : JSON.stringify(contents, null, 2));

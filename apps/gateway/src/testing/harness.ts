@@ -52,7 +52,7 @@ export const countedIds = (): Ids => {
 
 export const testConfig = (overrides: Record<string, string> = {}): GatewayConfig =>
   loadConfig({
-    DATABASE_URL: "postgres://coinslot@localhost:5432/coinslot",
+    DATABASE_URL: "postgres://agentify_commerce@localhost:5432/agentify_commerce",
     ...overrides,
   });
 

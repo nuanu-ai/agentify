@@ -13,7 +13,7 @@ HERE="$(pwd)"
 
 SHOP_URL="http://localhost:8088"
 ADMIN_USER="admin"
-ADMIN_PASS="coinslot-dev-admin"   # local stand only; see README
+ADMIN_PASS="agentify-dev-admin"   # local stand only; see README
 ADMIN_EMAIL="admin@example.test"
 
 say() { printf '\n=== %s\n' "$*"; }
@@ -71,7 +71,7 @@ if ! wp core is-installed 2>/dev/null; then
   say "installing WordPress"
   wp core install \
     --url="${SHOP_URL}" \
-    --title="Coinslot WooCommerce probe stand" \
+    --title="Agentify WooCommerce probe stand" \
     --admin_user="${ADMIN_USER}" \
     --admin_password="${ADMIN_PASS}" \
     --admin_email="${ADMIN_EMAIL}" \
@@ -116,15 +116,15 @@ have_sku() { printf '%s\n' "${existing_skus}" | grep -qx "$1"; }
 
 LONG_RU_DESC="Абонемент даёт право посещать территорию в течение календарного месяца с момента активации кода. Код приходит на указанную почту сразу после оплаты и активируется при первом проходе через турникет: с этого момента отсчитываются тридцать дней. Абонемент именной, передавать его третьим лицам нельзя, при входе может потребоваться документ. В стоимость входит доступ ко всем открытым площадкам, к зонам отдыха и к бесплатным мероприятиям расписания; отдельные мастер-классы, аренда оборудования и экскурсии с гидом оплачиваются отдельно по действующему прейскуранту. Возврат возможен, пока код не активирован; после первого прохода стоимость не возвращается и срок не продлевается, кроме случаев, когда территория закрыта по решению администрации. Часы работы и список открытых площадок публикуются на сайте и могут меняться в зависимости от сезона и погоды."
 
-if have_sku "coinslot-access-code"; then
-  echo "  coinslot-access-code already present"
+if have_sku "agentify-access-code"; then
+  echo "  agentify-access-code already present"
 else
   wp wc product create --user="${ADMIN_USER}" \
     --name="Access code" \
     --type=simple \
     --virtual=true \
     --downloadable=false \
-    --sku="coinslot-access-code" \
+    --sku="agentify-access-code" \
     --regular_price="5.00" \
     --status=publish \
     --description="A single-use access code delivered by email." \
@@ -132,14 +132,14 @@ else
     --porcelain
 fi
 
-if have_sku "coinslot-tote"; then
-  echo "  coinslot-tote already present"
+if have_sku "agentify-tote"; then
+  echo "  agentify-tote already present"
 else
   wp wc product create --user="${ADMIN_USER}" \
     --name="Canvas tote bag" \
     --type=simple \
     --virtual=false \
-    --sku="coinslot-tote" \
+    --sku="agentify-tote" \
     --regular_price="25.00" \
     --weight="0.3" \
     --manage_stock=true \
@@ -150,14 +150,14 @@ else
     --porcelain
 fi
 
-if have_sku "coinslot-abonement"; then
-  echo "  coinslot-abonement already present"
+if have_sku "agentify-abonement"; then
+  echo "  agentify-abonement already present"
 else
   wp wc product create --user="${ADMIN_USER}" \
     --name="Абонемент на месяц" \
     --type=simple \
     --virtual=true \
-    --sku="coinslot-abonement" \
+    --sku="agentify-abonement" \
     --regular_price="120.00" \
     --status=publish \
     --description="${LONG_RU_DESC}" \

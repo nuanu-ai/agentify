@@ -18,7 +18,7 @@ check_identity() {
 }
 
 if [ "${DATABASE_MODE:-local}" = "private" ]; then
-  check_identity coinslot "$ADMIN_DATABASE_URL"
+  check_identity agentify_commerce "$ADMIN_DATABASE_URL"
 else
   check_identity postgres "$ADMIN_DATABASE_URL"
 fi

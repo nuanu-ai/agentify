@@ -52,7 +52,7 @@ stack seeds, whose two cards the merchant process publishes and `pnpm buy`
 buys. Somebody who has just registered has no cards and no keys of their own,
 which is the truth about a merchant who has written no code yet (ADR-0014).
 
-If port 8080 is taken, `COINSLOT_HOST_PORT=8090 docker compose up` moves the
+If port 8080 is taken, `AGENTIFY_HOST_PORT=8090 docker compose up` moves the
 stack and nothing else — the buy command runs on the host and needs
 `GATEWAY_URL=http://localhost:8090 pnpm buy`.
 

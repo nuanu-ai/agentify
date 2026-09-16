@@ -234,7 +234,7 @@ describe("choosing a facilitator client for a configuration", () => {
     // purchase that can never complete.
     const rooted = facilitatorClientFor(
       loadConfig({
-        DATABASE_URL: "postgres://coinslot:secret@localhost:5432/coinslot",
+        DATABASE_URL: "postgres://agentify_commerce:secret@localhost:5432/agentify_commerce",
         FACILITATOR_URL: "https://api.cdp.coinbase.com./platform/v2/x402",
         CDP_API_KEY_ID: "an-api-key",
         CDP_API_KEY_SECRET: anApiKeySecret(),

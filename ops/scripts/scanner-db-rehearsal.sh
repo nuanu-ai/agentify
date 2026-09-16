@@ -13,20 +13,20 @@ chmod 700 "$tmp"
 docker run -d --name "$container" \
   --label com.docker.compose.project=scanner-exit-rehearsal \
   --label com.docker.compose.service=postgres \
-  -e POSTGRES_USER=coinslot -e POSTGRES_DB=coinslot \
+  -e POSTGRES_USER=agentify_commerce -e POSTGRES_DB=agentify_commerce \
   -e POSTGRES_PASSWORD=synthetic-only postgres:17-alpine >/dev/null
 trap cleanup EXIT
 for _ in {1..30}; do
-  docker exec "$container" pg_isready -U coinslot -d coinslot >/dev/null 2>&1 && break
+  docker exec "$container" pg_isready -U agentify_commerce -d agentify_commerce >/dev/null 2>&1 && break
   sleep 1
 done
-docker exec "$container" pg_isready -U coinslot -d coinslot >/dev/null
-docker exec -i "$container" psql -U coinslot -d coinslot -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
+docker exec "$container" pg_isready -U agentify_commerce -d agentify_commerce >/dev/null
+docker exec -i "$container" psql -U agentify_commerce -d agentify_commerce -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
 CREATE TABLE commerce_marker(id int PRIMARY KEY, value text NOT NULL);
 INSERT INTO commerce_marker VALUES (1, 'paid-order-preserved');
 CREATE DATABASE agentify_source;
 SQL
-docker exec -i "$container" psql -U coinslot -d agentify_source -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
+docker exec -i "$container" psql -U agentify_commerce -d agentify_source -v ON_ERROR_STOP=1 >/dev/null <<'SQL'
 CREATE SCHEMA pgboss;
 CREATE SCHEMA drizzle;
 CREATE SCHEMA metabase;
@@ -47,9 +47,9 @@ INSERT INTO pgboss.job VALUES (3, 'created', '{"retry":1}');
 INSERT INTO drizzle.__drizzle_migrations VALUES (1, 'synthetic-migration');
 INSERT INTO metabase.settings VALUES (1, 'synthetic-setting');
 SQL
-docker exec "$container" pg_dump -U coinslot -d agentify_source --format=custom \
+docker exec "$container" pg_dump -U agentify_commerce -d agentify_source --format=custom \
   --no-owner --no-acl --schema=public --schema=pgboss --schema=drizzle --schema=metabase > "$tmp/source.dump"
-docker exec -i "$container" psql -U coinslot -d agentify_source -At -F '|' -v ON_ERROR_STOP=1 \
+docker exec -i "$container" psql -U agentify_commerce -d agentify_source -At -F '|' -v ON_ERROR_STOP=1 \
   < deploy/ansible/scanner-fingerprint.sql > "$tmp/source.fingerprint"
 chmod 600 "$tmp/source.dump" "$tmp/source.fingerprint"
 dump_sha="$(shasum -a 256 "$tmp/source.dump" | cut -d ' ' -f 1)"
@@ -66,17 +66,17 @@ if SCANNER_DUMP_SHA256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 fi
 grep -q 'dump checksum changed' "$tmp/negative.log"
 bash deploy/ansible/scanner-db-restore.sh
-marker="$(docker exec "$container" psql -U coinslot -d coinslot -Atc 'select value from commerce_marker where id=1')"
+marker="$(docker exec "$container" psql -U agentify_commerce -d agentify_commerce -Atc 'select value from commerce_marker where id=1')"
 [[ "$marker" == paid-order-preserved ]]
-queue="$(docker exec "$container" psql -U coinslot -d agentify_scanner -Atc 'select state from pgboss.job where id=3')"
+queue="$(docker exec "$container" psql -U agentify_commerce -d agentify_scanner -Atc 'select state from pgboss.job where id=3')"
 [[ "$queue" == created ]]
 if bash deploy/ansible/scanner-db-restore.sh >"$tmp/repeat.log" 2>&1; then
   echo 'Active target overwrite survived.' >&2; exit 1
 fi
 grep -q 'already exists' "$tmp/repeat.log"
-docker exec "$container" psql -U coinslot -d agentify_scanner -v ON_ERROR_STOP=1 -c \
+docker exec "$container" psql -U agentify_commerce -d agentify_scanner -v ON_ERROR_STOP=1 -c \
   "update pgboss.job set state='completed' where id=3" >/dev/null
-docker exec -i "$container" psql -U coinslot -d agentify_scanner -At -F '|' -v ON_ERROR_STOP=1 \
+docker exec -i "$container" psql -U agentify_commerce -d agentify_scanner -At -F '|' -v ON_ERROR_STOP=1 \
   < deploy/ansible/scanner-fingerprint.sql > "$tmp/mutated.fingerprint"
 if cmp -s "$tmp/source.fingerprint" "$tmp/mutated.fingerprint"; then
   echo 'Queue mutation survived fingerprint comparison.' >&2; exit 1

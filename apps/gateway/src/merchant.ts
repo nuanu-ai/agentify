@@ -12,7 +12,7 @@
  * the gateway itself is given, and nothing else — no key of any kind, because
  * nothing here goes over the API:
  *
- *   DATABASE_URL=postgres://coinslot:coinslot@localhost:5432/coinslot \
+ *   DATABASE_URL=postgres://agentify_commerce:agentify_commerce@localhost:5432/agentify_commerce \
  *     PAYMENT_NETWORK=eip155:84532 \
  *     pnpm --filter @agentify/commerce-gateway merchant list
  *

@@ -95,7 +95,7 @@
 
     - name: Verify no scanner DB already exists before transferring frozen data
       ansible.builtin.command:
-        argv: [docker, exec, agentify-commerce-postgres-1, psql, -U, coinslot, -d, coinslot, -At, -v, ON_ERROR_STOP=1, -c, "select count(*) from pg_database where datname='agentify_scanner'"]
+        argv: [docker, exec, agentify-commerce-postgres-1, psql, -U, agentify_commerce, -d, agentify_commerce, -At, -v, ON_ERROR_STOP=1, -c, "select count(*) from pg_database where datname='agentify_scanner'"]
       register: target_exists
       changed_when: false
       check_mode: false
@@ -157,7 +157,7 @@
 
     - name: Export restored lead-to-source-Auth links without encrypted lead fields
       ansible.builtin.command:
-        argv: [docker, exec, -i, agentify-commerce-postgres-1, psql, -U, coinslot, -d, agentify_scanner, -At, -v, ON_ERROR_STOP=1]
+        argv: [docker, exec, -i, agentify-commerce-postgres-1, psql, -U, agentify_commerce, -d, agentify_scanner, -At, -v, ON_ERROR_STOP=1]
         stdin: "{{ lookup('file', playbook_dir ~ '/scanner-lead-links.sql') }}"
       register: restored_links
       changed_when: false

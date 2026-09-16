@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Installed outside the checkout and run by coinslot-test-pull.timer.
+# Installed outside the checkout and run by agentify-test-pull.timer.
 #
 # The agent has one authority: deliver the exact head of `main` to the test
 # channel after the public CI workflow has completed successfully for that
@@ -85,7 +85,7 @@ if [[ -e "${state_file}" ]]; then
   fi
 fi
 
-work="$(mktemp -d "${TMPDIR:-/tmp}/coinslot-test-pull.XXXXXX")"
+work="$(mktemp -d "${TMPDIR:-/tmp}/agentify-test-pull.XXXXXX")"
 cleanup() {
   local status=$?
   rm -rf -- "${work}" || true

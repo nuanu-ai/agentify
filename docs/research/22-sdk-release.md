@@ -35,8 +35,10 @@ command with positive and negative cards.
 
 The pending Changesets prepare contracts `0.3.2` and SDK `0.2.4`; do not reuse
 the existing `sdk-v0.2.3` tag. The package-name move does not change the wire,
-so `CONTRACT_VERSION` remains `"2"` and the generated JSON Schemas remain the
-same bytes.
+so `CONTRACT_VERSION` remains `"2"`. Schema identities use
+`urn:agentify:contract:2:*`; schema bodies and payload validation are unchanged.
+Consumers keyed to the previous schema identities must switch directly; no
+alias schemas are published. See [ADR-0025](../decisions/0025-agentify-namespace.md).
 
 Commit and push the prepared version, then wait for the `CI` workflow to pass
 on that exact commit. Before making the tag, run the publish workflow manually

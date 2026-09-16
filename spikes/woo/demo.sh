@@ -36,7 +36,7 @@ HERE="$(pwd)"
 SHOP_HTTP="http://localhost:8088"
 SHOP_HTTPS="https://localhost:8443"
 ADMIN_USER="admin"
-ADMIN_PASS="coinslot-dev-admin"   # local stand only; see README
+ADMIN_PASS="agentify-dev-admin"   # local stand only; see README
 
 say() { printf '\n=== %s\n' "$*"; }
 wp() { docker compose run --rm -T cli wp "$@"; }
@@ -68,7 +68,7 @@ echo "  home and siteurl are now ${SHOP_HTTPS}"
 
 say "switching on the stand's two local allowances"
 mkdir -p "${HERE}/var/probe"
-printf 'see mu-plugins/coinslot-probe.php\n' > "${HERE}/var/probe/allow-private-callback"
+printf 'see mu-plugins/agentify-probe.php\n' > "${HERE}/var/probe/allow-private-callback"
 echo "  var/probe/allow-private-callback"
 
 say "starting the TLS terminator in front of the cabinet"
@@ -103,7 +103,7 @@ The stand is ready. Three things are left, and DEMO.md walks them in order.
          docker compose up -d --build
          docker compose stop cabinet
          NODE_EXTRA_CA_CERTS=${HERE}/var/certs/shop-cert.pem \\
-         DATABASE_URL=postgres://coinslot:coinslot@localhost:5432/coinslot \\
+         DATABASE_URL=postgres://agentify_commerce:agentify_commerce@localhost:5432/agentify_commerce \\
          GATEWAY_URL=http://localhost:8080 \\
          PUBLIC_BASE_URL=https://cabinet \\
          COOKIE_SECURE=true \\

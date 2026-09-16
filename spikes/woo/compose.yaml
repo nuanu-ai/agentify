@@ -8,7 +8,7 @@
 # stand is local, disposable, and the probes have to be reproducible from a
 # clean checkout without a secret to hand around. Nothing here is a credential
 # for anything that exists outside this file.
-name: coinslot-woo-spike
+name: agentify-woo-spike
 
 services:
   db:
@@ -52,7 +52,7 @@ services:
       - wp_data:/var/www/html
       # The probe instrument. It logs every outbound HTTP request and every
       # mail attempt, and it is the one place where this stand differs from a
-      # stock shop. See mu-plugins/coinslot-probe.php for what each hook does
+      # stock shop. See mu-plugins/agentify-probe.php for what each hook does
       # and why.
       - ./mu-plugins:/var/www/html/wp-content/mu-plugins:ro
       - ./var/probe:/var/probe
@@ -99,7 +99,7 @@ services:
       - ./var/callback:/var/callback
       - ./var/certs:/var/certs:ro
 
-  # TLS in front of the Coinslot cabinet running on the laptop, for the demo
+  # TLS in front of the Agentify cabinet running on the laptop, for the demo
   # runbook (DEMO.md) and for nothing the probes do — which is why it is behind
   # a profile and `./setup.sh` never starts it.
   #

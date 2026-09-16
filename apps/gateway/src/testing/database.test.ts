@@ -17,18 +17,18 @@ import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_TEST_DATABASE_URL, TEST_DATABASE, testDatabaseUrl } from "./database.js";
 
 /** The database the cabinet is showing. Never this suite's. */
-const stack = "postgres://coinslot:coinslot@localhost:5432/coinslot";
+const stack = "postgres://agentify_commerce:agentify_commerce@localhost:5432/agentify_commerce";
 
 /** A server bound where a deployment binds it rather than where a laptop does. */
-const moved = `postgres://coinslot:coinslot@localhost:55432/${TEST_DATABASE}`;
+const moved = `postgres://agentify_commerce:agentify_commerce@localhost:55432/${TEST_DATABASE}`;
 
-const started = process.env.COINSLOT_TEST_DATABASE_URL;
+const started = process.env.AGENTIFY_TEST_DATABASE_URL;
 
 afterEach(() => {
   if (started === undefined) {
-    delete process.env.COINSLOT_TEST_DATABASE_URL;
+    delete process.env.AGENTIFY_TEST_DATABASE_URL;
   } else {
-    process.env.COINSLOT_TEST_DATABASE_URL = started;
+    process.env.AGENTIFY_TEST_DATABASE_URL = started;
   }
 });
 
@@ -38,12 +38,12 @@ describe("the database the suite is given", () => {
     expect(DEFAULT_TEST_DATABASE_URL).toContain(TEST_DATABASE);
   });
 
-  it("is the server COINSLOT_TEST_DATABASE_URL names", () => {
+  it("is the server AGENTIFY_TEST_DATABASE_URL names", () => {
     // The reason the variable exists: this file's default finds the database
     // where `compose.yaml` publishes it on a laptop, and a host that publishes
     // it anywhere else — a deployment binds `127.0.0.1:55432:5432`, because the
     // password is in a repository — has no other way to say so.
-    expect(testDatabaseUrl({ COINSLOT_TEST_DATABASE_URL: moved })).toBe(moved);
+    expect(testDatabaseUrl({ AGENTIFY_TEST_DATABASE_URL: moved })).toBe(moved);
   });
 
   it("takes that over a DATABASE_URL meant for something else", () => {
@@ -52,7 +52,7 @@ describe("the database the suite is given", () => {
     // stack's own database. The variable with "test" in its name is the
     // specific one, so it wins, and the suite runs where it was sent instead of
     // refusing over a variable that was never about it.
-    expect(testDatabaseUrl({ COINSLOT_TEST_DATABASE_URL: moved, DATABASE_URL: stack })).toBe(moved);
+    expect(testDatabaseUrl({ AGENTIFY_TEST_DATABASE_URL: moved, DATABASE_URL: stack })).toBe(moved);
   });
 
   it("is whatever DATABASE_URL names, when it names something else", () => {
@@ -66,11 +66,11 @@ describe("the database the suite is given", () => {
     // suite against the database the cabinet is showing, and the suite empties
     // it without a word. Refusing is the warning — and a second way of naming
     // a database is a second way of walking into it.
-    for (const variable of ["COINSLOT_TEST_DATABASE_URL", "DATABASE_URL"]) {
+    for (const variable of ["AGENTIFY_TEST_DATABASE_URL", "DATABASE_URL"]) {
       for (const url of [
-        "postgres://coinslot:coinslot@localhost:5432/coinslot",
-        "postgres://coinslot:coinslot@127.0.0.1:55432/coinslot",
-        "postgres://coinslot:coinslot@postgres:5432/coinslot?sslmode=disable",
+        "postgres://agentify_commerce:agentify_commerce@localhost:5432/agentify_commerce",
+        "postgres://agentify_commerce:agentify_commerce@127.0.0.1:55432/agentify_commerce",
+        "postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_commerce?sslmode=disable",
       ]) {
         expect(() => testDatabaseUrl({ [variable]: url }), `${variable}=${url}`).toThrow(
           /will not be pointed there/,
@@ -82,12 +82,12 @@ describe("the database the suite is given", () => {
   it("says which variable said it, and what to do instead", () => {
     // The message is the whole of the fix for whoever hits it, so it names the
     // variable that has to change — with two of them, "DATABASE_URL names
-    // coinslot" sends half the people who read it to the wrong line.
-    expect(() => testDatabaseUrl({ COINSLOT_TEST_DATABASE_URL: stack })).toThrow(
-      /^COINSLOT_TEST_DATABASE_URL names "coinslot"/,
+    // agentify_commerce" sends half the people who read it to the wrong line.
+    expect(() => testDatabaseUrl({ AGENTIFY_TEST_DATABASE_URL: stack })).toThrow(
+      /^AGENTIFY_TEST_DATABASE_URL names "agentify_commerce"/,
     );
     expect(() => testDatabaseUrl({ DATABASE_URL: stack })).toThrow(
-      /^DATABASE_URL names "coinslot"/,
+      /^DATABASE_URL names "agentify_commerce"/,
     );
     expect(() => testDatabaseUrl({ DATABASE_URL: stack })).toThrow(new RegExp(TEST_DATABASE));
     expect(() => testDatabaseUrl({ DATABASE_URL: stack })).toThrow(/name any other database/);
@@ -96,29 +96,29 @@ describe("the database the suite is given", () => {
   it("refuses an address that names no database at all", () => {
     // Measured against postgres:17-alpine rather than assumed: an address that
     // stops at the port, and one that ends in a bare slash, both connect to the
-    // database named after the user — which on this stack is `coinslot`. So a
+    // database named after the user — which on this stack is `agentify_commerce`. So a
     // URL that looks finished walks straight past the refusal above and empties
     // the cabinet's database.
     for (const url of [
-      "postgres://coinslot:coinslot@localhost:55432",
-      "postgres://coinslot:coinslot@localhost:55432/",
+      "postgres://agentify_commerce:agentify_commerce@localhost:55432",
+      "postgres://agentify_commerce:agentify_commerce@localhost:55432/",
     ]) {
-      expect(() => testDatabaseUrl({ COINSLOT_TEST_DATABASE_URL: url }), url).toThrow(
+      expect(() => testDatabaseUrl({ AGENTIFY_TEST_DATABASE_URL: url }), url).toThrow(
         /names no database/,
       );
       expect(() => testDatabaseUrl({ DATABASE_URL: url }), url).toThrow(/names no database/);
     }
   });
 
-  it("refuses an empty COINSLOT_TEST_DATABASE_URL rather than quietly using 5432", () => {
+  it("refuses an empty AGENTIFY_TEST_DATABASE_URL rather than quietly using 5432", () => {
     // A variable emptied by accident — a line in a `.env` with its value
     // deleted, a shell expanding a name that is not set — is not a request for
     // the default. Whoever set this one at all is on a host where the default's
     // localhost:5432 is the wrong server, so falling back to it there is a
     // connection error naming an address nobody chose, or a run against
     // whatever else answers on that port.
-    expect(() => testDatabaseUrl({ COINSLOT_TEST_DATABASE_URL: "" })).toThrow(
-      /^COINSLOT_TEST_DATABASE_URL is set to nothing/,
+    expect(() => testDatabaseUrl({ AGENTIFY_TEST_DATABASE_URL: "" })).toThrow(
+      /^AGENTIFY_TEST_DATABASE_URL is set to nothing/,
     );
   });
 
@@ -136,14 +136,16 @@ describe("the database the suite is given", () => {
     // themselves.
     const thrown = (): string => {
       try {
-        testDatabaseUrl({ COINSLOT_TEST_DATABASE_URL: "postgres//coinslot:s3cret@localhost/x" });
+        testDatabaseUrl({
+          AGENTIFY_TEST_DATABASE_URL: "postgres//agentify_commerce:s3cret@localhost/x",
+        });
         return "";
       } catch (error) {
         return String(error);
       }
     };
 
-    expect(thrown()).toContain("COINSLOT_TEST_DATABASE_URL");
+    expect(thrown()).toContain("AGENTIFY_TEST_DATABASE_URL");
     expect(thrown()).not.toContain("s3cret");
   });
 
@@ -151,7 +153,7 @@ describe("the database the suite is given", () => {
     // Everything above hands the function an environment, which is what makes
     // this file offline. That must not quietly become the only environment the
     // suite ever looks at: `pnpm test:db` calls this with nothing.
-    process.env.COINSLOT_TEST_DATABASE_URL = moved;
+    process.env.AGENTIFY_TEST_DATABASE_URL = moved;
 
     expect(testDatabaseUrl()).toBe(moved);
   });

@@ -151,8 +151,8 @@
         argv: "{{ commerce_compose_argv + ['config', '--quiet'] }}"
         chdir: "{{ release_dir }}"
       environment:
-        COINSLOT_APP_IMAGE: "{{ app_image }}"
-        COINSLOT_WEB_IMAGE: "{{ web_image }}"
+        AGENTIFY_APP_IMAGE: "{{ app_image }}"
+        AGENTIFY_WEB_IMAGE: "{{ web_image }}"
       become: true
       changed_when: false
       check_mode: false
@@ -164,8 +164,8 @@
         argv: "{{ commerce_compose_argv + ['config', '--images'] }}"
         chdir: "{{ release_dir }}"
       environment:
-        COINSLOT_APP_IMAGE: "{{ app_image }}"
-        COINSLOT_WEB_IMAGE: "{{ web_image }}"
+        AGENTIFY_APP_IMAGE: "{{ app_image }}"
+        AGENTIFY_WEB_IMAGE: "{{ web_image }}"
       become: true
       register: commerce_images
       changed_when: false
@@ -255,8 +255,8 @@
         argv: "{{ commerce_compose_argv + ['build', 'gateway'] }}"
         chdir: "{{ release_dir }}"
       environment:
-        COINSLOT_APP_IMAGE: "{{ app_image }}"
-        COINSLOT_WEB_IMAGE: "{{ web_image }}"
+        AGENTIFY_APP_IMAGE: "{{ app_image }}"
+        AGENTIFY_WEB_IMAGE: "{{ web_image }}"
       become: true
       no_log: true
       when: app_image_inspect.rc == 1 and not ansible_check_mode
@@ -266,8 +266,8 @@
         argv: "{{ commerce_compose_argv + ['build', 'web'] }}"
         chdir: "{{ release_dir }}"
       environment:
-        COINSLOT_APP_IMAGE: "{{ app_image }}"
-        COINSLOT_WEB_IMAGE: "{{ web_image }}"
+        AGENTIFY_APP_IMAGE: "{{ app_image }}"
+        AGENTIFY_WEB_IMAGE: "{{ web_image }}"
       become: true
       no_log: true
       when: web_image_inspect.rc == 1 and not ansible_check_mode
@@ -289,8 +289,8 @@
         argv: "{{ commerce_compose_argv + ['config', '--format', 'json'] }}"
         chdir: "{{ release_dir }}"
       environment:
-        COINSLOT_APP_IMAGE: "{{ app_image }}"
-        COINSLOT_WEB_IMAGE: "{{ web_image }}"
+        AGENTIFY_APP_IMAGE: "{{ app_image }}"
+        AGENTIFY_WEB_IMAGE: "{{ web_image }}"
       become: true
       register: commerce_resolved
       changed_when: false

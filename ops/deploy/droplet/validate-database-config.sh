@@ -120,7 +120,7 @@ case "$mode" in
     ;;
   private)
     : "${ADMIN_DATABASE_URL:?ADMIN_DATABASE_URL is required for DATABASE_MODE=private}"
-    validate_private_url coinslot "$ADMIN_DATABASE_URL"
+    validate_private_url agentify_commerce "$ADMIN_DATABASE_URL"
     if [ "$scope" = "all" ]; then
       : "${WEB_DATABASE_URL:?WEB_DATABASE_URL is required for DATABASE_MODE=private}"
       : "${WORKER_DATABASE_URL:?WORKER_DATABASE_URL is required for DATABASE_MODE=private}"

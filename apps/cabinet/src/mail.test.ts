@@ -16,8 +16,8 @@ import { isSandboxMail, type Message, postmanFor, SANDBOX_MAIL } from "./mail.js
 const MESSAGE: Message = {
   to: "dmitry@example.com",
   subject: "Choose a new password",
-  body: "Open this to choose one:\n\n    https://agentify.example.com/password/new?token=abc&from=mail\n",
-  html: '<a href="https://agentify.example.com/password/new?token=abc&amp;from=mail">Choose a new password</a>',
+  body: "Open this to choose one:\n\n    https://agentify.example/password/new?token=abc&from=mail\n",
+  html: '<a href="https://agentify.example/password/new?token=abc&amp;from=mail">Choose a new password</a>',
 };
 
 /** Everything the process said while `during` ran. */
@@ -98,7 +98,7 @@ describe("a cabinet with no mail provider", () => {
     });
 
     expect(said).toContain("dmitry@example.com");
-    expect(said).toContain("https://agentify.example.com/password/new?token=abc&from=mail");
+    expect(said).toContain("https://agentify.example/password/new?token=abc&from=mail");
     // And it says out loud that nothing was sent, so nobody reading this log
     // goes looking in a mailbox for it.
     expect(said).toMatch(/not sent|no mail provider/i);

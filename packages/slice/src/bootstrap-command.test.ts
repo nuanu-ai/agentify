@@ -67,14 +67,14 @@ const USDC_ON_BASE_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
 const A_TRANSACTION = `0x${"1e".repeat(32)}`;
 
 const env = (extra: Record<string, string | undefined> = {}) => ({
-  COINSLOT_SMOKE: "1",
-  GATEWAY_URL: "https://coinslot.example",
+  AGENTIFY_SMOKE: "1",
+  GATEWAY_URL: "https://agentify.example",
   SMOKE_BUYER_KEY: A_KEY,
   ...extra,
 });
 
 const aChallenge = (over: Partial<Challenge> = {}): Challenge => ({
-  resourceUrl: "https://coinslot.example/x402/itm_1/purchase",
+  resourceUrl: "https://agentify.example/x402/itm_1/purchase",
   payTo: A_MERCHANT,
   network: BASE_SEPOLIA,
   asset: USDC_ON_BASE_SEPOLIA,
@@ -499,17 +499,17 @@ describe("reading the settings", () => {
     expect(readSettings([], env({ SMOKE_PARAMS: "{oops" })).ok).toBe(false);
   });
 
-  it("will not run at all without COINSLOT_SMOKE", () => {
-    expect(readSettings([], env({ COINSLOT_SMOKE: undefined })).ok).toBe(false);
+  it("will not run at all without AGENTIFY_SMOKE", () => {
+    expect(readSettings([], env({ AGENTIFY_SMOKE: undefined })).ok).toBe(false);
   });
 
   it("refuses a gateway address carrying a query or a fragment", () => {
     // A path is joined onto this, so either one lands in the middle of every
     // purchase address — and of the address a listing would be keyed on.
-    expect(readSettings([], env({ GATEWAY_URL: "https://coinslot.example/?utm=1" })).ok).toBe(
+    expect(readSettings([], env({ GATEWAY_URL: "https://agentify.example/?utm=1" })).ok).toBe(
       false,
     );
-    expect(readSettings([], env({ GATEWAY_URL: "https://coinslot.example/#top" })).ok).toBe(false);
+    expect(readSettings([], env({ GATEWAY_URL: "https://agentify.example/#top" })).ok).toBe(false);
   });
 });
 
@@ -527,7 +527,7 @@ describe("a whole run", () => {
   });
 
   it("buys every card in the catalog and reports the one it found in discovery", async () => {
-    const resource = "https://coinslot.example/x402/itm_1/purchase";
+    const resource = "https://agentify.example/x402/itm_1/purchase";
     const run = aRun({
       catalog: [aCard("itm_1")],
       walks: [[resource]],
@@ -561,7 +561,7 @@ describe("a whole run", () => {
   });
 
   it("keeps walking until the resource turns up, and says how long it took", async () => {
-    const resource = "https://coinslot.example/x402/itm_1/purchase";
+    const resource = "https://agentify.example/x402/itm_1/purchase";
     const run = aRun({ walks: [[], [], [resource]], catalog: [aCard("itm_1")] });
 
     expect(await run.run(["--confirm"])).toBe(0);
@@ -776,7 +776,7 @@ describe("reading a gateway and the discovery catalog, over a real socket", () =
       x402Version: 2,
       ...(over.error === undefined ? {} : { error: over.error }),
       resource: {
-        url: "https://coinslot.example/x402/itm_1/purchase",
+        url: "https://agentify.example/x402/itm_1/purchase",
         description: "A room for the night",
         mimeType: "application/json",
       },
@@ -865,7 +865,7 @@ describe("reading a gateway and the discovery catalog, over a real socket", () =
     // The address is the one the challenge pins, never the one this was called
     // at: behind a terminator those are two different strings, and it is the
     // pinned one a listing is keyed on.
-    expect(challenge.resourceUrl).toBe("https://coinslot.example/x402/itm_1/purchase");
+    expect(challenge.resourceUrl).toBe("https://agentify.example/x402/itm_1/purchase");
     expect(challenge.payTo).toBe(A_MERCHANT);
     expect(challenge).toMatchObject({ amount: "10000", decimals: 6, symbol: "USDC" });
   });
@@ -966,7 +966,7 @@ describe("reading a gateway and the discovery catalog, over a real socket", () =
       }),
     }));
 
-    const reach = overTheNetwork(settingsFor("https://coinslot.example"), { discovery: base });
+    const reach = overTheNetwork(settingsFor("https://agentify.example"), { discovery: base });
 
     // Entries with no address are dropped rather than crashing the walk: the
     // catalog is somebody else's document and it grows fields we do not know.
@@ -988,7 +988,7 @@ describe("reading a gateway and the discovery catalog, over a real socket", () =
     // "not listed" and "not known", and only one of them is an answer.
     const base = await serving(() => ({ status: 429, body: "{}" }));
 
-    const reach = overTheNetwork(settingsFor("https://coinslot.example"), { discovery: base });
+    const reach = overTheNetwork(settingsFor("https://agentify.example"), { discovery: base });
 
     await expect(reach.discoveryPage(0, DISCOVERY_PAGE_SIZE)).rejects.toThrow("429");
   });

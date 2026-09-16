@@ -106,7 +106,9 @@ interface Pin {
   readonly is: number;
 }
 
-const config = loadConfig({ DATABASE_URL: "postgres://coinslot:secret@localhost:5432/coinslot" });
+const config = loadConfig({
+  DATABASE_URL: "postgres://agentify_commerce:secret@localhost:5432/agentify_commerce",
+});
 const { deadlines, redelivery } = config;
 
 const PINS: readonly Pin[] = [

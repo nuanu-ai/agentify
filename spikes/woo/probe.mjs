@@ -31,10 +31,10 @@ const SHOP_HTTPS = 'https://localhost:8443';
 // How the shop, from inside the compose network, addresses the receiver.
 const CALLBACK_URL = 'https://callback/wc-auth-callback';
 const RETURN_URL = 'https://callback/return';
-const APP_NAME = 'Coinslot';
-const APP_USER_ID = 'coinslot-merchant-1';
+const APP_NAME = 'Agentify';
+const APP_USER_ID = 'agentify-merchant-1';
 const ADMIN_USER = 'admin';
-const ADMIN_PASS = 'coinslot-dev-admin';
+const ADMIN_PASS = 'agentify-dev-admin';
 
 // A probe that can only report PASS proves nothing. With PROBE_NEGATIVE_CONTROL=1
 // the granted secret is corrupted by one character and the catalogue question is
@@ -316,7 +316,7 @@ async function probeWcAuth(evidence, session) {
   );
 
   // --- attempt B: with the two local allowances the instrument can grant
-  writeFileSync(FLAG_FILE, 'see mu-plugins/coinslot-probe.php\n');
+  writeFileSync(FLAG_FILE, 'see mu-plugins/agentify-probe.php\n');
   const grant2 = await http(url, { headers: { cookie: jar.header() } });
   const approveUrl2 = extractApproveUrl(grant2.body);
   if (!approveUrl2) throw new Blocked('no Approve link on the second authorize page');
@@ -455,7 +455,7 @@ async function probeStoreApi(evidence) {
       } chars`
     );
   }
-  const wanted = ['coinslot-access-code', 'coinslot-tote', 'coinslot-abonement'];
+  const wanted = ['agentify-access-code', 'agentify-tote', 'agentify-abonement'];
   const got = products.map((p) => p.sku);
   const missing = wanted.filter((s) => !got.includes(s));
   evidence.push(
@@ -469,7 +469,7 @@ async function probeStoreApi(evidence) {
 async function probeOrder(evidence, keys, jar) {
   if (!keys) throw new Blocked('probe 1 produced no working key pair to use');
 
-  const list = await http(`${SHOP_HTTPS}/wp-json/wc/v3/products?sku=coinslot-access-code`, {
+  const list = await http(`${SHOP_HTTPS}/wp-json/wc/v3/products?sku=agentify-access-code`, {
     headers: { authorization: basicHeader(keys.ck, keys.cs) },
     ca: shopCa(),
   });
@@ -481,8 +481,8 @@ async function probeOrder(evidence, keys, jar) {
   const mailBefore = readJsonl('mail.jsonl').length;
 
   const body = JSON.stringify({
-    payment_method: 'coinslot',
-    payment_method_title: 'Coinslot (probe)',
+    payment_method: 'agentify',
+    payment_method_title: 'Agentify (probe)',
     transaction_id: 'probe-tx-0001',
     set_paid: true,
     billing: {

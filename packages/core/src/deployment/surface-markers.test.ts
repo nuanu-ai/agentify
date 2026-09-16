@@ -24,7 +24,7 @@ const PORTAL_CONFIG = readFileSync(
 describe("the landing", () => {
   it("names the mode it is rendering", () => {
     expect(LANDING).toContain(
-      `${SURFACE_MARKER_ATTRIBUTE}="<!--{{env \`COINSLOT_SURFACE_MODE\`}}-->"`,
+      `${SURFACE_MARKER_ATTRIBUTE}="<!--{{env \`AGENTIFY_SURFACE_MODE\`}}-->"`,
     );
   });
 
@@ -41,8 +41,8 @@ describe("the landing", () => {
 
   it("renders nothing for a live stack", () => {
     // The live branch is the absence of a banner, not the absence of a marker.
-    expect(LANDING).toContain('<!--{{if eq (env "COINSLOT_SURFACE_MODE") "test"}}-->');
-    expect(LANDING).toContain('<!--{{else if eq (env "COINSLOT_SURFACE_MODE") "sandbox"}}-->');
+    expect(LANDING).toContain('<!--{{if eq (env "AGENTIFY_SURFACE_MODE") "test"}}-->');
+    expect(LANDING).toContain('<!--{{else if eq (env "AGENTIFY_SURFACE_MODE") "sandbox"}}-->');
   });
 });
 

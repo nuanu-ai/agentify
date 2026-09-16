@@ -13,4 +13,4 @@
 -- psql session on a new machine finds the database without running the suite
 -- first, and so that the split is visible in the stack rather than only in the
 -- tests.
-CREATE DATABASE coinslot_test;
+CREATE DATABASE agentify_commerce_test;

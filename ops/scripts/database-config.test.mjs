@@ -40,7 +40,7 @@ function privateUrl(role, database = "agentify_scanner") {
 function validPrivate() {
   return {
     DATABASE_MODE: "private",
-    ADMIN_DATABASE_URL: privateUrl("coinslot"),
+    ADMIN_DATABASE_URL: privateUrl("agentify_commerce"),
     WEB_DATABASE_URL: privateUrl("agentify_web"),
     WORKER_DATABASE_URL: privateUrl("agentify_worker"),
     PRIVACY_DATABASE_URL: privateUrl("agentify_privacy"),
@@ -111,7 +111,7 @@ test("validation failures never echo credentials", () => {
 test("private scanner mode accepts only its separate database and least-privilege roles", () => {
   assert.equal(run(validPrivate()).status, 0);
   const wrongDatabase = validPrivate();
-  wrongDatabase.WORKER_DATABASE_URL = privateUrl("agentify_worker", "coinslot");
+  wrongDatabase.WORKER_DATABASE_URL = privateUrl("agentify_worker", "agentify");
   assert.notEqual(run(wrongDatabase).status, 0);
   const wrongAdmin = validPrivate();
   wrongAdmin.ADMIN_DATABASE_URL = privateUrl("postgres");
@@ -128,12 +128,12 @@ test("private admin scope needs no runtime secrets and never prints a password",
   const accepted = run({
     DATABASE_MODE: "private",
     DATABASE_CONFIG_SCOPE: "admin",
-    ADMIN_DATABASE_URL: privateUrl("coinslot"),
+    ADMIN_DATABASE_URL: privateUrl("agentify_commerce"),
   });
   assert.equal(accepted.status, 0, accepted.stderr);
   const rejected = run({
     DATABASE_MODE: "private",
-    ADMIN_DATABASE_URL: "postgresql://coinslot:do-not-print@agentify-scanner-postgres:5432/coinslot",
+    ADMIN_DATABASE_URL: "postgresql://agentify_commerce:do-not-print@agentify-scanner-postgres:5432/agentify_commerce",
   });
   assert.notEqual(rejected.status, 0);
   assert.equal(`${rejected.stdout}${rejected.stderr}`.includes("do-not-print"), false);

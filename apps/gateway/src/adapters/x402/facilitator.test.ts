@@ -27,7 +27,7 @@ const edge = new PaymentEdge(
     cdpApiKeyId: null,
     cdpApiKeySecret: null,
   },
-  "https://coinslot.example",
+  "https://agentify.example",
   300,
 );
 

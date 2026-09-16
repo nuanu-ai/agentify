@@ -62,12 +62,12 @@ export const A_NAME_PG_BOSS_ACCEPTS = /^[\w.\-/]+$/;
  * The shape is held to in a test, and the test that matters is the one against
  * the library: this rule was written down here from a reading of the
  * documentation as "a bare identifier, no periods", the first run against a
- * real pg-boss accepted `coinslot.envelopes` without complaint, and a rule
+ * real pg-boss accepted `agentify.envelopes` without complaint, and a rule
  * nobody had ever asked the library about had been standing in a comment as a
  * fact.
  */
-export const ENVELOPES = "coinslot_envelopes";
-export const REMINDERS = "coinslot_reminders";
+export const ENVELOPES = "agentify_envelopes";
+export const REMINDERS = "agentify_reminders";
 
 /**
  * One merchant's stream, which is a pg-boss queue of its own.
@@ -85,29 +85,11 @@ export const REMINDERS = "coinslot_reminders";
  * job lives in the one table underneath — so this is a row per merchant and not
  * a table per merchant.
  *
- * The name changed, and what that costs is named here rather than left to be
- * found. Nothing draws from the bare `coinslot_envelopes` any more. An
- * installation that had jobs sitting on it when this went out — an order
- * dispatch nobody had polled yet, a redelivery waiting out its own delay, a
- * hand-over pushed back because a charge was in flight — has those jobs on a
- * queue with no reader, and they are not moved by any migration. Those orders
- * are not lost sight of: the deadline reminders that would close them live on
- * `coinslot_reminders`, which is untouched, so each one still reaches its
- * ending, and the refund message it owes is published to the merchant's new
- * stream. But the work itself is never handed over.
- *
- * Emptying that queue first is what avoids it, and the order of the steps is
- * the whole of the advice. A worker holds nothing: a drawn envelope is finished
- * in the same pass it was drawn in, so bringing the gateway down does not let
- * anybody finish anything — it stops the only thing that was draining the
- * queue. Keep the old gateway running and polling, stop new purchases reaching
- * it, and wait until `select count(*) from pgboss.job where name =
- * 'coinslot_envelopes'` is zero.
- *
- * Two of the three kinds are published with a delay, and polling cannot reach
- * those before their time however long it runs. The wait is bounded by the
- * longest redelivery delay the configuration allows, and short of waiting it
- * out there is nothing that recovers them.
+ * These names are a direct namespace boundary. The adapter neither reads nor
+ * migrates jobs under another prefix, so deployment has to drain the queues it
+ * is replacing before this code starts. The cutover order belongs to the
+ * operator plan because guessing that state in application code would create a
+ * second queue contract and make the hand-over silent.
  */
 export const streamOf = (merchantId: string): string => {
   if (!A_NAME_PG_BOSS_ACCEPTS.test(merchantId)) {

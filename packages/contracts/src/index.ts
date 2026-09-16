@@ -367,7 +367,7 @@ export type JsonSchemaDocument = z.core.JSONSchema.BaseSchema;
 
 /** The identifier a rendered document carries, so a reader knows what it holds. */
 export const jsonSchemaIdOf = (name: SchemaName): string =>
-  `urn:coinslot:contract:${CONTRACT_VERSION}:${name}`;
+  `urn:agentify:contract:${CONTRACT_VERSION}:${name}`;
 
 /**
  * The whole contract as JSON Schema, one document per registry entry.

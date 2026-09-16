@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# Installed outside the checkout. A forced SSH key may call either channel;
-# the VM pull agent may call only the local test-channel door.
+# Installed outside the checkout for the test channel. Production releases use
+# the reviewed Ansible path because the public edge and scanner share one host.
 #
 # There is no rollback and there are no release directories (ADR-0016).
 #
@@ -18,7 +18,7 @@
 # of having no rollback at Stage 0 rather than a gap somebody discovers at the
 # wrong moment.
 #
-# `.coinslot-revision` therefore names the candidate and how far it got —
+# `.agentify-revision` therefore names the candidate and how far it got —
 # activating, activated, origin-verified — rather than the last release that
 # worked. A marker that reported the previous success while this candidate was
 # serving would be the one artifact an operator consults being wrong in the one
@@ -36,61 +36,42 @@ fail() {
 }
 
 case "${allowed_channel}" in
-  test | live) ;;
-  *) fail 'this key is forced to no channel; authorized_keys must say release.sh test or release.sh live' ;;
+  test) ;;
+  *) fail 'this receiver is limited to the test channel' ;;
 esac
 
-# Two forced commands and two keys. The channel is fixed by the key before the
-# request is read, so the key that can deploy the test site cannot deploy the
-# live one whatever it asks for. The marker records which command ran, so what
-# is running is identifiable by name as well as by revision.
+# The channel is fixed before the request is read. The marker records which
+# command ran, so what is running is identifiable by name as well as revision.
 if [[ "$#" == 2 ]]; then
   [[ -z "${requested_command}" ]] || fail 'a local release cannot carry an SSH command'
   [[ "${allowed_channel}" == 'test' ]] || fail 'local releases are limited to the test channel'
   [[ "$2" =~ ^[0-9a-f]{40}$ ]] || fail 'local test release expected a 40-character lowercase SHA'
-  readonly channel='test'
+  readonly channel='agentify-test'
+  readonly surface='test'
   readonly revision="$2"
   readonly released_as="release-test ${revision}"
-  readonly project='coinslot-test'
-  readonly deployment="${HOME}/coinslot-test"
-  readonly site='test.coinslot.nuanu.ai'
+  readonly project='agentify-test'
+  readonly deployment="${HOME}/agentify-test"
+  readonly site='test.agentify.ad'
   readonly port='8443'
 elif [[ "$#" != 1 ]]; then
   fail 'expected one forced-SSH channel or a local test channel and SHA'
 elif [[ "${requested_command}" =~ ^release-test\ ([0-9a-f]{40})$ ]]; then
-  readonly channel='test'
+  readonly channel='agentify-test'
+  readonly surface='test'
   readonly revision="${BASH_REMATCH[1]}"
   readonly released_as="release-test ${revision}"
-  readonly project='coinslot-test'
-  readonly deployment="${HOME}/coinslot-test"
-  readonly site='test.coinslot.nuanu.ai'
+  readonly project='agentify-test'
+  readonly deployment="${HOME}/agentify-test"
+  readonly site='test.agentify.ad'
   readonly port='8443'
-elif [[ "${requested_command}" =~ ^release-live\ (v[0-9A-Za-z.+-]{1,64})\ ([0-9a-f]{40})$ ]]; then
-  readonly channel='live'
-  readonly tag="${BASH_REMATCH[1]}"
-  readonly revision="${BASH_REMATCH[2]}"
-  readonly released_as="release-live ${tag} ${revision}"
-  readonly project='coinslot'
-  readonly deployment="${HOME}/coinslot"
-  readonly site='coinslot.nuanu.ai'
-  readonly port='443'
 else
-  fail 'expected "release-test <40 lowercase hex sha>" or "release-live <tag> <40 lowercase hex sha>"'
+  fail 'expected "release-test <40 lowercase hex sha>"'
 fi
-
-# The request and the key have to name the same channel. This is the line that
-# makes the two keys different capabilities rather than two copies of one.
-[[ "${channel}" == "${allowed_channel}" ]] \
-  || fail "this key may deploy the ${allowed_channel} channel and the request was for ${channel}"
 
 readonly environment_file="${deployment}/.env"
 
-# One lock for both channels, not one each. They share a Docker daemon, a build
-# cache and a host, and the reset ceremony in
-# docs/research/24-two-environments-runbook.md holds this same file for its
-# duration — otherwise a push to `main` arriving mid-ceremony would bring a
-# stack back up, let it write after the dump was taken, and `down -v` would
-# destroy what it wrote.
+# One lock for the test deployment and its Docker build cache.
 #
 # It waits rather than refusing on sight. `flock -n` returns immediately, and
 # with the workflow's concurrency grouped by ref a tag and a main push can reach
@@ -99,13 +80,20 @@ readonly environment_file="${deployment}/.env"
 # than anybody's patience; past that it fails, loudly, because a queue with no
 # ceiling is a release that hangs.
 mkdir -p "${HOME}/.cache"
-exec 9>"${HOME}/.cache/coinslot-deploy.lock"
+exec 9>"${HOME}/.cache/agentify-deploy.lock"
 flock -w 600 9 || fail 'another release held the lock for ten minutes'
 
 [[ -f "${environment_file}" ]] || fail 'server .env is missing'
 [[ "$(stat -c '%a' "${environment_file}")" == '600' ]] || fail 'server .env is not 0600'
 
-incoming="$(mktemp -d "${HOME}/.cache/coinslot-release.XXXXXX")"
+# The namespace cutover creates and restores these exact targets. Refuse to
+# create an empty replacement through an ordinary release.
+docker volume inspect agentify-test-postgres >/dev/null 2>&1 \
+  || fail 'agentify-test-postgres is absent; complete the staged namespace cutover first'
+docker volume inspect agentify-test-caddy >/dev/null 2>&1 \
+  || fail 'agentify-test-caddy is absent; complete the staged namespace cutover first'
+
+incoming="$(mktemp -d "${HOME}/.cache/agentify-release.XXXXXX")"
 cleanup_incoming() {
   local status=$?
   rm -rf -- "${incoming}" || true
@@ -130,10 +118,15 @@ tar -xf "${archive}" -C "${payload}"
 chmod -R u+rwX,go+rX "${payload}"
 [[ -f "${payload}/compose.yaml" ]] || fail 'archive has no compose.yaml'
 [[ -f "${payload}/deploy/compose.public.yaml" ]] || fail 'archive has no public override'
+[[ -f "${payload}/deploy/compose.agentify-test.yaml" ]] || fail 'archive has no test override'
 
-readonly compose_files=(-f "${payload}/compose.yaml" -f "${payload}/deploy/compose.public.yaml")
-export COINSLOT_APP_IMAGE="coinslot-app:${revision}"
-export COINSLOT_WEB_IMAGE="coinslot-web:${revision}"
+readonly compose_files=(
+  -f "${payload}/compose.yaml"
+  -f "${payload}/deploy/compose.public.yaml"
+  -f "${payload}/deploy/compose.agentify-test.yaml"
+)
+export AGENTIFY_APP_IMAGE="agentify-test-app:${revision}"
+export AGENTIFY_WEB_IMAGE="agentify-test-web:${revision}"
 
 staged_compose=(
   docker compose --project-name "${project}" --env-file "${environment_file}"
@@ -160,22 +153,16 @@ docker run --rm -i --network none \
 
 # The suite gets a disposable server rather than the deployment's own.
 #
-# It used to reach a PostgreSQL container a previous release left running.
-# Neither project has one: `coinslot-test` has never existed, and the reset
-# ceremony removed `coinslot`'s container along with its volume, so as written
-# the first release of both channels would fail with an error about a host
-# named `postgres`. What the change buys beyond that is that a candidate cannot
-# recreate the resident database container before it has been built and its
-# migrations proved.
-#
-# Coverage is unchanged: the suite already ran against `coinslot_test`, a
-# scratch database it creates and drops, and never against the deployment's
-# data. That name means "scratch" here and has nothing to do with which
-# environment a stack is.
-readonly scratch_project="coinslot-migrate-${revision:0:12}"
+# The deployment override is deliberately absent here, so the external
+# retained test volume can never be mounted by a candidate test run.
+readonly scratch_project="agentify-migrate-${revision:0:12}"
+readonly scratch_compose_files=(
+  -f "${payload}/compose.yaml"
+  -f "${payload}/deploy/compose.public.yaml"
+)
 scratch_compose=(
   docker compose --project-name "${scratch_project}" --env-file "${environment_file}"
-  "${compose_files[@]}"
+  "${scratch_compose_files[@]}"
 )
 scratch_down() { "${scratch_compose[@]}" down -v --remove-orphans; }
 cleanup_scratch() {
@@ -188,24 +175,24 @@ trap cleanup_scratch EXIT
 
 "${scratch_compose[@]}" up -d --wait postgres
 "${scratch_compose[@]}" run --rm --no-deps --user root \
-  -e DATABASE_URL=postgres://coinslot:coinslot@postgres:5432/coinslot_test \
+  -e DATABASE_URL=postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_commerce_test \
   gateway pnpm test:db
 scratch_down
 
 mkdir -p "${deployment}"
-rsync -a --delete --exclude='.env' --exclude='.coinslot-revision' \
+rsync -a --delete --exclude='.env' --exclude='.agentify-revision' \
   "${payload}/" "${deployment}/"
 
 cd "${deployment}"
 compose=(
   docker compose --project-name "${project}" --env-file "${environment_file}"
-  -f compose.yaml -f deploy/compose.public.yaml
+  -f compose.yaml -f deploy/compose.public.yaml -f deploy/compose.agentify-test.yaml
 )
 "${compose[@]}" config --quiet
 
 write_marker() {
   local state="$1"
-  local marker="${deployment}/.coinslot-revision"
+  local marker="${deployment}/.agentify-revision"
   local marker_temporary
 
   marker_temporary="$(mktemp "${marker}.XXXXXX")" || fail 'could not create the revision marker temporary file'
@@ -243,8 +230,8 @@ readonly resolve="${site}:${port}:10.20.10.20"
 for path in / /docs/ /cabinet/sign-in; do
   page="$(curl --disable -fsS --noproxy '*' --max-time 15 --resolve "${resolve}" "${base}${path}")" \
     || fail "${path} did not answer"
-  grep -q "data-coinslot-surface=\"${channel}\"" <<<"${page}" \
-    || fail "${path} does not say it is the ${channel} environment"
+  grep -q "data-agentify-surface=\"${surface}\"" <<<"${page}" \
+    || fail "${path} does not say it is the ${surface} environment"
 done
 
 # The paths this probes travel with the release rather than with this script.
@@ -284,7 +271,7 @@ write_marker origin-verified
 # another service's images stay resident. Collection is best-effort because a
 # host that is already serving a verified candidate must not be reported as a
 # failed release only because garbage collection failed afterward.
-for release_image_project in coinslot coinslot-test; do
+for release_image_project in agentify-test; do
   if ! docker image prune -a -f \
     --filter 'until=24h' \
     --filter "label=com.docker.compose.project=${release_image_project}"; then

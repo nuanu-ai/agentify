@@ -22,7 +22,7 @@ else's money moved.
 
 The environment is derived from `PAYMENT_NETWORK` and from nothing else. A
 chain on the written testnet list makes a test deployment; Base mainnet, the
-one live chain written down, makes a live one. There is no `COINSLOT_ENV`. The
+one live chain written down, makes a live one. There is no `AGENTIFY_ENV`. The
 chain is a field the gateway already takes, it holds one value, and a single
 field cannot disagree with itself — ADR-0008's argument for the sandbox, made
 again about a larger thing.
@@ -72,7 +72,7 @@ issue a test key — a merchant trying their own integration against the live
 site — and the prefix is the seam that change runs along: what the door reads
 stops being "this site's own" and becomes the prefixes this site accepts.
 
-Rejected: `COINSLOT_ENV=test|live` beside the chain — ADR-0008's reason, since
+Rejected: `AGENTIFY_ENV=test|live` beside the chain — ADR-0008's reason, since
 the field that survives a copied environment file is the one still saying
 "test" where real money moves. Reading an unknown chain as live to be safe —
 safe for spending and wrong on the wire, which is the half that leaves the

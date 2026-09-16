@@ -4,29 +4,29 @@
 services:
   postgres:
     environment:
-      POSTGRES_USER: coinslot
-      POSTGRES_DB: coinslot
+      POSTGRES_USER: agentify_commerce
+      POSTGRES_DB: agentify_commerce
       POSTGRES_PASSWORD: "${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}"
 
   migrate:
     environment:
-      DATABASE_URL: "postgres://coinslot:${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}@postgres:5432/coinslot"
+      DATABASE_URL: "postgres://agentify_commerce:${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}@postgres:5432/agentify_commerce"
 
   gateway:
     environment:
-      DATABASE_URL: "postgres://coinslot:${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}@postgres:5432/coinslot"
+      DATABASE_URL: "postgres://agentify_commerce:${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}@postgres:5432/agentify_commerce"
 
   cabinet:
     environment:
-      DATABASE_URL: "postgres://coinslot:${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}@postgres:5432/coinslot"
+      DATABASE_URL: "postgres://agentify_commerce:${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}@postgres:5432/agentify_commerce"
 
   web:
     # The independently managed edge is the only public 80/443 listener.
     # This Caddy still assembles the commerce routes, over private HTTP.
     ports: !override []
     environment:
-      COINSLOT_SITE_ADDRESS: ":8080"
-      COINSLOT_TRUSTED_EDGE_CIDR: "172.30.80.2/32"
+      AGENTIFY_SITE_ADDRESS: ":8080"
+      AGENTIFY_TRUSTED_EDGE_CIDR: "172.30.80.2/32"
     networks:
       default:
       agentify-ingress:
@@ -36,3 +36,14 @@ networks:
   agentify-ingress:
     external: true
     name: agentify-ingress
+
+# A missing namespace cutover must stop Compose before it starts an empty
+# production database. Ansible creates and restores these exact targets during
+# the separately reviewed cutover; ordinary releases only consume them.
+volumes:
+  agentify-postgres:
+    external: true
+    name: agentify-commerce-postgres
+  agentify-caddy:
+    external: true
+    name: agentify-commerce-caddy

@@ -160,7 +160,7 @@
     - name: Refuse pg-boss active jobs after bridge worker drained
       ansible.builtin.shell: |
         set -euo pipefail
-        docker exec -i agentify-commerce-postgres-1 psql -U coinslot -d agentify_scanner -At -v ON_ERROR_STOP=1 \
+        docker exec -i agentify-commerce-postgres-1 psql -U agentify_commerce -d agentify_scanner -At -v ON_ERROR_STOP=1 \
           < {{ (stage_dir ~ '/scanner-queue-active.sql') | quote }}
       args:
         executable: /bin/bash
@@ -232,7 +232,7 @@
     - name: Export current private lead links without encrypted lead columns
       ansible.builtin.shell: |
         set -euo pipefail
-        docker exec -i agentify-commerce-postgres-1 psql -U coinslot -d agentify_scanner -At -v ON_ERROR_STOP=1 \
+        docker exec -i agentify-commerce-postgres-1 psql -U agentify_commerce -d agentify_scanner -At -v ON_ERROR_STOP=1 \
           < {{ (stage_dir ~ '/scanner-lead-links.sql') | quote }} > {{ (auth_window_dir ~ '/private-lead-links.ndjson') | quote }}
         chmod 600 {{ (auth_window_dir ~ '/private-lead-links.ndjson') | quote }}
       args:
@@ -243,7 +243,7 @@
     - name: Preserve old lead and report-session row continuity before migration 0015
       ansible.builtin.shell: |
         set -euo pipefail
-        docker exec -i agentify-commerce-postgres-1 psql -U coinslot -d agentify_scanner -At -F '|' -v ON_ERROR_STOP=1 \
+        docker exec -i agentify-commerce-postgres-1 psql -U agentify_commerce -d agentify_scanner -At -F '|' -v ON_ERROR_STOP=1 \
           < {{ (stage_dir ~ '/scanner-auth-continuity.sql') | quote }} > {{ (auth_window_dir ~ '/pre-auth.continuity') | quote }}
         chmod 600 {{ (auth_window_dir ~ '/pre-auth.continuity') | quote }}
       args:

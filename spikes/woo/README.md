@@ -1,7 +1,14 @@
 # WooCommerce integration probe stand
 
+Operational examples below use the current Agentify identifiers. Product names
+and synthetic identifiers in recorded historical output have been normalized
+to match; this is not evidence of a new execution of the renamed stand.
+Other measured values are retained. Original transcripts remain in Git history.
+A pre-existing local stand must be handled separately; changing its Compose
+project name does not migrate its WordPress data.
+
 A disposable, local WooCommerce shop and three scripted probes. It exists to
-answer three pre-registered questions with evidence, before any Coinslot code
+answer three pre-registered questions with evidence, before any Agentify code
 assumes the answers. It is a spike: nothing here is product code, and the whole
 directory is meant to be deleted once its conclusions are recorded.
 
@@ -30,7 +37,7 @@ directory is meant to be deleted once its conclusions are recorded.
 
 The first three are the probe and its subject, and they are what the verdicts
 below were measured on. `demo.sh` and `DEMO.md` are a second use of the same
-stand: a person at a laptop connecting this shop to a Coinslot cabinet through
+stand: a person at a laptop connecting this shop to a Agentify cabinet through
 the screens, importing its catalogue, buying one of its products as an agent and
 finding the paid order in wp-admin. It changes three things about the stand —
 the shop moves onto https, a TLS terminator goes up in front of the cabinet, and
@@ -46,7 +53,7 @@ Ports are 8088 (the shop over http), 8443 (the same shop over https) and 8099
 (the callback receiver). None of them collide with the project's own
 `compose.yaml`, which publishes 8080 and 5432.
 
-The administrator password is `coinslot-dev-admin` and the database passwords
+The administrator password is `agentify-dev-admin` and the database passwords
 are `wordpress`, both written in plain sight in `setup.sh` and `compose.yaml`.
 That is deliberate. The stand is local, disposable and has to be reproducible
 from a clean checkout without a secret being passed around; none of these
@@ -80,14 +87,14 @@ Three seeded products, chosen to be awkward in different ways:
 
 | SKU | Name | Shape |
 | --- | --- | --- |
-| `coinslot-access-code` | Access code | virtual, 5.00 USD |
-| `coinslot-tote` | Canvas tote bag | physical, 25.00 USD, stock-managed |
-| `coinslot-abonement` | Абонемент на месяц | virtual, Cyrillic title, 863-character description |
+| `agentify-access-code` | Access code | virtual, 5.00 USD |
+| `agentify-tote` | Canvas tote bag | physical, 25.00 USD, stock-managed |
+| `agentify-abonement` | Абонемент на месяц | virtual, Cyrillic title, 863-character description |
 
 The third exists as material for a later question about what our publish door
 should accept; it is not used by any verdict here.
 
-One file on the stand is not stock WooCommerce: `mu-plugins/coinslot-probe.php`
+One file on the stand is not stock WooCommerce: `mu-plugins/agentify-probe.php`
 records every outbound HTTP request and every mail attempt the shop makes, so
 the probes can quote the shop rather than infer from the outside. It also holds
 the two local allowances described under probe 1, both gated behind a flag file
@@ -107,17 +114,17 @@ The grant works, end to end, unattended.
 
 ```
 GET /wc-auth/v1/authorize -> 200
-  approve control is <a href> (a GET), nonce-carrying: http://localhost:8088/wc-auth/v1/access_granted/?app_name=Coinslot&user_id=coinslot-merchant-1&return_url=…&callback_url=…&scope=read_write&wc_auth_nonce=<nonce>
+  approve control is <a href> (a GET), nonce-carrying: http://localhost:8088/wc-auth/v1/access_granted/?app_name=Agentify&user_id=agentify-merchant-1&return_url=…&callback_url=…&scope=read_write&wc_auth_nonce=<nonce>
   page states the scope Read/Write: true
-Approve with the local allowances -> 302; Location: https://callback/return?success=1&user_id=coinslot-merchant-1
+Approve with the local allowances -> 302; Location: https://callback/return?success=1&user_id=agentify-merchant-1
   shop outbound: POST https://callback/wc-auth-callback -> 200
 callback receiver got POST application/json;charset=UTF-8 from WordPress/7.1; http://localhost:8088
-  payload keys: key_id, user_id, consumer_key, consumer_secret, key_permissions; key_permissions=read_write; user_id=coinslot-merchant-1
+  payload keys: key_id, user_id, consumer_key, consumer_secret, key_permissions; key_permissions=read_write; user_id=agentify-merchant-1
   consumer_key=ck_ee3…995b (43 chars), consumer_secret=cs_8e3…1572 (43 chars)
 GET wc/v3/products over https with HTTP Basic -> 200; 3 products
 GET wc/v3/products over http with HTTP Basic -> 401; {"code":"woocommerce_rest_cannot_view","message":"Sorry, you cannot list resources.","data":{"status":401}}
 GET wc/v3/products over http with OAuth 1.0a signature -> 200; 3 products
-  wp_woocommerce_api_keys row: 2 | Coinslot - API (2026-09-14 06:54:30) | read_write | c33995b
+  wp_woocommerce_api_keys row: 2 | Agentify - API (2026-09-14 06:54:30) | read_write | c33995b
 ```
 
 The keys work. The `read_write` scope asked for is the scope stored, and the
@@ -125,7 +132,7 @@ key is visible to the merchant afterwards at WooCommerce → Settings → Advanc
 → REST API, under the application name we supplied:
 
 ```
-Coinslot - API (2026-09-14 06:54:30)    c33995b    Read/Write
+Agentify - API (2026-09-14 06:54:30)    c33995b    Read/Write
 ```
 
 ### 2. Store API without authentication — PASS
@@ -133,9 +140,9 @@ Coinslot - API (2026-09-14 06:54:30)    c33995b    Read/Write
 ```
 GET http://localhost:8088/wp-json/wc/store/v1/products (no Authorization header, no cookie) -> 200
   3 products, response was 10345 bytes
-  id=12 sku=coinslot-abonement name="Абонемент на месяц" price=12000 USD type=simple description=863 chars
-  id=11 sku=coinslot-tote name="Canvas tote bag" price=2500 USD type=simple description=56 chars
-  id=10 sku=coinslot-access-code name="Access code" price=500 USD type=simple description=51 chars
+  id=12 sku=agentify-abonement name="Абонемент на месяц" price=12000 USD type=simple description=863 chars
+  id=11 sku=agentify-tote name="Canvas tote bag" price=2500 USD type=simple description=56 chars
+  id=10 sku=agentify-access-code name="Access code" price=500 USD type=simple description=51 chars
   all three seeded SKUs present
 ```
 
@@ -157,15 +164,15 @@ by a factor of a hundred, quietly, for every ordinary currency.
 POST wc/v3/orders (set_paid:true) -> 201
   response: id=13 number=13 status=processing total=5.00 USD date_paid=2026-09-14T06:54:32 transaction_id=probe-tx-0001
   wp wc shop_order get 13: status,processing
-  wp wc shop_order get 13: payment_method,coinslot
+  wp wc shop_order get 13: payment_method,agentify
   wp wc shop_order get 13: transaction_id,probe-tx-0001
   wp wc shop_order get 13: date_paid,2026-09-14T06:54:32
   order storage: woocommerce_custom_orders_table_enabled=no
   raw storage row: 13 | shop_order | wc-processing
   wp-admin orders screen -> 200; order #13 listed: true; status class shown: processing
-  mail attempted: to="admin@example.test" subject="[Coinslot WooCommerce probe stand]: New order #13"
+  mail attempted: to="admin@example.test" subject="[Agentify WooCommerce probe stand]: New order #13"
   mail failed: to=["admin@example.test"] subject="…" reason=Could not instantiate mail function.
-  mail attempted: to="buyer@example.test" subject="Your Coinslot WooCommerce probe stand order has been received!"
+  mail attempted: to="buyer@example.test" subject="Your Agentify WooCommerce probe stand order has been received!"
   mail failed: to=["buyer@example.test"] subject="…" reason=Could not instantiate mail function.
 ```
 
@@ -173,7 +180,7 @@ The order is asked about four times and agrees with itself every time: in the
 REST response, through WooCommerce's own object layer over WP-CLI, in raw
 storage, and on the orders screen a human would open in wp-admin.
 
-`payment_method: "coinslot"` is accepted although no gateway by that name is
+`payment_method: "agentify"` is accepted although no gateway by that name is
 installed — WooCommerce stores the string without checking it. The
 `transaction_id` we supplied is stored and shown.
 
@@ -215,7 +222,7 @@ redirects once and serves the shop's ordinary front page with `200`:
 ```
 === with pretty permalinks:   302   (on to /wc-auth/v1/login/)
 === with plain permalinks:    301 -> …/wc-auth/v1/authorize/?…  then 200
-    <title>Coinslot WooCommerce probe stand</title>
+    <title>Agentify WooCommerce probe stand</title>
 ```
 
 A merchant whose shop uses plain permalinks would click Connect, land on their

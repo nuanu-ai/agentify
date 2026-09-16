@@ -32,7 +32,7 @@ import {
 import { bootGateway, sliceEnv } from "./gateway-harness.js";
 import { whyNotThisNetwork } from "./smoke.js";
 
-const DATABASE_URL = "postgres://coinslot@localhost:5432/coinslot";
+const DATABASE_URL = "postgres://agentify_commerce@localhost:5432/agentify_commerce";
 
 /**
  * The three fixtures a bootstrap gate needs before it reaches the chain, built
@@ -45,7 +45,7 @@ const A_MERCHANT = "0x784D1234567890123456789012345678901234Ac";
 const aCard = (): CatalogCard => ({ id: "itm_1", title: "A room for the night", params: {} });
 
 const aChallengeOn = (network: string): Challenge => ({
-  resourceUrl: "https://coinslot.example/x402/itm_1/purchase",
+  resourceUrl: "https://agentify.example/x402/itm_1/purchase",
   payTo: A_MERCHANT,
   network,
   asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",

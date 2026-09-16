@@ -9,7 +9,7 @@
  *
  * It is a file of its own rather than more tests in `adapters.db-test.ts`, and
  * the reason is the failure that produced it. That file starts a whole gateway,
- * and a started gateway has a worker polling `coinslot_reminders`. A test that
+ * and a started gateway has a worker polling `agentify_reminders`. A test that
  * stands up a second queue against the same database and waits for its own
  * handler to be called is asking pg-boss to hand one job to two consumers;
  * pg-boss hands it to one of them, correctly, and it was the gateway's — so the
@@ -49,7 +49,7 @@ const STREAM = streamOf(A);
  * Every test gets its own schema, and that is not tidiness. Queue settings are
  * written once — pg-boss's `create_queue` is an insert that does nothing on
  * conflict — so a test that needs a one-second visibility window would leave
- * that window on `coinslot_envelopes` for every test that ran after it, and the
+ * that window on `agentify_envelopes` for every test that ran after it, and the
  * suite's behaviour would depend on the order the tests happened to be declared
  * in. A schema each also means the installation itself is exercised from
  * nothing every run.
@@ -139,18 +139,18 @@ if (databaseUrl === null) {
       // queue name, and offline that is only a regular expression agreeing with
       // itself. This is the library answering, and the first time it was asked
       // it disagreed: the comment beside the constants said a period was
-      // refused and the obvious `coinslot.envelopes` would fail at start-up,
+      // refused and the obvious `agentify.envelopes` would fail at start-up,
       // and pg-boss created that queue without a word. A rule copied out of a
       // reading rather than out of the library had been standing as a fact.
       const { boss } = await labQueue("pgboss_queue_names");
 
-      const taken = [ENVELOPES, REMINDERS, STREAM, "coinslot.envelopes", "coinslot-envelopes"];
+      const taken = [ENVELOPES, REMINDERS, STREAM, "agentify.envelopes", "agentify-envelopes"];
       for (const name of taken) {
         expect(name, name).toMatch(A_NAME_PG_BOSS_ACCEPTS);
         await expect(boss.createQueue(name)).resolves.toBeUndefined();
       }
 
-      const refused = ["coinslot envelopes", "coinslot:envelopes", "coinslot#envelopes"];
+      const refused = ["agentify envelopes", "agentify:envelopes", "agentify#envelopes"];
       for (const name of refused) {
         expect(name, name).not.toMatch(A_NAME_PG_BOSS_ACCEPTS);
         await expect(boss.createQueue(name)).rejects.toThrow();
@@ -580,20 +580,20 @@ if (databaseUrl === null) {
       const { boss, queue } = await labQueue("pgboss_every_day");
       let ran = 0;
 
-      await queue.everyDay("coinslot_a_daily_sweep", async () => {
+      await queue.everyDay("agentify_a_daily_sweep", async () => {
         ran += 1;
       });
 
-      await boss.send("coinslot_a_daily_sweep", {});
+      await boss.send("agentify_a_daily_sweep", {});
       await vi.waitFor(() => expect(ran).toBe(1), { timeout: 25_000, interval: 100 });
 
-      const schedules = await boss.getSchedules("coinslot_a_daily_sweep");
+      const schedules = await boss.getSchedules("agentify_a_daily_sweep");
       expect(schedules.map((schedule) => schedule.cron)).toStrictEqual(["17 3 * * *"]);
 
-      await queue.everyDay("coinslot_a_daily_sweep", async () => {
+      await queue.everyDay("agentify_a_daily_sweep", async () => {
         ran += 1;
       });
-      expect(await boss.getSchedules("coinslot_a_daily_sweep")).toHaveLength(1);
+      expect(await boss.getSchedules("agentify_a_daily_sweep")).toHaveLength(1);
     }, 60_000);
   });
 }

@@ -93,7 +93,7 @@ import { purchaseOf, Waiting } from "./waiting.js";
 const KEY_USE_WRITTEN_EVERY_MS = 5 * 60_000;
 
 /** The queue's name for the daily sweep of claims on payments. */
-export const SWEEP_CLAIMS = "coinslot_forget_old_claims";
+export const SWEEP_CLAIMS = "agentify_forget_old_claims";
 
 /**
  * What the selling switch came to: the catalog as it now stands, or a refusal.

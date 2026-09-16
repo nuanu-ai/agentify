@@ -38,7 +38,7 @@ const MERCHANT_EMAIL = "merchant@example.com";
 const aProduct = (overrides: Partial<StoreProduct> = {}): StoreProduct => ({
   id: 11,
   name: "Canvas tote bag",
-  sku: "coinslot-tote",
+  sku: "agentify-tote",
   type: "simple",
   description: "<p>A physical item that has to be shipped somewhere.</p>",
   short_description: "",

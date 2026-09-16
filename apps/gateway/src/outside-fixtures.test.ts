@@ -89,7 +89,7 @@ async function aGatewayOnAPort() {
 
   const gateway = new Gateway({
     config: loadConfig({
-      DATABASE_URL: "postgres://coinslot@localhost:5432/coinslot",
+      DATABASE_URL: "postgres://agentify_commerce@localhost:5432/agentify_commerce",
       PAY_TO_ADDRESS: PAY_TO,
       REGISTRATION_INVITATION: INVITATION,
     }),

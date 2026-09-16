@@ -18,16 +18,6 @@
 
 /** What each channel declares itself to be. */
 const CHANNELS = {
-  test: {
-    network: "eip155:84532",
-    facilitator: "https://x402.org/facilitator",
-    surfaceMode: "test",
-    origin: "https://test.coinslot.nuanu.ai",
-    siteAddress: "test.coinslot.nuanu.ai",
-    hostIp: "10.20.10.20",
-    publishedPort: "8443",
-    credentials: false,
-  },
   "agentify-test": {
     network: "eip155:84532",
     facilitator: "https://x402.org/facilitator",
@@ -37,16 +27,6 @@ const CHANNELS = {
     hostIp: "10.20.10.20",
     publishedPort: "8443",
     credentials: false,
-  },
-  live: {
-    network: "eip155:8453",
-    facilitator: "https://api.cdp.coinbase.com/platform/v2/x402",
-    surfaceMode: "live",
-    origin: "https://coinslot.nuanu.ai",
-    siteAddress: "coinslot.nuanu.ai",
-    hostIp: "10.20.10.20",
-    publishedPort: "443",
-    credentials: true,
   },
   commerce: {
     network: "eip155:8453",
@@ -72,9 +52,7 @@ const envOf = (resolved, service) => resolved.services?.[service]?.environment ?
 export function problemsWith(channel, resolved) {
   const wanted = CHANNELS[channel];
   if (wanted === undefined) {
-    return [
-      `${channel} is not a release channel; the channels are test, agentify-test, live and commerce`,
-    ];
+    return [`${channel} is not a release channel; the channels are agentify-test and commerce`];
   }
 
   const problems = [];
@@ -118,7 +96,7 @@ export function problemsWith(channel, resolved) {
     }
   }
 
-  equal("web", "COINSLOT_SURFACE_MODE", web.COINSLOT_SURFACE_MODE, wanted.surfaceMode);
+  equal("web", "AGENTIFY_SURFACE_MODE", web.AGENTIFY_SURFACE_MODE, wanted.surfaceMode);
 
   // The cabinet was handed the gateway's pair, compared value for value. A
   // cabinet on the scripted facilitator beside a gateway on the public one
@@ -159,18 +137,18 @@ export function problemsWith(channel, resolved) {
     const postgres = envOf(resolved, "postgres");
     const password = postgres.POSTGRES_PASSWORD;
     if (
-      postgres.POSTGRES_USER !== "coinslot" ||
-      postgres.POSTGRES_DB !== "coinslot" ||
+      postgres.POSTGRES_USER !== "agentify_commerce" ||
+      postgres.POSTGRES_DB !== "agentify_commerce" ||
       typeof password !== "string" ||
       !/^[A-Za-z0-9._~-]{24,}$/.test(password) ||
       password.startsWith("REPLACE_") ||
-      password === "coinslot"
+      password === "agentify_commerce"
     ) {
       problems.push(
         "postgres: commerce needs a distinct URL-safe password of at least 24 characters",
       );
     } else {
-      const databaseUrl = `postgres://coinslot:${password}@postgres:5432/coinslot`;
+      const databaseUrl = `postgres://agentify_commerce:${password}@postgres:5432/agentify_commerce`;
       for (const service of ["migrate", "gateway", "cabinet"]) {
         if (envOf(resolved, service).DATABASE_URL !== databaseUrl) {
           problems.push(`${service}: DATABASE_URL is not wired to this private commerce Postgres`);
@@ -234,12 +212,12 @@ export function problemsWith(channel, resolved) {
 
   equal("gateway", "PUBLIC_BASE_URL", gateway.PUBLIC_BASE_URL, wanted.origin);
   equal("cabinet", "PUBLIC_BASE_URL", cabinet.PUBLIC_BASE_URL, wanted.origin);
-  equal("web", "COINSLOT_SITE_ADDRESS", web.COINSLOT_SITE_ADDRESS, wanted.siteAddress);
+  equal("web", "AGENTIFY_SITE_ADDRESS", web.AGENTIFY_SITE_ADDRESS, wanted.siteAddress);
   if (wanted.trustedEdgeCidr !== undefined) {
     equal(
       "web",
-      "COINSLOT_TRUSTED_EDGE_CIDR",
-      web.COINSLOT_TRUSTED_EDGE_CIDR,
+      "AGENTIFY_TRUSTED_EDGE_CIDR",
+      web.AGENTIFY_TRUSTED_EDGE_CIDR,
       wanted.trustedEdgeCidr,
     );
   }

@@ -63,7 +63,7 @@ describe("the test deployment pull agent", () => {
   let stateFile: string;
 
   beforeEach(() => {
-    root = mkdtempSync(join(tmpdir(), "coinslot-pull-agent-"));
+    root = mkdtempSync(join(tmpdir(), "agentify-pull-agent-"));
     fakeBin = join(root, "bin");
     mkdirSync(fakeBin);
     responseFile = join(root, "workflow-runs.json");
@@ -72,7 +72,7 @@ describe("the test deployment pull agent", () => {
     releaseCount = join(root, "release-count");
     releaseProgram = join(root, "release");
     stateFile = join(root, "state", "test-pull.state");
-    markerFile = join(root, "test-deployment", ".coinslot-revision");
+    markerFile = join(root, "test-deployment", ".agentify-revision");
 
     executable(
       join(fakeBin, "git"),
@@ -283,7 +283,7 @@ exit "\${FAKE_RELEASE_EXIT:-0}"
 
 describe("the release receiver's local test-channel door", () => {
   it("accepts a trusted local SHA before checking server preconditions", () => {
-    const home = mkdtempSync(join(tmpdir(), "coinslot-release-home-"));
+    const home = mkdtempSync(join(tmpdir(), "agentify-release-home-"));
     try {
       const bin = join(home, "bin");
       mkdirSync(bin);
@@ -312,6 +312,6 @@ describe("the release receiver's local test-channel door", () => {
     });
 
     expect(result.status).toBe(64);
-    expect(result.stderr).toContain("local releases are limited to the test channel");
+    expect(result.stderr).toContain("this receiver is limited to the test channel");
   });
 });

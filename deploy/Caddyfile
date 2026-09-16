@@ -9,12 +9,12 @@
 # local default, and the deployment overrides the variable rather than editing
 # a copy of this file.
 #
-#   COINSLOT_SITE_ADDRESS      what Caddy listens on              :8080
-#   COINSLOT_LANDING_ROOT      the landing's static directory     /srv/landing
-#   COINSLOT_PORTAL_ROOT       the portal's built output          /srv/docs
-#   COINSLOT_CABINET_UPSTREAM  host:port of the cabinet process   cabinet:3001
-#   COINSLOT_GATEWAY_UPSTREAM  host:port of the gateway process   gateway:3000
-#   COINSLOT_SURFACE_MODE      what the static pages say           sandbox
+#   AGENTIFY_SITE_ADDRESS      what Caddy listens on              :8080
+#   AGENTIFY_LANDING_ROOT      the landing's static directory     /srv/landing
+#   AGENTIFY_PORTAL_ROOT       the portal's built output          /srv/docs
+#   AGENTIFY_CABINET_UPSTREAM  host:port of the cabinet process   cabinet:3001
+#   AGENTIFY_GATEWAY_UPSTREAM  host:port of the gateway process   gateway:3000
+#   AGENTIFY_SURFACE_MODE      what the static pages say           sandbox
 #
 # The defaults are the container's view of the world, because ADR-0005 §7 wants
 # the whole chain to come up from `docker compose up`, and it does: the compose
@@ -22,34 +22,26 @@
 # name are the service names on its network. Running this file from a checkout
 # outside Docker still works, with the roots pointed at the repository:
 #
-#   COINSLOT_LANDING_ROOT=apps/landing/public \
-#   COINSLOT_PORTAL_ROOT=apps/docs/.vitepress/dist \
-#   COINSLOT_CABINET_UPSTREAM=127.0.0.1:3001 \
-#   COINSLOT_GATEWAY_UPSTREAM=127.0.0.1:3000 \
+#   AGENTIFY_LANDING_ROOT=apps/landing/public \
+#   AGENTIFY_PORTAL_ROOT=apps/docs/.vitepress/dist \
+#   AGENTIFY_CABINET_UPSTREAM=127.0.0.1:3001 \
+#   AGENTIFY_GATEWAY_UPSTREAM=127.0.0.1:3000 \
 #     caddy run --config deploy/Caddyfile
 #
 # The listen address defaults to a high port rather than :80 so that the same
 # line works unprivileged on a laptop and inside a container. A deployment sets
-# COINSLOT_SITE_ADDRESS to its hostname, and Caddy's automatic HTTPS turns
+# AGENTIFY_SITE_ADDRESS to its hostname, and Caddy's automatic HTTPS turns
 # itself on because the address stops being a bare port — which is the reason
 # this file does not disable it.
 
-# Deployment, and the one thing about it that is not obvious.
-#
-# `coinslot.nuanu.ai` is already routed (nuanu-ai/infra, decision
-# 2026-08-25-coinslot-spike-public-route): an unproxied A record to the Comino
-# ingress, which answers port 80 itself with a redirect and passes port 443
-# through by SNI to the backend. TLS terminates here.
-#
-# So HTTP-01 cannot ever succeed for this name — port 80 never reaches this
-# process, the ingress having answered it — and Caddy would spend attempts on
-# it before falling back. TLS-ALPN arrives as an ordinary TLS handshake on 443
-# and passes straight through, which is why it is the only issuer named. On a
-# bare port this block is inert: no ACME runs at all.
+# A direct test deployment receives TLS through an SNI pass-through ingress;
+# port 80 stops at that ingress. TLS-ALPN therefore reaches this Caddy while
+# HTTP-01 does not. The production inner Caddy listens on a bare private port,
+# so this issuer block is inert there and the public edge owns certificates.
 {
 	# Only the challenge that can arrive here. Overridable, because a deployment
 	# behind a different edge may reach port 80 after all.
-	acme_ca {$COINSLOT_ACME_CA:https://acme-v02.api.letsencrypt.org/directory}
+	acme_ca {$AGENTIFY_ACME_CA:https://acme-v02.api.letsencrypt.org/directory}
 	cert_issuer acme {
 		disable_http_challenge
 	}
@@ -57,12 +49,12 @@
 	# peer for X-Forwarded-Proto and X-Forwarded-For; broad private ranges would
 	# let another Docker service impersonate a browser's address.
 	servers {
-		trusted_proxies static {$COINSLOT_TRUSTED_EDGE_CIDR:127.0.0.1/32}
+		trusted_proxies static {$AGENTIFY_TRUSTED_EDGE_CIDR:127.0.0.1/32}
 		trusted_proxies_strict
 	}
 }
 
-{$COINSLOT_SITE_ADDRESS::8080} {
+{$AGENTIFY_SITE_ADDRESS::8080} {
 	encode zstd gzip
 
 	# The web surface decision puts four things on one origin, and same-origin is
@@ -149,7 +141,7 @@
 	# through untouched, so /cabinet/healthz already arrives.
 	@gateway path /v0 /v0/* /x402 /x402/* /healthz
 	handle @gateway {
-		reverse_proxy {$COINSLOT_GATEWAY_UPSTREAM:gateway:3000}
+		reverse_proxy {$AGENTIFY_GATEWAY_UPSTREAM:gateway:3000}
 	}
 
 	# The cabinet, its own process rather than part of the gateway (ADR-0005
@@ -164,7 +156,7 @@
 	# at /cabinets-we-have-known would otherwise disappear into the proxy.
 	@cabinet path /cabinet /cabinet/*
 	handle @cabinet {
-		reverse_proxy {$COINSLOT_CABINET_UPSTREAM:cabinet:3001}
+		reverse_proxy {$AGENTIFY_CABINET_UPSTREAM:cabinet:3001}
 	}
 
 	# The portal. Here the prefix IS stripped, because the other side is a
@@ -188,7 +180,7 @@
 	# spend an afternoon on it.
 	redir /docs /docs/
 	handle_path /docs/* {
-		root * {$COINSLOT_PORTAL_ROOT:/srv/docs}
+		root * {$AGENTIFY_PORTAL_ROOT:/srv/docs}
 
 		# cleanUrls is on in the portal's config, so /docs/money is a request
 		# for a page whose file carries the extension.
@@ -220,7 +212,7 @@
 	# rather than a decision, and the fix is a page in the landing plus a
 	# handle_errors block here.
 	handle {
-		root * {$COINSLOT_LANDING_ROOT:/srv/landing}
+		root * {$AGENTIFY_LANDING_ROOT:/srv/landing}
 		# Which stack this is, and the only place in this system where the mode
 		# is a variable rather than a derivation: Caddy cannot read a CAIP-2
 		# identifier and cannot hold the list of chains. Two fields can
