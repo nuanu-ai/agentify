@@ -1,5 +1,15 @@
 # Merchant SDK release history
 
+## 0.2.4
+
+### Patch Changes
+
+- d1f6870: Publish the merchant SDK, contracts package and `agentify` command under their Agentify names. The wire contract and runtime behavior are unchanged.
+- Updated dependencies [35941c2]
+- Updated dependencies [d1f6870]
+- Updated dependencies [c7c26b8]
+  - @nuanu-ai/agentify-contracts@0.3.2
+
 These entries record releases published under the former package names.
 Version numbers and release facts are retained; former package and command
 identities are described generically. The original wording remains in Git history.
