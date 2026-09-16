@@ -6,6 +6,8 @@ import { REPORT_SESSION_COOKIE } from "../../../../../lib/server/auth";
 import { getServerConfig } from "../../../../../lib/server/config";
 import { errorResponse, hasSameOrigin } from "../../../../../lib/server/http";
 import { verifyAndFinalizeScannerRegistration } from "../../../../../lib/server/scanner-registration";
+import { inspectScannerMagicLinkClaim } from "../../../../../lib/server/scanner-auth";
+import { verifyAndFinalizeScannerRecovery } from "../../../../../lib/server/scanner-recovery";
 
 export const runtime = "nodejs";
 const verificationRequestSchema = z.object({
@@ -46,10 +48,17 @@ export async function POST(request: NextRequest) {
       "The verification link is invalid or expired.",
     );
   try {
-    const finalized = await verifyAndFinalizeScannerRegistration(
-      parsed.data.state,
-      parsed.data.token,
-    );
+    const claim = await inspectScannerMagicLinkClaim(parsed.data.token);
+    const finalized =
+      claim?.purpose === "recovery"
+        ? await verifyAndFinalizeScannerRecovery(
+            parsed.data.state,
+            parsed.data.token,
+          )
+        : await verifyAndFinalizeScannerRegistration(
+            parsed.data.state,
+            parsed.data.token,
+          );
     if (!finalized)
       return errorResponse(
         request,

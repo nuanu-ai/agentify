@@ -18,6 +18,13 @@ import { getDatabase } from "./database";
 import { sendTransactionalEmail } from "./email";
 
 const LINK_TTL_SECONDS = 60 * 60;
+export type ScannerMagicLinkPurpose = "registration" | "recovery";
+
+export type ScannerMagicLinkClaim = Readonly<{
+  email: string;
+  purpose?: ScannerMagicLinkPurpose;
+  state?: string;
+}>;
 
 function scannerAuth(tx?: DatabaseTransaction) {
   const config = getServerConfig();
@@ -58,15 +65,30 @@ function scannerAuth(tx?: DatabaseTransaction) {
         storeToken: "hashed",
         async sendMagicLink({ email, token, metadata }) {
           const state = metadata?.state;
+          const purpose = metadata?.purpose;
           if (typeof state !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(state)) {
             throw new Error("verification_state_missing");
           }
+          if (purpose !== "registration" && purpose !== "recovery") {
+            throw new Error("verification_purpose_missing");
+          }
+          const hash = createHash("sha256").update(token).digest("base64url");
+          const database = tx ?? getDatabase().db;
+          const stored = await database
+            .update(scannerAuthVerifications)
+            .set({ value: JSON.stringify({ email, purpose, state }) })
+            .where(eq(scannerAuthVerifications.identifier, hash))
+            .returning({ id: scannerAuthVerifications.id });
+          if (!stored.length) throw new Error("verification_storage_missing");
           const link = new URL("/auth/callback", config.appBaseUrl);
           link.hash = new URLSearchParams({ state, token }).toString();
           const url = link.toString();
           await sendTransactionalEmail({
             to: email,
-            subject: "Confirm your Agentify registration",
+            subject:
+              purpose === "recovery"
+                ? "Recover your Agentify report"
+                : "Confirm your Agentify registration",
             text: `Open this link and confirm your email to access your private report: ${url}`,
             html: `<p>Open this link and confirm your email to access your private report:</p><p><a href="${url}">Confirm email</a></p>`,
             evidenceUrl: url,
@@ -84,15 +106,22 @@ const headers = () =>
 
 export async function sendScannerMagicLink(email: string, state: string) {
   await getAuth().api.signInMagicLink({
-    body: { email, metadata: { state } },
+    body: { email, metadata: { purpose: "registration", state } },
     headers: headers(),
   });
 }
 
-export async function inspectScannerMagicLink(
+export async function sendScannerRecoveryLink(email: string, state: string) {
+  await getAuth().api.signInMagicLink({
+    body: { email, metadata: { purpose: "recovery", state } },
+    headers: headers(),
+  });
+}
+
+export async function inspectScannerMagicLinkClaim(
   token: string,
   tx?: DatabaseTransaction,
-) {
+): Promise<ScannerMagicLinkClaim | undefined> {
   if (!/^[A-Za-z0-9]{32}$/.test(token)) return undefined;
   const hash = createHash("sha256").update(token).digest("base64url");
   const db = tx ?? getDatabase().db;
@@ -117,12 +146,30 @@ export async function inspectScannerMagicLink(
       "email" in value &&
       typeof value.email === "string"
     ) {
-      return value.email;
+      const purpose =
+        "purpose" in value &&
+        (value.purpose === "registration" || value.purpose === "recovery")
+          ? value.purpose
+          : undefined;
+      const state =
+        "state" in value &&
+        typeof value.state === "string" &&
+        /^[A-Za-z0-9_-]{43}$/.test(value.state)
+          ? value.state
+          : undefined;
+      return { email: value.email, purpose, state };
     }
   } catch {
-    // A malformed verification never proves an address.
+    // A malformed verification never proves an address or a recovery purpose.
   }
   return undefined;
+}
+
+export async function inspectScannerMagicLink(
+  token: string,
+  tx?: DatabaseTransaction,
+) {
+  return (await inspectScannerMagicLinkClaim(token, tx))?.email;
 }
 
 export async function consumeScannerMagicLinkInTransaction(

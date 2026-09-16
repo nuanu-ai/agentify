@@ -1,12 +1,13 @@
 # 0024. Scanner identity and data live in our PostgreSQL
 
 Date: 2026-09-15
-Status: accepted for preparation; production activation is a separate operation
+Status: accepted
 
 ## Context
 
 The scanner uses a managed Supabase database and email authentication while
-the commercial cabinet already runs Better Auth and Resend on our infrastructure.
+the commercial cabinet already runs Better Auth and has a verified Resend sender
+credential on our infrastructure.
 The repository and production host are shared, but report ownership and merchant
 tenancy are separate security boundaries. Moving infrastructure must preserve
 existing reports and accounts without granting scanner visitors merchant access.
@@ -36,6 +37,15 @@ Supabase. The old Supabase user ID is retained as migration provenance, not as a
 active authentication credential. Existing commerce accounts, passwords, sessions,
 invitation requirements and merchant keys are unchanged.
 
+An old Supabase callback state is only a report-routing hint. A valid report
+session may follow it only to a report owned by that session. Otherwise the owner
+requests a fresh, purpose-bound Better Auth link; the request has one generic
+answer whether a report exists or a rate limit applies. Its hashed token is
+consumed by an explicit same-origin submission in the same transaction that
+creates the report session. An absent or cleaned hint falls back only to the
+authenticated owner's latest report. Supabase access and refresh tokens are never
+accepted.
+
 ## Consequences
 
 Database handoff freezes the scanner's writers and scheduled jobs, preserves a
@@ -43,7 +53,9 @@ protected source dump off the VM, restores into an empty scanner destination and
 verifies data and permissions before activation. After new writes, recovery must
 reconcile those writes; restarting the old worker is not a safe rollback.
 
-Pending Supabase email links require a replacement link after identity cutover.
+Pending Supabase email links for an existing verified lead require a replacement
+link after identity cutover. A pending signup that never created a lead still
+returns to registration; recovery does not invent ownership or replay consent.
 Existing report sessions do not require a bulk password or merchant migration.
 Privacy deletion must remove the new linked identity and revoke report access.
 Supabase retirement follows database, queue, mail and report-access acceptance.

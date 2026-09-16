@@ -29,6 +29,36 @@
   line-height: 1.55;
 }
 
+.form {
+  display: grid;
+  gap: 12px;
+  text-align: left;
+}
+
+.form label {
+  font-weight: 700;
+}
+
+.form input {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: 0 14px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+}
+
+.form input:focus-visible {
+  outline: 3px solid var(--accent-soft);
+  outline-offset: 2px;
+}
+
+.form button {
+  margin-top: 4px;
+}
+
 .spinner {
   width: 36px;
   height: 36px;

@@ -11,6 +11,8 @@ export type RateKind =
   | "scan_target_day"
   | "registration_email_hour"
   | "registration_session_hour"
+  | "recovery_email_hour"
+  | "recovery_ip_hour"
   | "merchant_ip_hour"
   | "merchant_email_hour";
 

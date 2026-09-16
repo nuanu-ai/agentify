@@ -58,9 +58,9 @@ export default async function ReportPage({
           </p>
           <Link
             className="button button-primary"
-            href={`/scan/${encodeURIComponent(scanId)}`}
+            href="/auth/callback?recover=1"
           >
-            Return to scan
+            Recover report access
           </Link>
         </section>
       </main>

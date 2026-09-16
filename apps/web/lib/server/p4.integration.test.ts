@@ -20,6 +20,7 @@ import {
   scans,
   sessions,
   verificationTokens,
+  waitlistEntries,
 } from "@agentify/scanner-database";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
@@ -36,6 +37,7 @@ import { POST as publishShare } from "../../app/api/v1/scans/[id]/share/route";
 import { POST as acceptScan } from "../../app/api/v1/scans/route";
 import { GET as getContactAccess } from "../../app/api/v2/scans/[id]/contact-access/route";
 import { POST as finalizeScannerAuth } from "../../app/api/v2/auth/finalize/route";
+import { handleScannerRecoveryRequest } from "../../app/api/v2/auth/recover/route";
 import { POST as requestScannerRegistration } from "../../app/api/v2/scans/[id]/registrations/route";
 import { REPORT_SESSION_COOKIE } from "./auth";
 import { encryptEmail, hmacHex, sha256 } from "./crypto";
@@ -85,6 +87,15 @@ const migrationsFolder = fileURLToPath(
 let scanId = "";
 let scanAccessToken = "";
 const anonymousToken = "p4-attribution-anonymous-token";
+
+async function recoverScannerAuth(request: NextRequest) {
+  let pending: Promise<void> | undefined;
+  const response = await handleScannerRecoveryRequest(request, (task) => {
+    pending = task();
+  });
+  await pending;
+  return response;
+}
 
 async function createFreshCompletedScan(label: string) {
   const { db } = getDatabase();
@@ -1657,5 +1668,358 @@ describe("P4 verified report funnel", () => {
     } finally {
       process.env.REGISTRATION_ENABLED = "false";
     }
+  });
+
+  it("recovers an existing report with a purpose-bound fresh link", async () => {
+    const { db } = getDatabase();
+    const { scan } = await createFreshCompletedScan("legacy-recovery");
+    const email = "legacy-report-owner@example.com";
+    const config = getServerConfig();
+    const leadId = createUuidV7();
+    const authUserId = "legacy-report-owner";
+    const legacyState = "L".repeat(43);
+    const legacyIntentId = createUuidV7();
+    await db.insert(scannerAuthUsers).values({
+      id: authUserId,
+      email,
+      emailVerified: true,
+      name: "",
+    });
+    await db.insert(leads).values({
+      id: leadId,
+      scannerAuthUserId: authUserId,
+      emailNormalizedCiphertext: encryptEmail(email, config.encryptionKey),
+      emailLookupHash: hmacHex(config.hmacSecret, "email", email),
+      phoneE164Ciphertext: encryptEmail("+14155550140", config.encryptionKey),
+      phoneLookupHash: hmacHex(config.hmacSecret, "phone", "+14155550140"),
+      role: "developer",
+      verifiedAt: new Date(Date.now() - 86_400_000),
+      firstSegment: scan.segment,
+      firstSessionId: scan.sessionId,
+    });
+    await db.insert(leadScans).values({
+      leadId,
+      scanId: scan.id,
+      siteOwnershipClaim: true,
+    });
+    await db.insert(waitlistEntries).values({
+      id: createUuidV7(),
+      leadId,
+      scanId: scan.id,
+    });
+    await db.update(scans).set({ leadId }).where(eq(scans.id, scan.id));
+    await db.insert(registrationIntents).values({
+      id: legacyIntentId,
+      scanId: scan.id,
+      sessionId: scan.sessionId,
+      callbackStateHash: sha256(legacyState),
+      emailNormalizedCiphertext: encryptEmail(email, config.encryptionKey),
+      emailLookupHash: hmacHex(config.hmacSecret, "email", email),
+      phoneE164Ciphertext: encryptEmail("+14155550140", config.encryptionKey),
+      phoneLookupHash: hmacHex(config.hmacSecret, "phone", "+14155550140"),
+      role: "developer",
+      siteOwnershipClaim: true,
+      datasetReuseAcknowledged: true,
+      expiresAt: new Date(Date.now() - 60_000),
+    });
+    const beforeConsent = await db.select().from(consentSnapshots);
+    const beforeDelivery = await db.select().from(deliveryOutbox);
+
+    const requested = await recoverScannerAuth(
+      new NextRequest("http://localhost:3000/api/v2/auth/recover", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:3000",
+          "content-type": "application/json",
+          "x-forwarded-for": "198.51.100.10, 127.0.0.1",
+        },
+        body: JSON.stringify({ action: "email", email, state: legacyState }),
+      }),
+    );
+    expect(requested.status).toBe(202);
+    expect(await requested.json()).toEqual({ status: "recovery_requested" });
+    const fragment = new URLSearchParams(
+      new URL(getLocalEmailEvidence()!.evidenceUrl!).hash.slice(1),
+    );
+    const token = fragment.get("token")!;
+    expect(fragment.get("state")).toBe(legacyState);
+
+    const wrongState = await finalizeScannerAuth(
+      new NextRequest("http://localhost:3000/api/v2/auth/finalize", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:3000",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ state: "X".repeat(43), token }),
+      }),
+    );
+    expect(wrongState.status).toBe(401);
+
+    const finalized = await finalizeScannerAuth(
+      new NextRequest("http://localhost:3000/api/v2/auth/finalize", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:3000",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ state: legacyState, token }),
+      }),
+    );
+    expect(finalized.status).toBe(200);
+    expect(await finalized.json()).toMatchObject({
+      status: "verified",
+      report_url: `/report/${scan.id}`,
+    });
+    const reportCookie = finalized.headers.get("set-cookie")!;
+    expect(reportCookie).toContain(REPORT_SESSION_COOKIE);
+    expect(await db.select().from(consentSnapshots)).toEqual(beforeConsent);
+    expect(await db.select().from(deliveryOutbox)).toEqual(beforeDelivery);
+    expect(
+      (
+        await db
+          .select()
+          .from(registrationIntents)
+          .where(eq(registrationIntents.id, legacyIntentId))
+      )[0]?.consumedAt,
+    ).toBeNull();
+
+    const authenticated = await recoverScannerAuth(
+      new NextRequest("http://localhost:3000/api/v2/auth/recover", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:3000",
+          "content-type": "application/json",
+          cookie: reportCookie.split(";")[0]!,
+        },
+        body: JSON.stringify({ action: "session", state: legacyState }),
+      }),
+    );
+    expect(authenticated.status).toBe(200);
+    expect(await authenticated.json()).toMatchObject({
+      report_url: `/report/${scan.id}`,
+    });
+
+    const { scan: foreignScan } = await createFreshCompletedScan(
+      "foreign-legacy-state",
+    );
+    const foreignState = "F".repeat(43);
+    await db.insert(registrationIntents).values({
+      id: createUuidV7(),
+      scanId: foreignScan.id,
+      sessionId: foreignScan.sessionId,
+      callbackStateHash: sha256(foreignState),
+      emailNormalizedCiphertext: encryptEmail(
+        "foreign-report-owner@example.com",
+        config.encryptionKey,
+      ),
+      emailLookupHash: hmacHex(
+        config.hmacSecret,
+        "email",
+        "foreign-report-owner@example.com",
+      ),
+      phoneE164Ciphertext: encryptEmail("+14155550141", config.encryptionKey),
+      phoneLookupHash: hmacHex(config.hmacSecret, "phone", "+14155550141"),
+      role: "developer",
+      datasetReuseAcknowledged: true,
+      expiresAt: new Date(Date.now() - 60_000),
+    });
+    const foreignHint = await recoverScannerAuth(
+      new NextRequest("http://localhost:3000/api/v2/auth/recover", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:3000",
+          "content-type": "application/json",
+          cookie: reportCookie.split(";")[0]!,
+        },
+        body: JSON.stringify({ action: "session", state: foreignState }),
+      }),
+    );
+    expect(foreignHint.status).toBe(202);
+
+    const reportSessionToken = reportCookie
+      .split(";")[0]!
+      .slice(`${REPORT_SESSION_COOKIE}=`.length);
+    await expect(
+      getFullReport(scan.id, reportSessionToken),
+    ).resolves.toMatchObject({ scan_id: scan.id });
+    await db
+      .update(reportSessions)
+      .set({ expiresAt: new Date(Date.now() - 1_000) })
+      .where(eq(reportSessions.sessionTokenHash, sha256(reportSessionToken)));
+    const expiredSession = await recoverScannerAuth(
+      new NextRequest("http://localhost:3000/api/v2/auth/recover", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:3000",
+          "content-type": "application/json",
+          cookie: reportCookie.split(";")[0]!,
+        },
+        body: JSON.stringify({ action: "session", state: legacyState }),
+      }),
+    );
+    expect(expiredSession.status).toBe(202);
+    await db
+      .update(reportSessions)
+      .set({
+        expiresAt: new Date(Date.now() + 86_400_000),
+        revokedAt: new Date(),
+      })
+      .where(eq(reportSessions.sessionTokenHash, sha256(reportSessionToken)));
+    const revokedSession = await recoverScannerAuth(
+      new NextRequest("http://localhost:3000/api/v2/auth/recover", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:3000",
+          "content-type": "application/json",
+          cookie: reportCookie.split(";")[0]!,
+        },
+        body: JSON.stringify({ action: "session", state: legacyState }),
+      }),
+    );
+    expect(revokedSession.status).toBe(202);
+
+    const evidenceBeforeEnumeration = getLocalEmailEvidence()!.evidenceUrl;
+    const generic = await recoverScannerAuth(
+      new NextRequest("http://localhost:3000/api/v2/auth/recover", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:3000",
+          "content-type": "application/json",
+          "x-forwarded-for": "203.0.113.9, 127.0.0.1",
+        },
+        body: JSON.stringify({
+          action: "email",
+          email: "absent-report@example.com",
+          state: legacyState,
+        }),
+      }),
+    );
+    expect(generic.status).toBe(202);
+    expect(await generic.json()).toEqual({ status: "recovery_requested" });
+    expect(getLocalEmailEvidence()!.evidenceUrl).toBe(
+      evidenceBeforeEnumeration,
+    );
+    const crossSite = await recoverScannerAuth(
+      new NextRequest("http://localhost:3000/api/v2/auth/recover", {
+        method: "POST",
+        headers: {
+          origin: "https://attacker.invalid",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ action: "email", email }),
+      }),
+    );
+    expect(crossSite.status).toBe(403);
+    for (const invalidBody of [
+      { action: "email" },
+      { action: "unknown", email },
+      {},
+    ]) {
+      const invalid = await recoverScannerAuth(
+        new NextRequest("http://localhost:3000/api/v2/auth/recover", {
+          method: "POST",
+          headers: {
+            origin: "http://localhost:3000",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(invalidBody),
+        }),
+      );
+      expect(invalid.status).toBe(400);
+    }
+
+    const replay = await finalizeScannerAuth(
+      new NextRequest("http://localhost:3000/api/v2/auth/finalize", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:3000",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ state: legacyState, token }),
+      }),
+    );
+    expect(replay.status).toBe(401);
+
+    await recoverScannerAuth(
+      new NextRequest("http://localhost:3000/api/v2/auth/recover", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:3000",
+          "content-type": "application/json",
+          "x-forwarded-for": "198.51.100.10, 127.0.0.1",
+        },
+        body: JSON.stringify({ action: "email", email, state: legacyState }),
+      }),
+    );
+    const expiringFragment = new URLSearchParams(
+      new URL(getLocalEmailEvidence()!.evidenceUrl!).hash.slice(1),
+    );
+    await db
+      .update(scannerAuthVerifications)
+      .set({ expiresAt: new Date(Date.now() - 1_000) })
+      .where(
+        sql`${scannerAuthVerifications.value}::jsonb ->> 'email' = ${email}`,
+      );
+    const expiredLink = await finalizeScannerAuth(
+      new NextRequest("http://localhost:3000/api/v2/auth/finalize", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:3000",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          state: expiringFragment.get("state"),
+          token: expiringFragment.get("token"),
+        }),
+      }),
+    );
+    expect(expiredLink.status).toBe(401);
+
+    await recoverScannerAuth(
+      new NextRequest("http://localhost:3000/api/v2/auth/recover", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:3000",
+          "content-type": "application/json",
+          "x-forwarded-for": "198.51.100.10, 127.0.0.1",
+        },
+        body: JSON.stringify({ action: "email", email, state: legacyState }),
+      }),
+    );
+    const deletionFragment = new URLSearchParams(
+      new URL(getLocalEmailEvidence()!.evidenceUrl!).hash.slice(1),
+    );
+    expect(
+      await db
+        .select()
+        .from(scannerAuthVerifications)
+        .where(
+          sql`${scannerAuthVerifications.value}::jsonb ->> 'email' = ${email}`,
+        ),
+    ).not.toHaveLength(0);
+    await completeLeadDeletion({ leadId });
+    expect(
+      await db
+        .select()
+        .from(scannerAuthVerifications)
+        .where(
+          sql`${scannerAuthVerifications.value}::jsonb ->> 'email' = ${email}`,
+        ),
+    ).toHaveLength(0);
+    const afterDeletion = await finalizeScannerAuth(
+      new NextRequest("http://localhost:3000/api/v2/auth/finalize", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:3000",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          state: deletionFragment.get("state"),
+          token: deletionFragment.get("token"),
+        }),
+      }),
+    );
+    expect(afterDeletion.status).toBe(401);
   });
 });

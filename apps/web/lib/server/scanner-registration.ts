@@ -34,6 +34,7 @@ import { consumeRateLimitsAtomically } from "./rate-limit";
 import {
   consumeScannerMagicLinkInTransaction,
   inspectScannerMagicLink,
+  inspectScannerMagicLinkClaim,
   sendScannerMagicLink,
 } from "./scanner-auth";
 
@@ -424,8 +425,14 @@ export async function verifyAndFinalizeScannerRegistration(
 ) {
   const config = getServerConfig();
   return await getDatabase().db.transaction(async (tx) => {
-    const email = await inspectScannerMagicLink(token, tx);
-    if (!email) return undefined;
+    const claim = await inspectScannerMagicLinkClaim(token, tx);
+    if (
+      !claim ||
+      claim.purpose === "recovery" ||
+      (claim.state !== undefined && claim.state !== state)
+    )
+      return undefined;
+    const email = claim.email;
     const emailLookupHash = hmacHex(
       config.hmacSecret,
       "email",
