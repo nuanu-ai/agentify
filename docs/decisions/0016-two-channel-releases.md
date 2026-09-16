@@ -32,9 +32,11 @@ the VM.
 There is no automatic live caller. A `v*` tag proves the release checks but does
 not deploy the live channel.
 
-Dmitry has paused all CoinSlot delivery. The test timer must remain disabled;
-no test or live release is initiated while this pause is in force. The current
-server revision is retained. Delivery resumes only on Dmitry's explicit word.
+Dmitry has paused automatic delivery. The test timer remains disabled and SDK
+publication remains paused. Manual production releases require his explicit
+authorization and are applied through Ansible after exact-SHA CI acceptance.
+On 2026-09-16 he authorized the accepted commerce appearance release; this does
+not enable automatic delivery or release the subsequent naming-cleanup branch.
 The timer state and retained revision require separate verification on the host.
 
 ## Consequences
