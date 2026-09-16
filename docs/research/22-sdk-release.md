@@ -3,8 +3,10 @@
 Status: the Agentify package names are prepared but unpublished. Dmitry
 authorized the one-time npm bootstrap and the exact contracts `0.3.2` / SDK
 `0.2.4` release on 2026-09-16, as recorded in ADR-0016. This authorization does
-not include test or production host delivery; the namespace cutover remains
-paused.
+also covers deprecating every version under the former package names after the
+new registry artifacts pass acceptance; it does not authorize unpublishing
+registry history. Test and production host delivery are outside this release,
+and the namespace cutover remains paused.
 
 The tag `sdk-v<version>` publishes two public npm packages from one immutable
 commit:
@@ -126,3 +128,8 @@ exact contracts and SDK versions back from npm, confirms that `latest` points
 at both versions, then installs and imports those exact registry artifacts in
 a fresh directory. An HTTP 200 from npm or a green build alone does not prove
 that a merchant can import the release.
+
+Only after that acceptance passes, deprecate every released version under the
+former package names with a message that directs installers to
+`@nuanu-ai/agentify-contracts` and `@nuanu-ai/agentify`. Do not unpublish them:
+existing lockfiles must keep resolving to the immutable artifacts they named.

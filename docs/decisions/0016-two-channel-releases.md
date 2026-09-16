@@ -46,8 +46,12 @@ export old names or install an old command. On 2026-09-16 Dmitry explicitly
 authorized the one-time npm bootstrap and release of
 `@nuanu-ai/agentify-contracts@0.3.2` and `@nuanu-ai/agentify@0.2.4`, including
 the release-version commit, `sdk-v0.2.4` tag and the SDK publication workflow.
-That authorization does not enable either automatic host delivery or the
-separately gated production namespace cutover.
+Once both exact registry artifacts pass the external install acceptance, the
+same authorization retires every version under the former package names with
+an npm deprecation that points to the Agentify packages. Registry history stays
+immutable: no former version is unpublished. That authorization does not
+enable either automatic host delivery or the separately gated production
+namespace cutover.
 
 ## Consequences
 
