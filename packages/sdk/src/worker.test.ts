@@ -98,23 +98,23 @@ const workerOver = async (
 
   const problems: WorkerProblem[] = [];
   const events: OrderEvent[] = [];
-  const coinslot = createClient({ apiKey: API_KEY, baseUrl: gateway.url });
+  const agentify = createClient({ apiKey: API_KEY, baseUrl: gateway.url });
 
   const answering = handlers.order;
 
   if (answering !== undefined) {
-    coinslot.on("order", (arrived) => answering(arrived));
-    coinslot.on("event", (arrived) => {
+    agentify.on("order", (arrived) => answering(arrived));
+    agentify.on("event", (arrived) => {
       events.push(arrived);
     });
   }
   if (handlers.quote !== undefined) {
-    coinslot.on("quote", handlers.quote);
+    agentify.on("quote", handlers.quote);
   }
 
-  coinslot.on("problem", (problem) => problems.push(problem));
-  running = coinslot;
-  await coinslot.start();
+  agentify.on("problem", (problem) => problems.push(problem));
+  running = agentify;
+  await agentify.start();
 
   return { problems, events };
 };
@@ -528,22 +528,22 @@ describe("a gateway speaking another dialect", () => {
       },
     });
 
-    const coinslot = createClient({ apiKey: API_KEY, baseUrl: gateway.url });
+    const agentify = createClient({ apiKey: API_KEY, baseUrl: gateway.url });
 
-    coinslot.on("order", (arrived) => {
+    agentify.on("order", (arrived) => {
       orders.push(arrived.id);
       return arrived.delivered({ access_url: "https://a.example" });
     });
-    coinslot.on("problem", (problem) => problems.push(problem));
+    agentify.on("problem", (problem) => problems.push(problem));
 
-    await coinslot.start();
+    await agentify.start();
 
     await waitUntil(() => problems.length === 1, "the mismatch that ends the first loop");
     expect(problems[0]?.kind).toBe(WORKER_PROBLEM_KINDS.CONTRACT_VERSION_MISMATCH);
 
     // The loop died of its own accord, so nothing has to be stopped first.
-    running = coinslot;
-    await coinslot.start();
+    running = agentify;
+    await agentify.start();
 
     await waitUntil(() => orders.length > 0, "the order handler to keep receiving");
     expect(orders[0]).toBe(order.id);
@@ -552,7 +552,7 @@ describe("a gateway speaking another dialect", () => {
     // reaches the handler. Counting polls instead would count a request the
     // gateway records a moment after the caller has gone, which says nothing
     // about whether the loop is still working.
-    await coinslot.stop();
+    await agentify.stop();
 
     const deliveredWhenItStopped = orders.length;
     await new Promise((resolve) => setTimeout(resolve, 30));
@@ -571,16 +571,16 @@ describe("a gateway speaking another dialect", () => {
       routes: { poll_worker: () => ({ body: { contract_version: "99", envelopes: [] } }) },
     });
 
-    const coinslot = createClient({ apiKey: API_KEY, baseUrl: gateway.url });
+    const agentify = createClient({ apiKey: API_KEY, baseUrl: gateway.url });
 
-    coinslot.on("order", (arrived) => arrived.accepted());
-    coinslot.on("problem", (problem) => problems.push(problem));
-    running = coinslot;
+    agentify.on("order", (arrived) => arrived.accepted());
+    agentify.on("problem", (problem) => problems.push(problem));
+    running = agentify;
 
-    await coinslot.start();
+    await agentify.start();
     await waitUntil(() => problems.length === 1, "the first mismatch");
 
-    await coinslot.start();
+    await agentify.start();
     await waitUntil(() => problems.length === 2, "a loop that ran again and reported");
 
     expect(problems[1]?.kind).toBe(WORKER_PROBLEM_KINDS.CONTRACT_VERSION_MISMATCH);
@@ -890,14 +890,14 @@ describe("a merchant who passed no reporter at all", () => {
         routes: { poll_worker: polling(batch(envelopes.order)) },
       });
 
-      const coinslot = createClient({ apiKey: API_KEY, baseUrl: gateway.url });
+      const agentify = createClient({ apiKey: API_KEY, baseUrl: gateway.url });
       const thrown = new Error("the supplier timed out");
 
-      coinslot.on("order", () => {
+      agentify.on("order", () => {
         throw thrown;
       });
-      running = coinslot;
-      await coinslot.start();
+      running = agentify;
+      await agentify.start();
 
       await waitUntil(() => written.length > 0, "the problem to reach the console");
 
@@ -999,7 +999,7 @@ describe("the loop failing in a way nothing in it anticipated", () => {
     // The exception itself travels with it. The sentence says where the fault
     // lies and the cause is what a merchant sends us to have it fixed.
     expect(failed?.cause).toBe(broken);
-    expect(failed?.message).toMatch(/defect in the Coinslot SDK/);
+    expect(failed?.message).toMatch(/defect in the Agentify SDK/);
     expect(failed?.message).toContain(String(broken));
     // Not filed as a poll that failed, which is the kind a merchant waits out.
     expect(problems.map((problem) => problem.kind)).not.toContain(WORKER_PROBLEM_KINDS.POLL_FAILED);
@@ -1141,14 +1141,14 @@ describe("shutting down a subscription the merchant built", () => {
       },
     });
 
-    const coinslot = createClient({ apiKey: API_KEY, baseUrl: gateway.url });
+    const agentify = createClient({ apiKey: API_KEY, baseUrl: gateway.url });
 
-    coinslot.on("order", (arrived) => arrived.delivered({ access_url: "https://a.example" }));
-    coinslot.on("problem", (problem) => problems.push(problem));
-    await coinslot.start();
+    agentify.on("order", (arrived) => arrived.delivered({ access_url: "https://a.example" }));
+    agentify.on("problem", (problem) => problems.push(problem));
+    await agentify.start();
 
     await held;
-    await coinslot.stop();
+    await agentify.stop();
 
     const kinds = problems.map((problem) => problem.kind);
 
@@ -1178,9 +1178,9 @@ describe("shutting down a subscription the merchant built", () => {
       },
     });
 
-    const coinslot = createClient({ apiKey: API_KEY, baseUrl: gateway.url });
+    const agentify = createClient({ apiKey: API_KEY, baseUrl: gateway.url });
 
-    coinslot.on("order", async (arrived) => {
+    agentify.on("order", async (arrived) => {
       inTheHandler?.();
       await handlerMayFinish;
       // A turn of the event loop between being released and being done, so
@@ -1191,12 +1191,12 @@ describe("shutting down a subscription the merchant built", () => {
       handlerFinished = true;
       return arrived.delivered({ access_url: "https://a.example" });
     });
-    await coinslot.start();
+    await agentify.start();
 
     await reached;
 
-    const first = coinslot.stop();
-    const second = coinslot.stop();
+    const first = agentify.stop();
+    const second = agentify.stop();
 
     releaseHandler?.();
 
@@ -1231,29 +1231,29 @@ describe("shutting down a subscription the merchant built", () => {
       },
     });
 
-    const coinslot = createClient({ apiKey: API_KEY, baseUrl: gateway.url });
+    const agentify = createClient({ apiKey: API_KEY, baseUrl: gateway.url });
 
-    coinslot.on("order", async (arrived) => {
+    agentify.on("order", async (arrived) => {
       inTheHandler?.();
       await handlerMayFinish;
       return arrived.delivered({ access_url: "https://a.example" });
     });
-    await coinslot.start();
+    await agentify.start();
 
     await reached;
 
-    const stopping = coinslot.stop();
+    const stopping = agentify.stop();
 
-    await expect(coinslot.start()).rejects.toThrow(/being stopped/);
-    coinslot.on("quote", (asked) => asked.unavailable(AT));
+    await expect(agentify.start()).rejects.toThrow(/being stopped/);
+    agentify.on("quote", (asked) => asked.unavailable(AT));
 
     releaseHandler?.();
     await stopping;
 
     // And once it has stopped, starting works again, on the handler registered
     // while the stop was in flight as well as the one from before it.
-    running = coinslot;
-    await coinslot.start();
+    running = agentify;
+    await agentify.start();
   });
 });
 
@@ -1284,12 +1284,12 @@ describe("one loop for one process", () => {
       },
     });
 
-    const coinslot = createClient({ apiKey: API_KEY, baseUrl: gateway.url });
+    const agentify = createClient({ apiKey: API_KEY, baseUrl: gateway.url });
 
-    coinslot.on("order", (arrived) => arrived.delivered({ access_url: "https://a.example" }));
-    coinslot.on("quote", (asked) => asked.unavailable(AT));
-    running = coinslot;
-    await coinslot.start();
+    agentify.on("order", (arrived) => arrived.delivered({ access_url: "https://a.example" }));
+    agentify.on("quote", (asked) => asked.unavailable(AT));
+    running = agentify;
+    await agentify.start();
 
     await waitUntil(
       () =>

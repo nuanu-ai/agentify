@@ -760,10 +760,10 @@ const shell = (title: string, body: string): string =>
 
 const gate = (said: SaidBack | null): string =>
   shell(
-    "Connect — Coinslot stand",
+    "Connect — Agentify stand",
     `<div class="page"><div class="gate"><form method="post">
   ${hidden("action", "connect")}
-  <h1>Coinslot stand</h1>
+  <h1>Agentify stand</h1>
   <p class="lede">Three seats at one wire: the merchant who publishes, the agent who buys, and the merchant's code answering orders. All three need a gateway and a merchant key; the key stays in this process and never reaches this page.</p>
   ${field("Gateway address", `<input required name="address" value="${escaped(GATEWAY_BY_DEFAULT)}">`)}
   ${field("Merchant key", '<input required name="api_key" type="password" autocomplete="off">')}
@@ -795,14 +795,14 @@ export const renderPage = (state: PageState): string => {
   const words = state.keyEnvironment === null ? null : KEY_WORDS[state.keyEnvironment];
   const surface =
     words === null
-      ? '<div class="surface">This key names no environment Coinslot issues, so the stand cannot say whether money on this gateway is real. Whatever it is, a purchase here signs a payment.</div>'
+      ? '<div class="surface">This key names no environment Agentify issues, so the stand cannot say whether money on this gateway is real. Whatever it is, a purchase here signs a payment.</div>'
       : `<div class="surface${state.keyEnvironment === "live" ? " live" : ""}">${escaped(words)}</div>`;
   return shell(
-    `${TITLES[state.tab]} — Coinslot stand`,
+    `${TITLES[state.tab]} — Agentify stand`,
     `<div class="page">
   <div class="chrome">
     <div class="line1">
-      <div class="brand"><span class="wordmark">coinslot</span><span class="what">stand</span></div>
+      <div class="brand"><span class="wordmark">agentify</span><span class="what">stand</span></div>
       <div class="who">
         ${state.keyEnvironment === null ? '<span class="tag">key names no environment</span>' : `<span class="tag${state.keyEnvironment === "live" ? " live" : ""}">${escaped(state.keyEnvironment)} key</span>`}
         <span class="addr">${escaped(state.address)}</span>

@@ -1,5 +1,5 @@
 [Unit]
-Description=Pull an exact green Coinslot main revision into the test channel
+Description=Pull an exact green Agentify main revision into the test channel
 Wants=network-online.target
 After=network-online.target docker.service
 Requires=docker.service

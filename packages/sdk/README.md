@@ -1,6 +1,6 @@
 # `@nuanu-ai/coinslot`
 
-Coinslot puts a merchant's existing products where AI agents buy. Each product
+Agentify puts a merchant's existing products where AI agents buy. Each product
 gets a card in an agent-facing storefront and a paid address of its own,
 `/x402/<item>/purchase`, where an agent pays for it with the x402 payment
 protocol; the money goes from the buyer's wallet to the merchant's without
@@ -26,7 +26,7 @@ package and zod underneath that, and nothing else.
 ```ts
 import { createClient } from '@nuanu-ai/coinslot'
 
-const coinslot = createClient({
+const agentify = createClient({
   apiKey: process.env.COINSLOT_API_KEY,
   baseUrl: process.env.COINSLOT_URL,
 })
@@ -46,7 +46,7 @@ The card is the whole of what an agent reads before it buys: what you sell, at
 what price, and what the buyer receives. This one is complete.
 
 ```ts
-await coinslot.catalog.publish({
+await agentify.catalog.publish({
   merchant_item_id: 'access-monthly',
   title: 'One month of access to the service',
   description: 'Access for 30 days from delivery, renewal not included',
@@ -62,7 +62,7 @@ answer and this package sends it, because an answer that has to be returned is
 one nobody can forget to send.
 
 ```ts
-coinslot.on('order', async (order) => {
+agentify.on('order', async (order) => {
   const access = await grantAccess({ idempotencyKey: order.id })
 
   if (!access.ok) {
@@ -78,7 +78,7 @@ coinslot.on('order', async (order) => {
   })
 })
 
-await coinslot.start()
+await agentify.start()
 ```
 
 The same order can arrive twice, after a dropped connection or a restart of
@@ -125,7 +125,7 @@ This is an early `0.x` pilot surface and the names in it can still change. What
 does not change quietly is the wire: the SDK and the gateway agree on a
 contract version, and a worker whose version the gateway does not share stops
 before it takes an order rather than half reading a document and misreporting
-its own successes. Register `coinslot.on('problem', …)`, which is where you
+its own successes. Register `agentify.on('problem', …)`, which is where you
 hear about that and about everything else that did not get through.
 
 ## License

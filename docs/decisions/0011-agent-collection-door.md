@@ -23,7 +23,7 @@ launch with no external users.
 
 The identifier is generated from a random source, is impractical to guess and
 is absent from catalogues and order listings. It is not exclusive to the
-buyer: Coinslot and the merchant also receive it as parties to the sale. It is
+buyer: Agentify and the merchant also receive it as parties to the sale. It is
 a key to one order, not proof of payment ownership. Ownership still comes only
 from the verified payer.
 

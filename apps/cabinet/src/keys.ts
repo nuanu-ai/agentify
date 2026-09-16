@@ -23,7 +23,7 @@
  *
  * An empty list follows from the same fact and is the ordinary state of a
  * merchant who has just registered: they have a cabinet because they signed
- * into one, and no keys because they have not put Coinslot into any code of
+ * into one, and no keys because they have not put Agentify into any code of
  * their own yet. So it is the first thing most merchants see here, and it says
  * what it is rather than reporting an impossibility.
  *

@@ -31,7 +31,7 @@ readonly allowed_channel="${1:-}"
 readonly requested_command="${SSH_ORIGINAL_COMMAND:-}"
 
 fail() {
-  printf 'coinslot release refused: %s\n' "$*" >&2
+  printf 'Agentify release refused: %s\n' "$*" >&2
   exit 64
 }
 
@@ -288,7 +288,7 @@ for release_image_project in coinslot coinslot-test; do
   if ! docker image prune -a -f \
     --filter 'until=24h' \
     --filter "label=com.docker.compose.project=${release_image_project}"; then
-    printf 'coinslot release warning: image retention failed for %s\n' \
+    printf 'Agentify release warning: image retention failed for %s\n' \
       "${release_image_project}" >&2
   fi
 done

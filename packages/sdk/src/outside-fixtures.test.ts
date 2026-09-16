@@ -187,10 +187,10 @@ it("carries one merchant's two products from publishing to the last refusal", as
     },
   });
 
-  const coinslot = createClient({ apiKey: API_KEY, baseUrl: gateway.url });
+  const agentify = createClient({ apiKey: API_KEY, baseUrl: gateway.url });
 
-  const forNumber = await coinslot.catalog.publish(numberCard);
-  const forEsim = await coinslot.catalog.publish(esimCard);
+  const forNumber = await agentify.catalog.publish(numberCard);
+  const forEsim = await agentify.catalog.publish(esimCard);
 
   expect(forNumber).toStrictEqual({ ok: true, id: "cat-1" });
   expect(forEsim).toStrictEqual({ ok: true, id: "cat-2" });
@@ -201,7 +201,7 @@ it("carries one merchant's two products from publishing to the last refusal", as
 
   const takenOn = new Map<string, OrderHandle>();
 
-  coinslot.on("order", (order): HandlerAnswer => {
+  agentify.on("order", (order): HandlerAnswer => {
     if (order.merchant_item_id === numberCard.merchant_item_id) {
       return order.delivered({ phone_number: "+31 970 1020 3040" });
     }
@@ -217,13 +217,13 @@ it("carries one merchant's two products from publishing to the last refusal", as
     return order.accepted({ eta_seconds: 120 });
   });
 
-  coinslot.on("event", (arrived) => {
+  agentify.on("event", (arrived) => {
     events.push(arrived);
   });
 
-  coinslot.on("problem", (problem) => problems.push(problem));
+  agentify.on("problem", (problem) => problems.push(problem));
 
-  coinslot.on("quote", (question) => {
+  agentify.on("quote", (question) => {
     if (question.merchant_item_id !== numberCard.merchant_item_id) {
       return question.unavailable(AT);
     }
@@ -237,8 +237,8 @@ it("carries one merchant's two products from publishing to the last refusal", as
     return question.available({ amount: (cost * (8.75 / 7)).toFixed(2), currency: "USD" }, AT);
   });
 
-  running = coinslot;
-  await coinslot.start();
+  running = agentify;
+  await agentify.start();
 
   await waitUntil(() => events.length === 1, "everything through the subscription");
 

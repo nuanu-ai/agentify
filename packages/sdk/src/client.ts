@@ -539,11 +539,11 @@ const reportToConsole: ProblemReporter = (problem: WorkerProblem): void => {
   // the stack, and the stack is the whole of what a merchant debugging their
   // own handler is looking for.
   if (problem.cause === undefined) {
-    console.error(`[coinslot] ${problem.kind}: ${problem.message}`);
+    console.error(`[agentify] ${problem.kind}: ${problem.message}`);
     return;
   }
 
-  console.error(`[coinslot] ${problem.kind}: ${problem.message}`, problem.cause);
+  console.error(`[agentify] ${problem.kind}: ${problem.message}`, problem.cause);
 };
 
 /**
@@ -690,7 +690,7 @@ export const createClient = (options: ClientOptions): CoinslotClient => {
 
     if (words === undefined) return;
 
-    console.info(`[coinslot] worker started against ${gateway.baseUrl} ${words}`);
+    console.info(`[agentify] worker started against ${gateway.baseUrl} ${words}`);
   };
 
   const orderCall = async (

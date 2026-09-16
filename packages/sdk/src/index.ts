@@ -1,5 +1,5 @@
 /**
- * The Coinslot merchant SDK: what someone else's engineer installs so that
+ * The Agentify merchant SDK: what someone else's engineer installs so that
  * their catalog sells to agents.
  *
  * There are two things in here and they are one process. `createClient` builds

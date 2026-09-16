@@ -47,9 +47,9 @@
  * Sepolia that settles and never appears is exactly the measurement, and the
  * verdict for it says so in as many words rather than reading as a fault.
  *
- *   COINSLOT_SMOKE=1 GATEWAY_URL=https://coinslot.example \
+ *   COINSLOT_SMOKE=1 GATEWAY_URL=https://agentify.example \
  *     SMOKE_BUYER_KEY=0x… pnpm smoke:bootstrap
- *   COINSLOT_SMOKE=1 GATEWAY_URL=https://coinslot.example \
+ *   COINSLOT_SMOKE=1 GATEWAY_URL=https://agentify.example \
  *     SMOKE_BUYER_KEY=0x… pnpm smoke:bootstrap itm_4d21bb --confirm
  *
  * The key is read from the environment and from nowhere else. It is never

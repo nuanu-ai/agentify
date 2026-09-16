@@ -275,7 +275,7 @@ same process. Nothing of yours faces outward — no address, no open ports. This
 is the transport we serve.
 
 ```ts
-coinslot.on('quote', async (q) => {
+agentify.on('quote', async (q) => {
   const item = await lookupItem(q.merchant_item_id)
 
   if (!item.in_stock) {

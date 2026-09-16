@@ -340,8 +340,8 @@ later.
 We remember where the orders stand as well, so you can ask us at any moment.
 
 ```ts
-const order = await coinslot.orders.get(orderId)
-const open = await coinslot.orders.list({ open: true })
+const order = await agentify.orders.get(orderId)
+const open = await agentify.orders.list({ open: true })
 
 for (const waiting of open) {
   // This one has its goods already; it is waiting on money rather than on you.
@@ -405,7 +405,7 @@ in a queue, a row in your database — the order can be assembled from it withou
 asking us anything:
 
 ```ts
-await coinslot.orders.forId(savedId).deliver({ access_url: url, expires_at: expiresAt })
+await agentify.orders.forId(savedId).deliver({ access_url: url, expires_at: expiresAt })
 ```
 
 That call asks nothing, and so it works even when we cannot be reached: `get`
@@ -418,7 +418,7 @@ the calls that close an order.
 
 Besides orders, the same subscription carries events: messages about something
 that happened to an order without you. A handler for them is declared the way
-one is for orders, with `coinslot.on('event', ...)`, and it sends nothing back
+one is for orders, with `agentify.on('event', ...)`, and it sends nothing back
 — an event tells you something happened and asks for no answer.
 
 An event is sent once and is never sent again, and that is the opposite of the

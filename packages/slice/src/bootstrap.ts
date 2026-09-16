@@ -6,7 +6,7 @@
  * the CDP facilitator and on nothing else. Then it watches the catalog and says
  * what it saw.
  *
- *   COINSLOT_SMOKE=1 GATEWAY_URL=https://coinslot.example SMOKE_BUYER_KEY=0x… \
+ *   COINSLOT_SMOKE=1 GATEWAY_URL=https://agentify.example SMOKE_BUYER_KEY=0x… \
  *     pnpm smoke:bootstrap --confirm
  *
  * Nothing is spent without `--confirm`, and no run can spend more than

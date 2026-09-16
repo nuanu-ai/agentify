@@ -1,5 +1,5 @@
 /**
- * The Coinslot domain core: orders, receipts, idempotency, the state machine.
+ * The Agentify commerce domain core: orders, receipts, idempotency, the state machine.
  * Here lives what actually is the product, so the package knows nothing about
  * HTTP, nothing about the database and nothing about the queue — zero IO and
  * zero runtime dependencies (ADR-0003 §2 and §9). Everything external the core

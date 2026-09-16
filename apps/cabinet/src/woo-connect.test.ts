@@ -92,7 +92,7 @@ describe("the authorize URL", () => {
   const url = () =>
     new URL(
       authorizeUrlFor("https://shop.example.com/store", {
-        appName: "Coinslot",
+        appName: "Agentify",
         userId: "a-state-token",
         returnUrl: "https://coinslot.example.com/cabinet/woocommerce/return",
         callbackUrl: "https://coinslot.example.com/cabinet/woocommerce/callback",
@@ -107,7 +107,7 @@ describe("the authorize URL", () => {
     // Any one of them missing is a 401 from the shop, so this is the list and
     // not a subset of it.
     const query = url().searchParams;
-    expect(query.get("app_name")).toBe("Coinslot");
+    expect(query.get("app_name")).toBe("Agentify");
     expect(query.get("user_id")).toBe("a-state-token");
     expect(query.get("return_url")).toBe("https://coinslot.example.com/cabinet/woocommerce/return");
     expect(query.get("callback_url")).toBe(

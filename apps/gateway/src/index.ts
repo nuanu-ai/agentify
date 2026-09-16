@@ -1,5 +1,5 @@
 /**
- * The Coinslot gateway: the 402 edge, the order queue and the receipts.
+ * The Agentify gateway: the 402 edge, the order queue and the receipts.
  *
  * It is an interpreter and not a second brain. The order machine in
  * `@agentify/commerce-core` decides everything about an order — whether a silence sells,

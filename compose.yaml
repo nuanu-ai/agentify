@@ -344,7 +344,7 @@ services:
       # configuration naming a real provider cannot also be pretending.
       MAIL_URL: "${MAIL_URL:-sandbox:log}"
       MAIL_API_KEY: "${MAIL_API_KEY:-}"
-      MAIL_FROM: "${MAIL_FROM:-Coinslot <no-reply@localhost>}"
+      MAIL_FROM: "${MAIL_FROM:-Agentify <no-reply@localhost>}"
       # The same two its gateway reads. The cabinet gives them no defaults of
       # its own and refuses to start without them; these lines are what a
       # compose deployment hands it.
@@ -467,7 +467,7 @@ services:
         - -e
         - |
           const fs = require("node:fs");
-          const p = require("node:path").join(require("node:os").tmpdir(), "coinslot-merchant-subscription");
+          const p = require("node:path").join(require("node:os").tmpdir(), "agentify-merchant-subscription");
           try {
             const line = fs.readFileSync(p, "utf8").trim();
             const age = Math.round((Date.now() - fs.statSync(p).mtimeMs) / 1000);

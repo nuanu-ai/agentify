@@ -1,5 +1,5 @@
 /**
- * The Coinslot merchant cabinet: the cards with their pause, the orders, the
+ * The Agentify merchant cabinet: the cards with their pause, the orders, the
  * receipts and the keys, rendered on the server, behind a sign-in that knows
  * who a person is — and a registration that makes the merchant behind it.
  *

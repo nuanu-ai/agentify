@@ -84,7 +84,7 @@ afterEach(async () => {
  */
 const workerHolding = async (
   apiKey: string,
-): Promise<{ url: string; coinslot: ReturnType<typeof createClient> }> => {
+): Promise<{ url: string; agentify: ReturnType<typeof createClient> }> => {
   gateway = await startFakeGateway({
     apiKey,
     routes: {
@@ -93,15 +93,15 @@ const workerHolding = async (
     },
   });
 
-  const coinslot = createClient({ apiKey, baseUrl: gateway.url });
+  const agentify = createClient({ apiKey, baseUrl: gateway.url });
 
   // A reporter of the merchant's own, so that nothing the loop has to say
   // reaches the console and what is left on it is the connect line alone.
-  coinslot.on("problem", () => {});
-  coinslot.on("order", (arrived) => arrived.delivered({ access_url: "https://a.example" }));
+  agentify.on("problem", () => {});
+  agentify.on("order", (arrived) => arrived.delivered({ access_url: "https://a.example" }));
 
-  running = coinslot;
-  await coinslot.start();
+  running = agentify;
+  await agentify.start();
 
   const url = gateway.url;
 
@@ -110,7 +110,7 @@ const workerHolding = async (
     "two orders answered",
   );
 
-  return { url, coinslot };
+  return { url, agentify };
 };
 
 describe("the line a worker says at connect", () => {
@@ -158,12 +158,12 @@ describe("the line a worker says at connect", () => {
     // A supervisor that stops a worker and starts it on the same client is
     // running the same process against the same gateway with the same key, and
     // a line repeated on every cycle is a line people learn to scroll past.
-    const { coinslot } = await workerHolding(`${keyPrefixFor("test")}9f2c4a`);
+    const { agentify } = await workerHolding(`${keyPrefixFor("test")}9f2c4a`);
 
     expect(written).toHaveLength(1);
 
-    await coinslot.stop();
-    await coinslot.start();
+    await agentify.stop();
+    await agentify.start();
     await waitUntil(
       () => (gateway?.callsTo("poll_worker").length ?? 0) >= 3,
       "the loop to poll again",

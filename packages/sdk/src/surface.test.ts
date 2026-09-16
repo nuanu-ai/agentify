@@ -90,45 +90,45 @@ describe("registering what a process answers", () => {
     // namespace and the third under another.
     const seen: string[] = [];
 
-    const coinslot = await clientOver({
+    const agentify = await clientOver({
       poll_worker: polling(batch(envelopes.order, envelopes.quote, envelopes.event)),
       answer_order: () => ({ body: { ok: true, result: "delivered" } }),
       answer_quote: () => ({ body: { used: true } }),
     });
 
-    coinslot.on("order", (arrived) => {
+    agentify.on("order", (arrived) => {
       seen.push(`order ${arrived.id}`);
       return arrived.delivered({ access_url: "https://a.example" });
     });
-    coinslot.on("quote", (asked) => {
+    agentify.on("quote", (asked) => {
       seen.push(`quote ${asked.price_id}`);
       return asked.unavailable(AT);
     });
-    coinslot.on("event", (arrived) => {
+    agentify.on("event", (arrived) => {
       seen.push(`event ${arrived.type}`);
     });
 
-    running = coinslot;
-    await coinslot.start();
+    running = agentify;
+    await agentify.start();
 
     await waitUntil(() => seen.length === 3, "all three kinds to reach their handlers");
     expect(seen).toStrictEqual(["order order-1", "quote price-1", "event order.refund_due"]);
   });
 
   it("refuses a second handler for a kind rather than replacing the first in silence", async () => {
-    const coinslot = await clientOver({ poll_worker: polling() });
+    const agentify = await clientOver({ poll_worker: polling() });
 
-    coinslot.on("order", (arrived) => arrived.accepted());
-    expect(() => coinslot.on("order", (arrived) => arrived.accepted())).toThrow(/twice/);
+    agentify.on("order", (arrived) => arrived.accepted());
+    expect(() => agentify.on("order", (arrived) => arrived.accepted())).toThrow(/twice/);
 
-    coinslot.on("quote", (asked) => asked.unavailable());
-    expect(() => coinslot.on("quote", (asked) => asked.unavailable())).toThrow(/twice/);
+    agentify.on("quote", (asked) => asked.unavailable());
+    expect(() => agentify.on("quote", (asked) => asked.unavailable())).toThrow(/twice/);
 
-    coinslot.on("event", () => {});
-    expect(() => coinslot.on("event", () => {})).toThrow(/twice/);
+    agentify.on("event", () => {});
+    expect(() => agentify.on("event", () => {})).toThrow(/twice/);
 
-    coinslot.on("problem", () => {});
-    expect(() => coinslot.on("problem", () => {})).toThrow(/twice/);
+    agentify.on("problem", () => {});
+    expect(() => agentify.on("problem", () => {})).toThrow(/twice/);
   });
 
   it("refuses a kind nothing will ever deliver, and says which ones there are", async () => {
@@ -136,13 +136,13 @@ describe("registering what a process answers", () => {
     // otherwise register a handler that is never called and be told nothing.
     // Being told the four words they may use is what turns the refusal into a
     // fix rather than a search.
-    const coinslot = await clientOver({ poll_worker: polling() });
-    const on = (coinslot as unknown as { on(kind: string, handler: () => void): void }).on;
+    const agentify = await clientOver({ poll_worker: polling() });
+    const on = (agentify as unknown as { on(kind: string, handler: () => void): void }).on;
 
     let complaint = "";
 
     try {
-      on.call(coinslot, "orders", () => {});
+      on.call(agentify, "orders", () => {});
     } catch (refused) {
       complaint = String(refused);
     }
@@ -163,13 +163,13 @@ describe("the lifecycle a merchant drives", () => {
   it("refuses to start a worker that would answer nothing", async () => {
     // A process that starts with no handler drains its own queue: every order
     // arrives, nothing answers it, and a delivery attempt is spent each time.
-    const coinslot = await clientOver({ poll_worker: polling() });
+    const agentify = await clientOver({ poll_worker: polling() });
 
-    await expect(coinslot.start()).rejects.toThrow(/on\(/);
+    await expect(agentify.start()).rejects.toThrow(/on\(/);
 
     // A reporter alone is not an answer to anything on the stream.
-    coinslot.on("problem", () => {});
-    await expect(coinslot.start()).rejects.toThrow(/on\(/);
+    agentify.on("problem", () => {});
+    await expect(agentify.start()).rejects.toThrow(/on\(/);
   });
 
   it("dispatches to a handler registered after the loop was already running", async () => {
@@ -186,7 +186,7 @@ describe("the lifecycle a merchant drives", () => {
 
     const seen: string[] = [];
 
-    const coinslot = await clientOver({
+    const agentify = await clientOver({
       poll_worker: async (_call, index) => {
         if (index === 0) return batch(envelopes.order);
         if (index === 1) {
@@ -199,16 +199,16 @@ describe("the lifecycle a merchant drives", () => {
       answer_quote: () => ({ body: { used: true } }),
     });
 
-    coinslot.on("order", (arrived) => {
+    agentify.on("order", (arrived) => {
       seen.push(`order ${arrived.id}`);
       return arrived.delivered({ access_url: "https://a.example" });
     });
 
-    running = coinslot;
-    await coinslot.start();
+    running = agentify;
+    await agentify.start();
     await waitUntil(() => seen.length === 1, "the loop to be running");
 
-    coinslot.on("quote", (asked) => {
+    agentify.on("quote", (asked) => {
       seen.push(`quote ${asked.price_id}`);
       return asked.unavailable(AT);
     });
@@ -219,21 +219,21 @@ describe("the lifecycle a merchant drives", () => {
   });
 
   it("refuses a second start rather than running two loops for one client", async () => {
-    const coinslot = await clientOver({ poll_worker: polling() });
+    const agentify = await clientOver({ poll_worker: polling() });
 
-    coinslot.on("order", (arrived) => arrived.accepted());
-    running = coinslot;
-    await coinslot.start();
+    agentify.on("order", (arrived) => arrived.accepted());
+    running = agentify;
+    await agentify.start();
 
-    await expect(coinslot.start()).rejects.toThrow(/already/);
+    await expect(agentify.start()).rejects.toThrow(/already/);
   });
 
   it("stops before it has started, so a shutdown routine needs no flag of its own", async () => {
-    const coinslot = await clientOver({ poll_worker: polling() });
+    const agentify = await clientOver({ poll_worker: polling() });
 
-    coinslot.on("order", (arrived) => arrived.accepted());
+    agentify.on("order", (arrived) => arrived.accepted());
 
-    await expect(coinslot.stop()).resolves.toBeUndefined();
+    await expect(agentify.stop()).resolves.toBeUndefined();
   });
 
   it("runs again on the handlers it already has after a stop", async () => {
@@ -241,26 +241,26 @@ describe("the lifecycle a merchant drives", () => {
     // and register everything a second time.
     let arrived = 0;
 
-    const coinslot = await clientOver({
+    const agentify = await clientOver({
       poll_worker: () => batch(envelopes.order),
       answer_order: () => ({ body: { ok: true, result: "delivered" } }),
     });
 
-    coinslot.on("order", (given) => {
+    agentify.on("order", (given) => {
       arrived += 1;
       return given.delivered({ access_url: "https://a.example" });
     });
 
-    await coinslot.start();
+    await agentify.start();
     await waitUntil(() => arrived > 0, "the first loop to receive an order");
-    await coinslot.stop();
+    await agentify.stop();
 
     const whenItStopped = arrived;
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(arrived).toBe(whenItStopped);
 
-    running = coinslot;
-    await coinslot.start();
+    running = agentify;
+    await agentify.start();
     await waitUntil(() => arrived > whenItStopped, "the second loop to receive an order");
   });
 });
@@ -269,7 +269,7 @@ describe("an order that carries the calls which close it", () => {
   it("builds the handler's answer without the merchant writing the wire's words", async () => {
     const answers: unknown[] = [];
 
-    const coinslot = await clientOver({
+    const agentify = await clientOver({
       poll_worker: polling(batch(envelopes.order)),
       answer_order: (call) => {
         answers.push(call.body);
@@ -277,9 +277,9 @@ describe("an order that carries the calls which close it", () => {
       },
     });
 
-    coinslot.on("order", (arrived) => arrived.delivered({ access_url: "https://a.example" }));
-    running = coinslot;
-    await coinslot.start();
+    agentify.on("order", (arrived) => arrived.delivered({ access_url: "https://a.example" }));
+    running = agentify;
+    await agentify.start();
 
     await waitUntil(() => answers.length === 1, "the answer to reach the gateway");
     expect(answers[0]).toStrictEqual({ delivered: { access_url: "https://a.example" } });
@@ -292,7 +292,7 @@ describe("an order that carries the calls which close it", () => {
     const built: unknown[] = [];
     const answers: unknown[] = [];
 
-    const coinslot = await clientOver({
+    const agentify = await clientOver({
       poll_worker: polling(batch(envelopes.order)),
       answer_order: (call) => {
         answers.push(call.body);
@@ -305,7 +305,7 @@ describe("an order that carries the calls which close it", () => {
       accept_order: () => ({ body: { ok: true } }),
     });
 
-    coinslot.on("order", (arrived) => {
+    agentify.on("order", (arrived) => {
       built.push(arrived.delivered({ access_url: "https://a.example" }));
       built.push(arrived.refused({ code: "out_of_stock", message: "Мест на тарифе нет" }));
       built.push(arrived.accepted({ eta_seconds: 60 }));
@@ -313,8 +313,8 @@ describe("an order that carries the calls which close it", () => {
       return arrived.accepted({ eta_seconds: 60 });
     });
 
-    running = coinslot;
-    await coinslot.start();
+    running = agentify;
+    await agentify.start();
     await waitUntil(() => answers.length === 1, "the one answer the handler returned");
 
     expect(built).toStrictEqual([
@@ -338,7 +338,7 @@ describe("an order that carries the calls which close it", () => {
   it("delivers later, off the retained order, without the merchant holding an identifier", async () => {
     // The asynchronous merchant's whole day: take the order on now, deliver
     // when the supplier answers. The only thing they kept is the order.
-    const coinslot = await clientOver({
+    const agentify = await clientOver({
       poll_worker: polling(batch(envelopes.order)),
       answer_order: () => ({ body: { ok: true, result: "accepted" } }),
       deliver_order: () => ({ body: { ok: true, result: "delivered" } }),
@@ -346,13 +346,13 @@ describe("an order that carries the calls which close it", () => {
 
     let taken: OrderCalls | undefined;
 
-    coinslot.on("order", (arrived) => {
+    agentify.on("order", (arrived) => {
       taken = arrived;
       return arrived.accepted({ eta_seconds: 60 });
     });
 
-    running = coinslot;
-    await coinslot.start();
+    running = agentify;
+    await agentify.start();
     await waitUntil(() => taken !== undefined, "the order to reach the handler");
 
     const closed = await taken?.deliver({ access_url: "https://a.example" });
@@ -365,7 +365,7 @@ describe("an order that carries the calls which close it", () => {
   });
 
   it("refuses and accepts later off the same object", async () => {
-    const coinslot = await clientOver({
+    const agentify = await clientOver({
       poll_worker: polling(batch(envelopes.order)),
       answer_order: () => ({ body: { ok: true, result: "accepted" } }),
       refuse_order: () => ({ body: { ok: true, result: "refused" } }),
@@ -374,13 +374,13 @@ describe("an order that carries the calls which close it", () => {
 
     let taken: OrderCalls | undefined;
 
-    coinslot.on("order", (arrived) => {
+    agentify.on("order", (arrived) => {
       taken = arrived;
       return arrived.accepted();
     });
 
-    running = coinslot;
-    await coinslot.start();
+    running = agentify;
+    await agentify.start();
     await waitUntil(() => taken !== undefined, "the order to reach the handler");
 
     expect(
@@ -397,13 +397,13 @@ describe("an order that carries the calls which close it", () => {
     // one place a delivery could be sent against the wrong order. It reaches
     // no gateway to build, which is what makes it the call to use while the
     // gateway is unreachable and a delivery still has to be retried.
-    const coinslot = await clientOver({
+    const agentify = await clientOver({
       deliver_order: () => ({ body: { ok: true, result: "delivered" } }),
       refuse_order: () => ({ body: { ok: true, result: "refused" } }),
       accept_order: () => ({ body: { ok: true } }),
     });
 
-    const held = coinslot.orders.forId("SKU 100/1");
+    const held = agentify.orders.forId("SKU 100/1");
 
     expect(held.id).toBe("SKU 100/1");
     expect(gateway?.calls).toStrictEqual([]);
@@ -422,14 +422,14 @@ describe("an order that carries the calls which close it", () => {
     // record of it, and an order off that record has to be the same thing the
     // handler received — otherwise a restart puts them back to carrying
     // identifiers, which is the whole of what this surface removes.
-    const coinslot = await clientOver({
+    const agentify = await clientOver({
       list_orders: () => ({ body: { orders: [openOrder] } }),
       get_order: () => ({ body: openOrder }),
       deliver_order: () => ({ body: { ok: true, result: "delivered" } }),
       refuse_order: () => ({ body: { ok: true, result: "refused" } }),
     });
 
-    const listed = await coinslot.orders.list({ open: true });
+    const listed = await agentify.orders.list({ open: true });
 
     expect(listed).toHaveLength(1);
     expect(listed[0]?.status).toBe("in_progress");
@@ -438,7 +438,7 @@ describe("an order that carries the calls which close it", () => {
       result: "delivered",
     });
 
-    const read = await coinslot.orders.get(order.id);
+    const read = await agentify.orders.get(order.id);
 
     expect(await read.refuse({ code: "out_of_stock", message: "gone" })).toStrictEqual({
       ok: true,
@@ -453,7 +453,7 @@ describe("an order that carries the calls which close it", () => {
     // Said as one assertion rather than left to be inferred from two tests
     // passing: every call the handler's order has, the listed one has, and
     // both send the same request for the same delivery.
-    const coinslot = await clientOver({
+    const agentify = await clientOver({
       poll_worker: polling(batch(envelopes.order)),
       answer_order: () => ({ body: { ok: true, result: "accepted" } }),
       list_orders: () => ({ body: { orders: [openOrder] } }),
@@ -462,16 +462,16 @@ describe("an order that carries the calls which close it", () => {
 
     let fromStream: OrderCalls | undefined;
 
-    coinslot.on("order", (arrived) => {
+    agentify.on("order", (arrived) => {
       fromStream = arrived;
       return arrived.accepted();
     });
 
-    running = coinslot;
-    await coinslot.start();
+    running = agentify;
+    await agentify.start();
     await waitUntil(() => fromStream !== undefined, "the order to reach the handler");
 
-    const [fromList] = await coinslot.orders.list({ open: true });
+    const [fromList] = await agentify.orders.list({ open: true });
 
     // Both are asked for the same thing, and what leaves for the gateway has
     // to be the same request. Comparing the objects would compare closures;
@@ -504,7 +504,7 @@ describe("a price question that carries its own answer", () => {
   it("answers with a price, stamped with the moment unless the merchant names one", async () => {
     const bodies: unknown[] = [];
 
-    const coinslot = await clientOver({
+    const agentify = await clientOver({
       poll_worker: polling(batch(envelopes.quote)),
       answer_quote: (call) => {
         bodies.push(call.body);
@@ -512,11 +512,11 @@ describe("a price question that carries its own answer", () => {
       },
     });
 
-    coinslot.on("quote", (asked) =>
+    agentify.on("quote", (asked) =>
       asked.available({ amount: "3.50", currency: "USD" }, "2026-08-26T10:19:00Z"),
     );
-    running = coinslot;
-    await coinslot.start();
+    running = agentify;
+    await agentify.start();
 
     await waitUntil(() => bodies.length === 1, "the price to reach the gateway");
     expect(bodies[0]).toStrictEqual({
@@ -534,7 +534,7 @@ describe("a price question that carries its own answer", () => {
     // promised is "when you answered", and only the bracket says that.
     const bodies: Record<string, unknown>[] = [];
 
-    const coinslot = await clientOver({
+    const agentify = await clientOver({
       poll_worker: polling(batch(envelopes.quote)),
       answer_quote: (call) => {
         bodies.push(call.body as Record<string, unknown>);
@@ -542,11 +542,11 @@ describe("a price question that carries its own answer", () => {
       },
     });
 
-    coinslot.on("quote", (asked) => asked.available({ amount: "3.50", currency: "USD" }));
-    running = coinslot;
+    agentify.on("quote", (asked) => asked.available({ amount: "3.50", currency: "USD" }));
+    running = agentify;
 
     const before = Date.now();
-    await coinslot.start();
+    await agentify.start();
     await waitUntil(() => bodies.length === 1, "the price to reach the gateway");
     const after = Date.now();
 
@@ -564,7 +564,7 @@ describe("a price question that carries its own answer", () => {
   it("answers that there is none, and carries no price when it does", async () => {
     const bodies: unknown[] = [];
 
-    const coinslot = await clientOver({
+    const agentify = await clientOver({
       poll_worker: polling(batch(envelopes.quote)),
       answer_quote: (call) => {
         bodies.push(call.body);
@@ -572,9 +572,9 @@ describe("a price question that carries its own answer", () => {
       },
     });
 
-    coinslot.on("quote", (asked) => asked.unavailable(AT));
-    running = coinslot;
-    await coinslot.start();
+    agentify.on("quote", (asked) => asked.unavailable(AT));
+    running = agentify;
+    await agentify.start();
 
     await waitUntil(() => bodies.length === 1, "the answer to reach the gateway");
     expect(bodies[0]).toStrictEqual({ available: false, as_of: AT });
@@ -585,12 +585,12 @@ describe("where problems go", () => {
   it("reaches the reporter the client was given", async () => {
     const problems: WorkerProblem[] = [];
 
-    const coinslot = await clientOver({ poll_worker: polling(batch(envelopes.order)) });
+    const agentify = await clientOver({ poll_worker: polling(batch(envelopes.order)) });
 
-    coinslot.on("quote", (asked) => asked.unavailable(AT));
-    coinslot.on("problem", (problem) => problems.push(problem));
-    running = coinslot;
-    await coinslot.start();
+    agentify.on("quote", (asked) => asked.unavailable(AT));
+    agentify.on("problem", (problem) => problems.push(problem));
+    running = agentify;
+    await agentify.start();
 
     await waitUntil(() => problems.length > 0, "the problem to reach the reporter");
     expect(problems[0]?.kind).toBe("no_handler");
@@ -603,14 +603,14 @@ describe("where problems go", () => {
     // they already have while the one that is missing stays missing.
     const problems: WorkerProblem[] = [];
 
-    const coinslot = await clientOver({
+    const agentify = await clientOver({
       poll_worker: polling(batch(envelopes.quote, envelopes.event)),
     });
 
-    coinslot.on("order", (arrived) => arrived.accepted());
-    coinslot.on("problem", (problem) => problems.push(problem));
-    running = coinslot;
-    await coinslot.start();
+    agentify.on("order", (arrived) => arrived.accepted());
+    agentify.on("problem", (problem) => problems.push(problem));
+    running = agentify;
+    await agentify.start();
 
     await waitUntil(() => problems.length === 2, "both kinds to go unhandled");
 
@@ -640,17 +640,17 @@ describe("where problems go", () => {
 
     try {
       const reported: WorkerProblem[] = [];
-      const coinslot = await clientOver({ poll_worker: polling(batch(envelopes.order)) });
+      const agentify = await clientOver({ poll_worker: polling(batch(envelopes.order)) });
 
-      coinslot.on("quote", (asked) => asked.unavailable(AT));
-      coinslot.on("problem", async (problem) => {
+      agentify.on("quote", (asked) => asked.unavailable(AT));
+      agentify.on("problem", async (problem) => {
         reported.push(problem);
         await Promise.resolve();
         throw new Error("the merchant's logger was closed during shutdown");
       });
 
-      running = coinslot;
-      await coinslot.start();
+      running = agentify;
+      await agentify.start();
 
       await waitUntil(() => reported.length > 0, "the problem to reach the reporter");
 
@@ -669,11 +669,11 @@ describe("where problems go", () => {
     // buyer, and a library writing to the console is the cheaper rudeness.
     const written = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const coinslot = await clientOver({ poll_worker: polling(batch(envelopes.order)) });
+    const agentify = await clientOver({ poll_worker: polling(batch(envelopes.order)) });
 
-    coinslot.on("quote", (asked) => asked.unavailable(AT));
-    running = coinslot;
-    await coinslot.start();
+    agentify.on("quote", (asked) => asked.unavailable(AT));
+    running = agentify;
+    await agentify.start();
 
     await waitUntil(() => written.mock.calls.length > 0, "the problem to reach the console");
     expect(String(written.mock.calls[0]?.[0])).toMatch(/no_handler/);
@@ -692,13 +692,13 @@ describe("what the surface still does without a stream", () => {
       fulfillment: "sync",
     };
 
-    const coinslot = await clientOver({
+    const agentify = await clientOver({
       publish_card: () => ({ body: { ok: true, id: "cat-1" } }),
       list_orders: () => ({ body: { orders: [] } }),
     });
 
-    expect(await coinslot.catalog.publish(card)).toStrictEqual({ ok: true, id: "cat-1" });
-    expect(await coinslot.orders.list()).toStrictEqual([]);
+    expect(await agentify.catalog.publish(card)).toStrictEqual({ ok: true, id: "cat-1" });
+    expect(await agentify.orders.list()).toStrictEqual([]);
   });
 });
 
@@ -710,15 +710,15 @@ describe("what the surface still does without a stream", () => {
  * the build the day the line under it starts compiling, and every line
  * without one fails the build the day it stops.
  */
-const compilerHoldsTheseTrue = (coinslot: CoinslotClient, kind: HandlerKind): void => {
+const compilerHoldsTheseTrue = (agentify: CoinslotClient, kind: HandlerKind): void => {
   // What a handler receives and what it may return are inferred from the kind,
   // with no annotation anywhere. This is the whole ergonomic claim.
-  coinslot.on("order", (order) => order.delivered({ access_url: order.id }));
-  coinslot.on("quote", (question) => question.available({ amount: "1.00", currency: "USD" }));
-  coinslot.on("event", (event) => {
+  agentify.on("order", (order) => order.delivered({ access_url: order.id }));
+  agentify.on("quote", (question) => question.available({ amount: "1.00", currency: "USD" }));
+  agentify.on("event", (event) => {
     void event.order_id;
   });
-  coinslot.on("problem", (problem) => {
+  agentify.on("problem", (problem) => {
     void problem.kind;
   });
 
@@ -727,25 +727,25 @@ const compilerHoldsTheseTrue = (coinslot: CoinslotClient, kind: HandlerKind): vo
   // not carry — every price question failing, and every sale of that card
   // falling back to the card's own price.
   // @ts-expect-error an order handler is not what answers a price question
-  coinslot.on("quote", (order) => order.delivered({ access_url: order.id }));
+  agentify.on("quote", (order) => order.delivered({ access_url: order.id }));
 
   // A kind that is not known at the call site cannot say which handler is
   // right, so it admits none.
   // @ts-expect-error the kind has to be narrowed to one kind first
-  coinslot.on(kind, (order) => order.delivered({ access_url: order.id }));
+  agentify.on(kind, (order) => order.delivered({ access_url: order.id }));
 
   for (const each of ["order", "quote"] as const) {
     // @ts-expect-error and the same holds for a loop over several of them
-    coinslot.on(each, (order) => order.delivered({ access_url: order.id }));
+    agentify.on(each, (order) => order.delivered({ access_url: order.id }));
   }
 
   // The answer a handler returns is held to the three the contract carries.
   // @ts-expect-error a bare delivery is not one of them
-  coinslot.on("order", (order) => ({ access_url: order.id }));
+  agentify.on("order", (order) => ({ access_url: order.id }));
 
   // And a word nothing on the stream is registered under.
   // @ts-expect-error there is no such kind
-  coinslot.on("orders", () => {});
+  agentify.on("orders", () => {});
 };
 
 void compilerHoldsTheseTrue;

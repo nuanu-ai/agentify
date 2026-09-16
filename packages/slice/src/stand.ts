@@ -1133,7 +1133,7 @@ server.on("error", (error: NodeJS.ErrnoException) => {
   process.exitCode = 1;
 });
 
-server.listen(port, "127.0.0.1", () => console.log(`Coinslot stand: http://127.0.0.1:${port}`));
+server.listen(port, "127.0.0.1", () => console.log(`Agentify stand: http://127.0.0.1:${port}`));
 
 const shutdown = async (): Promise<void> => {
   if (shuttingDown) return;

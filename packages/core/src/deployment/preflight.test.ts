@@ -207,7 +207,7 @@ describe("a channel that is what it claims to be", () => {
   it("refuses a live commerce cabinet that logs reset links or names a local mail sender", () => {
     for (const [name, value] of [
       ["MAIL_URL", "sandbox:log"],
-      ["MAIL_FROM", "Coinslot <no-reply@localhost>"],
+      ["MAIL_FROM", "Agentify <no-reply@localhost>"],
       ["MAIL_FROM", "no-reply@127.0.0.1"],
     ] as const) {
       const wrong = withEnv(COMMERCE_CHANNEL, "cabinet", name, value);

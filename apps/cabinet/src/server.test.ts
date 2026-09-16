@@ -2878,7 +2878,7 @@ describe("the keys screen", () => {
     // The first screen every merchant registered through the form sees. The
     // cabinet does not sign in with a key from this list and never has one
     // here, so an empty list is the ordinary state of somebody who has not put
-    // Coinslot into their own code yet — and a page telling them their own
+    // Agentify into their own code yet — and a page telling them their own
     // starting state cannot happen is a page that has lied to every new
     // merchant. Against the real gateway, because "the list is empty" is the
     // gateway's answer and not this test's.

@@ -19,7 +19,7 @@ readonly git_url="https://github.com/${repository}.git"
 readonly main_ref='refs/heads/main'
 
 fail() {
-  printf 'coinslot test pull refused: %s\n' "$*" >&2
+  printf 'Agentify test pull refused: %s\n' "$*" >&2
   exit 75
 }
 

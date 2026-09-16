@@ -61,7 +61,7 @@ the rest of your secrets, and the address to call.
 ```ts
 import { createClient } from '@nuanu-ai/coinslot'
 
-const coinslot = createClient({
+const agentify = createClient({
   apiKey: process.env.COINSLOT_API_KEY,
   baseUrl: process.env.COINSLOT_URL,
 })
@@ -87,7 +87,7 @@ that same call's answer, so the edit loop is short: fixing and calling again
 ten times in a row costs nothing.
 
 ```ts
-const published = await coinslot.catalog.publish({
+const published = await agentify.catalog.publish({
   merchant_item_id: 'access-monthly',
   title: 'One month of access to the service',
   description:
@@ -193,7 +193,7 @@ connection — orders, price questions, and events about orders — so one
 subscription is all you need.
 
 There is a fourth registration, and nothing on the wire carries it.
-`coinslot.on('problem', ...)` is where the tools tell you what did not get
+`agentify.on('problem', ...)` is where the tools tell you what did not get
 through: a poll that failed, a handler that threw, an answer we would not take,
 a message that arrived with no handler registered for it. Register it. Without
 it those go to the console and nowhere else, and one of them matters more than
@@ -205,7 +205,7 @@ In the synchronous mode the handler returns the result straight away, either
 the delivery or a refusal. Both answers are built on the order itself:
 
 ```ts
-coinslot.on('order', async (order) => {
+agentify.on('order', async (order) => {
   const access = await grantAccess(order.params.email, {
     idempotencyKey: order.id,
   })
@@ -220,7 +220,7 @@ coinslot.on('order', async (order) => {
   return order.delivered({ access_url: access.url })
 })
 
-await coinslot.start()
+await agentify.start()
 ```
 
 The answer is whatever the handler returned. We send it ourselves, and there is
@@ -238,16 +238,16 @@ the row or the queue task the delivery is driven from — and make that call
 against the identifier you saved:
 
 ```ts
-coinslot.on('order', async (order) => {
+agentify.on('order', async (order) => {
   await startProvisioning(order.params.email, { idempotencyKey: order.id })
 
   return order.accepted({ eta_seconds: 60 })
 })
 
-await coinslot.start()
+await agentify.start()
 
 // later, once the delivery is finished, against the id you wrote down:
-await coinslot.orders.forId(savedId).deliver({ access_url: url })
+await agentify.orders.forId(savedId).deliver({ access_url: url })
 ```
 
 An `accepted` can name the time you expect the delivery to take, where you know
@@ -274,7 +274,7 @@ The order your handler was given carries that same `deliver` call, and inside
 the handler it is the shorter thing to write. Between the handler and the
 delivery, though, your process can restart, be deployed over, or hand the job to
 another instance, and the object survives none of those; the identifier in your
-own record survives all three, and `coinslot.orders.forId` turns it back into an
+own record survives all three, and `agentify.orders.forId` turns it back into an
 order that can be delivered against. If your own record is gone as well, the
 open orders can be read back from us — [Finding out where an order
 stands](/orders).
@@ -353,7 +353,7 @@ the same channel. You put the price handler — the one you register under
 `on('quote', …)` — beside the order handler, in the same process:
 
 ```ts
-coinslot.on('quote', async (q) => {
+agentify.on('quote', async (q) => {
   const current = await currentPriceOf(q.merchant_item_id)
 
   if (current === null) {

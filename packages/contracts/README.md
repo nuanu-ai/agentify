@@ -1,6 +1,6 @@
 # `@nuanu-ai/coinslot-contracts`
 
-The Coinslot wire contract, written as schemas rather than as prose: the card an
+The Agentify wire contract, written as schemas rather than as prose: the card an
 agent reads before it buys, the order that reaches a merchant, the price check,
 the receipt, and the answers every call of the merchant API comes back in. The
 gateway and the merchant SDK both read this package, so the two cannot disagree
@@ -23,7 +23,7 @@ The contract is versioned, and the version is how an SDK and a gateway agree
 that they read the same vocabulary; a worker whose version the gateway does not
 share stops at startup rather than half understanding a document. What the
 merchant-facing side of all this looks like in use is at
-<https://coinslot.nuanu.ai/docs/>.
+<https://app.agentify.ad/docs/>.
 
 ## License
 

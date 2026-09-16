@@ -72,17 +72,17 @@ describe("creating a client", () => {
     // this side can reach us. Nothing in the contract or in any decision names
     // where the gateway lives, so the call says that rather than reaching for
     // a hostname nobody chose.
-    const coinslot = createClient({ apiKey: API_KEY });
+    const agentify = createClient({ apiKey: API_KEY });
 
-    await expect(coinslot.catalog.publish(card)).rejects.toThrow(/baseUrl/);
-    await expect(coinslot.orders.get("order-1")).rejects.toThrow(/baseUrl/);
+    await expect(agentify.catalog.publish(card)).rejects.toThrow(/baseUrl/);
+    await expect(agentify.orders.get("order-1")).rejects.toThrow(/baseUrl/);
     await expect(
-      coinslot.orders.forId("order-1").deliver({ access_url: "https://a.example" }),
+      agentify.orders.forId("order-1").deliver({ access_url: "https://a.example" }),
     ).rejects.toThrow(/baseUrl/);
 
     // Registering is not a call and does not need one; starting the loop is.
-    coinslot.on("order", (arrived) => arrived.accepted());
-    await expect(coinslot.start()).rejects.toThrow(/baseUrl/);
+    agentify.on("order", (arrived) => arrived.accepted());
+    await expect(agentify.start()).rejects.toThrow(/baseUrl/);
   });
 
   it("refuses an address that is not one", () => {
@@ -92,11 +92,11 @@ describe("creating a client", () => {
 
 describe("publishing a card", () => {
   it("hands back the catalog identifier", async () => {
-    const coinslot = await gatewayServing({
+    const agentify = await gatewayServing({
       publish_card: () => ({ body: { ok: true, id: "cat-1" } }),
     });
 
-    const published = await coinslot.catalog.publish(card);
+    const published = await agentify.catalog.publish(card);
 
     expect(published).toStrictEqual({ ok: true, id: "cat-1" });
     expect(published.ok === true && published.id).toBe("cat-1");
@@ -116,11 +116,11 @@ describe("publishing a card", () => {
       retryable: false,
       problems,
     };
-    const coinslot = await gatewayServing({
+    const agentify = await gatewayServing({
       publish_card: () => ({ status: 400, body: { ok: false, error } }),
     });
 
-    const published = await coinslot.catalog.publish(card);
+    const published = await agentify.catalog.publish(card);
 
     expect(published.ok).toBe(false);
     expect(published.ok === false && published.error.problems).toStrictEqual(problems);
@@ -134,11 +134,11 @@ describe("publishing a card", () => {
     // A card that was neither accepted nor faulted is a case a merchant
     // cannot branch on, so it arrives as an exception rather than as a third
     // shape nobody described.
-    const coinslot = await gatewayServing({
+    const agentify = await gatewayServing({
       publish_card: () => ({ status: 502, text: "<html>gateway timeout</html>" }),
     });
 
-    await expect(coinslot.catalog.publish(card)).rejects.toThrow(/publish_card/);
+    await expect(agentify.catalog.publish(card)).rejects.toThrow(/publish_card/);
   });
 
   it("treats a well-formed answer that is not the document as no answer at all", async () => {
@@ -146,21 +146,21 @@ describe("publishing a card", () => {
     // 200, that is not what the route promises — a proxy's own body, a
     // gateway of another version, an error envelope somebody added. Read
     // without checking, it becomes a published card that was never published.
-    const coinslot = await gatewayServing({
+    const agentify = await gatewayServing({
       publish_card: () => ({ status: 200, text: JSON.stringify({ accepted: true }) }),
     });
 
-    await expect(coinslot.catalog.publish(card)).rejects.toThrow(/document it promises/);
+    await expect(agentify.catalog.publish(card)).rejects.toThrow(/document it promises/);
   });
 });
 
 describe("reading orders back", () => {
   it("reads one order and the state it is in", async () => {
-    const coinslot = await gatewayServing({
+    const agentify = await gatewayServing({
       get_order: () => ({ body: { ...order, status: "in_progress" } }),
     });
 
-    const read = await coinslot.orders.get("order-1");
+    const read = await agentify.orders.get("order-1");
 
     expect(read.status).toBe("in_progress");
     expect(gateway?.callsTo("get_order")[0]?.params).toStrictEqual({ order_id: "order-1" });
@@ -169,13 +169,13 @@ describe("reading orders back", () => {
   it("encodes an identifier that carries a slash or a space", async () => {
     // The contract accepts "SKU 100/1" as an identifier, and pasted into an
     // address unencoded it becomes two segments and a different route.
-    const coinslot = await gatewayServing({
+    const agentify = await gatewayServing({
       get_order: (call) => ({
         body: { ...order, id: call.params.order_id ?? "", status: "delivered" },
       }),
     });
 
-    await coinslot.orders.get("SKU 100/1");
+    await agentify.orders.get("SKU 100/1");
 
     expect(gateway?.callsTo("get_order")[0]?.params).toStrictEqual({ order_id: "SKU 100/1" });
   });
@@ -185,11 +185,11 @@ describe("reading orders back", () => {
     // the wire carries the two words the contract names. The translation is
     // the SDK's, and a merchant who wrote open=1 by hand would silently
     // receive every order and reconcile against the wrong list.
-    const coinslot = await gatewayServing({ list_orders: () => ({ body: { orders: [] } }) });
+    const agentify = await gatewayServing({ list_orders: () => ({ body: { orders: [] } }) });
 
-    await coinslot.orders.list({ open: true });
-    await coinslot.orders.list({ open: false });
-    await coinslot.orders.list();
+    await agentify.orders.list({ open: true });
+    await agentify.orders.list({ open: false });
+    await agentify.orders.list();
 
     expect(gateway?.callsTo("list_orders").map((call) => call.query)).toStrictEqual([
       { open: "true" },
@@ -201,11 +201,11 @@ describe("reading orders back", () => {
 
 describe("closing an order the merchant took on", () => {
   it("delivers and hands back the word the gateway used", async () => {
-    const coinslot = await gatewayServing({
+    const agentify = await gatewayServing({
       deliver_order: () => ({ body: { ok: true, result: "delivered" } }),
     });
 
-    const result = await coinslot.orders.forId("order-1").deliver({
+    const result = await agentify.orders.forId("order-1").deliver({
       access_url: "https://example.com/a",
     });
 
@@ -223,13 +223,13 @@ describe("closing an order the merchant took on", () => {
     // it. A field lost here told nobody at all, and the merchant's handler had
     // no way to learn that what it sent is not what went out.
     const problems: WorkerProblem[] = [];
-    const coinslot = await gatewayServing({
+    const agentify = await gatewayServing({
       deliver_order: () => ({ body: { ok: true, result: "delivered" } }),
     });
 
-    coinslot.on("problem", (problem) => problems.push(problem));
+    agentify.on("problem", (problem) => problems.push(problem));
 
-    const result = await coinslot.orders
+    const result = await agentify.orders
       .forId("order-1")
       .deliver(JSON.parse('{"access_url": "https://a.example", "__proto__": "gone"}'));
 
@@ -246,15 +246,15 @@ describe("closing an order the merchant took on", () => {
     // noise a merchant learns to ignore, and the one warning worth having
     // would go with it.
     const problems: WorkerProblem[] = [];
-    const coinslot = await gatewayServing({
+    const agentify = await gatewayServing({
       deliver_order: () => ({ body: { ok: true, result: "delivered" } }),
       refuse_order: () => ({ body: { ok: true, result: "refused" } }),
     });
 
-    coinslot.on("problem", (problem) => problems.push(problem));
+    agentify.on("problem", (problem) => problems.push(problem));
 
-    await coinslot.orders.forId("order-1").deliver({ access_url: "https://a.example" });
-    await coinslot.orders.forId("order-1").refuse({ code: "out_of_stock", message: "none left" });
+    await agentify.orders.forId("order-1").deliver({ access_url: "https://a.example" });
+    await agentify.orders.forId("order-1").refuse({ code: "out_of_stock", message: "none left" });
 
     expect(problems).toStrictEqual([]);
   });
@@ -268,11 +268,11 @@ describe("closing an order the merchant took on", () => {
       message: "the debt was paid back",
       retryable: false,
     };
-    const coinslot = await gatewayServing({
+    const agentify = await gatewayServing({
       deliver_order: () => ({ status: 409, body: { ok: false, error } }),
     });
 
-    const result = await coinslot.orders.forId("order-1").deliver({
+    const result = await agentify.orders.forId("order-1").deliver({
       access_url: "https://example.com/a",
     });
 
@@ -283,11 +283,11 @@ describe("closing an order the merchant took on", () => {
     // Same promise, one layer down: a dropped connection is the case the
     // retryable flag exists for, and it must reach the merchant through the
     // same branch as everything else these calls answer with.
-    const coinslot = await gatewayServing({
+    const agentify = await gatewayServing({
       refuse_order: () => ({ status: 502, text: "bad gateway" }),
     });
 
-    const result = await coinslot.orders.forId("order-1").refuse({
+    const result = await agentify.orders.forId("order-1").refuse({
       code: "out_of_stock",
       message: "Поставщик не подтвердил номер",
     });
@@ -301,11 +301,11 @@ describe("closing an order the merchant took on", () => {
     // The same trap on the branch that returns rather than throws: a body
     // that parses and is not the answer would otherwise become a delivery
     // the merchant believes went through.
-    const coinslot = await gatewayServing({
+    const agentify = await gatewayServing({
       deliver_order: () => ({ text: JSON.stringify({ ok: "yes", result: "delivered" }) }),
     });
 
-    const result = await coinslot.orders.forId("order-1").deliver({
+    const result = await agentify.orders.forId("order-1").deliver({
       access_url: "https://a.example",
     });
 
@@ -357,10 +357,10 @@ describe("closing an order the merchant took on", () => {
     await new Promise<void>((resolve) => takenAndDropped.listen(0, "127.0.0.1", resolve));
 
     const port = (takenAndDropped.address() as AddressInfo).port;
-    const coinslot = createClient({ apiKey: API_KEY, baseUrl: `http://127.0.0.1:${port}` });
+    const agentify = createClient({ apiKey: API_KEY, baseUrl: `http://127.0.0.1:${port}` });
 
     try {
-      const result = await coinslot.orders.forId("order-1").deliver({
+      const result = await agentify.orders.forId("order-1").deliver({
         access_url: "https://a.example",
       });
 
@@ -394,10 +394,10 @@ describe("closing an order the merchant took on", () => {
     await new Promise<void>((resolve) => diedMidSentence.listen(0, "127.0.0.1", resolve));
 
     const port = (diedMidSentence.address() as AddressInfo).port;
-    const coinslot = createClient({ apiKey: API_KEY, baseUrl: `http://127.0.0.1:${port}` });
+    const agentify = createClient({ apiKey: API_KEY, baseUrl: `http://127.0.0.1:${port}` });
 
     try {
-      const result = await coinslot.orders.forId("order-1").deliver({
+      const result = await agentify.orders.forId("order-1").deliver({
         access_url: "https://a.example",
       });
 
@@ -432,13 +432,13 @@ describe("closing an order the merchant took on", () => {
     // on happens again on every redelivery, so both may be repeated. Refusing
     // is documented as neither, and a merchant who retried a refusal on our
     // say-so would be retrying the call that opens a refund debt.
-    const coinslot = await gatewayServing({
+    const agentify = await gatewayServing({
       deliver_order: () => ({ text: "not an answer" }),
       refuse_order: () => ({ text: "not an answer" }),
       accept_order: () => ({ text: "not an answer" }),
     });
 
-    const held = coinslot.orders.forId("order-1");
+    const held = agentify.orders.forId("order-1");
     const delivered = await held.deliver({ access_url: "https://a.example" });
     const refused = await held.refuse({ code: "out_of_stock", message: "no" });
     const accepted = await held.accept();
@@ -449,9 +449,9 @@ describe("closing an order the merchant took on", () => {
   });
 
   it("takes an order on, with and without an expected time", async () => {
-    const coinslot = await gatewayServing({ accept_order: () => ({ body: { ok: true } }) });
+    const agentify = await gatewayServing({ accept_order: () => ({ body: { ok: true } }) });
 
-    const held = coinslot.orders.forId("order-1");
+    const held = agentify.orders.forId("order-1");
 
     expect(await held.accept({ eta_seconds: 60 })).toStrictEqual({ ok: true });
     expect(await held.accept()).toStrictEqual({ ok: true });
@@ -489,11 +489,11 @@ describe("a refusal the gateway put into words", () => {
     // merchant reading this has to be able to act on it, and "answered 409
     // with something that is not the document it promises" sends them to read
     // our schemas about an order that is simply over.
-    const coinslot = await gatewayServing({
+    const agentify = await gatewayServing({
       get_order: () => ({ status: 409, text: closedBeforePriced }),
     });
 
-    const refused = await coinslot.orders.get("order-1").then(
+    const refused = await agentify.orders.get("order-1").then(
       () => null,
       (thrown: unknown) => (thrown instanceof Error ? thrown.message : String(thrown)),
     );
@@ -508,7 +508,7 @@ describe("a refusal the gateway put into words", () => {
     // throw — the merchant is expected to branch on it — so the refusal has to
     // arrive as the failure it is, and the clause in front of it must not say
     // the answer could not be read when it was read perfectly well.
-    const coinslot = await gatewayServing({
+    const agentify = await gatewayServing({
       deliver_order: () => ({
         status: 404,
         text: JSON.stringify({
@@ -517,7 +517,7 @@ describe("a refusal the gateway put into words", () => {
       }),
     });
 
-    const result = await coinslot.orders.forId("order-1").deliver({
+    const result = await agentify.orders.forId("order-1").deliver({
       access_url: "https://a.example",
     });
 
@@ -550,15 +550,15 @@ describe("a refusal the gateway put into words", () => {
         },
       }),
     };
-    const coinslot = await gatewayServing({
+    const agentify = await gatewayServing({
       deliver_order: () => answer,
       publish_card: () => answer,
     });
 
-    const returned = await coinslot.orders.forId("order-1").deliver({
+    const returned = await agentify.orders.forId("order-1").deliver({
       access_url: "https://a.example",
     });
-    const thrown = await coinslot.catalog.publish(card).then(
+    const thrown = await agentify.catalog.publish(card).then(
       () => null,
       (raised: unknown) => raised,
     );
@@ -611,11 +611,11 @@ describe("a refusal the gateway put into words", () => {
     // there is no gateway answer to defer to — and "do not call again" would be
     // this package inventing the one fact the merchant came here for out of its
     // own failure to parse.
-    const coinslot = await gatewayServing({
+    const agentify = await gatewayServing({
       deliver_order: () => ({ status: 502, text: "<html>a proxy, not a gateway</html>" }),
     });
 
-    const result = await coinslot.orders.forId("order-1").deliver({
+    const result = await agentify.orders.forId("order-1").deliver({
       access_url: "https://a.example",
     });
 
@@ -628,11 +628,11 @@ describe("a refusal the gateway put into words", () => {
     // be done by looking at the status alone. A body that is JSON and is
     // neither the document nor a refusal has to come back quoted, so that a
     // person can see what the gateway actually sent.
-    const coinslot = await gatewayServing({
+    const agentify = await gatewayServing({
       get_order: () => ({ status: 409, text: JSON.stringify({ trouble: "no code, no words" }) }),
     });
 
-    const refused = await coinslot.orders.get("order-1").then(
+    const refused = await agentify.orders.get("order-1").then(
       () => null,
       (thrown: unknown) => (thrown instanceof Error ? thrown.message : String(thrown)),
     );
@@ -646,11 +646,11 @@ describe("a refusal the gateway put into words", () => {
     // and treating it as one would print an empty sentence where the reason
     // belongs. What is left in that case is the honest complaint with the body
     // quoted inside it.
-    const coinslot = await gatewayServing({
+    const agentify = await gatewayServing({
       get_order: () => ({ status: 409, text: JSON.stringify({ error: { code: "no_message" } }) }),
     });
 
-    const refused = await coinslot.orders.get("order-1").then(
+    const refused = await agentify.orders.get("order-1").then(
       () => null,
       (thrown: unknown) => (thrown instanceof Error ? thrown.message : String(thrown)),
     );
@@ -672,7 +672,7 @@ describe("what is thrown where a route has no failure branch", () => {
     // The gateway said what it would not do and why, in the envelope every
     // route refuses in. Filing that under a code of ours — "we could not read
     // the answer" — would throw away the one word the merchant can act on.
-    const coinslot = await gatewayServing({
+    const agentify = await gatewayServing({
       publish_card: () => ({
         status: 401,
         text: JSON.stringify({
@@ -685,7 +685,7 @@ describe("what is thrown where a route has no failure branch", () => {
       }),
     });
 
-    const thrown = await coinslot.catalog.publish(card).then(
+    const thrown = await agentify.catalog.publish(card).then(
       () => null,
       (failure: unknown) => failure,
     );
@@ -704,9 +704,9 @@ describe("what is thrown where a route has no failure branch", () => {
     const closed = await startFakeGateway({ apiKey: API_KEY, routes: {} });
     await closed.close();
 
-    const coinslot = createClient({ apiKey: API_KEY, baseUrl: closed.url });
+    const agentify = createClient({ apiKey: API_KEY, baseUrl: closed.url });
 
-    const thrown = await coinslot.orders.get("order-1").then(
+    const thrown = await agentify.orders.get("order-1").then(
       () => null,
       (failure: unknown) => failure,
     );
@@ -720,11 +720,11 @@ describe("what is thrown where a route has no failure branch", () => {
     // The other side of the same fact, and the one that must not wear the
     // first one's word: this call did reach the gateway, so telling a merchant
     // it never arrived would invent the one thing nobody here knows.
-    const coinslot = await gatewayServing({
+    const agentify = await gatewayServing({
       list_orders: () => ({ status: 502, text: "<html>gateway timeout</html>" }),
     });
 
-    const thrown = await coinslot.orders.list().then(
+    const thrown = await agentify.orders.list().then(
       () => null,
       (failure: unknown) => failure,
     );
@@ -738,9 +738,9 @@ describe("what is thrown where a route has no failure branch", () => {
     // address is a mistake in the merchant's own code, made before any call
     // left the process; giving it a code out of the wire's vocabulary would
     // put it in the same catch as a gateway that answered.
-    const coinslot = createClient({ apiKey: API_KEY });
+    const agentify = createClient({ apiKey: API_KEY });
 
-    const thrown = await coinslot.catalog.publish(card).then(
+    const thrown = await agentify.catalog.publish(card).then(
       () => null,
       (failure: unknown) => failure,
     );
@@ -753,10 +753,10 @@ describe("what is thrown where a route has no failure branch", () => {
     // The fix has to be in the sentence. A merchant reading "pass baseUrl" and
     // nothing else goes looking for a hostname; there is deliberately no
     // default, because choosing an environment is theirs to do on purpose.
-    const coinslot = createClient({ apiKey: API_KEY });
+    const agentify = createClient({ apiKey: API_KEY });
 
-    await expect(coinslot.catalog.publish(card)).rejects.toThrow(/https:\/\/test\.agentify\.ad/);
-    await expect(coinslot.catalog.publish(card)).rejects.toThrow(/https:\/\/app\.agentify\.ad/);
+    await expect(agentify.catalog.publish(card)).rejects.toThrow(/https:\/\/test\.agentify\.ad/);
+    await expect(agentify.catalog.publish(card)).rejects.toThrow(/https:\/\/app\.agentify\.ad/);
   });
 });
 
@@ -764,9 +764,9 @@ describe("the door on every call", () => {
   it("presents the merchant's key on the calls that are behind it", async () => {
     // The fake gateway refuses a call behind the merchant's door that arrives
     // without the key, so this passing is the assertion.
-    const coinslot = await gatewayServing({ list_orders: () => ({ body: { orders: [] } }) });
+    const agentify = await gatewayServing({ list_orders: () => ({ body: { orders: [] } }) });
 
-    await coinslot.orders.list();
+    await agentify.orders.list();
 
     expect(gateway?.callsTo("list_orders")[0]?.apiKey).toBe(API_KEY);
   });

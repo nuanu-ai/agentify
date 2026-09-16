@@ -41,7 +41,7 @@
         "FACILITATOR_URL": "https://api.cdp.coinbase.com/platform/v2/x402",
         "GATEWAY_URL": "http://gateway:3000",
         "MAIL_API_KEY": "",
-        "MAIL_FROM": "Coinslot \u003cno-reply@localhost\u003e",
+        "MAIL_FROM": "Agentify \u003cno-reply@localhost\u003e",
         "MAIL_URL": "sandbox:log",
         "PAYMENT_NETWORK": "eip155:8453",
         "PORT": "3001",

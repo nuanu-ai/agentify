@@ -4,8 +4,8 @@
  * It takes the public address of a running gateway and asks the CDP validation
  * endpoint whether it would take that gateway's paid resources:
  *
- *   pnpm smoke:listing https://coinslot.example
- *   pnpm smoke:listing https://coinslot.example itm_4d21bb
+ *   pnpm smoke:listing https://agentify.example
+ *   pnpm smoke:listing https://agentify.example itm_4d21bb
  *
  * The endpoint fetches the resource itself, so the gateway has to be reachable
  * from the internet. From a laptop it is not, and the command reports what it

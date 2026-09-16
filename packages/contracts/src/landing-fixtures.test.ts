@@ -125,7 +125,7 @@ const linesOf = (value: Record<string, unknown>, indent: string): string[] =>
 /** The example the landing has to carry, whole. */
 const exampleFor = (card: Record<string, unknown>): string =>
   [
-    '<span class="tok-key">await</span> coinslot.catalog.<span class="tok-call">publish</span>({',
+    '<span class="tok-key">await</span> agentify.catalog.<span class="tok-call">publish</span>({',
     ...linesOf(card, "  "),
     "})",
   ].join("\n");

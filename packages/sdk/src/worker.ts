@@ -276,7 +276,7 @@ export const REGISTERED_AS = Object.freeze({
  * Indexed by the table's own keys and not by the contract's kinds, which reads
  * the same today and behaves very differently on the day a fourth kind is
  * added. Indexing by a key the table does not have yet collapses this type, and
- * with it `Handlers[Kind]` and the contextual type of every `coinslot.on(...)`
+ * with it `Handlers[Kind]` and the contextual type of every `agentify.on(...)`
  * call — so the first compile after the contract grows reports sixty errors, of
  * which fifty-five are implicit-any at call sites that are not the problem, and
  * the three places that do need a hand are buried among them. Indexed this way
@@ -812,7 +812,7 @@ export const startWorker = (
         kind: WORKER_PROBLEM_KINDS.WORKER_FAILED,
         fatal: true,
         cause,
-        message: `the worker stopped on an error it did not expect, which is a defect in the Coinslot SDK rather than something the gateway did: ${String(cause)}`,
+        message: `the worker stopped on an error it did not expect, which is a defect in the Agentify SDK rather than something the gateway did: ${String(cause)}`,
       });
     })
     .finally(() => {

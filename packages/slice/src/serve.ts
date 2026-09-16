@@ -82,7 +82,7 @@ const SWEEP_MS = 500;
  * Both sides ask the runtime for the directory rather than spelling it, so a
  * TMPDIR set on the service moves the two together.
  */
-const SUBSCRIPTION_FILE = join(tmpdir(), "coinslot-merchant-subscription");
+const SUBSCRIPTION_FILE = join(tmpdir(), "agentify-merchant-subscription");
 
 /**
  * Where the line is written before it is moved into place.

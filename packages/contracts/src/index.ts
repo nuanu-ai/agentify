@@ -1,5 +1,5 @@
 /**
- * Coinslot contracts — the single source of truth for the card, the order, the
+ * Agentify contracts — the single source of truth for the card, the order, the
  * price check, the receipt and everything else that crosses the boundary
  * between us, a merchant and an agent. Everything that goes outside or arrives
  * from outside is described here by a zod schema; consumers get their types by

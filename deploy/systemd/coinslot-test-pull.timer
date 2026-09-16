@@ -1,5 +1,5 @@
 [Unit]
-Description=Check GitHub for a releasable Coinslot test revision
+Description=Check GitHub for a releasable Agentify test revision
 
 [Timer]
 OnBootSec=2min

@@ -109,7 +109,7 @@ const surface = (mode: SurfaceMode): string => {
  * The way out of the cabinet, into the documentation.
  *
  * It is the other half of the way out of the documentation, which is a link in
- * the bar of the portal reading "← Coinslot"
+ * the bar of the portal reading "← Agentify"
  * (apps/docs/.vitepress/theme/index.mjs). The two are one solution and are meant
  * to read as one: the same class name, the same shape — an arrow and the name
  * the destination wears in its own corner — the same muted colour until it is

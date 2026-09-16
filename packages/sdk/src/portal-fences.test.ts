@@ -71,7 +71,7 @@ import type { CoinslotClient, LiveOrder } from "@nuanu-ai/coinslot";
 
 declare global {
   /** The client the quickstart builds on its first page. */
-  const coinslot: CoinslotClient;
+  const agentify: CoinslotClient;
   /**
    * An order the merchant saved when they took it on — the object their
    * handler was given, which carries the calls that close it.
@@ -281,18 +281,18 @@ describe("the portal's TypeScript examples", () => {
 
     for (const promised of [
       "createClient",
-      "coinslot.catalog.publish",
-      "coinslot.on('order'",
-      "coinslot.on('quote'",
-      "coinslot.start()",
+      "agentify.catalog.publish",
+      "agentify.on('order'",
+      "agentify.on('quote'",
+      "agentify.start()",
       "order.delivered(",
       "order.refused(",
       "order.accepted(",
       "order.deliver(",
       "order.refuse(",
-      "coinslot.orders.forId(",
-      "coinslot.orders.get",
-      "coinslot.orders.list",
+      "agentify.orders.forId(",
+      "agentify.orders.get",
+      "agentify.orders.list",
     ]) {
       expect(everything).toContain(promised);
     }
@@ -304,13 +304,13 @@ describe("the portal's TypeScript examples", () => {
     // examples are never really reaching the compiler; this is what tells the
     // two apart.
     const broken = compile([
-      { name: "renamed", source: "await coinslot.catalog.publishTheCard({})\n" },
-      { name: "wrong-argument", source: "await coinslot.orders.get(42)\n" },
+      { name: "renamed", source: "await agentify.catalog.publishTheCard({})\n" },
+      { name: "wrong-argument", source: "await agentify.orders.get(42)\n" },
       {
         // The kind a handler is registered under is checked too: a merchant
         // who wrote `orders` would otherwise get a handler nothing calls.
         name: "wrong-kind",
-        source: "coinslot.on('orders', () => ({ accepted: {} }))\n",
+        source: "agentify.on('orders', () => ({ accepted: {} }))\n",
       },
     ]);
 
@@ -340,7 +340,7 @@ const inlineOf = (value: unknown): string => {
 /** The card, as the call that publishes it — which is what the fence has to be. */
 const publishCallFor = (card: Record<string, unknown>): string =>
   [
-    "await coinslot.catalog.publish({",
+    "await agentify.catalog.publish({",
     ...Object.entries(card).map(([name, value]) => `  ${name}: ${inlineOf(value)},`),
     "})",
   ].join("\n");
