@@ -1,12 +1,13 @@
 # Publishing the merchant SDK
 
-Status: the Agentify package names are prepared but unpublished. Dmitry
-authorized the one-time npm bootstrap and the exact contracts `0.3.2` / SDK
-`0.2.4` release on 2026-09-16, as recorded in ADR-0016. This authorization also
-covers deprecating every version under the former package names after the
-new registry artifacts pass acceptance; it does not authorize unpublishing
-registry history. Test and production host delivery are outside this release,
-and the namespace cutover remains paused.
+Status: contracts `0.3.2` and SDK `0.2.4` are published and verified against
+the retained tarball digests, with a successful external install and CLI check.
+Every version under the former package names is deprecated with a replacement
+message; registry history remains available. Both Agentify packages trust
+`nuanu-ai/agentify` and `publish-sdk.yml` for GitHub Actions publishing. Dmitry
+authorized enabling that workflow on 2026-09-16, as recorded in ADR-0016.
+Test and production host delivery are outside this release, and the namespace
+cutover remains paused.
 
 The tag `sdk-v<version>` publishes two public npm packages from one immutable
 commit:
@@ -37,8 +38,8 @@ packs both packages, installs them with npm outside the workspace, compiles a
 strict TypeScript consumer, imports the SDK with Node, and runs the documented
 command with positive and negative cards.
 
-This release prepares contracts `0.3.2` and SDK `0.2.4`; do not reuse the
-existing `sdk-v0.2.3` tag. The package-name move does not change the wire, so
+The bootstrap release is contracts `0.3.2` and SDK `0.2.4`; subsequent releases
+require new versions and a new tag. The package-name move does not change the wire, so
 `CONTRACT_VERSION` remains `"2"`. Schema identities use
 `urn:agentify:contract:2:*`; schema bodies and payload validation are unchanged.
 Consumers keyed to the previous schema identities must switch directly; no

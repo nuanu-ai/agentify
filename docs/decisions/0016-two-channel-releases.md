@@ -39,7 +39,7 @@ commerce appearance release; this does not enable automatic delivery or release
 the subsequent naming-cleanup branch. The timer state and retained revision
 require separate verification on the host.
 
-The prepared public packages are `@nuanu-ai/agentify-contracts` and
+The public packages are `@nuanu-ai/agentify-contracts` and
 `@nuanu-ai/agentify`, with the `agentify` command. Releases under the former
 package names remain immutable registry history; the new packages do not
 export old names or install an old command. On 2026-09-16 Dmitry explicitly
@@ -51,7 +51,9 @@ same authorization retires every version under the former package names with
 an npm deprecation that points to the Agentify packages. Registry history stays
 immutable: no former version is unpublished. That authorization does not
 enable either automatic host delivery or the separately gated production
-namespace cutover.
+namespace cutover. On the same date he authorized configuring trusted publishers
+for both packages and enabling the SDK workflow. Subsequent SDK tags use GitHub
+Actions OIDC without a stored npm token; host delivery remains paused.
 
 ## Consequences
 
