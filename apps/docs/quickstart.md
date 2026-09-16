@@ -41,7 +41,27 @@ examples below remain preliminary: of the machine names only
 a new package and contract version before the gateway speaks them.
 :::
 
-## 1. Install the tools
+## 1. Make the merchant account ready
+
+During the pilot, registration is invitation-gated. Open the [test-channel
+registration form](https://test.agentify.ad/cabinet/register) and enter the
+invitation you were given, your email address and a password. The account works
+immediately and the next screen asks for the seller name that buyers will see.
+Email confirmation does not block selling; it is what makes password recovery
+available if you lose the password later.
+
+The test channel settles test USDC on Base Sepolia. Save the Base wallet where
+those payments should arrive in Cabinet settings before publishing. The live
+channel is a separate account at `https://app.agentify.ad`: it uses Base
+mainnet and real USDC, and likewise refuses to publish a card until that
+account has a payout wallet. A local scripted sandbox is the exception: it
+moves no funds, so it does not require a merchant wallet.
+
+Once the seller name and wallet are set, open API Keys, press "Issue a key",
+name it so you can distinguish it from the next one, and copy it. The secret is
+shown once. Keep it with your other secrets; do not put it in source control.
+
+## 2. Install the tools
 
 Everything your side needs is in one package. Its dependency tree is short and
 listed outright: our contracts package, and zod, the library that validates
@@ -67,10 +87,8 @@ const agentify = createClient({
 })
 ```
 
-You make the key yourself, in your cabinet, on the API Keys screen: press
-"Issue a key", name it so you can tell it from the next one, and copy it — it
-is shown once and never again. The address is the environment you are working
-in: `https://test.agentify.ad` while you are building, and
+The address is the environment you are working in:
+`https://test.agentify.ad` while you are building, and
 `https://app.agentify.ad` when you go live. Give the client the address and
 nothing after it; it adds the rest of the path itself. A key made in one
 environment does not open the other, and a key you issued on the test address
@@ -80,7 +98,7 @@ This step worked if the client was built. Whether the key and address belong
 together is answered by the first call that reaches us, and that call is on the
 next step.
 
-## 2. Describe the product with a card
+## 3. Describe the product with a card
 
 You upload the card yourself, with a call. What is wrong with it comes back in
 that same call's answer, so the edit loop is short: fixing and calling again
@@ -176,14 +194,14 @@ the act that puts the card in this Agentify environment's own catalogue, as
 long as the merchant and card are selling. The test purchase below proves that
 the product can be bought and delivered; it does not publish the card. Whether
 an external discovery catalogue indexes the paid resource is a different
-measurement, described on step 6.
+measurement, described on step 7.
 
-## 3. Take an order and deliver the goods
+## 4. Take an order and deliver the goods
 
 We hold the orders in a queue on our side, and you take them from it with a
 subscription. You do not have to accept incoming connections: your side opens
 the subscription, so neither a public address nor an open port is needed. It
-goes out over ordinary HTTPS to the address you gave the client on step 1 — a
+goes out over ordinary HTTPS to the address you gave the client on step 2 — a
 request we hold open until something arrives — so what your outbound rules have
 to allow is that one host.
 
@@ -390,9 +408,9 @@ the answer are the same for both and are described in the [card
 reference](/cards).
 
 Success here is modest: the process starts, holds the connection, and your
-problem handler stays quiet. The first order reaches it on step 5.
+problem handler stays quiet. The first order reaches it on step 6.
 
-## 4. Check the card
+## 5. Check the card
 
 The check we ship is what goes in front of every publish from here on. Calling
 us is the short loop while you are fixing one card by hand; once publishing
@@ -440,7 +458,7 @@ your own delivery system, and what has to hold is that a second order produces
 no second delivery and no fresh goods — the buyer keeps what the first delivery
 carried ([Telling a repeat apart](/orders#telling-a-repeat-apart)).
 
-## 5. Walk a test purchase
+## 6. Walk a test purchase
 
 The first purchase of your product on the configured test channel is made by
 our sandbox buyer rather than by a live agent — a program that walks the whole
@@ -456,9 +474,9 @@ you called with.
 It all came together if the order reached your handler, the sandbox buyer
 received the goods, and the purchase left a receipt behind it.
 
-## 6. Prove the sale; measure external discovery separately
+## 7. Prove the sale; measure external discovery separately
 
-The publish call on step 2 puts the card into that Agentify channel's own
+The publish call on step 3 puts the card into that Agentify channel's own
 catalogue before this purchase. The purchase is the proof that an agent can
 buy it: the order reaches your handler, the buyer receives the declared goods,
 and the sale leaves a receipt.

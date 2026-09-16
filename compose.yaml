@@ -39,10 +39,14 @@
 # tables they empty and the schemas they drop, so each pulls the ground out from
 # under the other. One run at a time, per database.
 #
-# Nobody can sign into the cabinet until somebody makes an account. There is no
-# sign-up page and no reset by mail yet (ADR-0009): one merchant, and we make
-# the account by hand. One command, against the stack that is already up, which
-# prints a generated password once:
+# Register at http://localhost:8080/cabinet/register with an email, a password
+# and the invitation `register-on-this-laptop`, which AGENTIFY_INVITATION sets
+# below. The account works immediately; confirming the address enables password
+# recovery. This local sandbox writes confirmation and reset links to the
+# cabinet log rather than sending real mail.
+#
+# An operator can still make an account against a stack that is already up. The
+# command prints a generated password once:
 #
 #   docker compose exec cabinet \
 #     pnpm --filter @agentify/commerce-cabinet account add you@example.com

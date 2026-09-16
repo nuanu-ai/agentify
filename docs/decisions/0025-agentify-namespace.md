@@ -43,8 +43,10 @@ before these definitions can be deployed. It must identify source and target,
 stop all writers, preserve and restore-check data, resolve pending queue work,
 map volumes explicitly, replace environment and service names, and retain a
 rollback that includes configuration and data. Automatic delivery and npm
-publication remain paused under ADR-0016. Branch acceptance proves the new
-source and isolated checks; it does not prove migration of a live host.
+publication are separate gates under ADR-0016. The exact npm release recorded
+there is authorized; automatic host delivery and the production namespace
+cutover remain paused. Branch acceptance proves the new source and isolated
+checks; it does not prove migration of a live host.
 
 ## Alternatives rejected
 

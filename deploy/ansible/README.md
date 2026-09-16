@@ -17,12 +17,19 @@ ansible-playbook -i deploy/ansible/inventory.yml \
 
 The current production database is not yet stored under the repository's final
 namespace. Ordinary production delivery therefore remains blocked until a
-separately reviewed Ansible cutover has stopped writers, drained or explicitly
-disposed of pending queue work, preserved a verified backup, restored the
-commerce database and role as `agentify_commerce`, and mapped the restored data
-volume to `agentify-commerce-postgres`. The scanner stays in the separate
-`agentify_scanner` database. Do not create either target by hand to make a
-Compose check pass.
+separately reviewed Ansible cutover has stopped writers, preserved a verified
+backup, restored the commerce database and role as `agentify_commerce`, and
+mapped the restored data volume to `agentify-commerce-postgres`. The scanner
+stays in the separate `agentify_scanner` database. Do not create either target
+by hand to make a Compose check pass.
+
+The queue gate is lossless. Drain or replay each pending job, or reconcile it
+to the order and durable effect it represents. A job may leave the queue only
+after the related business obligation is proved complete, is safely replayed,
+or is put into named manual custody with its payload, order, owner and next
+action recorded. A queue name and count alone never authorize disposal. If any
+job cannot be reconciled that way, the cutover stops and the source state stays
+available for rollback.
 
 The test pull service is likewise inert until its Ansible cutover has restored
 the retained application data into `agentify_commerce` on the test host, mapped

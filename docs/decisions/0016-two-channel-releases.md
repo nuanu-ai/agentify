@@ -32,19 +32,22 @@ the VM.
 There is no automatic live caller. A `v*` tag proves the release checks but does
 not deploy the live channel.
 
-Dmitry has paused automatic delivery. The test timer remains disabled and SDK
-publication remains paused. Manual production releases require his explicit
-authorization and are applied through Ansible after exact-SHA CI acceptance.
-On 2026-09-16 he authorized the accepted commerce appearance release; this does
-not enable automatic delivery or release the subsequent naming-cleanup branch.
-The timer state and retained revision require separate verification on the host.
+Dmitry has paused automatic delivery. The test timer remains disabled. Manual
+production releases require his explicit authorization and are applied through
+Ansible after exact-SHA CI acceptance. On 2026-09-16 he authorized the accepted
+commerce appearance release; this does not enable automatic delivery or release
+the subsequent naming-cleanup branch. The timer state and retained revision
+require separate verification on the host.
 
 The prepared public packages are `@nuanu-ai/agentify-contracts` and
 `@nuanu-ai/agentify`, with the `agentify` command. Releases under the former
-package names remain immutable registry history; the new packages
-do not export old names or install an old command. Preparing these names does
-not authorize their one-time npm bootstrap, a tag, or a workflow run. Those
-steps remain paused until Dmitry explicitly authorizes the registry release.
+package names remain immutable registry history; the new packages do not
+export old names or install an old command. On 2026-09-16 Dmitry explicitly
+authorized the one-time npm bootstrap and release of
+`@nuanu-ai/agentify-contracts@0.3.2` and `@nuanu-ai/agentify@0.2.4`, including
+the release-version commit, `sdk-v0.2.4` tag and the SDK publication workflow.
+That authorization does not enable either automatic host delivery or the
+separately gated production namespace cutover.
 
 ## Consequences
 

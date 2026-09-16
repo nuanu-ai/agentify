@@ -21,10 +21,10 @@ will be as many lines here as there were sales.
 
 ## What they pay in
 
-Buyers pay in a stablecoin — a digital dollar, meaning money whose rate is
-pegged to the dollar. For you that means the sum the buyer saw at the moment of
-purchase and the sum that lands in your wallet are the same: nothing is
-converted at a rate in between.
+Buyers pay in USDC, a digital dollar whose rate is pegged to the dollar. A card
+may write its price in USD or USDC; either way the gateway asks the buyer for
+the same number of USDC on the configured network. There is no exchange-rate
+conversion in between.
 
 These payments have one more property worth knowing in advance: the transfer is
 final. A buyer cannot reverse it the way a charge on a bank card is reversed,
@@ -33,10 +33,14 @@ bank cards, where money is taken back off your account a month after the sale
 and you are left proving the goods went out, does not happen here. Whatever you
 give back, you give back yourself and by your own decision.
 
-Which digital dollar we use, and which network the transfers run over, is not
-chosen yet. Who pays the network fee and how that fee sits against the price of
-the goods follows from the same question; both are in the list at the bottom of
-this page.
+The test channel uses Base Sepolia and test USDC. The live channel uses Base
+mainnet and real USDC. A local sandbox also describes Base Sepolia and USDC in
+its payment challenge, but its scripted settlement moves no funds and records
+no transaction on a chain. Test and sandbox receipts are marked as test; a
+live receipt is not.
+
+Who pays the network fee and how that fee sits against the price of the goods
+is still unsettled.
 
 ## When the money reaches you
 
@@ -148,8 +152,7 @@ this page.
 
 ## What is not settled yet
 
-- Which digital dollar and which transfer network; who pays the network fee and
-  how it sits against the price of the goods.
+- Who pays the network fee and how it sits against the price of the goods.
 - How you send money back for an undelivered order, and how we learn that you
   have.
 - Reconciling what came in against what was sold. A receipt follows the goods,

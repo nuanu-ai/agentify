@@ -1,8 +1,10 @@
 # Publishing the merchant SDK
 
-Status: the Agentify package names are prepared but unpublished. SDK
-publication is paused by ADR-0016. None of the bootstrap, tag or workflow steps
-below is authorized merely because this document or a release commit exists.
+Status: the Agentify package names are prepared but unpublished. Dmitry
+authorized the one-time npm bootstrap and the exact contracts `0.3.2` / SDK
+`0.2.4` release on 2026-09-16, as recorded in ADR-0016. This authorization does
+not include test or production host delivery; the namespace cutover remains
+paused.
 
 The tag `sdk-v<version>` publishes two public npm packages from one immutable
 commit:
@@ -33,9 +35,9 @@ packs both packages, installs them with npm outside the workspace, compiles a
 strict TypeScript consumer, imports the SDK with Node, and runs the documented
 command with positive and negative cards.
 
-The pending Changesets prepare contracts `0.3.2` and SDK `0.2.4`; do not reuse
-the existing `sdk-v0.2.3` tag. The package-name move does not change the wire,
-so `CONTRACT_VERSION` remains `"2"`. Schema identities use
+This release prepares contracts `0.3.2` and SDK `0.2.4`; do not reuse the
+existing `sdk-v0.2.3` tag. The package-name move does not change the wire, so
+`CONTRACT_VERSION` remains `"2"`. Schema identities use
 `urn:agentify:contract:2:*`; schema bodies and payload validation are unchanged.
 Consumers keyed to the previous schema identities must switch directly; no
 alias schemas are published. See [ADR-0025](../decisions/0025-agentify-namespace.md).
@@ -70,7 +72,8 @@ after its CI has succeeded. Use an npm account that owns the
 not push it yet and check that it names `HEAD`. Pack with pnpm so
 `publishConfig` and `workspace:*` become registry-ready manifests; publishing a
 package directory with raw npm would publish the source manifest instead. Then
-publish the contracts tarball before the SDK tarball:
+publish the contracts tarball before the SDK tarball. This one-time sequence is
+authorized only for the exact versions named above:
 
 ```sh
 git tag sdk-v0.2.4

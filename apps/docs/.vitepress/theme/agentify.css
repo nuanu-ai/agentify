@@ -146,7 +146,6 @@
   white-space: nowrap;
   transition: color 0.25s;
   gap: 7px;
-  color: var(--vp-c-text-1);
   letter-spacing: -0.02em;
 }
 

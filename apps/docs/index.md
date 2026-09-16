@@ -113,17 +113,26 @@ dispute — are collected in the [common questions](/faq).
 
 ## How to start
 
-During the pilot, connecting starts with a conversation. We go through the four
-questions above together, look at what you sell and decide which products go
-out first and how they are sold. Then we write the cards, you approve them, and
-after a test purchase the products become visible in the catalogues. There is
-no sign-up button yet: we run the pilot by hand so that we see for ourselves
-where it is awkward for you.
+During the pilot, registration is available to merchants we invite rather than
+open to everybody. If you have an invitation, <a
+href="/cabinet/register">register in the cabinet</a> with your email address
+and a password. The account works immediately. Confirming the address is
+optional for selling, but it is what lets the cabinet send you a password-reset
+link later.
+
+After registration, the cabinet asks for the seller name buyers will see. From
+there you can issue an API key and publish cards with the SDK. On the live
+channel you must also save the wallet where your USDC payments arrive before a
+card can be published; the local sandbox moves no money and does not require a
+merchant wallet. [The first test sale](/quickstart) walks through those steps.
+
+We still go through the four questions above with each invited merchant, decide
+which products go out first and how they are sold, and run the first test
+purchase together. Registration is a real part of that pilot onboarding; the
+invitation is the door while access remains limited.
 
 ## What is not settled yet
 
-- Where to write to start the conversation: we have neither an address nor an
-  application form yet.
 - What the subscription costs and what it covers.
 - Reconciling the money. Orders are visible in the cabinet, but we write a
   receipt at the moment the goods are delivered, so an order that is paid for

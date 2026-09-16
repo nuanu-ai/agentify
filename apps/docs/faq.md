@@ -97,10 +97,10 @@ not, there is the order and the event saying a refund is owed.
 
 ### What do buyers pay with?
 
-A stablecoin: a digital dollar, meaning money whose rate is pegged to the
-dollar, so nothing is converted between the purchase and the arrival. Which
-digital dollar, and which network the transfers run over, is still being
-chosen: [Money](/money).
+USDC. The test channel uses Base Sepolia and test USDC; the live channel uses
+Base mainnet and real USDC. The local sandbox moves no funds even though its
+payment challenge names Base Sepolia and USDC. The complete distinction is on
+[Money](/money).
 
 ## Questions from the engineer
 
