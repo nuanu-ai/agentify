@@ -16,9 +16,13 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { getServerConfig } from "./config";
 import { getDatabase } from "./database";
 import { sendTransactionalEmail } from "./email";
+import {
+  SCANNER_AUTH_LINK_TTL_SECONDS,
+  scannerAuthEmail,
+  type ScannerAuthEmailPurpose,
+} from "./scanner-auth-email";
 
-const LINK_TTL_SECONDS = 60 * 60;
-export type ScannerMagicLinkPurpose = "registration" | "recovery";
+export type ScannerMagicLinkPurpose = ScannerAuthEmailPurpose;
 
 export type ScannerMagicLinkClaim = Readonly<{
   email: string;
@@ -61,7 +65,7 @@ function scannerAuth(tx?: DatabaseTransaction) {
     },
     plugins: [
       magicLink({
-        expiresIn: LINK_TTL_SECONDS,
+        expiresIn: SCANNER_AUTH_LINK_TTL_SECONDS,
         storeToken: "hashed",
         async sendMagicLink({ email, token, metadata }) {
           const state = metadata?.state;
@@ -83,14 +87,10 @@ function scannerAuth(tx?: DatabaseTransaction) {
           const link = new URL("/auth/callback", config.appBaseUrl);
           link.hash = new URLSearchParams({ state, token }).toString();
           const url = link.toString();
+          const message = scannerAuthEmail(purpose, url);
           await sendTransactionalEmail({
             to: email,
-            subject:
-              purpose === "recovery"
-                ? "Recover your Agentify report"
-                : "Confirm your Agentify registration",
-            text: `Open this link and confirm your email to access your private report: ${url}`,
-            html: `<p>Open this link and confirm your email to access your private report:</p><p><a href="${url}">Confirm email</a></p>`,
+            ...message,
             evidenceUrl: url,
           });
         },

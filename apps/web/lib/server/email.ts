@@ -33,7 +33,7 @@ export async function sendTransactionalEmail(
     throw new Error("email_provider_disabled");
   const resend = new Resend(config.RESEND_API_KEY);
   const result = await resend.emails.send({
-    from: config.RESEND_FROM,
+    from: resendSender(config.RESEND_FROM),
     to: email.to,
     subject: email.subject,
     text: email.text,
@@ -41,6 +41,10 @@ export async function sendTransactionalEmail(
   });
   if (result.error)
     throw new Error(`resend_delivery_failed:${result.error.name}`);
+}
+
+function resendSender(address: string): string {
+  return `Agentify <${address}>`;
 }
 
 export async function trySendTransactionalEmail(
