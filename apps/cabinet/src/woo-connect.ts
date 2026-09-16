@@ -32,7 +32,7 @@
 import { randomBytes } from "node:crypto";
 
 /** What the shop calls us in the key row a merchant reads afterwards. */
-export const APP_NAME = "Coinslot";
+export const APP_NAME = "Agentify";
 
 /**
  * The access we ask for.

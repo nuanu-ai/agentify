@@ -52,7 +52,7 @@ having spent nothing.
 ```mermaid
 sequenceDiagram
     participant A as Agent
-    participant C as Coinslot
+    participant C as Agentify
     participant Y as You
     A->>C: buys the card
     C->>Y: the order, on your open subscription
@@ -69,7 +69,7 @@ a separate call — a minute later or a day later, which changes nothing here.
 ```mermaid
 sequenceDiagram
     participant A as Agent
-    participant C as Coinslot
+    participant C as Agentify
     participant Y as You
     A->>C: buys the card
     Note over C: the buyer is charged
@@ -90,7 +90,7 @@ than the one where everything goes well.
 ```mermaid
 sequenceDiagram
     participant A as Agent
-    participant C as Coinslot
+    participant C as Agentify
     participant Y as You
     A->>C: buys the card
     C->>Y: will you deliver this

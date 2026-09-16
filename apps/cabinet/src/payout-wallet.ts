@@ -170,7 +170,7 @@ export const payoutWalletBlock = (viewer: Viewer): string => {
   <div class="lede">
     <div>
       <h2>Where your money arrives</h2>
-      <p>Buyers pay you directly. The money goes from the buyer's wallet to this address, and Coinslot never holds it: there is no balance here, nothing to withdraw, and no point on the way where the money sits with us.</p>
+      <p>Buyers pay you directly. The money goes from the buyer's wallet to this address, and Agentify never holds it: there is no balance here, nothing to withdraw, and no point on the way where the money sits with us.</p>
       <p>The address is the only thing we ask for, and it is the only thing we can use. There is nowhere on this site to type a private key or a recovery phrase — the words your wallet told you to write down — and nobody here will ever ask you for one.</p>
       <p class="quiet">A product published without this address is refused wherever the payments are real. On a preview, where nothing settles and no money moves, nothing is refused: an empty box there stops nothing, and a sale that goes through there has paid nobody.</p>
     </div>

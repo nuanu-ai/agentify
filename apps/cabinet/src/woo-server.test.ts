@@ -291,7 +291,7 @@ describe("pressing Connect", () => {
     const to = new URL(pressed.to ?? "");
     expect(to.origin).toBe(SHOP);
     expect(to.pathname).toBe("/wc-auth/v1/authorize");
-    expect(to.searchParams.get("app_name")).toBe("Coinslot");
+    expect(to.searchParams.get("app_name")).toBe("Agentify");
     expect(to.searchParams.get("scope")).toBe("read_write");
     expect(to.searchParams.get("user_id")).not.toBe("");
     expect(to.searchParams.get("return_url")).toBe(`${PUBLIC}/woocommerce/return`);

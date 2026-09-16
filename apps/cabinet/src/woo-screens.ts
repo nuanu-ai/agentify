@@ -19,7 +19,7 @@
  */
 
 import type { SurfaceMode } from "@agentify/commerce-core";
-import { bare, escaped, page } from "./html.js";
+import { bare, brandLockup, escaped, page } from "./html.js";
 import type { Viewer } from "./screens.js";
 import type { SkippedProduct } from "./woo-catalog.js";
 import { GRANT_MINUTES } from "./woo-connect.js";
@@ -155,12 +155,13 @@ const noKeysYet = (state: ShopState): string => {
 };
 
 const WHAT_CONNECTING_DOES = `<p>Connecting reads your shop's catalogue and publishes what it finds as cards, so agents can buy your products. When one is bought, the order is created in your shop, marked paid, and appears in WooCommerce → Orders like any other.</p>
-  <p class="quiet">Your shop asks you to approve this in its own screen, and it is your shop that hands us the keys — nothing here asks for a password of yours. The keys appear afterwards in WooCommerce → Settings → Advanced → REST API under the name Coinslot, where you can revoke them whenever you like.</p>`;
+  <p class="quiet">Your shop asks you to approve this in its own screen, and it is your shop that hands us the keys — nothing here asks for a password of yours. New keys appear afterwards in WooCommerce → Settings → Advanced → REST API under the name Agentify, where you can revoke them whenever you like.</p>`;
 
 /** The page a merchant connects from, and comes back to. */
 export const wooScreen = (viewer: Viewer, view: WooView): string => {
   const { base } = viewer;
   const body = `
+  <div class="integration-shell">
   <div class="lede">
     <div>
       <h1>WooCommerce</h1>
@@ -171,7 +172,8 @@ ${view.cameBack === true && view.state.kind === "connected" ? KEYS_ARRIVED : ""}
   view.state.kind === "connected"
     ? theConnection(base, view.state.shop, view)
     : `${waitingBlock(view.state)}${theForm(base, view)}`
-}`;
+}
+  </div>`;
 
   return page({
     mode: viewer.mode,
@@ -252,7 +254,7 @@ export const wooReturnScreen = (base: string, mode: SurfaceMode): string =>
     base,
     "Back from your shop",
     `<div class="gate">
-  <h1>Coinslot</h1>
+  <h1>${brandLockup("/")}</h1>
   <p>This is the address a WooCommerce shop sends you to when it has finished with a connection.</p>
   <p>Nothing about it can be shown here. Arriving from another site does not carry your sign-in with it, which is deliberate and is why you are reading this page rather than your own settings.</p>
   <p>Sign in and your settings say where the connection got to: which shop is connected, or that one was started and its keys have not reached us.</p>
@@ -477,7 +479,7 @@ const refusedBlock = (outcomes: readonly Refused[]): string => `  <div class="le
 const unansweredBlock = (outcomes: readonly Unanswered[]): string => `  <div class="lede">
     <div>
       <h2>No verdict</h2>
-      <p class="quiet">Nothing here is a finding about the product, and nothing in your shop needs changing: the part of Coinslot that keeps your cards — the lines below call it the gateway — did not answer when each was sent to it, or answered with something other than its verdict on the product, and the line under each product is what came back. Import again later; importing again does not double them. If it keeps happening, nothing in your shop or on this page will change it: tell whoever runs this Coinslot, and show them the line.</p>
+      <p class="quiet">Nothing here is a finding about the product, and nothing in your shop needs changing: the part of Agentify that keeps your cards — the lines below call it the gateway — did not answer when each was sent to it, or answered with something other than its verdict on the product, and the line under each product is what came back. Import again later; importing again does not double them. If it keeps happening, nothing in your shop or on this page will change it: tell whoever runs this Agentify deployment, and show them the line.</p>
       <ul>${outcomes
         .map(
           (

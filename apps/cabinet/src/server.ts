@@ -41,7 +41,7 @@ import {
   type Registrar,
   registrarFor,
 } from "./gateway.js";
-import { bare, escaped } from "./html.js";
+import { bare, brandLockup, escaped } from "./html.js";
 import type { Identity, Person } from "./identity.js";
 import { keysScreen, newKeyScreen } from "./keys.js";
 import { WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
@@ -413,7 +413,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     });
   }
 
-  app.get(`${base}/coinslot.css`, (_request, response) => {
+  app.get(`${base}/agentify.css`, (_request, response) => {
     response.type("text/css").send(STYLESHEET);
   });
 
@@ -842,7 +842,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
             config.surfaceMode,
             made.status === 400
               ? `Nothing was made, and it is this cabinet's own request that was refused: ${made.why}`
-              : "Nothing was made: the part of Coinslot that creates a merchant did not answer as" +
+              : "Nothing was made: the part of Agentify that creates a merchant did not answer as" +
                   " it should. Nothing you typed is at fault, and trying again in a moment is the" +
                   " right move.",
           ),
@@ -1448,7 +1448,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
           response,
           {
             problem:
-              `This Coinslot is reachable at ${whereWeAre}, which is not https, and WooCommerce` +
+              `This Agentify deployment is reachable at ${whereWeAre}, which is not https, and WooCommerce` +
               " will not send a shop's keys to an address that is not. Nothing here can connect a" +
               " shop until whoever runs this deployment puts it behind https.",
             typed,
@@ -2081,7 +2081,7 @@ function problemPageAt(base: string, mode: CabinetConfig["surfaceMode"], said: s
     base,
     "Something went wrong",
     `<div class="gate"><form method="get" action="${escaped(base)}/cards">
-<h1>Coinslot</h1>
+<h1>${brandLockup("/")}</h1>
 <p>${escaped(said)}</p>
 <button type="submit">Try again</button>
 </form></div>`,

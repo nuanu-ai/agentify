@@ -1,4 +1,4 @@
-# Connecting to Coinslot
+# Connecting to Agentify
 
 *A preliminary contract: the wording can still change before the pilot.*
 
@@ -9,7 +9,7 @@ how connecting begins.
 
 ## Who buys here
 
-Coinslot puts the goods of an ordinary online business into the catalogues
+Agentify puts the goods of an ordinary online business into the catalogues
 where AI agents buy — the listings an agent searches when it is looking for
 something, run by other people and not by you. An agent is a program that a
 person handed a task and a budget; to finish the task it finds the goods it

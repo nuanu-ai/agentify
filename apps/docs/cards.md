@@ -373,7 +373,7 @@ is the number to size it against. The thresholds that would hold the rate down
 are among what is not settled below; until they exist there is nothing between a
 burst of purchases and your handler.
 
-Coinslot keeps no stock counts: only you know how much of anything there is. So
+Agentify keeps no stock counts: only you know how much of anything there is. So
 a product that can run out is worth listing with a check, because without one
 we sell at the card's price and hear that it has run out only from your refusal
 at delivery.

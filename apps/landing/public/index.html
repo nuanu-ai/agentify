@@ -28,28 +28,27 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Coinslot — sell to AI agents without rebuilding your shop</title>
+    <title>Agentify — sell to AI agents without rebuilding your shop</title>
     <meta
       name="description"
-      content="Coinslot puts an ordinary online business in front of AI agents and carries the stablecoin payment. The money goes from the buyer's wallet straight to yours."
+      content="Agentify puts an ordinary online business in front of AI agents and carries the stablecoin payment. The money goes from the buyer's wallet straight to yours."
     />
 
     <!-- The way this page reaches a merchant is somebody sending them the
          link, so it has to unfurl into something legible in a chat window. -->
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Coinslot — sell to AI agents without rebuilding your shop" />
+    <meta property="og:title" content="Agentify — sell to AI agents without rebuilding your shop" />
     <meta
       property="og:description"
       content="Your goods in the catalogues where AI agents buy. The payment goes from the buyer's wallet straight to yours and never passes through our accounts. This is a pilot, and the page says what is not settled."
     />
     <meta name="twitter:card" content="summary" />
-
-    <!-- The wordmark's own square, inline so that the page stays a directory of
-         two stylesheets and one file. -->
-    <link
-      rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='3' fill='%23b15900'/%3E%3Crect x='9' y='14' width='14' height='4' rx='1' fill='%23fff'/%3E%3C/svg%3E"
+    <meta name="twitter:title" content="Agentify — sell to AI agents without rebuilding your shop" />
+    <meta
+      name="twitter:description"
+      content="Your goods where AI agents buy, with payment from the buyer's wallet straight to yours."
     />
+    <link rel="icon" href="/assets/agentify-mark-heavy.svg" type="image/svg+xml" />
 
     <!-- The faces are served from this origin rather than fetched from a font
          host: the local stack has to come up with no network, and a stylesheet
@@ -68,7 +67,7 @@
          page that cannot remember a preference should still be a page. -->
     <script>
       try {
-        const chosen = localStorage.getItem("coinslot-theme");
+        const chosen = localStorage.getItem("agentify-theme");
         if (chosen === "light" || chosen === "dark") {
           document.documentElement.dataset.theme = chosen;
         }
@@ -95,10 +94,14 @@
       <!--{{end}}-->
     </div>
     <header class="masthead">
-      <div class="wordmark">
-        <span class="mono wordmark__name">coinslot</span>
+      <a class="wordmark" href="/" aria-label="Agentify home">
+        <span class="wordmark__mark" aria-hidden="true">
+          <img class="mark--light" src="/assets/agentify-mark.svg" alt="" width="34" height="34" />
+          <img class="mark--dark" src="/assets/agentify-mark-dark.svg" alt="" width="34" height="34" />
+        </span>
+        <span class="wordmark__name">Agentify</span>
         <span class="wordmark__stage">pilot</span>
-      </div>
+      </a>
       <nav class="masthead__nav" aria-label="Main">
         <a href="/docs/">Documentation</a>
         <a class="button--small" href="/cabinet/">Cabinet</a>
@@ -141,7 +144,7 @@
           <h1 class="hero__title">Sell to AI agents without rebuilding your shop</h1>
           <p class="hero__lede">
             An agent is a program that was given a task and a budget. To finish the task it finds
-            the goods itself, pays for them itself and takes delivery itself. Coinslot puts your
+            the goods itself, pays for them itself and takes delivery itself. Agentify puts your
             catalogue where those agents buy and carries the payment. The money goes from the
             buyer's wallet straight to yours — it never passes through our accounts.
           </p>
@@ -263,7 +266,7 @@
             </div>
           </div>
           <div class="flow__note">
-            <span>Coinslot: verification, the order queue, receipts</span>
+            <span>Agentify: verification, the order queue, receipts</span>
           </div>
           <p class="caption caption--spaced">
             A stablecoin is money whose rate is pegged to the dollar, so the sum the buyer saw at
@@ -337,7 +340,13 @@
          to be said in words there rather than left as a bracket that reads like
          a template nobody filled in. -->
     <footer class="colophon">
-      <span class="mono">coinslot</span>
+      <a class="wordmark wordmark--footer" href="/" aria-label="Agentify home">
+        <span class="wordmark__mark" aria-hidden="true">
+          <img class="mark--light" src="/assets/agentify-mark.svg" alt="" width="30" height="30" />
+          <img class="mark--dark" src="/assets/agentify-mark-dark.svg" alt="" width="30" height="30" />
+        </span>
+        <span class="wordmark__name">Agentify</span>
+      </a>
       <div class="colophon__links">
         <a href="/docs/">Documentation</a>
         <a href="/cabinet/">Cabinet</a>
@@ -383,9 +392,9 @@
           show();
           try {
             if (asked) {
-              localStorage.removeItem("coinslot-theme");
+              localStorage.removeItem("agentify-theme");
             } else {
-              localStorage.setItem("coinslot-theme", wanted);
+              localStorage.setItem("agentify-theme", wanted);
             }
           } catch {
             /* The page still changes; it just will not remember. */

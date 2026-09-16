@@ -210,6 +210,11 @@ describe("creating the order", () => {
     // The shop has to be told the money is already in, or the order sits in
     // its pending list and the merchant never ships it.
     expect(sent.set_paid).toBe(true);
+    // New orders carry the current customer-facing name while the stored
+    // method and correlation key remain the established machine contract.
+    expect(sent.payment_method).toBe("coinslot");
+    expect(sent.payment_method_title).toBe("Agentify");
+    expect(sent.meta_data).toEqual([{ key: "coinslot_order_id", value: "ord_7" }]);
     expect(sent.line_items).toEqual([
       { product_id: 11, quantity: 1, subtotal: "25.00", total: "25.00" },
     ]);

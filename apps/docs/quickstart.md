@@ -11,7 +11,7 @@ takes paid orders and gives out the goods for them.
 
 There are paths with no code at all. By default we write the cards, and we set
 up and run the link to an online shop ourselves. Both are described on
-[Connecting to Coinslot](/), which is written for the owner of the business.
+[Connecting to Agentify](/), which is written for the owner of the business.
 
 ## The words used below
 
@@ -172,7 +172,7 @@ the pilot. That one, and the reason a product rather than a channel picks its
 mode, are in the [card reference](/cards).
 
 The step is done when the call has returned a catalogue `id`. Publication is
-the act that puts the card in this Coinslot environment's own catalogue, as
+the act that puts the card in this Agentify environment's own catalogue, as
 long as the merchant and card are selling. The test purchase below proves that
 the product can be bought and delivered; it does not publish the card. Whether
 an external discovery catalogue indexes the paid resource is a different
@@ -458,13 +458,13 @@ received the goods, and the purchase left a receipt behind it.
 
 ## 6. Prove the sale; measure external discovery separately
 
-The publish call on step 2 puts the card into that Coinslot channel's own
+The publish call on step 2 puts the card into that Agentify channel's own
 catalogue before this purchase. The purchase is the proof that an agent can
 buy it: the order reaches your handler, the buyer receives the declared goods,
 and the sale leaves a receipt.
 
 A settled payment is also the event an external discovery catalogue such as
-Coinbase Bazaar may index. That is a different surface from Coinslot's own
+Coinbase Bazaar may index. That is a different surface from Agentify's own
 catalogue, and indexing is not established merely because the purchase or the
 receipt succeeded. We measure it and report "settled, not yet listed" when the
 settlement is known but no external listing has appeared; whether a testnet

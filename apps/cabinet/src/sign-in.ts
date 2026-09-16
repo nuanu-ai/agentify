@@ -18,7 +18,7 @@
  */
 
 import type { SurfaceMode } from "@agentify/commerce-core";
-import { bare, escaped } from "./html.js";
+import { bare, brandLockup, escaped } from "./html.js";
 
 export const signInScreen = (base: string, mode: SurfaceMode, problem?: string): string =>
   bare(
@@ -26,7 +26,7 @@ export const signInScreen = (base: string, mode: SurfaceMode, problem?: string):
     "Sign in",
     `<div class="gate">
 <form method="post" action="${escaped(base)}/sign-in">
-  <h1>Coinslot</h1>
+  <h1>${brandLockup("/")}</h1>
   <p>Sign in with the address and password your account was made with.</p>
   <label for="email">Email</label>
   <input id="email" name="email" type="email" autocomplete="username" autocapitalize="off" spellcheck="false" autofocus required>
@@ -73,7 +73,7 @@ export const registerScreen = (
     "Register",
     `<div class="gate">
 <form method="post" action="${escaped(base)}/register">
-  <h1>Coinslot</h1>
+  <h1>${brandLockup("/")}</h1>
   <p>Registering makes your merchant, its first key and your account together. You are signed in at the end of it, and the one thing left to choose is asked for on the next page.</p>
   <label for="email">Email</label>
   <input id="email" name="email" type="email" autocomplete="username" autocapitalize="off" spellcheck="false" autofocus required>
@@ -111,7 +111,7 @@ export const passwordScreen = (
     "Your password",
     `<div class="gate">
 <form method="post" action="${escaped(base)}/password">
-  <h1>Coinslot</h1>
+  <h1>${brandLockup("/")}</h1>
   <p>A new password for ${escaped(who)}. It ends every session you have, on this device and any other, so you will sign in again with the new one.</p>
   <label for="current">Current password</label>
   <input id="current" name="current" type="password" autocomplete="current-password" autofocus required>
@@ -140,7 +140,7 @@ export const forgotScreen = (base: string, mode: SurfaceMode, problem?: string):
     "Lost your password",
     `<div class="gate">
 <form method="post" action="${escaped(base)}/password/forgot">
-  <h1>Coinslot</h1>
+  <h1>${brandLockup("/")}</h1>
   <p>Give us the address on your account and we will send you a link that lets you choose a new password.</p>
   <label for="email">Email</label>
   <input id="email" name="email" type="email" autocomplete="username" autocapitalize="off" spellcheck="false" autofocus required>
@@ -171,7 +171,7 @@ export const linkSentScreen = (base: string, mode: SurfaceMode): string =>
     "Check your mail",
     `<div class="gate">
 <form method="get" action="${escaped(base)}/sign-in">
-  <h1>Coinslot</h1>
+  <h1>${brandLockup("/")}</h1>
   <p>If that address has an account here and has been confirmed, a link is on its way to it. It works once and stops working after an hour.</p>
   <p class="quiet">We answer the same way whether or not the address has an account, so that this form cannot be used to find out who sells here. If nothing arrives, either there is no account at that address or nobody ever confirmed it.</p>
   <button type="submit">Back to signing in</button>
@@ -200,7 +200,7 @@ export const newPasswordScreen = (
     "Choose a new password",
     `<div class="gate">
 <form method="post" action="${escaped(base)}/password/new">
-  <h1>Coinslot</h1>
+  <h1>${brandLockup("/")}</h1>
   <p>Choose a new password. Every session you had ends with it, so you will sign in again with the new one.</p>
   <input type="hidden" name="token" value="${escaped(token)}">
   <label for="fresh">New password</label>
@@ -233,7 +233,7 @@ export const confirmedScreen = (base: string, worked: boolean, mode: SurfaceMode
     worked ? "Address confirmed" : "That link does not work",
     `<div class="gate">
 <form method="get" action="${escaped(base)}/cards">
-  <h1>Coinslot</h1>
+  <h1>${brandLockup("/")}</h1>
   ${
     worked
       ? "<p>Your address is confirmed. If you ever lose your password, we can send you a link that replaces it.</p>"

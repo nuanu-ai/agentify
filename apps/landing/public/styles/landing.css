@@ -81,14 +81,56 @@
 
 .wordmark {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.wordmark:hover {
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.wordmark__mark {
+  display: block;
+  width: 34px;
+  height: 34px;
+  flex: none;
+}
+
+.wordmark__mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.wordmark__mark .mark--dark {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .wordmark__mark .mark--light {
+    display: none;
+  }
+
+  :root:not([data-theme="light"]) .wordmark__mark .mark--dark {
+    display: block;
+  }
+}
+
+:root[data-theme="dark"] .wordmark__mark .mark--light {
+  display: none;
+}
+
+:root[data-theme="dark"] .wordmark__mark .mark--dark {
+  display: block;
 }
 
 .wordmark__name {
-  font-size: 17px;
-  font-weight: 500;
-  letter-spacing: -0.01em;
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
   color: var(--fg);
 }
 
@@ -202,6 +244,12 @@
   font-weight: 500;
 }
 
+.button--primary:hover {
+  background: var(--accent-hover);
+  color: var(--on-accent);
+  text-decoration: none;
+}
+
 /* The bordered buttons take --line-strong rather than the page's hairline: at
    1.31:1 the drawn hairline left "Talk to us" looking like a sentence that
    happened to have a box near it. */
@@ -228,9 +276,25 @@
   align-items: start;
 }
 
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto auto;
+  width: min(42vw, 560px);
+  height: 420px;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--accent) 10%, transparent),
+    transparent 68%
+  );
+  pointer-events: none;
+  z-index: -1;
+}
+
 .hero__title {
   font-size: clamp(31px, 4.2vw, 48px);
-  line-height: 1.08;
+  line-height: 1.04;
+  letter-spacing: -0.045em;
 }
 
 .hero__lede {
@@ -265,6 +329,21 @@
   border-radius: var(--radius);
   overflow: hidden;
   min-width: 0;
+  box-shadow: 0 20px 60px color-mix(in srgb, var(--fg) 7%, transparent);
+}
+
+.wordmark--footer .wordmark__mark {
+  width: 30px;
+  height: 30px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto;
+    transition-duration: 0.01ms;
+  }
 }
 
 .panel__label {

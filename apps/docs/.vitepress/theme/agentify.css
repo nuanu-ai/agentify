@@ -18,25 +18,18 @@
  */
 
 @font-face {
-  font-family: "IBM Plex Sans";
+  font-family: "Schibsted Grotesk";
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url("/styles/fonts/ibm-plex-sans-400-latin.woff2") format("woff2");
+  src: url("/styles/fonts/schibsted-grotesk-400-latin.woff2") format("woff2");
 }
 @font-face {
-  font-family: "IBM Plex Sans";
+  font-family: "Schibsted Grotesk";
   font-style: normal;
-  font-weight: 500;
+  font-weight: 500 700;
   font-display: swap;
-  src: url("/styles/fonts/ibm-plex-sans-500-latin.woff2") format("woff2");
-}
-@font-face {
-  font-family: "IBM Plex Sans";
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url("/styles/fonts/ibm-plex-sans-600-latin.woff2") format("woff2");
+  src: url("/styles/fonts/schibsted-grotesk-latin-wght-normal.woff2") format("woff2");
 }
 @font-face {
   font-family: "IBM Plex Mono";
@@ -54,50 +47,50 @@
 }
 
 :root {
-  --coinslot-bg: oklch(0.985 0.003 90);
-  --coinslot-surface: oklch(1 0 0);
-  --coinslot-raised: oklch(0.972 0.004 90);
-  --coinslot-line: oklch(0.895 0.006 90);
-  --coinslot-fg: oklch(0.24 0.012 260);
-  --coinslot-muted: oklch(0.52 0.012 260);
-  --coinslot-accent: oklch(0.56 0.14 55);
-  --coinslot-on-accent: oklch(0.99 0 0);
+  --agentify-bg: #f6f4ef;
+  --agentify-surface: #fffefa;
+  --agentify-raised: #eeebe4;
+  --agentify-line: #e7e3db;
+  --agentify-fg: #1a1917;
+  --agentify-muted: #6b6862;
+  --agentify-accent: #0f736e;
+  --agentify-on-accent: #ffffff;
 
-  --vp-font-family-base: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --vp-font-family-base: "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
   --vp-font-family-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  --vp-c-bg: var(--coinslot-bg);
-  --vp-c-bg-alt: var(--coinslot-raised);
-  --vp-c-bg-soft: var(--coinslot-raised);
-  --vp-c-bg-elv: var(--coinslot-surface);
-  --vp-c-divider: var(--coinslot-line);
-  --vp-c-border: var(--coinslot-line);
-  --vp-c-gutter: var(--coinslot-line);
-  --vp-c-text-1: var(--coinslot-fg);
-  --vp-c-text-2: var(--coinslot-muted);
+  --vp-c-bg: var(--agentify-bg);
+  --vp-c-bg-alt: var(--agentify-raised);
+  --vp-c-bg-soft: var(--agentify-raised);
+  --vp-c-bg-elv: var(--agentify-surface);
+  --vp-c-divider: var(--agentify-line);
+  --vp-c-border: var(--agentify-line);
+  --vp-c-gutter: var(--agentify-line);
+  --vp-c-text-1: var(--agentify-fg);
+  --vp-c-text-2: var(--agentify-muted);
 
-  --vp-c-brand-1: var(--coinslot-accent);
-  --vp-c-brand-2: var(--coinslot-accent);
-  --vp-c-brand-3: var(--coinslot-accent);
-  --vp-c-brand-soft: color-mix(in oklch, var(--coinslot-accent) 12%, transparent);
+  --vp-c-brand-1: var(--agentify-accent);
+  --vp-c-brand-2: var(--agentify-accent);
+  --vp-c-brand-3: var(--agentify-accent);
+  --vp-c-brand-soft: color-mix(in oklch, var(--agentify-accent) 12%, transparent);
 
-  --vp-button-brand-bg: var(--coinslot-accent);
-  --vp-button-brand-hover-bg: var(--coinslot-accent);
-  --vp-button-brand-text: var(--coinslot-on-accent);
+  --vp-button-brand-bg: var(--agentify-accent);
+  --vp-button-brand-hover-bg: var(--agentify-accent);
+  --vp-button-brand-text: var(--agentify-on-accent);
 
   /* The site is square-cornered everywhere else; the theme's default is not. */
-  --vp-code-block-bg: var(--coinslot-raised);
+  --vp-code-block-bg: var(--agentify-raised);
 }
 
 .dark {
-  --coinslot-bg: oklch(0.165 0.012 260);
-  --coinslot-surface: oklch(0.205 0.013 260);
-  --coinslot-raised: oklch(0.19 0.013 260);
-  --coinslot-line: oklch(0.31 0.013 260);
-  --coinslot-fg: oklch(0.94 0.004 90);
-  --coinslot-muted: oklch(0.67 0.011 260);
-  --coinslot-accent: oklch(0.74 0.13 55);
-  --coinslot-on-accent: oklch(0.19 0.012 260);
+  --agentify-bg: #111817;
+  --agentify-surface: #17201f;
+  --agentify-raised: #1d2927;
+  --agentify-line: #34423f;
+  --agentify-fg: #f6f4ef;
+  --agentify-muted: #aaa8a1;
+  --agentify-accent: #66c7be;
+  --agentify-on-accent: #10201e;
 }
 
 /* The paragraph is the band rather than its marker div. Caddy removes the
@@ -110,6 +103,21 @@
   color: var(--vp-c-text-2);
   font-size: 13.5px;
   line-height: 1.55;
+}
+
+@media (min-width: 960px) {
+  .surface-words {
+    margin-top: var(--vp-nav-height, 64px);
+    padding-left: calc(var(--vp-sidebar-width) + 24px);
+  }
+}
+
+@media (min-width: 1440px) {
+  .surface-words {
+    padding-left: calc(
+      (100vw - var(--vp-layout-max-width)) / 2 + var(--vp-sidebar-width) + 24px
+    );
+  }
 }
 
 /* Three corners the theme rounds and the rest of the site does not. */
@@ -137,6 +145,28 @@
   color: var(--vp-c-text-2);
   white-space: nowrap;
   transition: color 0.25s;
+  gap: 7px;
+  color: var(--vp-c-text-1);
+  letter-spacing: -0.02em;
+}
+
+.way-out .brand-mark,
+.way-out img {
+  width: 24px;
+  height: 24px;
+}
+
+.way-out .brand-mark {
+  display: block;
+}
+
+.way-out .mark--dark,
+.dark .way-out .mark--light {
+  display: none;
+}
+
+.dark .way-out .mark--dark {
+  display: block;
 }
 
 .way-out:hover {
@@ -152,5 +182,14 @@
     display: inline-flex;
     margin-right: 12px;
     font-size: 13px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto;
+    transition-duration: 0.01ms;
   }
 }

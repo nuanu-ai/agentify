@@ -22,7 +22,7 @@
 
 import { ServiceNameSchema } from "@nuanu-ai/coinslot-contracts";
 import { accountSettings } from "./account-settings.js";
-import { bare, escaped, page } from "./html.js";
+import { bare, brandLockup, escaped, page } from "./html.js";
 import { payoutWalletBlock } from "./payout-wallet.js";
 import type { Viewer } from "./screens.js";
 import { wooSettingsBlock } from "./woo-screens.js";
@@ -111,7 +111,7 @@ export const chooseNameScreen = (base: string, mode: Viewer["mode"], problem?: s
     "The name your products are sold under",
     `<div class="gate">
 <form method="post" action="${escaped(base)}/choose-name">
-  <h1>Coinslot</h1>
+  <h1>${brandLockup("/")}</h1>
   <p>Your account is made and you are signed in. One thing is left, and it is the only one buyers ever see.</p>
   ${WHAT_IT_IS_FOR}
   <label for="seller_name">The name your products are sold under</label>
@@ -158,7 +158,7 @@ export const settingsScreen = (viewer: Viewer, problem?: string): string => {
   const name = viewer.sellerName ?? null;
 
   const body = `
-  <div class="lede">
+  <div class="lede settings-heading">
     <div>
       <h1>Settings</h1>
       <p>${escaped(
@@ -174,6 +174,8 @@ export const settingsScreen = (viewer: Viewer, problem?: string): string => {
       )}</p>
     </div>
   </div>
+  <div class="settings-grid">
+  <section class="settings-panel">
   <div class="lede">
     <div>
       <h2>The name your products are sold under</h2>
@@ -190,7 +192,15 @@ export const settingsScreen = (viewer: Viewer, problem?: string): string => {
     <button class="primary" type="submit">Save it</button>
     ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
   </form>
-${payoutWalletBlock(viewer)}${viewer.shop === undefined ? "" : wooSettingsBlock(base, viewer.shop)}${accountSettings(viewer)}`;
+  </section>
+  <section class="settings-panel">${payoutWalletBlock(viewer)}</section>
+  ${
+    viewer.shop === undefined
+      ? ""
+      : `<section class="settings-panel">${wooSettingsBlock(base, viewer.shop)}</section>`
+  }
+  <section class="settings-panel">${accountSettings(viewer)}</section>
+  </div>`;
 
   return page({
     mode: viewer.mode,

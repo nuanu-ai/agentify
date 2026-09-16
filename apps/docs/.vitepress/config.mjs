@@ -14,9 +14,17 @@ import { withMermaid } from 'vitepress-plugin-mermaid'
 // /orders.
 export default withMermaid(defineConfig({
   lang: 'en',
-  title: 'Coinslot',
+  title: 'Agentify',
+  appearance: { storageKey: 'agentify-theme' },
   description:
-    'Selling to AI agents with Coinslot: connecting, cards, money and what can go wrong.',
+    'Selling to AI agents with Agentify: connecting, cards, money and what can go wrong.',
+  head: [
+    ['link', { rel: 'icon', href: '/assets/agentify-mark-heavy.svg', type: 'image/svg+xml' }],
+    ['meta', { property: 'og:title', content: 'Agentify commerce documentation' }],
+    ['meta', { property: 'og:description', content: 'Connect your shop, publish product cards and fulfil paid orders from AI agents.' }],
+    ['meta', { name: 'twitter:card', content: 'summary' }],
+    ['meta', { name: 'twitter:title', content: 'Agentify commerce documentation' }],
+  ],
   cleanUrls: true,
   srcExclude: ['WRITING.md'],
   themeConfig: {
@@ -29,7 +37,7 @@ export default withMermaid(defineConfig({
       {
         text: 'For the owner',
         items: [
-          { text: 'Connecting to Coinslot', link: '/' },
+          { text: 'Connecting to Agentify', link: '/' },
           { text: 'Money', link: '/money' },
           { text: 'Common questions', link: '/faq' }
         ]
@@ -96,12 +104,22 @@ export default withMermaid(defineConfig({
       )
     }
     const marked = code.replace('<div id="app"', `${SURFACE_MARKER}<div id="app"`)
+    const themed = marked.replace(
+      'localStorage.getItem("vitepress-theme-appearance")',
+      'localStorage.getItem("agentify-theme")',
+    )
+    if (themed === marked) {
+      throw new Error(
+        'the portal build no longer writes the expected appearance prepaint; update this ' +
+          'transform before shipping a page whose first paint ignores the shared theme',
+      )
+    }
 
     // A page with a diagram keeps every preload it was built with, and still
     // gets the marker.
-    if (marked.includes('class="mermaid"')) return marked
+    if (themed.includes('class="mermaid"')) return themed
 
-    return marked.replace(
+    return themed.replace(
       /[ \t]*<link rel="modulepreload" href="([^"]+)">\n?/g,
       (link, href) => (KEPT_CHUNK.test(href) ? link : ''),
     )

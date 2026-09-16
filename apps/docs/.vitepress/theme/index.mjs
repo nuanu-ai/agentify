@@ -51,9 +51,27 @@ export default {
             // Not `aria-label`: the text is already the label, and a second one
             // saying something longer is what a screen reader reads instead of
             // what everybody else sees.
-            title: "The Coinslot site",
+            title: "The Agentify site",
           },
-          "← Coinslot",
+          [
+            h("span", { class: "brand-mark", "aria-hidden": "true" }, [
+              h("img", {
+                class: "mark--light",
+                src: "/assets/agentify-mark.svg",
+                alt: "",
+                width: 24,
+                height: 24,
+              }),
+              h("img", {
+                class: "mark--dark",
+                src: "/assets/agentify-mark-dark.svg",
+                alt: "",
+                width: 24,
+                height: 24,
+              }),
+            ]),
+            "Agentify",
+          ],
         ),
     });
   },

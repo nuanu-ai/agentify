@@ -14,7 +14,7 @@ No. The shop and its code stay as they are, and the range and the prices stay
 yours. Where a product is delivered through your API, a handler appears beside
 the shop that takes paid orders and gives out the goods for them; nothing
 inside the shop changes. The three ways of delivering, and how they differ, are
-worked through on [Connecting to Coinslot](/).
+worked through on [Connecting to Agentify](/).
 
 ### Do I need an engineer for this?
 

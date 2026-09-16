@@ -1018,7 +1018,7 @@ describe("getting into the cabinet", () => {
     expect((await browser.get("/cabinet")).to).toBe("/cabinet/cards");
     expect(page.html).toContain('href="/cabinet/orders"');
     expect(page.html).toContain('action="/cabinet/selling/pause"');
-    expect(page.html).toContain('href="/cabinet/coinslot.css"');
+    expect(page.html).toContain('href="/cabinet/agentify.css"');
   });
 
   it("sends a stranger at the bare mount point to the sign-in, not to a page", async () => {
@@ -1050,7 +1050,7 @@ describe("getting into the cabinet", () => {
     // one of them and not the other is exactly the edit nobody would notice.
     const { browser } = await started();
 
-    const sheet = await browser.get("/coinslot.css");
+    const sheet = await browser.get("/agentify.css");
     const followingTheSystem =
       /@media \(prefers-color-scheme: dark\)\s*\{\s*:root:not\(\[data-theme="light"\]\)\s*\{([^}]*)\}/.exec(
         sheet.html,
@@ -1102,7 +1102,7 @@ describe("getting into the cabinet", () => {
       "utf8",
     );
 
-    const sheet = await browser.get("/coinslot.css");
+    const sheet = await browser.get("/agentify.css");
 
     expect(sheet.html).toContain(shared);
     // And the cabinet's own file declares no colour of its own, or the shared
@@ -1122,7 +1122,7 @@ describe("getting into the cabinet", () => {
     // all — a render-blocking font host would decide what it looks like.
     const { browser } = await started();
 
-    const sheet = await browser.get("/coinslot.css");
+    const sheet = await browser.get("/agentify.css");
 
     expect(sheet.html).not.toContain("@import");
     expect(sheet.html).not.toMatch(/https?:\/\//);

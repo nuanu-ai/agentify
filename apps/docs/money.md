@@ -10,7 +10,7 @@ what you are risking while that happens, and what we take.
 ## Where the money arrives
 
 The money goes from the buyer's wallet — the buyer is a program, buying on
-behalf of a person — straight to your wallet. Coinslot never holds it: we check
+behalf of a person — straight to your wallet. Agentify never holds it: we check
 the payment and we set it going, and it passes through no account of ours on
 the way. So there is no payout here, no settlement period, and no balance
 sitting with us that has to be withdrawn.
