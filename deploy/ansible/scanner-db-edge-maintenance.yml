@@ -54,7 +54,7 @@
         argv: [curl, --silent, --show-error, --output, /dev/null, --write-out, '%{http_code}', --resolve, "{{ item.host }}:443:127.0.0.1", "https://{{ item.host }}{{ item.path }}"]
       loop:
         - {host: agentify.ad, path: /, expected: '503'}
-        - {host: app.agentify.ad, path: /cabinet/health, expected: '200'}
+        - {host: app.agentify.ad, path: /cabinet/healthz, expected: '200'}
       register: edge_probes
       changed_when: false
       check_mode: false

@@ -45,7 +45,7 @@
         argv: [curl, --silent, --show-error, --output, /dev/null, --write-out, '%{http_code}', --resolve, "{{ item.host }}:443:127.0.0.1", "https://{{ item.host }}{{ item.path }}"]
       loop:
         - {host: agentify.ad, path: /api/health}
-        - {host: app.agentify.ad, path: /cabinet/health}
+        - {host: app.agentify.ad, path: /cabinet/healthz}
       register: routes
       changed_when: false
       check_mode: false
