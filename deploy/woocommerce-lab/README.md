@@ -22,13 +22,26 @@ cd /home/dmitry/woocommerce-lab
 ./reset-store.sh
 ```
 
-The command stops only the `agentify-woo-lab` Compose project, deletes only
-the four data directories below the exact data root named above, starts a new
-WordPress installation, installs WooCommerce and the Storefront theme, disables
-all bundled payment methods, and recreates the catalogue. It deletes orders,
-customers, coupons, WooCommerce API keys and the previous Agentify connection.
-The server-owned `.env` keeps the administrator password stable across resets.
+The command stops only the `agentify-woo-lab` Compose project, replaces its
+WordPress files and database from a local baseline, and starts the shop again.
+It does not pull images, download WordPress or WooCommerce, or delete Caddy's
+certificate state. The baseline lives beside the shop data on the large disk.
+The reset deletes orders, customers, coupons, WooCommerce API keys and the
+previous Agentify connection. The server-owned `.env` keeps the administrator
+password stable across resets.
+
+Rebuild the local baseline only when the clean starting catalogue itself must
+change:
+
+```sh
+./reset-store.sh --rebuild-baseline
+```
+
+That maintenance mode performs the network downloads once and atomically
+replaces the two baseline archives. A normal reset never enters it.
 
 Run `./verify.sh` afterward to check the public catalogue and payment-method
-state. Administrator credentials are printed by the reset command and stored
-only in the server-owned `.env` file.
+state. `./verify-reset.sh` is the destructive acceptance check: it creates an
+extra product, performs a normal reset, and proves the mutation disappeared
+within one minute while Caddy's state remained. Administrator credentials are
+printed by the reset command and stored only in the server-owned `.env` file.
