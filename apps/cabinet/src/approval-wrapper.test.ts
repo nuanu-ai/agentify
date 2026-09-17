@@ -119,6 +119,8 @@ describe("pnpm approve's local production wrapper", () => {
         "-o",
         "ServerAliveCountMax=3",
         "agentify",
+        "sudo",
+        "-n",
         "docker",
         "exec",
         "-i",

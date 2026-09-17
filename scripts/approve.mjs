@@ -30,6 +30,8 @@ if ((email === "--help" || email === "-h") && extra.length === 0) {
       "-o",
       "ServerAliveCountMax=3",
       "agentify",
+      "sudo",
+      "-n",
       "docker",
       "exec",
       "-i",
