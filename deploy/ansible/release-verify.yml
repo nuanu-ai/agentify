@@ -23,15 +23,22 @@
     - {path: /x402/catalog, status: [200]}
     - {path: /admin, status: [401]}
   register: route_evidence
+  delegate_to: localhost
+  become: false
+
+- name: Read the pre-activation public resource inventory
+  ansible.builtin.slurp:
+    src: "{{ recovery_directory }}/published-resource-ids.json"
+  register: published_resource_ids
 
 - name: Verify unpaid resource challenges name this channel and cannot spend
   ansible.builtin.shell: |
     python3 - <<'PY'
-    import base64,json,pathlib,urllib.request,urllib.error,urllib.parse
+    import base64,json,os,urllib.request,urllib.error,urllib.parse
     origin='{{ channel.origin }}'
     with urllib.request.urlopen(origin+'/x402/catalog',timeout=20) as response:
         catalog=json.load(response)
-    before=json.loads(pathlib.Path('{{ recovery_directory }}/published-resource-ids.json').read_text())
+    before=json.loads(base64.b64decode(os.environ['PUBLISHED_RESOURCE_IDS_B64']))
     assert sorted(item['id'] for item in catalog['items'])==before, 'Public catalog differs from its pre-activation inventory'
     checked=0
     for card in catalog.get('items',[]):
@@ -51,6 +58,10 @@
     print(json.dumps({'status':'verified' if checked else 'no_published_resources', 'published_resources_verified':checked,'spent':0}))
     PY
   changed_when: false
+  delegate_to: localhost
+  become: false
+  environment:
+    PUBLISHED_RESOURCE_IDS_B64: "{{ published_resource_ids.content }}"
 
 - name: Require test automatic delivery to remain unavailable
   ansible.builtin.command:
@@ -106,6 +117,8 @@
     PY
   changed_when: false
   when: channel_name == 'production'
+  delegate_to: localhost
+  become: false
 
 - name: Verify canonical documents stay on the channel origin
   ansible.builtin.uri:
@@ -113,6 +126,8 @@
     status_code: 200
     return_content: true
   register: sitemap
+  delegate_to: localhost
+  become: false
 - ansible.builtin.assert:
     that:
       - channel.origin + '/owner' in sitemap.content

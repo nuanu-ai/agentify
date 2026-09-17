@@ -99,6 +99,9 @@ catalog and non-recoverable aggregate row fingerprints under
 after migration, starts the selected revision, and records runtime, route,
 scheduled job, and image-identity evidence. It does not create database, role or
 environment dumps. The existing edge route file is retained for error recovery.
+Public catalog and route probes run from the Ansible controller; Docker, image,
+environment and database checks run on the assigned host. The pre-activation
+catalog probe must succeed before the state changes or schedules are held.
 
 Review `test-runtime-verified.json` and perform product acceptance against the
 actual test service. Only after the revision is accepted, write its explicit
@@ -152,10 +155,13 @@ ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
 
 Verification checks the running image identities and source labels, configured
 environments, public routes, unpaid challenges, scheduled jobs, and production
-edge configuration. It sends no mail and spends no money.
+edge configuration. Public HTTP checks use the controller's external
+perspective; local runtime checks stay on the assigned host. It sends no mail
+and spends no money.
 
-If activation fails after entering the migration boundary, the candidate stays
+If a read-only gate fails before the recovery boundary, the candidate remains
+`staged`. If activation fails after entering that boundary, the candidate stays
 marked `activating` and its recovery evidence and held schedules remain on the
-host. Preserve them and stop. Do not automatically retry, roll back, restore a
-dump, or restart an older writer; inspect the failed task and prepare a reviewed
-recovery for that specific state.
+host. Preserve them and stop. Do not automatically retry, roll back or restart
+an older writer; inspect the failed task and prepare a reviewed recovery for
+that specific state.
