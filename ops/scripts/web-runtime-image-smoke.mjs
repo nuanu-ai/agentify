@@ -292,6 +292,10 @@ async function main() {
     env: seedEnvironment,
     error: "Database migration failed",
   });
+  run("pnpm", ["--filter", "@agentify/web", "prebuild"], {
+    quiet: true,
+    error: "Web dependency preparation failed",
+  });
   run("pnpm", ["--filter", "@agentify/web", "e2e:seed"], {
     quiet: true,
     env: seedEnvironment,
