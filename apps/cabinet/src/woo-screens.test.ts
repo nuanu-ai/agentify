@@ -57,4 +57,26 @@ describe("what the import screen says about a product the door never answered ab
     expect(after).not.toContain("Абонемент на месяц");
     expect(after).not.toContain("in your shop and import again");
   });
+
+  it("keeps an operator-approval finding among the gateway's escaped publication reasons", () => {
+    const finding =
+      "operator approval: ask Agentify to approve this seller <script>alert(1)</script>";
+    const html = wooImportScreen(SEEN_BY, {
+      shopUrl: "https://shop.example.com",
+      outcomes: [
+        {
+          id: "12",
+          title: "Monthly membership",
+          problems: ["seller name: choose one in the cabinet", finding],
+        },
+      ],
+      skipped: [],
+    });
+    const text = readable(html);
+
+    expect(text).toContain("seller name: choose one in the cabinet");
+    expect(text).toContain(finding);
+    expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(html).not.toContain("<script>alert(1)</script>");
+  });
 });
