@@ -57,6 +57,12 @@ if actual != expected:
     raise SystemExit(f"FAIL: unexpected catalogue: {sorted(actual)}")
 if any(not product.get("is_purchasable") for product in products):
     raise SystemExit("FAIL: every seeded product must be purchasable")
+if any(
+    not product.get("images")
+    or not product["images"][0].get("src", "").lower().endswith(".webp")
+    for product in products
+):
+    raise SystemExit("FAIL: every seeded product must have a WebP product photo")
 print("PASS: private ingress Store API exposes the five seeded products")
 PY
 
