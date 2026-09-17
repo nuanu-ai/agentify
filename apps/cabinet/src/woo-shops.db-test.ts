@@ -60,7 +60,7 @@ if (databaseUrl === null) {
   // that does not exist — which is what happened the first time this ran twice.
   await pool.query(
     "drop table if exists cabinet_woo_orders, cabinet_woo_shops, cabinet_woo_grants," +
-      " cabinet_verifications, cabinet_credentials, cabinet_sessions, cabinet_accounts cascade",
+      " cabinet_link_sends, cabinet_verifications, cabinet_credentials, cabinet_sessions, cabinet_accounts cascade",
   );
   await pool.query("drop schema if exists drizzle cascade");
   await migrateAccounts(pool, migrationsIn);

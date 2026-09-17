@@ -1,23 +1,13 @@
 /**
- * The command that makes an account, and the three that keep one.
+ * The command that makes an account, and the two operations that keep one.
  *
  * A merchant registers for themselves now (ADR-0014), so this is no longer the
  * only door into the cabinet. It is still the door somebody walks through when
  * a merchant already exists at the gateway and needs a person who can sign in
  * as them — which is what the first account on a deployed server is.
  *
- * It is also still the answer to a lost password, but no longer the only one. A
- * merchant whose address has been confirmed asks the cabinet for a link and
- * never needs anybody at a terminal; this is what is left for the case that is
- * not covered, which is an account nobody has confirmed the address of. The
- * listing says which is which, so that whoever runs this can tell before they
- * start.
- *
- * A password is never taken as an argument. One typed on a command line is in
- * the shell's history, in the process list of everybody on the machine, and in
- * whatever collects either — so the command generates one, prints it once, and
- * has nothing left afterwards that can be read back. A person who wants a
- * password of their own sets it from the cabinet.
+ * The account starts unconfirmed. Reading a cabinet link is the only proof of
+ * the mailbox, including for accounts seeded here.
  *
  * The merchant's key is not taken as an argument either, and for exactly the
  * same reason: it is a secret, the reasoning above does not care which kind,
@@ -34,7 +24,6 @@
  * allowed to make.
  */
 
-import { newPassword } from "./credentials.js";
 import type { Answer } from "./gateway.js";
 import type { AccountMerchant, Identity } from "./identity.js";
 import { printable } from "./printable.js";
@@ -63,9 +52,8 @@ const USAGE = [
   "Usage: pnpm --filter @agentify/commerce-cabinet account <command>",
   "",
   "  add <address> <merchant>  make an account for that merchant and print a",
-  "                            password for it, once; the merchant's key is",
-  "                            read from standard input",
-  "  password <address>        set a new password, print it once, end every session",
+  "                            sign-in address; the merchant's key is read",
+  "                            from standard input",
   "  revoke <address>          end every session that person has, keeping the account",
   "  list                      the accounts there are, their merchant, and how",
   "                            many sessions are open",
@@ -188,7 +176,7 @@ async function dispatch(
   if (verb === "list") {
     return await listAccounts(identity, say, now);
   }
-  if (verb !== "add" && verb !== "password" && verb !== "revoke") {
+  if (verb !== "add" && verb !== "revoke") {
     for (const line of USAGE) {
       say(line);
     }
@@ -205,9 +193,6 @@ async function dispatch(
 
   if (verb === "add") {
     return await addAccount(identity, say, address, merchant, readKey, askTheGateway);
-  }
-  if (verb === "password") {
-    return await changePassword(identity, say, address);
   }
   return await revokeSessions(identity, say, address);
 }
@@ -244,18 +229,16 @@ async function addAccount(
     return 2;
   }
 
-  const password = newPassword();
-  const made = await identity.make(address, password, merchant);
+  const made = await identity.make(address, merchant);
   if (made === null) {
-    // Not an overwrite. Somebody running this twice must not silently replace a
-    // password the person on the other end is already using, nor point their
-    // cabinet at a merchant that is not the one they have been working as.
-    say(`${address.trim()} already has an account. Use "password" to set a new one.`);
+    // Not an overwrite. A repeated command must not move an existing person's
+    // cabinet to a different merchant.
+    say(`${address.trim()} already has an account. Nothing was changed.`);
     return 1;
   }
 
-  say(`An account for ${made.email}, signing in as ${merchant.id}.`);
-  showPassword(say, password);
+  say(`An unconfirmed account for ${made.email}, signing in as ${merchant.id}.`);
+  say("They sign in by asking the cabinet to mail that address a one-time link.");
   return 0;
 }
 
@@ -328,23 +311,6 @@ async function merchantKey(
   return null;
 }
 
-async function changePassword(
-  identity: Identity,
-  say: (line: string) => void,
-  address: string,
-): Promise<number> {
-  const password = newPassword();
-  const changed = await identity.replacePassword(address, password);
-  if (!changed) {
-    say(`Nobody has an account at ${address.trim()}, so there is no password to change.`);
-    return 1;
-  }
-
-  say(`A new password for ${address.trim()}, and every session they had is ended.`);
-  showPassword(say, password);
-  return 0;
-}
-
 async function revokeSessions(
   identity: Identity,
   say: (line: string) => void,
@@ -387,34 +353,14 @@ async function listAccounts(
   for (const row of rows) {
     const open = row.sessions === 1 ? "1 session open" : `${row.sessions} sessions open`;
     // The merchant's identifier, which says which catalogue this person's
-    // screens show. An account with none is named as what it is rather than
-    // printed with a gap where the others have a word: it was made before
-    // accounts had merchants, and it cannot sign in at all.
-    const whose = row.merchant ?? "no merchant, cannot sign in";
-    // Whether the address has been confirmed, because that is what decides
-    // whether this person can be sent a new password or has to be given one
-    // from here. Somebody running this command is usually running it for
-    // exactly that reason.
+    // screens show. A person with none is authenticated P1 whose setup has not
+    // attached a merchant yet.
+    const whose = row.merchant ?? "no merchant, setup pending";
+    // Whether the address has been confirmed by consuming a link.
     const address = row.confirmed ? "address confirmed" : "address not confirmed";
     say(
       `${row.email.padEnd(widest)}  made ${row.createdAt.toISOString().slice(0, 10)}  ${open}  ${address}  ${whose}`,
     );
   }
   return 0;
-}
-
-/**
- * The one place a password is printed.
- *
- * Indented on a line of its own so it can be copied without picking it out of a
- * sentence, and said out loud to be the only copy — because it is. What is kept
- * is a `scrypt` derivation, and nothing here or anywhere else can read the
- * password back out of it.
- */
-function showPassword(say: (line: string) => void, password: string): void {
-  say("This is the password. It is shown once and nothing keeps a readable copy:");
-  say("");
-  say(`    ${password}`);
-  say("");
-  say("Hand it over, and have them set one of their own from the cabinet.");
 }

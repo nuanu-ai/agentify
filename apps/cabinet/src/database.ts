@@ -1,6 +1,6 @@
 /**
- * The connection the cabinet's own four tables live behind, and the step that
- * brings them up to date.
+ * The connection the cabinet's own identity tables live behind, and the step
+ * that brings them up to date.
  *
  * Nothing here reads or writes a row. The component that signs people in does
  * all of that through drizzle (ADR-0009), and what this file owns is the two
@@ -37,7 +37,7 @@ const MIGRATIONS_TABLE = "cabinet_migrations";
  *
  * What is logged is the name and the message, not the object. A driver's own
  * exception carries the query it was running and every value bound into it, and
- * those values are a session identifier and a password derivation; `String`
+ * those values include session identifiers and one-time-link claims; `String`
  * leaves every property behind.
  */
 export function connect(databaseUrl: string): Pool {
@@ -63,7 +63,7 @@ export function connect(databaseUrl: string): Pool {
   return pool;
 }
 
-/** Brings the cabinet's four tables up to date. A step somebody takes. */
+/** Brings the cabinet's identity tables up to date. A step somebody takes. */
 export async function migrateAccounts(pool: Pool, migrationsFolder: string): Promise<void> {
   await migrate(drizzle(pool), { migrationsFolder, migrationsTable: MIGRATIONS_TABLE });
 }

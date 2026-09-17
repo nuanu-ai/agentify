@@ -1,21 +1,4 @@
-/**
- * The cabinet's identity against a real database, on tables the checked-in
- * migrations built.
- *
- * Two things are checked here and neither can be checked anywhere else. The
- * first is the migration itself, run against a database standing at the version
- * before it with a row already in the table — which is what the deployed server
- * is, and which every other suite misses because it builds its tables from
- * nothing. The second is the component's own behaviour over drizzle and
- * Postgres rather than over its memory store: the column types, the cascade,
- * the unique index and the one measurement that only means something against a
- * real connection, which is how many questions a request costs.
- *
- * The migrations are applied as SQL rather than through drizzle's migrator,
- * because the point of half of this is to stop part way and the migrator
- * applies everything in the folder. What runs here is the exact text a
- * deployment applies, split on the breakpoints the migrator splits on.
- */
+/** PostgreSQL authority for cabinet identity transactions and cutover. */
 
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -26,470 +9,494 @@ import {
   testDatabaseUrl,
 } from "@agentify/commerce-gateway/testing/database";
 import { Pool } from "pg";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { runAccount } from "./account-command.js";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "./config.js";
-import { type Identity, identityFor } from "./identity.js";
+import { identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 
-/**
- * A database of this file's own, beside the one the rest of `pnpm test:db` uses.
- *
- * Standing the cabinet's tables up at the version before a change and then
- * moving them is not something to do to tables another suite is emptying
- * between its own tests.
- */
 const wanted = (() => {
   const url = new URL(testDatabaseUrl());
   url.pathname = "/agentify_commerce_test_cabinet_identity";
   return url.toString();
 })();
 const databaseUrl = await readyDatabase(wanted);
-
 const here = dirname(fileURLToPath(import.meta.url));
 const migrationsIn = join(here, "..", "drizzle");
 
 const MERCHANT = { id: "mer_the_merchant", key: "the-merchants-own-key-long-enough" };
-const PASSWORD = "a-password-nobody-guesses";
+const NOW = new Date("2026-09-17T12:00:00.000Z");
 
-/**
- * One migration file, as the statements the migrator would run one by one.
- *
- * A statement can be preceded by a comment explaining why it is written the way
- * it is, and Postgres takes those as happily as the migrator does. They are cut
- * here only because the split leaves them attached to the statement below, and
- * a chunk that is nothing but a comment is not a statement to send.
- */
 async function statementsOf(file: string): Promise<string[]> {
-  const sql = await readFile(join(migrationsIn, file), "utf8");
-  return sql
+  const source = await readFile(join(migrationsIn, file), "utf8");
+  return source
     .split("--> statement-breakpoint")
-    .map((chunk) =>
-      chunk
-        .split("\n")
-        .filter((line) => !line.trimStart().startsWith("--"))
-        .join("\n")
-        .trim(),
-    )
+    .map((chunk) => chunk.trim())
     .filter((statement) => statement !== "");
 }
 
 if (databaseUrl === null) {
   console.log(noDatabaseHere(wanted));
-
-  describe("the cabinet's identity on a real database", () => {
-    it.skip("is skipped: there is no Postgres to run it against", () => {
-      // Intentionally empty: the message above is the whole point.
-    });
+  describe("the cabinet identity on PostgreSQL", () => {
+    it.skip("is skipped: there is no PostgreSQL to run it against", () => {});
   });
 } else {
-  const pool = new Pool({ connectionString: databaseUrl });
+  const identityDatabaseUrl = databaseUrl;
+  const pool = new Pool({ connectionString: databaseUrl, max: 6 });
+  const migrationFiles = [
+    "0000_accounts.sql",
+    "0001_merchant_on_account.sql",
+    "0002_the_old_sign_in_goes.sql",
+    "0003_identity_component.sql",
+    "0004_woocommerce_connection.sql",
+    "0005_one_way_in_identity.sql",
+  ] as const;
 
   afterAll(async () => {
     await pool.end();
   });
 
-  const run = async (file: string): Promise<void> => {
-    for (const statement of await statementsOf(file)) {
-      await pool.query(statement);
+  async function run(file: string): Promise<void> {
+    for (const statement of await statementsOf(file)) await pool.query(statement);
+  }
+
+  async function emptyEverything(): Promise<void> {
+    await pool.query("drop function if exists fail_cabinet_session() cascade");
+    await pool.query("drop function if exists slow_cabinet_person() cascade");
+    await pool.query("drop function if exists fail_cabinet_key_update() cascade");
+    await pool.query(`
+      drop table if exists
+        cabinet_link_sends, cabinet_woo_orders, cabinet_woo_shops, cabinet_woo_grants,
+        cabinet_verifications, cabinet_credentials, cabinet_sessions, cabinet_accounts
+      cascade
+    `);
+  }
+
+  async function migrateThrough(file: (typeof migrationFiles)[number]): Promise<void> {
+    for (const migration of migrationFiles) {
+      await run(migration);
+      if (migration === file) return;
     }
-  };
+  }
 
-  const emptyEverything = async (): Promise<void> => {
-    await pool.query(
-      "drop table if exists cabinet_verifications, cabinet_credentials," +
-        " cabinet_sessions, cabinet_accounts cascade",
-    );
-  };
+  function config() {
+    return loadConfig({
+      DATABASE_URL: identityDatabaseUrl,
+      AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
+      PAYMENT_NETWORK: "eip155:84532",
+      FACILITATOR_URL: "sandbox:scripted",
+      REGISTRATION_INVITATION: "the-existing-gateway-invitation",
+    });
+  }
 
-  const mails: Message[] = [];
-  const identityOn = (): Identity =>
-    identityFor(
-      loadConfig({
-        DATABASE_URL: databaseUrl,
-        AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
-        PAYMENT_NETWORK: "eip155:84532",
-        FACILITATOR_URL: "sandbox:scripted",
-      }),
-      {
-        pool,
-        postman: async (message) => {
-          mails.push(message);
-          return "accepted";
-        },
+  function identityOn(messages: Message[], handover: "accepted" | "refused" = "accepted") {
+    return identityFor(config(), {
+      pool,
+      postman: async (message) => {
+        messages.push(message);
+        return handover;
       },
-    );
+    });
+  }
 
-  describe("the migration onto a database that already had an account in it", () => {
+  function tokenIn(message: Message): string {
+    const raw = message.body.match(/https?:\/\/\S+/)?.[0];
+    if (raw === undefined) throw new Error("the message has no cabinet link");
+    const token = new URL(raw).searchParams.get("token");
+    if (token === null) throw new Error("the cabinet link has no token");
+    return token;
+  }
+
+  describe("the stopped passwordless cutover", () => {
     beforeEach(async () => {
-      mails.length = 0;
       await emptyEverything();
-      await run("0000_accounts.sql");
-      await run("0001_merchant_on_account.sql");
+      await migrateThrough("0004_woocommerce_connection.sql");
     });
 
-    it("keeps the account, its address and the merchant it signs in for", async () => {
-      // The row a deployed cabinet is holding, written with the columns that
-      // version had and no others — which is what makes this a test of the
-      // migration rather than of the schema file the code agrees with.
+    it("preserves account and Woo rows exactly while purging only old proofs and sessions", async () => {
       await pool.query(
-        `insert into cabinet_accounts (id, email, password_hash, created_at, merchant_id, merchant_key)
-         values ($1, $2, $3, $4, $5, $6)`,
-        [
-          "acc_the_deployed_one",
-          "dmitry@example.com",
-          "scrypt$32768$8$1$c2FsdA$a2V5",
-          new Date("2026-08-27T09:00:00.000Z"),
-          MERCHANT.id,
-          MERCHANT.key,
-        ],
+        `insert into cabinet_accounts
+           (id, email, email_verified, name, created_at, updated_at, merchant_id, merchant_key)
+         values
+           ('person_p2', 'owner@example.com', false, '', $1, $1, $2, $3),
+           ('person_p1', 'reader@example.com', true, '', $1, $1, null, null)`,
+        [NOW, MERCHANT.id, MERCHANT.key],
       );
-      // And a session, because there is one on a deployed server too.
       await pool.query(
-        `insert into cabinet_sessions (fingerprint, account_id, created_at, expires_at)
-         values ($1, $2, $3, $4)`,
-        [
-          "a-fingerprint",
-          "acc_the_deployed_one",
-          new Date("2026-08-27T09:00:00.000Z"),
-          new Date("2099-01-01T00:00:00.000Z"),
-        ],
+        `insert into cabinet_credentials
+           (id, user_id, provider_id, account_id, issuer, password, created_at, updated_at)
+         values ('credential_old', 'person_p2', 'credential', 'person_p2', 'local',
+                 'derived-password', $1, $1)`,
+        [NOW],
       );
-
-      await run("0002_the_old_sign_in_goes.sql");
-      await run("0003_identity_component.sql");
-
-      const person = await identityOn().byEmail("dmitry@example.com");
-      expect(person?.id).toBe("acc_the_deployed_one");
-      // The two columns that are ours rather than the component's, and the
-      // whole reason this table kept its name through the change.
-      expect(person?.merchant).toStrictEqual(MERCHANT);
-      // Nobody has confirmed the address, because nobody ever could have.
-      expect(person?.confirmed).toBe(false);
-      // The moment the row was made is the moment it says, not the moment the
-      // migration ran: an account's age is what somebody reads the listing for.
-      const { rows } = await pool.query<{ created_at: Date; updated_at: Date }>(
-        "select created_at, updated_at from cabinet_accounts",
-      );
-      expect(rows[0]?.created_at.toISOString()).toBe("2026-08-27T09:00:00.000Z");
-      expect(rows[0]?.updated_at.toISOString()).toBe("2026-08-27T09:00:00.000Z");
-    });
-
-    it("leaves that account with no password, and the command gives it one", async () => {
-      // The honest half of this migration. The old cabinet derived a password
-      // its own way and the component derives its own; carrying the stored
-      // value across would mean keeping the code that reads it, which is the
-      // code this change removes. So the password does not survive — and the
-      // command that replaces it has to work on a row that has never had one,
-      // which is a row with no way of signing in attached to it at all.
       await pool.query(
-        `insert into cabinet_accounts (id, email, password_hash, created_at, merchant_id, merchant_key)
-         values ($1, $2, $3, $4, $5, $6)`,
-        [
-          "acc_the_deployed_one",
-          "dmitry@example.com",
-          "scrypt$32768$8$1$c2FsdA$a2V5",
-          new Date("2026-08-27T09:00:00.000Z"),
-          MERCHANT.id,
-          MERCHANT.key,
-        ],
+        `insert into cabinet_sessions
+           (id, token, user_id, expires_at, created_at, updated_at)
+         values ('session_old', 'old-session-token', 'person_p2', $1, $2, $2)`,
+        [new Date(NOW.getTime() + 60_000), NOW],
       );
-
-      await run("0002_the_old_sign_in_goes.sql");
-      await run("0003_identity_component.sql");
-
-      const identity = identityOn();
-      // Nothing signs in yet, whatever is typed.
-      expect((await identity.signIn("dmitry@example.com", PASSWORD)).ok).toBe(false);
-
-      const lines: string[] = [];
-      const code = await runAccount(
-        ["password", "dmitry@example.com"],
-        identity,
-        {
-          say: (line) => lines.push(line),
-          readKey: async () => {
-            throw new Error("the password command has no key to read");
-          },
-        },
-        async () => {
-          throw new Error("the password command has no key to ask the gateway about");
-        },
-      );
-
-      expect(code).toBe(0);
-      const printed = /^ {4}(\S+)$/m.exec(lines.join("\n"))?.[1] ?? "";
-      expect(printed).not.toBe("");
-      const signed = await identity.signIn("dmitry@example.com", printed);
-      expect(signed.ok).toBe(true);
-      // And it is the same account, still pointed at the same merchant, so
-      // nobody has to be handed a new one.
-      expect(signed.ok && signed.opened.person.id).toBe("acc_the_deployed_one");
-      expect(signed.ok && signed.opened.person.merchant).toStrictEqual(MERCHANT);
-    });
-
-    it("takes an account with no merchant across without inventing one", async () => {
-      // The other row that exists on a deployed server: one written before an
-      // account named the merchant it signs in for. It has to arrive on the
-      // other side as an account with no merchant, which the cabinet has a
-      // sentence for — and not as one whose merchant is an empty identifier
-      // with an empty key, which would be a cabinet asking the gateway to
-      // accept nothing on every screen.
       await pool.query(
-        `insert into cabinet_accounts (id, email, password_hash, created_at)
-         values ($1, $2, $3, $4)`,
-        [
-          "acc_before_merchants",
-          "older@example.com",
-          "scrypt$32768$8$1$c2FsdA$a2V5",
-          new Date("2026-08-27T09:00:00.000Z"),
-        ],
+        `insert into cabinet_verifications
+           (id, identifier, value, expires_at, created_at, updated_at)
+         values ('verification_old', 'old-password-proof', '{}', $1, $2, $2)`,
+        [new Date(NOW.getTime() + 60_000), NOW],
+      );
+      await pool.query(
+        `insert into cabinet_woo_shops
+           (account_id, shop_url, consumer_key, consumer_secret, permissions, connected_at)
+         values ('person_p2', 'https://shop.example', 'ck_preserved', 'cs_preserved',
+                 'read_write', $1)`,
+        [NOW],
+      );
+      await pool.query(
+        `insert into cabinet_woo_grants
+           (token, account_id, shop_url, expires_at, created_at)
+         values ('grant_preserved', 'person_p2', 'https://shop.example', $1, $2)`,
+        [new Date(NOW.getTime() + 60_000), NOW],
+      );
+      await pool.query(
+        `insert into cabinet_woo_orders
+           (order_id, account_id, woo_order_id, woo_order_number, attempted_at, placed_at)
+         values ('order_preserved', 'person_p2', '42', '0042', $1, $1)`,
+        [NOW],
+      );
+      const beforeAccounts = (
+        await pool.query(
+          `select to_jsonb(cabinet_accounts.*) as row from cabinet_accounts order by id`,
+        )
+      ).rows;
+      const beforeWoo = await Promise.all(
+        ["cabinet_woo_grants", "cabinet_woo_orders", "cabinet_woo_shops"].map(
+          async (table) =>
+            (await pool.query(`select to_jsonb(${table}.*) as row from ${table}`)).rows,
+        ),
       );
 
-      await run("0002_the_old_sign_in_goes.sql");
-      await run("0003_identity_component.sql");
-
-      expect((await identityOn().byEmail("older@example.com"))?.merchant).toBeNull();
-    });
-  });
-
-  describe("the cabinet's identity on a real database", () => {
-    beforeEach(async () => {
-      mails.length = 0;
-      await emptyEverything();
-      for (const file of [
-        "0000_accounts.sql",
-        "0001_merchant_on_account.sql",
-        "0002_the_old_sign_in_goes.sql",
-        "0003_identity_component.sql",
-      ]) {
-        await run(file);
-      }
-    });
-
-    it("registers, signs in and reads the session back off the cookie", async () => {
-      const identity = identityOn();
-
-      const made = await identity.register("dmitry@example.com", PASSWORD, MERCHANT);
-
-      expect(made.ok).toBe(true);
-      expect(made.ok && made.opened.person.merchant).toStrictEqual(MERCHANT);
-      const signed = await identity.signIn("dmitry@example.com", PASSWORD);
-      expect(signed.ok).toBe(true);
-      const cookie = (signed.ok ? signed.opened.cookies : [])
-        .map((line) => line.split(";")[0])
-        .join("; ");
-      expect((await identity.whoIs(cookie))?.email).toBe("dmitry@example.com");
-      // And the key really is on the row rather than somewhere in the process.
-      const { rows } = await pool.query<{ merchant_key: string }>(
-        "select merchant_key from cabinet_accounts where email = $1",
-        ["dmitry@example.com"],
-      );
-      expect(rows[0]?.merchant_key).toBe(MERCHANT.key);
-    });
-
-    it("replaces the key on a row, and says so from what the write answered", async () => {
-      // Every sign-in does this, and what it turns on is a claim about drizzle
-      // rather than about the memory store the rest of the suite runs on: that
-      // an update answers with the row it wrote, carrying the columns this
-      // cabinet added to the component's model. If it did not, the write would
-      // land and be reported as though it had not, the key would never be
-      // replaced on a deployed server, and the only sign of it would be a line
-      // in the log at every sign-in. So the answer is checked against the
-      // column, and both halves are read here.
-      const identity = identityOn();
-      await identity.register("dmitry@example.com", PASSWORD, MERCHANT);
-      const who = await identity.byEmail("dmitry@example.com");
-
-      const written = await identity.replaceMerchantKey(
-        who?.id ?? "",
-        MERCHANT.key,
-        "the-next-key-long-enough",
-      );
-
-      expect(written).toBe(true);
-      const { rows } = await pool.query<{ merchant_key: string; merchant_id: string }>(
-        "select merchant_key, merchant_id from cabinet_accounts where email = $1",
-        ["dmitry@example.com"],
-      );
-      expect(rows[0]?.merchant_key).toBe("the-next-key-long-enough");
-      // And the merchant beside it is untouched: this is the same merchant,
-      // reached with another of their keys.
-      expect(rows[0]?.merchant_id).toBe(MERCHANT.id);
-    });
-
-    it("does not report a key written onto a row the database does not have", async () => {
-      // What forgetting a key is allowed to happen after. An update that
-      // matched nothing must not read as a key written down: the caller would
-      // then take the key the row still names to be the one it had finished
-      // with, and put the only working key beyond use.
-      const identity = identityOn();
+      await run("0005_one_way_in_identity.sql");
 
       expect(
-        await identity.replaceMerchantKey(
-          "no-such-account",
-          MERCHANT.key,
-          "the-next-key-long-enough",
+        (
+          await pool.query(
+            `select to_jsonb(cabinet_accounts.*) as row from cabinet_accounts order by id`,
+          )
+        ).rows,
+      ).toStrictEqual(beforeAccounts);
+      const afterWoo = await Promise.all(
+        ["cabinet_woo_grants", "cabinet_woo_orders", "cabinet_woo_shops"].map(
+          async (table) =>
+            (await pool.query(`select to_jsonb(${table}.*) as row from ${table}`)).rows,
         ),
-      ).toBe(false);
-    });
-
-    it("writes only while the row still holds the key that was read off it", async () => {
-      // The compare and the set are one statement in the database rather than a
-      // read this code makes and a write it makes afterwards. A read followed
-      // by a write is the same gap in a smaller costume: two sign-ins can both
-      // read, both find what they expected, and both write. Held here as well
-      // as against the memory store, because the condition has to be the
-      // database's own — an `update ... where merchant_key = $expected` — and
-      // whether drizzle carries a second where clause through is a claim about
-      // drizzle.
-      const identity = identityOn();
-      await identity.register("dmitry@example.com", PASSWORD, MERCHANT);
-      const who = await identity.byEmail("dmitry@example.com");
-
-      const won = await identity.replaceMerchantKey(who?.id ?? "", MERCHANT.key, "the-first-fresh");
-      const lost = await identity.replaceMerchantKey(who?.id ?? "", MERCHANT.key, "the-second");
-
-      expect(won).toBe(true);
-      expect(lost).toBe(false);
-      const { rows } = await pool.query<{ merchant_key: string }>(
-        "select merchant_key from cabinet_accounts where email = $1",
-        ["dmitry@example.com"],
       );
-      expect(rows[0]?.merchant_key).toBe("the-first-fresh");
+      expect(afterWoo).toStrictEqual(beforeWoo);
+      expect(
+        (await pool.query("select count(*)::int as count from cabinet_credentials")).rows[0],
+      ).toStrictEqual({ count: 0 });
+      expect(
+        (await pool.query("select count(*)::int as count from cabinet_sessions")).rows[0],
+      ).toStrictEqual({ count: 0 });
+      expect(
+        (await pool.query("select count(*)::int as count from cabinet_verifications")).rows[0],
+      ).toStrictEqual({ count: 0 });
+      expect(
+        (await pool.query("select email_verified from cabinet_accounts where id='person_p2'")).rows,
+      ).toStrictEqual([{ email_verified: false }]);
+
+      await expect(
+        pool.query(`update cabinet_accounts set merchant_key = null where id = 'person_p2'`),
+      ).rejects.toMatchObject({ code: "23514" });
     });
 
-    it("refuses a second account at one address, because the database says so", async () => {
-      // Not because something looked first: a check ahead of an insert is two
-      // statements with a gap between them, and two registrations at once fit
-      // inside that gap.
-      const identity = identityOn();
-      await identity.register("dmitry@example.com", PASSWORD, MERCHANT);
-
-      const again = await identity.register("Dmitry@Example.com ", PASSWORD, MERCHANT);
-
-      expect(again.ok).toBe(false);
-      expect(again.ok === false && again.why).toBe("taken");
-      const { rows } = await pool.query<{ count: string }>("select count(*) from cabinet_accounts");
-      expect(Number(rows[0]?.count)).toBe(1);
-    });
-
-    it("takes an account's sessions and its password with it when it goes", async () => {
-      // The cascade, which is in the database rather than in whichever code
-      // path happened to delete the account. A session that outlived its owner
-      // would be a row nothing can resolve and a query that fails on a join.
-      const identity = identityOn();
-      await identity.register("dmitry@example.com", PASSWORD, MERCHANT);
-      await identity.signIn("dmitry@example.com", PASSWORD);
-
-      await pool.query("delete from cabinet_accounts where email = $1", ["dmitry@example.com"]);
-
-      for (const table of ["cabinet_sessions", "cabinet_credentials"]) {
-        const { rows } = await pool.query<{ count: string }>(`select count(*) from ${table}`);
-        expect(Number(rows[0]?.count), table).toBe(0);
-      }
-    });
-
-    it("sends a link that replaces a password, and ends every session with it", async () => {
-      const identity = identityOn();
-      await identity.register("dmitry@example.com", PASSWORD, MERCHANT);
-      await identity.signIn("dmitry@example.com", PASSWORD);
-      await identity.askToConfirm("dmitry@example.com");
-      const confirming = /token=([^\s&]+)/.exec(mails.at(-1)?.body ?? "")?.[1] ?? "";
-      expect(await identity.confirm(confirming)).toBe(true);
-
-      await identity.askForANewPassword("dmitry@example.com");
-      const replacing = /token=([^\s&]+)/.exec(mails.at(-1)?.body ?? "")?.[1] ?? "";
-      expect(await identity.setPasswordFrom(replacing, "a-password-of-their-own")).toBe(true);
-
-      expect((await identity.signIn("dmitry@example.com", PASSWORD)).ok).toBe(false);
-      expect((await identity.signIn("dmitry@example.com", "a-password-of-their-own")).ok).toBe(
-        true,
+    it("refuses a partial merchant pair before deleting any legacy row", async () => {
+      await pool.query(
+        `insert into cabinet_accounts
+           (id, email, email_verified, name, created_at, updated_at, merchant_id, merchant_key)
+         values ('person_corrupt', 'corrupt@example.com', false, '', $1, $1,
+                 'mer_only_half', null)`,
+        [NOW],
       );
-      // Every session opened with the old password went with it. The one left
-      // is the one the line above just opened.
-      const { rows } = await pool.query<{ count: string }>("select count(*) from cabinet_sessions");
-      expect(Number(rows[0]?.count)).toBe(1);
-    });
+      await pool.query(
+        `insert into cabinet_credentials
+           (id, user_id, provider_id, account_id, issuer, password, created_at, updated_at)
+         values ('credential_must_survive', 'person_corrupt', 'credential', 'person_corrupt',
+                 'local', 'derived-password', $1, $1)`,
+        [NOW],
+      );
 
-    it("sends nothing to an address nobody has confirmed", async () => {
-      const identity = identityOn();
-      await identity.register("dmitry@example.com", PASSWORD, MERCHANT);
+      await expect(run("0005_one_way_in_identity.sql")).rejects.toThrow(
+        /partial merchant binding/i,
+      );
 
-      await identity.askForANewPassword("dmitry@example.com");
-
-      expect(mails).toStrictEqual([]);
-    });
-
-    it("does not report a database that will not answer as an address being taken", async () => {
-      // Found on the first run outside the tests, against a database that had
-      // never been migrated. Every refusal used to be caught in one place, so a
-      // connection that failed came back as the component saying no — and the
-      // command answered "that address already has an account" while the real
-      // trouble was that there were no tables to look in. On the registration
-      // screen the same fault would have sent a merchant to check an invitation
-      // that was never the problem.
-      //
-      // What separates the two is the type the component throws for its own
-      // refusals. Anything else goes up, where the page says something here is
-      // broken and the log gets the exception.
-      const identity = identityOn();
-      await emptyEverything();
-
-      await expect(identity.register("dmitry@example.com", PASSWORD, MERCHANT)).rejects.toThrow();
-      await expect(identity.signIn("dmitry@example.com", PASSWORD)).rejects.toThrow();
-      await expect(identity.setPasswordFrom("a-token", PASSWORD)).rejects.toThrow();
-      // The two that answer without asking the database at all, and still
-      // answer correctly with none: a link nobody signed and a cookie nobody
-      // signed are both refused on the signature, before a query.
-      await expect(identity.confirm("a-token")).resolves.toBe(false);
-      await expect(identity.whoIs("agentify.session_token=nonsense")).resolves.toBeNull();
-    });
-
-    it("asks the database nothing about a cookie it did not sign", async () => {
-      // The measurement that only means something against a real connection,
-      // and the reason a browser carrying a pile of planted cookies is not a
-      // browser turning one page view into a pile of queries. The component
-      // checks its own signature over a value before it looks anything up, so a
-      // value nobody signed with this cabinet's secret costs a comparison.
-      //
-      // It matters because there is no cap on how many values under this name
-      // are considered — a cap is a way to push the merchant's own cookie out
-      // of sight — and because the component looks a session up one identifier
-      // at a time, so there is no batch to hide the cost in.
-      const identity = identityOn();
-      await identity.register("dmitry@example.com", PASSWORD, MERCHANT);
-      const signed = await identity.signIn("dmitry@example.com", PASSWORD);
-      const mine = (signed.ok ? signed.opened.cookies : [])
-        .map((line) => line.split(";")[0])
-        .join("; ");
-
-      let asked = 0;
-      const real = pool.query.bind(pool);
-      // biome-ignore lint/suspicious/noExplicitAny: counting a driver's own calls
-      (pool as any).query = (...args: unknown[]) => {
-        asked += 1;
-        return (real as (...given: unknown[]) => unknown)(...args);
-      };
-      try {
-        const planted = Array.from(
-          { length: 50 },
-          (_, at) => `agentify.session_token=${String(at).padStart(32, "a")}.${"b".repeat(43)}`,
-        ).join("; ");
-
-        expect(await identity.whoIs(planted)).toBeNull();
-        expect(asked).toBe(0);
-
-        // And the merchant's own, arriving behind all of them, still signs them
-        // in — at the cost of the one lookup it takes to answer.
-        asked = 0;
-        expect((await identity.whoIs(`${planted}; ${mine}`))?.email).toBe("dmitry@example.com");
-        expect(asked).toBeGreaterThan(0);
-        expect(asked).toBeLessThan(10);
-      } finally {
-        // biome-ignore lint/suspicious/noExplicitAny: putting the driver back
-        (pool as any).query = real;
-      }
+      expect((await pool.query("select id from cabinet_credentials")).rows).toStrictEqual([
+        { id: "credential_must_survive" },
+      ]);
+      expect(
+        (await pool.query(`select to_regclass('public.cabinet_link_sends') is not null as made`))
+          .rows[0],
+      ).toStrictEqual({ made: false });
     });
   });
+
+  describe("the passwordless identity on PostgreSQL", () => {
+    beforeEach(async () => {
+      await emptyEverything();
+      await migrateThrough("0005_one_way_in_identity.sql");
+    });
+
+    it("commits token, new person and session together, then consumes only once", async () => {
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+
+      await expect(identity.requestLink(" Person@Example.com ", "settings")).resolves.toStrictEqual(
+        {
+          status: "accepted",
+        },
+      );
+      expect(
+        (await pool.query("select count(*)::int as count from cabinet_accounts")).rows[0],
+      ).toStrictEqual({ count: 0 });
+
+      const token = tokenIn(messages[0] as Message);
+      const opened = await identity.openLink(token);
+      expect(opened).toMatchObject({
+        status: "opened",
+        destination: "settings",
+        person: { email: "person@example.com", confirmed: true, merchant: null },
+      });
+      expect(
+        (await pool.query("select count(*)::int as count from cabinet_sessions")).rows[0],
+      ).toStrictEqual({ count: 1 });
+      await expect(identity.openLink(token)).resolves.toStrictEqual({ status: "refused" });
+    });
+
+    it("serializes two independent first links for one new person", async () => {
+      const messages: Message[] = [];
+      const one = identityOn(messages);
+      const two = identityOn(messages);
+      await one.requestLink("person@example.com", "default");
+      await two.requestLink("person@example.com", "settings");
+      await pool.query(`
+        create function slow_cabinet_person() returns trigger language plpgsql as $$
+        begin perform pg_sleep(0.05); return new; end $$
+      `);
+      await pool.query(`
+        create trigger slow_cabinet_person before insert on cabinet_accounts
+        for each row execute function slow_cabinet_person()
+      `);
+
+      const [first, second] = await Promise.all([
+        one.openLink(tokenIn(messages[0] as Message)),
+        two.openLink(tokenIn(messages[1] as Message)),
+      ]);
+
+      expect(first).toMatchObject({ status: "opened", destination: "default" });
+      expect(second).toMatchObject({ status: "opened", destination: "settings" });
+      if (first.status !== "opened" || second.status !== "opened") {
+        throw new Error("both independent cabinet links should open");
+      }
+      expect(second.person.id).toBe(first.person.id);
+      expect(
+        (await pool.query("select count(*)::int as count from cabinet_accounts")).rows[0],
+      ).toStrictEqual({ count: 1 });
+      expect(
+        (await pool.query("select count(*)::int as count from cabinet_sessions")).rows[0],
+      ).toStrictEqual({ count: 2 });
+    });
+
+    it("rolls token consumption and person creation back when session creation fails", async () => {
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      await identity.requestLink("person@example.com", "default");
+      const token = tokenIn(messages[0] as Message);
+      await pool.query(`
+        create function fail_cabinet_session() returns trigger language plpgsql as $$
+        begin raise exception 'injected session failure'; end $$
+      `);
+      await pool.query(`
+        create trigger fail_cabinet_session before insert on cabinet_sessions
+        for each row execute function fail_cabinet_session()
+      `);
+
+      await expect(identity.openLink(token)).rejects.toThrow(/insert into "cabinet_sessions"/i);
+
+      expect(
+        (await pool.query("select count(*)::int as count from cabinet_accounts")).rows[0],
+      ).toStrictEqual({ count: 0 });
+      expect(
+        (await pool.query("select count(*)::int as count from cabinet_sessions")).rows[0],
+      ).toStrictEqual({ count: 0 });
+      expect(
+        (await pool.query("select count(*)::int as count from cabinet_verifications")).rows[0],
+      ).toStrictEqual({ count: 1 });
+      await pool.query("drop trigger fail_cabinet_session on cabinet_sessions");
+      await pool.query("drop function fail_cabinet_session()");
+      await expect(identity.openLink(token)).resolves.toMatchObject({ status: "opened" });
+    });
+
+    it("rolls the hashed token and rate event back when delivery is refused", async () => {
+      const messages: Message[] = [];
+      const identity = identityOn(messages, "refused");
+
+      await expect(identity.requestLink("person@example.com", "default")).resolves.toStrictEqual({
+        status: "unavailable",
+      });
+
+      expect(
+        (await pool.query("select count(*)::int as count from cabinet_verifications")).rows[0],
+      ).toStrictEqual({ count: 0 });
+      expect(
+        (await pool.query("select count(*)::int as count from cabinet_link_sends")).rows[0],
+      ).toStrictEqual({ count: 0 });
+      expect(
+        (await pool.query("select count(*)::int as count from cabinet_accounts")).rows[0],
+      ).toStrictEqual({ count: 0 });
+    });
+
+    it("keeps a seeded merchant unconfirmed until that mailbox consumes a link", async () => {
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      const seeded = await identity.make("person@example.com", MERCHANT);
+
+      expect(seeded).toMatchObject({ confirmed: false, merchant: MERCHANT });
+      expect(
+        (await pool.query("select count(*)::int as count from cabinet_credentials")).rows[0],
+      ).toStrictEqual({ count: 0 });
+      expect(
+        (await pool.query("select count(*)::int as count from cabinet_sessions")).rows[0],
+      ).toStrictEqual({ count: 0 });
+
+      await identity.requestLink("person@example.com", "default");
+      const opened = await identity.openLink(tokenIn(messages[0] as Message));
+      expect(opened).toMatchObject({
+        status: "opened",
+        person: { id: seeded?.id, confirmed: true, merchant: MERCHANT },
+      });
+    });
+
+    it("serializes competing attachment retries and sees the committed session first", async () => {
+      const messages: Message[] = [];
+      const one = identityOn(messages);
+      const two = identityOn(messages);
+      await one.requestLink("person@example.com", "default");
+      const opened = await one.openLink(tokenIn(messages[0] as Message));
+      if (opened.status !== "opened") throw new Error("the P1 link did not open");
+      let registrations = 0;
+      const register = async () => {
+        registrations += 1;
+        expect(
+          (
+            await pool.query(
+              "select count(*)::int as count from cabinet_sessions where user_id = $1",
+              [opened.person.id],
+            )
+          ).rows[0],
+        ).toStrictEqual({ count: 1 });
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        return MERCHANT;
+      };
+
+      const [first, second] = await Promise.all([
+        one.attachMerchant(opened.person.id, register),
+        two.attachMerchant(opened.person.id, register),
+      ]);
+
+      expect(registrations).toBe(1);
+      expect([first.status, second.status].sort()).toStrictEqual(["already-attached", "attached"]);
+      expect(
+        (
+          await pool.query("select merchant_id, merchant_key from cabinet_accounts where id = $1", [
+            opened.person.id,
+          ])
+        ).rows,
+      ).toStrictEqual([{ merchant_id: MERCHANT.id, merchant_key: MERCHANT.key }]);
+    });
+
+    it("keeps P1 and its session when gateway registration is unavailable", async () => {
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      await identity.requestLink("person@example.com", "default");
+      const opened = await identity.openLink(tokenIn(messages[0] as Message));
+      if (opened.status !== "opened") throw new Error("the P1 link did not open");
+
+      await expect(
+        identity.attachMerchant(opened.person.id, async () => null),
+      ).resolves.toMatchObject({
+        status: "unavailable",
+        person: { merchant: null },
+      });
+      expect(await identity.whoIs(cookieHeader(opened.setCookies))).toMatchObject({
+        id: opened.person.id,
+        merchant: null,
+      });
+    });
+
+    it("retains compare-and-swap key rotation", async () => {
+      const identity = identityOn([]);
+      const person = await identity.make("person@example.com", MERCHANT);
+      if (person === null) throw new Error("the seed account was not made");
+
+      const [first, second] = await Promise.all([
+        identity.replaceMerchantKey(person.id, MERCHANT.key, "the-first-fresh-key"),
+        identity.replaceMerchantKey(person.id, MERCHANT.key, "the-second-fresh-key"),
+      ]);
+
+      expect([first, second].filter((result) => result === "replaced")).toHaveLength(1);
+      expect([first, second].filter((result) => result === "not-matched")).toHaveLength(1);
+      expect((await identity.byId(person.id))?.merchant?.key).toMatch(
+        /the-(first|second)-fresh-key/,
+      );
+    });
+
+    it("reports an uncertain key write without logging its query or keys", async () => {
+      const identity = identityOn([]);
+      const person = await identity.make("person@example.com", MERCHANT);
+      if (person === null) throw new Error("the seed account was not made");
+      const fresh = "the-sensitive-fresh-key";
+      await pool.query(`
+        create function fail_cabinet_key_update() returns trigger language plpgsql as $$
+        begin raise exception 'injected failure carrying %', new.merchant_key; end $$
+      `);
+      await pool.query(`
+        create trigger fail_cabinet_key_update before update on cabinet_accounts
+        for each row execute function fail_cabinet_key_update()
+      `);
+      const lines: string[] = [];
+      const error = vi.spyOn(console, "error").mockImplementation((...parts) => {
+        lines.push(parts.map(String).join(" "));
+      });
+      try {
+        await expect(identity.replaceMerchantKey(person.id, MERCHANT.key, fresh)).resolves.toBe(
+          "unknown",
+        );
+      } finally {
+        error.mockRestore();
+      }
+
+      expect((await identity.byId(person.id))?.merchant?.key).toBe(MERCHANT.key);
+      const written = lines.join("\n");
+      expect(written).toMatch(/could not establish whether/i);
+      expect(written).not.toContain(MERCHANT.key);
+      expect(written).not.toContain(fresh);
+      expect(written).not.toContain('update "cabinet_accounts"');
+    });
+
+    it("enforces three sends per rolling hour without storing the raw address", async () => {
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      for (let count = 0; count < 3; count += 1) {
+        await expect(identity.requestLink("person@example.com", "default")).resolves.toStrictEqual({
+          status: "accepted",
+        });
+      }
+      await expect(identity.requestLink("person@example.com", "default")).resolves.toMatchObject({
+        status: "cooldown",
+        retryAt: expect.any(Date),
+      });
+      const evidence = await pool.query("select email_hash from cabinet_link_sends");
+      expect(evidence.rows).toHaveLength(3);
+      expect(JSON.stringify(evidence.rows)).not.toContain("person@example.com");
+    });
+  });
+}
+
+function cookieHeader(setCookies: readonly string[]): string {
+  return setCookies.map((value) => value.split(";", 1)[0]).join("; ");
 }

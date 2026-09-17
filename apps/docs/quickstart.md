@@ -43,12 +43,11 @@ a new package and contract version before the gateway speaks them.
 
 ## 1. Make the merchant account ready
 
-During the pilot, registration is invitation-gated. Open the [test-channel
-registration form](https://test.agentify.ad/cabinet/register) and enter the
-invitation you were given, your email address and a password. The account works
-immediately and the next screen asks for the seller name that buyers will see.
-Email confirmation does not block selling; it is what makes password recovery
-available if you lose the password later.
+Open the [test cabinet](https://test.agentify.ad/cabinet/sign-in) and enter
+your email address. Open the link in the message and press the confirmation
+button. Your first sign-in creates your merchant and asks for the seller name
+buyers will see. Returning merchants reach their existing cabinet with the
+same email-and-link flow.
 
 The test channel settles test USDC on Base Sepolia. Save the Base wallet where
 those payments should arrive in Cabinet settings before publishing. The live

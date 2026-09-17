@@ -42,6 +42,16 @@
 # HTTP-01 does not. The production inner Caddy listens on a bare private port,
 # so this issuer block is inert there and the public edge owns certificates.
 {
+	# A failed upstream also logs a request through the runtime logger. Access
+	# log filtering alone cannot protect a one-time link's query or cookies.
+	log default {
+		format filter {
+			request>uri delete
+			request>headers delete
+			resp_headers delete
+			wrap json
+		}
+	}
 	# Only the challenge that can arrive here. Overridable, because a deployment
 	# behind a different edge may reach port 80 after all.
 	acme_ca {$AGENTIFY_ACME_CA:https://acme-v02.api.letsencrypt.org/directory}
@@ -143,6 +153,11 @@
 		X-Frame-Options DENY
 	}
 
+	# The mail-link form keeps its token out of Referer, including requests to
+	# this origin. Unlike no-referrer, strict-origin preserves the Origin of a
+	# native form POST, so the cabinet can keep rejecting cross-origin submits.
+	@cabinet_link path /cabinet/sign-in/open
+
 	import commerce_shared_assets
 
 	# The gateway, at both of the prefixes the contract's own route table is
@@ -212,6 +227,7 @@
 	# at /cabinets-we-have-known would otherwise disappear into the proxy.
 	@cabinet path /cabinet /cabinet/*
 	handle @cabinet {
+		header @cabinet_link Referrer-Policy strict-origin
 		reverse_proxy {$AGENTIFY_CABINET_UPSTREAM:cabinet:3001}
 	}
 

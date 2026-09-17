@@ -2,10 +2,9 @@
  * The two ways a message leaves the cabinet, and the one value that picks
  * between them.
  *
- * There are exactly two messages: a link that confirms an address, and a link
- * that replaces a forgotten password. Both are short, both are sent because
- * somebody just asked for them, and nothing here ever sends anything nobody
- * asked for.
+ * There is one kind of message: a one-time link that proves its reader owns an
+ * address. It is short, it is sent because somebody just asked for it, and
+ * nothing here ever sends anything nobody asked for.
  *
  * Which sender is in force is `MAIL_URL`, one variable with one value, the same
  * shape the gateway uses to pick its facilitator (`apps/gateway/src/config.ts`).
@@ -15,16 +14,11 @@
  * than an address that quietly does not answer. Anything else is a provider,
  * which today means Resend.
  *
- * Nothing waits for delivery. A caller hands a message over and carries on:
- * ADR-0009 puts a working account in front of a delivered message on purpose,
- * because a mail filter between a merchant and their own cabinet is a merchant
- * who has to be rescued by a person at a terminal, which is the thing that
- * decision exists to stop needing. So a send that fails is a line in the log and
- * not an error on somebody's screen; what a caller gets back is one word about
- * the door out, and the only screen that reads it draws a note when the answer
- * is yes and nothing at all when it is no. Delivery is a different question and
- * this file cannot answer it: there is no inbox here and no bounce handler, so
- * the furthest anything upstream may go is that a provider took the message.
+ * Nothing waits for delivery. A caller learns only whether the provider took
+ * the message. Refusal is returned so the identity transaction can remove the
+ * unusable token and the cabinet can answer with an honest retryable 503.
+ * Delivery is a different question and this file cannot answer it: there is no
+ * inbox here and no bounce handler.
  */
 
 /**
@@ -64,6 +58,9 @@ export type Handover = "accepted" | "refused";
 /** How a message leaves, or is written down instead of leaving. */
 export type Postman = (message: Message) => Promise<Handover>;
 
+/** A provider call never holds an identity transaction beyond this deadline. */
+const MAIL_PROVIDER_TIMEOUT_MS = 10_000;
+
 /** What a sender needs to know about itself. */
 export interface MailConfig {
   /** `sandbox:log`, or the address of a provider. */
@@ -78,9 +75,8 @@ export interface MailConfig {
  * The sender this configuration asks for.
  *
  * One function either way, so nothing above this file has a branch in it about
- * whether mail is real here. That matters more than it looks: the cabinet's
- * whole flow — registering, confirming, losing a password — is the same code on
- * a laptop and on a server, and the only difference is where the link comes out.
+ * whether mail is real here. The cabinet's identity flow is the same code on a
+ * laptop and on a server; only the sink that accepts the message changes.
  */
 export function postmanFor(config: MailConfig): Postman {
   return isSandboxMail(config.mailUrl) ? toTheLog : throughResend(config);
@@ -115,17 +111,17 @@ const toTheLog: Postman = async (message) => {
  * handler and no reply address that reaches anybody — so the answer to this call
  * is only ever a line in a log.
  *
- * A failure is caught here rather than thrown at the caller. Every send in this
- * cabinet happens beside something a person just did successfully: they
- * registered, or they asked for a link. Turning a provider's bad afternoon into
- * a red page on top of a registration that worked would tell them the wrong
- * thing about their own account.
+ * A failure is caught here rather than thrown at the caller. The caller needs
+ * one stable refusal result so it can roll back the new token and tell the
+ * person that sign-in is temporarily unavailable without exposing provider
+ * details.
  */
 function throughResend(config: MailConfig): Postman {
   return async (message) => {
     try {
       const answered = await fetch(`${config.mailUrl}/emails`, {
         method: "POST",
+        signal: AbortSignal.timeout(MAIL_PROVIDER_TIMEOUT_MS),
         headers: {
           authorization: `Bearer ${config.mailApiKey ?? ""}`,
           "content-type": "application/json",
@@ -141,9 +137,7 @@ function throughResend(config: MailConfig): Postman {
       if (!answered.ok) {
         // The status and nothing else. What comes back can carry the address it
         // was refused for, and a log goes places the database does not.
-        console.error(
-          `[cabinet] a message to ${message.to} was refused by the mail provider (${answered.status})`,
-        );
+        console.error(`[cabinet] mail provider refused a message (${answered.status})`);
         return "refused";
       }
       // The other half of the same sentence, and the reason it is here: every
@@ -153,14 +147,12 @@ function throughResend(config: MailConfig): Postman {
       // nobody ever asked about. "Handed to" and not "sent": there is no inbox
       // here and no bounce handler, so what the provider did with it after
       // this is not something this process ever learns.
-      console.log(`[cabinet] a message to ${message.to} was handed to the mail provider`);
+      console.log("[cabinet] mail provider accepted a message");
       return "accepted";
-    } catch (thrown) {
-      // `String` and not the object: an exception from `fetch` prints its causes
-      // too, and a request that failed mid-flight has the whole document it was
-      // sending hanging off it — including the link, which is the one thing in
-      // this file that must not be written down twice.
-      console.error(`[cabinet] a message to ${message.to} could not be sent: ${String(thrown)}`);
+    } catch {
+      // The exception is deliberately not printed. A fetch implementation may
+      // attach its request body, including the recipient and action URL.
+      console.error("[cabinet] mail provider could not be reached");
       return "refused";
     }
   };

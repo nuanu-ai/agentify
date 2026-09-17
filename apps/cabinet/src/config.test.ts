@@ -16,6 +16,7 @@ const REQUIRED = {
   AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
   PAYMENT_NETWORK: "eip155:84532",
   FACILITATOR_URL: "sandbox:scripted",
+  REGISTRATION_INVITATION: "the-existing-gateway-process-secret",
 };
 
 const given = (environment: Record<string, string> = {}): Record<string, string> => ({
@@ -24,6 +25,12 @@ const given = (environment: Record<string, string> = {}): Record<string, string>
 });
 
 describe("what the cabinet will not start without", () => {
+  it("requires the existing gateway invitation as a process secret", () => {
+    const { REGISTRATION_INVITATION: _absent, ...withoutInvitation } = given();
+
+    expect(() => loadConfig(withoutInvitation)).toThrow(/REGISTRATION_INVITATION/);
+    expect(loadConfig(given()).gatewayInvitation).toBe("the-existing-gateway-process-secret");
+  });
   it("refuses to start with nothing to sign a session with", () => {
     // The component that signs people in has a fallback of its own, and a
     // deployment that leaned on it would be running on a value written in
@@ -69,6 +76,7 @@ describe("the cabinet is told which stack it is in front of", () => {
     AUTH_SECRET: "a-secret-that-is-at-least-thirty-two-characters",
     PAYMENT_NETWORK: "eip155:84532",
     FACILITATOR_URL: "sandbox:scripted",
+    REGISTRATION_INVITATION: "the-existing-gateway-process-secret",
   };
 
   it("runs the same derivation its gateway runs", () => {

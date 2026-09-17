@@ -10,17 +10,16 @@
  * cabinet, by being an ordinary consumer of the API, cannot draw a screen the
  * merchant could not have built themselves.
  *
- * The four tables it does hold are its own: the people who sign in, their
- * sessions, their passwords and the one-time links they are sent (ADR-0009).
- * None of that is a merchant's data and no API carries any of it. One column on
- * the first of them is the key that account reaches the gateway with (ADR-0014
- * §2), which is what makes two accounts here two merchants rather than two
- * people looking at one.
+ * Its identity tables are its own: the people who sign in, their sessions,
+ * one-time links and privacy-bounded send evidence. The component's credential
+ * table remains empty after password removal. None of that is a merchant's
+ * catalogue data and no public API carries it. One column on the person is the
+ * key that account reaches the gateway with (ADR-0014 §2), which is what makes
+ * two accounts here two merchants rather than two people looking at one.
  */
 
 export { runAccount, type Terminal } from "./account-command.js";
 export { type CabinetConfig, loadConfig } from "./config.js";
-export { MINIMUM_PASSWORD_LENGTH, newPassword } from "./credentials.js";
 export { connect, migrateAccounts } from "./database.js";
 export {
   type Answer,
@@ -32,10 +31,16 @@ export {
 export {
   type AccountMerchant,
   type AccountSummary,
+  type AttachMerchantResult,
+  type CabinetDestination,
+  type CabinetIdentity,
+  type CabinetLinkResult,
   emailAs,
   type Identity,
   type IdentityParts,
   identityFor,
+  type LinkRequestResult,
+  type MerchantKeyReplacement,
   type Person,
 } from "./identity.js";
 export { keysScreen, newKeyScreen } from "./keys.js";

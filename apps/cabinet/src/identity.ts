@@ -1,626 +1,471 @@
 /**
- * Who is signed into the cabinet, and everything that follows from that.
+ * Cabinet identity behind one emailed-link door.
  *
- * ADR-0009 hands the whole of it to Better Auth, running in this process
- * against this cabinet's own Postgres: the passwords, the sessions, the link
- * that confirms an address and the link that replaces a forgotten password.
- * What is written here is not a second implementation of any of that. It is the
- * translation between the cabinet's handlers and the component's server-side
- * API, plus the two things the component has no opinion about — which merchant
- * an account signs in for, and what to do when a browser arrives holding more
- * than one cookie of the same name.
- *
- * The component's own HTTP routes are deliberately not mounted anywhere. Every
- * call in this file is made from one of our handlers, with a body we built out
- * of a form we parsed, and the cookie it produces is passed on by us. Three
- * things follow from that and each is worth having. The cabinet keeps working
- * with no JavaScript, which is ADR-0005 §4 and is why the screens are forms in
- * the first place. There is no JSON surface for anybody to find, so the
- * merchant's key — which is a column on the same row as the address, and which
- * the component would happily include in a session document — has nowhere to
- * come out. And the one-time links we send are ours, pointing at pages in this
- * cabinet, rather than at endpoints that do not exist.
- *
- * The store behind it is chosen by whoever builds this. A deployment gives it
- * drizzle over Postgres; the cabinet's own tests give it the component's memory
- * store, so `pnpm test` stays free, offline and deterministic while still
- * driving the real component.
+ * Better Auth owns token consumption, people and sessions. Its generated HTTP
+ * routes stay unmounted: the cabinet sends the link itself and calls the
+ * component only from the same-origin POST owned by the SSR server. Production
+ * verification runs on a transaction-bound Drizzle adapter; the deterministic
+ * memory store runs the same component against an isolated transaction copy.
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { APIError } from "better-auth/api";
 import { getCookies } from "better-auth/cookies";
-import { createLocalAccountIssuer } from "better-auth/db";
+import { magicLink } from "better-auth/plugins/magic-link";
+import { and, asc, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
+import type {
+  AccountMerchant,
+  AttachMerchantResult,
+  CabinetDestination,
+  CabinetIdentity,
+  CabinetLinkResult,
+  LinkRequestResult,
+  MerchantPerson,
+  Person,
+  UnattachedPerson,
+} from "./cabinet-entry.js";
 import type { CabinetConfig } from "./config.js";
-import { MINIMUM_PASSWORD_LENGTH } from "./credentials.js";
-import { type Handover, type Message, type Postman, postmanFor } from "./mail.js";
+import { type Message, type Postman, postmanFor } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
-import { accounts, credentials, sessions, verifications } from "./schema.js";
+import { accounts, credentials, linkSends, sessions, verifications } from "./schema.js";
 
-/**
- * The merchant an account belongs to, and the key it reaches the gateway with.
- *
- * The key is the secret exactly as the gateway issued it, which makes this a
- * secret at rest. ADR-0014 §2 argues why that is accepted and what it does not
- * buy, and the short of it is that it is the same secret that used to sit in the
- * cabinet's environment, moved from a file into a row so that it can be revoked
- * one merchant at a time. What follows from it is a rule for everything above
- * this file: this value never reaches a page, a log or the text of an error.
- */
-export interface AccountMerchant {
-  readonly id: string;
-  readonly key: string;
-}
+export type {
+  AccountMerchant,
+  AttachMerchantResult,
+  CabinetDestination,
+  CabinetIdentity,
+  CabinetLinkResult,
+  LinkRequestResult,
+  MerchantKeyReplacement,
+  MerchantPerson,
+  Person,
+  UnattachedPerson,
+} from "./cabinet-entry.js";
 
-/** A person who can sign in, as the rest of the cabinet needs to know them. */
-export interface Person {
-  readonly id: string;
-  /** Lower case and trimmed, which is how it is stored and how it is looked up. */
-  readonly email: string;
-  /**
-   * Whether anybody has shown they can read mail sent to that address.
-   *
-   * Every screen says which it is, and one thing turns on it: an unconfirmed
-   * address cannot be sent a new password. Nothing else in the cabinet asks.
-   */
-  readonly confirmed: boolean;
-  /**
-   * Whose cabinet this is, or null for an account made before there were any.
-   *
-   * Null is not a state anybody can sign in from — there is no key to draw a
-   * single screen with — and the sign-in says so in a sentence naming what to
-   * run instead.
-   */
-  readonly merchant: AccountMerchant | null;
-}
-
-/** What the command line prints about an account, which is never its password. */
 export interface AccountSummary {
   readonly email: string;
   readonly createdAt: Date;
-  /** How many of that person's sessions have not expired. */
   readonly sessions: number;
-  /**
-   * The identifier of the merchant this account's screens show, or null.
-   *
-   * The identifier and not the key. One is the answer to "which catalogue is
-   * this person looking at", which is the question somebody reading the listing
-   * has; the other is a secret, and this listing is printed to a terminal.
-   */
   readonly merchant: string | null;
-  /** Whether the address has been confirmed, which is what recovery needs. */
   readonly confirmed: boolean;
 }
 
-/** A session opened, with the header lines that put it in a browser. */
-export interface Opened {
-  readonly person: Person;
-  /** `Set-Cookie` lines exactly as the component wrote them. */
-  readonly cookies: readonly string[];
-}
-
-/** What a sign-in came to. */
-export type SignIn =
-  | { readonly ok: true; readonly opened: Opened }
-  /** The address and the password do not name an account. */
-  | { readonly ok: false; readonly why: "refused" }
-  /** They do, and there is no merchant on it, so no screen can be drawn. */
-  | { readonly ok: false; readonly why: "no-merchant" };
-
-/** What a registration came to. */
-export type Registration =
-  | { readonly ok: true; readonly opened: Opened }
-  /** The address already has an account. */
-  | { readonly ok: false; readonly why: "taken" }
-  /**
-   * The account was made and the merchant could not be written onto it, and
-   * the account has been taken away again so the address is free.
-   */
-  | { readonly ok: false; readonly why: "undone" }
-  /** The same, and taking it away failed too, so the address is not free. */
-  | { readonly ok: false; readonly why: "stranded" };
-
-export interface Identity {
-  /**
-   * The names the component's cookies travel under.
-   *
-   * Read from the component rather than written out here, so that the cabinet
-   * clears exactly what it sets. There is more than one: beside the session
-   * itself the component keeps two of its own, and a sign-out that cleared only
-   * the first would leave the others in the browser for good.
-   */
-  readonly cookieNames: readonly string[];
-  /** The floor under a password somebody chooses for themselves. */
-  readonly shortestPassword: number;
-
-  signIn(email: string, password: string): Promise<SignIn>;
-  /**
-   * Makes an account for a merchant that already exists, and signs it in.
-   *
-   * The merchant is written in the same act rather than added afterwards. If
-   * that second write fails the account is taken away again, because an account
-   * with no merchant on it is one somebody can sign into and see nothing at all
-   * with — and the address it holds is one nobody else can register.
-   */
-  register(email: string, password: string, merchant: AccountMerchant): Promise<Registration>;
-  /**
-   * Moves an account's row from the key that was read off it to a fresh one.
-   *
-   * ADR-0014 §2: the key is made afresh at every sign-in, so that a copy of
-   * this database is a set of keys that stops working rather than one that
-   * works for good. The merchant is not touched — it is the same merchant,
-   * reached with another of their keys.
-   *
-   * `expected` is what the caller read off the row before it asked the gateway
-   * for `fresh`, and the write happens only while the row still holds it. That
-   * condition is the whole point and it is the database's own, one statement:
-   * a read followed by a write is the same gap in a smaller costume, and the
-   * gap is what two sign-ins fall through. Two callers holding the same read
-   * cannot both win.
-   *
-   * True is this row moved, and it is also what tells the caller which key it
-   * has finished with — the write and that answer are one act, because a caller
-   * that acted on a write it had not made would be putting the key the row
-   * actually names beyond use. False is every other outcome, whatever the reason: another
-   * sign-in got there first, somebody put a different key on the row from a
-   * terminal, or the row is not there at all. It is answered rather than
-   * thrown because the caller has to carry on — the row names a key that
-   * works, and signing somebody in matters more than replacing it.
-   */
-  replaceMerchantKey(personId: string, expected: string, fresh: string): Promise<boolean>;
-  /**
-   * Whose session this cookie header carries, having asked the component.
-   *
-   * Null covers every way of not being signed in and does not distinguish them.
-   */
-  whoIs(cookieHeader: string | undefined): Promise<Person | null>;
-  /** Ends every session this header carries, and answers how many that was. */
-  signOut(cookieHeader: string | undefined): Promise<number>;
-  /**
-   * Changes a password, ending every session including the one that asked.
-   *
-   * The two refusals are told apart because the screen has a different sentence
-   * for each, and neither of them says anything a visitor could not read off
-   * the form itself: the length rule is printed on the page.
-   */
-  changePassword(
-    cookieHeader: string | undefined,
-    current: string,
-    fresh: string,
-  ): Promise<"changed" | "wrong-current" | "too-short">;
-  /**
-   * Sends a link that replaces a forgotten password, if there is anybody to
-   * send it to and their address has been confirmed.
-   *
-   * It answers nothing, on purpose. What the screen says has to be the same
-   * sentence whether or not that address has an account here, so there is
-   * nothing for a caller to branch on and nothing for it to leak.
-   */
-  askForANewPassword(email: string): Promise<void>;
-  /** Spends a link and sets the password on it. False when the link is spent. */
-  setPasswordFrom(token: string, password: string): Promise<boolean>;
-  /**
-   * Sends the link that confirms an address, to whoever is signed in, and says
-   * whether the provider took it.
-   *
-   * `"refused"` covers the address that was already confirmed as well as the
-   * provider that would not have the message, because nothing was sent either
-   * way and the caller's one question is whether it may say a link went out.
-   */
-  askToConfirm(email: string): Promise<Handover>;
-  /** Spends a confirmation link. False when it is not one we handed out. */
-  confirm(token: string): Promise<boolean>;
-
-  /** Makes an account without signing anybody in, for the command. */
-  make(email: string, password: string, merchant: AccountMerchant): Promise<Person | null>;
-  /** Sets a password from the command, ending every session that person had. */
-  replacePassword(email: string, password: string): Promise<boolean>;
+/** Operator-only operations kept out of the page-facing identity port. */
+export interface Identity extends CabinetIdentity {
+  make(email: string, merchant: AccountMerchant): Promise<Person | null>;
   byEmail(email: string): Promise<Person | null>;
-  /**
-   * One account by its identifier, for the one reader that has an identifier
-   * and no session: the worker that fills a WooCommerce merchant's orders.
-   *
-   * It is not a session and must never stand in for one. What it answers is
-   * "which merchant does this row sell as, and with which key", asked about a
-   * row the cabinet itself wrote down earlier — the connection to somebody's
-   * shop — rather than about whoever is holding a browser.
-   */
   byId(personId: string): Promise<Person | null>;
   endEverySessionFor(email: string): Promise<number>;
   list(now: Date): Promise<readonly AccountSummary[]>;
   close(): Promise<void>;
 }
 
-/**
- * One address, however it was typed.
- *
- * Applied here rather than above, so that no caller can be the one that
- * forgets. A person who signs in as "Dmitry@Example.com " is the person whose
- * account was made as "dmitry@example.com". The component lower-cases on its
- * own; the trim is ours, because a trailing space in a form field is a thing
- * people actually type.
- */
 export const emailAs = (raw: string): string => raw.trim().toLowerCase();
 
-/**
- * How long a person stays signed in, from the moment they sign in.
- *
- * A working day and a bit, so somebody who signed in at nine is still signed in
- * at six and somebody who left a browser open over a weekend is not. It is
- * never extended, which is what `disableSessionRefresh` below buys: a sliding
- * window would mean a session that never ends as long as a tab stays in front
- * of somebody, which is the case it exists to catch.
- */
 const SESSION_HOURS = 12;
+export const LINK_TTL_SECONDS = 60 * 60;
+export const LINK_RATE_WINDOW_MS = 60 * 60 * 1000;
+export const LINK_RATE_LIMIT = 3;
+export const LINK_SEND_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const RAW_TOKEN = /^[A-Za-z0-9]{32}$/;
 
-/** How long a link we send is worth following. */
-const LINK_MINUTES = 60;
+type MemoryRows = Record<string, Record<string, unknown>[]>;
 
-/**
- * What the component is given, beyond the configuration.
- *
- * The store is a parameter because the cabinet's own tests run against the
- * component's memory store and a deployment runs against Postgres, and both are
- * the same component with the same behaviour in front of them.
- */
 export interface IdentityParts {
-  /** The database the four tables live in, or nothing for the memory store. */
   readonly pool?: Pool;
-  /**
-   * The rows the memory store keeps, when there is no database.
-   *
-   * Handed in rather than made here so that a caller can look at what the
-   * component wrote and can put a row into a state no call would produce — an
-   * account with no merchant on it, which is a real row on a deployed server
-   * and cannot be made through any door the cabinet has. Ignored entirely when
-   * a pool is given.
-   */
-  readonly rows?: Record<string, Record<string, unknown>[]>;
-  /** Where a message goes, with the configured sender as the default. */
+  readonly rows?: MemoryRows;
   readonly postman?: Postman;
 }
+
+type CabinetClaim = Readonly<{
+  email: string;
+  purpose: "cabinet";
+  destination: CabinetDestination;
+}>;
+
+type LinkSend = {
+  readonly claim: CabinetClaim;
+  handed: "accepted" | "refused";
+};
+
+type StoredVerification = {
+  value: string;
+  expiresAt: Date;
+};
+
+const schema = {
+  cabinet_accounts: accounts,
+  cabinet_sessions: sessions,
+  cabinet_credentials: credentials,
+  cabinet_verifications: verifications,
+};
+
+class DeliveryRefused extends Error {}
+class VerificationRefused extends Error {}
 
 export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): Identity {
   const postman = parts.postman ?? postmanFor(config);
   const base = `${config.publicBaseUrl}${config.basePath}`;
-  /**
-   * Where the confirmation send writes what became of it, for the one call that
-   * asked for it.
-   *
-   * The component decides when to send and calls back into a function written
-   * once, here, when this cabinet is built — so a plain variable beside it
-   * would be a single slot shared by everybody pressing the button at the same
-   * moment, and the merchant whose provider refused would read that their link
-   * had gone out. This is per-call by construction, which is the whole reason
-   * it is not an ordinary `let`.
-   */
-  const confirmations = new AsyncLocalStorage<{ handed: Handover }>();
+  const originHeaders = new Headers({ origin: new URL(config.publicBaseUrl).origin });
+  const sending = new AsyncLocalStorage<LinkSend>();
+  const memoryRows =
+    parts.rows ??
+    ({
+      cabinet_accounts: [],
+      cabinet_sessions: [],
+      cabinet_credentials: [],
+      cabinet_verifications: [],
+      cabinet_link_sends: [],
+    } satisfies MemoryRows);
 
-  const options = {
-    // The component builds no address the cabinet uses — every link in every
-    // message is written below, out of the token it hands us — but it will not
-    // start without one, and one that disagreed with the links would be a
-    // second answer to "where is this cabinet" waiting to be picked up.
-    baseURL: base,
-    secret: config.authSecret,
-    // Switched off rather than left at its default, which is ADR-0009's own
-    // sentence about it: a default we depend on can change under us, and
-    // `pnpm test` refuses any request that leaves this process, so a version
-    // that started phoning home would fail the suite rather than the merchant.
-    telemetry: { enabled: false },
-    database:
-      parts.pool === undefined
-        ? memoryAdapter(parts.rows ?? { user: [], session: [], account: [], verification: [] })
-        : drizzleAdapter(drizzle(parts.pool), {
-            provider: "pg",
-            // Keyed by the table names below rather than by the component's own
-            // words for them, because that is what it looks these up under once
-            // the tables have been given names of ours.
-            schema: {
-              cabinet_accounts: accounts,
-              cabinet_sessions: sessions,
-              cabinet_credentials: credentials,
-              cabinet_verifications: verifications,
-            },
-          }),
-    emailAndPassword: {
-      enabled: true,
-      // Registering signs the person in where they stand (ADR-0009): a
-      // registration that ends at a sign-in page is a password typed twice for
-      // no reason.
-      autoSignIn: true,
-      // Nothing waits for a message. An account works the day it is made and
-      // what its owner lacks until the address is confirmed is recovery.
-      requireEmailVerification: false,
-      minPasswordLength: MINIMUM_PASSWORD_LENGTH,
-      // A password is replaced because the old one is not trusted, and a session
-      // opened with it is exactly what must not outlive it.
-      revokeSessionsOnPasswordReset: true,
-      resetPasswordTokenExpiresIn: LINK_MINUTES * 60,
-      sendResetPassword: async ({ user, token }) => {
-        // The one place confirming an address buys anything. A link sent to an
-        // address nobody has proved they can read is a link to whoever
-        // registered with somebody else's address, and it replaces a password.
-        // The token is made either way and simply expires unfollowed, so the
-        // screen that asked for it can answer identically in both cases.
-        if (user.emailVerified !== true) {
-          console.log(
-            "[cabinet] a new password was asked for, for an address nobody has confirmed;" +
-              " nothing was sent",
-          );
-          return;
-        }
-        await postman(newPasswordMessage(user.email, `${base}/password/new?token=${token}`));
+  const optionsFor = (database: BetterAuthOptions["database"]) =>
+    ({
+      baseURL: base,
+      secret: config.authSecret,
+      telemetry: { enabled: false },
+      database,
+      user: {
+        modelName: "cabinet_accounts",
+        additionalFields: {
+          merchantId: { type: "string", required: false, input: false },
+          merchantKey: { type: "string", required: false, input: false },
+        },
       },
-    },
-    emailVerification: {
-      expiresIn: LINK_MINUTES * 60,
-      // Not on sign-up. A merchant registering is signed in and shown a banner;
-      // the message is sent when they press the control on it, so that a
-      // registration does not depend on anybody's mail working.
-      sendOnSignUp: false,
-      sendOnSignIn: false,
-      sendVerificationEmail: async ({ user, token }) => {
-        const handed = await postman(confirmMessage(user.email, `${base}/confirm?token=${token}`));
-        // Only the call that asked is told, and only if it is still listening.
-        // The component may reach this from somewhere nobody set a slot up for,
-        // and a send with nobody waiting on it is still a send.
-        const asked = confirmations.getStore();
-        if (asked !== undefined) {
-          asked.handed = handed;
-        }
+      session: {
+        modelName: "cabinet_sessions",
+        expiresIn: SESSION_HOURS * 60 * 60,
+        disableSessionRefresh: true,
       },
-    },
-    user: {
-      modelName: "cabinet_accounts",
-      additionalFields: {
-        // `input: false` says these are never taken from anything a person
-        // typed. They are written by the cabinet, from what the gateway
-        // answered, in the one place a registration is completed.
-        merchantId: { type: "string", required: false, input: false },
-        merchantKey: { type: "string", required: false, input: false },
+      account: { modelName: "cabinet_credentials" },
+      verification: { modelName: "cabinet_verifications" },
+      advanced: {
+        cookiePrefix: "agentify",
+        defaultCookieAttributes: {
+          path: config.basePath === "" ? "/" : config.basePath,
+          sameSite: "strict",
+          httpOnly: true,
+          secure: config.cookieSecure,
+        },
       },
-    },
-    session: {
-      modelName: "cabinet_sessions",
-      expiresIn: SESSION_HOURS * 60 * 60,
-      disableSessionRefresh: true,
-    },
-    account: { modelName: "cabinet_credentials" },
-    verification: { modelName: "cabinet_verifications" },
-    advanced: {
-      // So that the cookie says whose it is in a browser that may be holding
-      // cookies from the landing and the documentation on the same origin.
-      cookiePrefix: "agentify",
-      defaultCookieAttributes: {
-        // Scoped to the cabinet's own path rather than the whole origin, which
-        // is ADR-0009: behind Caddy the cabinet shares an origin with the
-        // landing, the documentation and the gateway's `/v0`, and a session
-        // widened to the origin would ride along on every call to the money
-        // path. That is also why the name cannot take the `__Host-` prefix,
-        // which a browser only stores at a path of `/`.
-        path: config.basePath === "" ? "/" : config.basePath,
-        sameSite: "strict",
-        httpOnly: true,
-        secure: config.cookieSecure,
-      },
-    },
-  } satisfies BetterAuthOptions;
+      plugins: [
+        magicLink({
+          expiresIn: LINK_TTL_SECONDS,
+          storeToken: "hashed",
+          async sendMagicLink({ email, token, metadata }, context) {
+            const active = sending.getStore();
+            const claim = cabinetClaim(metadata);
+            if (
+              active === undefined ||
+              claim === null ||
+              claim.email !== email ||
+              claim.email !== active.claim.email ||
+              claim.destination !== active.claim.destination
+            ) {
+              throw new Error("cabinet_link_claim_missing");
+            }
+            const stored = await context?.context.adapter.update<StoredVerification>({
+              model: "verification",
+              where: [{ field: "identifier", value: tokenHash(token) }],
+              update: { value: JSON.stringify(claim) },
+            });
+            if (stored === null || stored === undefined) {
+              throw new Error("cabinet_link_storage_missing");
+            }
+            const action = new URL(`${base}/sign-in/open`);
+            action.searchParams.set("token", token);
+            active.handed = await postman(cabinetLinkMessage(email, action.toString()));
+          },
+        }),
+      ],
+    }) satisfies BetterAuthOptions;
 
-  const auth = betterAuth(options);
-  // The names and the four settings of every cookie the component sets, worked
-  // out from the same options object it was built with. Reading them off the
-  // options rather than writing them out again is what keeps the cabinet
-  // clearing exactly what the component sets, on exactly the path it set it.
-  const cookies = getCookies(options);
+  const authFor = (database: BetterAuthOptions["database"]) => betterAuth(optionsFor(database));
+  const rootDatabase =
+    parts.pool === undefined
+      ? memoryAdapter(memoryRows)
+      : drizzleAdapter(drizzle(parts.pool), { provider: "pg", schema });
+  const auth = authFor(rootDatabase);
+  const cookies = getCookies(optionsFor(rootDatabase));
   const sessionCookie = cookies.sessionToken.name;
 
-  const contextOf = async () => await auth.$context;
+  // The memory adapter is for deterministic tests and local work. Queueing its
+  // transaction copies gives it all-or-nothing behavior; PostgreSQL remains the
+  // authority for concurrent row locking.
+  let memoryTail: Promise<void> = Promise.resolve();
+  const inMemoryTransaction = async <T>(
+    work: (bound: typeof auth, rows: MemoryRows) => Promise<T>,
+  ): Promise<T> => {
+    const run = async (): Promise<T> => {
+      const cloned = structuredClone(memoryRows);
+      const result = await work(authFor(memoryAdapter(cloned)), cloned);
+      for (const key of new Set([...Object.keys(memoryRows), ...Object.keys(cloned)])) {
+        if (cloned[key] === undefined) delete memoryRows[key];
+        else memoryRows[key] = cloned[key];
+      }
+      return result;
+    };
+    const result = memoryTail.then(run, run);
+    memoryTail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return await result;
+  };
 
-  const personFrom = (user: {
-    id: string;
-    email: string;
-    emailVerified: boolean;
-    merchantId?: unknown;
-    merchantKey?: unknown;
-  }): Person => {
-    const id =
-      typeof user.merchantId === "string" && user.merchantId !== "" ? user.merchantId : null;
-    const key =
-      typeof user.merchantKey === "string" && user.merchantKey !== "" ? user.merchantKey : null;
+  const requestWith = async (
+    bound: typeof auth,
+    email: string,
+    destination: CabinetDestination,
+  ): Promise<LinkRequestResult> => {
+    const active: LinkSend = {
+      claim: { email, purpose: "cabinet", destination },
+      handed: "refused",
+    };
+    await sending.run(active, async () => {
+      await bound.api.signInMagicLink({
+        headers: originHeaders,
+        body: { email, metadata: active.claim },
+      });
+    });
+    if (active.handed !== "accepted") throw new DeliveryRefused();
+    return { status: "accepted" };
+  };
+
+  const openWith = async (
+    bound: typeof auth,
+    token: string,
+    lockEmail?: (email: string) => Promise<void>,
+  ): Promise<CabinetLinkResult> => {
+    if (!RAW_TOKEN.test(token)) return { status: "refused" };
+    const context = await bound.$context;
+    const stored = await context.adapter.findOne<StoredVerification>({
+      model: "verification",
+      where: [{ field: "identifier", value: tokenHash(token) }],
+    });
+    if (stored === null || new Date(stored.expiresAt).getTime() <= Date.now()) {
+      return { status: "refused" };
+    }
+    const claim = cabinetClaimFrom(stored.value);
+    if (claim === null) return { status: "refused" };
+    await lockEmail?.(claim.email);
+
+    const verify = async () =>
+      await bound.api.magicLinkVerify({
+        returnHeaders: true,
+        query: { token },
+        headers: originHeaders,
+      });
+    let opened: Awaited<ReturnType<typeof verify>>;
+    try {
+      opened = await verify();
+    } catch (thrown) {
+      if (thrown instanceof APIError) throw new VerificationRefused();
+      throw thrown;
+    }
+    if (opened.response.user.email !== claim.email || opened.response.user.emailVerified !== true) {
+      throw new VerificationRefused();
+    }
     return {
-      id: user.id,
-      email: user.email,
-      confirmed: user.emailVerified === true,
-      // Both columns or neither. A row with one of them filled in is a row
-      // nothing can be done with — an identifier with no key draws no screen,
-      // and a key with no identifier names nothing — so it reads as an account
-      // with no merchant, which is a state the sign-in has a sentence for.
-      merchant: id === null || key === null ? null : { id, key },
+      status: "opened",
+      person: personFrom(opened.response.user),
+      destination: claim.destination,
+      setCookies: opened.headers.getSetCookie(),
     };
   };
 
-  /**
-   * Every value a request carried under the session cookie's name.
-   *
-   * The header is parsed here rather than by a middleware, because this is the
-   * only cookie the cabinet reads and one cookie read in one place is smaller
-   * than a dependency.
-   *
-   * A browser can send several cookies of one name, and that is the case this
-   * exists for. A page anywhere on the registrable domain can set a cookie of
-   * this name at a broader domain or a broader path, and the browser then sends
-   * it here beside the merchant's own; nothing the cabinet can send takes it
-   * back. So every value is kept and each is asked about separately — a rule
-   * that refused a request for carrying two would meet the planted one again on
-   * every redirect and every fresh sign-in, and the merchant would be locked out
-   * of the control that stops their selling for as long as that cookie lived,
-   * which is for good.
-   *
-   * There is deliberately no cap on how many are considered, for the same
-   * reason. Any cap is a way in: a browser sends cookies with the longest path
-   * first and, among equal paths, the oldest first, so somebody able to plant
-   * cookies could push the merchant's own past the cap. What bounds this is the
-   * runtime, which stops reading a request's headers at 16 KB — and what makes
-   * the bound cheap is that the component checks its own signature over a value
-   * before it goes anywhere near the database, so a pile of planted junk under
-   * this name costs a pile of comparisons and not one query.
-   */
+  const makeWith = async (
+    bound: typeof auth,
+    email: string,
+    merchant: AccountMerchant,
+  ): Promise<Person | null> => {
+    const context = await bound.$context;
+    if ((await context.internalAdapter.findUserByEmail(email)) !== null) return null;
+    const made = await context.internalAdapter.createUser(
+      {
+        email,
+        emailVerified: false,
+        name: "",
+        merchantId: merchant.id,
+        merchantKey: merchant.key,
+      },
+      { method: "operator" },
+    );
+    return personFrom(made);
+  };
+
   const valuesIn = (cookieHeader: string | undefined): readonly string[] => {
-    if (cookieHeader === undefined) {
-      return [];
-    }
+    if (cookieHeader === undefined) return [];
     const found = new Set<string>();
     for (const pair of cookieHeader.split(";")) {
       const at = pair.indexOf("=");
-      if (at === -1 || pair.slice(0, at).trim() !== sessionCookie) {
-        continue;
-      }
+      if (at === -1 || pair.slice(0, at).trim() !== sessionCookie) continue;
       const value = pair.slice(at + 1).trim();
-      if (value !== "") {
-        found.add(value);
-      }
+      if (value !== "") found.add(value);
     }
     return [...found];
   };
-
-  /** One cookie header carrying exactly one of those values. */
   const asHeaders = (value: string): Headers =>
     new Headers({ cookie: `${sessionCookie}=${value}` });
-
-  /**
-   * Every live session this header carries, with the cookie it came in on.
-   *
-   * The value is kept beside the person because the one call that needs a
-   * session — changing a password — has to hand the component a cookie rather
-   * than an identifier, and picking one out of the header a second time would
-   * be a second chance to pick a different one.
-   */
+  const contextOf = async () => await auth.$context;
   const liveOnesIn = async (
     cookieHeader: string | undefined,
-  ): Promise<readonly { value: string; token: string; person: Person }[]> => {
-    const live: { value: string; token: string; person: Person }[] = [];
+  ): Promise<readonly { token: string; person: Person }[]> => {
+    const live: { token: string; person: Person }[] = [];
     for (const value of valuesIn(cookieHeader)) {
       const found = await auth.api.getSession({ headers: asHeaders(value) });
-      if (found !== null) {
-        live.push({ value, token: found.session.token, person: personFrom(found.user) });
-      }
+      if (found !== null) live.push({ token: found.session.token, person: personFrom(found.user) });
     }
     return live;
   };
-
   const endSession = async (token: string): Promise<void> => {
     await (await contextOf()).internalAdapter.deleteSession(token);
   };
 
   return {
-    // Read off the component rather than written out here, so the cabinet
-    // clears exactly what the component sets. Every one of them: beside the
-    // session there are two more, and clearing only the first would leave the
-    // others in a browser for good.
     cookieNames: [
       cookies.sessionToken.name,
       cookies.sessionData.name,
       cookies.dontRememberToken.name,
     ],
-    shortestPassword: MINIMUM_PASSWORD_LENGTH,
 
-    async signIn(email, password) {
-      // The refusal is caught around the call and turned into one answer.
-      // The component already answers a wrong password and an address nobody
-      // has identically and in the same time — it derives against the password
-      // it was given even when there is nobody to compare it to — and nothing
-      // here unpacks that back into two.
-      const signed = await orNull(
-        auth.api.signInEmail({
-          returnHeaders: true,
-          body: { email: emailAs(email), password },
-        }),
-      );
-      if (signed === null) {
-        return { ok: false, why: "refused" };
+    async requestLink(rawEmail, destination) {
+      const email = emailAs(rawEmail);
+      try {
+        if (parts.pool === undefined) {
+          return await inMemoryTransaction(async (bound, rows) => {
+            const limited = memoryRate(rows, rateKey(config.authSecret, email), "cabinet");
+            if (limited !== null) return { status: "cooldown", retryAt: limited };
+            return await requestWith(bound, email, destination);
+          });
+        }
+        const db = drizzle(parts.pool, {
+          schema: { accounts, credentials, linkSends, sessions, verifications },
+        });
+        return await db.transaction(async (tx) => {
+          const limited = await postgresRate(tx, rateKey(config.authSecret, email), "cabinet");
+          if (limited !== null) return { status: "cooldown", retryAt: limited };
+          return await requestWith(
+            authFor(drizzleAdapter(tx, { provider: "pg", schema })),
+            email,
+            destination,
+          );
+        });
+      } catch (thrown) {
+        if (thrown instanceof DeliveryRefused) return { status: "unavailable" };
+        throw thrown;
       }
-
-      const person = personFrom(signed.response.user);
-      if (person.merchant === null) {
-        // The password was right and there is still nothing to show. The
-        // session the component just opened is ended rather than handed over:
-        // an account that cannot draw a screen must not leave a live session
-        // behind it, because that session is then the thing standing in front
-        // of both doors out.
-        await endSession(signed.response.token);
-        return { ok: false, why: "no-merchant" };
-      }
-      return { ok: true, opened: { person, cookies: signed.headers.getSetCookie() } };
     },
 
-    async register(email, password, merchant) {
-      const made = await orNull(
-        auth.api.signUpEmail({
-          returnHeaders: true,
-          // The component asks for a display name and nothing in this cabinet
-          // has one to give: a person here is their address, and the one name a
-          // merchant chooses is the name buyers read, which lives at the
-          // gateway and is not this. An empty string rather than a copy of the
-          // address, because a copy would be a second place the address is
-          // written and a value somebody later mistakes for a chosen one.
-          body: { email: emailAs(email), password, name: "" },
-        }),
-      );
-      if (made === null) {
-        // The address already has an account. It is the only way this call
-        // fails on a form the cabinet has already checked, and the screen that
-        // shows it does not say which of its two refusals happened.
-        return { ok: false, why: "taken" };
-      }
-
-      const id = made.response.user.id;
-      const internal = (await contextOf()).internalAdapter;
+    async openLink(token) {
       try {
-        await internal.updateUser(id, { merchantId: merchant.id, merchantKey: merchant.key });
-      } catch (thrown) {
-        console.error(
-          "[cabinet] an account was made and its merchant could not be written",
-          thrown,
-        );
-        try {
-          // Taken away rather than left. An account with no merchant on it
-          // cannot draw a screen, and the address it holds is one nobody else
-          // can register — so leaving it turns a failed registration into a
-          // person who needs somebody at a terminal to get their address back.
-          await internal.deleteUser(id);
-        } catch (alsoThrown) {
-          console.error("[cabinet] and the account could not be taken away again", alsoThrown);
-          return { ok: false, why: "stranded" };
+        if (parts.pool === undefined) {
+          return await inMemoryTransaction(async (bound) => await openWith(bound, token));
         }
-        return { ok: false, why: "undone" };
+        const db = drizzle(parts.pool);
+        return await db.transaction(async (tx) => {
+          const bound = authFor(drizzleAdapter(tx, { provider: "pg", schema }));
+          return await openWith(bound, token, async (email) => {
+            await tx.execute(
+              sql`select pg_advisory_xact_lock(hashtextextended(${`cabinet-email:${email}`}, 0))`,
+            );
+          });
+        });
+      } catch (thrown) {
+        if (thrown instanceof VerificationRefused) return { status: "refused" };
+        throw thrown;
+      }
+    },
+
+    async whoIs(cookieHeader) {
+      const live = await liveOnesIn(cookieHeader);
+      if (live.length === 0) return null;
+      const owners = new Set(live.map((one) => one.person.id));
+      if (owners.size === 1) return live[0]?.person ?? null;
+      for (const one of live) await endSession(one.token);
+      console.log(
+        `[cabinet] a request carried live sessions of ${owners.size} different people;` +
+          " every one of them was ended and nobody was signed in",
+      );
+      return null;
+    },
+
+    async signOut(cookieHeader) {
+      const live = await liveOnesIn(cookieHeader);
+      for (const one of live) await endSession(one.token);
+      return live.length;
+    },
+
+    async attachMerchant(personId, register) {
+      if (parts.pool === undefined) {
+        return await inMemoryTransaction(async (_bound, rows) => {
+          const row = rows.cabinet_accounts?.find((one) => one.id === personId);
+          if (row === undefined) return { status: "person-missing" };
+          const person = personFrom(row as PersonRow);
+          if (person.merchant !== null) {
+            return { status: "already-attached", person: asMerchantPerson(person) };
+          }
+          const merchant = await register();
+          if (merchant === null) {
+            return { status: "unavailable", person: asUnattachedPerson(person) };
+          }
+          row.merchantId = merchant.id;
+          row.merchantKey = merchant.key;
+          row.updatedAt = new Date();
+          return {
+            status: "attached",
+            person: asMerchantPerson({ ...person, merchant }),
+          };
+        });
       }
 
-      return {
-        ok: true,
-        opened: {
-          person: { ...personFrom(made.response.user), merchant },
-          cookies: made.headers.getSetCookie(),
-        },
-      };
+      const db = drizzle(parts.pool, { schema: { accounts } });
+      return await db.transaction(async (tx): Promise<AttachMerchantResult> => {
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${`cabinet-person:${personId}`}, 0))`,
+        );
+        const row = (
+          await tx.execute<PersonRow>(sql`
+            select id, email, email_verified as "emailVerified", merchant_id as "merchantId",
+                   merchant_key as "merchantKey"
+            from cabinet_accounts where id = ${personId} for update
+          `)
+        ).rows[0];
+        if (row === undefined) return { status: "person-missing" };
+        const person = personFrom(row);
+        if (person.merchant !== null) {
+          return { status: "already-attached", person: asMerchantPerson(person) };
+        }
+        const merchant = await register();
+        if (merchant === null) {
+          return { status: "unavailable", person: asUnattachedPerson(person) };
+        }
+        const written = await tx
+          .update(accounts)
+          .set({ merchantId: merchant.id, merchantKey: merchant.key, updatedAt: new Date() })
+          .where(
+            and(
+              eq(accounts.id, personId),
+              isNull(accounts.merchantId),
+              isNull(accounts.merchantKey),
+            ),
+          )
+          .returning({ id: accounts.id });
+        if (written.length !== 1) throw new Error("cabinet_merchant_attachment_lost_lock");
+        return {
+          status: "attached",
+          person: asMerchantPerson({ ...person, merchant }),
+        };
+      });
     },
 
     async replaceMerchantKey(personId, expected, fresh) {
       try {
-        // The component's own `updateUser` takes an identifier and nothing
-        // else, so this goes to the adapter under it, where a write carries as
-        // many conditions as it is given. Both of them matter: the row is this
-        // person's, and it still holds what the caller read. Over Postgres that
-        // is one `update ... where id = $1 and merchant_key = $2`; over the
-        // store the tests run on it is the same filter. What is skipped by
-        // going around `updateUser` is a refresh of sessions held in secondary
-        // storage, which this cabinet does not have — there is no second store
-        // configured, and a session here is a row like any other.
         const written = await (await contextOf()).adapter.update<{ merchantKey?: unknown }>({
           model: "user",
           where: [
@@ -629,175 +474,33 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
           ],
           update: { merchantKey: fresh },
         });
-        // Read back from what the write answered rather than assumed from the
-        // absence of a throw. A conditional write that matched nothing is a
-        // write that did not happen, and it says so by answering with no row
-        // rather than by failing.
-        return written?.merchantKey === fresh;
-      } catch (thrown) {
-        console.error("[cabinet] a fresh gateway key could not be written onto a row", thrown);
-        return false;
+        return written?.merchantKey === fresh ? "replaced" : "not-matched";
+      } catch {
+        // A connection can fail after PostgreSQL commits the update. The caller
+        // must keep both keys when it cannot know which one the row holds.
+        console.error(
+          "[cabinet] the database could not establish whether a fresh gateway key was written",
+        );
+        return "unknown";
       }
     },
 
-    async whoIs(cookieHeader) {
-      const live = await liveOnesIn(cookieHeader);
-      if (live.length === 0) {
-        return null;
+    async make(rawEmail, merchant) {
+      const email = emailAs(rawEmail);
+      if (parts.pool === undefined) {
+        return await inMemoryTransaction(async (bound) => await makeWith(bound, email, merchant));
       }
-      const owners = new Set(live.map((one) => one.person.id));
-      if (owners.size === 1) {
-        return live[0]?.person ?? null;
-      }
-
-      // The cabinet genuinely cannot tell who is asking, and answering it
-      // wrongly would put the wrong name on the one record of who stopped the
-      // selling. Nobody is signed in — and every one of those sessions is
-      // ended, which is the half that matters: the cabinet cannot take a cookie
-      // out of a browser, but it can stop it being a session, so the next
-      // request carries a value nothing answers to and the plant is spent.
-      for (const one of live) {
-        await endSession(one.token);
-      }
-      console.log(
-        `[cabinet] a request carried live sessions of ${owners.size} different people` +
-          ` (${[...new Set(live.map((one) => one.person.email))].sort().join(", ")});` +
-          " every one of them was ended and nobody was signed in",
-      );
-      return null;
-    },
-
-    async signOut(cookieHeader) {
-      // The rows go, not merely the cookies. Clearing a cookie asks the browser
-      // to forget something; anybody who copied the value still holds a session.
-      // Every identifier the request carried, not the first one: a browser sends
-      // cookies of one name longest-path first, so the one this person is signed
-      // in on is not necessarily the first, and ending only that would be a
-      // sign-out that said it had worked and left the session alive.
-      const live = await liveOnesIn(cookieHeader);
-      for (const one of live) {
-        await endSession(one.token);
-      }
-      return live.length;
-    },
-
-    async changePassword(cookieHeader, current, fresh) {
-      const mine = (await liveOnesIn(cookieHeader))[0];
-      if (mine === undefined) {
-        // Only reachable below the gate, which has already established there is
-        // a live session here. Answered as a wrong password rather than thrown,
-        // because the alternative is a page saying the cabinet is broken to
-        // somebody whose session ended between two requests.
-        return "wrong-current";
-      }
-      try {
-        await auth.api.changePassword({
-          headers: asHeaders(mine.value),
-          body: { currentPassword: current, newPassword: fresh, revokeOtherSessions: true },
-        });
-      } catch (thrown) {
-        if (!(thrown instanceof APIError)) {
-          throw thrown;
-        }
-        return tooShort(thrown) ? "too-short" : "wrong-current";
-      }
-      // Every session that person had, including the one that asked and the
-      // fresh one the component hands back in its place. The screen promises
-      // exactly this — "it ends every session you have, on this device and any
-      // other" — and a password changed because the old one is not trusted is
-      // the reason to keep that promise rather than the convenient half of it.
-      await (await contextOf()).internalAdapter.deleteUserSessions(mine.person.id);
-      return "changed";
-    },
-
-    async askForANewPassword(email) {
-      try {
-        await auth.api.requestPasswordReset({ body: { email: emailAs(email) } });
-      } catch (thrown) {
-        // The one place a failure really is swallowed, and it has to be. The
-        // screen says the same sentence whatever happened, because a form that
-        // answered differently for an address nobody has would be a way of
-        // asking who sells here — so there is nothing a caller could do with
-        // this, and the log is where it goes.
-        console.error("[cabinet] a new password could not be asked for", thrown);
-      }
-    },
-
-    async setPasswordFrom(token, password) {
-      const set = await orNull(auth.api.resetPassword({ body: { token, newPassword: password } }));
-      return set !== null;
-    },
-
-    async askToConfirm(email) {
-      // The component's own refusal is swallowed and nothing else is. It
-      // refuses an address it has already confirmed, which is a person pressing
-      // a control that should not have been on their page any more; a database
-      // that will not answer is a different thing, and the merchant who pressed
-      // the button is entitled to be told that something here is broken rather
-      // than sent back to a page that looks as though it worked.
-      //
-      // Refused until something says otherwise, which is what a swallowed
-      // refusal has to mean: the callback below never ran, no message was
-      // written, and a slot that started out saying a link had gone would be
-      // this file telling the screen to send somebody to an empty mailbox.
-      const asked: { handed: Handover } = { handed: "refused" };
-      await confirmations.run(asked, async () => {
-        await orNull(auth.api.sendVerificationEmail({ body: { email: emailAs(email) } }));
+      const db = drizzle(parts.pool);
+      return await db.transaction(async (tx) => {
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${`cabinet-email:${email}`}, 0))`,
+        );
+        return await makeWith(
+          authFor(drizzleAdapter(tx, { provider: "pg", schema })),
+          email,
+          merchant,
+        );
       });
-      return asked.handed;
-    },
-
-    async confirm(token) {
-      return (await orNull(auth.api.verifyEmail({ query: { token } }))) !== null;
-    },
-
-    async make(email, password, merchant) {
-      const made = await this.register(email, password, merchant);
-      if (!made.ok) {
-        return null;
-      }
-      // The command makes an account for somebody else to sign in as, so the
-      // session the component opened along the way belongs to nobody and is
-      // ended here rather than left in a table for twelve hours.
-      await (await contextOf()).internalAdapter.deleteUserSessions(made.opened.person.id);
-      return made.opened.person;
-    },
-
-    async replacePassword(email, password) {
-      const context = await contextOf();
-      const found = await context.internalAdapter.findUserByEmail(emailAs(email), {
-        includeAccounts: true,
-      });
-      if (found === null) {
-        return false;
-      }
-      const hashed = await context.password.hash(password);
-      const hasOne = found.accounts.some((one) => one.providerId === "credential");
-      if (hasOne) {
-        await context.internalAdapter.updatePassword(found.user.id, hashed);
-      } else {
-        // An account with no password at all, which is what a row carried over
-        // from the cabinet as it was before this component looks like: the
-        // person is there and the way of signing in is not. Making one is the
-        // command doing its whole job rather than reporting success over an
-        // update that matched no rows.
-        await context.internalAdapter.linkAccount({
-          userId: found.user.id,
-          providerId: "credential",
-          // The namespace the component keeps its own ways of signing in under,
-          // asked for rather than written out: it is the value every one of its
-          // own routes writes, and a row under a different one is a password
-          // the sign-in would never look at.
-          issuer: createLocalAccountIssuer("credential"),
-          accountId: found.user.id,
-          password: hashed,
-        });
-      }
-      // Every session that person had. The password is being replaced because
-      // the old one is lost or not trusted, and a session opened with it is
-      // what must not outlive it.
-      await context.internalAdapter.deleteUserSessions(found.user.id);
-      return true;
     },
 
     async byEmail(email) {
@@ -813,9 +516,7 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
     async endEverySessionFor(email) {
       const context = await contextOf();
       const found = await context.internalAdapter.findUserByEmail(emailAs(email));
-      if (found === null) {
-        return 0;
-      }
+      if (found === null) return 0;
       const open = await context.internalAdapter.listSessions(found.user.id);
       await context.internalAdapter.deleteUserSessions(found.user.id);
       return open.length;
@@ -826,23 +527,16 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
       const everybody = await context.internalAdapter.listUsers();
       const rows: AccountSummary[] = [];
       for (const one of everybody) {
-        const person = personFrom(one as never);
+        const person = personFrom(one as PersonRow);
         const open = await context.internalAdapter.listSessions(person.id);
         rows.push({
           email: person.email,
           createdAt: (one as { createdAt: Date }).createdAt,
           sessions: open.filter((session) => session.expiresAt > now).length,
-          // The identifier alone. Spreading the person here instead would put
-          // the key on a summary that is printed to a terminal.
           merchant: person.merchant?.id ?? null,
           confirmed: person.confirmed,
         });
       }
-      // Sorted here rather than by the database, so that the order a person
-      // reads off a terminal is the same on whatever server. A database sorts
-      // by its own collation, and the disagreement is real rather than
-      // theoretical: on Postgres 17, `C` and `en-US-x-icu` put
-      // `renée@example.com` on opposite sides of `renz@example.com`.
       return rows.sort((one, other) => one.email.localeCompare(other.email));
     },
 
@@ -852,123 +546,171 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
   };
 }
 
-/**
- * The answer, or null where the component refused — and nothing else.
- *
- * The distinction is the whole of this function. A refusal is the component
- * saying no to what it was given, and the caller turns it into one sentence on
- * a screen; anything else is the machinery under it failing, and there is no
- * sentence for that which is not a lie. A database that is not there would
- * otherwise come back as "that address already has an account", which sends a
- * merchant to look for an account they do not have while the cabinet is the
- * thing that is broken — and it is what this cabinet did on the first run
- * outside its own tests.
- *
- * The component marks its own refusals by throwing this one type. Everything
- * else goes up, where the error page says something here is broken and the log
- * gets the exception.
- */
-async function orNull<T>(answering: Promise<T>): Promise<T | null> {
+type PersonRow = {
+  id: string;
+  email: string;
+  emailVerified: boolean;
+  merchantId?: unknown;
+  merchantKey?: unknown;
+};
+
+function personFrom(user: PersonRow): Person {
+  const idAbsent = user.merchantId === null || user.merchantId === undefined;
+  const keyAbsent = user.merchantKey === null || user.merchantKey === undefined;
+  if (idAbsent && keyAbsent) {
+    return {
+      id: user.id,
+      email: user.email,
+      confirmed: user.emailVerified === true,
+      merchant: null,
+    };
+  }
+  if (
+    idAbsent !== keyAbsent ||
+    typeof user.merchantId !== "string" ||
+    typeof user.merchantKey !== "string" ||
+    user.merchantId === "" ||
+    user.merchantKey === ""
+  ) {
+    throw new Error("cabinet_account_partial_merchant_binding");
+  }
+  return {
+    id: user.id,
+    email: user.email,
+    confirmed: user.emailVerified === true,
+    merchant: { id: user.merchantId, key: user.merchantKey },
+  };
+}
+
+function asMerchantPerson(person: Person): MerchantPerson {
+  if (person.merchant === null) throw new Error("cabinet_person_has_no_merchant");
+  return person as MerchantPerson;
+}
+
+function asUnattachedPerson(person: Person): UnattachedPerson {
+  if (person.merchant !== null) throw new Error("cabinet_person_has_a_merchant");
+  return person as UnattachedPerson;
+}
+
+function cabinetClaim(metadata: Record<string, unknown> | undefined): CabinetClaim | null {
+  if (metadata === undefined) return null;
+  return claimFrom(metadata);
+}
+
+function cabinetClaimFrom(value: string): CabinetClaim | null {
   try {
-    return await answering;
-  } catch (thrown) {
-    if (thrown instanceof APIError) {
-      return null;
-    }
-    throw thrown;
+    const parsed: unknown = JSON.parse(value);
+    if (typeof parsed !== "object" || parsed === null) return null;
+    return claimFrom(parsed as Record<string, unknown>);
+  } catch {
+    return null;
   }
 }
 
-/**
- * Whether the component refused a password change because the new password is
- * too short, rather than because the current one was wrong.
- *
- * The code and not the sentence: the component's own words are English written
- * for a developer reading a JSON answer, and what the screen shows is ours. A
- * refusal this does not recognise is treated as the current password being
- * wrong, which is the answer that tells the person less.
- */
-function tooShort(thrown: unknown): boolean {
-  if (typeof thrown !== "object" || thrown === null || !("body" in thrown)) {
-    return false;
+function claimFrom(value: Record<string, unknown>): CabinetClaim | null {
+  if (
+    value.purpose !== "cabinet" ||
+    typeof value.email !== "string" ||
+    value.email !== emailAs(value.email) ||
+    (value.destination !== "default" && value.destination !== "settings")
+  ) {
+    return null;
   }
-  const body = (thrown as { body: unknown }).body;
-  return (
-    typeof body === "object" &&
-    body !== null &&
-    "code" in body &&
-    (body as { code: unknown }).code === "PASSWORD_TOO_SHORT"
+  return { email: value.email, purpose: "cabinet", destination: value.destination };
+}
+
+const tokenHash = (token: string): string => createHash("sha256").update(token).digest("base64url");
+
+const rateKey = (secret: string, email: string): string =>
+  createHmac("sha256", secret).update(`cabinet-link:${email}`).digest("hex");
+
+function memoryRate(rows: MemoryRows, emailHash: string, purpose: "cabinet"): Date | null {
+  const now = new Date();
+  const all = (rows.cabinet_link_sends ?? []).filter(
+    (row) => new Date(row.expiresAt as Date).getTime() > now.getTime(),
   );
+  rows.cabinet_link_sends = all;
+  const recent = all
+    .filter(
+      (row) =>
+        row.emailHash === emailHash &&
+        row.purpose === purpose &&
+        new Date(row.sentAt as Date).getTime() > now.getTime() - LINK_RATE_WINDOW_MS,
+    )
+    .sort(
+      (one, other) =>
+        new Date(one.sentAt as Date).getTime() - new Date(other.sentAt as Date).getTime(),
+    );
+  if (recent.length >= LINK_RATE_LIMIT) {
+    return new Date(
+      new Date(recent[recent.length - LINK_RATE_LIMIT]?.sentAt as Date).getTime() +
+        LINK_RATE_WINDOW_MS,
+    );
+  }
+  rows.cabinet_link_sends.push({
+    id: randomUUID(),
+    emailHash,
+    purpose,
+    sentAt: now,
+    expiresAt: new Date(now.getTime() + LINK_SEND_RETENTION_MS),
+  });
+  return null;
 }
 
-/**
- * The message that replaces a forgotten password.
- *
- * Short, and it says the two things a person needs before they click: how long
- * the link is worth following, and what to do if they did not ask for it. The
- * second matters because the form that sends this takes an address from
- * anybody — so the person reading it may be somebody who was typed in by
- * mistake, and the honest instruction to them is to do nothing.
- */
-const newPasswordMessage = (to: string, link: string): Message => {
-  const lead = "Somebody asked for a new password for the Agentify account at this address.";
-  const expiry = "This link works once and stops working after an hour.";
-  const security = "If that was not you, nothing has happened and there is nothing to do.";
-  const unchanged = "Your password has not changed and nobody has been signed in.";
-  const replies = "Nobody reads replies to this address.";
+async function postgresRate(
+  tx: Parameters<Parameters<ReturnType<typeof drizzle>["transaction"]>[0]>[0],
+  emailHash: string,
+  purpose: "cabinet",
+): Promise<Date | null> {
+  const now = new Date();
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`cabinet-link-rate:${purpose}:${emailHash}`}, 0))`,
+  );
+  await tx.delete(linkSends).where(lte(linkSends.expiresAt, now));
+  const recent = await tx
+    .select({ sentAt: linkSends.sentAt })
+    .from(linkSends)
+    .where(
+      and(
+        eq(linkSends.emailHash, emailHash),
+        eq(linkSends.purpose, purpose),
+        gt(linkSends.sentAt, new Date(now.getTime() - LINK_RATE_WINDOW_MS)),
+      ),
+    )
+    .orderBy(asc(linkSends.sentAt));
+  if (recent.length >= LINK_RATE_LIMIT) {
+    const firstCounted = recent[recent.length - LINK_RATE_LIMIT];
+    if (firstCounted === undefined) {
+      throw new Error("cabinet_link_rate_count_inconsistent");
+    }
+    return new Date(firstCounted.sentAt.getTime() + LINK_RATE_WINDOW_MS);
+  }
+  await tx.insert(linkSends).values({
+    id: randomUUID(),
+    emailHash,
+    purpose,
+    sentAt: now,
+    expiresAt: new Date(now.getTime() + LINK_SEND_RETENTION_MS),
+  });
+  return null;
+}
 
+function cabinetLinkMessage(to: string, link: string): Message {
+  const subject = "Open your Agentify cabinet";
+  const lead = "Use this secure link to open your merchant cabinet.";
+  const lifetime = "The link expires in one hour and can be used once.";
   return {
     to,
-    subject: "Choose a new password for Agentify",
-    body: [
-      lead,
-      "",
-      "Open this to choose a new password:",
-      "",
-      `    ${link}`,
-      "",
-      expiry,
-      "",
-      security,
-      unchanged,
-      "",
-      replies,
-    ].join("\n"),
+    subject,
+    body: `Agentify\n\n${lead}\n\nOpen my cabinet: ${link}\n\n${lifetime}`,
     html: transactionalEmailHtml({
-      preview: "Choose a new Agentify password. The link expires in one hour.",
-      eyebrow: "Account security",
-      title: "Choose a new password",
+      preview: lead,
+      eyebrow: "Cabinet access",
+      title: "Open your cabinet",
       lead,
-      action: "Choose a new password",
+      action: "Open my cabinet",
       link,
-      paragraphs: [expiry, security, unchanged, replies],
+      paragraphs: [lifetime, "If you did not request this link, you can ignore this message."],
     }),
   };
-};
-
-/** The message that confirms an address. */
-const confirmMessage = (to: string, link: string): Message => {
-  const lead = "Confirm that this email address reaches you.";
-  const expiry = "This link stops working one hour after it is sent.";
-  const benefit =
-    "Your Agentify account already works without confirmation. Confirming lets you replace a lost password with a link sent here.";
-  const security = "If you did not ask for this, nothing has happened and there is nothing to do.";
-  const replies = "Nobody reads replies to this address.";
-
-  return {
-    to,
-    subject: "Confirm your email address for Agentify",
-    body: [`${lead} ${expiry}`, "", `    ${link}`, "", benefit, "", security, "", replies].join(
-      "\n",
-    ),
-    html: transactionalEmailHtml({
-      preview: "Confirm your email address for Agentify. The link expires in one hour.",
-      eyebrow: "Email confirmation",
-      title: "Confirm your email address",
-      lead,
-      action: "Confirm my email address",
-      link,
-      paragraphs: [expiry, benefit, security, replies],
-    }),
-  };
-};
+}

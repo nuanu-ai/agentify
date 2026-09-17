@@ -176,7 +176,23 @@ if (databaseUrl === null) {
       expect(grants).toBe(0);
     });
 
-    it("distinguishes absent and partial bindings without returning a merchant key", async () => {
+    it("rejects a new partial binding at the database boundary", async () => {
+      await expect(
+        account("acc_partial", "partial@example.com", MERCHANT, null),
+      ).rejects.toMatchObject({
+        code: "23514",
+        constraint: "cabinet_accounts_complete_merchant",
+      });
+      await expect(directory.resolve("partial@example.com")).resolves.toStrictEqual([]);
+    });
+
+    it("distinguishes absent and pre-cutover partial bindings without returning a merchant key", async () => {
+      // Approval remains safe against historical data before the stopped
+      // identity cutover. Its preflight refuses these rows rather than fixing
+      // them by guessing the missing half of a merchant binding.
+      await connected.pool.query(
+        "alter table cabinet_accounts drop constraint cabinet_accounts_complete_merchant",
+      );
       await account("acc_unbound", "unbound@example.com", null, null);
       await account("acc_partial", "partial@example.com", MERCHANT, null);
 

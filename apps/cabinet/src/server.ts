@@ -1,7 +1,7 @@
 /**
- * The cabinet's own HTTP surface: the screens with navigation on them, a
- * sign-in, a registration, the pages a password is set on, the settings, and
- * the switches that stop and start selling.
+ * The cabinet's own HTTP surface: the one-field sign-in, its one-time-link
+ * landing, the screens with navigation on them, the settings, and the switches
+ * that stop and start selling.
  *
  * It is server-rendered with no client framework and no build step, which is
  * ADR-0005 §4. Every page is one GET and every change is one form post
@@ -24,7 +24,7 @@
  * something a stranger can read off it.
  *
  * What stands above the gate is written out in that decision and is short: the
- * sign-in, the registration, the pages a mailed link lands on, the stylesheet,
+ * sign-in, the page a mailed link lands on, the stylesheet,
  * the health probe, the shop's own callback and the address a shop sends a
  * browser back to. Each is there because a session cannot reach it, and each
  * answers the same thing to everybody — which is the property that makes the
@@ -33,6 +33,7 @@
 
 import { readFileSync } from "node:fs";
 import express, { type Express, type Request, type Response } from "express";
+import type { CabinetIdentity, Person } from "./cabinet-entry.js";
 import type { CabinetConfig } from "./config.js";
 import {
   type Answer,
@@ -42,7 +43,6 @@ import {
   registrarFor,
 } from "./gateway.js";
 import { bare, brandLockup, escaped } from "./html.js";
-import type { Identity, Person } from "./identity.js";
 import { keysScreen, newKeyScreen } from "./keys.js";
 import { WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
 import { printable } from "./printable.js";
@@ -55,12 +55,11 @@ import {
   whatIsWrongWithTheName,
 } from "./seller-name.js";
 import {
-  confirmedScreen,
-  forgotScreen,
-  linkSentScreen,
-  newPasswordScreen,
-  passwordScreen,
-  registerScreen,
+  linkRequestedScreen,
+  mailUnavailableScreen,
+  merchantSetupScreen,
+  openLinkScreen,
+  refusedLinkScreen,
   signInScreen,
 } from "./sign-in.js";
 import { cardsFromTheShop } from "./woo-catalog.js";
@@ -114,36 +113,6 @@ const KEY_AT_SIGN_IN_MS = 2_000;
  * a merchant's, which is why it can name a command at all — and the command is
  * named in full, because half of one is a person at a terminal guessing.
  */
-const NO_MERCHANT =
-  "This account was made before an account named the merchant it signs in for, so there is" +
-  " nothing here for it to show. A new one is made by somebody holding that merchant's key," +
-  " with the key piped in rather than typed on the line:" +
-  " ... | pnpm --filter @agentify/commerce-cabinet account add <address> <merchant>." +
-  " A merchant who has an invitation and no account registers below instead.";
-
-/**
- * The one sentence a registration is refused with, whatever refused it.
- *
- * Three things can stop a registration after the form itself is in order: the
- * invitation is not one the gateway accepts, registration is not open at all,
- * and the address already has an account. The first two answer identically at
- * the gateway by ADR-0014 §3, and the third joins them here — the sign-in next
- * door takes the same time for an address nobody has as for one whose password
- * is wrong, so that the form says nothing about who has an account, and a
- * registration that answered "that address is taken" in words would be that
- * same question answered outright.
- *
- * So the sentence names both of the things the person can act on and says
- * nothing about which of them happened. That is a real cost to somebody who
- * mistyped their invitation and now has two things to check, and it is the
- * cheaper of the two costs.
- */
-const REGISTRATION_REFUSED =
-  "This registration did not go through, and there are two things that stop one: the invitation" +
-  " may not be one we accept, and the address may already have an account here. Check the" +
-  " invitation you were given, and if the address is yours from an earlier registration, sign in" +
-  " with it instead.";
-
 /**
  * A shape an address has to have before a merchant is made for it.
  *
@@ -153,23 +122,6 @@ const REGISTRATION_REFUSED =
  * the same shape the account command holds an address to, for the same reason.
  */
 const LOOKS_LIKE_AN_ADDRESS = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
-
-/** What is wrong with a registration form, in a sentence, or null. */
-function whatIsWrongWith(
-  form: { email: string; password: string; invitation: string },
-  shortestPassword: number,
-): string | null {
-  if (form.email === "" || form.password === "" || form.invitation === "") {
-    return "All three are needed: an address, a password and your invitation.";
-  }
-  if (!LOOKS_LIKE_AN_ADDRESS.test(form.email)) {
-    return "That is not an address of the shape someone@example.com.";
-  }
-  if (form.password.length < shortestPassword) {
-    return `A password has to be at least ${shortestPassword} characters.`;
-  }
-  return null;
-}
 
 /**
  * The stylesheet the cabinet serves: the shared visual language, then the
@@ -221,7 +173,7 @@ export interface CabinetParts {
    * deployment gives it Postgres; the cabinet's own tests give it the
    * component's memory store, so the suite drives the real component offline.
    */
-  readonly identity: Identity;
+  readonly identity: CabinetIdentity;
   /**
    * How the gateway is reached on behalf of one merchant, with the real client
    * as the default.
@@ -242,7 +194,7 @@ export interface CabinetParts {
    * How a merchant is made, which is the one call the cabinet makes with no key.
    *
    * Its own part rather than a method on the client above, because somebody
-   * registering is not a merchant yet and there is no key to bind a client to.
+   * opening a first link is not a merchant yet and there is no key to bind a client to.
    */
   readonly registrar?: Registrar;
   /**
@@ -329,7 +281,6 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   const trouble = (response: Response, pageBase: string, answer: Answer<unknown>): void =>
     troubleAt(response, pageBase, config.surfaceMode, answer);
   const identity = parts.identity;
-  const shortest = identity.shortestPassword;
   const clientFor =
     parts.gatewayFor ??
     ((key: string, answerWithinMs?: number) => gatewayFor(config.gatewayUrl, key, answerWithinMs));
@@ -525,7 +476,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     const returnPath = `${base}/woocommerce/return`;
     app.get(returnPath, async (request, response) => {
       if ((await identity.whoIs(request.headers.cookie)) !== null) {
-        response.redirect(303, `${base}/woocommerce?from=shop`);
+        response.redirect(303, `${base}/settings`);
         return;
       }
       if (Object.keys(request.query).length > 0) {
@@ -537,11 +488,13 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   }
 
   app.get(`${base}/sign-in`, async (request, response) => {
-    if ((await identity.whoIs(request.headers.cookie)) !== null) {
-      response.redirect(303, `${base}/cards`);
+    const person = await identity.whoIs(request.headers.cookie);
+    if (person !== null) {
+      response.redirect(303, person.merchant === null ? `${base}/merchant` : `${base}/cards`);
       return;
     }
-    response.type("html").send(signInScreen(base, config.surfaceMode));
+    const destination = request.query.destination === "settings" ? "settings" : "default";
+    response.type("html").send(signInScreen(base, config.surfaceMode, destination));
   });
 
   /**
@@ -573,7 +526,8 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    * the call that removes it is made with it. Interleave as many sign-ins as
    * you like: no call can reach a key another sign-in wrote after it was sent,
    * because reaching a key means holding it, so the row always names a key that
-   * works.
+   * works. If the database answer is lost, neither conclusion is safe: the
+   * row may hold either key, so both remain live and the next sign-in retries.
    *
    * What that gives up is the sweeping. Nobody clears anybody else's leavings
    * any more, so a sign-in interrupted between the write and the forgetting
@@ -590,8 +544,8 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    * rather than as an answer, which is why the whole of this is caught: the
    * client holds what comes back to the contract's schema, and a document it
    * refuses must not become a person who cannot sign in. Nothing about signing
-   * in belongs to the gateway anyway — the password, the session and the row
-   * are this cabinet's own.
+   * in belongs to the gateway anyway — the proof, the session and the row are
+   * this cabinet's own.
    *
    * It runs before the cookies are handed over rather than after the answer,
    * and that is not tidiness. The key is read off the row on every request, so
@@ -613,9 +567,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     const forget = async (key: string, which: string): Promise<void> => {
       const gone = await clientFor(key, KEY_AT_SIGN_IN_MS).forgetCabinetKey();
       if (!gone.ok) {
-        console.error(
-          `[cabinet] ${person.email} signed in and ${which} is still working: ${gone.why}`,
-        );
+        console.error(`[cabinet] a person signed in and ${which} is still working: ${gone.why}`);
       }
     };
 
@@ -623,7 +575,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       const made = await clientFor(holding, KEY_AT_SIGN_IN_MS).issueCabinetKey();
       if (!made.ok) {
         console.error(
-          `[cabinet] ${person.email} is signed in on the key their account already held:` +
+          "[cabinet] a person is signed in on the key their account already held:" +
             ` no fresh one was made — ${made.why}`,
         );
         return;
@@ -632,11 +584,22 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       // Conditional on the row still holding what was read off it, which is
       // what makes the write and the choice of which key to forget one act
       // rather than two moments with a gap between them.
-      if (await identity.replaceMerchantKey(person.id, holding, made.document)) {
+      const replaced = await identity.replaceMerchantKey(person.id, holding, made.document);
+      if (replaced === "replaced") {
         // The row has moved off the key this sign-in arrived with, and no later
         // write can put it back. It is this sign-in's to forget, and this is
         // the only party holding it.
         await forget(holding, "the key it replaced");
+        return;
+      }
+
+      if (replaced === "unknown") {
+        // The write may have committed before its answer was lost. Revoking
+        // either key could therefore revoke the one now on the row.
+        console.error(
+          "[cabinet] the database could not establish whether the account key was replaced;" +
+            " neither key was revoked",
+        );
         return;
       }
 
@@ -645,346 +608,132 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       // lost — so this is what this sign-in has to clear up, and the key on the
       // row is left alone because it belongs to whoever won.
       console.error(
-        `[cabinet] ${person.email} is signed in on the key their account holds:` +
+        "[cabinet] a person is signed in on the key their account holds:" +
           " a fresh one was made and the row had already moved on from what this sign-in read",
       );
       await forget(made.document, "the key it made and did not use");
-    } catch (thrown) {
+    } catch {
       // Which step it was is in the exception and not worth unpacking into
       // three sentences: whichever it was, the row names a key the gateway
       // takes, because the only write here is conditional on the row and the
       // only key ever removed is one this sign-in had finished with.
       console.error(
-        `[cabinet] ${person.email} is signed in and the key on their account was not replaced`,
-        thrown,
+        "[cabinet] a person is signed in and the key on their account was not replaced",
       );
     }
   };
 
   app.post(`${base}/sign-in`, async (request, response) => {
-    // `?? {}` and not a cast alone: express leaves `body` undefined when the
-    // content type is not the one the form parser handles, and reading a field
-    // off that throws — so a request that is merely malformed would land on the
-    // page that says something in the cabinet is broken, with a stack trace in
-    // the log for every scanner that ever posts JSON at this address.
-    const form = (request.body ?? {}) as { email?: unknown; password?: unknown };
-    const email = typeof form.email === "string" ? form.email : "";
-    const password = typeof form.password === "string" ? form.password : "";
-    if (email.trim() === "" || password === "") {
+    const form = (request.body ?? {}) as { email?: unknown; destination?: unknown };
+    const email = typeof form.email === "string" ? form.email.trim() : "";
+    const destination = form.destination === "settings" ? "settings" : "default";
+    if (!LOOKS_LIKE_AN_ADDRESS.test(email)) {
       response
         .status(400)
-        .type("html")
-        .send(signInScreen(base, config.surfaceMode, "Enter your address and your password."));
-      return;
-    }
-
-    const signed = await identity.signIn(email, password);
-
-    if (!signed.ok && signed.why === "refused") {
-      // The address is named only when we have an account for it, and finding
-      // that out is a second question asked after the refusal is already
-      // settled — so it costs the same on both roads through here. The email
-      // box is where a password lands when somebody types into the wrong field,
-      // and a refusal that echoed whatever was typed would put that password in
-      // the log; an address we do know is a real account being attacked and is
-      // worth saying.
-      const known = await identity.byEmail(email);
-      console.log(
-        known === null
-          ? "[cabinet] a sign-in was refused: no account at the address given"
-          : `[cabinet] a sign-in for ${known.email} was refused: wrong password`,
-      );
-      response
-        .status(401)
         .type("html")
         .send(
           signInScreen(
             base,
             config.surfaceMode,
-            "That address and password do not match an account.",
+            destination,
+            "Enter an address of the shape someone@example.com.",
           ),
         );
       return;
     }
 
-    if (!signed.ok) {
-      // The password was right and there is still nothing to show: this is the
-      // account made before an account named its merchant, and no screen in the
-      // cabinet can be drawn without a key. Said rather than served empty,
-      // because an empty cabinet reads as a catalogue somebody emptied. The
-      // session the component opened along the way has already been ended.
-      console.log("[cabinet] a sign-in was refused: the account has no merchant");
-      response
-        .status(403)
-        .type("html")
-        .send(signInScreen(base, config.surfaceMode, NO_MERCHANT));
+    const requested = await identity.requestLink(email, destination);
+    if (requested.status === "unavailable") {
+      response.status(503).type("html").send(mailUnavailableScreen(base, config.surfaceMode));
       return;
     }
-
-    // Before the cookies rather than after the answer: the reasons are on the
-    // function, and the short of it is that the first request this browser
-    // makes must not be able to read the row while the replacement is running.
-    await replaceTheKeyOf(signed.opened.person);
-
-    carryCookies(response, signed.opened.cookies);
-    console.log(`[cabinet] ${signed.opened.person.email} signed in`);
-    response.redirect(303, `${base}/cards`);
+    if (requested.status === "cooldown") {
+      response.setHeader(
+        "retry-after",
+        String(Math.max(1, Math.ceil((requested.retryAt.getTime() - Date.now()) / 1_000))),
+      );
+    }
+    response.status(202).type("html").send(linkRequestedScreen(base, config.surfaceMode));
   });
 
-  /**
-   * Turns a registration away from somebody who is already signed in.
-   *
-   * On both the form and the post, and the post is the one that matters. A
-   * merchant already has one; a second registration from the same browser makes
-   * a second merchant at the gateway that nothing afterwards names, and hands
-   * the person a session for it in place of the one they had — so the cabinet
-   * they come back to is a different, empty merchant, and the one they were
-   * selling as is reachable only by signing in again. Guarding the form alone
-   * would leave that a form post away.
-   */
-  const alreadySignedIn = async (request: Request, response: Response): Promise<boolean> => {
-    if ((await identity.whoIs(request.headers.cookie)) === null) {
-      return false;
+  const registerMerchant = async (): Promise<{ id: string; key: string } | null> => {
+    const made = await registrar.register(config.gatewayInvitation);
+    if (!made.ok) {
+      console.error(`[cabinet] merchant registration unavailable (${made.status})`);
+      return null;
     }
-    response.redirect(303, `${base}/cards`);
-    return true;
+    return { id: made.document.merchant_id, key: made.document.secret };
   };
 
-  app.get(`${base}/register`, async (request, response) => {
-    if (await alreadySignedIn(request, response)) {
-      return;
-    }
-    response.type("html").send(registerScreen(base, shortest, config.surfaceMode));
-  });
+  const attachMerchant = async (person: Person) =>
+    await identity.attachMerchant(person.id, registerMerchant);
 
-  app.post(`${base}/register`, async (request, response) => {
-    if (await alreadySignedIn(request, response)) {
-      return;
-    }
-    const form = (request.body ?? {}) as {
-      email?: unknown;
-      password?: unknown;
-      invitation?: unknown;
-    };
-    const email = typeof form.email === "string" ? form.email.trim() : "";
-    const password = typeof form.password === "string" ? form.password : "";
-    const invitation = typeof form.invitation === "string" ? form.invitation.trim() : "";
-
-    // Everything about what was typed is settled before the gateway is called,
-    // because a merchant made for a form that was never going to produce an
-    // account is litter somebody has to argue about later. ADR-0014 §1 accepts
-    // that litter where it cannot be avoided; this is where it can.
-    const wrong = whatIsWrongWith({ email, password, invitation }, shortest);
-    if (wrong !== null) {
-      response
-        .status(400)
-        .type("html")
-        .send(registerScreen(base, shortest, config.surfaceMode, wrong));
+  const sendOpenedPerson = async (
+    response: Response,
+    person: Person,
+    destination: "default" | "settings",
+  ): Promise<void> => {
+    if (person.merchant !== null) {
+      await replaceTheKeyOf(person);
+      response.redirect(303, destination === "settings" ? `${base}/settings` : `${base}/cards`);
       return;
     }
 
-    // The gateway first, and the address afterwards. Not for the gateway's
-    // convenience: it is what keeps this form from answering "that address has
-    // an account" to somebody who has no invitation at all. Behind an
-    // invitation the gateway has accepted, the address is answered the same way
-    // a refused invitation is — one sentence, below.
-    const made = await registrar.register(invitation);
-    if (!made.ok) {
-      // 403 is the only status that means the invitation was not accepted, and
-      // the route answers it identically for a wrong code and for a gateway
-      // with registration closed (ADR-0014 §3) — so this is the one branch that
-      // shows the shared sentence, and nothing in it unpacks the gateway's own
-      // words into two of ours.
-      if (made.status === 403) {
-        console.log("[cabinet] a registration was refused by the gateway");
-        response
-          .status(403)
-          .type("html")
-          .send(registerScreen(base, shortest, config.surfaceMode, REGISTRATION_REFUSED));
-        return;
-      }
-      // A 400 says the document this cabinet sent is not one the route takes,
-      // which is a fault of ours and not of the invitation. The gateway's own
-      // sentence names the field, so it is passed through: sending somebody to
-      // find a better invitation over a name we should have refused first would
-      // be a wrong errand, and every other status is a wrong errand too.
-      //
-      // Every other status lands below: a route that is not there in a bad
-      // deployment answers 404, and a gateway that is down answers 0 or 5xx.
-      // Folded into the refusal above, all of those would tell every person
-      // handed a good invitation to go and check it.
-      console.error(`[cabinet] a registration could not be made: ${made.why}`);
-      response
-        .status(502)
-        .type("html")
-        .send(
-          registerScreen(
-            base,
-            shortest,
-            config.surfaceMode,
-            made.status === 400
-              ? `Nothing was made, and it is this cabinet's own request that was refused: ${made.why}`
-              : "Nothing was made: the part of Agentify that creates a merchant did not answer as" +
-                  " it should. Nothing you typed is at fault, and trying again in a moment is the" +
-                  " right move.",
-          ),
-        );
+    const attached = await attachMerchant(person);
+    if (attached.status === "attached") {
+      response.redirect(303, `${base}/choose-name`);
       return;
     }
-
-    const registered = await identity.register(email, password, {
-      id: made.document.merchant_id,
-      key: made.document.secret,
-    });
-
-    if (!registered.ok && registered.why === "taken") {
-      // The address already has an account. Answered with the sentence a
-      // refused invitation gets, and with nothing that distinguishes the two —
-      // the sign-in next door takes the same time for an address nobody has as
-      // for one whose password is wrong, and this form saying so outright would
-      // be that same question answered in words.
-      console.log("[cabinet] a registration was refused: that address already has an account");
-      response
-        .status(403)
-        .type("html")
-        .send(registerScreen(base, shortest, config.surfaceMode, REGISTRATION_REFUSED));
+    if (attached.status === "already-attached") {
+      response.redirect(303, destination === "settings" ? `${base}/settings` : `${base}/cards`);
       return;
     }
-
-    if (!registered.ok) {
-      // The merchant exists at the gateway and nothing here names it. ADR-0014
-      // §1 calls that litter rather than damage — the next attempt makes a new
-      // merchant — but the person in front of this page must not be told it
-      // worked. Which of the two sentences they get turns on whether the
-      // address is free again, because that is what decides whether trying
-      // again is any use to them.
-      response
-        .status(500)
-        .type("html")
-        .send(
-          registerScreen(
-            base,
-            shortest,
-            config.surfaceMode,
-            registered.why === "undone"
-              ? "Your merchant was created and your account was not, so there is nothing here to" +
-                  " sign into yet. Nothing was charged and nothing else was changed. Register" +
-                  " again: the address is still free, and a fresh merchant is made for it."
-              : "Your merchant was created and your account was left half made, so there is" +
-                  " nothing here to sign into and that address is not free either. Nothing was" +
-                  " charged. Register with another address, or ask whoever gave you the address" +
-                  " of this site to clear the first one.",
-          ),
-        );
+    if (attached.status === "person-missing") {
+      response.status(401).type("html").send(refusedLinkScreen(base, config.surfaceMode));
       return;
     }
-
-    carryCookies(response, registered.opened.cookies);
-    console.log(`[cabinet] ${registered.opened.person.email} registered and signed in`);
-    // On to the one question the form no longer asks. It is the last step of
-    // registering rather than a page inside the cabinet, which is why it is
-    // reached by a redirect from here and linked from nowhere else.
-    response.redirect(303, `${base}/choose-name`);
-  });
-
-  app.get(`${base}/password/forgot`, (_request, response) => {
-    response.type("html").send(forgotScreen(base, config.surfaceMode));
-  });
-
-  app.post(`${base}/password/forgot`, async (request, response) => {
-    const form = (request.body ?? {}) as { email?: unknown };
-    const email = typeof form.email === "string" ? form.email.trim() : "";
-    if (email === "") {
-      response
-        .status(400)
-        .type("html")
-        .send(forgotScreen(base, config.surfaceMode, "Enter the address on your account."));
-      return;
-    }
-
-    // Nothing is read from this and nothing branches on it. Whether there is an
-    // account at that address, and whether anybody has confirmed it, are both
-    // decided inside — and the page below is the same page in every case,
-    // because a form that answered either of those questions would be a way of
-    // asking who sells here.
-    await identity.askForANewPassword(email);
-    response.type("html").send(linkSentScreen(base, config.surfaceMode));
-  });
-
-  app.get(`${base}/password/new`, (request, response) => {
-    const token = typeof request.query.token === "string" ? request.query.token : "";
-    if (token === "") {
-      // A visitor at this address with nothing in hand. Sent to ask for a link
-      // rather than shown an empty form, which would take a password and have
-      // nothing to do with it.
-      response.redirect(303, `${base}/password/forgot`);
-      return;
-    }
-    // The link is not spent here. This page only draws the form; the token is
-    // handed back with the new password and is checked once, in the post — so a
-    // preview fetch by a mail client cannot burn somebody's only link.
-    response.type("html").send(newPasswordScreen(base, token, shortest, config.surfaceMode));
-  });
-
-  app.post(`${base}/password/new`, async (request, response) => {
-    const form = (request.body ?? {}) as { token?: unknown; fresh?: unknown };
-    const token = typeof form.token === "string" ? form.token : "";
-    const fresh = typeof form.fresh === "string" ? form.fresh : "";
-
-    if (token === "") {
-      response.redirect(303, `${base}/password/forgot`);
-      return;
-    }
-    if (fresh.length < shortest) {
-      response
-        .status(400)
-        .type("html")
-        .send(
-          newPasswordScreen(
-            base,
-            token,
-            shortest,
-            config.surfaceMode,
-            `A password has to be at least ${shortest} characters.`,
-          ),
-        );
-      return;
-    }
-
-    if (!(await identity.setPasswordFrom(token, fresh))) {
-      response
-        .status(400)
-        .type("html")
-        .send(
-          newPasswordScreen(
-            base,
-            token,
-            shortest,
-            config.surfaceMode,
-            "That link does not work any more. A link can be used once and stops working an hour" +
-              " after it is sent. Ask for another one from the sign-in page.",
-          ),
-        );
-      return;
-    }
-
-    console.log("[cabinet] a password was replaced by a link, and every session of theirs ended");
-    forget(response);
-    response.redirect(303, `${base}/sign-in`);
-  });
-
-  app.get(`${base}/confirm`, async (request, response) => {
-    const token = typeof request.query.token === "string" ? request.query.token : "";
-    const worked = token !== "" && (await identity.confirm(token));
     response
-      .status(worked ? 200 : 400)
+      .status(503)
       .type("html")
-      .send(confirmedScreen(base, worked, config.surfaceMode));
+      .send(merchantSetupScreen(base, config.surfaceMode, true));
+  };
+
+  const linkResponseHeaders = (_request: Request, response: Response, next: () => void): void => {
+    response.setHeader("cache-control", "private, no-store");
+    // no-referrer makes Chromium send Origin:null on the native POST, which the
+    // strict origin gate must refuse. strict-origin keeps the exact origin and
+    // sends no query token in Referer.
+    response.setHeader("referrer-policy", "strict-origin");
+    next();
+  };
+
+  app.get(`${base}/sign-in/open`, linkResponseHeaders, (request, response) => {
+    const token = typeof request.query.token === "string" ? request.query.token : "";
+    if (token === "") {
+      response.status(400).type("html").send(refusedLinkScreen(base, config.surfaceMode));
+      return;
+    }
+    response.type("html").send(openLinkScreen(base, token, config.surfaceMode));
+  });
+  app.post(`${base}/sign-in/open`, linkResponseHeaders, async (request, response) => {
+    const form = (request.body ?? {}) as { token?: unknown };
+    const token = typeof form.token === "string" ? form.token : "";
+    if (token === "") {
+      response.status(400).type("html").send(refusedLinkScreen(base, config.surfaceMode));
+      return;
+    }
+    const opened = await identity.openLink(token);
+    if (opened.status === "refused") {
+      response.status(401).type("html").send(refusedLinkScreen(base, config.surfaceMode));
+      return;
+    }
+    carryCookies(response, opened.setCookies);
+    await sendOpenedPerson(response, opened.person, opened.destination);
   });
 
   /**
    * The gate. Everything below this line needs a session; everything above it
-   * is the sign-in, the registration, the pages a link lands on, the stylesheet,
+   * is the sign-in, the page a link lands on, the stylesheet,
    * the health probe, the shop's callback and the address a shop sends a browser
    * back to.
    *
@@ -1005,29 +754,6 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
           response.redirect(303, `${base}/sign-in`);
           return;
         }
-        if (person.merchant === null) {
-          // A session outlives a deployment, so somebody signed in on the
-          // cabinet as it was before an account named its merchant arrives here
-          // holding one. They are told the same thing the sign-in tells them
-          // rather than redirected to it: they have a live session, and sending
-          // them to type a password that will be accepted and then refused is a
-          // longer way to the same sentence.
-          //
-          // The session goes, and that is the half that keeps this from being a
-          // trap. Left alive it is the thing standing in front of both doors
-          // out: this gate answers every address, the sign-in and the
-          // registration send a signed-in visitor back to their cards, and the
-          // cards land here again — so the one instruction the page gives them
-          // is a circle. Ending it costs nothing, because the account it
-          // belongs to cannot draw a single screen.
-          await identity.signOut(request.headers.cookie);
-          forget(response);
-          response
-            .status(403)
-            .type("html")
-            .send(signInScreen(base, config.surfaceMode, NO_MERCHANT));
-          return;
-        }
         people.set(request, person);
         next();
       } catch (thrown) {
@@ -1036,8 +762,8 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     })();
   });
 
-  app.get(`${base}/`, (_request, response) => {
-    response.redirect(303, `${base}/cards`);
+  app.get(`${base}/`, (request, response) => {
+    response.redirect(303, whoIs(request).merchant === null ? `${base}/merchant` : `${base}/cards`);
   });
 
   app.post(`${base}/sign-out`, async (request, response) => {
@@ -1046,95 +772,61 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     // Every identifier the request carried, not one of them: a browser sends
     // cookies of one name longest-path first and then oldest first, so the one
     // this person is signed in on is not necessarily the first.
-    const person = whoIs(request);
     await identity.signOut(request.headers.cookie);
-    console.log(`[cabinet] ${person.email} signed out`);
+    console.log("[cabinet] a session was signed out");
     forget(response);
     response.redirect(303, `${base}/sign-in`);
   });
 
-  app.post(`${base}/confirm`, async (request, response) => {
-    // Asked for from the banner every page carries until the address is
-    // confirmed. It answers with the same page a merchant was already looking
-    // at rather than a screen of its own, because the whole of what happened is
-    // one message going out — with a line on it naming the address, where a
-    // provider took the message. Silence was worse than it looks: the banner
-    // stays up either way, so a merchant who pressed the button had nothing to
-    // tell a message that went from a control that does nothing.
-    const person = whoIs(request);
-    if (!person.confirmed) {
-      const handed = await identity.askToConfirm(person.email);
-      // What this line says is that somebody asked, and that is all it may say.
-      // Whether the message reached a provider is the postman's to write down
-      // and it writes it (`mail.ts`); a second line here would sit directly
-      // under the one saying the provider had refused it.
-      console.log(`[cabinet] ${person.email} asked for a confirmation link`);
-      if (handed === "accepted") {
-        // The flag and not the address: a query string is read by every proxy
-        // and every log between here and the browser, and the page has the
-        // address already from whoever is signed in.
-        response.redirect(303, `${base}/cards?link=sent`);
-        return;
-      }
+  app.get(`${base}/merchant`, (request, response) => {
+    if (whoIs(request).merchant !== null) {
+      response.redirect(303, `${base}/cards`);
+      return;
     }
-    response.redirect(303, `${base}/cards`);
+    response.type("html").send(merchantSetupScreen(base, config.surfaceMode));
   });
 
-  app.get(`${base}/password`, (request, response) => {
+  app.post(`${base}/merchant`, async (request, response) => {
+    const person = whoIs(request);
+    if (person.merchant !== null) {
+      response.redirect(303, `${base}/cards`);
+      return;
+    }
+    const attached = await attachMerchant(person);
+    if (attached.status === "attached") {
+      response.redirect(303, `${base}/choose-name`);
+      return;
+    }
+    if (attached.status === "already-attached") {
+      response.redirect(303, `${base}/cards`);
+      return;
+    }
+    if (attached.status === "person-missing") {
+      forget(response);
+      response.redirect(303, `${base}/sign-in`);
+      return;
+    }
     response
+      .status(503)
       .type("html")
-      .send(passwordScreen(base, whoIs(request).email, shortest, config.surfaceMode));
+      .send(merchantSetupScreen(base, config.surfaceMode, true));
   });
-
-  app.post(`${base}/password`, async (request, response) => {
-    const person = whoIs(request);
-    const form = (request.body ?? {}) as { current?: unknown; fresh?: unknown };
-    const current = typeof form.current === "string" ? form.current : "";
-    const fresh = typeof form.fresh === "string" ? form.fresh : "";
-
-    const changed = await identity.changePassword(request.headers.cookie, current, fresh);
-    if (changed === "too-short") {
-      response
-        .status(400)
-        .type("html")
-        .send(
-          passwordScreen(
-            base,
-            person.email,
-            shortest,
-            config.surfaceMode,
-            `A new password has to be at least ${shortest} characters.`,
-          ),
-        );
+  // P1 may reach only the retry and sign-out routes above. Every commerce
+  // route below requires the complete merchant pair.
+  app.use((request, response, next) => {
+    if (whoIs(request).merchant === null) {
+      response.status(503).type("html").send(merchantSetupScreen(base, config.surfaceMode));
       return;
     }
-    if (changed === "wrong-current") {
-      response
-        .status(401)
-        .type("html")
-        .send(
-          passwordScreen(
-            base,
-            person.email,
-            shortest,
-            config.surfaceMode,
-            "That is not your current password.",
-          ),
-        );
-      return;
-    }
-
-    console.log(`[cabinet] ${person.email} changed their password; every session of theirs ended`);
-    forget(response);
-    response.redirect(303, `${base}/sign-in`);
+    next();
   });
 
   /**
-   * The screen the last step of registering lands on.
+   * The screen a newly attached merchant lands on.
    *
    * It asks the gateway for nothing. A merchant arrives here in the second
-   * after their account was made, so there is no name to draw, and a call whose
-   * answer is known would be one more thing between registering and the box
+   * after their merchant was attached, so there is no name to draw, and a call whose
+   * answer is known would be one more thing between opening the cabinet and the box
    * they came here to fill in. Somebody who comes back to this address later
    * gets the same form, and using it sets the name the same way the settings
    * page does.
@@ -1559,19 +1251,11 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     if (!name.ok) {
       return trouble(response, base, name);
     }
-    response.type("html").send(
-      cardsScreen(
-        {
-          ...viewing(request, base, name.document),
-          // Where the press on the confirmation banner lands, and the only
-          // route that reads this. It is spent by being drawn: a merchant who
-          // goes to their cards again tomorrow has no note on the page.
-          linkSent: request.query.link === "sent",
-        },
-        cards.document,
-        config.publicBaseUrl,
-      ),
-    );
+    response
+      .type("html")
+      .send(
+        cardsScreen(viewing(request, base, name.document), cards.document, config.publicBaseUrl),
+      );
   });
 
   app.get(`${base}/orders`, async (request, response) => {
@@ -1743,7 +1427,10 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       // the contract does not recognise lands in this handler, and the change
       // has already happened — so "nothing was changed" would be a claim this
       // handler has no way to check, made to somebody about their own catalog.
-      console.error("[cabinet] a request failed", thrown);
+      // Driver and provider exceptions can carry bound values, including
+      // session tokens and merchant keys. The response already tells an
+      // operator where the failure occurred; the exception is not logged.
+      console.error("[cabinet] a request failed");
       response
         .status(500)
         .type("html")
@@ -1779,7 +1466,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
  * from a handler, with no request behind it, so the component's middleware has
  * nothing to inspect and returns at once. Nothing in it puts a value in our
  * forms that a page on another site could not guess, so the switches, the keys
- * and the registration are covered by this and by nothing else.
+ * and the one-time-link consumption are covered by this and by nothing else.
  *
  * A missing Origin is allowed through. Browsers send it on every cross-origin
  * form post, which is the case being refused; what they historically omit it
@@ -1967,8 +1654,8 @@ const walletIn = (request: Request): string => {
  * record of. What it answers is "who stopped the selling", which before
  * there was a person in the system could not be answered at all.
  *
- * What never goes in: a password, a session identifier, the merchant key. A log
- * goes places the environment does not.
+ * What never goes in: a one-time token or action URL, a session identifier, or
+ * the merchant key. A log goes places the environment does not.
  *
  * The whole line goes through `printable` rather than the one field that
  * needed it, and that is on purpose. What made it necessary was the name a
@@ -1996,8 +1683,8 @@ function troubleAt(
   }
   if (answer.status === 401) {
     // The key is on the row of whoever is signed in (ADR-0014 §2), so this is
-    // still not a person who should sign in again: their password is right and
-    // typing it again cannot make the gateway accept a key it has stopped
+    // still not a person who should sign in again: their session is valid and
+    // opening another cannot make the gateway accept a key it has stopped
     // accepting. Signing them out here would send them to do exactly that and
     // land them straight back on this page, with nothing said about the fault.
     //

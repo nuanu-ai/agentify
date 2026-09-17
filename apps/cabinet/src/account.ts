@@ -3,10 +3,11 @@
  *
  * A merchant registers for themselves now (ADR-0014), so this is not the only
  * way an account comes into being. It is the way one is made for a merchant
- * that already exists at the gateway — the first account on a deployed server —
- * and it is still the answer to a lost password. In the local stack it is one
- * line, run against the cabinet that is already up, with the merchant's key
- * arriving on standard input rather than on the command line:
+ * that already exists at the gateway — the first account on a deployed server.
+ * The account remains unconfirmed until its mailbox opens a cabinet link. In
+ * the local stack it is one line, run against the cabinet that is already up,
+ * with the merchant's key arriving on standard input rather than on the
+ * command line:
  *
  *   docker compose exec -T cabinet \
  *     pnpm --filter @agentify/commerce-cabinet account add you@example.com mer_x
@@ -30,12 +31,10 @@ import { connect } from "./database.js";
 import { gatewayFor } from "./gateway.js";
 import { identityFor } from "./identity.js";
 
-// The whole configuration, not the database address alone. What this command
-// makes is a password the component derives, and the component is built from
-// the same values the cabinet is built from — so a command run with a different
-// secret from the process it is making an account for would be a puzzle nobody
-// wants to solve at a terminal. Reading it here means the same refusal, in the
-// same words, before anything is written.
+// The whole configuration, not the database address alone. The identity
+// component and gateway check need the same secret, public address and gateway
+// address as the cabinet process. Reading them here produces the same refusal,
+// in the same words, before anything is written.
 let config: ReturnType<typeof loadConfig>;
 try {
   config = loadConfig(process.env);
@@ -95,10 +94,7 @@ try {
   await identity.close();
 }
 
-// `process.exitCode` and not `process.exit`, because this command's whole
-// output is a password shown once. Node's own documentation says writes to
-// stdout are asynchronous when it is a pipe — which is what it is under
-// `docker compose exec` — and `process.exit` does not wait for them. I could
-// not make it truncate on this machine; the cost of not finding out the hard
-// way is one word.
+// `process.exitCode` and not `process.exit`, because Node's own documentation
+// says writes to stdout are asynchronous when it is a pipe — which is what it
+// is under `docker compose exec` — and `process.exit` does not wait for them.
 process.exitCode = code;

@@ -90,7 +90,7 @@ side, so you find yourself in them without doing anything; when the exchange
 formats change, we move everyone at once and your side is not touched.
 
 You can stop the sales yourself at any moment. The cabinet is a page on our
-side that you sign in to with an address and a password of your own, and it
+side that you sign in to through a one-time link sent to your email, and it
 shows your cards, your orders and the receipts for the sales that went through.
 That account is not the key your code sends us, so ending someone's session
 does not touch your integration. It carries a pause on each card and one button
@@ -113,24 +113,20 @@ dispute — are collected in the [common questions](/faq).
 
 ## How to start
 
-During the pilot, registration is available to merchants we invite rather than
-open to everybody. If you have an invitation, <a
-href="/cabinet/register">register in the cabinet</a> with your email address
-and a password. The account works immediately. Confirming the address is
-optional for selling, but it is what lets the cabinet send you a password-reset
-link later.
+<a href="/cabinet/sign-in">Open the cabinet</a>, enter your email address and
+follow the one-time link in the message. Pressing its confirmation button
+opens your cabinet. On your first visit, it asks for the seller name buyers
+will see. You can then issue an API key and integrate against the test channel.
 
-After registration, the cabinet asks for the seller name buyers will see. From
-there you can issue an API key and publish cards with the SDK. On both the test
-and live channels you must also save the wallet where your USDC payments arrive
-before a card can be published; the local scripted sandbox moves no money and
-does not require a merchant wallet. [The first test sale](/quickstart) walks
-through those steps.
+On both the test and live channels, save the wallet where your USDC payments
+arrive before publishing a card. The local scripted sandbox moves no money
+and does not require a wallet. Live sales also require the operator's one-time
+approval of your merchant; test sales do not. Publication lists every missing
+prerequisite. [The first test sale](/quickstart) walks through the setup.
 
-We still go through the four questions above with each invited merchant, decide
-which products go out first and how they are sold, and run the first test
-purchase together. Registration is a real part of that pilot onboarding; the
-invitation is the door while access remains limited.
+During the pilot, we go through the four questions above with each merchant,
+decide which products go out first and run the first test purchase together.
+Operator approval opens live publication after that review.
 
 ## What is not settled yet
 

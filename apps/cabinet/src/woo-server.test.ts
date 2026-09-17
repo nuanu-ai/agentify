@@ -27,6 +27,7 @@ import type { Express } from "express";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
 import { type Identity, identityFor } from "./identity.js";
+import type { Message } from "./mail.js";
 import { buildApp } from "./server.js";
 import { readable } from "./testing/html.js";
 import type { StoreProduct } from "./woo-catalog.js";
@@ -36,7 +37,6 @@ import { memoryWooShops, type WooShops } from "./woo-shops.js";
 
 const KEY = theMerchantKey("test");
 const PERSON = "dmitry@example.com";
-const PASSWORD = "a-password-nobody-guesses";
 const SHOP = "https://shop.example.com";
 const PUBLIC = "https://cabinet.example.com";
 
@@ -136,16 +136,23 @@ const started = async (standing: Standing = {}): Promise<Running> => {
     PAYMENT_NETWORK: "eip155:84532",
     FACILITATOR_URL: "sandbox:scripted",
     PUBLIC_BASE_URL: PUBLIC,
+    REGISTRATION_INVITATION: "the-existing-gateway-process-secret",
   });
+  const messages: Message[] = [];
   const identity = identityFor(config, {
     rows: {
       cabinet_accounts: [],
       cabinet_sessions: [],
       cabinet_credentials: [],
       cabinet_verifications: [],
+      cabinet_link_sends: [],
+    },
+    postman: async (message) => {
+      messages.push(message);
+      return "accepted";
     },
   });
-  const person = await identity.make(PERSON, PASSWORD, { id: harnessed.merchant.id, key: KEY });
+  const person = await identity.make(PERSON, { id: harnessed.merchant.id, key: KEY });
   if (person === null) {
     throw new Error("the test account could not be made");
   }
@@ -236,8 +243,12 @@ const started = async (standing: Standing = {}): Promise<Running> => {
         noCookie: true,
       }),
     async signIn() {
-      await visit("POST", "/sign-in", {
-        body: new URLSearchParams({ email: PERSON, password: PASSWORD }).toString(),
+      await visit("POST", "/sign-in", { body: new URLSearchParams({ email: PERSON }).toString() });
+      const found = /(https?:\/\/\S+)/.exec(messages.at(-1)?.body ?? "")?.[1];
+      if (found === undefined) throw new Error("the sign-in message carried no action URL");
+      const action = new URL(found);
+      await visit("POST", action.pathname, {
+        body: new URLSearchParams({ token: action.searchParams.get("token") ?? "" }).toString(),
       });
     },
     async signOut() {
@@ -446,7 +457,7 @@ describe("the page the shop sends the browser back to, with a session on the req
     const came = await running.get(`/woocommerce/return?success=1&user_id=${token}`);
 
     expect(came.status).toBe(303);
-    expect(came.to).toBe("/woocommerce?from=shop");
+    expect(came.to).toBe("/settings");
   });
 });
 
@@ -869,7 +880,7 @@ describe("coming back from the shop with no session on the request", () => {
 
     const stripped = await cameBack(running);
     const landed = await running.getWithoutCookie(stripped.to ?? "/woocommerce/return");
-    expect(landed.html).toContain(`href="/sign-in"`);
+    expect(landed.html).toContain(`href="/sign-in?destination=settings"`);
 
     await running.signIn();
     const text = readable((await running.get("/settings")).html);
@@ -892,8 +903,8 @@ describe("coming back from the shop with no session on the request", () => {
     const came = await running.get("/woocommerce/return?success=1");
     const seen = await running.get(came.to ?? "");
 
-    expect(came.to).toBe("/woocommerce?from=shop");
-    expect(seen.html).toContain("Your shop is connected");
+    expect(came.to).toBe("/settings");
+    expect(readable(seen.html)).toContain(`${SHOP}, connected`);
   });
 
   it("does not say the shop approved merely because the browser came through the return address", async () => {
@@ -903,24 +914,24 @@ describe("coming back from the shop with no session on the request", () => {
     // Here the redirect says the opposite, `success=0`, the shape WooCommerce
     // sends when the merchant declined. What the page may claim about approval
     // and keys is what our rows hold, a Connect started and no keys yet, and
-    // the check is that it is the very page a plain reload gives.
+    // the check is that it is the very settings page a plain reload gives.
     const running = await started();
     await running.signIn();
     await running.post("/woocommerce/connect", { shop_url: SHOP });
 
     const came = await running.get("/woocommerce/return?success=0&user_id=anything");
     const back = await running.get(came.to ?? "");
-    const reloaded = await running.get("/woocommerce");
+    const reloaded = await running.get("/settings");
 
-    expect(came.to).toBe("/woocommerce?from=shop");
+    expect(came.to).toBe("/settings");
     expect(readable(back.html)).toMatch(/no keys have reached us yet/);
     expect(back.html).toBe(reloaded.html);
   });
 
   it("offers Connect and adds nothing when the return address is opened by hand", async () => {
     // Nothing was started and no shop sent this browser anywhere: a merchant
-    // signed in on it typed the address in. What they land on is the shop
-    // screen as it always is for them, the form — a note that a shop approved
+    // signed in on it typed the address in. What they land on is settings in
+    // its ordinary empty state — a note that a shop approved
     // something, or that the browser came back from one, would be a note about
     // an event that did not happen.
     const running = await started();
@@ -928,10 +939,10 @@ describe("coming back from the shop with no session on the request", () => {
 
     const came = await running.get("/woocommerce/return");
     const back = await running.get(came.to ?? "");
-    const reloaded = await running.get("/woocommerce");
+    const reloaded = await running.get("/settings");
 
-    expect(came.to).toBe("/woocommerce?from=shop");
-    expect(readable(back.html)).toContain("Connect your shop");
+    expect(came.to).toBe("/settings");
+    expect(readable(back.html)).toContain("Connect a WooCommerce shop");
     expect(back.html).toBe(reloaded.html);
   });
 

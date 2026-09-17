@@ -1,15 +1,9 @@
 /**
  * The two screens the name buyers read is chosen on: the one a merchant meets
- * straight after registering, and the settings page it is changed on afterwards.
- *
- * It used to be a box on the registration form, between a password and an
- * invitation code, and moving it is the whole point of this file. There it was
- * a public answer — printed beside the products every buyer sees — demanded at
- * the one moment a merchant knows least: no products yet, no catalogue seen,
- * nothing anywhere saying what the name is for. What a form like that collects
- * is whatever was closest to hand, and whatever was closest to hand is then
- * what strangers read. Here there is room to say what the name does before
- * asking for it, room for an example, and room to promise it can be changed.
+ * straight after their merchant is attached, and the settings page it is
+ * changed on afterwards. The choice is a public answer printed beside the
+ * products every buyer sees, so the first screen says what the name does before
+ * asking for it and promises it can be changed.
  *
  * Skipping is allowed on the first of the two screens, because a name demanded
  * before somebody can answer it is a name nobody means. What is not allowed is
@@ -100,8 +94,8 @@ const WHAT_IT_IS_FOR = `<p>Buyers see this name beside your products, and it is 
 /**
  * The screen a merchant lands on the moment their account exists.
  *
- * Drawn with no navigation, like the registration it follows, because it is the
- * last step of registering rather than a page inside the cabinet. The way out
+ * Drawn with no navigation because it is the last step of first-time setup
+ * rather than a page inside the cabinet. The way out
  * is a link and not a hidden field: whoever skips goes to their cards, which is
  * where the same fact is waiting for them with the page that fixes it.
  */

@@ -15,9 +15,9 @@ import { isSandboxMail, type Message, postmanFor, SANDBOX_MAIL } from "./mail.js
 
 const MESSAGE: Message = {
   to: "dmitry@example.com",
-  subject: "Choose a new password",
-  body: "Open this to choose one:\n\n    https://agentify.example/password/new?token=abc&from=mail\n",
-  html: '<a href="https://agentify.example/password/new?token=abc&amp;from=mail">Choose a new password</a>',
+  subject: "Open your Agentify cabinet",
+  body: "Open this:\n\n    https://agentify.example/sign-in/open?token=abc\n",
+  html: '<a href="https://agentify.example/sign-in/open?token=abc">Open your cabinet</a>',
 };
 
 /** Everything the process said while `during` ran. */
@@ -55,7 +55,7 @@ afterEach(async () => {
   running = null;
 });
 
-const provider = async (status = 200): Promise<Provider> => {
+const provider = async (status = 200, answerAfterMs = 0): Promise<Provider> => {
   const asked: { path: string; authorization: string; body: string }[] = [];
   const server = createServer((request, response) => {
     let body = "";
@@ -68,8 +68,12 @@ const provider = async (status = 200): Promise<Provider> => {
         authorization: request.headers.authorization ?? "",
         body,
       });
-      response.writeHead(status, { "content-type": "application/json" });
-      response.end(JSON.stringify(status === 200 ? { id: "msg_1" } : { message: "no" }));
+      const answer = () => {
+        response.writeHead(status, { "content-type": "application/json" });
+        response.end(JSON.stringify(status === 200 ? { id: "msg_1" } : { message: "no" }));
+      };
+      if (answerAfterMs === 0) answer();
+      else setTimeout(answer, answerAfterMs);
     });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -98,7 +102,7 @@ describe("a cabinet with no mail provider", () => {
     });
 
     expect(said).toContain("dmitry@example.com");
-    expect(said).toContain("https://agentify.example/password/new?token=abc&from=mail");
+    expect(said).toContain("https://agentify.example/sign-in/open?token=abc");
     // And it says out loud that nothing was sent, so nobody reading this log
     // goes looking in a mailbox for it.
     expect(said).toMatch(/not sent|no mail provider/i);
@@ -139,7 +143,7 @@ describe("a cabinet with a mail provider", () => {
     expect(document.html).toBe(MESSAGE.html);
   });
 
-  it("says the provider took it, so the log can be read for an address that worked", async () => {
+  it("records provider acceptance without the recipient or action URL", async () => {
     // Written down as well as answered. The log is what a reader goes through
     // afterwards, and one that wrote down failures alone would leave them
     // unable to tell a message that went to the provider from one that was
@@ -155,10 +159,8 @@ describe("a cabinet with a mail provider", () => {
       await expect(postman(MESSAGE)).resolves.toBe("accepted");
     });
 
-    expect(said).toContain("dmitry@example.com");
-    expect(said).not.toMatch(/refused|could not be sent/);
-    // And not the link. A provider is in force here, so the one person who is
-    // meant to hold it is the one who was sent it.
+    expect(said).toMatch(/provider accepted/i);
+    expect(said).not.toContain("dmitry@example.com");
     expect(said).not.toContain("token=abc");
   });
 
@@ -182,6 +184,8 @@ describe("a cabinet with a mail provider", () => {
     });
 
     expect(said).toContain("422");
+    expect(said).not.toContain("dmitry@example.com");
+    expect(said).not.toContain("token=abc");
     // And the refusal is the whole of what the log says about this message. A
     // second line beside it claiming the message went out is worse than no
     // line at all: it sends whoever is reading to a mailbox that will never
@@ -203,11 +207,30 @@ describe("a cabinet with a mail provider", () => {
       await expect(postman(MESSAGE)).resolves.toBe("refused");
     });
 
-    expect(said).toContain("could not be sent");
+    expect(said).toContain("could not be reached");
+    expect(said).not.toContain("dmitry@example.com");
     // And the link is not written down a second time by the failure. It is the
     // one thing in the message that is worth something on its own, and an
     // exception from a request that failed mid-flight carries the whole
     // document it was sending.
     expect(said).not.toContain("token=abc");
+  });
+
+  it("refuses a provider that stays silent past the fixed deadline", async () => {
+    const sending = await provider(200, 250);
+    const nativeTimeout = AbortSignal.timeout.bind(AbortSignal);
+    const deadline = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => nativeTimeout(50));
+    const postman = postmanFor({
+      mailUrl: sending.url,
+      mailApiKey: "re_a_real_looking_key",
+      mailFrom: "Agentify <no-reply@mail.example.com>",
+    });
+
+    try {
+      await expect(postman(MESSAGE)).resolves.toBe("refused");
+      expect(deadline).toHaveBeenCalledWith(10_000);
+    } finally {
+      deadline.mockRestore();
+    }
   });
 });

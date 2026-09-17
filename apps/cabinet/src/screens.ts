@@ -51,10 +51,8 @@ export interface Viewer {
   /** The address of the person signed in. */
   readonly who: string;
   /**
-   * Whether that address has been confirmed.
-   *
-   * Every page says which it is, because what an unconfirmed address costs its
-   * owner only shows up on the day they have lost their password.
+   * Whether that address has been confirmed. A passwordless interactive
+   * session is always confirmed by the link that opened it.
    */
   readonly confirmed: boolean;
   /**
@@ -78,16 +76,6 @@ export interface Viewer {
    * not tell a merchant they have set no address.
    */
   readonly payout?: PayoutWallet;
-  /**
-   * Whether this is the page a merchant was sent back to straight after a
-   * confirmation link was handed to the mail provider.
-   *
-   * Set by the one route the redirect after that press lands on, and by nothing
-   * else. A screen a merchant merely navigated to has nothing to say about a
-   * message: absent here is the ordinary case, and the note is drawn only where
-   * a send actually happened and was taken.
-   */
-  readonly linkSent?: boolean;
   /**
    * Where this account's WooCommerce channel has got to, where the screen
    * asked.
@@ -128,7 +116,6 @@ const framed = (frame: Frame): string =>
     title: frame.title,
     selling: SELLING_WORDS[frame.selling],
     unnamed: frame.viewer.sellerName === null,
-    linkSent: frame.viewer.linkSent === true,
     body: frame.body,
   });
 

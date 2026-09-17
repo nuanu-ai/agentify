@@ -35,17 +35,17 @@ The gateway settles against nothing locally (ADR-0008): a purchase completes
 with no wallet, no network and no faucet, and the first line of its log says so.
 
 The cabinet is where a merchant sets the name buyers see and issues the keys
-their own code calls with. The way in is to register:
+their own code calls with. Open its email sign-in form:
 
 ```
-open http://localhost:8080/cabinet/register
+open http://localhost:8080/cabinet/sign-in
 ```
 
-The form asks for an email, a password and an invitation. The invitation is
-`register-on-this-laptop`, which `compose.yaml` sets by default. Registering
-makes the merchant, signs you in as them, and puts you on the one question the
-form did not ask — the name buyers see. The credential the cabinet acts as that
-merchant with is made and held by the cabinet; it is never something you type.
+Enter your email address, open the one-time link and press its confirmation
+button. The local sandbox writes the message to the cabinet log; a deployed
+cabinet sends it by email. Confirming the link signs you in and creates your
+merchant if you do not already have one, then asks for the name buyers see.
+The credential the cabinet uses for that merchant stays in the cabinet.
 
 That merchant is a new one, and it is not `the_merchant` — the merchant the
 stack seeds, whose two cards the merchant process publishes and `pnpm buy`

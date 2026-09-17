@@ -258,7 +258,7 @@ export const wooReturnScreen = (base: string, mode: SurfaceMode): string =>
   <p>This is the address a WooCommerce shop sends you to when it has finished with a connection.</p>
   <p>Nothing about it can be shown here. Arriving from another site does not carry your sign-in with it, which is deliberate and is why you are reading this page rather than your own settings.</p>
   <p>Sign in and your settings say where the connection got to: which shop is connected, or that one was started and its keys have not reached us.</p>
-  <p class="quiet"><a href="${escaped(base)}/sign-in">Sign in</a></p>
+  <p class="quiet"><a href="${escaped(base)}/sign-in?destination=settings">Sign in</a></p>
 </div>`,
     mode,
   );

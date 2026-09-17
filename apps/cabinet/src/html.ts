@@ -36,20 +36,14 @@ export interface Chrome {
    * able to tell whose screen this is before pressing the control that stops
    * all their selling.
    *
-   * It links to the settings, where the account it names is looked after. It
-   * used to link to the password form, which is the one thing about an account
-   * somebody does rarely — pressing your own name means "show me my account",
-   * and the answer to that is a page with the address on it and the password
-   * form one press further on.
+   * It links to the settings, where the account it names is described. Pressing
+   * your own name means "show me my account" and opens that page directly.
    */
   readonly who: string;
   /**
-   * Whether anybody has shown they can read mail sent to that address.
-   *
-   * Unconfirmed, every page says so beside the address and offers the one
-   * control that changes it. It is on every page rather than on a settings
-   * screen because what it costs its owner only shows up on the day they have
-   * lost their password — which is a day they cannot read a settings screen.
+   * Whether anybody has shown they can read mail sent to that address. The
+   * identity fact remains available to callers, while every interactive
+   * passwordless session is confirmed by the link that opened it.
    */
   readonly confirmed: boolean;
   readonly tab: Tab;
@@ -74,18 +68,6 @@ export interface Chrome {
    * about the question.
    */
   readonly unnamed?: boolean;
-  /**
-   * Whether this page is the one a merchant lands on straight after a
-   * confirmation link was handed to the mail provider.
-   *
-   * True draws one line naming the address it went to. It says nothing about
-   * arriving, because nothing in this process finds that out — there is no
-   * inbox here and no bounce handler — and it is drawn only where a provider
-   * actually took the message: a send that was refused leaves the page exactly
-   * as it was, which is ADR-0009's own rule about not putting a provider's bad
-   * afternoon in front of somebody.
-   */
-  readonly linkSent?: boolean;
   readonly body: string;
 }
 
@@ -182,13 +164,6 @@ const THEME_SCRIPT = `<script>
 /**
  * One whole page.
  *
- * Beside the address in the corner, until it is confirmed, is the plain fact
- * that nobody has confirmed it and the one control that changes that. It is
- * three words and a button rather than a paragraph because it is on every page;
- * the paragraph is on the pages the address is actually typed into. Once the
- * address is confirmed both go, because a banner that never leaves is a banner
- * nobody reads.
- *
  * The stylesheet is linked rather than inlined so that a merchant moving
  * between the four screens fetches it once, and so that the one visual
  * language ADR-0005 §6 asks for is one file rather than four copies.
@@ -228,43 +203,16 @@ ${surface(chrome.mode)}
       ${WAY_OUT}
       ${chrome.selling === undefined ? "" : state(chrome.selling)}
       <a class="who" href="${escaped(chrome.base)}/settings">${escaped(chrome.who)}</a>
-      ${
-        chrome.confirmed
-          ? ""
-          : `<span class="tag plain">address not confirmed</span>
-      <form class="inline" method="post" action="${escaped(chrome.base)}/confirm">
-        <button type="submit">Send me the link</button>
-      </form>`
-      }
       <form class="inline" method="post" action="${escaped(chrome.base)}/sign-out">
         <button type="submit">Sign out</button>
       </form>
     </div>
   </div>
-${chrome.linkSent === true ? linkSentNote(chrome.who) : ""}${chrome.unnamed === true ? unnamedNote(chrome.base) : ""}${chrome.body}
+${chrome.unnamed === true ? unnamedNote(chrome.base) : ""}${chrome.body}
 </div>
 ${THEME_SCRIPT}
 </body>
 </html>
-`;
-
-/**
- * The line a merchant lands on after asking for a confirmation link.
- *
- * The address is on it because that is the half they cannot check for
- * themselves: the button is beside their own address in the corner, and a
- * merchant who registered with a typo needs to read where the message actually
- * went before they go looking for it. "Sent" and not "delivered", and nothing
- * about a mailbox beyond going to look in it — a provider took the message, and
- * that is the last thing this process ever hears about it.
- *
- * It goes on the next page they draw, because it is carried by the redirect and
- * nothing else. A note about one press that outlived the press would be back on
- * the screen the next morning saying a link had just gone out.
- */
-const linkSentNote = (who: string): string => `  <div class="callout done">
-    <div class="what">Link sent to ${escaped(who)}. Check your inbox.</div>
-  </div>
 `;
 
 /**
@@ -309,6 +257,29 @@ ${THEME_HEAD}
 ${surface(mode)}
 ${body}
 ${THEME_SCRIPT}
+</body>
+</html>
+`;
+
+/** A bare page whose behavior is complete without JavaScript. */
+export const bareWithoutScript = (
+  base: string,
+  title: string,
+  body: string,
+  mode: SurfaceMode,
+): string => `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escaped(title)} — Agentify</title>
+<link rel="icon" href="/assets/agentify-mark-heavy.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles/fonts.css">
+<link rel="stylesheet" href="${escaped(base)}/agentify.css">
+</head>
+<body>
+${surface(mode)}
+${body}
 </body>
 </html>
 `;

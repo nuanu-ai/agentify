@@ -4,7 +4,7 @@
  * It reads its configuration, opens a connection to its own tables, puts the
  * pages on a port, starts the one thing in here that runs without anybody
  * looking at a screen, and stops on a signal. The tables are the people who
- * sign in, their sessions, their passwords, the one-time links they are sent,
+ * sign in, their sessions, the one-time links they are sent,
  * and a merchant's connected WooCommerce shop (ADR-0009 §1, ADR-0023): every
  * card, order and receipt on every screen still comes from the gateway's public
  * API, which is the promise ADR-0005 §3 is actually about.
@@ -36,9 +36,8 @@ const wooShops = postgresWooShops(pool);
 
 const server = buildApp(config, { identity, wooShops }).listen(config.port, () => {
   console.log(`[cabinet] listening on ${config.port}, reading ${config.gatewayUrl}`);
-  // Said at start-up rather than discovered on the day somebody loses a
-  // password. A cabinet that writes its messages to the log is a working
-  // cabinet and not a broken one, and the difference is worth one line.
+  // Mail is the sign-in channel; make the configured delivery mode visible
+  // without writing recipients or action links from a real provider to logs.
   console.log(
     isSandboxMail(config.mailUrl)
       ? "[cabinet] no mail provider is configured: every message is written to this log instead"

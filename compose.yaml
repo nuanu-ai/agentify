@@ -39,21 +39,17 @@
 # tables they empty and the schemas they drop, so each pulls the ground out from
 # under the other. One run at a time, per database.
 #
-# Register at http://localhost:8080/cabinet/register with an email, a password
-# and the invitation `register-on-this-laptop`, which AGENTIFY_INVITATION sets
-# below. The account works immediately; confirming the address enables password
-# recovery. This local sandbox writes confirmation and reset links to the
-# cabinet log rather than sending real mail.
+# Open http://localhost:8080/cabinet/sign-in and request a link for your email.
+# This local sandbox writes the message to the cabinet log. Open the link and
+# press its confirmation button; the first sign-in creates your merchant.
 #
-# An operator can still make an account against a stack that is already up. The
-# command prints a generated password once:
+# An operator can make an account for the seeded merchant on an existing stack:
 #
 #   docker compose exec cabinet \
 #     pnpm --filter @agentify/commerce-cabinet account add you@example.com
 #
-# Then http://localhost:8080/cabinet takes that address and that password. The
-# same command has three more verbs — `list`, `password`, `revoke` — and running
-# it with none of them prints them.
+# The command prints no password. The same email-and-link sign-in opens this
+# account. `list` inspects accounts and `revoke` ends their sessions.
 #
 # Nothing is bought by itself. The merchant publishes its catalogue and waits;
 # a purchase is an explicit command, so a sale in the cabinet is one somebody
@@ -86,8 +82,8 @@
 #                           sells with
 #   AGENTIFY_SEED_KEY       the key the gateway writes at    csk_test_local-sandbox-merchant-key
 #                           start-up, or nothing at all
-#   AGENTIFY_INVITATION     the code registration is         register-on-this-laptop
-#                           behind, or nothing at all
+#   AGENTIFY_INVITATION     the private cabinet-to-gateway   register-on-this-laptop
+#                           registration secret
 #   AGENTIFY_POSTGRES_PUBLISH  the published port of the     5432:5432
 #                           database, or a narrower bind
 #
@@ -129,16 +125,11 @@
 # The gateway reads a name set to nothing as a name never set, and says at
 # start-up which of the two it did.
 #
-# AGENTIFY_INVITATION is the code somebody has to type to register a merchant
-# here (ADR-0014 §3). On a laptop it is a word in this file, so `docker compose
-# up` gives a stack anybody can sign up on; a deployment hands out a code of its
-# own, and a deployment that wants no registrations at all sets it to nothing:
-#
-#   AGENTIFY_INVITATION=
-#
-# The gateway then refuses every registration, in the same words and the same
-# status a wrong code gets — so the form is not a way of asking whether
-# registration is open here.
+# AGENTIFY_INVITATION protects registration between the cabinet and gateway
+# (ADR-0014). People never type it. On a laptop it defaults to a local value;
+# a deployment supplies its own nonempty secret to both processes. The cabinet
+# refuses to start without it, because first sign-in must be able to create
+# the merchant. Admission to live sales is a separate operator approval.
 
 # One image behind four of the services below. They are four entry points into
 # one workspace and share every dependency below their own file, so which one a
@@ -223,7 +214,7 @@ services:
       # disabled. A deployment sets this too, to a key generated for that host
       # and carrying that site's prefix, because the merchant service below
       # reads its key out of a file and has nothing to present until a row for
-      # it exists; a person registering with an invitation needs none of it. It
+      # it exists; a person entering through an email link needs none of it. It
       # is unset once nothing presents that key any more — once whatever sells
       # there has a key of its own. Its own variable rather than
       # the one the cabinet presents, because the two part company on a server:
@@ -236,17 +227,10 @@ services:
       # only when nobody named the variable, so a deployment naming it with
       # nothing after it gets nothing rather than the sandbox's key back.
       SANDBOX_MERCHANT_KEY: "${AGENTIFY_SEED_KEY-csk_test_local-sandbox-merchant-key}"
-      # The code that stands in the door of registration. Nobody registering has
-      # a key yet, so this is what is between a stranger who finds the hostname
-      # and a merchant of their own — and the catalogue is one across merchants,
-      # so an open form would put a stranger's words in front of every buyer.
-      # A word in this file on a laptop, for the reason the password above it is:
-      # this stack holds a developer's own test orders and talks to nothing real.
-      #
-      # The dash carries no colon for the same reason the line above it does:
-      # `${VAR-default}` gives the default only when nobody named the variable,
-      # so a deployment naming it with nothing after it takes no registrations
-      # rather than getting this word back.
+      # The cabinet keeps this registration secret; people prove their email
+      # instead. Live publication has its own one-time operator approval.
+      # A deliberately empty gateway value disables this private registration
+      # route; the cabinet requires a nonempty matching value to start.
       REGISTRATION_INVITATION: "${AGENTIFY_INVITATION-register-on-this-laptop}"
       # The address an agent is sent back to in order to pay, which is the door
       # Caddy answers and not the port this process listens on. Given the
@@ -332,7 +316,7 @@ services:
       # reached again by signing in.
       AUTH_SECRET: "${AGENTIFY_AUTH_SECRET:-a-sandbox-secret-nobody-should-reuse-anywhere}"
       # The address a merchant reaches this cabinet at, which is what the links
-      # in a confirmation or a password reset are built on. Nothing else needs
+      # in a cabinet sign-in message are built on. Nothing else needs
       # it — every link on every page is relative — but a message is read on
       # another machine, so those two have to be absolute.
       #
@@ -343,7 +327,7 @@ services:
       PUBLIC_BASE_URL: "${AGENTIFY_PUBLIC_ORIGIN:-http://localhost:${AGENTIFY_HOST_PORT:-8080}}"
       # How a message leaves, or that it does not. `sandbox:log` writes every
       # message into this service's log with its recipient and its link, so the
-      # whole path — register, confirm, lose a password, set a new one — is
+      # whole email-link sign-in flow is
       # walked on a laptop with no account, no domain and no network. The same
       # shape as the gateway's facilitator: one field, one value, and a
       # configuration naming a real provider cannot also be pretending.
@@ -372,6 +356,9 @@ services:
       # merchant's own code uses (ADR-0005 §2) — this is the service name on the
       # internal network, not the origin a browser types.
       GATEWAY_URL: http://gateway:3000
+      # Registration is an internal cabinet-to-gateway operation. The same
+      # secret protects that wire; a person signing in never types it.
+      REGISTRATION_INVITATION: "${AGENTIFY_INVITATION-register-on-this-laptop}"
       # Caddy passes /cabinet through without stripping it, so the process sees
       # the path the browser asked for and builds its links from the same string
       # (deploy/Caddyfile).

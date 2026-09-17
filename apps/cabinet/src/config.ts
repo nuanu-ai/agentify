@@ -6,8 +6,8 @@
  * than one per restart.
  *
  * There is a database address here and there is exactly one thing it is for:
- * the people who sign into the cabinet, their sessions, their passwords and the
- * one-time links they are sent (ADR-0009). ADR-0005 §3 still holds for
+ * the people who sign into the cabinet, their sessions, their merchant binding,
+ * and the one-time links they are sent (ADR-0009). ADR-0005 §3 still holds for
  * everything else — every card, order and receipt on every screen comes from
  * the public API, because the reason that section gives is dogfooding: a screen
  * the cabinet cannot draw is API the merchant does not have either.
@@ -18,9 +18,9 @@
  * was signed in. The key is on the row of the person signed in now (ADR-0014
  * §2), so a deployment has one less thing to set and one more thing to back up.
  *
- * The two secrets left in here are read and never printed. The sentences this
- * file throws name the variable that is wrong and not the value it held, because
- * a startup failure goes to a log and a log goes places the environment does not.
+ * Process secrets are read and never printed. The sentences this file throws
+ * name the variable that is wrong and not the value it held, because a startup
+ * failure goes to a log and a log goes places the environment does not.
  */
 
 import { type SurfaceMode, surfaceModeOf } from "@agentify/commerce-core";
@@ -83,8 +83,8 @@ const environmentSchema = z.object({
   /**
    * Where the cabinet's own accounts and sessions live.
    *
-   * The same Postgres as everything else (ADR-0003 §6), and four tables of the
-   * cabinet's own in it. Without one there is nowhere to look a session up, so
+   * The same Postgres as everything else (ADR-0003 §6), with the identity
+   * component's own rows in it. Without one there is nowhere to look a session up, so
    * every visitor would be a stranger — a cabinet that draws a sign-in form and
    * can never accept one.
    */
@@ -105,6 +105,16 @@ const environmentSchema = z.object({
    * cabinet pointed at nothing draws nothing and says so.
    */
   GATEWAY_URL: z.url().default("http://localhost:3000"),
+
+  /**
+   * The existing shared secret that lets this cabinet make a merchant.
+   *
+   * It no longer appears in a person's form. The cabinet presents it to the
+   * gateway only after a one-time link has opened an authenticated P1 session.
+   */
+  REGISTRATION_INVITATION: z
+    .string({ error: absentOrWrong("must be a string") })
+    .min(1, "must not be empty"),
 
   /**
    * Where the cabinet is mounted, when it is not at the root of its origin.
@@ -166,7 +176,7 @@ const environmentSchema = z.object({
   /**
    * The address a merchant reaches this cabinet at, from their own machine.
    *
-   * It is what the links in our two messages are built on, and that is its only
+   * It is what the one-time links in mail are built on, and that is its only
    * use — nothing else in the cabinet needs to know its own address, because
    * every link on every page is relative. Behind a reverse proxy the address
    * this process sees is not the address the merchant typed, so it is
@@ -246,12 +256,14 @@ export interface CabinetConfig {
   readonly surfaceMode: SurfaceMode;
   readonly port: number;
   readonly gatewayUrl: string;
+  /** The process secret used only for gateway merchant registration. */
+  readonly gatewayInvitation: string;
   readonly basePath: string;
   readonly cookieSecure: boolean;
   readonly databaseUrl: string;
   /** What a session cookie is signed with. Never printed, never on a page. */
   readonly authSecret: string;
-  /** What the links in the cabinet's two messages are built on. */
+  /** What the cabinet's one-time links are built on. */
   readonly publicBaseUrl: string;
   readonly mailUrl: string;
   readonly mailApiKey: string | null;
@@ -301,8 +313,8 @@ export function loadConfig(environment: Record<string, string | undefined>): Cab
 
   // And the door the other way. A provider address with nothing to authenticate
   // against it is a cabinet that appears to send mail and silently does not,
-  // which is the shape of failure a merchant discovers when they have lost a
-  // password and are waiting for a link that was never accepted.
+  // which is the shape of failure a merchant discovers only when the sign-in
+  // link they are waiting for never arrives.
   if (!sandboxMail && values.MAIL_API_KEY === undefined) {
     problems.push(
       `MAIL_URL names a mail provider and MAIL_API_KEY is not set, so nothing would be accepted` +
@@ -339,6 +351,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Cab
     // contract path would make every call a double slash, which some proxies
     // route somewhere else entirely.
     gatewayUrl: values.GATEWAY_URL.replace(/\/+$/, ""),
+    gatewayInvitation: values.REGISTRATION_INVITATION,
     basePath: values.BASE_PATH,
     cookieSecure: values.COOKIE_SECURE,
     databaseUrl: values.DATABASE_URL,

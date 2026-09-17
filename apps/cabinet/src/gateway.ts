@@ -361,11 +361,10 @@ const answering = async <T>(
 /**
  * A caller with no key, which can do exactly one thing.
  *
- * The invitation is not the cabinet's to check and is not in its configuration:
- * it is one value out of the gateway's, handed to a merchant along with the
- * address of the site (ADR-0014 §3). What arrives here is whatever was typed
- * into the form, and what comes back says only that it was accepted or that it
- * was not.
+ * The invitation is the existing process secret shared with the gateway. It is
+ * read from cabinet configuration and never accepted from a person. The
+ * gateway remains the only component that decides whether the exact value is
+ * accepted.
  */
 export const registrarFor = (
   baseUrl: string,
