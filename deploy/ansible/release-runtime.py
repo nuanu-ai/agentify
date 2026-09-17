@@ -11,6 +11,11 @@ def require(condition, message):
         raise RuntimeError(message)
 
 
+def compose_runtime_value(value):
+    """Decode Compose config JSON's escaped dollars to the container value."""
+    return str(value).replace('$$', '$')
+
+
 EXPECTED_ROLES = {
     'commerce': {'postgres', 'migrate', 'gateway', 'cabinet', 'web'},
     'scanner': {
@@ -243,7 +248,7 @@ elif mode == 'verify':
                 require(labels.get('org.opencontainers.image.source') == 'https://github.com/nuanu-ai/agentify', name + ' was built from another repository')
             environment = dict(line.split('=', 1) for line in container['Config']['Env'] if '=' in line)
             for key, value in config.get('environment', {}).items():
-                require(environment.get(key) == str(value), name + ' environment mismatch: ' + key)
+                require(environment.get(key) == compose_runtime_value(value), name + ' environment mismatch: ' + key)
             evidence['services'].append({'name': name, 'image': config['image'], 'imageId': container['Image'], 'containerId': container['Id']})
     # Scheduled and migration services have no resident container. Their local
     # image IDs and source labels are still part of the host's release evidence.
