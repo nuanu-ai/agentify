@@ -168,6 +168,8 @@ restore_baseline() {
     -e MYSQL_PWD="$MARIADB_ROOT_PASSWORD" db mariadb -uroot wordpress
   compose up -d wordpress caddy
   wait_for_wordpress
+  printf '%s\n' "$WORDPRESS_ADMIN_PASSWORD" | \
+    compose run --rm -T cli wp user update admin --prompt=user_pass --skip-email >/dev/null
 }
 
 if [[ "$mode" == --rebuild-baseline ]]; then
