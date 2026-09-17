@@ -6,7 +6,7 @@ if (!defined('ABSPATH')) {
 
 WC_Install::create_pages();
 
-update_option('blogname', 'Nuanu Digital Gifts — Test Store');
+update_option('blogname', 'Test Gift Shop');
 update_option('blogdescription', 'Digital gifts and memorable experiences');
 update_option('timezone_string', 'Asia/Makassar');
 update_option('date_format', 'F j, Y');

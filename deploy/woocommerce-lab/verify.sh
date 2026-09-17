@@ -70,7 +70,7 @@ enabled_gateways="$(wp wc payment_gateway list --user=admin --format=json | \
   python3 -c 'import json,sys; print(" ".join(x["id"] for x in json.load(sys.stdin) if x.get("enabled")))')"
 [[ -z "$enabled_gateways" ]] || fail "payment gateways enabled: $enabled_gateways"
 
-[[ "$(wp option get blogname)" == "Nuanu Digital Gifts — Test Store" ]] || \
+[[ "$(wp option get blogname)" == "Test Gift Shop" ]] || \
   fail "unexpected store title"
 
 printf 'PASS: storefront is healthy and all payment gateways are disabled\n'
