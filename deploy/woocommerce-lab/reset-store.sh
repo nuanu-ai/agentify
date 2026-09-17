@@ -13,6 +13,11 @@ if [[ "$mode" != restore && "$mode" != --rebuild-baseline ]]; then
 fi
 
 if [[ ! -f "$env_file" ]]; then
+  if [[ -e "$expected_root/baseline/wordpress.sql.gz" ||
+    -e "$expected_root/baseline/wordpress.tar.gz" ]]; then
+    printf 'Refusing to create new credentials for an existing baseline. Restore the server-owned .env first.\n' >&2
+    exit 1
+  fi
   umask 077
   admin_password="$(openssl rand -base64 24 | tr -d '\n')"
   db_password="$(openssl rand -hex 24)"
@@ -137,6 +142,18 @@ build_baseline() {
 restore_baseline() {
   [[ -s "$database_baseline" && -s "$wordpress_baseline" ]] || {
     printf 'Local baseline is missing. Build it once with:\n  %s/reset-store.sh --rebuild-baseline\n' "$(pwd)" >&2
+    exit 1
+  }
+  gzip -t "$database_baseline" || {
+    printf 'Database baseline is corrupt; the running shop was not changed.\n' >&2
+    exit 1
+  }
+  gzip -t "$wordpress_baseline" || {
+    printf 'WordPress baseline is corrupt; the running shop was not changed.\n' >&2
+    exit 1
+  }
+  tar -tzf "$wordpress_baseline" >/dev/null || {
+    printf 'WordPress baseline is not a readable archive; the running shop was not changed.\n' >&2
     exit 1
   }
 
