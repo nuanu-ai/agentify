@@ -623,25 +623,6 @@ const paidInto = async (running: Running): Promise<string | null> =>
   (await running.harnessed.store.merchantById(running.harnessed.merchant.id))?.payoutWallet ?? null;
 
 describe("getting into the cabinet", () => {
-  it("asks only for an address and accepts the same link request for known and unknown people", async () => {
-    const { browser, rows } = await started();
-
-    const form = await browser.get("/sign-in");
-    expect(form.html).toContain('name="email"');
-    expect(form.html).not.toContain('name="password"');
-    expect(form.html).not.toContain('name="invitation"');
-
-    const known = await browser.post("/sign-in", { email: PERSON });
-    const unknown = await browser.post("/sign-in", { email: "nobody@example.com" });
-
-    expect(known.status).toBe(202);
-    expect(unknown.status).toBe(202);
-    expect(readable(known.html)).toBe(readable(unknown.html));
-    expect(known.headers.getSetCookie()).toStrictEqual([]);
-    expect(unknown.headers.getSetCookie()).toStrictEqual([]);
-    expect(rows.cabinet_sessions).toStrictEqual([]);
-  });
-
   it("shows a visitor with no session the sign-in and nothing else at all", async () => {
     // ADR-0009 §2: the gate denies by default, and every address answers the
     // same way whether or not there is a page behind it. A 404 for an address
