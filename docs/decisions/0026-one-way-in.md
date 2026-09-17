@@ -62,12 +62,16 @@ and nothing on the public origin can ask for a link to be returned rather
 than sent.
 
 **4. The merchant is made when the link is consumed at the cabinet's door.**
-A link consumed there for a person who owns no merchant makes the merchant,
-the key its cabinet calls with and, if there is none yet, the person's row, in
-one act and in ADR-0014's order — gateway first — with the address confirmed by
-construction. A person who owns a merchant signs into it. A message that never
-arrived leaves nothing behind, and registering is the same screen as signing
-in.
+The token is consumed first, and the person's row and session are written
+with it — that is what the component does at verification, and the address
+is confirmed by construction. Only then is the gateway asked for the merchant
+and the key its cabinet calls with, for a person who owns none. A gateway
+that does not answer leaves a person signed in without a merchant, who tries
+again from inside the session; no link is spent on a retry. A cabinet that
+fails after the gateway answered leaves a merchant nobody names — litter, as
+ADR-0014 §1 says — and the next attempt makes another. A person who owns a
+merchant signs into it. A message that never arrived leaves nothing behind,
+and registering is the same screen as signing in.
 
 **5. The door to the shared catalogue moves from registration to live
 publication.** Anyone who reads their mail holds a cabinet, integrates against
@@ -75,6 +79,126 @@ the SDK and sells in the test contour. Live publication is refused until the
 merchant has a seller name and a payout wallet, as today, and until the
 operator has switched that merchant on, once. The named trigger for the switch
 becoming a paid subscription is the day the operator cannot keep up.
+
+## The stories
+
+Every way a person can arrive, what they hold, and where they end. P0 is an
+address the cabinet has never seen, P1 a person who owns no merchant, P2 a
+person who owns one. Each row is an acceptance case the scanner's and the
+cabinet's suites answer for; a row with no test is a gap in the code, not in
+the table.
+
+The scanner's door: the full report.
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant S as Scanner
+    participant C as Cabinet
+    participant M as Mail
+    B->>S: asks for the full report, gives an address
+    S->>C: send a link for this address, purpose report (internal route)
+    C->>M: one message, one button
+    S-->>B: the same screen for every address, resend after a cooldown
+    B->>S: opens the link, lands on the callback page
+    B->>S: presses confirm (same-origin submission)
+    S->>C: verify this token
+    C-->>S: confirmed, P0 becomes P1, P1 and P2 unchanged
+    Note over S: lead written and linked to the scan, report cookie set
+    S-->>B: the report, with the control that opens the cabinet
+```
+
+From the report into the cabinet, in the request that confirmed the address.
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant S as Scanner
+    participant C as Cabinet
+    Note over S: the address was confirmed in this same request
+    S->>C: issue a link for the cabinet's door (internal route)
+    C-->>S: the link, not mailed
+    S-->>B: the control carries the link
+    B->>C: opens it, lands on the cabinet's link page, presses the one control
+    Note over C: continues as the cabinet's door, from "token consumed"
+```
+
+The cabinet's door: the one field, and the link it sends.
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant C as Cabinet
+    participant G as Gateway
+    participant M as Mail
+    B->>C: an address — typed, carried from a report days old, or from the Agentic Shop page
+    C->>M: one message, one button
+    C-->>B: the same screen for every address, resend after a cooldown
+    B->>C: opens the link, presses the one control
+    Note over C: token consumed, person written if P0, session opened
+    alt the person owns no merchant (P0, P1)
+        C->>G: make a merchant and a cabinet key
+        alt the gateway answers
+            G-->>C: merchant and key
+            Note over C: merchant written on the person, now P2
+            C-->>B: the name buyers see
+        else the gateway does not answer
+            C-->>B: signed in, no merchant yet, "try again" inside the session
+        end
+    else the person owns a merchant (P2)
+        Note over C: cabinet key made afresh, the old one forgotten (ADR-0014 §2)
+        C-->>B: the merchant's cards
+    end
+```
+
+Every way in.
+
+| Where the person is | Who | What they hold | What happens | Ends at |
+|---|---|---|---|---|
+| scanner, asks for the full report | P0, P1, P2 | nothing | first diagram | the report; P0 is now P1 |
+| scanner, report opened within thirty days | any | report cookie | the cookie is read; no mail | the report |
+| scanner, cookie gone or expired | any | nothing | "recover": address, link mailed for the report; one answer for every address | the report, after the link |
+| report, control pressed right after confirming | P1 | a confirmation in this request | second diagram: link issued, not mailed | the cabinet, name screen; now P2 |
+| the same | P2 | the same | second diagram | the cabinet, cards |
+| report, control pressed days later | P1, P2 | report cookie only | the control posts the address to the cabinet's door; link mailed | the cabinet, after the link |
+| Agentic Shop page, control pressed | any | nothing | the cabinet's door, address typed | the cabinet, after the link |
+| cabinet, the one field | P0 | nothing | third diagram: person, merchant, key | name screen |
+| cabinet, the one field | P1 | nothing | third diagram: merchant, key | name screen |
+| cabinet, the one field | P2 | nothing | third diagram: signs into the merchant | cards |
+| cabinet, any page | P2 | cabinet session | in; no mail | that page |
+| cabinet, session expired or signed out | P2 | nothing | the one field | as above |
+| arriving from another site, e.g. WooCommerce's return | P2 | a session the browser does not send (SameSite=Strict, ADR-0009 §6) | the page above the gate says so and offers the one field | settings, after signing in |
+| migrated account, first visit after the switch | P2 with a password on file | nothing; sessions ended at the switch | the one field; no password is asked; this sign-in confirms the address | cards |
+
+What a link does.
+
+| The link | Answer |
+|---|---|
+| valid, first press | consumed; the story continues |
+| pressed a second time | refused, "this link has been used", and the one field to ask for another |
+| past its lifetime | refused the same way |
+| for the other door — a report link at the cabinet, or the reverse | refused the same way; a token says which door it is for |
+| opened by a mail preview or a security scanner | nothing; only the same-origin press consumes it |
+| two links asked for | each is valid once until its own expiry; asking again cancels nothing |
+| malformed or unknown | refused the same way; no answer says whether the address exists |
+
+When mail cannot go, or a process is down.
+
+| What failed | What the person sees |
+|---|---|
+| the address does not exist or bounces | the same screen as success; nothing arrives; resend after the cooldown |
+| the mail provider refuses or is down | "temporarily unavailable, try again shortly" — the honest 503 the scanner answers today |
+| the cabinet is down | at the scanner the same 503 for asking or verifying, while reports already opened keep opening; at the cabinet nobody signs in until it is back |
+| the gateway is down at the cabinet's door | signed in without a merchant, offered to try again (third diagram) |
+
+Publication and deletion.
+
+| Story | Answer |
+|---|---|
+| publish on the test channel | needs the seller name; no wallet in the sandbox (ADR-0019); no switch |
+| publish live | refused with a list of what is missing: seller name, payout wallet, the operator's switch (§5) |
+| deletion asked at the scanner, P1 | lead and report sessions removed; the cabinet is asked to remove the person; the row is gone |
+| deletion asked at the scanner, P2 | lead and report sessions removed; the person stays, since a merchant is removed by rules not built (ADR-0014) |
 
 ## Consequences
 
@@ -98,8 +222,10 @@ that still holds passwords.
 
 In: the magic-link plugin in the cabinet, inside the Better Auth already
 pinned in the tree, so the dependency tree gains nothing; one internal route
-on the cabinet with three verbs — send a link for the scanner's door, verify
-its token, issue a link for the cabinet's door; one secret in two deployments;
+on the cabinet with four verbs — send a link for the scanner's door, verify
+its token, issue a link for the cabinet's door, and remove a person who owns
+no merchant when the scanner is asked to delete; one secret in two
+deployments;
 a control in the report and the same control on the Agentic Shop page, in
 place of the application form. The token is consumed in the cabinet and the
 lead is written in the scanner, which is not one transaction: verify first,
@@ -116,8 +242,8 @@ the resend on the same screen. Somebody reading a merchant's mail is that
 merchant, and a shared mailbox is a shared cabinet. This decision sets the
 floor and names the ceiling as its second stage, agreed in principle by
 Dmitry on 2026-09-17 and detailed later: a second factor that does not live
-in the mailbox, optional for everybody and required before live publication,
-and a step above the session on the actions that move money, beginning with
+in the mailbox, optional and not a condition of live publication, and a step
+above the session on the actions that move money, beginning with
 the payout wallet, whose change writes to the address and can be undone from
 the message. Until that stage lands, none of it is assumed to exist, and the
 work is tracked as such. One identity in one process is one process
@@ -135,8 +261,8 @@ a person is then written twice, and a privacy deletion has two places to miss.
 **A second message at the transition** — proves the same address the same way
 a minute later; the boundary is held by minting only at confirmation. **The
 password kept as a second factor** — a factor recovered through the same
-mailbox is not a second one; passkeys are the honest version and wait for the
-first merchant who asks. **Trusting the report cookie** — a thirty-day cookie
+mailbox is not a second one; passkeys are the honest version and belong to the second
+stage. **Trusting the report cookie** — a thirty-day cookie
 on a shared laptop would open a cabinet in somebody else's name. **The
 invitation kept as a hidden door** — held by the cabinet for everybody it
 stops nobody; the door belongs where a stranger's words reach a buyer, which

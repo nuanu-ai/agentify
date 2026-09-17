@@ -20,10 +20,13 @@ for an address that has no account (ADR-0026); no form asks for a password or
 an invitation, and the person is signed in where they stand. Each side of the
 boundary writes in one transaction and the boundary is
 crossed once: the gateway makes the merchant and the key, the cabinet writes
-the account. A cabinet that fails after the gateway answered leaves a merchant
-nobody can sign in as — litter, not damage; the address is free and the next
-attempt makes a new one. The reverse order cannot exist: the account has
-nothing to name until the merchant does.
+the merchant on the person. A cabinet that fails after the gateway answered
+leaves a merchant nobody names — litter, not damage; the next attempt makes a
+new one. The order is the reverse of the one first written here, because the
+component writes the person at the moment the link is verified (ADR-0026 §4):
+the person exists before the gateway is asked, and a gateway that does not
+answer leaves them signed in without a merchant, trying again from inside the
+session rather than spending another link.
 
 **2. An account names its merchant and holds a key made for the cabinet.** The
 cabinet builds its gateway client per request from the signed-in account's
