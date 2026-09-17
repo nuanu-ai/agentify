@@ -31,6 +31,11 @@ compose ps --status running --services | grep -qx wordpress || fail "wordpress i
 compose ps --status running --services | grep -qx db || fail "database is not running"
 compose ps --status running --services | grep -qx caddy || fail "caddy is not running"
 
+resolved_addresses="$(getent ahostsv4 woo.nuanu.ai | awk '{print $1}' | sort -u)"
+[[ "$resolved_addresses" == 153.124.160.16 ]] || \
+  fail "woo.nuanu.ai does not resolve only to the shared ingress: $resolved_addresses"
+printf 'PASS: public DNS points woo.nuanu.ai at the shared ingress\n'
+
 products_json="$(curl -fsS --connect-timeout 5 --max-time 20 \
   --resolve woo.nuanu.ai:443:10.20.10.11 \
   'https://woo.nuanu.ai/wp-json/wc/store/v1/products?per_page=100')"
@@ -52,7 +57,7 @@ if actual != expected:
     raise SystemExit(f"FAIL: unexpected catalogue: {sorted(actual)}")
 if any(not product.get("is_purchasable") for product in products):
     raise SystemExit("FAIL: every seeded product must be purchasable")
-print("PASS: public Store API exposes the five seeded products")
+print("PASS: private ingress Store API exposes the five seeded products")
 PY
 
 enabled_gateways="$(wp wc payment_gateway list --user=admin --format=json | \

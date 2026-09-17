@@ -40,8 +40,11 @@ change:
 That maintenance mode performs the network downloads once and atomically
 replaces the two baseline archives. A normal reset never enters it.
 
-Run `./verify.sh` afterward to check the public catalogue and payment-method
-state. `./verify-reset.sh` is the destructive acceptance check: it creates an
+Run `./verify.sh` afterward to check public DNS, the catalogue through the
+private side of the shared ingress, and payment-method state. Public edge
+availability is checked from outside `dmitry-dev`, which cannot hairpin through
+the Comino public address. `./verify-reset.sh` is the destructive acceptance
+check: it creates an
 extra product, performs a normal reset, and proves the mutation disappeared
 within one minute while Caddy's state remained. Administrator credentials are
 printed by the reset command and stored only in the server-owned `.env` file.
