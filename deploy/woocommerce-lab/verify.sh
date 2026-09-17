@@ -31,8 +31,11 @@ compose ps --status running --services | grep -qx wordpress || fail "wordpress i
 compose ps --status running --services | grep -qx db || fail "database is not running"
 compose ps --status running --services | grep -qx caddy || fail "caddy is not running"
 
-products_json="$(curl -fsS 'https://woo.nuanu.ai/wp-json/wc/store/v1/products?per_page=100')"
+products_json="$(curl -fsS --connect-timeout 5 --max-time 20 \
+  --resolve woo.nuanu.ai:443:10.20.10.11 \
+  'https://woo.nuanu.ai/wp-json/wc/store/v1/products?per_page=100')"
 PRODUCTS_JSON="$products_json" python3 - <<'PY'
+import html
 import json
 import os
 
@@ -44,7 +47,7 @@ expected = {
     "Creative Workshop Pass",
     "Weekend Escape Gift Card",
 }
-actual = {product["name"] for product in products}
+actual = {html.unescape(product["name"]) for product in products}
 if actual != expected:
     raise SystemExit(f"FAIL: unexpected catalogue: {sorted(actual)}")
 if any(not product.get("is_purchasable") for product in products):
