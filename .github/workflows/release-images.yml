@@ -68,6 +68,9 @@ jobs:
           corepack enable
           pnpm install --frozen-lockfile
 
+      - name: Verify the shared route table on the Linux build host
+        run: node ops/scripts/caddy-routing-smoke.mjs
+
       # Each first-party image gets the same source label. The tag is only the
       # upload locator; release-manifest.json records the registry digest and
       # every later operation consumes that immutable reference.
@@ -157,7 +160,6 @@ jobs:
           docker run --rm --network none "$(image_id "$SCANNER_PRIVACY")" \
             pnpm --filter @agentify/web exec tsc --noEmit
 
-          node ops/scripts/caddy-routing-smoke.mjs
           node ops/scripts/web-runtime-image-smoke.mjs \
             "$(image_id "$SCANNER_WEB")" "$POSTGRES_DIGEST"
 

@@ -46,33 +46,22 @@ function dockerResult(...args) {
   });
 }
 
-function ipv4ToInteger(address) {
-  return address
-    .split(".")
-    .map(Number)
-    .reduce((value, octet) => value * 256 + octet, 0);
-}
-
-function integerToIpv4(value) {
-  return [24, 16, 8, 0]
-    .map((shift) => Math.floor(value / 2 ** shift) % 256)
-    .join(".");
-}
-
-function addressesIn(subnet) {
-  const [address, prefixText] = subnet.split("/");
-  const prefix = Number(prefixText);
-  assert.ok(
-    prefix <= 28,
-    `Docker network ${subnet} is too small for the smoke`,
+function networkAddress(containerName) {
+  const networks = JSON.parse(
+    docker(
+      "inspect",
+      "--format",
+      "{{json .NetworkSettings.Networks}}",
+      containerName,
+    ),
   );
-  const blockSize = 2 ** (32 - prefix);
-  const base = Math.floor(ipv4ToInteger(address) / blockSize) * blockSize;
-  return {
-    edge: integerToIpv4(base + 10),
-    inner: integerToIpv4(base + 11),
-    mutated: integerToIpv4(base + 12),
-  };
+  const address = networks[networkName]?.IPAddress;
+  assert.match(
+    address ?? "",
+    /^(?:\d{1,3}\.){3}\d{1,3}$/,
+    `${containerName} has no IPv4 address on ${networkName}`,
+  );
+  return address;
 }
 
 async function listen(role) {
@@ -177,7 +166,6 @@ async function expectSingleForwardedClient(baseUrl, spoofed) {
 function runInner({
   configPath,
   containerName,
-  ip,
   trustedEdge,
   ports,
   adminHash,
@@ -189,8 +177,8 @@ function runInner({
     containerName,
     "--network",
     networkName,
-    "--ip",
-    ip,
+    "--add-host",
+    "host.docker.internal:host-gateway",
     "-p",
     "127.0.0.1::8080",
     "-v",
@@ -261,20 +249,9 @@ try {
   assert.equal(edgeAdapt.status, 0, edgeAdapt.stderr);
 
   docker("network", "create", networkName);
-  const subnet = docker(
-    "network",
-    "inspect",
-    "--format",
-    "{{(index .IPAM.Config 0).Subnet}}",
-    networkName,
-  );
-  const addresses = addressesIn(subnet);
 
   const edgeConfig = path.join(temporary, "edge.Caddyfile");
-  writeFileSync(
-    edgeConfig,
-    `:8080 {\n\treverse_proxy ${addresses.inner}:8080\n}\n`,
-  );
+  writeFileSync(edgeConfig, `:8080 {\n\treverse_proxy ${innerName}:8080\n}\n`);
   docker(
     "run",
     "-d",
@@ -282,19 +259,17 @@ try {
     edgeName,
     "--network",
     networkName,
-    "--ip",
-    addresses.edge,
     "-p",
     "127.0.0.1::8080",
     "-v",
     `${edgeConfig}:/etc/caddy/Caddyfile:ro`,
     CADDY_IMAGE,
   );
+  const edgeAddress = networkAddress(edgeName);
   runInner({
     configPath: sourceCaddyfile,
     containerName: innerName,
-    ip: addresses.inner,
-    trustedEdge: addresses.edge,
+    trustedEdge: edgeAddress,
     ports,
     adminHash,
   });
@@ -403,8 +378,7 @@ try {
   runInner({
     configPath: mutatedConfig,
     containerName: mutatedName,
-    ip: addresses.mutated,
-    trustedEdge: addresses.edge,
+    trustedEdge: edgeAddress,
     ports,
     adminHash,
   });
