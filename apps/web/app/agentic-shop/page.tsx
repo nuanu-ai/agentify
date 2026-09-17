@@ -3,7 +3,6 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { BrandMark } from "../../components/brand-mark";
-import { AgenticShopForm } from "../../components/agentic-shop-form";
 import { getPublicAppConfig } from "../../lib/app-config";
 import styles from "./shop.module.css";
 import { AGENTIC_SHOP_RESEARCH } from "../../content/agentic-shop";
@@ -15,7 +14,7 @@ export function generateMetadata(): Metadata {
   return {
     title: "Agentic Shop — Make your business buyable by AI agents",
     description:
-      "A new sales channel for your products and services. Agentify helps merchants prepare agent-ready offers, connect ordering and explore crypto payments with fiat settlement. Apply to connect.",
+      "Open your Agentify cabinet with an email link, connect a supported catalog and test agent-ready offers. Live publication requires operator approval.",
     alternates: { canonical: url },
     openGraph: {
       title: "Your next customer sends an agent. Be ready.",
@@ -61,31 +60,31 @@ const categories = [
 const questions = [
   [
     "Do I need to understand crypto or build an API?",
-    "No crypto expertise is needed to apply. We review the systems you already use and propose a connection: an existing API, an approved booking interface or a process for confirming orders. The first step is a small, clearly defined offer.",
+    "No crypto expertise is needed to open a cabinet. To publish an offer, connect a supported WooCommerce shop or integrate through the Agentify SDK. Start in the test channel before any live publication.",
   ],
   [
     "Can you connect a local business?",
-    "Yes, local businesses are part of the model: restaurants, hospitality, activities, wellness, clubs and more. We assess your location, availability, booking process and the legal payment options for your market before agreeing to launch.",
+    "A cabinet can represent a local business when its offers and fulfilment fit a supported integration. Creating a cabinet does not promise a bespoke booking connection or live publication.",
   ],
   [
     "Will I receive money in my bank account?",
-    "Fiat settlement is a proposed option, not an active service on this page. We first need to confirm the operating entity, select a suitable payment partner and agree the supported country, currency, fees and payout timing with you. Submitting an application does not confirm bank-payout availability or a payment partnership.",
+    "No bank settlement service is active. The live channel uses a supported payout wallet. A seller name, that wallet and an operator approval are all required before live publication.",
   ],
   [
     "Do you guarantee sales or placement in an AI assistant?",
-    "No. We prepare a supported ordering channel and publish agreed offers through compatible discovery surfaces. Visibility, traffic and sales depend on adoption and demand. No specific AI assistant is guaranteed to recommend or buy your products.",
+    "No. Offers from a supported ordering channel may be published through compatible discovery surfaces. Visibility, traffic and sales depend on adoption and demand. No specific AI assistant is guaranteed to recommend or buy your products.",
   ],
   [
     "Who controls prices, availability and cancellations?",
-    "You agree the products, pricing, availability and cancellation rules with us. Our role—reseller or authorised booking agent—is set out in the merchant agreement. We only promise instant confirmation when your system or an agreed allocation supports it.",
+    "You control the products, prices and availability that your integration publishes. An order follows the public contract attached to that offer; the cabinet does not invent availability, cancellation or refund terms that the integration did not provide.",
   ],
   [
     "How would agent loyalty work?",
     "The proposed model combines merchant-funded cashback with a record of reliable service. You set a funded reward budget and clear terms that an agent can compare for its customer. A reward becomes payable only after verified delivery, subject to agreed return rules. The benefit belongs to the customer; a bigger reward does not guarantee an agent’s recommendation. This program is not live yet.",
   ],
   [
-    "What does it cost, and what happens after I apply?",
-    "There is no payment required to submit an application. We review your business, propose an initial offer and discuss the connection, commercial terms and settlement options. Fees are agreed before you commit; applying does not create a merchant contract.",
+    "What happens after I open a cabinet?",
+    "The email link creates or opens your merchant cabinet. Set the name buyers see, connect WooCommerce or use the SDK, and publish against the test channel. Live publication remains closed until a payout wallet is set and an operator approves the merchant.",
   ],
 ];
 
@@ -113,8 +112,8 @@ export default function AgenticShopPage() {
             <a href="#loyalty">Agent loyalty</a>
             <a href="#questions">Questions</a>
           </nav>
-          <a href="#apply" className={styles.headerCta}>
-            Let’s connect <Arrow diagonal />
+          <a href="/cabinet/sign-in" className={styles.headerCta}>
+            Open your cabinet <Arrow diagonal />
           </a>
         </div>
       </header>
@@ -138,15 +137,15 @@ export default function AgenticShopPage() {
               the final order.
             </p>
             <div className={styles.heroActions}>
-              <a className={styles.primary} href="#apply">
-                Apply to connect <Arrow diagonal />
+              <a className={styles.primary} href="/cabinet/sign-in">
+                Open your cabinet <Arrow diagonal />
               </a>
               <a className={styles.textLink} href="#how-it-works">
                 See how it works <Arrow />
               </a>
             </div>
             <p className={styles.heroNote}>
-              Merchant applications open. Onboarding by agreement.
+              Start in the test channel. Live publication requires approval.
             </p>
           </div>
           <div className={styles.heroVisual}>
@@ -187,8 +186,8 @@ export default function AgenticShopPage() {
           </p>
           <span>Your products</span>
           <span>Your pricing</span>
-          <span>Agreed terms</span>
-          <span>Payment options to agree</span>
+          <span>Your fulfilment terms</span>
+          <span>Supported payment</span>
         </div>
 
         <section className={styles.opportunity} id="opportunity">
@@ -215,8 +214,8 @@ export default function AgenticShopPage() {
                   opportunity is making your business easier for their agents to
                   order from.
                 </p>
-                <a href="#apply" className={styles.lightLink}>
-                  Build your next channel <Arrow diagonal />
+                <a href="/cabinet/sign-in" className={styles.lightLink}>
+                  Open your cabinet <Arrow diagonal />
                 </a>
               </div>
               <div className={styles.chartCard}>
@@ -295,15 +294,15 @@ export default function AgenticShopPage() {
           id="how-it-works"
           className={`${styles.container} ${styles.section}`}
         >
-          <p className={styles.eyebrow}>02 / We do the connecting</p>
+          <p className={styles.eyebrow}>02 / From cabinet to catalog</p>
           <div className={styles.sectionHeading}>
             <h2>
               A new channel.
               <br />A familiar business.
             </h2>
             <p>
-              Your existing products, systems and team. A clear plan to make
-              them work for agent-led orders.
+              One email link opens the cabinet. A supported integration carries
+              the offers and order rules agents can rely on.
             </p>
           </div>
           <div className={styles.steps}>
@@ -312,14 +311,13 @@ export default function AgenticShopPage() {
               <div className={styles.stepSymbol} aria-hidden="true">
                 ↗
               </div>
-              <h3>Start with your offer.</h3>
+              <h3>Open your cabinet.</h3>
               <p>
-                Tell us what you sell and where. We choose a practical first
-                product or service and agree the pricing, scope and merchant
-                terms with you.
+                Enter your email and use the one-time link. The first visit
+                creates your merchant and asks for the name buyers will see.
               </p>
               <span className={styles.stepOutput}>
-                One clear offer. Agreed terms.
+                One address. One private cabinet.
               </span>
             </article>
             <article>
@@ -327,11 +325,10 @@ export default function AgenticShopPage() {
               <div className={styles.stepSymbol} aria-hidden="true">
                 ⇄
               </div>
-              <h3>We connect the pieces.</h3>
+              <h3>Connect your catalog.</h3>
               <p>
-                We prepare your catalog, connect a supported order or booking
-                process and make the offer discoverable through compatible agent
-                directories.
+                Connect a supported WooCommerce shop or use the SDK. Your
+                integration publishes the offer, price and fulfilment promises.
               </p>
               <span className={styles.stepOutput}>
                 Catalog. Ordering. Confirmation.
@@ -342,14 +339,14 @@ export default function AgenticShopPage() {
               <div className={styles.stepSymbol} aria-hidden="true">
                 ✓
               </div>
-              <h3>You deliver the value.</h3>
+              <h3>Prove it in test.</h3>
               <p>
-                Orders follow the rules we agreed. Your team fulfils the product
-                or service; payment and settlement follow the approved setup for
-                your business.
+                Test publication needs the seller name. Live publication also
+                needs a payout wallet and the operator’s approval for that
+                merchant.
               </p>
               <span className={styles.stepOutput}>
-                Clear orders. Traceable outcomes.
+                Test first. Live only when ready.
               </span>
             </article>
           </div>
@@ -371,59 +368,57 @@ export default function AgenticShopPage() {
         <section className={styles.settlement}>
           <div className={`${styles.container} ${styles.settlementGrid}`}>
             <div>
-              <p className={styles.eyebrow}>03 / A proposed payment option</p>
+              <p className={styles.eyebrow}>03 / Payment in the live channel</p>
               <h2>
-                Plan your payment setup.
+                Set your payout wallet.
                 <br />
-                <span>Keep payouts familiar.</span>
+                <span>Keep test and live distinct.</span>
               </h2>
               <p>
-                The intended option is crypto payment by the customer’s agent
-                and fiat settlement for your business. We first need to confirm
-                the operating entity, select a suitable payment partner and
-                establish availability for your market. Bank payouts are not
-                active through this page.
+                Live purchases use supported crypto payment and settle to the
+                payout wallet in your cabinet. Agentify does not convert that
+                payment into a bank payout. The test channel remains available
+                before live publication is approved.
               </p>
-              <a className={styles.textLink} href="#apply">
-                Explore your settlement options <Arrow />
+              <a className={styles.textLink} href="/cabinet/sign-in">
+                Open your cabinet <Arrow />
               </a>
             </div>
             <div
               className={styles.paymentDiagram}
               role="group"
-              aria-label="Proposed payment setup, not active: customer agent, crypto payment, payment partner to be selected, merchant settlement if supported."
+              aria-label="Live payment path: customer agent, x402 payment facilitator, merchant payout wallet."
             >
               <div className={styles.paymentLabel}>
-                SETUP AGREED BEFORE ACTIVATION
+                LIVE ONLY AFTER OPERATOR APPROVAL
               </div>
               <div className={styles.paymentRow}>
                 <span className={styles.nodeIcon}>01</span>
                 <div>
                   <strong>Customer’s agent</strong>
-                  <span>Supported crypto payment</span>
+                  <span>Supported x402 payment</span>
                 </div>
                 <span aria-hidden="true">↓</span>
               </div>
               <div className={styles.paymentRow}>
                 <span className={styles.nodeIcon}>02</span>
                 <div>
-                  <strong>Payment partner to be selected</strong>
-                  <span>Processing and conversion subject to approval</span>
+                  <strong>Payment facilitator</strong>
+                  <span>Verifies and settles the supported token</span>
                 </div>
                 <span aria-hidden="true">↓</span>
               </div>
               <div className={styles.paymentRow}>
                 <span className={styles.nodeIcon}>03</span>
                 <div>
-                  <strong>Proposed merchant settlement</strong>
-                  <span>Your bank account, where supported and agreed</span>
+                  <strong>Merchant payout wallet</strong>
+                  <span>The address set in your cabinet</span>
                 </div>
                 <span aria-hidden="true">✓</span>
               </div>
               <p>
-                Availability depends on your country, business, verification and
-                partner approval. Currencies, fees and payout timing are
-                confirmed before launch.
+                A seller name, payout wallet and operator approval are separate
+                live-publication gates. Opening a cabinet grants none of them.
               </p>
             </div>
           </div>
@@ -484,8 +479,8 @@ export default function AgenticShopPage() {
               and refund reserves would be accounted for separately. Program
               terms and availability must be agreed before activation.
             </p>
-            <a href="#apply">
-              Discuss loyalty for your business <Arrow diagonal />
+            <a href="/cabinet/sign-in">
+              Open your cabinet <Arrow diagonal />
             </a>
           </div>
         </section>
@@ -526,38 +521,51 @@ export default function AgenticShopPage() {
               table, a coworking pass or a hotel stay can be the starting point.
               Local availability and payment rules always shape the setup.
             </p>
-            <a href="#apply">
-              Tell us about yours <Arrow diagonal />
+            <a href="/cabinet/sign-in">
+              Open your cabinet <Arrow diagonal />
             </a>
           </div>
         </section>
 
-        <section className={styles.application} id="apply">
-          <div className={`${styles.container} ${styles.applicationGrid}`}>
+        <section className={styles.entry} id="start">
+          <div className={`${styles.container} ${styles.entryGrid}`}>
             <div>
-              <p className={styles.eyebrow}>
-                06 / Let’s find your first agent-ready offer
-              </p>
+              <p className={styles.eyebrow}>06 / Your cabinet starts here</p>
               <h2>
-                Make the next
+                Start with
                 <br />
-                move yours.
+                your email.
               </h2>
               <p>
-                Tell us about your business. We’ll review the fit and discuss
-                what it would take to connect your first product or service.
+                The one-time link signs you in or creates your cabinet. No
+                password, invitation code or application review stands between
+                your address and the test channel.
               </p>
               <ul>
-                <li>A practical starting offer</li>
-                <li>A connection plan for your existing setup</li>
-                <li>Commercial and payment options for your market</li>
+                <li>Choose the seller name buyers see</li>
+                <li>Connect WooCommerce or integrate the SDK</li>
+                <li>Publish and verify offers in the test channel</li>
               </ul>
-              <div className={styles.applicationNote}>
-                Application only. No payment, wallet connection or merchant
-                commitment required.
+              <div className={styles.entryNote}>
+                Live publication still needs a payout wallet and a one-time
+                operator approval for the merchant.
               </div>
             </div>
-            <AgenticShopForm />
+            <div className={styles.entryCard}>
+              <p className={styles.eyebrow}>Merchant cabinet</p>
+              <h3>Open the door from your inbox.</h3>
+              <p>
+                Enter your email in the cabinet. The message works once and
+                expires after one hour.
+              </p>
+              <a className={styles.primary} href="/cabinet/sign-in">
+                Open your cabinet <Arrow diagonal />
+              </a>
+              <p className={styles.entryFootnote}>
+                The mailbox is the key to the cabinet. A shared mailbox means a
+                shared cabinet.
+              </p>
+            </div>
           </div>
         </section>
 
@@ -598,7 +606,7 @@ export default function AgenticShopPage() {
             An extraordinary next chapter.
           </p>
           <div>
-            <a href="/agentic-shop/privacy">Application privacy</a>
+            <a href="/privacy">Privacy</a>
             <a href="#questions">Merchant questions</a>
             <Link href="/owner">
               Explore Agentify <Arrow diagonal />

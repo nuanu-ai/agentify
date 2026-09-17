@@ -8,6 +8,7 @@ import {
   deliveryOutbox,
   leads,
   leadScans,
+  merchantApplications,
   migrateDatabase,
   paymentSignals,
   rateLimitEvents,
@@ -80,6 +81,12 @@ beforeAll(async () => {
   await admin.pool.query(
     "drop schema if exists public cascade; drop schema if exists drizzle cascade; create schema public",
   );
+  await admin.pool.query(`DO $roles$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agentify_web') THEN CREATE ROLE agentify_web NOLOGIN; END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agentify_privacy') THEN CREATE ROLE agentify_privacy NOLOGIN; END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agentify_worker') THEN CREATE ROLE agentify_worker NOLOGIN; END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agentify_dashboard') THEN CREATE ROLE agentify_dashboard NOLOGIN; END IF;
+  END $roles$; GRANT USAGE ON SCHEMA public TO agentify_web, agentify_privacy, agentify_worker, agentify_dashboard`);
   await migrateDatabase(admin.db, migrationsFolder);
   const { db } = getDatabase();
   const config = getServerConfig();
@@ -664,6 +671,28 @@ describe("P5 card signal flow", () => {
       value: JSON.stringify({ email: "retention-unverified@example.com" }),
       expiresAt: new Date(now.getTime() + 3_600_000),
     });
+    const expiredApplicationId = createUuidV7();
+    const currentApplicationId = createUuidV7();
+    await db.insert(merchantApplications).values([
+      {
+        id: expiredApplicationId,
+        idempotencyKeyHash: "historical-expired-idempotency",
+        requestHash: "historical-expired-request",
+        payloadCiphertext: "historical-expired-ciphertext",
+        policyVersion: "merchant-application-2026-09-09",
+        createdAt: new Date(now.getTime() - 31 * 86_400_000),
+        expiresAt: new Date(now.getTime() - 1),
+      },
+      {
+        id: currentApplicationId,
+        idempotencyKeyHash: "historical-current-idempotency",
+        requestHash: "historical-current-request",
+        payloadCiphertext: "historical-current-ciphertext",
+        policyVersion: "merchant-application-2026-09-09",
+        createdAt: now,
+        expiresAt: new Date(now.getTime() + 86_400_000),
+      },
+    ]);
 
     await expect(
       executeRetentionCleanup({
@@ -672,7 +701,7 @@ describe("P5 card signal flow", () => {
         provider,
       }),
     ).resolves.toEqual({
-      merchantApplicationsDeleted: 0,
+      merchantApplicationsDeleted: 1,
       verificationTokensDeleted: 1,
       registrationIntentsDeleted: 1,
       rateLimitRowsDeleted: 2,
@@ -702,6 +731,18 @@ describe("P5 card signal flow", () => {
         .from(scannerAuthVerifications)
         .where(eq(scannerAuthVerifications.id, "pending-p5-legacy-link")),
     ).toHaveLength(0);
+    expect(
+      await db
+        .select({ id: merchantApplications.id })
+        .from(merchantApplications)
+        .where(eq(merchantApplications.id, expiredApplicationId)),
+    ).toHaveLength(0);
+    expect(
+      await db
+        .select({ id: merchantApplications.id })
+        .from(merchantApplications)
+        .where(eq(merchantApplications.id, currentApplicationId)),
+    ).toEqual([{ id: currentApplicationId }]);
     await expect(
       executeRetentionCleanup({
         now,
@@ -725,5 +766,47 @@ describe("P5 card signal flow", () => {
       executeRetentionCleanup({ now, batchSize: 10, provider }),
     ).resolves.toMatchObject({ expiredScannerAuthLinks: 0 });
     vi.unstubAllEnvs();
+  });
+
+  it("keeps historical applications behind their retained role and RLS boundary", async () => {
+    for (const role of ["agentify_web", "agentify_privacy"]) {
+      await expect(
+        admin.db.transaction(async (tx) => {
+          await tx.execute(sql.raw(`set local role ${role}`));
+          return tx
+            .select({ id: merchantApplications.id })
+            .from(merchantApplications)
+            .limit(1);
+        }),
+      ).resolves.toHaveLength(1);
+    }
+    for (const role of ["agentify_worker", "agentify_dashboard"]) {
+      await expect(
+        admin.db.transaction(async (tx) => {
+          await tx.execute(sql.raw(`set local role ${role}`));
+          return tx
+            .select({ id: merchantApplications.id })
+            .from(merchantApplications)
+            .limit(1);
+        }),
+      ).rejects.toThrow();
+    }
+
+    const permissions = await admin.pool.query(
+      "select has_table_privilege('agentify_web','merchant_applications','INSERT') as insert, has_table_privilege('agentify_web','merchant_applications','UPDATE') as update, has_table_privilege('agentify_privacy','merchant_applications','DELETE') as delete",
+    );
+    expect(permissions.rows[0]).toEqual({
+      insert: true,
+      update: false,
+      delete: true,
+    });
+    const security = await admin.pool.query(
+      "select relrowsecurity from pg_class where oid = 'public.merchant_applications'::regclass",
+    );
+    expect(security.rows[0]).toEqual({ relrowsecurity: true });
+    const policy = await admin.pool.query(
+      "select polcmd from pg_policy where polrelid = 'public.merchant_applications'::regclass and polname = 'agentify_web_service'",
+    );
+    expect(policy.rows).toEqual([{ polcmd: "r" }]);
   });
 });

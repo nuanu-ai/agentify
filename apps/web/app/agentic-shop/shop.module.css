@@ -515,7 +515,7 @@
 }
 .section h2,
 .settlement h2,
-.application h2,
+.entry h2,
 .faq h2 {
   font-size: clamp(2.25rem, 3.6vw, 3.5rem);
   font-weight: 500;
@@ -731,47 +731,47 @@
   white-space: nowrap;
   color: var(--accent);
 }
-.application {
+.entry {
   background: var(--shop-dark);
   padding: 85px 0;
   scroll-margin-top: 92px;
   color: var(--paper);
 }
-.applicationGrid {
+.entryGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 100px;
 }
-.application .eyebrow {
+.entry .eyebrow {
   color: var(--shop-mint);
 }
-.application h2 {
+.entry h2 {
   font-size: clamp(2.75rem, 4.2vw, 4.5rem);
   margin: 30px 0;
 }
-.applicationGrid > div > p:not(.eyebrow) {
+.entryGrid > div > p:not(.eyebrow) {
   font-size: 1.125rem;
   color: var(--shop-muted);
   max-width: 440px;
 }
-.application ul {
+.entry ul {
   list-style: none;
   padding: 0;
   margin: 30px 0;
 }
-.application li {
+.entry li {
   font-size: 1rem;
   margin: 16px 0;
   padding-left: 24px;
   position: relative;
 }
-.application li:before {
+.entry li:before {
   content: "↗";
   position: absolute;
   left: 0;
   color: var(--shop-mint);
 }
-.applicationNote {
+.entryNote {
   font-size: 0.875rem;
   color: var(--shop-muted);
   border-top: 1px solid var(--shop-line);
@@ -779,157 +779,39 @@
   margin-top: 40px;
   max-width: 400px;
 }
-.form,
-.formSuccess {
+.entryCard {
   background: var(--paper);
   color: var(--ink);
   padding: 34px;
   border-radius: 20px;
   min-width: 0;
+  align-self: start;
 }
-.formHeader {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 24px;
-}
-.formHeader h3 {
-  font-size: 1.375rem;
-  font-weight: 500;
-  letter-spacing: -0.03em;
-}
-.formHeader > span {
-  font-size: 0.75rem;
-  color: var(--muted);
-}
-.form > label,
-.formRow > label {
-  display: block;
-  font-size: 0.875rem;
-  font-weight: 500;
-  line-height: 1.5;
-  margin-bottom: 18px;
-}
-.form input:not([type="checkbox"]),
-.form select,
-.form textarea {
-  display: block;
-  background: var(--surface);
-  color: var(--ink);
-  width: 100%;
-  min-width: 0;
-  min-height: 48px;
-  font-size: 1rem;
-  border: 1px solid #b9beb5;
-  border-radius: 10px;
-  padding: 12px 14px;
-  margin-top: 7px;
-}
-.form input::placeholder,
-.form textarea::placeholder {
-  color: var(--muted);
-  opacity: 1;
-}
-.form textarea {
-  resize: vertical;
-  min-height: 100px;
-}
-.form select {
-  padding-right: 23px;
-}
-.formRow {
-  display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  gap: 15px;
-}
-.optional {
-  font-size: 0.75rem;
-  font-weight: 400;
-  color: var(--muted);
-}
-.form > .checkbox {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  font-size: 0.875rem;
-  font-weight: 400;
-  line-height: 1.6;
-  cursor: pointer;
-}
-.checkbox input {
-  accent-color: var(--accent);
-  margin: 5px 0 0;
-  min-width: 18px;
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-}
-.checkbox a {
+.entryCard .eyebrow {
   color: var(--accent);
 }
-.form > .primary {
+.entryCard h3 {
+  font-size: 2.5rem;
+  line-height: 1.1;
+  font-weight: 500;
+  letter-spacing: -0.045em;
+  margin: 20px 0;
+}
+.entryCard > p:not(.eyebrow) {
+  font-size: 1rem;
+  color: var(--ink-2);
+  margin-bottom: 22px;
+}
+.entryCard .primary {
   width: 100%;
   justify-content: space-between;
 }
-.formFootnote {
+.entryFootnote,
+.privacyFootnote {
   font-size: 0.75rem !important;
   color: var(--muted) !important;
   margin-top: 15px !important;
   line-height: 1.6 !important;
-}
-.formError {
-  padding: 14px;
-  border: 1px solid var(--fail);
-  background: #fff1eb;
-  color: #8b301f;
-  border-radius: 10px;
-  font-size: 0.875rem;
-  margin-bottom: 16px;
-}
-.formStatus {
-  font-size: 0.875rem;
-  color: var(--muted);
-}
-.formStatus:not(:empty) {
-  margin-bottom: 12px;
-}
-.honeypot {
-  position: absolute;
-  left: -10000px;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-}
-.formSuccess {
-  align-self: start;
-  padding: 50px 35px;
-}
-.successMark {
-  display: grid;
-  place-content: center;
-  background: var(--accent);
-  color: white;
-  border-radius: 50%;
-  height: 58px;
-  width: 58px;
-  font-size: 1.5rem;
-  margin-bottom: 35px;
-}
-.formSuccess .eyebrow {
-  color: var(--accent);
-}
-.formSuccess h3 {
-  font-size: 2.5rem;
-  line-height: 1.1;
-  letter-spacing: -0.045em;
-  font-weight: 500;
-  margin: 20px 0;
-}
-.formSuccess > p:not(.eyebrow) {
-  font-size: 1rem;
-  color: var(--ink-2);
-  margin-bottom: 22px;
 }
 .faq {
   display: grid;
@@ -1064,7 +946,7 @@
   .chartCard {
     padding: 25px;
   }
-  .applicationGrid {
+  .entryGrid {
     gap: 50px;
   }
   .sectionHeading {
@@ -1075,16 +957,6 @@
   }
   .faq {
     gap: 45px;
-  }
-  .formRow {
-    grid-template-columns: 1fr;
-  }
-  .formHeader {
-    display: block;
-  }
-  .formHeader > span {
-    display: block;
-    margin-top: 5px;
   }
   .offerCard {
     left: 18px;
@@ -1236,30 +1108,27 @@
   .localNote > a {
     margin-left: 0;
   }
-  .applicationGrid {
+  .entryGrid {
     grid-template-columns: 1fr;
     gap: 35px;
   }
-  .application {
+  .entry {
     padding: 55px 0;
   }
-  .applicationGrid > div > p:not(.eyebrow) {
+  .entryGrid > div > p:not(.eyebrow) {
     max-width: 620px;
   }
-  .application ul {
+  .entry ul {
     margin: 25px 0;
   }
-  .applicationNote {
+  .entryNote {
     margin-top: 28px;
     max-width: 620px;
   }
-  .form {
+  .entryCard {
     max-width: 590px;
     width: 100%;
     margin: auto;
-  }
-  .formRow {
-    grid-template-columns: 1fr 1fr;
   }
   .faq {
     grid-template-columns: 1fr;
@@ -1275,7 +1144,7 @@
     flex-basis: 100%;
   }
   .opportunity,
-  .application,
+  .entry,
   .section {
     scroll-margin-top: 76px;
   }
@@ -1504,42 +1373,25 @@
   .localNote strong {
     font-size: 0.9375rem;
   }
-  .application h2 {
+  .entry h2 {
     font-size: 3.125rem;
     margin: 22px 0;
   }
-  .applicationGrid > div > p:not(.eyebrow) {
+  .entryGrid > div > p:not(.eyebrow) {
     font-size: 1rem;
   }
-  .application li {
+  .entry li {
     font-size: 0.9375rem;
   }
-  .applicationNote {
+  .entryNote {
     font-size: 0.875rem;
   }
-  .form,
-  .formSuccess {
+  .entryCard {
     padding: 25px 20px;
     border-radius: 16px;
   }
-  .formRow {
-    grid-template-columns: 1fr;
-    gap: 0;
-  }
-  .formHeader h3 {
+  .entryCard h3 {
     font-size: 1.375rem;
-  }
-  .form > label,
-  .formRow > label {
-    font-size: 0.875rem;
-  }
-  .form input:not([type="checkbox"]),
-  .form select,
-  .form textarea {
-    font-size: 1rem;
-  }
-  .form > .checkbox {
-    font-size: 0.875rem;
   }
   .faq h2 {
     font-size: 2.25rem;
@@ -1597,13 +1449,4 @@
 
 .sectionHeading h2 {
   text-wrap: balance;
-}
-.applicationGrid > .formSuccess > p:not(.eyebrow) {
-  color: var(--ink-2);
-  font-size: 1rem;
-  max-width: none;
-}
-.formSuccess,
-.formError {
-  scroll-margin-top: 110px;
 }

@@ -48,7 +48,7 @@
     "agentify:db:down": "docker compose --env-file .env.scanner -f ops/compose.scanner.yaml down",
     "agentify:db:migrate": "node ops/scripts/with-env.mjs pnpm --filter @agentify/scanner-database db:migrate",
     "agentify:dev": "node ops/scripts/with-env.mjs pnpm --parallel --filter @agentify/web --filter @agentify/scanner-worker dev",
-    "agentify:test:integration:inner": "pnpm --filter @agentify/scanner-contracts build && pnpm --filter @agentify/analytics build && pnpm --filter @agentify/observability build && pnpm --filter @agentify/scanner build && pnpm --filter @agentify/web test:integration && pnpm --filter @agentify/web test:p5-integration && pnpm --filter @agentify/web test:merchant-integration",
+    "agentify:test:integration:inner": "pnpm --filter @agentify/scanner-contracts build && pnpm --filter @agentify/analytics build && pnpm --filter @agentify/observability build && pnpm --filter @agentify/scanner build && pnpm --filter @agentify/web test:integration && pnpm --filter @agentify/web test:p5-integration",
     "agentify:clean": "pnpm --filter './apps/web' --filter './apps/scanner-worker' --filter './apps/browser-observer-actor' --filter './packages/scanner-contracts' --filter './packages/scanner-database' --filter './packages/scanner' --filter './packages/analytics' --filter './packages/observability' --filter './packages/remediation' --recursive --if-present run clean",
     "agentify:dev:web": "node ops/scripts/with-env.mjs pnpm --filter @agentify/web dev",
     "agentify:dev:worker": "node ops/scripts/with-env.mjs pnpm --filter @agentify/scanner-worker dev",

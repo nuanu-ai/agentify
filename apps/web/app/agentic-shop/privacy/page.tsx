@@ -10,9 +10,9 @@ import styles from "../shop.module.css";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
-  title: "Agentic Shop — Application privacy",
+  title: "Agentic Shop — Historical application privacy",
   description:
-    "How Agentify handles merchant applications and contact information.",
+    "How Agentify retains and removes information submitted through the retired merchant application form.",
   alternates: { canonical: "/agentic-shop/privacy" },
 };
 
@@ -28,48 +28,46 @@ export default function MerchantPrivacyPage() {
               Agentify<span className={styles.subbrand}>Agentic Shop</span>
             </span>
           </Link>
-          <Link href="/agentic-shop#apply" className={styles.headerCta}>
-            Back to application ↗
+          <Link href="/agentic-shop" className={styles.headerCta}>
+            Back to Agentic Shop ↗
           </Link>
         </div>
       </header>
       <main className={`${styles.container} ${styles.privacy}`}>
         <p className={styles.eyebrow}>
-          Merchant applications · September 9, 2026
+          Historical merchant applications · September 9, 2026
         </p>
         <h1>
-          Your application.
+          The application form is closed.
           <br />
-          Handled with care.
+          Existing submissions still expire.
         </h1>
         <p>
-          This notice covers the Agentic Shop application form. Applying asks
-          the Agentify team to assess your business and contact you about a
-          possible connection. It does not activate a payment service or create
-          a merchant agreement.
+          This notice covers information sent through the former Agentic Shop
+          application form. Agentify no longer accepts applications at that
+          path. A new merchant now opens the cabinet with an email link instead;
+          that action does not add anything to the historical application data.
         </p>
-        <h2>What we collect and why</h2>
+        <h2>What was collected and why</h2>
         <p>
-          We collect your business name, website, email, category, country,
-          optional offer description and confirmation of this notice. We use
-          them to review suitability, respond to your application and discuss
-          onboarding. Please do not include payment credentials, identity
-          documents or sensitive personal information in the form.
+          The form collected a business name, website, email, category, country,
+          optional offer description and confirmation of this notice. Those
+          fields were used to review suitability, respond to the application and
+          discuss onboarding.
         </p>
         <h2>Contact permission</h2>
         <p>
-          The required checkbox gives permission to contact you about this
-          application. It does not subscribe you to a marketing mailing list.
-          You can withdraw that permission by contacting us. Essential
-          processing of the submitted form is necessary to handle your request.
+          The required checkbox gave permission to contact the submitter about
+          that application. It did not subscribe anyone to a marketing mailing
+          list. You can withdraw that permission by contacting us.
         </p>
         <h2>Storage and access</h2>
         <p>
-          Application contents are encrypted before being stored in our
-          database. Access is restricted to authorised operators handling
-          onboarding and privacy requests. Hosting and database providers
-          process the information on our behalf. Application contents are not
-          sent to advertising analytics or made public in an agent catalog.
+          Retained application contents are encrypted in our database. Access is
+          restricted to authorised operators handling the old submissions and
+          privacy requests. Hosting and database providers process the
+          information on our behalf. The contents are not sent to advertising
+          analytics or made public in an agent catalog.
         </p>
         <h2>Retention and removal</h2>
         <p>
@@ -101,10 +99,10 @@ export default function MerchantPrivacyPage() {
           explains general site cookies and diagnostic services. The application
           consent above does not authorise diagnostic dataset reuse.
         </p>
-        <p className={styles.formFootnote}>
+        <p className={styles.privacyFootnote}>
           Notice version: {MERCHANT_APPLICATION_POLICY}
         </p>
-        <Link href="/agentic-shop#apply" className={styles.textLink}>
+        <Link href="/agentic-shop" className={styles.textLink}>
           ← Back to Agentic Shop
         </Link>
       </main>
