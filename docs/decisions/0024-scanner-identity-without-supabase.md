@@ -36,8 +36,9 @@ Better Auth's internal session is not a shared browser login for commerce.
 Existing leads link to the new identity only after fresh email verification.
 An export and reconciliation of old linked identities is required before retiring
 Supabase. The old Supabase user ID is retained as migration provenance, not as an
-active authentication credential. Existing commerce accounts, passwords, sessions,
-invitation requirements and merchant keys are unchanged.
+active authentication credential. The Supabase relocation preserves commerce
+data. Cabinet authentication and the removal of passwords, old cabinet sessions
+and the human invitation follow ADR-0026; merchant IDs and bindings survive.
 
 An old Supabase callback state is only a report-routing hint. A valid report
 session may follow it only to a report owned by that session. Otherwise the owner
@@ -58,7 +59,10 @@ reconcile those writes; restarting the old worker is not a safe rollback.
 Pending Supabase email links for an existing verified lead require a replacement
 link after identity cutover. A pending signup that never created a lead still
 returns to registration; recovery does not invent ownership or replay consent.
-Existing report sessions do not require a bulk password or merchant migration.
+Current Better Auth scanner links retain their hashed proof, report-only
+authority, registration or recovery intent, and expiry when identity moves into
+the cabinet. Their metadata is converted to the same shape as new report links;
+moving them grants no new proof and extends no lifetime. Existing report sessions remain valid.
 Privacy deletion revokes report access, removes the lead and, for a person who
 owns no merchant, the identity row in the cabinet (ADR-0026).
 Supabase retirement follows database, queue, mail and report-access acceptance.
