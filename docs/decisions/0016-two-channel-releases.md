@@ -38,10 +38,11 @@ CI result never deploys a host. The authorized environment alignment includes
 the common origin in ADR-0005 and ends after test/production acceptance.
 ADR-0026 implementation requires Dmitry's next approval.
 
-Before activation, Ansible verifies retained data, the migration boundary,
-operations affected by an origin change, and recovery backups. Once a migration
-or new writer starts, restarting old code is not an automatic rollback. Health,
-data preservation and product acceptance remain separate evidence.
+Before activation, Ansible verifies retained data, the migration boundary and
+operations affected by an origin change. This alignment does not create one-off
+database dumps; the existing production backup schedule is retained. Once a
+migration or new writer starts, restarting old code is not an automatic rollback.
+Health, data preservation and product acceptance remain separate evidence.
 
 The public npm packages are `@nuanu-ai/agentify-contracts` and
 `@nuanu-ai/agentify`, with the `agentify` command. Their release workflow uses npm

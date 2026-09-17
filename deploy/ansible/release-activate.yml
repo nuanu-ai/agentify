@@ -99,12 +99,18 @@
         dest: "{{ release_directory }}/release-state.json"
         mode: '0644'
 
-    - name: Create private recovery and scheduled-backup directories
+    - name: Create the private release recovery directory
       ansible.builtin.file:
-        path: "{{ item }}"
+        path: "{{ recovery_directory }}"
         state: directory
         mode: '0700'
-      loop: ["{{ recovery_directory }}", "{{ channel.backup_directory }}"]
+
+    - name: Preserve the existing production scheduled-backup directory
+      ansible.builtin.file:
+        path: "{{ channel.backup_directory }}"
+        state: directory
+        mode: '0700'
+      when: channel_name == 'production'
 
     - name: Disable legacy automatic test delivery
       ansible.builtin.shell: |
@@ -183,21 +189,10 @@
         running_jobs="$(docker ps -q --filter label=com.docker.compose.project={{ channel.scanner_project }} --filter label=com.docker.compose.oneoff=True)"
         test -z "$running_jobs"
 
-    - name: Preserve consistent database dumps and role custody before migrations
+    - name: Record non-recoverable aggregate row fingerprints before migrations
       ansible.builtin.shell: |
         set -eu
         umask 077
-        docker exec '{{ channel.postgres_container }}' pg_dump -U agentify_commerce -d agentify_commerce -Fc > '{{ recovery_directory }}/commerce.dump'
-        docker exec '{{ channel.postgres_container }}' pg_dumpall -U agentify_commerce --globals-only > '{{ recovery_directory }}/roles.sql'
-        if [ "$(docker exec '{{ channel.postgres_container }}' psql -U agentify_commerce -d agentify_commerce -Atc "select count(*) from pg_database where datname='agentify_scanner'")" = 1 ]; then
-          docker exec '{{ channel.postgres_container }}' pg_dump -U agentify_commerce -d agentify_scanner -Fc > '{{ recovery_directory }}/scanner.dump'
-        fi
-        cp -p /home/dmitry/agentify-configuration/*.env '{{ recovery_directory }}/'
-        for name in scanner-admin.json scanner-admin-password; do
-          if [ -f "/home/dmitry/agentify-configuration/$name" ]; then
-            cp -p "/home/dmitry/agentify-configuration/$name" '{{ recovery_directory }}/'
-          fi
-        done
         for db in agentify_commerce agentify_scanner; do
           if [ "$(docker exec '{{ channel.postgres_container }}' psql -U agentify_commerce -d agentify_commerce -Atc "select count(*) from pg_database where datname='$db'")" = 1 ]; then
             docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 < '{{ release_source_directory }}/deploy/ansible/release-data-fingerprint.sql' > '{{ recovery_directory }}/'"$db".fingerprint
@@ -259,7 +254,7 @@
       loop: [roles-reconcile, migrate, queue-init, database-dashboards-install, database-access-finalize, database-access-verify]
       no_log: true
 
-    - name: Verify retained customer records against their frozen fingerprints
+    - name: Verify retained customer rows against their pre-migration fingerprints
       ansible.builtin.shell: |
         set -eu
         for db in agentify_commerce agentify_scanner; do
@@ -337,7 +332,7 @@
 
   rescue:
     - ansible.builtin.fail:
-        msg: Activation stopped. The state stays activating; backups and held schedules are in the release recovery directory. Do not automatically roll back after migrations or restart old writers. Inspect the failed task and use a reviewed forward recovery.
+        msg: Activation stopped. The state stays activating; release evidence and held schedules remain in the recovery directory. Do not automatically roll back after migrations or restart old writers. Inspect the failed task and use a reviewed forward recovery.
   always:
     - name: Release only this operation's lock
       ansible.builtin.file:

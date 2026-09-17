@@ -9,7 +9,7 @@
     channel: "{{ release_channels[channel_name] }}"
     release_directory: "/home/dmitry/agentify-releases/{{ release_revision }}"
     release_source_directory: "{{ release_directory }}/source"
-    recovery_directory: "/home/dmitry/agentify-release-backups/{{ release_revision }}"
+    recovery_directory: "{{ release_directory }}/recovery"
     release_identity:
       firstParty:
         commerce-app: "agentify-commerce-app:{{ release_revision }}"

@@ -93,12 +93,12 @@ ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
   -e "release_evidence_directory=$EVIDENCE"
 ```
 
-Activation takes a one-off pre-migration recovery snapshot of the databases,
-roles, environment, schedules, and data fingerprints under
-`/home/dmitry/agentify-release-backups/<SHA>`. That snapshot protects this
-migration; it is not a new backup platform. The playbook then applies the
-migrations, starts the selected revision, and records runtime, route, scheduled
-job, and image-identity evidence.
+Activation holds the existing schedules and records the pre-activation public
+catalog and non-recoverable aggregate row fingerprints under
+`/home/dmitry/agentify-releases/<SHA>/recovery`. It verifies those fingerprints
+after migration, starts the selected revision, and records runtime, route,
+scheduled job, and image-identity evidence. It does not create database, role or
+environment dumps. The existing edge route file is retained for error recovery.
 
 Review `test-runtime-verified.json` and perform product acceptance against the
 actual test service. Only after the revision is accepted, write its explicit
