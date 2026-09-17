@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Preserve host-owned configuration while assigning an immutable release.
+"""Preserve host-owned configuration while assigning a source release.
 
 Called only by release-stage.yml under Ansible no_log. Never print values or
 copy production data/secrets into test. Re-running a staged release preserves
@@ -16,7 +16,8 @@ import sys
 
 channel = json.loads(sys.argv[1])
 channel_name, directory = sys.argv[2], Path(sys.argv[3])
-manifest = json.loads((directory / 'release-manifest.json').read_text())
+revision = sys.argv[4]
+identity = json.loads(sys.argv[5])
 stable = Path('/home/dmitry/agentify-configuration')
 stable.mkdir(mode=0o700, exist_ok=True)
 
@@ -42,7 +43,11 @@ def write_environment(name, source, overrides, base=directory):
         out.write('\n'.join(lines) + '\n')
 
 
-fp, infra = manifest['images']['firstParty'], manifest['images']['infrastructure']
+fp, infra = identity['firstParty'], identity['infrastructure']
+if len(revision) != 40 or any(character not in '0123456789abcdef' for character in revision):
+    raise RuntimeError('Expected one full lowercase Git revision')
+if any(not reference.endswith(':' + revision) for reference in fp.values()):
+    raise RuntimeError('Every first-party image tag must name the selected revision')
 common = {
     'AGENTIFY_POSTGRES_IMAGE': infra['postgres'],
     'AGENTIFY_ALPINE_IMAGE': infra['alpine'],

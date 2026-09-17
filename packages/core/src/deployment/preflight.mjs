@@ -257,8 +257,8 @@ export function problemsWith(channel, resolved) {
   return problems;
 }
 
-// The CLI, for `deploy/release.sh`. Reads the resolved configuration on stdin
-// so that no path into a checkout has to be agreed on between two files.
+// The CLI used by Ansible staging. It reads the resolved configuration on
+// stdin so no secret-bearing rendered file enters a build context.
 if (process.argv[1]?.endsWith("preflight.mjs")) {
   const channel = process.argv[2];
   const chunks = [];

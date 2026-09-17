@@ -1,7 +1,7 @@
 ---
 - name: Verify exact running images, revision labels and configured environments
   ansible.builtin.command:
-    argv: [python3, "{{ release_directory }}/deploy/ansible/release-runtime.py", verify, "{{ release_directory }}", "{{ channel_name }}", "{{ channel | to_json }}"]
+    argv: [python3, "{{ release_source_directory }}/deploy/ansible/release-runtime.py", verify, "{{ release_directory }}", "{{ channel_name }}", "{{ channel | to_json }}", "{{ release_revision }}", "{{ release_identity | to_json }}"]
   changed_when: false
   register: runtime_evidence
 
@@ -70,22 +70,19 @@
     that:
       - (installed_schedule.results[0].content | b64decode) == lookup('template', 'release-jobs.sh.j2')
       - (installed_schedule.results[1].content | b64decode) == expected_cron
-    fail_msg: Scheduled jobs do not match the assigned immutable release.
+    fail_msg: Scheduled jobs do not match the assigned source revision.
   vars:
-    expected_cron: |
-      SHELL=/bin/bash
-      17 3 * * * root /home/dmitry/agentify-configuration/scanner-jobs.sh backup
-      23 4 * * * root /home/dmitry/agentify-configuration/scanner-jobs.sh privacy
+    expected_cron: "{{ 'SHELL=/bin/bash\n' + ('17 3 * * * root /home/dmitry/agentify-configuration/scanner-jobs.sh backup\n' if channel_name == 'production' else '') + '23 4 * * * root /home/dmitry/agentify-configuration/scanner-jobs.sh privacy\n' }}"
 
 - name: Verify the retained production edge image and persistent route file
   ansible.builtin.shell: |
     python3 - <<'PY'
     import json,pathlib,subprocess
     c=json.loads(subprocess.check_output(['docker','inspect','{{ channel.edge_container }}']))[0]
-    i=json.loads(subprocess.check_output(['docker','image','inspect','{{ release.images.infrastructure.caddy }}']))[0]
-    assert c['State']['Running'] and c['Image']==i['Id'], 'Production edge image differs from manifest'
+    i=json.loads(subprocess.check_output(['docker','image','inspect','{{ release_identity.infrastructure.caddy }}']))[0]
+    assert c['State']['Running'] and c['Image']==i['Id'], 'Production edge image differs from its pinned image'
     actual=subprocess.check_output(['docker','exec','{{ channel.edge_container }}','cat','/etc/caddy/Caddyfile'])
-    assert actual==pathlib.Path('{{ release_directory }}/deploy/edge/Caddyfile').read_bytes(), 'Edge route file differs from release'
+    assert actual==pathlib.Path('{{ release_source_directory }}/deploy/edge/Caddyfile').read_bytes(), 'Edge route file differs from release'
     print('Production edge image and persistent route file match')
     PY
   changed_when: false
@@ -129,7 +126,7 @@
     dest: "{{ release_directory }}/runtime-verified.json"
     mode: '0644'
 - ansible.builtin.copy:
-    content: "{{ {'revision': release.revision, 'channel': channel_name, 'state': 'runtime-verified'} | to_nice_json }}\n"
+    content: "{{ {'revision': release_revision, 'channel': channel_name, 'state': 'runtime-verified'} | to_nice_json }}\n"
     dest: "{{ release_directory }}/release-state.json"
     mode: '0644'
 - ansible.builtin.fetch:

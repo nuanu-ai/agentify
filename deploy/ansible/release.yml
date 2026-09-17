@@ -1,5 +1,5 @@
 ---
-- name: Stage, activate or verify a single immutable Agentify release
+- name: Stage, activate or verify one Agentify source revision
   hosts: production:test
   become: true
   gather_facts: false
@@ -7,9 +7,20 @@
   vars:
     channel_name: "{{ 'production' if inventory_hostname in groups['production'] else 'test' }}"
     channel: "{{ release_channels[channel_name] }}"
-    release: "{{ lookup('file', release_manifest_file) | from_json }}"
-    release_directory: "/home/dmitry/agentify-releases/{{ release.revision }}"
-    recovery_directory: "/home/dmitry/agentify-release-backups/{{ release.revision }}"
+    release_directory: "/home/dmitry/agentify-releases/{{ release_revision }}"
+    release_source_directory: "{{ release_directory }}/source"
+    recovery_directory: "/home/dmitry/agentify-release-backups/{{ release_revision }}"
+    release_identity:
+      firstParty:
+        commerce-app: "agentify-commerce-app:{{ release_revision }}"
+        commerce-web: "agentify-commerce-web:{{ release_revision }}"
+        scanner-web: "agentify-scanner-web:{{ release_revision }}"
+        scanner-worker: "agentify-scanner-worker:{{ release_revision }}"
+        scanner-privacy: "agentify-scanner-privacy:{{ release_revision }}"
+      infrastructure:
+        postgres: docker.io/library/postgres@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+        caddy: docker.io/library/caddy@sha256:ae4458638da8e1a91aafffb231c5f8778e964bca650c8a8cb23a7e8ac557aa3c
+        alpine: docker.io/library/alpine@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
     commerce_compose: [docker, compose, --project-name, "{{ channel.commerce_project }}", --env-file, "{{ release_directory }}/commerce.env", -f, compose.yaml, -f, deploy/compose.public.yaml, -f, "{{ channel.commerce_overlay }}", -f, deploy/compose.scanner-database.yaml, -f, deploy/compose.release.yaml]
     scanner_compose: [docker, compose, --project-name, "{{ channel.scanner_project }}", --env-file, "{{ release_directory }}/scanner.env", -f, compose.production.yaml, -f, compose.hetzner.yaml, -f, compose.scanner-database.yaml, -f, compose.release.yaml]
   tasks:
@@ -17,13 +28,27 @@
       ansible.builtin.assert:
         that:
           - release_phase | default('') in ['stage', 'activate', 'verify']
-          - release.revision is match('^[0-9a-f]{40}$')
-          - release_manifest_file is match('^/')
-          - release_archive_file is match('^/')
-          - release_evidence_directory is match('^/')
+          - (release_revision | default('')) is match('^[0-9a-f]{40}$')
+          - (release_evidence_directory | default('')) is match('^/')
+          - ansible_play_hosts_all | length == 1
           - inventory_hostname in ['agentify', 'codex-vm']
           - release_channel_ack | default('') == channel_name
-        fail_msg: Select one explicit channel and a reviewed release manifest/archive.
+        fail_msg: Select one explicit channel and the exact reviewed main revision.
+    - name: Identify the controller checkout used for this release
+      ansible.builtin.command:
+        argv: [git, -C, "{{ playbook_dir }}/../..", rev-parse, HEAD]
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      register: controller_revision
+    - name: Require release mechanics from the same clean source revision
+      ansible.builtin.command:
+        argv: [git, -C, "{{ playbook_dir }}/../..", status, --porcelain=v1, --untracked-files=all]
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      register: controller_status
+      failed_when: controller_revision.stdout != release_revision or controller_status.stdout != ''
     - name: Stage without replacing a running application
       ansible.builtin.include_tasks: release-stage.yml
       when: release_phase == 'stage'

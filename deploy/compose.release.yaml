@@ -1,17 +1,18 @@
-# Deployed releases consume immutable artifacts. The local build definitions
-# are removed so even an accidental Compose build cannot rebuild this release.
+# Ansible builds these revision-tagged images from the exact clean checkout.
+# Activation removes build definitions and uses --no-build, so it cannot change
+# the images after test acceptance.
 services:
   postgres:
-    image: "${AGENTIFY_POSTGRES_IMAGE:?set the release manifest Postgres digest}"
+    image: "${AGENTIFY_POSTGRES_IMAGE:?set the pinned release Postgres image}"
   migrate:
     build: !reset null
-    image: "${AGENTIFY_APP_IMAGE:?set the release manifest image digest}"
+    image: "${AGENTIFY_APP_IMAGE:?set the locally built release image}"
   gateway:
     build: !reset null
-    image: "${AGENTIFY_APP_IMAGE:?set the release manifest image digest}"
+    image: "${AGENTIFY_APP_IMAGE:?set the locally built release image}"
   cabinet:
     build: !reset null
-    image: "${AGENTIFY_APP_IMAGE:?set the release manifest image digest}"
+    image: "${AGENTIFY_APP_IMAGE:?set the locally built release image}"
   web:
     build: !reset null
-    image: "${AGENTIFY_WEB_IMAGE:?set the release manifest image digest}"
+    image: "${AGENTIFY_WEB_IMAGE:?set the locally built release image}"

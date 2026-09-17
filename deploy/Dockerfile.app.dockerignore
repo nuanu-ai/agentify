@@ -14,6 +14,11 @@ output
 .env.*
 **/.env
 **/.env.*
+commerce.env
+scanner.env
+*-resolved.json
+topology.json
+release-state.json
 **/*.log
 *.tsbuildinfo
 /06-design/reference

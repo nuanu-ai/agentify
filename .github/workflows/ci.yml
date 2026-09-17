@@ -27,6 +27,23 @@ jobs:
   gate:
     name: gate
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        # PostgreSQL 17.11 Alpine: the same immutable image the commerce stack deploys.
+        image: postgres@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+        env:
+          POSTGRES_USER: agentify_commerce
+          POSTGRES_PASSWORD: ci-only
+          POSTGRES_DB: agentify_commerce_test
+        # Let GitHub choose the host port so concurrent jobs cannot contend for
+        # the runner's 5432.
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U agentify_commerce -d agentify_commerce_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
     steps:
       - uses: actions/checkout@v5
 
@@ -45,13 +62,13 @@ jobs:
       - run: pnpm check:commerce
       - run: pnpm typecheck:commerce
       - run: pnpm test:commerce
+      - run: pnpm test:db
+        env:
+          AGENTIFY_TEST_DATABASE_URL: postgresql://agentify_commerce:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_commerce_test
       # `build` and `typecheck` compile different sets of files. The former uses
       # the package tsconfig that decides what ships; the latter reads the whole
       # source tree including tests and emits nothing.
       - run: pnpm build:commerce
-
-      # test:db stays outside this free, deterministic gate. The release workflow
-      # runs it from the exact commerce image against a disposable scratch database.
 
   # The portal keeps a separate gate because its rendered examples are a
   # distinct release promise. It installs from the same workspace lockfile.

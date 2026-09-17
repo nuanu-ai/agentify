@@ -1,32 +1,33 @@
-# Same images for runtime, migration and scheduled jobs in both channels.
+# Each host builds the same revision tags. Runtime, migration and scheduled
+# jobs share those tags, and activation cannot rebuild them.
 services:
   web:
     build: !reset null
-    image: "${AGENTIFY_SCANNER_WEB_IMAGE:?set the release manifest image digest}"
+    image: "${AGENTIFY_SCANNER_WEB_IMAGE:?set the locally built release image}"
   worker:
     build: !reset null
-    image: "${AGENTIFY_SCANNER_WORKER_IMAGE:?set the release manifest image digest}"
+    image: "${AGENTIFY_SCANNER_WORKER_IMAGE:?set the locally built release image}"
   migrate:
     build: !reset null
-    image: "${AGENTIFY_SCANNER_WORKER_IMAGE:?set the release manifest image digest}"
+    image: "${AGENTIFY_SCANNER_WORKER_IMAGE:?set the locally built release image}"
   queue-init:
     build: !reset null
-    image: "${AGENTIFY_SCANNER_WORKER_IMAGE:?set the release manifest image digest}"
+    image: "${AGENTIFY_SCANNER_WORKER_IMAGE:?set the locally built release image}"
   privacy-cleanup:
     build: !reset null
-    image: "${AGENTIFY_SCANNER_PRIVACY_IMAGE:?set the release manifest image digest}"
+    image: "${AGENTIFY_SCANNER_PRIVACY_IMAGE:?set the locally built release image}"
   roles-reconcile:
-    image: "${AGENTIFY_POSTGRES_IMAGE:?set the release manifest Postgres digest}"
+    image: "${AGENTIFY_POSTGRES_IMAGE:?set the pinned release Postgres image}"
   database-dashboards-install:
-    image: "${AGENTIFY_POSTGRES_IMAGE:?set the release manifest Postgres digest}"
+    image: "${AGENTIFY_POSTGRES_IMAGE:?set the pinned release Postgres image}"
   database-access-finalize:
-    image: "${AGENTIFY_POSTGRES_IMAGE:?set the release manifest Postgres digest}"
+    image: "${AGENTIFY_POSTGRES_IMAGE:?set the pinned release Postgres image}"
   database-access-verify:
-    image: "${AGENTIFY_POSTGRES_IMAGE:?set the release manifest Postgres digest}"
+    image: "${AGENTIFY_POSTGRES_IMAGE:?set the pinned release Postgres image}"
   database-config-check:
-    image: "${AGENTIFY_ALPINE_IMAGE:?set the release manifest Alpine digest}"
+    image: "${AGENTIFY_ALPINE_IMAGE:?set the pinned release Alpine image}"
   database-backup:
-    image: "${AGENTIFY_POSTGRES_IMAGE:?set the release manifest Postgres digest}"
+    image: "${AGENTIFY_POSTGRES_IMAGE:?set the pinned release Postgres image}"
     volumes: !override
       - ${AGENTIFY_BACKUP_DIRECTORY:?set the isolated backup directory}:/backups
       - ./database-backup.sh:/runtime-database-backup.sh:ro

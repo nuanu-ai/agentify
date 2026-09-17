@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# Retained at the installed timer target so a stale timer fails closed. GitHub
-# Actions may build an immutable release bundle, but no timer may activate it.
+# Retained at the installed timer target so a stale timer fails closed. Only a
+# reviewed Ansible run may build or activate a source revision on a host.
 
 set -euo pipefail
 printf '%s\n' \

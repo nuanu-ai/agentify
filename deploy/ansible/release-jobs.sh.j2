@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd '{{ release_directory }}/ops/deploy/droplet'
+cd '{{ release_source_directory }}/ops/deploy/droplet'
 case "${1:-}" in
   backup) service=database-backup ;;
   privacy) service=privacy-cleanup ;;

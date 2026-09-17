@@ -9,8 +9,8 @@ import time
 
 root = Path(sys.argv[1])
 config = json.loads((root / 'scanner-resolved.json').read_text())['services']['web']
-manifest = json.loads((root / 'release-manifest.json').read_text())
-name = 'agentify-configuration-check-' + manifest['revision'][:12]
+revision = sys.argv[2]
+name = 'agentify-configuration-check-' + revision[:12]
 file = root / '.web-configuration-check.env'
 fd = os.open(file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
 created = False

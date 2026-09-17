@@ -1,11 +1,4 @@
 ---
-- name: Validate the operator's release bundle before any extraction
-  ansible.builtin.command:
-    argv: [node, "{{ playbook_dir }}/../../packages/core/src/deployment/release-manifest.mjs", verify, "{{ release_manifest_file }}", "{{ release_archive_file }}"]
-  delegate_to: localhost
-  become: false
-  changed_when: false
-
 - name: Require retained data volumes before doing anything on a host
   ansible.builtin.command:
     argv: [docker, volume, inspect, "{{ channel.postgres_volume }}", "{{ channel.caddy_volume }}"]
@@ -21,60 +14,98 @@
   register: existing_state
   when: existing_state_file.stat.exists
 - ansible.builtin.assert:
-    that: (existing_state.content | b64decode | from_json).state == 'staged'
+    that:
+      - (existing_state.content | b64decode | from_json).revision == release_revision
+      - (existing_state.content | b64decode | from_json).state == 'staged'
     fail_msg: This candidate has begun activation; staging cannot overwrite its state or configuration. Inspect and recover explicitly.
   when: existing_state_file.stat.exists
 
-- name: Create private candidate directory
+- name: Create the private candidate directory outside the build context
   ansible.builtin.file:
     path: "{{ release_directory }}"
     state: directory
     owner: dmitry
     mode: '0700'
 
-- name: Install the exact checked configuration archive
-  ansible.builtin.unarchive:
-    src: "{{ release_archive_file }}"
-    dest: "{{ release_directory }}"
-    extra_opts: [--strip-components=1]
-    owner: dmitry
+- name: Check out the exact public source revision
+  ansible.builtin.git:
+    repo: https://github.com/nuanu-ai/agentify.git
+    dest: "{{ release_source_directory }}"
+    version: "{{ release_revision }}"
+    force: false
+    update: true
+  become_user: dmitry
 
-- name: Assign the checked manifest to this candidate
-  ansible.builtin.copy:
-    src: "{{ release_manifest_file }}"
-    dest: "{{ release_directory }}/release-manifest.json"
-    owner: dmitry
-    mode: '0644'
+- name: Prove the source checkout is exact, public and clean
+  ansible.builtin.shell: |
+    set -eu
+    test "$(git rev-parse HEAD)" = '{{ release_revision }}'
+    test "$(git remote get-url origin)" = 'https://github.com/nuanu-ai/agentify.git'
+    git fetch --quiet origin refs/heads/main:refs/remotes/origin/main
+    git merge-base --is-ancestor '{{ release_revision }}' refs/remotes/origin/main
+    test -z "$(git status --porcelain=v1 --untracked-files=all)"
+  args:
+    chdir: "{{ release_source_directory }}"
+  become_user: dmitry
+  changed_when: false
 
-- name: Pull exact first-party and infrastructure image digests off the application build path
+- name: Pull exact infrastructure images before rendering or acceptance
   ansible.builtin.command:
     argv: [docker, pull, "{{ item }}"]
-  loop: "{{ (release.images.firstParty.values() | list) + (release.images.infrastructure.values() | list) }}"
+  loop: "{{ release_identity.infrastructure.values() | list }}"
   register: pulled_images
   changed_when: "'Downloaded newer image' in pulled_images.stdout"
 
-- name: Verify every pulled application image belongs to this release before activation
+- name: Build first-party images sequentially from the pristine checkout
+  ansible.builtin.command:
+    argv: "{{ ['docker', 'build', '--pull', '--label', 'org.opencontainers.image.revision=' + release_revision, '--label', 'org.opencontainers.image.source=https://github.com/nuanu-ai/agentify', '-f', item.dockerfile, '-t', item.image] + item.extra + ['.'] }}"
+    chdir: "{{ release_source_directory }}"
+  loop:
+    - image: "{{ release_identity.firstParty['commerce-app'] }}"
+      dockerfile: deploy/Dockerfile.app
+      extra: []
+    - image: "{{ release_identity.firstParty['commerce-web'] }}"
+      dockerfile: deploy/Dockerfile.web
+      extra: []
+    - image: "{{ release_identity.firstParty['scanner-web'] }}"
+      dockerfile: ops/deploy/droplet/web.Dockerfile
+      extra: [--target, runner]
+    - image: "{{ release_identity.firstParty['scanner-worker'] }}"
+      dockerfile: ops/deploy/scanner-worker.Dockerfile
+      extra: []
+    - image: "{{ release_identity.firstParty['scanner-privacy'] }}"
+      dockerfile: ops/deploy/droplet/web.Dockerfile
+      extra: [--target, privacy-jobs]
+  loop_control:
+    label: "{{ item.image }}"
+
+- name: Verify every locally built image carries the assigned source identity
   ansible.builtin.shell: |
     python3 - <<'PYCODE'
-    import json,pathlib,subprocess
-    manifest=json.loads(pathlib.Path('{{ release_directory }}/release-manifest.json').read_text())
-    for role,reference in manifest['images']['firstParty'].items():
-        image=json.loads(subprocess.check_output(['docker','image','inspect',reference]))[0]
-        assert image['Config'].get('Labels',{}).get('org.opencontainers.image.revision')==manifest['revision'], role+' has the wrong source revision'
-        assert image['Os']=='linux' and image['Architecture']=='amd64', role+' has the wrong platform'
-    print('All application images have the assigned source revision and host platform')
+    import json, subprocess
+    expected = {{ release_identity.firstParty | to_json }}
+    evidence = {}
+    for role, reference in expected.items():
+        image = json.loads(subprocess.check_output(['docker', 'image', 'inspect', reference]))[0]
+        labels = image['Config'].get('Labels', {})
+        assert labels.get('org.opencontainers.image.revision') == '{{ release_revision }}', role + ' has the wrong source revision'
+        assert labels.get('org.opencontainers.image.source') == 'https://github.com/nuanu-ai/agentify', role + ' has the wrong source repository'
+        assert image['Os'] == 'linux' and image['Architecture'] == 'amd64', role + ' has the wrong platform'
+        evidence[role] = image['Id']
+    print(json.dumps(evidence, sort_keys=True))
     PYCODE
   changed_when: false
+  register: built_image_evidence
 
 - name: Preserve channel secrets and prepare runtime environment files
   ansible.builtin.command:
-    argv: [python3, "{{ release_directory }}/deploy/ansible/prepare-release-environments.py", "{{ channel | to_json }}", "{{ channel_name }}", "{{ release_directory }}"]
+    argv: [python3, "{{ release_source_directory }}/deploy/ansible/prepare-release-environments.py", "{{ channel | to_json }}", "{{ channel_name }}", "{{ release_directory }}", "{{ release_revision }}", "{{ release_identity | to_json }}"]
   no_log: true
 
 - name: Render commerce with no image build definitions
   ansible.builtin.command:
     argv: "{{ commerce_compose + ['config', '--format', 'json'] }}"
-    chdir: "{{ release_directory }}"
+    chdir: "{{ release_source_directory }}"
   changed_when: false
   register: commerce_configuration
   no_log: true
@@ -82,14 +113,14 @@
 - name: Render scanner runtime, activation and scheduled services
   ansible.builtin.command:
     argv: "{{ scanner_compose + ['--profile', 'jobs', '--profile', 'tools', 'config', '--format', 'json'] }}"
-    chdir: "{{ release_directory }}/ops/deploy/droplet"
+    chdir: "{{ release_source_directory }}/ops/deploy/droplet"
   changed_when: false
   register: scanner_configuration
   no_log: true
 
 - name: Validate the actual channel before any application activation
   ansible.builtin.command:
-    argv: [docker, run, --rm, -i, --network, none, "{{ release.images.firstParty['commerce-app'] }}", node, packages/core/src/deployment/preflight.mjs, "{{ 'commerce' if channel_name == 'production' else 'agentify-test' }}"]
+    argv: [docker, run, --rm, -i, --network, none, "{{ release_identity.firstParty['commerce-app'] }}", node, packages/core/src/deployment/preflight.mjs, "{{ 'commerce' if channel_name == 'production' else 'agentify-test' }}"]
     stdin: "{{ commerce_configuration.stdout }}"
   changed_when: false
   no_log: true
@@ -106,12 +137,7 @@
 
 - name: Validate private runtime boundaries and capture a secret-free topology
   ansible.builtin.command:
-    argv: [python3, "{{ release_directory }}/deploy/ansible/release-runtime.py", topology, "{{ release_directory }}", "{{ channel_name }}", "{{ channel | to_json }}"]
-  changed_when: false
-
-- name: Check each rendered image against the manifest before staging succeeds
-  ansible.builtin.command:
-    argv: [docker, run, --rm, --network, none, -v, "{{ release_directory }}:/release:ro", "{{ release.images.firstParty['commerce-app'] }}", node, packages/core/src/deployment/release-manifest.mjs, topology, /release/release-manifest.json, /release/topology.json, /release/topology.json]
+    argv: [python3, "{{ release_source_directory }}/deploy/ansible/release-runtime.py", topology, "{{ release_directory }}", "{{ channel_name }}", "{{ channel | to_json }}", "{{ release_revision }}", "{{ release_identity | to_json }}"]
   changed_when: false
 
 - name: Fetch the sanitized topology for independent test-production comparison
@@ -122,12 +148,12 @@
 
 - name: Prove candidate web configuration before stopping a live service
   ansible.builtin.command:
-    argv: [python3, "{{ release_directory }}/deploy/ansible/check-web-configuration.py", "{{ release_directory }}"]
+    argv: [python3, "{{ release_source_directory }}/deploy/ansible/check-web-configuration.py", "{{ release_directory }}", "{{ release_revision }}"]
   changed_when: false
   no_log: true
 
 - name: Mark candidate staged without claiming live activation
   ansible.builtin.copy:
-    content: "{{ {'revision': release.revision, 'channel': channel_name, 'state': 'staged'} | to_nice_json }}\n"
+    content: "{{ {'revision': release_revision, 'channel': channel_name, 'state': 'staged', 'images': built_image_evidence.stdout | from_json} | to_nice_json }}\n"
     dest: "{{ release_directory }}/release-state.json"
     mode: '0644'
