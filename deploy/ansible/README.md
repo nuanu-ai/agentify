@@ -174,7 +174,7 @@ printf '%s\n' "$APPROVAL_EMAIL" | ssh -o BatchMode=yes -o ConnectTimeout=10 \
   -o ControlMaster=auto -o ControlPersist=60 \
   -o ControlPath=~/.ssh/agentify-approve-%C agentify \
   "cd /home/dmitry/agentify-releases/$SHA/source && \
-   docker compose --project-name agentify-commerce --env-file ../commerce.env \
+   sudo -n docker compose --project-name agentify-commerce --env-file ../commerce.env \
      -f compose.yaml -f deploy/compose.public.yaml \
      -f deploy/compose.hetzner-commerce.yaml \
      -f deploy/compose.scanner-database.yaml -f deploy/compose.release.yaml \
@@ -184,7 +184,8 @@ unset APPROVAL_EMAIL
 ```
 
 The command runs from the staged commerce image and environment already checked
-by activation. It neither exposes a listener nor starts the gateway. The usual
+by activation. Noninteractive sudo reads the root-owned private environment file;
+its permissions stay restricted. It neither exposes a listener nor starts the gateway. The usual
 local `pnpm approve <email>` uses the running cabinet after installation; the
 stopped old cabinet cannot execute the new command during this initial cutover.
 
