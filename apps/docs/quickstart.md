@@ -52,7 +52,7 @@ available if you lose the password later.
 
 The test channel settles test USDC on Base Sepolia. Save the Base wallet where
 those payments should arrive in Cabinet settings before publishing. The live
-channel is a separate account at `https://app.agentify.ad`: it uses Base
+channel is a separate account at `https://agentify.ad`: it uses Base
 mainnet and real USDC, and likewise refuses to publish a card until that
 account has a payout wallet. A local scripted sandbox is the exception: it
 moves no funds, so it does not require a merchant wallet.
@@ -89,7 +89,7 @@ const agentify = createClient({
 
 The address is the environment you are working in:
 `https://test.agentify.ad` while you are building, and
-`https://app.agentify.ad` when you go live. Give the client the address and
+`https://agentify.ad` when you go live. Give the client the address and
 nothing after it; it adds the rest of the path itself. A key made in one
 environment does not open the other, and a key you issued on the test address
 starts with `csk_test_` so you can see at a glance which one you are holding.

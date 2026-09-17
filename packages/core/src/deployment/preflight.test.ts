@@ -80,6 +80,25 @@ describe("a channel that is what it claims to be", () => {
     expect(problemsWith("agentify-test", AGENTIFY_TEST_CHANNEL)).toEqual([]);
   });
 
+  it.each([
+    ["commerce", COMMERCE_CHANNEL],
+    ["agentify-test", AGENTIFY_TEST_CHANNEL],
+  ] as const)(
+    "refuses a static deployed root or unprotected scanner administration in %s",
+    (channel, config) => {
+      for (const value of [null, "local_front_page"]) {
+        expect(
+          problemsWith(channel, withEnv(config, "web", "AGENTIFY_FRONT_PAGE", value)).join("\n"),
+        ).toMatch(/AGENTIFY_FRONT_PAGE/);
+      }
+      for (const name of ["ADMIN_BASIC_AUTH_USER", "ADMIN_BASIC_AUTH_HASH"]) {
+        expect(problemsWith(channel, withEnv(config, "web", name, null)).join("\n")).toContain(
+          name,
+        );
+      }
+    },
+  );
+
   it("refuses retired channel names", () => {
     expect(problemsWith("retired-test", AGENTIFY_TEST_CHANNEL)).toContainEqual(
       expect.stringMatching(/not a release channel/),

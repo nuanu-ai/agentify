@@ -137,7 +137,7 @@ const SURFACE_MARKER = [
   // why). Style .surface-words in theme/agentify.css, never this div.
   '<div data-agentify-surface="<!--{{env `AGENTIFY_SURFACE_MODE`}}-->">',
   '<!--{{if eq (env "AGENTIFY_SURFACE_MODE") "test"}}-->',
-  '<p class="surface-words">Test environment. Payments settle on Base Sepolia with test funds, and every order and receipt here is marked as a test. The live site is app.agentify.ad.</p>',
+  '<p class="surface-words">Test environment. Payments settle on Base Sepolia with test funds, and every order and receipt here is marked as a test. The live site is agentify.ad.</p>',
   '<!--{{else if eq (env "AGENTIFY_SURFACE_MODE") "sandbox"}}-->',
   '<p class="surface-words">Sandbox. No chain stands behind this stack: every payment it accepts is pretend, nothing arrives at the address in a challenge, and no receipt it writes points at a transfer.</p>',
   '<!--{{end}}-->',

@@ -1,60 +1,134 @@
-# Agentify server operations
+# Agentify release operations
 
-Application changes on the production host are made through Ansible. The
-machine baseline remains in `nuanu-ai/infra`; this directory does not provision
-servers, change DNS, publish packages, or create payment probes.
+Application releases use one bundle built by the manually dispatched
+`release-images.yml` workflow. The workflow builds the five first-party images
+once, tests those image IDs, pushes them to GHCR, and records their registry
+digests with the source revision and configuration archive checksum. It has no
+server credentials or delivery step. Test and production consume the same
+manifest and archive through `release.yml`; neither host builds application
+images.
 
-`prepare-production.yml` is the greenfield staging entry point. It checks out
-one explicit 40-character release SHA, verifies a clean checkout and protected
-configuration, resolves the commerce and edge definitions, and prepares the
-immutable images without activating a resident service. Run its syntax check
-locally before any server preview:
+The machine baseline remains in `nuanu-ai/infra`. These playbooks do not
+provision servers, change DNS, publish packages, or make payment probes.
+Automatic delivery is retired and the test pull timer remains masked.
+
+## Build and inspect a release bundle
+
+Dispatch **Build immutable release** for the current `main` revision only after
+its CI push run succeeds. Download its `agentify-release-<SHA>` artifact into an
+ignored local directory. The artifact contains exactly
+`release-manifest.json` and `agentify-config-<SHA>.tar.gz`.
+
+Before any host action, validate both the manifest checksum and archive
+boundary:
+
+```sh
+node packages/core/src/deployment/release-manifest.mjs verify \
+  "$PWD/.local/releases/$SHA/release-manifest.json" \
+  "$PWD/.local/releases/$SHA/agentify-config-$SHA.tar.gz"
+```
+
+Use absolute paths for the manifest, archive and an ignored evidence directory
+in every Ansible command. `release.yml` also requires one exact phase, one
+inventory limit and the matching channel acknowledgement. Run the syntax check
+before staging:
 
 ```sh
 ansible-playbook -i deploy/ansible/inventory.yml \
-  deploy/ansible/prepare-production.yml --syntax-check
+  deploy/ansible/release.yml --syntax-check \
+  -e release_phase=stage \
+  -e release_channel_ack=test \
+  -e release_manifest_file="$MANIFEST" \
+  -e release_archive_file="$ARCHIVE" \
+  -e release_evidence_directory="$EVIDENCE"
 ```
 
-The current production database is not yet stored under the repository's final
-namespace. Ordinary production delivery therefore remains blocked until a
-separately reviewed Ansible cutover has stopped writers, preserved a verified
-backup, restored the commerce database and role as `agentify_commerce`, and
-mapped the restored data volume to `agentify-commerce-postgres`. The scanner
-stays in the separate `agentify_scanner` database. Do not create either target
-by hand to make a Compose check pass.
+## Stage both channels and compare them
 
-The queue gate is lossless. Drain or replay each pending job, or reconcile it
-to the order and durable effect it represents. A job may leave the queue only
-after the related business obligation is proved complete, is safely replayed,
-or is put into named manual custody with its payload, order, owner and next
-action recorded. A queue name and count alone never authorize disposal. If any
-job cannot be reconciled that way, the cutover stops and the source state stays
-available for rollback.
+Stage the same bundle on test and production before activation. Staging
+validates the bundle before extraction, pulls only digest-addressed images,
+preserves channel-owned environment values, renders Compose with its build
+definitions removed, runs the existing fail-closed preflight, and fetches a
+secret-free topology file. It does not replace a running application.
 
-The test pull service is likewise inert until its Ansible cutover has restored
-the retained application data into `agentify_commerce` on the test host, mapped
-the external `agentify-test-postgres` and `agentify-test-caddy` volumes,
-installed the renamed unit files, and preserved the timer's disabled state.
-`agentify_commerce_test` is only the disposable database used by `pnpm test:db`;
-it never stores retained application data. The release receiver checks the
-external volumes before it accepts a candidate, then uses the
-`deploy/compose.agentify-test.yaml` override. Production has no corresponding
-direct release mode; it continues through Ansible because the commerce and
-scanner routes share the public edge. Production also maps
-`agentify-commerce-caddy` explicitly with its database volume.
+```sh
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
+  --limit test -e release_phase=stage -e release_channel_ack=test \
+  -e release_manifest_file="$MANIFEST" -e release_archive_file="$ARCHIVE" \
+  -e release_evidence_directory="$EVIDENCE"
 
-The scanner database and Auth playbooks are retained recovery tools. They keep
-scanner storage separate and use the commerce PostgreSQL owner only as the
-administrative connection to the shared server. Their source evidence and
-protected operation variables stay outside Git. Rehearse their restore path
-with `ops/scripts/scanner-db-rehearsal.sh` and
-`ops/scripts/scanner-db-real-schema-rehearsal.sh`; neither command contacts a
-live service.
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
+  --limit production -e release_phase=stage -e release_channel_ack=production \
+  -e release_manifest_file="$MANIFEST" -e release_archive_file="$ARCHIVE" \
+  -e release_evidence_directory="$EVIDENCE"
 
-Completed source-to-target commerce and test migration playbooks are removed.
-Their embedded source selectors described runtimes that no longer own traffic;
-renaming those selectors to the target would make destructive assertions point
-at the live target. Recovery evidence remains outside the repository. A new
-namespace cutover is executed from an ignored, reviewed operation file with
-explicit source values discovered at execution time, never from guessed or
-encoded legacy names in tracked code.
+node packages/core/src/deployment/release-manifest.mjs topology \
+  "$MANIFEST" "$EVIDENCE/test-topology.json" \
+  "$EVIDENCE/production-topology.json"
+```
+
+The topology check requires the same commerce and scanner service roles,
+commands and manifest image digests in both channels. Channel origins,
+credentials, retained volume names and physical edge placement remain explicit
+channel configuration and are checked separately by staging.
+
+## Accept test and promote the same bundle
+
+Activate test only after both staged graphs pass comparison. Activation holds
+the scheduled jobs, backs up the retained databases and roles before
+migrations, keeps existing channel credentials, runs migrations and starts the
+runtime with `--no-build`. The same command performs runtime and public-route
+verification after activation.
+
+```sh
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
+  --limit test -e release_phase=activate -e release_channel_ack=test \
+  -e release_manifest_file="$MANIFEST" -e release_archive_file="$ARCHIVE" \
+  -e release_evidence_directory="$EVIDENCE"
+```
+
+Product acceptance is a separate operator decision. After reviewing the
+fetched test runtime evidence and the actual test behavior, record
+`test-accepted.json` in the evidence directory with the exact release revision,
+`accepted: true`, and `manifestChecksum` equal to the SHA-256 of the manifest
+bytes prefixed by `sha256:`. Production activation refuses any other marker.
+Then activate production with the same manifest and archive:
+
+```sh
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
+  --limit production -e release_phase=activate \
+  -e release_channel_ack=production \
+  -e release_manifest_file="$MANIFEST" -e release_archive_file="$ARCHIVE" \
+  -e release_evidence_directory="$EVIDENCE"
+```
+
+Run the `verify` phase with the same arguments and channel limit when current
+runtime evidence is needed without activation. Verification checks running
+image IDs and revision labels, configured environments, public routes,
+scheduled jobs and the production edge image and route file. It does not send
+mail or make a purchase.
+
+## Failure recovery
+
+Activation writes `activating` before it stops writers or runs migrations. A
+failure leaves that state, the held schedules, database dumps, role custody and
+environment snapshots under
+`/home/dmitry/agentify-release-backups/<SHA>`, outside the candidate directory.
+The playbook deliberately refuses an implicit retry or rollback: after a
+migration, restarting an older writer could corrupt data or repeat effects.
+Inspect the failed task and protected recovery evidence, preserve the retained
+volumes and credentials, and execute a reviewed forward repair. Do not delete
+the candidate directory, create an empty database, rotate credentials, restore
+a dump, or restart old writers merely to clear the gate.
+
+The two local scanner database rehearsal commands remain available for testing
+the restore helper against disposable PostgreSQL containers:
+
+```sh
+bash ops/scripts/scanner-db-rehearsal.sh
+bash ops/scripts/scanner-db-real-schema-rehearsal.sh
+```
+
+They do not contact a live service and do not authorize repeating the completed
+production database or authentication cutovers. Their historical playbooks and
+operator record remain available in Git history and protected private custody.

@@ -756,7 +756,7 @@ describe("what is thrown where a route has no failure branch", () => {
     const agentify = createClient({ apiKey: API_KEY });
 
     await expect(agentify.catalog.publish(card)).rejects.toThrow(/https:\/\/test\.agentify\.ad/);
-    await expect(agentify.catalog.publish(card)).rejects.toThrow(/https:\/\/app\.agentify\.ad/);
+    await expect(agentify.catalog.publish(card)).rejects.toThrow(/https:\/\/agentify\.ad/);
   });
 });
 

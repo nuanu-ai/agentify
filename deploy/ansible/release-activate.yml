@@ -1,0 +1,319 @@
+---
+- name: Require both actual rendered channel graphs to match the exact manifest
+  ansible.builtin.command:
+    argv: [node, "{{ playbook_dir }}/../../packages/core/src/deployment/release-manifest.mjs", topology, "{{ release_manifest_file }}", "{{ release_evidence_directory }}/test-topology.json", "{{ release_evidence_directory }}/production-topology.json"]
+  delegate_to: localhost
+  become: false
+  changed_when: false
+
+- name: Require accepted test evidence before production promotion
+  ansible.builtin.assert:
+    that:
+      - (lookup('file', release_evidence_directory + '/test-accepted.json') | from_json).revision == release.revision
+      - (lookup('file', release_evidence_directory + '/test-accepted.json') | from_json).accepted == true
+      - (lookup('file', release_evidence_directory + '/test-accepted.json') | from_json).manifestChecksum == ('sha256:' + (lookup('file', release_manifest_file, rstrip=False) | hash('sha256')))
+    fail_msg: Production only promotes the exact bundle accepted on test.
+  when: channel_name == 'production'
+
+- name: Read the staged activation state
+  ansible.builtin.slurp:
+    src: "{{ release_directory }}/release-state.json"
+  register: staged_state
+- name: Refuse an unstaged or uncertain prior activation
+  ansible.builtin.assert:
+    that:
+      - (staged_state.content | b64decode | from_json).revision == release.revision
+      - (staged_state.content | b64decode | from_json).state == 'staged'
+    fail_msg: An activating/verified release needs explicit recovery or verification, never an implicit retry.
+
+- name: Acquire the host's release lock without replacing another operator's lock
+  ansible.builtin.command:
+    argv: [mkdir, /run/lock/agentify-release]
+
+- block:
+    - name: Inspect retained PostgreSQL before touching a writer
+      ansible.builtin.command:
+        argv: [docker, inspect, "{{ channel.postgres_container }}"]
+      changed_when: false
+      register: retained_postgres
+      no_log: true
+    - ansible.builtin.assert:
+        that:
+          - (retained_postgres.stdout | from_json | first).State.Running
+          - ((retained_postgres.stdout | from_json | first).Mounts | selectattr('Destination', 'equalto', '/var/lib/postgresql/data') | map(attribute='Name') | list) == [channel.postgres_volume]
+        fail_msg: The retained PostgreSQL instance or its data volume differs.
+      no_log: true
+
+    - name: Refuse an unreviewed PostgreSQL image change before stopping writers
+      ansible.builtin.command:
+        argv: [docker, image, inspect, "{{ release.images.infrastructure.postgres }}", --format, "{{ '{{.Id}}' }}"]
+      register: assigned_postgres
+      changed_when: false
+    - ansible.builtin.assert:
+        that: (retained_postgres.stdout | from_json | first).Image == assigned_postgres.stdout
+        fail_msg: PostgreSQL differs from the retained release image. A database upgrade needs its own reviewed migration.
+      no_log: true
+
+    - name: Verify the exact existing edge before any production mutation
+      ansible.builtin.shell: |
+        python3 - <<'PYCODE'
+        import json,subprocess
+        c=json.loads(subprocess.check_output(['docker','inspect','{{ channel.edge_container }}']))[0]
+        i=json.loads(subprocess.check_output(['docker','image','inspect','{{ release.images.infrastructure.caddy }}']))[0]
+        assert c['State']['Running'] and c['Image']==i['Id'], 'Edge image drift'
+        assert c['NetworkSettings']['Networks']['agentify-ingress']['IPAddress']=='172.30.80.2', 'Edge IP drift'
+        mounts=[m for m in c['Mounts'] if m['Destination']=='/etc/caddy/Caddyfile']
+        assert len(mounts)==1 and mounts[0]['Type']=='bind' and mounts[0]['Source']=='{{ channel.edge_configuration }}', 'Edge configuration binding drift'
+        print('Exact edge image, IP and configuration binding accepted')
+        PYCODE
+      changed_when: false
+      when: channel_name == 'production'
+
+    - name: Mark the start of the non-automatic recovery boundary
+      ansible.builtin.copy:
+        content: "{{ {'revision': release.revision, 'channel': channel_name, 'state': 'activating'} | to_nice_json }}\n"
+        dest: "{{ release_directory }}/release-state.json"
+        mode: '0644'
+
+    - name: Create private recovery and scheduled-backup directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0700'
+      loop: ["{{ recovery_directory }}", "{{ channel.backup_directory }}"]
+
+    - name: Disable legacy automatic test delivery
+      ansible.builtin.shell: |
+        set -eu
+        for unit in agentify-test-pull.timer agentify-test-pull.service; do
+          if systemctl cat "$unit" >/dev/null 2>&1; then
+            systemctl disable --now "$unit"
+          fi
+          rm -f "/etc/systemd/system/$unit"
+          ln -s /dev/null "/etc/systemd/system/$unit"
+        done
+        systemctl daemon-reload
+      when: channel_name == 'test'
+
+    - name: Hold only the existing Agentify scheduled jobs
+      ansible.builtin.shell: |
+        set -eu
+        if [ -f /etc/cron.d/agentify ]; then
+          cp -p /etc/cron.d/agentify '{{ recovery_directory }}/cron.before'
+          mv /etc/cron.d/agentify '{{ recovery_directory }}/cron.held'
+        fi
+        if [ -f /etc/cron.d/agentify-release ]; then
+          cp -p /etc/cron.d/agentify-release '{{ recovery_directory }}/release-cron.before'
+          mv /etc/cron.d/agentify-release '{{ recovery_directory }}/release-cron.held'
+        fi
+
+    - name: Inspect the current public catalog before holding its writers
+      ansible.builtin.shell: |
+        python3 - <<'PYCODE'
+        import json,pathlib,subprocess,urllib.request
+        c=json.loads(subprocess.check_output(['docker','inspect','{{ channel.commerce_project }}-gateway-1']))[0]
+        env=dict(v.split('=',1) for v in c['Config']['Env'] if '=' in v)
+        origin=env['PUBLIC_BASE_URL']
+        allowed=['https://agentify.ad','https://app.agentify.ad'] if '{{ channel_name }}'=='production' else ['https://test.agentify.ad']
+        assert origin in allowed, 'Unexpected source origin'
+        with urllib.request.urlopen(origin+'/x402/catalog',timeout=20) as response:
+            catalog=json.load(response)
+        ids=sorted(item['id'] for item in catalog['items'])
+        pathlib.Path('{{ recovery_directory }}/published-resource-ids.json').write_text(json.dumps(ids))
+        print('Source published resource count:',len(ids))
+        PYCODE
+      changed_when: false
+
+    - name: Stop the old commerce writers before the origin-sensitive gate
+      ansible.builtin.command:
+        argv: [docker, stop, --time, '60', "{{ channel.commerce_project }}-gateway-1", "{{ channel.commerce_project }}-cabinet-1"]
+
+    - name: Record the old challenge deadline after stopping its issuer
+      ansible.builtin.shell: |
+        python3 - <<'PYCODE'
+        import json,subprocess,time
+        c=json.loads(subprocess.check_output(['docker','inspect','{{ channel.commerce_project }}-gateway-1']))[0]
+        e=dict(v.split('=',1) for v in c['Config']['Env'] if '=' in v)
+        timeout=int(e.get('PAYMENT_TIMEOUT_SECONDS','300'))
+        assert 0 < timeout <= 3600, 'Unexpected challenge TTL needs a reviewed drain window'
+        print(int(time.time())+timeout)
+        PYCODE
+      changed_when: false
+      register: challenge_deadline
+      when: channel_name == 'production'
+
+    - name: Require no production obligations that depend on the old origin
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ channel.postgres_container }}", psql, -U, agentify_commerce, -d, agentify_commerce, -At, -v, ON_ERROR_STOP=1, -c, "select (select count(*) from orders where open) + (select count(*) from cabinet_verifications where expires_at>now()) + (select count(*) from cabinet_woo_grants where expires_at>now()) + (select count(*) from cabinet_sessions where expires_at>now()) + (select count(*) from cards where card::text like '%app.agentify.ad%') + (select count(*) from orders where record::text like '%app.agentify.ad%')"]
+      changed_when: false
+      register: origin_gate
+      failed_when: origin_gate.rc != 0 or origin_gate.stdout != '0'
+      when: channel_name == 'production'
+
+    - name: Stop existing scanner writers without inventing a source on test
+      ansible.builtin.shell: |
+        set -eu
+        for name in '{{ channel.scanner_project }}-web-1' '{{ channel.scanner_project }}-worker-1'; do
+          if docker container inspect "$name" >/dev/null 2>&1; then docker stop --time 60 "$name"; fi
+        done
+        running_jobs="$(docker ps -q --filter label=com.docker.compose.project={{ channel.scanner_project }} --filter label=com.docker.compose.oneoff=True)"
+        test -z "$running_jobs"
+
+    - name: Preserve consistent database dumps and role custody before migrations
+      ansible.builtin.shell: |
+        set -eu
+        umask 077
+        docker exec '{{ channel.postgres_container }}' pg_dump -U agentify_commerce -d agentify_commerce -Fc > '{{ recovery_directory }}/commerce.dump'
+        docker exec '{{ channel.postgres_container }}' pg_dumpall -U agentify_commerce --globals-only > '{{ recovery_directory }}/roles.sql'
+        if [ "$(docker exec '{{ channel.postgres_container }}' psql -U agentify_commerce -d agentify_commerce -Atc "select count(*) from pg_database where datname='agentify_scanner'")" = 1 ]; then
+          docker exec '{{ channel.postgres_container }}' pg_dump -U agentify_commerce -d agentify_scanner -Fc > '{{ recovery_directory }}/scanner.dump'
+        fi
+        cp -p /home/dmitry/agentify-configuration/*.env '{{ recovery_directory }}/'
+        for name in scanner-admin.json scanner-admin-password; do
+          if [ -f "/home/dmitry/agentify-configuration/$name" ]; then
+            cp -p "/home/dmitry/agentify-configuration/$name" '{{ recovery_directory }}/'
+          fi
+        done
+        for db in agentify_commerce agentify_scanner; do
+          if [ "$(docker exec '{{ channel.postgres_container }}' psql -U agentify_commerce -d agentify_commerce -Atc "select count(*) from pg_database where datname='$db'")" = 1 ]; then
+            docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 < '{{ release_directory }}/deploy/ansible/release-data-fingerprint.sql' > '{{ recovery_directory }}/'"$db".fingerprint
+          fi
+        done
+      no_log: true
+
+    - name: Ensure only this channel's ingress and private database networks exist
+      ansible.builtin.shell: |
+        python3 - <<'PY'
+        import json,subprocess
+        for name,internal in [('{{ channel.ingress_network }}',False),('{{ channel.database_network }}',True)]:
+            p=subprocess.run(['docker','network','inspect',name],capture_output=True,text=True)
+            if p.returncode:
+                assert '{{ channel_name }}' == 'test', 'Existing production network is missing'
+                args=['docker','network','create','--driver','bridge']
+                if internal: args += ['--internal']
+                subprocess.run(args+[name],check=True)
+            else:
+                n=json.loads(p.stdout)[0]
+                assert n['Driver']=='bridge' and n['Internal']==internal, 'Network boundary differs'
+        PY
+
+    - name: Start the retained PostgreSQL volume with the manifest image and channel networks
+      ansible.builtin.command:
+        argv: "{{ commerce_compose + ['up', '-d', '--no-build', '--no-deps', '--wait', 'postgres'] }}"
+        chdir: "{{ release_directory }}"
+      no_log: true
+
+    - name: Create only an absent test scanner database, never replace one
+      ansible.builtin.command:
+        argv: [docker, exec, "{{ channel.postgres_container }}", psql, -U, agentify_commerce, -d, agentify_commerce, -At, -v, ON_ERROR_STOP=1, -c, "select count(*) from pg_database where datname='agentify_scanner'"]
+      changed_when: false
+      register: scanner_database
+    - ansible.builtin.assert:
+        that: channel_name == 'test' or scanner_database.stdout == '1'
+        fail_msg: Production scanner database is missing; restore data, never create an empty substitute.
+    - ansible.builtin.command:
+        argv: [docker, exec, "{{ channel.postgres_container }}", createdb, -U, agentify_commerce, --owner, agentify_commerce, agentify_scanner]
+      when: channel_name == 'test' and scanner_database.stdout == '0'
+
+    - name: Initialize fresh test runtime roles with stable channel-owned credentials
+      ansible.builtin.command:
+        argv: "{{ scanner_compose + ['run', '--rm', '--no-deps', '-T', '-e', 'RECONCILE_RUNTIME_ROLE_PASSWORDS=true', '-e', 'ROLE_PASSWORD_ROTATION_MAINTENANCE_ACK=true', 'roles-reconcile'] }}"
+        chdir: "{{ release_directory }}/ops/deploy/droplet"
+      when: channel_name == 'test' and scanner_database.stdout == '0'
+      no_log: true
+
+    - name: Apply commerce migrations with the exact tested application image
+      ansible.builtin.command:
+        argv: "{{ commerce_compose + ['run', '--rm', '--no-deps', '-T', 'migrate'] }}"
+        chdir: "{{ release_directory }}"
+      no_log: true
+
+    - name: Apply scanner activation steps once in dependency order
+      ansible.builtin.command:
+        argv: "{{ scanner_compose + ['run', '--rm', '--no-deps', '-T', item] }}"
+        chdir: "{{ release_directory }}/ops/deploy/droplet"
+      loop: [roles-reconcile, migrate, queue-init, database-dashboards-install, database-access-finalize, database-access-verify]
+      no_log: true
+
+    - name: Verify retained customer records against their frozen fingerprints
+      ansible.builtin.shell: |
+        set -eu
+        for db in agentify_commerce agentify_scanner; do
+          before='{{ recovery_directory }}/'"$db".fingerprint
+          if [ -f "$before" ]; then
+            after='{{ recovery_directory }}/'"$db".after
+            docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 < '{{ release_directory }}/deploy/ansible/release-data-fingerprint.sql' > "$after"
+            cmp "$before" "$after"
+          fi
+        done
+      changed_when: false
+
+    - name: Start scanner runtime from the same manifest accepted for commerce
+      ansible.builtin.command:
+        argv: "{{ scanner_compose + ['up', '-d', '--no-build', '--no-deps', '--wait', 'web', 'worker'] }}"
+        chdir: "{{ release_directory }}/ops/deploy/droplet"
+      no_log: true
+
+    - name: Let every old-origin unpaid challenge expire before reopening commerce
+      ansible.builtin.shell: |
+        python3 - <<'PYCODE'
+        import time
+        remaining=max(0,int('{{ challenge_deadline.stdout }}')-time.time())
+        print('Waiting for the previously issued challenge window to close', flush=True)
+        time.sleep(remaining)
+        PYCODE
+      when: channel_name == 'production'
+      changed_when: false
+
+    - name: Start commerce and the common route table without building
+      ansible.builtin.command:
+        argv: "{{ commerce_compose + ['up', '-d', '--no-build', '--no-deps', '--wait', 'gateway', 'cabinet', 'web'] }}"
+        chdir: "{{ release_directory }}"
+      no_log: true
+
+    - name: Install the thin production edge configuration without releasing its reserved IP
+      ansible.builtin.shell: |
+        python3 - <<'PY'
+        import json,pathlib,subprocess
+        c=json.loads(subprocess.check_output(['docker','inspect','{{ channel.edge_container }}']))[0]
+        mounts=[m for m in c['Mounts'] if m['Destination']=='/etc/caddy/Caddyfile']
+        assert len(mounts)==1 and mounts[0]['Type']=='bind' and mounts[0]['Source']=='{{ channel.edge_configuration }}'
+        i=json.loads(subprocess.check_output(['docker','image','inspect','{{ release.images.infrastructure.caddy }}']))[0]
+        assert c['State']['Running'] and c['Image']==i['Id'], 'Edge image drift'
+        assert c['NetworkSettings']['Networks']['agentify-ingress']['IPAddress']=='172.30.80.2', 'Edge IP drift'
+        target=pathlib.Path(mounts[0]['Source'])
+        recovery=pathlib.Path('{{ recovery_directory }}/edge-Caddyfile.before')
+        if not recovery.exists(): recovery.write_bytes(target.read_bytes())
+        # In-place write preserves the inode held by the existing file bind.
+        # Atomic rename would leave the running Caddy reading the old config.
+        with target.open('wb') as out:
+            out.write(pathlib.Path('{{ release_directory }}/deploy/edge/Caddyfile').read_bytes())
+            out.flush()
+            import os
+            os.fsync(out.fileno())
+        subprocess.run(['docker','exec','{{ channel.edge_container }}','caddy','reload','--config','/etc/caddy/Caddyfile','--adapter','caddyfile'],check=True)
+        PY
+      when: channel_name == 'production'
+      no_log: true
+
+    - name: Install digest-pinned scheduled jobs for this release
+      ansible.builtin.template:
+        src: release-jobs.sh.j2
+        dest: /home/dmitry/agentify-configuration/scanner-jobs.sh
+        mode: '0700'
+    - ansible.builtin.copy:
+        content: |
+          SHELL=/bin/bash
+          17 3 * * * root /home/dmitry/agentify-configuration/scanner-jobs.sh backup
+          23 4 * * * root /home/dmitry/agentify-configuration/scanner-jobs.sh privacy
+        dest: /etc/cron.d/agentify-release
+        mode: '0644'
+
+  rescue:
+    - ansible.builtin.fail:
+        msg: Activation stopped. The state stays activating; backups and held schedules are in the release recovery directory. Do not automatically roll back after migrations or restart old writers. Inspect the failed task and use a reviewed forward recovery.
+  always:
+    - name: Release only this operation's lock
+      ansible.builtin.file:
+        path: /run/lock/agentify-release
+        state: absent

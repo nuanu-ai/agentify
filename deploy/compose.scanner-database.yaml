@@ -9,4 +9,4 @@ services:
 networks:
   agentify-scanner-db:
     external: true
-    name: agentify-scanner-db
+    name: ${AGENTIFY_SCANNER_DB_NETWORK:-agentify-scanner-db}

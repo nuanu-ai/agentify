@@ -1,7 +1,0 @@
-# Opt-in scanner-only 503 during the frozen database handoff.
-services:
-  caddy:
-    volumes: !override
-      - ./Caddyfile.scanner-db-maintenance:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config

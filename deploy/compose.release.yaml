@@ -1,0 +1,17 @@
+# Deployed releases consume immutable artifacts. The local build definitions
+# are removed so even an accidental Compose build cannot rebuild this release.
+services:
+  postgres:
+    image: "${AGENTIFY_POSTGRES_IMAGE:?set the release manifest Postgres digest}"
+  migrate:
+    build: !reset null
+    image: "${AGENTIFY_APP_IMAGE:?set the release manifest image digest}"
+  gateway:
+    build: !reset null
+    image: "${AGENTIFY_APP_IMAGE:?set the release manifest image digest}"
+  cabinet:
+    build: !reset null
+    image: "${AGENTIFY_APP_IMAGE:?set the release manifest image digest}"
+  web:
+    build: !reset null
+    image: "${AGENTIFY_WEB_IMAGE:?set the release manifest image digest}"

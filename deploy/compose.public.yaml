@@ -10,7 +10,7 @@ services:
   postgres:
     # Two stacks cannot both take 5432, and nothing outside the Compose network
     # has any business reaching either database. The migration suite runs
-    # against a disposable server of its own (deploy/release.sh), so nothing on
+    # against a disposable server in the release workflow, so nothing on
     # the host needs a port here at all.
     ports: !override []
 

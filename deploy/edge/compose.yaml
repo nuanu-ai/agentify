@@ -2,7 +2,7 @@ name: agentify-edge
 
 services:
   caddy:
-    image: caddy:2.10.0-alpine
+    image: "${AGENTIFY_EDGE_IMAGE:?set the release manifest Caddy digest}"
     restart: unless-stopped
     environment:
       ADMIN_BASIC_AUTH_USER: ${ADMIN_BASIC_AUTH_USER:?set the scanner admin user}

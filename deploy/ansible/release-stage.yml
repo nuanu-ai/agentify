@@ -1,0 +1,133 @@
+---
+- name: Validate the operator's release bundle before any extraction
+  ansible.builtin.command:
+    argv: [node, "{{ playbook_dir }}/../../packages/core/src/deployment/release-manifest.mjs", verify, "{{ release_manifest_file }}", "{{ release_archive_file }}"]
+  delegate_to: localhost
+  become: false
+  changed_when: false
+
+- name: Require retained data volumes before doing anything on a host
+  ansible.builtin.command:
+    argv: [docker, volume, inspect, "{{ channel.postgres_volume }}", "{{ channel.caddy_volume }}"]
+  changed_when: false
+  no_log: true
+
+- name: Inspect an existing candidate's delivery state
+  ansible.builtin.stat:
+    path: "{{ release_directory }}/release-state.json"
+  register: existing_state_file
+- ansible.builtin.slurp:
+    src: "{{ release_directory }}/release-state.json"
+  register: existing_state
+  when: existing_state_file.stat.exists
+- ansible.builtin.assert:
+    that: (existing_state.content | b64decode | from_json).state == 'staged'
+    fail_msg: This candidate has begun activation; staging cannot overwrite its state or configuration. Inspect and recover explicitly.
+  when: existing_state_file.stat.exists
+
+- name: Create private candidate directory
+  ansible.builtin.file:
+    path: "{{ release_directory }}"
+    state: directory
+    owner: dmitry
+    mode: '0700'
+
+- name: Install the exact checked configuration archive
+  ansible.builtin.unarchive:
+    src: "{{ release_archive_file }}"
+    dest: "{{ release_directory }}"
+    extra_opts: [--strip-components=1]
+    owner: dmitry
+
+- name: Assign the checked manifest to this candidate
+  ansible.builtin.copy:
+    src: "{{ release_manifest_file }}"
+    dest: "{{ release_directory }}/release-manifest.json"
+    owner: dmitry
+    mode: '0644'
+
+- name: Pull exact first-party and infrastructure image digests off the application build path
+  ansible.builtin.command:
+    argv: [docker, pull, "{{ item }}"]
+  loop: "{{ (release.images.firstParty.values() | list) + (release.images.infrastructure.values() | list) }}"
+  register: pulled_images
+  changed_when: "'Downloaded newer image' in pulled_images.stdout"
+
+- name: Verify every pulled application image belongs to this release before activation
+  ansible.builtin.shell: |
+    python3 - <<'PYCODE'
+    import json,pathlib,subprocess
+    manifest=json.loads(pathlib.Path('{{ release_directory }}/release-manifest.json').read_text())
+    for role,reference in manifest['images']['firstParty'].items():
+        image=json.loads(subprocess.check_output(['docker','image','inspect',reference]))[0]
+        assert image['Config'].get('Labels',{}).get('org.opencontainers.image.revision')==manifest['revision'], role+' has the wrong source revision'
+        assert image['Os']=='linux' and image['Architecture']=='amd64', role+' has the wrong platform'
+    print('All application images have the assigned source revision and host platform')
+    PYCODE
+  changed_when: false
+
+- name: Preserve channel secrets and prepare runtime environment files
+  ansible.builtin.command:
+    argv: [python3, "{{ release_directory }}/deploy/ansible/prepare-release-environments.py", "{{ channel | to_json }}", "{{ channel_name }}", "{{ release_directory }}"]
+  no_log: true
+
+- name: Render commerce with no image build definitions
+  ansible.builtin.command:
+    argv: "{{ commerce_compose + ['config', '--format', 'json'] }}"
+    chdir: "{{ release_directory }}"
+  changed_when: false
+  register: commerce_configuration
+  no_log: true
+
+- name: Render scanner runtime, activation and scheduled services
+  ansible.builtin.command:
+    argv: "{{ scanner_compose + ['--profile', 'jobs', '--profile', 'tools', 'config', '--format', 'json'] }}"
+    chdir: "{{ release_directory }}/ops/deploy/droplet"
+  changed_when: false
+  register: scanner_configuration
+  no_log: true
+
+- name: Validate the actual channel before any application activation
+  ansible.builtin.command:
+    argv: [docker, run, --rm, -i, --network, none, "{{ release.images.firstParty['commerce-app'] }}", node, packages/core/src/deployment/preflight.mjs, "{{ 'commerce' if channel_name == 'production' else 'agentify-test' }}"]
+    stdin: "{{ commerce_configuration.stdout }}"
+  changed_when: false
+  no_log: true
+
+- name: Save private rendered configurations for reviewed activation
+  ansible.builtin.copy:
+    content: "{{ item.content }}"
+    dest: "{{ release_directory }}/{{ item.name }}.json"
+    mode: '0600'
+  loop:
+    - {name: commerce-resolved, content: "{{ commerce_configuration.stdout }}"}
+    - {name: scanner-resolved, content: "{{ scanner_configuration.stdout }}"}
+  no_log: true
+
+- name: Validate private runtime boundaries and capture a secret-free topology
+  ansible.builtin.command:
+    argv: [python3, "{{ release_directory }}/deploy/ansible/release-runtime.py", topology, "{{ release_directory }}", "{{ channel_name }}", "{{ channel | to_json }}"]
+  changed_when: false
+
+- name: Check each rendered image against the manifest before staging succeeds
+  ansible.builtin.command:
+    argv: [docker, run, --rm, --network, none, -v, "{{ release_directory }}:/release:ro", "{{ release.images.firstParty['commerce-app'] }}", node, packages/core/src/deployment/release-manifest.mjs, topology, /release/release-manifest.json, /release/topology.json, /release/topology.json]
+  changed_when: false
+
+- name: Fetch the sanitized topology for independent test-production comparison
+  ansible.builtin.fetch:
+    src: "{{ release_directory }}/topology.json"
+    dest: "{{ release_evidence_directory }}/{{ channel_name }}-topology.json"
+    flat: true
+
+- name: Prove candidate web configuration before stopping a live service
+  ansible.builtin.command:
+    argv: [python3, "{{ release_directory }}/deploy/ansible/check-web-configuration.py", "{{ release_directory }}"]
+  changed_when: false
+  no_log: true
+
+- name: Mark candidate staged without claiming live activation
+  ansible.builtin.copy:
+    content: "{{ {'revision': release.revision, 'channel': channel_name, 'state': 'staged'} | to_nice_json }}\n"
+    dest: "{{ release_directory }}/release-state.json"
+    mode: '0644'

@@ -1,0 +1,33 @@
+# Host-owned paths and channel boundaries. Secrets never live in this file.
+release_channels:
+  production:
+    origin: https://agentify.ad
+    commerce_project: agentify-commerce
+    scanner_project: agentify
+    commerce_environment: /home/dmitry/agentify-namespace-57eaca4/.env
+    scanner_environment: /home/dmitry/agentify-scanner/.env.namespace-57eaca4
+    commerce_overlay: deploy/compose.hetzner-commerce.yaml
+    ingress_network: agentify-ingress
+    database_network: agentify-scanner-db
+    postgres_volume: agentify-commerce-postgres
+    caddy_volume: agentify-commerce-caddy
+    postgres_container: agentify-commerce-postgres-1
+    cabinet_container: agentify-commerce-cabinet-1
+    edge_container: agentify-edge-caddy-1
+    edge_configuration: /home/dmitry/agentify-commerce/deploy/edge/Caddyfile
+    backup_directory: /home/dmitry/agentify-backups/scanner
+  test:
+    origin: https://test.agentify.ad
+    commerce_project: agentify-test
+    scanner_project: agentify-test-scanner
+    commerce_environment: /home/dmitry/agentify-test/.env
+    scanner_environment: ''
+    commerce_overlay: deploy/compose.agentify-test.yaml
+    ingress_network: agentify-test-ingress
+    database_network: agentify-test-scanner-db
+    postgres_volume: agentify-test-postgres
+    caddy_volume: agentify-test-caddy
+    postgres_container: agentify-test-postgres-1
+    cabinet_container: agentify-test-cabinet-1
+    edge_container: ''
+    backup_directory: /home/dmitry/agentify-test-backups/scanner

@@ -11,7 +11,7 @@
     "stablecoin-payments",
     "usdc"
   ],
-  "homepage": "https://app.agentify.ad/docs/",
+  "homepage": "https://agentify.ad/docs/",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",

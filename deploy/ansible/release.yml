@@ -1,0 +1,35 @@
+---
+- name: Stage, activate or verify a single immutable Agentify release
+  hosts: production:test
+  become: true
+  gather_facts: false
+  vars_files: [release-vars.yml]
+  vars:
+    channel_name: "{{ 'production' if inventory_hostname in groups['production'] else 'test' }}"
+    channel: "{{ release_channels[channel_name] }}"
+    release: "{{ lookup('file', release_manifest_file) | from_json }}"
+    release_directory: "/home/dmitry/agentify-releases/{{ release.revision }}"
+    recovery_directory: "/home/dmitry/agentify-release-backups/{{ release.revision }}"
+    commerce_compose: [docker, compose, --project-name, "{{ channel.commerce_project }}", --env-file, "{{ release_directory }}/commerce.env", -f, compose.yaml, -f, deploy/compose.public.yaml, -f, "{{ channel.commerce_overlay }}", -f, deploy/compose.scanner-database.yaml, -f, deploy/compose.release.yaml]
+    scanner_compose: [docker, compose, --project-name, "{{ channel.scanner_project }}", --env-file, "{{ release_directory }}/scanner.env", -f, compose.production.yaml, -f, compose.hetzner.yaml, -f, compose.scanner-database.yaml, -f, compose.release.yaml]
+  tasks:
+    - name: Require an explicit phase and exact channel inventory
+      ansible.builtin.assert:
+        that:
+          - release_phase | default('') in ['stage', 'activate', 'verify']
+          - release.revision is match('^[0-9a-f]{40}$')
+          - release_manifest_file is match('^/')
+          - release_archive_file is match('^/')
+          - release_evidence_directory is match('^/')
+          - inventory_hostname in ['agentify', 'codex-vm']
+          - release_channel_ack | default('') == channel_name
+        fail_msg: Select one explicit channel and a reviewed release manifest/archive.
+    - name: Stage without replacing a running application
+      ansible.builtin.include_tasks: release-stage.yml
+      when: release_phase == 'stage'
+    - name: Activate the staged release after channel acceptance
+      ansible.builtin.include_tasks: release-activate.yml
+      when: release_phase == 'activate'
+    - name: Verify the assigned release against the running services
+      ansible.builtin.include_tasks: release-verify.yml
+      when: release_phase in ['activate', 'verify']

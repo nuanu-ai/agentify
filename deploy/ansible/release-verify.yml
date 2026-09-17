@@ -1,0 +1,138 @@
+---
+- name: Verify exact running images, revision labels and configured environments
+  ansible.builtin.command:
+    argv: [python3, "{{ release_directory }}/deploy/ansible/release-runtime.py", verify, "{{ release_directory }}", "{{ channel_name }}", "{{ channel | to_json }}"]
+  changed_when: false
+  register: runtime_evidence
+
+- name: Verify public routes without sending mail or making a purchase
+  ansible.builtin.uri:
+    url: "{{ channel.origin }}{{ item.path }}"
+    status_code: "{{ item.status }}"
+    follow_redirects: none
+    return_content: false
+  loop:
+    - {path: /, status: [307, 308]}
+    - {path: /owner, status: [200]}
+    - {path: /api/health/live, status: [200]}
+    - {path: /api/health, status: [200]}
+    - {path: /cabinet/sign-in, status: [200]}
+    - {path: /cabinet/healthz, status: [200]}
+    - {path: /docs/, status: [200]}
+    - {path: /healthz, status: [200]}
+    - {path: /x402/catalog, status: [200]}
+    - {path: /admin, status: [401]}
+  register: route_evidence
+
+- name: Verify unpaid resource challenges name this channel and cannot spend
+  ansible.builtin.shell: |
+    python3 - <<'PY'
+    import base64,json,pathlib,urllib.request,urllib.error,urllib.parse
+    origin='{{ channel.origin }}'
+    with urllib.request.urlopen(origin+'/x402/catalog',timeout=20) as response:
+        catalog=json.load(response)
+    before=json.loads(pathlib.Path('{{ recovery_directory }}/published-resource-ids.json').read_text())
+    assert sorted(item['id'] for item in catalog['items'])==before, 'Public catalog differs from its pre-activation inventory'
+    checked=0
+    for card in catalog.get('items',[]):
+        url=origin+'/x402/'+urllib.parse.quote(card['id'],safe='')+'/purchase'
+        try:
+            response=urllib.request.urlopen(url,timeout=20)
+        except urllib.error.HTTPError as response:
+            assert response.code==402, 'Published card did not answer an unpaid challenge'
+            header=response.headers.get('PAYMENT-REQUIRED')
+            assert header, 'Unpaid challenge header is absent'
+            challenge=json.loads(base64.b64decode(header))
+            assert challenge['resource']['url']==url, 'Challenge names a different public resource'
+            assert all(a['network']=='{{ "eip155:8453" if channel_name == "production" else "eip155:84532" }}' for a in challenge['accepts']), 'Challenge uses the wrong payment network'
+            checked+=1
+        else:
+            raise RuntimeError('An unpaid purchase probe was unexpectedly accepted')
+    print(json.dumps({'status':'verified' if checked else 'no_published_resources', 'published_resources_verified':checked,'spent':0}))
+    PY
+  changed_when: false
+
+- name: Require test automatic delivery to remain unavailable
+  ansible.builtin.command:
+    argv: [systemctl, is-enabled, agentify-test-pull.timer]
+  changed_when: false
+  register: timer_state
+  failed_when: timer_state.stdout != 'masked'
+  when: channel_name == 'test'
+
+- name: Read the installed scheduled jobs and schedule
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  loop: [/home/dmitry/agentify-configuration/scanner-jobs.sh, /etc/cron.d/agentify-release]
+  register: installed_schedule
+- name: Require the exact template and schedule assigned to this release
+  ansible.builtin.assert:
+    that:
+      - (installed_schedule.results[0].content | b64decode) == lookup('template', 'release-jobs.sh.j2')
+      - (installed_schedule.results[1].content | b64decode) == expected_cron
+    fail_msg: Scheduled jobs do not match the assigned immutable release.
+  vars:
+    expected_cron: |
+      SHELL=/bin/bash
+      17 3 * * * root /home/dmitry/agentify-configuration/scanner-jobs.sh backup
+      23 4 * * * root /home/dmitry/agentify-configuration/scanner-jobs.sh privacy
+
+- name: Verify the retained production edge image and persistent route file
+  ansible.builtin.shell: |
+    python3 - <<'PY'
+    import json,pathlib,subprocess
+    c=json.loads(subprocess.check_output(['docker','inspect','{{ channel.edge_container }}']))[0]
+    i=json.loads(subprocess.check_output(['docker','image','inspect','{{ release.images.infrastructure.caddy }}']))[0]
+    assert c['State']['Running'] and c['Image']==i['Id'], 'Production edge image differs from manifest'
+    actual=subprocess.check_output(['docker','exec','{{ channel.edge_container }}','cat','/etc/caddy/Caddyfile'])
+    assert actual==pathlib.Path('{{ release_directory }}/deploy/edge/Caddyfile').read_bytes(), 'Edge route file differs from release'
+    print('Production edge image and persistent route file match')
+    PY
+  changed_when: false
+  when: channel_name == 'production'
+
+- name: Prove the retired host no longer serves a login or product surface
+  ansible.builtin.shell: |
+    python3 - <<'PY'
+    import urllib.request,urllib.error
+    for path in ['/','/cabinet/sign-in','/healthz']:
+        try:
+            response=urllib.request.urlopen('https://app.agentify.ad'+path,timeout=20)
+        except urllib.error.HTTPError as e:
+            assert e.code in [404,410,421], 'Retired host returned an unexpected HTTP response'
+        except urllib.error.URLError as e:
+            import ssl
+            assert isinstance(e.reason,ssl.SSLError), 'Retirement probe failed for a reason other than TLS rejection'
+        else:
+            raise RuntimeError('Retired host still serves a surface or redirects')
+    print('Old application origin is retired')
+    PY
+  changed_when: false
+  when: channel_name == 'production'
+
+- name: Verify canonical documents stay on the channel origin
+  ansible.builtin.uri:
+    url: "{{ channel.origin }}/sitemap.xml"
+    status_code: 200
+    return_content: true
+  register: sitemap
+- ansible.builtin.assert:
+    that:
+      - channel.origin + '/owner' in sitemap.content
+      - "'app.agentify.ad' not in sitemap.content"
+      - channel_name != 'test' or 'https://agentify.ad/' not in sitemap.content
+    fail_msg: Scanner canonical URLs escaped their channel origin.
+
+- name: Record verified runtime identity without overstating product acceptance
+  ansible.builtin.copy:
+    content: "{{ runtime_evidence.stdout }}\n"
+    dest: "{{ release_directory }}/runtime-verified.json"
+    mode: '0644'
+- ansible.builtin.copy:
+    content: "{{ {'revision': release.revision, 'channel': channel_name, 'state': 'runtime-verified'} | to_nice_json }}\n"
+    dest: "{{ release_directory }}/release-state.json"
+    mode: '0644'
+- ansible.builtin.fetch:
+    src: "{{ release_directory }}/runtime-verified.json"
+    dest: "{{ release_evidence_directory }}/{{ channel_name }}-runtime-verified.json"
+    flat: true

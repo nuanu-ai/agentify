@@ -10,10 +10,12 @@
 # a copy of this file.
 #
 #   AGENTIFY_SITE_ADDRESS      what Caddy listens on              :8080
+#   AGENTIFY_FRONT_PAGE        required front-page route          no default
 #   AGENTIFY_LANDING_ROOT      the landing's static directory     /srv/landing
 #   AGENTIFY_PORTAL_ROOT       the portal's built output          /srv/docs
 #   AGENTIFY_CABINET_UPSTREAM  host:port of the cabinet process   cabinet:3001
 #   AGENTIFY_GATEWAY_UPSTREAM  host:port of the gateway process   gateway:3000
+#   AGENTIFY_SCANNER_UPSTREAM  host:port of the scanner process   agentify-site:3000
 #   AGENTIFY_SURFACE_MODE      what the static pages say           sandbox
 #
 # The defaults are the container's view of the world, because ADR-0005 §7 wants
@@ -22,6 +24,7 @@
 # name are the service names on its network. Running this file from a checkout
 # outside Docker still works, with the roots pointed at the repository:
 #
+#   AGENTIFY_FRONT_PAGE=local_front_page \
 #   AGENTIFY_LANDING_ROOT=apps/landing/public \
 #   AGENTIFY_PORTAL_ROOT=apps/docs/.vitepress/dist \
 #   AGENTIFY_CABINET_UPSTREAM=127.0.0.1:3001 \
@@ -51,6 +54,57 @@
 	servers {
 		trusted_proxies static {$AGENTIFY_TRUSTED_EDGE_CIDR:127.0.0.1/32}
 		trusted_proxies_strict
+	}
+}
+
+# Local commerce remains usable without a scanner. Both deployed channels
+# select scanner_front_page; release preflight rejects a static deployed root.
+(local_front_page) {
+	handle {
+		root * {$AGENTIFY_LANDING_ROOT:/srv/landing}
+		templates {
+			mime text/html
+			between <!--{{ }}-->
+		}
+		file_server
+	}
+}
+
+(scanner_front_page) {
+	@admin path /admin /admin/*
+	handle @admin {
+		basic_auth {
+			{$ADMIN_BASIC_AUTH_USER} {$ADMIN_BASIC_AUTH_HASH}
+		}
+		header {
+			Cache-Control "private, no-store"
+			X-Robots-Tag "noindex, nofollow"
+			Referrer-Policy same-origin
+		}
+		reverse_proxy {$AGENTIFY_SCANNER_UPSTREAM:agentify-site:3000} {
+			# Scanner consumers historically disagreed about whether the first or
+			# last forwarded address was the browser. Give them one address. The
+			# global trusted-proxy boundary above decides it; incoming values from
+			# any other peer are not evidence.
+			header_up X-Forwarded-For {client_ip}
+		}
+	}
+	handle {
+		reverse_proxy {$AGENTIFY_SCANNER_UPSTREAM:agentify-site:3000} {
+			header_up X-Forwarded-For {client_ip}
+		}
+	}
+}
+
+# The cabinet's HTML shares only these browser assets with the landing. They
+# remain Caddy-owned when the scanner owns the front page. Naming the three
+# marks and the font subtree is deliberate: a broad /assets or /styles route
+# would silently reserve scanner namespaces that the cabinet does not use.
+(commerce_shared_assets) {
+	@commerce_shared_assets path /assets/agentify-mark.svg /assets/agentify-mark-dark.svg /assets/agentify-mark-heavy.svg /styles/fonts.css /styles/fonts/*.woff2
+	handle @commerce_shared_assets {
+		root * {$AGENTIFY_LANDING_ROOT:/srv/landing}
+		file_server
 	}
 }
 
@@ -88,6 +142,8 @@
 		Referrer-Policy same-origin
 		X-Frame-Options DENY
 	}
+
+	import commerce_shared_assets
 
 	# The gateway, at both of the prefixes the contract's own route table is
 	# written under (packages/contracts/src/api.ts): /v0 is the merchant's API
@@ -202,31 +258,7 @@
 		file_server
 	}
 
-	# Everything else is the landing: static files, no runtime behind them
-	# (ADR-0005 §5). This block is last and matches everything, so a path no
-	# route above claimed is answered here rather than by a neighbouring prefix
-	# that happened to start with the same letters.
-	#
-	# What that answer looks like today is Caddy's own bare 404 with an empty
-	# body: the landing is one page and has no 404 of its own. That is a gap
-	# rather than a decision, and the fix is a page in the landing plus a
-	# handle_errors block here.
-	handle {
-		root * {$AGENTIFY_LANDING_ROOT:/srv/landing}
-		# Which stack this is, and the only place in this system where the mode
-		# is a variable rather than a derivation: Caddy cannot read a CAIP-2
-		# identifier and cannot hold the list of chains. Two fields can
-		# disagree, so the release checks this one against the channel before
-		# anything starts and against the rendered pages after they are up.
-		#
-		# The delimiters are comment-shaped so that these files are readable
-		# and openable without this server in front of them, and `mime` keeps
-		# the templating off everything that is not a page — a stylesheet or a
-		# built script containing two braces is not a template.
-		templates {
-			mime text/html
-			between <!--{{ }}-->
-		}
-		file_server
-	}
+	# The same route table serves test and production. Only the isolated local
+	# fixture selects the static fallback.
+	import {$AGENTIFY_FRONT_PAGE}
 }

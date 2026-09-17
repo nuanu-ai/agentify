@@ -1,4 +1,4 @@
-# The scanner remains a separate project, database, and release. The edge owns
+# The scanner keeps its own project and database within the common release. The edge owns
 # public TLS; this override keeps the original Caddy available only by profile.
 services:
   caddy:
@@ -28,4 +28,4 @@ services:
 networks:
   agentify-ingress:
     external: true
-    name: agentify-ingress
+    name: ${AGENTIFY_INGRESS_NETWORK:-agentify-ingress}

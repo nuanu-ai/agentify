@@ -1,9 +1,0 @@
-# Layered over the existing production and Hetzner scanner Compose files only
-# for scheduled backup. The shared Supabase DB and original backup directory
-# on the donor are untouched.
-services:
-  database-backup:
-    volumes: !override
-      - /home/dmitry/agentify-backups/scanner:/backups
-      - ./database-backup.sh:/runtime-database-backup.sh:ro
-      - ./validate-database-config.sh:/runtime-validate-database-config.sh:ro

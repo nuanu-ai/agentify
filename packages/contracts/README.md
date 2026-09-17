@@ -23,7 +23,7 @@ The contract is versioned, and the version is how an SDK and a gateway agree
 that they read the same vocabulary; a worker whose version the gateway does not
 share stops at startup rather than half understanding a document. What the
 merchant-facing side of all this looks like in use is at
-<https://app.agentify.ad/docs/>.
+<https://agentify.ad/docs/>.
 
 ## License
 

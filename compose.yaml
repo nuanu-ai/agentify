@@ -529,6 +529,10 @@ services:
       # hostname on a server, which is what turns it on. deploy/Caddyfile says
       # why TLS-ALPN is the only challenge that can reach it here.
       AGENTIFY_SITE_ADDRESS: "${AGENTIFY_SITE_ADDRESS:-:8080}"
+      # The selector is mandatory in Caddy so a deployed stack cannot silently
+      # fall back to the static local landing. This compose file is the one
+      # intentional local fixture.
+      AGENTIFY_FRONT_PAGE: local_front_page
       # What the landing and the portal say about this stack. It is a variable
       # rather than a derivation because Caddy cannot read a CAIP-2 identifier
       # and cannot hold the list of chains (deploy/Caddyfile). Two fields can

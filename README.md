@@ -280,9 +280,10 @@ volume. Scanner verification is exposed through `agentify:check`,
 Scanner email confirmation uses Better Auth and Resend; local email evidence
 stays in the local process. It preserves the scanner's report sessions and does
 not create commercial accounts or share the cabinet's login. See
-[ADR-0024](docs/decisions/0024-scanner-identity-without-supabase.md) and the
-[Supabase exit runbook](deploy/ansible/SUPABASE-EXIT.md) for the staged database
-and identity handoff, verification and recovery steps.
+[ADR-0024](docs/decisions/0024-scanner-identity-without-supabase.md) for the
+identity boundary. The completed database and identity handoff remains in Git
+history; current delivery and recovery rules are in the
+[release operations guide](deploy/ansible/README.md).
 
 The scanner code was imported from `nuanu-ai/agent-first-project` commit
 `33f3385d2be825022133b55d889f8a690f736e69` under the repository's

@@ -1,0 +1,227 @@
+name: Build immutable release
+
+on:
+  workflow_dispatch:
+
+# This workflow publishes build artifacts only. It has no infrastructure
+# credential, network route or delivery job; test and production activation
+# remain explicit Ansible operations outside GitHub Actions (ADR-0016).
+permissions:
+  actions: read
+  contents: read
+  packages: write
+
+concurrency:
+  group: release-images-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build once and record digests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      COMMERCE_APP: ghcr.io/nuanu-ai/agentify-commerce-app:${{ github.sha }}
+      COMMERCE_WEB: ghcr.io/nuanu-ai/agentify-commerce-web:${{ github.sha }}
+      SCANNER_WEB: ghcr.io/nuanu-ai/agentify-scanner-web:${{ github.sha }}
+      SCANNER_WORKER: ghcr.io/nuanu-ai/agentify-scanner-worker:${{ github.sha }}
+      SCANNER_PRIVACY: ghcr.io/nuanu-ai/agentify-scanner-privacy:${{ github.sha }}
+      POSTGRES_DIGEST: docker.io/library/postgres@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+      CADDY_DIGEST: docker.io/library/caddy@sha256:ae4458638da8e1a91aafffb231c5f8778e964bca650c8a8cb23a7e8ac557aa3c
+      ALPINE_DIGEST: docker.io/library/alpine@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
+
+    steps:
+      - name: Check out the exact candidate
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up the repository Node.js version
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Require the exact current main commit and its successful CI run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = nuanu-ai/agentify
+          test "$GITHUB_REF" = refs/heads/main
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          test "$GITHUB_SHA" = "$(git rev-parse origin/main)"
+
+          accepted="$({
+            gh api -X GET \
+              "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs" \
+              -f branch=main \
+              -f event=push \
+              -f head_sha="$GITHUB_SHA" \
+              -f status=completed \
+              --jq '[.workflow_runs[] | select(.conclusion == "success")] | length'
+          })"
+          test "$accepted" -gt 0
+
+      - name: Install the pinned workspace toolchain
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+
+      # Each first-party image gets the same source label. The tag is only the
+      # upload locator; release-manifest.json records the registry digest and
+      # every later operation consumes that immutable reference.
+      - name: Build all first-party images once
+        run: |
+          set -euo pipefail
+          common=(
+            --pull
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}"
+            --label "org.opencontainers.image.source=https://github.com/nuanu-ai/agentify"
+          )
+
+          docker build "${common[@]}" -f deploy/Dockerfile.app -t "$COMMERCE_APP" .
+          docker build "${common[@]}" -f deploy/Dockerfile.web -t "$COMMERCE_WEB" .
+          docker build "${common[@]}" \
+            -f ops/deploy/droplet/web.Dockerfile --target runner -t "$SCANNER_WEB" .
+          docker build "${common[@]}" \
+            -f ops/deploy/scanner-worker.Dockerfile -t "$SCANNER_WORKER" .
+          docker build "${common[@]}" \
+            -f ops/deploy/droplet/web.Dockerfile --target privacy-jobs -t "$SCANNER_PRIVACY" .
+
+          for image in \
+            "$COMMERCE_APP" "$COMMERCE_WEB" "$SCANNER_WEB" "$SCANNER_WORKER" "$SCANNER_PRIVACY"
+          do
+            test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image")" = "$GITHUB_SHA"
+            test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' "$image")" = 'https://github.com/nuanu-ai/agentify'
+          done
+
+      - name: Test the exact built image IDs
+        run: |
+          set -euo pipefail
+          image_id() { docker image inspect --format '{{.Id}}' "$1"; }
+
+          # The ordinary CI workflow runs the complete host-side suite. The
+          # runtime image deliberately has neither Python nor Bash, so this
+          # exact-image pass excludes only the release archive validator,
+          # retired delivery scripts and SDK release-tag resolver.
+          # Run the portal TypeScript consumer check alone so its five-second
+          # contract is not starved by the rest of Vitest inside Docker.
+          docker run --rm --network none --user root \
+            "$(image_id "$COMMERCE_APP")" pnpm exec vitest run \
+            --exclude packages/core/src/deployment/release-manifest.test.ts \
+            --exclude packages/core/src/deployment/retired-delivery.test.ts \
+            --exclude packages/sdk/src/release-contract.test.ts \
+            --exclude packages/sdk/src/portal-fences.test.ts
+          docker run --rm --network none --user root \
+            "$(image_id "$COMMERCE_APP")" pnpm exec vitest run \
+            packages/sdk/src/portal-fences.test.ts
+
+          commerce_network="release-commerce-${GITHUB_RUN_ID}"
+          commerce_postgres="release-commerce-postgres-${GITHUB_RUN_ID}"
+          cleanup_commerce_database() {
+            docker rm -f "$commerce_postgres" >/dev/null 2>&1 || true
+            docker network rm "$commerce_network" >/dev/null 2>&1 || true
+          }
+          trap cleanup_commerce_database EXIT
+          docker network create "$commerce_network" >/dev/null
+          docker run --rm -d --name "$commerce_postgres" --network "$commerce_network" \
+            --network-alias postgres \
+            -e POSTGRES_USER=agentify_commerce \
+            -e POSTGRES_PASSWORD=ci-only \
+            -e POSTGRES_DB=agentify_commerce_test \
+            "$POSTGRES_DIGEST" >/dev/null
+          for _ in {1..30}; do
+            if docker exec "$commerce_postgres" \
+              pg_isready -U agentify_commerce -d agentify_commerce_test >/dev/null
+            then
+              break
+            fi
+            sleep 1
+          done
+          docker exec "$commerce_postgres" \
+            pg_isready -U agentify_commerce -d agentify_commerce_test >/dev/null
+          docker run --rm --network "$commerce_network" --user root \
+            -e DATABASE_URL=postgres://agentify_commerce:ci-only@postgres:5432/agentify_commerce_test \
+            "$(image_id "$COMMERCE_APP")" pnpm test:db
+          cleanup_commerce_database
+          trap - EXIT
+
+          docker run --rm --network none -e AGENTIFY_FRONT_PAGE=local_front_page \
+            --entrypoint caddy "$(image_id "$COMMERCE_WEB")" \
+            validate --config /etc/caddy/Caddyfile --adapter caddyfile
+          docker run --rm --network none --entrypoint node "$(image_id "$SCANNER_WEB")" \
+            --check apps/web/server.js
+          docker run --rm --network none --entrypoint node "$(image_id "$SCANNER_WORKER")" \
+            --check apps/scanner-worker/dist/index.js
+          docker run --rm --network none "$(image_id "$SCANNER_PRIVACY")" \
+            pnpm --filter @agentify/web exec tsc --noEmit
+
+          node ops/scripts/caddy-routing-smoke.mjs
+          node ops/scripts/web-runtime-image-smoke.mjs \
+            "$(image_id "$SCANNER_WEB")" "$POSTGRES_DIGEST"
+
+      - name: Push the tested images and resolve immutable digests
+        id: images
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+          push_and_resolve() {
+            local tagged="$1"
+            local output_name="$2"
+            local repository="${tagged%:*}"
+            local push_log
+            local digest
+            push_log="$(mktemp)"
+            docker push "$tagged" 2>&1 | tee "$push_log"
+            digest="$(sed -nE 's/^.*digest: (sha256:[0-9a-f]{64}).*$/\1/p' "$push_log" | tail -1)"
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            printf -v "$output_name" '%s@%s' "$repository" "$digest"
+          }
+
+          push_and_resolve "$COMMERCE_APP" commerce_app_digest
+          push_and_resolve "$COMMERCE_WEB" commerce_web_digest
+          push_and_resolve "$SCANNER_WEB" scanner_web_digest
+          push_and_resolve "$SCANNER_WORKER" scanner_worker_digest
+          push_and_resolve "$SCANNER_PRIVACY" scanner_privacy_digest
+
+          echo "commerce_app=$commerce_app_digest" >> "$GITHUB_OUTPUT"
+          echo "commerce_web=$commerce_web_digest" >> "$GITHUB_OUTPUT"
+          echo "scanner_web=$scanner_web_digest" >> "$GITHUB_OUTPUT"
+          echo "scanner_worker=$scanner_worker_digest" >> "$GITHUB_OUTPUT"
+          echo "scanner_privacy=$scanner_privacy_digest" >> "$GITHUB_OUTPUT"
+
+      - name: Create and verify the release bundle
+        env:
+          COMMERCE_APP_DIGEST: ${{ steps.images.outputs.commerce_app }}
+          COMMERCE_WEB_DIGEST: ${{ steps.images.outputs.commerce_web }}
+          SCANNER_WEB_DIGEST: ${{ steps.images.outputs.scanner_web }}
+          SCANNER_WORKER_DIGEST: ${{ steps.images.outputs.scanner_worker }}
+          SCANNER_PRIVACY_DIGEST: ${{ steps.images.outputs.scanner_privacy }}
+        run: |
+          set -euo pipefail
+          mkdir release-bundle
+          archive="release-bundle/agentify-config-${GITHUB_SHA}.tar.gz"
+          git archive --format=tar.gz --prefix="agentify-${GITHUB_SHA}/" "$GITHUB_SHA" > "$archive"
+
+          node packages/core/src/deployment/release-manifest.mjs create \
+            "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$archive" \
+            "$COMMERCE_APP_DIGEST" "$COMMERCE_WEB_DIGEST" \
+            "$SCANNER_WEB_DIGEST" "$SCANNER_WORKER_DIGEST" "$SCANNER_PRIVACY_DIGEST" \
+            "$POSTGRES_DIGEST" "$CADDY_DIGEST" "$ALPINE_DIGEST" \
+            > release-bundle/release-manifest.json
+
+          node packages/core/src/deployment/release-manifest.mjs verify \
+            release-bundle/release-manifest.json "$archive"
+
+      - name: Upload the immutable release bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: agentify-release-${{ github.sha }}
+          path: release-bundle/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 90

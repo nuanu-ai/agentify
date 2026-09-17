@@ -46,18 +46,18 @@
         "FACILITATOR_URL": "https://api.cdp.coinbase.com/platform/v2/x402",
         "GATEWAY_URL": "http://gateway:3000",
         "MAIL_API_KEY": "re_synthetic-provider-key",
-        "MAIL_FROM": "Agentify \u003cno-reply@mail.example.com\u003e",
+        "MAIL_FROM": "Agentify <no-reply@mail.example.com>",
         "MAIL_URL": "https://api.resend.com",
         "PAYMENT_NETWORK": "eip155:8453",
         "PORT": "3001",
-        "PUBLIC_BASE_URL": "https://app.agentify.ad"
+        "PUBLIC_BASE_URL": "https://agentify.ad"
       },
       "healthcheck": {
         "test": [
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:3001/healthz').then(r=\u003eprocess.exit(r.ok?0:1)).catch(()=\u003eprocess.exit(1))"
+          "fetch('http://127.0.0.1:3001/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
         ],
         "timeout": "3s",
         "interval": "3s",
@@ -100,7 +100,7 @@
         "PAYMENT_NETWORK": "eip155:8453",
         "PAY_TO_ADDRESS": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
         "PORT": "3000",
-        "PUBLIC_BASE_URL": "https://app.agentify.ad",
+        "PUBLIC_BASE_URL": "https://agentify.ad",
         "REGISTRATION_INVITATION": "fixture-invitation",
         "SANDBOX_MERCHANT_KEY": "csk_live_fixture-deployment-key"
       },
@@ -109,7 +109,7 @@
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:3000/healthz').then(r=\u003eprocess.exit(r.ok?0:1)).catch(()=\u003eprocess.exit(1))"
+          "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
         ],
         "timeout": "3s",
         "interval": "3s",
@@ -205,7 +205,10 @@
       "environment": {
         "AGENTIFY_SITE_ADDRESS": ":8080",
         "AGENTIFY_SURFACE_MODE": "live",
-        "AGENTIFY_TRUSTED_EDGE_CIDR": "172.30.80.2/32"
+        "AGENTIFY_TRUSTED_EDGE_CIDR": "172.30.80.2/32",
+        "AGENTIFY_FRONT_PAGE": "scanner_front_page",
+        "ADMIN_BASIC_AUTH_USER": "test-admin",
+        "ADMIN_BASIC_AUTH_HASH": "$2a$14$offline-fixture-bcrypt-hash"
       },
       "image": "agentify-commerce-web:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "networks": {

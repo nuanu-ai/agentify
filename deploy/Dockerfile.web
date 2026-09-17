@@ -23,7 +23,7 @@ RUN pnpm install --frozen-lockfile --filter @agentify/commerce-docs...
 COPY apps/docs apps/docs
 RUN pnpm --filter @agentify/commerce-docs exec vitepress build --base /docs/
 
-FROM caddy:2-alpine
+FROM caddy:2.10.0-alpine@sha256:ae4458638da8e1a91aafffb231c5f8778e964bca650c8a8cb23a7e8ac557aa3c
 
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
 COPY apps/landing/public /srv/landing
