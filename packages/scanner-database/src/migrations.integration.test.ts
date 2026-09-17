@@ -1,14 +1,5 @@
-import {
-  copyFile,
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -31,7 +22,10 @@ import { createUuidV7 } from "./ids.js";
 import { recordWorkerHeartbeat } from "./heartbeat.js";
 import { emitStoredBusinessEvent } from "./analytics-runtime.js";
 import { createBrowserObservationRepository } from "./browser-observation-repository.js";
-import { migrateDatabase } from "./migrate.js";
+import {
+  migrateDatabase,
+  migrateDatabaseThroughIdentityPreflight,
+} from "./migrate.js";
 import { createScanJobRepository } from "./scan-job-repository.js";
 
 const TABLES = [
@@ -49,17 +43,15 @@ const TABLES = [
   "rate_windows",
   "registration_intents",
   "report_sessions",
-  "scanner_auth_accounts",
-  "scanner_auth_sessions",
-  "scanner_auth_users",
-  "scanner_auth_verifications",
+  "scanner_identity_completions",
+  "scanner_identity_deletion_operations",
+  "scanner_recovery_intents",
   "scan_checks",
   "scan_fingerprints",
   "scan_shares",
   "scan_snapshots",
   "scans",
   "sessions",
-  "verification_tokens",
   "waitlist_entries",
   "webhook_receipts",
   "worker_heartbeats",
@@ -158,124 +150,127 @@ describe("initial database migration", () => {
     }
   }
 
-  it("adds scanner auth without changing prior lead and report-session identity", async () => {
+  it("requires an exact cutover marker before destructive identity cleanup", async () => {
     await resetDatabase();
-    const baselineFolder = await mkdtemp(join(tmpdir(), "scanner-baseline-"));
     const { db, pool } = createDatabase(connectionString, { max: 2 });
     try {
-      await mkdir(join(baselineFolder, "meta"));
-      const journal = JSON.parse(
-        await readFile(join(migrationsFolder, "meta", "_journal.json"), "utf8"),
-      );
-      const baselineEntries = journal.entries.filter(
-        (entry: { idx: number }) => entry.idx <= 14,
-      );
-      await writeFile(
-        join(baselineFolder, "meta", "_journal.json"),
-        JSON.stringify({ ...journal, entries: baselineEntries }),
-      );
-      for (const entry of baselineEntries) {
-        await copyFile(
-          join(migrationsFolder, `${entry.tag}.sql`),
-          join(baselineFolder, `${entry.tag}.sql`),
-        );
-      }
-      await migrateDatabase(db, baselineFolder);
+      await migrateDatabaseThroughIdentityPreflight(db, migrationsFolder);
       const sessionId = createUuidV7();
       const leadId = createUuidV7();
       const reportId = createUuidV7();
-      const oldAuthId = "550e8400-e29b-41d4-a716-446655440000";
+      const oldAuthId = "scanner-migration-test-user";
       await pool.query(
         "insert into sessions (id, anonymous_id_hash) values ($1, 'old-session')",
         [sessionId],
       );
       await pool.query(
+        `insert into scanner_auth_users (id, email, email_verified)
+         values ($1, 'scanner-migration@example.com', true)`,
+        [oldAuthId],
+      );
+      await pool.query(
         `insert into leads
-        (id, supabase_user_id, email_normalized_ciphertext, email_lookup_hash,
-         role, verified_at, first_segment, first_session_id)
-        values ($1, $2, 'old-encrypted-email', 'old-email-hash',
-                'business_owner', now(), 'owner', $3)`,
-        [leadId, oldAuthId, sessionId],
+          (id, supabase_user_id, scanner_auth_user_id,
+           email_normalized_ciphertext, email_lookup_hash, role, verified_at,
+           first_segment, first_session_id)
+         values ($1, $2, $3, 'old-encrypted-email', 'old-email-hash',
+                 'business_owner', now(), 'owner', $4)`,
+        [leadId, "550e8400-e29b-41d4-a716-446655440000", oldAuthId, sessionId],
       );
       await pool.query(
         `insert into report_sessions
-        (id, lead_id, session_token_hash, expires_at)
-        values ($1, $2, 'old-report-hash', now() + interval '30 days')`,
+          (id, lead_id, session_token_hash, expires_at)
+         values ($1, $2, 'old-report-hash', now() + interval '30 days')`,
         [reportId, leadId],
       );
-      await migrateDatabase(db, migrationsFolder);
-      await pool.query(`grant usage on schema public to
-        agentify_web, agentify_privacy, agentify_worker,
-        agentify_dashboard, service_role`);
-      await expect(
-        queryAsRole(
-          pool,
-          "agentify_web",
-          "select count(*) from public.scanner_auth_verifications",
-        ),
-      ).resolves.toMatchObject({ rowCount: 1 });
-      await expect(
-        queryAsRole(
-          pool,
-          "agentify_worker",
-          "select count(*) from public.scanner_auth_users",
-        ),
-      ).rejects.toThrow(/permission denied/);
-      await expect(
-        queryAsRole(
-          pool,
-          "agentify_dashboard",
-          "select count(*) from public.scanner_auth_users",
-        ),
-      ).rejects.toThrow(/permission denied/);
-      await expect(
-        queryAsRole(
-          pool,
-          "service_role",
-          "select count(*) from public.scanner_auth_users",
-        ),
-      ).rejects.toThrow(/permission denied/);
-      await pool.query(`insert into scanner_auth_users (id, email, email_verified)
-        values ('scanner-migration-test-user', 'scanner-migration@example.com', true)`);
-      await pool.query(
-        "update leads set scanner_auth_user_id = 'scanner-migration-test-user' where id = $1",
-        [leadId],
+      expect(
+        (
+          await pool.query<{ active_intent_index: string | null }>(
+            "select to_regclass('public.registration_intents_active_scan_email_uidx')::text as active_intent_index",
+          )
+        ).rows[0]?.active_intent_index,
+      ).toBe("registration_intents_active_scan_email_uidx");
+
+      await expect(migrateDatabase(db, migrationsFolder)).rejects.toThrow(
+        /scanner_identity_cleanup_requires_verified_cutover/,
       );
-      await expect(
-        queryAsRole(
-          pool,
-          "agentify_privacy",
-          "delete from public.scanner_auth_users where id = 'scanner-migration-test-user'",
-          true,
-        ),
-      ).resolves.toMatchObject({ rowCount: 1 });
-      const preserved = await pool.query<{
-        lead_id: string;
-        old_auth_id: string;
-        scanner_auth_user_id: string | null;
-        report_id: string;
-        report_hash: string;
-      }>(
+      expect(
+        (
+          await pool.query(
+            "select scanner_auth_user_id from leads where id = $1",
+            [leadId],
+          )
+        ).rows[0]?.scanner_auth_user_id,
+      ).toBe(oldAuthId);
+
+      await pool.query(`create table scanner_identity_cutover_ready (
+        id boolean primary key check (id),
+        plan_digest text not null check (length(plan_digest) = 64),
+        unexpected text
+      )`);
+      await pool.query(
+        "insert into scanner_identity_cutover_ready (id, plan_digest) values (true, $1)",
+        ["a".repeat(64)],
+      );
+      await expect(migrateDatabase(db, migrationsFolder)).rejects.toThrow(
+        /scanner_identity_cleanup_marker_invalid/,
+      );
+      await pool.query("drop table scanner_identity_cutover_ready");
+
+      await pool.query(`create table scanner_identity_cutover_ready (
+        id boolean primary key check (id),
+        plan_digest text not null check (length(plan_digest) = 64)
+      )`);
+      await pool.query(
+        "insert into scanner_identity_cutover_ready (id, plan_digest) values (true, $1)",
+        ["b".repeat(64)],
+      );
+      await migrateDatabase(db, migrationsFolder);
+      await migrateDatabase(db, migrationsFolder);
+
+      const schema = await pool.query<{
+        old_tables: number;
+        old_column: number;
+        marker: string | null;
+        active_intent_index: string | null;
+      }>(`
+        select
+          (select count(*)::int from information_schema.tables
+             where table_schema = 'public'
+               and table_name = any(array['scanner_auth_users','scanner_auth_sessions','scanner_auth_accounts','scanner_auth_verifications','verification_tokens'])) as old_tables,
+          (select count(*)::int from information_schema.columns
+             where table_schema = 'public' and table_name = 'leads'
+               and column_name = 'scanner_auth_user_id') as old_column,
+          to_regclass('public.scanner_identity_cutover_ready')::text as marker,
+          to_regclass('public.registration_intents_active_scan_email_uidx')::text
+            as active_intent_index
+      `);
+      expect(schema.rows[0]).toEqual({
+        old_tables: 0,
+        old_column: 0,
+        marker: null,
+        active_intent_index: null,
+      });
+      const preserved = await pool.query(
         `select l.id as lead_id, l.supabase_user_id as old_auth_id,
-          l.scanner_auth_user_id, r.id as report_id, r.session_token_hash as report_hash
-        from leads l join report_sessions r on r.lead_id = l.id where l.id = $1`,
+                r.id as report_id, r.session_token_hash as report_hash
+           from leads l join report_sessions r on r.lead_id = l.id
+          where l.id = $1`,
         [leadId],
       );
       expect(preserved.rows[0]).toEqual({
         lead_id: leadId,
-        old_auth_id: oldAuthId,
-        scanner_auth_user_id: null,
+        old_auth_id: "550e8400-e29b-41d4-a716-446655440000",
         report_id: reportId,
         report_hash: "old-report-hash",
       });
     } finally {
       await pool.end();
-      await rm(baselineFolder, { recursive: true, force: true });
       await resetDatabase();
     }
-  }, 20_000);
+  }, 25_000);
 
-  it("keeps scanner identity grants after standard queue initialization", async () => {
+  it("keeps report identity privilege closure after queue initialization", async () => {
     await resetDatabase();
     const { db, pool } = createDatabase(connectionString, { max: 3 });
     try {
@@ -285,151 +280,70 @@ describe("initial database migration", () => {
         timeout: 30_000,
       });
       for (const table of [
-        "scanner_auth_users",
-        "scanner_auth_sessions",
-        "scanner_auth_accounts",
-        "scanner_auth_verifications",
+        "scanner_recovery_intents",
+        "scanner_identity_completions",
       ]) {
-        const grants = await pool.query<{
-          web_select: boolean;
-          web_insert: boolean;
-          web_update: boolean;
-          web_delete: boolean;
-          privacy_select: boolean;
-          privacy_delete: boolean;
-          privacy_insert: boolean;
-          privacy_update: boolean;
-          privacy_truncate: boolean;
-          privacy_references: boolean;
-          privacy_trigger: boolean;
-          worker_select: boolean;
-          dashboard_select: boolean;
-        }>(`select
-          has_table_privilege('agentify_web', 'public.${table}', 'SELECT') as web_select,
-          has_table_privilege('agentify_web', 'public.${table}', 'INSERT') as web_insert,
-          has_table_privilege('agentify_web', 'public.${table}', 'UPDATE') as web_update,
-          has_table_privilege('agentify_web', 'public.${table}', 'DELETE') as web_delete,
-          has_table_privilege('agentify_privacy', 'public.${table}', 'SELECT') as privacy_select,
-          has_table_privilege('agentify_privacy', 'public.${table}', 'DELETE') as privacy_delete,
-          has_table_privilege('agentify_privacy', 'public.${table}', 'INSERT') as privacy_insert,
-          has_table_privilege('agentify_privacy', 'public.${table}', 'UPDATE') as privacy_update,
-          has_table_privilege('agentify_privacy', 'public.${table}', 'TRUNCATE') as privacy_truncate,
-          has_table_privilege('agentify_privacy', 'public.${table}', 'REFERENCES') as privacy_references,
-          has_table_privilege('agentify_privacy', 'public.${table}', 'TRIGGER') as privacy_trigger,
+        const grants = await pool.query(`select
+          has_table_privilege('agentify_web', 'public.${table}', 'SELECT,INSERT,UPDATE,DELETE') as web_crud,
+          has_table_privilege('agentify_privacy', 'public.${table}', 'SELECT,DELETE') as privacy_cleanup,
+          has_table_privilege('agentify_privacy', 'public.${table}', 'INSERT,UPDATE') as privacy_write,
           has_table_privilege('agentify_worker', 'public.${table}', 'SELECT') as worker_select,
-          has_table_privilege('agentify_dashboard', 'public.${table}', 'SELECT') as dashboard_select`);
+          has_table_privilege('agentify_dashboard', 'public.${table}', 'SELECT') as dashboard_select,
+          has_table_privilege('service_role', 'public.${table}', 'SELECT') as service_select`);
         expect(grants.rows[0]).toEqual({
-          web_select: true,
-          web_insert: true,
-          web_update: true,
-          web_delete: true,
-          privacy_select: true,
-          privacy_delete: true,
-          privacy_insert: false,
-          privacy_update: false,
-          privacy_truncate: false,
-          privacy_references: false,
-          privacy_trigger: false,
+          web_crud: true,
+          privacy_cleanup: true,
+          privacy_write: false,
           worker_select: false,
           dashboard_select: false,
+          service_select: false,
         });
       }
-      const webCrud = await queryAsRole(
-        pool,
-        "agentify_web",
-        `
-        insert into public.scanner_auth_users (id, email, email_verified)
-          values ('queue-auth-user', 'queue-auth@example.com', true);
-        insert into public.scanner_auth_verifications (id, identifier, value, expires_at)
-          values ('queue-verification', 'queue-identifier', '{"email":"queue-auth@example.com"}', now() + interval '1 hour');
-        insert into public.scanner_auth_accounts (id, user_id, provider_id, account_id, issuer)
-          values ('queue-account', 'queue-auth-user', 'magic-link', 'queue-auth-user', 'scanner');
-        insert into public.scanner_auth_sessions (id, token, user_id, expires_at)
-          values ('queue-session', 'queue-session-token', 'queue-auth-user', now() + interval '1 hour');
-        update public.scanner_auth_users set name = 'Confirmed' where id = 'queue-auth-user';
-        update public.scanner_auth_verifications set value = '{"email":"queue-auth@example.com","used":false}'
-          where id = 'queue-verification';
-        update public.scanner_auth_accounts set issuer = 'scanner-auth' where id = 'queue-account';
-        update public.scanner_auth_sessions set token = 'queue-session-token-2' where id = 'queue-session';
-        select id from public.scanner_auth_users where id = 'queue-auth-user';
-        delete from public.scanner_auth_verifications where id = 'queue-verification';
-        delete from public.scanner_auth_accounts where id = 'queue-account';
-        delete from public.scanner_auth_sessions where id = 'queue-session';
-      `,
-        true,
-      );
-      expect(
-        Array.isArray(webCrud) &&
-          webCrud.map((result) => [result.command, result.rowCount]),
-      ).toEqual([
-        ["INSERT", 1],
-        ["INSERT", 1],
-        ["INSERT", 1],
-        ["INSERT", 1],
-        ["UPDATE", 1],
-        ["UPDATE", 1],
-        ["UPDATE", 1],
-        ["UPDATE", 1],
-        ["SELECT", 1],
-        ["DELETE", 1],
-        ["DELETE", 1],
-        ["DELETE", 1],
-      ]);
-      await expect(
-        queryAsRole(
-          pool,
-          "agentify_privacy",
-          "select id from public.scanner_auth_users where id = 'queue-auth-user'",
-        ),
-      ).resolves.toMatchObject({ rowCount: 1 });
-      await expect(
-        queryAsRole(
-          pool,
-          "agentify_privacy",
-          "insert into public.scanner_auth_users (id, email) values ('privacy-created', 'bad@example.com')",
-        ),
-      ).rejects.toThrow(/permission denied/);
-      await expect(
-        queryAsRole(
-          pool,
-          "agentify_privacy",
-          "update public.scanner_auth_users set name = 'bad' where id = 'queue-auth-user'",
-        ),
-      ).rejects.toThrow(/permission denied/);
+      const deletionGrants = await pool.query(`select
+        has_table_privilege('agentify_web', 'public.scanner_identity_deletion_operations', 'SELECT,INSERT,UPDATE,DELETE') as web_crud,
+        has_table_privilege('agentify_privacy', 'public.scanner_identity_deletion_operations', 'SELECT') as privacy_select,
+        has_table_privilege('agentify_worker', 'public.scanner_identity_deletion_operations', 'SELECT') as worker_select,
+        has_table_privilege('agentify_dashboard', 'public.scanner_identity_deletion_operations', 'SELECT') as dashboard_select,
+        has_table_privilege('service_role', 'public.scanner_identity_deletion_operations', 'SELECT') as service_select`);
+      expect(deletionGrants.rows[0]).toEqual({
+        web_crud: true,
+        privacy_select: false,
+        worker_select: false,
+        dashboard_select: false,
+        service_select: false,
+      });
       await expect(
         queryAsRole(
           pool,
           "agentify_worker",
-          "select id from public.scanner_auth_users",
+          "select * from public.scanner_recovery_intents",
         ),
       ).rejects.toThrow(/permission denied/);
       await expect(
         queryAsRole(
           pool,
           "agentify_dashboard",
-          "select id from public.scanner_auth_users",
+          "select * from public.scanner_identity_completions",
+        ),
+      ).rejects.toThrow(/permission denied/);
+      await expect(
+        queryAsRole(
+          pool,
+          "service_role",
+          "select * from public.scanner_identity_deletion_operations",
         ),
       ).rejects.toThrow(/permission denied/);
       await expect(
         queryAsRole(
           pool,
           "agentify_privacy",
-          "delete from public.scanner_auth_users where id = 'queue-auth-user'",
-          true,
+          "insert into public.scanner_identity_completions (receipt_id, token_hash, intent_kind, state_hash, lead_id, scan_id, retain_until) values ('00000000-0000-7000-8000-000000000001', repeat('a',43), 'recovery', repeat('b',64), '00000000-0000-7000-8000-000000000002', '00000000-0000-7000-8000-000000000003', now())",
         ),
-      ).resolves.toMatchObject({ rowCount: 1 });
-      const policy = await pool.query<{ count: number }>(`
-        select count(*)::int as count from pg_policies
-        where schemaname = 'public' and tablename like 'scanner_auth_%'
-          and policyname = 'agentify_privacy_service'`);
-      expect(policy.rows[0]?.count).toBe(0);
-      const nonAuthGrants = await pool.query<{
-        privacy_leads_insert: boolean;
-        worker_scans_update: boolean;
-      }>(`
-        select has_table_privilege('agentify_privacy', 'public.leads', 'INSERT') as privacy_leads_insert,
-          has_table_privilege('agentify_worker', 'public.scans', 'UPDATE') as worker_scans_update`);
-      expect(nonAuthGrants.rows[0]).toEqual({
+      ).rejects.toThrow(/permission denied/);
+      const nonIdentityGrants = await pool.query(`select
+        has_table_privilege('agentify_privacy', 'public.leads', 'INSERT') as privacy_leads_insert,
+        has_table_privilege('agentify_worker', 'public.scans', 'UPDATE') as worker_scans_update`);
+      expect(nonIdentityGrants.rows[0]).toEqual({
         privacy_leads_insert: true,
         worker_scans_update: true,
       });
@@ -438,6 +352,7 @@ describe("initial database migration", () => {
       await resetDatabase();
     }
   }, 35_000);
+
   it("migrates up, enforces RLS and idempotency, migrates down, then migrates up again", async () => {
     const { db, pool } = createDatabase(connectionString, { max: 5 });
     try {
@@ -590,22 +505,24 @@ describe("initial database migration", () => {
         return { relation: relation.rows[0], acl: acl.rows };
       };
       const registrationLastColumns = [
-        "overdue_verification_tokens",
+        "overdue_recovery_intents",
         "overdue_unverified_leads",
         "expired_active_report_sessions",
         "active_public_shares",
         "attached_card_signals",
         "analytics_dead_letters",
         "overdue_registration_intents",
+        "overdue_identity_completions",
       ];
       const registrationSecondColumns = [
-        "overdue_verification_tokens",
+        "overdue_recovery_intents",
         "overdue_registration_intents",
         "overdue_unverified_leads",
         "expired_active_report_sessions",
         "active_public_shares",
         "attached_card_signals",
         "analytics_dead_letters",
+        "overdue_identity_completions",
       ];
 
       await pool.query(`

@@ -23,8 +23,6 @@ import { eq } from "drizzle-orm";
 import { encryptEmail, hmacHex, sha256 } from "../lib/server/crypto";
 import { getServerConfig } from "../lib/server/config";
 import { getDatabase } from "../lib/server/database";
-import { getLocalEmailEvidence } from "../lib/server/email";
-import { createScannerRegistrationIntent } from "../lib/server/scanner-registration";
 
 if (process.env.LOCAL_E2E_FIXTURE_ACK !== "yes")
   throw new Error("LOCAL_E2E_FIXTURE_ACK=yes is required");
@@ -35,8 +33,6 @@ const outputFileInput = process.env.LOCAL_E2E_VERIFICATION_FILE;
 if (!outputFileInput?.startsWith("/tmp/"))
   throw new Error("LOCAL_E2E_VERIFICATION_FILE must be under /tmp");
 const outputFile = outputFileInput;
-if (process.env.EMAIL_PROVIDER !== "local")
-  throw new Error("Local E2E auth fixture requires EMAIL_PROVIDER=local");
 async function main() {
   const { db, pool } = getDatabase();
   const config = getServerConfig();
@@ -208,19 +204,6 @@ async function main() {
       leadId,
       scanId,
     });
-    const scan = (
-      await db.select().from(scans).where(eq(scans.id, scanId))
-    )[0]!;
-    await createScannerRegistrationIntent(scan, {
-      email,
-      phone: "+14155550131",
-      role: "business_owner",
-      site_is_mine: true,
-      marketing_email_opt_in: false,
-      dataset_reuse_acknowledged: true,
-    });
-    const verificationUrl = getLocalEmailEvidence()?.evidenceUrl;
-    if (!verificationUrl) throw new Error("local_verification_link_missing");
     const baseUrl = process.env.APP_BASE_URL ?? "http://localhost:3000";
     await writeFile(
       outputFile,
@@ -229,7 +212,6 @@ async function main() {
         reportUrl: `${baseUrl}/report/${scanId}`,
         reportSessionToken,
         email,
-        verificationUrl,
       }),
       { mode: 0o600 },
     );

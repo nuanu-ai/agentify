@@ -117,7 +117,7 @@ def inspect(kind, name):
 
 SCANNER_POLICY_KEYS = {
     'web': [
-        'EMAIL_PROVIDER', 'REGISTRATION_ENABLED', 'SCAN_ACCEPTANCE_ENABLED',
+        'REGISTRATION_ENABLED', 'SCAN_ACCEPTANCE_ENABLED',
         'TURNSTILE_ENFORCED', 'SCANNER_CACHE_ENABLED', 'BENCHMARK_ENABLED',
         'PUBLIC_SHARE_ENABLED', 'PARTNER_POSTBACK_ENABLED', 'APIFY_BROWSER_MODE',
         'REMEDIATION_PROMPT_ENABLED', 'CARD_SIGNAL_ENABLED',
@@ -130,13 +130,12 @@ SCANNER_POLICY_KEYS = {
         'APIFY_BROWSER_ENABLED', 'APIFY_BROWSER_MODE',
     ],
     'privacy-cleanup': [
-        'EMAIL_PROVIDER', 'REGISTRATION_ENABLED', 'CARD_SIGNAL_ENABLED',
+        'REGISTRATION_ENABLED', 'CARD_SIGNAL_ENABLED',
     ],
 }
 
 TEST_SCANNER_POLICY = {
     'web': {
-        'EMAIL_PROVIDER': 'resend',
         'REGISTRATION_ENABLED': 'true',
         'SCAN_ACCEPTANCE_ENABLED': 'true',
         'TURNSTILE_ENFORCED': 'false',
@@ -162,7 +161,6 @@ TEST_SCANNER_POLICY = {
         'APIFY_BROWSER_MODE': 'off',
     },
     'privacy-cleanup': {
-        'EMAIL_PROVIDER': 'disabled',
         'REGISTRATION_ENABLED': 'false',
         'CARD_SIGNAL_ENABLED': 'false',
     },
@@ -196,6 +194,30 @@ require(
     scanner_policy['privacy-cleanup'] == TEST_SCANNER_POLICY['privacy-cleanup'],
     'Privacy cleanup policy differs from its non-interactive boundary',
 )
+
+
+# The private identity channel is a credential shared by exactly these two
+# processes, on their channel's existing private network, never a host port.
+commerce_cabinet = configs['commerce']['services']['cabinet']
+scanner_web = configs['scanner']['services']['web']
+cabinet_env = commerce_cabinet.get('environment', {})
+scanner_env = scanner_web.get('environment', {})
+report_secret = compose_runtime_value(cabinet_env.get('REPORT_IDENTITY_SECRET', ''))
+require(len(report_secret) >= 32, 'Cabinet omits the private report identity secret')
+require(report_secret == compose_runtime_value(scanner_env.get('REPORT_IDENTITY_SECRET', '')), 'Report identity peers have different credentials')
+require(scanner_env.get('CABINET_IDENTITY_URL') == 'http://agentify-cabinet-identity:3002', 'Scanner identity URL leaves the private channel')
+require(not commerce_cabinet.get('ports'), 'Cabinet identity listener must not publish a host port')
+require('agentify-cabinet-identity' in commerce_cabinet.get('networks', {}).get('agentify-scanner-db', {}).get('aliases', []), 'Cabinet identity alias is absent from the private network')
+require('agentify-scanner-db' in scanner_web.get('networks', {}), 'Scanner web cannot reach private identity')
+for surface, configured in configs.items():
+    for role, service in configured['services'].items():
+        environment = service.get('environment', {})
+        if (surface, role) not in [('commerce', 'cabinet'), ('scanner', 'web')]:
+            require('REPORT_IDENTITY_SECRET' not in environment, surface + '.' + role + ' receives the report identity credential')
+            require('CABINET_IDENTITY_URL' not in environment, surface + '.' + role + ' receives the report identity route')
+for environment, keys in [(cabinet_env, ['AUTH_SECRET', 'REGISTRATION_INVITATION']), (scanner_env, ['TOKEN_HMAC_SECRET'])]:
+    for key in keys:
+        require(report_secret != compose_runtime_value(environment.get(key, '')), 'Report identity must not reuse ' + key)
 
 
 normalized = {}

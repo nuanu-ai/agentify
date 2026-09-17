@@ -23,15 +23,14 @@ function runEntrypoint(overrides = {}) {
       APP_BASE_URL: "https://agentify.ad",
       DATABASE_URL: "postgresql://agentify_web:synthetic@agentify-scanner-postgres:5432/agentify_scanner",
       TOKEN_HMAC_SECRET: "synthetic-hmac-key-000000000000000000000000",
-      EMAIL_PROVIDER: "resend",
-      RESEND_API_KEY: "synthetic-resend-key",
-      RESEND_FROM: "reports@agentify.ad",
+      CABINET_IDENTITY_URL: "http://agentify-cabinet-identity:3002",
+      REPORT_IDENTITY_SECRET: "synthetic-report-identity-secret-32-bytes",
       ...overrides,
     },
   });
 }
 
-test("web entrypoint starts registration with private DB and Resend, without Supabase Auth", () => {
+test("web entrypoint starts registration with its private cabinet identity route and without a mail credential", () => {
   const result = runEntrypoint();
   assert.equal(result.status, 0, result.stderr);
 });
@@ -47,14 +46,21 @@ test("web entrypoint requires the public runtime origin", () => {
   assert.match(result.stderr, /APP_BASE_URL/);
 });
 
-test("web entrypoint refuses enabled registration without a production mail provider", () => {
-  const result = runEntrypoint({ EMAIL_PROVIDER: "disabled" });
+test("web entrypoint refuses enabled registration without its cabinet identity route", () => {
+  const result = runEntrypoint({ CABINET_IDENTITY_URL: "" });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /production mail provider/);
+  assert.match(result.stderr, /CABINET_IDENTITY_URL/);
 });
 
-test("web entrypoint refuses enabled registration without the Resend key", () => {
-  const result = runEntrypoint({ RESEND_API_KEY: "" });
+test("web entrypoint refuses enabled registration without its dedicated identity credential", () => {
+  const result = runEntrypoint({ REPORT_IDENTITY_SECRET: "" });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /RESEND_API_KEY/);
+  assert.match(result.stderr, /REPORT_IDENTITY_SECRET/);
+});
+
+test("web entrypoint refuses a short identity credential without printing its value", () => {
+  const result = runEntrypoint({ REPORT_IDENTITY_SECRET: "secret-marker" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /REPORT_IDENTITY_SECRET/);
+  assert.ok(!result.stderr.includes("secret-marker"));
 });

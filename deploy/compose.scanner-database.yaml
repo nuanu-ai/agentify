@@ -1,6 +1,13 @@
-# Opt-in only after the guarded scanner restore. Keep the commerce database
-# unchanged; this adds one private bridge to its existing Postgres container.
+# The scanner database and shared identity route use this private bridge.
+# Only cabinet and scanner web receive the identity secret; no port is published.
 services:
+  cabinet:
+    environment:
+      REPORT_IDENTITY_SECRET: "${REPORT_IDENTITY_SECRET:?set the private report identity secret}"
+    networks:
+      default:
+      agentify-scanner-db:
+        aliases: [agentify-cabinet-identity]
   postgres:
     networks:
       default:

@@ -4,8 +4,8 @@ import {
   rateLimitEvents,
   rateWindows,
   registrationIntents,
-  scannerAuthVerifications,
-  verificationTokens,
+  scannerIdentityCompletions,
+  scannerRecoveryIntents,
 } from "@agentify/scanner-database";
 import { sql } from "drizzle-orm";
 
@@ -30,10 +30,6 @@ async function main() {
       const candidates = await listUnverifiedLeadRetentionCandidates(db, {
         limit: batchSize,
       });
-      const overdueTokens = await db.execute<{ count: number }>(
-        sql`select count(*)::int as count from ${verificationTokens}
-          where coalesce(${verificationTokens.usedAt}, ${verificationTokens.expiresAt}) < now() - interval '7 days'`,
-      );
       const expiredRateLimits = await db.execute<{ count: number }>(sql`
         select (
           (select count(*) from ${rateLimitEvents} where ${rateLimitEvents.expiresAt} <= now()) +
@@ -44,18 +40,26 @@ async function main() {
         sql`select count(*)::int as count from ${registrationIntents}
           where coalesce(${registrationIntents.consumedAt}, ${registrationIntents.expiresAt}) < now() - interval '7 days'`,
       );
-      const expiredScannerAuthLinks = await db.execute<{ count: number }>(
-        sql`select count(*)::int as count from ${scannerAuthVerifications}
-          where ${scannerAuthVerifications.expiresAt} < now() - interval '7 days'`,
+      const expiredScannerRecoveryIntents = await db.execute<{ count: number }>(
+        sql`select count(*)::int as count from ${scannerRecoveryIntents}
+          where coalesce(${scannerRecoveryIntents.consumedAt}, ${scannerRecoveryIntents.expiresAt}) <= now() - interval '7 days'`,
+      );
+      const expiredScannerIdentityCompletions = await db.execute<{
+        count: number;
+      }>(
+        sql`select count(*)::int as count from ${scannerIdentityCompletions}
+          where ${scannerIdentityCompletions.retainUntil} <= now()`,
       );
       process.stdout.write(
         `${JSON.stringify({
           dryRun: true,
           overdueMerchantApplications: overdueMerchants.rows[0]?.count ?? 0,
-          overdueVerificationTokens: overdueTokens.rows[0]?.count ?? 0,
           overdueRegistrationIntents:
             overdueRegistrationIntents.rows[0]?.count ?? 0,
-          expiredScannerAuthLinks: expiredScannerAuthLinks.rows[0]?.count ?? 0,
+          expiredScannerRecoveryIntents:
+            expiredScannerRecoveryIntents.rows[0]?.count ?? 0,
+          expiredScannerIdentityCompletions:
+            expiredScannerIdentityCompletions.rows[0]?.count ?? 0,
           expiredRateLimitRows: expiredRateLimits.rows[0]?.count ?? 0,
           unverifiedLeadCandidates: candidates.length,
         })}\n`,

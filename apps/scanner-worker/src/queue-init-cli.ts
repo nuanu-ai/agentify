@@ -90,7 +90,7 @@ try {
     GRANT SELECT, INSERT, UPDATE, DELETE ON public.lead_scans, public.leads,
       public.payment_signals, public.report_sessions,
       public.registration_intents, public.scan_shares, public.scans,
-      public.sessions, public.verification_tokens,
+      public.sessions,
       public.waitlist_entries, public.webhook_receipts TO agentify_web;
     GRANT SELECT, INSERT ON public.rate_limit_events TO agentify_web;
     GRANT SELECT, INSERT, UPDATE ON public.rate_windows TO agentify_web;
@@ -111,8 +111,7 @@ try {
     DECLARE role_name text;
     BEGIN
       FOREACH table_name IN ARRAY ARRAY[
-        'scanner_auth_users', 'scanner_auth_sessions',
-        'scanner_auth_accounts', 'scanner_auth_verifications'
+        'scanner_recovery_intents', 'scanner_identity_completions'
       ] LOOP
         IF to_regclass(format('public.%I', table_name)) IS NOT NULL THEN
           EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON public.%I TO agentify_web', table_name);
@@ -125,6 +124,12 @@ try {
           END LOOP;
         END IF;
       END LOOP;
+      IF to_regclass('public.scanner_identity_deletion_operations') IS NOT NULL THEN
+        GRANT SELECT, INSERT, UPDATE, DELETE
+          ON public.scanner_identity_deletion_operations TO agentify_web;
+        REVOKE ALL ON public.scanner_identity_deletion_operations
+          FROM agentify_privacy, agentify_worker, agentify_dashboard;
+      END IF;
     END
     $scanner_identity_grants$;
 
@@ -168,8 +173,8 @@ try {
       LOOP
         EXECUTE format('DROP POLICY IF EXISTS agentify_privacy_service ON %I.%I', row.schema_name, row.table_name);
         IF row.table_name <> ALL (ARRAY[
-          'scanner_auth_users', 'scanner_auth_sessions',
-          'scanner_auth_accounts', 'scanner_auth_verifications'
+          'scanner_recovery_intents', 'scanner_identity_completions',
+          'scanner_identity_deletion_operations'
         ]) THEN
           EXECUTE format('CREATE POLICY agentify_privacy_service ON %I.%I TO agentify_privacy USING (true) WITH CHECK (true)', row.schema_name, row.table_name);
         END IF;

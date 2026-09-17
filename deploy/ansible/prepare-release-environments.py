@@ -6,7 +6,6 @@ copy production data/secrets into test. Re-running a staged release preserves
 its generated test secrets, so staging is not an implicit credential rotation.
 """
 import base64
-from email.utils import parseaddr
 import json
 import os
 from pathlib import Path
@@ -48,6 +47,20 @@ if len(revision) != 40 or any(character not in '0123456789abcdef' for character 
     raise RuntimeError('Expected one full lowercase Git revision')
 if any(not reference.endswith(':' + revision) for reference in fp.values()):
     raise RuntimeError('Every first-party image tag must name the selected revision')
+# One host-owned secret for two processes. Release staging reuses it rather
+# than rotating it, and it is never copied between test and production.
+identity_secret_file = stable / 'report-identity-secret'
+try:
+    descriptor = os.open(identity_secret_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+except FileExistsError:
+    pass
+else:
+    with os.fdopen(descriptor, 'w') as out:
+        out.write(secrets.token_hex(32) + '\n')
+identity_secret = identity_secret_file.read_text().strip()
+if len(identity_secret) != 64 or any(c not in '0123456789abcdef' for c in identity_secret):
+    raise RuntimeError('Invalid stable report identity secret; refusing implicit replacement')
+
 common = {
     'AGENTIFY_POSTGRES_IMAGE': infra['postgres'],
     'AGENTIFY_ALPINE_IMAGE': infra['alpine'],
@@ -112,8 +125,8 @@ else:
             raise RuntimeError('Scanner database exists without stable secrets; restore its configuration, never generate replacement identity keys')
         postgres = environment(channel['postgres_container'])
         cabinet = environment(channel['cabinet_container'])
-        # Use the provider already configured for this test cabinet, never
-        # fetch a production provider credential to make test work.
+        # Confirm that this channel cabinet can deliver links. Its mail
+        # credential stays in the cabinet and is never copied to scanner.
         if not cabinet.get('MAIL_API_KEY') or cabinet.get('MAIL_URL') != 'https://api.resend.com':
             raise RuntimeError('The test cabinet needs its own configured Resend provider before scanner registration can be accepted')
         scanner_overrides = {
@@ -124,9 +137,6 @@ else:
             'EMAIL_ENCRYPTION_KEY': base64.b64encode(secrets.token_bytes(32)).decode(),
             'REGISTRATION_ENABLED': 'true',
             'SCAN_ACCEPTANCE_ENABLED': 'true',
-            'EMAIL_PROVIDER': 'resend',
-            'RESEND_API_KEY': cabinet['MAIL_API_KEY'],
-            'RESEND_FROM': parseaddr(cabinet['MAIL_FROM'])[1],
             'TURNSTILE_ENFORCED': 'false',
             'TURNSTILE_SITE_KEY': '',
             'APIFY_BROWSER_ENABLED': 'false',
@@ -144,11 +154,13 @@ else:
 
 write_environment('commerce.env', stable_commerce.read_text(), {
     **common, **admin,
+    'REPORT_IDENTITY_SECRET': identity_secret,
     'AGENTIFY_APP_IMAGE': fp['commerce-app'], 'AGENTIFY_WEB_IMAGE': fp['commerce-web'],
     'AGENTIFY_PUBLIC_ORIGIN': channel['origin'],
 })
 write_environment('scanner.env', scanner_source, {
     **common, **admin, **scanner_overrides,
+    'REPORT_IDENTITY_SECRET': identity_secret,
     'APP_BASE_URL': channel['origin'],
     'AGENTIFY_SCANNER_WEB_IMAGE': fp['scanner-web'],
     'AGENTIFY_SCANNER_WORKER_IMAGE': fp['scanner-worker'],

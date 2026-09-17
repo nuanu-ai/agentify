@@ -22,6 +22,7 @@
         caddy: docker.io/library/caddy@sha256:ae4458638da8e1a91aafffb231c5f8778e964bca650c8a8cb23a7e8ac557aa3c
         alpine: docker.io/library/alpine@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
     commerce_compose: [docker, compose, --project-name, "{{ channel.commerce_project }}", --env-file, "{{ release_directory }}/commerce.env", -f, compose.yaml, -f, deploy/compose.public.yaml, -f, "{{ channel.commerce_overlay }}", -f, deploy/compose.scanner-database.yaml, -f, deploy/compose.release.yaml]
+    identity_cutover_command: [docker, run, --rm, --user, '0:0', --read-only, --tmpfs, /tmp, --network, "{{ channel.database_network }}", --env-file, "{{ recovery_directory }}/identity-cutover.env", --mount, "type=bind,src={{ recovery_directory }},dst=/cutover", "{{ release_identity.firstParty['commerce-app'] }}", pnpm, --filter, '@agentify/commerce-cabinet', exec, tsx, src/scanner-identity-cutover.ts]
     scanner_compose: [docker, compose, --project-name, "{{ channel.scanner_project }}", --env-file, "{{ release_directory }}/scanner.env", -f, compose.production.yaml, -f, compose.hetzner.yaml, -f, compose.scanner-database.yaml, -f, compose.release.yaml]
   tasks:
     - name: Require an explicit phase and exact channel inventory

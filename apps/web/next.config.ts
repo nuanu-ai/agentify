@@ -35,7 +35,7 @@ const nextConfig: NextConfig = {
         source: "/report/:path*",
         headers: [
           { key: "Cache-Control", value: "private, no-store" },
-          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Referrer-Policy", value: "strict-origin" },
           { key: "X-Robots-Tag", value: "noindex, nofollow" },
         ],
       },

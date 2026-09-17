@@ -12,12 +12,11 @@ import {
   registrationIntents,
   reportSessions,
   scans,
-  scannerAuthUsers,
   sessions,
   waitlistEntries,
   type DatabaseTransaction,
 } from "@agentify/scanner-database";
-import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { getServerConfig } from "./config";
 import {
@@ -32,17 +31,18 @@ import {
 import { getDatabase } from "./database";
 import { consumeRateLimitsAtomically } from "./rate-limit";
 import {
-  consumeScannerMagicLinkInTransaction,
-  inspectScannerMagicLink,
-  inspectScannerMagicLinkClaim,
-  sendScannerMagicLink,
-} from "./scanner-auth";
+  CabinetIdentityUnavailableError,
+  getCabinetReportIdentityClient,
+} from "./cabinet-report-identity";
 
 const REGISTRATION_INTENT_TTL_MS = 60 * 60 * 1000;
 
 type RegistrationIntentOptions = Readonly<{
   partnerClickId?: string;
-  sendMagicLink?: (email: string, redirectTo: string) => Promise<void>;
+  sendReportLink?: (
+    email: string,
+    state: string,
+  ) => Promise<"accepted" | "cooldown" | "unavailable">;
 }>;
 
 export async function createScannerRegistrationIntent(
@@ -82,6 +82,20 @@ export async function createScannerRegistrationIntent(
   const intentId = createUuidV7();
   await db.transaction(async (tx) => {
     await lockScannerEmail(tx, emailLookupHash);
+    const deleting = (
+      await tx
+        .select({ id: leads.id })
+        .from(leads)
+        .where(
+          and(
+            eq(leads.emailLookupHash, emailLookupHash),
+            sql`${leads.deletionRequestedAt} is not null`,
+            isNull(leads.anonymizedAt),
+          ),
+        )
+        .limit(1)
+    )[0];
+    if (deleting) throw new Error("registration_email_deleting");
     if (!(await currentRegistrationScan(tx, scan)))
       throw new Error("registration_scan_unavailable");
     await tx.insert(registrationIntents).values({
@@ -108,31 +122,25 @@ export async function createScannerRegistrationIntent(
     });
   });
 
-  const redirectTo = new URL("/auth/callback", config.appBaseUrl);
-  redirectTo.searchParams.set("state", state);
   try {
-    if (options.sendMagicLink) {
-      await options.sendMagicLink(normalizedEmail, redirectTo.toString());
-    } else {
-      await sendScannerMagicLink(normalizedEmail, state);
-    }
+    const status = options.sendReportLink
+      ? await options.sendReportLink(normalizedEmail, state)
+      : (
+          await getCabinetReportIdentityClient().sendReportLink({
+            email: normalizedEmail,
+            intentKind: "registration",
+            state,
+          })
+        ).status;
+    if (status === "cooldown") return { sent: false as const };
+    if (status !== "accepted") throw new CabinetIdentityUnavailableError();
   } catch {
-    throw new Error("scanner_auth_email_unavailable");
+    throw new Error("cabinet_identity_unavailable");
   }
   await db.transaction(async (tx) => {
     await lockScannerEmail(tx, emailLookupHash);
     if (!(await currentRegistrationScan(tx, scan)))
       throw new Error("registration_scan_unavailable");
-    await tx
-      .update(registrationIntents)
-      .set({ consumedAt: new Date() })
-      .where(
-        and(
-          eq(registrationIntents.scanId, scan.id),
-          eq(registrationIntents.emailLookupHash, emailLookupHash),
-          isNull(registrationIntents.consumedAt),
-        ),
-      );
     const activated = await tx
       .update(registrationIntents)
       .set({ consumedAt: null })
@@ -144,11 +152,10 @@ export async function createScannerRegistrationIntent(
 }
 
 type FinalizedRegistration = Readonly<{
+  leadId: string;
   scanId: string;
   sessionToken: string;
 }>;
-
-type VerifiedScannerUser = Readonly<{ id: string; email: string }>;
 
 async function lockScannerEmail(
   tx: DatabaseTransaction,
@@ -182,46 +189,29 @@ async function currentRegistrationScan(
   );
 }
 
-export async function finalizeScannerRegistration(
+export async function finalizeCabinetScannerRegistrationInTransaction(
+  tx: DatabaseTransaction,
   state: string,
-  user: VerifiedScannerUser,
+  email: string,
 ): Promise<FinalizedRegistration | undefined> {
-  return await getDatabase().db.transaction((tx) =>
-    finalizeScannerRegistrationInTransaction(tx, state, user),
+  return await finalizeRegistrationIntentInTransaction(
+    tx,
+    state,
+    normalizeEmail(email),
   );
 }
 
-async function finalizeScannerRegistrationInTransaction(
+async function finalizeRegistrationIntentInTransaction(
   tx: DatabaseTransaction,
   state: string,
-  user: VerifiedScannerUser,
+  normalizedEmail: string,
 ): Promise<FinalizedRegistration | undefined> {
-  if (!user?.email) return undefined;
-  const account = (
-    await tx
-      .select({
-        email: scannerAuthUsers.email,
-        confirmed: scannerAuthUsers.emailVerified,
-      })
-      .from(scannerAuthUsers)
-      .where(eq(scannerAuthUsers.id, user.id))
-      .limit(1)
-  )[0];
-  if (
-    !account?.confirmed ||
-    normalizeEmail(account.email) !== normalizeEmail(user.email)
-  ) {
-    return undefined;
-  }
-
   const config = getServerConfig();
-  const emailLookupHash = hmacHex(
-    config.hmacSecret,
-    "email",
-    normalizeEmail(user.email),
-  );
+  const emailLookupHash = hmacHex(config.hmacSecret, "email", normalizedEmail);
   const sessionToken = randomCapability();
   const now = new Date();
+
+  await lockScannerEmail(tx, emailLookupHash);
 
   const intent = (
     await tx
@@ -231,7 +221,6 @@ async function finalizeScannerRegistrationInTransaction(
         and(
           eq(registrationIntents.callbackStateHash, sha256(state)),
           eq(registrationIntents.emailLookupHash, emailLookupHash),
-          gt(registrationIntents.expiresAt, now),
           isNull(registrationIntents.consumedAt),
         ),
       )
@@ -262,15 +251,11 @@ async function finalizeScannerRegistrationInTransaction(
       .where(eq(leads.emailLookupHash, emailLookupHash))
       .limit(1)
   )[0];
-  if (lead?.scannerAuthUserId && lead.scannerAuthUserId !== user.id) {
-    throw new Error("scanner_identity_conflict");
-  }
   let firstVerification: boolean;
   if (!lead) {
     const leadId = createUuidV7();
     await tx.insert(leads).values({
       id: leadId,
-      scannerAuthUserId: user.id,
       emailNormalizedCiphertext: intent.emailNormalizedCiphertext,
       emailLookupHash,
       phoneE164Ciphertext: intent.phoneE164Ciphertext,
@@ -289,7 +274,6 @@ async function finalizeScannerRegistrationInTransaction(
       await tx
         .update(leads)
         .set({
-          scannerAuthUserId: user.id,
           emailNormalizedCiphertext: intent.emailNormalizedCiphertext,
           phoneE164Ciphertext: intent.phoneE164Ciphertext,
           phoneLookupHash: intent.phoneLookupHash,
@@ -303,7 +287,6 @@ async function finalizeScannerRegistrationInTransaction(
     await tx
       .update(leads)
       .set({
-        scannerAuthUserId: user.id,
         emailNormalizedCiphertext: intent.emailNormalizedCiphertext,
         phoneE164Ciphertext: intent.phoneE164Ciphertext,
         phoneLookupHash: intent.phoneLookupHash,
@@ -356,7 +339,7 @@ async function finalizeScannerRegistrationInTransaction(
       dataset_reuse: true,
       marketing_email: intent.marketingEmailOptIn,
     },
-    source: "scanner_auth_registration",
+    source: "report_identity_registration",
   });
   await tx
     .update(sessions)
@@ -384,7 +367,10 @@ async function finalizeScannerRegistrationInTransaction(
     scanId: scan.id,
     segment: scan.segment,
     landingVariant: registrationSession?.firstLandingVariant ?? "unknown",
-    properties: { role: intent.role, auth_provider: "better_auth" },
+    properties: {
+      role: intent.role,
+      auth_provider: "cabinet_report_identity",
+    },
   });
   const previousCategories =
     typeof previousConsent?.categories === "object" &&
@@ -416,75 +402,5 @@ async function finalizeScannerRegistrationInTransaction(
       });
   }
 
-  return { scanId: scan.id, sessionToken };
-}
-
-export async function verifyAndFinalizeScannerRegistration(
-  state: string,
-  token: string,
-) {
-  const config = getServerConfig();
-  return await getDatabase().db.transaction(async (tx) => {
-    const claim = await inspectScannerMagicLinkClaim(token, tx);
-    if (
-      !claim ||
-      claim.purpose === "recovery" ||
-      (claim.state !== undefined && claim.state !== state)
-    )
-      return undefined;
-    const email = claim.email;
-    const emailLookupHash = hmacHex(
-      config.hmacSecret,
-      "email",
-      normalizeEmail(email),
-    );
-    await lockScannerEmail(tx, emailLookupHash);
-    const intent = (
-      await tx
-        .select({
-          scanId: registrationIntents.scanId,
-          sessionId: registrationIntents.sessionId,
-        })
-        .from(registrationIntents)
-        .where(
-          and(
-            eq(registrationIntents.callbackStateHash, sha256(state)),
-            eq(registrationIntents.emailLookupHash, emailLookupHash),
-            gt(registrationIntents.expiresAt, new Date()),
-            isNull(registrationIntents.consumedAt),
-          ),
-        )
-        .limit(1)
-    )[0];
-    if (!intent || !(await inspectScannerMagicLink(token, tx)))
-      return undefined;
-    const scan = (
-      await tx
-        .select({ status: scans.status, sessionId: scans.sessionId })
-        .from(scans)
-        .where(eq(scans.id, intent.scanId))
-        .limit(1)
-        .for("update")
-    )[0];
-    if (
-      !scan ||
-      scan.sessionId !== intent.sessionId ||
-      (scan.status !== "completed" && scan.status !== "partial")
-    )
-      return undefined;
-    const verified = await consumeScannerMagicLinkInTransaction(tx, token);
-    if (
-      hmacHex(config.hmacSecret, "email", normalizeEmail(verified.email)) !==
-      emailLookupHash
-    )
-      throw new Error("verification_email_mismatch");
-    const finalized = await finalizeScannerRegistrationInTransaction(
-      tx,
-      state,
-      verified,
-    );
-    // An unavailable lead or report must roll back the token and BA identity.
-    if (!finalized) throw new Error("registration_finalization_failed");
-    return finalized;
-  });
+  return { leadId: lead.id, scanId: scan.id, sessionToken };
 }

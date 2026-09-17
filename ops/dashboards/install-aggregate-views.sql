@@ -153,15 +153,13 @@ select month, segment, platform, platform_confidence, unique_targets, scans
 from grouped
 where unique_targets >= 5;
 
--- This view briefly shipped with the registration column in two ordinal
--- positions. CREATE OR REPLACE must retain an existing column order, so choose
--- the matching definition instead of replacing the object and losing its OID,
--- owner, grants, grantors, grant options, or dependency graph.
+-- Preserve the view identity and grants while replacing the retired token
+-- metric with the report-identity retention evidence that now exists.
 do $privacy_retention_audit_view$
 declare
   view_columns text[];
   legacy_columns constant text[] := array[
-    'overdue_verification_tokens',
+    'overdue_recovery_intents',
     'overdue_unverified_leads',
     'expired_active_report_sessions',
     'active_public_shares',
@@ -169,7 +167,7 @@ declare
     'analytics_dead_letters'
   ];
   registration_second_columns constant text[] := array[
-    'overdue_verification_tokens',
+    'overdue_recovery_intents',
     'overdue_registration_intents',
     'overdue_unverified_leads',
     'expired_active_report_sessions',
@@ -178,7 +176,7 @@ declare
     'analytics_dead_letters'
   ];
   registration_last_columns constant text[] := array[
-    'overdue_verification_tokens',
+    'overdue_recovery_intents',
     'overdue_unverified_leads',
     'expired_active_report_sessions',
     'active_public_shares',
@@ -186,7 +184,21 @@ declare
     'analytics_dead_letters',
     'overdue_registration_intents'
   ];
+  final_registration_second_columns constant text[] := registration_second_columns
+    || array['overdue_identity_completions'];
+  final_registration_last_columns constant text[] := registration_last_columns
+    || array['overdue_identity_completions'];
 begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'metabase'
+      and table_name = 'privacy_retention_audit'
+      and column_name = 'overdue_verification_tokens'
+  ) then
+    alter view metabase.privacy_retention_audit
+      rename column overdue_verification_tokens to overdue_recovery_intents;
+  end if;
+
   select array_agg(attribute.attname::text order by attribute.attnum)
   into view_columns
   from pg_class relation
@@ -199,31 +211,36 @@ begin
     and not attribute.attisdropped;
 
   if view_columns is null
-    or view_columns = legacy_columns
-    or view_columns = registration_last_columns
+    or view_columns = registration_second_columns
+    or view_columns = final_registration_second_columns
   then
     execute $view$
       create or replace view metabase.privacy_retention_audit with (security_barrier = true) as
       select
-        (select count(*) from public.verification_tokens where coalesce(used_at, expires_at) < now() - interval '7 days') as overdue_verification_tokens,
-        (select count(*) from public.leads where verified_at is null and anonymized_at is null and created_at < now() - interval '30 days') as overdue_unverified_leads,
-        (select count(*) from public.report_sessions where expires_at < now() and revoked_at is null) as expired_active_report_sessions,
-        (select count(*) from public.scan_shares where status = 'published') as active_public_shares,
-        (select count(*) from public.payment_signals where status = 'attached') as attached_card_signals,
-        (select count(*) from public.delivery_outbox where status = 'dead_letter') as analytics_dead_letters,
-        (select count(*) from public.registration_intents where coalesce(consumed_at, expires_at) < now() - interval '7 days') as overdue_registration_intents
-    $view$;
-  elsif view_columns = registration_second_columns then
-    execute $view$
-      create or replace view metabase.privacy_retention_audit with (security_barrier = true) as
-      select
-        (select count(*) from public.verification_tokens where coalesce(used_at, expires_at) < now() - interval '7 days') as overdue_verification_tokens,
+        (select count(*) from public.scanner_recovery_intents where coalesce(consumed_at, expires_at) <= now() - interval '7 days') as overdue_recovery_intents,
         (select count(*) from public.registration_intents where coalesce(consumed_at, expires_at) < now() - interval '7 days') as overdue_registration_intents,
         (select count(*) from public.leads where verified_at is null and anonymized_at is null and created_at < now() - interval '30 days') as overdue_unverified_leads,
         (select count(*) from public.report_sessions where expires_at < now() and revoked_at is null) as expired_active_report_sessions,
         (select count(*) from public.scan_shares where status = 'published') as active_public_shares,
         (select count(*) from public.payment_signals where status = 'attached') as attached_card_signals,
-        (select count(*) from public.delivery_outbox where status = 'dead_letter') as analytics_dead_letters
+        (select count(*) from public.delivery_outbox where status = 'dead_letter') as analytics_dead_letters,
+        (select count(*) from public.scanner_identity_completions where retain_until <= now()) as overdue_identity_completions
+    $view$;
+  elsif view_columns = legacy_columns
+    or view_columns = registration_last_columns
+    or view_columns = final_registration_last_columns
+  then
+    execute $view$
+      create or replace view metabase.privacy_retention_audit with (security_barrier = true) as
+      select
+        (select count(*) from public.scanner_recovery_intents where coalesce(consumed_at, expires_at) <= now() - interval '7 days') as overdue_recovery_intents,
+        (select count(*) from public.leads where verified_at is null and anonymized_at is null and created_at < now() - interval '30 days') as overdue_unverified_leads,
+        (select count(*) from public.report_sessions where expires_at < now() and revoked_at is null) as expired_active_report_sessions,
+        (select count(*) from public.scan_shares where status = 'published') as active_public_shares,
+        (select count(*) from public.payment_signals where status = 'attached') as attached_card_signals,
+        (select count(*) from public.delivery_outbox where status = 'dead_letter') as analytics_dead_letters,
+        (select count(*) from public.registration_intents where coalesce(consumed_at, expires_at) < now() - interval '7 days') as overdue_registration_intents,
+        (select count(*) from public.scanner_identity_completions where retain_until <= now()) as overdue_identity_completions
     $view$;
   else
     raise exception 'unexpected metabase.privacy_retention_audit columns: %', view_columns;

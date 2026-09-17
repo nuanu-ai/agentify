@@ -20,11 +20,9 @@ import {
   scanSnapshots,
   scans,
   sessions,
-  verificationTokens,
   waitlistEntries,
 } from "./schema.js";
 
-export const VERIFICATION_TOKEN_RETENTION_MS = 7 * 86_400_000;
 export const REGISTRATION_INTENT_RETENTION_MS = 7 * 86_400_000;
 export const UNVERIFIED_LEAD_RETENTION_MS = 30 * 86_400_000;
 
@@ -58,20 +56,6 @@ export async function listUnverifiedLeadRetentionCandidates(
     )
     .orderBy(asc(leads.createdAt))
     .limit(Math.min(1_000, Math.max(1, input.limit ?? 100)));
-}
-
-export async function deleteRetainedVerificationTokens(
-  db: Database,
-  now = new Date(),
-) {
-  const cutoff = new Date(now.getTime() - VERIFICATION_TOKEN_RETENTION_MS);
-  const removed = await db
-    .delete(verificationTokens)
-    .where(
-      sql`coalesce(${verificationTokens.usedAt}, ${verificationTokens.expiresAt}) < ${cutoff}`,
-    )
-    .returning({ id: verificationTokens.id });
-  return removed.length;
 }
 
 export async function deleteRetainedRegistrationIntents(
@@ -189,9 +173,6 @@ export async function anonymizeLeadData(
         ),
       );
     await tx
-      .delete(verificationTokens)
-      .where(eq(verificationTokens.leadId, leadId));
-    await tx
       .delete(registrationIntents)
       .where(eq(registrationIntents.emailLookupHash, lead.email_lookup_hash));
     await tx.delete(waitlistEntries).where(eq(waitlistEntries.leadId, leadId));
@@ -286,7 +267,6 @@ export async function anonymizeLeadData(
       .update(leads)
       .set({
         supabaseUserId: null,
-        scannerAuthUserId: null,
         emailNormalizedCiphertext: "deleted",
         emailLookupHash: `deleted:${leadId}`,
         phoneE164Ciphertext: null,
@@ -323,10 +303,6 @@ export async function runRetentionCleanup(
     db,
     now,
   );
-  const verificationTokensDeleted = await deleteRetainedVerificationTokens(
-    db,
-    now,
-  );
   const registrationIntentsDeleted = await deleteRetainedRegistrationIntents(
     db,
     now,
@@ -350,7 +326,6 @@ export async function runRetentionCleanup(
   }
   return {
     merchantApplicationsDeleted,
-    verificationTokensDeleted,
     registrationIntentsDeleted,
     rateLimitRowsDeleted,
     leadsAnonymized,

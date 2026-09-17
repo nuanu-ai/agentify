@@ -5,9 +5,7 @@ import { z } from "zod";
 import { REPORT_SESSION_COOKIE } from "../../../../../lib/server/auth";
 import { getServerConfig } from "../../../../../lib/server/config";
 import { errorResponse, hasSameOrigin } from "../../../../../lib/server/http";
-import { verifyAndFinalizeScannerRegistration } from "../../../../../lib/server/scanner-registration";
-import { inspectScannerMagicLinkClaim } from "../../../../../lib/server/scanner-auth";
-import { verifyAndFinalizeScannerRecovery } from "../../../../../lib/server/scanner-recovery";
+import { verifyAndFinalizeScannerIdentity } from "../../../../../lib/server/scanner-identity-finalize";
 
 export const runtime = "nodejs";
 const verificationRequestSchema = z.object({
@@ -48,17 +46,10 @@ export async function POST(request: NextRequest) {
       "The verification link is invalid or expired.",
     );
   try {
-    const claim = await inspectScannerMagicLinkClaim(parsed.data.token);
-    const finalized =
-      claim?.purpose === "recovery"
-        ? await verifyAndFinalizeScannerRecovery(
-            parsed.data.state,
-            parsed.data.token,
-          )
-        : await verifyAndFinalizeScannerRegistration(
-            parsed.data.state,
-            parsed.data.token,
-          );
+    const finalized = await verifyAndFinalizeScannerIdentity(
+      parsed.data.state,
+      parsed.data.token,
+    );
     if (!finalized)
       return errorResponse(
         request,
@@ -69,6 +60,9 @@ export async function POST(request: NextRequest) {
     const payload = authFinalizeResponseSchema.parse({
       status: "verified",
       report_url: `/report/${encodeURIComponent(finalized.scanId)}`,
+      ...(finalized.cabinetActionUrl
+        ? { cabinet_action_url: finalized.cabinetActionUrl }
+        : {}),
     });
     const response = NextResponse.json(payload, {
       headers: { "Cache-Control": "private, no-store" },

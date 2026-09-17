@@ -221,13 +221,27 @@
         running_jobs="$(docker ps -q --filter label=com.docker.compose.project={{ channel.scanner_project }} --filter label=com.docker.compose.oneoff=True)"
         test -z "$running_jobs"
 
+    - name: Identify the first shared-identity activation before any schema mutation
+      ansible.builtin.shell: |
+        set -eu
+        if [ "$(docker exec '{{ channel.postgres_container }}' psql -U agentify_commerce -d agentify_commerce -Atc "select count(*) from pg_database where datname='agentify_scanner'")" = 0 ]; then
+          echo 1
+        else
+          docker exec '{{ channel.postgres_container }}' psql -U agentify_commerce -d agentify_scanner -At -v ON_ERROR_STOP=1 -c "select count(*) from information_schema.tables where table_schema='public' and table_name='scanner_auth_users'"
+        fi
+      changed_when: false
+      register: legacy_scanner_identity
+
+    - ansible.builtin.set_fact:
+        identity_cutover_required: "{{ legacy_scanner_identity.stdout == '1' }}"
+
     - name: Record non-recoverable aggregate row fingerprints before migrations
       ansible.builtin.shell: |
         set -eu
         umask 077
         for db in agentify_commerce agentify_scanner; do
           if [ "$(docker exec '{{ channel.postgres_container }}' psql -U agentify_commerce -d agentify_commerce -Atc "select count(*) from pg_database where datname='$db'")" = 1 ]; then
-            docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 < '{{ release_source_directory }}/deploy/ansible/release-data-fingerprint.sql' > '{{ recovery_directory }}/'"$db".fingerprint
+            docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 -v identity_cutover={{ identity_cutover_required | ternary('true', 'false') }} < '{{ release_source_directory }}/deploy/ansible/release-data-fingerprint.sql' > '{{ recovery_directory }}/'"$db".fingerprint
           fi
         done
       no_log: true
@@ -273,18 +287,41 @@
       when: channel_name == 'test' and scanner_database.stdout == '0'
       no_log: true
 
+    - name: Reconcile scanner roles before its additive schema activation
+      ansible.builtin.command:
+        argv: "{{ scanner_compose + ['run', '--rm', '--no-deps', '-T', 'roles-reconcile'] }}"
+        chdir: "{{ release_source_directory }}/ops/deploy/droplet"
+      no_log: true
+
+    - name: Apply only scanner migrations preceding the destructive identity cleanup
+      ansible.builtin.command:
+        argv: "{{ scanner_compose + ['run', '--rm', '--no-deps', '-T', 'migrate', 'node', 'packages/scanner-database/dist/migrate-cli.js', '--identity-preflight'] }}"
+        chdir: "{{ release_source_directory }}/ops/deploy/droplet"
+      no_log: true
+
+    - name: Prepare credentials for the stopped one-off identity importer
+      ansible.builtin.command:
+        argv: [python3, "{{ release_source_directory }}/deploy/ansible/prepare-identity-cutover.py", "{{ release_directory }}"]
+      no_log: true
+      when: identity_cutover_required
+
+    - name: Validate and fingerprint source identities before cabinet proof invalidation
+      ansible.builtin.command:
+        argv: "{{ identity_cutover_command + ['preflight', '/cutover/identity-cutover.json'] }}"
+      no_log: true
+      when: identity_cutover_required
+
     - name: Apply commerce migrations with the locally built application image
       ansible.builtin.command:
         argv: "{{ commerce_compose + ['run', '--rm', '--no-deps', '-T', 'migrate'] }}"
         chdir: "{{ release_source_directory }}"
       no_log: true
 
-    - name: Apply scanner activation steps once in dependency order
+    - name: Import and verify exact identities and still-pending report links
       ansible.builtin.command:
-        argv: "{{ scanner_compose + ['run', '--rm', '--no-deps', '-T', item] }}"
-        chdir: "{{ release_source_directory }}/ops/deploy/droplet"
-      loop: [roles-reconcile, migrate, queue-init, database-dashboards-install, database-access-finalize, database-access-verify]
+        argv: "{{ identity_cutover_command + ['apply', '/cutover/identity-cutover.json'] }}"
       no_log: true
+      when: identity_cutover_required
 
     - name: Verify retained customer rows against their pre-migration fingerprints
       ansible.builtin.shell: |
@@ -293,11 +330,68 @@
           before='{{ recovery_directory }}/'"$db".fingerprint
           if [ -f "$before" ]; then
             after='{{ recovery_directory }}/'"$db".after
-            docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 < '{{ release_source_directory }}/deploy/ansible/release-data-fingerprint.sql' > "$after"
+            docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 -v identity_cutover={{ identity_cutover_required | ternary('true', 'false') }} < '{{ release_source_directory }}/deploy/ansible/release-data-fingerprint.sql' > "$after"
             cmp "$before" "$after"
           fi
         done
       changed_when: false
+
+    - name: Record the verified post-import commerce projection before scanner cleanup
+      ansible.builtin.shell: |
+        set -eu
+        umask 077
+        docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d agentify_commerce -At -v ON_ERROR_STOP=1 < '{{ release_source_directory }}/deploy/ansible/release-data-fingerprint.sql' > '{{ recovery_directory }}/commerce-post-import.fingerprint'
+      no_log: true
+      when: identity_cutover_required
+
+    - name: Record the exact accepted target identity projection before cleanup
+      ansible.builtin.shell: |
+        set -eu
+        umask 077
+        for db in agentify_commerce agentify_scanner; do
+          docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 < '{{ release_source_directory }}/deploy/ansible/release-identity-target-fingerprint.sql' > '{{ recovery_directory }}/'"$db".identity-target
+        done
+      no_log: true
+      when: identity_cutover_required
+
+    - name: Authorize old scanner identity removal only after both projection checks
+      ansible.builtin.command:
+        argv: "{{ identity_cutover_command + ['authorize-cleanup', '/cutover/identity-cutover.json'] }}"
+      no_log: true
+      when: identity_cutover_required
+
+    - name: Apply the guarded scanner cleanup through its ordinary migration ledger
+      ansible.builtin.command:
+        argv: "{{ scanner_compose + ['run', '--rm', '--no-deps', '-T', 'migrate'] }}"
+        chdir: "{{ release_source_directory }}/ops/deploy/droplet"
+      no_log: true
+
+    - name: Prove cleanup retained commerce rows and scanner report capabilities
+      ansible.builtin.shell: |
+        set -eu
+        for db in agentify_commerce agentify_scanner; do
+          before='{{ recovery_directory }}/'"$db".fingerprint
+          if [ -f "$before" ]; then
+            after='{{ recovery_directory }}/'"$db".after-cleanup
+            docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 -v identity_cutover={{ identity_cutover_required | ternary('true', 'false') }} < '{{ release_source_directory }}/deploy/ansible/release-data-fingerprint.sql' > "$after"
+            cmp "$before" "$after"
+          fi
+        done
+        docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d agentify_commerce -At -v ON_ERROR_STOP=1 < '{{ release_source_directory }}/deploy/ansible/release-data-fingerprint.sql' > '{{ recovery_directory }}/commerce-after-cleanup.fingerprint'
+        cmp '{{ recovery_directory }}/commerce-post-import.fingerprint' '{{ recovery_directory }}/commerce-after-cleanup.fingerprint'
+        for db in agentify_commerce agentify_scanner; do
+          docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 < '{{ release_source_directory }}/deploy/ansible/release-identity-target-fingerprint.sql' > '{{ recovery_directory }}/'"$db".identity-target-after-cleanup
+          cmp '{{ recovery_directory }}/'"$db".identity-target '{{ recovery_directory }}/'"$db".identity-target-after-cleanup
+        done
+      changed_when: false
+      when: identity_cutover_required
+
+    - name: Apply remaining scanner activation steps once in dependency order
+      ansible.builtin.command:
+        argv: "{{ scanner_compose + ['run', '--rm', '--no-deps', '-T', item] }}"
+        chdir: "{{ release_source_directory }}/ops/deploy/droplet"
+      loop: [queue-init, database-dashboards-install, database-access-finalize, database-access-verify]
+      no_log: true
 
     - name: Hold the first live cutover for the separate private operator command
       ansible.builtin.pause:
@@ -389,6 +483,11 @@
     - ansible.builtin.fail:
         msg: Activation stopped. Inspect the recorded state. A read-only gate before the recovery boundary leaves it staged; if it is activating, do not blindly retry, roll back after migrations or restart old writers. Use the recorded evidence and a reviewed forward recovery.
   always:
+    - name: Remove the one-off importer credential file on success or failure
+      ansible.builtin.file:
+        path: "{{ recovery_directory }}/identity-cutover.env"
+        state: absent
+      no_log: true
     - name: Release only this operation's lock
       ansible.builtin.file:
         path: /run/lock/agentify-release

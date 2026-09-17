@@ -9,6 +9,7 @@ import { CopyRemediationPrompt } from "../../../components/copy-remediation-prom
 import { NextStep } from "../../../components/next-step";
 import { PrivacyChoicesButton } from "../../../components/privacy-choices-button";
 import { ReportActionPanel } from "../../../components/report-action-panel";
+import { ReportCabinetControl } from "../../../components/report-cabinet-control";
 import { StatusBadge } from "../../../components/status-badge";
 import { getPublicAppConfig } from "../../../lib/app-config";
 import {
@@ -20,6 +21,7 @@ import { getServerConfig } from "../../../lib/server/config";
 import {
   getFullBrowserObservation,
   getFullReport,
+  getReportOwnerEmail,
 } from "../../../lib/server/reporting";
 import { getCardSignalPublicConfig } from "../../../lib/server/stripe-card-signal-config";
 import { getOwnedCardSignalForReport } from "../../../lib/server/stripe-card-signal";
@@ -34,7 +36,7 @@ import {
 export const metadata: Metadata = {
   title: "Private diagnostic report",
   robots: { index: false, follow: false },
-  referrer: "no-referrer",
+  referrer: "strict-origin",
 };
 
 export default async function ReportPage({
@@ -77,6 +79,7 @@ export default async function ReportPage({
     sessionToken,
   );
   const publicConfig = getPublicAppConfig();
+  const reportOwnerEmail = await getReportOwnerEmail(scanId, sessionToken);
   const { aiPrompt, devBrief } = buildFixPrompts(
     report,
     publicConfig.displayBrand,
@@ -121,6 +124,16 @@ export default async function ReportPage({
         scanId={report.scan_id}
         shareEnabled={serverConfig.PUBLIC_SHARE_ENABLED}
       />
+      {reportOwnerEmail ? (
+        <section>
+          <h2>Your cabinet</h2>
+          <p>Manage cards and integrations through the same verified email.</p>
+          <ReportCabinetControl
+            email={reportOwnerEmail}
+            reportPath={`/report/${encodeURIComponent(report.scan_id)}`}
+          />
+        </section>
+      ) : null}
       <section className={styles.checks}>
         <div className={styles.sectionHeading}>
           <span className="eyebrow">Canonical rubric</span>

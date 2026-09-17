@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
       request,
       503,
       "deletion_cleanup_failed",
-      "Deletion was not finalized because provider cleanup could not be verified. Retry or contact privacy support.",
+      "Deletion could not be recorded, so report access remains unchanged. Try again shortly.",
       true,
       60,
     );

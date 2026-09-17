@@ -7,7 +7,7 @@ import { TurnstileChallenge } from "./turnstile-challenge";
 describe("TurnstileChallenge", () => {
   it("renders a runtime-provided site key without exposing a build-time environment lookup", () => {
     const html = renderToStaticMarkup(
-      <TurnstileChallenge siteKey="runtime-test-site-key" />,
+      <TurnstileChallenge action="scan" siteKey="runtime-test-site-key" />,
     );
 
     expect(html).toContain('data-sitekey="runtime-test-site-key"');
@@ -15,7 +15,9 @@ describe("TurnstileChallenge", () => {
   });
 
   it("reports an unavailable challenge when runtime configuration has no site key", () => {
-    const html = renderToStaticMarkup(<TurnstileChallenge siteKey={null} />);
+    const html = renderToStaticMarkup(
+      <TurnstileChallenge action="report_recovery" siteKey={null} />,
+    );
 
     expect(html).toContain("Challenge is not configured");
     expect(html).not.toContain("data-sitekey");

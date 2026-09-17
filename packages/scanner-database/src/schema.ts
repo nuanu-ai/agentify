@@ -159,83 +159,11 @@ export const consentSnapshots = pgTable(
   ],
 );
 
-// Scanner identity is isolated from the commerce cabinet's Better Auth rows.
-export const scannerAuthUsers = pgTable("scanner_auth_users", {
-  id: text("id").primaryKey(),
-  email: text("email").notNull().unique(),
-  emailVerified: boolean("email_verified").notNull().default(false),
-  name: text("name").notNull().default(""),
-  createdAt: utcTimestamp("created_at").notNull().defaultNow(),
-  updatedAt: utcTimestamp("updated_at").notNull().defaultNow(),
-});
-
-export const scannerAuthSessions = pgTable(
-  "scanner_auth_sessions",
-  {
-    id: text("id").primaryKey(),
-    token: text("token").notNull().unique(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => scannerAuthUsers.id, { onDelete: "cascade" }),
-    expiresAt: utcTimestamp("expires_at").notNull(),
-    createdAt: utcTimestamp("created_at").notNull().defaultNow(),
-    updatedAt: utcTimestamp("updated_at").notNull().defaultNow(),
-    ipAddress: text("ip_address"),
-    userAgent: text("user_agent"),
-  },
-  (table) => [
-    index("scanner_auth_sessions_user_idx").on(table.userId),
-    index("scanner_auth_sessions_expires_idx").on(table.expiresAt),
-  ],
-);
-
-export const scannerAuthAccounts = pgTable(
-  "scanner_auth_accounts",
-  {
-    id: text("id").primaryKey(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => scannerAuthUsers.id, { onDelete: "cascade" }),
-    providerId: text("provider_id").notNull(),
-    accountId: text("account_id").notNull(),
-    issuer: text("issuer").notNull(),
-    password: text("password"),
-    accessToken: text("access_token"),
-    refreshToken: text("refresh_token"),
-    idToken: text("id_token"),
-    accessTokenExpiresAt: utcTimestamp("access_token_expires_at"),
-    refreshTokenExpiresAt: utcTimestamp("refresh_token_expires_at"),
-    scope: text("scope"),
-    createdAt: utcTimestamp("created_at").notNull().defaultNow(),
-    updatedAt: utcTimestamp("updated_at").notNull().defaultNow(),
-  },
-  (table) => [index("scanner_auth_accounts_user_idx").on(table.userId)],
-);
-
-export const scannerAuthVerifications = pgTable(
-  "scanner_auth_verifications",
-  {
-    id: text("id").primaryKey(),
-    identifier: text("identifier").notNull(),
-    value: text("value").notNull(),
-    expiresAt: utcTimestamp("expires_at").notNull(),
-    createdAt: utcTimestamp("created_at").notNull().defaultNow(),
-    updatedAt: utcTimestamp("updated_at").notNull().defaultNow(),
-  },
-  (table) => [
-    index("scanner_auth_verifications_identifier_idx").on(table.identifier),
-  ],
-);
-
 export const leads = pgTable(
   "leads",
   {
     id: uuid("id").primaryKey(),
     supabaseUserId: uuid("supabase_user_id"),
-    scannerAuthUserId: text("scanner_auth_user_id").references(
-      () => scannerAuthUsers.id,
-      { onDelete: "set null" },
-    ),
     emailNormalizedCiphertext: text("email_normalized_ciphertext").notNull(),
     emailLookupHash: text("email_lookup_hash").notNull(),
     phoneE164Ciphertext: text("phone_e164_ciphertext"),
@@ -260,9 +188,6 @@ export const leads = pgTable(
     uniqueIndex("leads_supabase_user_id_uidx")
       .on(table.supabaseUserId)
       .where(sql`${table.supabaseUserId} is not null`),
-    uniqueIndex("leads_scanner_auth_user_id_uidx")
-      .on(table.scannerAuthUserId)
-      .where(sql`${table.scannerAuthUserId} is not null`),
     index("leads_verified_at_idx").on(table.verifiedAt),
     index("leads_retention_idx").on(
       table.verifiedAt,
@@ -390,9 +315,6 @@ export const registrationIntents = pgTable(
     uniqueIndex("registration_intents_callback_state_uidx").on(
       table.callbackStateHash,
     ),
-    uniqueIndex("registration_intents_active_scan_email_uidx")
-      .on(table.scanId, table.emailLookupHash)
-      .where(sql`${table.consumedAt} is null`),
     index("registration_intents_expiry_idx").on(table.expiresAt),
   ],
 );
@@ -627,30 +549,6 @@ export const leadScans = pgTable(
   (table) => [primaryKey({ columns: [table.leadId, table.scanId] })],
 );
 
-export const verificationTokens = pgTable(
-  "verification_tokens",
-  {
-    id: uuid("id").primaryKey(),
-    leadId: uuid("lead_id")
-      .notNull()
-      .references(() => leads.id, { onDelete: "cascade" }),
-    scanId: uuid("scan_id")
-      .notNull()
-      .references(() => scans.id, { onDelete: "cascade" }),
-    tokenHash: text("token_hash").notNull(),
-    expiresAt: utcTimestamp("expires_at").notNull(),
-    usedAt: utcTimestamp("used_at"),
-    createdAt: utcTimestamp("created_at").notNull().defaultNow(),
-  },
-  (table) => [
-    check("verification_tokens_id_uuidv7", uuidV7Check(table.id)),
-    uniqueIndex("verification_tokens_token_hash_uidx").on(table.tokenHash),
-    uniqueIndex("verification_tokens_active_pair_uidx")
-      .on(table.leadId, table.scanId)
-      .where(sql`${table.usedAt} is null`),
-  ],
-);
-
 export const reportSessions = pgTable(
   "report_sessions",
   {
@@ -667,6 +565,116 @@ export const reportSessions = pgTable(
   (table) => [
     check("report_sessions_id_uuidv7", uuidV7Check(table.id)),
     uniqueIndex("report_sessions_token_hash_uidx").on(table.sessionTokenHash),
+  ],
+);
+
+export const scannerRecoveryIntents = pgTable(
+  "scanner_recovery_intents",
+  {
+    id: uuid("id").primaryKey(),
+    tokenHash: text("token_hash"),
+    stateHash: text("state_hash").notNull(),
+    emailLookupHash: text("email_lookup_hash").notNull(),
+    leadId: uuid("lead_id")
+      .notNull()
+      .references(() => leads.id, { onDelete: "cascade" }),
+    scanId: uuid("scan_id")
+      .notNull()
+      .references(() => scans.id, { onDelete: "cascade" }),
+    createdAt: utcTimestamp("created_at").notNull().defaultNow(),
+    expiresAt: utcTimestamp("expires_at").notNull(),
+    activatedAt: utcTimestamp("activated_at"),
+    consumedAt: utcTimestamp("consumed_at"),
+  },
+  (table) => [
+    check(
+      "scanner_recovery_intents_token_hash_format",
+      sql`${table.tokenHash} is null or ${table.tokenHash} ~ '^[A-Za-z0-9_-]{43}$'`,
+    ),
+    check(
+      "scanner_recovery_intents_state_hash_format",
+      sql`${table.stateHash} ~ '^[a-f0-9]{64}$'`,
+    ),
+    check(
+      "scanner_recovery_intents_activation",
+      sql`(${table.tokenHash} is null and ${table.activatedAt} is null and ${table.consumedAt} is null) or (${table.tokenHash} is not null and ${table.activatedAt} is not null)`,
+    ),
+    uniqueIndex("scanner_recovery_intents_token_hash_uidx")
+      .on(table.tokenHash)
+      .where(sql`${table.tokenHash} is not null`),
+    index("scanner_recovery_intents_state_hash_idx").on(table.stateHash),
+    index("scanner_recovery_intents_expiry_idx").on(table.expiresAt),
+  ],
+);
+
+export const scannerIdentityCompletions = pgTable(
+  "scanner_identity_completions",
+  {
+    receiptId: uuid("receipt_id").primaryKey(),
+    tokenHash: text("token_hash").notNull(),
+    intentKind: text("intent_kind").notNull(),
+    stateHash: text("state_hash").notNull(),
+    leadId: uuid("lead_id")
+      .notNull()
+      .references(() => leads.id, { onDelete: "cascade" }),
+    scanId: uuid("scan_id")
+      .notNull()
+      .references(() => scans.id, { onDelete: "cascade" }),
+    completedAt: utcTimestamp("completed_at").notNull(),
+    retainUntil: utcTimestamp("retain_until").notNull(),
+  },
+  (table) => [
+    check(
+      "scanner_identity_completions_token_hash_format",
+      sql`${table.tokenHash} ~ '^[A-Za-z0-9_-]{43}$'`,
+    ),
+    check(
+      "scanner_identity_completions_state_hash_format",
+      sql`${table.stateHash} ~ '^[a-f0-9]{64}$'`,
+    ),
+    check(
+      "scanner_identity_completions_intent_kind",
+      sql`${table.intentKind} in ('registration', 'recovery')`,
+    ),
+    uniqueIndex("scanner_identity_completions_token_hash_uidx").on(
+      table.tokenHash,
+    ),
+    index("scanner_identity_completions_retention_idx").on(table.retainUntil),
+  ],
+);
+
+export const scannerIdentityDeletionOperations = pgTable(
+  "scanner_identity_deletion_operations",
+  {
+    operationId: uuid("operation_id").primaryKey(),
+    leadId: uuid("lead_id")
+      .notNull()
+      .references(() => leads.id, { onDelete: "cascade" }),
+    cabinetResult: text("cabinet_result"),
+    leaseToken: uuid("lease_token"),
+    leaseExpiresAt: utcTimestamp("lease_expires_at"),
+    createdAt: utcTimestamp("created_at").notNull().defaultNow(),
+    completedAt: utcTimestamp("completed_at"),
+  },
+  (table) => [
+    check(
+      "scanner_identity_deletion_operations_id_uuidv7",
+      uuidV7Check(table.operationId),
+    ),
+    check(
+      "scanner_identity_deletion_operations_result",
+      sql`${table.cabinetResult} is null or ${table.cabinetResult} in ('deleted', 'already_absent', 'retained')`,
+    ),
+    check(
+      "scanner_identity_deletion_operations_completion",
+      sql`${table.completedAt} is null or ${table.cabinetResult} is not null`,
+    ),
+    uniqueIndex("scanner_identity_deletion_operations_lead_uidx").on(
+      table.leadId,
+    ),
+    index("scanner_identity_deletion_operations_pending_idx")
+      .on(table.leaseExpiresAt, table.createdAt)
+      .where(sql`${table.completedAt} is null`),
   ],
 );
 

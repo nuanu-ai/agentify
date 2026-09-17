@@ -7,7 +7,6 @@ beforeEach(() => {
   vi.stubEnv("APP_BASE_URL", "https://test.agentify.ad");
   vi.stubEnv("DATABASE_URL", "postgresql://test:test@localhost/test");
   vi.stubEnv("REGISTRATION_ENABLED", "false");
-  vi.stubEnv("EMAIL_PROVIDER", "disabled");
   vi.stubEnv("POSTHOG_BROWSER_KEY", "");
   vi.stubEnv("POSTHOG_BROWSER_HOST", "");
   vi.stubEnv("CARD_SIGNAL_ENABLED", "false");

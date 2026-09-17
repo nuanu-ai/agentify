@@ -27,7 +27,9 @@ export function AccountActions({ mode }: { mode: "unsubscribe" | "data" }) {
         response.ok
           ? payload?.status === "completed"
             ? "Deletion completed. Card/provider state was cleared first, then report sessions, shares, and personal data were anonymized."
-            : "Request recorded."
+            : action === "deletion"
+              ? "Report access is revoked. Deletion was requested and will finish automatically."
+              : "Request recorded."
           : (payload?.error?.message ??
               "Sign in through a verified report before making this request."),
       );

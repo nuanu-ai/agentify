@@ -10,11 +10,11 @@ esac
 if [ "$REGISTRATION_ENABLED" = "true" ]; then
   : "${DATABASE_URL:?DATABASE_URL is required when registration is enabled}"
   : "${TOKEN_HMAC_SECRET:?TOKEN_HMAC_SECRET is required when registration is enabled}"
-  [ "${EMAIL_PROVIDER:-}" = "resend" ] || {
-    echo "Enabled production registration requires the Resend production mail provider." >&2
+  : "${CABINET_IDENTITY_URL:?CABINET_IDENTITY_URL is required when registration is enabled}"
+  : "${REPORT_IDENTITY_SECRET:?REPORT_IDENTITY_SECRET is required when registration is enabled}"
+  [ "${#REPORT_IDENTITY_SECRET}" -ge 32 ] || {
+    echo "REPORT_IDENTITY_SECRET must contain at least 32 characters." >&2
     exit 1
   }
-  : "${RESEND_API_KEY:?RESEND_API_KEY is required when registration is enabled}"
-  : "${RESEND_FROM:?RESEND_FROM is required when registration is enabled}"
 fi
 exec "$@"

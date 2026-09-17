@@ -29,6 +29,7 @@ async function verifyTurnstile(
     remoteIp,
     secret: config.TURNSTILE_SECRET_KEY,
     expectedHostname: new URL(config.appBaseUrl).hostname,
+    action: "scan",
   });
 }
 

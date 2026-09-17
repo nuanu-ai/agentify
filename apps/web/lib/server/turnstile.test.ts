@@ -22,6 +22,7 @@ describe("verifyTurnstileToken", () => {
         remoteIp: "203.0.113.8",
         secret: "secret",
         expectedHostname: "agentify.ad",
+        action: "scan",
         fetchImpl,
       }),
     ).resolves.toBe(true);
@@ -41,6 +42,7 @@ describe("verifyTurnstileToken", () => {
         remoteIp: "203.0.113.8",
         secret: "secret",
         expectedHostname: "agentify.ad",
+        action: "scan",
         fetchImpl: vi.fn().mockResolvedValue(response(payload)),
       }),
     ).resolves.toBe(false);
@@ -53,6 +55,7 @@ describe("verifyTurnstileToken", () => {
         remoteIp: "203.0.113.8",
         secret: "secret",
         expectedHostname: "agentify.ad",
+        action: "scan",
         fetchImpl: vi.fn().mockRejectedValue(new Error("network")),
       }),
     ).resolves.toBe(false);

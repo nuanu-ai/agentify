@@ -1,9 +1,18 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { authFinalizeResponseSchema } from "@agentify/scanner-contracts";
+import {
+  clearReportCabinetHandoff,
+  rememberReportCabinetHandoff,
+} from "../lib/client/report-cabinet-handoff";
 import { Brand } from "./brand";
+import {
+  TURNSTILE_TOKEN_EVENT,
+  TurnstileChallenge,
+} from "./turnstile-challenge";
 import styles from "./auth-callback.module.css";
 
 type CallbackState =
@@ -13,14 +22,19 @@ type CallbackState =
   | "recovery"
   | "recovery-sending"
   | "recovery-sent"
+  | "recovery-unavailable"
   | "error"
   | "unavailable";
 
-export function AuthCallback() {
+export function AuthCallback({
+  turnstileSiteKey,
+}: Readonly<{ turnstileSiteKey: string | null }>) {
+  const router = useRouter();
   const [state, setState] = useState<CallbackState>("loading");
   const [link, setLink] = useState<{ state: string; token: string }>();
   const [recoveryState, setRecoveryState] = useState<string>();
   const [email, setEmail] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const initialized = useRef(false);
 
   useEffect(() => {
@@ -57,6 +71,15 @@ export function AuthCallback() {
     return () => window.removeEventListener("hashchange", capture);
   }, []);
 
+  useEffect(() => {
+    const receive = (event: Event) => {
+      const token = (event as CustomEvent<unknown>).detail;
+      setTurnstileToken(typeof token === "string" ? token : null);
+    };
+    window.addEventListener(TURNSTILE_TOKEN_EVENT, receive);
+    return () => window.removeEventListener(TURNSTILE_TOKEN_EVENT, receive);
+  }, []);
+
   async function checkExistingSession(stateHint?: string) {
     try {
       const response = await fetch("/api/v2/auth/recover", {
@@ -90,6 +113,7 @@ export function AuthCallback() {
 
   async function confirm() {
     if (!link || (state !== "ready" && state !== "unavailable")) return;
+    clearReportCabinetHandoff();
     setState("verifying");
     try {
       const response = await fetch("/api/v2/auth/finalize", {
@@ -117,7 +141,17 @@ export function AuthCallback() {
         await response.json(),
       );
       if (!payload.success) throw new Error("verification_unavailable");
-      window.location.replace(payload.data.report_url);
+      if (
+        payload.data.cabinet_action_url &&
+        !rememberReportCabinetHandoff(
+          payload.data.report_url,
+          payload.data.cabinet_action_url,
+          window.location.origin,
+        )
+      ) {
+        clearReportCabinetHandoff();
+      }
+      router.replace(payload.data.report_url);
     } catch {
       setState("unavailable");
     }
@@ -125,7 +159,12 @@ export function AuthCallback() {
 
   async function requestRecovery(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (state !== "recovery" || !email) return;
+    if (
+      (state !== "recovery" && state !== "recovery-unavailable") ||
+      !email ||
+      (turnstileSiteKey && !turnstileToken)
+    )
+      return;
     setState("recovery-sending");
     try {
       const response = await fetch("/api/v2/auth/recover", {
@@ -135,13 +174,22 @@ export function AuthCallback() {
           action: "email",
           email,
           ...(recoveryState ? { state: recoveryState } : {}),
+          turnstile_token: turnstileToken,
         }),
         credentials: "same-origin",
         cache: "no-store",
       });
-      setState(response.ok ? "recovery-sent" : "recovery");
+      setTurnstileToken(null);
+      setState(
+        response.ok
+          ? "recovery-sent"
+          : response.status >= 500
+            ? "recovery-unavailable"
+            : "recovery",
+      );
     } catch {
-      setState("recovery");
+      setTurnstileToken(null);
+      setState("recovery-unavailable");
     }
   }
 
@@ -189,9 +237,15 @@ export function AuthCallback() {
                 : "This may take a moment."}
             </p>
           </>
-        ) : state === "recovery" ? (
+        ) : state === "recovery" || state === "recovery-unavailable" ? (
           <>
             <h1>Recover your private report</h1>
+            {state === "recovery-unavailable" ? (
+              <p role="alert">
+                Email delivery is temporarily unavailable. Complete a fresh
+                challenge and try again shortly.
+              </p>
+            ) : null}
             <p>
               Enter the email used for the report. If it matches a saved report,
               we’ll send a fresh verification link.
@@ -207,7 +261,17 @@ export function AuthCallback() {
                 type="email"
                 value={email}
               />
-              <button className="button button-primary" type="submit">
+              {turnstileSiteKey ? (
+                <TurnstileChallenge
+                  action="report_recovery"
+                  siteKey={turnstileSiteKey}
+                />
+              ) : null}
+              <button
+                className="button button-primary"
+                disabled={Boolean(turnstileSiteKey && !turnstileToken)}
+                type="submit"
+              >
                 Send verification link
               </button>
             </form>

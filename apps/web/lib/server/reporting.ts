@@ -23,9 +23,14 @@ import { and, avg, count, eq, sql } from "drizzle-orm";
 
 import { getVerifiedSession } from "./auth";
 import { getServerConfig } from "./config";
-import { deriveCapability, hmacHex } from "./crypto";
+import {
+  decryptEmail,
+  deriveCapability,
+  hmacHex,
+  normalizeEmail,
+} from "./crypto";
 import { getDatabase } from "./database";
-import { completeLeadDeletion } from "./privacy";
+import { requestScannerIdentityDeletion } from "./scanner-identity-deletion";
 
 const PRIVATE_EVIDENCE_KEY =
   /(?:url|host|ip|header|endpoint|body|token|cookie|authorization|trace)/i;
@@ -137,6 +142,33 @@ export async function getFullReport(
     },
     benchmark,
   };
+}
+
+export async function getReportOwnerEmail(
+  scanId: string,
+  sessionToken: string | undefined,
+): Promise<string | undefined> {
+  const verified = await getVerifiedSession(sessionToken, scanId);
+  if (!verified) return undefined;
+  const lead = (
+    await getDatabase()
+      .db.select({
+        encryptedEmail: leads.emailNormalizedCiphertext,
+        emailLookupHash: leads.emailLookupHash,
+      })
+      .from(leads)
+      .where(eq(leads.id, verified.leadId))
+      .limit(1)
+  )[0];
+  if (!lead || lead.encryptedEmail === "deleted") return undefined;
+  const config = getServerConfig();
+  const email = normalizeEmail(
+    decryptEmail(lead.encryptedEmail, config.encryptionKey),
+  );
+  if (hmacHex(config.hmacSecret, "email", email) !== lead.emailLookupHash) {
+    throw new Error("lead_email_identity_mismatch");
+  }
+  return email;
 }
 
 export async function getFullBrowserObservation(
@@ -457,6 +489,5 @@ export async function updateAccountState(
       .where(eq(leads.id, leadId));
     return "requested";
   }
-  await completeLeadDeletion({ leadId, now });
-  return "completed";
+  return await requestScannerIdentityDeletion({ leadId });
 }

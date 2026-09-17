@@ -181,7 +181,7 @@ export function PendingScanExperience({
           ) : null}
           {state === "challenge" ? (
             <div className={styles.challenge}>
-              <TurnstileChallenge siteKey={turnstileSiteKey} />
+              <TurnstileChallenge action="scan" siteKey={turnstileSiteKey} />
             </div>
           ) : null}
           {!starting && state !== "challenge" ? (

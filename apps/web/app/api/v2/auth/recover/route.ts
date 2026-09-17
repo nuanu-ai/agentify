@@ -1,4 +1,4 @@
-import { after, type NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { REPORT_SESSION_COOKIE } from "../../../../../lib/server/auth";
@@ -11,6 +11,8 @@ import {
   recoverScannerReportSession,
   requestScannerReportRecovery,
 } from "../../../../../lib/server/scanner-recovery";
+import { getServerConfig } from "../../../../../lib/server/config";
+import { verifyTurnstileToken } from "../../../../../lib/server/turnstile";
 
 export const runtime = "nodejs";
 
@@ -21,6 +23,7 @@ const recoveryRequestSchema = z.discriminatedUnion("action", [
     action: z.literal("email"),
     email: z.email().max(320),
     state: stateSchema.optional(),
+    turnstile_token: z.string().min(1).max(4096).nullable(),
   }),
 ]);
 
@@ -31,12 +34,7 @@ function accepted() {
   );
 }
 
-type ScheduleAfterResponse = (task: () => Promise<void>) => void;
-
-export async function handleScannerRecoveryRequest(
-  request: NextRequest,
-  scheduleAfterResponse: ScheduleAfterResponse,
-) {
+export async function handleScannerRecoveryRequest(request: NextRequest) {
   if (!hasSameOrigin(request))
     return errorResponse(
       request,
@@ -79,22 +77,43 @@ export async function handleScannerRecoveryRequest(
   const ip =
     request.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim() ||
     "unknown";
+  const config = getServerConfig();
+  if (
+    config.TURNSTILE_ENFORCED &&
+    (!body.data.turnstile_token ||
+      !config.TURNSTILE_SECRET_KEY ||
+      !(await verifyTurnstileToken({
+        token: body.data.turnstile_token,
+        remoteIp: ip,
+        secret: config.TURNSTILE_SECRET_KEY,
+        expectedHostname: new URL(config.appBaseUrl).hostname,
+        action: "report_recovery",
+      })))
+  ) {
+    return errorResponse(
+      request,
+      403,
+      "challenge_required",
+      "Complete the privacy-preserving challenge and try again.",
+    );
+  }
   const { email, state } = body.data;
-  scheduleAfterResponse(async () => {
-    try {
-      await requestScannerReportRecovery({
-        email,
-        ip,
-        state,
-      });
-    } catch (error) {
-      // The response stays identical for absent reports, limits and mail failure.
-      logServerError(request, "scanner_recovery_request_failed", error);
-    }
-  });
-  return accepted();
+  try {
+    await requestScannerReportRecovery({ email, ip, state });
+    return accepted();
+  } catch (error) {
+    logServerError(request, "scanner_recovery_request_failed", error);
+    return errorResponse(
+      request,
+      503,
+      "recovery_unavailable",
+      "Recovery email is temporarily unavailable. Try again shortly.",
+      true,
+      60,
+    );
+  }
 }
 
 export async function POST(request: NextRequest) {
-  return await handleScannerRecoveryRequest(request, (task) => after(task));
+  return await handleScannerRecoveryRequest(request);
 }

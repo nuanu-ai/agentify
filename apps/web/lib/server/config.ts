@@ -21,7 +21,6 @@ const schema = z.object({
   ),
   TOKEN_HMAC_SECRET: optionalNonEmpty(z.string().min(32)),
   EMAIL_ENCRYPTION_KEY: optionalNonEmpty(z.string()),
-  EMAIL_PROVIDER: z.enum(["disabled", "local", "resend"]).default("local"),
   REGISTRATION_ENABLED: z
     .enum(["true", "false"])
     .default("true")
@@ -30,12 +29,11 @@ const schema = z.object({
     .enum(["true", "false"])
     .default("true")
     .transform((value) => value === "true"),
-  LOCAL_EMAIL_EVIDENCE_ENABLED: booleanEnv,
-  RESEND_API_KEY: optionalNonEmpty(z.string().min(1)),
-  RESEND_FROM: z.email().default("reports@agentify.ad"),
   TURNSTILE_ENFORCED: booleanEnv,
   TURNSTILE_SECRET_KEY: optionalNonEmpty(z.string().min(1)),
   TURNSTILE_SITE_KEY: optionalNonEmpty(z.string().min(1)),
+  CABINET_IDENTITY_URL: optionalNonEmpty(z.url({ protocol: /^https?$/ })),
+  REPORT_IDENTITY_SECRET: optionalNonEmpty(z.string().min(32)),
   SCANNER_CACHE_ENABLED: booleanEnv,
   BENCHMARK_ENABLED: booleanEnv,
   PUBLIC_SHARE_ENABLED: booleanEnv,
@@ -52,24 +50,24 @@ export type ServerConfig = ReturnType<typeof getServerConfig>;
 export function getServerConfig() {
   const parsed = schema.parse(process.env);
   const production = process.env.NODE_ENV === "production";
-  if (production && parsed.EMAIL_PROVIDER === "local") {
-    throw new Error("local_email_provider_forbidden_in_production");
-  }
-  if (parsed.EMAIL_PROVIDER === "resend" && !parsed.RESEND_API_KEY) {
-    throw new Error("resend_api_key_missing");
-  }
-  if (
-    production &&
-    parsed.REGISTRATION_ENABLED &&
-    parsed.EMAIL_PROVIDER === "disabled"
-  ) {
-    throw new Error("registration_requires_email_delivery");
-  }
   if (
     parsed.TURNSTILE_ENFORCED &&
     (!parsed.TURNSTILE_SECRET_KEY || !parsed.TURNSTILE_SITE_KEY)
   ) {
     throw new Error("turnstile_enforcement_requires_both_keys");
+  }
+  if (
+    Boolean(parsed.CABINET_IDENTITY_URL) !==
+    Boolean(parsed.REPORT_IDENTITY_SECRET)
+  ) {
+    throw new Error("cabinet_identity_url_and_secret_required_together");
+  }
+  if (
+    production &&
+    parsed.REGISTRATION_ENABLED &&
+    (!parsed.CABINET_IDENTITY_URL || !parsed.REPORT_IDENTITY_SECRET)
+  ) {
+    throw new Error("cabinet_identity_configuration_missing");
   }
   if (production && !parsed.TOKEN_HMAC_SECRET) {
     throw new Error("token_hmac_secret_missing");

@@ -1,3 +1,4 @@
+import { createServer, type Server, type ServerResponse } from "node:http";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -6,8 +7,8 @@ import {
   createDatabase,
   createUuidV7,
   deliveryOutbox,
-  leads,
   leadScans,
+  leads,
   merchantApplications,
   migrateDatabase,
   paymentSignals,
@@ -16,22 +17,26 @@ import {
   registrationIntents,
   reportSessions,
   runRetentionCleanup,
-  scannerAuthUsers,
-  scannerAuthVerifications,
+  scannerIdentityCompletions,
+  scannerIdentityDeletionOperations,
+  scannerRecoveryIntents,
   scanShares,
   scans,
   sessions,
-  verificationTokens,
   waitlistEntries,
   webhookReceipts,
 } from "@agentify/scanner-database";
 import { eq, sql } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { encryptEmail, hmacHex, sha256 } from "./crypto";
-import { getServerConfig } from "./config";
 import { getDatabase } from "./database";
-import { completeLeadDeletion, executeRetentionCleanup } from "./privacy";
+import { executeRetentionCleanup } from "./privacy";
+import {
+  requestScannerIdentityDeletion,
+  retryPendingScannerIdentityDeletions,
+  runScannerIdentityDeletionOperation,
+} from "./scanner-identity-deletion";
 import { localWebhookSignature } from "./stripe-card-signal-crypto";
 import { LocalStripeCardSignalProvider } from "./stripe-card-signal-provider";
 import {
@@ -52,147 +57,155 @@ process.env.APP_BASE_URL = "http://localhost:3000";
 process.env.TOKEN_HMAC_SECRET =
   "p5-integration-hmac-secret-with-at-least-32-bytes";
 process.env.EMAIL_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
-process.env.EMAIL_PROVIDER = "local";
-process.env.REGISTRATION_ENABLED = "false";
+process.env.REPORT_IDENTITY_SECRET = "d".repeat(32);
+process.env.CABINET_IDENTITY_URL = "http://127.0.0.1:1";
 process.env.CARD_SIGNAL_ENABLED = "true";
 process.env.STRIPE_ADAPTER = "local";
-process.env.STRIPE_WEBHOOK_SECRET = "p5-local-webhook-secret";
+process.env.STRIPE_WEBHOOK_SECRET = "p5-webhook-secret";
 process.env.ANALYTICS_RUNTIME_ENV = "test";
 process.env.ANALYTICS_SERVER_DELIVERY_ENABLED = "true";
 process.env.POSTHOG_API_KEY = "p5-posthog-test-key";
 process.env.POSTHOG_DESTINATION_ENV = "test";
 process.env.META_CAPI_ENABLED = "false";
 
-const admin = createDatabase(connectionString, { max: 1 });
 const migrationsFolder = fileURLToPath(
   new URL("../../../../packages/scanner-database/migrations", import.meta.url),
 );
-const provider = new LocalStripeCardSignalProvider(
-  process.env.STRIPE_WEBHOOK_SECRET,
-);
-const sessionToken = "p5-report-session-token";
-const supabaseUserId = "550e8400-e29b-41d4-a716-446655440000";
-const scannerAuthUserId = "scanner-p5-test-user";
-let leadId = "";
-let scanId = "";
-let originalSessionId = "";
+const admin = createDatabase(connectionString, { max: 1 });
+const provider = new LocalStripeCardSignalProvider("p5-webhook-secret");
+let cabinetServer: Server;
+let cabinetMode: "unavailable" | "retained" | "deleted" = "retained";
+let cabinetDelayMs = 0;
+let cabinetDeleteRequests = 0;
 
-beforeAll(async () => {
-  await admin.pool.query(
-    "drop schema if exists public cascade; drop schema if exists drizzle cascade; create schema public",
-  );
-  await admin.pool.query(`DO $roles$ BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agentify_web') THEN CREATE ROLE agentify_web NOLOGIN; END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agentify_privacy') THEN CREATE ROLE agentify_privacy NOLOGIN; END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agentify_worker') THEN CREATE ROLE agentify_worker NOLOGIN; END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agentify_dashboard') THEN CREATE ROLE agentify_dashboard NOLOGIN; END IF;
-  END $roles$; GRANT USAGE ON SCHEMA public TO agentify_web, agentify_privacy, agentify_worker, agentify_dashboard`);
-  await migrateDatabase(admin.db, migrationsFolder);
+function respondJson(response: ServerResponse, status: number, body: object) {
+  response.writeHead(status, { "content-type": "application/json" });
+  response.end(JSON.stringify(body));
+}
+
+async function createLeadFixture(
+  label: string,
+  input: { verified?: boolean } = {},
+) {
   const { db } = getDatabase();
-  const config = getServerConfig();
   const sessionId = createUuidV7();
-  originalSessionId = sessionId;
-  const initialConsentId = createUuidV7();
-  leadId = createUuidV7();
-  scanId = createUuidV7();
+  const consentId = createUuidV7();
+  const scanId = createUuidV7();
+  const leadId = createUuidV7();
+  const email = `${label}@example.com`;
   await db.insert(sessions).values({
     id: sessionId,
-    anonymousIdHash: "p5-anonymous-hash",
-    firstLandingVariant: "store-v1",
+    anonymousIdHash: `p5-${label}-${sessionId}`,
   });
   await db.insert(consentSnapshots).values({
-    id: initialConsentId,
+    id: consentId,
     sessionId,
-    policyVersion: "consent-v1.0.0",
+    policyVersion: "phase-a-v2",
     categories: {
       essential_processing: true,
       product_analytics: true,
-      ads_measurement: false,
-      marketing_email: false,
-      dataset_reuse: true,
-      card_signal: false,
+      card_signal: true,
     },
     source: "test",
   });
   await db
     .update(sessions)
-    .set({ consentSnapshotId: initialConsentId })
+    .set({ consentSnapshotId: consentId })
     .where(eq(sessions.id, sessionId));
-  await db.insert(scannerAuthUsers).values({
-    id: scannerAuthUserId,
-    email: "p5-scanner@example.com",
-    emailVerified: true,
-    name: "",
-  });
   await db.insert(leads).values({
     id: leadId,
-    supabaseUserId,
-    scannerAuthUserId,
-    emailNormalizedCiphertext: encryptEmail(
-      "p5-scanner@example.com",
-      config.encryptionKey,
-    ),
-    emailLookupHash: hmacHex(
-      config.hmacSecret,
-      "email",
-      "p5-scanner@example.com",
-    ),
+    emailNormalizedCiphertext: encryptEmail(email, Buffer.alloc(32, 7)),
+    emailLookupHash: hmacHex(process.env.TOKEN_HMAC_SECRET!, "email", email),
     role: "business_owner",
-    verifiedAt: new Date(),
-    firstSegment: "store",
+    verifiedAt: input.verified === false ? null : new Date(),
+    firstSegment: "owner",
     firstSessionId: sessionId,
   });
   await db.insert(scans).values({
     id: scanId,
     sessionId,
     leadId,
-    segment: "store",
+    segment: "owner",
     rubricVersion: "gtm-v1.0.0",
-    submittedUrlRedacted: "https://example.com/",
-    canonicalTargetUrl: "https://example.com/",
-    targetHost: "example.com",
-    targetHash: "p5-target-hash",
+    submittedUrlRedacted: `https://${label}.example/`,
+    canonicalTargetUrl: `https://${label}.example/`,
+    targetHost: `${label}.example`,
+    targetHash: `target-${label}-${scanId}`,
     status: "completed",
     score: 70,
     coverage: "1.000",
-    level: "callable_ready",
+    level: "ahead_of_market",
     applicableWeight: "100",
     earnedWeight: "70",
     finishedAt: new Date(),
-    accessTokenHash: "p5-access-token-hash",
+    accessTokenHash: `access-${label}-${scanId}`,
     accessTokenExpiresAt: new Date(Date.now() + 86_400_000),
-    idempotencyKeyHash: "p5-idem-key",
-    idempotencyBodyHash: "p5-idem-body",
+    idempotencyKeyHash: `idem-${label}-${scanId}`,
+    idempotencyBodyHash: `body-${label}-${scanId}`,
   });
-  await db.insert(leadScans).values({ leadId, scanId });
-  await db.insert(reportSessions).values({
-    id: createUuidV7(),
+  await db.insert(leadScans).values({
     leadId,
-    sessionTokenHash: sha256(sessionToken),
-    expiresAt: new Date(Date.now() + 86_400_000),
+    scanId,
+    siteOwnershipClaim: true,
   });
   await db.insert(waitlistEntries).values({
     id: createUuidV7(),
     leadId,
     scanId,
-    painAnswer: "This contains private free-form context.",
-    answeredAt: new Date(),
   });
-  await db.insert(scanShares).values({
-    id: createUuidV7(),
-    scanId,
-    shareSlugHash: "p5-share-hash",
-    publicSnapshot: {
-      host: "example.com",
-      score: 70,
-      level: "callable_ready",
-      rubric_version: "gtm-v1.0.0",
-      generated_at: new Date().toISOString(),
-    },
+  return { sessionId, consentId, scanId, leadId, email };
+}
+
+beforeAll(async () => {
+  await admin.pool.query(
+    "drop schema if exists public cascade; drop schema if exists drizzle cascade; create schema public",
+  );
+  await migrateDatabase(admin.db, migrationsFolder);
+  await admin.pool.query(
+    "grant usage on schema public to agentify_web, agentify_privacy, agentify_worker, agentify_dashboard",
+  );
+  cabinetServer = createServer(async (request, response) => {
+    if (
+      request.url !== "/internal/report-identity" ||
+      request.method !== "POST" ||
+      request.headers.authorization !==
+        `Bearer ${process.env.REPORT_IDENTITY_SECRET}`
+    ) {
+      respondJson(response, 404, { error: "not_found" });
+      return;
+    }
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+      operation?: string;
+    };
+    if (body.operation !== "delete") {
+      respondJson(response, 200, { status: "refused" });
+      return;
+    }
+    cabinetDeleteRequests += 1;
+    if (cabinetDelayMs) {
+      await new Promise((resolve) => setTimeout(resolve, cabinetDelayMs));
+    }
+    if (cabinetMode === "unavailable") {
+      respondJson(response, 503, { status: "unavailable" });
+    } else {
+      respondJson(response, 200, { status: cabinetMode });
+    }
   });
+  await new Promise<void>((resolve) =>
+    cabinetServer.listen(0, "127.0.0.1", resolve),
+  );
+  const address = cabinetServer.address();
+  if (!address || typeof address === "string")
+    throw new Error("server_address");
+  process.env.CABINET_IDENTITY_URL = `http://127.0.0.1:${address.port}`;
 }, 30_000);
 
 afterAll(async () => {
+  await new Promise<void>((resolve, reject) =>
+    cabinetServer.close((error) => (error ? reject(error) : resolve())),
+  );
   await getDatabase().pool.end();
   await admin.pool.query(
     "drop schema if exists public cascade; drop schema if exists drizzle cascade; create schema public",
@@ -200,11 +213,21 @@ afterAll(async () => {
   await admin.pool.end();
 });
 
-describe("P5 card signal flow", () => {
-  it("attaches once, hydrates current state, then provider-cleans and anonymizes deletion", async () => {
+describe("P5 privacy and terminal scanner identity deletion", () => {
+  it("attaches once, hydrates current state, rejects replay drift, and detaches", async () => {
+    const fixture = await createLeadFixture("card-lifecycle");
+    const sessionToken = "p5-card-lifecycle-report-session";
+    await getDatabase()
+      .db.insert(reportSessions)
+      .values({
+        id: createUuidV7(),
+        leadId: fixture.leadId,
+        sessionTokenHash: sha256(sessionToken),
+        expiresAt: new Date(Date.now() + 86_400_000),
+      });
     const setup = await setupCardSignal({
       sessionToken,
-      scanId,
+      scanId: fixture.scanId,
       idempotencyKey: "p5-browser-idempotency-key",
       provider,
     });
@@ -215,7 +238,7 @@ describe("P5 card signal flow", () => {
     });
     if (!("signalId" in setup)) throw new Error("setup_failed");
     await expect(
-      getOwnedCardSignalForReport(scanId, sessionToken),
+      getOwnedCardSignalForReport(fixture.scanId, sessionToken),
     ).resolves.toMatchObject({
       signalId: setup.signalId,
       status: "setup_pending",
@@ -236,7 +259,6 @@ describe("P5 card signal flow", () => {
       "duplicate",
       "processed",
     ]);
-
     const stored = (
       await getDatabase()
         .db.select()
@@ -247,7 +269,7 @@ describe("P5 card signal flow", () => {
     expect(stored.paymentMethodIdCiphertext).toMatch(/^v1\./);
     expect(stored.paymentMethodIdCiphertext).not.toContain("pm_local");
     await expect(
-      getOwnedCardSignalForReport(scanId, sessionToken),
+      getOwnedCardSignalForReport(fixture.scanId, sessionToken),
     ).resolves.toMatchObject({
       signalId: signal.id,
       status: "attached",
@@ -290,238 +312,288 @@ describe("P5 card signal flow", () => {
         provider,
       }),
     ).rejects.toThrow("stripe_event_replay_mismatch");
-
     await expect(
       detachCardSignal({ signalId: signal.id, sessionToken, provider }),
     ).resolves.toEqual({ status: "detached" });
     await expect(
-      getOwnedCardSignalForReport(scanId, sessionToken),
+      getOwnedCardSignalForReport(fixture.scanId, sessionToken),
     ).resolves.toMatchObject({
       signalId: signal.id,
       status: "detached",
       clientSecret: null,
     });
+  });
 
-    const setupReadback = await provider.retrieveSetup(signal.setupIntentId);
+  it("revokes locally during cabinet outage, then completes retained-person deletion", async () => {
+    const fixture = await createLeadFixture("deletion-outage");
     await getDatabase()
-      .db.insert(scannerAuthVerifications)
-      .values([
-        {
-          id: "pending-p5-linked-link",
-          identifier: "pending-linked-hash",
-          value: JSON.stringify({ email: "p5-scanner@example.com" }),
-          expiresAt: new Date(Date.now() + 3_600_000),
+      .db.insert(scanShares)
+      .values({
+        id: createUuidV7(),
+        scanId: fixture.scanId,
+        shareSlugHash: `p5-share-${fixture.scanId}`,
+        publicSnapshot: {
+          host: "deletion-outage.example",
+          score: 70,
+          level: "ahead_of_market",
+          rubric_version: "gtm-v1.0.0",
+          generated_at: new Date().toISOString(),
         },
-        {
-          id: "pending-p5-unrelated-link",
-          identifier: "pending-unrelated-hash",
-          value: JSON.stringify({ email: "unrelated@example.com" }),
-          expiresAt: new Date(Date.now() + 3_600_000),
-        },
-      ]);
-    await expect(
-      completeLeadDeletion({ leadId, provider }),
-    ).resolves.toMatchObject({
-      provider: { detachedCount: 1, customersDeleted: 1 },
-      identity: { status: "deleted" },
-      database: { status: "anonymized", scanCount: 1 },
+      });
+    const customerId = await provider.createCustomer({
+      leadId: fixture.leadId,
+      idempotencyKey: "deletion-outage-customer",
     });
-    expect(
-      (await getDatabase().db.select().from(scannerAuthUsers)).length,
-    ).toBe(0);
-    expect(
-      (await getDatabase().db.select().from(scannerAuthVerifications)).map(
-        (row) => row.id,
-      ),
-    ).toEqual(["pending-p5-unrelated-link"]);
-    expect(
-      await provider.retrievePaymentMethod(setupReadback.paymentMethodId!),
-    ).toMatchObject({ customerId: null });
-    expect(await provider.retrieveCustomer(setupReadback.customerId)).toEqual({
-      id: setupReadback.customerId,
-      deleted: true,
+    const setup = await provider.createSetup({
+      customerId,
+      leadId: fixture.leadId,
+      scanId: fixture.scanId,
+      idempotencyKey: "deletion-outage-setup",
     });
+    await getDatabase().db.insert(paymentSignals).values({
+      id: createUuidV7(),
+      leadId: fixture.leadId,
+      stripeCustomerId: customerId,
+      setupIntentId: setup.id,
+      status: "setup_pending",
+      consentSnapshotId: fixture.consentId,
+    });
+    await getDatabase()
+      .db.insert(reportSessions)
+      .values({
+        id: createUuidV7(),
+        leadId: fixture.leadId,
+        sessionTokenHash: `session-${fixture.leadId}`,
+        expiresAt: new Date(Date.now() + 86_400_000),
+      });
+    await getDatabase()
+      .db.insert(scannerRecoveryIntents)
+      .values({
+        id: createUuidV7(),
+        tokenHash: "R".repeat(43),
+        stateHash: "a".repeat(64),
+        emailLookupHash: hmacHex(
+          process.env.TOKEN_HMAC_SECRET!,
+          "email",
+          fixture.email,
+        ),
+        leadId: fixture.leadId,
+        scanId: fixture.scanId,
+        expiresAt: new Date(Date.now() + 60_000),
+        activatedAt: new Date(),
+      });
+    await getDatabase()
+      .db.insert(scannerIdentityCompletions)
+      .values({
+        receiptId: createUuidV7(),
+        tokenHash: "S".repeat(43),
+        intentKind: "recovery",
+        stateHash: "b".repeat(64),
+        leadId: fixture.leadId,
+        scanId: fixture.scanId,
+        completedAt: new Date(),
+        retainUntil: new Date(Date.now() + 7 * 86_400_000),
+      });
 
-    const { db } = getDatabase();
-    const anonymizedLead = (
-      await db.select().from(leads).where(eq(leads.id, leadId))
+    cabinetMode = "unavailable";
+    await expect(
+      requestScannerIdentityDeletion({ leadId: fixture.leadId, provider }),
+    ).resolves.toBe("requested");
+    const blockedLead = (
+      await getDatabase()
+        .db.select()
+        .from(leads)
+        .where(eq(leads.id, fixture.leadId))
     )[0]!;
-    expect(anonymizedLead).toMatchObject({
-      emailNormalizedCiphertext: "deleted",
-      emailLookupHash: `deleted:${leadId}`,
-      role: "deleted",
-      name: null,
-      volumeBucket: null,
-    });
-    expect(anonymizedLead.anonymizedAt).toBeInstanceOf(Date);
-    expect(anonymizedLead.firstSessionId).not.toBe(originalSessionId);
-    expect((await db.select().from(paymentSignals)).length).toBe(0);
-    expect((await db.select().from(leadScans)).length).toBe(0);
-    expect((await db.select().from(waitlistEntries)).length).toBe(0);
-    expect((await db.select().from(deliveryOutbox)).length).toBe(0);
-    const anonymizedScan = (
-      await db.select().from(scans).where(eq(scans.id, scanId))
+    expect(blockedLead.deletionRequestedAt).toBeInstanceOf(Date);
+    expect(blockedLead.anonymizedAt).toBeNull();
+    expect(
+      (
+        await getDatabase()
+          .db.select()
+          .from(reportSessions)
+          .where(eq(reportSessions.leadId, fixture.leadId))
+      )[0]?.revokedAt,
+    ).toBeInstanceOf(Date);
+    expect(
+      await getDatabase()
+        .db.select()
+        .from(scannerRecoveryIntents)
+        .where(eq(scannerRecoveryIntents.leadId, fixture.leadId)),
+    ).toEqual([]);
+    expect((await provider.retrieveCustomer(customerId)).deleted).toBe(false);
+
+    const operation = (
+      await getDatabase()
+        .db.select()
+        .from(scannerIdentityDeletionOperations)
+        .where(eq(scannerIdentityDeletionOperations.leadId, fixture.leadId))
     )[0]!;
-    expect(anonymizedScan).toMatchObject({
+    await getDatabase()
+      .db.update(scannerIdentityDeletionOperations)
+      .set({ leaseExpiresAt: new Date(Date.now() - 1) })
+      .where(
+        eq(
+          scannerIdentityDeletionOperations.operationId,
+          operation.operationId,
+        ),
+      );
+    cabinetMode = "retained";
+    await expect(
+      runScannerIdentityDeletionOperation({
+        operationId: operation.operationId,
+        provider,
+      }),
+    ).resolves.toBe("completed");
+
+    const deletedLead = (
+      await getDatabase()
+        .db.select()
+        .from(leads)
+        .where(eq(leads.id, fixture.leadId))
+    )[0]!;
+    expect(deletedLead.emailNormalizedCiphertext).toBe("deleted");
+    expect(deletedLead.anonymizedAt).toBeInstanceOf(Date);
+    expect((await provider.retrieveCustomer(customerId)).deleted).toBe(true);
+    expect((await provider.retrieveSetup(setup.id)).status).toBe("canceled");
+    expect(
+      await getDatabase()
+        .db.select()
+        .from(paymentSignals)
+        .where(eq(paymentSignals.leadId, fixture.leadId)),
+    ).toEqual([]);
+    expect(
+      await getDatabase()
+        .db.select()
+        .from(leadScans)
+        .where(eq(leadScans.leadId, fixture.leadId)),
+    ).toEqual([]);
+    expect(
+      await getDatabase()
+        .db.select()
+        .from(waitlistEntries)
+        .where(eq(waitlistEntries.leadId, fixture.leadId)),
+    ).toEqual([]);
+    expect(
+      (
+        await getDatabase()
+          .db.select()
+          .from(scans)
+          .where(eq(scans.id, fixture.scanId))
+      )[0],
+    ).toMatchObject({
       leadId: null,
-      sessionId: anonymizedLead.firstSessionId,
       targetHost: "deleted.invalid",
       canonicalTargetUrl: "redacted://deleted",
     });
-    const revokedShare = (await db.select().from(scanShares))[0]!;
-    expect(revokedShare).toMatchObject({
+    expect(
+      (
+        await getDatabase()
+          .db.select()
+          .from(scanShares)
+          .where(eq(scanShares.scanId, fixture.scanId))
+      )[0],
+    ).toMatchObject({
       status: "revoked",
       allowIndexing: false,
       publicSnapshot: { anonymized: true },
     });
     expect(
-      (await db.select().from(reportSessions))[0]?.revokedAt,
-    ).toBeInstanceOf(Date);
-    expect((await db.select().from(analyticsEvents))[0]?.leadId).toBeNull();
-    await expect(
-      getOwnedCardSignalForReport(scanId, sessionToken),
-    ).resolves.toBeUndefined();
-    await expect(
-      completeLeadDeletion({ leadId, provider }),
-    ).resolves.toMatchObject({
-      provider: { detachedCount: 0, customersDeleted: 0 },
-      identity: { status: "not_linked" },
-      database: { status: "already_anonymized" },
-    });
-    expect(
-      (await getDatabase().db.select().from(scannerAuthUsers)).length,
-    ).toBe(0);
-  });
-
-  it("removes an unlinked old scanner identity and pending link when deleting its lead", async () => {
-    const { db } = getDatabase();
-    const config = getServerConfig();
-    const email = "old-orphan-scanner@example.com";
-    const id = createUuidV7();
-    const sessionId = createUuidV7();
-    const userId = createUuidV7();
-    await db.insert(sessions).values({
-      id: sessionId,
-      anonymousIdHash: `orphan-session-${sessionId}`,
-    });
-    await db.insert(scannerAuthUsers).values({
-      id: userId,
-      email,
-      emailVerified: true,
-      name: "",
-    });
-    await db.insert(leads).values({
-      id,
-      scannerAuthUserId: null,
-      emailNormalizedCiphertext: encryptEmail(email, config.encryptionKey),
-      emailLookupHash: hmacHex(config.hmacSecret, "email", email),
-      role: "developer",
-      firstSegment: "owner",
-      firstSessionId: sessionId,
-      verifiedAt: new Date(),
-    });
-    await db.insert(reportSessions).values({
-      id: createUuidV7(),
-      leadId: id,
-      sessionTokenHash: sha256("old-orphan-report-cookie"),
-      expiresAt: new Date(Date.now() + 86_400_000),
-    });
-    await db.insert(scannerAuthVerifications).values({
-      id: `pending-old-orphan-${id}`,
-      identifier: `pending-old-orphan-${id}`,
-      value: JSON.stringify({ email }),
-      expiresAt: new Date(Date.now() + 3_600_000),
-    });
-    await expect(completeLeadDeletion({ leadId: id })).resolves.toMatchObject({
-      identity: { status: "deleted" },
-      database: { status: "anonymized" },
-    });
-    expect(
-      await db
-        .select()
-        .from(scannerAuthUsers)
-        .where(eq(scannerAuthUsers.id, userId)),
-    ).toHaveLength(0);
-    expect(
-      await db
-        .select()
-        .from(scannerAuthVerifications)
-        .where(eq(scannerAuthVerifications.id, `pending-old-orphan-${id}`)),
-    ).toHaveLength(0);
+      await getDatabase()
+        .db.select()
+        .from(scannerIdentityCompletions)
+        .where(eq(scannerIdentityCompletions.leadId, fixture.leadId)),
+    ).toEqual([]);
     expect(
       (
-        await db
-          .select()
-          .from(reportSessions)
-          .where(eq(reportSessions.leadId, id))
-      )[0]?.revokedAt,
-    ).toBeInstanceOf(Date);
+        await getDatabase()
+          .db.select()
+          .from(scannerIdentityDeletionOperations)
+          .where(
+            eq(
+              scannerIdentityDeletionOperations.operationId,
+              operation.operationId,
+            ),
+          )
+      )[0],
+    ).toMatchObject({
+      cabinetResult: "retained",
+      completedAt: expect.any(Date),
+    });
   });
 
-  it("refuses to delete a linked identity whose email differs from the lead", async () => {
-    const { db } = getDatabase();
-    const config = getServerConfig();
-    const id = createUuidV7();
-    const sessionId = createUuidV7();
-    const userId = createUuidV7();
-    await db.insert(sessions).values({
-      id: sessionId,
-      anonymousIdHash: `mismatch-session-${sessionId}`,
-    });
-    await db.insert(scannerAuthUsers).values({
-      id: userId,
-      email: "unrelated-identity@example.com",
-      emailVerified: true,
-      name: "",
-    });
-    await db.insert(leads).values({
-      id,
-      scannerAuthUserId: userId,
-      emailNormalizedCiphertext: encryptEmail(
-        "correct-lead@example.com",
-        config.encryptionKey,
-      ),
-      emailLookupHash: hmacHex(
-        config.hmacSecret,
-        "email",
-        "correct-lead@example.com",
-      ),
-      role: "developer",
-      firstSegment: "owner",
-      firstSessionId: sessionId,
-    });
-    await expect(completeLeadDeletion({ leadId: id })).rejects.toThrow(
-      "lead_email_identity_mismatch",
-    );
-    expect(
-      await db
-        .select()
-        .from(scannerAuthUsers)
-        .where(eq(scannerAuthUsers.id, userId)),
-    ).toHaveLength(1);
-    expect(
-      (await db.select().from(leads).where(eq(leads.id, id)))[0]?.anonymizedAt,
-    ).toBeNull();
+  it("uses the database lease so concurrent resident retries delete once", async () => {
+    const fixture = await createLeadFixture("deletion-lease");
+    cabinetMode = "unavailable";
+    await requestScannerIdentityDeletion({ leadId: fixture.leadId });
+    const operation = (
+      await getDatabase()
+        .db.select()
+        .from(scannerIdentityDeletionOperations)
+        .where(eq(scannerIdentityDeletionOperations.leadId, fixture.leadId))
+    )[0]!;
+    await getDatabase()
+      .db.update(scannerIdentityDeletionOperations)
+      .set({ leaseExpiresAt: new Date(Date.now() - 1) })
+      .where(
+        eq(
+          scannerIdentityDeletionOperations.operationId,
+          operation.operationId,
+        ),
+      );
+
+    cabinetMode = "deleted";
+    cabinetDelayMs = 75;
+    const before = cabinetDeleteRequests;
+    const results = await Promise.all([
+      runScannerIdentityDeletionOperation({
+        operationId: operation.operationId,
+      }),
+      runScannerIdentityDeletionOperation({
+        operationId: operation.operationId,
+      }),
+    ]);
+    cabinetDelayMs = 0;
+    expect(results.sort()).toEqual(["completed", "not_found"]);
+    expect(cabinetDeleteRequests - before).toBe(1);
+    await expect(retryPendingScannerIdentityDeletions()).resolves.toBe(0);
   });
 
-  it("rechecks retention eligibility after a lead verifies while cleanup waits", async () => {
-    const { db } = getDatabase();
-    const id = createUuidV7();
-    const sessionId = createUuidV7();
+  it("refuses cabinet deletion when encrypted email and lookup hash disagree", async () => {
+    const fixture = await createLeadFixture("deletion-mismatch");
+    await getDatabase()
+      .db.update(leads)
+      .set({
+        emailNormalizedCiphertext: encryptEmail(
+          "different-owner@example.com",
+          Buffer.alloc(32, 7),
+        ),
+      })
+      .where(eq(leads.id, fixture.leadId));
+    const beforeRequests = cabinetDeleteRequests;
+    await expect(
+      requestScannerIdentityDeletion({ leadId: fixture.leadId }),
+    ).resolves.toBe("requested");
+    expect(cabinetDeleteRequests).toBe(beforeRequests);
+    const lead = (
+      await getDatabase()
+        .db.select()
+        .from(leads)
+        .where(eq(leads.id, fixture.leadId))
+    )[0]!;
+    expect(lead.deletionRequestedAt).toBeInstanceOf(Date);
+    expect(lead.anonymizedAt).toBeNull();
+  });
+
+  it("rechecks unverified retention eligibility after a concurrent verification", async () => {
+    const fixture = await createLeadFixture("retention-race", {
+      verified: false,
+    });
     const now = new Date();
-    await db.insert(sessions).values({
-      id: sessionId,
-      anonymousIdHash: `retention-race-${sessionId}`,
-    });
-    await db.insert(leads).values({
-      id,
-      emailNormalizedCiphertext: "synthetic-retention-race",
-      emailLookupHash: `retention-race-${id}`,
-      role: "developer",
-      firstSegment: "owner",
-      firstSessionId: sessionId,
-      createdAt: new Date(now.getTime() - 31 * 86_400_000),
-    });
+    await getDatabase()
+      .db.update(leads)
+      .set({ createdAt: new Date(now.getTime() - 31 * 86_400_000) })
+      .where(eq(leads.id, fixture.leadId));
     let markWaiting!: () => void;
     let releaseWaiting!: () => void;
     const waiting = new Promise<void>((resolve) => {
@@ -530,7 +602,7 @@ describe("P5 card signal flow", () => {
     const continueCleanup = new Promise<void>((resolve) => {
       releaseWaiting = resolve;
     });
-    const cleanup = runRetentionCleanup(db, {
+    const cleanup = runRetentionCleanup(getDatabase().db, {
       now,
       beforeLeadAnonymize: async () => {
         markWaiting();
@@ -539,274 +611,201 @@ describe("P5 card signal flow", () => {
       beforeLeadAnonymizeInTransaction: async () => {},
     });
     await waiting;
-    await db
-      .update(leads)
+    await getDatabase()
+      .db.update(leads)
       .set({ verifiedAt: new Date() })
-      .where(eq(leads.id, id));
+      .where(eq(leads.id, fixture.leadId));
     releaseWaiting();
     expect((await cleanup).leadsAnonymized).toBe(0);
-    const retained = (
-      await db.select().from(leads).where(eq(leads.id, id))
-    )[0]!;
-    expect(retained.verifiedAt).toBeInstanceOf(Date);
-    expect(retained.anonymizedAt).toBeNull();
+    expect(
+      (
+        await getDatabase()
+          .db.select()
+          .from(leads)
+          .where(eq(leads.id, fixture.leadId))
+      )[0]?.anonymizedAt,
+    ).toBeNull();
   });
 
-  it("executes 7-day token and 30-day unverified-lead retention idempotently", async () => {
-    const { db } = getDatabase();
-    const now = new Date("2026-07-12T12:00:00.000Z");
-    const verifiedSessionId = createUuidV7();
-    const verifiedLeadId = createUuidV7();
-    const retentionScanId = createUuidV7();
-    const unverifiedSessionId = createUuidV7();
-    const unverifiedLeadId = createUuidV7();
-    await db.insert(sessions).values([
-      {
-        id: verifiedSessionId,
-        anonymousIdHash: "retention-verified-session",
-      },
-      {
-        id: unverifiedSessionId,
-        anonymousIdHash: "retention-unverified-session",
-      },
-    ]);
-    await db.insert(leads).values([
-      {
-        id: verifiedLeadId,
-        emailNormalizedCiphertext: "verified-encrypted",
-        emailLookupHash: "retention-verified-email",
+  it("expires recovery and completion evidence at seven days idempotently", async () => {
+    const fixture = await createLeadFixture("retention-evidence");
+    const now = new Date("2026-09-17T12:00:00.000Z");
+    await getDatabase()
+      .db.insert(scannerRecoveryIntents)
+      .values([
+        {
+          id: createUuidV7(),
+          stateHash: "c".repeat(64),
+          emailLookupHash: hmacHex(
+            process.env.TOKEN_HMAC_SECRET!,
+            "email",
+            fixture.email,
+          ),
+          leadId: fixture.leadId,
+          scanId: fixture.scanId,
+          expiresAt: new Date(now.getTime() - 8 * 86_400_000),
+        },
+        {
+          id: createUuidV7(),
+          stateHash: "d".repeat(64),
+          emailLookupHash: hmacHex(
+            process.env.TOKEN_HMAC_SECRET!,
+            "email",
+            fixture.email,
+          ),
+          leadId: fixture.leadId,
+          scanId: fixture.scanId,
+          expiresAt: new Date(now.getTime() + 86_400_000),
+        },
+      ]);
+    await getDatabase()
+      .db.insert(scannerIdentityCompletions)
+      .values([
+        {
+          receiptId: createUuidV7(),
+          tokenHash: "T".repeat(43),
+          intentKind: "registration",
+          stateHash: "e".repeat(64),
+          leadId: fixture.leadId,
+          scanId: fixture.scanId,
+          completedAt: new Date(now.getTime() - 8 * 86_400_000),
+          retainUntil: new Date(now.getTime() - 1),
+        },
+        {
+          receiptId: createUuidV7(),
+          tokenHash: "U".repeat(43),
+          intentKind: "recovery",
+          stateHash: "f".repeat(64),
+          leadId: fixture.leadId,
+          scanId: fixture.scanId,
+          completedAt: now,
+          retainUntil: new Date(now.getTime() + 7 * 86_400_000),
+        },
+      ]);
+    await getDatabase()
+      .db.insert(registrationIntents)
+      .values({
+        id: createUuidV7(),
+        scanId: fixture.scanId,
+        sessionId: fixture.sessionId,
+        callbackStateHash: "1".repeat(64),
+        emailNormalizedCiphertext: "expired-registration-email",
+        emailLookupHash: "expired-registration-email-hash",
+        phoneE164Ciphertext: "expired-registration-phone",
+        phoneLookupHash: "expired-registration-phone-hash",
         role: "owner",
-        verifiedAt: now,
-        firstSegment: "owner",
-        firstSessionId: verifiedSessionId,
-      },
-      {
-        id: unverifiedLeadId,
-        emailNormalizedCiphertext: encryptEmail(
-          "retention-unverified@example.com",
-          getServerConfig().encryptionKey,
-        ),
-        emailLookupHash: hmacHex(
-          getServerConfig().hmacSecret,
-          "email",
-          "retention-unverified@example.com",
-        ),
-        role: "owner",
-        createdAt: new Date(now.getTime() - 31 * 86_400_000),
-        firstSegment: "owner",
-        firstSessionId: unverifiedSessionId,
-      },
-    ]);
-    await db.insert(scans).values({
-      id: retentionScanId,
-      sessionId: verifiedSessionId,
-      leadId: verifiedLeadId,
-      segment: "owner",
-      rubricVersion: "gtm-v1.0.0",
-      submittedUrlRedacted: "https://retention.example/",
-      canonicalTargetUrl: "https://retention.example/",
-      targetHost: "retention.example",
-      targetHash: "retention-target",
-      accessTokenHash: "retention-access",
-      accessTokenExpiresAt: new Date(now.getTime() + 86_400_000),
-      idempotencyKeyHash: "retention-idem",
-      idempotencyBodyHash: "retention-body",
-    });
-    const oldTokenId = createUuidV7();
-    const freshTokenId = createUuidV7();
-    await db.insert(verificationTokens).values([
-      {
-        id: oldTokenId,
-        leadId: verifiedLeadId,
-        scanId: retentionScanId,
-        tokenHash: "retention-old-token",
+        datasetReuseAcknowledged: true,
         expiresAt: new Date(now.getTime() - 9 * 86_400_000),
-        usedAt: new Date(now.getTime() - 8 * 86_400_000),
-      },
-      {
-        id: freshTokenId,
-        leadId: verifiedLeadId,
-        scanId: retentionScanId,
-        tokenHash: "retention-fresh-token",
-        expiresAt: new Date(now.getTime() + 86_400_000),
-      },
-    ]);
-    await db.insert(registrationIntents).values({
-      id: createUuidV7(),
-      scanId: retentionScanId,
-      sessionId: verifiedSessionId,
-      callbackStateHash: "retention-expired-intent-state",
-      emailNormalizedCiphertext: "expired-intent-email-ciphertext",
-      emailLookupHash: "expired-intent-email-hash",
-      phoneE164Ciphertext: "expired-intent-phone-ciphertext",
-      phoneLookupHash: "expired-intent-phone-hash",
-      role: "owner",
-      datasetReuseAcknowledged: true,
-      expiresAt: new Date(now.getTime() - 9 * 86_400_000),
-      consumedAt: new Date(now.getTime() - 8 * 86_400_000),
-    });
-    await db.insert(rateLimitEvents).values({
-      id: createUuidV7(),
-      keyHash: "expired-rolling-rate",
-      kind: "scan_ip_hour",
-      occurredAt: new Date(now.getTime() - 7_200_000),
-      expiresAt: new Date(now.getTime() - 3_600_000),
-    });
-    await db.insert(rateWindows).values({
-      keyHash: "expired-fixed-rate",
-      kind: "scan_target_day",
-      windowStart: new Date(now.getTime() - 2 * 86_400_000),
-      expiresAt: new Date(now.getTime() - 86_400_000),
-    });
-
-    await db.insert(scannerAuthVerifications).values({
-      id: "expired-p5-scanner-link",
-      identifier: "expired-link-hash",
-      value: JSON.stringify({ email: "pending@example.com" }),
-      expiresAt: new Date(now.getTime() - 8 * 86_400_000),
-    });
-    await db.insert(scannerAuthVerifications).values({
-      id: "pending-p5-legacy-link",
-      identifier: "pending-legacy-hash",
-      value: JSON.stringify({ email: "retention-unverified@example.com" }),
-      expiresAt: new Date(now.getTime() + 3_600_000),
-    });
+        consumedAt: new Date(now.getTime() - 8 * 86_400_000),
+      });
+    await getDatabase()
+      .db.insert(rateLimitEvents)
+      .values({
+        id: createUuidV7(),
+        keyHash: "expired-rolling-rate",
+        kind: "scan_ip_hour",
+        occurredAt: new Date(now.getTime() - 7_200_000),
+        expiresAt: new Date(now.getTime() - 3_600_000),
+      });
+    await getDatabase()
+      .db.insert(rateWindows)
+      .values({
+        keyHash: "expired-fixed-rate",
+        kind: "scan_target_day",
+        windowStart: new Date(now.getTime() - 2 * 86_400_000),
+        expiresAt: new Date(now.getTime() - 86_400_000),
+      });
     const expiredApplicationId = createUuidV7();
     const currentApplicationId = createUuidV7();
-    await db.insert(merchantApplications).values([
-      {
-        id: expiredApplicationId,
-        idempotencyKeyHash: "historical-expired-idempotency",
-        requestHash: "historical-expired-request",
-        payloadCiphertext: "historical-expired-ciphertext",
-        policyVersion: "merchant-application-2026-09-09",
-        createdAt: new Date(now.getTime() - 31 * 86_400_000),
-        expiresAt: new Date(now.getTime() - 1),
-      },
-      {
-        id: currentApplicationId,
-        idempotencyKeyHash: "historical-current-idempotency",
-        requestHash: "historical-current-request",
-        payloadCiphertext: "historical-current-ciphertext",
-        policyVersion: "merchant-application-2026-09-09",
-        createdAt: now,
-        expiresAt: new Date(now.getTime() + 86_400_000),
-      },
-    ]);
+    await getDatabase()
+      .db.insert(merchantApplications)
+      .values([
+        {
+          id: expiredApplicationId,
+          idempotencyKeyHash: "expired-application",
+          requestHash: "expired-request",
+          payloadCiphertext: "expired-ciphertext",
+          policyVersion: "merchant-application-2026-09-09",
+          expiresAt: new Date(now.getTime() - 1),
+        },
+        {
+          id: currentApplicationId,
+          idempotencyKeyHash: "current-application",
+          requestHash: "current-request",
+          payloadCiphertext: "current-ciphertext",
+          policyVersion: "merchant-application-2026-09-09",
+          expiresAt: new Date(now.getTime() + 86_400_000),
+        },
+      ]);
 
-    await expect(
-      executeRetentionCleanup({
-        now,
-        batchSize: 10,
-        provider,
-      }),
-    ).resolves.toEqual({
-      merchantApplicationsDeleted: 1,
-      verificationTokensDeleted: 1,
-      registrationIntentsDeleted: 1,
-      rateLimitRowsDeleted: 2,
-      leadsAnonymized: 1,
-      candidatesProcessed: 1,
-      expiredScannerAuthLinks: 1,
-    });
-    expect(
-      (
-        await db
-          .select({ id: verificationTokens.id })
-          .from(verificationTokens)
-          .where(eq(verificationTokens.id, freshTokenId))
-      )[0]?.id,
-    ).toBe(freshTokenId);
-    expect(
-      (
-        await db
-          .select({ anonymizedAt: leads.anonymizedAt })
-          .from(leads)
-          .where(eq(leads.id, unverifiedLeadId))
-      )[0]?.anonymizedAt,
-    ).toBeInstanceOf(Date);
-    expect(
-      await db
-        .select()
-        .from(scannerAuthVerifications)
-        .where(eq(scannerAuthVerifications.id, "pending-p5-legacy-link")),
-    ).toHaveLength(0);
-    expect(
-      await db
-        .select({ id: merchantApplications.id })
-        .from(merchantApplications)
-        .where(eq(merchantApplications.id, expiredApplicationId)),
-    ).toHaveLength(0);
-    expect(
-      await db
-        .select({ id: merchantApplications.id })
-        .from(merchantApplications)
-        .where(eq(merchantApplications.id, currentApplicationId)),
-    ).toEqual([{ id: currentApplicationId }]);
-    await expect(
-      executeRetentionCleanup({
-        now,
-        batchSize: 10,
-        provider,
-      }),
-    ).resolves.toEqual({
-      merchantApplicationsDeleted: 0,
-      verificationTokensDeleted: 0,
-      registrationIntentsDeleted: 0,
-      rateLimitRowsDeleted: 0,
-      leadsAnonymized: 0,
-      candidatesProcessed: 0,
-      expiredScannerAuthLinks: 0,
-    });
-
-    vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("EMAIL_PROVIDER", "disabled");
-    vi.stubEnv("REGISTRATION_ENABLED", "false");
     await expect(
       executeRetentionCleanup({ now, batchSize: 10, provider }),
-    ).resolves.toMatchObject({ expiredScannerAuthLinks: 0 });
-    vi.unstubAllEnvs();
+    ).resolves.toMatchObject({
+      merchantApplicationsDeleted: 1,
+      registrationIntentsDeleted: 1,
+      rateLimitRowsDeleted: 2,
+      expiredScannerRecoveryIntents: 1,
+      expiredScannerIdentityCompletions: 1,
+    });
+    expect(
+      await getDatabase().db.select().from(scannerRecoveryIntents),
+    ).toHaveLength(1);
+    expect(
+      await getDatabase().db.select().from(scannerIdentityCompletions),
+    ).toHaveLength(1);
+    expect(
+      await getDatabase()
+        .db.select()
+        .from(merchantApplications)
+        .where(eq(merchantApplications.id, currentApplicationId)),
+    ).toEqual([
+      {
+        id: currentApplicationId,
+        idempotencyKeyHash: "current-application",
+        requestHash: "current-request",
+        payloadCiphertext: "current-ciphertext",
+        policyVersion: "merchant-application-2026-09-09",
+        createdAt: expect.any(Date),
+        expiresAt: expect.any(Date),
+      },
+    ]);
+    await expect(
+      executeRetentionCleanup({ now, batchSize: 10, provider }),
+    ).resolves.toMatchObject({
+      merchantApplicationsDeleted: 0,
+      registrationIntentsDeleted: 0,
+      rateLimitRowsDeleted: 0,
+      expiredScannerRecoveryIntents: 0,
+      expiredScannerIdentityCompletions: 0,
+    });
   });
 
-  it("keeps historical applications behind their retained role and RLS boundary", async () => {
+  it("keeps merchant applications behind their existing RLS boundary", async () => {
     for (const role of ["agentify_web", "agentify_privacy"]) {
       await expect(
         admin.db.transaction(async (tx) => {
           await tx.execute(sql.raw(`set local role ${role}`));
-          return tx
-            .select({ id: merchantApplications.id })
-            .from(merchantApplications)
-            .limit(1);
+          return tx.execute(
+            sql`select id from public.merchant_applications limit 1`,
+          );
         }),
-      ).resolves.toHaveLength(1);
+      ).resolves.toMatchObject({ rows: [expect.any(Object)] });
     }
     for (const role of ["agentify_worker", "agentify_dashboard"]) {
-      await expect(
-        admin.db.transaction(async (tx) => {
+      try {
+        await admin.db.transaction(async (tx) => {
           await tx.execute(sql.raw(`set local role ${role}`));
-          return tx
-            .select({ id: merchantApplications.id })
-            .from(merchantApplications)
-            .limit(1);
-        }),
-      ).rejects.toThrow();
+          return tx.execute(
+            sql`select id from public.merchant_applications limit 1`,
+          );
+        });
+        throw new Error("expected_merchant_application_permission_denied");
+      } catch (error) {
+        const cause = (error as { cause?: unknown }).cause;
+        expect(cause instanceof Error ? cause.message : String(error)).toMatch(
+          /permission denied/,
+        );
+      }
     }
-
-    const permissions = await admin.pool.query(
-      "select has_table_privilege('agentify_web','merchant_applications','INSERT') as insert, has_table_privilege('agentify_web','merchant_applications','UPDATE') as update, has_table_privilege('agentify_privacy','merchant_applications','DELETE') as delete",
-    );
-    expect(permissions.rows[0]).toEqual({
-      insert: true,
-      update: false,
-      delete: true,
-    });
-    const security = await admin.pool.query(
-      "select relrowsecurity from pg_class where oid = 'public.merchant_applications'::regclass",
-    );
-    expect(security.rows[0]).toEqual({ relrowsecurity: true });
-    const policy = await admin.pool.query(
-      "select polcmd from pg_policy where polrelid = 'public.merchant_applications'::regclass and polname = 'agentify_web_service'",
-    );
-    expect(policy.rows).toEqual([{ polcmd: "r" }]);
   });
 });

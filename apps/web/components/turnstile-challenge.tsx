@@ -3,12 +3,14 @@
 import React, { useEffect, useRef } from "react";
 
 import styles from "./turnstile-challenge.module.css";
+import type { TurnstileAction } from "../lib/server/turnstile";
 
 export const TURNSTILE_TOKEN_EVENT = "b2a:turnstile-token";
 
 export function TurnstileChallenge({
   siteKey,
-}: Readonly<{ siteKey: string | null }>) {
+  action,
+}: Readonly<{ siteKey: string | null; action: TurnstileAction }>) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -22,7 +24,7 @@ export function TurnstileChallenge({
     };
     containerRef.current.dataset.sitekey = siteKey;
     containerRef.current.dataset.callback = callbackName;
-    containerRef.current.dataset.action = "scan";
+    containerRef.current.dataset.action = action;
     containerRef.current.dataset.retry = "auto";
     containerRef.current.dataset.refreshExpired = "auto";
     containerRef.current.className = "cf-turnstile";
@@ -35,7 +37,7 @@ export function TurnstileChallenge({
       delete windowRecord[callbackName];
       script.remove();
     };
-  }, [siteKey]);
+  }, [action, siteKey]);
 
   return (
     <div className={styles.challenge}>

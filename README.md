@@ -290,11 +290,17 @@ volume. Scanner verification is exposed through `agentify:check`,
 `agentify:test:integration`, `agentify:test:actor`, `agentify:test:db`,
 `agentify:build` and `agentify:self-readiness`.
 
-Scanner email confirmation uses Better Auth and Resend; local email evidence
-stays in the local process. It preserves the scanner's report sessions and does
-not create commercial accounts or share the cabinet's login. See
-[ADR-0024](docs/decisions/0024-scanner-identity-without-supabase.md) for the
-identity boundary. The completed database and identity handoff remains in Git
+Scanner email confirmation calls the cabinet's private identity route. The
+cabinet owns Better Auth and sends report links through Resend; scanner report
+sessions remain separate from cabinet sessions. Confirmation creates or confirms
+a person; a merchant is attached only when that person enters the cabinet. For
+local confirmation, run the cabinet with `REPORT_IDENTITY_SECRET` and configure
+the scanner with the same secret and `CABINET_IDENTITY_URL` pointing to its
+private listener on port 3002. Scanning alone does not need that connection.
+Local email evidence stays in the cabinet process. See
+[ADR-0026](docs/decisions/0026-one-way-in.md) for the identity boundary and
+[ADR-0024](docs/decisions/0024-scanner-identity-without-supabase.md) for retained
+report ownership. The completed database and identity handoff remains in Git
 history; current delivery and recovery rules are in the
 [release operations guide](deploy/ansible/README.md).
 

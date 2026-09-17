@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { AuthCallback } from "../../../components/auth-callback";
+import { getServerConfig } from "../../../lib/server/config";
 
 export const metadata: Metadata = {
   title: "Confirming your Agentify registration",
@@ -9,5 +10,12 @@ export const metadata: Metadata = {
 };
 
 export default function AuthCallbackPage() {
-  return <AuthCallback />;
+  const config = getServerConfig();
+  return (
+    <AuthCallback
+      turnstileSiteKey={
+        config.TURNSTILE_ENFORCED ? (config.TURNSTILE_SITE_KEY ?? null) : null
+      }
+    />
+  );
 }

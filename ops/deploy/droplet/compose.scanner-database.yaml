@@ -1,6 +1,5 @@
-# Opt-in scanner application connectivity to the separate scanner DB.
-# The existing Supabase Auth settings remain in force for the DB-only release;
-# remove them only with the reviewed Better Auth application release.
+# Scanner application connectivity to its own database and cabinet identity.
+# The worker and privacy job share no cabinet credential or identity secret.
 services:
   migrate:
     networks: [backend, egress, agentify-scanner-db]
@@ -18,6 +17,9 @@ services:
   database-access-verify:
     networks: [backend, egress, agentify-scanner-db]
   web:
+    environment:
+      CABINET_IDENTITY_URL: http://agentify-cabinet-identity:3002
+      REPORT_IDENTITY_SECRET: "${REPORT_IDENTITY_SECRET:?set the private report identity secret}"
     networks:
       frontend:
       backend:

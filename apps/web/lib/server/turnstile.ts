@@ -4,11 +4,14 @@ type TurnstileVerification = {
   hostname?: string;
 };
 
+export type TurnstileAction = "scan" | "report_recovery";
+
 export async function verifyTurnstileToken(input: {
   token: string;
   remoteIp: string;
   secret: string;
   expectedHostname: string;
+  action: TurnstileAction;
   fetchImpl?: typeof fetch;
 }): Promise<boolean> {
   const fetchImpl = input.fetchImpl ?? fetch;
@@ -28,7 +31,7 @@ export async function verifyTurnstileToken(input: {
     const result = (await response.json()) as TurnstileVerification;
     return (
       result.success === true &&
-      result.action === "scan" &&
+      result.action === input.action &&
       result.hostname === input.expectedHostname
     );
   } catch {

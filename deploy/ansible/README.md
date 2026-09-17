@@ -14,9 +14,9 @@ disabled.
 The server baseline remains in `nuanu-ai/infra`. These playbooks do not
 provision servers, change DNS, publish packages, or make paid requests. They
 preserve the channel-owned credentials and authentication configuration. This
-procedure currently installs the live-publication approval rule from ADR-0026.
-Passwordless login and the coordinated identity migration have their own
-acceptance boundary and are not implied by a successful approval rollout.
+procedure installs the live-publication approval rule and the shared,
+passwordless identity described in ADR-0026. Test acceptance must cover the
+identity transition before the same revision is activated in production.
 
 ## Select the source revision
 
@@ -137,6 +137,42 @@ ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
   -e "release_revision=$SHA" \
   -e "release_evidence_directory=$EVIDENCE"
 ```
+
+### First shared-identity cutover
+
+Activation detects the existing scanner identity tables and stops both
+applications and their scheduled jobs before inspecting customer rows. Scanner
+migration `--identity-preflight` applies the additive schema through `0016`
+without removing the source identity. The one-off importer validates email
+normalization, verified scanner people, decrypted lead ownership and pending
+links before the cabinet migration ends old passwords and sessions.
+
+The importer preserves every existing cabinet account, including its current
+confirmation status and merchant binding. It adds verified scanner-only people
+without a merchant and transfers current hashed report links with their original
+state, intent and expiry. Report cookies, Supabase provenance and commerce data
+remain subject to retained-row comparisons. The scanner and cabinet databases
+stay separate; only the one-off importer receives both database credentials.
+
+After the exact target projections and retained-row comparisons pass, the
+importer authorizes scanner cleanup. The ordinary migration ledger then applies
+`0017`; a populated source without this authorization is refused. Activation
+checks the retained rows again before starting the new applications. Do not run
+a full scanner migration against a populated old identity database separately
+from this stopped sequence.
+
+The private recovery directory holds an `identity-cutover.json` checkpoint with
+the original account IDs, frozen eligibility time and hashes, without customer
+row copies. Do not replace it after an interrupted import. A reviewed forward
+retry uses that same checkpoint: an exact repeated import is accepted, while
+changed source or target rows refuse continuation. The temporary importer
+credential file is removed whether activation succeeds or fails.
+
+The cabinet serves report identity on its private port 3002; this port is not
+published. Staging creates one host-owned credential for the cabinet and scanner
+web, reuses it on subsequent releases, and keeps test and production credentials
+separate. Workers, privacy jobs and dashboards receive no identity credential or
+cabinet database access.
 
 ### First live-approval cutover
 

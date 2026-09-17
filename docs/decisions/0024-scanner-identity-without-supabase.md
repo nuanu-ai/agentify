@@ -20,7 +20,7 @@ commerce data is never a restore target. Database relocation and identity
 replacement are separate cutover steps, with verification between them.
 
 Scanner email verification uses Better Auth's expiring, hashed, single-use magic
-links. Identity itself moved to the cabinet on 2026-09-17 (ADR-0026): the
+links. The cabinet owns identity (ADR-0026): the
 scanner-prefixed identity tables that carried it through the Supabase exit retire,
 the worker and dashboard reach no identity data because the scanner database holds
 none, and still no new identity service is deployed — the cabinet's component
@@ -43,9 +43,12 @@ and the human invitation follow ADR-0026; merchant IDs and bindings survive.
 An old Supabase callback state is only a report-routing hint. A valid report
 session may follow it only to a report owned by that session. Otherwise the owner
 requests a fresh, purpose-bound Better Auth link; the request has one generic
-answer whether a report exists or a rate limit applies. Its hashed token is
-consumed by an explicit same-origin submission in the same transaction that
-creates the report session. An absent or cleaned hint falls back only to the
+answer whether a report exists or a rate limit applies. An explicit same-origin
+submission asks the cabinet to consume the hashed proof and record a pending
+verification receipt atomically. The scanner commits its report session and
+completion record in its own transaction, then acknowledges the receipt. A
+bounded retry completes that same operation without sharing a database or
+reusing completed proof. An absent or cleaned hint falls back only to the
 authenticated owner's latest report. Supabase access and refresh tokens are never
 accepted.
 
