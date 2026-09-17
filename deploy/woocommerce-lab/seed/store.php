@@ -27,38 +27,35 @@ if (!$term) {
 }
 $category_id = is_array($term) ? (int) $term['term_id'] : (int) $term;
 
-function create_card_image(string $slug, string $title, string $from, string $to): int
+function create_product_image(string $filename, string $title): int
 {
+    $source = '/seed/images/' . $filename;
+    if (!is_readable($source)) {
+        throw new RuntimeException('Product image is missing: ' . $filename);
+    }
+
     $upload = wp_upload_dir();
-    $filename = $slug . '.svg';
     $path = trailingslashit($upload['path']) . $filename;
-    $relative = trailingslashit($upload['subdir']) . $filename;
-    $safe_title = esc_html($title);
-    $svg = <<<SVG
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="{$from}"/>
-      <stop offset="1" stop-color="{$to}"/>
-    </linearGradient>
-  </defs>
-  <rect width="1200" height="800" rx="48" fill="url(#g)"/>
-  <circle cx="1030" cy="140" r="210" fill="#fff" opacity=".12"/>
-  <circle cx="110" cy="760" r="280" fill="#fff" opacity=".08"/>
-  <text x="80" y="110" fill="#fff" font-family="Arial, sans-serif" font-size="34" letter-spacing="5">NUANU DIGITAL GIFTS</text>
-  <text x="80" y="610" fill="#fff" font-family="Arial, sans-serif" font-size="62" font-weight="700">{$safe_title}</text>
-  <text x="80" y="680" fill="#fff" opacity=".8" font-family="Arial, sans-serif" font-size="27">A thoughtful gift, delivered digitally</text>
-</svg>
-SVG;
     wp_mkdir_p($upload['path']);
-    file_put_contents($path, $svg);
+    if (!copy($source, $path)) {
+        throw new RuntimeException('Could not copy product image: ' . $filename);
+    }
 
     $attachment_id = wp_insert_attachment([
-        'post_mime_type' => 'image/svg+xml',
+        'post_mime_type' => 'image/webp',
         'post_title' => $title,
         'post_status' => 'inherit',
     ], $path);
-    update_attached_file($attachment_id, ltrim($relative, '/'));
+    if (is_wp_error($attachment_id)) {
+        throw new RuntimeException($attachment_id->get_error_message());
+    }
+
+    require_once ABSPATH . 'wp-admin/includes/image.php';
+    update_attached_file($attachment_id, $path);
+    wp_update_attachment_metadata(
+        $attachment_id,
+        wp_generate_attachment_metadata($attachment_id, $path)
+    );
     return (int) $attachment_id;
 }
 
@@ -69,7 +66,7 @@ $products = [
         'price' => '25.00',
         'short' => 'A digital gift card for coffee, pastries and a relaxed brunch.',
         'description' => '<p>Treat someone to an unhurried morning. This digital gift card can be used for coffee, fresh pastries or brunch from the seasonal menu.</p><p>Valid for twelve months from purchase. Any unused balance stays on the card until its expiry date.</p>',
-        'colors' => ['#6f4e37', '#d39b68'],
+        'image' => 'coffee-brunch.webp',
     ],
     [
         'sku' => 'GIFT-DINNER-90',
@@ -77,7 +74,7 @@ $products = [
         'price' => '90.00',
         'short' => 'An evening gift for two, redeemable against food and drinks.',
         'description' => '<p>A flexible dinner gift for two people. The balance can be used across the evening menu, including non-alcoholic drinks.</p><p>Valid for twelve months. Reservations remain subject to availability.</p>',
-        'colors' => ['#451952', '#ae445a'],
+        'image' => 'dinner-for-two.webp',
     ],
     [
         'sku' => 'GIFT-WELLNESS-75',
@@ -85,7 +82,7 @@ $products = [
         'price' => '75.00',
         'short' => 'A restorative day with a choice of selected wellness experiences.',
         'description' => '<p>Give time to slow down. This card can be redeemed against selected massages, movement classes and wellness sessions.</p><p>Valid for twelve months. Advance booking is required for treatments.</p>',
-        'colors' => ['#115e59', '#5eead4'],
+        'image' => 'wellness-day.webp',
     ],
     [
         'sku' => 'PASS-CREATIVE-50',
@@ -93,7 +90,7 @@ $products = [
         'price' => '50.00',
         'short' => 'A digital pass for one selected art, craft or design workshop.',
         'description' => '<p>A pass for a hands-on creative session led by a local maker. Choose from the available art, craft and design workshops.</p><p>Valid for six months. Workshop dates and capacity vary.</p>',
-        'colors' => ['#c2410c', '#facc15'],
+        'image' => 'creative-workshop.webp',
     ],
     [
         'sku' => 'GIFT-WEEKEND-150',
@@ -101,7 +98,7 @@ $products = [
         'price' => '150.00',
         'short' => 'A flexible contribution toward a weekend stay or experience.',
         'description' => '<p>Put a memorable weekend within reach. This digital card can be applied to participating stays and curated weekend experiences.</p><p>Valid for twelve months. Dates and accommodation remain subject to availability.</p>',
-        'colors' => ['#1e3a8a', '#38bdf8'],
+        'image' => 'weekend-escape.webp',
     ],
 ];
 
@@ -118,14 +115,8 @@ foreach ($products as $item) {
     $product->set_virtual(true);
     $product->set_stock_status('instock');
     $product->set_category_ids([$category_id]);
-    $product->set_image_id(create_card_image(
-        sanitize_title($item['sku']),
-        $item['name'],
-        $item['colors'][0],
-        $item['colors'][1]
-    ));
+    $product->set_image_id(create_product_image($item['image'], $item['name']));
     $product->save();
 }
 
 echo "Seeded " . count($products) . " products.\n";
-

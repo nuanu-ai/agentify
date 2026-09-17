@@ -4,8 +4,8 @@ This is the disposable WooCommerce merchant used to exercise the Agentify
 connection flow against a realistic self-hosted shop. It is served at
 `https://woo.nuanu.ai`; the title is the only prominent indication that it is
 a test store. The catalogue contains five virtual gift cards with ordinary
-descriptions, prices and product artwork. No WooCommerce payment gateway is
-enabled.
+descriptions, prices and dedicated product photography. No WooCommerce payment
+gateway is enabled.
 
 The shop runs as an isolated Compose project on `dmitry-dev`. Its WordPress,
 MariaDB and Caddy data live under
