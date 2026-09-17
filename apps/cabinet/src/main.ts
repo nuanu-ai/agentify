@@ -25,6 +25,7 @@ import { connect } from "./database.js";
 import { gatewayFor } from "./gateway.js";
 import { identityFor } from "./identity.js";
 import { isSandboxMail } from "./mail.js";
+import { startReportIdentityServer } from "./report-identity-server.js";
 import { buildApp } from "./server.js";
 import { postgresWooShops } from "./woo-shops.js";
 import { startWooWorker } from "./woo-worker.js";
@@ -33,6 +34,7 @@ const config = loadConfig(process.env);
 const pool = connect(config.databaseUrl);
 const identity = identityFor(config, { pool });
 const wooShops = postgresWooShops(pool);
+const reportIdentityServer = startReportIdentityServer(config.reportIdentitySecret, identity);
 
 const server = buildApp(config, { identity, wooShops }).listen(config.port, () => {
   console.log(`[cabinet] listening on ${config.port}, reading ${config.gatewayUrl}`);
@@ -54,11 +56,14 @@ const worker = startWooWorker({
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
-    server.close(() => {
-      void worker
-        .stop()
-        .finally(() => identity.close())
-        .finally(() => process.exit(0));
-    });
+    const publicClosed = new Promise<void>((resolve) => server.close(() => resolve()));
+    const privateClosed =
+      reportIdentityServer === null
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => reportIdentityServer.close(() => resolve()));
+    void Promise.all([publicClosed, privateClosed])
+      .then(() => worker.stop())
+      .finally(() => identity.close())
+      .finally(() => process.exit(0));
   });
 }

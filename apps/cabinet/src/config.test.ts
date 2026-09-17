@@ -25,6 +25,22 @@ const given = (environment: Record<string, string> = {}): Record<string, string>
 });
 
 describe("what the cabinet will not start without", () => {
+  it("starts the private report listener only with its own complete secret", () => {
+    expect(loadConfig(given()).reportIdentitySecret).toBeNull();
+    expect(loadConfig(given({ REPORT_IDENTITY_SECRET: "" })).reportIdentitySecret).toBeNull();
+    expect(() => loadConfig(given({ REPORT_IDENTITY_SECRET: "short" }))).toThrow(
+      /REPORT_IDENTITY_SECRET/,
+    );
+    expect(() => loadConfig(given({ REPORT_IDENTITY_SECRET: REQUIRED.AUTH_SECRET }))).toThrow(
+      /REPORT_IDENTITY_SECRET/,
+    );
+    expect(
+      loadConfig(
+        given({ REPORT_IDENTITY_SECRET: "a-dedicated-private-secret-at-least-32-characters" }),
+      ).reportIdentitySecret,
+    ).toBe("a-dedicated-private-secret-at-least-32-characters");
+  });
+
   it("requires the existing gateway invitation as a process secret", () => {
     const { REGISTRATION_INVITATION: _absent, ...withoutInvitation } = given();
 

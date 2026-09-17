@@ -173,6 +173,16 @@ const environmentSchema = z.object({
       `must be at least ${SHORTEST_SECRET} characters; make one with: openssl rand -base64 32`,
     ),
 
+  /** Dedicated bearer for the unproxied scanner-to-cabinet identity route. */
+  REPORT_IDENTITY_SECRET: emptyIsAbsent(
+    z
+      .string()
+      .refine(
+        (value) => value.length >= SHORTEST_SECRET,
+        `must be at least ${SHORTEST_SECRET} characters; make one with: openssl rand -base64 32`,
+      ),
+  ),
+
   /**
    * The address a merchant reaches this cabinet at, from their own machine.
    *
@@ -263,6 +273,8 @@ export interface CabinetConfig {
   readonly databaseUrl: string;
   /** What a session cookie is signed with. Never printed, never on a page. */
   readonly authSecret: string;
+  /** Dedicated bearer for the optional private report identity listener. */
+  readonly reportIdentitySecret: string | null;
   /** What the cabinet's one-time links are built on. */
   readonly publicBaseUrl: string;
   readonly mailUrl: string;
@@ -340,6 +352,18 @@ export function loadConfig(environment: Record<string, string | undefined>): Cab
     );
   }
 
+  if (
+    values.REPORT_IDENTITY_SECRET !== undefined &&
+    [values.AUTH_SECRET, values.REGISTRATION_INVITATION, values.MAIL_API_KEY].includes(
+      values.REPORT_IDENTITY_SECRET,
+    )
+  ) {
+    throw new Error(
+      "The cabinet cannot start, REPORT_IDENTITY_SECRET must be dedicated to the private" +
+        " report identity listener",
+    );
+  }
+
   if (problems.length > 0) {
     throw new Error(`The cabinet cannot start, the mail is not set up — ${problems.join("; ")}`);
   }
@@ -356,6 +380,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Cab
     cookieSecure: values.COOKIE_SECURE,
     databaseUrl: values.DATABASE_URL,
     authSecret: values.AUTH_SECRET,
+    reportIdentitySecret: values.REPORT_IDENTITY_SECRET ?? null,
     publicBaseUrl: values.PUBLIC_BASE_URL,
     mailUrl: values.MAIL_URL,
     mailApiKey: values.MAIL_API_KEY ?? null,

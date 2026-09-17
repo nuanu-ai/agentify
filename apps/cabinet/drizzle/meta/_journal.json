@@ -43,6 +43,13 @@
       "when": 1789650778008,
       "tag": "0005_one_way_in_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789654177023,
+      "tag": "0006_report_identity",
+      "breakpoints": true
     }
   ]
 }

@@ -90,6 +90,9 @@ importers:
       '@agentify/commerce-gateway':
         specifier: workspace:*
         version: link:../gateway
+      '@agentify/scanner-contracts':
+        specifier: workspace:*
+        version: link:../../packages/scanner-contracts
       '@nuanu-ai/agentify-contracts':
         specifier: workspace:*
         version: link:../../packages/contracts

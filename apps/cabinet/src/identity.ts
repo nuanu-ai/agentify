@@ -9,7 +9,20 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import { createHash, createHmac, randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
+import {
+  type AcknowledgeReportLinkRequest,
+  type AcknowledgeReportLinkResponse,
+  type ConsumeReportLinkRequest,
+  type ConsumeReportLinkResponse,
+  type DeleteUnattachedPersonRequest,
+  type DeleteUnattachedPersonResponse,
+  type IssueCabinetLinkRequest,
+  type IssueCabinetLinkResponse,
+  reportIdentityTokenHash,
+  type SendReportLinkRequest,
+  type SendReportLinkResponse,
+} from "@agentify/scanner-contracts/report-identity";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { memoryAdapter } from "better-auth/adapters/memory";
@@ -33,7 +46,17 @@ import type {
 import type { CabinetConfig } from "./config.js";
 import { type Message, type Postman, postmanFor } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
-import { accounts, credentials, linkSends, sessions, verifications } from "./schema.js";
+import { reportLinkMessage } from "./report-mail.js";
+import {
+  accounts,
+  credentials,
+  linkSends,
+  reportDeletionTombstones,
+  reportIdentitySecrets,
+  reportReceipts,
+  sessions,
+  verifications,
+} from "./schema.js";
 
 export type {
   AccountMerchant,
@@ -63,6 +86,15 @@ export interface Identity extends CabinetIdentity {
   byId(personId: string): Promise<Person | null>;
   endEverySessionFor(email: string): Promise<number>;
   list(now: Date): Promise<readonly AccountSummary[]>;
+  sendReportLink(request: SendReportLinkRequest): Promise<SendReportLinkResponse>;
+  consumeReportLink(request: ConsumeReportLinkRequest): Promise<ConsumeReportLinkResponse>;
+  acknowledgeReportLink(
+    request: AcknowledgeReportLinkRequest,
+  ): Promise<AcknowledgeReportLinkResponse>;
+  issueCabinetLink(request: IssueCabinetLinkRequest): Promise<IssueCabinetLinkResponse>;
+  deleteUnattachedPerson(
+    request: DeleteUnattachedPersonRequest,
+  ): Promise<DeleteUnattachedPersonResponse>;
   close(): Promise<void>;
 }
 
@@ -73,6 +105,10 @@ export const LINK_TTL_SECONDS = 60 * 60;
 export const LINK_RATE_WINDOW_MS = 60 * 60 * 1000;
 export const LINK_RATE_LIMIT = 3;
 export const LINK_SEND_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+export const REPORT_COMPLETION_MS = 5 * 60 * 1000;
+export const REPORT_EVIDENCE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const REPORT_CLEANUP_BATCH = 100;
+const REPORT_DIGEST_KEY_ID = "digest-v1";
 const RAW_TOKEN = /^[A-Za-z0-9]{32}$/;
 
 type MemoryRows = Record<string, Record<string, unknown>[]>;
@@ -89,9 +125,41 @@ type CabinetClaim = Readonly<{
   destination: CabinetDestination;
 }>;
 
+type ReportClaim = Readonly<{
+  email: string;
+  purpose: "report";
+  intentKind: "registration" | "recovery";
+  state: string;
+}>;
+
+type IdentityClaim = CabinetClaim | ReportClaim;
+
 type LinkSend = {
-  readonly claim: CabinetClaim;
+  readonly claim: IdentityClaim;
   handed: "accepted" | "refused";
+  tokenHash?: string;
+};
+
+type ReportReceiptRow = {
+  id: string;
+  tokenHash: string;
+  emailHash: string;
+  stateHash: string;
+  intentKind: "registration" | "recovery";
+  status: "pending" | "completed" | "invalidated";
+  consumedAt: Date;
+  completionDeadline: Date;
+  completedAt: Date | null;
+  invalidatedAt: Date | null;
+  issueAttemptedAt: Date | null;
+  issuedLinkExpiresAt: Date | null;
+  retentionUntil: Date;
+};
+
+type ReportIdentitySecretRow = {
+  id: typeof REPORT_DIGEST_KEY_ID;
+  digestKey: string;
+  createdAt: Date;
 };
 
 type StoredVerification = {
@@ -122,6 +190,9 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
       cabinet_credentials: [],
       cabinet_verifications: [],
       cabinet_link_sends: [],
+      cabinet_report_identity_secrets: [],
+      cabinet_report_receipts: [],
+      cabinet_report_deletion_tombstones: [],
     } satisfies MemoryRows);
 
   const optionsFor = (database: BetterAuthOptions["database"]) =>
@@ -159,13 +230,12 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
           storeToken: "hashed",
           async sendMagicLink({ email, token, metadata }, context) {
             const active = sending.getStore();
-            const claim = cabinetClaim(metadata);
+            const claim = identityClaim(metadata);
             if (
               active === undefined ||
               claim === null ||
               claim.email !== email ||
-              claim.email !== active.claim.email ||
-              claim.destination !== active.claim.destination
+              !sameClaim(claim, active.claim)
             ) {
               throw new Error("cabinet_link_claim_missing");
             }
@@ -177,9 +247,18 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
             if (stored === null || stored === undefined) {
               throw new Error("cabinet_link_storage_missing");
             }
-            const action = new URL(`${base}/sign-in/open`);
-            action.searchParams.set("token", token);
-            active.handed = await postman(cabinetLinkMessage(email, action.toString()));
+            active.tokenHash = reportIdentityTokenHash(token);
+            if (claim.purpose === "cabinet") {
+              const action = new URL(`${base}/sign-in/open`);
+              action.searchParams.set("token", token);
+              active.handed = await postman(cabinetLinkMessage(email, action.toString()));
+              return;
+            }
+            const action = new URL(`${config.publicBaseUrl}/auth/callback`);
+            action.hash = new URLSearchParams({ state: claim.state, token }).toString();
+            active.handed = await postman(
+              reportLinkMessage(email, claim.intentKind, action.toString()),
+            );
           },
         }),
       ],
@@ -237,6 +316,29 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
     return { status: "accepted" };
   };
 
+  const requestReportWith = async (
+    bound: typeof auth,
+    request: SendReportLinkRequest,
+  ): Promise<SendReportLinkResponse> => {
+    const claim: ReportClaim = {
+      email: request.email,
+      purpose: "report",
+      intentKind: request.intent_kind,
+      state: request.state,
+    };
+    const active: LinkSend = { claim, handed: "refused" };
+    await sending.run(active, async () => {
+      await bound.api.signInMagicLink({
+        headers: originHeaders,
+        body: { email: request.email, metadata: claim },
+      });
+    });
+    if (active.handed !== "accepted" || active.tokenHash === undefined) {
+      throw new DeliveryRefused();
+    }
+    return { status: "accepted", token_hash: active.tokenHash };
+  };
+
   const openWith = async (
     bound: typeof auth,
     token: string,
@@ -277,6 +379,42 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
       destination: claim.destination,
       setCookies: opened.headers.getSetCookie(),
     };
+  };
+
+  const consumeReportAuthWith = async (
+    bound: typeof auth,
+    request: ConsumeReportLinkRequest,
+  ): Promise<Person | null> => {
+    if (!RAW_TOKEN.test(request.token)) return null;
+    const context = await bound.$context;
+    const stored = await context.adapter.findOne<StoredVerification>({
+      model: "verification",
+      where: [{ field: "identifier", value: reportIdentityTokenHash(request.token) }],
+    });
+    if (stored === null || new Date(stored.expiresAt).getTime() <= Date.now()) return null;
+    const claim = reportClaimFrom(stored.value);
+    if (
+      claim === null ||
+      claim.email !== request.email ||
+      claim.intentKind !== request.intent_kind ||
+      claim.state !== request.state
+    ) {
+      return null;
+    }
+
+    let opened: Awaited<ReturnType<typeof bound.api.magicLinkVerify>>;
+    try {
+      opened = await bound.api.magicLinkVerify({
+        query: { token: request.token },
+        headers: originHeaders,
+      });
+    } catch (thrown) {
+      if (thrown instanceof APIError) return null;
+      throw thrown;
+    }
+    if (opened.user.email !== claim.email || opened.user.emailVerified !== true) return null;
+    await context.internalAdapter.deleteSession(opened.session.token);
+    return personFrom(opened.user);
   };
 
   const makeWith = async (
@@ -348,12 +486,58 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
           schema: { accounts, credentials, linkSends, sessions, verifications },
         });
         return await db.transaction(async (tx) => {
+          await lockEmail(tx, email);
           const limited = await postgresRate(tx, rateKey(config.authSecret, email), "cabinet");
           if (limited !== null) return { status: "cooldown", retryAt: limited };
           return await requestWith(
             authFor(drizzleAdapter(tx, { provider: "pg", schema })),
             email,
             destination,
+          );
+        });
+      } catch (thrown) {
+        if (thrown instanceof DeliveryRefused) return { status: "unavailable" };
+        throw thrown;
+      }
+    },
+
+    async sendReportLink(request) {
+      try {
+        if (parts.pool === undefined) {
+          return await inMemoryTransaction(async (bound, rows) => {
+            const now = new Date();
+            cleanupReportEvidenceInMemory(rows, now);
+            const digestKey = reportDigestKeyInMemory(rows, now);
+            const limited = memoryRate(rows, rateKey(digestKey, request.email), "report");
+            if (limited !== null) {
+              return { status: "cooldown", retry_at: limited.toISOString() };
+            }
+            return await requestReportWith(bound, request);
+          });
+        }
+        const db = drizzle(parts.pool, {
+          schema: {
+            accounts,
+            credentials,
+            linkSends,
+            reportIdentitySecrets,
+            reportReceipts,
+            sessions,
+            verifications,
+          },
+        });
+        return await db.transaction(async (tx) => {
+          const now = new Date();
+          const digestKey = await reportDigestKeyInPostgres(tx, now);
+          await cleanupReportEvidenceInPostgres(tx, now);
+          await lockEmail(tx, request.email);
+          const limited = await postgresRate(tx, rateKey(digestKey, request.email), "report");
+          if (limited !== null) {
+            return { status: "cooldown", retry_at: limited.toISOString() };
+          }
+          return await requestReportWith(
+            authFor(drizzleAdapter(tx, { provider: "pg", schema })),
+            request,
           );
         });
       } catch (thrown) {
@@ -380,6 +564,338 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
         if (thrown instanceof VerificationRefused) return { status: "refused" };
         throw thrown;
       }
+    },
+
+    async consumeReportLink(request) {
+      const tokenHash = reportIdentityTokenHash(request.token);
+      const stateHash = reportIdentityTokenHash(request.state);
+      if (parts.pool === undefined) {
+        return await inMemoryTransaction(async (bound, rows) => {
+          const now = new Date();
+          cleanupReportEvidenceInMemory(rows, now);
+          const digestKey = reportDigestKeyInMemory(rows, now);
+          const emailHash = reportEmailKey(digestKey, request.email);
+          const existing = (rows.cabinet_report_receipts ?? []).find(
+            (row) => row.tokenHash === tokenHash,
+          ) as ReportReceiptRow | undefined;
+          if (existing !== undefined) {
+            return pendingRetry(existing, emailHash, stateHash, request.intent_kind, now);
+          }
+          const person = await consumeReportAuthWith(bound, request);
+          if (person === null) return { status: "refused" };
+          const deadline = new Date(now.getTime() + REPORT_COMPLETION_MS);
+          const receipt: ReportReceiptRow = {
+            id: randomUUID(),
+            tokenHash,
+            emailHash,
+            stateHash,
+            intentKind: request.intent_kind,
+            status: "pending",
+            consumedAt: now,
+            completionDeadline: deadline,
+            completedAt: null,
+            invalidatedAt: null,
+            issueAttemptedAt: null,
+            issuedLinkExpiresAt: null,
+            retentionUntil: new Date(deadline.getTime() + REPORT_EVIDENCE_RETENTION_MS),
+          };
+          const receipts = rows.cabinet_report_receipts ?? [];
+          rows.cabinet_report_receipts = receipts;
+          receipts.push(receipt);
+          return pendingResponse(receipt);
+        });
+      }
+
+      const db = drizzle(parts.pool, {
+        schema: {
+          accounts,
+          credentials,
+          reportIdentitySecrets,
+          reportReceipts,
+          sessions,
+          verifications,
+        },
+      });
+      return await db.transaction(async (tx) => {
+        const now = new Date();
+        const digestKey = await reportDigestKeyInPostgres(tx, now);
+        await cleanupReportEvidenceInPostgres(tx, now);
+        await lockEmail(tx, request.email);
+        const emailHash = reportEmailKey(digestKey, request.email);
+        const existing = (
+          await tx
+            .select()
+            .from(reportReceipts)
+            .where(eq(reportReceipts.tokenHash, tokenHash))
+            .for("update")
+        )[0] as ReportReceiptRow | undefined;
+        if (existing !== undefined) {
+          return pendingRetry(existing, emailHash, stateHash, request.intent_kind, now);
+        }
+        const person = await consumeReportAuthWith(
+          authFor(drizzleAdapter(tx, { provider: "pg", schema })),
+          request,
+        );
+        if (person === null) return { status: "refused" };
+        const deadline = new Date(now.getTime() + REPORT_COMPLETION_MS);
+        const receipt: ReportReceiptRow = {
+          id: randomUUID(),
+          tokenHash,
+          emailHash,
+          stateHash,
+          intentKind: request.intent_kind,
+          status: "pending",
+          consumedAt: now,
+          completionDeadline: deadline,
+          completedAt: null,
+          invalidatedAt: null,
+          issueAttemptedAt: null,
+          issuedLinkExpiresAt: null,
+          retentionUntil: new Date(deadline.getTime() + REPORT_EVIDENCE_RETENTION_MS),
+        };
+        await tx.insert(reportReceipts).values(receipt);
+        return pendingResponse(receipt);
+      });
+    },
+
+    async acknowledgeReportLink(request) {
+      if (parts.pool === undefined) {
+        return await inMemoryTransaction(async (_bound, rows) => {
+          const now = new Date();
+          cleanupReportEvidenceInMemory(rows, now);
+          const receipt = (rows.cabinet_report_receipts ?? []).find(
+            (row) => row.id === request.receipt_id && row.tokenHash === request.token_hash,
+          ) as ReportReceiptRow | undefined;
+          return acknowledgeReceipt(receipt, now);
+        });
+      }
+      const db = drizzle(parts.pool, { schema: { reportReceipts, verifications } });
+      return await db.transaction(async (tx) => {
+        const now = new Date();
+        await cleanupReportEvidenceInPostgres(tx, now);
+        const receipt = (
+          await tx
+            .select()
+            .from(reportReceipts)
+            .where(
+              and(
+                eq(reportReceipts.id, request.receipt_id),
+                eq(reportReceipts.tokenHash, request.token_hash),
+              ),
+            )
+            .for("update")
+        )[0] as ReportReceiptRow | undefined;
+        const result = acknowledgeReceipt(receipt, now);
+        if (result.status === "completed" && receipt?.status === "completed") {
+          await tx
+            .update(reportReceipts)
+            .set({
+              status: receipt.status,
+              completedAt: receipt.completedAt,
+              retentionUntil: receipt.retentionUntil,
+            })
+            .where(eq(reportReceipts.id, receipt.id));
+        }
+        return result;
+      });
+    },
+
+    async issueCabinetLink(request) {
+      if (parts.pool === undefined) {
+        return await inMemoryTransaction(async (_bound, rows) => {
+          const now = new Date();
+          cleanupReportEvidenceInMemory(rows, now);
+          const digestKey = reportDigestKeyInMemory(rows, now);
+          const receipt = (rows.cabinet_report_receipts ?? []).find(
+            (row) => row.id === request.receipt_id && row.tokenHash === request.token_hash,
+          ) as ReportReceiptRow | undefined;
+          const preliminary = issueStatus(receipt, now);
+          if (preliminary !== null) return preliminary;
+          if (receipt === undefined) return { status: "refused" };
+          const email = emailForReceipt(rows.cabinet_accounts ?? [], receipt, digestKey);
+          if (email === null) return { status: "refused" };
+          return issueFor(rows, receipt, email, base, now);
+        });
+      }
+      const db = drizzle(parts.pool, {
+        schema: { accounts, reportIdentitySecrets, reportReceipts, verifications },
+      });
+      return await db.transaction(async (tx) => {
+        const beforeLock = new Date();
+        const digestKey = await reportDigestKeyInPostgres(tx, beforeLock);
+        await cleanupReportEvidenceInPostgres(tx, beforeLock);
+        const emails = await tx.select({ email: accounts.email }).from(accounts);
+        const receiptBeforeLock = (
+          await tx
+            .select()
+            .from(reportReceipts)
+            .where(
+              and(
+                eq(reportReceipts.id, request.receipt_id),
+                eq(reportReceipts.tokenHash, request.token_hash),
+              ),
+            )
+        )[0] as ReportReceiptRow | undefined;
+        const resolvedEmail =
+          receiptBeforeLock === undefined
+            ? null
+            : emailForReceipt(emails, receiptBeforeLock, digestKey);
+        if (resolvedEmail === null) return { status: "refused" };
+        await lockEmail(tx, resolvedEmail);
+        const receipt = (
+          await tx
+            .select()
+            .from(reportReceipts)
+            .where(
+              and(
+                eq(reportReceipts.id, request.receipt_id),
+                eq(reportReceipts.tokenHash, request.token_hash),
+              ),
+            )
+            .for("update")
+        )[0] as ReportReceiptRow | undefined;
+        const now = new Date();
+        const preliminary = issueStatus(receipt, now);
+        if (preliminary !== null) return preliminary;
+        const owner = await tx
+          .select({ id: accounts.id })
+          .from(accounts)
+          .where(eq(accounts.email, resolvedEmail));
+        if (owner.length !== 1 || receipt?.emailHash !== reportEmailKey(digestKey, resolvedEmail)) {
+          return { status: "refused" };
+        }
+        const issued = issuedCabinetLink(resolvedEmail, base, now);
+        await tx.insert(verifications).values(issued.verification);
+        await tx
+          .update(reportReceipts)
+          .set({
+            issueAttemptedAt: now,
+            issuedLinkExpiresAt: issued.expiresAt,
+            retentionUntil: new Date(issued.expiresAt.getTime() + REPORT_EVIDENCE_RETENTION_MS),
+          })
+          .where(eq(reportReceipts.id, receipt.id));
+        return { status: "issued", action_url: issued.actionUrl };
+      });
+    },
+
+    async deleteUnattachedPerson(request) {
+      if (parts.pool === undefined) {
+        return await inMemoryTransaction(async (_bound, rows) => {
+          const now = new Date();
+          const digestKey = reportDigestKeyInMemory(rows, now);
+          const operationDigest = reportDeleteDigest(
+            digestKey,
+            request.operation_id,
+            request.email,
+          );
+          const prior = (rows.cabinet_report_deletion_tombstones ?? []).find(
+            (row) => row.operationId === request.operation_id,
+          ) as { operationDigest: string; result: DeleteResult } | undefined;
+          if (prior !== undefined) {
+            return prior.operationDigest === operationDigest
+              ? { status: prior.result }
+              : { status: "refused" };
+          }
+          cleanupReportEvidenceInMemory(rows, now);
+          const result = deleteFromMemory(rows, request.email, digestKey, now);
+          const tombstones = rows.cabinet_report_deletion_tombstones ?? [];
+          rows.cabinet_report_deletion_tombstones = tombstones;
+          tombstones.push({
+            operationId: request.operation_id,
+            operationDigest,
+            result,
+            createdAt: now,
+            completedAt: now,
+          });
+          return { status: result };
+        });
+      }
+
+      const db = drizzle(parts.pool, {
+        schema: {
+          accounts,
+          reportDeletionTombstones,
+          reportIdentitySecrets,
+          reportReceipts,
+          verifications,
+        },
+      });
+      return await db.transaction(async (tx) => {
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${`cabinet-report-delete:${request.operation_id}`}, 0))`,
+        );
+        const now = new Date();
+        const digestKey = await reportDigestKeyInPostgres(tx, now);
+        const operationDigest = reportDeleteDigest(digestKey, request.operation_id, request.email);
+        const prior = (
+          await tx
+            .select()
+            .from(reportDeletionTombstones)
+            .where(eq(reportDeletionTombstones.operationId, request.operation_id))
+        )[0];
+        if (prior !== undefined) {
+          return prior.operationDigest === operationDigest
+            ? { status: prior.result as DeleteResult }
+            : { status: "refused" };
+        }
+        await cleanupReportEvidenceInPostgres(tx, now);
+        await lockEmail(tx, request.email);
+        const candidate = (
+          await tx
+            .select({ id: accounts.id })
+            .from(accounts)
+            .where(eq(accounts.email, request.email))
+        )[0];
+        if (candidate !== undefined) {
+          await tx.execute(
+            sql`select pg_advisory_xact_lock(hashtextextended(${`cabinet-person:${candidate.id}`}, 0))`,
+          );
+        }
+        const row = (
+          await tx.select().from(accounts).where(eq(accounts.email, request.email)).for("update")
+        )[0];
+        const result: DeleteResult =
+          row === undefined
+            ? "already_absent"
+            : row.merchantId === null && row.merchantKey === null
+              ? "deleted"
+              : "retained";
+        const emailHash = reportEmailKey(digestKey, request.email);
+        await tx
+          .update(reportReceipts)
+          .set({
+            status: "invalidated",
+            invalidatedAt: now,
+            retentionUntil: sql`greatest(
+              ${reportReceipts.retentionUntil},
+              ${new Date(now.getTime() + REPORT_EVIDENCE_RETENTION_MS)}
+            )`,
+          })
+          .where(eq(reportReceipts.emailHash, emailHash));
+        const proofs = await tx
+          .select({ id: verifications.id, value: verifications.value })
+          .from(verifications);
+        for (const proof of proofs) {
+          const claim = identityClaimFrom(proof.value);
+          if (
+            claim?.email === request.email &&
+            (claim.purpose === "report" || result !== "retained")
+          ) {
+            await tx.delete(verifications).where(eq(verifications.id, proof.id));
+          }
+        }
+        if (result === "deleted" && row !== undefined) {
+          await tx.delete(accounts).where(eq(accounts.id, row.id));
+        }
+        await tx.insert(reportDeletionTombstones).values({
+          operationId: request.operation_id,
+          operationDigest,
+          result,
+          createdAt: now,
+          completedAt: now,
+        });
+        return { status: result };
+      });
     },
 
     async whoIs(cookieHeader) {
@@ -592,39 +1108,72 @@ function asUnattachedPerson(person: Person): UnattachedPerson {
   return person as UnattachedPerson;
 }
 
-function cabinetClaim(metadata: Record<string, unknown> | undefined): CabinetClaim | null {
+function identityClaim(metadata: Record<string, unknown> | undefined): IdentityClaim | null {
   if (metadata === undefined) return null;
-  return claimFrom(metadata);
+  return identityClaimOf(metadata);
 }
 
 function cabinetClaimFrom(value: string): CabinetClaim | null {
+  const claim = identityClaimFrom(value);
+  return claim?.purpose === "cabinet" ? claim : null;
+}
+
+function reportClaimFrom(value: string): ReportClaim | null {
+  const claim = identityClaimFrom(value);
+  return claim?.purpose === "report" ? claim : null;
+}
+
+function identityClaimFrom(value: string): IdentityClaim | null {
   try {
     const parsed: unknown = JSON.parse(value);
     if (typeof parsed !== "object" || parsed === null) return null;
-    return claimFrom(parsed as Record<string, unknown>);
+    return identityClaimOf(parsed as Record<string, unknown>);
   } catch {
     return null;
   }
 }
 
-function claimFrom(value: Record<string, unknown>): CabinetClaim | null {
-  if (
-    value.purpose !== "cabinet" ||
-    typeof value.email !== "string" ||
-    value.email !== emailAs(value.email) ||
-    (value.destination !== "default" && value.destination !== "settings")
-  ) {
-    return null;
+function identityClaimOf(value: Record<string, unknown>): IdentityClaim | null {
+  if (typeof value.email !== "string" || value.email !== emailAs(value.email)) return null;
+  if (value.purpose === "cabinet") {
+    if (value.destination !== "default" && value.destination !== "settings") return null;
+    return { email: value.email, purpose: "cabinet", destination: value.destination };
   }
-  return { email: value.email, purpose: "cabinet", destination: value.destination };
+  if (
+    value.purpose === "report" &&
+    (value.intentKind === "registration" || value.intentKind === "recovery") &&
+    typeof value.state === "string" &&
+    /^[A-Za-z0-9_-]{43}$/.test(value.state)
+  ) {
+    return {
+      email: value.email,
+      purpose: "report",
+      intentKind: value.intentKind,
+      state: value.state,
+    };
+  }
+  return null;
 }
 
-const tokenHash = (token: string): string => createHash("sha256").update(token).digest("base64url");
+function sameClaim(one: IdentityClaim, other: IdentityClaim): boolean {
+  if (one.purpose !== other.purpose || one.email !== other.email) return false;
+  return one.purpose === "cabinet" && other.purpose === "cabinet"
+    ? one.destination === other.destination
+    : one.purpose === "report" && other.purpose === "report"
+      ? one.intentKind === other.intentKind && one.state === other.state
+      : false;
+}
+
+const tokenHash = reportIdentityTokenHash;
 
 const rateKey = (secret: string, email: string): string =>
   createHmac("sha256", secret).update(`cabinet-link:${email}`).digest("hex");
 
-function memoryRate(rows: MemoryRows, emailHash: string, purpose: "cabinet"): Date | null {
+function memoryRate(
+  rows: MemoryRows,
+  emailHash: string,
+  purpose: "cabinet" | "report",
+): Date | null {
   const now = new Date();
   const all = (rows.cabinet_link_sends ?? []).filter(
     (row) => new Date(row.expiresAt as Date).getTime() > now.getTime(),
@@ -660,7 +1209,7 @@ function memoryRate(rows: MemoryRows, emailHash: string, purpose: "cabinet"): Da
 async function postgresRate(
   tx: Parameters<Parameters<ReturnType<typeof drizzle>["transaction"]>[0]>[0],
   emailHash: string,
-  purpose: "cabinet",
+  purpose: "cabinet" | "report",
 ): Promise<Date | null> {
   const now = new Date();
   await tx.execute(
@@ -693,6 +1242,298 @@ async function postgresRate(
     expiresAt: new Date(now.getTime() + LINK_SEND_RETENTION_MS),
   });
   return null;
+}
+
+type CabinetTransaction = Parameters<Parameters<ReturnType<typeof drizzle>["transaction"]>[0]>[0];
+
+async function lockEmail(tx: CabinetTransaction, email: string): Promise<void> {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`cabinet-email:${email}`}, 0))`,
+  );
+}
+
+function reportDigestKeyInMemory(rows: MemoryRows, now: Date): string {
+  const secrets = (rows.cabinet_report_identity_secrets ?? []) as ReportIdentitySecretRow[];
+  rows.cabinet_report_identity_secrets = secrets;
+  const existing = secrets.find((row) => row.id === REPORT_DIGEST_KEY_ID);
+  if (existing !== undefined) return existing.digestKey;
+  const digestKey = randomBytes(32).toString("base64url");
+  secrets.push({ id: REPORT_DIGEST_KEY_ID, digestKey, createdAt: now });
+  return digestKey;
+}
+
+async function reportDigestKeyInPostgres(tx: CabinetTransaction, now: Date): Promise<string> {
+  const existing = (
+    await tx
+      .select({ digestKey: reportIdentitySecrets.digestKey })
+      .from(reportIdentitySecrets)
+      .where(eq(reportIdentitySecrets.id, REPORT_DIGEST_KEY_ID))
+  )[0];
+  if (existing !== undefined) return existing.digestKey;
+
+  await tx
+    .insert(reportIdentitySecrets)
+    .values({
+      id: REPORT_DIGEST_KEY_ID,
+      digestKey: randomBytes(32).toString("base64url"),
+      createdAt: now,
+    })
+    .onConflictDoNothing();
+  const stored = (
+    await tx
+      .select({ digestKey: reportIdentitySecrets.digestKey })
+      .from(reportIdentitySecrets)
+      .where(eq(reportIdentitySecrets.id, REPORT_DIGEST_KEY_ID))
+  )[0];
+  if (stored === undefined) throw new Error("cabinet_report_digest_key_missing");
+  return stored.digestKey;
+}
+
+function cleanupReportEvidenceInMemory(rows: MemoryRows, now: Date): void {
+  let removedReceipts = 0;
+  rows.cabinet_report_receipts = (rows.cabinet_report_receipts ?? []).filter((row) => {
+    if (
+      removedReceipts < REPORT_CLEANUP_BATCH &&
+      new Date(row.retentionUntil as Date).getTime() <= now.getTime()
+    ) {
+      removedReceipts += 1;
+      return false;
+    }
+    return true;
+  });
+
+  const verificationCutoff = now.getTime() - REPORT_EVIDENCE_RETENTION_MS;
+  let removedVerifications = 0;
+  rows.cabinet_verifications = (rows.cabinet_verifications ?? []).filter((row) => {
+    if (
+      removedVerifications < REPORT_CLEANUP_BATCH &&
+      new Date(row.expiresAt as Date).getTime() <= verificationCutoff &&
+      reportClaimFrom(String(row.value)) !== null
+    ) {
+      removedVerifications += 1;
+      return false;
+    }
+    return true;
+  });
+}
+
+async function cleanupReportEvidenceInPostgres(tx: CabinetTransaction, now: Date): Promise<void> {
+  const expiredReceipts = await tx
+    .select({ id: reportReceipts.id })
+    .from(reportReceipts)
+    .where(lte(reportReceipts.retentionUntil, now))
+    .orderBy(asc(reportReceipts.retentionUntil), asc(reportReceipts.id))
+    .limit(REPORT_CLEANUP_BATCH);
+  for (const receipt of expiredReceipts) {
+    await tx.delete(reportReceipts).where(eq(reportReceipts.id, receipt.id));
+  }
+
+  const verificationCutoff = new Date(now.getTime() - REPORT_EVIDENCE_RETENTION_MS);
+  const expiredReportProofs = await tx
+    .select({ id: verifications.id, value: verifications.value })
+    .from(verifications)
+    .where(
+      and(
+        lte(verifications.expiresAt, verificationCutoff),
+        sql`${verifications.value} like ${'%"purpose":"report"%'}`,
+      ),
+    )
+    .orderBy(asc(verifications.expiresAt), asc(verifications.id))
+    .limit(REPORT_CLEANUP_BATCH);
+  for (const proof of expiredReportProofs) {
+    if (reportClaimFrom(proof.value) !== null) {
+      await tx.delete(verifications).where(eq(verifications.id, proof.id));
+    }
+  }
+}
+
+const reportEmailKey = (secret: string, email: string): string =>
+  createHmac("sha256", secret).update(`report-email\0${email}`).digest("base64url");
+
+const reportDeleteDigest = (secret: string, operationId: string, email: string): string =>
+  createHmac("sha256", secret)
+    .update(`report-delete\0${operationId}\0${email}`)
+    .digest("base64url");
+
+function pendingResponse(receipt: ReportReceiptRow): ConsumeReportLinkResponse {
+  return {
+    status: "pending",
+    receipt_id: receipt.id,
+    completion_deadline: receipt.completionDeadline.toISOString(),
+  };
+}
+
+function pendingRetry(
+  receipt: ReportReceiptRow,
+  emailHash: string,
+  stateHash: string,
+  intentKind: "registration" | "recovery",
+  now: Date,
+): ConsumeReportLinkResponse {
+  if (
+    receipt.retentionUntil.getTime() <= now.getTime() ||
+    receipt.status !== "pending" ||
+    receipt.completionDeadline.getTime() <= now.getTime() ||
+    receipt.emailHash !== emailHash ||
+    receipt.stateHash !== stateHash ||
+    receipt.intentKind !== intentKind
+  ) {
+    return { status: "refused" };
+  }
+  return pendingResponse(receipt);
+}
+
+function acknowledgeReceipt(
+  receipt: ReportReceiptRow | undefined,
+  now: Date,
+): AcknowledgeReportLinkResponse {
+  if (
+    receipt === undefined ||
+    receipt.retentionUntil.getTime() <= now.getTime() ||
+    receipt.status === "invalidated"
+  ) {
+    return { status: "refused" };
+  }
+  if (receipt.status === "completed") return { status: "completed" };
+  if (receipt.completionDeadline.getTime() <= now.getTime()) return { status: "refused" };
+  receipt.status = "completed";
+  receipt.completedAt = now;
+  receipt.retentionUntil = laterDate(
+    receipt.retentionUntil,
+    new Date(now.getTime() + REPORT_EVIDENCE_RETENTION_MS),
+  );
+  return { status: "completed" };
+}
+
+function issueStatus(
+  receipt: ReportReceiptRow | undefined,
+  now: Date,
+): IssueCabinetLinkResponse | null {
+  if (
+    receipt === undefined ||
+    receipt.retentionUntil.getTime() <= now.getTime() ||
+    receipt.status !== "completed" ||
+    receipt.invalidatedAt !== null
+  ) {
+    return { status: "refused" };
+  }
+  if (receipt.issueAttemptedAt !== null) return { status: "already_attempted" };
+  if (receipt.completionDeadline.getTime() <= now.getTime()) return { status: "refused" };
+  return null;
+}
+
+function emailForReceipt(
+  accountRows: readonly Record<string, unknown>[],
+  receipt: ReportReceiptRow,
+  secret: string,
+): string | null {
+  const matches = accountRows
+    .map((row) => row.email)
+    .filter((email): email is string => typeof email === "string")
+    .filter((email) => reportEmailKey(secret, email) === receipt.emailHash);
+  return matches.length === 1 ? (matches[0] ?? null) : null;
+}
+
+function issuedCabinetLink(email: string, base: string, now: Date) {
+  const rawToken = randomBearerToken();
+  const expiresAt = new Date(now.getTime() + LINK_TTL_SECONDS * 1000);
+  const action = new URL(`${base}/sign-in/open`);
+  action.searchParams.set("token", rawToken);
+  return {
+    actionUrl: action.toString(),
+    expiresAt,
+    verification: {
+      id: randomUUID(),
+      identifier: tokenHash(rawToken),
+      value: JSON.stringify({ email, purpose: "cabinet", destination: "default" }),
+      expiresAt,
+      createdAt: now,
+      updatedAt: now,
+    },
+  };
+}
+
+function issueFor(
+  rows: MemoryRows,
+  receipt: ReportReceiptRow,
+  email: string,
+  base: string,
+  now: Date,
+): IssueCabinetLinkResponse {
+  const issued = issuedCabinetLink(email, base, now);
+  const proofs = rows.cabinet_verifications ?? [];
+  rows.cabinet_verifications = proofs;
+  proofs.push(issued.verification);
+  receipt.issueAttemptedAt = now;
+  receipt.issuedLinkExpiresAt = issued.expiresAt;
+  receipt.retentionUntil = new Date(issued.expiresAt.getTime() + REPORT_EVIDENCE_RETENTION_MS);
+  return { status: "issued", action_url: issued.actionUrl };
+}
+
+function randomBearerToken(): string {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let token = "";
+  while (token.length < 32) {
+    for (const byte of randomBytes(32)) {
+      if (byte >= 248) continue;
+      token += alphabet[byte % alphabet.length];
+      if (token.length === 32) return token;
+    }
+  }
+  return token;
+}
+
+type DeleteResult = "deleted" | "already_absent" | "retained";
+
+function deleteFromMemory(
+  rows: MemoryRows,
+  email: string,
+  secret: string,
+  now: Date,
+): DeleteResult {
+  const account = (rows.cabinet_accounts ?? []).find((row) => row.email === email);
+  let result: DeleteResult;
+  if (account === undefined) result = "already_absent";
+  else {
+    const person = personFrom(account as PersonRow);
+    result = person.merchant === null ? "deleted" : "retained";
+  }
+  const emailHash = reportEmailKey(secret, email);
+  for (const receipt of (rows.cabinet_report_receipts ?? []) as ReportReceiptRow[]) {
+    if (receipt.emailHash !== emailHash) continue;
+    receipt.status = "invalidated";
+    receipt.invalidatedAt = now;
+    receipt.retentionUntil = laterDate(
+      receipt.retentionUntil,
+      new Date(now.getTime() + REPORT_EVIDENCE_RETENTION_MS),
+    );
+  }
+  rows.cabinet_verifications = (rows.cabinet_verifications ?? []).filter((proof) => {
+    const claim = identityClaimFrom(String(proof.value));
+    return !(claim?.email === email && (claim.purpose === "report" || result !== "retained"));
+  });
+  if (result === "deleted" && account !== undefined) {
+    const personId = String(account.id);
+    rows.cabinet_accounts = (rows.cabinet_accounts ?? []).filter((row) => row.id !== personId);
+    rows.cabinet_sessions = (rows.cabinet_sessions ?? []).filter((row) => row.userId !== personId);
+    rows.cabinet_credentials = (rows.cabinet_credentials ?? []).filter(
+      (row) => row.userId !== personId,
+    );
+    rows.cabinet_woo_grants = (rows.cabinet_woo_grants ?? []).filter(
+      (row) => row.accountId !== personId,
+    );
+    rows.cabinet_woo_orders = (rows.cabinet_woo_orders ?? []).filter(
+      (row) => row.accountId !== personId,
+    );
+    rows.cabinet_woo_shops = (rows.cabinet_woo_shops ?? []).filter(
+      (row) => row.accountId !== personId,
+    );
+  }
+  return result;
+}
+
+function laterDate(one: Date, two: Date): Date {
+  return one.getTime() >= two.getTime() ? one : two;
 }
 
 function cabinetLinkMessage(to: string, link: string): Message {

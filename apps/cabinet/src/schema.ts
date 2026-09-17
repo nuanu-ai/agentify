@@ -7,9 +7,10 @@
  * from a query in this process.
  *
  * Better Auth keeps people, sessions, its empty account model and one-time
- * links in separate places. Cabinet code adds bounded link-send evidence and
- * the WooCommerce channel tables. The names are prefixed so a person reading
- * this shared database can see which process owns them.
+ * links in separate places. Cabinet code adds bounded link-send and report
+ * completion evidence, permanent deletion-operation tombstones, and the
+ * WooCommerce channel tables. The names are prefixed so a person reading this
+ * shared database can see which process owns them.
  *
  * The migrations generated from this file live in `drizzle/` and are applied by
  * `pnpm --filter @agentify/commerce-cabinet db:migrate`. They keep their bookkeeping in a
@@ -203,6 +204,95 @@ export const linkSends = pgTable(
     index("cabinet_link_sends_address_idx").on(table.emailHash, table.purpose, table.sentAt),
     index("cabinet_link_sends_expires_idx").on(table.expiresAt),
     check("cabinet_link_sends_purpose", sql`${table.purpose} in ('cabinet', 'report')`),
+  ],
+);
+
+/**
+ * Short-lived proof that a report link was consumed for scanner state.
+ *
+ * Raw tokens, addresses, callback state and person identifiers never enter
+ * this table. Their digests bind retries and let deletion invalidate every
+ * report proof for one address without giving this row authority over cabinet
+ * sessions or commerce data.
+ */
+export const reportReceipts = pgTable(
+  "cabinet_report_receipts",
+  {
+    id: text("id").primaryKey(),
+    tokenHash: text("token_hash").notNull().unique(),
+    emailHash: text("email_hash").notNull(),
+    stateHash: text("state_hash").notNull(),
+    intentKind: text("intent_kind").notNull(),
+    status: text("status").notNull(),
+    consumedAt: moment("consumed_at"),
+    completionDeadline: moment("completion_deadline"),
+    completedAt: timestamp("completed_at", { withTimezone: true, mode: "date" }),
+    invalidatedAt: timestamp("invalidated_at", { withTimezone: true, mode: "date" }),
+    issueAttemptedAt: timestamp("issue_attempted_at", { withTimezone: true, mode: "date" }),
+    issuedLinkExpiresAt: timestamp("issued_link_expires_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    retentionUntil: moment("retention_until"),
+  },
+  (table) => [
+    index("cabinet_report_receipts_email_idx").on(table.emailHash),
+    index("cabinet_report_receipts_retention_idx").on(table.retentionUntil),
+    check(
+      "cabinet_report_receipts_intent_kind",
+      sql`${table.intentKind} in ('registration', 'recovery')`,
+    ),
+    check(
+      "cabinet_report_receipts_status",
+      sql`${table.status} in ('pending', 'completed', 'invalidated')`,
+    ),
+  ],
+);
+
+/**
+ * Stable private key material for report evidence digests.
+ *
+ * The singleton is generated atomically by the first report operation and
+ * lives for the lifetime of this database. Session-signing and internal HTTP
+ * credentials may rotate without changing receipt bindings or permanent
+ * deletion replay. The key has no operator setting and never leaves the
+ * cabinet identity component.
+ */
+export const reportIdentitySecrets = pgTable(
+  "cabinet_report_identity_secrets",
+  {
+    id: text("id").primaryKey(),
+    digestKey: text("digest_key").notNull(),
+    createdAt: moment("created_at"),
+  },
+  (table) => [
+    check("cabinet_report_identity_secrets_singleton", sql`${table.id} = 'digest-v1'`),
+    check("cabinet_report_identity_secrets_key_length", sql`length(${table.digestKey}) = 43`),
+  ],
+);
+
+/**
+ * Permanent terminal evidence for privacy deletion retries.
+ *
+ * The operation-specific HMAC distinguishes a faithful replay from reuse of
+ * the same operation id for another address. The outcome is stored without an
+ * address or person id, so a response lost after commit can be replayed without
+ * resolving today's owner or deleting data created later.
+ */
+export const reportDeletionTombstones = pgTable(
+  "cabinet_report_deletion_tombstones",
+  {
+    operationId: text("operation_id").primaryKey(),
+    operationDigest: text("operation_digest").notNull(),
+    result: text("result").notNull(),
+    createdAt: moment("created_at"),
+    completedAt: moment("completed_at"),
+  },
+  (table) => [
+    check(
+      "cabinet_report_deletion_tombstones_result",
+      sql`${table.result} in ('deleted', 'already_absent', 'retained')`,
+    ),
   ],
 );
 

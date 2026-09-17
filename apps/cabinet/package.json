@@ -18,6 +18,7 @@
   "dependencies": {
     "@agentify/commerce-core": "workspace:*",
     "@agentify/commerce-gateway": "workspace:*",
+    "@agentify/scanner-contracts": "workspace:*",
     "@nuanu-ai/agentify-contracts": "workspace:*",
     "better-auth": "1.7.2",
     "drizzle-orm": "0.45.2",

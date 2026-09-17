@@ -28,7 +28,6 @@ release-state.json
 /apps/web
 /apps/scanner-worker
 /apps/browser-observer-actor
-/packages/scanner-contracts
 /packages/scanner-database
 /packages/scanner
 /packages/analytics
@@ -36,7 +35,6 @@ release-state.json
 /packages/remediation
 /ops
 /fixtures
-/tsconfig.scanner.json
 /vitest.scanner.config.ts
 /eslint.scanner.config.mjs
 /prettier.scanner.config.json
