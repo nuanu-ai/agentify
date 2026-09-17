@@ -1,5 +1,11 @@
 # Merchant SDK release history
 
+## 0.2.5
+
+### Patch Changes
+
+- Use https://agentify.ad for the production gateway and documentation in SDK guidance. The gateway address remains explicit; request, payment and contract behavior is unchanged.
+
 ## 0.2.4
 
 ### Patch Changes
