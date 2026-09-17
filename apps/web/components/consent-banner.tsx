@@ -11,7 +11,7 @@ import {
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 
-import { getPublicAppConfig } from "../lib/app-config";
+import { DISPLAY_BRAND } from "../lib/brand";
 import { OPEN_PRIVACY_CHOICES_EVENT } from "./privacy-choices-button";
 import styles from "./consent-banner.module.css";
 
@@ -126,7 +126,6 @@ export function ConsentBanner() {
 }
 
 function ConsentBannerContent() {
-  const { displayBrand } = getPublicAppConfig();
   const [visible, setVisible] = useState(true);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [productAnalytics, setProductAnalytics] = useState(false);
@@ -223,7 +222,7 @@ function ConsentBannerContent() {
       {visible ? (
         <aside aria-label="Privacy choices" className={styles.banner}>
           <div className={styles.bannerCopy}>
-            <strong>Choose how {displayBrand} measures this visit</strong>
+            <strong>Choose how {DISPLAY_BRAND} measures this visit</strong>
             <p className={styles.copy}>
               Optional analytics stay off unless you allow them. Read our{" "}
               <a href="/privacy">privacy notice</a>.

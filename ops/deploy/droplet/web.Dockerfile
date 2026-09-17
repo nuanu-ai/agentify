@@ -21,21 +21,7 @@ RUN pnpm install --frozen-lockfile --filter @agentify/web...
 
 FROM dependencies AS builder
 
-ARG NEXT_PUBLIC_APP_BASE_URL=https://agentify.ad
-ARG NEXT_PUBLIC_DISPLAY_BRAND=Agentify
-ARG NEXT_PUBLIC_REGISTRATION_ENABLED=false
-ARG NEXT_PUBLIC_TURNSTILE_SITE_KEY=
-
-ENV NODE_ENV=production \
-    NEXT_PUBLIC_APP_BASE_URL=$NEXT_PUBLIC_APP_BASE_URL \
-    NEXT_PUBLIC_DISPLAY_BRAND=$NEXT_PUBLIC_DISPLAY_BRAND \
-    NEXT_PUBLIC_REGISTRATION_ENABLED=$NEXT_PUBLIC_REGISTRATION_ENABLED \
-    NEXT_PUBLIC_TURNSTILE_SITE_KEY=$NEXT_PUBLIC_TURNSTILE_SITE_KEY \
-    DATABASE_URL=postgresql://build:build@127.0.0.1/build \
-    TOKEN_HMAC_SECRET=build-only-placeholder-secret-000000000000 \
-    EMAIL_ENCRYPTION_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
-    EMAIL_PROVIDER=disabled \
-    REGISTRATION_ENABLED=false
+ENV NODE_ENV=production
 
 COPY packages/scanner-contracts packages/scanner-contracts
 COPY packages/scanner-database packages/scanner-database
@@ -44,8 +30,7 @@ COPY packages/observability packages/observability
 COPY packages/scanner packages/scanner
 COPY packages/remediation packages/remediation
 COPY apps/web apps/web
-RUN pnpm --filter @agentify/web build \
-  && printf '%s\n' "$NEXT_PUBLIC_REGISTRATION_ENABLED" > /tmp/registration-build-flag
+RUN pnpm --filter @agentify/web build
 
 FROM builder AS privacy-jobs
 
@@ -65,7 +50,6 @@ RUN addgroup --system --gid 1001 nodejs \
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
-COPY --from=builder --chown=nextjs:nodejs /tmp/registration-build-flag /app/.registration-build-flag
 COPY ops/deploy/droplet/web-entrypoint.sh /usr/local/bin/web-entrypoint.sh
 
 USER nextjs

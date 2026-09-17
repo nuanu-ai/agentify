@@ -31,7 +31,9 @@ const PHASES = [
   "Preparing the diagnostic report",
 ] as const;
 
-export function PendingScanExperience() {
+export function PendingScanExperience({
+  turnstileSiteKey,
+}: Readonly<{ turnstileSiteKey: string | null }>) {
   const [request, setRequest] = useState<PendingScanRequest | null>(null);
   const [state, setState] = useState<StartState>("starting");
   const [message, setMessage] = useState(
@@ -179,7 +181,7 @@ export function PendingScanExperience() {
           ) : null}
           {state === "challenge" ? (
             <div className={styles.challenge}>
-              <TurnstileChallenge />
+              <TurnstileChallenge siteKey={turnstileSiteKey} />
             </div>
           ) : null}
           {!starting && state !== "challenge" ? (

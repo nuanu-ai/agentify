@@ -28,85 +28,103 @@ type PendingEvent = {
   landingVariant?: string;
 };
 
-const runtimeEnvironment = process.env.NEXT_PUBLIC_ANALYTICS_ENV ?? "local";
+export type BrowserAnalyticsConfig = Readonly<{
+  runtimeEnvironment: "local" | "test" | "preview" | "production";
+  posthog: Readonly<{
+    key: string | null;
+    host: string | null;
+    destinationEnvironment: "local" | "test" | "preview" | "production";
+  }>;
+  meta: Readonly<{
+    pixelId: string | null;
+    destinationEnvironment: "local" | "test" | "preview" | "production";
+  }>;
+}>;
 const META_CLIENT_EVENT = {
   landing_view: "PageView",
   results_viewed: "ViewContent",
   registration_started: "RegistrationStart",
 } as const;
 
-export function AnalyticsRuntime() {
+export function AnalyticsRuntime({
+  config,
+}: Readonly<{ config: BrowserAnalyticsConfig }>) {
   const pathname = usePathname();
   const consent = useRef<ConsentSnapshot | undefined>(undefined);
 
-  const track = useCallback(async (event: PendingEvent) => {
-    const snapshot = consent.current;
-    const eventIdKey = `b2a.analytics.event-id.${event.onceKey}`;
-    const candidateEventId =
-      window.sessionStorage.getItem(eventIdKey) ??
-      createClientOwnedEventId(event.name);
-    window.sessionStorage.setItem(eventIdKey, candidateEventId);
-    const scanToken = event.scanId
-      ? window.sessionStorage.getItem(`b2a:scan-token:${event.scanId}`)
-      : null;
-    try {
-      await recordThenDeliverWithConsent({
-        consent: snapshot,
-        recordBusinessEvent: async () => {
-          const response = await fetch("/api/v1/events", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(scanToken ? { Authorization: `Bearer ${scanToken}` } : {}),
-            },
-            body: JSON.stringify({
-              event_id: candidateEventId,
-              name: event.name,
-              ...(event.scanId ? { scan_id: event.scanId } : {}),
-              ...(event.segment ? { segment: event.segment } : {}),
-              ...(event.landingVariant
-                ? { landing_variant: event.landingVariant }
-                : {}),
-              properties: {},
-            }),
-          });
-          if (!response.ok) throw new Error("analytics_record_failed");
-          const result = (await response.json()) as {
-            event_id: string;
-            segment: Segment;
-            landing_variant: string;
-          };
-          window.sessionStorage.setItem(eventIdKey, result.event_id);
-          return result;
-        },
-        deliverToBrowserDestinations: async (result, allowedConsent) => {
-          await dispatchConsentedBrowserEvent({
-            eventId: result.event_id,
-            onceKey: `${event.onceKey}:${result.event_id}`,
-            consent: allowedConsent,
-            storage: window.localStorage,
-            sendPosthog: async (eventId) =>
-              sendPosthog(
-                event.name,
-                eventId,
-                result.segment,
-                result.landing_variant,
-              ),
-            sendMetaPixel: async (eventId) =>
-              sendMetaPixel(
-                event.name,
-                eventId,
-                result.segment,
-                result.landing_variant,
-              ),
-          });
-        },
-      });
-    } catch {
-      // A later route trigger/refresh can retry the server event. Browser
-      // destination once-keys are stored only after their own successful send.
-    }
-  }, []);
+  const track = useCallback(
+    async (event: PendingEvent) => {
+      const snapshot = consent.current;
+      const eventIdKey = `b2a.analytics.event-id.${event.onceKey}`;
+      const candidateEventId =
+        window.sessionStorage.getItem(eventIdKey) ??
+        createClientOwnedEventId(event.name);
+      window.sessionStorage.setItem(eventIdKey, candidateEventId);
+      const scanToken = event.scanId
+        ? window.sessionStorage.getItem(`b2a:scan-token:${event.scanId}`)
+        : null;
+      try {
+        await recordThenDeliverWithConsent({
+          consent: snapshot,
+          recordBusinessEvent: async () => {
+            const response = await fetch("/api/v1/events", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...(scanToken ? { Authorization: `Bearer ${scanToken}` } : {}),
+              },
+              body: JSON.stringify({
+                event_id: candidateEventId,
+                name: event.name,
+                ...(event.scanId ? { scan_id: event.scanId } : {}),
+                ...(event.segment ? { segment: event.segment } : {}),
+                ...(event.landingVariant
+                  ? { landing_variant: event.landingVariant }
+                  : {}),
+                properties: {},
+              }),
+            });
+            if (!response.ok) throw new Error("analytics_record_failed");
+            const result = (await response.json()) as {
+              event_id: string;
+              segment: Segment;
+              landing_variant: string;
+            };
+            window.sessionStorage.setItem(eventIdKey, result.event_id);
+            return result;
+          },
+          deliverToBrowserDestinations: async (result, allowedConsent) => {
+            await dispatchConsentedBrowserEvent({
+              eventId: result.event_id,
+              onceKey: `${event.onceKey}:${result.event_id}`,
+              consent: allowedConsent,
+              storage: window.localStorage,
+              sendPosthog: async (eventId) =>
+                sendPosthog(
+                  config,
+                  event.name,
+                  eventId,
+                  result.segment,
+                  result.landing_variant,
+                ),
+              sendMetaPixel: async (eventId) =>
+                sendMetaPixel(
+                  config,
+                  event.name,
+                  eventId,
+                  result.segment,
+                  result.landing_variant,
+                ),
+            });
+          },
+        });
+      } catch {
+        // A later route trigger/refresh can retry the server event. Browser
+        // destination once-keys are stored only after their own successful send.
+      }
+    },
+    [config],
+  );
 
   useEffect(() => {
     consent.current = readCurrentConsent(window.localStorage);
@@ -179,16 +197,15 @@ export function AnalyticsRuntime() {
 let posthogPromise: Promise<PostHog> | undefined;
 
 async function sendPosthog(
+  config: BrowserAnalyticsConfig,
   name: ClientEventName,
   eventId: string,
   segment: Segment,
   landingVariant: string,
 ) {
-  const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
-  const host = process.env.NEXT_PUBLIC_POSTHOG_HOST;
-  const destination =
-    process.env.NEXT_PUBLIC_POSTHOG_DESTINATION_ENV ?? "local";
-  if (!key || !host || destination !== runtimeEnvironment) return;
+  const { key, host, destinationEnvironment } = config.posthog;
+  if (!key || !host || destinationEnvironment !== config.runtimeEnvironment)
+    return;
   posthogPromise ??= import("posthog-js").then(({ default: posthog }) => {
     posthog.init(key, {
       api_host: host,
@@ -219,10 +236,12 @@ type MetaWindow = Window & {
   _fbq?: (...args: unknown[]) => void;
 };
 
-function ensureMetaPixel(): MetaWindow["fbq"] | undefined {
-  const pixelId = process.env.NEXT_PUBLIC_META_PIXEL_ID;
-  const destination = process.env.NEXT_PUBLIC_META_DESTINATION_ENV ?? "local";
-  if (!pixelId || destination !== runtimeEnvironment) return undefined;
+function ensureMetaPixel(
+  config: BrowserAnalyticsConfig,
+): MetaWindow["fbq"] | undefined {
+  const { pixelId, destinationEnvironment } = config.meta;
+  if (!pixelId || destinationEnvironment !== config.runtimeEnvironment)
+    return undefined;
   const target = window as MetaWindow;
   if (!target.fbq) {
     const fbq = ((...args: unknown[]) => {
@@ -244,12 +263,13 @@ function ensureMetaPixel(): MetaWindow["fbq"] | undefined {
 }
 
 async function sendMetaPixel(
+  config: BrowserAnalyticsConfig,
   name: ClientEventName,
   eventId: string,
   segment: Segment,
   landingVariant: string,
 ) {
-  const fbq = ensureMetaPixel();
+  const fbq = ensureMetaPixel(config);
   if (!fbq) return;
   fbq(
     name === "landing_view" || name === "results_viewed"

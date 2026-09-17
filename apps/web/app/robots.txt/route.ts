@@ -1,6 +1,6 @@
 import { buildRobotsPolicy } from "../../lib/robots-policy";
 
-export const dynamic = "force-static";
+export const dynamic = "force-dynamic";
 
 export function GET() {
   return new Response(buildRobotsPolicy(), {

@@ -2,6 +2,8 @@ import type { MetadataRoute } from "next";
 
 import { getPublicAppConfig } from "../lib/app-config";
 
+export const dynamic = "force-dynamic";
+
 export default function manifest(): MetadataRoute.Manifest {
   const { displayBrand } = getPublicAppConfig();
   return {

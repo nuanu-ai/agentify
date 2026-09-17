@@ -166,21 +166,14 @@ services:
     build:
       context: ../../..
       dockerfile: ops/deploy/droplet/web.Dockerfile
-      args:
-        NEXT_PUBLIC_APP_BASE_URL: https://agentify.ad
-        NEXT_PUBLIC_DISPLAY_BRAND: Agentify
-        NEXT_PUBLIC_REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-false}
-        NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
     restart: unless-stopped
     environment:
-      APP_BASE_URL: https://agentify.ad
-      NEXT_PUBLIC_APP_BASE_URL: https://agentify.ad
-      NEXT_PUBLIC_DISPLAY_BRAND: Agentify
-      NEXT_PUBLIC_PRIVACY_EMAIL: privacy@agentify.ad
-      NEXT_PUBLIC_ABUSE_EMAIL: abuse@agentify.ad
-      NEXT_PUBLIC_LEGAL_OPERATOR: ${NEXT_PUBLIC_LEGAL_OPERATOR:-Operator identity pending confirmation}
-      NEXT_PUBLIC_LEGAL_IDENTITY_CONFIRMED: ${NEXT_PUBLIC_LEGAL_IDENTITY_CONFIRMED:-false}
-      NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
+      APP_BASE_URL: ${APP_BASE_URL:?set this channel public origin}
+      PRIVACY_EMAIL: ${PRIVACY_EMAIL:-privacy@agentify.ad}
+      ABUSE_EMAIL: ${ABUSE_EMAIL:-abuse@agentify.ad}
+      LEGAL_OPERATOR: ${LEGAL_OPERATOR:-Operator identity pending confirmation}
+      LEGAL_IDENTITY_CONFIRMED: ${LEGAL_IDENTITY_CONFIRMED:-false}
+      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
       DATABASE_URL: ${WEB_DATABASE_URL:-postgresql://agentify_web:${POSTGRES_WEB_PASSWORD}@postgres:5432/agentify}
       DASHBOARD_DATABASE_URL: ${DASHBOARD_DATABASE_URL:-postgresql://agentify_dashboard:${POSTGRES_DASHBOARD_PASSWORD}@postgres:5432/agentify}
       TOKEN_HMAC_SECRET: ${TOKEN_HMAC_SECRET:?TOKEN_HMAC_SECRET is required}
@@ -200,8 +193,14 @@ services:
       APIFY_BROWSER_MODE: ${APIFY_BROWSER_MODE:-off}
       REMEDIATION_PROMPT_ENABLED: ${REMEDIATION_PROMPT_ENABLED:-true}
       CARD_SIGNAL_ENABLED: "false"
-      ANALYTICS_RUNTIME_ENV: production
+      ANALYTICS_RUNTIME_ENV: ${ANALYTICS_RUNTIME_ENV:-production}
       ANALYTICS_SERVER_DELIVERY_ENABLED: "false"
+      POSTHOG_BROWSER_KEY: ${POSTHOG_BROWSER_KEY:-}
+      POSTHOG_BROWSER_HOST: ${POSTHOG_BROWSER_HOST:-}
+      POSTHOG_DESTINATION_ENV: ${POSTHOG_DESTINATION_ENV:-production}
+      META_PIXEL_ID: ${META_PIXEL_ID:-}
+      META_DESTINATION_ENV: ${META_DESTINATION_ENV:-production}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
     depends_on:
       database-access-finalize:
         condition: service_completed_successfully
@@ -215,14 +214,8 @@ services:
       context: ../../..
       dockerfile: ops/deploy/droplet/web.Dockerfile
       target: privacy-jobs
-      args:
-        NEXT_PUBLIC_APP_BASE_URL: https://agentify.ad
-        NEXT_PUBLIC_DISPLAY_BRAND: Agentify
-        NEXT_PUBLIC_REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-false}
-        NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
     environment:
-      APP_BASE_URL: https://agentify.ad
-      NEXT_PUBLIC_APP_BASE_URL: https://agentify.ad
+      APP_BASE_URL: ${APP_BASE_URL:?set this channel public origin}
       DATABASE_URL: ${PRIVACY_DATABASE_URL:-postgresql://agentify_privacy:${POSTGRES_PRIVACY_PASSWORD}@postgres:5432/agentify}
       TOKEN_HMAC_SECRET: ${TOKEN_HMAC_SECRET:?TOKEN_HMAC_SECRET is required}
       EMAIL_ENCRYPTION_KEY: ${EMAIL_ENCRYPTION_KEY:?EMAIL_ENCRYPTION_KEY is required}
@@ -244,13 +237,13 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: ${WORKER_DATABASE_URL:-postgresql://agentify_worker:${POSTGRES_WORKER_PASSWORD}@postgres:5432/agentify}
-      APP_BASE_URL: https://agentify.ad
+      APP_BASE_URL: ${APP_BASE_URL:?set this channel public origin}
       WORKER_HEALTH_PORT: 8081
       WORKER_ID: agentify-droplet-1
       SCANNER_CONCURRENCY: ${SCANNER_CONCURRENCY:-4}
       SCANNER_CACHE_ENABLED: ${SCANNER_CACHE_ENABLED:-false}
-      ANALYTICS_ENV: production
-      ANALYTICS_RUNTIME_ENV: production
+      ANALYTICS_ENV: ${ANALYTICS_RUNTIME_ENV:-production}
+      ANALYTICS_RUNTIME_ENV: ${ANALYTICS_RUNTIME_ENV:-production}
       ANALYTICS_SERVER_DELIVERY_ENABLED: "false"
       POSTHOG_ENABLED: "false"
       POSTHOG_DESTINATION_ENV: production

@@ -3,17 +3,16 @@ import { afterEach, describe, expect, it } from "vitest";
 import { PUBLIC_PAGE_PATHS } from "../content/public-page-metadata";
 import { getPublicPageMarkdown } from "./public-markdown";
 
-const originalBaseUrl = process.env.NEXT_PUBLIC_APP_BASE_URL;
+const originalBaseUrl = process.env.APP_BASE_URL;
 
 afterEach(() => {
-  if (originalBaseUrl === undefined)
-    delete process.env.NEXT_PUBLIC_APP_BASE_URL;
-  else process.env.NEXT_PUBLIC_APP_BASE_URL = originalBaseUrl;
+  if (originalBaseUrl === undefined) delete process.env.APP_BASE_URL;
+  else process.env.APP_BASE_URL = originalBaseUrl;
 });
 
 describe("public Markdown variants", () => {
   it("renders substantive canonical content for every public route", () => {
-    process.env.NEXT_PUBLIC_APP_BASE_URL = "https://agentify.ad";
+    process.env.APP_BASE_URL = "https://agentify.ad";
     for (const path of PUBLIC_PAGE_PATHS) {
       const markdown = getPublicPageMarkdown(path);
       expect(markdown).toMatch(/^#\s+\S+/);

@@ -1,16 +1,17 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 
 import styles from "./turnstile-challenge.module.css";
 
 export const TURNSTILE_TOKEN_EVENT = "b2a:turnstile-token";
 
-export function TurnstileChallenge() {
+export function TurnstileChallenge({
+  siteKey,
+}: Readonly<{ siteKey: string | null }>) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
     if (!siteKey || !containerRef.current) return;
     const callbackName = `b2aTurnstile_${crypto.randomUUID().replaceAll("-", "")}`;
     const windowRecord = window as unknown as Record<string, unknown>;
@@ -34,12 +35,12 @@ export function TurnstileChallenge() {
       delete windowRecord[callbackName];
       script.remove();
     };
-  }, []);
+  }, [siteKey]);
 
   return (
     <div className={styles.challenge}>
-      {process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ? (
-        <div ref={containerRef} />
+      {siteKey ? (
+        <div data-sitekey={siteKey} ref={containerRef} />
       ) : (
         <p>
           Challenge is not configured in this environment. Retry from a

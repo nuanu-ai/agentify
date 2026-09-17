@@ -15,7 +15,6 @@ const optionalNonEmpty = <T extends z.ZodType>(schema: T) =>
 
 const schema = z.object({
   APP_BASE_URL: optionalNonEmpty(z.url({ protocol: /^https?$/ })),
-  NEXT_PUBLIC_APP_BASE_URL: optionalNonEmpty(z.url({ protocol: /^https?$/ })),
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
   DASHBOARD_DATABASE_URL: optionalNonEmpty(
     z.url({ protocol: /^postgres(ql)?$/ }),
@@ -36,7 +35,7 @@ const schema = z.object({
   RESEND_FROM: z.email().default("reports@agentify.ad"),
   TURNSTILE_ENFORCED: booleanEnv,
   TURNSTILE_SECRET_KEY: optionalNonEmpty(z.string().min(1)),
-  NEXT_PUBLIC_TURNSTILE_SITE_KEY: optionalNonEmpty(z.string().min(1)),
+  TURNSTILE_SITE_KEY: optionalNonEmpty(z.string().min(1)),
   SCANNER_CACHE_ENABLED: booleanEnv,
   BENCHMARK_ENABLED: booleanEnv,
   PUBLIC_SHARE_ENABLED: booleanEnv,
@@ -68,7 +67,7 @@ export function getServerConfig() {
   }
   if (
     parsed.TURNSTILE_ENFORCED &&
-    (!parsed.TURNSTILE_SECRET_KEY || !parsed.NEXT_PUBLIC_TURNSTILE_SITE_KEY)
+    (!parsed.TURNSTILE_SECRET_KEY || !parsed.TURNSTILE_SITE_KEY)
   ) {
     throw new Error("turnstile_enforcement_requires_both_keys");
   }
@@ -86,10 +85,7 @@ export function getServerConfig() {
 
   return {
     ...parsed,
-    appBaseUrl:
-      parsed.APP_BASE_URL ??
-      parsed.NEXT_PUBLIC_APP_BASE_URL ??
-      "http://localhost:3000",
+    appBaseUrl: parsed.APP_BASE_URL ?? "http://localhost:3000",
     hmacSecret,
     encryptionKey,
     production,

@@ -6,17 +6,16 @@ import {
 } from "../content/public-page-metadata";
 import sitemap from "./sitemap";
 
-const originalBaseUrl = process.env.NEXT_PUBLIC_APP_BASE_URL;
+const originalBaseUrl = process.env.APP_BASE_URL;
 
 afterEach(() => {
-  if (originalBaseUrl === undefined)
-    delete process.env.NEXT_PUBLIC_APP_BASE_URL;
-  else process.env.NEXT_PUBLIC_APP_BASE_URL = originalBaseUrl;
+  if (originalBaseUrl === undefined) delete process.env.APP_BASE_URL;
+  else process.env.APP_BASE_URL = originalBaseUrl;
 });
 
 describe("sitemap", () => {
   it("contains exactly the public canonical allowlist with honest dates", () => {
-    process.env.NEXT_PUBLIC_APP_BASE_URL = "https://agentify.ad";
+    process.env.APP_BASE_URL = "https://agentify.ad";
     const entries = sitemap();
     const now = Date.now();
 

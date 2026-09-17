@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import React from "react";
 
 import { PendingScanExperience } from "../../../components/pending-scan-experience";
+import { getServerConfig } from "../../../lib/server/config";
 
 export const metadata: Metadata = {
   title: "Starting private scan",
@@ -9,5 +11,10 @@ export const metadata: Metadata = {
 };
 
 export default function PendingScanPage() {
-  return <PendingScanExperience />;
+  const config = getServerConfig();
+  return (
+    <PendingScanExperience
+      turnstileSiteKey={config.TURNSTILE_SITE_KEY ?? null}
+    />
+  );
 }

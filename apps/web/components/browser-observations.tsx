@@ -8,7 +8,7 @@ import {
   type BrowserObservationStatusResponse,
 } from "@agentify/scanner-contracts";
 
-import { getPublicAppConfig } from "../lib/app-config";
+import { DISPLAY_BRAND } from "../lib/brand";
 import {
   browserObservationImpact,
   browserObservationLabel,
@@ -261,11 +261,7 @@ function BrowserFinding({
       remediationPromptEnabled ? (
         <CopyRemediationPrompt
           label="Copy this fix"
-          prompt={buildBrowserFixPrompt(
-            host,
-            finding,
-            getPublicAppConfig().displayBrand,
-          )}
+          prompt={buildBrowserFixPrompt(host, finding, DISPLAY_BRAND)}
           secondary
         />
       ) : null}

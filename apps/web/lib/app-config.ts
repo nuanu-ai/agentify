@@ -1,3 +1,5 @@
+import { DISPLAY_BRAND } from "./brand";
+
 const DEFAULT_BASE_URL = "http://localhost:3000";
 
 export type PublicAppConfig = Readonly<{
@@ -11,19 +13,16 @@ export type PublicAppConfig = Readonly<{
 }>;
 
 export function getPublicAppConfig(): PublicAppConfig {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_BASE_URL || DEFAULT_BASE_URL;
+  const baseUrl = process.env.APP_BASE_URL || DEFAULT_BASE_URL;
 
   return {
-    displayBrand: process.env.NEXT_PUBLIC_DISPLAY_BRAND || "Agentify",
+    displayBrand: DISPLAY_BRAND,
     baseUrl,
     scannerUserAgent: `agentify-scanner/1.0 (+${baseUrl}/scanner)`,
-    privacyEmail:
-      process.env.NEXT_PUBLIC_PRIVACY_EMAIL || "privacy@agentify.ad",
-    abuseEmail: process.env.NEXT_PUBLIC_ABUSE_EMAIL || "abuse@agentify.ad",
+    privacyEmail: process.env.PRIVACY_EMAIL || "privacy@agentify.ad",
+    abuseEmail: process.env.ABUSE_EMAIL || "abuse@agentify.ad",
     legalOperator:
-      process.env.NEXT_PUBLIC_LEGAL_OPERATOR ||
-      "Operator identity pending confirmation",
-    legalIdentityConfirmed:
-      process.env.NEXT_PUBLIC_LEGAL_IDENTITY_CONFIRMED === "true",
+      process.env.LEGAL_OPERATOR || "Operator identity pending confirmation",
+    legalIdentityConfirmed: process.env.LEGAL_IDENTITY_CONFIRMED === "true",
   };
 }

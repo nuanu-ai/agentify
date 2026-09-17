@@ -16,7 +16,7 @@ const stripeCardSignalEnv = z.object({
   STRIPE_ADAPTER: z.enum(["local", "stripe"]).default("local"),
   STRIPE_SECRET_KEY: optionalNonEmpty(z.string().min(1)),
   STRIPE_WEBHOOK_SECRET: optionalNonEmpty(z.string().min(1)),
-  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: optionalNonEmpty(z.string().min(1)),
+  STRIPE_PUBLISHABLE_KEY: optionalNonEmpty(z.string().min(1)),
 });
 
 export type StripeCardSignalConfig = ReturnType<
@@ -30,7 +30,7 @@ export function getStripeCardSignalConfig() {
     if (!parsed.STRIPE_SECRET_KEY) throw new Error("stripe_secret_key_missing");
     if (!parsed.STRIPE_WEBHOOK_SECRET)
       throw new Error("stripe_webhook_secret_missing");
-    if (!parsed.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
+    if (!parsed.STRIPE_PUBLISHABLE_KEY)
       throw new Error("stripe_publishable_key_missing");
   }
   if (
@@ -54,6 +54,6 @@ export function getCardSignalPublicConfig() {
   return {
     enabled: config.CARD_SIGNAL_ENABLED,
     adapter: config.STRIPE_ADAPTER,
-    publishableKey: config.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? null,
+    publishableKey: config.STRIPE_PUBLISHABLE_KEY ?? null,
   } as const;
 }

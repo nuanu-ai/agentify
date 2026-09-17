@@ -1,19 +1,13 @@
 #!/usr/bin/env sh
 set -eu
 
-flag_file="${REGISTRATION_BUILD_FLAG_FILE:-/app/.registration-build-flag}"
+: "${APP_BASE_URL:?APP_BASE_URL is required}"
 : "${REGISTRATION_ENABLED:?REGISTRATION_ENABLED is required}"
-test -r "$flag_file" || {
-  echo "Registration build flag is missing." >&2
-  exit 1
-}
-build_flag="$(tr -d '\r\n' <"$flag_file")"
-if [ "$build_flag" != "$REGISTRATION_ENABLED" ]; then
-  echo "Registration build/runtime flags do not match; refusing to start." >&2
-  exit 1
-fi
+case "$REGISTRATION_ENABLED" in
+  true|false) ;;
+  *) echo "REGISTRATION_ENABLED must be true or false." >&2; exit 1 ;;
+esac
 if [ "$REGISTRATION_ENABLED" = "true" ]; then
-  : "${APP_BASE_URL:?APP_BASE_URL is required when registration is enabled}"
   : "${DATABASE_URL:?DATABASE_URL is required when registration is enabled}"
   : "${TOKEN_HMAC_SECRET:?TOKEN_HMAC_SECRET is required when registration is enabled}"
   [ "${EMAIL_PROVIDER:-}" = "resend" ] || {

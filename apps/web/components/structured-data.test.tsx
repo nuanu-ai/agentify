@@ -6,17 +6,16 @@ import { afterEach, describe, expect, it } from "vitest";
 import { publicSiteSchema } from "../lib/schema";
 import { StructuredData } from "./structured-data";
 
-const originalBaseUrl = process.env.NEXT_PUBLIC_APP_BASE_URL;
+const originalBaseUrl = process.env.APP_BASE_URL;
 
 afterEach(() => {
-  if (originalBaseUrl === undefined)
-    delete process.env.NEXT_PUBLIC_APP_BASE_URL;
-  else process.env.NEXT_PUBLIC_APP_BASE_URL = originalBaseUrl;
+  if (originalBaseUrl === undefined) delete process.env.APP_BASE_URL;
+  else process.env.APP_BASE_URL = originalBaseUrl;
 });
 
 describe("StructuredData", () => {
   it("emits an owner-quality Organization and WebSite graph", () => {
-    process.env.NEXT_PUBLIC_APP_BASE_URL = "https://agentify.ad";
+    process.env.APP_BASE_URL = "https://agentify.ad";
     const html = renderToStaticMarkup(
       <StructuredData schema={publicSiteSchema()} />,
     );

@@ -6,6 +6,8 @@ import {
 } from "../content/public-page-metadata";
 import { getPublicAppConfig } from "../lib/app-config";
 
+export const dynamic = "force-dynamic";
+
 export default function sitemap(): MetadataRoute.Sitemap {
   const { baseUrl } = getPublicAppConfig();
   const existing: MetadataRoute.Sitemap = PUBLIC_PAGE_PATHS.map((path) => ({

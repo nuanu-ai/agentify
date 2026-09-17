@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import React from "react";
 
 import { segmentSchema } from "@agentify/scanner-contracts";
 
@@ -28,9 +29,7 @@ export default async function ScanPage({
       fixture={query.fixture}
       publicShareEnabled={config.PUBLIC_SHARE_ENABLED}
       remediationPromptEnabled={config.REMEDIATION_PROMPT_ENABLED}
-      registrationEnabled={
-        process.env.NEXT_PUBLIC_REGISTRATION_ENABLED !== "false"
-      }
+      registrationEnabled={config.REGISTRATION_ENABLED}
       scanId={id}
       segment={segmentResult.success ? segmentResult.data : "owner"}
     />
