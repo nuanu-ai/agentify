@@ -19,10 +19,12 @@ instance. Its application, queue and dashboard schemas retain their permissions;
 commerce data is never a restore target. Database relocation and identity
 replacement are separate cutover steps, with verification between them.
 
-Scanner email verification uses the cabinet's pinned Better Auth version and
-the scanner's existing Resend sender. Better Auth owns expiring, hashed, single-use
-magic links. Scanner-prefixed identity tables and restricted roles keep identity
-data inaccessible to the worker and dashboard. No new identity service is deployed.
+Scanner email verification uses Better Auth's expiring, hashed, single-use magic
+links. Identity itself moved to the cabinet on 2026-09-17 (ADR-0026): the
+scanner-prefixed identity tables that carried it through the Supabase exit retire,
+the worker and dashboard reach no identity data because the scanner database holds
+none, and still no new identity service is deployed — the cabinet's component
+answers the scanner over an internal route.
 
 Registration retains its existing intent, email, scan and consent checks. Opening
 a mailed link presents confirmation; verification requires an explicit same-origin
@@ -57,10 +59,16 @@ Pending Supabase email links for an existing verified lead require a replacement
 link after identity cutover. A pending signup that never created a lead still
 returns to registration; recovery does not invent ownership or replay consent.
 Existing report sessions do not require a bulk password or merchant migration.
-Privacy deletion must remove the new linked identity and revoke report access.
+Privacy deletion revokes report access, removes the lead and, for a person who
+owns no merchant, the identity row in the cabinet (ADR-0026).
 Supabase retirement follows database, queue, mail and report-access acceptance.
 
 Running the complete Supabase platform ourselves adds services without advancing
 the shared stack. Reusing legacy hand-written verification avoids a dependency
 but abandons the component boundary established by ADR-0009. Cross-domain SSO and
-automatic merging of scanner and merchant identities are separate product changes.
+automatic merging of scanner and merchant identities are not built; what does cross
+the boundary is decided in ADR-0026: at the moment the scanner confirms an address,
+it asks the cabinet over an internal route for the cabinet's own sign-in link, and
+the person carries that link as a navigation. No session or cookie is shared; the
+identity row is the cabinet's, and the separation above stands for scans, reports
+and leads.

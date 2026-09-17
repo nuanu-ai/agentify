@@ -15,9 +15,10 @@ wait for perfection: the road's order is ADR-0010's.
 ## Decision
 
 **1. Registering makes a merchant, the key its cabinet calls with and an
-account — or none of them.** The form asks what a person can answer on
-arrival: address, password, invitation. They are signed in where they stand.
-Each side of the boundary writes in one transaction and the boundary is
+account — or none of them.** The act begins when a one-time link is consumed
+for an address that has no account (ADR-0026); no form asks for a password or
+an invitation, and the person is signed in where they stand. Each side of the
+boundary writes in one transaction and the boundary is
 crossed once: the gateway makes the merchant and the key, the cabinet writes
 the account. A cabinet that fails after the gateway answered leaves a merchant
 nobody can sign in as — litter, not damage; the address is free and the next
@@ -33,7 +34,11 @@ rather than one that works for good. It is still not a secret store; the
 database is a boundary against the network, not against a host, and the day
 that stops being enough the fix is one, not a cleverer column.
 
-**3. The registration route is public, behind an invitation code.** The route
+**3. The registration route is public, behind an invitation code.** Retired
+for people by ADR-0026 on 2026-09-17, as the last sentence of this paragraph
+said it would: the code is now a value in the cabinet's configuration guarding
+the wire between two processes of ours, and the door stands at live
+publication. What follows is why the route was built as it was. The route
 takes no key — nobody registering has one. A wrong code and a closed
 registration answer identically, in constant time against a decoy (the two
 answers that must be indistinguishable are the two refusals), so the form does
@@ -72,8 +77,9 @@ the way back in is a key of the other kind.
 ## Consequences
 
 The cabinet is multi-tenant; the process-wide client and its variable are
-gone. An account and a merchant are one-to-one, and a merchant who has only
-ever signed in has no keys of their own. Not built and not pretended: a second
+gone. A person who has only confirmed an address at the scanner owns no
+merchant yet (ADR-0026); one who has entered the cabinet owns exactly one, and
+a merchant who has only ever signed in has no keys of their own. Not built and not pretended: a second
 person at a merchant, roles, deleting a merchant.
 
 ## Alternatives rejected

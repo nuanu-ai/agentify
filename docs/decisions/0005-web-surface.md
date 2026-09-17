@@ -26,6 +26,18 @@ page for a person, so the shape of that is a decision rather than a detail.
    address and never reasons about ports. The same file describes the server
    later, so what is demonstrated locally is what gets deployed.
 
+   Deployed, the origin is `agentify.ad`, and there is one (Dmitry,
+   2026-09-17). The scanner's application answers `/` and its own paths in
+   place of the static landing; `/cabinet`, `/docs`, `/v0`, `/x402` and
+   `/healthz` go to the commerce stack by path, as below, and nothing the
+   scanner serves shares a prefix with them. `app.agentify.ad` retires. The
+   resource address in every challenge and every listing is pinned from the
+   public origin (ADR-0012), so the move is one value, one re-listing and a
+   documentation release of the SDK, which chooses no address itself and names
+   the old one only in its README and in one error. The test channel keeps its
+   own origin. Cheapest before the first external merchant, which is why it is
+   not deferred.
+
    `/healthz` is the last path and the only one that is not a surface anybody
    integrates against. Whether the door is open has to be answerable from
    outside it, and the landing and the portal are files Caddy serves itself, so
@@ -65,8 +77,11 @@ page for a person, so the shape of that is a decision rather than a detail.
    scripts; anything more is a decision to be recorded, not a habit to drift
    into.
 
-5. **The landing is static** — HTML and CSS, served by Caddy from a built
-   directory, no runtime behind it.
+5. **The landing is static locally** — HTML and CSS, served by Caddy from a
+   built directory, no runtime behind it. Deployed, the scanner's front page is
+   the landing: one page for one product, and the static one is not served in
+   production. The scanner is a Next.js application by inheritance (ADR-0024)
+   and is not the cabinet, so §4 stands for the cabinet as written.
 
 6. **One visual language across all three surfaces**, held in a shared
    stylesheet with design tokens (colour, type scale, spacing) rather than

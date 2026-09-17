@@ -61,12 +61,13 @@ company's Workspace mail are not one basket. Locally the whole flow walks with
 no account, no domain and no network, and the suite stays offline. Nothing reads
 mail: receiving is off, and the address a person sees says replies go nowhere.
 
-**5. Nothing waits for a message.** Registering signs a person in where they stand,
-with a banner saying the address is unconfirmed. Putting delivery in front of a
-working account turns every mail filter into somebody who has an account and
-cannot reach it, recoverable only by us at a terminal — which is the thing this
-decision exists to stop needing. Confirmation buys the right to be sent a new
-password, and later the retirement of the invitation code.
+**5. The message is the way in.** Rewritten by ADR-0026: there is no password
+and no invitation, an address and a one-time link are the whole of signing in,
+and the account is made when the link is consumed. The worry this paragraph
+used to answer — a mail filter leaving somebody with an account they cannot
+reach, recoverable only by us at a terminal — cannot arise when an undelivered
+message makes no account at all: the person is still at the screen, and the
+resend is on it.
 
 **6. Two properties survive the swap because they are why the old version existed.**
 A session is a row that can be ended one at a time, without touching the
@@ -87,9 +88,9 @@ password handlers. Tests that described those mechanisms go with them; tests
 that describe what a merchant experiences are rewritten against the new
 mechanism, because they are what says the swap changed nothing anybody can see.
 
-A merchant recovers a lost password without us, which is the first thing here
-that stops needing a person at a terminal. An unconfirmed account keeps working;
-what its owner lacks is recovery. And we become a sender — a domain whose
+A merchant who can read their mail is never locked out (ADR-0026): signing in
+and recovering access are one act, and there is no unconfirmed account to
+recover. And we become a sender — a domain whose
 reputation can be spent, a bounce stream nobody reads yet, a provider whose
 outage merchants can feel — answered by sending only transactional mail, by
 limiting how often one can be asked for again, and by not waiting for delivery.
