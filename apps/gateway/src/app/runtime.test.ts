@@ -2,9 +2,10 @@
  * The fold from four facts to the one word the order machine is given.
  *
  * A merchant can stop selling altogether, can take one card off sale, can have
- * nowhere for the money to go, and can be listed under no name for the sale to
- * be made under — and the machine has exactly one guard for all four.
- * `sellingFor` is where they become the one; the last two reach it through
+ * nowhere for the money to go, can be listed under no name for the sale to be
+ * made under, and can lack the operator's live grant — and the machine has
+ * exactly one guard for all five. `sellingFor` is where they become the one;
+ * the last three reach it through
  * `sellableBy`, because from the order's side they are one fact: this merchant
  * cannot make a sale.
  *
@@ -89,14 +90,23 @@ describe("whether a merchant could make a sale at all", () => {
     // nobody: the agent is invited to pay a stranger it cannot identify, and
     // the gateway has shipped exactly that once. Off sale is the honest answer
     // and the merchant already knows how to put it right.
-    expect(sellableBy({ payoutWallet: wallet, serviceName: null }, real)).toBe(false);
+    expect(
+      sellableBy({ payoutWallet: wallet, serviceName: null, liveApprovedAt: null }, real),
+    ).toBe(false);
     // And the other half, or the line above would pass against a gateway that
     // had stopped selling for everybody.
-    expect(sellableBy({ payoutWallet: wallet, serviceName: "Someone's shop" }, real)).toBe(true);
+    expect(
+      sellableBy(
+        { payoutWallet: wallet, serviceName: "Someone's shop", liveApprovedAt: null },
+        real,
+      ),
+    ).toBe(true);
   });
 
   it("says no to a merchant with nowhere for the money to go", () => {
-    expect(sellableBy({ payoutWallet: null, serviceName: "Someone's shop" }, real)).toBe(false);
+    expect(
+      sellableBy({ payoutWallet: null, serviceName: "Someone's shop", liveApprovedAt: null }, real),
+    ).toBe(false);
   });
 
   it("excuses the wallet in the sandbox and never the name", () => {
@@ -106,8 +116,35 @@ describe("whether a merchant could make a sale at all", () => {
     // seller, and a challenge in a sandbox names one exactly as a real one
     // does. A local stack sells with no wallet configured anywhere; nothing
     // sells under nobody's name.
-    expect(sellableBy({ payoutWallet: null, serviceName: "Someone's shop" }, sandbox)).toBe(true);
-    expect(sellableBy({ payoutWallet: null, serviceName: null }, sandbox)).toBe(false);
-    expect(sellableBy({ payoutWallet: wallet, serviceName: null }, sandbox)).toBe(false);
+    expect(
+      sellableBy(
+        { payoutWallet: null, serviceName: "Someone's shop", liveApprovedAt: null },
+        sandbox,
+      ),
+    ).toBe(true);
+    expect(
+      sellableBy({ payoutWallet: null, serviceName: null, liveApprovedAt: null }, sandbox),
+    ).toBe(false);
+    expect(
+      sellableBy({ payoutWallet: wallet, serviceName: null, liveApprovedAt: null }, sandbox),
+    ).toBe(false);
+  });
+
+  it("requires the operator's grant only on the live surface", () => {
+    const live = testConfig({
+      PAYMENT_NETWORK: "eip155:8453",
+      FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+      CDP_API_KEY_ID: "key-id",
+      CDP_API_KEY_SECRET: "key-secret",
+    });
+    const merchant = {
+      payoutWallet: wallet,
+      serviceName: "Someone's shop",
+      liveApprovedAt: null,
+    };
+
+    expect(sellableBy(merchant, real)).toBe(true);
+    expect(sellableBy(merchant, live)).toBe(false);
+    expect(sellableBy({ ...merchant, liveApprovedAt: 1_000 }, live)).toBe(true);
   });
 });

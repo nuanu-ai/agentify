@@ -16,6 +16,7 @@ import { MemoryStore } from "../adapters/memory/store.js";
 import { countedIds } from "../testing/harness.js";
 import {
   CABINET_KEY_LABEL,
+  grantLiveApproval,
   invitationAccepted,
   issueCabinetKey,
   issueKey,
@@ -32,6 +33,23 @@ import {
 } from "./merchants.js";
 
 const aStore = () => new MemoryStore(countedIds());
+
+describe("the operator's live approval", () => {
+  it("distinguishes a missing merchant from an idempotent repeat", async () => {
+    const store = aStore();
+    await makeMerchant(store, countedIds(), "A merchant", 1_000, "mch_1");
+
+    expect(await grantLiveApproval(store, "mch_nobody", 2_000)).toBeNull();
+    expect(await grantLiveApproval(store, "mch_1", 2_000)).toMatchObject({
+      changed: true,
+      merchant: { id: "mch_1", liveApprovedAt: 2_000 },
+    });
+    expect(await grantLiveApproval(store, "mch_1", 3_000)).toMatchObject({
+      changed: false,
+      merchant: { id: "mch_1", liveApprovedAt: 2_000 },
+    });
+  });
+});
 
 describe("the name a seeded merchant is listed under", () => {
   it("says sandbox out loud where nothing settles", () => {

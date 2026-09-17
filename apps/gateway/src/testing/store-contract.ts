@@ -430,6 +430,40 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect((await store.merchantById(A))?.name).toBe("Merchant A");
       });
 
+      it("starts without a live approval and grants it once", async () => {
+        const store = await twoMerchants();
+
+        expect((await store.merchantById(A))?.liveApprovedAt).toBeNull();
+        expect((await store.merchantById(B))?.liveApprovedAt).toBeNull();
+
+        const first = await store.grantLiveApproval(A, 3_000);
+        expect(first).toMatchObject({ changed: true, merchant: { id: A, liveApprovedAt: 3_000 } });
+
+        const repeated = await store.grantLiveApproval(A, 9_000);
+        expect(repeated).toMatchObject({
+          changed: false,
+          merchant: { id: A, liveApprovedAt: 3_000 },
+        });
+        expect((await store.merchantById(B))?.liveApprovedAt).toBeNull();
+        expect(await store.grantLiveApproval("mch_nobody", 4_000)).toBeNull();
+      });
+
+      it("lets exactly one concurrent grant choose the immutable first instant", async () => {
+        const store = await twoMerchants();
+
+        const grants = await Promise.all([
+          store.grantLiveApproval(A, 3_000),
+          store.grantLiveApproval(A, 4_000),
+        ]);
+
+        expect(grants.filter((grant) => grant?.changed === true)).toHaveLength(1);
+        expect(grants.filter((grant) => grant?.changed === false)).toHaveLength(1);
+        const approvedAt = grants[0]?.merchant.liveApprovedAt;
+        expect([3_000, 4_000]).toContain(approvedAt);
+        expect(grants[1]?.merchant.liveApprovedAt).toBe(approvedAt);
+        expect((await store.merchantById(A))?.liveApprovedAt).toBe(approvedAt);
+      });
+
       it("is listed under a name for a catalog only where somebody set one", async () => {
         // The name a seller is listed under travels to strangers, and everything
         // offline is tested against the in-memory store. A column that took a

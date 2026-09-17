@@ -1,0 +1,11 @@
+-- The operator's one-time admission to live publication.
+--
+-- Null is deliberately both the new-merchant default and the value every
+-- existing row receives. A migration cannot infer which merchant a person has
+-- reviewed, and approving all rows would remove the boundary on the day it is
+-- introduced. The protected command writes the first instant atomically after
+-- the rollout inventory has identified the exact merchant.
+--
+-- There is no default expression and no backfill, so Postgres adds this
+-- nullable column without rewriting merchant-owned data or moving updated_at.
+ALTER TABLE "merchants" ADD COLUMN "live_approved_at" timestamp with time zone;

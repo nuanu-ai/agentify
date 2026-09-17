@@ -64,6 +64,13 @@
       "when": 1788172814302,
       "tag": "0008_key_last_use",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789648453729,
+      "tag": "0009_live_approval",
+      "breakpoints": true
     }
   ]
 }

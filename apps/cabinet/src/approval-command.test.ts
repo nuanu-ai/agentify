@@ -102,7 +102,7 @@ describe("the private production approval command", () => {
     expect(result.output).toMatch(/approved now/i);
   });
 
-  it("reports an existing grant without replacing its first timestamp", async () => {
+  it("reports a grant the gateway says was already present", async () => {
     const found = directoryReturning([bound()]);
     const granted = gatewayReturning({
       changed: false,

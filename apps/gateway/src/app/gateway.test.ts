@@ -64,6 +64,14 @@ const published = async (harnessed: Harness, card: Card): Promise<string> => {
 };
 
 describe("the catalog", () => {
+  it("reports a missing merchant as an internal invariant failure", async () => {
+    const harnessed = await started();
+
+    await expect(harnessed.gateway.publishCard("mch_missing", syncCard)).rejects.toThrow(
+      "publishing resolved to mch_missing, and there is no such merchant",
+    );
+  });
+
   it("answers a card that will not do with everything wrong with it at once", async () => {
     // A merchant fixing one field per round trip is the experience the list of
     // findings exists to prevent.

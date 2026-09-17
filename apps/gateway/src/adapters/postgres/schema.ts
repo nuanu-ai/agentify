@@ -71,6 +71,14 @@ export const merchants = pgTable("merchants", {
    * can check against their own wallet at a glance.
    */
   payoutWallet: text("payout_wallet"),
+  /**
+   * The first and only operator grant for live publication.
+   *
+   * Null is the denied default for every new and migrated merchant. Repeated
+   * grants preserve the first instant, so this column is the audit fact as well
+   * as the eligibility switch.
+   */
+  liveApprovedAt: timestamp("live_approved_at", { withTimezone: true, mode: "date" }),
   /** The order machine's own word: open, paused or departed. */
   selling: text("selling").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),

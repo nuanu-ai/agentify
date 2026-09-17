@@ -11,11 +11,13 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "start": "tsx src/main.ts",
     "account": "tsx src/account.ts",
+    "approve": "tsx src/approve.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/migrate.ts"
   },
   "dependencies": {
     "@agentify/commerce-core": "workspace:*",
+    "@agentify/commerce-gateway": "workspace:*",
     "@nuanu-ai/agentify-contracts": "workspace:*",
     "better-auth": "1.7.2",
     "drizzle-orm": "0.45.2",
@@ -24,7 +26,6 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@agentify/commerce-gateway": "workspace:*",
     "@types/express": "^5.0.6",
     "@types/pg": "^8.23.1",
     "drizzle-kit": "0.31.10",

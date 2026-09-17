@@ -144,18 +144,38 @@ export function listedUnder(serviceName: string | null): boolean {
 }
 
 /**
- * Whether this merchant could make a sale at all, which is the two rules above
- * read as the one fact the fold needs.
+ * Whether the operator has admitted this merchant wherever approval applies.
+ *
+ * The switch is the surface the process is allowed to present, not the chain
+ * beneath it. Test surfaces exercise the whole integration without an
+ * operator, while every live offer must carry the immutable grant from the
+ * merchant row.
+ */
+export function approvedForLive(liveApprovedAt: number | null, config: GatewayConfig): boolean {
+  return config.surfaceMode !== "live" || liveApprovedAt !== null;
+}
+
+/**
+ * Whether this merchant could make a sale at all, combining the prerequisites
+ * above into the one fact the fold needs.
  *
  * They are apart where somebody can be told which is missing — the publish door
- * names the wallet and the name separately, and so does the cabinet — and
+ * names the wallet, seller name and approval separately, as does the cabinet — and
  * together everywhere the answer is a word about a card. From the order's side
- * there is nothing to tell apart: both are the merchant, neither is the card,
- * and either one of them means this sale cannot be made.
+ * there is nothing to tell apart: all belong to the merchant rather than the
+ * card, and any missing prerequisite means this sale cannot be made.
  */
 export function sellableBy(
-  merchant: { readonly payoutWallet: string | null; readonly serviceName: string | null },
+  merchant: {
+    readonly payoutWallet: string | null;
+    readonly serviceName: string | null;
+    readonly liveApprovedAt: number | null;
+  },
   config: GatewayConfig,
 ): boolean {
-  return payableTo(merchant.payoutWallet, config) && listedUnder(merchant.serviceName);
+  return (
+    payableTo(merchant.payoutWallet, config) &&
+    listedUnder(merchant.serviceName) &&
+    approvedForLive(merchant.liveApprovedAt, config)
+  );
 }

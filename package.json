@@ -33,6 +33,7 @@
     "smoke:listing": "pnpm --filter @agentify/commerce-gateway run listing",
     "smoke:bootstrap": "pnpm --filter @agentify/commerce-slice run bootstrap",
     "outside": "./scripts/outside.sh",
+    "approve": "node scripts/approve.mjs",
     "buy": "pnpm --filter @agentify/commerce-slice run buy",
     "stand": "pnpm --filter @agentify/commerce-slice run stand",
     "changeset": "changeset",

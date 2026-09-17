@@ -138,6 +138,29 @@ export async function setPayoutWallet(
   return store.setPayoutWallet(merchantId, checksummedAddressOf(address), at);
 }
 
+/** What the protected operator grant found and whether this call wrote it. */
+export interface LiveApprovalGrant {
+  readonly merchant: StoredMerchant;
+  readonly changed: boolean;
+}
+
+/**
+ * Admits one merchant to live publication, once.
+ *
+ * This is an application function rather than an HTTP capability. The caller
+ * is the protected operator command, which resolves a cabinet identity before
+ * it gets here; the gateway stores no address and exposes no merchant-key route
+ * that can make this decision. Null means the exact merchant is absent, while
+ * `changed:false` is the idempotent answer for one already admitted.
+ */
+export async function grantLiveApproval(
+  store: Store,
+  merchantId: string,
+  at: number,
+): Promise<LiveApprovalGrant | null> {
+  return store.grantLiveApproval(merchantId, at);
+}
+
 /** Writes down a merchant. Null where that identifier is already taken. */
 export async function makeMerchant(
   store: Store,

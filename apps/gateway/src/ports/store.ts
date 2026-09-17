@@ -330,6 +330,15 @@ export interface StoredMerchant {
    * sales into it is the custodial arrangement this whole design refuses.
    */
   readonly payoutWallet: string | null;
+  /**
+   * When the operator admitted this merchant to the live catalogue, or null
+   * where that one-time decision has never been made.
+   *
+   * A timestamp rather than a boolean because the first grant is the event an
+   * operator can account for afterwards. It never moves on a repeated grant,
+   * and test deployments ignore it rather than manufacturing one.
+   */
+  readonly liveApprovedAt: number | null;
   readonly selling: MerchantSelling;
   readonly createdAt: number;
 }
@@ -422,6 +431,8 @@ export interface CatalogEntry {
    * listing it would invite an agent to pay somebody the request does not name.
    */
   readonly serviceName: string | null;
+  /** The operator's live grant, or null; ignored outside the live surface. */
+  readonly liveApprovedAt: number | null;
 }
 
 /** Which merchant an order belongs to, where a read is one merchant's alone. */
@@ -477,6 +488,19 @@ export interface Store {
   ): Promise<{ readonly merchant: StoredMerchant; readonly key: StoredKey } | null>;
 
   merchantById(id: string): Promise<StoredMerchant | null>;
+
+  /**
+   * Records the one operator grant that admits a merchant to live sales.
+   *
+   * The first call writes `at`; every later call returns the original instant
+   * with `changed:false`. Null means the merchant is absent. The write does not
+   * move the merchant's ordinary `updated_at`: repeating an approval changes
+   * no merchant-owned setting, and the first grant has its own timestamp.
+   */
+  grantLiveApproval(
+    id: string,
+    at: number,
+  ): Promise<{ readonly merchant: StoredMerchant; readonly changed: boolean } | null>;
 
   /** Every merchant, for the command that lists them. */
   merchants(): Promise<readonly StoredMerchant[]>;

@@ -62,6 +62,7 @@ import {
 } from "./merchants.js";
 import { OrderRunner, orderDocumentOf, SWEEP_EFFECTS } from "./runner.js";
 import {
+  approvedForLive,
   listedUnder,
   modeForCard,
   payableTo,
@@ -352,13 +353,16 @@ export class Gateway {
   async publishCard(merchantId: string, body: unknown): Promise<PublishResult> {
     const parsed = CardSchema.safeParse(body);
 
-    // A merchant the store cannot find is refused along with one who has chosen
-    // no name, and for the same reason read the other way: the safe answer to
-    // "I cannot say who this is" is that nothing of theirs goes on sale. The
-    // door resolved this key to a merchant a moment ago, so it does not happen.
     const merchant = await this.runtime.store.merchantById(merchantId);
+    // Every external caller reaches this method through a key the door already
+    // resolved. Losing that merchant between the door and here is an internal
+    // contradiction, not three choices the caller can repair. Keep it loud and
+    // distinct from the complete list of ordinary publish prerequisites.
+    if (merchant === null) {
+      throw new Error(`publishing resolved to ${merchantId}, and there is no such merchant`);
+    }
     const missing: Problem[] = [];
-    if (merchant === null || !listedUnder(merchant.serviceName)) {
+    if (!listedUnder(merchant.serviceName)) {
       missing.push(NO_SELLER_NAME);
     }
     // The same question the selling word asks of every card afterwards, put
@@ -366,8 +370,11 @@ export class Gateway {
     // nowhere for this product's money to go. The sandbox asks for no address,
     // and that is not leniency — it settles against nothing, so there is no
     // money to send anywhere and no chain to send it on (ADR-0008).
-    if (!payableTo(merchant?.payoutWallet ?? null, this.runtime.config)) {
+    if (!payableTo(merchant.payoutWallet, this.runtime.config)) {
       missing.push(NO_PAYOUT_WALLET);
+    }
+    if (!approvedForLive(merchant.liveApprovedAt, this.runtime.config)) {
+      missing.push(NO_OPERATOR_APPROVAL);
     }
 
     if (!parsed.success) {
@@ -2063,6 +2070,23 @@ const NO_PAYOUT_WALLET: Problem = {
     " would have nowhere to go — a buyer's agent pays the merchant's own address directly and" +
     " nothing of it is held here; set one with POST /v0/payout-wallet and publish this card" +
     " again",
+};
+
+/**
+ * The finding a live merchant meets until the operator admits them once.
+ *
+ * There is no public call to name here: the boundary exists precisely so a
+ * merchant key cannot cross it. Test publication remains available while the
+ * live catalogue stays closed, which is the useful next move the merchant can
+ * take without pretending they control this decision.
+ */
+const NO_OPERATOR_APPROVAL: Problem = {
+  path: [],
+  code: "no_operator_approval",
+  message:
+    "this merchant has not been approved by the operator for the live catalog; test" +
+    " publication remains available, but live publication stays refused until the operator" +
+    " admits this merchant",
 };
 
 /** Zod's account of what is wrong, in the shape the contract publishes. */

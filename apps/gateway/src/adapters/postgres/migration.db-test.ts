@@ -672,4 +672,90 @@ if (databaseUrl === null) {
       expect(await lastUseOf("mk_older_than_the_record")).toBeNull();
     });
   });
+
+  describe("the migration that adds live operator approval", () => {
+    const url = databaseUrl;
+    let pool: Pool;
+
+    const run = async (file: string): Promise<void> => {
+      for (const statement of await statementsOf(file)) {
+        await pool.query(statement);
+      }
+    };
+
+    beforeAll(async () => {
+      pool = connect(url).pool;
+    }, 60_000);
+
+    afterAll(async () => {
+      await pool.end();
+    });
+
+    beforeEach(async () => {
+      await pool.query("drop schema public cascade");
+      await pool.query("create schema public");
+      for (const file of [
+        "0000_init.sql",
+        "0001_payment_claims.sql",
+        "0002_selling.sql",
+        "0003_merchant_tenancy.sql",
+        "0004_merchant_service_name.sql",
+        "0005_merchant_payout_wallet.sql",
+        "0006_order_pay_to_backfill.sql",
+        "0007_cabinet_keys.sql",
+        "0008_key_last_use.sql",
+      ]) {
+        await run(file);
+      }
+    });
+
+    it("approves no existing or future merchant by inference", async () => {
+      const updatedAt = new Date("2026-09-17T10:00:00.000Z");
+      await pool.query(
+        `insert into merchants
+           (id, name, service_name, payout_wallet, selling, created_at, updated_at)
+         values ($1, $2, $3, $4, 'paused', $5, $5)`,
+        [
+          "mch_existing",
+          "An existing merchant",
+          "Their shop",
+          "0x0000000000000000000000000000000000000001",
+          updatedAt,
+        ],
+      );
+
+      await run("0009_live_approval.sql");
+
+      const existing = await pool.query<{
+        live_approved_at: Date | null;
+        name: string;
+        service_name: string | null;
+        payout_wallet: string | null;
+        selling: string;
+        updated_at: Date;
+      }>(
+        `select live_approved_at, name, service_name, payout_wallet, selling, updated_at
+         from merchants where id = 'mch_existing'`,
+      );
+      expect(existing.rows).toStrictEqual([
+        {
+          live_approved_at: null,
+          name: "An existing merchant",
+          service_name: "Their shop",
+          payout_wallet: "0x0000000000000000000000000000000000000001",
+          selling: "paused",
+          updated_at: updatedAt,
+        },
+      ]);
+
+      await pool.query(
+        `insert into merchants (id, name, selling, created_at, updated_at)
+         values ('mch_new', 'A new merchant', 'open', now(), now())`,
+      );
+      const future = await pool.query<{ live_approved_at: Date | null }>(
+        "select live_approved_at from merchants where id = 'mch_new'",
+      );
+      expect(future.rows).toStrictEqual([{ live_approved_at: null }]);
+    });
+  });
 }

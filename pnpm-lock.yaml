@@ -87,6 +87,9 @@ importers:
       '@agentify/commerce-core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@agentify/commerce-gateway':
+        specifier: workspace:*
+        version: link:../gateway
       '@nuanu-ai/agentify-contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -106,9 +109,6 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
-      '@agentify/commerce-gateway':
-        specifier: workspace:*
-        version: link:../gateway
       '@types/express':
         specifier: ^5.0.6
         version: 5.0.6

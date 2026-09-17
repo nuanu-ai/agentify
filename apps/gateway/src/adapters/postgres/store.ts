@@ -185,6 +185,29 @@ export class PostgresStore implements Store {
     return row === undefined ? null : storedMerchantOf(row);
   }
 
+  async grantLiveApproval(
+    id: string,
+    at: number,
+  ): Promise<{ merchant: StoredMerchant; changed: boolean } | null> {
+    // The predicate and write are one statement. Two operators arriving
+    // together cannot both replace the instant: one writes, and the other sees
+    // no row to update after the first commits.
+    const [granted] = await this.#db
+      .update(merchants)
+      .set({ liveApprovedAt: new Date(at) })
+      .where(and(eq(merchants.id, id), isNull(merchants.liveApprovedAt)))
+      .returning();
+    if (granted !== undefined) {
+      return { merchant: storedMerchantOf(granted), changed: true };
+    }
+
+    // Distinguishes an idempotent repeat from a merchant that is not there.
+    // `updated_at` is absent from both writes on purpose: this grant has its
+    // own immutable instant and changes no merchant-owned setting.
+    const existing = await this.merchantById(id);
+    return existing === null ? null : { merchant: existing, changed: false };
+  }
+
   async merchants(): Promise<readonly StoredMerchant[]> {
     const rows = await this.#db.select().from(merchants).orderBy(merchants.createdAt);
     return rows.map(storedMerchantOf);
@@ -491,6 +514,7 @@ export class PostgresStore implements Store {
         selling: merchants.selling,
         payoutWallet: merchants.payoutWallet,
         serviceName: merchants.serviceName,
+        liveApprovedAt: merchants.liveApprovedAt,
       })
       .from(cards)
       .innerJoin(merchants, eq(cards.merchantId, merchants.id))
@@ -500,6 +524,7 @@ export class PostgresStore implements Store {
       merchant: sellingWordOf(row.selling),
       payoutWallet: row.payoutWallet,
       serviceName: row.serviceName,
+      liveApprovedAt: row.liveApprovedAt?.getTime() ?? null,
     }));
   }
 
@@ -1022,6 +1047,7 @@ function storedMerchantOf(row: {
   name: string;
   serviceName: string | null;
   payoutWallet: string | null;
+  liveApprovedAt: Date | null;
   selling: string;
   createdAt: Date;
 }): StoredMerchant {
@@ -1030,6 +1056,7 @@ function storedMerchantOf(row: {
     name: row.name,
     serviceName: row.serviceName,
     payoutWallet: row.payoutWallet,
+    liveApprovedAt: row.liveApprovedAt?.getTime() ?? null,
     selling: sellingWordOf(row.selling),
     createdAt: row.createdAt.getTime(),
   };

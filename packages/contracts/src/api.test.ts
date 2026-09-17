@@ -1248,6 +1248,12 @@ describe("the route table", () => {
     expect(API_ROUTES.publish_card.description).toContain("/v0/seller-name");
   });
 
+  it("says live publication also waits for an operator, without inventing a merchant route", () => {
+    expect(API_ROUTES.publish_card.description).toContain("no_operator_approval");
+    expect(API_ROUTES.publish_card.description).toContain("test publication");
+    expect(API_ROUTES.publish_card.description).toContain("no merchant API");
+  });
+
   it("says a name cannot be taken away, and names the act that is wanted instead", () => {
     // A merchant who has a name keeps one. Somebody building a settings screen
     // would otherwise put a "remove" button beside the field, find the call

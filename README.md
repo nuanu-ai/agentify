@@ -56,6 +56,19 @@ If port 8080 is taken, `AGENTIFY_HOST_PORT=8090 docker compose up` moves the
 stack and nothing else — the buy command runs on the host and needs
 `GATEWAY_URL=http://localhost:8090 pnpm buy`.
 
+## Approving a production merchant
+
+From the operator's local checkout, run `pnpm approve <email>`. The command uses
+SSH access to the production host, resolves that cabinet account's existing
+merchant and records its one-time approval for live sales. It prints the
+production target, resolved account, seller and merchant ID. Repeating it is
+safe and reports that approval already exists; an unknown or unbound account
+is refused without creating anything.
+
+Approval does not publish cards or supply a missing seller name or payout
+wallet. The test channel needs no operator approval. This is a private
+application command; ordinary infrastructure deployment still uses Ansible.
+
 ## What happens in a sale
 
 A card is one product written so that a program can decide to buy it: a title,

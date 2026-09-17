@@ -1,6 +1,6 @@
 /** The Mac-side production wrapper as a process, with a fake local ssh binary. */
 
-import { execFile } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from "vitest";
 const execute = promisify(execFile);
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const wrapper = join(root, "scripts", "approve.mjs");
+const tsx = join(root, "apps", "cabinet", "node_modules", "tsx", "dist", "loader.mjs");
 const temporary: string[] = [];
 
 afterEach(async () => {
@@ -19,7 +20,10 @@ afterEach(async () => {
   );
 });
 
-async function fakeSsh(exitCode = 0): Promise<{
+async function fakeSsh(
+  exitCode = 0,
+  terminate = false,
+): Promise<{
   readonly path: string;
   readonly argumentsFile: string;
   readonly inputFile: string;
@@ -35,7 +39,7 @@ async function fakeSsh(exitCode = 0): Promise<{
       "#!/bin/sh",
       `printf '%s\\n' "$@" > ${JSON.stringify(argumentsFile)}`,
       `dd of=${JSON.stringify(inputFile)} status=none`,
-      `exit ${exitCode}`,
+      terminate ? "kill -TERM $$" : `exit ${exitCode}`,
       "",
     ].join("\n"),
   );
@@ -46,13 +50,14 @@ async function fakeSsh(exitCode = 0): Promise<{
 async function invoked(
   argv: readonly string[],
   sshExitCode = 0,
+  terminate = false,
 ): Promise<{
   readonly code: number;
   readonly stdout: string;
   readonly stderr: string;
   readonly ssh: Awaited<ReturnType<typeof fakeSsh>>;
 }> {
-  const ssh = await fakeSsh(sshExitCode);
+  const ssh = await fakeSsh(sshExitCode, terminate);
   try {
     const result = await execute(process.execPath, [wrapper, ...argv], {
       env: { ...process.env, PATH: `${ssh.path}:${process.env.PATH ?? ""}` },
@@ -70,6 +75,17 @@ async function invoked(
 }
 
 describe("pnpm approve's local production wrapper", () => {
+  it("shows production help locally without opening ssh", async () => {
+    const result = await invoked(["--help"]);
+
+    expect(result.code).toBe(0);
+    expect(`${result.stdout}\n${result.stderr}`).toMatch(/production/i);
+    expect(`${result.stdout}\n${result.stderr}`).toMatch(/pnpm approve <email>/i);
+    await expect(readFile(result.ssh.argumentsFile, "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
   it("requires exactly one email and does not open ssh when it is absent", async () => {
     const result = await invoked([]);
 
@@ -87,7 +103,21 @@ describe("pnpm approve's local production wrapper", () => {
     expect(result.code).toBe(0);
     await expect(readFile(result.ssh.inputFile, "utf8")).resolves.toBe(`${email}\n`);
     await expect(readFile(result.ssh.argumentsFile, "utf8")).resolves.toBe(
-      [
+      `${[
+        "-o",
+        "ControlMaster=auto",
+        "-o",
+        "ControlPersist=60",
+        "-o",
+        "ControlPath=~/.ssh/agentify-approve-%C",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "-o",
+        "ServerAliveInterval=10",
+        "-o",
+        "ServerAliveCountMax=3",
         "agentify",
         "docker",
         "exec",
@@ -97,7 +127,7 @@ describe("pnpm approve's local production wrapper", () => {
         "--filter",
         "@agentify/commerce-cabinet",
         "approve",
-      ].join("\n") + "\n",
+      ].join("\n")}\n`,
     );
   });
 
@@ -110,6 +140,41 @@ describe("pnpm approve's local production wrapper", () => {
     expect(output).toMatch(/unknown|uncertain/i);
     expect(output).toMatch(/retry/i);
     expect(output).not.toMatch(/approval failed|was not approved/i);
+  });
+
+  it("treats a terminated ssh process as an unknown one-way outcome", async () => {
+    const result = await invoked([EMAIL], 0, true);
+    const output = `${result.stdout}\n${result.stderr}`;
+
+    expect(result.code).not.toBe(0);
+    expect(output).toMatch(/production/i);
+    expect(output).toMatch(/unknown|uncertain/i);
+    expect(output).toMatch(/retry/i);
+    expect(output).not.toMatch(/approval failed|was not approved/i);
+  });
+
+  it("the server command refuses a test payment network before reading a production database", () => {
+    const secret = "postgresql://operator:password-must-stay-secret@127.0.0.1/production";
+    const result = spawnSync(
+      process.execPath,
+      ["--import", tsx, join(root, "apps", "cabinet", "src", "approve.ts")],
+      {
+        cwd: root,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          DATABASE_URL: secret,
+          PAYMENT_NETWORK: "eip155:84532",
+        },
+        input: `${EMAIL}\n`,
+      },
+    );
+    const output = `${result.stdout}\n${result.stderr}`;
+
+    expect(result.status).not.toBe(0);
+    expect(output).toMatch(/production/i);
+    expect(output).toMatch(/not the live network/i);
+    expect(output).not.toContain(secret);
   });
 });
 

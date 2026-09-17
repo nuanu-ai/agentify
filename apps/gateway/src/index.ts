@@ -24,9 +24,11 @@ export { connect, PostgresStore } from "./adapters/postgres/store.js";
 export { X402Facilitator } from "./adapters/x402/facilitator.js";
 export { Gateway, type PurchaseAttempt } from "./app/gateway.js";
 export {
+  grantLiveApproval,
   type IssuedKey,
   issueKey,
   keyDigest,
+  type LiveApprovalGrant,
   makeMerchant,
   newKeySecret,
   SEEDED_MERCHANT,

@@ -54,8 +54,11 @@ The test channel settles test USDC on Base Sepolia. Save the Base wallet where
 those payments should arrive in Cabinet settings before publishing. The live
 channel is a separate account at `https://agentify.ad`: it uses Base
 mainnet and real USDC, and likewise refuses to publish a card until that
-account has a payout wallet. A local scripted sandbox is the exception: it
-moves no funds, so it does not require a merchant wallet.
+account has a payout wallet and the operator has approved that merchant for
+live sales. Until then, publication lists each missing prerequisite and the
+merchant's products cannot start new live purchases. Operator approval is not
+required on the test channel. A local scripted sandbox moves no funds, so it
+does not require a merchant wallet either.
 
 Once the seller name and wallet are set, open API Keys, press "Issue a key",
 name it so you can distinguish it from the next one, and copy it. The secret is

@@ -336,6 +336,30 @@ if (databaseUrl === null) {
       now = Date.parse("2026-08-26T12:00:00.000Z");
     });
 
+    it("records the first live grant without moving the merchant update time", async () => {
+      const before = await pool.query<{ updated_at: Date }>(
+        "select updated_at from merchants where id = $1",
+        [A],
+      );
+      const granted = await store.grantLiveApproval(A, now + 1_000);
+      const repeated = await store.grantLiveApproval(A, now + 9_000);
+      const after = await pool.query<{ updated_at: Date; live_approved_at: Date | null }>(
+        "select updated_at, live_approved_at from merchants where id = $1",
+        [A],
+      );
+
+      expect(granted).toMatchObject({
+        changed: true,
+        merchant: { liveApprovedAt: now + 1_000 },
+      });
+      expect(repeated).toMatchObject({
+        changed: false,
+        merchant: { liveApprovedAt: now + 1_000 },
+      });
+      expect(after.rows[0]?.live_approved_at?.getTime()).toBe(now + 1_000);
+      expect(after.rows[0]?.updated_at).toStrictEqual(before.rows[0]?.updated_at);
+    });
+
     it("changes the card that is there when it is published again", async () => {
       const first = await store.publishCard(A, syncCard, now);
       const again = await store.publishCard(A, { ...syncCard, title: "Corrected" }, now + 1_000);

@@ -22,6 +22,7 @@ import { MemoryQueue } from "../adapters/memory/queue.js";
 import { MemoryStore } from "../adapters/memory/store.js";
 import { Gateway } from "../app/gateway.js";
 import {
+  grantLiveApproval,
   issueKey,
   keyDigest,
   makeMerchant,
@@ -200,6 +201,14 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
     // that paid every sale to one address pass a test about whose it is.
     const wallet = aSeededWallet();
     await setPayoutWallet(store, made.id, wallet, now);
+    // The harness's seeded merchant is the ready seller every unrelated order
+    // test has always exercised. Say the new live prerequisite explicitly on a
+    // live harness rather than weakening the store's denied default. This seed
+    // function is also the harness's explicit ready-merchant helper;
+    // registration and direct store creation remain unapproved.
+    if (config.surfaceMode === "live") {
+      await grantLiveApproval(store, made.id, now);
+    }
     const issued =
       secret === undefined
         ? await issueKey(store, ids, made.id, "the harness", now, config.environment)

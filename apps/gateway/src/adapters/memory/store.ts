@@ -92,6 +92,8 @@ interface MerchantRow {
   serviceName: string | null;
   /** Where this merchant's sales are paid, as a wallet writes it, where one is set. */
   payoutWallet: string | null;
+  /** The first operator grant for live publication, where one was made. */
+  liveApprovedAt: number | null;
 }
 
 export class MemoryStore implements Store {
@@ -141,6 +143,7 @@ export class MemoryStore implements Store {
       selling: "open",
       serviceName: null,
       payoutWallet: null,
+      liveApprovedAt: null,
     };
     this.#merchants.set(merchant.id, row);
     return storedMerchantOf(row);
@@ -164,6 +167,7 @@ export class MemoryStore implements Store {
       selling: "open",
       serviceName: null,
       payoutWallet: null,
+      liveApprovedAt: null,
     };
     this.#merchants.set(merchant.id, row);
 
@@ -185,6 +189,19 @@ export class MemoryStore implements Store {
   async merchantById(id: string): Promise<StoredMerchant | null> {
     const row = this.#merchants.get(id);
     return row === undefined ? null : storedMerchantOf(row);
+  }
+
+  async grantLiveApproval(
+    id: string,
+    at: number,
+  ): Promise<{ merchant: StoredMerchant; changed: boolean } | null> {
+    const row = this.#merchants.get(id);
+    if (row === undefined) {
+      return null;
+    }
+    const changed = row.liveApprovedAt === null;
+    row.liveApprovedAt ??= at;
+    return { merchant: storedMerchantOf(row), changed };
   }
 
   async merchants(): Promise<readonly StoredMerchant[]> {
@@ -407,6 +424,7 @@ export class MemoryStore implements Store {
       merchant: this.#sellingOf(card.merchantId),
       payoutWallet: this.#merchants.get(card.merchantId)?.payoutWallet ?? null,
       serviceName: this.#merchants.get(card.merchantId)?.serviceName ?? null,
+      liveApprovedAt: this.#merchants.get(card.merchantId)?.liveApprovedAt ?? null,
     }));
   }
 
@@ -688,6 +706,7 @@ function storedMerchantOf(row: MerchantRow): StoredMerchant {
     name: row.name,
     serviceName: row.serviceName,
     payoutWallet: row.payoutWallet,
+    liveApprovedAt: row.liveApprovedAt,
     selling: row.selling,
     createdAt: row.createdAt,
   };
