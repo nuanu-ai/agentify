@@ -73,7 +73,7 @@ const migrationsFolder = fileURLToPath(
 );
 const admin = createDatabase(connectionString, { max: 1 });
 const provider = new LocalStripeCardSignalProvider("p5-webhook-secret");
-let cabinetServer: Server;
+let cabinetServer: Server | undefined;
 let cabinetMode: "unavailable" | "retained" | "deleted" = "retained";
 let cabinetDelayMs = 0;
 let cabinetDeleteRequests = 0;
@@ -160,11 +160,14 @@ beforeAll(async () => {
   await admin.pool.query(
     "drop schema if exists public cascade; drop schema if exists drizzle cascade; create schema public",
   );
+  await admin.pool.query(`DO $roles$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agentify_web') THEN CREATE ROLE agentify_web NOLOGIN; END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agentify_privacy') THEN CREATE ROLE agentify_privacy NOLOGIN; END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agentify_worker') THEN CREATE ROLE agentify_worker NOLOGIN; END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agentify_dashboard') THEN CREATE ROLE agentify_dashboard NOLOGIN; END IF;
+  END $roles$; GRANT USAGE ON SCHEMA public TO agentify_web, agentify_privacy, agentify_worker, agentify_dashboard`);
   await migrateDatabase(admin.db, migrationsFolder);
-  await admin.pool.query(
-    "grant usage on schema public to agentify_web, agentify_privacy, agentify_worker, agentify_dashboard",
-  );
-  cabinetServer = createServer(async (request, response) => {
+  const server = createServer(async (request, response) => {
     if (
       request.url !== "/internal/report-identity" ||
       request.method !== "POST" ||
@@ -193,19 +196,21 @@ beforeAll(async () => {
       respondJson(response, 200, { status: cabinetMode });
     }
   });
-  await new Promise<void>((resolve) =>
-    cabinetServer.listen(0, "127.0.0.1", resolve),
-  );
-  const address = cabinetServer.address();
+  cabinetServer = server;
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
   if (!address || typeof address === "string")
     throw new Error("server_address");
   process.env.CABINET_IDENTITY_URL = `http://127.0.0.1:${address.port}`;
 }, 30_000);
 
 afterAll(async () => {
-  await new Promise<void>((resolve, reject) =>
-    cabinetServer.close((error) => (error ? reject(error) : resolve())),
-  );
+  const server = cabinetServer;
+  if (server?.listening) {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  }
   await getDatabase().pool.end();
   await admin.pool.query(
     "drop schema if exists public cascade; drop schema if exists drizzle cascade; create schema public",
