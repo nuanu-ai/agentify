@@ -60,6 +60,49 @@ export const wooShopsContract = (
   };
 
   describe(`${name}: a Connect under way`, () => {
+    const keys = {
+      consumerKey: "ck_abc",
+      consumerSecret: "cs_def",
+      permissions: "read_write",
+    };
+
+    it("consumes the current grant together with writing its connection", async () => {
+      await using(async (shops, accounts) => {
+        await shops.beginGrant({
+          token: "a-token",
+          accountId: accounts.one,
+          shopUrl: "https://shop.example.com",
+          startedAt: NOW,
+          expiresAt: MUCH_LATER,
+        });
+
+        const connected = await shops.connectFromGrant("a-token", keys, NOW);
+
+        expect(connected?.revision).toBe("a-token");
+        expect((await shops.connectionOf(accounts.one))?.shopUrl).toBe("https://shop.example.com");
+        expect(await shops.grantFor(accounts.one)).toBeNull();
+        expect(await shops.connectFromGrant("a-token", keys, NOW)).toBeNull();
+      });
+    });
+
+    it("lets one simultaneous callback consume and connect a grant", async () => {
+      await using(async (shops, accounts) => {
+        await shops.beginGrant({
+          token: "a-token",
+          accountId: accounts.one,
+          shopUrl: "https://shop.example.com",
+          startedAt: NOW,
+          expiresAt: MUCH_LATER,
+        });
+
+        const connected = await Promise.all(
+          Array.from({ length: 10 }, () => shops.connectFromGrant("a-token", keys, NOW)),
+        );
+
+        expect(connected.filter((one) => one !== null)).toHaveLength(1);
+      });
+    });
+
     it("hands back the Connect the token names", async () => {
       await using(async (shops, accounts) => {
         await shops.beginGrant({

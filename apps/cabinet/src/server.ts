@@ -416,11 +416,17 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
         return;
       }
 
-      // Spent, not merely looked at. A token that worked twice would let
-      // anybody who ever saw one — in a shop's own logs, in a browser's
-      // history — put a second shop's keys on that account afterwards.
-      const grant = await shops.spendGrant(token, new Date());
-      if (grant === null) {
+      // Consumed together with the connection write. A token that worked twice
+      // would let anybody who ever saw one put a second shop's keys on that
+      // account; consuming first and connecting later would let an older
+      // callback overwrite a newer Connect in between.
+      const connectedAt = new Date();
+      const connection = await shops.connectFromGrant(
+        token,
+        { consumerKey, consumerSecret, permissions },
+        connectedAt,
+      );
+      if (connection === null) {
         // One answer for a token nobody issued, one already spent and one whose
         // fifteen minutes are up. Telling them apart here would be answering
         // questions about somebody else's account to whoever asked.
@@ -429,23 +435,11 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
         return;
       }
 
-      await shops.connect({
-        accountId: grant.accountId,
-        // The shop the merchant typed and we checked, not one named in this
-        // request: the callback is unauthenticated, so a shop address read out
-        // of it would be a shop of the caller's choosing.
-        shopUrl: grant.shopUrl,
-        consumerKey,
-        consumerSecret,
-        permissions,
-        revision: token,
-        connectedAt: new Date(),
-      });
       // The address and the scope, never the keys: a log goes places the
       // database does not.
       console.log(
         printable(
-          `[cabinet] a WooCommerce shop was connected for an account: ${grant.shopUrl}, ${permissions}`,
+          `[cabinet] a WooCommerce shop was connected for an account: ${connection.shopUrl}, ${permissions}`,
         ),
       );
       response.json({ ok: true });

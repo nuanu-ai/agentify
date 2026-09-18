@@ -120,6 +120,19 @@ export interface WooShops {
    */
   spendGrant(token: string, now: Date): Promise<WooGrant | null>;
   /**
+   * Consumes the still-current grant and writes its connection as one
+   * account-serialised operation.
+   *
+   * A callback is unauthenticated and may arrive after the merchant has begun
+   * another Connect. Splitting consume from connect would let that older
+   * callback overwrite the newer intent in between the two writes.
+   */
+  connectFromGrant(
+    token: string,
+    keys: Pick<WooConnection, "consumerKey" | "consumerSecret" | "permissions">,
+    now: Date,
+  ): Promise<WooConnection | null>;
+  /**
    * The Connect this account started and nothing has come back for, or null.
    *
    * Read by the screens and by nothing on the callback path, which is what
@@ -230,6 +243,57 @@ export const postgresWooShops = (pool: Pool): WooShops => {
         startedAt: row.createdAt,
         expiresAt: row.expiresAt,
       };
+    },
+
+    async connectFromGrant(token, keys, now) {
+      return await db.transaction(async (tx) => {
+        const [seen] = await tx
+          .select({ accountId: wooGrants.accountId })
+          .from(wooGrants)
+          .where(eq(wooGrants.token, token))
+          .limit(1);
+        if (seen === undefined) return null;
+
+        // The same lock beginGrant takes. Whichever operation owns it first is
+        // complete before the other observes the account's current grant.
+        await tx.execute(
+          sql`select ${accounts.id} from ${accounts} where ${accounts.id} = ${seen.accountId} for update`,
+        );
+        const [grant] = await tx
+          .delete(wooGrants)
+          .where(
+            and(
+              eq(wooGrants.token, token),
+              eq(wooGrants.accountId, seen.accountId),
+              gt(wooGrants.expiresAt, now),
+            ),
+          )
+          .returning();
+        if (grant === undefined) return null;
+
+        const connection: WooConnection = {
+          accountId: grant.accountId,
+          shopUrl: grant.shopUrl,
+          ...keys,
+          revision: token,
+          connectedAt: now,
+        };
+        await tx
+          .insert(wooShops)
+          .values(connection)
+          .onConflictDoUpdate({
+            target: wooShops.accountId,
+            set: {
+              shopUrl: connection.shopUrl,
+              consumerKey: connection.consumerKey,
+              consumerSecret: connection.consumerSecret,
+              permissions: connection.permissions,
+              revision: connection.revision,
+              connectedAt: connection.connectedAt,
+            },
+          });
+        return connection;
+      });
     },
 
     async grantFor(accountId) {
@@ -457,6 +521,24 @@ export const memoryWooShops = (): WooShops => {
       }
       grants.delete(token);
       return found;
+    },
+
+    async connectFromGrant(token, keys, now) {
+      const grant = grants.get(token);
+      if (grant === undefined || grant.expiresAt.getTime() <= now.getTime()) return null;
+      // beginGrant keeps exactly one row for an account. If this token is
+      // present, it is still that account's current intent; consume and write
+      // happen without an await in between.
+      grants.delete(token);
+      const connection: WooConnection = {
+        accountId: grant.accountId,
+        shopUrl: grant.shopUrl,
+        ...keys,
+        revision: token,
+        connectedAt: now,
+      };
+      shops.set(grant.accountId, connection);
+      return connection;
     },
 
     async grantFor(accountId) {

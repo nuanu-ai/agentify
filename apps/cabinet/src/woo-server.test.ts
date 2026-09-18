@@ -452,15 +452,14 @@ describe("the keys arriving from the shop", () => {
     const firstToken = tokenIn(first.to ?? "");
     const spent = Promise.withResolvers<void>();
     const finish = Promise.withResolvers<void>();
-    const spend = running.shops.spendGrant.bind(running.shops);
+    const connect = running.shops.connectFromGrant.bind(running.shops);
     const mutable = running.shops as {
-      spendGrant: WooShops["spendGrant"];
+      connectFromGrant: WooShops["connectFromGrant"];
     };
-    mutable.spendGrant = async (token, now) => {
-      const grant = await spend(token, now);
+    mutable.connectFromGrant = async (token, keys, now) => {
       spent.resolve();
       await finish.promise;
-      return grant;
+      return await connect(token, keys, now);
     };
 
     const older = running.postJson("/woocommerce/callback", grantedBody(firstToken));
