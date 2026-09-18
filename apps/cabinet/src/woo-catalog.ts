@@ -100,7 +100,7 @@ export const decimalOfMinorUnits = (minor: string, scale: number): string | null
   if (!/^\d+$/.test(minor)) {
     return null;
   }
-  if (!Number.isInteger(scale) || scale < 0) {
+  if (!Number.isInteger(scale) || scale < 0 || scale > 18) {
     return null;
   }
   if (scale === 0) {
@@ -347,6 +347,10 @@ export const cardsFromTheShop = (
       continue;
     }
 
+    if (product.prices.currency_code !== "USD" || product.prices.currency_minor_unit !== 2) {
+      refused("This connector supports USD prices with two decimal places.");
+      continue;
+    }
     const amount = decimalOfMinorUnits(product.prices.price, product.prices.currency_minor_unit);
     if (amount === null) {
       refused(

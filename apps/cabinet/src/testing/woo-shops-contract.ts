@@ -19,6 +19,7 @@ const FACTS: WooOrderFacts = {
   connectionRevision: "grant_1",
   merchantItemId: "woo_merchant_11",
   productId: "11",
+  productFingerprint: "accepted-download-fingerprint",
   amount: "25.00",
   currency: "USD",
 };
@@ -351,6 +352,37 @@ export const wooShopsContract = (
         await shops.connect(connection(accounts.one));
         await shops.forget(accounts.one);
         expect(await shops.connectionOf(accounts.one)).toBeNull();
+      });
+    });
+  });
+
+  describe(`${name}: a price question`, () => {
+    it("binds one price id to one merchant product fingerprint", async () => {
+      await using(async (shops, accounts) => {
+        expect(
+          await shops.recordQuote(
+            accounts.one,
+            "prc_1",
+            FACTS.merchantItemId,
+            FACTS.productFingerprint,
+            MUCH_LATER,
+            NOW,
+          ),
+        ).toBe(true);
+        expect(await shops.quotedProduct(accounts.one, "prc_1", FACTS.merchantItemId)).toBe(
+          FACTS.productFingerprint,
+        );
+        expect(await shops.quotedProduct(accounts.other, "prc_1", FACTS.merchantItemId)).toBeNull();
+        expect(
+          await shops.recordQuote(
+            accounts.one,
+            "prc_1",
+            FACTS.merchantItemId,
+            "different-product",
+            MUCH_LATER,
+            NOW,
+          ),
+        ).toBe(false);
       });
     });
   });

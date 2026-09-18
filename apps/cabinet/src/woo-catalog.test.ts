@@ -114,6 +114,7 @@ describe("a price in minor units", () => {
     expect(decimalOfMinorUnits("1e3", 2)).toBeNull();
     expect(decimalOfMinorUnits("500", -1)).toBeNull();
     expect(decimalOfMinorUnits("500", 1.5)).toBeNull();
+    expect(decimalOfMinorUnits("500", 1_000_000_000)).toBeNull();
   });
 });
 

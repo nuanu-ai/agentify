@@ -83,6 +83,7 @@ const anOrder = (overrides: Partial<Order> = {}): Order => ({
     at: "2026-09-14T12:00:00.000Z",
     as_of: "2026-09-14T12:00:00.000Z",
   },
+  price_id: "prc_1",
   test: true,
   ...overrides,
 });
@@ -118,7 +119,9 @@ const filling = (
     productId: merchantItemId.split("_").at(-1) ?? "",
     downloadId: "dl_guide",
     fileName: "Guide",
+    fingerprint: "accepted-download-fingerprint",
   }),
+  quotedProduct: async () => "accepted-download-fingerprint",
 });
 
 describe("one paid order, in the merchant's own shop", () => {
@@ -314,6 +317,7 @@ describe("one paid order, in the merchant's own shop", () => {
               productId: "11",
               downloadId: "dl_guide",
               fileName: "Guide",
+              fingerprint: "accepted-download-fingerprint",
               price: { amount: "25.00", currency: "USD" },
             }
           : null,
@@ -425,7 +429,9 @@ describe("the whole way through, against a real gateway", () => {
         productId: "11",
         downloadId: "dl_guide",
         fileName: "Guide",
+        fingerprint: "accepted-download-fingerprint",
       }),
+      quotedProduct: async () => "accepted-download-fingerprint",
     };
     const connected: WooConnection = { ...connection(), shopUrl: shop.url };
 
@@ -485,7 +491,9 @@ describe("the whole way through, against a real gateway", () => {
         productId: "11",
         downloadId: "dl_guide",
         fileName: "Guide",
+        fingerprint: "accepted-download-fingerprint",
       }),
+      quotedProduct: async () => "accepted-download-fingerprint",
     };
 
     const first = await fillFromTheShop(anOrder(), connected, MERCHANT_EMAIL, parts);
@@ -532,7 +540,9 @@ describe("the whole way through, against a real gateway", () => {
             productId: "11",
             downloadId: "dl_guide",
             fileName: "Guide",
+            fingerprint: "accepted-download-fingerprint",
           }),
+          quotedProduct: async () => "accepted-download-fingerprint",
         });
         if (answer === null) throw new Error("the order was left unanswered");
         return answer;
@@ -605,7 +615,9 @@ describe("the whole way through, against a real gateway", () => {
         productId: "11",
         downloadId: "dl_guide",
         fileName: "Guide",
+        fingerprint: "accepted-download-fingerprint",
       }),
+      quotedProduct: async () => "accepted-download-fingerprint",
     });
     expect(turned).toBe(1);
     expect(answered).toEqual(["quote"]);

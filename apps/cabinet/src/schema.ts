@@ -371,6 +371,23 @@ export const wooShops = pgTable("cabinet_woo_shops", {
   connectedAt: moment("connected_at"),
 });
 
+/** Delivery-critical Woo facts accepted under one gateway price question. */
+export const wooQuotes = pgTable(
+  "cabinet_woo_quotes",
+  {
+    priceId: text("price_id").primaryKey(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    merchantItemId: text("merchant_item_id").notNull(),
+    /** Digest only: the protected source address itself is buyer-secret data. */
+    productFingerprint: text("product_fingerprint").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+    createdAt: moment("created_at"),
+  },
+  (table) => [index("cabinet_woo_quotes_account_idx").on(table.accountId)],
+);
+
 /**
  * What we have already placed in a shop, and what we tried to.
  *

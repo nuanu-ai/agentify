@@ -399,13 +399,14 @@ describe("the protected product check", () => {
 
     const read = await inspectProduct(keys, merchantItemIdFor(stand.url, "11"));
 
-    expect(read).toEqual({
+    expect(read).toMatchObject({
       ok: true,
       product: {
         productId: "11",
         downloadId: "dl_guide",
         fileName: "Agentify guide.txt",
         price: { amount: "0.01", currency: "USD" },
+        fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
       },
     });
     expect(stand.asked.filter((asked) => asked.authorization !== undefined)).toHaveLength(6);
@@ -450,5 +451,39 @@ describe("the protected product check", () => {
       merchantItemIdFor(stand.url, "11"),
     );
     expect(publicFile).toMatchObject({ ok: false, why: expect.stringContaining("public") });
+  });
+
+  it("refuses missing raw bytes and empty permission fields", async () => {
+    for (const product of [
+      productDocument({ downloads: [{ id: "", name: "Guide", file: `${stand?.url}/x` }] }),
+      productDocument({ downloads: [{ id: "dl", name: "", file: `${stand?.url}/x` }] }),
+    ]) {
+      stand = await shopAnswering((asked) => {
+        if (asked.url.includes("/settings/")) {
+          return { status: 200, body: { value: settingFor(asked.url) } };
+        }
+        return { status: 200, body: product };
+      });
+      const read = await inspectProduct(
+        connectionTo(stand.url),
+        merchantItemIdFor(stand.url, "11"),
+      );
+      expect(read.ok).toBe(false);
+      await stand.close();
+      stand = null;
+    }
+
+    stand = await shopAnswering((asked) => {
+      if (asked.url === "/protected/guide.txt") return { status: 404, body: {} };
+      if (asked.url.includes("/settings/")) {
+        return { status: 200, body: { value: settingFor(asked.url) } };
+      }
+      return { status: 200, body: productDocument() };
+    });
+    const missing = await inspectProduct(
+      connectionTo(stand.url),
+      merchantItemIdFor(stand.url, "11"),
+    );
+    expect(missing.ok).toBe(false);
   });
 });

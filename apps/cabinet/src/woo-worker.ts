@@ -69,7 +69,14 @@ export interface Filling {
     readonly downloadId: string;
     readonly fileName: string;
     readonly price?: { readonly amount: string; readonly currency: string };
+    readonly fingerprint?: string;
   } | null>;
+  /** Test seam for the durable quote binding; production reads WooShops. */
+  readonly quotedProduct?: (
+    connection: WooConnection,
+    priceId: string,
+    merchantItemId: string,
+  ) => Promise<string | null>;
 }
 
 /**
@@ -122,6 +129,7 @@ export const fillFromTheShop = async (
       eligible?.productId ??
       productIdFromMerchantItem(connection.shopUrl, order.merchant_item_id) ??
       "",
+    productFingerprint: eligible?.fingerprint ?? "",
     amount: order.price.amount,
     currency: order.price.currency,
   };
@@ -146,6 +154,26 @@ export const fillFromTheShop = async (
         code: "cannot_fulfill",
         message:
           "The shop's product or price changed after this purchase was quoted, so no WooCommerce order was created.",
+      },
+    };
+  }
+  const quoted =
+    order.price_id === undefined
+      ? null
+      : parts.quotedProduct === undefined
+        ? await parts.shops.quotedProduct(
+            connection.accountId,
+            order.price_id,
+            order.merchant_item_id,
+          )
+        : await parts.quotedProduct(connection, order.price_id, order.merchant_item_id);
+  if (quoted === null || quoted !== eligible.fingerprint) {
+    await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
+    return {
+      refused: {
+        code: "cannot_fulfill",
+        message:
+          "The shop's downloadable product changed after this purchase was quoted, so no WooCommerce order was created.",
       },
     };
   }
@@ -376,7 +404,7 @@ export const turnOnce = async (connection: WooConnection, parts: WorkingParts): 
         connection.permissions !== "read_write"
           ? { available: false as const, as_of: parts.now().toISOString() }
           : parts.quote === undefined
-            ? await quoteFromTheShop(connection, envelope.payload, parts.now())
+            ? await quoteFromTheShop(connection, envelope.payload, parts.now(), parts.shops)
             : await parts.quote(connection, envelope.payload, parts.now());
       const said = await gateway.answerQuote(envelope.payload.price_id, answer);
       if (!said.ok) {
@@ -409,9 +437,19 @@ const quoteFromTheShop = async (
   connection: WooConnection,
   question: QuoteRequest,
   at: Date,
+  shops: WooShops,
 ): Promise<QuoteResponse> => {
   const read = await inspectProductInTheShop(connection, question.merchant_item_id);
-  return read.ok
+  if (!read.ok) return { available: false, as_of: at.toISOString() };
+  const recorded = await shops.recordQuote(
+    connection.accountId,
+    question.price_id,
+    question.merchant_item_id,
+    read.product.fingerprint,
+    new Date(question.expires_at),
+    at,
+  );
+  return recorded
     ? { available: true, price: read.product.price, as_of: at.toISOString() }
     : { available: false, as_of: at.toISOString() };
 };

@@ -17,7 +17,7 @@
 import { and, desc, eq, gt, isNull, ne, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
-import { accounts, wooGrants, wooOrders, wooShops } from "./schema.js";
+import { accounts, wooGrants, wooOrders, wooQuotes, wooShops } from "./schema.js";
 
 /** A Connect a merchant started, waiting for their shop to answer. */
 export interface WooGrant {
@@ -54,6 +54,7 @@ export interface WooOrderFacts extends Readonly<Record<string, unknown>> {
   readonly connectionRevision: string;
   readonly merchantItemId: string;
   readonly productId: string;
+  readonly productFingerprint: string;
   readonly amount: string;
   readonly currency: string;
 }
@@ -152,6 +153,16 @@ export interface WooShops {
   forget(accountId: string): Promise<void>;
   /** Every connected shop, which is what the worker draws its work from. */
   connections(): Promise<readonly WooConnection[]>;
+  /** Persists the delivery identity accepted for one gateway price question. */
+  recordQuote(
+    accountId: string,
+    priceId: string,
+    merchantItemId: string,
+    productFingerprint: string,
+    expiresAt: Date,
+    now: Date,
+  ): Promise<boolean>;
+  quotedProduct(accountId: string, priceId: string, merchantItemId: string): Promise<string | null>;
 
   /**
    * Takes this sale on, or says what is already known about it.
@@ -352,6 +363,40 @@ export const postgresWooShops = (pool: Pool): WooShops => {
       return await db.select().from(wooShops);
     },
 
+    async recordQuote(accountId, priceId, merchantItemId, productFingerprint, expiresAt, now) {
+      await db
+        .insert(wooQuotes)
+        .values({
+          accountId,
+          priceId,
+          merchantItemId,
+          productFingerprint,
+          expiresAt,
+          createdAt: now,
+        })
+        .onConflictDoNothing({ target: wooQuotes.priceId });
+      const [row] = await db.select().from(wooQuotes).where(eq(wooQuotes.priceId, priceId));
+      return (
+        row?.accountId === accountId &&
+        row.merchantItemId === merchantItemId &&
+        row.productFingerprint === productFingerprint
+      );
+    },
+
+    async quotedProduct(accountId, priceId, merchantItemId) {
+      const [row] = await db
+        .select({ fingerprint: wooQuotes.productFingerprint })
+        .from(wooQuotes)
+        .where(
+          and(
+            eq(wooQuotes.priceId, priceId),
+            eq(wooQuotes.accountId, accountId),
+            eq(wooQuotes.merchantItemId, merchantItemId),
+          ),
+        );
+      return row?.fingerprint ?? null;
+    },
+
     async claimOrder(accountId, orderId, facts, now) {
       const [claimed] = await db
         .insert(wooOrders)
@@ -489,6 +534,10 @@ export const postgresWooShops = (pool: Pool): WooShops => {
 export const memoryWooShops = (): WooShops => {
   const grants = new Map<string, WooGrant>();
   const shops = new Map<string, WooConnection>();
+  const quotes = new Map<
+    string,
+    { accountId: string; merchantItemId: string; productFingerprint: string }
+  >();
   const orders = new Map<
     string,
     {
@@ -570,6 +619,26 @@ export const memoryWooShops = (): WooShops => {
 
     async connections() {
       return [...shops.values()];
+    },
+
+    async recordQuote(accountId, priceId, merchantItemId, productFingerprint) {
+      const found = quotes.get(priceId);
+      if (found === undefined) {
+        quotes.set(priceId, { accountId, merchantItemId, productFingerprint });
+        return true;
+      }
+      return (
+        found.accountId === accountId &&
+        found.merchantItemId === merchantItemId &&
+        found.productFingerprint === productFingerprint
+      );
+    },
+
+    async quotedProduct(accountId, priceId, merchantItemId) {
+      const found = quotes.get(priceId);
+      return found?.accountId === accountId && found.merchantItemId === merchantItemId
+        ? found.productFingerprint
+        : null;
     },
 
     async claimOrder(accountId, orderId, facts, now) {

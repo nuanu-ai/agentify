@@ -194,6 +194,7 @@ const started = async (standing: Standing = {}): Promise<Running> => {
           downloadId: "dl_guide",
           fileName: "Guide",
           price: { amount: "25.00", currency: "USD" },
+          fingerprint: "accepted-download-fingerprint",
         },
       }),
     },

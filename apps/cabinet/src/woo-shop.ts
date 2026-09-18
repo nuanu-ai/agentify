@@ -15,6 +15,7 @@
  * whether an order is refused for good or handed back to be delivered again.
  */
 
+import { createHash } from "node:crypto";
 import type { Money } from "@nuanu-ai/agentify-contracts";
 import { z } from "zod";
 import {
@@ -70,6 +71,8 @@ export interface EligibleWooProduct {
   readonly downloadId: string;
   readonly fileName: string;
   readonly price: Money;
+  /** Digest of the delivery-critical product, settings and protected source. */
+  readonly fingerprint: string;
 }
 
 export type ProductInspection =
@@ -193,7 +196,12 @@ export const inspectProductInTheShop = async (
     };
   }
   const download = product.downloads[0];
-  if (download === undefined || !URL.canParse(download.file)) {
+  if (
+    download === undefined ||
+    download.id.trim() === "" ||
+    download.name.trim() === "" ||
+    !URL.canParse(download.file)
+  ) {
     return { ok: false, why: "The product's one download does not name a readable address." };
   }
   const raw = new URL(download.file);
@@ -206,7 +214,7 @@ export const inspectProductInTheShop = async (
       signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
     });
     await exposed.body?.cancel();
-    if ((exposed.status >= 200 && exposed.status < 400) || exposed.status === 0) {
+    if (exposed.status !== 401 && exposed.status !== 403) {
       return { ok: false, why: "The downloadable file is public without an order permission." };
     }
   } catch {
@@ -215,6 +223,33 @@ export const inspectProductInTheShop = async (
   if (!/^\d+(?:\.\d+)?$/.test(product.price)) {
     return { ok: false, why: "The protected product price is not a decimal amount." };
   }
+  const fingerprint = createHash("sha256")
+    .update(
+      JSON.stringify([
+        new URL(keys.shopUrl).origin,
+        productId,
+        download.id,
+        download.name,
+        raw.toString(),
+        product.price,
+        "USD",
+        product.type,
+        product.status,
+        product.stock_status,
+        product.manage_stock,
+        product.sold_individually,
+        product.virtual,
+        product.downloadable,
+        product.download_limit,
+        product.download_expiry,
+        product.tax_status,
+        method,
+        login,
+        afterPayment,
+        redirectFallback,
+      ]),
+    )
+    .digest("hex");
   return {
     ok: true,
     product: {
@@ -222,6 +257,7 @@ export const inspectProductInTheShop = async (
       downloadId: download.id,
       fileName: download.name,
       price: { amount: product.price, currency: "USD" },
+      fingerprint,
     },
   };
 };

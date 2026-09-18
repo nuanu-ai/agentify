@@ -11,6 +11,7 @@ const FACTS: WooOrderFacts = {
   connectionRevision: "grant_1",
   merchantItemId: "woo_merchant_22",
   productId: "22",
+  productFingerprint: "accepted-download-fingerprint",
   amount: "0.01",
   currency: "USD",
 };
@@ -19,6 +20,7 @@ const PRODUCT: EligibleWooProduct = {
   downloadId: "download_owned",
   fileName: "agentify-test.txt",
   price: { amount: "0.01", currency: "USD" },
+  fingerprint: "accepted-download-fingerprint",
 };
 
 const gatewayOrder = (status: OrderWithStatus["status"]): OrderWithStatus => ({
