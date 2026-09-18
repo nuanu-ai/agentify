@@ -1,0 +1,1 @@
+ALTER TABLE "cabinet_woo_orders" ADD COLUMN "phase" text DEFAULT 'create_unknown' NOT NULL;

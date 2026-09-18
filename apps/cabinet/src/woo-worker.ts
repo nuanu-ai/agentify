@@ -87,6 +87,20 @@ export const fillFromTheShop = async (
   parts: Filling,
 ): Promise<HandlerAnswer | null> => {
   const place = parts.placeOrder ?? createTheOrderInTheShop;
+  const known = await parts.shops.knownOrder(order.id);
+  if (known?.kind === "placed") return { delivered: known.result };
+  if (known?.kind === "precreate_refused") {
+    return {
+      refused: {
+        code: "cannot_fulfill",
+        message:
+          "This paid order was already refused before WooCommerce order creation. Reconnecting the shop does not create it again automatically.",
+      },
+    };
+  }
+  if (known?.kind === "unknown") {
+    return unknownCreation(order.id, connection.shopUrl, known.attemptedAt);
+  }
   const inspected =
     parts.eligibleProduct === undefined
       ? await inspectProductInTheShop(connection, order.merchant_item_id)
@@ -98,6 +112,7 @@ export const fillFromTheShop = async (
         ? inspected.product
         : null;
   if (eligible === null) {
+    await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, parts.now());
     return {
       refused: {
         code: "cannot_fulfill",
@@ -108,6 +123,7 @@ export const fillFromTheShop = async (
   }
   if (eligible.price !== undefined &&
       (eligible.price.amount !== order.price.amount || eligible.price.currency !== order.price.currency)) {
+    await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, parts.now());
     return {
       refused: {
         code: "cannot_fulfill",
@@ -126,6 +142,7 @@ export const fillFromTheShop = async (
       `[cabinet] the shop at ${connection.shopUrl} granted ${JSON.stringify(connection.permissions)}` +
         " access, which cannot create an order, so every sale on it is refused",
     );
+    await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, parts.now());
     return {
       refused: {
         code: "cannot_fulfill",
@@ -144,23 +161,17 @@ export const fillFromTheShop = async (
     return { delivered: claim.result };
   }
 
-  if (claim.kind === "unknown") {
-    console.error(
-      `[cabinet] ${order.id} was already being placed in the shop at ${connection.shopUrl} at` +
-        ` ${claim.attemptedAt.toISOString()} and that attempt never reported back. It is refused` +
-        " rather than placed again; look for an order carrying this identifier as its" +
-        " transaction id before deciding nothing happened.",
-    );
+  if (claim.kind === "precreate_refused") {
     return {
       refused: {
         code: "cannot_fulfill",
-        message:
-          `An earlier attempt to place ${order.id} in the shop was interrupted and never reported` +
-          " back, so whether the shop holds an order for it is not something this can find out." +
-          " It is refused rather than ordered a second time, because a second order is a second" +
-          " thing the shop has to fulfil.",
+        message: "This paid order was already refused before WooCommerce order creation.",
       },
     };
+  }
+
+  if (claim.kind === "unknown") {
+    return unknownCreation(order.id, connection.shopUrl, claim.attemptedAt);
   }
 
   const made = await place(connection, {
@@ -215,6 +226,25 @@ export const fillFromTheShop = async (
       message:
         "The shop this product is sold from would not accept the order, so nothing was" +
         " delivered and the sale did not go through.",
+    },
+  };
+};
+
+const unknownCreation = (orderId: string, shopUrl: string, attemptedAt: Date): HandlerAnswer => {
+  console.error(
+    `[cabinet] ${orderId} was already being placed in the shop at ${shopUrl} at` +
+      ` ${attemptedAt.toISOString()} and that attempt never reported back. It is refused` +
+      " rather than placed again; look for an order carrying this identifier as its" +
+      " transaction id before deciding nothing happened.",
+  );
+  return {
+    refused: {
+      code: "cannot_fulfill",
+      message:
+        `An earlier attempt to place ${orderId} in the shop was interrupted and never reported` +
+        " back, so whether the shop holds an order for it is not something this can find out." +
+        " It is refused rather than ordered a second time, because a second order is a second" +
+        " thing the shop has to fulfil.",
     },
   };
 };

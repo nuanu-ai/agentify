@@ -390,6 +390,7 @@ export const wooOrders = pgTable(
   {
     /** Our own order identifier, which is what a repeat arrives carrying. */
     orderId: text("order_id").primaryKey(),
+    phase: text("phase").notNull().default("create_unknown"),
     accountId: text("account_id")
       .notNull()
       .references(() => accounts.id, { onDelete: "cascade" }),

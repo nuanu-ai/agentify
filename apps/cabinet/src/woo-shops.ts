@@ -62,6 +62,7 @@ export interface WooConnection {
  */
 export type OrderClaim =
   | { readonly kind: "ours" }
+  | { readonly kind: "precreate_refused" }
   | {
       readonly kind: "placed";
       readonly id: string;
@@ -129,6 +130,8 @@ export interface WooShops {
    * buyer would be handed the other merchant's shop order number.
    */
   claimOrder(accountId: string, orderId: string, now: Date): Promise<OrderClaim>;
+  knownOrder(orderId: string): Promise<Exclude<OrderClaim, { kind: "ours" }> | null>;
+  recordPrecreateRefusal(accountId: string, orderId: string, now: Date): Promise<void>;
   /** Completes a claim with what the shop answered. */
   recordOrder(
     orderId: string,
@@ -250,6 +253,9 @@ export const postgresWooShops = (pool: Pool): WooShops => {
         // have the sale.
         return { kind: "ours" };
       }
+      if (row.phase === "precreate_refused") {
+        return { kind: "precreate_refused" };
+      }
       if (row.wooOrderId !== null && row.wooOrderNumber !== null && row.result !== null) {
         return {
           kind: "placed",
@@ -261,10 +267,33 @@ export const postgresWooShops = (pool: Pool): WooShops => {
       return { kind: "unknown", attemptedAt: row.attemptedAt };
     },
 
+    async knownOrder(orderId) {
+      const [row] = await db.select().from(wooOrders).where(eq(wooOrders.orderId, orderId));
+      if (row === undefined) return null;
+      if (row.phase === "precreate_refused") return { kind: "precreate_refused" };
+      if (row.wooOrderId !== null && row.wooOrderNumber !== null && row.result !== null) {
+        return {
+          kind: "placed",
+          id: row.wooOrderId,
+          number: row.wooOrderNumber,
+          result: row.result,
+        };
+      }
+      return { kind: "unknown", attemptedAt: row.attemptedAt };
+    },
+
+    async recordPrecreateRefusal(accountId, orderId, now) {
+      await db
+        .insert(wooOrders)
+        .values({ orderId, accountId, phase: "precreate_refused", attemptedAt: now })
+        .onConflictDoNothing({ target: wooOrders.orderId });
+    },
+
     async recordOrder(orderId, placed, now) {
       await db
         .update(wooOrders)
         .set({
+          phase: "placed",
           wooOrderId: placed.id,
           wooOrderNumber: placed.number,
           result: placed.result,
@@ -301,6 +330,7 @@ export const memoryWooShops = (): WooShops => {
     {
       accountId: string;
       attemptedAt: Date;
+      phase: "precreate_refused" | "create_unknown" | "placed";
       placed: {
         id: string;
         number: string;
@@ -370,8 +400,16 @@ export const memoryWooShops = (): WooShops => {
     async claimOrder(accountId, orderId, now) {
       const found = orders.get(orderId);
       if (found === undefined) {
-        orders.set(orderId, { accountId, attemptedAt: now, placed: null });
+        orders.set(orderId, {
+          accountId,
+          attemptedAt: now,
+          phase: "create_unknown",
+          placed: null,
+        });
         return { kind: "ours" };
+      }
+      if (found.phase === "precreate_refused") {
+        return { kind: "precreate_refused" };
       }
       if (found.placed !== null) {
         return {
@@ -384,10 +422,36 @@ export const memoryWooShops = (): WooShops => {
       return { kind: "unknown", attemptedAt: found.attemptedAt };
     },
 
+    async knownOrder(orderId) {
+      const found = orders.get(orderId);
+      if (found === undefined) return null;
+      if (found.phase === "precreate_refused") return { kind: "precreate_refused" };
+      if (found.placed !== null) {
+        return {
+          kind: "placed",
+          id: found.placed.id,
+          number: found.placed.number,
+          result: found.placed.result,
+        };
+      }
+      return { kind: "unknown", attemptedAt: found.attemptedAt };
+    },
+
+    async recordPrecreateRefusal(accountId, orderId, now) {
+      if (!orders.has(orderId)) {
+        orders.set(orderId, {
+          accountId,
+          attemptedAt: now,
+          phase: "precreate_refused",
+          placed: null,
+        });
+      }
+    },
+
     async recordOrder(orderId, placed) {
       const found = orders.get(orderId);
       if (found !== undefined) {
-        orders.set(orderId, { ...found, placed });
+        orders.set(orderId, { ...found, phase: "placed", placed });
       }
     },
 
