@@ -43,23 +43,28 @@ export const linkRequestedScreen = (
 ): string => {
   const minutes =
     retryAfterSeconds === undefined ? null : Math.max(1, Math.ceil(retryAfterSeconds / 60));
-  const retry =
+  const outcome =
     minutes === null
-      ? '<p class="quiet">If nothing arrives, check your spam folder, then send another link from this page.</p>'
-      : `<p class="problem">No new link was sent. Try again in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.</p>`;
+      ? `<p>If a message can be sent to <strong>${escaped(email)}</strong>, a sign-in link is on its way. It works once and expires after one hour.</p>
+  <p class="quiet">If nothing arrives, check your spam folder, then send another link from this page.</p>`
+      : `<p>No new link was sent to <strong>${escaped(email)}</strong>.</p>
+  <p class="problem">Try again in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.</p>`;
 
   return bare(
     base,
-    "Check your mail",
+    minutes === null ? "Check your mail" : "Try again later",
     `<div class="gate">
 <form method="post" action="${escaped(base)}/sign-in">
   <h1>${brandLockup("/")}</h1>
-  <p>If a message can be sent to that address, a sign-in link is on its way. It works once and expires after one hour.</p>
-  ${retry}
+  ${outcome}
   <p class="quiet">You can request up to three links for one address in one hour. We answer every address the same way.</p>
   <input name="email" type="hidden" value="${escaped(email)}">
   ${destination === "settings" ? '<input type="hidden" name="destination" value="settings">' : ""}
   <button type="submit">Send another link</button>
+</form>
+<form method="get" action="${escaped(base)}/sign-in">
+  ${destination === "settings" ? '<input type="hidden" name="destination" value="settings">' : ""}
+  <button type="submit">Use a different email</button>
 </form>
 </div>`,
     mode,

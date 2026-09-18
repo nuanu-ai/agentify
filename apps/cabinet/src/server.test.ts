@@ -60,6 +60,7 @@ const PAY_TO = "0x0000000000000000000000000000000000000001";
 
 /** The name the session cookie travels under. */
 const COOKIE = "agentify.session_token";
+const SESSION_ENDED = "/sign-in?reason=session-ended";
 
 /** The person whose account every test in this file signs in as. */
 const PERSON = "dmitry@example.com";
@@ -620,12 +621,17 @@ describe("the passwordless cabinet door", () => {
 
     expect(known.status).toBe(202);
     expect(unknown.status).toBe(202);
-    expect(readable(known.html)).toBe(readable(unknown.html));
+    expect(known.html).toContain(`<strong>${PERSON}</strong>`);
+    expect(unknown.html).toContain("<strong>nobody@example.com</strong>");
+    expect(readable(known.html).replace(PERSON, "submitted@example.com")).toBe(
+      readable(unknown.html).replace("nobody@example.com", "submitted@example.com"),
+    );
     expect(known.headers.getSetCookie()).toStrictEqual([]);
     expect(unknown.headers.getSetCookie()).toStrictEqual([]);
     expect(rows.cabinet_sessions).toStrictEqual([]);
     expect(mails).toHaveLength(2);
     expect(known.html).toContain('method="post" action="/sign-in"');
+    expect(known.html).toContain('method="get" action="/sign-in"');
     expect(known.html).toContain(`name="email" type="hidden" value="${PERSON}"`);
   });
 
@@ -643,6 +649,7 @@ describe("the passwordless cabinet door", () => {
     expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);
     expect(readable(limited.html)).toContain("No new link was sent");
     expect(readable(limited.html)).toMatch(/Try again in \d+ minutes/);
+    expect(readable(limited.html)).not.toContain("a sign-in link is on its way");
     expect(mails).toHaveLength(3);
   });
 
@@ -2279,7 +2286,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     ]) {
       const answered = await browser.withRawCookie(raw).get("/cards");
       expect(answered.status, raw).toBe(303);
-      expect(answered.to, raw).toBe("/sign-in");
+      expect(answered.to, raw).toBe(raw.startsWith(`${COOKIE}=`) ? SESSION_ENDED : "/sign-in");
     }
   });
 
@@ -2409,10 +2416,12 @@ describe("when something goes wrong that the merchant has to get out of", () => 
       .get("/cards");
 
     expect(answered.status).toBe(303);
-    expect(answered.to).toBe("/sign-in");
+    expect(answered.to).toBe(SESSION_ENDED);
     // Neither is a session any more, so the plant is spent rather than waiting.
-    expect((await browser.withRawCookie(`${COOKIE}=${mine}`).get("/cards")).to).toBe("/sign-in");
-    expect((await browser.withRawCookie(`${COOKIE}=${theirs}`).get("/cards")).to).toBe("/sign-in");
+    expect((await browser.withRawCookie(`${COOKIE}=${mine}`).get("/cards")).to).toBe(SESSION_ENDED);
+    expect((await browser.withRawCookie(`${COOKIE}=${theirs}`).get("/cards")).to).toBe(
+      SESSION_ENDED,
+    );
     // And the merchant gets back in, which is the whole point of ending them:
     // the dead cookie is still in the browser and no longer decides anything.
     const back = await browser.signIn();
@@ -2572,7 +2581,9 @@ describe("a session that is ended while somebody is looking at a page", () => {
 
     const refused = await browser.post("/selling/pause");
     expect(refused.status).toBe(303);
-    expect(refused.to).toBe("/sign-in");
+    expect(refused.to).toBe(SESSION_ENDED);
+    const recovery = await browser.get(refused.to ?? "");
+    expect(readable(recovery.html)).toContain("not saved");
     // The negative control is the fact rather than the answer: the switch the
     // tab pressed did not move.
     expect(await purchasable(gateway, itemId)).toBe(true);
@@ -2590,7 +2601,7 @@ describe("a session that is ended while somebody is looking at a page", () => {
 
     await identity.signOut(`${COOKIE}=${browser.sessionToken() ?? ""}`);
 
-    expect((await browser.get("/cards")).to).toBe("/sign-in");
+    expect((await browser.get("/cards")).to).toBe(SESSION_ENDED);
     expect((await telephone.get("/cards")).status).toBe(200);
   });
 
@@ -2609,7 +2620,10 @@ describe("a session that is ended while somebody is looking at a page", () => {
     const answered = await browser.get("/cards");
 
     expect(answered.status).toBe(303);
-    expect(answered.to).toBe("/sign-in");
+    expect(answered.to).toBe(SESSION_ENDED);
+    const recovery = await browser.get(answered.to ?? "");
+    expect(readable(recovery.html)).toContain("Your session ended");
+    expect(readable(recovery.html)).toContain("change");
   });
 
   it("is a fresh session every time, so signing in twice does not reuse one identifier", async () => {

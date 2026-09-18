@@ -322,6 +322,13 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     }
   };
 
+  const carriesIdentityCookie = (header: string | undefined): boolean => {
+    const pairs = (header ?? "").split(";");
+    return identity.cookieNames.some((name) =>
+      pairs.some((pair) => pair.split("=", 1)[0]?.trim() === name),
+    );
+  };
+
   /**
    * Puts the session the component just opened into the browser.
    *
@@ -496,7 +503,11 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       return;
     }
     const destination = request.query.destination === "settings" ? "settings" : "default";
-    response.type("html").send(signInScreen(base, config.surfaceMode, destination));
+    const problem =
+      request.query.reason === "session-ended"
+        ? "Your session ended. Sign in again. If you just submitted a change, it was not saved."
+        : undefined;
+    response.type("html").send(signInScreen(base, config.surfaceMode, destination, problem));
   });
 
   /**
@@ -771,8 +782,12 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
           // The cookies are cleared on the way out, so somebody whose session
           // was ended lands on a sign-in they can use rather than being bounced
           // through this gate again on every click.
+          const hadIdentityCookie = carriesIdentityCookie(request.headers.cookie);
           forget(response);
-          response.redirect(303, `${base}/sign-in`);
+          response.redirect(
+            303,
+            hadIdentityCookie ? `${base}/sign-in?reason=session-ended` : `${base}/sign-in`,
+          );
           return;
         }
         people.set(request, person);
