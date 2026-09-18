@@ -9,10 +9,9 @@ runs out. The working words — card, handler, idempotency key — are defined o
 [The first test sale](/quickstart), and the individual failures are collected
 on [What can go wrong](/failures).
 
-::: warning The names of the calls and the fields are preliminary
-What is fixed is the model and not the signatures. Of the machine names `id`,
-`merchant_item_id` and `as_of` are final; the other names on this page are
-working names and can still change before the pilot.
+::: warning The public surface is versioned
+Use this page with the package version you installed. Function or field changes
+arrive in a new package and contract version before the gateway speaks them.
 :::
 
 ## Three fulfillment modes
@@ -24,10 +23,9 @@ working names and can still change before the pilot.
 | With confirmation | `'confirm'` | later, by a separate call | right after your confirmation | before the confirmation nothing is charged; after it, as in the asynchronous mode |
 
 The mode is declared in the card, and the agent knows it before it pays. The
-product decides which mode it is, and the channel only narrows the choice: a
-connected API delivers both synchronously and asynchronously, while an order
-that arrived as a message is never synchronous. What the moment of charging
-means for the owner of the business is on [Money](/money).
+product decides which mode it is. The SDK handler supports synchronous and
+asynchronous delivery; delivery by a message is not available. What the moment
+of charging means for the owner of the business is on [Money](/money).
 
 The third mode is not open during the pilot. A card cannot be published with
 `fulfillment: 'confirm'`, because the request that asks you to confirm has no
@@ -476,10 +474,10 @@ Two situations reach you through that one event, and they part on what the
 payment network finally said. The order carries the word that tells them apart,
 so read it back before you act on either.
 
-Where the charge came back failed, the order reads `delivered_unpaid`, and a
-repeat purchase closes it: the agent repeats it under the same key, the payment
-executes, and the order closes on the delivery you have already made — there is
-no need to deliver a second time.
+Where the charge came back failed, the order reads `delivered_unpaid`. The same
+buyer can retry payment for this order with a fresh authorization. If that
+payment settles, the stored goods are released and the order closes without
+another call to your handler.
 
 Where the payment network was asked and never answered, nobody can say whether
 the buyer was charged, and we do not pretend to. A repeat is refused there,
@@ -489,7 +487,7 @@ spending the buyer's money on a guess about the first. The order reads
 our side asks the payment network again — so it can sit there indefinitely. If
 a late answer does arrive and it says the money moved, the order closes as
 delivered and the agent gets its goods; if it says the money did not move, the
-order becomes one a repeat purchase can close.
+order becomes one the same buyer can retry with a fresh authorization.
 
 In both cases the goods are already recorded on our side, so there is nothing
 to deliver again: a second delivery is answered as a success and nothing it
@@ -515,8 +513,8 @@ saying that it did, that closed order becomes a refund you owe.
 | Time ran out: no confirmation, no payment or no synchronous delivery arrived | never moved | the order was closed on its deadline |
 | You left | for what was not delivered, [you send it back](/money) | an unpaid order is closed; a paid one waits for your refund |
 | The money was charged and no delivery happened | with you | the order is waiting for a refund |
-| You delivered synchronously and the payment did not execute | never arrived | the purchase did not happen; a repeat drives the payment home |
-| The payment network did not say whether the money was charged | not known — and nothing on our side is asking again | "the outcome of the payment is not known", not "refused": a repeat under the same key is safe |
+| You delivered synchronously and the payment did not execute | never arrived | the purchase did not happen; the same buyer can retry payment for this order with a fresh authorization |
+| The payment network did not say whether the money was charged | not known — and nothing on our side is asking again | "the outcome of the payment is not known", not "refused": another payment is refused while the first is unknown |
 
 A pause closes no orders: cards stop selling, and the orders already taken on
 play out in the ordinary way. Only leaving closes the ones that are open.
@@ -653,10 +651,10 @@ began the delivery in the seventh second and finished in the tenth. By that
 second the agent has already had a refusal and spent nothing, but the access you
 gave out has not gone anywhere.
 
-Work already done is not lost: a repeat purchase under the same order key
-collects the delivery that was made, this time with the payment. So answering
-with the earlier result under the key is worth doing after the deadline has
-passed too.
+Work already done is not lost. The same buyer can retry payment for that order
+with a fresh authorization; if it settles, the stored delivery is released
+without another handler call. So answering with the earlier result under the
+merchant idempotency key is worth doing after the deadline has passed too.
 
 Being late is not in itself an error and does not come back as an exception.
 The goods are read before the state of the order is, so a late answer whose

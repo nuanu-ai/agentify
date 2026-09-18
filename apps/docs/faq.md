@@ -18,12 +18,11 @@ worked through on [Connecting to Agentify](/).
 
 ### Do I need an engineer for this?
 
-It depends which delivery path you take. We set up the link to an online shop
-and run it ourselves, and it asks no engineering work of your side. Your own
-engineer can write a handler against your API with our tools, and if you have
-no engineer, or they are busy with something else, we do that part and run it
-too — what we need from you then is access to the API and your approval of the
-cards. The choice is described in [Your hands or ours](/).
+The current product path is an integration your engineer writes with the
+Agentify SDK. It publishes your cards and runs a handler that fulfills paid
+orders through your API. The WooCommerce connector is experimental and is not
+the SDK acceptance path; delivery by a message is not available. The working
+path is described in [Your hands or ours](/).
 
 ### What does it cost?
 
@@ -34,14 +33,11 @@ and the rest of the money, is on [Money](/money).
 
 ### Do you write the product cards, or do I?
 
-We do, from your site, your catalogue or your documentation, and you check them
-and approve them. Approval goes by correspondence rather than by a button: we
-send you the card, and you either say yes or say what to fix. The last word
-stays with you: it is your product at your price, and the card is the whole of
-what an agent reads. Keeping the cards up is our work too: the product, what is
-in it or the price changes, you tell us, and we make the edit. If you would
-rather keep the cards yourself, the tools for it are there: [The first test
-sale](/quickstart).
+Your integration writes and publishes the cards. It remains their source: when
+a product, its contents or its price changes, your code republishes the card
+under the same product key. The card is the whole of what an agent reads before
+buying, so you own what it says and what it costs. The SDK path is on [The first
+test sale](/quickstart).
 
 ### Will live customers come to me?
 
@@ -53,16 +49,14 @@ described in the [card reference](/cards).
 
 ### How do I find out about a sale?
 
-The order reaches you by whichever way we agreed when you connected: into your
-API, into your online shop as an ordinary paid order, or as a message. The
-payment arrives as its own transfer into your wallet, before your delivery or
-after it depending on the product: [Money](/money). Orders are visible in the
-cabinet, a page on our side that also holds your cards and the switch that
-stops selling. It is not a full picture of the money: we write a receipt at the
-moment the goods are delivered, so an order that is paid for and not yet
-delivered is in the list of orders and not among the receipts. The money
-arrives straight in your wallet, past us, and matching the two up is still
-yours to do.
+The SDK carries the order to your handler, and your integration fulfills it
+through your API. The WooCommerce connector is experimental; delivery by a
+message is not available. The payment arrives as its own transfer into your
+wallet, before your delivery or after it depending on the product:
+[Money](/money). Orders are visible in the cabinet, which also holds your cards
+and the switch that stops selling. A receipt is written when the goods are
+delivered, so an order paid for but not yet delivered appears under Orders and
+not Receipts. Matching those records to wallet transfers remains yours to do.
 
 ### Can I pause the selling?
 

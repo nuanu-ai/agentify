@@ -129,10 +129,9 @@ hand you the record — which order, for how much, and why it was left
 undelivered. That covers both the orders you did not manage to deliver in time
 and the orders still open at the moment you leave.
 
-How the money travels back is something we settle before the pilot: we are
-looking at how working sellers do it and taking a pattern that works. What
-exactly you do during a refund is not decided, and it is the largest open item
-in the money contract.
+How the money travels back remains open. We are looking at how working sellers
+do it and taking a pattern that works. What exactly you do during a refund is
+not decided, and it is the largest open item in the money contract.
 
 Until there is a way, the pilot's rule applies — the one we ask about when you
 connect ([What we will ask you](/)): only goods that can be delivered a second

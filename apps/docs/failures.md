@@ -128,8 +128,9 @@ neighbour nor finish its task.
 
 A late answer matters in one case: the delivery started before the deadline and
 finished after it. By then the purchase is closed, but the work already done is
-not lost — a repeat purchase collects the delivery along with the payment, and
-that is described in [You did not deliver in time](/orders).
+not lost. The same buyer can retry payment for that order with a fresh
+authorization; if it settles, the stored delivery is released without another
+handler call. This is described in [You did not deliver in time](/orders).
 
 ## An order arrived twice
 

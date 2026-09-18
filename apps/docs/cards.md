@@ -2,9 +2,9 @@
 
 *The public contract is versioned; changes arrive in a new package and contract version.*
 
-If you keep the cards yourself, this reference is yours. By default we write
-them and the owner of the business approves them; the whole path, from an empty
-project to a test sale, is on [The first test sale](/quickstart).
+Your SDK integration writes and publishes the cards, and remains their source
+when a product or price changes. The whole path, from an empty project to a
+test sale, is on [The first test sale](/quickstart).
 
 The working words — handler, order, agent — are defined on [The first test
 sale](/quickstart).
@@ -20,11 +20,10 @@ each of them under the need that asks for it. If what you came for is a lookup
 rather than a first reading, [every field of a card](#every-field-of-a-card) is
 in one table at the end.
 
-::: warning The field names are preliminary
-What is fixed is the model and not the signatures. Of the machine names `id`,
-`merchant_item_id` and `as_of` are final; the package is `@nuanu-ai/agentify`, while
-the function names and the rest of the names in this reference can still change
-in a new package and contract version before the pilot.
+::: warning The public surface is versioned
+The package is `@nuanu-ai/agentify`. Use this reference for the version you
+installed. Function or field changes arrive in a new package and contract
+version before the gateway speaks them.
 :::
 
 ## The smallest card that sells
@@ -214,10 +213,9 @@ before it pays. The mode decides when the buyer is charged and how the sale
 behaves when something fails; what happens inside each of them is on [Orders
 and fulfillment modes](/orders).
 
-The product decides the mode. The channel only narrows the choice: an order
-that arrived as a message is never synchronous, while a connected API delivers
-both ways — an eSIM is paid for at the moment of purchase and its profile
-arrives afterwards.
+The product decides the mode. The SDK handler delivers both ways — an eSIM can
+be paid for at the moment of purchase and its profile arrives afterwards.
+Delivery by a message is not available.
 
 A third mode, `'confirm'`, puts your confirmation before the delivery: you are
 asked whether you will deliver, and the buyer is charged after your yes. A card
@@ -264,10 +262,8 @@ ordinary price of the product there rather than a zero or a placeholder: the
 agent decides from it whether to look any further.
 
 The check answers one question: what the product costs and whether it is there
-right now. We ask it at the moment of purchase. It has two transports, the
-fields of the question and of the answer are the same for both, and what
-differs is only where your code stands. The forms below are working ones and
-can change before the pilot.
+right now. We ask it at the moment of purchase. The SDK price handler below is
+the transport currently served. A price hook is designed but is not called.
 
 The question travels the same channel as the orders: you put a price handler —
 the one you register under `on('quote', …)` — beside the order handler, in the

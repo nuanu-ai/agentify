@@ -35,11 +35,10 @@ owner of the business.
 - Delivery result — what the agent receives once the delivery has gone through:
   a link, a key, a set of fields. Its shape is declared in the card.
 
-::: warning The tool surface is preliminary
-The package name is `@nuanu-ai/agentify`. The function names and field names in the
-examples below remain preliminary: of the machine names only
-`merchant_item_id`, `as_of` and our catalogue `id` are final. Changes arrive in
-a new package and contract version before the gateway speaks them.
+::: warning The public surface is versioned
+The package name is `@nuanu-ai/agentify`. Use the examples for the version you
+installed. Function or field changes arrive in a new package and contract
+version before the gateway speaks them.
 :::
 
 ## 1. Make the merchant account ready
