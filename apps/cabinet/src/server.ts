@@ -728,7 +728,22 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     }
     const opened = await identity.openLink(token);
     if (opened.status === "refused") {
-      response.status(401).type("html").send(refusedLinkScreen(base, config.surfaceMode));
+      const signedIn = await identity.whoIs(request.headers.cookie);
+      response
+        .status(401)
+        .type("html")
+        .send(
+          refusedLinkScreen(
+            base,
+            config.surfaceMode,
+            signedIn === null
+              ? undefined
+              : {
+                  email: signedIn.email,
+                  destination: signedIn.merchant === null ? "merchant" : "cards",
+                },
+          ),
+        );
       return;
     }
     carryCookies(response, opened.setCookies);

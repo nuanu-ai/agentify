@@ -98,19 +98,33 @@ export const openLinkScreen = (base: string, token: string, mode: SurfaceMode): 
   );
 
 /** One refusal for a malformed, expired, wrong-purpose, or already-used link. */
-export const refusedLinkScreen = (base: string, mode: SurfaceMode): string =>
-  bareWithoutScript(
+export const refusedLinkScreen = (
+  base: string,
+  mode: SurfaceMode,
+  signedIn?: { readonly email: string; readonly destination: "cards" | "merchant" },
+): string => {
+  const recovery =
+    signedIn === undefined
+      ? "<p>Ask for a fresh link.</p>"
+      : `<p>You are already signed in as ${escaped(signedIn.email)}.</p>
+  <p><a class="button primary" href="${escaped(base)}/${signedIn.destination}">Open your cabinet</a></p>
+  <p class="quiet">Use a different email only if you meant to switch accounts.</p>`;
+  const another = signedIn === undefined ? "Ask for another link" : "Use a different email";
+
+  return bareWithoutScript(
     base,
     "That link does not work",
     `<div class="gate">
-<form method="get" action="${escaped(base)}/sign-in">
   <h1>${brandLockup("/")}</h1>
-  <p>That link does not work. It may have expired or already been used. Ask for a fresh link.</p>
-  <button class="primary" type="submit">Ask for another link</button>
+  <p>That link does not work. It may have expired or already been used.</p>
+  ${recovery}
+<form method="get" action="${escaped(base)}/sign-in">
+  <button type="submit">${another}</button>
 </form>
 </div>`,
     mode,
   );
+};
 
 /** The authenticated P1 state after the gateway did not attach a merchant. */
 export const merchantSetupScreen = (base: string, mode: SurfaceMode, unavailable = false): string =>
