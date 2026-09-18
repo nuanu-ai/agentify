@@ -251,6 +251,19 @@ Activation performs runtime verification before it succeeds. To collect fresh
 evidence later without another activation, run the read-only verify phase for
 one channel at a time:
 
+TEST also installs `agentify-test-woo-hairpin.service`. The disposable Woo lab
+shares `dmitry-dev` with Agentify and that host cannot return through the public
+Comino address. The unit derives and verifies both named Compose subnets, then
+translates only their connections to the one reviewed public address and HTTPS
+port onto the private side of the shared ingress. DNS stays public and TLS still
+uses the public host names. Production never installs the unit.
+
+Removing the lab route is explicit: stop and disable the unit first. Its
+`ExecStop` removes only the owned PREROUTING jump and dedicated nat chain; after
+that, delete `/etc/systemd/system/agentify-test-woo-hairpin.service` and
+`/usr/local/libexec/agentify-test-woo-hairpin`, then reload systemd. Never flush
+the host nat table or replace public DNS to remove this route.
+
 ```sh
 ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
   --limit test -e release_phase=verify -e release_channel_ack=test \

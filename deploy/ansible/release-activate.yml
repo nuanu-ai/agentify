@@ -269,6 +269,30 @@
         chdir: "{{ release_source_directory }}"
       no_log: true
 
+    - name: Install the TEST Woo public-address hairpin
+      ansible.builtin.copy:
+        src: "{{ release_source_directory }}/ops/deploy/agentify-test-woo-hairpin.py"
+        dest: /usr/local/libexec/agentify-test-woo-hairpin
+        remote_src: true
+        mode: '0755'
+      when: channel_name == 'test'
+
+    - name: Install the persistent TEST Woo hairpin unit
+      ansible.builtin.copy:
+        src: "{{ release_source_directory }}/ops/deploy/agentify-test-woo-hairpin.service"
+        dest: /etc/systemd/system/agentify-test-woo-hairpin.service
+        remote_src: true
+        mode: '0644'
+      when: channel_name == 'test'
+
+    - name: Reconcile the TEST Woo hairpin before reopening Cabinet
+      ansible.builtin.systemd_service:
+        name: agentify-test-woo-hairpin.service
+        daemon_reload: true
+        enabled: true
+        state: restarted
+      when: channel_name == 'test'
+
     - name: Create only an absent test scanner database, never replace one
       ansible.builtin.command:
         argv: [docker, exec, "{{ channel.postgres_container }}", psql, -U, agentify_commerce, -d, agentify_commerce, -At, -v, ON_ERROR_STOP=1, -c, "select count(*) from pg_database where datname='agentify_scanner'"]

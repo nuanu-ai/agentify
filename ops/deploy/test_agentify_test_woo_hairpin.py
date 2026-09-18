@@ -34,13 +34,32 @@ def network(**changes):
 class HairpinContract(unittest.TestCase):
     def test_accepts_only_the_actual_private_test_compose_network(self):
         subject = load_subject()
-        self.assertEqual(subject.validate_network(network()), "172.18.0.0/16")
+        self.assertEqual(
+            subject.validate_network(network(), "agentify-test_default", "agentify-test", "default"),
+            "172.18.0.0/16",
+        )
+
+        woo = network(
+            Name="agentify-woo-lab",
+            Labels={
+                "com.docker.compose.project": "agentify-woo-lab",
+                "com.docker.compose.network": "shop",
+            },
+            IPAM={"Config": [{"Subnet": "172.19.0.0/16", "Gateway": "172.19.0.1"}]},
+        )
+        self.assertEqual(
+            subject.validate_network(woo, "agentify-woo-lab", "agentify-woo-lab", "shop"),
+            "172.19.0.0/16",
+        )
 
     def test_refuses_a_network_from_another_compose_project(self):
         subject = load_subject()
         with self.assertRaisesRegex(RuntimeError, "compose project"):
             subject.validate_network(
-                network(Labels={"com.docker.compose.project": "somebody-else"})
+                network(Labels={"com.docker.compose.project": "somebody-else"}),
+                "agentify-test_default",
+                "agentify-test",
+                "default",
             )
 
     def test_refuses_internal_non_bridge_or_ambiguous_address_space(self):
@@ -52,14 +71,16 @@ class HairpinContract(unittest.TestCase):
             network(IPAM={"Config": [{"Subnet": "172.18.0.0/16"}, {"Subnet": "172.19.0.0/16"}]}),
         ):
             with self.subTest(document=document), self.assertRaises(RuntimeError):
-                subject.validate_network(document)
+                subject.validate_network(
+                    document, "agentify-test_default", "agentify-test", "default"
+                )
 
     def test_requires_the_one_reviewed_public_dns_answer(self):
         subject = load_subject()
-        subject.validate_dns(["153.124.160.16", "153.124.160.16"])
+        subject.validate_dns("woo.nuanu.ai", ["153.124.160.16", "153.124.160.16"])
         for answers in ([], ["10.20.10.11"], ["153.124.160.16", "203.0.113.4"]):
             with self.subTest(answers=answers), self.assertRaisesRegex(RuntimeError, "DNS"):
-                subject.validate_dns(answers)
+                subject.validate_dns("woo.nuanu.ai", answers)
 
     def test_rule_is_narrow_and_preserves_the_public_destination_above_the_kernel(self):
         subject = load_subject()
