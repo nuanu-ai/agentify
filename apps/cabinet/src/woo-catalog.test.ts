@@ -30,6 +30,19 @@ const product = (overrides: Partial<StoreProduct> = {}): StoreProduct => ({
   short_description: "<p>Physical goods, shipped.</p>\n",
   is_purchasable: true,
   is_in_stock: true,
+  status: "publish",
+  virtual: true,
+  downloadable: true,
+  manage_stock: false,
+  download_limit: -1,
+  download_expiry: -1,
+  downloads: [
+    {
+      id: "dl_owned_guide",
+      name: "Agentify acceptance guide.txt",
+      file: "https://shop.example.com/wp-content/uploads/woocommerce_uploads/guide.txt",
+    },
+  ],
   prices: {
     price: "2500",
     currency_code: "USD",
@@ -136,11 +149,11 @@ describe("turning a shop's products into cards", () => {
     expect(cards[0]?.card.price).toEqual({ amount: "120.00", currency: "USD" });
   });
 
-  it("names the card by the shop's own identifier for the product", () => {
-    // The merchant's own key is the shop's product id, which is what makes a
-    // second import an edit of the same card rather than a second one.
-    const { cards } = cardsFromTheShop([product({ id: 42 })]);
-    expect(cards[0]?.card.merchant_item_id).toBe("42");
+  it("binds the card to the shop origin as well as its product identifier", () => {
+    const { cards } = cardsFromTheShop([product({ id: 42 })], "https://shop.example.com");
+    expect(cards[0]?.card.merchant_item_id).toMatch(/^woo_[a-f0-9]{16}_42$/);
+    const other = cardsFromTheShop([product({ id: 42 })], "https://other.example.com");
+    expect(other.cards[0]?.card.merchant_item_id).not.toBe(cards[0]?.card.merchant_item_id);
   });
 
   it("takes the title and the description off the product", () => {
@@ -154,9 +167,14 @@ describe("turning a shop's products into cards", () => {
     expect(cards[0]?.card.description).toBe("Physical goods, shipped.");
   });
 
-  it("declares what the agent is handed, which is the order in the shop", () => {
+  it("declares the native download the agent is handed", () => {
     const { cards } = cardsFromTheShop([product()]);
-    expect(cards[0]?.card.result).toHaveProperty("order_number");
+    expect(cards[0]?.card.result).toEqual({
+      download_url: { type: "string", title: "The private WooCommerce download address" },
+      file_name: { type: "string", title: "The name of the downloadable file" },
+      order_number: { type: "string", title: "The number this order has in the shop" },
+    });
+    expect(cards[0]?.card.fulfillment).toEqual({ mode: "async" });
   });
 
   it("makes a card our own publish door recognises", () => {
@@ -188,10 +206,40 @@ describe("turning a shop's products into cards", () => {
         id: 7,
         prices: { price: "500", currency_code: "us dollars", currency_minor_unit: 2 },
       }),
+      product({ id: 8, virtual: false }),
+      product({ id: 9, downloadable: false }),
+      product({ id: 10, downloads: [] }),
+      product({
+        id: 11,
+        downloads: [
+          { id: "a", name: "A", file: "https://shop.example.com/a" },
+          { id: "b", name: "B", file: "https://shop.example.com/b" },
+        ],
+      }),
+      product({ id: 12, download_limit: 1 }),
+      product({ id: 13, download_expiry: 1 }),
+      product({ id: 14, manage_stock: true }),
+      product({ id: 15, status: "draft" }),
     ]);
 
     expect(cards).toHaveLength(0);
-    expect(skipped.map((one) => one.id)).toEqual(["1", "2", "3", "4", "5", "6", "7"]);
+    expect(skipped.map((one) => one.id)).toEqual([
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9",
+      "10",
+      "11",
+      "12",
+      "13",
+      "14",
+      "15",
+    ]);
     for (const one of skipped) {
       expect(one.why).toMatch(/\S/);
     }
@@ -204,7 +252,10 @@ describe("turning a shop's products into cards", () => {
       product({ id: 11, type: "variable" }),
       product({ id: 12 }),
     ]);
-    expect(cards.map((one) => one.card.merchant_item_id)).toEqual(["10", "12"]);
+    expect(cards.map((one) => one.card.merchant_item_id)).toEqual([
+      "woo_893553c68e218123_10",
+      "woo_893553c68e218123_12",
+    ]);
     expect(skipped.map((one) => one.id)).toEqual(["11"]);
   });
 
