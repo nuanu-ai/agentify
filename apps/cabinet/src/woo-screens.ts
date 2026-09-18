@@ -150,7 +150,7 @@ const noKeysYet = (state: ShopState): string => {
   }
   if (state.kind === "unanswered") {
     return `<p>You started connecting ${escaped(state.shopUrl)}, and no keys arrived from it in the ${GRANT_MINUTES} minutes we wait for them.</p>
-      <p class="quiet">Your shop sends the keys in a request of its own, and nothing from that request was written down here, so whether the connection was approved, declined or never answered cannot be seen from this page. If you still want to connect it, press Connect again and your shop will ask you to approve afresh. If your shop showed you an error page of its own instead of sending you back here, the keys were stopped between your shop and us, and your shop took them back.</p>`;
+      <p class="quiet">This page cannot tell whether approval was declined, closed or rejected before it was saved. No access from that attempt is active here. Press Connect again; if WooCommerce showed an error, it already removed the key from that attempt.</p>`;
   }
   return "";
 };

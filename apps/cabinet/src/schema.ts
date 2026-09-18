@@ -362,9 +362,8 @@ export const wooShops = pgTable("cabinet_woo_shops", {
    * What the shop says the keys are good for, in the shop's own word.
    *
    * Kept rather than assumed. We ask for `read_write` and a shop is free to
-   * grant less; a connection whose keys can only read is one where every sale
-   * fails at the moment of delivery, and the screen says so beforehand instead
-   * of letting the merchant find out from a refunded buyer.
+   * grant less; a connection whose keys can only read is unavailable at quote
+   * time, and the screen says so before a buyer attempts payment.
    */
   permissions: text("permissions").notNull(),
   /** Opaque identifier for this grant; changes on every reconnect. */

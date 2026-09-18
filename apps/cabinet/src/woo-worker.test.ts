@@ -252,9 +252,8 @@ describe("one paid order, in the merchant's own shop", () => {
   });
 
   it("refuses a connection whose keys cannot write", async () => {
-    // A shop that granted read-only lets a merchant connect and import, and
-    // every sale then fails at the moment of delivery. Said here rather than
-    // discovered from the shop's refusal.
+    // The order path is the second guard after a quote-time refusal: a stale
+    // paid envelope still must not make a Woo order on read-only credentials.
     const shops = memoryWooShops();
     const shop = aShopThatAccepts();
     const answer = await fillFromTheShop(
