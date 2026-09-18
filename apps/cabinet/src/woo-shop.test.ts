@@ -13,6 +13,17 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { merchantItemIdFor } from "./woo-catalog.js";
+
+const readCatalogue = (url: string, atMost?: number) => catalogueOf(url, atMost, fetch);
+const createOrder = (
+  keys: Parameters<typeof createTheOrderInTheShop>[0],
+  sold: Parameters<typeof createTheOrderInTheShop>[1],
+) => createTheOrderInTheShop(keys, sold, fetch);
+const inspectProduct = (keys: Parameters<typeof inspectProductInTheShop>[0], itemId: string) =>
+  inspectProductInTheShop(keys, itemId, fetch);
+const readOrder = (keys: Parameters<typeof readTheOrderInTheShop>[0], orderId: string) =>
+  readTheOrderInTheShop(keys, orderId, fetch);
+
 import {
   catalogueOf,
   createTheOrderInTheShop,
@@ -94,7 +105,7 @@ const connectionTo = (url: string) => ({
 describe("reading the catalogue", () => {
   it("asks the Store API and carries no credential at all", async () => {
     stand = await shopAnswering(() => ({ status: 200, body: [aProduct(1)] }));
-    const read = await catalogueOf(stand.url);
+    const read = await readCatalogue(stand.url);
 
     expect(read.ok).toBe(true);
     expect(read.ok === true && read.products).toHaveLength(1);
@@ -113,7 +124,7 @@ describe("reading the catalogue", () => {
       body: page(Number(new URL(asked.url, "http://x").searchParams.get("page") ?? "1")),
     }));
 
-    const read = await catalogueOf(stand.url);
+    const read = await readCatalogue(stand.url);
     expect(read.ok === true && read.products).toHaveLength(101);
   });
 
@@ -126,7 +137,7 @@ describe("reading the catalogue", () => {
       body: Array.from({ length: 100 }, (_, i) => aProduct(i + 1)),
     }));
 
-    const read = await catalogueOf(stand.url, 150);
+    const read = await readCatalogue(stand.url, 150);
 
     expect(read.ok).toBe(false);
     expect(read.ok === false && read.why).toContain("150");
@@ -148,7 +159,7 @@ describe("reading the catalogue", () => {
       body: page(Number(new URL(asked.url, "http://x").searchParams.get("page") ?? "1")),
     }));
 
-    const read = await catalogueOf(stand.url, 200);
+    const read = await readCatalogue(stand.url, 200);
 
     expect(read.ok).toBe(false);
     expect(read.ok === false && read.why).toContain("200");
@@ -165,7 +176,7 @@ describe("reading the catalogue", () => {
       body: page(Number(new URL(asked.url, "http://x").searchParams.get("page") ?? "1")),
     }));
 
-    const read = await catalogueOf(stand.url, 200);
+    const read = await readCatalogue(stand.url, 200);
 
     expect(read.ok).toBe(true);
     expect(read.ok === true && read.products).toHaveLength(200);
@@ -176,7 +187,7 @@ describe("reading the catalogue", () => {
       status: 404,
       body: { code: "rest_no_route", message: "No route was found matching the URL" },
     }));
-    const read = await catalogueOf(stand.url);
+    const read = await readCatalogue(stand.url);
     expect(read.ok).toBe(false);
     expect(read.ok === false && read.why).toContain("No route was found");
   });
@@ -185,7 +196,7 @@ describe("reading the catalogue", () => {
     // An empty catalogue and a shop answering something else are different
     // news, and a merchant told the first would go looking for their products.
     stand = await shopAnswering(() => ({ status: 200, body: { products: "all of them" } }));
-    const read = await catalogueOf(stand.url);
+    const read = await readCatalogue(stand.url);
     expect(read.ok).toBe(false);
   });
 });
@@ -218,7 +229,7 @@ describe("creating the order", () => {
       body: madeOrder(),
     }));
 
-    const made = await createTheOrderInTheShop(connectionTo(stand.url), order);
+    const made = await createOrder(connectionTo(stand.url), order);
 
     expect(made).toEqual({
       ok: true,
@@ -257,7 +268,7 @@ describe("creating the order", () => {
       status: 201,
       body: madeOrder({ number: "WOO-0013" }),
     }));
-    const made = await createTheOrderInTheShop(connectionTo(stand.url), order);
+    const made = await createOrder(connectionTo(stand.url), order);
     expect(made).toMatchObject({ ok: true, id: "13", number: "WOO-0013" });
   });
 
@@ -273,7 +284,7 @@ describe("creating the order", () => {
       }),
     }));
 
-    const read = await readTheOrderInTheShop(connectionTo(stand.url), "13");
+    const read = await readOrder(connectionTo(stand.url), "13");
 
     expect(read).toMatchObject({
       ok: true,
@@ -297,7 +308,7 @@ describe("creating the order", () => {
         message: "Product ID is invalid.",
       },
     }));
-    const made = await createTheOrderInTheShop(connectionTo(stand.url), order);
+    const made = await createOrder(connectionTo(stand.url), order);
     expect(made.ok).toBe(false);
     expect(made.ok === false && made.why).toContain("Product ID is invalid.");
     // A shop that says the product is wrong says the same thing every time,
@@ -306,7 +317,7 @@ describe("creating the order", () => {
   });
 
   it("says a shop that would not answer is worth asking again", async () => {
-    const made = await createTheOrderInTheShop(connectionTo("http://127.0.0.1:1"), order);
+    const made = await createOrder(connectionTo("http://127.0.0.1:1"), order);
     expect(made.ok).toBe(false);
     expect(made.ok === false && made.again).toBe(true);
   });
@@ -317,7 +328,7 @@ describe("creating the order", () => {
     // is a busy afternoon costing the merchant the sale.
     for (const status of [408, 429, 502]) {
       stand = await shopAnswering(() => ({ status, body: { message: "later" } }));
-      const made = await createTheOrderInTheShop(connectionTo(stand.url), order);
+      const made = await createOrder(connectionTo(stand.url), order);
       expect(made.ok === false && made.again).toBe(true);
       await stand.close();
       stand = null;
@@ -329,7 +340,7 @@ describe("creating the order", () => {
       status: 401,
       body: { code: "woocommerce_rest_cannot_view", message: "Sorry, you cannot list resources." },
     }));
-    const made = await createTheOrderInTheShop(connectionTo(stand.url), order);
+    const made = await createOrder(connectionTo(stand.url), order);
     expect(made.ok).toBe(false);
     expect(made.ok === false && made.again).toBe(false);
   });
@@ -339,7 +350,7 @@ describe("creating the order", () => {
     // shape that would otherwise become a delivery naming an order number of
     // "undefined".
     stand = await shopAnswering(() => ({ status: 201, body: { ok: true } }));
-    const made = await createTheOrderInTheShop(connectionTo(stand.url), order);
+    const made = await createOrder(connectionTo(stand.url), order);
     expect(made.ok).toBe(false);
   });
 });
@@ -386,7 +397,7 @@ describe("the protected product check", () => {
     });
     const keys = connectionTo(stand.url);
 
-    const read = await inspectProductInTheShop(keys, merchantItemIdFor(stand.url, "11"));
+    const read = await inspectProduct(keys, merchantItemIdFor(stand.url, "11"));
 
     expect(read).toEqual({
       ok: true,
@@ -418,7 +429,7 @@ describe("the protected product check", () => {
         }
         return { status: 200, body: productDocument(overrides) };
       });
-      const read = await inspectProductInTheShop(
+      const read = await inspectProduct(
         connectionTo(stand.url),
         merchantItemIdFor(stand.url, "11"),
       );
@@ -434,7 +445,7 @@ describe("the protected product check", () => {
       }
       return { status: 200, body: productDocument() };
     });
-    const publicFile = await inspectProductInTheShop(
+    const publicFile = await inspectProduct(
       connectionTo(stand.url),
       merchantItemIdFor(stand.url, "11"),
     );

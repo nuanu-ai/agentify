@@ -30,6 +30,7 @@
  */
 
 import { randomBytes } from "node:crypto";
+import { type WooRequest, wooRequest } from "./woo-request.js";
 
 /** What the shop calls us in the key row a merchant reads afterwards. */
 export const APP_NAME = "Agentify";
@@ -76,12 +77,7 @@ export const whatIsWrongWithTheShopUrl = (typed: string): string | null => {
   }
   const address = new URL(trimmed);
   if (address.protocol === "http:") {
-    return (
-      "That address is http. Your shop has to be reachable over https, and not only because" +
-      " WooCommerce refuses to send us your keys otherwise: over plain http your shop refuses" +
-      " the keys as ordinary authentication, so every order we place would carry your own" +
-      " secret in the clear where anybody on the path can read it."
-    );
+    return "Use the public https address of your WooCommerce shop.";
   }
   if (address.protocol !== "https:") {
     return "That address has to start with https://.";
@@ -94,6 +90,9 @@ export const whatIsWrongWithTheShopUrl = (typed: string): string | null => {
       "Leave off anything after the address of the shop itself — no question mark and no hash." +
       " We add the rest of the address ourselves."
     );
+  }
+  if (address.pathname !== "/" && address.pathname !== "") {
+    return "This connector currently supports a WooCommerce shop at the root of its https address.";
   }
   if (address.username !== "" || address.password !== "") {
     return "Leave the user name and password out of the address.";
@@ -200,24 +199,25 @@ const REDIRECTS_FOLLOWED = 3;
  * origin has not shown us its grant screen, and following it would be asking a
  * stranger's server whether this merchant's shop is set up correctly.
  */
-export const isTheGrantScreen = async (authorizeUrl: string): Promise<Preflight> => {
+export const isTheGrantScreen = async (
+  authorizeUrl: string,
+  request: WooRequest = wooRequest,
+): Promise<Preflight> => {
   const started = new URL(authorizeUrl);
   let at = started;
 
   for (let followed = 0; followed <= REDIRECTS_FOLLOWED; followed += 1) {
     let answered: Response;
     try {
-      answered = await fetch(at, {
+      answered = await request(at, {
         redirect: "manual",
         headers: { accept: "text/html" },
         signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
       });
-    } catch (thrown) {
+    } catch {
       return {
         ok: false,
-        why:
-          `Your shop did not answer at ${at.origin}. Check the address, and that the shop is` +
-          ` reachable from the internet rather than only from your own network. (${String(thrown)})`,
+        why: "Our server could not reach this shop. Check the address and shop status, then try again.",
       };
     }
 

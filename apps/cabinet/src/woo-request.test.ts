@@ -6,9 +6,7 @@ describe("the WooCommerce network boundary", () => {
     let opened = 0;
     const request = wooRequestWith({
       resolve: async (host) =>
-        host === "mixed.example.com"
-          ? ["153.124.160.16", "10.20.10.11"]
-          : ["10.20.10.11"],
+        host === "mixed.example.com" ? ["153.124.160.16", "10.20.10.11"] : ["10.20.10.11"],
       open: async () => {
         opened += 1;
         return new Response("never");
@@ -16,6 +14,7 @@ describe("the WooCommerce network boundary", () => {
     });
 
     await expect(request("https://127.0.0.1/private")).rejects.toThrow(/public/i);
+    await expect(request("https://[::ffff:127.0.0.1]/private")).rejects.toThrow(/public/i);
     await expect(request("https://private.example.com/private")).rejects.toThrow(/public/i);
     await expect(request("https://mixed.example.com/private")).rejects.toThrow(/public/i);
     expect(opened).toBe(0);

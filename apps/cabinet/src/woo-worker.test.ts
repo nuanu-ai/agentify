@@ -28,7 +28,12 @@ import type { AgentOrderStatus, Order } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { gatewayFor } from "./gateway.js";
 import { cardsFromTheShop, merchantItemIdFor, type StoreProduct } from "./woo-catalog.js";
-import type { OrderMade, ShopKeys, SoldItem } from "./woo-shop.js";
+import {
+  createTheOrderInTheShop,
+  type OrderMade,
+  type ShopKeys,
+  type SoldItem,
+} from "./woo-shop.js";
 import { memoryWooShops, type WooConnection, type WooShops } from "./woo-shops.js";
 import { fillFromTheShop, startWooWorker, turnOnce } from "./woo-worker.js";
 
@@ -373,6 +378,10 @@ describe("the whole way through, against a real gateway", () => {
     const parts = {
       shops,
       now: () => new Date("2026-09-14T12:00:00.000Z"),
+      placeOrder: (
+        keys: Parameters<typeof createTheOrderInTheShop>[0],
+        sold: Parameters<typeof createTheOrderInTheShop>[1],
+      ) => createTheOrderInTheShop(keys, sold, fetch),
       eligibleProduct: async () => ({
         productId: "11",
         downloadId: "dl_guide",
@@ -448,6 +457,10 @@ describe("the whole way through, against a real gateway", () => {
         const answer = await fillFromTheShop(order, connected, MERCHANT_EMAIL, {
           shops,
           now: () => new Date("2026-09-14T12:00:00.000Z"),
+          placeOrder: (
+            keys: Parameters<typeof createTheOrderInTheShop>[0],
+            sold: Parameters<typeof createTheOrderInTheShop>[1],
+          ) => createTheOrderInTheShop(keys, sold, fetch),
           eligibleProduct: async () => ({
             productId: "11",
             downloadId: "dl_guide",

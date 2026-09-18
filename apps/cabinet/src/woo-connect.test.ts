@@ -17,10 +17,12 @@ import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   authorizeUrlFor,
-  isTheGrantScreen,
+  isTheGrantScreen as inspectGrantScreen,
   theStateToken,
   whatIsWrongWithTheShopUrl,
 } from "./woo-connect.js";
+
+const isTheGrantScreen = (url: string) => inspectGrantScreen(url, fetch);
 
 /** A stand-in shop, answering one scripted response at every address. */
 const shopAnswering = async (
@@ -62,7 +64,7 @@ describe("the address a merchant types", () => {
   it("takes an https shop", () => {
     expect(whatIsWrongWithTheShopUrl("https://shop.example.com")).toBeNull();
     expect(whatIsWrongWithTheShopUrl("https://shop.example.com/")).toBeNull();
-    expect(whatIsWrongWithTheShopUrl("https://shop.example.com/store")).toBeNull();
+    expect(whatIsWrongWithTheShopUrl("https://shop.example.com/store")).toMatch(/root/i);
   });
 
   it("refuses a shop on plain http, and says what that would cost them", () => {
@@ -194,7 +196,7 @@ describe("the preflight", () => {
   });
 
   it("refuses a shop that is not there at all, without throwing", async () => {
-    const looked = await isTheGrantScreen("https://127.0.0.1:1/wc-auth/v1/authorize");
+    const looked = await inspectGrantScreen("https://127.0.0.1:1/wc-auth/v1/authorize");
     expect(looked.ok).toBe(false);
   });
 

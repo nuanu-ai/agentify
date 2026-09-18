@@ -22,6 +22,7 @@ import {
   type StoreProduct,
   StoreProductsSchema,
 } from "./woo-catalog.js";
+import { type WooRequest, wooRequest } from "./woo-request.js";
 
 /** How long we wait on a merchant's shop for one call. */
 const SHOP_ANSWERS_WITHIN_MS = 15_000;
@@ -118,6 +119,7 @@ const SettingSchema = z.looseObject({ value: z.union([z.string(), z.boolean()]) 
 export const inspectProductInTheShop = async (
   keys: ShopKeys,
   merchantItemId: string,
+  request: WooRequest = wooRequest,
 ): Promise<ProductInspection> => {
   const productId = productIdFromMerchantItem(keys.shopUrl, merchantItemId);
   if (productId === null) {
@@ -135,7 +137,7 @@ export const inspectProductInTheShop = async (
   try {
     responses = await Promise.all(
       endpoints.map((path) =>
-        fetch(`${keys.shopUrl}${path}`, {
+        request(`${keys.shopUrl}${path}`, {
           headers: { authorization: basicFor(keys), accept: "application/json" },
           redirect: "manual",
           signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
@@ -196,7 +198,7 @@ export const inspectProductInTheShop = async (
     return { ok: false, why: "The downloadable file is outside this shop's origin." };
   }
   try {
-    const exposed = await fetch(raw, {
+    const exposed = await request(raw, {
       redirect: "manual",
       signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
     });
@@ -266,6 +268,7 @@ export type OrderMade =
 export const catalogueOf = async (
   shopUrl: string,
   atMost: number = AT_MOST,
+  request: WooRequest = wooRequest,
 ): Promise<CatalogueRead> => {
   const products: StoreProduct[] = [];
   const pages = Math.ceil(atMost / PER_PAGE) + 1;
@@ -274,7 +277,7 @@ export const catalogueOf = async (
     const at = `${shopUrl}/wp-json/wc/store/v1/products?per_page=${PER_PAGE}&page=${page}`;
     let answered: Response;
     try {
-      answered = await fetch(at, {
+      answered = await request(at, {
         headers: { accept: "application/json" },
         signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
       });
@@ -364,6 +367,7 @@ export const catalogueOf = async (
 export const createTheOrderInTheShop = async (
   keys: ShopKeys,
   sold: SoldItem,
+  request: WooRequest = wooRequest,
 ): Promise<OrderMade> => {
   const productId = Number(sold.productId);
   if (!Number.isSafeInteger(productId) || productId <= 0) {
@@ -399,7 +403,7 @@ export const createTheOrderInTheShop = async (
 
   let answered: Response;
   try {
-    answered = await fetch(`${keys.shopUrl}/wp-json/wc/v3/orders`, {
+    answered = await request(`${keys.shopUrl}/wp-json/wc/v3/orders`, {
       method: "POST",
       headers: {
         authorization: basicFor(keys),
@@ -503,13 +507,14 @@ export const createTheOrderInTheShop = async (
 export const readTheOrderInTheShop = async (
   keys: ShopKeys,
   wooOrderId: string,
+  request: WooRequest = wooRequest,
 ): Promise<WooOrderLookup> => {
   if (!/^\d+$/.test(wooOrderId) || Number(wooOrderId) <= 0) {
     return { ok: false, why: "The WooCommerce order id must be a positive whole number." };
   }
   let answered: Response;
   try {
-    answered = await fetch(`${keys.shopUrl}/wp-json/wc/v3/orders/${wooOrderId}`, {
+    answered = await request(`${keys.shopUrl}/wp-json/wc/v3/orders/${wooOrderId}`, {
       headers: { authorization: basicFor(keys), accept: "application/json" },
       redirect: "manual",
       signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
