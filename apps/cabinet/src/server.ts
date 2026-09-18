@@ -1274,13 +1274,18 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       const { cards, skipped } = cardsFromTheShop(qualified, connection.shopUrl);
       const gateway = gatewayAs(request);
       const outcomes: ImportOutcome[] = [];
-      for (const one of cards) {
+      for (const [index, one] of cards.entries()) {
         const published = await gateway.publishCard(one.card);
         if (!published.ok) {
           // The gateway did not answer, or answered something that is not this
           // route's document. Not a refused card, and said as what it is.
           outcomes.push({ id: one.id, title: one.title, failed: published.why });
-          continue;
+          outcomes.push(
+            ...cards
+              .slice(index + 1)
+              .map((later) => ({ id: later.id, title: later.title, notAttempted: true as const })),
+          );
+          break;
         }
         if (published.document.ok) {
           outcomes.push({ id: one.id, title: one.title, published: published.document.id });

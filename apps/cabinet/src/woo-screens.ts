@@ -349,13 +349,18 @@ interface Unanswered extends Sent {
   readonly failed: string;
 }
 
+/** Import stopped before this product was sent through the publish door. */
+interface NotAttempted extends Sent {
+  readonly notAttempted: true;
+}
+
 /**
  * What came of one product sent through the publish door: one of three, and
  * never none of them. The third is the one a merchant cannot repair in their
  * shop, and it is a shape of its own so that no screen can fold it into the
  * one they can.
  */
-export type ImportOutcome = Published | Refused | Unanswered;
+export type ImportOutcome = Published | Refused | Unanswered | NotAttempted;
 
 export interface ImportView {
   readonly shopUrl: string;
@@ -379,18 +384,23 @@ export const wooImportScreen = (viewer: Viewer, view: ImportView): string => {
   const went = view.outcomes.filter((one): one is Published => "published" in one);
   const refused = view.outcomes.filter((one): one is Refused => "problems" in one);
   const unanswered = view.outcomes.filter((one): one is Unanswered => "failed" in one);
+  const notAttempted = view.outcomes.filter(
+    (one): one is NotAttempted => "notAttempted" in one,
+  );
 
   const body = `
   <div class="lede">
     <div>
       <h1>What came over from ${escaped(view.shopUrl)}</h1>
-      <p>${escaped(summaryOf(went.length, refused.length, unanswered.length, view.skipped.length))}</p>
+      <p>${escaped(summaryOf(went.length, refused.length, unanswered.length, notAttempted.length, view.skipped.length))}</p>
       <p class="quiet"><a href="${escaped(viewer.base)}/cards">Your cards</a> · <a href="${escaped(viewer.base)}/woocommerce">Back to the shop</a></p>
     </div>
   </div>
 ${went.length === 0 ? "" : publishedBlock(went)}${refused.length === 0 ? "" : refusedBlock(refused)}${
   unanswered.length === 0 ? "" : unansweredBlock(unanswered)
-}${view.skipped.length === 0 ? "" : skippedBlock(view.skipped)}`;
+}${notAttempted.length === 0 ? "" : notAttemptedBlock(notAttempted)}${
+  view.skipped.length === 0 ? "" : skippedBlock(view.skipped)
+}`;
 
   return page({
     mode: viewer.mode,
@@ -408,12 +418,14 @@ const summaryOf = (
   published: number,
   refused: number,
   unanswered: number,
+  notAttempted: number,
   skipped: number,
 ): string => {
   const parts = [
     `${published} ${published === 1 ? "product" : "products"} published`,
     ...(refused === 0 ? [] : [`${refused} refused by our publishing rules`]),
     ...(unanswered === 0 ? [] : [`${unanswered} got no verdict`]),
+    ...(notAttempted === 0 ? [] : [`${notAttempted} not attempted`]),
     ...(skipped === 0 ? [] : [`${skipped} could not be turned into a card at all`]),
   ];
   return `${parts.join(", ")}.`;
@@ -482,13 +494,27 @@ const refusedBlock = (outcomes: readonly Refused[]): string => `  <div class="le
 const unansweredBlock = (outcomes: readonly Unanswered[]): string => `  <div class="lede">
     <div>
       <h2>No verdict</h2>
-      <p class="quiet">Nothing here is a finding about the product, and nothing in your shop needs changing: the part of Agentify that keeps your cards — the lines below call it the gateway — did not answer when each was sent to it, or answered with something other than its verdict on the product, and the line under each product is what came back. Import again later; importing again does not double them. If it keeps happening, nothing in your shop or on this page will change it: tell whoever runs this Agentify deployment, and show them the line.</p>
+      <p class="quiet">Nothing here is a finding about the product, and nothing in your shop needs changing: the part of Agentify that keeps your cards — the lines below call it the gateway — did not answer when this product was sent to it, or answered with something other than its verdict. Import again later; importing again does not double cards.</p>
       <ul>${outcomes
         .map(
           (
             one,
           ) => `<li>${escaped(one.title)} <span class="quiet">— product ${escaped(one.id)}</span>
         <ul><li>${escaped(one.failed)}</li></ul></li>`,
+        )
+        .join("")}</ul>
+    </div>
+  </div>
+`;
+
+const notAttemptedBlock = (outcomes: readonly NotAttempted[]): string => `  <div class="lede">
+    <div>
+      <h2>Not attempted</h2>
+      <p class="quiet">Import stopped after the first product got no verdict, so these products were not sent to Agentify. Import again later.</p>
+      <ul>${outcomes
+        .map(
+          (one) =>
+            `<li>${escaped(one.title)} <span class="quiet">— product ${escaped(one.id)}</span></li>`,
         )
         .join("")}</ul>
     </div>
