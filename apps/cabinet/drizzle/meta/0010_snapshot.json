@@ -66,9 +66,7 @@
         "cabinet_accounts_email_unique": {
           "name": "cabinet_accounts_email_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
+          "columns": ["email"]
         }
       },
       "policies": {},
@@ -191,12 +189,8 @@
           "name": "cabinet_credentials_user_id_cabinet_accounts_id_fk",
           "tableFrom": "cabinet_credentials",
           "tableTo": "cabinet_accounts",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -507,9 +501,7 @@
         "cabinet_report_receipts_token_hash_unique": {
           "name": "cabinet_report_receipts_token_hash_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "token_hash"
-          ]
+          "columns": ["token_hash"]
         }
       },
       "policies": {},
@@ -615,12 +607,8 @@
           "name": "cabinet_sessions_user_id_cabinet_accounts_id_fk",
           "tableFrom": "cabinet_sessions",
           "tableTo": "cabinet_accounts",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -630,9 +618,7 @@
         "cabinet_sessions_token_unique": {
           "name": "cabinet_sessions_token_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "token"
-          ]
+          "columns": ["token"]
         }
       },
       "policies": {},
@@ -761,12 +747,8 @@
           "name": "cabinet_woo_grants_account_id_cabinet_accounts_id_fk",
           "tableFrom": "cabinet_woo_grants",
           "tableTo": "cabinet_accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["account_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -859,12 +841,8 @@
           "name": "cabinet_woo_orders_account_id_cabinet_accounts_id_fk",
           "tableFrom": "cabinet_woo_orders",
           "tableTo": "cabinet_accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["account_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -938,12 +916,8 @@
           "name": "cabinet_woo_quotes_account_id_cabinet_accounts_id_fk",
           "tableFrom": "cabinet_woo_quotes",
           "tableTo": "cabinet_accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["account_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1008,12 +982,8 @@
           "name": "cabinet_woo_shops_account_id_cabinet_accounts_id_fk",
           "tableFrom": "cabinet_woo_shops",
           "tableTo": "cabinet_accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["account_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
