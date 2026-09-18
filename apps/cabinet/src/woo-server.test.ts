@@ -887,22 +887,21 @@ describe("coming back from the shop with no session on the request", () => {
     expect(after.html).toBe(before.html);
   });
 
-  it("sends the merchant on to a settings screen that says where the connection got to", async () => {
-    // The promise the return page makes, walked the way a merchant walks it:
-    // back from the shop with no session, on to the sign-in the page offers,
-    // and into the settings screen it names. If this fails, the return page is
-    // promising a diagnosis nobody can reach.
+  it("continues into the cabinet with the session the browser already holds", async () => {
+    // The cross-site return omits a Strict cookie, but the next same-site click
+    // carries it. Asking for another email in between turned a successful
+    // Connect into a loop even though the browser was still signed in.
     const running = await started();
     await running.signIn();
     await running.post("/woocommerce/connect", { shop_url: SHOP });
-    await running.signOut();
 
     const stripped = await cameBack(running);
     const landed = await running.getWithoutCookie(stripped.to ?? "/woocommerce/return");
-    expect(landed.html).toContain(`href="/sign-in?destination=settings"`);
+    expect(readable(landed.html)).toContain("Continue to your cabinet");
+    expect(landed.html).toContain(`action="/woocommerce"`);
+    expect(landed.html).not.toContain("Sign in");
 
-    await running.signIn();
-    const text = readable((await running.get("/settings")).html);
+    const text = readable((await running.get("/woocommerce?from=shop")).html);
 
     expect(text).toMatch(/no keys have reached us yet/);
     expect(text).not.toContain("Connect a WooCommerce shop");
