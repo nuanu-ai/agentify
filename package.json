@@ -64,7 +64,7 @@
     "agentify:ops:browser": "node ops/scripts/with-env.mjs bash ops/scripts/browser-smoke.sh",
     "agentify:ops:load": "node ops/scripts/with-env.mjs node ops/scripts/load-scan.mjs",
     "agentify:ops:golden-corpus": "node ops/scripts/with-env.mjs node ops/scripts/golden-corpus.mjs",
-    "agentify:ops:test": "node --test ops/scripts/*.test.mjs",
+    "agentify:ops:test": "node --test ops/scripts/*.test.mjs && python3 ops/deploy/test_agentify_test_woo_hairpin.py",
     "agentify:release:check": "node ops/scripts/with-env.mjs bash ops/scripts/release-gate.sh",
     "agentify:privacy:cleanup": "node ops/scripts/with-env.mjs bash ops/scripts/privacy-retention-cleanup.sh",
     "agentify:ops:local-core": "node ops/scripts/with-env.mjs bash ops/scripts/local-core-flow-smoke.sh"
