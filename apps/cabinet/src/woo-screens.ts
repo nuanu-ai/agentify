@@ -244,21 +244,23 @@ const waitingBlock = (state: ShopState): string => {
  * this address learns that the address exists, and that is all there is here to
  * learn.
  *
- * The one link on it is the sign-in, which is the door that answers everybody
- * the same way too. A link straight into the cabinet would be an invitation
- * into a place the reader may have no account in, and it would end where this
- * page started: on a form nobody was expecting.
+ * The next click is same-site, so a browser that was already signed in sends
+ * its Strict cookie again. A browser without one meets the cabinet's ordinary
+ * sign-in gate. The page does not ask for another email or interpret the
+ * untrusted redirect query.
  */
 export const wooReturnScreen = (base: string, mode: SurfaceMode): string =>
   bare(
     base,
     "Back from your shop",
     `<div class="gate">
-  <h1>${brandLockup("/")}</h1>
-  <p>This is the address a WooCommerce shop sends you to when it has finished with a connection.</p>
-  <p>Nothing about it can be shown here. Arriving from another site does not carry your sign-in with it, which is deliberate and is why you are reading this page rather than your own settings.</p>
-  <p>Sign in and your settings say where the connection got to: which shop is connected, or that one was started and its keys have not reached us.</p>
-  <p class="quiet"><a href="${escaped(base)}/sign-in?destination=settings">Sign in</a></p>
+  <form method="get" action="${escaped(base)}/woocommerce">
+    <h1>${brandLockup("/")}</h1>
+    <h2>Back from your shop</h2>
+    <p>Continue to your cabinet to see whether access reached Agentify. If you chose not to connect, you can try again there.</p>
+    <input type="hidden" name="from" value="shop">
+    <button class="primary" type="submit">Continue to your cabinet</button>
+  </form>
 </div>`,
     mode,
   );

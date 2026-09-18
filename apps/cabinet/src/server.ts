@@ -495,7 +495,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     const returnPath = `${base}/woocommerce/return`;
     app.get(returnPath, async (request, response) => {
       if ((await identity.whoIs(request.headers.cookie)) !== null) {
-        response.redirect(303, `${base}/settings`);
+        response.redirect(303, `${base}/woocommerce?from=shop`);
         return;
       }
       if (Object.keys(request.query).length > 0) {

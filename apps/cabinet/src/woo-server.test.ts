@@ -474,7 +474,7 @@ describe("the page the shop sends the browser back to, with a session on the req
     const came = await running.get(`/woocommerce/return?success=1&user_id=${token}`);
 
     expect(came.status).toBe(303);
-    expect(came.to).toBe("/settings");
+    expect(came.to).toBe("/woocommerce?from=shop");
   });
 });
 
@@ -826,7 +826,7 @@ describe("coming back from the shop with no session on the request", () => {
 
     expect(stripped.to).not.toBe("/sign-in");
     expect(seen.status).toBe(200);
-    expect(readable(seen.html)).toContain("WooCommerce shop");
+    expect(readable(seen.html)).toContain("Continue to your cabinet");
   });
 
   it("still takes the state token out of the address bar", async () => {
@@ -861,7 +861,7 @@ describe("coming back from the shop with no session on the request", () => {
     const seen = await running.getWithoutCookie(stripped.to ?? "/woocommerce/return");
 
     expect(seen.status).toBe(200);
-    expect(readable(seen.html)).toContain("WooCommerce shop");
+    expect(readable(seen.html)).toContain("Continue to your cabinet");
   });
 
   it("says the same thing whether or not a shop is connected", async () => {
@@ -921,7 +921,7 @@ describe("coming back from the shop with no session on the request", () => {
     const came = await running.get("/woocommerce/return?success=1");
     const seen = await running.get(came.to ?? "");
 
-    expect(came.to).toBe("/settings");
+    expect(came.to).toBe("/woocommerce?from=shop");
     expect(readable(seen.html)).toContain(`${SHOP}, connected`);
   });
 
@@ -939,9 +939,9 @@ describe("coming back from the shop with no session on the request", () => {
 
     const came = await running.get("/woocommerce/return?success=0&user_id=anything");
     const back = await running.get(came.to ?? "");
-    const reloaded = await running.get("/settings");
+    const reloaded = await running.get("/woocommerce?from=shop");
 
-    expect(came.to).toBe("/settings");
+    expect(came.to).toBe("/woocommerce?from=shop");
     expect(readable(back.html)).toMatch(/no keys have reached us yet/);
     expect(back.html).toBe(reloaded.html);
   });
@@ -957,10 +957,10 @@ describe("coming back from the shop with no session on the request", () => {
 
     const came = await running.get("/woocommerce/return");
     const back = await running.get(came.to ?? "");
-    const reloaded = await running.get("/settings");
+    const reloaded = await running.get("/woocommerce?from=shop");
 
-    expect(came.to).toBe("/settings");
-    expect(readable(back.html)).toContain("Connect a WooCommerce shop");
+    expect(came.to).toBe("/woocommerce?from=shop");
+    expect(readable(back.html)).toContain("Connect your shop");
     expect(back.html).toBe(reloaded.html);
   });
 
