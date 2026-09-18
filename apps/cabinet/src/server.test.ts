@@ -676,6 +676,10 @@ describe("the passwordless cabinet door", () => {
     const replay = await running.browser.from(running.url).post("/cabinet/sign-in/open", { token });
     expect(replay.status).toBe(401);
     expect(replay.headers.getSetCookie()).toStrictEqual([]);
+    expect(readable(replay.html)).toContain(`already signed in as ${PERSON}`);
+    expect(replay.html).toContain('href="/cabinet/cards"');
+    expect(readable(replay.html)).toContain("Open your cabinet");
+    expect(readable(replay.html)).toContain("Use a different email");
   });
 
   it("refuses a cross-origin POST without consuming the link", async () => {
