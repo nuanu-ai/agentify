@@ -157,7 +157,7 @@ and `LA` a deployed live acceptance step.
 | 21 | IT/LA | Permission from clean unauthenticated client; missing/tampered order key, product id, download id and `uid`; another clean client uses intact URL | Intact bearer URL works for either possessor; every mutation fails. It contains no raw email/API key/raw file URL. Boundary is stated, not called wallet-bound. |
 | 22 | IT/LA | Request product raw file URL and inspect catalogue, Cabinet pages, logs and tracker-safe output | Actual Caddy-served raw URL is denied even if Woo settings say Force Downloads. If public, product is unsupported until merchant server protection is fixed. Full permission/order key/uid appears only in authorized order delivery/status. |
 | 23 | IT | Woo readback has wrong transaction/meta, product, total, currency, billing email, paid status or permission marker | Cabinet refuses to construct/deliver permission and leaves honest refund debt; it never substitutes current product data for sold order. |
-| 24 | LA | Pause every imported card, disconnect, revoke remaining Woo key, normal reset and verify | Cards leave public catalogue before cleanup. Reset restores five-product/no-order/no-key fixture and does not claim Agentify cards were deleted. |
+| 24 | LA | Pause the acceptance card if required; remove the one-shot MU hook, its option and private acceptance artifacts; revoke or disconnect only credentials proven to belong to the dedicated acceptance merchant, if chosen | Preserve the shared Woo shop, its admin, order evidence and all user activity. The initial authorized reset is the only reset: no second reset is required or performed. |
 
 ## Small implementation order and ownership
 
