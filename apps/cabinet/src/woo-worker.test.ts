@@ -334,22 +334,22 @@ describe("the whole way through, against a real gateway", () => {
           emptySuccessfulBody
             ? ""
             : JSON.stringify({
-            id: 13,
-            number: "13",
-            order_key: "wc_order_13",
-            status: "processing",
-            currency: "USD",
-            total: "25.00",
-            total_tax: "0.00",
-            line_items: [
-              {
-                product_id: 11,
-                quantity: 1,
-                subtotal: "25.00",
+                id: 13,
+                number: "13",
+                order_key: "wc_order_13",
+                status: "processing",
+                currency: "USD",
                 total: "25.00",
                 total_tax: "0.00",
-              },
-            ],
+                line_items: [
+                  {
+                    product_id: 11,
+                    quantity: 1,
+                    subtotal: "25.00",
+                    total: "25.00",
+                    total_tax: "0.00",
+                  },
+                ],
               }),
         );
       });

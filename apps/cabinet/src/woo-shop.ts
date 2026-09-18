@@ -437,10 +437,13 @@ export const createTheOrderInTheShop = async (
   try {
     document = JSON.parse(said);
   } catch {
+    // A successful HTTP status means Woo may already have committed the order.
+    // Without its body we cannot bind that order, and treating this as a final
+    // refusal would release the local claim and let redelivery POST a duplicate.
     return {
       ok: false,
       why: "The shop answered the order call with something that is not JSON.",
-      again: false,
+      again: true,
     };
   }
 

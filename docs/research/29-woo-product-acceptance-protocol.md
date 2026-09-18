@@ -102,8 +102,9 @@ means the exact Woo order and permission result are durable.
   repository's unbounded root `pnpm buy` command or allow mainnet.
 - The live paid matrix has exactly three planned authorizations: ordinary happy
   delivery, revoked-key pre-create refusal and recovery, and committed-create
-  response loss followed by exact-id recovery. Recovery reuses the paid
-  Agentify order and signs no second payment.
+  empty successful response followed by exact-id recovery. The one-shot MU hook
+  suppresses the committed response body; it does not simulate a TCP or header
+  loss. Recovery reuses the paid Agentify order and signs no second payment.
 - Operations alone resets `woo.nuanu.ai` on `codex-vm` with
   `cd /home/dmitry/woocommerce-lab && ./reset-store.sh`, then `./verify.sh`.
   Never use `--rebuild-baseline` or copy reset stdout, which prints credentials.
@@ -207,7 +208,7 @@ its writer is active.
 
 `Pass` requires one final deployed SHA to complete cold Connect/import and all
 three capped paid cases: ordinary byte delivery, revoked-key recovery and
-committed-response-loss exact-id recovery. Restart redelivery, zero duplicate
+committed-empty-success exact-id recovery. Restart redelivery, zero duplicate
 charges/orders, actual bytes, bearer-secret checks and cleanup must agree.
 `Partial` means happy delivery works but a named failure has no proven
 money/goods resolution. `Fail` means goods, orders, money, identity or
