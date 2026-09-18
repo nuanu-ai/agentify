@@ -81,6 +81,15 @@ describe("cabinet magic links", () => {
     expect(rows.cabinet_sessions).toHaveLength(2);
   });
 
+  it("keeps the Woo destination inside the one-time cabinet claim", async () => {
+    const { identity, messages } = memoryIdentity();
+    await identity.requestLink("person@example.com", "woocommerce");
+
+    const opened = await identity.openLink(tokenIn(messages[0] as Message));
+
+    expect(opened).toMatchObject({ status: "opened", destination: "woocommerce" });
+  });
+
   it("refuses a report-purpose token at the cabinet door without consuming it", async () => {
     const { identity, messages, rows } = memoryIdentity();
     await identity.requestLink("person@example.com", "default");

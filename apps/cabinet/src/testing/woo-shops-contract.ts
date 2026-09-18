@@ -297,6 +297,11 @@ export const wooShopsContract = (
   });
 
   describe(`${name}: a connected shop`, () => {
+    const keys = {
+      consumerKey: "ck_abc",
+      consumerSecret: "cs_def",
+      permissions: "read_write",
+    };
     const connection = (accountId: string, shopUrl = "https://shop.example.com") => ({
       accountId,
       shopUrl,
@@ -348,11 +353,53 @@ export const wooShopsContract = (
       });
     });
 
-    it("forgets one", async () => {
+    it("forgets one connection and every pending callback for only that account", async () => {
       await using(async (shops, accounts) => {
         await shops.connect(connection(accounts.one));
-        await shops.forget(accounts.one);
+        await shops.beginGrant({
+          token: "forgotten-token",
+          accountId: accounts.one,
+          shopUrl: "https://forgotten.example.com",
+          startedAt: NOW,
+          expiresAt: MUCH_LATER,
+        });
+        await shops.beginGrant({
+          token: "other-token",
+          accountId: accounts.other,
+          shopUrl: "https://other.example.com",
+          startedAt: NOW,
+          expiresAt: MUCH_LATER,
+        });
+        expect(await shops.claimOrder(accounts.one, "ord_preserved", FACTS, NOW)).toStrictEqual({
+          kind: "ours",
+        });
+
+        expect(await shops.forget(accounts.one)).toBe("https://shop.example.com");
         expect(await shops.connectionOf(accounts.one)).toBeNull();
+        expect(await shops.connectFromGrant("forgotten-token", keys, NOW)).toBeNull();
+        expect((await shops.grantFor(accounts.other))?.token).toBe("other-token");
+        expect((await shops.knownOrder("ord_preserved"))?.kind).toBe("unknown");
+      });
+    });
+
+    it("leaves no connection when Forget races the pending callback", async () => {
+      await using(async (shops, accounts) => {
+        await shops.connect(connection(accounts.one));
+        await shops.beginGrant({
+          token: "racing-token",
+          accountId: accounts.one,
+          shopUrl: "https://replacement.example.com",
+          startedAt: NOW,
+          expiresAt: MUCH_LATER,
+        });
+
+        await Promise.all([
+          shops.connectFromGrant("racing-token", keys, NOW),
+          shops.forget(accounts.one),
+        ]);
+
+        expect(await shops.connectionOf(accounts.one)).toBeNull();
+        expect(await shops.grantFor(accounts.one)).toBeNull();
       });
     });
   });

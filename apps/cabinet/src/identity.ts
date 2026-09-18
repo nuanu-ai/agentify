@@ -1136,7 +1136,13 @@ function identityClaimFrom(value: string): IdentityClaim | null {
 function identityClaimOf(value: Record<string, unknown>): IdentityClaim | null {
   if (typeof value.email !== "string" || value.email !== emailAs(value.email)) return null;
   if (value.purpose === "cabinet") {
-    if (value.destination !== "default" && value.destination !== "settings") return null;
+    if (
+      value.destination !== "default" &&
+      value.destination !== "settings" &&
+      value.destination !== "woocommerce"
+    ) {
+      return null;
+    }
     return { email: value.email, purpose: "cabinet", destination: value.destination };
   }
   if (

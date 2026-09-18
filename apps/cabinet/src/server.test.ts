@@ -61,6 +61,7 @@ const PAY_TO = "0x0000000000000000000000000000000000000001";
 /** The name the session cookie travels under. */
 const COOKIE = "agentify.session_token";
 const SESSION_ENDED = "/sign-in?reason=session-ended";
+const SESSION_ENDED_UNSAVED = "/sign-in?reason=session-ended-unsaved";
 
 /** The person whose account every test in this file signs in as. */
 const PERSON = "dmitry@example.com";
@@ -773,6 +774,21 @@ describe("the passwordless cabinet door", () => {
     });
     expect(opened.status).toBe(303);
     expect(opened.to).toBe("/settings");
+  });
+
+  it("treats an arbitrary sign-in destination as the default", async () => {
+    const running = await started();
+
+    await running.browser.post("/sign-in", {
+      email: PERSON,
+      destination: "https://evil.example",
+    });
+    const action = actionIn(running.mails.at(-1));
+    const opened = await running.browser.from(running.url).post("/sign-in/open", {
+      token: action.searchParams.get("token") ?? "",
+    });
+
+    expect(opened.to).toBe("/cards");
   });
 
   it("does not retain the retired password, registration, or confirmation routes", async () => {
@@ -2581,7 +2597,7 @@ describe("a session that is ended while somebody is looking at a page", () => {
 
     const refused = await browser.post("/selling/pause");
     expect(refused.status).toBe(303);
-    expect(refused.to).toBe(SESSION_ENDED);
+    expect(refused.to).toBe(SESSION_ENDED_UNSAVED);
     const recovery = await browser.get(refused.to ?? "");
     expect(readable(recovery.html)).toContain("not saved");
     // The negative control is the fact rather than the answer: the switch the
@@ -2622,8 +2638,10 @@ describe("a session that is ended while somebody is looking at a page", () => {
     expect(answered.status).toBe(303);
     expect(answered.to).toBe(SESSION_ENDED);
     const recovery = await browser.get(answered.to ?? "");
-    expect(readable(recovery.html)).toContain("Your session ended");
-    expect(readable(recovery.html)).toContain("change");
+    const message = readable(recovery.html);
+    expect(message).toContain("Your session ended");
+    expect(message).not.toContain("not saved");
+    expect(message).not.toContain("submitted a change");
   });
 
   it("is a fresh session every time, so signing in twice does not reuse one identifier", async () => {

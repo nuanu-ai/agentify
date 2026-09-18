@@ -156,7 +156,14 @@ export interface WooShops {
   /** Writes the connection, replacing whatever that account had before. */
   connect(connection: WooConnection): Promise<void>;
   connectionOf(accountId: string): Promise<WooConnection | null>;
-  forget(accountId: string): Promise<void>;
+  /**
+   * Forgets the connected shop and every Connect intent for this account.
+   *
+   * The public shop URL is returned only so the cabinet can leave the fresh
+   * form filled in. Cards and accepted orders belong to different stores and
+   * are deliberately untouched.
+   */
+  forget(accountId: string): Promise<string | null>;
   /** Every connected shop, which is what the worker draws its work from. */
   connections(): Promise<readonly WooConnection[]>;
   /** Persists the delivery identity accepted for one gateway price question. */
@@ -362,7 +369,20 @@ export const postgresWooShops = (pool: Pool): WooShops => {
     },
 
     async forget(accountId) {
-      await db.delete(wooShops).where(eq(wooShops.accountId, accountId));
+      return await db.transaction(async (tx) => {
+        // The same account lock as beginGrant/connectFromGrant: whichever of a
+        // callback and Forget wins, Forget leaves no callback capable of
+        // resurrecting the connection afterwards.
+        await tx.execute(
+          sql`select ${accounts.id} from ${accounts} where ${accounts.id} = ${accountId} for update`,
+        );
+        const [connection] = await tx
+          .delete(wooShops)
+          .where(eq(wooShops.accountId, accountId))
+          .returning({ shopUrl: wooShops.shopUrl });
+        await tx.delete(wooGrants).where(eq(wooGrants.accountId, accountId));
+        return connection?.shopUrl ?? null;
+      });
     },
 
     async connections() {
@@ -616,7 +636,12 @@ export const memoryWooShops = (): WooShops => {
     },
 
     async forget(accountId) {
+      const connection = shops.get(accountId);
       shops.delete(accountId);
+      for (const [token, grant] of grants) {
+        if (grant.accountId === accountId) grants.delete(token);
+      }
+      return connection?.shopUrl ?? null;
     },
 
     async connections() {

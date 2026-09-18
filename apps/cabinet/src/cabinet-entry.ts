@@ -22,7 +22,7 @@ export interface Person {
 }
 
 /** The only places a cabinet mail link may return to after it is opened. */
-export type CabinetDestination = "default" | "settings";
+export type CabinetDestination = "default" | "settings" | "woocommerce";
 
 export type LinkRequestResult =
   | Readonly<{ status: "accepted" }>

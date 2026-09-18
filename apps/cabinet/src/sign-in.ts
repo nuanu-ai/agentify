@@ -7,12 +7,18 @@
  */
 
 import type { SurfaceMode } from "@agentify/commerce-core";
+import type { CabinetDestination } from "./cabinet-entry.js";
 import { bare, bareWithoutScript, brandLockup, escaped } from "./html.js";
+
+const destinationInput = (destination: CabinetDestination): string =>
+  destination === "default"
+    ? ""
+    : `<input type="hidden" name="destination" value="${escaped(destination)}">`;
 
 export const signInScreen = (
   base: string,
   mode: SurfaceMode,
-  destination: "default" | "settings" = "default",
+  destination: CabinetDestination = "default",
   problem?: string,
 ): string =>
   bare(
@@ -24,7 +30,7 @@ export const signInScreen = (
   <p>Enter your email address. We will send one link that signs you in or makes your cabinet when you open it.</p>
   <label for="email">Email</label>
   <input id="email" name="email" type="email" autocomplete="email" autocapitalize="off" spellcheck="false" autofocus required>
-  ${destination === "settings" ? '<input type="hidden" name="destination" value="settings">' : ""}
+  ${destinationInput(destination)}
   <button class="primary" type="submit">Send me a sign-in link</button>
   ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
   <p class="quiet">The link works once and expires after one hour. There is no password to remember or reset.</p>
@@ -38,7 +44,7 @@ export const linkRequestedScreen = (
   base: string,
   mode: SurfaceMode,
   email: string,
-  destination: "default" | "settings",
+  destination: CabinetDestination,
   retryAfterSeconds?: number,
 ): string => {
   const minutes =
@@ -59,11 +65,11 @@ export const linkRequestedScreen = (
   ${outcome}
   <p class="quiet">You can request up to three links for one address in one hour. We answer every address the same way.</p>
   <input name="email" type="hidden" value="${escaped(email)}">
-  ${destination === "settings" ? '<input type="hidden" name="destination" value="settings">' : ""}
+  ${destinationInput(destination)}
   <button type="submit">Send another link</button>
 </form>
 <form method="get" action="${escaped(base)}/sign-in">
-  ${destination === "settings" ? '<input type="hidden" name="destination" value="settings">' : ""}
+  ${destinationInput(destination)}
   <button type="submit">Use a different email</button>
 </form>
 </div>`,

@@ -33,7 +33,7 @@
 
 import { readFileSync } from "node:fs";
 import express, { type Express, type Request, type Response } from "express";
-import type { CabinetIdentity, Person } from "./cabinet-entry.js";
+import type { CabinetDestination, CabinetIdentity, Person } from "./cabinet-entry.js";
 import type { CabinetConfig } from "./config.js";
 import {
   type Answer,
@@ -148,6 +148,16 @@ const KEY_AT_SIGN_IN_MS = 2_000;
  * the same shape the account command holds an address to, for the same reason.
  */
 const LOOKS_LIKE_AN_ADDRESS = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
+
+const cabinetDestinationIn = (value: unknown): CabinetDestination =>
+  value === "settings" || value === "woocommerce" ? value : "default";
+
+const cabinetPathFor = (base: string, destination: CabinetDestination): string =>
+  destination === "settings"
+    ? `${base}/settings`
+    : destination === "woocommerce"
+      ? `${base}/woocommerce`
+      : `${base}/cards`;
 
 /**
  * The stylesheet the cabinet serves: the shared visual language, then the
@@ -525,11 +535,13 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       response.redirect(303, person.merchant === null ? `${base}/merchant` : `${base}/cards`);
       return;
     }
-    const destination = request.query.destination === "settings" ? "settings" : "default";
+    const destination = cabinetDestinationIn(request.query.destination);
     const problem =
-      request.query.reason === "session-ended"
-        ? "Your session ended. Sign in again. If you just submitted a change, it was not saved."
-        : undefined;
+      request.query.reason === "session-ended-unsaved"
+        ? "Your session ended. Sign in again. The change you submitted was not saved."
+        : request.query.reason === "session-ended"
+          ? "Your session ended. Sign in again."
+          : undefined;
     response.type("html").send(signInScreen(base, config.surfaceMode, destination, problem));
   });
 
@@ -662,7 +674,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   app.post(`${base}/sign-in`, async (request, response) => {
     const form = (request.body ?? {}) as { email?: unknown; destination?: unknown };
     const email = typeof form.email === "string" ? form.email.trim() : "";
-    const destination = form.destination === "settings" ? "settings" : "default";
+    const destination = cabinetDestinationIn(form.destination);
     if (!LOOKS_LIKE_AN_ADDRESS.test(email)) {
       response
         .status(400)
@@ -711,11 +723,11 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   const sendOpenedPerson = async (
     response: Response,
     person: Person,
-    destination: "default" | "settings",
+    destination: CabinetDestination,
   ): Promise<void> => {
     if (person.merchant !== null) {
       await replaceTheKeyOf(person);
-      response.redirect(303, destination === "settings" ? `${base}/settings` : `${base}/cards`);
+      response.redirect(303, cabinetPathFor(base, destination));
       return;
     }
 
@@ -725,7 +737,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       return;
     }
     if (attached.status === "already-attached") {
-      response.redirect(303, destination === "settings" ? `${base}/settings` : `${base}/cards`);
+      response.redirect(303, cabinetPathFor(base, destination));
       return;
     }
     if (attached.status === "person-missing") {
@@ -807,9 +819,21 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
           // through this gate again on every click.
           const hadIdentityCookie = carriesIdentityCookie(request.headers.cookie);
           forget(response);
+          const reason =
+            request.method === "GET" || request.method === "HEAD"
+              ? "session-ended"
+              : "session-ended-unsaved";
+          const destination =
+            hadIdentityCookie &&
+            (request.method === "GET" || request.method === "HEAD") &&
+            request.path === `${base}/woocommerce`
+              ? "&destination=woocommerce"
+              : "";
           response.redirect(
             303,
-            hadIdentityCookie ? `${base}/sign-in?reason=session-ended` : `${base}/sign-in`,
+            hadIdentityCookie
+              ? `${base}/sign-in?reason=${reason}${destination}`
+              : `${base}/sign-in${destination === "" ? "" : "?destination=woocommerce"}`,
           );
           return;
         }
@@ -1158,7 +1182,11 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       // page again tomorrow is not told their browser has just come back from
       // anywhere. The flag and not the token, which is the whole point of the
       // redirect that set it.
-      await drawTheShop(request, response, { cameBack: request.query.from === "shop" });
+      const typed = typeof request.query.shop_url === "string" ? request.query.shop_url : undefined;
+      await drawTheShop(request, response, {
+        cameBack: request.query.from === "shop",
+        ...(typed === undefined ? {} : { typed }),
+      });
     });
 
     app.post(`${base}/woocommerce/connect`, async (request, response) => {
@@ -1334,9 +1362,10 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
 
     app.post(`${base}/woocommerce/disconnect`, async (request, response) => {
       const person = whoIs(request);
-      await shops.forget(person.id);
+      const shopUrl = await shops.forget(person.id);
       noted(person, "forgot the keys their WooCommerce shop had given");
-      response.redirect(303, `${base}/woocommerce`);
+      const query = shopUrl === null ? "" : `?${new URLSearchParams({ shop_url: shopUrl })}`;
+      response.redirect(303, `${base}/woocommerce${query}`);
     });
   }
 

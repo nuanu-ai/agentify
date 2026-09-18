@@ -100,7 +100,7 @@ interface Running {
    * sign-in gate is what makes it reachable at all.
    */
   postJson(path: string, body: unknown): Promise<Visit>;
-  signIn(): Promise<void>;
+  signIn(destination?: "default" | "woocommerce"): Promise<Visit>;
   /** Ends the session, so the next visit is a stranger's until they sign in. */
   signOut(): Promise<void>;
   close(): Promise<void>;
@@ -266,12 +266,17 @@ const started = async (standing: Standing = {}): Promise<Running> => {
         type: "application/json;charset=UTF-8",
         noCookie: true,
       }),
-    async signIn() {
-      await visit("POST", "/sign-in", { body: new URLSearchParams({ email: PERSON }).toString() });
+    async signIn(destination = "default") {
+      await visit("POST", "/sign-in", {
+        body: new URLSearchParams({
+          email: PERSON,
+          ...(destination === "default" ? {} : { destination }),
+        }).toString(),
+      });
       const found = /(https?:\/\/\S+)/.exec(messages.at(-1)?.body ?? "")?.[1];
       if (found === undefined) throw new Error("the sign-in message carried no action URL");
       const action = new URL(found);
-      await visit("POST", action.pathname, {
+      return await visit("POST", action.pathname, {
         body: new URLSearchParams({ token: action.searchParams.get("token") ?? "" }).toString(),
       });
     },
@@ -433,6 +438,37 @@ describe("the keys arriving from the shop", () => {
     expect(await running.shops.connections()).toEqual([]);
   });
 
+  it("forgets stale Connect attempts and keeps the former shop as a clean prefill", async () => {
+    const running = await started();
+    await running.signIn();
+    await running.shops.connect({
+      accountId: running.accountId,
+      shopUrl: SHOP,
+      consumerKey: "ck_connected",
+      consumerSecret: "cs_connected",
+      permissions: "read_write",
+      revision: "connected-token",
+      connectedAt: new Date(),
+    });
+    await running.shops.beginGrant({
+      token: "old-unanswered-token",
+      accountId: running.accountId,
+      shopUrl: SHOP,
+      startedAt: new Date(Date.now() - 40 * 60_000),
+      expiresAt: new Date(Date.now() - 25 * 60_000),
+    });
+
+    const forgot = await running.post("/woocommerce/disconnect");
+
+    expect(forgot.status).toBe(303);
+    expect(forgot.to).toBe(`/woocommerce?shop_url=${encodeURIComponent(SHOP)}`);
+    const screen = await running.get(forgot.to ?? "");
+    expect(screen.html).toContain(`value="${SHOP}"`);
+    expect(readable(screen.html)).not.toContain("The connection you started");
+    expect(readable(screen.html)).not.toContain("no keys arrived");
+    expect(await running.shops.grantFor(running.accountId)).toBeNull();
+  });
+
   it("refuses an older callback after the merchant starts a newer Connect", async () => {
     const running = await started();
     await running.signIn();
@@ -537,6 +573,22 @@ describe("the page the shop sends the browser back to, with a session on the req
   });
 });
 
+describe("an expired session returning to WooCommerce", () => {
+  it("keeps WooCommerce as a closed signed-link destination", async () => {
+    const running = await started();
+    await running.signIn();
+    await running.identity.endEverySessionFor(PERSON);
+
+    const expired = await running.get("/woocommerce");
+
+    expect(expired.to).toBe("/sign-in?reason=session-ended&destination=woocommerce");
+    const recovery = await running.get(expired.to ?? "");
+    expect(recovery.html).toContain('name="destination" value="woocommerce"');
+    const opened = await running.signIn("woocommerce");
+    expect(opened.to).toBe("/woocommerce");
+  });
+});
+
 describe("importing the catalogue", () => {
   const connected = async (running: Running): Promise<void> => {
     await running.signIn();
@@ -580,6 +632,18 @@ describe("importing the catalogue", () => {
     const listed = await cardsOf(running);
     expect(listed).toHaveLength(1);
     expect(listed[0]?.card.price.amount).toBe("25.00");
+  });
+
+  it("keeps imported cards when the merchant forgets the shop", async () => {
+    const running = await started({
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
+    });
+    await connected(running);
+    await running.post("/woocommerce/import");
+
+    await running.post("/woocommerce/disconnect");
+
+    expect(await cardsOf(running)).toHaveLength(1);
   });
 
   it("bounds protected product checks during a whole-catalogue import", async () => {
