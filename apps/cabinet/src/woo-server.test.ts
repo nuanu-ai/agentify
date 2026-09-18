@@ -445,6 +445,40 @@ describe("the keys arriving from the shop", () => {
     expect((await running.shops.connections())[0]?.shopUrl).toBe("https://second.example.com");
   });
 
+  it("does not let an in-flight older callback replace a newer Connect", async () => {
+    const running = await started();
+    await running.signIn();
+    const first = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const firstToken = tokenIn(first.to ?? "");
+    const spent = Promise.withResolvers<void>();
+    const finish = Promise.withResolvers<void>();
+    const spend = running.shops.spendGrant.bind(running.shops);
+    const mutable = running.shops as {
+      spendGrant: WooShops["spendGrant"];
+    };
+    mutable.spendGrant = async (token, now) => {
+      const grant = await spend(token, now);
+      spent.resolve();
+      await finish.promise;
+      return grant;
+    };
+
+    const older = running.postJson("/woocommerce/callback", grantedBody(firstToken));
+    await spent.promise;
+    await running.shops.beginGrant({
+      token: "newer-token",
+      accountId: running.accountId,
+      shopUrl: "https://second.example.com",
+      startedAt: new Date(),
+      expiresAt: new Date(Date.now() + 15 * 60_000),
+    });
+    finish.resolve();
+
+    expect((await older).status).toBe(401);
+    expect(await running.shops.connections()).toEqual([]);
+    expect((await running.shops.grantFor(running.accountId))?.token).toBe("newer-token");
+  });
+
   it("refuses a callback with no keys in it", async () => {
     const running = await started();
     await running.signIn();
