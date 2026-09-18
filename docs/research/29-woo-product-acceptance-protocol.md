@@ -43,24 +43,20 @@ therefore buyer data: the URL appears only in that order's delivery, never in a
 card, catalogue, cabinet list, ordinary log, screenshot, tracker comment or
 report. The API keys, merchant email and raw file URL never appear in it.
 
-## Current blockers fixed before any paid Woo run
+## Implementation invariants before any paid Woo run
 
-These are source-proven current behavior, not predictions:
+These rules are checked in isolation before the live cases:
 
-1. `woo-catalog.ts` reads only the public Store API and publishes simple,
-   purchasable, in-stock products with an order-number-only result. It cannot
-   enforce virtual/downloadable/file/limit/expiry/settings facts and currently
-   advertises the five gift cards without usable goods.
-2. The card's `merchant_item_id` is only the numeric Woo product id, while a
-   reconnect replaces the account's shop URL and keys. Product 42 imported from
-   shop A can therefore become product 42 in shop B. Every imported identity
-   must bind normalized shop origin as well as Woo product id.
+1. Import combines the public Store catalogue with an authenticated product and
+   settings read. Unsupported products, including all five baseline gift cards,
+   are skipped with no order-number-only card.
+2. Every imported identity binds normalized shop origin as well as Woo product
+   id, so reconnecting to shop B cannot fulfil shop A's product 42.
 3. Woo order creation is not a two-outcome call. A timeout, lost response,
    5xx/408/429, malformed successful body, missing Woo id, or a local ledger
    failure after a valid create can all mean Woo committed while Cabinet did not
-   learn enough. Today malformed 2xx/no-id is marked final and the claim is
-   released, allowing a duplicate POST. Every ambiguous outcome must retain the
-   claim and must never cause a blind retry.
+   learn enough. Every ambiguous outcome retains the claim and never causes a
+   blind retry.
 4. The Woo ledger keeps only Woo id/number. It cannot reproduce the permission
    result after a restart. Once Woo answers successfully, Cabinet must durably
    record bound shop origin and exact permission ingredients with Woo id/number
@@ -144,10 +140,10 @@ and `LA` a deployed live acceptance step.
 | 8 | IT/LA | Create owned one-file fixture, import, reimport unchanged, pause, reimport again | One stable origin-bound card is async with price check and three result fields; no duplicate; import never resumes a paused card. |
 | 9 | CB/IT | Import product 42 from shop A; reconnect same account to shop B with product 42; quote/buy A card | Origin mismatch is unavailable/refused; no request reaches B for A's card. |
 | 10 | IT | Change price/currency, stock, virtual/downloadable, file id/count/source, limit/expiry or global settings after import but before quote | Fresh authenticated quote returns current valid USD price or unavailable. Unsupported/stale state is refused before payment and Woo order. |
-| 11 | IT | Change one allowed fact after a successful quote but before paid order reaches Cabinet | No stale permission is invented. This residual post-payment race becomes visible `refund_due`; no delivery is claimed. |
+| 11 | IT | Change product/source/download id or name, price/currency, or any supported setting after a successful quote but before paid order reaches Cabinet | The order's `price_id` resolves to the persisted non-secret quote fingerprint and the fresh fingerprint must match. No stale permission is invented; mismatch becomes visible `refund_due` with no Woo POST or delivery. Replacing bytes at the unchanged protected URL cannot be detected from Woo metadata and remains an explicit limit. |
 | 12 | IT | Payment verification/settlement fails or is unknowable before async hand-over | No Woo envelope, order, permission or delivery is created. Unknown payment is never retried. |
 | 13 | IT/LA | Ordinary capped purchase with worker active | Chain settlement precedes Woo POST. One paid Woo order has `set_paid`, exact `0.01 USD` order/line total, zero tax, Agentify order id in transaction/meta, and merchant billing email only. One permission is granted. Any post-create total/currency/line/tax mismatch remains unresolved and is never delivered. |
-| 14 | IT/LA | Fetch result with redirects disabled, then ordinarily; repeat after worker restart | Permission returns 200, expected filename/content disposition and exact SHA-256. Agentify is delivered with one receipt; result/bytes survive restart; no second Woo order. |
+| 14 | IT/LA | Fetch result with redirects disabled, then ordinarily; repeat after worker restart | Permission returns 200. Agentify `file_name` is the Woo display name `Agentify TEST acceptance artifact`; Content-Disposition names `agentify-test-download-dn3er7.txt`; bytes are 148 bytes with the frozen SHA-256. Agentify is delivered with one receipt; result/bytes survive restart; no second Woo order. |
 | 15 | IT | Same order is redelivered before and after durable local result; `answer_order` response is lost once | At most one Woo POST/order/permission and one Agentify delivery/charge; redelivery returns the exact stored result through the existing answer route. |
 | 16 | CB/IT/LA | A temporary TEST-only WordPress MU hook uses `rest_pre_serve_request` after Woo has committed one exactly matched order. One atomically consumed option matches the dedicated merchant alias, product 22, `0.01 USD`, Agentify payment method and transaction/meta id; the hook suppresses only that successful REST body, then the hook and option are removed and their absence verified. Woo readback proves one remote order while Cabinet records `create_unknown`. Isolated committed-remote fakes separately cover 5xx/408/429 and malformed 2xx/no id. No fault flag appears in product code or a public route. | Claim stays `create_unknown`, redelivery makes no second POST, and buyer sees refund debt rather than invented goods. Recovery requires an operator-supplied exact Woo id; zero/ambiguous/mismatched readback never reopens POST. |
 | 17 | CB/IT | Valid Woo create response, then local durable record fails | Redelivery makes no second Woo POST. Unresolved claim/refund debt survive restart; no permission result is guessed. |
@@ -175,9 +171,10 @@ across concurrent branches:
    or redirect means the asset is public and the product is unavailable; an
    unknown/network answer also fails closed. This never follows or probes a
    cross-origin file URL. Add no SDK field or namespace.
-3. Replace `ok/again` with explicit `created/refused/unknown`. Lost responses,
-   retry statuses, malformed 2xx/no-id and post-create local failures are unknown
-   and never release claims. Every ambiguous test injects a committed remote order.
+3. Classify outcomes as created, proved-before-POST refusal, or unknown. Lost
+   responses, retry statuses, every unvalidated HTTP response, malformed
+   2xx/no-id and post-create local failures are unknown and never release
+   claims. Every ambiguous test injects a committed remote order.
 4. Extend the private Woo order ledger only enough to retain phase, normalized
    root shop origin, connection revision, immutable sold product/amount/currency,
    Woo id/number and exact permission ingredients (order key, download id/name,

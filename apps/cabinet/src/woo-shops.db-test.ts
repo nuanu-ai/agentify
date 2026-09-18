@@ -59,7 +59,7 @@ if (databaseUrl === null) {
   // then gone, the journal says they are there, and the suite fails on a table
   // that does not exist — which is what happened the first time this ran twice.
   await pool.query(
-    "drop table if exists cabinet_woo_orders, cabinet_woo_shops, cabinet_woo_grants," +
+    "drop table if exists cabinet_woo_quotes, cabinet_woo_orders, cabinet_woo_shops, cabinet_woo_grants," +
       " cabinet_link_sends, cabinet_verifications, cabinet_credentials, cabinet_sessions, cabinet_accounts cascade",
   );
   await pool.query("drop schema if exists drizzle cascade");
@@ -101,6 +101,7 @@ if (databaseUrl === null) {
     // Everything these tables hold, gone, so that one case cannot read a row
     // another one wrote. The accounts go with them: they are made per case.
     await pool.query("delete from cabinet_woo_orders");
+    await pool.query("delete from cabinet_woo_quotes");
     await pool.query("delete from cabinet_woo_shops");
     await pool.query("delete from cabinet_woo_grants");
     await pool.query("delete from cabinet_accounts");

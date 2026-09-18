@@ -17,7 +17,7 @@ goods to the buying agent. An order number is not a product.
 merchant account under the same host boundary as the cabinet key. Woo can
 revoke them. The database is a boundary against the network, not the host.
 
-**The callback spends one random grant row.** It is bound to the account and
+**The callback spends one random grant row and writes the connection atomically.** It is bound to the account and
 root shop origin and expires after fifteen minutes. A live callback deletes it;
 an expired callback is refused while the attempt remains visible. That
 account's next Connect supersedes it, so an older callback cannot replace a
@@ -37,12 +37,20 @@ number. The URL contains Woo's order key and a hash of the merchant order email,
 contains no email, and is a bearer secret rather than wallet-bound. It appears
 only in that order's delivery.
 
+Every accepted quote durably binds its `price_id` to a digest of the root shop
+origin, product, amount/currency, download id/name, protected source address and
+supported settings. The paid order must carry that price id and the fresh
+authoritative product must match. The protected address is never stored.
+
 **Cabinet fills the order as the merchant's worker.** After Agentify settles,
 Cabinet rechecks the product and settings, claims the Agentify order, creates
 one paid Woo order and durably records the permission ingredients before
 answering. Redelivery returns the stored result and never creates a second Woo
 order. The ledger phase is `precreate_refused`, `create_unknown` or `placed`;
-an ambiguous response or local record failure never reopens POST.
+only a refusal proved before POST is `precreate_refused`. Every response or
+failure after POST that does not validate a complete correlated result remains
+`create_unknown` and never reopens POST. A placed result can be delivered after
+disconnect or shop switch because it needs no Woo credential.
 
 **A private exact-order command closes paid failures.** A pre-create refusal may
 make one POST only after the same origin reconnects under a new revision and
@@ -57,7 +65,8 @@ refund debt. This adds no public route or SDK method.
 Woo orders use the merchant's email; no buyer email is requested or exposed.
 Managed stock, physical and variable goods, gifts/vouchers, multiple files,
 finite permissions and external file stores are unsupported. Import reads at
-most two hundred products and stops after the first unknown publish result.
+most two hundred products, qualifies at most four concurrently, and stops after
+the first unknown publish result.
 Stale cards remain visible, but a fresh authoritative quote refuses unsupported
 state before payment; a change after quote can become visible refund debt.
 
