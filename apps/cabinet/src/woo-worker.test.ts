@@ -162,6 +162,26 @@ describe("one paid order, in the merchant's own shop", () => {
     expect(again).toEqual(first);
   });
 
+  it("does not deliver a Woo result that the durable ledger did not bind", async () => {
+    const durable = memoryWooShops();
+    const shop = aShopThatAccepts();
+    const shops: WooShops = {
+      ...durable,
+      recordOrder: async () => false,
+    };
+
+    const answer = await fillFromTheShop(
+      anOrder(),
+      connection(),
+      MERCHANT_EMAIL,
+      filling(shops, shop.place),
+    );
+
+    expect(answer).toBeNull();
+    expect((await durable.knownOrder("ord_1"))?.kind).toBe("unknown");
+    expect(shop.placed).toHaveLength(1);
+  });
+
   it("refuses the sale when the shop says no, without quoting the shop to the buyer", async () => {
     // A WordPress refusal carries whatever the plugin that raised it chose to
     // say, and on a shop with debugging on that is a file path. The reader here

@@ -318,6 +318,21 @@ export const wooShopsContract = (
         expect(await shops.claimOrder(accounts.one, "ord_1", FACTS, NOW)).toEqual({
           kind: "ours",
         });
+        expect((await shops.knownOrder("ord_1"))?.kind).toBe("unknown");
+      });
+    });
+
+    it("never reports ownership without a durable row when release races a new claim", async () => {
+      await using(async (shops, accounts) => {
+        await shops.claimOrder(accounts.one, "ord_1", FACTS, NOW);
+        const [, claimed] = await Promise.all([
+          shops.releaseOrder("ord_1"),
+          shops.claimOrder(accounts.one, "ord_1", FACTS, LATER),
+        ]);
+
+        if (claimed.kind === "ours") {
+          expect((await shops.knownOrder("ord_1"))?.kind).toBe("unknown");
+        }
       });
     });
 
