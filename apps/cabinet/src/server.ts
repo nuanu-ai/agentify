@@ -1178,13 +1178,6 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
         );
       }
 
-      // The Connects nobody came back for, cleared as one is made. It is the
-      // one moment a row is written here, which makes it the one place the
-      // table can be kept bounded without a schedule of its own.
-      void shops.sweepGrants(new Date()).catch((thrown: unknown) => {
-        console.error("[cabinet] the abandoned WooCommerce grants could not be cleared", thrown);
-      });
-
       // The token is minted before the shop is asked anything, so the address
       // we check is character for character the address the browser is sent to.
       const token = theStateToken();

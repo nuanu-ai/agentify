@@ -14,10 +14,10 @@
  * carries the part that is different here: the secret belongs to a third party.
  */
 
-import { and, desc, eq, isNull, lt, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, ne, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
-import { wooGrants, wooOrders, wooShops } from "./schema.js";
+import { accounts, wooGrants, wooOrders, wooShops } from "./schema.js";
 
 /** A Connect a merchant started, waiting for their shop to answer. */
 export interface WooGrant {
@@ -115,9 +115,8 @@ export interface WooShops {
    * them apart on a route anybody can post to would be answering questions
    * about somebody else's account.
    *
-   * The row goes whether or not it had expired, because a token that was once
-   * live and is now stale is exactly the value somebody replaying an old
-   * callback would be holding.
+   * A live row goes atomically. An expired row stays so the owner can still see
+   * the attempt that ended; beginning their next Connect replaces it.
    */
   spendGrant(token: string, now: Date): Promise<WooGrant | null>;
   /**
@@ -134,9 +133,6 @@ export interface WooShops {
    * waiting on, and the older rows go on the next press anyway.
    */
   grantFor(accountId: string): Promise<WooGrant | null>;
-  /** Clears out the Connects nobody came back for. Answers how many. */
-  sweepGrants(now: Date): Promise<number>;
-
   /** Writes the connection, replacing whatever that account had before. */
   connect(connection: WooConnection): Promise<void>;
   connectionOf(accountId: string): Promise<WooConnection | null>;
@@ -201,20 +197,32 @@ export const postgresWooShops = (pool: Pool): WooShops => {
 
   return {
     async beginGrant(grant) {
-      await db.insert(wooGrants).values({
-        token: grant.token,
-        accountId: grant.accountId,
-        shopUrl: grant.shopUrl,
-        expiresAt: grant.expiresAt,
-        createdAt: grant.startedAt,
+      await db.transaction(async (tx) => {
+        // Serialise two Connect presses by this account. Replacing its own row
+        // must neither leave an older token usable nor sweep another owner's
+        // explanation away.
+        await tx.execute(
+          sql`select ${accounts.id} from ${accounts} where ${accounts.id} = ${grant.accountId} for update`,
+        );
+        await tx.delete(wooGrants).where(eq(wooGrants.accountId, grant.accountId));
+        await tx.insert(wooGrants).values({
+          token: grant.token,
+          accountId: grant.accountId,
+          shopUrl: grant.shopUrl,
+          expiresAt: grant.expiresAt,
+          createdAt: grant.startedAt,
+        });
       });
     },
 
     async spendGrant(token, now) {
       // One statement, so that two callbacks carrying one token cannot both
       // find a row: the delete is the claim, and only one of them deletes it.
-      const [row] = await db.delete(wooGrants).where(eq(wooGrants.token, token)).returning();
-      if (row === undefined || row.expiresAt.getTime() <= now.getTime()) {
+      const [row] = await db
+        .delete(wooGrants)
+        .where(and(eq(wooGrants.token, token), gt(wooGrants.expiresAt, now)))
+        .returning();
+      if (row === undefined) {
         return null;
       }
       return {
@@ -242,11 +250,6 @@ export const postgresWooShops = (pool: Pool): WooShops => {
             startedAt: row.createdAt,
             expiresAt: row.expiresAt,
           };
-    },
-
-    async sweepGrants(now) {
-      const gone = await db.delete(wooGrants).where(lt(wooGrants.expiresAt, now)).returning();
-      return gone.length;
     },
 
     async connect(connection) {
@@ -452,17 +455,20 @@ export const memoryWooShops = (): WooShops => {
 
   return {
     async beginGrant(grant) {
+      for (const [token, found] of grants) {
+        if (found.accountId === grant.accountId) {
+          grants.delete(token);
+        }
+      }
       grants.set(grant.token, grant);
     },
 
     async spendGrant(token, now) {
       const found = grants.get(token);
-      // Deleted whether or not it was still live, for the reason the port
-      // gives: a stale token is what a replayed callback carries.
-      grants.delete(token);
       if (found === undefined || found.expiresAt.getTime() <= now.getTime()) {
         return null;
       }
+      grants.delete(token);
       return found;
     },
 
@@ -479,17 +485,6 @@ export const memoryWooShops = (): WooShops => {
         }
       }
       return newest;
-    },
-
-    async sweepGrants(now) {
-      let gone = 0;
-      for (const [token, grant] of grants) {
-        if (grant.expiresAt.getTime() < now.getTime()) {
-          grants.delete(token);
-          gone += 1;
-        }
-      }
-      return gone;
     },
 
     async connect(connection) {

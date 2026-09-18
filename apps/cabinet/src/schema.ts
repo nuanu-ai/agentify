@@ -327,7 +327,7 @@ export const wooGrants = pgTable(
     expiresAt: moment("expires_at"),
     createdAt: moment("created_at"),
   },
-  // The sweep of the ones nobody came back for reads by this.
+  // Kept for deployments that inspect expired attempts while reconciling old data.
   (table) => [index("cabinet_woo_grants_expires_idx").on(table.expiresAt)],
 );
 
