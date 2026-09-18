@@ -26,10 +26,11 @@ the row, never callback input. Each connection gets a private revision.
 
 **The working product is one protected native download.** Import accepts a
 published, purchasable, in-stock, unmanaged-stock simple USD product that is
-virtual, downloadable, not sold individually or taxable, and has one protected
-same-origin file with unlimited count and expiry. Taxes are disabled and the
-safe download settings are authoritative. Public raw files and everything
-outside this class are named and skipped.
+virtual, downloadable and not sold individually, and has one protected
+same-origin file with unlimited count and expiry. Shop tax calculation is
+disabled, regardless of the product's dormant tax-status default, and the safe
+download settings are authoritative. Public raw files and everything outside
+this class are named and skipped.
 
 The card is asynchronous and live-priced. Its identity binds shop origin and
 Woo product id. Delivery is Woo's native permission URL, file name and order

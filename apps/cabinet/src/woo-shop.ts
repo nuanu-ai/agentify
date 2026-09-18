@@ -115,7 +115,6 @@ const ProductSchema = z.looseObject({
   download_expiry: z.number().int(),
   sold_individually: z.boolean(),
   price: z.string(),
-  tax_status: z.string(),
   downloads: z.array(z.looseObject({ id: z.string(), name: z.string(), file: z.string() })),
 });
 
@@ -134,6 +133,7 @@ export const inspectProductInTheShop = async (
   const endpoints = [
     `/wp-json/wc/v3/products/${productId}`,
     "/wp-json/wc/v3/settings/general/woocommerce_currency",
+    "/wp-json/wc/v3/settings/general/woocommerce_calc_taxes",
     "/wp-json/wc/v3/settings/products/woocommerce_file_download_method",
     "/wp-json/wc/v3/settings/products/woocommerce_downloads_require_login",
     "/wp-json/wc/v3/settings/products/woocommerce_downloads_grant_access_after_payment",
@@ -164,35 +164,41 @@ export const inspectProductInTheShop = async (
   }
   const parsed = ProductSchema.safeParse(documents[0]);
   const settings = documents.slice(1).map((document) => SettingSchema.safeParse(document));
-  if (!parsed.success || settings.some((setting) => !setting.success)) {
+  if (!parsed.success) {
+    return { ok: false, why: "The shop's protected product or settings document is incomplete." };
+  }
+  if (settings[1]?.success !== true) {
+    return { ok: false, why: "The shop's tax calculation setting is unreadable." };
+  }
+  if (settings.some((setting) => !setting.success)) {
     return { ok: false, why: "The shop's protected product or settings document is incomplete." };
   }
   const product = parsed.data;
-  const [currency, method, login, afterPayment, redirectFallback] = settings.map((setting) =>
-    setting.success ? setting.data.value : "",
+  const [currency, taxes, method, login, afterPayment, redirectFallback] = settings.map(
+    (setting) => (setting.success ? setting.data.value : ""),
   );
-  const unsupported =
-    product.type !== "simple" ||
-    product.status !== "publish" ||
-    !product.purchasable ||
-    product.stock_status !== "instock" ||
-    product.manage_stock ||
-    product.sold_individually ||
-    !product.virtual ||
-    !product.downloadable ||
-    product.download_limit !== -1 ||
-    product.download_expiry !== -1 ||
-    product.downloads.length !== 1 ||
-    product.tax_status !== "none" ||
-    currency !== "USD" ||
-    method !== "force" ||
-    login !== "no" ||
-    afterPayment !== "yes" ||
-    redirectFallback !== "no";
-  if (unsupported) {
+  const unsupported: string[] = [];
+  if (product.type !== "simple") unsupported.push("it is not a simple product");
+  if (product.status !== "publish") unsupported.push("it is not published");
+  if (!product.purchasable) unsupported.push("WooCommerce does not mark it purchasable");
+  if (product.stock_status !== "instock") unsupported.push("it is out of stock");
+  if (product.manage_stock) unsupported.push("managed stock is enabled");
+  if (product.sold_individually) unsupported.push("sold individually is enabled");
+  if (!product.virtual) unsupported.push("it is not virtual");
+  if (!product.downloadable) unsupported.push("it is not downloadable");
+  if (product.downloads.length !== 1) unsupported.push("it does not have exactly one file");
+  if (product.download_limit !== -1) unsupported.push("its download count is limited");
+  if (product.download_expiry !== -1) unsupported.push("its download access expires");
+  if (currency !== "USD") unsupported.push("the shop currency is not USD");
+  if (taxes !== "no") unsupported.push("WooCommerce tax calculation is not disabled");
+  if (method !== "force") unsupported.push("the download method is not Force Downloads");
+  if (login !== "no") unsupported.push("downloads require a WooCommerce login");
+  if (afterPayment !== "yes") unsupported.push("download access is not granted after payment");
+  if (redirectFallback !== "no") unsupported.push("insecure redirect fallback is enabled");
+  if (unsupported.length > 0) {
     return {
       ok: false,
-      why: "Only a published, in-stock, unmanaged, virtual single-file USD download with unlimited access and Force Downloads is supported.",
+      why: `This product cannot be imported: ${unsupported.join("; ")}.`,
     };
   }
   const download = product.downloads[0];
@@ -242,7 +248,7 @@ export const inspectProductInTheShop = async (
         product.downloadable,
         product.download_limit,
         product.download_expiry,
-        product.tax_status,
+        taxes,
         method,
         login,
         afterPayment,

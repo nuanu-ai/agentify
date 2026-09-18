@@ -23,7 +23,8 @@ The first supported class is deliberately narrow:
 - one published, purchasable, in-stock, unmanaged-stock, not-sold-individually
   Woo `simple` product;
 - `virtual=true`, `downloadable=true`, USD, exactly one enabled native file;
-- product tax status `none` and Woo tax calculation disabled;
+- Woo tax calculation disabled; the product's dormant tax-status default does
+  not matter while the shop cannot calculate tax;
 - unlimited download count and expiry;
 - Force Downloads, insecure redirect fallback off, download login off, and
   access after payment on;
@@ -140,7 +141,7 @@ and `LA` a deployed live acceptance step.
 | 4 | LA | Plain permalinks, abandoned/declined grant, Back/reload, expired cabinet session mid-grant | Permalink repair is named; abandoned grant leaves no key; callback remains account/shop-bound and reauth returns to the same merchant. |
 | 5 | IT/LA | Callback missing, expired, replayed or return URL opened by hand | No false connected state or leaked key/token; only the callback row proves success. |
 | 6 | CB/IT | Import the five baseline products | All five are skipped as non-downloadable goods; no order-number-only card is published. |
-| 7 | CB/IT | Authoritative gates: physical/variable/non-USD/out-of-stock/managed-stock/sold-individually/taxable, 0 or >1 file, finite limit/expiry, public/cross-origin raw file, taxes enabled, or login/redirect/fallback/access setting mismatch | Each unsupported fact is named and skipped before payment. Missing/unreadable facts fail closed; no raw URL or buyer-email parameter is published. |
+| 7 | CB/IT | Authoritative gates: physical/variable/non-USD/out-of-stock/managed-stock/sold-individually, 0 or >1 file, finite limit/expiry, public/cross-origin raw file, shop tax calculation enabled or unreadable, or login/redirect/fallback/access setting mismatch | Each unsupported fact is named and skipped before payment. A dormant product tax-status value is ignored only while shop tax calculation is disabled. Missing/unreadable facts fail closed; no raw URL or buyer-email parameter is published. |
 | 8 | IT/LA | Create owned one-file fixture, import, reimport unchanged, pause, reimport again | One stable origin-bound card is async with price check and three result fields; no duplicate; import never resumes a paused card. |
 | 9 | CB/IT | Import product 42 from shop A; reconnect same account to shop B with product 42; quote/buy A card | Origin mismatch is unavailable/refused; no request reaches B for A's card. |
 | 10 | IT | Change price/currency, stock, virtual/downloadable, file id/count/source, limit/expiry or global settings after import but before quote | Fresh authenticated quote returns current valid USD price or unavailable. Unsupported/stale state is refused before payment and Woo order. |

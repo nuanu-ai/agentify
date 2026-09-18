@@ -155,7 +155,7 @@ const noKeysYet = (state: ShopState): string => {
   return "";
 };
 
-const WHAT_CONNECTING_DOES = `<p>This experimental connector sells one narrow kind of WooCommerce product in TEST: a published, tax-free USD virtual download with one protected file, unlimited access and no managed stock.</p>
+const WHAT_CONNECTING_DOES = `<p>This experimental connector sells one narrow kind of WooCommerce product in TEST: a published USD virtual download with one protected file, unlimited access, no managed stock and shop tax calculation disabled.</p>
   <p class="quiet">Connect grants access to the shop. Import is a separate step that publishes supported products as cards. Your shop asks for approval on its own screen; Agentify never asks for your WooCommerce password.</p>`;
 
 /** The page a merchant connects from, and comes back to. */
@@ -583,7 +583,7 @@ export const wooSettingsBlock = (base: string, state: ShopTile): string => {
       }
       <p><a href="${escaped(base)}/woocommerce">Your shop</a></p>`
         : state.kind === "none"
-          ? `<p>The experimental WooCommerce connector imports only published, tax-free USD virtual products with one protected download file, unlimited access and no managed stock. Connect the shop first, then import supported products as cards.</p>
+          ? `<p>The experimental WooCommerce connector imports only published USD virtual products with one protected download file, unlimited access, no managed stock and shop tax calculation disabled. Connect the shop first, then import supported products as cards.</p>
       <p><a href="${escaped(base)}/woocommerce">Connect a WooCommerce shop</a></p>`
           : `${noKeysYet(state)}
       <p><a href="${escaped(base)}/woocommerce">${state.kind === "waiting" ? "Check the connection" : "Connect again"}</a></p>`;

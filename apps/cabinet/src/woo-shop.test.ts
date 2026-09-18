@@ -411,7 +411,9 @@ describe("the protected product check", () => {
     download_limit: -1,
     download_expiry: -1,
     price: "0.01",
-    tax_status: "none",
+    // Woo leaves this dormant default on ordinary products even when the shop
+    // has tax calculation disabled and hides the field from its editor.
+    tax_status: "taxable",
     downloads: [
       {
         id: "dl_guide",
@@ -424,6 +426,7 @@ describe("the protected product check", () => {
 
   const settingFor = (url: string): string => {
     if (url.includes("woocommerce_currency")) return "USD";
+    if (url.includes("woocommerce_calc_taxes")) return "no";
     if (url.includes("woocommerce_file_download_method")) return "force";
     if (url.includes("woocommerce_downloads_grant_access_after_payment")) return "yes";
     return "no";
@@ -451,7 +454,7 @@ describe("the protected product check", () => {
         fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
       },
     });
-    expect(stand.asked.filter((asked) => asked.authorization !== undefined)).toHaveLength(6);
+    expect(stand.asked.filter((asked) => asked.authorization !== undefined)).toHaveLength(7);
     expect(
       stand.asked.find((asked) => asked.url === "/protected/guide.txt")?.authorization,
     ).toBeUndefined();
@@ -463,7 +466,6 @@ describe("the protected product check", () => {
       { sold_individually: true },
       { download_limit: 1 },
       { download_expiry: 1 },
-      { tax_status: "taxable" },
     ]) {
       stand = await shopAnswering((asked) => {
         if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
@@ -493,6 +495,65 @@ describe("the protected product check", () => {
       merchantItemIdFor(stand.url, "11"),
     );
     expect(publicFile).toMatchObject({ ok: false, why: expect.stringContaining("public") });
+  });
+
+  it("refuses a shop that calculates taxes and names the setting to repair", async () => {
+    stand = await shopAnswering((asked) => {
+      if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
+      if (asked.url.includes("woocommerce_calc_taxes")) {
+        return { status: 200, body: { value: "yes" } };
+      }
+      if (asked.url.includes("/settings/")) {
+        return { status: 200, body: { value: settingFor(asked.url) } };
+      }
+      return { status: 200, body: productDocument() };
+    });
+
+    const read = await inspectProduct(connectionTo(stand.url), merchantItemIdFor(stand.url, "11"));
+
+    expect(read).toMatchObject({
+      ok: false,
+      why: expect.stringContaining("tax calculation"),
+    });
+  });
+
+  it("names an unreadable tax-calculation setting", async () => {
+    stand = await shopAnswering((asked) => {
+      if (asked.url.includes("woocommerce_calc_taxes")) {
+        return { status: 200, body: {} };
+      }
+      if (asked.url.includes("/settings/")) {
+        return { status: 200, body: { value: settingFor(asked.url) } };
+      }
+      return { status: 200, body: productDocument() };
+    });
+
+    const read = await inspectProduct(connectionTo(stand.url), merchantItemIdFor(stand.url, "11"));
+
+    expect(read).toMatchObject({
+      ok: false,
+      why: expect.stringContaining("tax calculation"),
+    });
+  });
+
+  it("names a product that has no downloadable file instead of listing every rule", async () => {
+    stand = await shopAnswering((asked) => {
+      if (asked.url.includes("/settings/")) {
+        return { status: 200, body: { value: settingFor(asked.url) } };
+      }
+      return {
+        status: 200,
+        body: productDocument({ downloadable: false, downloads: [] }),
+      };
+    });
+
+    const read = await inspectProduct(connectionTo(stand.url), merchantItemIdFor(stand.url, "11"));
+
+    expect(read).toMatchObject({
+      ok: false,
+      why: expect.stringMatching(/downloadable.*exactly one file/i),
+    });
+    expect(read.ok === false && read.why).not.toContain("published, in-stock, unmanaged");
   });
 
   it("refuses missing raw bytes and empty permission fields", async () => {
