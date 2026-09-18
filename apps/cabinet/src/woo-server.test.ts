@@ -32,7 +32,7 @@ import { buildApp } from "./server.js";
 import { readable } from "./testing/html.js";
 import type { StoreProduct } from "./woo-catalog.js";
 import type { Preflight } from "./woo-connect.js";
-import type { CatalogueRead } from "./woo-shop.js";
+import type { CatalogueRead, inspectProductInTheShop, ProductInspection } from "./woo-shop.js";
 import { memoryWooShops, type WooShops } from "./woo-shops.js";
 
 const KEY = theMerchantKey("test");
@@ -116,6 +116,10 @@ afterEach(async () => {
 interface Standing {
   readonly grantScreen?: (authorizeUrl: string) => Promise<Preflight>;
   readonly catalogue?: (shopUrl: string) => Promise<CatalogueRead>;
+  readonly inspectProduct?: (
+    keys: Parameters<typeof inspectProductInTheShop>[0],
+    merchantItemId: string,
+  ) => Promise<ProductInspection>;
   /**
    * Makes every read of the connections table fail, the way an unreachable
    * Postgres does.
@@ -187,16 +191,18 @@ const started = async (standing: Standing = {}): Promise<Running> => {
           : await standing.grantScreen(authorizeUrl);
       },
       catalogue: standing.catalogue ?? (async () => ({ ok: true, products: [] })),
-      inspectProduct: async (_keys, merchantItemId) => ({
-        ok: true,
-        product: {
-          productId: merchantItemId.split("_").at(-1) ?? "",
-          downloadId: "dl_guide",
-          fileName: "Guide",
-          price: { amount: "25.00", currency: "USD" },
-          fingerprint: "accepted-download-fingerprint",
-        },
-      }),
+      inspectProduct:
+        standing.inspectProduct ??
+        (async (_keys, merchantItemId) => ({
+          ok: true,
+          product: {
+            productId: merchantItemId.split("_").at(-1) ?? "",
+            downloadId: "dl_guide",
+            fileName: "Guide",
+            price: { amount: "25.00", currency: "USD" },
+            fingerprint: "accepted-download-fingerprint",
+          },
+        })),
     },
   });
 
@@ -574,6 +580,40 @@ describe("importing the catalogue", () => {
     const listed = await cardsOf(running);
     expect(listed).toHaveLength(1);
     expect(listed[0]?.card.price.amount).toBe("25.00");
+  });
+
+  it("bounds protected product checks during a whole-catalogue import", async () => {
+    let active = 0;
+    let most = 0;
+    const products = Array.from({ length: 12 }, (_, index) =>
+      aProduct({ id: index + 1, name: `Download ${index + 1}`, sku: `download-${index + 1}` }),
+    );
+    const running = await started({
+      catalogue: async () => ({ ok: true, products }),
+      inspectProduct: async (_keys, merchantItemId) => {
+        active += 1;
+        most = Math.max(most, active);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        active -= 1;
+        return {
+          ok: true,
+          product: {
+            productId: merchantItemId.split("_").at(-1) ?? "",
+            downloadId: "dl_guide",
+            fileName: "Guide",
+            price: { amount: "25.00", currency: "USD" },
+            fingerprint: "accepted-download-fingerprint",
+          },
+        };
+      },
+    });
+    await connected(running);
+
+    const imported = await running.post("/woocommerce/import");
+
+    expect(imported.status).toBe(200);
+    expect(most).toBeLessThanOrEqual(4);
+    expect(most).toBeGreaterThan(1);
   });
 
   it("counts a card it published again and does not call it on sale while it is paused", async () => {

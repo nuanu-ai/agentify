@@ -90,6 +90,26 @@ import {
 } from "./woo-shop.js";
 import type { WooConnection, WooShops } from "./woo-shops.js";
 
+/** Preserves input order while bounding calls into one merchant's shop. */
+const mapAtMost = async <Input, Output>(
+  values: readonly Input[],
+  atMost: number,
+  visit: (value: Input) => Promise<Output>,
+): Promise<Output[]> => {
+  const results = new Array<Output>(values.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < values.length) {
+      const index = next;
+      next += 1;
+      const value = values[index];
+      if (value !== undefined) results[index] = await visit(value);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(atMost, values.length) }, worker));
+  return results;
+};
+
 /**
  * How long the cabinet waits on the gateway for its own key, per call.
  *
@@ -1223,48 +1243,46 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
         return await drawTheShop(request, response, { problem: read.why }, 502);
       }
 
-      const qualified = await Promise.all(
-        read.products.map(async (product) => {
-          const inspected = await inspectProduct(
-            connection,
-            merchantItemIdFor(connection.shopUrl, String(product.id)),
-          );
-          if (!inspected.ok) {
-            return { ...product, qualification_problem: inspected.why };
-          }
-          const publicPrice = decimalOfMinorUnits(
-            product.prices.price,
-            product.prices.currency_minor_unit,
-          );
-          if (
-            publicPrice !== inspected.product.price.amount ||
-            product.prices.currency_code !== inspected.product.price.currency
-          ) {
-            return {
-              ...product,
-              qualification_problem:
-                "The public catalogue price does not match the protected WooCommerce product price.",
-            };
-          }
+      const qualified = await mapAtMost(read.products, 4, async (product) => {
+        const inspected = await inspectProduct(
+          connection,
+          merchantItemIdFor(connection.shopUrl, String(product.id)),
+        );
+        if (!inspected.ok) {
+          return { ...product, qualification_problem: inspected.why };
+        }
+        const publicPrice = decimalOfMinorUnits(
+          product.prices.price,
+          product.prices.currency_minor_unit,
+        );
+        if (
+          publicPrice !== inspected.product.price.amount ||
+          product.prices.currency_code !== inspected.product.price.currency
+        ) {
           return {
             ...product,
-            status: "publish",
-            virtual: true,
-            downloadable: true,
-            manage_stock: false,
-            download_limit: -1,
-            download_expiry: -1,
-            downloads: [
-              {
-                id: inspected.product.downloadId,
-                name: inspected.product.fileName,
-                file: "protected-by-woo",
-              },
-            ],
-            qualification_problem: null,
+            qualification_problem:
+              "The public catalogue price does not match the protected WooCommerce product price.",
           };
-        }),
-      );
+        }
+        return {
+          ...product,
+          status: "publish",
+          virtual: true,
+          downloadable: true,
+          manage_stock: false,
+          download_limit: -1,
+          download_expiry: -1,
+          downloads: [
+            {
+              id: inspected.product.downloadId,
+              name: inspected.product.fileName,
+              file: "protected-by-woo",
+            },
+          ],
+          qualification_problem: null,
+        };
+      });
       const { cards, skipped } = cardsFromTheShop(qualified, connection.shopUrl);
       const gateway = gatewayAs(request);
       const outcomes: ImportOutcome[] = [];
