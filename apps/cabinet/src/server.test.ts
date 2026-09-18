@@ -1619,6 +1619,23 @@ describe("the orders screen", () => {
     // what a program branches on; a merchant reads a sentence.
     expect(text).not.toContain("refund_due");
   });
+
+  it("says held goods need a fresh payment on the same purchase", async () => {
+    const { browser, gateway, harnessed } = await started();
+    harnessed.facilitator.willSettle({ settled: false, reason: "the transfer reverted" });
+    const itemId = await publish(gateway, roomCard);
+    await buyOverHttp(harnessed, gateway, itemId, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    await browser.signIn();
+
+    const text = readable((await browser.get("/orders?open=true")).html);
+
+    expect(text).toContain("goods were not released to the buyer");
+    expect(text).toContain("retry payment for this order with a fresh authorization");
+    expect(text).toContain("if that payment settles");
+    expect(text).not.toContain("repeat purchase");
+  });
 });
 
 describe("the receipts screen", () => {
