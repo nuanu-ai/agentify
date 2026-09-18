@@ -1658,7 +1658,9 @@ describe("the receipts screen", () => {
     // Stage one marks every order as a test, so today this is every row on the
     // screen. A ledger of payments that never happened, laid out as a ledger of
     // payments, is the worst thing this page could be.
-    const { browser, gateway, harnessed } = await started();
+    const { browser, gateway, harnessed } = await started({
+      cabinet: { FACILITATOR_URL: "https://x402.org/facilitator" },
+    });
     const itemId = await publish(gateway, roomCard);
     await buyOverHttp(harnessed, gateway, itemId, {
       onOrder: () => ({ delivered: { access_code: "SESAME" } }),
@@ -1669,7 +1671,8 @@ describe("the receipts screen", () => {
     const orders = readable((await browser.get("/orders")).html);
 
     expect(receipts).toContain("Every receipt here is a test purchase");
-    expect(receipts).toContain("no money moved");
+    expect(receipts).toContain("test funds settled on Base Sepolia");
+    expect(receipts).toContain("no real money moved");
     expect(orders).toContain("Every order here is a test purchase");
     // The mark is on the sum itself as well as in the sentence above the
     // table. The sentence alone stops carrying it the moment one real payment
