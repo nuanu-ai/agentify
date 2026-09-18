@@ -206,32 +206,24 @@ describe("one paid order, in the merchant's own shop", () => {
     expect(said).not.toContain("Fatal error");
   });
 
-  it("gives the sale back when the shop refused before anything was placed", async () => {
-    // A refusal that decided nothing about the shop's own records must not
-    // leave a claim behind: the same product back in stock tomorrow is a sale
-    // this merchant should be able to make.
+  it("keeps a definite refusal closed until exact operator recovery", async () => {
     const shops = memoryWooShops();
-    await fillFromTheShop(
+    let placements = 0;
+    const refuse = async () => {
+      placements += 1;
+      return { ok: false as const, why: "gone", again: false };
+    };
+    await fillFromTheShop(anOrder(), connection(), MERCHANT_EMAIL, filling(shops, refuse));
+    const again = await fillFromTheShop(
       anOrder(),
       connection(),
       MERCHANT_EMAIL,
-      filling(shops, async () => ({ ok: false, why: "gone", again: false })),
+      filling(shops, refuse),
     );
-    expect(
-      await shops.claimOrder(
-        "acc_1",
-        "ord_1",
-        {
-          shopOrigin: "https://shop.example.com",
-          connectionRevision: "grant_1",
-          merchantItemId: "woo_merchant_11",
-          productId: "11",
-          amount: "25.00",
-          currency: "USD",
-        },
-        new Date(),
-      ),
-    ).toEqual({ kind: "ours" });
+
+    expect((await shops.knownOrder("ord_1"))?.kind).toBe("precreate_refused");
+    expect(again && "refused" in again).toBe(true);
+    expect(placements).toBe(1);
   });
 
   it("answers nothing at all when the shop did not answer either", async () => {

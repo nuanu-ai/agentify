@@ -322,20 +322,6 @@ export const wooShopsContract = (
       });
     });
 
-    it("never reports ownership without a durable row when release races a new claim", async () => {
-      await using(async (shops, accounts) => {
-        await shops.claimOrder(accounts.one, "ord_1", FACTS, NOW);
-        const [, claimed] = await Promise.all([
-          shops.releaseOrder("ord_1"),
-          shops.claimOrder(accounts.one, "ord_1", FACTS, LATER),
-        ]);
-
-        if (claimed.kind === "ours") {
-          expect((await shops.knownOrder("ord_1"))?.kind).toBe("unknown");
-        }
-      });
-    });
-
     it("gives one sale to one attempt when several arrive at the same moment", async () => {
       // A redelivery landing while the first attempt is still in flight. Two
       // attempts that both read "nobody has this" and both went on to call the
@@ -378,17 +364,17 @@ export const wooShopsContract = (
       });
     });
 
-    it("lets an attempt that decided nothing give the sale back", async () => {
+    it("turns a claimed definite refusal into durable recovery state", async () => {
       await using(async (shops, accounts) => {
         await shops.claimOrder(accounts.one, "ord_1", FACTS, NOW);
-        await shops.releaseOrder("ord_1");
+        await shops.recordPrecreateRefusal(accounts.one, "ord_1", FACTS, LATER);
         expect(await shops.claimOrder(accounts.one, "ord_1", FACTS, LATER)).toEqual({
-          kind: "ours",
+          kind: "precreate_refused",
         });
       });
     });
 
-    it("will not give back a sale the shop has an order for", async () => {
+    it("will not replace a placed sale with a refusal", async () => {
       await using(async (shops, accounts) => {
         await shops.claimOrder(accounts.one, "ord_1", FACTS, NOW);
         await shops.recordOrder(
@@ -396,7 +382,7 @@ export const wooShopsContract = (
           { id: "13", number: "WOO-13", permission: PERMISSION },
           NOW,
         );
-        await shops.releaseOrder("ord_1");
+        await shops.recordPrecreateRefusal(accounts.one, "ord_1", FACTS, LATER);
         expect(await shops.claimOrder(accounts.one, "ord_1", FACTS, LATER)).toEqual({
           kind: "placed",
           id: "13",

@@ -215,12 +215,27 @@ export const fillFromTheShop = async (
       emailUid: createHash("sha256").update(orderEmail).digest("hex"),
       orderNumber: made.number,
     };
-    await parts.shops.recordOrder(
+    const bound = await parts.shops.recordOrder(
       order.id,
       { id: made.id, number: made.number, permission },
       parts.now(),
     );
-    return { delivered: deliveryFromWooPermission(permission) };
+    if (bound) {
+      return { delivered: deliveryFromWooPermission(permission) };
+    }
+    const durable = await parts.shops.knownOrder(order.id);
+    if (
+      durable?.kind === "placed" &&
+      durable.id === made.id &&
+      durable.number === made.number &&
+      samePermission(durable.permission, permission)
+    ) {
+      return { delivered: deliveryFromWooPermission(durable.permission) };
+    }
+    console.error(
+      `[cabinet] ${order.id} was created in WooCommerce but its delivery was not durably bound`,
+    );
+    return null;
   }
 
   if (made.again) {
@@ -232,8 +247,10 @@ export const fillFromTheShop = async (
   }
 
   // The shop answered and said no, before anything of ours was written into it.
-  // The claim goes, so the same sale tomorrow is a sale this merchant can make.
-  await parts.shops.releaseOrder(order.id);
+  // Keep that fact under the paid order. A gateway redelivery must not turn a
+  // definite refusal into an automatic second POST; only exact operator
+  // recovery may reopen it under a fresh connection.
+  await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
   // What the shop actually said goes to the merchant, in their own cabinet's
   // log, and not to the agent. A WordPress refusal carries whatever the plugin
   // that raised it chose to say, which on a shop with debugging on is a file
@@ -251,6 +268,15 @@ export const fillFromTheShop = async (
     },
   };
 };
+
+const samePermission = (left: WooPermission, right: WooPermission): boolean =>
+  left.shopOrigin === right.shopOrigin &&
+  left.productId === right.productId &&
+  left.orderKey === right.orderKey &&
+  left.downloadId === right.downloadId &&
+  left.fileName === right.fileName &&
+  left.emailUid === right.emailUid &&
+  left.orderNumber === right.orderNumber;
 
 const unknownCreation = (orderId: string, shopUrl: string, attemptedAt: Date): HandlerAnswer => {
   console.error(

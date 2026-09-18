@@ -187,8 +187,6 @@ export interface WooShops {
    * The compare-and-set is what keeps two operator commands to one POST.
    */
   beginPrecreateRecovery(orderId: string, revision: string, now: Date): Promise<boolean>;
-  /** Gives up a claim nothing came of, so the next attempt may have it. */
-  releaseOrder(orderId: string): Promise<void>;
 }
 
 /** The store a deployment runs on. */
@@ -302,10 +300,10 @@ export const postgresWooShops = (pool: Pool): WooShops => {
 
       const [row] = await db.select().from(wooOrders).where(eq(wooOrders.orderId, orderId));
       if (row === undefined) {
-        // The row was there a moment ago and is not now, which is a release
-        // racing this claim. Nothing was placed under it, so this attempt may
-        // have the sale.
-        return { kind: "ours" };
+        // No product path deletes a claim. Reporting ownership without its
+        // row would let the caller place an order that cannot be bound and a
+        // later hand-over place it again.
+        throw new Error(`the durable Woo order claim for ${orderId} disappeared`);
       }
       if (row.phase === "precreate_refused") {
         return { kind: "precreate_refused" };
@@ -340,7 +338,11 @@ export const postgresWooShops = (pool: Pool): WooShops => {
       await db
         .insert(wooOrders)
         .values({ orderId, accountId, phase: "precreate_refused", facts, attemptedAt: now })
-        .onConflictDoNothing({ target: wooOrders.orderId });
+        .onConflictDoUpdate({
+          target: wooOrders.orderId,
+          set: { phase: "precreate_refused", facts, attemptedAt: now },
+          setWhere: and(eq(wooOrders.phase, "create_unknown"), isNull(wooOrders.wooOrderId)),
+        });
     },
 
     async recordOrder(orderId, placed, now) {
@@ -407,21 +409,6 @@ export const postgresWooShops = (pool: Pool): WooShops => {
         )
         .returning({ orderId: wooOrders.orderId });
       return reopened.length === 1;
-    },
-
-    async releaseOrder(orderId) {
-      // Only a claim nothing came of. A row carrying an order number is the
-      // record of an order in somebody's shop, and removing it would let the
-      // next repeat place a second one.
-      await db
-        .delete(wooOrders)
-        .where(
-          and(
-            eq(wooOrders.orderId, orderId),
-            eq(wooOrders.phase, "create_unknown"),
-            isNull(wooOrders.wooOrderId),
-          ),
-        );
     },
   };
 };
@@ -545,7 +532,8 @@ export const memoryWooShops = (): WooShops => {
     },
 
     async recordPrecreateRefusal(accountId, orderId, facts, now) {
-      if (!orders.has(orderId)) {
+      const found = orders.get(orderId);
+      if (found === undefined || (found.phase === "create_unknown" && found.placed === null)) {
         orders.set(orderId, {
           accountId,
           attemptedAt: now,
@@ -586,13 +574,6 @@ export const memoryWooShops = (): WooShops => {
         facts: { ...found.facts, connectionRevision: revision },
       });
       return true;
-    },
-
-    async releaseOrder(orderId) {
-      const found = orders.get(orderId);
-      if (found !== undefined && found.phase === "create_unknown" && found.placed === null) {
-        orders.delete(orderId);
-      }
     },
   };
 };
