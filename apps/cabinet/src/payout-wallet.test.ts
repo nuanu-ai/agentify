@@ -135,6 +135,16 @@ describe("the block on the settings screen", () => {
     expect(text).toMatch(/nothing settles/i);
   });
 
+  it("names Base Sepolia and test USDC on the test stack", () => {
+    const text = readable(
+      payoutWalletBlock({ ...looking({ wallet: null }), mode: "test" }),
+    );
+
+    expect(text).toContain("Base Sepolia");
+    expect(text).toContain("test USDC");
+    expect(text).toMatch(/settle/i);
+  });
+
   it("shows what was wrong with an address just refused", () => {
     const block = payoutWalletBlock(looking({ wallet: SHAPED, problem: "that was not saved" }));
 

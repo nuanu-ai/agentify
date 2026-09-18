@@ -983,6 +983,8 @@ describe("the settings screen", () => {
     // one a merchant cannot see for themselves, and the page still shows what
     // they are actually listed under.
     expect(readable(answered.html)).toMatch(/not saved/i);
+    expect(readable(answered.html)).toMatch(/printable ASCII/i);
+    expect(answered.html).toContain(`value="${"x".repeat(33)}"`);
     expect(readable(answered.html)).toContain(running.harnessed.merchant.name);
     expect(await listedAs(running)).toBe(running.harnessed.merchant.name);
   });
@@ -1125,6 +1127,7 @@ describe("the address a merchant's money arrives at", () => {
     const text = readable(answered.html);
     expect(text).toMatch(/capital letters/i);
     expect(text).toMatch(/not saved/i);
+    expect(answered.html).toContain(`value="${mangled}"`);
   });
 
   it("takes the space off what was pasted rather than refusing it", async () => {

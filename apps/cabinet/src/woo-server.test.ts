@@ -651,6 +651,8 @@ describe("what the settings screen says about a shop", () => {
 
     expect(screen.status).toBe(200);
     expect(readable(screen.html)).toContain("Connect a WooCommerce shop");
+    expect(readable(screen.html)).toMatch(/experimental/i);
+    expect(readable(screen.html)).toMatch(/not .*acceptance path/i);
     expect(screen.html).toContain(`href="/woocommerce"`);
   });
 
