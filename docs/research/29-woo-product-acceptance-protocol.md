@@ -272,6 +272,17 @@ It delivered the expected artifact. This row remains an ordinary successful
 purchase and is never rewritten, reused or called ambiguous-create recovery
 evidence. The exact hook and option were removed.
 
+The append-only transition starts only from private ledger SHA-256
+`748196146807ceaf83e80409b76f4d80b2422b444978d7b82b30b45662c959b8`:
+four preparation rows, three execution reservations, 30,000 atomic units and no
+lock. It also requires the mode-600 sanitized non-match evidence with SHA-256
+`cf4f2eb32e4fcbd00d444121272269fcd88d779d49902766ef6d482874f304e2`.
+The transition rechecks both artifacts, appends `fault_fixture_not_consumed` to
+the unchanged answered row 4, and only then raises the private ledger metadata
+to four executions and 40,000 atomic units. Any mismatch refuses before the
+metadata changes. Row 4 keeps its original order, challenge, authorization,
+nonce, response and ordinary-delivery evidence.
+
 The product owner may authorize exactly one fresh replacement for this failed
 experiment. Before that GO, readback must show all three current paid orders
 closed and delivered and the old hook and option absent. The corrected fixture
