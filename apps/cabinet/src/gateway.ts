@@ -19,6 +19,7 @@ import {
   API_ROUTES,
   CabinetKeySchema,
   type CardInput,
+  type Delivery,
   DisabledKeySchema,
   expandPath,
   type ForgottenCabinetKey,
@@ -37,14 +38,16 @@ import {
   merchantKeyHeaderValue,
   type OrderCallResponse,
   OrderCallResponseSchema,
-  type QuoteAnswerAck,
-  QuoteAnswerAckSchema,
-  type QuoteResponse,
   type OrderList,
   OrderListSchema,
+  type OrderWithStatus,
+  OrderWithStatusSchema,
   PayoutWalletSchema,
   type PublishResult,
   PublishResultSchema,
+  type QuoteAnswerAck,
+  QuoteAnswerAckSchema,
+  type QuoteResponse,
   type ReceiptList,
   ReceiptListSchema,
   type RegisteredMerchant,
@@ -123,6 +126,10 @@ export interface GatewayClient {
   pollWorker(waitSeconds: number, max: number): Promise<Answer<WorkerPollResponse>>;
   /** What the handler returned for one order: the goods, or a refusal. */
   answerOrder(orderId: string, answer: HandlerAnswer): Promise<Answer<OrderCallResponse>>;
+  /** Reads one exact order before an operator closes its delivery debt. */
+  getOrder(orderId: string): Promise<Answer<OrderWithStatus>>;
+  /** Idempotently supplies late goods for one exact asynchronous order. */
+  deliverOrder(orderId: string, delivery: Delivery): Promise<Answer<OrderCallResponse>>;
   /** Answers one live Woo price and availability question. */
   answerQuote(priceId: string, answer: QuoteResponse): Promise<Answer<QuoteAnswerAck>>;
 }
@@ -306,6 +313,15 @@ export const gatewayFor = (
       call(API_ROUTES.answer_order, OrderCallResponseSchema, {
         values: { order_id: orderId },
         body: answer,
+      }),
+    getOrder: (orderId) =>
+      call(API_ROUTES.get_order, OrderWithStatusSchema, {
+        values: { order_id: orderId },
+      }),
+    deliverOrder: (orderId, delivery) =>
+      call(API_ROUTES.deliver_order, OrderCallResponseSchema, {
+        values: { order_id: orderId },
+        body: delivery,
       }),
     answerQuote: (priceId, answer) =>
       call(API_ROUTES.answer_quote, QuoteAnswerAckSchema, {

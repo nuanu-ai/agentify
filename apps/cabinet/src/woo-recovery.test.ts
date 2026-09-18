@@ -25,7 +25,12 @@ const gatewayOrder = (status: OrderWithStatus["status"]): OrderWithStatus => ({
   id: "ord_1",
   merchant_item_id: FACTS.merchantItemId,
   params: {},
-  price: { amount: FACTS.amount, currency: FACTS.currency },
+  price: {
+    amount: FACTS.amount,
+    currency: FACTS.currency,
+    at: "2026-09-18T09:59:00.000Z",
+    as_of: "2026-09-18T09:58:00.000Z",
+  },
   test: true,
   status,
 });
@@ -97,7 +102,10 @@ const parts = (
     gatewayForKey: () => ({
       getOrder: async () => {
         gatewayReads += 1;
-        return { ok: true as const, document: gatewayOrder(gatewayReads === 1 ? "refund_due" : "delivered") };
+        return {
+          ok: true as const,
+          document: gatewayOrder(gatewayReads === 1 ? "refund_due" : "delivered"),
+        };
       },
       deliverOrder: async () => {
         delivered += 1;
@@ -139,8 +147,10 @@ describe("exact Woo order recovery", () => {
 
   it("does not reopen a definite refusal under the same grant", async () => {
     const shops = await setup("precreate_refused");
+    const sameGrant = await shops.connectionOf("acc_1");
+    if (sameGrant === null) throw new Error("the test shop was not connected");
     await shops.connect({
-      ...(await shops.connectionOf("acc_1"))!,
+      ...sameGrant,
       revision: "grant_1",
     });
     const test = parts(shops);
@@ -156,9 +166,9 @@ describe("exact Woo order recovery", () => {
     const shops = await setup("create_unknown");
     const test = parts(shops);
 
-    expect(
-      await recoverWooOrder({ orderId: "ord_1", wooOrderId: "13" }, test.value),
-    ).toMatchObject({ ok: true, state: "delivered", wooOrderId: "13" });
+    expect(await recoverWooOrder({ orderId: "ord_1", wooOrderId: "13" }, test.value)).toMatchObject(
+      { ok: true, state: "delivered", wooOrderId: "13" },
+    );
     expect(test.counts()).toEqual({ delivered: 1, created: 0, read: 1 });
   });
 
@@ -171,9 +181,9 @@ describe("exact Woo order recovery", () => {
       }),
     });
 
-    expect(
-      await recoverWooOrder({ orderId: "ord_1", wooOrderId: "13" }, test.value),
-    ).toMatchObject({ ok: false, state: "refused" });
+    expect(await recoverWooOrder({ orderId: "ord_1", wooOrderId: "13" }, test.value)).toMatchObject(
+      { ok: false, state: "refused" },
+    );
     expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
     expect(await shops.recoveryOrder("ord_1")).toMatchObject({
       phase: "create_unknown",

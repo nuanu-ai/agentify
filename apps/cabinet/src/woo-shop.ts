@@ -72,6 +72,29 @@ export type ProductInspection =
   | { readonly ok: true; readonly product: EligibleWooProduct }
   | { readonly ok: false; readonly why: string };
 
+export interface WooOrderRead {
+  readonly id: string;
+  readonly number: string;
+  readonly orderKey: string;
+  readonly status: string;
+  readonly currency: string;
+  readonly total: string;
+  readonly totalTax: string;
+  readonly paymentMethod: string;
+  readonly transactionId: string;
+  readonly billingEmail: string;
+  readonly productId: string;
+  readonly quantity: number;
+  readonly subtotal: string;
+  readonly lineTotal: string;
+  readonly lineTax: string;
+  readonly agentifyOrderIds: readonly string[];
+}
+
+export type WooOrderLookup =
+  | { readonly ok: true; readonly order: WooOrderRead }
+  | { readonly ok: false; readonly why: string };
+
 const ProductSchema = z.looseObject({
   id: z.number().int().positive(),
   type: z.string(),
@@ -86,9 +109,7 @@ const ProductSchema = z.looseObject({
   sold_individually: z.boolean(),
   price: z.string(),
   tax_status: z.string(),
-  downloads: z.array(
-    z.looseObject({ id: z.string(), name: z.string(), file: z.string() }),
-  ),
+  downloads: z.array(z.looseObject({ id: z.string(), name: z.string(), file: z.string() })),
 });
 
 const SettingSchema = z.looseObject({ value: z.union([z.string(), z.boolean()]) });
@@ -163,8 +184,7 @@ export const inspectProductInTheShop = async (
   if (unsupported) {
     return {
       ok: false,
-      why:
-        "Only a published, in-stock, unmanaged, virtual single-file USD download with unlimited access and Force Downloads is supported.",
+      why: "Only a published, in-stock, unmanaged, virtual single-file USD download with unlimited access and Force Downloads is supported.",
     };
   }
   const download = product.downloads[0];
@@ -478,6 +498,94 @@ export const createTheOrderInTheShop = async (
   }
   return { ok: true, id, number, orderKey: made.order_key, downloadId: sold.download.id };
 };
+
+/** Reads one operator-named order; it never scans or infers that no order exists. */
+export const readTheOrderInTheShop = async (
+  keys: ShopKeys,
+  wooOrderId: string,
+): Promise<WooOrderLookup> => {
+  if (!/^\d+$/.test(wooOrderId) || Number(wooOrderId) <= 0) {
+    return { ok: false, why: "The WooCommerce order id must be a positive whole number." };
+  }
+  let answered: Response;
+  try {
+    answered = await fetch(`${keys.shopUrl}/wp-json/wc/v3/orders/${wooOrderId}`, {
+      headers: { authorization: basicFor(keys), accept: "application/json" },
+      redirect: "manual",
+      signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
+    });
+  } catch {
+    return { ok: false, why: "The shop did not answer the exact-order check." };
+  }
+  const said = await answered.text();
+  if (!answered.ok) {
+    return {
+      ok: false,
+      why: `The shop refused the exact-order check (HTTP ${answered.status}).`,
+    };
+  }
+  let document: unknown;
+  try {
+    document = JSON.parse(said);
+  } catch {
+    return { ok: false, why: "The exact WooCommerce order was not readable JSON." };
+  }
+  const parsed = ExactOrderSchema.safeParse(document);
+  if (!parsed.success || parsed.data.line_items.length !== 1) {
+    return { ok: false, why: "The exact WooCommerce order is incomplete or ambiguous." };
+  }
+  const order = parsed.data;
+  const line = order.line_items[0];
+  if (line === undefined) {
+    return { ok: false, why: "The exact WooCommerce order has no product line." };
+  }
+  return {
+    ok: true,
+    order: {
+      id: String(order.id),
+      number: String(order.number),
+      orderKey: order.order_key,
+      status: order.status,
+      currency: order.currency,
+      total: order.total,
+      totalTax: order.total_tax,
+      paymentMethod: order.payment_method,
+      transactionId: order.transaction_id,
+      billingEmail: order.billing.email,
+      productId: String(line.product_id),
+      quantity: line.quantity,
+      subtotal: line.subtotal,
+      lineTotal: line.total,
+      lineTax: line.total_tax,
+      agentifyOrderIds: order.meta_data
+        .filter((one) => one.key === "agentify_order_id" && typeof one.value === "string")
+        .map((one) => String(one.value)),
+    },
+  };
+};
+
+const ExactOrderSchema = z.looseObject({
+  id: z.number().int().positive(),
+  number: z.union([z.string().min(1), z.number().int().positive()]),
+  order_key: z.string().min(1),
+  status: z.string(),
+  currency: z.string(),
+  total: z.string(),
+  total_tax: z.string(),
+  payment_method: z.string(),
+  transaction_id: z.string(),
+  billing: z.looseObject({ email: z.string() }),
+  line_items: z.array(
+    z.looseObject({
+      product_id: z.number().int().positive(),
+      quantity: z.number().int().positive(),
+      subtotal: z.string(),
+      total: z.string(),
+      total_tax: z.string(),
+    }),
+  ),
+  meta_data: z.array(z.looseObject({ key: z.string(), value: z.unknown() })),
+});
 
 /**
  * Whether a shop that answered with this status is worth asking again.

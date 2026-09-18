@@ -89,7 +89,9 @@ export const fillFromTheShop = async (
 ): Promise<HandlerAnswer | null> => {
   const place = parts.placeOrder ?? createTheOrderInTheShop;
   const known = await parts.shops.knownOrder(order.id);
-  if (known?.kind === "placed") return { delivered: deliveryFrom(known.permission) };
+  if (known?.kind === "placed") {
+    return { delivered: deliveryFromWooPermission(known.permission) };
+  }
   if (known?.kind === "precreate_refused") {
     return {
       refused: {
@@ -174,7 +176,7 @@ export const fillFromTheShop = async (
   if (claim.kind === "placed") {
     // The same sale, handed over a second time. The shop already has the order
     // and the buyer gets the same number they would have got the first time.
-    return { delivered: deliveryFrom(claim.permission) };
+    return { delivered: deliveryFromWooPermission(claim.permission) };
   }
 
   if (claim.kind === "precreate_refused") {
@@ -218,7 +220,7 @@ export const fillFromTheShop = async (
       { id: made.id, number: made.number, permission },
       parts.now(),
     );
-    return { delivered: deliveryFrom(permission) };
+    return { delivered: deliveryFromWooPermission(permission) };
   }
 
   if (made.again) {
@@ -269,7 +271,7 @@ const unknownCreation = (orderId: string, shopUrl: string, attemptedAt: Date): H
   };
 };
 
-const deliveryFrom = (permission: WooPermission): Record<string, unknown> => {
+export const deliveryFromWooPermission = (permission: WooPermission): Record<string, unknown> => {
   const address = new URL(permission.shopOrigin);
   address.pathname = "/";
   address.search = new URLSearchParams({

@@ -12,12 +12,13 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
+import { merchantItemIdFor } from "./woo-catalog.js";
 import {
   catalogueOf,
   createTheOrderInTheShop,
   inspectProductInTheShop,
+  readTheOrderInTheShop,
 } from "./woo-shop.js";
-import { merchantItemIdFor } from "./woo-catalog.js";
 
 interface Asked {
   readonly method: string;
@@ -260,6 +261,34 @@ describe("creating the order", () => {
     expect(made).toMatchObject({ ok: true, id: "13", number: "WOO-0013" });
   });
 
+  it("reads only the exact Woo order named for uncertain-create recovery", async () => {
+    stand = await shopAnswering(() => ({
+      status: 200,
+      body: madeOrder({
+        number: "WOO-0013",
+        payment_method: "agentify",
+        transaction_id: "ord_7",
+        billing: { email: "merchant@example.com" },
+        meta_data: [{ key: "agentify_order_id", value: "ord_7" }],
+      }),
+    }));
+
+    const read = await readTheOrderInTheShop(connectionTo(stand.url), "13");
+
+    expect(read).toMatchObject({
+      ok: true,
+      order: {
+        id: "13",
+        number: "WOO-0013",
+        transactionId: "ord_7",
+        agentifyOrderIds: ["ord_7"],
+      },
+    });
+    expect(stand.asked).toHaveLength(1);
+    expect(stand.asked[0]?.method).toBe("GET");
+    expect(stand.asked[0]?.url).toBe("/wp-json/wc/v3/orders/13");
+  });
+
   it("carries the shop's own refusal back in the shop's own words", async () => {
     stand = await shopAnswering(() => ({
       status: 400,
@@ -369,7 +398,9 @@ describe("the protected product check", () => {
       },
     });
     expect(stand.asked.filter((asked) => asked.authorization !== undefined)).toHaveLength(6);
-    expect(stand.asked.find((asked) => asked.url === "/protected/guide.txt")?.authorization).toBeUndefined();
+    expect(
+      stand.asked.find((asked) => asked.url === "/protected/guide.txt")?.authorization,
+    ).toBeUndefined();
   });
 
   it("refuses public raw bytes and finite or stock-managed products", async () => {

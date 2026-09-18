@@ -557,3 +557,49 @@ describe("the two calls about the key the cabinet itself holds", () => {
     expect(refused.why).toContain("that is not one");
   });
 });
+
+describe("the private late-delivery recovery calls", () => {
+  it("reads one exact merchant order", async () => {
+    const document = {
+      id: "ord_1",
+      merchant_item_id: "woo_merchant_22",
+      params: {},
+      price: {
+        amount: "0.01",
+        currency: "USD",
+        at: "2026-09-18T09:59:00.000Z",
+        as_of: "2026-09-18T09:58:00.000Z",
+      },
+      test: true,
+      status: "refund_due",
+    };
+    const { url, arrived } = await recordingServer(200, document);
+
+    const read = await gatewayFor(url, KEY).getOrder("ord_1");
+
+    expect(read).toEqual({ ok: true, document });
+    expect(arrived[0]).toMatchObject({
+      method: "GET",
+      path: "/v0/orders/ord_1",
+      key: `Bearer ${KEY}`,
+    });
+  });
+
+  it("delivers saved goods on the existing order rather than answering a worker envelope", async () => {
+    const { url, arrived } = await recordingServer(200, {
+      ok: true,
+      result: "debt_closed_by_delivery",
+    });
+    const delivery = { download_url: "https://shop.example.com/?permission=secret" };
+
+    const delivered = await gatewayFor(url, KEY).deliverOrder("ord_1", delivery);
+
+    expect(delivered.ok).toBe(true);
+    expect(arrived[0]).toMatchObject({
+      method: "POST",
+      path: "/v0/orders/ord_1/deliver",
+      key: `Bearer ${KEY}`,
+    });
+    expect(JSON.parse(arrived[0]?.body ?? "{}")).toEqual(delivery);
+  });
+});
