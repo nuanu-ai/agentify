@@ -28,6 +28,7 @@
  * published as something approximate.
  */
 
+import { createHash } from "node:crypto";
 import { type CardInput, CurrencyCodeSchema, IdentifierSchema } from "@nuanu-ai/agentify-contracts";
 import { z } from "zod";
 
@@ -52,6 +53,20 @@ export const StoreProductSchema = z.looseObject({
   short_description: z.string().default(""),
   is_purchasable: z.boolean(),
   is_in_stock: z.boolean(),
+  status: z.string().default("publish"),
+  virtual: z.boolean().default(false),
+  downloadable: z.boolean().default(false),
+  manage_stock: z.boolean().default(false),
+  download_limit: z.number().int().default(-1),
+  download_expiry: z.number().int().default(-1),
+  downloads: z.array(
+    z.looseObject({
+      id: z.string(),
+      name: z.string(),
+      file: z.string(),
+    }),
+  ).default([]),
+  qualification_problem: z.string().nullable().default(null),
   prices: z.looseObject({
     price: z.string(),
     currency_code: z.string(),
@@ -248,6 +263,14 @@ export interface ImportedCatalogue {
  * merchant's behalf.
  */
 const WHAT_THE_BUYER_RECEIVES = {
+  download_url: {
+    type: "string",
+    title: "The private WooCommerce download address",
+  },
+  file_name: {
+    type: "string",
+    title: "The name of the downloadable file",
+  },
   order_number: {
     type: "string",
     title: "The number this order has in the shop",
@@ -260,7 +283,10 @@ const WHAT_THE_BUYER_RECEIVES = {
  * Order is preserved so that a merchant reading the two lists against their own
  * catalogue screen reads them in the same order.
  */
-export const cardsFromTheShop = (products: readonly StoreProduct[]): ImportedCatalogue => {
+export const cardsFromTheShop = (
+  products: readonly StoreProduct[],
+  shopOrigin = "https://shop.example.com",
+): ImportedCatalogue => {
   const cards: ImportedCard[] = [];
   const skipped: SkippedProduct[] = [];
 
@@ -273,6 +299,11 @@ export const cardsFromTheShop = (products: readonly StoreProduct[]): ImportedCat
     const refused = (why: string): void => {
       skipped.push({ id, title: named, why });
     };
+
+    if (product.qualification_problem !== null) {
+      refused(product.qualification_problem);
+      continue;
+    }
 
     if (product.type !== "simple") {
       refused(
@@ -287,6 +318,30 @@ export const cardsFromTheShop = (products: readonly StoreProduct[]): ImportedCat
     }
     if (!product.is_in_stock) {
       refused("The shop says this product is out of stock.");
+      continue;
+    }
+    if (product.status !== "publish") {
+      refused("The product is not published in the shop.");
+      continue;
+    }
+    if (!product.virtual) {
+      refused("Only virtual products can be delivered to an agent without a shipping address.");
+      continue;
+    }
+    if (!product.downloadable) {
+      refused("This product has no WooCommerce download to deliver to the agent.");
+      continue;
+    }
+    if (product.manage_stock) {
+      refused("Products whose stock is counted are not supported by this connector.");
+      continue;
+    }
+    if (product.download_limit !== -1 || product.download_expiry !== -1) {
+      refused("The download must have unlimited uses and no expiry.");
+      continue;
+    }
+    if (product.downloads.length !== 1) {
+      refused("The product must carry exactly one downloadable file.");
       continue;
     }
 
@@ -312,7 +367,8 @@ export const cardsFromTheShop = (products: readonly StoreProduct[]): ImportedCat
       refused("The product has no name in the shop, and a card is found by its title.");
       continue;
     }
-    if (!IdentifierSchema.safeParse(id).success) {
+    const merchantItemId = merchantItemIdFor(shopOrigin, id);
+    if (!IdentifierSchema.safeParse(merchantItemId).success) {
       refused("The shop's own identifier for this product is not one a card can be keyed by.");
       continue;
     }
@@ -330,16 +386,38 @@ export const cardsFromTheShop = (products: readonly StoreProduct[]): ImportedCat
       id,
       title,
       card: {
-        merchant_item_id: id,
+        merchant_item_id: merchantItemId,
         title,
         description,
         price: { amount, currency },
         result: { ...WHAT_THE_BUYER_RECEIVES },
+        fulfillment: "async",
+        price_check: "handler",
       },
     });
   }
 
   return { cards, skipped };
+};
+
+/** A card key that cannot silently switch shops when two shops share product id 42. */
+export const merchantItemIdFor = (shopOrigin: string, productId: string): string => {
+  const origin = new URL(shopOrigin).origin.toLowerCase();
+  const fingerprint = createHash("sha256").update(origin).digest("hex").slice(0, 16);
+  return `woo_${fingerprint}_${productId}`;
+};
+
+/** The Woo product behind a card, only when the card is bound to this shop. */
+export const productIdFromMerchantItem = (
+  shopOrigin: string,
+  merchantItemId: string,
+): string | null => {
+  const marker = merchantItemIdFor(shopOrigin, "");
+  if (!merchantItemId.startsWith(marker)) {
+    return null;
+  }
+  const productId = merchantItemId.slice(marker.length);
+  return /^\d+$/.test(productId) ? productId : null;
 };
 
 /**

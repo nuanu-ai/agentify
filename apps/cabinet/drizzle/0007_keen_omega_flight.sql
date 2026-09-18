@@ -1,0 +1,1 @@
+ALTER TABLE "cabinet_woo_orders" ADD COLUMN "result" jsonb;

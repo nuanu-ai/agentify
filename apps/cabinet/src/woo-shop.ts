@@ -16,7 +16,12 @@
  */
 
 import type { Money } from "@nuanu-ai/agentify-contracts";
-import { type StoreProduct, StoreProductsSchema } from "./woo-catalog.js";
+import { z } from "zod";
+import {
+  productIdFromMerchantItem,
+  type StoreProduct,
+  StoreProductsSchema,
+} from "./woo-catalog.js";
 
 /** How long we wait on a merchant's shop for one call. */
 const SHOP_ANSWERS_WITHIN_MS = 15_000;
@@ -56,6 +61,146 @@ export interface ShopKeys {
   readonly consumerSecret: string;
 }
 
+export interface EligibleWooProduct {
+  readonly productId: string;
+  readonly downloadId: string;
+  readonly fileName: string;
+  readonly price: Money;
+}
+
+export type ProductInspection =
+  | { readonly ok: true; readonly product: EligibleWooProduct }
+  | { readonly ok: false; readonly why: string };
+
+const ProductSchema = z.looseObject({
+  id: z.number().int().positive(),
+  type: z.string(),
+  status: z.string(),
+  purchasable: z.boolean(),
+  stock_status: z.string(),
+  manage_stock: z.boolean(),
+  virtual: z.boolean(),
+  downloadable: z.boolean(),
+  download_limit: z.number().int(),
+  download_expiry: z.number().int(),
+  sold_individually: z.boolean(),
+  price: z.string(),
+  tax_status: z.string(),
+  downloads: z.array(
+    z.looseObject({ id: z.string(), name: z.string(), file: z.string() }),
+  ),
+});
+
+const SettingSchema = z.looseObject({ value: z.union([z.string(), z.boolean()]) });
+
+/** Reads every fact that makes the connector able to deliver this product. */
+export const inspectProductInTheShop = async (
+  keys: ShopKeys,
+  merchantItemId: string,
+): Promise<ProductInspection> => {
+  const productId = productIdFromMerchantItem(keys.shopUrl, merchantItemId);
+  if (productId === null) {
+    return { ok: false, why: "This card belongs to a different WooCommerce shop." };
+  }
+  const endpoints = [
+    `/wp-json/wc/v3/products/${productId}`,
+    "/wp-json/wc/v3/settings/general/woocommerce_currency",
+    "/wp-json/wc/v3/settings/products/woocommerce_file_download_method",
+    "/wp-json/wc/v3/settings/products/woocommerce_downloads_require_login",
+    "/wp-json/wc/v3/settings/products/woocommerce_downloads_grant_access_after_payment",
+    "/wp-json/wc/v3/settings/products/woocommerce_downloads_redirect_fallback_allowed",
+  ] as const;
+  let responses: Response[];
+  try {
+    responses = await Promise.all(
+      endpoints.map((path) =>
+        fetch(`${keys.shopUrl}${path}`, {
+          headers: { authorization: basicFor(keys), accept: "application/json" },
+          redirect: "manual",
+          signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
+        }),
+      ),
+    );
+  } catch {
+    return { ok: false, why: "The shop did not answer the protected product check." };
+  }
+  if (responses.some((response) => !response.ok)) {
+    return { ok: false, why: "The shop refused the protected product or download-settings check." };
+  }
+  let documents: unknown[];
+  try {
+    documents = await Promise.all(responses.map((response) => response.json()));
+  } catch {
+    return { ok: false, why: "The shop's protected product check did not return readable JSON." };
+  }
+  const parsed = ProductSchema.safeParse(documents[0]);
+  const settings = documents.slice(1).map((document) => SettingSchema.safeParse(document));
+  if (!parsed.success || settings.some((setting) => !setting.success)) {
+    return { ok: false, why: "The shop's protected product or settings document is incomplete." };
+  }
+  const product = parsed.data;
+  const [currency, method, login, afterPayment, redirectFallback] = settings.map((setting) =>
+    setting.success ? setting.data.value : "",
+  );
+  const unsupported =
+    product.type !== "simple" ||
+    product.status !== "publish" ||
+    !product.purchasable ||
+    product.stock_status !== "instock" ||
+    product.manage_stock ||
+    product.sold_individually ||
+    !product.virtual ||
+    !product.downloadable ||
+    product.download_limit !== -1 ||
+    product.download_expiry !== -1 ||
+    product.downloads.length !== 1 ||
+    product.tax_status !== "none" ||
+    currency !== "USD" ||
+    method !== "force" ||
+    login !== "no" ||
+    afterPayment !== "yes" ||
+    redirectFallback !== "no";
+  if (unsupported) {
+    return {
+      ok: false,
+      why:
+        "Only a published, in-stock, unmanaged, virtual single-file USD download with unlimited access and Force Downloads is supported.",
+    };
+  }
+  const download = product.downloads[0];
+  if (download === undefined || !URL.canParse(download.file)) {
+    return { ok: false, why: "The product's one download does not name a readable address." };
+  }
+  const raw = new URL(download.file);
+  if (raw.origin !== new URL(keys.shopUrl).origin) {
+    return { ok: false, why: "The downloadable file is outside this shop's origin." };
+  }
+  try {
+    const exposed = await fetch(raw, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
+    });
+    await exposed.body?.cancel();
+    if ((exposed.status >= 200 && exposed.status < 400) || exposed.status === 0) {
+      return { ok: false, why: "The downloadable file is public without an order permission." };
+    }
+  } catch {
+    return { ok: false, why: "The shop's raw download protection could not be verified." };
+  }
+  if (!/^\d+(?:\.\d+)?$/.test(product.price)) {
+    return { ok: false, why: "The protected product price is not a decimal amount." };
+  }
+  return {
+    ok: true,
+    product: {
+      productId,
+      downloadId: download.id,
+      fileName: download.name,
+      price: { amount: product.price, currency: "USD" },
+    },
+  };
+};
+
 /** One sale, as the shop has to be told about it. */
 export interface SoldItem {
   /** Our own order identifier, which goes onto the shop's order as a thread. */
@@ -66,10 +211,17 @@ export interface SoldItem {
   readonly email: string;
   /** What the buyer actually paid, which is what the shop's order records. */
   readonly price: Money;
+  readonly download: { readonly id: string; readonly name: string };
 }
 
 export type OrderMade =
-  | { readonly ok: true; readonly id: string; readonly number: string }
+  | {
+      readonly ok: true;
+      readonly id: string;
+      readonly number: string;
+      readonly orderKey: string;
+      readonly downloadId: string;
+    }
   | {
       readonly ok: false;
       readonly why: string;
@@ -265,7 +417,16 @@ export const createTheOrderInTheShop = async (
     };
   }
 
-  const made = document as { id?: unknown; number?: unknown };
+  const made = document as {
+    id?: unknown;
+    number?: unknown;
+    order_key?: unknown;
+    status?: unknown;
+    currency?: unknown;
+    total?: unknown;
+    total_tax?: unknown;
+    line_items?: unknown;
+  };
   const id = typeof made.id === "number" ? String(made.id) : null;
   if (id === null) {
     // The shop said yes and named no order. Whatever is at that address, it is
@@ -276,11 +437,46 @@ export const createTheOrderInTheShop = async (
       why:
         "The shop accepted the order and its answer names no order, so there is nothing to tell" +
         " the buyer. Nothing here can say whether an order was created.",
-      again: false,
+      again: true,
     };
   }
   const number = typeof made.number === "string" && made.number !== "" ? made.number : id;
-  return { ok: true, id, number };
+  if (typeof made.order_key !== "string" || made.order_key === "") {
+    return {
+      ok: false,
+      why: "The shop accepted the order but returned no order key for its private download.",
+      again: true,
+    };
+  }
+  const lineItems = Array.isArray(made.line_items) ? made.line_items : [];
+  const line = lineItems[0] as
+    | {
+        product_id?: unknown;
+        quantity?: unknown;
+        subtotal?: unknown;
+        total?: unknown;
+        total_tax?: unknown;
+      }
+    | undefined;
+  if (
+    !["processing", "completed"].includes(String(made.status)) ||
+    made.currency !== sold.price.currency ||
+    made.total !== sold.price.amount ||
+    made.total_tax !== "0.00" ||
+    lineItems.length !== 1 ||
+    line?.product_id !== productId ||
+    line.quantity !== 1 ||
+    line.subtotal !== sold.price.amount ||
+    line.total !== sold.price.amount ||
+    line.total_tax !== "0.00"
+  ) {
+    return {
+      ok: false,
+      why: "The shop created an order whose paid amount, tax, product or status does not match the sale.",
+      again: true,
+    };
+  }
+  return { ok: true, id, number, orderKey: made.order_key, downloadId: sold.download.id };
 };
 
 /**

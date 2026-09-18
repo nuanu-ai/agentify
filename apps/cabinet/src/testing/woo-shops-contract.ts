@@ -313,11 +313,16 @@ export const wooShopsContract = (
       // sale is a second order in the merchant's shop to pick, pack and post.
       await using(async (shops, accounts) => {
         await shops.claimOrder(accounts.one, "ord_1", NOW);
-        await shops.recordOrder("ord_1", { id: "13", number: "WOO-13" }, NOW);
+        await shops.recordOrder(
+          "ord_1",
+          { id: "13", number: "WOO-13", result: { order_number: "WOO-13" } },
+          NOW,
+        );
         expect(await shops.claimOrder(accounts.one, "ord_1", LATER)).toEqual({
           kind: "placed",
           id: "13",
           number: "WOO-13",
+          result: { order_number: "WOO-13" },
         });
       });
     });
@@ -342,12 +347,17 @@ export const wooShopsContract = (
     it("will not give back a sale the shop has an order for", async () => {
       await using(async (shops, accounts) => {
         await shops.claimOrder(accounts.one, "ord_1", NOW);
-        await shops.recordOrder("ord_1", { id: "13", number: "WOO-13" }, NOW);
+        await shops.recordOrder(
+          "ord_1",
+          { id: "13", number: "WOO-13", result: { order_number: "WOO-13" } },
+          NOW,
+        );
         await shops.releaseOrder("ord_1");
         expect(await shops.claimOrder(accounts.one, "ord_1", LATER)).toEqual({
           kind: "placed",
           id: "13",
           number: "WOO-13",
+          result: { order_number: "WOO-13" },
         });
       });
     });
@@ -355,7 +365,11 @@ export const wooShopsContract = (
     it("keeps one sale's record out of another's", async () => {
       await using(async (shops, accounts) => {
         await shops.claimOrder(accounts.one, "ord_1", NOW);
-        await shops.recordOrder("ord_1", { id: "13", number: "WOO-13" }, NOW);
+        await shops.recordOrder(
+          "ord_1",
+          { id: "13", number: "WOO-13", result: { order_number: "WOO-13" } },
+          NOW,
+        );
         expect(await shops.claimOrder(accounts.one, "ord_2", NOW)).toEqual({ kind: "ours" });
       });
     });

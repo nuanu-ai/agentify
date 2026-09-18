@@ -27,7 +27,7 @@ import {
 import type { AgentOrderStatus, Order } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { gatewayFor } from "./gateway.js";
-import { cardsFromTheShop, type StoreProduct } from "./woo-catalog.js";
+import { cardsFromTheShop, merchantItemIdFor, type StoreProduct } from "./woo-catalog.js";
 import type { OrderMade, ShopKeys, SoldItem } from "./woo-shop.js";
 import { memoryWooShops, type WooConnection, type WooShops } from "./woo-shops.js";
 import { fillFromTheShop, startWooWorker, turnOnce } from "./woo-worker.js";
@@ -44,6 +44,16 @@ const aProduct = (overrides: Partial<StoreProduct> = {}): StoreProduct => ({
   short_description: "",
   is_purchasable: true,
   is_in_stock: true,
+  status: "publish",
+  virtual: true,
+  downloadable: true,
+  manage_stock: false,
+  download_limit: -1,
+  download_expiry: -1,
+  downloads: [
+    { id: "dl_guide", name: "Guide", file: "https://shop.example.com/protected/guide.txt" },
+  ],
+  qualification_problem: null,
   prices: { price: "2500", currency_code: "USD", currency_minor_unit: 2 },
   ...overrides,
 });
@@ -59,7 +69,7 @@ const connection = (accountId = "acc_1"): WooConnection => ({
 
 const anOrder = (overrides: Partial<Order> = {}): Order => ({
   id: "ord_1",
-  merchant_item_id: "11",
+  merchant_item_id: merchantItemIdFor("https://shop.example.com", "11"),
   params: {},
   price: {
     amount: "25.00",
@@ -80,7 +90,13 @@ const aShopThatAccepts = () => {
     place: async (_keys: ShopKeys, sold: SoldItem): Promise<OrderMade> => {
       placed.push(sold);
       next += 1;
-      return { ok: true, id: String(next), number: String(next) };
+      return {
+        ok: true,
+        id: String(next),
+        number: String(next),
+        orderKey: `wc_order_${next}`,
+        downloadId: sold.download.id,
+      };
     },
   };
 };
@@ -92,6 +108,11 @@ const filling = (
   shops,
   now: () => new Date("2026-09-14T12:00:00.000Z"),
   placeOrder: place,
+  eligibleProduct: async (_connection: WooConnection, merchantItemId: string) => ({
+    productId: merchantItemId.split("_").at(-1) ?? "",
+    downloadId: "dl_guide",
+    fileName: "Guide",
+  }),
 });
 
 describe("one paid order, in the merchant's own shop", () => {
@@ -106,13 +127,16 @@ describe("one paid order, in the merchant's own shop", () => {
       filling(shops, shop.place),
     );
 
-    expect(answer).toEqual({ delivered: { order_number: "13" } });
+    expect(answer).toMatchObject({
+      delivered: { file_name: "Guide", order_number: "13" },
+    });
     expect(shop.placed).toEqual([
       {
         orderId: "ord_1",
         productId: "11",
         email: MERCHANT_EMAIL,
         price: { amount: "25.00", currency: "USD" },
+        download: { id: "dl_guide", name: "Guide" },
       },
     ]);
   });
@@ -254,7 +278,26 @@ describe("the whole way through, against a real gateway", () => {
         const sent = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
         orders.push(sent);
         response.writeHead(201, { "content-type": "application/json" });
-        response.end(JSON.stringify({ id: 13, number: "13", status: "processing" }));
+        response.end(
+          JSON.stringify({
+            id: 13,
+            number: "13",
+            order_key: "wc_order_13",
+            status: "processing",
+            currency: "USD",
+            total: "25.00",
+            total_tax: "0.00",
+            line_items: [
+              {
+                product_id: 11,
+                quantity: 1,
+                subtotal: "25.00",
+                total: "25.00",
+                total_tax: "0.00",
+              },
+            ],
+          }),
+        );
       });
     });
     shopServer.listen(0, "127.0.0.1");
@@ -272,7 +315,7 @@ describe("the whole way through, against a real gateway", () => {
     // The catalogue, converted and published through the door every other card
     // goes through. No leniency of its own: a card refused here is a card the
     // merchant is shown the refusal for.
-    const { cards } = cardsFromTheShop([aProduct()]);
+    const { cards } = cardsFromTheShop([aProduct()], shop.url);
     const card = cards[0];
     expect(card).toBeDefined();
     const published = await gateway.publishCard(card?.card ?? ({} as never));
@@ -284,6 +327,11 @@ describe("the whole way through, against a real gateway", () => {
     const parts = {
       shops,
       now: () => new Date("2026-09-14T12:00:00.000Z"),
+      eligibleProduct: async () => ({
+        productId: "11",
+        downloadId: "dl_guide",
+        fileName: "Guide",
+      }),
     };
     const connected: WooConnection = { ...connection(), shopUrl: shop.url };
 
@@ -295,14 +343,21 @@ describe("the whole way through, against a real gateway", () => {
         }
         return answer;
       },
+      onQuote: async () => ({
+        available: true,
+        price: { amount: "25.00", currency: "USD" },
+        as_of: "2026-09-14T12:00:00.000Z",
+      }),
     });
 
     // The buyer's side: the sale went through and they hold the number of an
     // order in a shop they have never heard of.
     expect(bought.status).toBe(200);
-    const status = bought.body as AgentOrderStatus;
+    const started = bought.body as AgentOrderStatus;
+    const read = await served.call("GET", `/x402/orders/${started.order_id}/status`);
+    const status = read.body as AgentOrderStatus;
     expect(status.status).toBe("delivered");
-    expect(status.delivered).toEqual({ order_number: "13" });
+    expect(status.delivered).toMatchObject({ file_name: "Guide", order_number: "13" });
 
     // The merchant's side: one order in the shop, paid, carrying our own
     // identifier so that the two systems can be reconciled by hand.
@@ -318,7 +373,7 @@ describe("the whole way through, against a real gateway", () => {
     expect(placed.line_items[0]?.total).toBe("25.00");
   });
 
-  it("draws the order off the merchant's own stream and answers it", async () => {
+  it("draws a quote and an order from the merchant stream and answers both", async () => {
     // The same thing again, this time with the cabinet doing the drawing —
     // which is the part a deployment runs and the part that has to speak the
     // contract's own poll and answer routes.
@@ -327,20 +382,80 @@ describe("the whole way through, against a real gateway", () => {
     const shop = await aShopOnAPort();
     const gateway = gatewayFor(served.url, KEY);
 
-    const { cards } = cardsFromTheShop([aProduct()]);
+    const { cards } = cardsFromTheShop([aProduct()], shop.url);
     const published = await gateway.publishCard(cards[0]?.card ?? ({} as never));
     const itemId = published.ok && published.document.ok ? published.document.id : "";
 
     const shops = memoryWooShops();
     const connected: WooConnection = { ...connection(), shopUrl: shop.url };
 
-    // The purchase and the cabinet's own turn run together: a synchronous card
-    // is answered while the agent is still waiting on the purchase.
-    const buying = buyOverHttp(open, served, itemId, {});
-    let turned = 0;
-    while (turned === 0) {
-      turned = await turnOnce(connected, {
-        shops,
+    const buying = buyOverHttp(open, served, itemId, {
+      onQuote: async () => ({
+        available: true,
+        price: { amount: "25.00", currency: "USD" },
+        as_of: "2026-09-14T12:00:00.000Z",
+      }),
+      onOrder: async (order) => {
+        const answer = await fillFromTheShop(order, connected, MERCHANT_EMAIL, {
+          shops,
+          now: () => new Date("2026-09-14T12:00:00.000Z"),
+          eligibleProduct: async () => ({
+            productId: "11",
+            downloadId: "dl_guide",
+            fileName: "Guide",
+          }),
+        });
+        if (answer === null) throw new Error("the order was left unanswered");
+        return answer;
+      },
+    });
+    const bought = await buying;
+    const started = bought.body as AgentOrderStatus;
+    const read = await served.call("GET", `/x402/orders/${started.order_id}/status`);
+
+    expect((read.body as AgentOrderStatus).delivered).toMatchObject({
+      file_name: "Guide",
+      order_number: "13",
+    });
+    expect(shop.orders).toHaveLength(1);
+
+    // The cabinet client exposes the same two reply routes its real loop uses.
+    expect(typeof gateway.answerQuote).toBe("function");
+    expect(typeof gateway.answerOrder).toBe("function");
+  });
+
+  it("answers a quote envelope before an order envelope", async () => {
+    const answered: string[] = [];
+    const gateway = {
+      pollWorker: async () => ({
+        ok: true as const,
+        document: {
+          envelopes: [
+            {
+              id: "env_quote",
+              kind: "quote_request" as const,
+              sent_at: "2026-09-14T12:00:00.000Z",
+              payload: {
+                merchant_item_id: merchantItemIdFor("https://shop.example.com", "11"),
+                price_id: "prc_1",
+                purpose: "purchase" as const,
+                expires_at: "2026-09-14T12:01:00.000Z",
+              },
+            },
+          ],
+        },
+      }),
+      answerQuote: async () => {
+        answered.push("quote");
+        return { ok: true as const, document: { used: true } };
+      },
+      answerOrder: async () => {
+        answered.push("order");
+        return { ok: true as const, document: { ok: true as const, result: "delivered" as const } };
+      },
+    } as never;
+    const turned = await turnOnce(connection(), {
+        shops: memoryWooShops(),
         identity: {
           byId: async () => ({
             id: "p",
@@ -352,13 +467,19 @@ describe("the whole way through, against a real gateway", () => {
         clientFor: () => gateway,
         now: () => new Date("2026-09-14T12:00:00.000Z"),
         waitSeconds: 1,
+        quote: async () => ({
+          available: true,
+          price: { amount: "25.00", currency: "USD" },
+          as_of: "2026-09-14T12:00:00.000Z",
+        }),
+        eligibleProduct: async () => ({
+          productId: "11",
+          downloadId: "dl_guide",
+          fileName: "Guide",
+        }),
       });
-    }
-    const bought = await buying;
-
     expect(turned).toBe(1);
-    expect((bought.body as AgentOrderStatus).delivered).toEqual({ order_number: "13" });
-    expect(shop.orders).toHaveLength(1);
+    expect(answered).toEqual(["quote"]);
   });
 });
 

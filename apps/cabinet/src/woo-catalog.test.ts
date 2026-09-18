@@ -43,6 +43,7 @@ const product = (overrides: Partial<StoreProduct> = {}): StoreProduct => ({
       file: "https://shop.example.com/wp-content/uploads/woocommerce_uploads/guide.txt",
     },
   ],
+  qualification_problem: null,
   prices: {
     price: "2500",
     currency_code: "USD",
@@ -174,7 +175,8 @@ describe("turning a shop's products into cards", () => {
       file_name: { type: "string", title: "The name of the downloadable file" },
       order_number: { type: "string", title: "The number this order has in the shop" },
     });
-    expect(cards[0]?.card.fulfillment).toEqual({ mode: "async" });
+    expect(cards[0]?.card.fulfillment).toBe("async");
+    expect(cards[0]?.card.price_check).toBe("handler");
   });
 
   it("makes a card our own publish door recognises", () => {
@@ -253,8 +255,8 @@ describe("turning a shop's products into cards", () => {
       product({ id: 12 }),
     ]);
     expect(cards.map((one) => one.card.merchant_item_id)).toEqual([
-      "woo_893553c68e218123_10",
-      "woo_893553c68e218123_12",
+      expect.stringMatching(/^woo_[a-f0-9]{16}_10$/),
+      expect.stringMatching(/^woo_[a-f0-9]{16}_12$/),
     ]);
     expect(skipped.map((one) => one.id)).toEqual(["11"]);
   });

@@ -62,7 +62,7 @@ import {
   refusedLinkScreen,
   signInScreen,
 } from "./sign-in.js";
-import { cardsFromTheShop } from "./woo-catalog.js";
+import { cardsFromTheShop, decimalOfMinorUnits, merchantItemIdFor } from "./woo-catalog.js";
 import {
   APP_NAME,
   authorizeUrlFor,
@@ -81,8 +81,13 @@ import {
   wooReturnScreen,
   wooScreen,
 } from "./woo-screens.js";
-import { type CatalogueRead, catalogueOf } from "./woo-shop.js";
-import type { WooShops } from "./woo-shops.js";
+import {
+  type CatalogueRead,
+  catalogueOf,
+  inspectProductInTheShop,
+  type ProductInspection,
+} from "./woo-shop.js";
+import type { WooConnection, WooShops } from "./woo-shops.js";
 
 /**
  * How long the cabinet waits on the gateway for its own key, per call.
@@ -223,6 +228,10 @@ export interface CabinetParts {
     readonly grantScreen: (authorizeUrl: string) => Promise<Preflight>;
     /** Everything a shop offers for sale, off its Store API. */
     readonly catalogue: (shopUrl: string, atMost?: number) => Promise<CatalogueRead>;
+    readonly inspectProduct: (
+      keys: WooConnection,
+      merchantItemId: string,
+    ) => Promise<ProductInspection>;
   };
 }
 
@@ -1098,6 +1107,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     const whereWeAre = `${config.publicBaseUrl}${base}`;
     const grantScreen = parts.shop?.grantScreen ?? isTheGrantScreen;
     const catalogue = parts.shop?.catalogue ?? catalogueOf;
+    const inspectProduct = parts.shop?.inspectProduct ?? inspectProductInTheShop;
 
     /** The page, drawn from where the channel is and from what buyers read. */
     const drawTheShop = async (
@@ -1226,7 +1236,49 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
         return await drawTheShop(request, response, { problem: read.why }, 502);
       }
 
-      const { cards, skipped } = cardsFromTheShop(read.products);
+      const qualified = await Promise.all(
+        read.products.map(async (product) => {
+          const inspected = await inspectProduct(
+            connection,
+            merchantItemIdFor(connection.shopUrl, String(product.id)),
+          );
+          if (!inspected.ok) {
+            return { ...product, qualification_problem: inspected.why };
+          }
+          const publicPrice = decimalOfMinorUnits(
+            product.prices.price,
+            product.prices.currency_minor_unit,
+          );
+          if (
+            publicPrice !== inspected.product.price.amount ||
+            product.prices.currency_code !== inspected.product.price.currency
+          ) {
+            return {
+              ...product,
+              qualification_problem:
+                "The public catalogue price does not match the protected WooCommerce product price.",
+            };
+          }
+          return {
+            ...product,
+            status: "publish",
+            virtual: true,
+            downloadable: true,
+            manage_stock: false,
+            download_limit: -1,
+            download_expiry: -1,
+            downloads: [
+              {
+                id: inspected.product.downloadId,
+                name: inspected.product.fileName,
+                file: "protected-by-woo",
+              },
+            ],
+            qualification_problem: null,
+          };
+        }),
+      );
+      const { cards, skipped } = cardsFromTheShop(qualified, connection.shopUrl);
       const gateway = gatewayAs(request);
       const outcomes: ImportOutcome[] = [];
       for (const one of cards) {

@@ -37,6 +37,9 @@ import {
   merchantKeyHeaderValue,
   type OrderCallResponse,
   OrderCallResponseSchema,
+  type QuoteAnswerAck,
+  QuoteAnswerAckSchema,
+  type QuoteResponse,
   type OrderList,
   OrderListSchema,
   PayoutWalletSchema,
@@ -120,6 +123,8 @@ export interface GatewayClient {
   pollWorker(waitSeconds: number, max: number): Promise<Answer<WorkerPollResponse>>;
   /** What the handler returned for one order: the goods, or a refusal. */
   answerOrder(orderId: string, answer: HandlerAnswer): Promise<Answer<OrderCallResponse>>;
+  /** Answers one live Woo price and availability question. */
+  answerQuote(priceId: string, answer: QuoteResponse): Promise<Answer<QuoteAnswerAck>>;
 }
 
 /**
@@ -300,6 +305,11 @@ export const gatewayFor = (
     answerOrder: (orderId, answer) =>
       call(API_ROUTES.answer_order, OrderCallResponseSchema, {
         values: { order_id: orderId },
+        body: answer,
+      }),
+    answerQuote: (priceId, answer) =>
+      call(API_ROUTES.answer_quote, QuoteAnswerAckSchema, {
+        values: { price_id: priceId },
         body: answer,
       }),
   };

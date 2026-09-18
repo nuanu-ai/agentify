@@ -30,11 +30,18 @@
  * one".
  */
 
-import type { HandlerAnswer, Order } from "@nuanu-ai/agentify-contracts";
+import { createHash } from "node:crypto";
+import type {
+  HandlerAnswer,
+  Order,
+  QuoteRequest,
+  QuoteResponse,
+} from "@nuanu-ai/agentify-contracts";
 import type { GatewayClient } from "./gateway.js";
 import type { Identity } from "./identity.js";
 import {
   createTheOrderInTheShop,
+  inspectProductInTheShop,
   type OrderMade,
   type ShopKeys,
   type SoldItem,
@@ -52,6 +59,16 @@ export interface Filling {
    * without a WooCommerce anywhere near it. A deployment passes nothing.
    */
   readonly placeOrder?: (keys: ShopKeys, sold: SoldItem) => Promise<OrderMade>;
+  /** The one currently supported downloadable file, after authoritative checks. */
+  readonly eligibleProduct?: (
+    connection: WooConnection,
+    merchantItemId: string,
+  ) => Promise<{
+    readonly productId: string;
+    readonly downloadId: string;
+    readonly fileName: string;
+    readonly price?: { readonly amount: string; readonly currency: string };
+  } | null>;
 }
 
 /**
@@ -70,6 +87,34 @@ export const fillFromTheShop = async (
   parts: Filling,
 ): Promise<HandlerAnswer | null> => {
   const place = parts.placeOrder ?? createTheOrderInTheShop;
+  const inspected =
+    parts.eligibleProduct === undefined
+      ? await inspectProductInTheShop(connection, order.merchant_item_id)
+      : null;
+  const eligible =
+    inspected === null
+      ? (await parts.eligibleProduct?.(connection, order.merchant_item_id)) ?? null
+      : inspected.ok
+        ? inspected.product
+        : null;
+  if (eligible === null) {
+    return {
+      refused: {
+        code: "cannot_fulfill",
+        message:
+          "This shop product is no longer a supported single-file download, so no WooCommerce order was created.",
+      },
+    };
+  }
+  if (eligible.price !== undefined &&
+      (eligible.price.amount !== order.price.amount || eligible.price.currency !== order.price.currency)) {
+    return {
+      refused: {
+        code: "cannot_fulfill",
+        message: "The shop's product or price changed after this purchase was quoted, so no WooCommerce order was created.",
+      },
+    };
+  }
 
   if (connection.permissions !== "read_write") {
     // The shop granted less than we asked for, so every sale on this connection
@@ -96,7 +141,7 @@ export const fillFromTheShop = async (
   if (claim.kind === "placed") {
     // The same sale, handed over a second time. The shop already has the order
     // and the buyer gets the same number they would have got the first time.
-    return { delivered: { order_number: claim.number } };
+    return { delivered: claim.result };
   }
 
   if (claim.kind === "unknown") {
@@ -120,7 +165,7 @@ export const fillFromTheShop = async (
 
   const made = await place(connection, {
     orderId: order.id,
-    productId: order.merchant_item_id,
+    productId: eligible.productId,
     // Not the buyer's, which is why the parameter is not called that. Creating
     // an order makes WooCommerce send mail to whatever is on it and nothing in
     // the request can stop that, so whose address belongs here is a product
@@ -128,11 +173,21 @@ export const fillFromTheShop = async (
     // own, and ADR-0023 says so rather than this pretending it is settled.
     email: orderEmail,
     price: { amount: order.price.amount, currency: order.price.currency },
+    download: { id: eligible.downloadId, name: eligible.fileName },
   });
 
   if (made.ok) {
-    await parts.shops.recordOrder(order.id, { id: made.id, number: made.number }, parts.now());
-    return { delivered: { order_number: made.number } };
+    const result = {
+      download_url: downloadUrlFor(connection.shopUrl, eligible.productId, made, orderEmail),
+      file_name: eligible.fileName,
+      order_number: made.number,
+    };
+    await parts.shops.recordOrder(
+      order.id,
+      { id: made.id, number: made.number, result },
+      parts.now(),
+    );
+    return { delivered: result };
   }
 
   if (made.again) {
@@ -164,6 +219,23 @@ export const fillFromTheShop = async (
   };
 };
 
+const downloadUrlFor = (
+  shopUrl: string,
+  productId: string,
+  order: Extract<OrderMade, { ok: true }>,
+  email: string,
+): string => {
+  const address = new URL(shopUrl);
+  address.pathname = "/";
+  address.search = new URLSearchParams({
+    download_file: productId,
+    order: order.orderKey,
+    uid: createHash("sha256").update(email).digest("hex"),
+    key: order.downloadId,
+  }).toString();
+  return address.toString();
+};
+
 /** What the loop needs to fill one connected shop's orders. */
 export interface WorkingParts extends Filling {
   /** How the account behind a connection is read: its address and its key. */
@@ -173,6 +245,12 @@ export interface WorkingParts extends Filling {
   readonly waitSeconds?: number;
   /** At most this many orders drawn in one turn. */
   readonly max?: number;
+  /** Fresh price/availability from Woo; supplied by production in the next boundary. */
+  readonly quote?: (
+    connection: WooConnection,
+    question: QuoteRequest,
+    at: Date,
+  ) => Promise<QuoteResponse>;
 }
 
 /**
@@ -215,9 +293,21 @@ export const turnOnce = async (connection: WooConnection, parts: WorkingParts): 
 
   let filled = 0;
   for (const envelope of drawn.document.envelopes) {
-    // Orders and nothing else. A price question belongs to a card with a price
-    // check, which an imported card never has, and an event has no reply of any
-    // kind — reading one here would be pretending to answer it.
+    if (envelope.kind === "quote_request") {
+      filled += 1;
+      const answer =
+        parts.quote === undefined
+          ? await quoteFromTheShop(connection, envelope.payload, parts.now())
+          : await parts.quote(connection, envelope.payload, parts.now());
+      const said = await gateway.answerQuote(envelope.payload.price_id, answer);
+      if (!said.ok) {
+        console.error(
+          `[cabinet] the price answer for ${envelope.payload.price_id} was not accepted: ${said.why}`,
+        );
+      }
+      continue;
+    }
+    // Events have no reply. Reading one here would be pretending to answer it.
     if (envelope.kind !== "order") {
       continue;
     }
@@ -234,6 +324,17 @@ export const turnOnce = async (connection: WooConnection, parts: WorkingParts): 
     }
   }
   return filled;
+};
+
+const quoteFromTheShop = async (
+  connection: WooConnection,
+  question: QuoteRequest,
+  at: Date,
+): Promise<QuoteResponse> => {
+  const read = await inspectProductInTheShop(connection, question.merchant_item_id);
+  return read.ok
+    ? { available: true, price: read.product.price, as_of: at.toISOString() }
+    : { available: false, as_of: at.toISOString() };
 };
 
 /** A worker turning, until it is stopped. */

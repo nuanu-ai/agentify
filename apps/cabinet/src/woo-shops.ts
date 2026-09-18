@@ -62,7 +62,12 @@ export interface WooConnection {
  */
 export type OrderClaim =
   | { readonly kind: "ours" }
-  | { readonly kind: "placed"; readonly id: string; readonly number: string }
+  | {
+      readonly kind: "placed";
+      readonly id: string;
+      readonly number: string;
+      readonly result: Readonly<Record<string, unknown>>;
+    }
   | { readonly kind: "unknown"; readonly attemptedAt: Date };
 
 export interface WooShops {
@@ -125,7 +130,15 @@ export interface WooShops {
    */
   claimOrder(accountId: string, orderId: string, now: Date): Promise<OrderClaim>;
   /** Completes a claim with what the shop answered. */
-  recordOrder(orderId: string, placed: { id: string; number: string }, now: Date): Promise<void>;
+  recordOrder(
+    orderId: string,
+    placed: {
+      id: string;
+      number: string;
+      result: Readonly<Record<string, unknown>>;
+    },
+    now: Date,
+  ): Promise<void>;
   /** Gives up a claim nothing came of, so the next attempt may have it. */
   releaseOrder(orderId: string): Promise<void>;
 }
@@ -237,8 +250,13 @@ export const postgresWooShops = (pool: Pool): WooShops => {
         // have the sale.
         return { kind: "ours" };
       }
-      if (row.wooOrderId !== null && row.wooOrderNumber !== null) {
-        return { kind: "placed", id: row.wooOrderId, number: row.wooOrderNumber };
+      if (row.wooOrderId !== null && row.wooOrderNumber !== null && row.result !== null) {
+        return {
+          kind: "placed",
+          id: row.wooOrderId,
+          number: row.wooOrderNumber,
+          result: row.result,
+        };
       }
       return { kind: "unknown", attemptedAt: row.attemptedAt };
     },
@@ -246,7 +264,12 @@ export const postgresWooShops = (pool: Pool): WooShops => {
     async recordOrder(orderId, placed, now) {
       await db
         .update(wooOrders)
-        .set({ wooOrderId: placed.id, wooOrderNumber: placed.number, placedAt: now })
+        .set({
+          wooOrderId: placed.id,
+          wooOrderNumber: placed.number,
+          result: placed.result,
+          placedAt: now,
+        })
         .where(eq(wooOrders.orderId, orderId));
     },
 
@@ -275,7 +298,15 @@ export const memoryWooShops = (): WooShops => {
   const shops = new Map<string, WooConnection>();
   const orders = new Map<
     string,
-    { accountId: string; attemptedAt: Date; placed: { id: string; number: string } | null }
+    {
+      accountId: string;
+      attemptedAt: Date;
+      placed: {
+        id: string;
+        number: string;
+        result: Readonly<Record<string, unknown>>;
+      } | null;
+    }
   >();
 
   return {
@@ -343,7 +374,12 @@ export const memoryWooShops = (): WooShops => {
         return { kind: "ours" };
       }
       if (found.placed !== null) {
-        return { kind: "placed", id: found.placed.id, number: found.placed.number };
+        return {
+          kind: "placed",
+          id: found.placed.id,
+          number: found.placed.number,
+          result: found.placed.result,
+        };
       }
       return { kind: "unknown", attemptedAt: found.attemptedAt };
     },

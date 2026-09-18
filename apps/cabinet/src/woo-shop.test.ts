@@ -12,7 +12,12 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
-import { catalogueOf, createTheOrderInTheShop } from "./woo-shop.js";
+import {
+  catalogueOf,
+  createTheOrderInTheShop,
+  inspectProductInTheShop,
+} from "./woo-shop.js";
+import { merchantItemIdFor } from "./woo-catalog.js";
 
 interface Asked {
   readonly method: string;
@@ -190,17 +195,37 @@ describe("creating the order", () => {
     productId: "11",
     email: "merchant@example.com",
     price: { amount: "25.00", currency: "USD" },
+    download: { id: "dl_guide", name: "Guide" },
   };
+  const madeOrder = (overrides: Record<string, unknown> = {}) => ({
+    id: 13,
+    number: "13",
+    order_key: "wc_order_13",
+    status: "processing",
+    currency: "USD",
+    total: "25.00",
+    total_tax: "0.00",
+    line_items: [
+      { product_id: 11, quantity: 1, subtotal: "25.00", total: "25.00", total_tax: "0.00" },
+    ],
+    ...overrides,
+  });
 
   it("sends a paid order, with the keys as Basic authentication", async () => {
     stand = await shopAnswering(() => ({
       status: 201,
-      body: { id: 13, number: "13", status: "processing" },
+      body: madeOrder(),
     }));
 
     const made = await createTheOrderInTheShop(connectionTo(stand.url), order);
 
-    expect(made).toEqual({ ok: true, id: "13", number: "13" });
+    expect(made).toEqual({
+      ok: true,
+      id: "13",
+      number: "13",
+      orderKey: "wc_order_13",
+      downloadId: "dl_guide",
+    });
     const asked = stand.asked[0];
     expect(asked?.method).toBe("POST");
     expect(asked?.url).toBe("/wp-json/wc/v3/orders");
@@ -227,9 +252,12 @@ describe("creating the order", () => {
   it("reads the number the shop gave the order rather than its row id", async () => {
     // A shop with a plugin that renumbers orders answers with a `number` that
     // is not the id, and the number is what the merchant sees on their screen.
-    stand = await shopAnswering(() => ({ status: 201, body: { id: 13, number: "WOO-0013" } }));
+    stand = await shopAnswering(() => ({
+      status: 201,
+      body: madeOrder({ number: "WOO-0013" }),
+    }));
     const made = await createTheOrderInTheShop(connectionTo(stand.url), order);
-    expect(made).toEqual({ ok: true, id: "13", number: "WOO-0013" });
+    expect(made).toMatchObject({ ok: true, id: "13", number: "WOO-0013" });
   });
 
   it("carries the shop's own refusal back in the shop's own words", async () => {
@@ -284,5 +312,101 @@ describe("creating the order", () => {
     stand = await shopAnswering(() => ({ status: 201, body: { ok: true } }));
     const made = await createTheOrderInTheShop(connectionTo(stand.url), order);
     expect(made.ok).toBe(false);
+  });
+});
+
+describe("the protected product check", () => {
+  const productDocument = (overrides: Record<string, unknown> = {}) => ({
+    id: 11,
+    type: "simple",
+    status: "publish",
+    purchasable: true,
+    stock_status: "instock",
+    manage_stock: false,
+    sold_individually: false,
+    virtual: true,
+    downloadable: true,
+    download_limit: -1,
+    download_expiry: -1,
+    price: "0.01",
+    tax_status: "none",
+    downloads: [
+      {
+        id: "dl_guide",
+        name: "Agentify guide.txt",
+        file: `${stand?.url ?? "http://127.0.0.1"}/protected/guide.txt`,
+      },
+    ],
+    ...overrides,
+  });
+
+  const settingFor = (url: string): string => {
+    if (url.includes("woocommerce_currency")) return "USD";
+    if (url.includes("woocommerce_file_download_method")) return "force";
+    if (url.includes("woocommerce_downloads_grant_access_after_payment")) return "yes";
+    return "no";
+  };
+
+  it("accepts only the one protected native download the agent can receive", async () => {
+    stand = await shopAnswering((asked) => {
+      if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
+      if (asked.url.includes("/settings/")) {
+        return { status: 200, body: { value: settingFor(asked.url) } };
+      }
+      return { status: 200, body: productDocument() };
+    });
+    const keys = connectionTo(stand.url);
+
+    const read = await inspectProductInTheShop(keys, merchantItemIdFor(stand.url, "11"));
+
+    expect(read).toEqual({
+      ok: true,
+      product: {
+        productId: "11",
+        downloadId: "dl_guide",
+        fileName: "Agentify guide.txt",
+        price: { amount: "0.01", currency: "USD" },
+      },
+    });
+    expect(stand.asked.filter((asked) => asked.authorization !== undefined)).toHaveLength(6);
+    expect(stand.asked.find((asked) => asked.url === "/protected/guide.txt")?.authorization).toBeUndefined();
+  });
+
+  it("refuses public raw bytes and finite or stock-managed products", async () => {
+    for (const overrides of [
+      { manage_stock: true },
+      { sold_individually: true },
+      { download_limit: 1 },
+      { download_expiry: 1 },
+      { tax_status: "taxable" },
+    ]) {
+      stand = await shopAnswering((asked) => {
+        if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
+        if (asked.url.includes("/settings/")) {
+          return { status: 200, body: { value: settingFor(asked.url) } };
+        }
+        return { status: 200, body: productDocument(overrides) };
+      });
+      const read = await inspectProductInTheShop(
+        connectionTo(stand.url),
+        merchantItemIdFor(stand.url, "11"),
+      );
+      expect(read.ok).toBe(false);
+      await stand.close();
+      stand = null;
+    }
+
+    stand = await shopAnswering((asked) => {
+      if (asked.url === "/protected/guide.txt") return { status: 200, body: "public" };
+      if (asked.url.includes("/settings/")) {
+        return { status: 200, body: { value: settingFor(asked.url) } };
+      }
+      return { status: 200, body: productDocument() };
+    });
+    const publicFile = await inspectProductInTheShop(
+      connectionTo(stand.url),
+      merchantItemIdFor(stand.url, "11"),
+    );
+    expect(publicFile).toMatchObject({ ok: false, why: expect.stringContaining("public") });
   });
 });

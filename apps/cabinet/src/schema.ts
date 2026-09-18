@@ -21,7 +21,7 @@
  */
 
 import { sql } from "drizzle-orm";
-import { boolean, check, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, check, index, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 /** How the component writes and reads every moment in these tables. */
 const moment = (column: string) =>
@@ -397,6 +397,8 @@ export const wooOrders = pgTable(
     wooOrderId: text("woo_order_id"),
     /** The number the merchant reads on their own screen. */
     wooOrderNumber: text("woo_order_number"),
+    /** Exact safe goods returned on every redelivery; contains no raw source URL or email. */
+    result: jsonb("result").$type<Record<string, unknown>>(),
     attemptedAt: moment("attempted_at"),
     placedAt: timestamp("placed_at", { withTimezone: true, mode: "date" }),
   },

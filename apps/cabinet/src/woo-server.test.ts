@@ -49,6 +49,14 @@ const aProduct = (overrides: Partial<StoreProduct> = {}): StoreProduct => ({
   short_description: "",
   is_purchasable: true,
   is_in_stock: true,
+  status: "publish",
+  virtual: true,
+  downloadable: true,
+  manage_stock: false,
+  download_limit: -1,
+  download_expiry: -1,
+  downloads: [{ id: "dl_guide", name: "Guide", file: `${SHOP}/protected/guide.txt` }],
+  qualification_problem: null,
   prices: { price: "2500", currency_code: "USD", currency_minor_unit: 2 },
   ...overrides,
 });
@@ -179,6 +187,15 @@ const started = async (standing: Standing = {}): Promise<Running> => {
           : await standing.grantScreen(authorizeUrl);
       },
       catalogue: standing.catalogue ?? (async () => ({ ok: true, products: [] })),
+      inspectProduct: async (_keys, merchantItemId) => ({
+        ok: true,
+        product: {
+          productId: merchantItemId.split("_").at(-1) ?? "",
+          downloadId: "dl_guide",
+          fileName: "Guide",
+          price: { amount: "25.00", currency: "USD" },
+        },
+      }),
     },
   });
 
