@@ -278,6 +278,30 @@ describe("one paid order, in the merchant's own shop", () => {
     expect(answer && "refused" in answer).toBe(true);
   });
 
+  it("does not deliver a different download than the one accepted at quote time", async () => {
+    const shops = memoryWooShops();
+    const shop = aShopThatAccepts();
+    const answer = await fillFromTheShop(
+      anOrder({ price_id: "prc_1" }),
+      connection(),
+      MERCHANT_EMAIL,
+      {
+        ...filling(shops, shop.place),
+        quotedProduct: async () => "quoted-download-fingerprint",
+        eligibleProduct: async () => ({
+          productId: "11",
+          downloadId: "dl_replaced",
+          fileName: "Replacement",
+          fingerprint: "replacement-download-fingerprint",
+          price: { amount: "25.00", currency: "USD" },
+        }),
+      },
+    );
+
+    expect(answer && "refused" in answer).toBe(true);
+    expect(shop.placed).toHaveLength(0);
+  });
+
   it("does not reopen a definite pre-create refusal on worker redelivery", async () => {
     const shops = memoryWooShops();
     const shop = aShopThatAccepts();
