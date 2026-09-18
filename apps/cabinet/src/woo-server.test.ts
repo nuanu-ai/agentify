@@ -616,6 +616,25 @@ describe("importing the catalogue", () => {
     expect(text).not.toContain("publishing rules");
   });
 
+  it("stops after the first unknown publish and names the products it did not attempt", async () => {
+    const running = await started({
+      catalogue: async () => ({
+        ok: true,
+        products: [aProduct(), aProduct({ id: 10, name: "Access code" })],
+      }),
+      gatewayAt: await nowhere(),
+    });
+    await connected(running);
+
+    const imported = await running.post("/woocommerce/import");
+    const text = readable(imported.html);
+
+    expect(text).toContain("1 got no verdict");
+    expect(text).toContain("1 not attempted");
+    expect(text).toContain("Canvas tote bag");
+    expect(text).toContain("Access code");
+  });
+
   it("names the products it could not turn into a card at all", async () => {
     const running = await started({
       catalogue: async () => ({
