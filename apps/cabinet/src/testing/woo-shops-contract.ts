@@ -9,11 +9,28 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { WooShops } from "../woo-shops.js";
+import type { WooOrderFacts, WooPermission, WooShops } from "../woo-shops.js";
 
 const NOW = new Date("2026-09-14T12:00:00.000Z");
 const LATER = new Date("2026-09-14T12:10:00.000Z");
 const MUCH_LATER = new Date("2026-09-14T13:00:00.000Z");
+const FACTS: WooOrderFacts = {
+  shopOrigin: "https://shop.example.com",
+  connectionRevision: "grant_1",
+  merchantItemId: "woo_merchant_11",
+  productId: "11",
+  amount: "25.00",
+  currency: "USD",
+};
+const PERMISSION: WooPermission = {
+  shopOrigin: "https://shop.example.com",
+  productId: "11",
+  orderKey: "wc_order_13",
+  downloadId: "dl_guide",
+  fileName: "Guide.txt",
+  emailUid: "a".repeat(64),
+  orderNumber: "WOO-13",
+};
 
 /**
  * Who the rows belong to.
@@ -234,6 +251,7 @@ export const wooShopsContract = (
       consumerKey: "ck_abc",
       consumerSecret: "cs_def",
       permissions: "read_write",
+      revision: "grant_1",
       connectedAt: NOW,
     });
 
@@ -290,7 +308,9 @@ export const wooShopsContract = (
   describe(`${name}: orders already placed`, () => {
     it("gives the first attempt the sale", async () => {
       await using(async (shops, accounts) => {
-        expect(await shops.claimOrder(accounts.one, "ord_1", NOW)).toEqual({ kind: "ours" });
+        expect(await shops.claimOrder(accounts.one, "ord_1", FACTS, NOW)).toEqual({
+          kind: "ours",
+        });
       });
     });
 
@@ -302,7 +322,7 @@ export const wooShopsContract = (
       // cannot see it.
       await using(async (shops, accounts) => {
         const claims = await Promise.all(
-          Array.from({ length: 10 }, () => shops.claimOrder(accounts.one, "ord_1", NOW)),
+          Array.from({ length: 10 }, () => shops.claimOrder(accounts.one, "ord_1", FACTS, NOW)),
         );
         expect(claims.filter((one) => one.kind === "ours")).toHaveLength(1);
       });
@@ -312,25 +332,25 @@ export const wooShopsContract = (
       // A delivery is at least once. Without this, the second hand-over of one
       // sale is a second order in the merchant's shop to pick, pack and post.
       await using(async (shops, accounts) => {
-        await shops.claimOrder(accounts.one, "ord_1", NOW);
+        await shops.claimOrder(accounts.one, "ord_1", FACTS, NOW);
         await shops.recordOrder(
           "ord_1",
-          { id: "13", number: "WOO-13", result: { order_number: "WOO-13" } },
+          { id: "13", number: "WOO-13", permission: PERMISSION },
           NOW,
         );
-        expect(await shops.claimOrder(accounts.one, "ord_1", LATER)).toEqual({
+        expect(await shops.claimOrder(accounts.one, "ord_1", FACTS, LATER)).toEqual({
           kind: "placed",
           id: "13",
           number: "WOO-13",
-          result: { order_number: "WOO-13" },
+          permission: PERMISSION,
         });
       });
     });
 
     it("says it does not know, for an attempt that never came back", async () => {
       await using(async (shops, accounts) => {
-        await shops.claimOrder(accounts.one, "ord_1", NOW);
-        const again = await shops.claimOrder(accounts.one, "ord_1", LATER);
+        await shops.claimOrder(accounts.one, "ord_1", FACTS, NOW);
+        const again = await shops.claimOrder(accounts.one, "ord_1", FACTS, LATER);
         expect(again.kind).toBe("unknown");
         expect(again.kind === "unknown" && again.attemptedAt.toISOString()).toBe(NOW.toISOString());
       });
@@ -338,39 +358,43 @@ export const wooShopsContract = (
 
     it("lets an attempt that decided nothing give the sale back", async () => {
       await using(async (shops, accounts) => {
-        await shops.claimOrder(accounts.one, "ord_1", NOW);
+        await shops.claimOrder(accounts.one, "ord_1", FACTS, NOW);
         await shops.releaseOrder("ord_1");
-        expect(await shops.claimOrder(accounts.one, "ord_1", LATER)).toEqual({ kind: "ours" });
+        expect(await shops.claimOrder(accounts.one, "ord_1", FACTS, LATER)).toEqual({
+          kind: "ours",
+        });
       });
     });
 
     it("will not give back a sale the shop has an order for", async () => {
       await using(async (shops, accounts) => {
-        await shops.claimOrder(accounts.one, "ord_1", NOW);
+        await shops.claimOrder(accounts.one, "ord_1", FACTS, NOW);
         await shops.recordOrder(
           "ord_1",
-          { id: "13", number: "WOO-13", result: { order_number: "WOO-13" } },
+          { id: "13", number: "WOO-13", permission: PERMISSION },
           NOW,
         );
         await shops.releaseOrder("ord_1");
-        expect(await shops.claimOrder(accounts.one, "ord_1", LATER)).toEqual({
+        expect(await shops.claimOrder(accounts.one, "ord_1", FACTS, LATER)).toEqual({
           kind: "placed",
           id: "13",
           number: "WOO-13",
-          result: { order_number: "WOO-13" },
+          permission: PERMISSION,
         });
       });
     });
 
     it("keeps one sale's record out of another's", async () => {
       await using(async (shops, accounts) => {
-        await shops.claimOrder(accounts.one, "ord_1", NOW);
+        await shops.claimOrder(accounts.one, "ord_1", FACTS, NOW);
         await shops.recordOrder(
           "ord_1",
-          { id: "13", number: "WOO-13", result: { order_number: "WOO-13" } },
+          { id: "13", number: "WOO-13", permission: PERMISSION },
           NOW,
         );
-        expect(await shops.claimOrder(accounts.one, "ord_2", NOW)).toEqual({ kind: "ours" });
+        expect(await shops.claimOrder(accounts.one, "ord_2", FACTS, NOW)).toEqual({
+          kind: "ours",
+        });
       });
     });
   });

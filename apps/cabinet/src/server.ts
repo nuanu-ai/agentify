@@ -439,6 +439,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
         consumerKey,
         consumerSecret,
         permissions,
+        revision: token,
         connectedAt: new Date(),
       });
       // The address and the scope, never the keys: a log goes places the

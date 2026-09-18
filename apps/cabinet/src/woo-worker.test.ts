@@ -64,6 +64,7 @@ const connection = (accountId = "acc_1"): WooConnection => ({
   consumerKey: "ck_abc",
   consumerSecret: "cs_def",
   permissions: "read_write",
+  revision: "grant_1",
   connectedAt: new Date("2026-09-14T12:00:00.000Z"),
 });
 
@@ -191,7 +192,21 @@ describe("one paid order, in the merchant's own shop", () => {
       MERCHANT_EMAIL,
       filling(shops, async () => ({ ok: false, why: "gone", again: false })),
     );
-    expect(await shops.claimOrder("acc_1", "ord_1", new Date())).toEqual({ kind: "ours" });
+    expect(
+      await shops.claimOrder(
+        "acc_1",
+        "ord_1",
+        {
+          shopOrigin: "https://shop.example.com",
+          connectionRevision: "grant_1",
+          merchantItemId: "woo_merchant_11",
+          productId: "11",
+          amount: "25.00",
+          currency: "USD",
+        },
+        new Date(),
+      ),
+    ).toEqual({ kind: "ours" });
   });
 
   it("answers nothing at all when the shop did not answer either", async () => {
@@ -489,29 +504,29 @@ describe("the whole way through, against a real gateway", () => {
       },
     } as never;
     const turned = await turnOnce(connection(), {
-        shops: memoryWooShops(),
-        identity: {
-          byId: async () => ({
-            id: "p",
-            email: MERCHANT_EMAIL,
-            confirmed: true,
-            merchant: { id: open?.merchant.id ?? "", key: KEY },
-          }),
-        },
-        clientFor: () => gateway,
-        now: () => new Date("2026-09-14T12:00:00.000Z"),
-        waitSeconds: 1,
-        quote: async () => ({
-          available: true,
-          price: { amount: "25.00", currency: "USD" },
-          as_of: "2026-09-14T12:00:00.000Z",
+      shops: memoryWooShops(),
+      identity: {
+        byId: async () => ({
+          id: "p",
+          email: MERCHANT_EMAIL,
+          confirmed: true,
+          merchant: { id: open?.merchant.id ?? "", key: KEY },
         }),
-        eligibleProduct: async () => ({
-          productId: "11",
-          downloadId: "dl_guide",
-          fileName: "Guide",
-        }),
-      });
+      },
+      clientFor: () => gateway,
+      now: () => new Date("2026-09-14T12:00:00.000Z"),
+      waitSeconds: 1,
+      quote: async () => ({
+        available: true,
+        price: { amount: "25.00", currency: "USD" },
+        as_of: "2026-09-14T12:00:00.000Z",
+      }),
+      eligibleProduct: async () => ({
+        productId: "11",
+        downloadId: "dl_guide",
+        fileName: "Guide",
+      }),
+    });
     expect(turned).toBe(1);
     expect(answered).toEqual(["quote"]);
   });

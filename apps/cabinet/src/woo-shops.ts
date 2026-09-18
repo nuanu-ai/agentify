@@ -45,7 +45,27 @@ export interface WooConnection {
   readonly consumerSecret: string;
   /** What the shop says the keys are good for — `read_write`, or less. */
   readonly permissions: string;
+  readonly revision: string;
   readonly connectedAt: Date;
+}
+
+export interface WooOrderFacts extends Readonly<Record<string, unknown>> {
+  readonly shopOrigin: string;
+  readonly connectionRevision: string;
+  readonly merchantItemId: string;
+  readonly productId: string;
+  readonly amount: string;
+  readonly currency: string;
+}
+
+export interface WooPermission extends Readonly<Record<string, unknown>> {
+  readonly shopOrigin: string;
+  readonly productId: string;
+  readonly orderKey: string;
+  readonly downloadId: string;
+  readonly fileName: string;
+  readonly emailUid: string;
+  readonly orderNumber: string;
 }
 
 /**
@@ -67,7 +87,7 @@ export type OrderClaim =
       readonly kind: "placed";
       readonly id: string;
       readonly number: string;
-      readonly result: Readonly<Record<string, unknown>>;
+      readonly permission: WooPermission;
     }
   | { readonly kind: "unknown"; readonly attemptedAt: Date };
 
@@ -129,16 +149,26 @@ export interface WooShops {
    * instead would make this row the place two merchants' sales meet, and one
    * buyer would be handed the other merchant's shop order number.
    */
-  claimOrder(accountId: string, orderId: string, now: Date): Promise<OrderClaim>;
+  claimOrder(
+    accountId: string,
+    orderId: string,
+    facts: WooOrderFacts,
+    now: Date,
+  ): Promise<OrderClaim>;
   knownOrder(orderId: string): Promise<Exclude<OrderClaim, { kind: "ours" }> | null>;
-  recordPrecreateRefusal(accountId: string, orderId: string, now: Date): Promise<void>;
+  recordPrecreateRefusal(
+    accountId: string,
+    orderId: string,
+    facts: WooOrderFacts,
+    now: Date,
+  ): Promise<void>;
   /** Completes a claim with what the shop answered. */
   recordOrder(
     orderId: string,
     placed: {
       id: string;
       number: string;
-      result: Readonly<Record<string, unknown>>;
+      permission: WooPermission;
     },
     now: Date,
   ): Promise<void>;
@@ -209,6 +239,7 @@ export const postgresWooShops = (pool: Pool): WooShops => {
           consumerKey: connection.consumerKey,
           consumerSecret: connection.consumerSecret,
           permissions: connection.permissions,
+          revision: connection.revision,
           connectedAt: connection.connectedAt,
         })
         .onConflictDoUpdate({
@@ -218,6 +249,7 @@ export const postgresWooShops = (pool: Pool): WooShops => {
             consumerKey: connection.consumerKey,
             consumerSecret: connection.consumerSecret,
             permissions: connection.permissions,
+            revision: connection.revision,
             connectedAt: connection.connectedAt,
           },
         });
@@ -236,10 +268,10 @@ export const postgresWooShops = (pool: Pool): WooShops => {
       return await db.select().from(wooShops);
     },
 
-    async claimOrder(accountId, orderId, now) {
+    async claimOrder(accountId, orderId, facts, now) {
       const [claimed] = await db
         .insert(wooOrders)
-        .values({ orderId, accountId, attemptedAt: now })
+        .values({ orderId, accountId, facts, attemptedAt: now })
         .onConflictDoNothing({ target: wooOrders.orderId })
         .returning();
       if (claimed !== undefined) {
@@ -261,7 +293,7 @@ export const postgresWooShops = (pool: Pool): WooShops => {
           kind: "placed",
           id: row.wooOrderId,
           number: row.wooOrderNumber,
-          result: row.result,
+          permission: row.result as unknown as WooPermission,
         };
       }
       return { kind: "unknown", attemptedAt: row.attemptedAt };
@@ -276,16 +308,16 @@ export const postgresWooShops = (pool: Pool): WooShops => {
           kind: "placed",
           id: row.wooOrderId,
           number: row.wooOrderNumber,
-          result: row.result,
+          permission: row.result as unknown as WooPermission,
         };
       }
       return { kind: "unknown", attemptedAt: row.attemptedAt };
     },
 
-    async recordPrecreateRefusal(accountId, orderId, now) {
+    async recordPrecreateRefusal(accountId, orderId, facts, now) {
       await db
         .insert(wooOrders)
-        .values({ orderId, accountId, phase: "precreate_refused", attemptedAt: now })
+        .values({ orderId, accountId, phase: "precreate_refused", facts, attemptedAt: now })
         .onConflictDoNothing({ target: wooOrders.orderId });
     },
 
@@ -296,7 +328,7 @@ export const postgresWooShops = (pool: Pool): WooShops => {
           phase: "placed",
           wooOrderId: placed.id,
           wooOrderNumber: placed.number,
-          result: placed.result,
+          result: placed.permission,
           placedAt: now,
         })
         .where(eq(wooOrders.orderId, orderId));
@@ -308,7 +340,13 @@ export const postgresWooShops = (pool: Pool): WooShops => {
       // next repeat place a second one.
       await db
         .delete(wooOrders)
-        .where(and(eq(wooOrders.orderId, orderId), isNull(wooOrders.wooOrderId)));
+        .where(
+          and(
+            eq(wooOrders.orderId, orderId),
+            eq(wooOrders.phase, "create_unknown"),
+            isNull(wooOrders.wooOrderId),
+          ),
+        );
     },
   };
 };
@@ -331,10 +369,11 @@ export const memoryWooShops = (): WooShops => {
       accountId: string;
       attemptedAt: Date;
       phase: "precreate_refused" | "create_unknown" | "placed";
+      facts: WooOrderFacts;
       placed: {
         id: string;
         number: string;
-        result: Readonly<Record<string, unknown>>;
+        permission: WooPermission;
       } | null;
     }
   >();
@@ -397,13 +436,14 @@ export const memoryWooShops = (): WooShops => {
       return [...shops.values()];
     },
 
-    async claimOrder(accountId, orderId, now) {
+    async claimOrder(accountId, orderId, facts, now) {
       const found = orders.get(orderId);
       if (found === undefined) {
         orders.set(orderId, {
           accountId,
           attemptedAt: now,
           phase: "create_unknown",
+          facts,
           placed: null,
         });
         return { kind: "ours" };
@@ -416,7 +456,7 @@ export const memoryWooShops = (): WooShops => {
           kind: "placed",
           id: found.placed.id,
           number: found.placed.number,
-          result: found.placed.result,
+          permission: found.placed.permission,
         };
       }
       return { kind: "unknown", attemptedAt: found.attemptedAt };
@@ -431,18 +471,19 @@ export const memoryWooShops = (): WooShops => {
           kind: "placed",
           id: found.placed.id,
           number: found.placed.number,
-          result: found.placed.result,
+          permission: found.placed.permission,
         };
       }
       return { kind: "unknown", attemptedAt: found.attemptedAt };
     },
 
-    async recordPrecreateRefusal(accountId, orderId, now) {
+    async recordPrecreateRefusal(accountId, orderId, facts, now) {
       if (!orders.has(orderId)) {
         orders.set(orderId, {
           accountId,
           attemptedAt: now,
           phase: "precreate_refused",
+          facts,
           placed: null,
         });
       }
@@ -457,7 +498,7 @@ export const memoryWooShops = (): WooShops => {
 
     async releaseOrder(orderId) {
       const found = orders.get(orderId);
-      if (found !== undefined && found.placed === null) {
+      if (found !== undefined && found.phase === "create_unknown" && found.placed === null) {
         orders.delete(orderId);
       }
     },

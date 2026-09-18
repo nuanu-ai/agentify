@@ -39,6 +39,7 @@ import type {
 } from "@nuanu-ai/agentify-contracts";
 import type { GatewayClient } from "./gateway.js";
 import type { Identity } from "./identity.js";
+import { productIdFromMerchantItem } from "./woo-catalog.js";
 import {
   createTheOrderInTheShop,
   inspectProductInTheShop,
@@ -46,7 +47,7 @@ import {
   type ShopKeys,
   type SoldItem,
 } from "./woo-shop.js";
-import type { WooConnection, WooShops } from "./woo-shops.js";
+import type { WooConnection, WooOrderFacts, WooPermission, WooShops } from "./woo-shops.js";
 
 /** What filling one order needs beyond the order and the connection. */
 export interface Filling {
@@ -88,7 +89,7 @@ export const fillFromTheShop = async (
 ): Promise<HandlerAnswer | null> => {
   const place = parts.placeOrder ?? createTheOrderInTheShop;
   const known = await parts.shops.knownOrder(order.id);
-  if (known?.kind === "placed") return { delivered: known.result };
+  if (known?.kind === "placed") return { delivered: deliveryFrom(known.permission) };
   if (known?.kind === "precreate_refused") {
     return {
       refused: {
@@ -107,12 +108,23 @@ export const fillFromTheShop = async (
       : null;
   const eligible =
     inspected === null
-      ? (await parts.eligibleProduct?.(connection, order.merchant_item_id)) ?? null
+      ? ((await parts.eligibleProduct?.(connection, order.merchant_item_id)) ?? null)
       : inspected.ok
         ? inspected.product
         : null;
+  const facts: WooOrderFacts = {
+    shopOrigin: new URL(connection.shopUrl).origin,
+    connectionRevision: connection.revision,
+    merchantItemId: order.merchant_item_id,
+    productId:
+      eligible?.productId ??
+      productIdFromMerchantItem(connection.shopUrl, order.merchant_item_id) ??
+      "",
+    amount: order.price.amount,
+    currency: order.price.currency,
+  };
   if (eligible === null) {
-    await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, parts.now());
+    await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
     return {
       refused: {
         code: "cannot_fulfill",
@@ -121,13 +133,17 @@ export const fillFromTheShop = async (
       },
     };
   }
-  if (eligible.price !== undefined &&
-      (eligible.price.amount !== order.price.amount || eligible.price.currency !== order.price.currency)) {
-    await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, parts.now());
+  if (
+    eligible.price !== undefined &&
+    (eligible.price.amount !== order.price.amount ||
+      eligible.price.currency !== order.price.currency)
+  ) {
+    await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
     return {
       refused: {
         code: "cannot_fulfill",
-        message: "The shop's product or price changed after this purchase was quoted, so no WooCommerce order was created.",
+        message:
+          "The shop's product or price changed after this purchase was quoted, so no WooCommerce order was created.",
       },
     };
   }
@@ -142,7 +158,7 @@ export const fillFromTheShop = async (
       `[cabinet] the shop at ${connection.shopUrl} granted ${JSON.stringify(connection.permissions)}` +
         " access, which cannot create an order, so every sale on it is refused",
     );
-    await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, parts.now());
+    await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
     return {
       refused: {
         code: "cannot_fulfill",
@@ -153,12 +169,12 @@ export const fillFromTheShop = async (
     };
   }
 
-  const claim = await parts.shops.claimOrder(connection.accountId, order.id, parts.now());
+  const claim = await parts.shops.claimOrder(connection.accountId, order.id, facts, parts.now());
 
   if (claim.kind === "placed") {
     // The same sale, handed over a second time. The shop already has the order
     // and the buyer gets the same number they would have got the first time.
-    return { delivered: claim.result };
+    return { delivered: deliveryFrom(claim.permission) };
   }
 
   if (claim.kind === "precreate_refused") {
@@ -188,17 +204,21 @@ export const fillFromTheShop = async (
   });
 
   if (made.ok) {
-    const result = {
-      download_url: downloadUrlFor(connection.shopUrl, eligible.productId, made, orderEmail),
-      file_name: eligible.fileName,
-      order_number: made.number,
+    const permission: WooPermission = {
+      shopOrigin: new URL(connection.shopUrl).origin,
+      productId: eligible.productId,
+      orderKey: made.orderKey,
+      downloadId: made.downloadId,
+      fileName: eligible.fileName,
+      emailUid: createHash("sha256").update(orderEmail).digest("hex"),
+      orderNumber: made.number,
     };
     await parts.shops.recordOrder(
       order.id,
-      { id: made.id, number: made.number, result },
+      { id: made.id, number: made.number, permission },
       parts.now(),
     );
-    return { delivered: result };
+    return { delivered: deliveryFrom(permission) };
   }
 
   if (made.again) {
@@ -249,21 +269,20 @@ const unknownCreation = (orderId: string, shopUrl: string, attemptedAt: Date): H
   };
 };
 
-const downloadUrlFor = (
-  shopUrl: string,
-  productId: string,
-  order: Extract<OrderMade, { ok: true }>,
-  email: string,
-): string => {
-  const address = new URL(shopUrl);
+const deliveryFrom = (permission: WooPermission): Record<string, unknown> => {
+  const address = new URL(permission.shopOrigin);
   address.pathname = "/";
   address.search = new URLSearchParams({
-    download_file: productId,
-    order: order.orderKey,
-    uid: createHash("sha256").update(email).digest("hex"),
-    key: order.downloadId,
+    download_file: permission.productId,
+    order: permission.orderKey,
+    uid: permission.emailUid,
+    key: permission.downloadId,
   }).toString();
-  return address.toString();
+  return {
+    download_url: address.toString(),
+    file_name: permission.fileName,
+    order_number: permission.orderNumber,
+  };
 };
 
 /** What the loop needs to fill one connected shop's orders. */

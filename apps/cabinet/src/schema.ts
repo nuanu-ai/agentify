@@ -367,6 +367,8 @@ export const wooShops = pgTable("cabinet_woo_shops", {
    * of letting the merchant find out from a refunded buyer.
    */
   permissions: text("permissions").notNull(),
+  /** Opaque identifier for this grant; changes on every reconnect. */
+  revision: text("revision").notNull().default("legacy"),
   connectedAt: moment("connected_at"),
 });
 
@@ -398,7 +400,9 @@ export const wooOrders = pgTable(
     wooOrderId: text("woo_order_id"),
     /** The number the merchant reads on their own screen. */
     wooOrderNumber: text("woo_order_number"),
-    /** Exact safe goods returned on every redelivery; contains no raw source URL or email. */
+    /** Immutable sold facts and the connection revision that accepted them. */
+    facts: jsonb("facts").$type<Record<string, unknown>>(),
+    /** Permission ingredients only; never the full bearer URL or an email. */
     result: jsonb("result").$type<Record<string, unknown>>(),
     attemptedAt: moment("attempted_at"),
     placedAt: timestamp("placed_at", { withTimezone: true, mode: "date" }),
