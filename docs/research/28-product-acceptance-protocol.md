@@ -13,7 +13,19 @@ Using an operator-owned merchant at the public boundary, prove the complete curr
 - WooCommerce, broad scanning, production promotion and a new buyer or SDK surface are outside this run.
 - An authorized source fix changes the candidate: record the failure, deploy the final SHA and rerun the complete affected path on that SHA. Never combine versions into one pass.
 
-Auth work may begin once the candidate and mailbox are known. A missing funded buyer blocks only paid rows. Before the first paid row, operations records the buyer workflow, amount, network and asset, and where settlement and receipt will be observed. The guarded one-item wrapper around `pnpm smoke:bootstrap <item-id> --confirm` sets both `SMOKE_MAX_USD=0.01` and `SMOKE_TOTAL_USD=0.01`; it must refuse mainnet and self-pay. Its durable attempt ledger allows at most five attempts across processes, which enforces the `0.05` aggregate cap. Its exit also judges Coinbase Bazaar listing, so an observed `settled:` transaction and the listing verdict are recorded separately.
+Auth work may begin once the candidate and mailbox are known. A missing funded buyer blocks only paid rows. Before the first paid row, operations records the buyer workflow, amount, network and asset, and where settlement and receipt will be observed. The private consumer harness uses `makeStandBuyer` with `baseUrl: "https://test.agentify.ad"` and `maxUsd: 0.01`; it refuses any challenge outside `eip155:84532`, Base Sepolia USDC, or whose buyer equals its payee. Before every signature it holds an exclusive lock, durably reserves the attempt, and refuses a reservation that would take all signed or unresolved attempts above `0.05` test USDC. A lock left by an interrupted process is never removed until the public order and buyer balance have been reconciled. No harness path retries a paid request automatically.
+
+### Recovering a delivered but unsettled order
+
+This is an operator recipe for the private consumer harness, not an SDK feature or a public command. Before the original signature, persist the exact nonsecret `PaymentRequired`, the item, order, parameters and buyer address in the capped ledger. If that call becomes `delivered_unpaid`, stop the merchant worker and keep it stopped: recovery must not invoke the handler or provision again.
+
+Under the ledger lock, the recovery path performs these checks before it signs anything:
+
+1. The latest durable outcome for the named order and the public `buyer.status(orderId)` are both `delivered_unpaid`; the public `delivered` field is `null`.
+2. The current `buyer.askPrice(itemId)` returns one TEST `exact` challenge for at most `10000` atomic USDC. Network, asset, payee, resource URL and every Bazaar field equal the held challenge. Only the held challenge's `extra.order_id` and the current probe's explanatory `error` are removed for this comparison.
+3. The key still derives the buyer recorded in the ledger, the held `extra.order_id` is the requested order, buyer and payee differ, and reserving one more attempt keeps the durable aggregate at or below `50000` atomic USDC.
+
+Write the new attempt as `reserved` and sync it before calling `buyer.payFor(itemId, params, heldChallenge)` exactly once with a fresh authorization. Record `delivered`, `delivered_unpaid`, a refusal, or `unresolved`; a transport failure or a failure to persist the answer is `unresolved`, never proof that no payment occurred. Exit success means the same order answered `delivered` with a successful settlement. Then verify one new TEST receipt and unchanged handler/provision counts through the merchant surfaces. A second call requires a new explicit decision after reconciliation; it is not part of this recipe.
 
 The main alias has a limit of three link requests per hour. Use requests one and two for the independent browser sessions and reserve request three for reauthentication after the completed order is server-expired. Use one distinct, declared auth-edge alias for the expired unused link and any earlier session-expiry check. Test rate limiting in isolation; never edit a counter or global TTL.
 
