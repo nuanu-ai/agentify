@@ -66,11 +66,14 @@ These are source-proven current behavior, not predictions:
    be stored; the reconstructed result must be byte-identical.
 5. A successful asynchronous Woo hand-over returns `{delivered: result}` on the
    existing `answer_order` route. Once the exact result is durable, existing
-   at-least-once redelivery repairs a crash or lost answer. A definite refusal is
-   different: the order becomes `refund_due` and is not handed over again. Core
-   already permits direct late `deliver_order` to close that debt, but Cabinet
-   has no bounded operator path to validate/bind the Woo order and call it. That
-   private recovery command is a blocker; no public route or SDK change is owed.
+   at-least-once redelivery repairs a crash or lost answer. A definite refusal
+   makes the order `refund_due`; the gateway may hand it over again so late goods
+   can still close the debt. A worker seeing `precreate_refused` repeats the safe
+   refusal and makes no Woo POST. Only the explicit operator command may reopen
+   creation after a same-origin reconnect under a new revision. Core already
+   permits direct late `deliver_order` to close that debt, but Cabinet has no
+   bounded operator path to validate/bind the Woo order and call it. That private
+   recovery command is a blocker; no public route or SDK change is owed.
 
 There is no documented exact Woo order query by Agentify transaction id or
 metadata. The collection API offers only generic search. Initial code therefore
@@ -92,9 +95,9 @@ means the exact Woo order and permission result are durable.
 ## Safety and evidence
 
 - TEST only; zero real-money spend. Each signed attempt is at most `0.01` Base
-  Sepolia test USDC. A fresh durable ledger reserves at most five attempts and
-  `0.05` total; a crash consumes its reservation. Never run `pnpm buy` or
-  allow mainnet.
+  Sepolia test USDC. The dedicated durable ledger reserves exactly three
+  attempts and `0.03` total; a crash consumes its reservation. Never run the
+  repository's unbounded root `pnpm buy` command or allow mainnet.
 - The live paid matrix has exactly three planned authorizations: ordinary happy
   delivery, revoked-key pre-create refusal and recovery, and committed-create
   response loss followed by exact-id recovery. Recovery reuses the paid
@@ -137,7 +140,7 @@ and `LA` a deployed live acceptance step.
 | 13 | IT/LA | Ordinary capped purchase with worker active | Chain settlement precedes Woo POST. One paid Woo order has `set_paid`, exact `0.01 USD`, Agentify order id in transaction/meta, and merchant billing email only. One permission is granted. |
 | 14 | IT/LA | Fetch result with redirects disabled, then ordinarily; repeat after worker restart | Permission returns 200, expected filename/content disposition and exact SHA-256. Agentify is delivered with one receipt; result/bytes survive restart; no second Woo order. |
 | 15 | IT | Same order is redelivered before and after durable local result; `answer_order` response is lost once | At most one Woo POST/order/permission and one Agentify delivery/charge; redelivery returns the exact stored result through the existing answer route. |
-| 16 | CB/IT/LA | Woo commits, then its response is deliberately lost; isolated variants cover 5xx/408/429 and malformed 2xx/no id | Claim stays `create_unknown`, redelivery makes no second POST, and buyer sees refund debt rather than invented goods. Recovery requires an operator-supplied exact Woo id; zero/ambiguous/mismatched readback never reopens POST. |
+| 16 | CB/IT/LA | A TEST-only reverse-proxy rule, armed for one request and removed before the next, forwards the order POST until Woo commits and then closes the upstream response before Cabinet receives headers. Woo readback proves the one remote order while Cabinet records `create_unknown`. Isolated committed-remote fakes separately cover 5xx/408/429 and malformed 2xx/no id. No fault flag appears in product code or a public route. | Claim stays `create_unknown`, redelivery makes no second POST, and buyer sees refund debt rather than invented goods. Recovery requires an operator-supplied exact Woo id; zero/ambiguous/mismatched readback never reopens POST. |
 | 17 | CB/IT | Valid Woo create response, then local durable record fails | Redelivery makes no second Woo POST. Unresolved claim/refund debt survive restart; no permission result is guessed. |
 | 18 | CB/IT | Crash after durable Woo/result record but before `answer_order`, then lose one `answer_order` response | Existing stream redelivery reads the placed ledger result and answers byte-identically without another Woo POST. No open-order scanner or accept/deliver split is introduced. |
 | 19 | CB/IT/LA | Revoke Woo key before a separately capped purchase | Payment settles, authenticated preflight records `precreate_refused`, Woo creates nothing, buyer/Cabinet show `refund_due`, event/warning is visible, and no receipt/goods are claimed. |
