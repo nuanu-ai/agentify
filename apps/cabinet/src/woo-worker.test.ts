@@ -543,6 +543,56 @@ describe("the whole way through, against a real gateway", () => {
     expect(turned).toBe(1);
     expect(answered).toEqual(["quote"]);
   });
+
+  it("refuses a fresh quote before payment when the shop did not grant write access", async () => {
+    let answer: unknown;
+    const gateway = {
+      pollWorker: async () => ({
+        ok: true as const,
+        document: {
+          envelopes: [
+            {
+              id: "env_quote",
+              kind: "quote_request" as const,
+              sent_at: "2026-09-14T12:00:00.000Z",
+              payload: {
+                merchant_item_id: merchantItemIdFor("https://shop.example.com", "11"),
+                price_id: "prc_1",
+                purpose: "purchase" as const,
+                expires_at: "2026-09-14T12:01:00.000Z",
+              },
+            },
+          ],
+        },
+      }),
+      answerQuote: async (_id: string, said: unknown) => {
+        answer = said;
+        return { ok: true as const, document: { used: true } };
+      },
+      answerOrder: async () => {
+        throw new Error("no paid order may be drawn for a refused quote");
+      },
+    } as never;
+
+    await turnOnce({ ...connection(), permissions: "read" }, {
+      shops: memoryWooShops(),
+      identity: {
+        byId: async () => ({
+          id: "p",
+          email: MERCHANT_EMAIL,
+          confirmed: true,
+          merchant: { id: "mer_1", key: KEY },
+        }),
+      },
+      clientFor: () => gateway,
+      now: () => new Date("2026-09-14T12:00:00.000Z"),
+      quote: async () => {
+        throw new Error("a connection that cannot write must be refused before the shop is read");
+      },
+    });
+
+    expect(answer).toMatchObject({ available: false });
+  });
 });
 
 describe("the worker that keeps every connected shop served", () => {
