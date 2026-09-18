@@ -246,6 +246,37 @@ describe("one paid order, in the merchant's own shop", () => {
     expect(shop.placed).toHaveLength(0);
     expect(answer && "refused" in answer).toBe(true);
   });
+
+  it("does not reopen a definite pre-create refusal on worker redelivery", async () => {
+    const shops = memoryWooShops();
+    const shop = aShopThatAccepts();
+    let supported = false;
+    const parts = {
+      ...filling(shops, shop.place),
+      eligibleProduct: async () =>
+        supported
+          ? {
+              productId: "11",
+              downloadId: "dl_guide",
+              fileName: "Guide",
+              price: { amount: "25.00", currency: "USD" },
+            }
+          : null,
+    };
+
+    const refused = await fillFromTheShop(anOrder(), connection(), MERCHANT_EMAIL, parts);
+    supported = true;
+    const redelivered = await fillFromTheShop(
+      anOrder(),
+      { ...connection(), consumerKey: "ck_reconnected" },
+      MERCHANT_EMAIL,
+      parts,
+    );
+
+    expect(refused && "refused" in refused).toBe(true);
+    expect(redelivered && "refused" in redelivered).toBe(true);
+    expect(shop.placed).toHaveLength(0);
+  });
 });
 
 describe("the whole way through, against a real gateway", () => {
