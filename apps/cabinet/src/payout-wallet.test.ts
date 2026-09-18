@@ -132,9 +132,7 @@ describe("the block on the settings screen", () => {
   });
 
   it("names Base Sepolia and test USDC on the test stack", () => {
-    const text = readable(
-      payoutWalletBlock({ ...looking({ wallet: null }), mode: "test" }),
-    );
+    const text = readable(payoutWalletBlock({ ...looking({ wallet: null }), mode: "test" }));
 
     expect(text).toContain("Base Sepolia");
     expect(text).toContain("test USDC");

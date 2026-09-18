@@ -527,9 +527,7 @@ const testWarning = (receipts: ReceiptList, mode: Viewer["mode"]): string => {
       : mode === "sandbox"
         ? "no payment settled and no real money moved."
         : "no real money moved.";
-  return `<p class="problem">${escaped(
-    `${subject}: ${consequence}`,
-  )}</p>`;
+  return `<p class="problem">${escaped(`${subject}: ${consequence}`)}</p>`;
 };
 
 const countOf = (many: number, thing: string): string => `${many} ${thing}${many === 1 ? "" : "s"}`;
