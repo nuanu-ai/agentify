@@ -154,7 +154,7 @@ const noKeysYet = (state: ShopState): string => {
   return "";
 };
 
-const WHAT_CONNECTING_DOES = `<p>Connecting reads your shop's catalogue and publishes what it finds as cards, so agents can buy your products. When one is bought, the order is created in your shop, marked paid, and appears in WooCommerce → Orders like any other.</p>
+const WHAT_CONNECTING_DOES = `<p>This connector is experimental and is not the SDK acceptance path. Its intended flow reads your shop's catalogue, publishes cards, and creates a paid WooCommerce order when a purchase reaches it.</p>
   <p class="quiet">Your shop asks you to approve this in its own screen, and it is your shop that hands us the keys — nothing here asks for a password of yours. New keys appear afterwards in WooCommerce → Settings → Advanced → REST API under the name Agentify, where you can revoke them whenever you like.</p>`;
 
 /** The page a merchant connects from, and comes back to. */
@@ -556,7 +556,7 @@ export const wooSettingsBlock = (base: string, state: ShopTile): string => {
       }
       <p><a href="${escaped(base)}/woocommerce">Your shop</a></p>`
         : state.kind === "none"
-          ? `<p>If your products live in a WooCommerce shop, connect it and your catalogue is published here for agents to buy. Orders are created in your shop, marked paid.</p>
+          ? `<p>The WooCommerce connector is experimental and is not the SDK acceptance path. Its intended flow publishes the catalogue as cards and creates a paid order when a purchase reaches it.</p>
       <p><a href="${escaped(base)}/woocommerce">Connect a WooCommerce shop</a></p>`
           : `${noKeysYet(state)}
       <p><a href="${escaped(base)}/woocommerce">${state.kind === "waiting" ? "Check the connection" : "Connect again"}</a></p>`;

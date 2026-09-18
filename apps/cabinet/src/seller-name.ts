@@ -35,9 +35,8 @@ import { wooSettingsBlock } from "./woo-screens.js";
  * so that the common case is a name that fits.
  */
 export const NAME_RULE =
-  "The name your products are sold under is at most 32 characters, all of them ordinary" +
-  " keyboard characters, with no space at either end. That is the rule of the catalogue that" +
-  " will list you under it, not ours.";
+  "Use 1 to 32 characters of printable ASCII: Latin letters, numbers, spaces or common punctuation," +
+  " with no space at either end.";
 
 /**
  * What somebody is told whose name the catalogue would not carry.
@@ -52,8 +51,8 @@ export const NAME_RULE =
  * reading an API response and names a route rather than a page.
  */
 export const NAME_REFUSED =
-  "That is not a name the catalogue will carry, so it was not saved. The rule it has to keep" +
-  " to is printed on this page.";
+  "Use 1 to 32 characters of printable ASCII (Latin letters, numbers, spaces or common punctuation)" +
+  " with no space at either end. Your name was not saved.";
 
 /** What somebody who pressed the button with an empty box is told, first time. */
 export const NAME_NEEDED =
@@ -71,10 +70,8 @@ export const NAME_NEEDED =
  * it leaves the cards where they are, so a merchant can put them back.
  */
 export const NAME_CANNOT_BE_TAKEN_AWAY =
-  "This name cannot be emptied. A product on sale with nobody named beside it reaches a buyer" +
-  " inside a request to pay somebody the request does not name, so there is no way here to go" +
-  " back to having none. To come off sale, stop your selling from the cards screen: your cards" +
-  " stay where they are and one press puts them back.";
+  "This name cannot be empty while you have a merchant. To come off sale, stop your selling on the" +
+  " Cards screen; your cards stay there until you resume.";
 
 /** What is wrong with a name somebody typed, in a sentence, or null. */
 export const whatIsWrongWithTheName = (name: string): string | null =>
@@ -88,8 +85,7 @@ export const whatIsWrongWithTheName = (name: string): string | null =>
  * merchant who writes their catalogue into this box ends up listed under their
  * own stock list, and nothing further down the line corrects it.
  */
-const WHAT_IT_IS_FOR = `<p>Buyers see this name beside your products, and it is the name on the payment they are asked to approve. Somebody who has never heard of you reads it and decides from it whether to go through with the purchase.</p>
-  <p class="quiet">Write the name people already know you by rather than a description of what you sell: a shop selling VPN plans, eSIMs and virtual numbers is listed under its own name, not under &#8220;VPN plans and eSIMs&#8221;.</p>`;
+const WHAT_IT_IS_FOR = `<p>Buyers see this seller name beside your products and in the payment they approve. Use the name people already know you by, rather than a description of what you sell.</p>`;
 
 /**
  * The screen a merchant lands on the moment their account exists.
@@ -99,7 +95,12 @@ const WHAT_IT_IS_FOR = `<p>Buyers see this name beside your products, and it is 
  * is a link and not a hidden field: whoever skips goes to their cards, which is
  * where the same fact is waiting for them with the page that fixes it.
  */
-export const chooseNameScreen = (base: string, mode: Viewer["mode"], problem?: string): string =>
+export const chooseNameScreen = (
+  base: string,
+  mode: Viewer["mode"],
+  problem?: string,
+  typed = "",
+): string =>
   bare(
     base,
     "The name your products are sold under",
@@ -108,10 +109,10 @@ export const chooseNameScreen = (base: string, mode: Viewer["mode"], problem?: s
   <h1>${brandLockup("/")}</h1>
   <p>Your account is ready. Choose the seller name buyers will see.</p>
   <label for="seller_name">The name your products are sold under</label>
-  <input id="seller_name" name="seller_name" type="text" autocomplete="organization" maxlength="32" autofocus required>
+  <input id="seller_name" name="seller_name" type="text" autocomplete="organization" maxlength="32" value="${escaped(typed)}" autofocus required>
+  ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
   <p class="quiet">${escaped(NAME_RULE)}</p>
   <button class="primary" type="submit">Use this name</button>
-  ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
   ${WHAT_IT_IS_FOR}
   <p class="quiet">You can change it whenever you like. Until it is set, nothing you publish goes on sale, and every screen in the cabinet says so.</p>
   <p class="quiet">Not decided yet? <a href="${escaped(base)}/cards">Leave it for now</a> — it is set under <a href="${escaped(base)}/settings">Settings</a> whenever you are ready.</p>
@@ -143,11 +144,11 @@ export const chooseNameScreen = (base: string, mode: Viewer["mode"], problem?: s
  * names which it is. Somebody landing here should be able to tell which part
  * they came for without reading the others.
  *
- * The name box is filled from what the gateway answered rather than from what
- * was last typed, so that a merchant refused for a name outside the rule is
- * still looking at what they are actually listed under.
+ * The name box normally shows what the gateway answered. After a refusal it
+ * keeps the rejected value so the merchant can correct it; the heading still
+ * says which name is actually saved.
  */
-export const settingsScreen = (viewer: Viewer, problem?: string): string => {
+export const settingsScreen = (viewer: Viewer, problem?: string, typedName?: string): string => {
   const { base } = viewer;
   const name = viewer.sellerName ?? null;
 
@@ -181,10 +182,10 @@ export const settingsScreen = (viewer: Viewer, problem?: string): string => {
   <form class="issue" method="post" action="${escaped(base)}/settings">
     <div>
       <label for="seller_name">The name buyers read</label>
-      <input id="seller_name" name="seller_name" type="text" autocomplete="organization" maxlength="32" value="${escaped(name ?? "")}" required>
+      <input id="seller_name" name="seller_name" type="text" autocomplete="organization" maxlength="32" value="${escaped(typedName ?? name ?? "")}" required>
+      ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
     </div>
     <button class="primary" type="submit">Save it</button>
-    ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
   </form>
   </section>
   <section class="settings-panel">${payoutWalletBlock(viewer)}</section>

@@ -124,15 +124,11 @@ describe("the block on the settings screen", () => {
     expect(readable(block).toLowerCase()).not.toMatch(/enter your (private key|recovery phrase)/);
   });
 
-  it("says what a missing address does and does not stop", () => {
-    // The consequence is not the same everywhere, and a screen that claimed it
-    // was would be telling a merchant on a preview that something is blocked
-    // which is not. Both halves are on the page: refused where the payments are
-    // real, and refused nowhere on a preview that settles nothing.
+  it("says a sandbox address is optional because nothing settles", () => {
     const text = readable(payoutWalletBlock(looking({ wallet: null })));
 
-    expect(text).toMatch(/refused wherever the payments are real/i);
-    expect(text).toMatch(/nothing settles/i);
+    expect(text).toMatch(/does not settle/i);
+    expect(text).toMatch(/optional/i);
   });
 
   it("names Base Sepolia and test USDC on the test stack", () => {

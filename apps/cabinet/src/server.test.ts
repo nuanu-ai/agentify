@@ -797,8 +797,7 @@ describe("choosing the name buyers read", () => {
     // What it is for, in terms somebody who has never seen a catalogue can act
     // on: buyers read it, beside the products.
     expect(text).toMatch(/buyers/i);
-    // One example of what a name looks like.
-    expect(text).toMatch(/eSIM/i);
+    expect(text).toMatch(/name people already know/i);
     // The rule the catalogue holds it to, before anybody types rather than
     // after a refusal.
     expect(text).toMatch(/32 characters/);

@@ -61,13 +61,9 @@ import type { Viewer } from "./screens.js";
  * do themselves is the only one there is.
  */
 export const WALLET_RULE =
-  "An address is 0x followed by forty characters, each of them a digit or a letter from a to f." +
-  " Paste it exactly as your wallet shows it, capitals and all, or write it all in lower case:" +
-  " those capitals are a check the address carries on itself, so a spelling that is neither of" +
-  " those two is refused rather than guessed at. It comes back written the way your wallet" +
-  " writes it. Past that check nothing here looks the address up anywhere, so this page cannot" +
-  " tell you that the address exists, that it is yours, or that anything has ever been paid to" +
-  " it — copy it from your wallet rather than typing it out.";
+  "Paste an EVM address: 0x followed by 40 hexadecimal characters. Use the mixed-case spelling" +
+  " from your wallet or all lower case. This checks its shape and checksum, not the network or" +
+  " who owns it, so copy it from your wallet rather than typing it.";
 
 /** What somebody who pressed the button with an empty box is told. */
 export const WALLET_NEEDED =
@@ -117,6 +113,8 @@ export interface PayoutWallet {
   readonly wallet: string | null;
   /** What was wrong with the address just typed, where one was refused. */
   readonly problem?: string;
+  /** What was refused, so the merchant can correct it rather than retype it. */
+  readonly typed?: string;
 }
 
 /**
@@ -164,15 +162,20 @@ export const payoutWalletBlock = (viewer: Viewer): string => {
   if (payout === undefined) {
     return "";
   }
-  const { wallet, problem } = payout;
+  const { wallet, problem, typed } = payout;
+  const purpose =
+    viewer.mode === "test"
+      ? "TEST settles test USDC on Base Sepolia to this address."
+      : viewer.mode === "live"
+        ? "LIVE settles real USDC on Base mainnet to this address."
+        : "SANDBOX does not settle a payment, so this address is optional here.";
 
   return `
   <div class="lede">
     <div>
       <h2>Where your money arrives</h2>
-      <p>Buyers pay you directly. The money goes from the buyer's wallet to this address, and Agentify never holds it: there is no balance here, nothing to withdraw, and no point on the way where the money sits with us.</p>
-      <p>The address is the only thing we ask for, and it is the only thing we can use. There is nowhere on this site to type a private key or a recovery phrase — the words your wallet told you to write down — and nobody here will ever ask you for one.</p>
-      <p class="quiet">A product published without this address is refused wherever the payments are real. On a preview, where nothing settles and no money moves, nothing is refused: an empty box there stops nothing, and a sale that goes through there has paid nobody.</p>
+      <p>${purpose} Agentify never holds a balance for you.</p>
+      <p class="quiet">Enter only the public address. Never enter a private key or recovery phrase; Agentify will never ask for either.</p>
     </div>
   </div>${wallet === null ? "" : savedAddress(wallet)}
   <div class="lede">
@@ -183,10 +186,10 @@ export const payoutWalletBlock = (viewer: Viewer): string => {
   <form class="issue" method="post" action="${escaped(base)}/settings/payout-wallet">
     <div>
       <label for="payout_wallet">${wallet === null ? "The address your money arrives at" : "Change it to a different address"}</label>
-      <input id="payout_wallet" name="payout_wallet" type="text" autocomplete="off" spellcheck="false" maxlength="42" size="42" required>
+      <input id="payout_wallet" name="payout_wallet" type="text" autocomplete="off" spellcheck="false" maxlength="42" size="42" value="${escaped(typed ?? "")}" required>
+      ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
     </div>
     <button class="primary" type="submit">${wallet === null ? "Save it" : "Change the address"}</button>
-    ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
   </form>
 `;
 };

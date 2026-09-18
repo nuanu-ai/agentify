@@ -275,7 +275,9 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     pageBase: string,
     settings: Settings,
     walletProblem?: string,
-  ): Viewer => viewingSettingsAt(request, pageBase, config.surfaceMode, settings, walletProblem);
+    walletTyped?: string,
+  ): Viewer =>
+    viewingSettingsAt(request, pageBase, config.surfaceMode, settings, walletProblem, walletTyped);
   const problemPage = (pageBase: string, said: string): string =>
     problemPageAt(pageBase, config.surfaceMode, said);
   const trouble = (response: Response, pageBase: string, answer: Answer<unknown>): void =>
@@ -864,7 +866,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       response
         .status(400)
         .type("html")
-        .send(chooseNameScreen(base, config.surfaceMode, wrong));
+        .send(chooseNameScreen(base, config.surfaceMode, wrong, typed));
       return;
     }
 
@@ -1013,7 +1015,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       response
         .status(400)
         .type("html")
-        .send(settingsScreen(viewingSettings(request, base, settings.document), wrong));
+        .send(settingsScreen(viewingSettings(request, base, settings.document), wrong, typed));
       return;
     }
 
@@ -1053,7 +1055,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       response
         .status(400)
         .type("html")
-        .send(settingsScreen(viewingSettings(request, base, settings.document, wrong)));
+        .send(settingsScreen(viewingSettings(request, base, settings.document, wrong, typed)));
       return;
     }
 
@@ -1634,11 +1636,13 @@ const viewingSettingsAt = (
   mode: Viewer["mode"],
   settings: Settings,
   walletProblem?: string,
+  walletTyped?: string,
 ): Viewer => ({
   ...viewingAt(request, base, mode, settings.sellerName),
   payout: {
     wallet: settings.payoutWallet,
     ...(walletProblem === undefined ? {} : { problem: walletProblem }),
+    ...(walletTyped === undefined ? {} : { typed: walletTyped }),
   },
   // Carried straight through, absence included: a cabinet with no store for
   // connections hands no shop here and the screen draws no block about one.
