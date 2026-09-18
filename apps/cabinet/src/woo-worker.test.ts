@@ -319,7 +319,9 @@ describe("the whole way through, against a real gateway", () => {
   });
 
   /** A WooCommerce answering `wc/v3` on loopback, remembering what it was sent. */
-  const aShopOnAPort = async (): Promise<{ url: string; orders: Record<string, unknown>[] }> => {
+  const aShopOnAPort = async (
+    emptySuccessfulBody = false,
+  ): Promise<{ url: string; orders: Record<string, unknown>[] }> => {
     const orders: Record<string, unknown>[] = [];
     shopServer = createServer((request, response) => {
       const chunks: Buffer[] = [];
@@ -329,7 +331,9 @@ describe("the whole way through, against a real gateway", () => {
         orders.push(sent);
         response.writeHead(201, { "content-type": "application/json" });
         response.end(
-          JSON.stringify({
+          emptySuccessfulBody
+            ? ""
+            : JSON.stringify({
             id: 13,
             number: "13",
             order_key: "wc_order_13",
@@ -346,7 +350,7 @@ describe("the whole way through, against a real gateway", () => {
                 total_tax: "0.00",
               },
             ],
-          }),
+              }),
         );
       });
     });
@@ -428,6 +432,34 @@ describe("the whole way through, against a real gateway", () => {
     expect(placed.transaction_id).toBe(status.order_id);
     expect(placed.line_items[0]?.product_id).toBe(11);
     expect(placed.line_items[0]?.total).toBe("25.00");
+  });
+
+  it("keeps a committed order unknown when its successful response body is lost", async () => {
+    const shop = await aShopOnAPort(true);
+    const shops = memoryWooShops();
+    const connected: WooConnection = { ...connection(), shopUrl: shop.url };
+    const parts = {
+      shops,
+      now: () => new Date("2026-09-14T12:00:00.000Z"),
+      placeOrder: (
+        keys: Parameters<typeof createTheOrderInTheShop>[0],
+        sold: Parameters<typeof createTheOrderInTheShop>[1],
+      ) => createTheOrderInTheShop(keys, sold, fetch),
+      eligibleProduct: async () => ({
+        productId: "11",
+        downloadId: "dl_guide",
+        fileName: "Guide",
+      }),
+    };
+
+    const first = await fillFromTheShop(anOrder(), connected, MERCHANT_EMAIL, parts);
+    const durable = await shops.knownOrder("ord_1");
+    const redelivery = await fillFromTheShop(anOrder(), connected, MERCHANT_EMAIL, parts);
+
+    expect(first).toBeNull();
+    expect(durable?.kind).toBe("unknown");
+    expect(shop.orders).toHaveLength(1);
+    expect(redelivery && "refused" in redelivery).toBe(true);
   });
 
   it("draws a quote and an order from the merchant stream and answers both", async () => {
