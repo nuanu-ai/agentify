@@ -88,7 +88,11 @@ private revision and fresh authoritative preflight.
 The three ledger phases name those facts. `precreate_refused` means an
 authenticated preflight failed before any order POST. `create_unknown` means
 the POST may have committed but no validated result is durable. `placed`
-means the exact Woo order and permission result are durable.
+means the exact Woo order and permission result are durable. The only allowed
+transitions are absent to either refusal or unknown, refusal to unknown through
+explicit recovery, and unknown to placed through exact validated binding.
+Unknown and placed never move backwards. Every phase keeps the order's accepted
+`price_id` and quote fingerprint; current drift is never saved as sold goods.
 
 ## Safety and evidence
 

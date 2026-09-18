@@ -121,15 +121,29 @@ export const fillFromTheShop = async (
       : inspected.ok
         ? inspected.product
         : null;
+  const quoted =
+    order.price_id === undefined
+      ? null
+      : parts.quotedProduct === undefined
+        ? await parts.shops.quotedProduct(
+            connection.accountId,
+            order.price_id,
+            order.merchant_item_id,
+          )
+        : await parts.quotedProduct(connection, order.price_id, order.merchant_item_id);
   const facts: WooOrderFacts = {
     shopOrigin: new URL(connection.shopUrl).origin,
     connectionRevision: connection.revision,
     merchantItemId: order.merchant_item_id,
+    priceId: order.price_id ?? "unbound-price-id",
     productId:
       eligible?.productId ??
       productIdFromMerchantItem(connection.shopUrl, order.merchant_item_id) ??
       "",
-    productFingerprint: eligible?.fingerprint ?? "",
+    // Recovery must restore the product the buyer accepted, never bless the
+    // changed product that caused this refusal. With no accepted quote there
+    // is deliberately no product fingerprint recovery can satisfy.
+    productFingerprint: quoted ?? "unbound-price-id",
     amount: order.price.amount,
     currency: order.price.currency,
   };
@@ -157,16 +171,6 @@ export const fillFromTheShop = async (
       },
     };
   }
-  const quoted =
-    order.price_id === undefined
-      ? null
-      : parts.quotedProduct === undefined
-        ? await parts.shops.quotedProduct(
-            connection.accountId,
-            order.price_id,
-            order.merchant_item_id,
-          )
-        : await parts.quotedProduct(connection, order.price_id, order.merchant_item_id);
   if (quoted === null || quoted !== eligible.fingerprint) {
     await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
     return {

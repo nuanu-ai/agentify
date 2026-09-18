@@ -10,6 +10,7 @@ const FACTS: WooOrderFacts = {
   shopOrigin: "https://shop.example.com",
   connectionRevision: "grant_1",
   merchantItemId: "woo_merchant_22",
+  priceId: "prc_1",
   productId: "22",
   productFingerprint: "accepted-download-fingerprint",
   amount: "0.01",
@@ -33,6 +34,7 @@ const gatewayOrder = (status: OrderWithStatus["status"]): OrderWithStatus => ({
     at: "2026-09-18T09:59:00.000Z",
     as_of: "2026-09-18T09:58:00.000Z",
   },
+  price_id: FACTS.priceId,
   test: true,
   status,
 });
@@ -59,6 +61,14 @@ const shopOrder = (changes: Partial<WooOrderRead> = {}): WooOrderRead => ({
 
 const setup = async (phase: "precreate_refused" | "create_unknown") => {
   const shops = memoryWooShops();
+  await shops.recordQuote(
+    "acc_1",
+    FACTS.priceId,
+    FACTS.merchantItemId,
+    FACTS.productFingerprint,
+    new Date("2026-09-18T11:00:00.000Z"),
+    NOW,
+  );
   await shops.connect({
     accountId: "acc_1",
     shopUrl: FACTS.shopOrigin,
@@ -225,6 +235,25 @@ describe("exact Woo order recovery", () => {
       readOrder: async () => ({
         ok: true,
         order: shopOrder({ transactionId: "some_other_order" }),
+      }),
+    });
+
+    expect(await recoverWooOrder({ orderId: "ord_1", wooOrderId: "13" }, test.value)).toMatchObject(
+      { ok: false, state: "refused" },
+    );
+    expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
+    expect(await shops.recoveryOrder("ord_1")).toMatchObject({
+      phase: "create_unknown",
+      placed: null,
+    });
+  });
+
+  it("does not bind an exact Woo order with a malformed duplicate Agentify id", async () => {
+    const shops = await setup("create_unknown");
+    const test = parts(shops, {
+      readOrder: async () => ({
+        ok: true,
+        order: shopOrder({ agentifyOrderIds: ["ord_1", { malformed: true }] }),
       }),
     });
 

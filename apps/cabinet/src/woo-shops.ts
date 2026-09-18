@@ -53,6 +53,7 @@ export interface WooOrderFacts extends Readonly<Record<string, unknown>> {
   readonly shopOrigin: string;
   readonly connectionRevision: string;
   readonly merchantItemId: string;
+  readonly priceId: string;
   readonly productId: string;
   readonly productFingerprint: string;
   readonly amount: string;
@@ -103,6 +104,11 @@ export type OrderClaim =
       readonly permission: WooPermission;
     }
   | { readonly kind: "unknown"; readonly attemptedAt: Date };
+
+// The ledger is monotone: absent may become precreate_refused or
+// create_unknown; explicit recovery alone moves precreate_refused to
+// create_unknown; validated binding alone moves create_unknown to placed; and
+// placed never changes. The store methods below are the transition boundary.
 
 export interface WooShops {
   /** Writes down a Connect that is under way. */
@@ -447,11 +453,7 @@ export const postgresWooShops = (pool: Pool): WooShops => {
       await db
         .insert(wooOrders)
         .values({ orderId, accountId, phase: "precreate_refused", facts, attemptedAt: now })
-        .onConflictDoUpdate({
-          target: wooOrders.orderId,
-          set: { phase: "precreate_refused", facts, attemptedAt: now },
-          setWhere: and(eq(wooOrders.phase, "create_unknown"), isNull(wooOrders.wooOrderId)),
-        });
+        .onConflictDoNothing({ target: wooOrders.orderId });
     },
 
     async recordOrder(orderId, placed, now) {
@@ -684,7 +686,7 @@ export const memoryWooShops = (): WooShops => {
 
     async recordPrecreateRefusal(accountId, orderId, facts, now) {
       const found = orders.get(orderId);
-      if (found === undefined || (found.phase === "create_unknown" && found.placed === null)) {
+      if (found === undefined) {
         orders.set(orderId, {
           accountId,
           attemptedAt: now,

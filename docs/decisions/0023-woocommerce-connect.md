@@ -52,6 +52,12 @@ failure after POST that does not validate a complete correlated result remains
 `create_unknown` and never reopens POST. A placed result can be delivered after
 disconnect or shop switch because it needs no Woo credential.
 
+The ledger is monotone. Absent becomes either `precreate_refused` or
+`create_unknown`; explicit recovery alone moves the former to the latter;
+validated binding alone moves `create_unknown` to `placed`; `placed` is final.
+Every phase retains the accepted `price_id` and its quote fingerprint, never a
+changed product observed while refusing or recovering the order.
+
 **A private exact-order command closes paid failures.** A pre-create refusal may
 make one POST only after the same origin reconnects under a new revision and
 the sold product still passes preflight. An unknown create requires an

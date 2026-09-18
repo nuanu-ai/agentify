@@ -80,6 +80,15 @@ export const recoverWooOrder = async (
     return deliverSaved(request.orderId, record.placed.id, record.placed.permission, gateway);
   }
 
+  const acceptedFingerprint = await parts.shops.quotedProduct(
+    record.accountId,
+    record.facts.priceId,
+    record.facts.merchantItemId,
+  );
+  if (acceptedFingerprint === null || acceptedFingerprint !== record.facts.productFingerprint) {
+    return refused("The saved WooCommerce sale does not match its accepted price question.");
+  }
+
   const connection = await parts.shops.connectionOf(record.accountId);
   if (connection === null || originOf(connection.shopUrl) !== record.facts.shopOrigin) {
     return refused("Reconnect the same WooCommerce shop before recovery.");
@@ -206,6 +215,7 @@ const deliverSaved = async (
 const sameSoldOrder = (order: OrderWithStatus, facts: WooOrderFacts, orderId: string): boolean =>
   order.id === orderId &&
   order.merchant_item_id === facts.merchantItemId &&
+  order.price_id === facts.priceId &&
   order.price.amount === facts.amount &&
   order.price.currency === facts.currency;
 

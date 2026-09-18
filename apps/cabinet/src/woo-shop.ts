@@ -95,7 +95,7 @@ export interface WooOrderRead {
   readonly subtotal: string;
   readonly lineTotal: string;
   readonly lineTax: string;
-  readonly agentifyOrderIds: readonly string[];
+  readonly agentifyOrderIds: readonly unknown[];
 }
 
 export type WooOrderLookup =
@@ -623,8 +623,8 @@ export const readTheOrderInTheShop = async (
       lineTotal: line.total,
       lineTax: line.total_tax,
       agentifyOrderIds: order.meta_data
-        .filter((one) => one.key === "agentify_order_id" && typeof one.value === "string")
-        .map((one) => String(one.value)),
+        .filter((one) => one.key === "agentify_order_id")
+        .map((one) => one.value),
     },
   };
 };

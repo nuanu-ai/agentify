@@ -18,6 +18,7 @@ const FACTS: WooOrderFacts = {
   shopOrigin: "https://shop.example.com",
   connectionRevision: "grant_1",
   merchantItemId: "woo_merchant_11",
+  priceId: "prc_1",
   productId: "11",
   productFingerprint: "accepted-download-fingerprint",
   amount: "25.00",
