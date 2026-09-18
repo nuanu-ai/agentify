@@ -20,8 +20,10 @@ paid happy path.
 
 The first supported class is deliberately narrow:
 
-- one published, purchasable, in-stock, unmanaged-stock Woo `simple` product;
+- one published, purchasable, in-stock, unmanaged-stock, not-sold-individually
+  Woo `simple` product;
 - `virtual=true`, `downloadable=true`, USD, exactly one enabled native file;
+- product tax status `none` and Woo tax calculation disabled;
 - unlimited download count and expiry;
 - Force Downloads, insecure redirect fallback off, download login off, and
   access after payment on;
@@ -109,6 +111,12 @@ means the exact Woo order and permission result are durable.
 - Use a new email alias and distinct TEST buyer/payee wallets. Change only the
   dedicated native-download product to `0.01 USD`; never buy a baseline gift
   card at its catalogue price.
+- Before attempt 1, freeze one secret-safe ledger row that binds Woo product 22,
+  its imported Agentify item id, buyer/payee public addresses and the expected
+  148-byte SHA-256
+  `92a457abce8665901afcf82e30afe432cf4f19f78035f3e3d763ddbd39f0c7c2`.
+  The account is a separate Agentify merchant; the existing Woo shop and admin
+  are reused after the authorized reset.
 - Record candidate SHA, UTC time, actor and evidence level: **Browser**, **Woo
   owner UI**, **Woo readback**, **Operator buyer**, **TEST chain**, **Cabinet**,
   or **Isolated failure**. Unit evidence is not deployed evidence.
@@ -127,24 +135,24 @@ and `LA` a deployed live acceptance step.
 |---|---|---|---|
 | 1 | LA | Reset and read baseline | Exactly five named gift cards, no Woo orders or Agentify REST keys, valid public TLS; Agentify TEST unchanged. |
 | 2 | LA | Cold `/` arrival, fresh email cabinet, name/wallet, reload, second tab and reauth | Merchant/Woo route is discoverable; one merchant persists; SDK is primary and Woo remains experimental. |
-| 3 | IT/LA | Blank, malformed, plain HTTP, query-bearing and nonexistent public Connect inputs; private addresses only in isolated refusal tests | Refusal occurs before navigation, preserves repairable input and never claims a connection. Do not probe a private address live. |
+| 3 | IT/LA | Blank, malformed, plain HTTP, query-bearing, non-root-path and nonexistent public Connect inputs; private or mixed public/private DNS only in isolated refusal tests | Refusal occurs before navigation, preserves repairable input and never claims a connection. Every Connect preflight, authenticated REST call, exact-id recovery GET and raw-file check resolves only public addresses, pins the approved address for the connection, preserves TLS host verification and refuses redirects before credentials or protected destinations can be followed. Do not probe a private address live. |
 | 4 | LA | Plain permalinks, abandoned/declined grant, Back/reload, expired cabinet session mid-grant | Permalink repair is named; abandoned grant leaves no key; callback remains account/shop-bound and reauth returns to the same merchant. |
 | 5 | IT/LA | Callback missing, expired, replayed or return URL opened by hand | No false connected state or leaked key/token; only the callback row proves success. |
 | 6 | CB/IT | Import the five baseline products | All five are skipped as non-downloadable goods; no order-number-only card is published. |
-| 7 | CB/IT | Authoritative gates: physical/variable/non-USD/out-of-stock/managed-stock, 0 or >1 file, finite limit/expiry, public/cross-origin raw file, login/redirect/fallback/access setting mismatch | Each unsupported fact is named and skipped. Missing/unreadable facts fail closed; no raw URL or buyer-email parameter is published. |
+| 7 | CB/IT | Authoritative gates: physical/variable/non-USD/out-of-stock/managed-stock/sold-individually/taxable, 0 or >1 file, finite limit/expiry, public/cross-origin raw file, taxes enabled, or login/redirect/fallback/access setting mismatch | Each unsupported fact is named and skipped before payment. Missing/unreadable facts fail closed; no raw URL or buyer-email parameter is published. |
 | 8 | IT/LA | Create owned one-file fixture, import, reimport unchanged, pause, reimport again | One stable origin-bound card is async with price check and three result fields; no duplicate; import never resumes a paused card. |
 | 9 | CB/IT | Import product 42 from shop A; reconnect same account to shop B with product 42; quote/buy A card | Origin mismatch is unavailable/refused; no request reaches B for A's card. |
 | 10 | IT | Change price/currency, stock, virtual/downloadable, file id/count/source, limit/expiry or global settings after import but before quote | Fresh authenticated quote returns current valid USD price or unavailable. Unsupported/stale state is refused before payment and Woo order. |
 | 11 | IT | Change one allowed fact after a successful quote but before paid order reaches Cabinet | No stale permission is invented. This residual post-payment race becomes visible `refund_due`; no delivery is claimed. |
 | 12 | IT | Payment verification/settlement fails or is unknowable before async hand-over | No Woo envelope, order, permission or delivery is created. Unknown payment is never retried. |
-| 13 | IT/LA | Ordinary capped purchase with worker active | Chain settlement precedes Woo POST. One paid Woo order has `set_paid`, exact `0.01 USD`, Agentify order id in transaction/meta, and merchant billing email only. One permission is granted. |
+| 13 | IT/LA | Ordinary capped purchase with worker active | Chain settlement precedes Woo POST. One paid Woo order has `set_paid`, exact `0.01 USD` order/line total, zero tax, Agentify order id in transaction/meta, and merchant billing email only. One permission is granted. Any post-create total/currency/line/tax mismatch remains unresolved and is never delivered. |
 | 14 | IT/LA | Fetch result with redirects disabled, then ordinarily; repeat after worker restart | Permission returns 200, expected filename/content disposition and exact SHA-256. Agentify is delivered with one receipt; result/bytes survive restart; no second Woo order. |
 | 15 | IT | Same order is redelivered before and after durable local result; `answer_order` response is lost once | At most one Woo POST/order/permission and one Agentify delivery/charge; redelivery returns the exact stored result through the existing answer route. |
-| 16 | CB/IT/LA | A TEST-only reverse-proxy rule, armed for one request and removed before the next, forwards the order POST until Woo commits and then closes the upstream response before Cabinet receives headers. Woo readback proves the one remote order while Cabinet records `create_unknown`. Isolated committed-remote fakes separately cover 5xx/408/429 and malformed 2xx/no id. No fault flag appears in product code or a public route. | Claim stays `create_unknown`, redelivery makes no second POST, and buyer sees refund debt rather than invented goods. Recovery requires an operator-supplied exact Woo id; zero/ambiguous/mismatched readback never reopens POST. |
+| 16 | CB/IT/LA | A temporary TEST-only WordPress MU hook uses `rest_pre_serve_request` after Woo has committed one exactly matched order. One atomically consumed option matches the dedicated merchant alias, product 22, `0.01 USD`, Agentify payment method and transaction/meta id; the hook suppresses only that successful REST body, then the hook and option are removed and their absence verified. Woo readback proves one remote order while Cabinet records `create_unknown`. Isolated committed-remote fakes separately cover 5xx/408/429 and malformed 2xx/no id. No fault flag appears in product code or a public route. | Claim stays `create_unknown`, redelivery makes no second POST, and buyer sees refund debt rather than invented goods. Recovery requires an operator-supplied exact Woo id; zero/ambiguous/mismatched readback never reopens POST. |
 | 17 | CB/IT | Valid Woo create response, then local durable record fails | Redelivery makes no second Woo POST. Unresolved claim/refund debt survive restart; no permission result is guessed. |
 | 18 | CB/IT | Crash after durable Woo/result record but before `answer_order`, then lose one `answer_order` response | Existing stream redelivery reads the placed ledger result and answers byte-identically without another Woo POST. No open-order scanner or accept/deliver split is introduced. |
-| 19 | CB/IT/LA | Revoke Woo key before a separately capped purchase | Payment settles, authenticated preflight records `precreate_refused`, Woo creates nothing, buyer/Cabinet show `refund_due`, event/warning is visible, and no receipt/goods are claimed. |
-| 20 | CB/IT/LA | Recover row 19 after same-origin reconnect; separately recover live row 16 with operator-supplied exact Woo id | Known pre-create path atomically claims one POST before sending it. Unknown path performs GET-by-id only and binds only an exact correlation. Both deliver the same Agentify order, return actual bytes, close debt, issue one receipt, and cause no second authorization, charge or order. Rerun is idempotent. |
+| 19 | CB/IT/LA | First prove revocation before quote is unavailable with zero payment. For the separately capped recovery case, obtain the valid quote, revoke the key before the settled order reaches Cabinet, then sign once. | The pre-quote case refuses before payment. In the post-quote case payment settles, authenticated preflight records `precreate_refused`, Woo creates nothing, buyer/Cabinet show `refund_due`, event/warning is visible, and no receipt/goods are claimed. |
+| 20 | CB/IT/LA | Recover row 19 after same-origin reconnect; separately recover live row 16 with operator-supplied exact Woo id | Known pre-create path requires a newer connection revision, exact accepted product/price and atomically claims one POST before sending it. If that one POST becomes ambiguous, phase becomes `create_unknown`, it is never posted again and only exact-id recovery may continue. Wrong/same revision, changed origin or newly unsupported product keeps debt and makes zero POST. Unknown path performs GET-by-id only and binds only an exact correlation. Both successful paths deliver the same Agentify order, return actual bytes, close debt, issue one receipt, and cause no second authorization, charge or order. Rerun is idempotent. |
 | 21 | IT/LA | Permission from clean unauthenticated client; missing/tampered order key, product id, download id and `uid`; another clean client uses intact URL | Intact bearer URL works for either possessor; every mutation fails. It contains no raw email/API key/raw file URL. Boundary is stated, not called wallet-bound. |
 | 22 | IT/LA | Request product raw file URL and inspect catalogue, Cabinet pages, logs and tracker-safe output | Actual Caddy-served raw URL is denied even if Woo settings say Force Downloads. If public, product is unsupported until merchant server protection is fixed. Full permission/order key/uid appears only in authorized order delivery/status. |
 | 23 | IT | Woo readback has wrong transaction/meta, product, total, currency, billing email, paid status or permission marker | Cabinet refuses to construct/deliver permission and leaves honest refund debt; it never substitutes current product data for sold order. |
@@ -170,7 +178,7 @@ across concurrent branches:
    retry statuses, malformed 2xx/no-id and post-create local failures are unknown
    and never release claims. Every ambiguous test injects a committed remote order.
 4. Extend the private Woo order ledger only enough to retain phase, normalized
-   shop origin, connection revision, immutable sold product/amount/currency,
+   root shop origin, connection revision, immutable sold product/amount/currency,
    Woo id/number and exact permission ingredients (order key, download id/name,
    `uid`) before Agentify is answered. Never store/log raw file URL. A `placed`
    claim reconstructs one byte-identical result.
@@ -211,6 +219,8 @@ files, finite permission limits/expiry, arbitrary external file stores and
 automatic catalogue removal are unsupported initially. COIN-23 still owns
 ongoing catalogue synchronization. A change between quote and fulfillment can
 create honest refund debt; it is tested and not described as pre-payment refusal.
+Woo installations below a URL subpath are refused at Connect; every accepted
+shop is bound to the root of one public HTTPS origin.
 An unknown create with no exact Woo id remains debt because the command never
 guesses that no remote order exists; that is a named support prerequisite, not
 permission to POST again.

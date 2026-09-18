@@ -10,8 +10,9 @@ project name does not migrate its WordPress data.
 This is the runbook for one person at a laptop: bring up a WooCommerce shop and
 a Agentify stack, connect the two through the cabinet, import the shop's
 catalogue, buy one of its products as an agent, and find the paid order in
-wp-admin. Every command below was run in this order on a clean stand, and the
-outputs quoted are what came back.
+wp-admin. Commands and unqualified output below were observed on the clean
+stand. The import refusal is explicitly marked where it was reconstructed and
+shortened rather than observed.
 
 It is a laboratory. Three things here exist only because the whole arrangement
 is on one machine, and each of them is marked where it appears; nothing in the
