@@ -497,13 +497,13 @@ and the owner of the business is told about that risk on [Money](/money).
 
 ## How an order can end
 
-An order always closes — with a delivery, with a refusal or on a deadline — and
-the agent sees which. Three cases leave the money unsettled, and all three are
-rare: the money was charged and no delivery happened; you delivered and the
-payment did not execute; and the payment network never said whether the charge
-went through. The first two keep the order open. The third closes it, on the
-guess that the money did not move — and if the charge reports in afterwards
-saying that it did, that closed order becomes a refund you owe.
+Most orders close with a delivery, a refusal or a deadline, and the agent sees
+which. Three rare cases leave the money unsettled: the money was charged and no
+delivery happened; you delivered and the payment did not execute; or the
+payment network never said whether the charge went through. The first two keep
+the order open. The third closes it on the guess that the money did not move —
+and if the charge reports in afterwards saying that it did, that closed order
+becomes a refund you owe.
 
 | Situation | Where the money is | What the agent sees |
 | --- | --- | --- |
@@ -560,7 +560,7 @@ and then the ten.
 | The agent has the price and is thinking | the price no longer holds; if it still wants to buy, it asks for a fresh one |
 | A request asking whether you will deliver has arrived | the order closed, and the buyer's money never moved |
 | The agent owes payment for a confirmed order | the order closed and you are free; an event comes to you |
-| You are delivering a synchronous order | the purchase did not happen and nothing was charged; a late delivery is not lost — a repeat collects it |
+| You are delivering a synchronous order | the purchase did not happen and nothing was charged; the same buyer can retry payment for that order with a fresh authorization, and the stored delivery is released only if it settles |
 | You are delivering an asynchronous order | the money is already with you, and the order is marked as needing a refund |
 
 ## Telling a repeat apart
@@ -668,9 +668,9 @@ through the tools rather than through a call of your own, and an answer whose
 goods do fit is taken — our side records the purchase as already closed, and
 your code is not told, because this is an answer we accept.
 
-The case is then invisible to you until the repeat arrives and pays for it —
-you have produced the goods, there is no payment for them yet, and it comes
-with the repeat.
+Your handler is not called again. The same buyer can retry payment for that
+order with a fresh authorization. If it settles, the stored delivery is
+released; until then you have produced the goods and no payment has arrived.
 
 ## The price changed while the agent was thinking
 
