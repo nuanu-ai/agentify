@@ -389,6 +389,9 @@ describe("the whole way through, against a real gateway", () => {
     const status = read.body as AgentOrderStatus;
     expect(status.status).toBe("delivered");
     expect(status.delivered).toMatchObject({ file_name: "Guide", order_number: "13" });
+    const durable = await shops.knownOrder(status.order_id);
+    expect(JSON.stringify(durable)).not.toContain("download_url");
+    expect(JSON.stringify(durable)).not.toContain(MERCHANT_EMAIL);
 
     // The merchant's side: one order in the shop, paid, carrying our own
     // identifier so that the two systems can be reconciled by hand.
