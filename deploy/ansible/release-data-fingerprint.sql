@@ -3,7 +3,10 @@
 -- excluded. The output contains no row values, credentials or customer IDs.
 -- Live approval is new operator metadata. Exclude only that key so adding its
 -- nullable column preserves the fingerprint of every pre-existing merchant
--- field. The reviewed approval set is reconciled separately before activation.
+-- field. Woo revision is likewise absent before migration 0009 and exactly
+-- "legacy" afterwards; only that migration-produced value is normalized.
+-- A real grant revision remains part of the protected row. The reviewed
+-- approval set is reconciled separately before activation.
 -- During the one-time identity transition only, the importer verifies exact
 -- account/token projections. All other customer fields retain this comparison.
 \if :{?identity_cutover}
@@ -14,6 +17,7 @@ SELECT format(
   'SELECT %L, count(*), coalesce(sum((''x'' || substr(md5((%s)::text), 1, 16))::bit(64)::bigint::numeric), 0) FROM public.%I t;',
   c.relname,
   CASE WHEN c.relname = 'merchants' THEN 'to_jsonb(t) - ''live_approved_at'''
+       WHEN c.relname = 'cabinet_woo_shops' THEN 'CASE WHEN to_jsonb(t)->>''revision'' = ''legacy'' THEN to_jsonb(t) - ''revision'' ELSE to_jsonb(t) END'
        WHEN :'identity_cutover'::boolean AND c.relname = 'leads' THEN 'to_jsonb(t) - ''scanner_auth_user_id'''
        ELSE 'to_jsonb(t)' END,
   c.relname
