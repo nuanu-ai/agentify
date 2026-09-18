@@ -35,6 +35,8 @@ describe("fresh report cabinet action", () => {
     expect(markup).toContain('type="hidden" name="email"');
     expect(markup).toContain('value="owner@example.com"');
     expect(markup).toContain("Email me a cabinet link");
+    expect(markup).toContain('href="/cabinet/cards"');
+    expect(markup).toContain("Already signed in? Open cabinet");
     expect(markup).not.toContain('name="token"');
   });
 });

@@ -23,13 +23,20 @@ export function ReportCabinetAction(props: CabinetActionProps) {
     );
   }
   return (
-    <form action="/cabinet/sign-in" method="post">
-      <input name="email" type="hidden" value={props.email} />
-      <input name="destination" type="hidden" value="default" />
-      <button className="button button-primary" type="submit">
-        Email me a cabinet link
-      </button>
-    </form>
+    <>
+      <form action="/cabinet/sign-in" method="post">
+        <input name="email" type="hidden" value={props.email} />
+        <input name="destination" type="hidden" value="default" />
+        <button className="button button-primary" type="submit">
+          Email me a cabinet link
+        </button>
+      </form>
+      <p>
+        <a className="button button-secondary" href="/cabinet/cards">
+          Already signed in? Open cabinet
+        </a>
+      </p>
+    </>
   );
 }
 
