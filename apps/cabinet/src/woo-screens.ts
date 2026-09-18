@@ -23,6 +23,7 @@ import { bare, brandLockup, escaped, page } from "./html.js";
 import type { Viewer } from "./screens.js";
 import type { SkippedProduct } from "./woo-catalog.js";
 import { GRANT_MINUTES } from "./woo-connect.js";
+import { PRODUCTS_AT_MOST } from "./woo-shop.js";
 import { moment } from "./words.js";
 
 /**
@@ -145,7 +146,7 @@ const minutesAgo = (minutes: number): string =>
 const noKeysYet = (state: ShopState): string => {
   if (state.kind === "waiting") {
     return `<p>You started connecting ${escaped(state.shopUrl)} ${escaped(minutesAgo(state.startedMinutesAgo))}, and no keys have reached us yet.</p>
-      <p class="quiet">The keys do not travel with your browser: your shop sends them to us in a request of its own, and it may not have arrived yet. Reload this page in a moment.</p>`;
+      <p class="quiet">If you approved, your shop sends the keys in a separate request; reload in a moment to see whether they arrived. If you declined or closed the approval screen, you can start again now.</p>`;
   }
   if (state.kind === "unanswered") {
     return `<p>You started connecting ${escaped(state.shopUrl)}, and no keys arrived from it in the ${GRANT_MINUTES} minutes we wait for them.</p>
@@ -154,8 +155,8 @@ const noKeysYet = (state: ShopState): string => {
   return "";
 };
 
-const WHAT_CONNECTING_DOES = `<p>This connector is experimental and is not the SDK acceptance path. Its intended flow reads your shop's catalogue, publishes cards, and creates a paid WooCommerce order when a purchase reaches it.</p>
-  <p class="quiet">Your shop asks you to approve this in its own screen, and it is your shop that hands us the keys — nothing here asks for a password of yours. New keys appear afterwards in WooCommerce → Settings → Advanced → REST API under the name Agentify, where you can revoke them whenever you like.</p>`;
+const WHAT_CONNECTING_DOES = `<p>This experimental connector sells one narrow kind of WooCommerce product in TEST: a published, tax-free USD virtual download with one protected file, unlimited access and no managed stock.</p>
+  <p class="quiet">Connect grants access to the shop. Import is a separate step that publishes supported products as cards. Your shop asks for approval on its own screen; Agentify never asks for your WooCommerce password.</p>`;
 
 /** The page a merchant connects from, and comes back to. */
 export const wooScreen = (viewer: Viewer, view: WooView): string => {
@@ -270,13 +271,13 @@ const theForm = (base: string, view: WooView): string => `  <div class="lede">
     <div>
       <h2>Connect your shop</h2>
       <p>Type the address you open your own shop at. Your browser goes there next, so that WooCommerce can ask you to approve.</p>
-      <p class="quiet">Two things have to be true of the shop before this works, and you are told which one is missing rather than being sent somewhere that looks broken. It has to be reachable over https, and its permalinks have to be set to anything other than Plain — the screen that grants access is served through a rewrite rule, and with Plain there is no rule to serve it.</p>
+      <p class="quiet">Use the public https address at the root of the shop. WooCommerce permalinks must be set to anything other than Plain.</p>
     </div>
   </div>
   <form class="issue" method="post" action="${escaped(base)}/woocommerce/connect">
     <div>
       <label for="shop_url">The address of your shop</label>
-      <input id="shop_url" name="shop_url" type="url" inputmode="url" placeholder="https://shop.example.com" value="${escaped(view.typed ?? "")}" required>
+      <input id="shop_url" name="shop_url" type="url" inputmode="url" placeholder="https://shop.example.com" value="${escaped(view.typed ?? (view.state.kind === "waiting" || view.state.kind === "unanswered" ? view.state.shopUrl : ""))}" required>
     </div>
     <button class="primary" type="submit">Connect</button>
     ${view.problem === undefined ? "" : `<p class="problem">${escaped(view.problem)}</p>`}
@@ -311,15 +312,15 @@ const theConnection = (
   <form class="issue" method="post" action="${escaped(base)}/woocommerce/import">
     <div>
       <label>Import the catalogue</label>
-      <p class="quiet">Reads every product your shop offers for sale and publishes each one as a card. Running it again republishes those cards rather than making a second set, so a price or a description you changed in your shop comes over: a card is keyed by the product's own identifier there.</p>
-      <p class="quiet">What it does not do is change what is on sale. A product you delete in your shop, or one that goes out of stock, is simply not in what this reads — the card published for it earlier stays where it is, and taking it off sale is one press on your cards screen.</p>
+      <p class="quiet">Reads up to ${PRODUCTS_AT_MOST} products and publishes only the supported single-file downloads described above. If the shop has more, the whole import is refused. Running it again updates the same cards.</p>
+      <p class="quiet">A card remains listed if its shop product is later deleted, out of stock or unsupported, but a fresh price check refuses it before payment. Pause cards you no longer want agents to see.</p>
     </div>
     <button class="primary" type="submit">Import the catalogue</button>
   </form>
   <form class="issue" method="post" action="${escaped(base)}/woocommerce/disconnect">
     <div>
       <label>Disconnect</label>
-      <p class="quiet">Forgets the keys your shop gave us. Nothing changes about your cards: they stay published, paused or not, and any still taking orders goes on taking them — but with no keys, no order can be filled from your shop, and each one fails. Stop all selling first if that is what you meant. The keys themselves are revoked in your own shop, under WooCommerce → Settings → Advanced → REST API.</p>
+      <p class="quiet">Forgets the keys your shop gave us. Cards remain listed, but without a connected worker a fresh purchase cannot get a price and is refused before payment. Orders already paid remain obligations. Pause the cards first if you no longer want agents to see them; revoke the keys in WooCommerce → Settings → Advanced → REST API.</p>
     </div>
     <button type="submit">Forget this shop</button>
   </form>
@@ -558,7 +559,7 @@ export const wooSettingsBlock = (base: string, state: ShopTile): string => {
       }
       <p><a href="${escaped(base)}/woocommerce">Your shop</a></p>`
         : state.kind === "none"
-          ? `<p>The WooCommerce connector is experimental and is not the SDK acceptance path. Its intended flow publishes the catalogue as cards and creates a paid order when a purchase reaches it.</p>
+          ? `<p>The experimental WooCommerce connector imports only published, tax-free USD virtual products with one protected download file, unlimited access and no managed stock. Connect the shop first, then import supported products as cards.</p>
       <p><a href="${escaped(base)}/woocommerce">Connect a WooCommerce shop</a></p>`
           : `${noKeysYet(state)}
       <p><a href="${escaped(base)}/woocommerce">${state.kind === "waiting" ? "Check the connection" : "Connect again"}</a></p>`;

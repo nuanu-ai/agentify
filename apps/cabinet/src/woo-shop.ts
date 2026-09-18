@@ -51,6 +51,9 @@ const PER_PAGE = 100;
  */
 const AT_MOST = 10_000;
 
+/** The whole-import ceiling shown to a merchant before they start. */
+export const PRODUCTS_AT_MOST = 200;
+
 export type CatalogueRead =
   | { readonly ok: true; readonly products: readonly StoreProduct[] }
   | { readonly ok: false; readonly why: string };

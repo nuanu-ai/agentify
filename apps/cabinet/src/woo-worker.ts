@@ -347,9 +347,11 @@ export const turnOnce = async (connection: WooConnection, parts: WorkingParts): 
     if (envelope.kind === "quote_request") {
       filled += 1;
       const answer =
-        parts.quote === undefined
-          ? await quoteFromTheShop(connection, envelope.payload, parts.now())
-          : await parts.quote(connection, envelope.payload, parts.now());
+        connection.permissions !== "read_write"
+          ? { available: false as const, as_of: parts.now().toISOString() }
+          : parts.quote === undefined
+            ? await quoteFromTheShop(connection, envelope.payload, parts.now())
+            : await parts.quote(connection, envelope.payload, parts.now());
       const said = await gateway.answerQuote(envelope.payload.price_id, answer);
       if (!said.ok) {
         console.error(

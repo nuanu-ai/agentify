@@ -85,6 +85,7 @@ import {
   type CatalogueRead,
   catalogueOf,
   inspectProductInTheShop,
+  PRODUCTS_AT_MOST,
   type ProductInspection,
 } from "./woo-shop.js";
 import type { WooConnection, WooShops } from "./woo-shops.js";
@@ -246,8 +247,6 @@ export interface CabinetParts {
  * rather than being handed the first two hundred as though that were all of
  * them.
  */
-const PRODUCTS_AT_MOST = 200;
-
 /**
  * Whose session a request arrived on.
  *
@@ -1336,7 +1335,12 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     response
       .type("html")
       .send(
-        cardsScreen(viewing(request, base, name.document), cards.document, config.publicBaseUrl),
+        cardsScreen(
+          viewing(request, base, name.document),
+          cards.document,
+          config.publicBaseUrl,
+          shops !== undefined,
+        ),
       );
   });
 
