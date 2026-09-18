@@ -1360,6 +1360,13 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     response.type("html").send(keysScreen(viewing(request, base), keys.document));
   });
 
+  // The key page rewrites its POST history entry to this target. Reloading can
+  // therefore return to the list without issuing a second key or storing the
+  // first key's secret anywhere for another request.
+  app.get(`${base}/keys/new`, (_request, response) => {
+    response.redirect(303, `${base}/keys`);
+  });
+
   app.post(`${base}/keys`, async (request, response) => {
     const form = (request.body ?? {}) as { label?: unknown };
     const label = typeof form.label === "string" ? form.label.trim() : "";

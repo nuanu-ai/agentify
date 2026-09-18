@@ -195,11 +195,13 @@ ${
  * secret: putting it in the address would write it into the browser's history
  * and into every log between here and there, and keeping it anywhere to hand to
  * the next request would be storing the thing we have just promised not to
- * store. So the page says out loud what that costs — reloading it asks the
- * browser to send the form again, and that issues another key.
+ * store. Once this page is drawn it replaces its history entry with a harmless
+ * GET target, so a reload returns to the list rather than sending the form and
+ * issuing another key.
  */
 export const newKeyScreen = (viewer: Viewer, label: string, secret: string): string => {
   const { base } = viewer;
+  const reloadTarget = JSON.stringify(`${base}/keys/new`).replaceAll("<", "\\u003c");
   const body = `
   <div class="lede">
     <div>
@@ -207,13 +209,26 @@ export const newKeyScreen = (viewer: Viewer, label: string, secret: string): str
       <p>${escaped(`This is the key for "${label}". It is shown here and nowhere else, now and never again — nothing on our side keeps a readable copy of it, so a key you do not copy is a key you have to replace.`)}</p>
     </div>
   </div>
-  <div class="scroller"><p class="secret">${escaped(secret)}</p></div>
+  <div class="scroller"><p class="secret" id="new-key-secret">${escaped(secret)}</p></div>
+  <p><button class="primary" id="copy-new-key" type="button">Copy key</button> <span id="copy-new-key-result" role="status"></span></p>
   <div class="note"><span class="mark">&#8627;</span><span>${escaped(
-    "Put it where your code reads its key from before you leave this page. Reloading this page" +
-      " asks your browser to send the form again, which issues another key rather than showing" +
-      " you this one.",
+    "Put it where your code reads its key from before you leave this page. If your browser ever" +
+      " asks to resend the form, cancel: resending asks for another key.",
   )}</span></div>
   <p class="quiet"><a href="${escaped(base)}/keys">Back to your API keys</a></p>
+  <script>
+    history.replaceState(null, "", ${reloadTarget});
+    document.getElementById("copy-new-key")?.addEventListener("click", async () => {
+      const secret = document.getElementById("new-key-secret")?.textContent ?? "";
+      const result = document.getElementById("copy-new-key-result");
+      try {
+        await navigator.clipboard.writeText(secret);
+        if (result) result.textContent = "Copied.";
+      } catch {
+        if (result) result.textContent = "Could not copy. Select the key above.";
+      }
+    });
+  </script>
 `;
 
   return page({
