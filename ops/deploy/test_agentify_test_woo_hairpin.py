@@ -2,9 +2,7 @@
 import importlib.util
 import json
 import pathlib
-import subprocess
 import unittest
-from unittest import mock
 
 
 SUBJECT = pathlib.Path(__file__).with_name("agentify-test-woo-hairpin.py")
@@ -122,21 +120,6 @@ class HairpinContract(unittest.TestCase):
                 [f"-N {subject.CHAIN}", previous],
                 ["-P PREROUTING ACCEPT", f"-A PREROUTING -j {subject.CHAIN}"],
             )
-
-    def test_an_absent_experimental_woo_network_does_not_block_sdk_test(self):
-        subject = load_subject()
-        required = subprocess.CompletedProcess([], 0, stdout=network(), stderr="")
-        absent = subprocess.CompletedProcess([], 1, stdout="", stderr="not found")
-        listing = subprocess.CompletedProcess(
-            [], 0, stdout="agentify-test_default\n", stderr=""
-        )
-        with mock.patch.object(subject, "run", side_effect=[required, absent, listing]):
-            self.assertEqual(subject.current_subnets(), ["172.18.0.0/16"])
-
-        with mock.patch.object(subject, "run", side_effect=[absent, listing]):
-            with self.assertRaisesRegex(RuntimeError, "required Docker network is absent"):
-                subject.current_subnets()
-
 
 if __name__ == "__main__":
     unittest.main()

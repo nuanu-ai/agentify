@@ -251,19 +251,6 @@ Activation performs runtime verification before it succeeds. To collect fresh
 evidence later without another activation, run the read-only verify phase for
 one channel at a time:
 
-TEST also installs `agentify-test-woo-hairpin.service`. The disposable Woo lab
-shares `dmitry-dev` with Agentify and that host cannot return through the public
-Comino address. The unit derives and verifies both named Compose subnets, then
-translates only their connections to the one reviewed public address and HTTPS
-port onto the private side of the shared ingress. DNS stays public and TLS still
-uses the public host names. Production never installs the unit.
-
-Removing the lab route is explicit: stop and disable the unit first. Its
-`ExecStop` removes only the owned PREROUTING jump and dedicated nat chain; after
-that, delete `/etc/systemd/system/agentify-test-woo-hairpin.service` and
-`/usr/local/libexec/agentify-test-woo-hairpin`, then reload systemd. Never flush
-the host nat table or replace public DNS to remove this route.
-
 ```sh
 ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
   --limit test -e release_phase=verify -e release_channel_ack=test \
@@ -275,6 +262,38 @@ ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
   -e release_channel_ack=production \
   -e "release_revision=$SHA" \
   -e "release_evidence_directory=$EVIDENCE"
+```
+
+## Run the isolated Woo acceptance route
+
+The experimental Woo fixture is deliberately absent from ordinary SDK release
+activation and verification. For COIN-25 only, an explicit TEST operation
+installs a dedicated systemd unit that derives and validates the two named
+Compose subnets and translates only their connections to the reviewed public
+address on HTTPS. DNS stays public, and TLS continues to use the public host
+names. A missing or malformed fixture, a different DNS answer, or a failed
+connection in either direction refuses this operation without widening the
+application's SSRF boundary.
+
+From a clean checkout at the reviewed public `main` revision, reconcile and
+verify the fixture route explicitly:
+
+```sh
+ansible-playbook -i deploy/ansible/inventory.yml \
+  deploy/ansible/woo-test-hairpin.yml --limit test \
+  -e woo_hairpin_channel_ack=test -e woo_hairpin_action=reconcile \
+  -e "woo_hairpin_revision=$SHA"
+```
+
+The same guarded playbook owns removal. It stops and disables the unit, invokes
+its idempotent rule cleanup, removes only its two installed files, reloads
+systemd, and proves the dedicated chain and jump are absent:
+
+```sh
+ansible-playbook -i deploy/ansible/inventory.yml \
+  deploy/ansible/woo-test-hairpin.yml --limit test \
+  -e woo_hairpin_channel_ack=test -e woo_hairpin_action=remove \
+  -e "woo_hairpin_revision=$SHA"
 ```
 
 Verification checks the running image identities and source labels, configured

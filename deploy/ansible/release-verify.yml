@@ -71,51 +71,6 @@
   failed_when: timer_state.stdout != 'masked'
   when: channel_name == 'test'
 
-- name: Verify the exact TEST Woo hairpin rule
-  ansible.builtin.command:
-    argv: [/usr/local/libexec/agentify-test-woo-hairpin, verify]
-  changed_when: false
-  when: channel_name == 'test'
-
-- name: Verify Cabinet keeps public Woo DNS and reaches the protected shop through TLS
-  ansible.builtin.shell: |
-    docker exec -i '{{ channel.cabinet_container }}' node - <<'JS'
-    const dns = await import('node:dns/promises')
-    const addresses = await dns.lookup('woo.nuanu.ai', { all: true })
-    if (addresses.length === 0 || addresses.some((answer) => answer.address !== '153.124.160.16')) {
-      throw new Error('Cabinet DNS no longer returns only the reviewed public Woo address')
-    }
-    const checks = [
-      ['https://woo.nuanu.ai/wp-json/wc/store/v1/products?per_page=1', 200],
-      ['https://woo.nuanu.ai/wp-content/uploads/woocommerce_uploads/agentify-protection-probe-nonexistent.txt', 403],
-    ]
-    for (const [url, expected] of checks) {
-      const response = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(10000) })
-      if (response.status !== expected || new URL(response.url).origin !== 'https://woo.nuanu.ai') {
-        throw new Error(`Woo boundary check returned ${response.status}, expected ${expected}`)
-      }
-      await response.body?.cancel()
-    }
-    console.log(JSON.stringify({ dns: 'public', store_api: 200, protected_upload: 403 }))
-    JS
-  args:
-    executable: /bin/bash
-  changed_when: false
-  when: channel_name == 'test'
-
-- name: Verify Woo keeps public Agentify DNS and can return its grant over TLS
-  ansible.builtin.shell: |
-    set -eu
-    addresses="$(docker exec agentify-woo-lab-wordpress-1 getent ahosts test.agentify.ad | awk '{print $1}' | sort -u)"
-    test "$addresses" = '153.124.160.16'
-    status="$(docker exec agentify-woo-lab-wordpress-1 curl -sS --connect-timeout 5 --max-time 10 --output /dev/null --write-out '%{http_code}' https://test.agentify.ad/cabinet/healthz)"
-    test "$status" = 200
-    printf '{"dns":"public","cabinet_health":%s}\n' "$status"
-  args:
-    executable: /bin/bash
-  changed_when: false
-  when: channel_name == 'test'
-
 - name: Read the installed scheduled jobs and schedule
   ansible.builtin.slurp:
     src: "{{ item }}"

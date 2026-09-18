@@ -1,0 +1,189 @@
+---
+- name: Reconcile or remove the isolated Woo acceptance hairpin on TEST
+  hosts: test
+  become: true
+  gather_facts: false
+  vars:
+    hairpin_helper: /usr/local/libexec/agentify-test-woo-hairpin
+    hairpin_unit: /etc/systemd/system/agentify-test-woo-hairpin.service
+  tasks:
+    - name: Require the exact TEST fixture operation
+      ansible.builtin.assert:
+        that:
+          - ansible_play_hosts_all == ['codex-vm']
+          - inventory_hostname == 'codex-vm'
+          - ansible_host == 'codex-vm'
+          - woo_hairpin_channel_ack | default('') == 'test'
+          - woo_hairpin_action | default('') in ['reconcile', 'remove']
+          - (woo_hairpin_revision | default('')) is match('^[0-9a-f]{40}$')
+        fail_msg: Select only the TEST fixture and an explicit reviewed revision and action.
+
+    - name: Identify the controller checkout used for this fixture operation
+      ansible.builtin.command:
+        argv: [git, -C, "{{ playbook_dir }}/../..", rev-parse, HEAD]
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      register: controller_revision
+
+    - name: Require a clean controller at the exact reviewed revision
+      ansible.builtin.command:
+        argv: [git, -C, "{{ playbook_dir }}/../..", status, --porcelain=v1, --untracked-files=all]
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      register: controller_status
+      failed_when: >-
+        controller_revision.stdout != woo_hairpin_revision or
+        controller_status.stdout != ''
+
+    - name: Require the fixture operation to come from public main
+      ansible.builtin.command:
+        argv:
+          - git
+          - -C
+          - "{{ playbook_dir }}/../.."
+          - merge-base
+          - --is-ancestor
+          - "{{ woo_hairpin_revision }}"
+          - origin/main
+      delegate_to: localhost
+      become: false
+      changed_when: false
+
+    - name: Read the fixture host name
+      ansible.builtin.command:
+        argv: [hostname, -s]
+      changed_when: false
+      register: fixture_hostname
+
+    - name: Pin the operation to dmitry-dev
+      ansible.builtin.assert:
+        that: fixture_hostname.stdout == 'dmitry-dev'
+        fail_msg: The Woo acceptance hairpin may run only on dmitry-dev.
+
+    - name: Reconcile and verify the explicit Woo acceptance route
+      when: woo_hairpin_action == 'reconcile'
+      block:
+        - name: Create the root-owned helper directory
+          ansible.builtin.file:
+            path: /usr/local/libexec
+            state: directory
+            owner: root
+            group: root
+            mode: '0755'
+
+        - name: Install the strict TEST Woo hairpin helper
+          ansible.builtin.copy:
+            src: "{{ playbook_dir }}/../../ops/deploy/agentify-test-woo-hairpin.py"
+            dest: "{{ hairpin_helper }}"
+            owner: root
+            group: root
+            mode: '0755'
+
+        - name: Install the persistent TEST Woo hairpin unit
+          ansible.builtin.copy:
+            src: "{{ playbook_dir }}/../../ops/deploy/agentify-test-woo-hairpin.service"
+            dest: "{{ hairpin_unit }}"
+            owner: root
+            group: root
+            mode: '0644'
+
+        - name: Reconcile the strict route for both named TEST networks
+          ansible.builtin.systemd_service:
+            name: agentify-test-woo-hairpin.service
+            daemon_reload: true
+            enabled: true
+            state: restarted
+
+        - name: Verify the exact owned TEST hairpin rules
+          ansible.builtin.command:
+            argv: ["{{ hairpin_helper }}", verify]
+          changed_when: false
+
+        - name: Verify Cabinet reaches Woo through public DNS and TLS
+          ansible.builtin.shell: |
+            docker exec -i agentify-test-cabinet-1 node - <<'JS'
+            const dns = await import('node:dns/promises')
+            const addresses = await dns.lookup('woo.nuanu.ai', { all: true })
+            if (addresses.length === 0 || addresses.some((answer) => answer.address !== '153.124.160.16')) {
+              throw new Error('Cabinet DNS no longer returns only the reviewed public Woo address')
+            }
+            const checks = [
+              ['https://woo.nuanu.ai/wp-json/wc/store/v1/products?per_page=1', 200],
+              ['https://woo.nuanu.ai/wp-content/uploads/woocommerce_uploads/agentify-protection-probe-nonexistent.txt', 403],
+            ]
+            for (const [url, expected] of checks) {
+              const response = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(10000) })
+              if (response.status !== expected || new URL(response.url).origin !== 'https://woo.nuanu.ai') {
+                throw new Error(`Woo boundary check returned ${response.status}, expected ${expected}`)
+              }
+              await response.body?.cancel()
+            }
+            console.log(JSON.stringify({ dns: 'public', store_api: 200, protected_upload: 403 }))
+            JS
+          args:
+            executable: /bin/bash
+          changed_when: false
+
+        - name: Verify Woo can return its grant through public Agentify DNS and TLS
+          ansible.builtin.shell: |
+            set -eu
+            addresses="$(docker exec agentify-woo-lab-wordpress-1 getent ahosts test.agentify.ad | awk '{print $1}' | sort -u)"
+            test "$addresses" = '153.124.160.16'
+            status="$(docker exec agentify-woo-lab-wordpress-1 curl -sS --connect-timeout 5 --max-time 10 --output /dev/null --write-out '%{http_code}' https://test.agentify.ad/cabinet/healthz)"
+            test "$status" = 200
+            printf '{"dns":"public","cabinet_health":%s}\n' "$status"
+          args:
+            executable: /bin/bash
+          changed_when: false
+
+    - name: Remove only the owned Woo acceptance route and unit
+      when: woo_hairpin_action == 'remove'
+      block:
+        - name: Check for the installed hairpin unit
+          ansible.builtin.stat:
+            path: "{{ hairpin_unit }}"
+          register: installed_hairpin_unit
+
+        - name: Stop and disable the installed hairpin unit
+          ansible.builtin.systemd_service:
+            name: agentify-test-woo-hairpin.service
+            enabled: false
+            state: stopped
+          when: installed_hairpin_unit.stat.exists
+
+        - name: Check for the installed hairpin helper
+          ansible.builtin.stat:
+            path: "{{ hairpin_helper }}"
+          register: installed_hairpin_helper
+
+        - name: Idempotently remove the owned rules
+          ansible.builtin.command:
+            argv: ["{{ hairpin_helper }}", remove]
+          when: installed_hairpin_helper.stat.exists
+
+        - name: Remove the fixture-owned files
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - "{{ hairpin_unit }}"
+            - "{{ hairpin_helper }}"
+
+        - name: Reload systemd after fixture removal
+          ansible.builtin.systemd_service:
+            daemon_reload: true
+
+        - name: Require the dedicated chain and jump to be absent
+          ansible.builtin.shell: |
+            set -eu
+            if iptables --wait 10 -t nat -S AGENTIFY_TEST_WOO >/dev/null 2>&1; then
+              exit 1
+            fi
+            if iptables --wait 10 -t nat -S PREROUTING | grep -F 'agentify-test-woo-hairpin' >/dev/null; then
+              exit 1
+            fi
+          args:
+            executable: /bin/bash
+          changed_when: false
