@@ -81,7 +81,7 @@ This table uses the row numbers and decision rules frozen in
 | 20 | Partial controlled live; committed-create recovery unproven | After an ordinary same-shop reconnect, the private exact-order command created Woo order 25 and one permission, late-delivered the same Agentify order and issued receipt `rcp_6b7f13aacc424cc3af31a6011ba62375`. The file was the exact 148-byte artifact, and one idempotent command rerun changed no order, receipt, permission, authorization or balance count. Exact state transitions and exact-id validation pass in isolation. Neither committed-response attempt entered `create_unknown`, so exact-id recovery was not exercised. |
 | 21 | Controlled live pass | The intact native permission worked without cookies or redirects and from another clean handoff. Mutating order key, product, download or `uid` returned no goods. This proves a bearer capability, not wallet binding. |
 | 22 | Mixed live and isolated pass | The raw protected source returned 403. The public card and receipt did not carry the capability or merchant secrets. Broader log/UI secret negatives remain isolated checks; the full permission URL is absent from this report. |
-| 23 | Isolated pass | Wrong or duplicate correlation, product, total, currency, billing, paid-state and permission facts refuse binding and delivery. Live exact-id recovery is still pending in case 3. |
+| 23 | Isolated pass | Wrong or duplicate correlation, product, total, currency, billing, paid-state and permission facts refuse binding and delivery. Live exact-id recovery remains unproven in case 3. |
 | 24 | Live pass | The acceptance card is paused. The one-shot hook and option are absent, private ephemeral handoffs were removed, and only stale keys proven to belong to this run were revoked. The working dedicated connection and its current exact key remain for review. The shop, product 22, Woo orders 24–26, permissions, receipts and user activity remain. No second reset was performed. |
 
 ## Paid evidence at this checkpoint
@@ -101,8 +101,8 @@ receipt, Cabinet Woo tracking row, Woo order or permission. There are therefore
 three delivered paid Agentify orders, three receipts, three Woo orders and
 three native permissions. The upstream sender logs were not retained, so the
 exact external nonce or fee cause is unknown; no Agentify settlement retry or
-concrete local source defect was found. No request was retried or authorized
-twice. [COIN-43](https://plan.nuanu.ai/project/COIN/issue/43) tracks
+concrete local source defect was found. No paid request was retried or
+authorized twice. [COIN-43](https://plan.nuanu.ai/project/COIN/issue/43) tracks
 revalidation of this remaining settlement failure.
 
 Paid case 2 completed the exact registered sequence: one valid quote, exact-key
