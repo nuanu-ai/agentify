@@ -1,8 +1,16 @@
 "use client";
 
-type Handoff = Readonly<{ reportPath: string; actionUrl: string }>;
+export type ReportCabinetHandoff = Readonly<{
+  action: "/cabinet/sign-in/open";
+  token: string;
+}>;
 
-let handoff: Handoff | undefined;
+type StoredHandoff = Readonly<{
+  reportPath: string;
+  token: string;
+}>;
+
+let handoff: StoredHandoff | undefined;
 
 export function clearReportCabinetHandoff() {
   handoff = undefined;
@@ -34,16 +42,16 @@ export function rememberReportCabinetHandoff(
   ) {
     return false;
   }
-  handoff = { reportPath, actionUrl: parsed.toString() };
+  handoff = { reportPath, token: parsed.searchParams.get("token")! };
   return true;
 }
 
 export function takeReportCabinetHandoff(
   expectedReportPath: string,
-): string | undefined {
+): ReportCabinetHandoff | undefined {
   const current = handoff;
   handoff = undefined;
   return current?.reportPath === expectedReportPath
-    ? current.actionUrl
+    ? { action: "/cabinet/sign-in/open", token: current.token }
     : undefined;
 }

@@ -1,39 +1,57 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
-import { takeReportCabinetHandoff } from "../lib/client/report-cabinet-handoff";
+import {
+  type ReportCabinetHandoff,
+  takeReportCabinetHandoff,
+} from "../lib/client/report-cabinet-handoff";
+
+type CabinetActionProps =
+  | Readonly<{ handoff: ReportCabinetHandoff; email?: never }>
+  | Readonly<{ handoff: null; email: string }>;
+
+export function ReportCabinetAction(props: CabinetActionProps) {
+  if (props.handoff) {
+    return (
+      <form action={props.handoff.action} method="post">
+        <input name="token" type="hidden" value={props.handoff.token} />
+        <button className="button button-primary" type="submit">
+          Open your cabinet
+        </button>
+      </form>
+    );
+  }
+  return (
+    <form action="/cabinet/sign-in" method="post">
+      <input name="email" type="hidden" value={props.email} />
+      <input name="destination" type="hidden" value="default" />
+      <button className="button button-primary" type="submit">
+        Email me a cabinet link
+      </button>
+    </form>
+  );
+}
 
 export function ReportCabinetControl({
   email,
   reportPath,
 }: Readonly<{ email: string; reportPath: string }>) {
   const checked = useRef(false);
-  const [actionUrl, setActionUrl] = useState<string | null>();
+  const [handoff, setHandoff] = useState<ReportCabinetHandoff | null>();
 
   useEffect(() => {
     if (checked.current) return;
     checked.current = true;
-    setActionUrl(takeReportCabinetHandoff(reportPath) ?? null);
+    setHandoff(takeReportCabinetHandoff(reportPath) ?? null);
   }, [reportPath]);
 
-  if (actionUrl === undefined) {
+  if (handoff === undefined) {
     return <button disabled>Checking cabinet access…</button>;
   }
-  if (actionUrl) {
-    return (
-      <a className="button button-primary" href={actionUrl}>
-        Open your cabinet
-      </a>
-    );
-  }
-  return (
-    <form action="/cabinet/sign-in" method="post">
-      <input name="email" type="hidden" value={email} />
-      <input name="destination" type="hidden" value="default" />
-      <button className="button button-primary" type="submit">
-        Email me a cabinet link
-      </button>
-    </form>
+  return handoff ? (
+    <ReportCabinetAction handoff={handoff} />
+  ) : (
+    <ReportCabinetAction email={email} handoff={null} />
   );
 }

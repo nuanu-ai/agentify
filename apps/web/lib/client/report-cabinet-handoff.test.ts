@@ -23,8 +23,22 @@ describe("one-shot report cabinet handoff", () => {
     expect(
       rememberReportCabinetHandoff(report, action, "https://agentify.example"),
     ).toBe(true);
-    expect(takeReportCabinetHandoff(report)).toBe(action);
+    expect(takeReportCabinetHandoff(report)).toEqual({
+      action: "/cabinet/sign-in/open",
+      token: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    });
     expect(takeReportCabinetHandoff(report)).toBeUndefined();
+  });
+
+  it("keeps the raw handoff out of the value rendered as a navigation target", () => {
+    expect(
+      rememberReportCabinetHandoff(report, action, "https://agentify.example"),
+    ).toBe(true);
+
+    const taken = takeReportCabinetHandoff(report);
+    expect(taken?.action).toBe("/cabinet/sign-in/open");
+    expect(taken?.action).not.toContain("token");
+    expect(taken?.token).toBe("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
   });
 
   it.each([

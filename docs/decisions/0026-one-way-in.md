@@ -51,15 +51,27 @@ link the scanner shows is a same-origin navigation.
 When the scanner has just confirmed an address, it asks the cabinet — over the
 internal route it uses for its own links, reachable only on the compose network
 and authenticated by a secret the two processes share — to issue a link for
-that address, and shows it as the control that opens the cabinet instead of
-mailing it. It is the cabinet's ordinary link: the same token, the same
-landing page, the same single use and lifetime. Pressed later, from a report
+that address instead of mailing it. The report's **Open your cabinet** control
+submits that token directly to the cabinet's ordinary same-origin verification
+POST. This explicit click opens the cabinet; there is no second confirmation
+page, second email or repeated address entry. The token has the same cabinet
+purpose, single use and lifetime as a mailed cabinet link. It stays in the
+current browser memory and form body, not a navigation URL or persistent browser
+storage. Rendering the report never submits it automatically. Mailed links still
+land on a page with one explicit confirmation, so mail previews cannot consume
+them. Pressed later, from a report
 cookie days old, the same control has the cabinet mail the link instead: the
 cookie is a right to read a report, not proof that anybody is at the mailbox.
 The assertion crossing the boundary is "this address was confirmed now, by
 us", it crosses through one route that answers only the scanner's process,
 and nothing on the public origin can ask for a link to be returned rather
 than sent.
+
+Report, recovery and cabinet emails use one Agentify visual template and sender
+identity. Their text and destination describe the requested action; separate
+token purposes do not create separate product brands or extra confirmations.
+This is the product correction requested on 2026-09-18: one mailbox confirmation
+opens the report, then one cabinet click opens the cabinet.
 
 **4. The merchant is made when the link is consumed at the cabinet's door.**
 The token is consumed first, and the person's row and session are written
@@ -118,8 +130,8 @@ sequenceDiagram
     Note over S: the address was confirmed in this same request
     S->>C: issue a link for the cabinet's door (internal route)
     C-->>S: the link, not mailed
-    S-->>B: the control carries the link
-    B->>C: opens it, lands on the cabinet's link page, presses the one control
+    S-->>B: the report has one cabinet form, token held in memory
+    B->>C: presses Open your cabinet, same-origin POST with the token
     Note over C: continues as the cabinet's door, from "token consumed"
 ```
 
@@ -158,7 +170,7 @@ Every way in.
 | scanner, asks for the full report | P0, P1, P2 | nothing | first diagram | the report; P0 is now P1 |
 | scanner, report opened within thirty days | any | report cookie | the cookie is read; no mail | the report |
 | scanner, cookie gone or expired | any | nothing | "recover": address, link mailed for the report; one answer for every address | the report, after the link |
-| report, control pressed right after confirming | P1 | a confirmation in this request | second diagram: link issued, not mailed | the cabinet, name screen; now P2 |
+| report, control pressed right after confirming | P1 | a confirmation in this request | second diagram: token issued, not mailed; one explicit POST, no intermediate confirmation | the cabinet, name screen; now P2 |
 | the same | P2 | the same | second diagram | the cabinet, cards |
 | report, control pressed days later | P1, P2 | report cookie only | the control posts the address to the cabinet's door; link mailed | the cabinet, after the link |
 | Agentic Shop page, control pressed | any | nothing | the cabinet's door, address typed | the cabinet, after the link |
