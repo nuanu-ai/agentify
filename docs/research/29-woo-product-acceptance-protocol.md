@@ -137,7 +137,7 @@ and `LA` a deployed live acceptance step.
 |---|---|---|---|
 | 1 | LA | Reset and read baseline | Exactly five named gift cards, no Woo orders or Agentify REST keys, valid public TLS; Agentify TEST unchanged. |
 | 2 | LA | Cold `/` arrival, fresh email cabinet, name/wallet, reload, second tab and reauth | Merchant/Woo route is discoverable; one merchant persists; SDK is primary and Woo remains experimental. |
-| 3 | IT/LA | Blank, malformed, plain HTTP, query-bearing, non-root-path and nonexistent public Connect inputs; private or mixed public/private DNS only in isolated refusal tests | Refusal occurs before navigation, preserves repairable input and never claims a connection. Every Connect preflight, authenticated REST call, exact-id recovery GET and raw-file check resolves only public addresses, pins the approved address for the connection, preserves TLS host verification and refuses redirects before credentials or protected destinations can be followed. Do not probe a private address live. |
+| 3 | IT/LA | Blank, malformed, plain HTTP, query-bearing and nonexistent public Connect inputs; private or mixed public/private DNS only in isolated refusal tests | Refusal occurs before navigation, preserves repairable input and never claims a connection. Every Connect preflight, authenticated REST call, exact-id recovery GET and raw-file check resolves only public addresses, pins the approved address for the connection, preserves TLS host verification and refuses redirects before credentials or protected destinations can be followed. Do not probe a private address live. |
 | 4 | LA | Plain permalinks, abandoned/declined grant, Back/reload, expired cabinet session mid-grant | Permalink repair is named; abandoned grant leaves no key; callback remains account/shop-bound and reauth returns to the same merchant. |
 | 5 | IT/LA | Callback missing, expired, replayed or return URL opened by hand | No false connected state or leaked key/token; only the callback row proves success. |
 | 6 | CB/IT | Import the five baseline products | All five are skipped as non-downloadable goods; no order-number-only card is published. |
@@ -222,8 +222,9 @@ files, finite permission limits/expiry, arbitrary external file stores and
 automatic catalogue removal are unsupported initially. COIN-23 still owns
 ongoing catalogue synchronization. A change between quote and fulfillment can
 create honest refund debt; it is tested and not described as pre-payment refusal.
-Woo installations below a URL subpath are refused at Connect; every accepted
-shop is bound to the root of one public HTTPS origin.
+The live run proves the root-path fixture. The connector preserves and binds
+the full normalized public HTTPS shop base URL through Connect, REST calls,
+recovery and native-permission construction, including a WordPress subpath.
 An unknown create with no exact Woo id remains debt because the command never
 guesses that no remote order exists; that is a named support prerequisite, not
 permission to POST again.
