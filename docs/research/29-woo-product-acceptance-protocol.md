@@ -261,6 +261,35 @@ globally unique. The expired order and challenge can never be executed. No
 generic reset, loop or automatic regeneration is introduced. Execution still
 requires an explicit GO against the immutable reviewed runner.
 
+## Prospective amendment after the fault fixture did not match
+
+The original `ambiguous-create` slot prepared and signed Agentify order
+`ord_14fd2e15201b455d9eb333610f12a925`. The one-shot Woo fixture did not consume
+its option, so the purchase completed ordinarily as Woo order 26, receipt
+`rcp_9348289d95374cac866522596beceb56` and TEST transaction
+`0x2f7cd6fd78fc0d9fd75e738b8a43f41e7fea78ced149bd2d3e3e95ff0f5b63de`.
+It delivered the expected artifact. This row remains an ordinary successful
+purchase and is never rewritten, reused or called ambiguous-create recovery
+evidence. The exact hook and option were removed.
+
+The product owner may authorize exactly one fresh replacement for this failed
+experiment. Before that GO, readback must show all three current paid orders
+closed and delivered and the old hook and option absent. The corrected fixture
+must prove offline that it matches the captured Woo-26 callback and response,
+refuses its registered negative controls, and is loaded by one real web request
+without creating a purchase. Its exact immutable artifact and the combined
+runner must then pass independent review.
+
+The replacement is preparation row 5, `ambiguous-create`, with
+`replacement_for_attempt: 4`. It receives a fresh private reservation,
+Agentify order, challenge and globally unique payment nonce. No prior challenge,
+order, authorization or nonce can be reused. The lifetime ceiling becomes five
+preparations, exactly four execution reservations and signed authorizations,
+and 40,000 atomic TEST USDC across the entire run, still 10,000 per execution.
+There is no second exception, automatic retry, loop or regenerated challenge.
+The replacement requires a new explicit root GO after every prerequisite above
+is recorded; until then the three-execution, 30,000-atomic run is closed.
+
 ## Sources
 
 - Product boundary: `AGENTS.md`; `docs/decisions/0023-*.md`;
