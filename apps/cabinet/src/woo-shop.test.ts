@@ -217,6 +217,10 @@ describe("creating the order", () => {
     currency: "USD",
     total: "25.00",
     total_tax: "0.00",
+    payment_method: "agentify",
+    transaction_id: "ord_7",
+    billing: { email: "merchant@example.com" },
+    meta_data: [{ key: "agentify_order_id", value: "ord_7" }],
     line_items: [
       { product_id: 11, quantity: 1, subtotal: "25.00", total: "25.00", total_tax: "0.00" },
     ],
@@ -300,20 +304,42 @@ describe("creating the order", () => {
     expect(stand.asked[0]?.url).toBe("/wp-json/wc/v3/orders/13");
   });
 
-  it("carries the shop's own refusal back in the shop's own words", async () => {
+  it("does not carry an authenticated shop's response into the error", async () => {
+    const secret = `Basic ${Buffer.from("ck_abc:cs_def").toString("base64")}`;
     stand = await shopAnswering(() => ({
       status: 400,
       body: {
         code: "woocommerce_rest_invalid_product_id",
-        message: "Product ID is invalid.",
+        message: `reflected ${secret}`,
       },
     }));
     const made = await createOrder(connectionTo(stand.url), order);
     expect(made.ok).toBe(false);
-    expect(made.ok === false && made.why).toContain("Product ID is invalid.");
+    expect(made.ok === false && made.why).not.toContain(secret);
     // A shop that says the product is wrong says the same thing every time,
     // so nothing is gained by asking again.
     expect(made.ok === false && made.again).toBe(false);
+  });
+
+  it("refuses a successful order response whose Agentify correlation changed", async () => {
+    for (const changed of [
+      { payment_method: "other" },
+      { transaction_id: "ord_other" },
+      { billing: { email: "somebody@example.com" } },
+      { meta_data: [{ key: "agentify_order_id", value: "ord_other" }] },
+      {
+        meta_data: [
+          { key: "agentify_order_id", value: "ord_7" },
+          { key: "agentify_order_id", value: "ord_7" },
+        ],
+      },
+    ]) {
+      stand = await shopAnswering(() => ({ status: 201, body: madeOrder(changed) }));
+      const made = await createOrder(connectionTo(stand.url), order);
+      expect(made.ok).toBe(false);
+      await stand.close();
+      stand = null;
+    }
   });
 
   it("says a shop that would not answer is worth asking again", async () => {

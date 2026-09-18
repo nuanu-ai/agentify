@@ -209,7 +209,7 @@ describe("one paid order, in the merchant's own shop", () => {
     expect(said).not.toContain("Fatal error");
   });
 
-  it("keeps a definite refusal closed until exact operator recovery", async () => {
+  it("keeps a post-call refusal unknown and never posts it again", async () => {
     const shops = memoryWooShops();
     let placements = 0;
     const refuse = async () => {
@@ -224,7 +224,7 @@ describe("one paid order, in the merchant's own shop", () => {
       filling(shops, refuse),
     );
 
-    expect((await shops.knownOrder("ord_1"))?.kind).toBe("precreate_refused");
+    expect((await shops.knownOrder("ord_1"))?.kind).toBe("unknown");
     expect(again && "refused" in again).toBe(true);
     expect(placements).toBe(1);
   });
@@ -381,6 +381,10 @@ describe("the whole way through, against a real gateway", () => {
                 currency: "USD",
                 total: "25.00",
                 total_tax: "0.00",
+                payment_method: sent.payment_method,
+                transaction_id: sent.transaction_id,
+                billing: sent.billing,
+                meta_data: sent.meta_data,
                 line_items: [
                   {
                     product_id: 11,

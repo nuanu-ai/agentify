@@ -452,11 +452,11 @@ export const createTheOrderInTheShop = async (
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
     });
-  } catch (thrown) {
+  } catch {
     // Nothing was decided. It is also the one case where the order may have
     // reached the shop and the answer may have been lost, which is why the
     // caller keeps a record of having tried before it tries.
-    return { ok: false, why: `The shop did not answer: ${String(thrown)}`, again: true };
+    return { ok: false, why: "The shop did not answer the order call.", again: true };
   }
 
   const said = await answered.text();
@@ -464,7 +464,7 @@ export const createTheOrderInTheShop = async (
   if (!answered.ok) {
     return {
       ok: false,
-      why: `The shop answered ${answered.status}: ${whatTheShopSaid(said, answered.status)}`,
+      why: `The shop refused the order call (HTTP ${answered.status}).`,
       again: worthAskingAgain(answered.status),
     };
   }
@@ -491,6 +491,10 @@ export const createTheOrderInTheShop = async (
     currency?: unknown;
     total?: unknown;
     total_tax?: unknown;
+    payment_method?: unknown;
+    transaction_id?: unknown;
+    billing?: unknown;
+    meta_data?: unknown;
     line_items?: unknown;
   };
   const id = typeof made.id === "number" ? String(made.id) : null;
@@ -515,6 +519,15 @@ export const createTheOrderInTheShop = async (
     };
   }
   const lineItems = Array.isArray(made.line_items) ? made.line_items : [];
+  const billing = made.billing as { email?: unknown } | undefined;
+  const metadata = Array.isArray(made.meta_data) ? made.meta_data : [];
+  const orderIds = metadata
+    .filter(
+      (one): one is { key: string; value: unknown } =>
+        typeof one === "object" && one !== null && "key" in one && "value" in one,
+    )
+    .filter((one) => one.key === "agentify_order_id")
+    .map((one) => one.value);
   const line = lineItems[0] as
     | {
         product_id?: unknown;
@@ -534,11 +547,16 @@ export const createTheOrderInTheShop = async (
     line.quantity !== 1 ||
     line.subtotal !== sold.price.amount ||
     line.total !== sold.price.amount ||
-    line.total_tax !== "0.00"
+    line.total_tax !== "0.00" ||
+    made.payment_method !== "agentify" ||
+    made.transaction_id !== sold.orderId ||
+    billing?.email !== sold.email ||
+    orderIds.length !== 1 ||
+    orderIds[0] !== sold.orderId
   ) {
     return {
       ok: false,
-      why: "The shop created an order whose paid amount, tax, product or status does not match the sale.",
+      why: "The shop created an order whose paid amount, product or Agentify correlation does not match the sale.",
       again: true,
     };
   }

@@ -174,6 +174,35 @@ describe("exact Woo order recovery", () => {
     expect(test.counts()).toEqual({ delivered: 1, created: 0, read: 1 });
   });
 
+  it("delivers an already-bound result after the shop is disconnected", async () => {
+    const shops = await setup("create_unknown");
+    await shops.recordOrder(
+      "ord_1",
+      {
+        id: "13",
+        number: "WOO-13",
+        permission: {
+          shopOrigin: FACTS.shopOrigin,
+          productId: FACTS.productId,
+          orderKey: "wc_order_13",
+          downloadId: PRODUCT.downloadId,
+          fileName: PRODUCT.fileName,
+          emailUid: "a".repeat(64),
+          orderNumber: "WOO-13",
+        },
+      },
+      NOW,
+    );
+    await shops.forget("acc_1");
+    const test = parts(shops);
+
+    expect(await recoverWooOrder({ orderId: "ord_1" }, test.value)).toMatchObject({
+      ok: true,
+      state: "delivered",
+    });
+    expect(test.counts()).toEqual({ delivered: 1, created: 0, read: 0 });
+  });
+
   it("keeps an unknown create unbound when the exact Woo order does not correlate", async () => {
     const shops = await setup("create_unknown");
     const test = parts(shops, {

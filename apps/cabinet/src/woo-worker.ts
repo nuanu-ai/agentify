@@ -270,31 +270,15 @@ export const fillFromTheShop = async (
     // Nothing is answered and the claim stays: the request may have reached the
     // shop, so the next attempt has to meet "we do not know" rather than a
     // clean slate.
-    console.error(`[cabinet] ${order.id} could not be placed in the shop: ${made.why}`);
+    console.error(`[cabinet] ${order.id} has no usable WooCommerce creation result`);
     return null;
   }
 
-  // The shop answered and said no, before anything of ours was written into it.
-  // Keep that fact under the paid order. A gateway redelivery must not turn a
-  // definite refusal into an automatic second POST; only exact operator
-  // recovery may reopen it under a fresh connection.
-  await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
-  // What the shop actually said goes to the merchant, in their own cabinet's
-  // log, and not to the agent. A WordPress refusal carries whatever the plugin
-  // that raised it chose to say, which on a shop with debugging on is a file
-  // path — and the reader of the refusal below is a stranger's agent, which
-  // can do nothing with a merchant's internals but forward them. What the
-  // agent is told is the one thing it can act on: this merchant's shop refused
-  // the sale, so try somewhere else.
-  console.error(`[cabinet] the shop refused ${order.id}: ${made.why}`);
-  return {
-    refused: {
-      code: "cannot_fulfill",
-      message:
-        "The shop this product is sold from would not accept the order, so nothing was" +
-        " delivered and the sale did not go through.",
-    },
-  };
+  // A response after POST is not proof that the remote side did not commit.
+  // Keep the create_unknown obligation and require exact-id recovery rather
+  // than turning a proxy/plugin-rewritten 4xx into a second POST.
+  console.error(`[cabinet] ${order.id} has no verifiable WooCommerce creation result`);
+  return unknownCreation(order.id, connection.shopUrl, parts.now());
 };
 
 const samePermission = (left: WooPermission, right: WooPermission): boolean =>

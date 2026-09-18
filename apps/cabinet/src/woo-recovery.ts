@@ -71,10 +71,6 @@ export const recoverWooOrder = async (
     return refused("Only an unpaid delivery debt can be recovered this way.");
   }
 
-  const connection = await parts.shops.connectionOf(record.accountId);
-  if (connection === null || originOf(connection.shopUrl) !== record.facts.shopOrigin) {
-    return refused("Reconnect the same WooCommerce shop before recovery.");
-  }
   if (request.wooOrderId !== undefined && record.phase !== "create_unknown") {
     return refused("A WooCommerce order id applies only when creation is uncertain.");
   }
@@ -82,6 +78,11 @@ export const recoverWooOrder = async (
   if (record.phase === "placed") {
     if (record.placed === null) return unresolved("The saved WooCommerce delivery is incomplete.");
     return deliverSaved(request.orderId, record.placed.id, record.placed.permission, gateway);
+  }
+
+  const connection = await parts.shops.connectionOf(record.accountId);
+  if (connection === null || originOf(connection.shopUrl) !== record.facts.shopOrigin) {
+    return refused("Reconnect the same WooCommerce shop before recovery.");
   }
 
   const inspected = await (parts.inspectProduct ?? inspectProductInTheShop)(
@@ -209,10 +210,15 @@ const sameSoldOrder = (order: OrderWithStatus, facts: WooOrderFacts, orderId: st
   order.price.currency === facts.currency;
 
 const sameProduct = (
-  product: { productId: string; price: { amount: string; currency: string } },
+  product: {
+    productId: string;
+    fingerprint: string;
+    price: { amount: string; currency: string };
+  },
   facts: WooOrderFacts,
 ): boolean =>
   product.productId === facts.productId &&
+  product.fingerprint === facts.productFingerprint &&
   product.price.amount === facts.amount &&
   product.price.currency === facts.currency;
 
