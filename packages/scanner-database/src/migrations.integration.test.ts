@@ -94,9 +94,83 @@ const scannerWorkerTsx = fileURLToPath(
   ),
 );
 
+type LegacyPrivacyAuditShape =
+  "legacy" | "registration-second" | "registration-last" | "unexpected";
+
+function legacyPrivacyAuditViewSql(shape: LegacyPrivacyAuditShape): string {
+  const columns = {
+    token:
+      "(select count(*) from public.verification_tokens) as overdue_verification_tokens",
+    registration:
+      "(select count(*) from public.registration_intents) as overdue_registration_intents",
+    unverified:
+      "(select count(*) from public.leads) as overdue_unverified_leads",
+    sessions:
+      "(select count(*) from public.report_sessions) as expired_active_report_sessions",
+    shares: "(select count(*) from public.scan_shares) as active_public_shares",
+    signals:
+      "(select count(*) from public.payment_signals) as attached_card_signals",
+    deadLetters:
+      "(select count(*) from public.delivery_outbox) as analytics_dead_letters",
+  } as const;
+  const common = [
+    columns.unverified,
+    columns.sessions,
+    columns.shares,
+    columns.signals,
+    columns.deadLetters,
+  ];
+  const projection =
+    shape === "legacy"
+      ? [columns.token, ...common]
+      : shape === "registration-second"
+        ? [columns.token, columns.registration, ...common]
+        : shape === "registration-last"
+          ? [columns.token, ...common, columns.registration]
+          : [columns.token, "1::bigint as unexpected_metric"];
+  return `
+    create schema metabase;
+    create view metabase.privacy_retention_audit as
+    select ${projection.join(",\n      ")};
+    grant select on metabase.privacy_retention_audit
+      to pg_read_all_settings with grant option
+  `;
+}
+
+async function privacyAuditIdentity(pool: Pool) {
+  return (
+    await pool.query<{
+      object_oid: string;
+      owner_name: string;
+      acl: string;
+    }>(`
+      select
+        c.oid::text as object_oid,
+        pg_get_userbyid(c.relowner) as owner_name,
+        c.relacl::text as acl
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'metabase'
+        and c.relname = 'privacy_retention_audit'
+    `)
+  ).rows;
+}
+
+async function privacyAuditColumns(pool: Pool): Promise<string[]> {
+  return (
+    await pool.query<{ column_name: string }>(`
+      select column_name
+      from information_schema.columns
+      where table_schema = 'metabase'
+        and table_name = 'privacy_retention_audit'
+      order by ordinal_position
+    `)
+  ).rows.map(({ column_name }) => column_name);
+}
+
 async function resetDatabase(): Promise<void> {
   await adminPool.query(
-    "drop schema if exists public cascade; drop schema if exists drizzle cascade; drop schema if exists pgboss cascade; create schema public",
+    "drop schema if exists public cascade; drop schema if exists drizzle cascade; drop schema if exists pgboss cascade; drop schema if exists metabase cascade; create schema public",
   );
 }
 
@@ -183,6 +257,8 @@ describe("initial database migration", () => {
          values ($1, $2, 'old-report-hash', now() + interval '30 days')`,
         [reportId, leadId],
       );
+      await pool.query(legacyPrivacyAuditViewSql("registration-second"));
+      const legacyDashboardIdentity = await privacyAuditIdentity(pool);
       expect(
         (
           await pool.query<{ active_intent_index: string | null }>(
@@ -225,7 +301,32 @@ describe("initial database migration", () => {
         "insert into scanner_identity_cutover_ready (id, plan_digest) values (true, $1)",
         ["b".repeat(64)],
       );
+      await expect(
+        pool.query("drop table verification_tokens"),
+      ).rejects.toThrow(
+        /cannot drop table verification_tokens because other objects depend on it/,
+      );
       await migrateDatabase(db, migrationsFolder);
+      expect(await privacyAuditIdentity(pool)).toEqual(legacyDashboardIdentity);
+      expect(await privacyAuditColumns(pool)).toEqual([
+        "overdue_recovery_intents",
+        "overdue_registration_intents",
+        "overdue_unverified_leads",
+        "expired_active_report_sessions",
+        "active_public_shares",
+        "attached_card_signals",
+        "analytics_dead_letters",
+        "overdue_identity_completions",
+      ]);
+      expect(
+        (
+          await pool.query<{ view_definition: string }>(`
+            select pg_get_viewdef('metabase.privacy_retention_audit'::regclass, true)
+              as view_definition
+          `)
+        ).rows[0]?.view_definition,
+      ).not.toMatch(/verification_tokens/);
+
       await migrateDatabase(db, migrationsFolder);
 
       const schema = await pool.query<{
@@ -263,6 +364,122 @@ describe("initial database migration", () => {
         old_auth_id: "550e8400-e29b-41d4-a716-446655440000",
         report_id: reportId,
         report_hash: "old-report-hash",
+      });
+    } finally {
+      await pool.end();
+      await resetDatabase();
+    }
+  }, 25_000);
+
+  it("replaces every retained legacy privacy dashboard shape before dropping its token table", async () => {
+    for (const shape of ["legacy", "registration-last"] as const) {
+      await resetDatabase();
+      const { db, pool } = createDatabase(connectionString, { max: 2 });
+      try {
+        await migrateDatabaseThroughIdentityPreflight(db, migrationsFolder);
+        await pool.query(legacyPrivacyAuditViewSql(shape));
+        const identity = await privacyAuditIdentity(pool);
+
+        await expect(
+          pool.query("drop table verification_tokens"),
+        ).rejects.toThrow(
+          /cannot drop table verification_tokens because other objects depend on it/,
+        );
+
+        await migrateDatabase(db, migrationsFolder);
+        expect(await privacyAuditIdentity(pool)).toEqual(identity);
+        expect(await privacyAuditColumns(pool)).toEqual([
+          "overdue_recovery_intents",
+          "overdue_unverified_leads",
+          "expired_active_report_sessions",
+          "active_public_shares",
+          "attached_card_signals",
+          "analytics_dead_letters",
+          "overdue_registration_intents",
+          "overdue_identity_completions",
+        ]);
+        const dependency = await pool.query<{
+          legacy_dependencies: number;
+          view_definition: string;
+        }>(`
+          select
+            (select count(*)::int
+             from pg_rewrite rewrite
+             join pg_depend dependency
+               on dependency.classid = 'pg_rewrite'::regclass
+              and dependency.objid = rewrite.oid
+             join pg_class referenced on referenced.oid = dependency.refobjid
+             where rewrite.ev_class = 'metabase.privacy_retention_audit'::regclass
+               and referenced.relname = 'verification_tokens') as legacy_dependencies,
+            pg_get_viewdef('metabase.privacy_retention_audit'::regclass, true)
+              as view_definition
+        `);
+        expect(dependency.rows[0]?.legacy_dependencies).toBe(0);
+        expect(dependency.rows[0]?.view_definition).not.toMatch(
+          /verification_tokens/,
+        );
+      } finally {
+        await pool.end();
+      }
+    }
+
+    await resetDatabase();
+    const { db, pool } = createDatabase(connectionString, { max: 2 });
+    try {
+      await migrateDatabaseThroughIdentityPreflight(db, migrationsFolder);
+      expect(
+        (
+          await pool.query<{ view: string | null }>(
+            "select to_regclass('metabase.privacy_retention_audit')::text as view",
+          )
+        ).rows[0]?.view,
+      ).toBeNull();
+      await migrateDatabase(db, migrationsFolder);
+      expect(
+        (
+          await pool.query<{ view: string | null }>(
+            "select to_regclass('metabase.privacy_retention_audit')::text as view",
+          )
+        ).rows[0]?.view,
+      ).toBeNull();
+    } finally {
+      await pool.end();
+      await resetDatabase();
+    }
+  }, 35_000);
+
+  it("rejects an unknown privacy dashboard shape before any cleanup DDL", async () => {
+    await resetDatabase();
+    const { db, pool } = createDatabase(connectionString, { max: 2 });
+    try {
+      await migrateDatabaseThroughIdentityPreflight(db, migrationsFolder);
+      await pool.query(legacyPrivacyAuditViewSql("unexpected"));
+      const identity = await privacyAuditIdentity(pool);
+      const columns = await privacyAuditColumns(pool);
+
+      await expect(migrateDatabase(db, migrationsFolder)).rejects.toThrow(
+        /unexpected metabase\.privacy_retention_audit columns/,
+      );
+
+      expect(await privacyAuditIdentity(pool)).toEqual(identity);
+      expect(await privacyAuditColumns(pool)).toEqual(columns);
+      const rollback = await pool.query<{
+        verification_tokens: string | null;
+        old_lead_column: number;
+        active_intent_index: string | null;
+      }>(`
+        select
+          to_regclass('public.verification_tokens')::text as verification_tokens,
+          (select count(*)::int from information_schema.columns
+           where table_schema = 'public' and table_name = 'leads'
+             and column_name = 'scanner_auth_user_id') as old_lead_column,
+          to_regclass('public.registration_intents_active_scan_email_uidx')::text
+            as active_intent_index
+      `);
+      expect(rollback.rows[0]).toEqual({
+        verification_tokens: "verification_tokens",
+        old_lead_column: 1,
+        active_intent_index: "registration_intents_active_scan_email_uidx",
       });
     } finally {
       await pool.end();
