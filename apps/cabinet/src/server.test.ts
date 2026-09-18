@@ -1319,9 +1319,11 @@ describe("the cards screen", () => {
   it("says so plainly when a merchant has published nothing", async () => {
     const { browser } = await started();
 
-    const text = readable((await browser.signIn()).html);
+    const screen = await browser.signIn();
+    const text = readable(screen.html);
 
     expect(text).toContain("not published a card yet");
+    expect(screen.html).toContain('href="/docs/quickstart"');
   });
 
   it("puts a merchant's own text on the page as text, whatever is in it", async () => {
