@@ -304,6 +304,22 @@ describe("creating the order", () => {
     expect(stand.asked[0]?.url).toBe("/wp-json/wc/v3/orders/13");
   });
 
+  it("keeps every Agentify metadata entry so duplicate correlation cannot look unique", async () => {
+    stand = await shopAnswering(() => ({
+      status: 200,
+      body: madeOrder({
+        meta_data: [
+          { key: "agentify_order_id", value: "ord_7" },
+          { key: "agentify_order_id", value: { malformed: true } },
+        ],
+      }),
+    }));
+
+    const read = await readOrder(connectionTo(stand.url), "13");
+
+    expect(read.ok && read.order.agentifyOrderIds).toHaveLength(2);
+  });
+
   it("does not carry an authenticated shop's response into the error", async () => {
     const secret = `Basic ${Buffer.from("ck_abc:cs_def").toString("base64")}`;
     stand = await shopAnswering(() => ({

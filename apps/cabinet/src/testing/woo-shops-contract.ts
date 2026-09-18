@@ -439,13 +439,11 @@ export const wooShopsContract = (
       });
     });
 
-    it("turns a claimed definite refusal into durable recovery state", async () => {
+    it("does not downgrade an in-flight create claim to a pre-create refusal", async () => {
       await using(async (shops, accounts) => {
         await shops.claimOrder(accounts.one, "ord_1", FACTS, NOW);
         await shops.recordPrecreateRefusal(accounts.one, "ord_1", FACTS, LATER);
-        expect(await shops.claimOrder(accounts.one, "ord_1", FACTS, LATER)).toEqual({
-          kind: "precreate_refused",
-        });
+        expect((await shops.claimOrder(accounts.one, "ord_1", FACTS, LATER)).kind).toBe("unknown");
       });
     });
 

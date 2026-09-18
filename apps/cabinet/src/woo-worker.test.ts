@@ -303,6 +303,9 @@ describe("one paid order, in the merchant's own shop", () => {
 
     expect(answer && "refused" in answer).toBe(true);
     expect(shop.placed).toHaveLength(0);
+    expect((await shops.recoveryOrder("ord_1"))?.facts.productFingerprint).toBe(
+      "quoted-download-fingerprint",
+    );
   });
 
   it("does not reopen a definite pre-create refusal on worker redelivery", async () => {

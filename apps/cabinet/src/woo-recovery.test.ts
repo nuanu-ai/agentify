@@ -164,6 +164,22 @@ describe("exact Woo order recovery", () => {
     expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
   });
 
+  it("does not recover a changed download that no longer matches the accepted quote", async () => {
+    const shops = await setup("precreate_refused");
+    const test = parts(shops, {
+      inspectProduct: async () => ({
+        ok: true,
+        product: { ...PRODUCT, fingerprint: "replacement-download-fingerprint" },
+      }),
+    });
+
+    expect(await recoverWooOrder({ orderId: "ord_1" }, test.value)).toMatchObject({
+      ok: false,
+      state: "refused",
+    });
+    expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
+  });
+
   it("binds an unknown committed create by one verified Woo order id without another POST", async () => {
     const shops = await setup("create_unknown");
     const test = parts(shops);
