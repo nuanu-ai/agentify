@@ -424,5 +424,22 @@ export const wooShopsContract = (
         });
       });
     });
+
+    it("reopens a definite refusal once, only under a fresh connection", async () => {
+      await using(async (shops, accounts) => {
+        await shops.recordPrecreateRefusal(accounts.one, "ord_1", FACTS, NOW);
+        expect(await shops.beginPrecreateRecovery("ord_1", "grant_1", LATER)).toBe(false);
+        expect(await shops.beginPrecreateRecovery("ord_1", "grant_2", LATER)).toBe(true);
+        expect(await shops.beginPrecreateRecovery("ord_1", "grant_3", LATER)).toBe(false);
+
+        expect(await shops.recoveryOrder("ord_1")).toMatchObject({
+          orderId: "ord_1",
+          accountId: accounts.one,
+          phase: "create_unknown",
+          facts: { connectionRevision: "grant_2" },
+          placed: null,
+        });
+      });
+    });
   });
 };

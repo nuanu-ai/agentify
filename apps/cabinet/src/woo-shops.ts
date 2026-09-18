@@ -14,7 +14,7 @@
  * carries the part that is different here: the secret belongs to a third party.
  */
 
-import { and, desc, eq, isNull, lt } from "drizzle-orm";
+import { and, desc, eq, isNull, lt, ne, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import { wooGrants, wooOrders, wooShops } from "./schema.js";
@@ -66,6 +66,18 @@ export interface WooPermission extends Readonly<Record<string, unknown>> {
   readonly fileName: string;
   readonly emailUid: string;
   readonly orderNumber: string;
+}
+
+export interface WooRecoveryOrder {
+  readonly orderId: string;
+  readonly accountId: string;
+  readonly phase: "precreate_refused" | "create_unknown" | "placed";
+  readonly facts: WooOrderFacts;
+  readonly placed: {
+    readonly id: string;
+    readonly number: string;
+    readonly permission: WooPermission;
+  } | null;
 }
 
 /**
@@ -171,7 +183,14 @@ export interface WooShops {
       permission: WooPermission;
     },
     now: Date,
-  ): Promise<void>;
+  ): Promise<boolean>;
+  /** Exact private recovery state; absent or legacy rows are not recoverable. */
+  recoveryOrder(orderId: string): Promise<WooRecoveryOrder | null>;
+  /**
+   * Reopens only a definite pre-create refusal under a different grant.
+   * The compare-and-set is what keeps two operator commands to one POST.
+   */
+  beginPrecreateRecovery(orderId: string, revision: string, now: Date): Promise<boolean>;
   /** Gives up a claim nothing came of, so the next attempt may have it. */
   releaseOrder(orderId: string): Promise<void>;
 }
@@ -322,7 +341,7 @@ export const postgresWooShops = (pool: Pool): WooShops => {
     },
 
     async recordOrder(orderId, placed, now) {
-      await db
+      const bound = await db
         .update(wooOrders)
         .set({
           phase: "placed",
@@ -331,7 +350,60 @@ export const postgresWooShops = (pool: Pool): WooShops => {
           result: placed.permission,
           placedAt: now,
         })
-        .where(eq(wooOrders.orderId, orderId));
+        .where(
+          and(
+            eq(wooOrders.orderId, orderId),
+            eq(wooOrders.phase, "create_unknown"),
+            isNull(wooOrders.wooOrderId),
+          ),
+        )
+        .returning({ orderId: wooOrders.orderId });
+      return bound.length === 1;
+    },
+
+    async recoveryOrder(orderId) {
+      const [row] = await db.select().from(wooOrders).where(eq(wooOrders.orderId, orderId));
+      if (row === undefined || row.facts === null) return null;
+      if (
+        row.phase !== "precreate_refused" &&
+        row.phase !== "create_unknown" &&
+        row.phase !== "placed"
+      ) {
+        return null;
+      }
+      return {
+        orderId: row.orderId,
+        accountId: row.accountId,
+        phase: row.phase,
+        facts: row.facts as WooOrderFacts,
+        placed:
+          row.wooOrderId === null || row.wooOrderNumber === null || row.result === null
+            ? null
+            : {
+                id: row.wooOrderId,
+                number: row.wooOrderNumber,
+                permission: row.result as WooPermission,
+              },
+      };
+    },
+
+    async beginPrecreateRecovery(orderId, revision, now) {
+      const reopened = await db
+        .update(wooOrders)
+        .set({
+          phase: "create_unknown",
+          attemptedAt: now,
+          facts: sql`${wooOrders.facts} || jsonb_build_object('connectionRevision', ${revision})`,
+        })
+        .where(
+          and(
+            eq(wooOrders.orderId, orderId),
+            eq(wooOrders.phase, "precreate_refused"),
+            ne(sql`${wooOrders.facts}->>'connectionRevision'`, revision),
+          ),
+        )
+        .returning({ orderId: wooOrders.orderId });
+      return reopened.length === 1;
     },
 
     async releaseOrder(orderId) {
@@ -491,9 +563,34 @@ export const memoryWooShops = (): WooShops => {
 
     async recordOrder(orderId, placed) {
       const found = orders.get(orderId);
-      if (found !== undefined) {
+      if (found !== undefined && found.phase === "create_unknown" && found.placed === null) {
         orders.set(orderId, { ...found, phase: "placed", placed });
+        return true;
       }
+      return false;
+    },
+
+    async recoveryOrder(orderId) {
+      const found = orders.get(orderId);
+      return found === undefined ? null : { orderId, ...found };
+    },
+
+    async beginPrecreateRecovery(orderId, revision, now) {
+      const found = orders.get(orderId);
+      if (
+        found === undefined ||
+        found.phase !== "precreate_refused" ||
+        found.facts.connectionRevision === revision
+      ) {
+        return false;
+      }
+      orders.set(orderId, {
+        ...found,
+        phase: "create_unknown",
+        attemptedAt: now,
+        facts: { ...found.facts, connectionRevision: revision },
+      });
+      return true;
     },
 
     async releaseOrder(orderId) {
