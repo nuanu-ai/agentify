@@ -1963,6 +1963,13 @@ describe("the keys screen", () => {
     expect(issued.status).toBe(200);
     expect(issued.html).toContain(SECRET);
     expect(readable(issued.html)).toMatch(/only time|once/i);
+    expect(readable(issued.html)).toContain("Copy key");
+    expect(issued.html).toContain('history.replaceState(null, "", "/keys/new")');
+
+    const reloaded = await browser.get("/keys/new");
+    expect(reloaded.status).toBe(303);
+    expect(reloaded.to).toBe("/keys");
+    expect(keys.issued).toStrictEqual(["the second worker"]);
     // And it is gone from every page after it: the list is drawn from documents
     // that do not carry a secret at all.
     expect((await browser.get("/keys")).html).not.toContain(SECRET);
