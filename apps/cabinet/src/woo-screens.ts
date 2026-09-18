@@ -305,7 +305,7 @@ const theConnection = (
       ${
         connection.permissions === "read_write"
           ? ""
-          : `<p class="problem">Your shop granted ${escaped(connection.permissions)} access rather than read and write. Orders cannot be created in a shop we can only read, so every sale would be refused at the moment of delivery. Connect again and approve read and write access.</p>`
+          : `<p class="problem">Your shop granted ${escaped(connection.permissions)} access rather than read and write. A fresh purchase is unavailable before payment because this connection cannot create its WooCommerce order. Connect again and approve read and write access.</p>`
       }
     </div>
   </div>
@@ -581,7 +581,7 @@ export const wooSettingsBlock = (base: string, state: ShopTile): string => {
       ${
         state.shop.permissions === "read_write"
           ? ""
-          : `<p class="problem">Your shop granted ${escaped(state.shop.permissions)} access rather than read and write, so every sale would be refused at the moment of delivery. Connect again and approve read and write access.</p>`
+          : `<p class="problem">Your shop granted ${escaped(state.shop.permissions)} access rather than read and write, so a fresh purchase is unavailable before payment. Connect again and approve read and write access.</p>`
       }
       <p><a href="${escaped(base)}/woocommerce">Your shop</a></p>`
         : state.kind === "none"
