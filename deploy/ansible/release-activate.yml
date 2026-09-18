@@ -5,6 +5,7 @@
   delegate_to: localhost
   become: false
   changed_when: false
+  when: channel_name == 'production'
 
 - name: Require accepted test evidence before production promotion
   ansible.builtin.command:

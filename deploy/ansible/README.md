@@ -52,19 +52,14 @@ ansible-playbook -i deploy/ansible/inventory.yml \
   -e "release_evidence_directory=$EVIDENCE"
 ```
 
-## Stage test and production
+## Stage test
 
-Stage the selected revision on both channels before activating either one:
+Stage the selected revision on test. Production preparation is not required
+for test activation:
 
 ```sh
 ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
   --limit test -e release_phase=stage -e release_channel_ack=test \
-  -e "release_revision=$SHA" \
-  -e "release_evidence_directory=$EVIDENCE"
-
-ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
-  --limit production -e release_phase=stage \
-  -e release_channel_ack=production \
   -e "release_revision=$SHA" \
   -e "release_evidence_directory=$EVIDENCE"
 ```
@@ -73,8 +68,8 @@ For each channel, staging checks out a clean copy under
 `/home/dmitry/agentify-releases/<SHA>/source`, builds the first-party images,
 pulls the pinned infrastructure images, preserves the host-owned environment,
 renders the actual Compose graph, and runs the preflight and isolated web
-configuration checks. It fetches sanitized `test-topology.json` and
-`production-topology.json` files into the evidence directory. It does not stop
+configuration checks. It fetches the staged channel’s sanitized topology into the evidence directory:
+`test-topology.json` for test, `production-topology.json` for production. It does not stop
 or replace a live service.
 
 The channel builds prove the same source SHA, image roles, commands, OCI source
@@ -84,8 +79,8 @@ artifacts.
 
 ## Activate and accept test
 
-Activate test only after both topology files exist. Activation compares them
-before touching the running service:
+Activate the staged test candidate after its channel checks pass. Test
+activation does not read production evidence or contact production:
 
 ```sh
 ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
@@ -124,7 +119,19 @@ The marker records an operator decision; the playbook does not create it.
 
 ## Activate production
 
-Production requires the same two topology files, the trusted acceptance marker,
+After test acceptance and authorization to proceed with production, stage
+that same revision on production:
+
+```sh
+ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
+  --limit production -e release_phase=stage \
+  -e release_channel_ack=production \
+  -e "release_revision=$SHA" \
+  -e "release_evidence_directory=$EVIDENCE"
+```
+
+Production activation compares both actual rendered topology files before any
+runtime changes. It requires the same two topology files, the trusted acceptance marker,
 and `test-runtime-verified.json` for the selected revision. The runtime evidence
 must name channel `test` and contain all six expected resident service roles and
 all five first-party image roles. If this is the first migration adding live
