@@ -445,7 +445,7 @@ export const receiptsScreen = (
       <h1>Receipts</h1>
       <p>A receipt is written when the goods for an order are released: the amount, the moment the money moved, the moment we set that price for the sale, and the instant the price behind it was true. Those three are three different moments, and on a product whose price is asked for at the purchase they can be minutes apart.</p>
       <p>This is not the whole of the money. A purchase whose goods have not gone out has no receipt yet, and in the mode where the money moves at the purchase that means a payment you have already been sent is not on this page. Neither is a refund you owe. Both are on Orders, and until they end there the list below is short of them. A purchase that ended before any payment leaves no receipt at all, and none is written while it is unknown whether the buyer was charged.</p>
-      ${testWarning(receipts)}
+      ${testWarning(receipts, viewer.mode)}
     </div>
   </div>
   <div class="summary">
@@ -512,15 +512,23 @@ const sum = (test: boolean): string => (test ? ' <span class="tag">test</span>' 
  * merchant reading a full page of them as their takings, so when every row is a
  * test the page says so once, in a sentence, above the table.
  */
-const testWarning = (receipts: ReceiptList): string => {
+const testWarning = (receipts: ReceiptList, mode: Viewer["mode"]): string => {
   const tests = receipts.receipts.filter((receipt) => receipt.test).length;
   if (tests === 0) {
     return "";
   }
-  return `<p class="problem">${escaped(
+  const subject =
     tests === receipts.receipts.length
-      ? "Every receipt here is a test purchase: no money moved, and none of these is proof that any did."
-      : `${countOf(tests, "receipt")} here ${tests === 1 ? "is a test purchase" : "are test purchases"}: no money moved for ${tests === 1 ? "it" : "those"}.`,
+      ? "Every receipt here is a test purchase"
+      : `${countOf(tests, "receipt")} here ${tests === 1 ? "is a test purchase" : "are test purchases"}`;
+  const consequence =
+    mode === "test"
+      ? "test funds settled on Base Sepolia, but no real money moved."
+      : mode === "sandbox"
+        ? "no payment settled and no real money moved."
+        : "no real money moved.";
+  return `<p class="problem">${escaped(
+    `${subject}: ${consequence}`,
   )}</p>`;
 };
 
