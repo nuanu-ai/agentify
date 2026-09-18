@@ -647,13 +647,17 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       response.status(503).type("html").send(mailUnavailableScreen(base, config.surfaceMode));
       return;
     }
-    if (requested.status === "cooldown") {
-      response.setHeader(
-        "retry-after",
-        String(Math.max(1, Math.ceil((requested.retryAt.getTime() - Date.now()) / 1_000))),
-      );
+    const retryAfterSeconds =
+      requested.status === "cooldown"
+        ? Math.max(1, Math.ceil((requested.retryAt.getTime() - Date.now()) / 1_000))
+        : undefined;
+    if (retryAfterSeconds !== undefined) {
+      response.setHeader("retry-after", String(retryAfterSeconds));
     }
-    response.status(202).type("html").send(linkRequestedScreen(base, config.surfaceMode));
+    response
+      .status(202)
+      .type("html")
+      .send(linkRequestedScreen(base, config.surfaceMode, email, destination, retryAfterSeconds));
   });
 
   const registerMerchant = async (): Promise<{ id: string; key: string } | null> => {

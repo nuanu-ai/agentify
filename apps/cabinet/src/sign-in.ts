@@ -33,21 +33,38 @@ export const signInScreen = (
     mode,
   );
 
-/** The non-enumerating answer after an accepted request or a cooldown. */
-export const linkRequestedScreen = (base: string, mode: SurfaceMode): string =>
-  bare(
+/** The non-enumerating answer after an accepted request or an hourly limit. */
+export const linkRequestedScreen = (
+  base: string,
+  mode: SurfaceMode,
+  email: string,
+  destination: "default" | "settings",
+  retryAfterSeconds?: number,
+): string => {
+  const minutes =
+    retryAfterSeconds === undefined ? null : Math.max(1, Math.ceil(retryAfterSeconds / 60));
+  const retry =
+    minutes === null
+      ? '<p class="quiet">If nothing arrives, check your spam folder, then send another link from this page.</p>'
+      : `<p class="problem">No new link was sent. Try again in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.</p>`;
+
+  return bare(
     base,
     "Check your mail",
     `<div class="gate">
-<form method="get" action="${escaped(base)}/sign-in">
+<form method="post" action="${escaped(base)}/sign-in">
   <h1>${brandLockup("/")}</h1>
   <p>If a message can be sent to that address, a sign-in link is on its way. It works once and expires after one hour.</p>
-  <p class="quiet">If nothing arrives, wait a moment and try again. We answer every address the same way.</p>
-  <button type="submit">Back</button>
+  ${retry}
+  <p class="quiet">You can request up to three links for one address in one hour. We answer every address the same way.</p>
+  <input name="email" type="hidden" value="${escaped(email)}">
+  ${destination === "settings" ? '<input type="hidden" name="destination" value="settings">' : ""}
+  <button type="submit">Send another link</button>
 </form>
 </div>`,
     mode,
   );
+};
 
 /** An honest provider outage: no message was accepted and no account was made. */
 export const mailUnavailableScreen = (base: string, mode: SurfaceMode): string =>

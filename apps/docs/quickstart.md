@@ -5,9 +5,9 @@
 You are the one writing code here: the business has an API, and you want to
 keep the delivery in your own hands. Below is the path from an empty project to
 a test sale that your side runs end to end — the card, the order, the delivery,
-the receipt. A live agent comes after that, on the last step. You do not
-rewrite the shop to get there: a handler appears beside it, a process that
-takes paid orders and gives out the goods for them.
+the receipt. The first buyer is the operator-run sandbox program described in
+step 6. You do not rewrite the shop to get there: a handler appears beside it,
+a process that takes paid orders and gives out the goods for them.
 
 The SDK is the current product path. A WooCommerce connector exists as an
 experiment, but it is not required for this integration or used as its
@@ -494,9 +494,9 @@ settlement is eligible remains an open question.
 
 Publication on the live channel is a separate act with that environment's key.
 Passing the test-channel purchase copies neither a card nor its evidence into
-the live environment. Connecting new catalogues, moving to new exchange
-formats and editing cards as products and prices change are our work and do
-not touch your code.
+the live environment. Your integration republishes the same product key when
+its card or price changes. External catalogues and exchange formats are
+separate from that SDK path and carry no promise of automatic listing.
 
 ## What is not settled yet
 
