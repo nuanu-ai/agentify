@@ -81,7 +81,7 @@
   ansible.builtin.shell: |
     docker exec -i '{{ channel.cabinet_container }}' node - <<'JS'
     const dns = await import('node:dns/promises')
-    const addresses = await dns.lookup('woo.nuanu.ai', { all: true, family: 4 })
+    const addresses = await dns.lookup('woo.nuanu.ai', { all: true })
     if (addresses.length === 0 || addresses.some((answer) => answer.address !== '153.124.160.16')) {
       throw new Error('Cabinet DNS no longer returns only the reviewed public Woo address')
     }
@@ -106,7 +106,7 @@
 - name: Verify Woo keeps public Agentify DNS and can return its grant over TLS
   ansible.builtin.shell: |
     set -eu
-    addresses="$(docker exec agentify-woo-lab-wordpress-1 getent ahostsv4 test.agentify.ad | awk '{print $1}' | sort -u)"
+    addresses="$(docker exec agentify-woo-lab-wordpress-1 getent ahosts test.agentify.ad | awk '{print $1}' | sort -u)"
     test "$addresses" = '153.124.160.16'
     status="$(docker exec agentify-woo-lab-wordpress-1 curl -sS --connect-timeout 5 --max-time 10 --output /dev/null --write-out '%{http_code}' https://test.agentify.ad/cabinet/healthz)"
     test "$status" = 200

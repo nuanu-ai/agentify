@@ -166,7 +166,9 @@ def require_public_dns() -> None:
     for host in PUBLIC_HOSTS:
         answers = [
             address[4][0]
-            for address in socket.getaddrinfo(host, int(HTTPS_PORT), socket.AF_INET)
+            for address in socket.getaddrinfo(
+                host, int(HTTPS_PORT), socket.AF_UNSPEC, socket.SOCK_STREAM
+            )
         ]
         validate_dns(host, answers)
 

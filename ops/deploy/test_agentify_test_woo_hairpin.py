@@ -78,7 +78,12 @@ class HairpinContract(unittest.TestCase):
     def test_requires_the_one_reviewed_public_dns_answer(self):
         subject = load_subject()
         subject.validate_dns("woo.nuanu.ai", ["153.124.160.16", "153.124.160.16"])
-        for answers in ([], ["10.20.10.11"], ["153.124.160.16", "203.0.113.4"]):
+        for answers in (
+            [],
+            ["10.20.10.11"],
+            ["153.124.160.16", "203.0.113.4"],
+            ["153.124.160.16", "2001:db8::1"],
+        ):
             with self.subTest(answers=answers), self.assertRaisesRegex(RuntimeError, "DNS"):
                 subject.validate_dns("woo.nuanu.ai", answers)
 

@@ -269,6 +269,15 @@
         chdir: "{{ release_source_directory }}"
       no_log: true
 
+    - name: Create the root-owned directory for the TEST Woo hairpin
+      ansible.builtin.file:
+        path: /usr/local/libexec
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      when: channel_name == 'test'
+
     - name: Install the TEST Woo public-address hairpin
       ansible.builtin.copy:
         src: "{{ release_source_directory }}/ops/deploy/agentify-test-woo-hairpin.py"
