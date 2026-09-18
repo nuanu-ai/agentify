@@ -232,6 +232,35 @@ COIN-22 remains open but does not block this agent-first result. No buyer email
 is requested. COIN-34/35 cover Import visibility and its 200-product boundary;
 COIN-36–40 retain their Connect/import failure scopes. COIN-25 records this run.
 
+## Prospective amendment after an unsigned runner failure
+
+The first case-2 orchestration prepared unsigned order
+`ord_fcc7e8f05232450fa3923b684b997339` and then stopped on a shell
+readonly-variable error before credential revocation, wallet-key access,
+signature or payment. The quote expired and the gateway closed the order on its
+time limit. Readback proved no payment claim, receipt or Cabinet Woo order; Woo
+remained at its one happy-case order and permission; balances, connection
+revision and current key were unchanged. The failed preparation stays in the
+execution record and is not called a product case.
+
+The product owner may authorize one replacement preparation for the same
+case-2 scenario after the corrected whole runner and append-only transition
+pass offline and independent review. First the ledger verifies the exact public
+order is terminal expired in TEST, quoted at `0.01`, and has no delivery, then
+appends terminal `aborted_unsigned` evidence to the unchanged attempt-2 row.
+That row must have no execution reservation, payment nonce, signature, claim,
+spend or merchant-key mutation.
+
+The one replacement is a new `revoked-precreate` row carrying
+`replacement_for_attempt: 2`, a fresh private reservation, Agentify order and
+challenge. The original `ambiguous-create` case follows it. The ledger may
+therefore contain four preparation rows, while execution reservations,
+signatures and signed authorizations remain capped at exactly three, `0.01`
+each and `0.03` total. Every reservation, order and payment nonce remains
+globally unique. The expired order and challenge can never be executed. No
+generic reset, loop or automatic regeneration is introduced. Execution still
+requires an explicit GO against the immutable reviewed runner.
+
 ## Sources
 
 - Product boundary: `AGENTS.md`; `docs/decisions/0023-*.md`;
