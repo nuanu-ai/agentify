@@ -415,7 +415,7 @@ const testOrders = (orders: OrderList): string => {
 const whyItNeedsYou = (status: OrderList["orders"][number]["status"]): string =>
   status === "refund_due"
     ? "The money was taken, the delivery window ran out and nothing shipped. You return it from your own wallet — we recorded the amount and the order. A late delivery still clears the debt."
-    : "You delivered the goods and the payment did not execute. The order stays open, and a repeat purchase by the same buyer carries the payment through.";
+    : "Your integration returned the goods, but payment did not settle, so the goods were not released to the buyer. The order stays open. The same buyer can retry payment for this order with a fresh authorization; if that payment settles, the stored goods are released without another fulfillment call.";
 
 export const receiptsScreen = (
   viewer: Viewer,
