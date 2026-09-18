@@ -119,7 +119,7 @@ export const wooShopsContract = (
       });
     });
 
-    it("refuses a token whose time is up, and takes the row away with it", async () => {
+    it("refuses a token whose time is up but keeps the attempt visible", async () => {
       await using(async (shops, accounts) => {
         await shops.beginGrant({
           token: "a-token",
@@ -129,30 +129,37 @@ export const wooShopsContract = (
           expiresAt: LATER,
         });
         expect(await shops.spendGrant("a-token", MUCH_LATER)).toBeNull();
-        // Gone rather than left to expire again: a stale token is exactly what
-        // somebody replaying an old callback would be holding.
-        expect(await shops.spendGrant("a-token", NOW)).toBeNull();
+        expect((await shops.grantFor(accounts.one))?.token).toBe("a-token");
       });
     });
 
-    it("clears out the Connects nobody came back for", async () => {
+    it("a new Connect supersedes only that account's previous attempt", async () => {
       await using(async (shops, accounts) => {
         await shops.beginGrant({
-          token: "stale",
+          token: "first",
           accountId: accounts.one,
-          shopUrl: "https://shop.example.com",
+          shopUrl: "https://first.example.com",
           startedAt: NOW,
           expiresAt: LATER,
         });
         await shops.beginGrant({
-          token: "live",
-          accountId: accounts.one,
-          shopUrl: "https://shop.example.com",
+          token: "other",
+          accountId: accounts.other,
+          shopUrl: "https://other.example.com",
           startedAt: NOW,
           expiresAt: MUCH_LATER,
         });
-        expect(await shops.sweepGrants(new Date(MUCH_LATER.getTime() - 1))).toBe(1);
-        expect(await shops.spendGrant("live", NOW)).not.toBeNull();
+        await shops.beginGrant({
+          token: "second",
+          accountId: accounts.one,
+          shopUrl: "https://second.example.com",
+          startedAt: LATER,
+          expiresAt: MUCH_LATER,
+        });
+
+        expect(await shops.spendGrant("first", NOW)).toBeNull();
+        expect((await shops.grantFor(accounts.one))?.token).toBe("second");
+        expect((await shops.grantFor(accounts.other))?.token).toBe("other");
       });
     });
 
