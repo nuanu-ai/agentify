@@ -220,7 +220,7 @@ export function AuthCallback({
               onClick={() => void confirm()}
               disabled={!link}
             >
-              {state === "ready" ? "Confirm email" : "Try again"}
+              {state === "ready" ? "Open my report" : "Try again"}
             </button>
           </>
         ) : state === "verifying" || state === "recovery-sending" ? (
