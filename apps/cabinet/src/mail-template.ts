@@ -79,7 +79,7 @@ export function transactionalEmailHtml(message: TransactionalEmail): string {
             </td>
           </tr>
           <tr>
-            <td style="padding:20px 4px 0;color:#6B6862;font-size:12px;line-height:1.5;">Agentify commerce account message</td>
+            <td style="padding:20px 4px 0;color:#6B6862;font-size:12px;line-height:1.5;">Agentify secure access message</td>
           </tr>
         </table>
       </td>

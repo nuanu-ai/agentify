@@ -43,4 +43,19 @@ describe("transactional email HTML", () => {
     expect(html).toContain("-apple-system");
     expect(html).toContain("https://agentify.example/action?token=abc");
   });
+
+  it("uses a product-wide Agentify footer", () => {
+    const html = transactionalEmailHtml({
+      preview: "Preview",
+      eyebrow: "Secure access",
+      title: "Continue",
+      lead: "Use the link below.",
+      action: "Continue",
+      link: "https://agentify.ad/action?token=abc",
+      paragraphs: ["The link expires in an hour."],
+    });
+
+    expect(html).toContain("Agentify secure access message");
+    expect(html).not.toContain("commerce account");
+  });
 });
