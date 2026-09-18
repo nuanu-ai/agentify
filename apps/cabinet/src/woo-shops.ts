@@ -509,7 +509,7 @@ export const postgresWooShops = (pool: Pool): WooShops => {
         .set({
           phase: "create_unknown",
           attemptedAt: now,
-          facts: sql`${wooOrders.facts} || jsonb_build_object('connectionRevision', ${revision})`,
+          facts: sql`${wooOrders.facts} || jsonb_build_object('connectionRevision', cast(${revision} as text))`,
         })
         .where(
           and(
