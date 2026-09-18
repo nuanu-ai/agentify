@@ -625,6 +625,25 @@ describe("the passwordless cabinet door", () => {
     expect(unknown.headers.getSetCookie()).toStrictEqual([]);
     expect(rows.cabinet_sessions).toStrictEqual([]);
     expect(mails).toHaveLength(2);
+    expect(known.html).toContain('method="post" action="/sign-in"');
+    expect(known.html).toContain(`name="email" type="hidden" value="${PERSON}"`);
+  });
+
+  it("keeps the known address on the page and names the wait after its hourly limit", async () => {
+    const { browser, mails } = await started();
+
+    for (let sent = 0; sent < 3; sent += 1) {
+      const answer = await browser.post("/sign-in", { email: PERSON });
+      expect(answer.status).toBe(202);
+      expect(answer.html).toContain(`name="email" type="hidden" value="${PERSON}"`);
+    }
+
+    const limited = await browser.post("/sign-in", { email: PERSON });
+    expect(limited.status).toBe(202);
+    expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);
+    expect(readable(limited.html)).toContain("No new link was sent");
+    expect(readable(limited.html)).toMatch(/Try again in \d+ minutes/);
+    expect(mails).toHaveLength(3);
   });
 
   it("does not spend a query token on GET and opens it once on an explicit same-origin POST", async () => {
