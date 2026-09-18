@@ -573,22 +573,25 @@ describe("the whole way through, against a real gateway", () => {
       },
     } as never;
 
-    await turnOnce({ ...connection(), permissions: "read" }, {
-      shops: memoryWooShops(),
-      identity: {
-        byId: async () => ({
-          id: "p",
-          email: MERCHANT_EMAIL,
-          confirmed: true,
-          merchant: { id: "mer_1", key: KEY },
-        }),
+    await turnOnce(
+      { ...connection(), permissions: "read" },
+      {
+        shops: memoryWooShops(),
+        identity: {
+          byId: async () => ({
+            id: "p",
+            email: MERCHANT_EMAIL,
+            confirmed: true,
+            merchant: { id: "mer_1", key: KEY },
+          }),
+        },
+        clientFor: () => gateway,
+        now: () => new Date("2026-09-14T12:00:00.000Z"),
+        quote: async () => {
+          throw new Error("a connection that cannot write must be refused before the shop is read");
+        },
       },
-      clientFor: () => gateway,
-      now: () => new Date("2026-09-14T12:00:00.000Z"),
-      quote: async () => {
-        throw new Error("a connection that cannot write must be refused before the shop is read");
-      },
-    });
+    );
 
     expect(answer).toMatchObject({ available: false });
   });

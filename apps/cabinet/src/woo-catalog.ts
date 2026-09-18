@@ -59,13 +59,15 @@ export const StoreProductSchema = z.looseObject({
   manage_stock: z.boolean().default(false),
   download_limit: z.number().int().default(-1),
   download_expiry: z.number().int().default(-1),
-  downloads: z.array(
-    z.looseObject({
-      id: z.string(),
-      name: z.string(),
-      file: z.string(),
-    }),
-  ).default([]),
+  downloads: z
+    .array(
+      z.looseObject({
+        id: z.string(),
+        name: z.string(),
+        file: z.string(),
+      }),
+    )
+    .default([]),
   qualification_problem: z.string().nullable().default(null),
   prices: z.looseObject({
     price: z.string(),

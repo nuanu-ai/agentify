@@ -384,9 +384,7 @@ export const wooImportScreen = (viewer: Viewer, view: ImportView): string => {
   const went = view.outcomes.filter((one): one is Published => "published" in one);
   const refused = view.outcomes.filter((one): one is Refused => "problems" in one);
   const unanswered = view.outcomes.filter((one): one is Unanswered => "failed" in one);
-  const notAttempted = view.outcomes.filter(
-    (one): one is NotAttempted => "notAttempted" in one,
-  );
+  const notAttempted = view.outcomes.filter((one): one is NotAttempted => "notAttempted" in one);
 
   const body = `
   <div class="lede">

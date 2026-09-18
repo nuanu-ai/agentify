@@ -435,10 +435,12 @@ describe("the keys arriving from the shop", () => {
     });
 
     expect(
-      (await running.postJson("/woocommerce/callback", grantedBody(tokenIn(first.to ?? "")))).status,
+      (await running.postJson("/woocommerce/callback", grantedBody(tokenIn(first.to ?? ""))))
+        .status,
     ).toBe(401);
     expect(
-      (await running.postJson("/woocommerce/callback", grantedBody(tokenIn(second.to ?? "")))).status,
+      (await running.postJson("/woocommerce/callback", grantedBody(tokenIn(second.to ?? ""))))
+        .status,
     ).toBe(200);
     expect((await running.shops.connections())[0]?.shopUrl).toBe("https://second.example.com");
   });
