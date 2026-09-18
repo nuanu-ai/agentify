@@ -1,93 +1,86 @@
-# 0023. A connected WooCommerce shop is a merchant's credential we hold and fill orders with
+# 0023. A connected WooCommerce shop is a merchant credential we hold and fill orders with
 
 Date: 2026-09-14
 Status: accepted
 
 ## Context
 
-A merchant whose products live in a WooCommerce shop has a catalogue, a way of
-being paid and no code. The probe on `spikes/woo/` established that every piece
-of a channel exists on a stock self-hosted shop and needs no plugin of ours: the
-wc-auth grant hands out working keys, the Store API serves the catalogue
-unauthenticated, and `wc/v3` creates an order the shop itself calls paid
-(`docs/research/27-woo-connect-probe.md`). Opening it puts two things into this
-system that were not in it before, and both are expensive to reverse: somebody
-else's credential at rest in our database, and a route anybody on the internet
-may post to, because the grant is completed by the shop's own web server posting
-the key pair to an address we supplied.
+A WooCommerce owner has a catalogue and no code that can answer Agentify
+orders. The stock Woo REST API can grant a key, read products and create an
+order without an Agentify plugin. Connecting it gives us a third party's
+write credential and a public callback. Selling from it also makes Agentify
+responsible for carrying the actual product to the buying agent, not merely a
+shop order number.
+
+Stock Woo can grant a native protected download to a paid order. That is the
+smallest product this connector can honestly complete. Gift cards without a
+voucher implementation, physical goods and other product classes have no goods
+this connector can return to an agent.
 
 ## Decision
 
-**The shop's key and secret are kept by the cabinet, in a row, as the shop
-issued them.** This is the shape ADR-0014 §2 argues for the merchant key on an
-account row, with one difference said out loud: the secret is a third party's.
-What a copy of this table buys is write access to a stranger's shop until they
-revoke it — which they can do themselves, from WooCommerce → Settings → Advanced
-→ REST API, where the key appears under the name we asked for it under. It is
-not a secret store; the database is a boundary against the network and not
-against a host, and the day that stops being enough the fix is one, not a
-cleverer column.
+**Cabinet keeps the shop key and secret as Woo issued them.** They live on the
+merchant account under the same host boundary as the cabinet key. Woo's own
+REST API screen can revoke them. The database is a boundary against the
+network, not against the host.
 
-**The callback is guarded by a one-time state token and by nothing else.**
-wc-auth's `user_id` is an opaque string of the application's choosing, handed
-back in the callback and in the return redirect. Ours is thirty-two random bytes
-written down when the merchant presses Connect, bound to their account and to
-the shop address they typed and we checked, good for fifteen minutes, and
-deleted by arriving — so a token that worked cannot work again, and a request
-carrying anything else is refused with a status rather than a page, which makes
-the shop take the key it minted back out (`class-wc-auth.php`,
-`maybe_delete_key`). The shop address is read off the row and never off the
-callback: read off the callback it would be a shop of the caller's choosing.
+**The grant callback spends one random state row.** The value is bound to the
+account and normalized shop origin, expires after fifteen minutes and is
+deleted by the callback. Shop address comes from that row, never from callback
+input. Each successful connection gets a private revision.
 
-**Orders are filled by the cabinet acting as that merchant's worker, over the
-public merchant API.** No private arrangement with the gateway and no new wire:
-the hand-over is the gateway's own queue-shaped effect, written into the same
-transaction as the state that implies it (ADR-0013), and the cabinet draws it
-with that merchant's key like any worker. A sale is claimed in a ledger before
-the shop is called, so a redelivery places no second order.
+**The working product is one protected native download.** Import accepts only
+a published, purchasable, in-stock, unmanaged-stock simple USD product that is
+virtual and downloadable, has exactly one enabled same-origin protected file,
+unlimited count and expiry, and safe shop download settings. The raw file must
+not be publicly retrievable. Everything else is named and skipped.
+
+The published card is asynchronous and asks Cabinet for a live price before
+payment. Its merchant item identity binds normalized shop origin and Woo
+product id. Its delivery is the native Woo permission URL, file name and Woo
+order number. The URL uses Woo's order key and hashed merchant order email; it
+contains no buyer or merchant email and is a bearer secret, not wallet-bound.
+It appears only in the order delivery.
+
+**Cabinet fills the order as the merchant's worker.** Agentify settles an
+asynchronous purchase before hand-over. Cabinet rechecks the authoritative
+product and settings, claims the Agentify order in a durable ledger, creates
+one paid Woo order and records the exact permission ingredients before
+answering with the goods. Redelivery returns that stored result and never
+creates a second Woo order.
+
+The ledger records one of `precreate_refused`, `create_unknown` or
+`placed`, plus shop origin and connection revision, immutable sold facts and
+the Woo result. Any response loss, retry status, malformed successful response
+or failure to record a successful create is unknown and never reopens POST.
+
+**A private exact-order command closes paid failures.** It adds no public route
+or SDK method. A known pre-create refusal may make one new POST only after the
+same shop reconnects under a new revision and the exact sold product still
+passes preflight. An unknown create requires an operator-supplied Woo order id
+and makes only authenticated GET-by-id. It binds and delivers only when shop,
+Agentify transaction and metadata, merchant, product, quantity, amount,
+currency, paid state and native permission all match. Missing or mismatched
+facts remain refund debt. Late delivery uses Agentify's existing idempotent
+delivery route.
 
 ## Consequences
 
-This adds nothing to the public surface — no route, no contract, no field — and
-four screens behind the sign-in. To ours it adds three tables and one process in
-the cabinet that is not a page.
+Woo orders use the merchant's own email until buyer identity is decided; no
+buyer email is requested or exposed. Managed stock, physical and variable
+products, gift/voucher semantics, multiple files, finite permissions and
+external file stores are unsupported.
 
-**Whose address goes on the order in the shop is not decided.** Creating an
-order makes WooCommerce mail the address on it and the shop administrator, and
-nothing in the request can suppress either. Until somebody decides what a
-buyer's agent's address means here — an agent may have none, and handing a
-stranger's address to a merchant's mailing list is a decision, not a default —
-the address used is the merchant's own. So a merchant gets both emails and no
-buyer gets one.
+Import reads at most two hundred products and never silently resumes a paused
+card. Removing or changing a Woo product does not remove its Agentify card; the
+live price check refuses stale unsupported state before payment where it can,
+and the residual change after quote is honest refund debt.
 
-**An attempt whose outcome we never learned refuses the sale.** A ledger row
-with no order number means a request went towards the shop and nothing came
-back; whether that shop holds an order is not knowable from here, so the next
-hand-over is refused in words that say so. The cost is a refused sale where the
-shop had nothing; the alternative is a second thing a merchant picks, packs and
-posts for one payment.
+Connect preflight and same-origin file protection checks are outbound requests
+to merchant-chosen HTTPS. Private-address protection remains owed before
+Cabinet shares a sensitive network. One account has one connected shop; a
+different origin cannot fulfil cards imported from the previous one.
 
-**An import brings over at most two hundred products, and takes nothing off
-sale.** Every product is a separate call to the publish door while somebody
-holds a page open. A product deleted in the shop, or out of stock, is simply
-absent from what is read, and the card published for it earlier stays where it
-is; the screen says so, and pausing it is one press.
-
-**The preflight is an outgoing request to an address the merchant chose.** A
-registered merchant can make the cabinet fetch any https address and learn
-whether it answered and, on a 401, one line of what it said. https narrows it,
-and the alternative — refusing private addresses — would refuse the laboratory
-in `spikes/woo/` with them. It is priced here rather than guarded, and the guard
-is owed the day this cabinet shares a network with something that answers https
-and should not be asked. Nothing bounds the number of connected shops either:
-one loop and one held request per shop is what keeps one merchant's orders from
-waiting behind another's, and at some number it is the wrong shape.
-
-**Rejected: a plugin of ours in the merchant's shop.** Every competitor ships
-one; it is a second codebase in somebody else's WordPress, with its own update
-path and its own security surface, for a channel that works without it.
-**Rejected: creating the order from the gateway.** It would then need a
-stranger's shop credentials and two new public routes for the cabinet to put
-them there — a wider surface and a second place the same secret lives.
-**Rejected: a signed state token instead of a row.** A signature proves who
-issued a value and cannot make it single-use, which is the half that matters.
+Rejected: an Agentify Woo plugin, buyer email as a delivery mechanism, raw file
+URLs, order-number-only delivery, automatic collection scans that infer an
+unknown order is absent, and putting shop credentials in Gateway.
