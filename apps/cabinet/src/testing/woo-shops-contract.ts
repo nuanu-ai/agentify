@@ -397,5 +397,32 @@ export const wooShopsContract = (
         });
       });
     });
+
+    it("binds an uncertain sale to one exact shop order", async () => {
+      await using(async (shops, accounts) => {
+        await shops.claimOrder(accounts.one, "ord_1", FACTS, NOW);
+        await shops.recordOrder(
+          "ord_1",
+          { id: "13", number: "WOO-13", permission: PERMISSION },
+          NOW,
+        );
+        await shops.recordOrder(
+          "ord_1",
+          {
+            id: "14",
+            number: "WOO-14",
+            permission: { ...PERMISSION, orderKey: "wc_order_14", orderNumber: "WOO-14" },
+          },
+          LATER,
+        );
+
+        expect(await shops.knownOrder("ord_1")).toEqual({
+          kind: "placed",
+          id: "13",
+          number: "WOO-13",
+          permission: PERMISSION,
+        });
+      });
+    });
   });
 };
