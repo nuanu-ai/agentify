@@ -426,6 +426,23 @@ describe("the keys arriving from the shop", () => {
     expect(await running.shops.connections()).toEqual([]);
   });
 
+  it("refuses an older callback after the merchant starts a newer Connect", async () => {
+    const running = await started();
+    await running.signIn();
+    const first = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const second = await running.post("/woocommerce/connect", {
+      shop_url: "https://second.example.com",
+    });
+
+    expect(
+      (await running.postJson("/woocommerce/callback", grantedBody(tokenIn(first.to ?? "")))).status,
+    ).toBe(401);
+    expect(
+      (await running.postJson("/woocommerce/callback", grantedBody(tokenIn(second.to ?? "")))).status,
+    ).toBe(200);
+    expect((await running.shops.connections())[0]?.shopUrl).toBe("https://second.example.com");
+  });
+
   it("refuses a callback with no keys in it", async () => {
     const running = await started();
     await running.signIn();
@@ -736,6 +753,25 @@ describe("what the settings screen says about a shop", () => {
     // And not the sentence for a Connect still running, which would have the
     // merchant sitting and reloading a page that will never change.
     expect(text).not.toContain("Reload this page in a moment");
+  });
+
+  it("keeps the previous shop address in the retry form", async () => {
+    const running = await started();
+    await running.signIn();
+    await startedMinutesAgo(running, 40);
+
+    const screen = await running.get("/woocommerce");
+
+    expect(screen.html).toContain(`value="${SHOP}"`);
+  });
+
+  it("offers the experimental shop path from an empty catalogue", async () => {
+    const running = await started();
+    await running.signIn();
+
+    const screen = await running.get("/cards");
+
+    expect(screen.html).toContain(`href="/woocommerce"`);
   });
 
   it("says a connected shop granted less than it needs to sell anything", async () => {
