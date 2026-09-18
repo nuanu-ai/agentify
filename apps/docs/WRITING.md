@@ -99,7 +99,7 @@ items and then give the list. Paragraphs vary in length. The contrastive "X,
 not Y" appears at most once per page. The turns "this is a deliberate
 decision", "we say it honestly", "not decoration", "not a formality" are not
 used. The headings of one page do not all start with the same word. The note
-about the contract being preliminary is one line in the header, identical
+about the public contract being versioned is one line in the header, identical
 everywhere.
 
 Plain and unnarrated (Dmitry's rule, 2026-08-26; the specimen defect was "the

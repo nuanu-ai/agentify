@@ -1,6 +1,6 @@
 # Connecting to Agentify
 
-*A preliminary contract: the wording can still change before the pilot.*
+*The public contract is versioned; changes arrive in a new package and contract version.*
 
 You run an online business, and you are deciding whether it is worth putting
 your goods where programs do the buying. This page is what that decision is
@@ -36,13 +36,10 @@ That, and the rest of what there is to say about the money, is on
 The conversation about connecting comes down to four questions, and once you
 have answered them we have no more questions for you.
 
-1. What you sell. A link to your site, your product list or your documentation
-   is enough — we write the cards from those materials. A card carries the
-   title, the description, the price and the list of what has to be given at
-   purchase. You check the finished card and approve it. Approval goes by
-   correspondence rather than by a button: we send you the card, and you either
-   say yes or say what to fix. The last word stays with you, because it is your
-   product at your price and the card is the whole of what an agent reads.
+1. What you sell. Your integration publishes a card with the title,
+   description, price and list of what has to be given at purchase. The card is
+   the whole of what an agent reads, and your code republishes it when the
+   product changes.
 2. Where to send the money. We need the address of your wallet — buyers'
    payments arrive there. Nothing accumulates on our side, and nothing is paid
    out once a week.
@@ -55,39 +52,28 @@ have answered them we have no more questions for you.
    money goes back yet, so we sell what we are almost certain we can deliver.
    Once there is a way to send money back, the limit comes off
    ([Money](/money)).
-4. How the goods are delivered. There are three paths, and you take the one
-   closest to the way your business already works:
-   - you have an API — a handler appears beside it that takes paid orders and
-     gives out the goods for them;
-   - you have an online shop — paid orders show up in it as ordinary ones, and
-     you deal with them as you always have;
-   - you have neither — the order reaches you as a message, you confirm it and
-     deliver; this path we switch on after the pilot.
+4. How the goods are delivered. The working path uses the Agentify SDK: a
+   handler runs beside your API, takes paid orders and gives out the goods. A
+   WooCommerce connector is experimental and is not required for the SDK path.
+   Delivery by a message that you confirm by hand is not available.
 
 ## Your hands or ours
 
-You only have to write code on the first path. Your own engineer can write the
-handler against your API, and the whole path from an empty project to a test
-sale is on [The first test sale](/quickstart). If you have no engineer of your
-own, or they are busy with something else, we write the handler and run it
-ourselves — then what we need from you is access to your API and your approval
-of the cards. Either way the sales themselves work the same.
+Your engineer writes the handler against your API. The whole path from an empty
+project to a test sale is on [The first test sale](/quickstart). Agentify carries
+the paid order to that handler and returns its delivery to the buyer.
 
-On the second path, through an online shop, your side has nothing to build: we
-set up the link to your shop's admin and run it ourselves, and it asks no
-engineering work of you.
-
-The third path, the order that arrives as a message, is designed and not yet
-switched on. It comes after the pilot, and it is too early to promise a date
-for it.
+The WooCommerce connector is an experiment. It is not the route used to accept
+the SDK product, and you do not need it for an SDK integration. Delivery by a
+message that you confirm by hand is designed but not switched on.
 
 ## After you are connected
 
-Most of the work from there stays with us. We keep the cards up after you are
-connected too: the product, what is in it or its price changes, you tell us,
-and we make the edit. We connect new catalogues without asking anything of your
-side, so you find yourself in them without doing anything; when the exchange
-formats change, we move everyone at once and your side is not touched.
+Your integration remains the source of the cards. When a product, its contents
+or its price changes, your code republishes the card under the same product key.
+Agentify publishes it in its own catalogue and carries paid orders to your
+handler. Listing in an external discovery catalogue is measured separately and
+is not guaranteed by publication or by a completed purchase.
 
 You can stop the sales yourself at any moment. The cabinet is a page on our
 side that you sign in to through a one-time link sent to your email, and it
@@ -115,8 +101,9 @@ dispute — are collected in the [common questions](/faq).
 
 <a href="/cabinet/sign-in">Open the cabinet</a>, enter your email address and
 follow the one-time link in the message. Pressing its confirmation button
-opens your cabinet. On your first visit, it asks for the seller name buyers
-will see. You can then issue an API key and integrate against the test channel.
+opens your cabinet. On your first visit, it asks for the seller name that the
+buyer's payment request will show. You can then issue an API key and integrate
+against the test channel.
 
 On both the test and live channels, save the wallet where your USDC payments
 arrive before publishing a card. The local scripted sandbox moves no money
@@ -124,9 +111,11 @@ and does not require a wallet. Live sales also require the operator's one-time
 approval of your merchant; test sales do not. Publication lists every missing
 prerequisite. [The first test sale](/quickstart) walks through the setup.
 
-During the pilot, we go through the four questions above with each merchant,
-decide which products go out first and run the first test purchase together.
-Operator approval opens live publication after that review.
+The first test purchase is started by an Agentify operator. If an operator is
+already coordinating your pilot, give them the catalogue ID and keep your
+handler running while they start it. There is no public request path for an
+unassigned self-signup yet. Operator approval opens live publication after the
+review.
 
 ## What is not settled yet
 
@@ -136,8 +125,6 @@ Operator approval opens live publication after that review.
   and not yet delivered appears among the orders and not among the receipts.
   The money arrives straight in your wallet, and putting the two together is
   still yours to do.
-- Whether an agent is told whose shop it is buying from. A card carries the
-  product and its price, and nothing in it names the seller.
 - What happens when a purchased period runs out: renewing a subscription and
   buying the same access again are not designed yet.
 - What we promise you when it is our side that goes quiet. There is a great

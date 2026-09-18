@@ -106,13 +106,13 @@ export const chooseNameScreen = (base: string, mode: Viewer["mode"], problem?: s
     `<div class="gate">
 <form method="post" action="${escaped(base)}/choose-name">
   <h1>${brandLockup("/")}</h1>
-  <p>Your account is made and you are signed in. One thing is left, and it is the only one buyers ever see.</p>
-  ${WHAT_IT_IS_FOR}
+  <p>Your account is ready. Choose the seller name buyers will see.</p>
   <label for="seller_name">The name your products are sold under</label>
   <input id="seller_name" name="seller_name" type="text" autocomplete="organization" maxlength="32" autofocus required>
   <p class="quiet">${escaped(NAME_RULE)}</p>
   <button class="primary" type="submit">Use this name</button>
   ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
+  ${WHAT_IT_IS_FOR}
   <p class="quiet">You can change it whenever you like. Until it is set, nothing you publish goes on sale, and every screen in the cabinet says so.</p>
   <p class="quiet">Not decided yet? <a href="${escaped(base)}/cards">Leave it for now</a> — it is set under <a href="${escaped(base)}/settings">Settings</a> whenever you are ready.</p>
 </form>

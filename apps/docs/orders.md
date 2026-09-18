@@ -1,6 +1,6 @@
 # Orders and fulfillment modes
 
-*A preliminary contract: the wording can still change before the pilot.*
+*The public contract is versioned; changes arrive in a new package and contract version.*
 
 You are writing the handler that takes paid orders and gives out the goods for
 them. Everything it rests on is collected here: what the fulfillment modes are,

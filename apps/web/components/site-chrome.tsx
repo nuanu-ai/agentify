@@ -12,6 +12,7 @@ export function MarketingHeader() {
       <div className={`${styles.headerInner} container`}>
         <Brand />
         <nav aria-label="Primary" className={styles.nav}>
+          <Link href="/agentic-shop">Agentic Shop</Link>
           <Link href="/scanner">Scanner</Link>
           <Link href="/methodology">Methodology</Link>
           <Link href="/privacy">Privacy</Link>
@@ -35,6 +36,7 @@ export function SiteFooter() {
           </p>
         </div>
         <FooterGroup title="Segments">
+          <Link href="/agentic-shop">For merchants</Link>
           <Link href="/owner">For owners</Link>
           <Link href="/store">For stores</Link>
           <Link href="/local">For local</Link>

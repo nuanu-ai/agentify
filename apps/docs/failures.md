@@ -1,6 +1,6 @@
 # What can go wrong
 
-*A preliminary contract: the wording can still change before the pilot.*
+*The public contract is versioned; changes arrive in a new package and contract version.*
 
 You have written the handler, or you are writing it now, and this page is what
 will go wrong with it. Refusals and failures are part of ordinary work for us,

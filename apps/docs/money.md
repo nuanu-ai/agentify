@@ -1,6 +1,6 @@
 # Money
 
-*A preliminary contract: the wording can still change before the pilot.*
+*The public contract is versioned; changes arrive in a new package and contract version.*
 
 You run an online business, and you are deciding whether it is worth putting
 your goods where programs do the buying. The money side of that decision is

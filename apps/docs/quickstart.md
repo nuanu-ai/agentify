@@ -1,6 +1,6 @@
 # The first test sale
 
-*A preliminary contract: the wording can still change before the pilot.*
+*The public contract is versioned; changes arrive in a new package and contract version.*
 
 You are the one writing code here: the business has an API, and you want to
 keep the delivery in your own hands. Below is the path from an empty project to
@@ -9,9 +9,10 @@ the receipt. A live agent comes after that, on the last step. You do not
 rewrite the shop to get there: a handler appears beside it, a process that
 takes paid orders and gives out the goods for them.
 
-There are paths with no code at all. By default we write the cards, and we set
-up and run the link to an online shop ourselves. Both are described on
-[Connecting to Agentify](/), which is written for the owner of the business.
+The SDK is the current product path. A WooCommerce connector exists as an
+experiment, but it is not required for this integration or used as its
+acceptance gate. [Connecting to Agentify](/) explains that boundary for the
+owner of the business.
 
 ## The words used below
 
@@ -467,11 +468,12 @@ our sandbox buyer rather than by a live agent — a program that walks the whole
 path: it finds the card, asks the price, pays and takes delivery. It pays with
 test funds, and afterwards the whole test path can be seen working.
 
-During the pilot we start that purchase on your signal: say you are ready, and
-we run it with you watching, so that you see what happens at every step. The
-order it leaves carries `test: true`, because the test address settles on a
-test chain — the flag follows the chain the payment settled on and not the key
-you called with.
+An Agentify operator starts this purchase. If an operator is already
+coordinating your pilot, give them the catalogue ID and keep the handler running
+while they start it with you watching. There is no public request path for an
+unassigned self-signup yet. The order carries `test: true`, because the test
+address settles on a test chain — the flag follows the chain the payment
+settled on and not the key you called with.
 
 It all came together if the order reached your handler, the sandbox buyer
 received the goods, and the purchase left a receipt behind it.
@@ -503,19 +505,18 @@ not touch your code.
   us. A price handler has neither question — the subscription channel is
   authenticated when it connects.
 - The exact names of an order's fields, and of the two fields a handler's
-  refusal carries. Their shapes are settled and described on these pages; the
-  spelling can still change before the pilot, in a new package and contract
-  version.
+  refusal carries. Their shapes are settled and described on these pages. A
+  change to the published spelling requires a new package and contract version.
 - The names of the fields a card sets deadlines in.
 - The parameter that lets one subscription work on several orders at once: its
   name and its default.
-- How to take orders outside Node. We document the subscription's wire protocol
-  by the pilot; the ready-made tools are for Node only.
+- How to take orders outside Node. The subscription's wire protocol is not
+  documented for external consumers; the ready-made tools are for Node only.
 - The surface of the other order transports: the request to an address of
   yours, and the cursor that pulls batches.
 - The half of the check that would send one order twice and watch for a second
   delivery. Nothing on our surface raises that order to send, so this check
   still cannot exercise your delivery system's idempotency from outside.
-- Where to say that you are ready for a test purchase: we have no channel for
-  that yet.
-- Starting the test purchase with a command of your own — after the pilot.
+- A public way for an unassigned self-signup to ask for the operator-started
+  test purchase: there is no channel yet.
+- Starting the test purchase with a command of your own is not supported.

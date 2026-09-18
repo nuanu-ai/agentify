@@ -14,7 +14,7 @@ export function generateMetadata(): Metadata {
   return {
     title: "Agentic Shop — Make your business buyable by AI agents",
     description:
-      "Open your Agentify cabinet with an email link, connect a supported catalog and test agent-ready offers. Live publication requires operator approval.",
+      "Open your Agentify cabinet with an email link, integrate through the SDK and test agent-ready offers. Live publication requires operator approval.",
     alternates: { canonical: url },
     openGraph: {
       title: "Your next customer sends an agent. Be ready.",
@@ -60,7 +60,7 @@ const categories = [
 const questions = [
   [
     "Do I need to understand crypto or build an API?",
-    "No crypto expertise is needed to open a cabinet. To publish an offer, connect a supported WooCommerce shop or integrate through the Agentify SDK. Start in the test channel before any live publication.",
+    "No crypto expertise is needed to open a cabinet. Publishing through the current product path requires an engineer to integrate the Agentify SDK. The WooCommerce connector is experimental.",
   ],
   [
     "Can you connect a local business?",
@@ -84,7 +84,7 @@ const questions = [
   ],
   [
     "What happens after I open a cabinet?",
-    "The email link creates or opens your merchant cabinet. Set the name buyers see, connect WooCommerce or use the SDK, and publish against the test channel. Live publication remains closed until a payout wallet is set and an operator approves the merchant.",
+    "The email link creates or opens your merchant cabinet. Set the name buyers see and the test payout wallet, integrate the SDK, and publish against the test channel. Live publication uses a separate wallet and remains closed until an operator approves the merchant.",
   ],
 ];
 
@@ -327,8 +327,8 @@ export default function AgenticShopPage() {
               </div>
               <h3>Connect your catalog.</h3>
               <p>
-                Connect a supported WooCommerce shop or use the SDK. Your
-                integration publishes the offer, price and fulfilment promises.
+                Use the SDK to publish the offer, price and fulfilment promises.
+                The WooCommerce connector is experimental.
               </p>
               <span className={styles.stepOutput}>
                 Catalog. Ordering. Confirmation.
@@ -341,9 +341,9 @@ export default function AgenticShopPage() {
               </div>
               <h3>Prove it in test.</h3>
               <p>
-                Test publication needs the seller name. Live publication also
-                needs a payout wallet and the operator’s approval for that
-                merchant.
+                Test publication needs the seller name and test payout wallet.
+                Live publication uses a separate wallet and also needs the
+                operator’s approval for that merchant.
               </p>
               <span className={styles.stepOutput}>
                 Test first. Live only when ready.
@@ -543,7 +543,7 @@ export default function AgenticShopPage() {
               </p>
               <ul>
                 <li>Choose the seller name buyers see</li>
-                <li>Connect WooCommerce or integrate the SDK</li>
+                <li>Integrate through the Agentify SDK</li>
                 <li>Publish and verify offers in the test channel</li>
               </ul>
               <div className={styles.entryNote}>

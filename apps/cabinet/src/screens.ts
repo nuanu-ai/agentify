@@ -269,6 +269,7 @@ ${table(
     ? "You have not published a card yet, and until you choose the name buyers see, publishing one is refused. Choose it in your settings and publish again."
     : "You have not published a card yet. Your code publishes them; they appear here.",
 )}
+${cards.cards.length === 0 ? '<p><a href="/docs/quickstart">Publish your first card with the test-sale guide →</a></p>' : ""}
   <div class="note"><span class="mark">&#8627;</span><span>${escaped(sellingNote(cards.selling))}</span></div>
   <div class="note"><span class="mark">&#8627;</span><span>${escaped(
     // Text and not a link, and the reason is what happens when you press one.

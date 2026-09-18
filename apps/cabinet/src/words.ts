@@ -76,8 +76,8 @@ export const FULFILLMENT_WORDS: Readonly<Record<Fulfillment, string>> = Object.f
 
 /** Whether a merchant, or one of their cards, is taking new orders. */
 export const SELLING_WORDS: Readonly<Record<SellingState, Word>> = Object.freeze({
-  open: { text: "selling", tone: "ok" },
-  paused: { text: "paused", tone: "warn" },
+  open: { text: "sales enabled", tone: "ok" },
+  paused: { text: "sales paused", tone: "warn" },
   departed: { text: "left", tone: "quiet" },
 });
 

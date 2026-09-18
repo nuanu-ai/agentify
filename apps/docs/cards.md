@@ -1,6 +1,6 @@
 # The product card
 
-*A preliminary contract: the wording can still change before the pilot.*
+*The public contract is versioned; changes arrive in a new package and contract version.*
 
 If you keep the cards yourself, this reference is yours. By default we write
 them and the owner of the business approves them; the whole path, from an empty
