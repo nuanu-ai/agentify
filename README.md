@@ -1,32 +1,73 @@
 # Agentify
 
+[![CI](https://github.com/nuanu-ai/agentify/actions/workflows/ci.yml/badge.svg)](https://github.com/nuanu-ai/agentify/actions/workflows/ci.yml)
+[![npm: @nuanu-ai/agentify](https://img.shields.io/npm/v/@nuanu-ai/agentify?label=%40nuanu-ai%2Fagentify)](https://www.npmjs.com/package/@nuanu-ai/agentify)
+[![npm: @nuanu-ai/agentify-contracts](https://img.shields.io/npm/v/@nuanu-ai/agentify-contracts?label=%40nuanu-ai%2Fagentify-contracts)](https://www.npmjs.com/package/@nuanu-ai/agentify-contracts)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 The gateway through which an ordinary online business sells its goods to AI
 agents, paid in stablecoins over the x402 protocol. The money goes from the
-buyer's wallet to the merchant's and never passes through us. There is no
-external merchant yet. The first installable SDK is `0.1.0` and speaks contract
-version `"1"`; from that registry release onward, unreadable wire changes move
-the contract version before the gateway sends them (ADR-0006).
+buyer's wallet to the merchant's and never passes through us.
 
-This file orients an engineer who has just opened the repository.
+A merchant integrates through one npm package, `@nuanu-ai/agentify`. It
+publishes product cards, receives paid orders over a single outgoing connection
+and closes each order with the goods or with a refusal. The package and the
+gateway agree on a contract version — `"2"` today — and an unreadable wire
+change moves that version before the gateway sends it (ADR-0006). There is no
+external merchant yet: the first merchant we do not control is the boundary
+from which compatibility becomes a written decision rather than a habit.
+
+This file orients an engineer who has just opened the repository. What a
+merchant reads is at [agentify.ad/docs](https://agentify.ad/docs/), and it is
+built from `apps/docs` in this repository.
+
+## Contents
+
+- [Prerequisites](#prerequisites)
+- [Run it](#run-it)
+- [Approving a production merchant](#approving-a-production-merchant)
+- [What happens in a sale](#what-happens-in-a-sale)
+- [The stand](#the-stand)
+- [Repository layout](#repository-layout)
+- [Checks](#checks)
+- [Releasing the SDK](#releasing-the-sdk)
+- [Deploying](#deploying)
+- [Where to read more](#where-to-read-more)
+- [License](#license)
+
+## Prerequisites
+
+Node.js 24.21 — the exact version is in `.nvmrc`, and `pnpm install` refuses
+another one because `.npmrc` sets `engine-strict`. pnpm 11.12 arrives through
+Corepack from the `packageManager` field of the root `package.json`, the same
+way CI gets it:
+
+```sh
+corepack enable
+pnpm install
+```
+
+Installing also points git at `.githooks`, where a `commit-msg` hook holds the
+Conventional Commits format. Docker with Compose v2 runs the stack below, and
+`pnpm test` needs a `python3` on the path for the scanner's operational tests.
 
 ## Run it
 
-```
+```sh
 docker compose up --build
 open http://localhost:8080
 ```
 
 One origin, one port: the landing at `/`, the merchant documentation at
 `/docs`, the cabinet at `/cabinet`, the merchant's own calls at `/v0`, the
-storefront an agent buys at under `/x402`, Postgres behind them.
-A merchant process comes up beside it and publishes two cards — a rented phone
-number sold synchronously, an eSIM sold asynchronously.
+storefront an agent buys from under `/x402`, Postgres behind them. A merchant
+process comes up beside it and publishes two cards — a rented phone number
+sold synchronously, an eSIM sold asynchronously.
 
 Nothing buys by itself. The buyer is the one thing that runs on the host rather
 than in the stack, so the workspace needs its dependencies first:
 
-```
-pnpm install
+```sh
 pnpm buy                      # the first card in the catalogue
 pnpm buy esim                 # the one delivered later
 ```
@@ -37,7 +78,7 @@ with no wallet, no network and no faucet, and the first line of its log says so.
 The cabinet is where a merchant sets the name buyers see and issues the keys
 their own code calls with. Open its email sign-in form:
 
-```
+```sh
 open http://localhost:8080/cabinet/sign-in
 ```
 
@@ -45,7 +86,8 @@ Enter your email address, open the one-time link and press its confirmation
 button. The local sandbox writes the message to the cabinet log; a deployed
 cabinet sends it by email. Confirming the link signs you in and creates your
 merchant if you do not already have one, then asks for the name buyers see.
-The credential the cabinet uses for that merchant stays in the cabinet.
+There is no password and no invitation code (ADR-0026). The credential the
+cabinet uses for that merchant stays in the cabinet.
 
 That merchant is a new one, and it is not `the_merchant` — the merchant the
 stack seeds, whose two cards the merchant process publishes and `pnpm buy`
@@ -206,7 +248,7 @@ console says so at the button, because those are the merchant's cabinet
 operations and the package does not carry them by decision.
 `packages/slice/src/stand-merchant.ts` is the file to read.
 
-```
+```sh
 pnpm stand
 open http://127.0.0.1:8787
 ```
@@ -239,36 +281,33 @@ SDK's own polling and the gateway's internal steps are not in it.
 `docs/research/24-stand-boundary.md` is what the stand does and does not prove
 — it is not the gateway's journal, and the payment layer is outside it.
 
-## Where things are
+## Repository layout
 
-- `apps/gateway` — the payment edge, the order runner and the queue; ports in
-  `src/ports`, their implementations in `src/adapters`.
-- `apps/cabinet` — the merchant's screens: cards, orders, receipts, keys.
-  Server-rendered, no client build (ADR-0005).
-- `apps/landing` — the public page, static.
-- `apps/web` — Agentify's public scanner and report application.
-- `apps/scanner-worker` and `apps/browser-observer-actor` — the scanner's
-  background and passive browser-observation processes.
-- `packages/contracts` — every shape that crosses a boundary, as zod schemas,
-  and the route table both sides import instead of transcribing.
-- `packages/core` — the order state machine: pure logic, zero IO, zero runtime
-  dependencies.
-- `packages/sdk` — what a merchant integrates against; its runtime tree is our
-  contracts package and zod, and nothing else.
-- `packages/slice` — a mock merchant and a buyer, driving the offline gate and
-  the two commands above, and the stand.
-- `packages/scanner-contracts`, `packages/scanner-database` and
-  `packages/scanner` — the scanner's private contracts, storage and evaluation
-  engine; analytics, observability and remediation remain separate packages.
-- `ops/` and `fixtures/` — scanner deployment definitions, operational checks
-  and runtime test inputs. The production health monitor under
-  `ops/deploy/workflows/` is retained configuration and is not an active GitHub
-  workflow.
-- `apps/docs/` — the merchant documentation, installed from the shared root
-  workspace and lockfile.
-- `docs/decisions/` — the numbered decisions; `docs/research/` — the working
-  material behind them.
-- `spikes/` — experiments living on their own dependencies.
+One pnpm workspace holds the commerce product and the scanner. They share the
+toolchain and the lockfile; their check, test and build commands are scoped
+separately in the root `package.json` because the two keep different compiler,
+lint and test policies.
+
+| Path | What it is |
+| --- | --- |
+| `apps/gateway` | The payment edge, the order runner and the queue. Ports in `src/ports`, their implementations in `src/adapters`. |
+| `apps/cabinet` | The merchant's screens: cards, orders, receipts, keys, sign-in. Server-rendered, no client build (ADR-0005). |
+| `apps/landing` | The public page — static HTML and CSS served by Caddy. |
+| `apps/docs` | The merchant documentation, a VitePress site served at `/docs`. Its JSON examples are test fixtures (see below). |
+| `apps/web` | The scanner: Agentify's public site and report application. |
+| `apps/scanner-worker`, `apps/browser-observer-actor` | The scanner's background and passive browser-observation processes. |
+| `packages/contracts` | `@nuanu-ai/agentify-contracts`: every shape that crosses a boundary, as zod schemas, and the route table both sides import instead of transcribing. |
+| `packages/core` | The order state machine: pure logic, zero IO, zero runtime dependencies. |
+| `packages/sdk` | `@nuanu-ai/agentify`: what a merchant integrates against. Its runtime tree is the contracts package and zod, and nothing else. |
+| `packages/slice` | A mock merchant and a buyer, driving the offline gate, the `buy` and `smoke` commands, and the stand. |
+| `packages/scanner-contracts`, `packages/scanner-database`, `packages/scanner` | The scanner's private contracts, storage and evaluation engine. |
+| `packages/analytics`, `packages/observability`, `packages/remediation` | The scanner's remaining packages, kept separate from the engine. |
+| `deploy/` | Dockerfiles, the Compose overlays for test and production, the Caddy route tables and the Ansible release playbooks. |
+| `ops/`, `fixtures/` | The scanner's deployment definitions, operational checks and runtime test inputs. The production health monitor under `ops/deploy/workflows/` is retained configuration, not an active GitHub workflow. |
+| `scripts/` | The commands the root `package.json` calls: the decision-log check, the outside install, the mutation run, worktree hygiene. |
+| `docs/decisions/` | The numbered decisions — what is expensive to reverse, and why it was decided that way. |
+| `docs/research/` | The working material behind them: research, runbooks, acceptance protocols. |
+| `spikes/` | Experiments living on their own dependencies. |
 
 Gateway and cabinet share one Postgres and each owns its migrations under
 `drizzle/`; `pnpm db:migrate` runs both.
@@ -311,17 +350,24 @@ local configuration, secrets and source history are not part of the import.
 
 ## Checks
 
-```
+```sh
 pnpm check          # formatting and lint
 pnpm typecheck
 pnpm test           # offline, free, no network
 pnpm check:decisions
 ```
 
-That is the gate before a push, and CI runs the same on every push and pull
-request. Automatic test and live delivery is paused during the public cutover.
+That is the gate before a push. CI runs the same four on every push and pull
+request, and beyond them the database suite, the build of every package and of
+the portal, and the scanner's integration tests; the workflow is
+`.github/workflows/ci.yml`. A green run publishes nothing and deploys nothing.
 
-Three more cost something and are kept apart for that reason:
+The portal's JSON examples and its tables of how an order can end are read by
+the contracts and core test suites out of the very files the pages render, so a
+page and the behavior it describes cannot drift apart quietly.
+
+A few more checks cost something — a database, the network, or money — and are
+kept apart for that reason:
 
 - `pnpm test:db` needs a Postgres (`docker compose up -d --wait postgres`) and
   fails rather than skipping when there is none.
@@ -330,21 +376,52 @@ Three more cost something and are kept apart for that reason:
   a merchant.
 - `pnpm smoke:listing <https address>` asks Coinbase whether our resource would
   be listed, and reports no verdict rather than a pass when it cannot reach us.
+- `pnpm smoke` walks the same buyer and mock merchant against the real
+  facilitator on the Base Sepolia testnet. It refuses to start without
+  `AGENTIFY_SMOKE=1`, is a dry run unless `--confirm` is given, and caps every
+  payment at `SMOKE_MAX_USD`; the header of `packages/slice/src/smoke.ts` lists
+  everything it needs.
+- `pnpm mutate <package>` runs Stryker over one workspace package and prints
+  the survivors. It is a triage tool for the hand-over ritual, not a gate.
+
+## Releasing the SDK
+
+Two packages are public, `@nuanu-ai/agentify-contracts` and
+`@nuanu-ai/agentify`, and they are released together from one commit. Every
+change to either carries a Changeset (`pnpm changeset`). A release is prepared
+on `main` with `pnpm changeset version`, and pushing a tag `sdk-v<version>` runs
+`.github/workflows/publish-sdk.yml`: it waits for CI to pass on that exact
+commit, refuses a tag whose version differs from the SDK manifest, publishes
+through npm Trusted Publishing with no stored token, and then installs the
+exact versions back from the registry and imports them. The full procedure,
+including the one-time bootstrap of the package names, is in
+[`docs/research/22-sdk-release.md`](docs/research/22-sdk-release.md).
+
+## Deploying
+
+Test and production run the same source revision and the same service graph
+on separate hosts with isolated data (ADR-0016). Nothing deploys automatically
+— not a tag, not a green CI run. An operator stages a full commit SHA on test
+with the Ansible playbook, activates and accepts it there, and only then stages
+and activates the same SHA on production. The procedure is the
+[release operations guide](deploy/ansible/README.md); the Compose overlays it
+applies live under `deploy/`.
 
 ## Where to read more
 
-- `docs/vision.md` — what the product is, for whoever is deciding whether to
-  connect.
-- `apps/docs/` — what a merchant reads: the owner's decision, the engineer's
-  integration, the operator's questions.
-- `docs/decisions/` — what is expensive to reverse, and why it was decided that
-  way.
-- `AGENTS.md` — the working discipline: how decisions are recorded, what a test
-  has to answer for, why a check that did not run never reports success.
-
-The portal's JSON examples and its tables of how an order can end are read by
-the contracts and core test suites out of the very files the pages render, so a
-page and the behavior it describes cannot drift apart quietly.
+- [`apps/docs/`](apps/docs/) — what a merchant reads: the owner's decision, the
+  engineer's integration, the operator's questions. Published at
+  [agentify.ad/docs](https://agentify.ad/docs/).
+- [`packages/sdk/README.md`](packages/sdk/README.md) — the npm page of the
+  merchant SDK, and [`packages/contracts/README.md`](packages/contracts/README.md)
+  the same for the contracts.
+- [`docs/decisions/`](docs/decisions/) — what is expensive to reverse, and why
+  it was decided that way.
+- [`docs/vision.md`](docs/vision.md) — the product vision, for whoever is
+  deciding whether to connect.
+- [`AGENTS.md`](AGENTS.md) — the working discipline: how decisions are
+  recorded, what a test has to answer for, why a check that did not run never
+  reports success.
 
 Engineering artifacts are written in English; research and product documents in
 the language of their readers, which is why some of the above is in Russian.
