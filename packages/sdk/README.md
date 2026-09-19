@@ -113,11 +113,15 @@ test purchase on the test site rather than anything this command can do; the
 
 The merchant documentation is public. [The first test
 sale](https://agentify.ad/docs/quickstart) walks from an empty project to
-a test purchase your side runs end to end; the other three pages are [the
-product card](https://agentify.ad/docs/cards) field by field, [orders and
-fulfillment modes](https://agentify.ad/docs/orders) for delivering later
-rather than in the answer to the purchase, and [what can go
-wrong](https://agentify.ad/docs/failures).
+a test purchase your side runs end to end. Beside it are [the product
+card](https://agentify.ad/docs/cards) field by field, [orders and fulfillment
+modes](https://agentify.ad/docs/orders) for delivering later rather than in
+the answer to the purchase, and [what can go
+wrong](https://agentify.ad/docs/failures). For whoever decides whether to
+connect at all, [Connecting to Agentify](https://agentify.ad/docs/),
+[Money](https://agentify.ad/docs/money) and the [common
+questions](https://agentify.ad/docs/faq) are written for the owner rather
+than the engineer.
 
 ## Versions
 
