@@ -132,8 +132,9 @@ and payments that failed their check never reach your handler.
 
 Say an agent buys a month of access. What reaches your handler is your own
 `access-monthly`, the email address the agent gave at purchase, an order
-identifier of the form `ord_7c1e05` — by which you recognise this same order if
-it arrives again — and the sum the access was sold for.
+identifier of the form `ord_7c1e05a9c4d84f0b9e2d6c3b1a8f5e47` — by which you
+recognise this same order if it arrives again — and the sum the access was
+sold for.
 
 The price is in the order because the sale may not have gone at the card's
 price: where a product has a price check, the sale went at the check's answer.
