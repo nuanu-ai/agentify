@@ -477,10 +477,11 @@ second for anything about the card itself.
 They answer in the same shape as well. The check hands you a list of findings,
 each naming the field it is about and what is wrong with it; a publish we refuse
 carries that same list under `problems`, inside the `error` its answer comes
-back with, and that error's code is `card_rejected`. Two findings can stand in
-our list that no check on your side can see, and both are about you rather than
-the card: no name set for buyers to read, and no wallet set for your sales to be
-paid into ([publishing a card](/quickstart)).
+back with, and that error's code is `card_rejected`. Three findings can stand in
+our list that no check on your side can see, and all of them are about you
+rather than the card: no name set for buyers to read, no wallet set for your
+sales to be paid into, and, on the live channel only, no approval from the
+operator yet ([publishing a card](/quickstart)).
 
 ## Updating a card, and taking one off sale
 

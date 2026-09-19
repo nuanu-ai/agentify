@@ -144,7 +144,8 @@ can act on, and the path to the field it is about where it is about one. That
 list is never empty.
 
 Not every finding is about the card. A name for buyers to read that you have
-not set, or a wallet for your sales to be paid into, arrives in the same list,
+not set, a wallet for your sales to be paid into, or, on the live channel, the
+operator's approval that has not been given yet: each arrives in the same list,
 so one answer names everything you have to fix instead of handing it to you a
 round trip at a time. Sending the same card again gets the same refusal, and
 the error says as much: its `retryable` flag is false, because what changes the
