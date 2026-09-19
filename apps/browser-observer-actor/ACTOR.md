@@ -7,7 +7,7 @@ during repository consolidation.
 Run Actor CLI commands from the repository root. The root `.actor` metadata and
 `.actorignore` make the shared workspace lockfile part of the upload context while
 limiting the Actor source bundle to its build inputs. The Dockerfile remains in this
-directory. Its pinned vendor image currently provides Node 24.21.0, and the
+directory. Its vendor image tag pins Playwright 1.61.1 and the Node 24 line, so the Node patch version follows the vendor, and the
 Dockerfile installs pnpm 11.12.0, matching the root workspace toolchain.
 Deployment requires an explicit Actor workflow and is outside local
 verification.

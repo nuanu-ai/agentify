@@ -133,7 +133,7 @@ ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
 Production activation compares both actual rendered topology files before any
 runtime changes. It requires the same two topology files, the trusted acceptance marker,
 and `test-runtime-verified.json` for the selected revision. The runtime evidence
-must name channel `test` and contain all six expected resident service roles and
+must name channel `test` and contain all six expected resident containers and
 all five first-party image roles. If this is the first migration adding live
 approval, use the first-cutover procedure below instead. Later releases run:
 

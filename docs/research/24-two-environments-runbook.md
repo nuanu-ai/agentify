@@ -5,7 +5,7 @@ database, a single deployment host and no production data to retain. Those
 assumptions do not describe the current system. Its commands are available
 in Git history for historical analysis and must not be used for delivery.
 
-Production commerce is served at `https://app.agentify.ad`; the test cabinet
+Production commerce is served at `https://agentify.ad`; the test cabinet
 is served at `https://test.agentify.ad` on a different host. Scanner and
 commerce application databases remain separate. Production data is retained.
 

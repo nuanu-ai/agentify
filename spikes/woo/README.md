@@ -89,7 +89,7 @@ Three seeded products, chosen to be awkward in different ways:
 | --- | --- | --- |
 | `agentify-access-code` | Access code | virtual, 5.00 USD |
 | `agentify-tote` | Canvas tote bag | physical, 25.00 USD, stock-managed |
-| `agentify-abonement` | Абонемент на месяц | virtual, Cyrillic title, 863-character description |
+| `agentify-abonement` | Абонемент на месяц | virtual, Cyrillic title, 856-character description (863 as the Store API reports it, wrapped in a paragraph tag) |
 
 The third exists as material for a later question about what our publish door
 should accept; it is not used by any verdict here.

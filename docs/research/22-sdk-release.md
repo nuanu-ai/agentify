@@ -1,7 +1,8 @@
 # Publishing the merchant SDK
 
-Status: contracts `0.3.2` and SDK `0.2.4` are published and verified against
-the retained tarball digests, with a successful external install and CLI check.
+Status: contracts `0.3.2` and SDK `0.2.5` are published, and `latest` points at
+both. The bootstrap release, SDK `0.2.4`, was verified against the retained
+tarball digests, with a successful external install and CLI check.
 Every version under the former package names is deprecated with a replacement
 message; registry history remains available. Both Agentify packages trust
 `nuanu-ai/agentify` and `publish-sdk.yml` for GitHub Actions publishing. Dmitry

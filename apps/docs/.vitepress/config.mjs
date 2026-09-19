@@ -69,8 +69,8 @@ export default withMermaid(defineConfig({
    * page a reader lands on. `scripts/check-portal-render.mjs` is what catches
    * that if it happens anyway.
    *
-   * The words are written out here rather than imported because this project is
-   * outside the workspace and has its own lockfile;
+   * The words are written out here rather than imported because this site
+   * declares no dependency on the workspace packages;
    * `packages/core/src/deployment/surface-markers.test.ts` reads this file and
    * holds these strings against the module the cabinet renders from.
    */

@@ -187,7 +187,7 @@ services:
   #
   # Two sets of migrations run here, the gateway's tables and the cabinet's two.
   # They are separate because they belong to separate processes and keep
-  # separate histories (ADR-0009 §8); they are one service because they are one
+  # separate histories (ADR-0009 §1); they are one service because they are one
   # database and one thing to wait for.
   migrate:
     <<: *app
