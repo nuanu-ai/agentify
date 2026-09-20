@@ -33,3 +33,6 @@ output/
 # pnpm keeps a content-addressed store here when a build fetches into the
 # repository rather than into the user store. It is a cache, not a source.
 .pnpm-store/
+
+# Python bytecode caches (ops/deploy scripts and their tests)
+__pycache__/
