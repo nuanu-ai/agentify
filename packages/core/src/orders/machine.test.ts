@@ -12,7 +12,13 @@ import {
 } from "./fixtures.js";
 import { transition } from "./machine.js";
 import type { Effect, Order, OrderEvent, OrderEventKind, OrderState, Price } from "./model.js";
-import { CLOSED_ORDER_STATES, ORDER_EVENT_KINDS, ORDER_STATES, PAYMENT_STAGES } from "./model.js";
+import {
+  CLOSED_ORDER_STATES,
+  ORDER_EVENT_KINDS,
+  ORDER_STATES,
+  PAYMENT_STAGES,
+  PAYMENT_VERIFICATION_FAILURES,
+} from "./model.js";
 import { ORDER_OUTCOMES, outcomeFor } from "./outcome.js";
 
 const MERCHANT_PRICE: Price = { amount: "6.50", currency: "USD", asOf: T0 + 1 };
@@ -448,6 +454,40 @@ describe("the synchronous mode: refusal before the charge", () => {
     expect(order.state).toBe("paid");
     expect(order.payment).toBe("verified");
     expect(kinds(effects)).toStrictEqual(["dispatch_order"]);
+  });
+
+  it("rejects a purchase whose payment did not verify and records what the layer said", () => {
+    // `rejected` is also what a merchant's "there is none" and a charge that
+    // did not go through leave behind, so the state alone does not say why
+    // this purchase stopped. The closure does — "why an order stopped where it
+    // stopped", in the model's words — and whoever opens the record afterwards
+    // reads it there: the store keeps the order whole, closure included. A
+    // rejected order with no cause and no reason behind it would read as "I
+    // know there is none" where the truth is "I did not write it down". Every
+    // reason the layer can give is sent, so what is pinned is that the record
+    // carries the layer's word and not one word the test happened to choose.
+    //
+    // Nothing in the gateway sends this event into a quoted order today: the
+    // purchase door verifies before it touches the order and answers the
+    // agent's bad payment itself, leaving the order open on its own deadline
+    // (`payPurchase`; the runner's `verify_payment` is a no-op for the same
+    // reason). The row is the machine's contract for the day a sender exists,
+    // and the record it writes has to be whole on that day. It is not idle
+    // meanwhile: the portal's ending "the payment failed its check" is held to
+    // `rejected` through this very event, in `portal-tables.test.ts`.
+    for (const reason of PAYMENT_VERIFICATION_FAILURES) {
+      const { order, effects } = must(newOrder("sync"), {
+        kind: "payment_verification_failed",
+        at: T0 + 1,
+        reason,
+      });
+
+      expect(order.state, reason).toBe("rejected");
+      expect(order.payment, reason).toBe("none");
+      expect(order.closure, reason).toStrictEqual({ cause: "payment_not_verified", reason });
+      // The merchant was never asked, so he is not told either.
+      expect(effects, reason).toStrictEqual([]);
+    }
   });
 
   it("executes the payment only after the goods have come back", () => {
