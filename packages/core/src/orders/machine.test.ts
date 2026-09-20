@@ -1741,6 +1741,26 @@ describe("an order whose goods are out and whose money is not", () => {
     expect(order.state).toBe("delivered_unpaid");
   });
 
+  it("answers nobody and writes nothing when a payment fails to verify", () => {
+    // A verification that failed belongs to the payment layer, not to any
+    // call of the merchant's: no charge was made, so there is nothing to
+    // write down, and nobody is waiting for an answer. The arm sits above the
+    // delivery calls, which answer `already_delivered`; an internal event
+    // falling into them would produce a merchant's answer for a call nobody
+    // made. Today nothing in the gateway drives this event into an order
+    // (`eventsForVerifiedPayment` in `runner.ts` builds only the verified
+    // side), so the rule is the machine's own.
+    const unpaid = reach("delivered_unpaid");
+    const { order, effects } = must(unpaid, {
+      kind: "payment_verification_failed",
+      at: T0 + 6,
+      reason: "signature",
+    });
+
+    expect(order).toStrictEqual(unpaid);
+    expect(effects).toStrictEqual([]);
+  });
+
   // The repeat the portal promises will close this order sends a charge of
   // its own, and that charge can fail or say nothing like any other. What is
   // written down about it decides whether the buyer can try again, and the
