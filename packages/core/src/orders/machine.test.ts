@@ -634,6 +634,12 @@ describe("the asynchronous mode: the money moves first", () => {
 });
 
 describe("the mode with confirmation: the question comes before the money", () => {
+  // Two distinct refusals so a row that hard-codes the test's own words dies.
+  const refusals = [
+    { code: "cannot_fulfill", message: "not this week" },
+    { code: "holiday", message: "back next month" },
+  ] as const;
+
   it("asks the merchant while the buyer's money sits still", () => {
     const { order } = must(newOrder("confirm"), { kind: "confirmation_dispatched", at: T0 + 1 });
 
@@ -684,36 +690,59 @@ describe("the mode with confirmation: the question comes before the money", () =
     ]);
   });
 
-  it("closes the purchase for nothing when the merchant says he will not", () => {
-    // Portal, "Чем заказ может закончиться": a refusal, nothing charged.
-    const { order } = must(reach("awaiting_confirmation"), {
-      kind: "handler_refused",
-      at: T0 + 2,
-      code: "cannot_fulfill",
-      message: "not this week",
-    });
+  it("closes the purchase for nothing, with the merchant's words, when his handler says he will not", () => {
+    // Portal, "Чем заказ может закончиться": a refusal, nothing charged. Why
+    // is read off the closure: the gateway fills the agent's `refusal` from a
+    // `merchant_refused` closure whatever state carries it, so a declined
+    // order with no words on it would tell him "refused, and the reason is
+    // none" where the truth is "not written down".
+    for (const words of refusals) {
+      const { order, effects } = must(reach("awaiting_confirmation"), {
+        kind: "handler_refused",
+        at: T0 + 2,
+        ...words,
+      });
 
-    expect(order.state).toBe("declined");
-    expect(order.payment).toBe("none");
+      expect(order.state).toBe("declined");
+      expect(order.payment).toBe("none");
+      expect(order.closure).toStrictEqual({
+        cause: "merchant_refused",
+        ...words,
+      });
+      // His handler's result is his answer, and the machine answers calls, not
+      // results: the effect that answers `refuse` belongs to the merchant who
+      // called it, and no state that takes a handler's result emits one — the
+      // dispatched order's twin is pinned in the synchronous mode's block. This
+      // row sits next to the call's row, and a refusal that fell into it would
+      // be the machine answering a merchant who did not call.
+      expect(effects).toStrictEqual([]);
+    }
   });
 
-  it("answers the merchant who refuses the question he was asked", () => {
+  it("answers the merchant who refuses the question he was asked, and keeps his words", () => {
     // He called `refuse` about a confirmation request, and a call gets an
     // answer. Without one his code is left hanging on the wire, or repeats a
     // refusal that already closed the order and reads the second answer as
     // the first.
-    const { order, effects } = must(reach("awaiting_confirmation"), {
-      kind: "refuse_called",
-      at: T0 + 2,
-      code: "cannot_fulfill",
-      message: "not this week",
-    });
+    for (const words of refusals) {
+      const { order, effects } = must(reach("awaiting_confirmation"), {
+        kind: "refuse_called",
+        at: T0 + 2,
+        ...words,
+      });
 
-    expect(order.state).toBe("declined");
-    expect(order.payment).toBe("none");
-    expect(effects).toStrictEqual([
-      { kind: "answer_merchant", answer: { ok: true, result: "refused" } },
-    ]);
+      expect(order.state).toBe("declined");
+      expect(order.payment).toBe("none");
+      // The record keeps his words whichever door the refusal came through:
+      // the agent's `refusal` is read off this closure, not off the answer.
+      expect(order.closure).toStrictEqual({
+        cause: "merchant_refused",
+        ...words,
+      });
+      expect(effects).toStrictEqual([
+        { kind: "answer_merchant", answer: { ok: true, result: "refused" } },
+      ]);
+    }
   });
 
   it("refuses goods handed over before the money moved", () => {
@@ -794,24 +823,54 @@ describe("the mode with confirmation: the question comes before the money", () =
     ]);
   });
 
-  it("lets a merchant who confirmed still refuse while nothing is charged", () => {
+  it("lets a merchant who confirmed still refuse while nothing is charged, and keeps his words", () => {
     // Portal, "Отказаться после того, как приняли заказ": taking an order on
     // does not bind the merchant while the order is still open.
-    const { order, effects } = must(reach("confirmed"), {
-      kind: "refuse_called",
-      at: T0 + 3,
-      code: "out_of_stock",
-      message: "sold out overnight",
-    });
+    for (const words of refusals) {
+      const { order, effects } = must(reach("confirmed"), {
+        kind: "refuse_called",
+        at: T0 + 3,
+        ...words,
+      });
 
-    expect(order.state).toBe("declined");
-    expect(order.payment).toBe("none");
-    // And his call is answered, as it is on the confirmation request: a
-    // refusal that closes the order and says nothing back leaves his code
-    // hanging on the wire.
-    expect(effects).toStrictEqual([
-      { kind: "answer_merchant", answer: { ok: true, result: "refused" } },
-    ]);
+      expect(order.state).toBe("declined");
+      expect(order.payment).toBe("none");
+      expect(order.closure).toStrictEqual({
+        cause: "merchant_refused",
+        ...words,
+      });
+      // And his call is answered, as it is on the confirmation request: a
+      // refusal that closes the order and says nothing back leaves his code
+      // hanging on the wire.
+      expect(effects).toStrictEqual([
+        { kind: "answer_merchant", answer: { ok: true, result: "refused" } },
+      ]);
+    }
+  });
+
+  it("declines with the merchant's words, not as a departure, when his handler refuses an order he confirmed", () => {
+    // Delivery is at least once by design and the machine takes a merchant's
+    // answers where they land, so his handler's "I will not" can arrive on an
+    // order he already took on. It is a refusal while nothing is charged, the
+    // same as the call above. The row next to it is the merchant leaving, and
+    // a refusal that fell into it would close the order `cancelled` for a
+    // merchant who left, with the words he actually answered thrown away.
+    for (const words of refusals) {
+      const { order, effects } = must(reach("confirmed"), {
+        kind: "handler_refused",
+        at: T0 + 3,
+        ...words,
+      });
+
+      expect(order.state).toBe("declined");
+      expect(order.payment).toBe("none");
+      expect(order.closure).toStrictEqual({
+        cause: "merchant_refused",
+        ...words,
+      });
+      // A handler's result is not a call, so nothing answers it here either.
+      expect(effects).toStrictEqual([]);
+    }
   });
 });
 
