@@ -601,6 +601,17 @@ describe("the mode with confirmation: the question comes before the money", () =
     expect(order.payment).toBe("none");
   });
 
+  it("writes the question down as one hand-over that nobody has taken on", () => {
+    // `dispatch` is a record and not a control (`model.ts`): `attempts` is how
+    // many times this order went to the merchant, `accepted` whether one of
+    // those was taken on. The question has just gone out once and he has said
+    // nothing, and whoever reads the record — a support view, a dispute — is
+    // not told otherwise.
+    const { order } = must(newOrder("confirm"), { kind: "confirmation_dispatched", at: T0 + 1 });
+
+    expect(order.dispatch).toStrictEqual({ attempts: 1, accepted: false });
+  });
+
   it("gives the agent a deadline to pay once the merchant says he will, and keeps the record", () => {
     const asked = reach("awaiting_confirmation");
     // Before the answer the clock running is the merchant's, not the agent's:
@@ -688,6 +699,25 @@ describe("the mode with confirmation: the question comes before the money", () =
 
     expect(paid.order.state).toBe("paid");
     expect(paid.order.payment).toBe("settled");
+  });
+
+  it("starts the order round with a fresh delivery record once the buyer has paid", () => {
+    // A confirmation round and an order round are two different deliveries
+    // (`enterPaid`). The question went out once and was answered, and none of
+    // that is a hand-over of the paid order: it has gone to nobody yet, so the
+    // record counts nothing and says nothing was taken on. Only the handler's
+    // acceptance of the dispatched order turns the flag on ("remembers that
+    // the handler took the order on").
+    const confirmed = reach("confirmed");
+    expect(confirmed.dispatch.attempts).toBe(1);
+
+    const paid = walk(confirmed, [
+      { kind: "payment_verified", at: T0 + 3 },
+      { kind: "payment_settled", at: T0 + 4 },
+    ]);
+
+    expect(paid.state).toBe("paid");
+    expect(paid.dispatch).toStrictEqual({ attempts: 0, accepted: false });
   });
 
   it("tells the merchant who confirmed that the charge failed", () => {
