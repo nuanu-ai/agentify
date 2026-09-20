@@ -996,6 +996,25 @@ describe("delivering twice, and delivering late", () => {
     expect(paid.payment).toBe("settled");
   });
 
+  it("does not charge for held goods on the verification that ran out of time with the purchase", () => {
+    // The verification that went with the closed purchase is spent with it.
+    // Reported once more on the held order, it starts nothing: the goods wait
+    // in the drawer for a repeat, which resets the payment and brings its own
+    // verification, and only that one charges the buyer.
+    const held = walk(reach("dispatched"), [
+      { kind: "deadline_expired", at: T0 + 999_999, deadline: "sync_response" },
+      { kind: "handler_delivered", at: T0 + 1_000_000 },
+    ]);
+    expect(held.heldFulfillment).toBe(true);
+    expect(held.payment).toBe("verified");
+
+    const again = transition(held, { kind: "payment_verified", at: T0 + 1_000_001 });
+
+    expect(again.ok).toBe(false);
+    if (again.ok) return;
+    expect(again.rejection.code).toBe("event_not_applicable");
+  });
+
   it("has nothing to hand over when a repeat finds no goods waiting", () => {
     const closed = walk(reach("dispatched"), [
       { kind: "deadline_expired", at: T0 + 999_999, deadline: "sync_response" },
