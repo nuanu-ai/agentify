@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { deadlines } from "./deadlines.js";
-import { must, newOrder, T0, TEST_POLICY, TEST_PRICE } from "./fixtures.js";
+import { deadlines, fulfillmentDeadline } from "./deadlines.js";
+import { must, newOrder, reach, T0, TEST_POLICY, TEST_PRICE, walk } from "./fixtures.js";
 import { transition } from "./machine.js";
 import type { Order } from "./model.js";
 import { moneyInvariantViolations } from "./money.js";
@@ -183,6 +183,82 @@ describe("the deadlines of an order", () => {
 
     expect(deadlines(closed)).toStrictEqual([]);
     expect(deadlines(debt)).toStrictEqual([]);
+  });
+
+  it("runs no clock on goods that went out unpaid, whether the charge failed or said nothing", () => {
+    // Portal, the two orders that stay open: the goods are made and the money
+    // did not come. The merchant is owed nothing more and the buyer is not
+    // late; what closes the order is the buyer's repeat, and a deadline cannot
+    // settle a debt. This list is what the runner arms its timers off and what
+    // the machine honours when one fires, so an entry here would be a timer
+    // nobody asked for on an order nobody is waiting for. The charge that said
+    // nothing is the same case: it waits for the payment layer to speak, and
+    // no clock can speak for it.
+    const failed = reach("delivered_unpaid");
+    const silent = must(reach("fulfilled"), {
+      kind: "deadline_expired",
+      at: T0 + 999_999,
+      deadline: "settle_response",
+    }).order;
+
+    expect(failed.payment).toBe("settle_failed");
+    expect(silent).toMatchObject({ state: "delivered_unpaid", payment: "outcome_unknown" });
+    expect(deadlines(failed)).toStrictEqual([]);
+    expect(deadlines(silent)).toStrictEqual([]);
+
+    // And a timer left over from the fulfillment closes nothing: it is not
+    // armed, so the machine turns it back.
+    for (const order of [failed, silent]) {
+      const stale = transition(order, {
+        kind: "deadline_expired",
+        at: T0 + 999_999,
+        deadline: "sync_response",
+      });
+
+      expect(stale.ok).toBe(false);
+      if (stale.ok) throw new Error("a stale fulfillment timer closed an unpaid delivery");
+      expect(stale.rejection.code).toBe("deadline_not_armed");
+    }
+  });
+
+  it("invents no clock for a paid order that has no record of when it was paid", () => {
+    // Such an order cannot come out of this package, but it can come out of a
+    // store. Both clocks on the goods run from the paid instant and from
+    // nothing else — the header of `deadlines.ts` is the lesson of what a
+    // guessed anchor cost — and with that instant gone there is no honest
+    // number to hand the runner. The alternative is `null` added to a
+    // duration: a deadline in 1970, a timer that fires at once, and an order
+    // expired under a merchant who may be honestly at work. Unlike the
+    // stranded settle above, the merchant's own answer can still move this
+    // order, so it is left to him rather than declared overdue.
+    const paidSync = reach("dispatched");
+    const paidAsync = walk(newOrder("async"), [
+      { kind: "payment_verified", at: T0 + 1 },
+      { kind: "payment_settled", at: T0 + 2 },
+      { kind: "order_dispatched", at: T0 + 3 },
+    ]);
+
+    for (const [paid, clock] of [
+      [paidSync, "sync_response"],
+      [paidAsync, "async_fulfillment"],
+    ] as const) {
+      expect(at(paid, clock)).toBeDefined();
+
+      const dateless: Order = { ...paid, timestamps: { ...paid.timestamps, paidAt: null } };
+
+      expect(fulfillmentDeadline(dateless)).toStrictEqual([]);
+      expect(deadlines(dateless)).toStrictEqual([]);
+
+      const fired = transition(dateless, {
+        kind: "deadline_expired",
+        at: T0 + 999_999,
+        deadline: clock,
+      });
+
+      expect(fired.ok).toBe(false);
+      if (fired.ok) throw new Error(`an invented ${clock} deadline expired a dateless order`);
+      expect(fired.rejection.code).toBe("deadline_not_armed");
+    }
   });
 
   it("uses the order's own policy and invents no numbers of its own", () => {

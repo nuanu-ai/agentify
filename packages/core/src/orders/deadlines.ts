@@ -143,6 +143,11 @@ export function deadlines(order: Order): readonly Deadline[] {
 export function fulfillmentDeadline(order: Order): readonly Deadline[] {
   const paidAt = order.timestamps.paidAt;
   if (paidAt === null) {
+    // A paid order with no record of when it was paid cannot come out of this
+    // package, but it can come out of a store, and there is nothing honest to
+    // start the merchant's clock from: a guess is the mistake the header
+    // describes. Unlike the stranded settle above, the merchant's own answer
+    // can still move this order, so it is left to him rather than made overdue.
     return [];
   }
 
