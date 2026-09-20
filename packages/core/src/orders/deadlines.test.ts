@@ -221,6 +221,32 @@ describe("the deadlines of an order", () => {
     }
   });
 
+  it("runs no clock on a fulfilled order whose charge is no longer in flight", () => {
+    // Both entrances to `fulfilled` go through the settle, so a legal order
+    // here is always mid-charge and the clock that runs is the settle's. A
+    // store can still hand back this state with the charge already failed,
+    // and that shape must not acquire a fulfillment clock: the merchant has
+    // already produced the goods. Sharing the empty return with
+    // `delivered_unpaid` is not a test of both labels — a filled array on
+    // this one alone would otherwise go unnoticed, and the scheduler would
+    // arm a timer nobody asked for.
+    const stranded: Order = { ...reach("fulfilled"), payment: "settle_failed" };
+
+    expect(stranded.state).toBe("fulfilled");
+    expect(stranded.payment).not.toBe("settling");
+    expect(deadlines(stranded)).toStrictEqual([]);
+
+    const stale = transition(stranded, {
+      kind: "deadline_expired",
+      at: T0 + 999_999,
+      deadline: "sync_response",
+    });
+
+    expect(stale.ok).toBe(false);
+    if (stale.ok) throw new Error("a stale fulfillment timer closed a fulfilled order");
+    expect(stale.rejection.code).toBe("deadline_not_armed");
+  });
+
   it("invents no clock for a paid order that has no record of when it was paid", () => {
     // Such an order cannot come out of this package, but it can come out of a
     // store. Both clocks on the goods run from the paid instant and from
