@@ -101,7 +101,7 @@ const keyControl = (base: string, entry: MerchantKey): string => {
   // one. The page says so in words above the table as well; a control with no
   // confirmation behind it should not be the only place that is said.
   return `<form class="inline" method="post" action="${escaped(base)}/keys/${encodeURIComponent(entry.id)}/disable">
-<button type="submit">Revoke</button></form>`;
+<button class="button button-compact button-secondary" type="submit">Revoke</button></form>`;
 };
 
 /**
@@ -110,12 +110,29 @@ const keyControl = (base: string, entry: MerchantKey): string => {
  * Said on the screen whether or not there is anything below it, because the
  * question a merchant has in front of no rows — "where is the key I am signed
  * in with, and should I be worried" — is answered by what the list is rather
- * than by what is missing from it.
+ * than by what is missing from it. The answer to the second half of that
+ * question is the link: the cabinet holds a key of its own, which is not on
+ * this list and cannot be, and the portal's first step says so where somebody
+ * setting up is reading anyway.
  */
 const WHAT_A_KEY_IS =
-  "A key is what your own code opens the door with, and this list is the keys you have asked" +
-  " for. The cabinet does not use one of them: it signs in with a key of its own that you never" +
-  " see and never have to look after.";
+  "A key is what your own code opens the door with, and this list is the keys you have asked for.";
+
+const WHICH_KEY_THE_CABINET_USES =
+  ' <a href="/docs/quickstart#_1-make-the-merchant-account-ready">Which key the cabinet itself' +
+  " signs in with</a>.";
+
+/**
+ * What revoking does, beside the controls that do it rather than in the lede.
+ *
+ * It was four sentences at the top of the screen, read once by somebody who had
+ * come to look at a list. What a merchant needs is the consequence at the
+ * moment they are deciding which row to press, so it sits under the table the
+ * Revoke buttons are in.
+ */
+const WHAT_REVOKING_DOES =
+  "Revoking a key stops it from that moment and is not undone: your other keys go on working," +
+  " nobody is signed out of this cabinet, and what replaces a revoked key is a new one.";
 
 export const keysScreen = (viewer: Viewer, keys: MerchantKeyList, problem?: string): string => {
   const { base } = viewer;
@@ -128,15 +145,11 @@ export const keysScreen = (viewer: Viewer, keys: MerchantKeyList, problem?: stri
       <h1>API Keys</h1>
       <p>${escaped(
         none
-          ? `You have issued no keys yet, which is where every merchant starts. ${WHAT_A_KEY_IS}` +
+          ? `You have issued no keys yet. ${WHAT_A_KEY_IS}` +
               " The first one you ask for below becomes the first row here."
           : `${working} of the ${keys.keys.length} ${keys.keys.length === 1 ? "key" : "keys"} below` +
-              `${working === 1 ? " works" : " work"}. ${WHAT_A_KEY_IS}` +
-              " Revoking one stops that key from that moment and does not stop anything else:" +
-              " your other keys go on working, and nobody is signed out of this cabinet. It is" +
-              " not undone — a revoked key never opens the door again, and what replaces it is a" +
-              " new one.",
-      )}</p>
+              `${working === 1 ? " works" : " work"}. ${WHAT_A_KEY_IS}`,
+      )}${WHICH_KEY_THE_CABINET_USES}</p>
     </div>
   </div>
 ${
@@ -146,24 +159,25 @@ ${
 <thead><tr><th>Name</th><th>Made</th><th>Last call</th><th>State</th><th></th></tr></thead>
 <tbody>${keys.keys.map((entry) => keyRow(base, entry)).join("")}</tbody>
 </table></div>
-  <div class="note"><span class="mark">&#8627;</span><span>${escaped(
+  <p class="note">${escaped(WHAT_REVOKING_DOES)}</p>
+  <p class="note">${escaped(
     "This is what the gateway answered with, and its answer does not say whether it is all of" +
       " them. Nothing pages this list yet and nothing here counts your keys for you — the number" +
       " above counts the rows below and nothing more.",
-  )}</span></div>
-  <div class="note"><span class="mark">&#8627;</span><span>${escaped(
+  )}</p>
+  <p class="note">${escaped(
     "The last call is written down every few minutes rather than on every one, so a key" +
       ` something is using right now shows a time that far behind. "${NO_CALLS_RECORDED}" is` +
       ' what it says rather than "never used", and the difference matters for the keys you' +
       " have had the longest: we began recording this recently, so a key older than that shows" +
       " the same thing whether or not anything has been calling with it, and this page cannot" +
       " tell you which. Any key shows a time as soon as it is used again.",
-  )}</span></div>`
+  )}</p>`
 }
   <div class="lede">
     <div>
       <h2>A new key</h2>
-      <p>The name is for you: it is how you tell one key from another on this page when you come to revoke one. The key itself is shown once, on the page that makes it, and nothing keeps a readable copy of it.</p>
+      <p>The name is how you tell keys apart here. The key itself is shown once, on the page that makes it.</p>
     </div>
   </div>
   <form class="issue" method="post" action="${escaped(base)}/keys">
@@ -171,7 +185,7 @@ ${
       <label for="label">What this key is for</label>
       <input id="label" name="label" type="text" autocomplete="off" required>
     </div>
-    <button class="primary" type="submit">Issue a key</button>
+    <button class="button button-compact button-primary" type="submit">Issue a key</button>
     ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
   </form>
 `;
@@ -210,11 +224,11 @@ export const newKeyScreen = (viewer: Viewer, label: string, secret: string): str
     </div>
   </div>
   <div class="scroller"><p class="secret" id="new-key-secret">${escaped(secret)}</p></div>
-  <p><button class="primary" id="copy-new-key" type="button">Copy key</button> <span id="copy-new-key-result" role="status"></span></p>
-  <div class="note"><span class="mark">&#8627;</span><span>${escaped(
+  <p><button class="button button-primary" id="copy-new-key" type="button">Copy key</button> <span id="copy-new-key-result" role="status"></span></p>
+  <p class="note">${escaped(
     "Put it where your code reads its key from before you leave this page. If your browser ever" +
       " asks to resend the form, cancel: resending asks for another key.",
-  )}</span></div>
+  )}</p>
   <p class="quiet"><a href="${escaped(base)}/keys">Back to your API keys</a></p>
   <script>
     history.replaceState(null, "", ${reloadTarget});

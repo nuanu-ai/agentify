@@ -9,7 +9,7 @@
 
 .card {
   width: min(100%, 640px);
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: var(--radius-panel);
   padding: clamp(28px, 6vw, 44px);
   background: var(--surface);

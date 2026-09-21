@@ -21,7 +21,6 @@ describe("ScanExperience teaser actions", () => {
     expect(markup).toContain("Copy AI fix prompt");
     expect(markup).toContain("Download .md");
     expect(markup).toContain("needs attention");
-    expect(markup).toContain("What we found:");
     expect(markup).toContain(
       "No segment-specific structured-data type was found",
     );
@@ -29,8 +28,6 @@ describe("ScanExperience teaser actions", () => {
     expect(markup.indexOf("Copy share link")).toBeLessThan(
       markup.indexOf("Copy AI fix prompt"),
     );
-    expect(markup).not.toContain("Share this research");
-    expect(markup).not.toContain("Confirm and publish");
     expect(markup).toContain("The full report requires email, phone");
   });
 
@@ -46,10 +43,9 @@ describe("ScanExperience teaser actions", () => {
         segment="owner"
       />,
     );
-    expect(markup).not.toContain("public noindex link in one click");
-    expect(markup).not.toContain("Includes only the findings visible above");
-    expect(markup).toContain("Your result is ready");
-    expect(markup).toContain("unlock after a confirmed email");
+    expect(markup.match(/The public link shows only the domain/g)).toHaveLength(
+      1,
+    );
   });
 
   it("keeps exactly one registration form and no modal dialog on the teaser", () => {
@@ -66,7 +62,6 @@ describe("ScanExperience teaser actions", () => {
     );
     expect(markup.match(/Email me a secure link/g)).toHaveLength(1);
     expect(markup).not.toContain("<dialog");
-    expect(markup).not.toContain("Supabase");
   });
 
   it("hides unusable teaser export actions when registration is disabled", () => {

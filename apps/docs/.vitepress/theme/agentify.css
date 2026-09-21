@@ -10,11 +10,13 @@
  * nothing is broken.
  *
  * The colours are written out here rather than imported from
- * apps/landing/public/styles/tokens.css, and that is a deliberate cost. The
- * portal is a separate project with its own lockfile and its own build; making
- * its stylesheet depend on a file inside another application would tie the two
- * builds together to save a copy of eleven values. They are the values of that
- * file, and this comment is where the next person is told to keep them in step.
+ * packages/visual/tokens.css, and that is a deliberate cost. The portal is a
+ * separate project with its own lockfile and its own build; making its
+ * stylesheet depend on a workspace package would tie the two builds together to
+ * save a copy of eight values. They are the values of that file, and
+ * packages/core/src/deployment/portal-palette.test.ts is what keeps them so:
+ * it reads both files and fails the suite the moment a value here stops
+ * matching its counterpart there.
  */
 
 @font-face {
@@ -78,19 +80,7 @@
   --vp-button-brand-hover-bg: var(--agentify-accent);
   --vp-button-brand-text: var(--agentify-on-accent);
 
-  /* The site is square-cornered everywhere else; the theme's default is not. */
   --vp-code-block-bg: var(--agentify-raised);
-}
-
-.dark {
-  --agentify-bg: #111817;
-  --agentify-surface: #17201f;
-  --agentify-raised: #1d2927;
-  --agentify-line: #34423f;
-  --agentify-fg: #f6f4ef;
-  --agentify-muted: #aaa8a1;
-  --agentify-accent: #66c7be;
-  --agentify-on-accent: #10201e;
 }
 
 /* The paragraph is the band rather than its marker div. Caddy removes the
@@ -120,11 +110,13 @@
   }
 }
 
-/* Three corners the theme rounds and the rest of the site does not. */
+/* Three corners the theme rounds to its own measure. The rest of the origin
+   draws a control at 12 (packages/visual/tokens.css, --radius-control); the
+   portal declares no tokens of its own, so it is written out. */
 .VPButton,
 .vp-doc div[class*="language-"],
 .custom-block {
-  border-radius: 3px;
+  border-radius: 12px;
 }
 
 /*
@@ -149,23 +141,10 @@
   letter-spacing: -0.02em;
 }
 
-.way-out .brand-mark,
-.way-out img {
-  width: 24px;
-  height: 24px;
-}
-
 .way-out .brand-mark {
   display: block;
-}
-
-.way-out .mark--dark,
-.dark .way-out .mark--light {
-  display: none;
-}
-
-.dark .way-out .mark--dark {
-  display: block;
+  width: 24px;
+  height: 24px;
 }
 
 .way-out:hover {

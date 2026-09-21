@@ -63,6 +63,11 @@ Once the seller name and wallet are set, open API Keys, press "Issue a key",
 name it so you can distinguish it from the next one, and copy it. The secret is
 shown once. Keep it with your other secrets; do not put it in source control.
 
+Every key on that page is one you asked for, and your code is what calls with
+it. The cabinet uses none of them. It holds a key of its own, which the list
+does not carry and which the gateway will not revoke, so revoking a key on that
+page stops a caller and never closes the browser session you are reading it in.
+
 ## 2. Install the tools
 
 Everything your side needs is in one package. Its dependency tree is short and

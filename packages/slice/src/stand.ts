@@ -919,13 +919,18 @@ const queueAction = (form: URLSearchParams): Promise<boolean> => {
 
 /*
  * ADR-0005 §6 asks for one visual language held in one stylesheet rather than
- * copied per surface. On the origin, Caddy serves that file to the landing, the
- * portal and the cabinet alike; here there is no Caddy, so the stand serves the
- * repository's own copy — which is the point. A second copy of the palette
- * living beside this console is exactly how one visual language becomes two
- * that look almost alike.
+ * copied per surface. That file is `packages/visual/tokens.css`, and the stand
+ * serves the repository's own — which is the point. A second copy of the
+ * palette living beside this console is exactly how one visual language becomes
+ * two that look almost alike.
+ *
+ * The faces come from somewhere else: the stand still borrows the landing's
+ * font subtree, which Caddy owns on the origin and which nothing else in the
+ * repository holds. So there are two roots under /styles/ here, and the token
+ * file is named on its own rather than reached through the directory.
  */
-const SHARED_STYLES = resolve(
+const SHARED_TOKENS = fileURLToPath(new URL("../../visual/tokens.css", import.meta.url));
+const SHARED_FACES = resolve(
   fileURLToPath(new URL("../../../apps/landing/public/styles/", import.meta.url)),
 );
 const OWN_STYLESHEET = fileURLToPath(new URL("./stand.css", import.meta.url));
@@ -958,15 +963,15 @@ const sendFile = async (response: ServerResponse, path: string): Promise<void> =
   response.writeHead(200, { "content-type": type, "cache-control": "no-cache" }).end(body);
 };
 
-/** Where under the shared styles a request points, or nothing if it points out of them. */
+/** Where under the shared faces a request points, or nothing if it points out of them. */
 const sharedStyleAt = (pathname: string): string | null => {
   let asked: string;
   try {
-    asked = resolve(SHARED_STYLES, `.${decodeURIComponent(pathname.slice("/styles".length))}`);
+    asked = resolve(SHARED_FACES, `.${decodeURIComponent(pathname.slice("/styles".length))}`);
   } catch {
     return null;
   }
-  return asked.startsWith(`${SHARED_STYLES}${sep}`) ? asked : null;
+  return asked.startsWith(`${SHARED_FACES}${sep}`) ? asked : null;
 };
 
 const sayUnavailable = (response: ServerResponse): void => {
@@ -1049,6 +1054,11 @@ const server = createServer(async (request, response) => {
 
   if (request.method === "GET" && url.pathname === "/stand.css") {
     await sendFile(response, OWN_STYLESHEET);
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/styles/tokens.css") {
+    await sendFile(response, SHARED_TOKENS);
     return;
   }
 

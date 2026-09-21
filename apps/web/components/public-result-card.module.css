@@ -1,7 +1,7 @@
 .card {
   width: 100%;
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 22px;
   background:
     radial-gradient(
@@ -9,7 +9,7 @@
       color-mix(in srgb, var(--accent) 7%, transparent),
       transparent 55%
     ),
-    var(--paper);
+    var(--bg);
   box-shadow: var(--shadow-soft);
 }
 
@@ -35,7 +35,7 @@
 
 .host {
   margin: 0 0 10px;
-  color: var(--ink-strong);
+  color: var(--fg-strong);
   font-size: 1.25rem;
   font-weight: 500;
   overflow-wrap: anywhere;
@@ -77,7 +77,7 @@
   height: 16px;
   overflow: hidden;
   border-radius: var(--radius-pill);
-  background: var(--canvas);
+  background: var(--raised);
 }
 
 .fill {
@@ -95,7 +95,7 @@
   position: absolute;
   inset-block: 0;
   width: 2px;
-  background: var(--paper);
+  background: var(--bg);
 }
 
 .labels {
@@ -123,7 +123,7 @@
 
 .disclosure {
   margin: 20px 0 0;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--line);
   padding-top: 16px;
   color: var(--faint);
   font: 0.75rem/1.5 var(--font-mono);

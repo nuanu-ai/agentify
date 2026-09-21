@@ -1,9 +1,9 @@
 /*
  * What the cabinet needs on top of the shared visual language.
  *
- * ADR-0005 §6 asks for one visual language across the landing, the portal and
- * the cabinet, held in one stylesheet rather than repeated per page. That file
- * is `apps/landing/public/styles/tokens.css`, and it is the one this branch
+ * ADR-0005 §6 asks for one visual language across the surfaces, held in one
+ * stylesheet rather than repeated per page. That file is
+ * `packages/visual/tokens.css`, and it is the one this branch
  * used to carry a second copy of — with the pre-contrast-fix values, which is
  * exactly how "one visual language" becomes two that look almost alike. The
  * copy is gone: the cabinet serves the shared file itself, ahead of this one,
@@ -17,108 +17,120 @@
  */
 
 /*
- * The one thing the cabinet takes back from the shared base, and why.
+ * The cabinet takes the shared base whole: 16 pixels at 1.6.
  *
- * tokens.css sets 16px/1.6, which is right for a landing somebody reads. This
- * is a console with six-column tables that a merchant scans rather than reads,
- * and at that size a row of them does not fit a laptop without scrolling
- * sideways. The design was drawn at 14px for that reason.
+ * It used to take 14 back, and the argument written here was that this is a
+ * console with six-column tables a merchant scans rather than reads. The tables
+ * do not support it. One of them has six columns; receipts has eight, which no
+ * font size saves, and all of them already live in a scroller that is meant to
+ * scroll — the `min-width` that decides when it does is in pixels and does not
+ * move with the type. What the 14 actually bought was a base too small to read
+ * prose at, which the file then clawed back at seventeen separate declarations
+ * of 13, 13.5, 12.5, 12 and 11 pixels.
+ *
+ * So the base is the shared one and only the dense rows shrink, which is how
+ * the scanner solves the same problem: 0.75rem in the monospaced face for a
+ * column head or a caption, 0.8125rem for an identifier or an account line,
+ * 0.875rem for a table and for an aside, 0.9375rem for something read
+ * character by character. Nothing on these screens is written in pixels.
  */
-body {
-  font-size: 14px;
-  line-height: 1.5;
-}
 
-/* The page heading, at the size the console was drawn at. Declared before
-   `.gate h1` below, so that the more specific rule is the one that wins. */
-h1 {
-  font-size: 22px;
+/* Form controls do not inherit the page's face on their own, and the shared
+   base does not set it — the scanner keeps the same rule for the same reason
+   (apps/web/app/globals.css). */
+button,
+input,
+select,
+textarea {
+  font: inherit;
 }
 
 /* --- the frame ---------------------------------------------------------- */
 
+/*
+ * One frame for every screen, and it is the shared `.container`: the tables,
+ * the settings panels and the shop screen all sit inside the same width the
+ * scanner lays its report out in. The cabinet used to have three — an unbounded
+ * page with a fixed 32-pixel gutter repeated at twelve blocks, a 1180-pixel
+ * settings grid and a shop panel that borrowed it — so on a wide monitor the
+ * cards table ran edge to edge while the settings page stayed centred, which is
+ * two layouts inside one product. Nothing here declares a page width any more;
+ * a block that needs an inset uses the frame it is already in.
+ *
+ * The bar and the banner are the two things that span the window rather than
+ * the frame, so each holds a `.container` of its own: a rule across the whole
+ * width with its words lined up over the content under it.
+ */
 .page {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
 
+/*
+ * The bar is the scanner's, and the tabs are the cabinet's.
+ *
+ * Everything around them comes from apps/web/components/site-chrome.module.css:
+ * 68 pixels tall, stuck to the top, a translucent page colour with the content
+ * blurred behind it and one hairline under it. What does not come from there is
+ * the navigation itself, because the scanner's is marketing nav with no notion
+ * of "you are here" and five destinations inside one application with a current
+ * location is exactly what a tab row is for. The inset rule under the current
+ * tab stays: it is the only active marker available and it is quiet.
+ *
+ * Nothing in this bar wraps. The tabs are a row and a row that becomes two rows
+ * moves everything under it by a line, which on a sticky bar means the page
+ * changes height as you navigate it. Under 760 the tab row scrolls sideways
+ * instead, and the lockup takes the smaller size the scanner's does.
+ */
 .top {
+  position: sticky;
+  z-index: 20;
+  top: 0;
+  border-bottom: var(--hairline) solid var(--line);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.top-inner {
+  min-height: 68px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: 0 32px;
-  border-bottom: var(--hairline) solid var(--line);
-  background: var(--surface);
-  flex-wrap: wrap;
 }
 
-.brand {
+.bar-left {
   display: flex;
   align-items: center;
   gap: 36px;
-  flex-wrap: wrap;
-}
-
-.wordmark {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  color: var(--fg);
-  font-size: 17px;
-  font-weight: 650;
-  letter-spacing: -0.02em;
-  text-decoration: none;
-}
-
-.wordmark:hover {
-  color: var(--fg);
-  text-decoration: none;
-}
-
-.wordmark .brand-mark,
-.wordmark img {
-  width: 30px;
-  height: 30px;
-  flex: none;
-}
-
-.wordmark .brand-mark {
-  display: block;
-}
-
-.wordmark .mark--dark {
-  display: none;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .wordmark .mark--light {
-    display: none;
-  }
-
-  :root:not([data-theme="light"]) .wordmark .mark--dark {
-    display: block;
-  }
-}
-
-:root[data-theme="dark"] .wordmark .mark--light {
-  display: none;
-}
-
-:root[data-theme="dark"] .wordmark .mark--dark {
-  display: block;
+  min-width: 0;
+  align-self: stretch;
 }
 
 .tabs {
   display: flex;
   gap: 4px;
+  min-width: 0;
+  align-self: stretch;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
 }
 
 .tabs a,
 .tabs span {
-  padding: 18px 14px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
   color: var(--muted);
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.tabs a:hover {
+  color: var(--fg);
+  text-decoration: none;
 }
 
 .tabs .here {
@@ -127,29 +139,55 @@ h1 {
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 
-.whoami {
+/*
+ * The one band on these screens that is ink rather than paper, in the colours
+ * the shared file names for the scanner's footer. One row: the lockup with the
+ * word in paper, the three places outside the cabinet, and the copyright in the
+ * monospaced face. `margin-top: auto` is what holds it against the bottom of a
+ * short page — the page is a flex column of full height, so the last child
+ * taking the slack puts the band under the content rather than halfway up a
+ * window with two rows on the screen.
+ */
+.foot {
+  margin-top: auto;
+  background: var(--fg);
+  color: var(--footer-text);
+}
+
+.foot-inner {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 16px 28px;
+  flex-wrap: wrap;
+  padding-block: 28px;
+}
+
+.foot .brand,
+.foot .brand:hover {
+  color: var(--bg);
+}
+
+.foot-links {
+  display: flex;
   gap: 20px;
-  font-size: 13px;
+  flex-wrap: wrap;
+  font-size: 0.875rem;
 }
 
-/*
- * The way out to the documentation, and the counterpart of the way out of it
- * (apps/docs/.vitepress/theme/agentify.css, same class name). Both are muted
- * until they are hovered, so that neither reads as one of the places the bar
- * navigates to; both stop at one line, because a bar that reflows around a
- * link is a bar that moves under the cursor. Everything else about it —
- * no underline at rest, one on hover — is the cabinet's own convention for a
- * link, taken from tokens.css the way the portal's half takes VitePress's.
- */
-.way-out {
-  color: var(--muted);
-  white-space: nowrap;
+.foot-links a {
+  color: var(--footer-text);
+  text-decoration: none;
 }
 
-.way-out:hover {
-  color: var(--fg);
+.foot-links a:hover {
+  color: var(--bg);
+  text-decoration: none;
+}
+
+.foot-copy {
+  color: var(--footer-faint);
+  font: 0.75rem / 1.5 var(--font-mono);
 }
 
 /*
@@ -165,18 +203,25 @@ h1 {
 .buy {
   margin-top: 3px;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--muted);
   overflow-wrap: anywhere;
 }
 
 .lede {
-  padding: 32px 32px 0;
+  padding: 32px 0 0;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 24px;
   flex-wrap: wrap;
+}
+
+/* The title of a screen inside the cabinet, which is a section heading rather
+   than the hero a gate page opens with, so it is calm: the scanner's report
+   uses the same size over the block it names. */
+.lede h1 {
+  font-size: 1.5rem;
 }
 
 .lede p {
@@ -199,9 +244,9 @@ h1 {
  * from pushing the whole page sideways on a narrow screen.
  */
 .scroller {
-  margin: 24px 32px 32px;
+  margin: 24px 0 32px;
   border: var(--hairline) solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-panel);
   background: var(--surface);
   overflow-x: auto;
 }
@@ -211,23 +256,29 @@ table {
   min-width: 720px;
   border-collapse: collapse;
   text-align: left;
+  font-size: 0.875rem;
 }
 
+/* The column head, in the treatment the scanner gives the heading over a group
+   of checks: the monospaced face, uppercase, letterspaced, muted. */
 thead th {
   background: var(--raised);
-  font-size: 11px;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
   color: var(--muted);
-  font-weight: 500;
+  font: 600 0.75rem / 1.5 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   padding: 12px 24px;
   border-bottom: var(--hairline) solid var(--line);
   white-space: nowrap;
 }
 
+/* A row is the height of a row on the scanner's report, and the rule between
+   two of them is the quiet one: a hairline strong enough to edge a card is too
+   strong repeated down a list of twenty. */
 tbody td {
-  padding: 15px 24px;
-  border-bottom: var(--hairline) solid var(--line);
+  height: 56px;
+  padding: 12px 24px;
+  border-bottom: var(--hairline) solid var(--divider);
   vertical-align: middle;
 }
 
@@ -250,7 +301,7 @@ tbody tr.off td {
 }
 
 tbody tr.needs-you td {
-  background: color-mix(in oklab, var(--warn) 7%, transparent);
+  background: color-mix(in oklab, var(--fail) 7%, transparent);
 }
 
 td.amount,
@@ -262,7 +313,7 @@ td.ident {
 
 td.key,
 td.ident {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--muted);
 }
 
@@ -272,12 +323,12 @@ td.ident {
 
 .under {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 0.875rem;
   margin-top: 3px;
 }
 
 .under.mono {
-  font-size: 12.5px;
+  font-size: 0.8125rem;
 }
 
 td.quiet {
@@ -285,42 +336,64 @@ td.quiet {
   white-space: nowrap;
 }
 
-/* --- the state dot ------------------------------------------------------ */
+/* --- the state badge ---------------------------------------------------- */
 
+/*
+ * The scanner's badge (apps/web/components/status-badge.module.css), on the
+ * cabinet's four tones. The label is the monospaced face at 0.75rem, which is
+ * what tells a state apart from the sentence beside it without a colour having
+ * to do the work, and the dot is 8 pixels rather than 6.
+ *
+ * The substantive part is the hollow one. `busy` is a sale that is under way,
+ * and an outline says "not settled yet" where a filled teal circle says the
+ * same thing a delivered order says and leaves the colour to carry the whole
+ * difference. Everything with an ending — delivered, refused, refund due — is
+ * filled. There is no pulse on the hollow dot: these pages are drawn once and
+ * do not update themselves, and an animation would be the screen claiming to
+ * be watching something.
+ *
+ * `words.ts` is untouched. The four tones are the right vocabulary; what
+ * changes here is only how one is drawn.
+ */
 .state {
   display: inline-flex;
   align-items: center;
   gap: 7px;
   white-space: nowrap;
+  color: var(--muted);
+  font: 500 0.75rem / 1.4 var(--font-mono);
 }
 
 .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
+  width: 8px;
+  height: 8px;
   flex: none;
-  background: var(--muted);
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  background: currentColor;
 }
 
+/* `ok` is the scanner's pass, `warn` its fail, `busy` its running, and `quiet`
+   its pending — muted words over a fainter dot, so that a row nobody has to do
+   anything about does not draw the eye of somebody scanning for one that does. */
 .state.ok {
-  color: var(--ok);
-}
-.state.ok .dot {
-  background: var(--ok);
+  color: var(--pass);
 }
 
 .state.warn {
-  color: var(--warn);
-}
-.state.warn .dot {
-  background: var(--warn);
+  color: var(--fail);
 }
 
 .state.busy {
   color: var(--accent);
 }
+
 .state.busy .dot {
-  background: var(--accent);
+  background: none;
+}
+
+.state.quiet .dot {
+  color: var(--faint);
 }
 
 /*
@@ -330,11 +403,11 @@ td.quiet {
  */
 .tag {
   font-family: var(--font-sans);
-  font-size: 10px;
+  font-size: 0.6875rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--warn);
-  border: var(--hairline) solid var(--warn);
+  color: var(--fail);
+  border: var(--hairline) solid var(--fail);
   border-radius: 2px;
   padding: 1px 4px;
   margin-left: 6px;
@@ -343,37 +416,36 @@ td.quiet {
 
 /* --- controls ----------------------------------------------------------- */
 
-button {
-  font: inherit;
-  cursor: pointer;
-  border-radius: var(--radius);
-  padding: 6px 12px;
-  font-size: 13px;
-  /* --line-strong and not --line: a hairline is right for a rule between two
-     cells and too faint for the edge of something you are meant to click. */
-  border: var(--hairline) solid var(--line-strong);
+/*
+ * One box, where there were three: a monospaced full-width one inside the
+ * sign-in card, a 340-pixel one beside the issue form's label, and the shop
+ * address's. They are the shared button's counterpart and take its measures —
+ * 48 pixels, the control corner, and the 1.5-pixel border that is what makes a
+ * boundary visible at all. Nothing here fixes a width: a box in a flex row
+ * fills the room its row has, which is what stops a 42-character wallet address
+ * pushing a settings panel wider than the frame around it.
+ *
+ * The sign-in box is no longer monospaced. An email address is not read
+ * character by character, and the face was the one thing on that page that did
+ * not appear anywhere on the site a merchant had just come from.
+ */
+input {
+  min-width: 0;
+  width: 100%;
+  min-height: 48px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  padding: 0 14px;
   background: var(--surface);
   color: var(--fg);
 }
 
-button:hover {
-  border-color: var(--fg);
-}
-
-button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
-}
-
-button.primary:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
-}
-
-button.wide {
-  padding: 9px 16px;
-  font-size: 13.5px;
+/* The label over a box, at the weight the scanner gives one. The uppercase
+   letterspaced caption it used to be is the treatment this file keeps for a
+   column head and a figure's caption, which are not things you type into. */
+label {
+  font-size: 0.8125rem;
+  font-weight: 600;
 }
 
 form.inline {
@@ -388,14 +460,14 @@ td.control {
   display: flex;
   gap: 6px;
   border: var(--hairline) solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-control);
   padding: 3px;
 }
 
 .filter a,
 .filter span {
   padding: 6px 14px;
-  font-size: 13px;
+  font-size: 0.875rem;
   border-radius: 2px;
   color: var(--muted);
 }
@@ -408,41 +480,48 @@ td.control {
 
 /* --- notes and summaries ------------------------------------------------ */
 
+/*
+ * Two shapes for a box with text in it, where there were three.
+ *
+ * An aside is the first: something worth saying beside the data and not worth
+ * a box, which is how the scanner draws the note over the scope of a report
+ * (report.module.css `.scopeNote`). A rule down the left margin and nothing
+ * else — no dashed border, no arrow. The dashed box and the `↳` in front of it
+ * made a sentence about the last-call column look like an alert, and there are
+ * two of them under one table.
+ *
+ * A notice is the second: something the merchant has to act on, or a claim the
+ * page is making about the stack it belongs to. That one is a tinted panel on
+ * the notice pair, and `.callout` and the banner are now literally the same
+ * rule rather than two copies of it that happened to agree.
+ */
 .note {
-  margin: 0 32px 32px;
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  border: var(--hairline) dashed var(--line-strong);
-  border-radius: var(--radius);
-  padding: 16px 20px;
+  margin: 0 0 32px;
+  border-left: 3px solid var(--line-strong);
+  padding-left: 12px;
   color: var(--muted);
-  font-size: 13.5px;
+  font-size: 0.875rem;
   line-height: 1.55;
 }
 
-.note .mark {
-  color: var(--accent);
-}
-
-.callout {
-  margin: 0 32px 32px;
-  border: var(--hairline) solid var(--line);
-  border-left: 2px solid var(--warn);
-  border-radius: var(--radius);
+.callout,
+.stack-note {
+  margin: 0 0 32px;
+  border-left: 3px solid var(--notice-ink);
+  border-radius: var(--radius-card);
   padding: 16px 20px;
-  background: var(--surface);
+  background: var(--notice-bg);
+  color: var(--notice-ink);
   line-height: 1.55;
 }
 
 /*
- * The same box for something that went right. Only the bar changes colour: the
- * callout is where this cabinet puts a line at the top of a page, and two
- * layouts for one job would drift. An orange bar beside "Link sent" reads as a
- * problem, which is the opposite of what the sentence says.
+ * The same panel for something that went right. Only the bar changes colour: an
+ * amber bar beside "Your shop is connected" reads as a problem, which is the
+ * opposite of what the sentence says.
  */
 .callout.done {
-  border-left-color: var(--ok);
+  border-left-color: var(--pass);
 }
 
 .callout .what {
@@ -456,59 +535,48 @@ td.control {
   overflow-wrap: anywhere;
 }
 
+/* The consequence over the reason, told apart by size rather than by a second
+   colour: one ink on one tint is all this panel needs. */
 .callout .why {
-  color: var(--muted);
   margin-top: 4px;
-  font-size: 13.5px;
-}
-
-.surface {
-  margin: 0 32px 32px;
-  border: var(--hairline) solid var(--line);
-  border-left: 2px solid var(--warn);
-  border-radius: var(--radius);
-  padding: 16px 20px;
-  background: var(--surface);
-  line-height: 1.55;
+  font-size: 0.875rem;
 }
 
 .surface-words {
   margin: 0;
-  color: var(--muted);
-  font-size: 13.5px;
+  font-size: 0.875rem;
 }
 
 .summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 16px;
-  margin: 24px 32px 0;
+  margin: 24px 0 0;
 }
 
 .tile {
   border: var(--hairline) solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-card);
   background: var(--surface);
   padding: 20px 24px;
 }
 
 .tile .label {
-  font-size: 11px;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
   color: var(--muted);
-  font-weight: 500;
+  font: 500 0.75rem / 1.3 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .tile .figure {
   font-family: var(--font-mono);
-  font-size: 26px;
+  font-size: 1.625rem;
   margin-top: 10px;
   letter-spacing: -0.02em;
 }
 
 .tile .figure.ok {
-  color: var(--ok);
+  color: var(--pass);
 }
 
 .tile .figure.busy {
@@ -517,7 +585,7 @@ td.control {
 
 .tile .aside {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 0.875rem;
   margin-top: 4px;
 }
 
@@ -529,98 +597,44 @@ td.control {
 
 /* --- signing in --------------------------------------------------------- */
 
+/*
+ * The pages outside the cabinet: sign in, check your mail, open the link,
+ * choose a name, come back from a shop, and every error page.
+ *
+ * One card on the page colour, at the measures of the scanner's own
+ * (apps/web/components/auth-callback.module.css): 520 pixels, the panel corner,
+ * the shared soft shadow, and padding that grows with the window. The teal
+ * radial gradient behind it is gone — nothing on the scanner has one, and it
+ * was the first thing a merchant saw after pressing a button on a page that
+ * did not.
+ *
+ * The lockup is above the card and not inside it, which is the scanner's
+ * arrangement and also an accessibility fix: every one of these pages had a
+ * logo as its only heading, so each has a real `h1` now saying which page it
+ * is. The heading is a hero here and not a section title, so it takes the
+ * larger step; inside the cabinet `.lede h1` is the calmer one.
+ */
 .gate {
   min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 28px;
   padding: 48px 24px;
-  background:
-    radial-gradient(
-      circle at 15% 10%,
-      color-mix(in srgb, var(--accent) 9%, transparent),
-      transparent 32rem
-    ),
-    var(--bg);
 }
 
-.gate form {
-  width: 100%;
-  max-width: 440px;
+.gate-card {
+  width: min(100%, 520px);
   border: var(--hairline) solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-panel);
   background: var(--surface);
-  padding: 36px;
-  box-shadow: 0 20px 60px color-mix(in srgb, var(--fg) 8%, transparent);
+  padding: clamp(28px, 6vw, 40px);
+  box-shadow: var(--shadow-soft);
 }
 
 .gate h1 {
-  font-size: 18px;
-  margin-bottom: 22px;
-}
-
-.gate .wordmark {
-  font-size: 22px;
-}
-
-.gate .wordmark .brand-mark,
-.gate .wordmark img {
-  width: 38px;
-  height: 38px;
-}
-
-.theme-switch {
-  position: relative;
-  flex: 0 0 auto;
-  width: 40px;
-  height: 22px;
-  padding: 0;
-  border: var(--hairline) solid var(--line-strong);
-  border-radius: 999px;
-  background: var(--raised);
-}
-
-.theme-switch__knob {
-  position: absolute;
-  inset: 1px auto auto 1px;
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--surface);
-  transition: transform 0.2s ease;
-}
-
-.theme-switch[aria-checked="true"] .theme-switch__knob {
-  transform: translateX(18px);
-}
-
-.theme-switch svg {
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  fill: none;
-  stroke: var(--muted);
-  stroke-width: 1.6;
-  stroke-linecap: round;
-}
-
-.theme-switch__moon {
-  fill: var(--muted);
-  stroke: none;
-}
-
-.theme-switch[aria-checked="true"] .theme-switch__sun,
-.theme-switch:not([aria-checked="true"]) .theme-switch__moon {
-  display: none;
-}
-
-.gate-tools {
-  position: fixed;
-  z-index: 2;
-  top: 20px;
-  right: 20px;
+  font-size: clamp(2rem, 5vw, 2.5rem);
+  margin-bottom: 16px;
 }
 
 .gate p {
@@ -630,76 +644,23 @@ td.control {
 
 .gate label {
   display: block;
-  margin-top: 20px;
-  font-size: 11px;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--muted);
-  font-weight: 500;
-}
-
-.gate input {
-  font-family: var(--font-mono);
-  font-size: 14px;
-  width: 100%;
-  margin-top: 8px;
-  min-height: 44px;
-  padding: 10px 12px;
-  border: var(--hairline) solid var(--line-strong);
-  border-radius: var(--radius);
-  background: var(--bg);
-  color: var(--fg);
+  margin: 20px 0 8px;
 }
 
 @media (max-width: 760px) {
-  .top {
-    padding: 14px 18px 0;
-    min-width: 0;
-    overflow: hidden;
+  .top-inner {
+    min-height: 60px;
+    gap: 14px;
   }
 
-  .brand {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    width: 100%;
-    min-width: 0;
-    gap: 8px;
-  }
-
-  .tabs {
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
-    overflow-x: auto;
-    overscroll-behavior-inline: contain;
+  .bar-left {
+    gap: 16px;
   }
 
   .tabs a,
   .tabs span {
-    padding: 12px 10px;
-    white-space: nowrap;
-  }
-
-  .whoami {
-    width: 100%;
-    min-width: 0;
-    flex-wrap: wrap;
-    padding: 0 0 14px;
-    gap: 12px;
-  }
-
-  .lede,
-  .issue {
-    padding-left: 18px;
-    padding-right: 18px;
-  }
-
-  .scroller,
-  .summary,
-  .saved,
-  .surface {
-    margin-left: 18px;
-    margin-right: 18px;
+    padding: 0 10px;
+    font-size: 0.8125rem;
   }
 
   .gate form {
@@ -716,29 +677,56 @@ td.control {
   }
 }
 
-.gate button {
-  margin-top: 20px;
+/* The actions on a gate page are a column and not a row: the card is 520 wide
+   and two controls side by side in it read as one wide control cut in half.
+   Where there are two, the second is the secondary one under the first — which
+   is what "Use a different email" was not, before: it sat in a second card of
+   its own beside the first, at a different height. */
+.gate .button {
+  margin-top: 12px;
   width: 100%;
-  padding: 10px;
-  font-size: 14px;
 }
 
 .problem {
   margin-top: 16px;
-  color: var(--warn);
-  font-size: 13.5px;
+  color: var(--fail);
+  font-size: 0.875rem;
 }
 
-/* The address of the person signed in, in the corner of every page. Until
-   ADR-0009 there was nobody to name: the cabinet held a merchant key and the
-   screen could not say whose hand was on the control that stops all selling.
-   It is a link because pressing your own name means "show me my account", and
-   it leads to the settings, where the account is. The colour is the muted one
-   so that it reads as a label rather than as a fifth tab. */
-.who {
+/* Who is signed in, under the content, in the shape the scanner gives the same
+   row (report.module.css `.account`). Until ADR-0009 there was nobody to name:
+   the cabinet held a merchant key and the screen could not say whose hand was
+   on the control that stops all selling. The address is a link because pressing
+   your own name means "show me my account", and it leads to the settings, where
+   the account is. */
+.account {
+  display: flex;
+  align-items: baseline;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin: 28px 0 40px;
   color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.account button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.account button:hover {
+  color: var(--accent-hover);
+}
+
+.who {
+  color: inherit;
   text-decoration: none;
-  border-bottom: var(--hairline) solid var(--line);
   max-width: 100%;
   overflow-wrap: anywhere;
 }
@@ -751,7 +739,7 @@ td.control {
    table cell and does not apply here. */
 p.quiet {
   margin-top: 16px;
-  font-size: 13px;
+  font-size: 0.875rem;
   color: var(--muted);
 }
 
@@ -769,48 +757,35 @@ p.quiet {
 /* --- the keys screen ---------------------------------------------------- */
 
 /*
- * The heading over the form that issues a key, under the list of the ones there
- * are. Smaller than the page's own heading and larger than a table's, because
- * it opens a second half of one screen rather than a second screen.
+ * The heading over the form that issues a key, and over each panel on the
+ * settings screen. Smaller than the page's own heading and larger than the body
+ * around it, because it opens a second half of one screen rather than a second
+ * screen.
  */
 h2 {
-  font-size: 16px;
+  font-size: 1.125rem;
 }
 
-/*
- * The form that issues a key: one box and one button, side by side, sitting
- * where a table would.
- *
- * The input is styled here rather than borrowing `.gate input`, which is a
- * whole-width box inside a sign-in card and would run the length of the page.
- */
+/* The form that issues a key: one box and one button, side by side, sitting
+   where a table would. */
 .issue {
   display: flex;
   align-items: flex-end;
   gap: 12px;
   flex-wrap: wrap;
-  padding: 20px 32px 32px;
+  padding: 20px 0 32px;
 }
 
 .issue label {
   display: block;
-  font-size: 11px;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--muted);
-  font-weight: 500;
   margin-bottom: 8px;
 }
 
-.issue input {
-  font: inherit;
-  width: 340px;
-  max-width: 100%;
-  padding: 6px 12px;
-  border: var(--hairline) solid var(--line-strong);
-  border-radius: var(--radius);
-  background: var(--bg);
-  color: var(--fg);
+/* The box takes the room its row has and the button sits beside it; under about
+   320 pixels of box the two stack instead. */
+.issue > div {
+  flex: 1 1 320px;
+  min-width: 0;
 }
 
 /*
@@ -825,16 +800,8 @@ h2 {
   padding: 28px 24px;
   text-align: center;
   font-family: var(--font-mono);
-  font-size: 15px;
+  font-size: 0.9375rem;
   overflow-wrap: anywhere;
-}
-
-/* The way back, under the key. On the password page this sits inside the
-   sign-in card and takes that card's padding; here it is a direct child of the
-   page frame and needs the frame's own gutter, or it lands against the edge of
-   the window. */
-.page > p.quiet {
-  padding: 0 32px;
 }
 
 /* --- the payout address on the settings screen -------------------------- */
@@ -856,25 +823,24 @@ h2 {
  * against their wallet would break it anyway.
  */
 .saved {
-  margin: 0 32px 24px;
+  margin: 0 0 24px;
   padding: 16px 20px;
   border: var(--hairline) solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-card);
   background: var(--surface);
 }
 
 .saved .label {
-  font-size: 11px;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
   color: var(--muted);
-  font-weight: 500;
+  font: 500 0.75rem / 1.3 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .saved .address {
   margin-top: 10px;
   font-family: var(--font-mono);
-  font-size: 15px;
+  font-size: 0.9375rem;
   overflow-wrap: anywhere;
 }
 
@@ -888,27 +854,14 @@ h2 {
 
 .saved .under {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 0.875rem;
   margin-top: 10px;
   max-width: 70ch;
 }
 
 /* Settings are four distinct subjects. Panels keep their explanations and
-   controls together and use the desktop width instead of leaving half of it
-   blank; on a narrow screen they return to the document order. */
-.settings-heading,
-.settings-grid,
-.integration-shell {
-  width: min(1180px, calc(100% - 64px));
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.settings-heading {
-  padding-left: 0;
-  padding-right: 0;
-}
-
+   controls together and use the width of the frame instead of leaving half of
+   it blank; on a narrow screen they return to the document order. */
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -920,7 +873,7 @@ h2 {
 .integration-shell {
   min-width: 0;
   border: var(--hairline) solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-panel);
   background: var(--surface);
   box-shadow: 0 12px 32px color-mix(in srgb, var(--fg) 4%, transparent);
 }
@@ -955,33 +908,5 @@ h2 {
 @media (max-width: 980px) {
   .settings-grid {
     grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 760px) {
-  .settings-heading,
-  .settings-grid,
-  .integration-shell {
-    width: calc(100% - 36px);
-  }
-
-  .settings-panel > .lede,
-  .integration-shell > .lede {
-    padding-left: 18px;
-    padding-right: 18px;
-  }
-
-  .settings-panel > .issue,
-  .integration-shell > .issue {
-    padding-left: 18px;
-    padding-right: 18px;
-  }
-
-  .settings-panel > .saved,
-  .integration-shell > .callout,
-  .integration-shell > .scroller,
-  .integration-shell > .summary {
-    margin-left: 18px;
-    margin-right: 18px;
   }
 }

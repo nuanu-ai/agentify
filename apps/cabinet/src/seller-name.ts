@@ -84,6 +84,10 @@ export const whatIsWrongWithTheName = (name: string): string | null =>
  * the rule: the name people already know, not a description of the goods. A
  * merchant who writes their catalogue into this box ends up listed under their
  * own stock list, and nothing further down the line corrects it.
+ *
+ * On the first screen only. It was on both, and the settings panel is headed
+ * "The name your products are sold under", which is the same sentence in four
+ * words over the box it belongs to.
  */
 const WHAT_IT_IS_FOR = `<p>Buyers see this seller name beside your products and in the payment they approve. Use the name people already know you by, rather than a description of what you sell.</p>`;
 
@@ -105,17 +109,18 @@ export const chooseNameScreen = (
     base,
     "The name your products are sold under",
     `<div class="gate">
-<form method="post" action="${escaped(base)}/choose-name">
-  <h1>${brandLockup("/")}</h1>
+${brandLockup("/")}
+<form class="gate-card" method="post" action="${escaped(base)}/choose-name">
+  <h1>Choose your seller name</h1>
   <p>Your account is ready. Choose the seller name buyers will see.</p>
   <label for="seller_name">The name your products are sold under</label>
   <input id="seller_name" name="seller_name" type="text" autocomplete="organization" maxlength="32" value="${escaped(typed)}" autofocus required>
   ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
   <p class="quiet">${escaped(NAME_RULE)}</p>
-  <button class="primary" type="submit">Use this name</button>
+  <button class="button button-primary" type="submit">Use this name</button>
   ${WHAT_IT_IS_FOR}
-  <p class="quiet">You can change it whenever you like. Until it is set, nothing you publish goes on sale, and every screen in the cabinet says so.</p>
-  <p class="quiet">Not decided yet? <a href="${escaped(base)}/cards">Leave it for now</a> — it is set under <a href="${escaped(base)}/settings">Settings</a> whenever you are ready.</p>
+  <p class="quiet">You can change it in <a href="${escaped(base)}/settings">Settings</a>; until it is set, nothing you publish goes on sale.</p>
+  <p class="quiet">Not decided yet? <a href="${escaped(base)}/cards">Leave it for now</a>.</p>
 </form>
 </div>`,
     mode,
@@ -153,7 +158,7 @@ export const settingsScreen = (viewer: Viewer, problem?: string, typedName?: str
   const name = viewer.sellerName ?? null;
 
   const body = `
-  <div class="lede settings-heading">
+  <div class="lede">
     <div>
       <h1>Settings</h1>
       <p>${escaped(
@@ -174,7 +179,6 @@ export const settingsScreen = (viewer: Viewer, problem?: string, typedName?: str
   <div class="lede">
     <div>
       <h2>The name your products are sold under</h2>
-      ${WHAT_IT_IS_FOR}
       <p class="quiet">${escaped(NAME_RULE)}</p>
       <p class="quiet">${escaped(NAME_CANNOT_BE_TAKEN_AWAY)}</p>
     </div>
@@ -185,7 +189,7 @@ export const settingsScreen = (viewer: Viewer, problem?: string, typedName?: str
       <input id="seller_name" name="seller_name" type="text" autocomplete="organization" maxlength="32" value="${escaped(typedName ?? name ?? "")}" required>
       ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
     </div>
-    <button class="primary" type="submit">Save it</button>
+    <button class="button button-compact button-primary" type="submit">Save it</button>
   </form>
   </section>
   <section class="settings-panel">${payoutWalletBlock(viewer)}</section>

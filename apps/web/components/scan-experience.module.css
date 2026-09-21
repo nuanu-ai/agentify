@@ -4,7 +4,7 @@
   flex-direction: column;
   align-items: center;
   padding: 48px 24px 80px;
-  background: var(--canvas);
+  background: var(--raised);
 }
 
 .brandWrap {
@@ -14,7 +14,7 @@
 .card {
   width: min(100%, 700px);
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: var(--radius-panel);
   background: var(--surface);
   box-shadow: var(--shadow-soft);
@@ -26,7 +26,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  border-bottom: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--line-soft);
   padding: 18px 28px;
 }
 
@@ -41,7 +41,7 @@
 
 .scanId {
   overflow: hidden;
-  color: var(--ink);
+  color: var(--fg);
   font-size: 0.9375rem;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -72,7 +72,7 @@
   grid-template-columns: 26px minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
-  border-top: 1px solid var(--hairline);
+  border-top: 1px solid var(--divider);
   color: var(--faint);
   font-size: 0.9375rem;
   animation: riseIn 420ms ease both;
@@ -97,7 +97,7 @@
 
 .phases .done,
 .phases .active {
-  color: var(--ink-2);
+  color: var(--fg-2);
 }
 
 .done .phaseIcon {
@@ -128,7 +128,7 @@
 
 .checkDetails {
   margin-top: 18px;
-  border-top: 1px solid var(--border-soft);
+  border-top: 1px solid var(--line-soft);
   padding-top: 16px;
 }
 
@@ -148,7 +148,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  border-top: 1px solid var(--hairline);
+  border-top: 1px solid var(--divider);
   font-size: 0.875rem;
 }
 
@@ -194,15 +194,13 @@
   position: relative;
   overflow: hidden;
   border-radius: var(--radius-pill);
-  background: var(--track);
+  background: #eae6dd;
 }
 
 .scaleFill {
   height: 100%;
   border-radius: inherit;
   background: var(--accent);
-  transform-origin: left;
-  animation: grow 900ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .scale i {
@@ -235,10 +233,10 @@
   grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
   gap: 12px;
-  border: 1px solid var(--border-warm);
+  border: 1px solid #eee9e0;
   border-radius: var(--radius-control);
   padding: 14px 16px;
-  background: var(--paper);
+  background: var(--bg);
   font-size: 0.9375rem;
   font-weight: 600;
   animation: riseIn 420ms ease both;
@@ -246,8 +244,8 @@
 }
 
 .finding.pass {
-  border-color: var(--pass-tint-border);
-  background: var(--pass-tint-bg);
+  border-color: #dcebe2;
+  background: #f1f6f3;
 }
 
 .finding.attention {
@@ -255,7 +253,7 @@
   min-width: 0;
   display: block;
   overflow: hidden;
-  border-color: var(--border);
+  border-color: var(--line);
   padding: 0;
   background: var(--surface);
 }
@@ -300,7 +298,7 @@
 
 .findingDetail {
   margin: 0;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--line);
   padding: 14px 16px 16px;
   color: var(--muted);
   font-size: 0.875rem;
@@ -309,20 +307,15 @@
   overflow-wrap: anywhere;
 }
 
-.findingDetail strong {
-  color: var(--ink-2);
-  font-weight: 600;
-}
-
 .attentionBadge {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  border: 1px solid var(--input-border);
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-pill);
   padding: 4px 8px;
-  background: var(--paper);
-  color: var(--ink-2);
+  background: var(--bg);
+  color: var(--fg-2);
   font: 500 0.625rem/1.2 var(--font-mono);
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -341,7 +334,7 @@
   flex-direction: column;
   gap: 12px;
   margin-top: 20px;
-  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
   border-radius: var(--radius-card);
   padding: 16px 18px;
   background: var(--accent-soft);
@@ -403,7 +396,7 @@
 }
 
 .reportCta span {
-  color: var(--on-accent-tint);
+  color: #bee3df;
   font-size: 0.8125rem;
   line-height: 1.45;
 }
@@ -433,7 +426,7 @@
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-control);
-  background: var(--canvas);
+  background: var(--raised);
   color: var(--muted);
   font: 1rem var(--font-mono);
 }
@@ -461,7 +454,7 @@
 }
 
 .pollNotice {
-  background: var(--canvas);
+  background: var(--raised);
   color: var(--muted);
 }
 
@@ -586,8 +579,3 @@
   }
 }
 
-@keyframes grow {
-  from {
-    transform: scaleX(0);
-  }
-}

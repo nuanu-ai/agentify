@@ -1,0 +1,13 @@
+{
+  "name": "@agentify/visual",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The visual language: one stylesheet of tokens, base element rules and shared primitives, read by every surface on the origin",
+  "exports": {
+    "./tokens.css": "./tokens.css"
+  },
+  "files": [
+    "tokens.css"
+  ]
+}

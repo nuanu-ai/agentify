@@ -3,8 +3,8 @@
  *
  * ADR-0005 §6 asks for one visual language across the surfaces, held in one
  * stylesheet rather than repeated per page. That file is
- * `apps/landing/public/styles/tokens.css`, and the stand serves it — and the
- * faces beside it — straight out of the repository rather than keeping a copy,
+ * `packages/visual/tokens.css`, and the stand serves it — and the faces the
+ * landing holds — straight out of the repository rather than keeping a copy,
  * for the reason the cabinet gives above its own stylesheet: two copies of one
  * palette is how a single visual language quietly becomes two that look almost
  * alike. So nothing here declares a colour, a family or a radius.
@@ -60,7 +60,7 @@ h2 {
   flex-wrap: wrap;
 }
 
-.brand {
+.bar-left {
   display: flex;
   align-items: baseline;
   gap: 10px;
@@ -149,9 +149,9 @@ h2 {
 }
 
 .surface.live {
-  color: var(--warn);
-  border-bottom-color: var(--warn);
-  background: color-mix(in oklab, var(--warn) 7%, transparent);
+  color: var(--fail);
+  border-bottom-color: var(--fail);
+  background: color-mix(in oklab, var(--fail) 7%, transparent);
 }
 
 /* --- the two columns ---------------------------------------------------- */
@@ -206,7 +206,7 @@ h2 {
 
 .panel {
   border: var(--hairline) solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-panel);
   background: var(--surface);
 }
 
@@ -361,17 +361,17 @@ td.ctl {
 }
 
 .state.ok {
-  color: var(--ok);
+  color: var(--pass);
 }
 .state.ok .dot {
-  background: var(--ok);
+  background: var(--pass);
 }
 
 .state.warn {
-  color: var(--warn);
+  color: var(--fail);
 }
 .state.warn .dot {
-  background: var(--warn);
+  background: var(--fail);
 }
 
 .state.busy {
@@ -393,8 +393,8 @@ td.ctl {
 }
 
 .tag.live {
-  color: var(--warn);
-  border-color: var(--warn);
+  color: var(--fail);
+  border-color: var(--fail);
 }
 
 .tag.hot {
@@ -407,7 +407,7 @@ td.ctl {
 button {
   font: inherit;
   cursor: pointer;
-  border-radius: var(--radius);
+  border-radius: var(--radius-control);
   padding: 5px 11px;
   font-size: 12.5px;
   border: var(--hairline) solid var(--line-strong);
@@ -477,7 +477,7 @@ textarea {
   width: 100%;
   padding: 5px 9px;
   border: var(--hairline) solid var(--line-strong);
-  border-radius: var(--radius);
+  border-radius: var(--radius-control);
   background: var(--bg);
   color: var(--fg);
 }
@@ -553,8 +553,8 @@ details > summary:hover {
  */
 .said-back {
   border: var(--hairline) solid var(--line);
-  border-left: 2px solid var(--ok);
-  border-radius: var(--radius);
+  border-left: 2px solid var(--pass);
+  border-radius: var(--radius-card);
   background: var(--surface);
   padding: 11px 14px;
   font-size: 13px;
@@ -562,7 +562,7 @@ details > summary:hover {
 }
 
 .said-back.problem {
-  border-left-color: var(--warn);
+  border-left-color: var(--fail);
 }
 
 /* --- the agent's exchange ----------------------------------------------- */
@@ -632,12 +632,12 @@ details > summary:hover {
 }
 
 .beat.bad {
-  background: color-mix(in oklab, var(--warn) 7%, transparent);
+  background: color-mix(in oklab, var(--fail) 7%, transparent);
 }
 
 .beat.bad .who,
 .beat.bad .head {
-  color: var(--warn);
+  color: var(--fail);
 }
 
 /* What a payment must satisfy, laid out to be read rather than parsed. */
@@ -647,7 +647,7 @@ details > summary:hover {
   gap: 10px 18px;
   padding: 10px 12px;
   border: var(--hairline) dashed var(--line-strong);
-  border-radius: var(--radius);
+  border-radius: var(--radius-card);
 }
 
 .reqs .k {
@@ -748,14 +748,14 @@ details > summary:hover {
 .held-for b {
   font-family: var(--font-mono);
   font-weight: 500;
-  color: var(--warn);
+  color: var(--fail);
 }
 
 pre {
   margin: 0;
   padding: 9px 11px;
   background: var(--raised);
-  border-radius: var(--radius);
+  border-radius: var(--radius-card);
   font-family: var(--font-mono);
   font-size: 11.5px;
   line-height: 1.5;
@@ -925,7 +925,7 @@ pre {
 }
 
 .lrow.merchant .l {
-  color: var(--ok);
+  color: var(--pass);
 }
 
 .lrow.gateway .l {
@@ -952,7 +952,7 @@ pre {
 
 .lrow.merchant .w.sent,
 .lrow.merchant .w.got {
-  color: var(--ok);
+  color: var(--pass);
 }
 
 .lrow .m {
@@ -981,13 +981,13 @@ pre {
  * the number is what a reader is actually looking for.
  */
 .lrow.bad {
-  border-left-color: var(--warn);
-  background: color-mix(in oklab, var(--warn) 12%, transparent);
+  border-left-color: var(--fail);
+  background: color-mix(in oklab, var(--fail) 12%, transparent);
 }
 
 .lrow.bad .m,
 .lrow.bad .f {
-  color: var(--warn);
+  color: var(--fail);
 }
 
 .lrow.bad .f {
@@ -995,14 +995,14 @@ pre {
 }
 
 .lline:has(.lrow.bad) > pre {
-  border-left: 2px solid var(--warn);
+  border-left: 2px solid var(--fail);
 }
 
 /* The purchase a refusal happened inside, marked at its head. */
 .rowgroup.bad {
-  color: var(--warn);
-  border-left: 2px solid var(--warn);
-  background: color-mix(in oklab, var(--warn) 9%, transparent);
+  color: var(--fail);
+  border-left: 2px solid var(--fail);
+  background: color-mix(in oklab, var(--fail) 9%, transparent);
 }
 
 /* --- connecting --------------------------------------------------------- */
@@ -1019,7 +1019,7 @@ pre {
   width: 100%;
   max-width: 480px;
   border: var(--hairline) solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-panel);
   background: var(--surface);
   padding: 28px;
   display: flex;

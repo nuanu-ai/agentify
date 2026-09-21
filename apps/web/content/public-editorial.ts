@@ -2,6 +2,7 @@ import {
   CHECK_DEFINITIONS,
   SCAN_RUBRIC_VERSION,
 } from "@agentify/scanner-contracts";
+import { canonicalCheckLabel } from "@agentify/remediation";
 
 import type { PublicAppConfig } from "../lib/app-config";
 
@@ -43,7 +44,7 @@ const link = (value: string, href: string): InlineNode => ({
 
 const methodologyPage = (): PublicEditorialPageModel => ({
   path: "/methodology",
-  eyebrow: `Methodology · rubric ${SCAN_RUBRIC_VERSION}`,
+  eyebrow: "Methodology",
   title: "How the agent-readiness scan works",
   intro:
     "We diagnose public, machine-readable website signals. The result is a versioned technical baseline — never a certification, search ranking, or promise of model behavior.",
@@ -54,15 +55,13 @@ const methodologyPage = (): PublicEditorialPageModel => ({
       blocks: [
         {
           kind: "paragraph",
-          content: `The rubric contains exactly ${CHECK_DEFINITIONS.length} canonical checks across discovery, structured content, agent-like HTTP access, segment signals, and informational experimental surfaces.`,
+          content: `The scan runs ${CHECK_DEFINITIONS.length} checks across discovery, structured content, agent-like HTTP access, signals for your kind of business, and experimental surfaces.`,
         },
         {
           kind: "list",
           items: CHECK_DEFINITIONS.map((check) => [
             code(`#${check.id}`),
-            text(
-              ` ${check.labelCode.replaceAll("_", " ")} — nominal weight ${check.nominalWeight}`,
-            ),
+            text(` ${canonicalCheckLabel(check.labelCode)}`),
           ]),
         },
       ],
@@ -74,7 +73,7 @@ const methodologyPage = (): PublicEditorialPageModel => ({
         {
           kind: "paragraph",
           content:
-            "The backend excludes not-applicable checks, removes unavailable weight from the assessed denominator, and stores the resulting score together with coverage and rubric version. The browser never recomputes these values.",
+            "The backend excludes not-applicable checks, removes unavailable weight from the assessed denominator, and stores the resulting score together with coverage and rubric version.",
         },
         {
           kind: "notice",
@@ -94,7 +93,7 @@ const methodologyPage = (): PublicEditorialPageModel => ({
     },
     {
       id: "states",
-      title: "The five result states",
+      title: "What each result means",
       blocks: [
         {
           kind: "list",
@@ -128,7 +127,7 @@ const methodologyPage = (): PublicEditorialPageModel => ({
     },
     {
       id: "limits",
-      title: "Limitations",
+      title: "What the scan cannot tell you",
       blocks: [
         {
           kind: "paragraph",
@@ -187,10 +186,9 @@ const methodologyPage = (): PublicEditorialPageModel => ({
 
 const scannerPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
   path: "/scanner",
-  eyebrow: "Scanner identity · public HTTP and passive browser observation",
+  eyebrow: "Scanner identity",
   title: "About agentify-scanner",
-  intro:
-    "This page identifies the scanner honestly and describes the outbound behavior target-site operators can expect.",
+  intro: "What our requests look like to your site, and how to stop them.",
   sections: [
     {
       id: "identity",
@@ -219,14 +217,14 @@ const scannerPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
               {
                 kind: "notice" as const,
                 content:
-                  "The production domain is active, but final legal identity remains a paid-launch blocker.",
+                  "The production domain is active. The final legal identity is not published yet.",
               },
             ]),
       ],
     },
     {
       id: "behavior",
-      title: "Canonical HTTP scanner behavior",
+      title: "What the HTTP scanner does",
       blocks: [
         {
           kind: "list",
@@ -254,7 +252,7 @@ const scannerPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
               `agentify-browser-observer/1.0 (+${new URL("/scanner", config.baseUrl).toString()})`,
             ),
             text(
-              ". Provider, budget, or challenge failures never reduce the canonical score.",
+              ". Provider, budget, or challenge failures never reduce the score.",
             ),
           ],
         },

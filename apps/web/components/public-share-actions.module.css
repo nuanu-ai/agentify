@@ -73,7 +73,7 @@
 }
 
 .manualCopy label {
-  color: var(--ink-2);
+  color: var(--fg-2);
   font-size: 0.8125rem;
   font-weight: 600;
 }
@@ -81,11 +81,11 @@
 .manualCopy textarea {
   width: 100%;
   resize: vertical;
-  border: 1.5px solid var(--input-border);
+  border: 1.5px solid var(--line-strong);
   border-radius: var(--radius-control);
   padding: 12px;
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--bg);
+  color: var(--fg);
   font: 0.75rem/1.5 var(--font-mono);
 }
 

@@ -4,7 +4,7 @@ import {
   MERCHANT_APPLICATION_POLICY,
   MERCHANT_APPLICATION_RETENTION_DAYS,
 } from "@agentify/scanner-contracts";
-import { BrandMark } from "../../../components/brand-mark";
+import { MarketingHeader, SiteFooter } from "../../../components/site-chrome";
 import { getPublicAppConfig } from "../../../lib/app-config";
 import styles from "../shop.module.css";
 
@@ -20,18 +20,8 @@ export default function MerchantPrivacyPage() {
   const config = getPublicAppConfig();
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <div className={styles.container}>
-          <Link href="/" className={styles.brand}>
-            <BrandMark className={styles.mark} />
-            <span>Agentify</span>
-          </Link>
-          <Link href="/agentic-shop" className={styles.headerCta}>
-            Back to selling to agents ↗
-          </Link>
-        </div>
-      </header>
-      <main className={`${styles.container} ${styles.privacy}`}>
+      <MarketingHeader />
+      <main className={`${styles.container} ${styles.privacy}`} id="main">
         <p className={styles.eyebrow}>
           Historical merchant applications · September 9, 2026
         </p>
@@ -104,6 +94,7 @@ export default function MerchantPrivacyPage() {
           ← Back to selling to agents
         </Link>
       </main>
+      <SiteFooter />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 .header {
-  border-bottom: 1px solid var(--border);
-  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
 }
 
 .header > div {
@@ -30,7 +30,7 @@
 
 .header nav a:hover,
 .header nav a:focus-visible {
-  color: var(--ink);
+  color: var(--fg);
 }
 
 .layout {
@@ -59,7 +59,7 @@
 }
 
 .desktopToc a {
-  color: var(--ink-2);
+  color: var(--fg-2);
   font-size: 0.875rem;
   text-decoration: none;
 }
@@ -86,7 +86,7 @@
 
 .intro {
   margin: 0 0 44px;
-  color: var(--ink-2);
+  color: var(--fg-2);
   font-size: 1.125rem;
   line-height: 1.65;
 }
@@ -109,7 +109,7 @@
 
 .article p,
 .article li {
-  color: var(--ink-strong);
+  color: var(--fg-strong);
   font-size: 1rem;
   line-height: 1.75;
 }
@@ -136,8 +136,8 @@
 
 .notice {
   margin: 22px 0;
-  border: 1px solid var(--border);
-  border-radius: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
   padding: 18px 20px;
   background: var(--surface);
 }
@@ -172,8 +172,8 @@
   .mobileToc {
     display: block;
     margin: -20px 0 36px;
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
     background: var(--surface);
   }
 
@@ -201,7 +201,7 @@
   .mobileToc nav {
     display: grid;
     gap: 14px;
-    border-top: 1px solid var(--border-soft);
+    border-top: 1px solid var(--line-soft);
     padding: 16px;
   }
 

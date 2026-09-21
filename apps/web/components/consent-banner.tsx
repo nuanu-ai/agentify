@@ -235,7 +235,7 @@ function ConsentBannerContent() {
           </div>
           <div className={styles.actions}>
             <button
-              className="button button-primary"
+              className="button button-primary button-compact"
               disabled={saving}
               onClick={() => void save(true, true)}
               type="button"
@@ -243,7 +243,7 @@ function ConsentBannerContent() {
               Allow optional analytics
             </button>
             <button
-              className="button button-secondary"
+              className="button button-secondary button-compact"
               disabled={saving}
               onClick={() => void save(false, false)}
               type="button"
@@ -251,7 +251,7 @@ function ConsentBannerContent() {
               Essential only
             </button>
             <button
-              className="button button-secondary"
+              className={styles.preferencesLink}
               disabled={saving}
               onClick={() => {
                 preferencesOpener.current = preferencesButton.current;

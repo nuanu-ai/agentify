@@ -72,7 +72,6 @@ export default async function PublicSharePage({
         <span>Public result</span>
       </header>
       <main className={styles.main}>
-        <span className="eyebrow">Agent-readiness result</span>
         <PublicResultCard
           headingLevel={1}
           preview={{
@@ -84,7 +83,7 @@ export default async function PublicSharePage({
         />
         <section className={styles.cta}>
           <h2>Curious how your own site reads?</h2>
-          <p>Run the same public HTTP scan — no login or plugin required.</p>
+          <p>Run the same scan — no login or plugin.</p>
           <UrlScanForm
             compact
             cta="Scan"
@@ -94,9 +93,6 @@ export default async function PublicSharePage({
         </section>
       </main>
       <footer className={styles.footer}>
-        <span>
-          This page shows only domain, level, score, scale and scan date.
-        </span>
         <nav aria-label="Public result information">
           <Link href="/methodology">Methodology</Link>
           <Link href="/privacy">Privacy</Link>

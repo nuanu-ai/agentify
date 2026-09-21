@@ -57,9 +57,9 @@ describe("what a page says about the stack it belongs to", () => {
     expect(html).toContain(`${SURFACE_MARKER_ATTRIBUTE}="live"`);
     expect(readable(html)).not.toContain(SURFACE_WORDS.test);
     expect(readable(html)).not.toContain(SURFACE_WORDS.sandbox);
-    // Not merely wordless: no banner element either. The styled one carries
-    // padding and a rule, so an empty one is a band across a live page.
-    expect(html).not.toContain('class="surface"');
+    // Not merely wordless: no banner element either. The styled one is a tinted
+    // panel, so an empty one is a band across a live page.
+    expect(html).not.toContain('class="stack-note"');
   });
 
   it("carries the same marker on a signed-in page", () => {

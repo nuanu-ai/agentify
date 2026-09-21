@@ -2,7 +2,7 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: var(--canvas);
+  background: var(--raised);
 }
 
 .header,
@@ -18,7 +18,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line);
   color: var(--muted);
   font: 0.75rem/1.4 var(--font-mono);
 }
@@ -44,7 +44,7 @@
   flex-direction: column;
   align-items: center;
   margin-top: 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 18px;
   padding: clamp(22px, 5vw, 30px);
   background: var(--surface);
@@ -69,7 +69,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px 24px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--line);
   color: var(--muted);
   font: 0.75rem/1.5 var(--font-mono);
 }

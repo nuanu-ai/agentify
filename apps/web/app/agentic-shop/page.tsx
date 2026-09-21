@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import Image from "next/image";
-import Link from "next/link";
 
-import { BrandMark } from "../../components/brand-mark";
 import { getPublicAppConfig } from "../../lib/app-config";
+import { MarketingHeader, SiteFooter } from "../../components/site-chrome";
 import styles from "./shop.module.css";
 import { AGENTIC_SHOP_RESEARCH } from "../../content/agentic-shop";
 
@@ -56,65 +55,11 @@ const categories = [
   ],
 ];
 
-const questions = [
-  [
-    "Do I need to understand crypto or build an API?",
-    "No crypto expertise is needed to open a cabinet. Publishing through the current product path requires an engineer to integrate the Agentify SDK. The WooCommerce connector is experimental.",
-  ],
-  [
-    "Can you connect a local business?",
-    "A cabinet can represent a local business when its offers and fulfilment fit a supported integration. Creating a cabinet does not promise a bespoke booking connection or live publication.",
-  ],
-  [
-    "Will I receive money in my bank account?",
-    "No bank settlement service is active. The live channel uses a supported payout wallet. A seller name, that wallet and an operator approval are all required before live publication.",
-  ],
-  [
-    "Do you guarantee sales or placement in an AI assistant?",
-    "No. Offers from a supported ordering channel may be published through compatible discovery surfaces. Visibility, traffic and sales depend on adoption and demand. No specific AI assistant is guaranteed to recommend or buy your products.",
-  ],
-  [
-    "Who controls prices, availability and cancellations?",
-    "You control the products, prices and availability that your integration publishes. An order follows the public contract attached to that offer; the cabinet does not invent availability, cancellation or refund terms that the integration did not provide.",
-  ],
-  [
-    "How would agent loyalty work?",
-    "The proposed model combines merchant-funded cashback with a record of reliable service. You set a funded reward budget and clear terms that an agent can compare for its customer. A reward becomes payable only after verified delivery, subject to agreed return rules. The benefit belongs to the customer; a bigger reward does not guarantee an agent’s recommendation. This program is not live yet.",
-  ],
-  [
-    "What happens after I open a cabinet?",
-    "The email link creates or opens your merchant cabinet. Set the name buyers see and the test payout wallet, integrate the SDK, and publish against the test channel. Live publication uses a separate wallet and remains closed until an operator approves the merchant.",
-  ],
-];
-
 export default function AgenticShopPage() {
   return (
-    <div className={styles.page}>
-      <a className={styles.skip} href="#main">
-        Skip to content
-      </a>
-      <header className={styles.header}>
-        <div className={styles.container}>
-          <Link className={styles.brand} href="/" aria-label="Agentify home">
-            <BrandMark className={styles.mark} />
-            <span>Agentify</span>
-          </Link>
-          <nav aria-label="Page sections" className={styles.nav}>
-            <a href="#opportunity">The opportunity</a>
-            <a href="#how-it-works">How it works</a>
-            <a href="#loyalty">Agent loyalty</a>
-            <a href="#questions">Questions</a>
-          </nav>
-          <a href="/docs/" className={styles.headerDocs}>
-            Docs
-          </a>
-          <a href="/cabinet/sign-in" className={styles.headerCta}>
-            Open your cabinet <Arrow diagonal />
-          </a>
-        </div>
-      </header>
-
-      <main id="main">
+    <>
+      <MarketingHeader />
+      <main className={styles.page} id="main">
         <section className={`${styles.container} ${styles.hero}`}>
           <div className={styles.heroCopy}>
             <p className={styles.eyebrow}>
@@ -128,9 +73,8 @@ export default function AgenticShopPage() {
               <span>an agent.</span>
             </h1>
             <p className={styles.heroDescription}>
-              Make your products and services ready for a new way to buy. We
-              help connect your business to AI agents—from the first offer to
-              the final order.
+              Your products and services, ready for a new way to buy. An agent
+              finds the offer, orders it and pays.
             </p>
             <div className={styles.heroActions}>
               <a className={styles.primary} href="/cabinet/sign-in">
@@ -141,7 +85,8 @@ export default function AgenticShopPage() {
               </a>
             </div>
             <p className={styles.heroNote}>
-              Start in the test channel. Live publication requires approval.
+              Start in the test channel. Live publication requires approval. No
+              AI assistant is guaranteed to recommend or buy your products.
             </p>
           </div>
           <div className={styles.heroVisual}>
@@ -154,21 +99,6 @@ export default function AgenticShopPage() {
               priority
               className={styles.heroImage}
             />
-            <div className={styles.imageLabel}>
-              Real businesses.
-              <br />A new way to reach them.
-            </div>
-            <div className={styles.offerCard}>
-              <div className={styles.offerIcon}>
-                <BrandMark />
-              </div>
-              <div>
-                <span className={styles.offerSmall}>THE SELLING MODEL</span>
-                <strong>Your business, agent-ready.</strong>
-                <span>Discover → order → fulfil</span>
-              </div>
-              <Arrow diagonal />
-            </div>
           </div>
         </section>
 
@@ -186,14 +116,6 @@ export default function AgenticShopPage() {
 
         <section className={styles.opportunity} id="opportunity">
           <div className={styles.container}>
-            <div className={styles.sectionTop}>
-              <p className={styles.eyebrow}>
-                01 / The shift is already happening
-              </p>
-              <span className={styles.sectionMeta}>
-                Independent market data · Adobe
-              </span>
-            </div>
             <div className={styles.marketGrid}>
               <div className={styles.marketCopy}>
                 <h2>
@@ -288,15 +210,14 @@ export default function AgenticShopPage() {
           id="how-it-works"
           className={`${styles.container} ${styles.section}`}
         >
-          <p className={styles.eyebrow}>02 / From cabinet to catalog</p>
           <div className={styles.sectionHeading}>
             <h2>
               A new channel.
               <br />A familiar business.
             </h2>
             <p>
-              One email link opens the cabinet. A supported integration carries
-              the offers and order rules agents can rely on.
+              One email link opens the cabinet. Your SDK integration publishes
+              the offers and the rules an order follows.
             </p>
           </div>
           <div className={styles.steps}>
@@ -310,9 +231,6 @@ export default function AgenticShopPage() {
                 Enter your email and use the one-time link. The first visit
                 creates your merchant and asks for the name buyers will see.
               </p>
-              <span className={styles.stepOutput}>
-                One address. One private cabinet.
-              </span>
             </article>
             <article>
               <span className={styles.stepNumber}>02</span>
@@ -325,9 +243,6 @@ export default function AgenticShopPage() {
                 price and fulfilment promises. The WooCommerce connector is
                 experimental.
               </p>
-              <span className={styles.stepOutput}>
-                Catalog. Ordering. Confirmation.
-              </span>
             </article>
             <article>
               <span className={styles.stepNumber}>03</span>
@@ -340,49 +255,42 @@ export default function AgenticShopPage() {
                 Live publication uses a separate wallet and also needs the
                 operator’s approval for that merchant.
               </p>
-              <span className={styles.stepOutput}>
-                Test first. Live only when ready.
-              </span>
             </article>
-          </div>
-          <div className={styles.protocols}>
-            <p>Built around open agent commerce.</p>
-            <span>x402</span>
-            <span>Agent discovery</span>
-            <span>Merchant integrations</span>
-            <a
-              href="https://docs.cdp.coinbase.com/x402/welcome"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              About x402 <Arrow diagonal />
-            </a>
           </div>
         </section>
 
         <section className={styles.settlement}>
           <div className={`${styles.container} ${styles.settlementGrid}`}>
             <div>
-              <p className={styles.eyebrow}>03 / Payment in the live channel</p>
               <h2>
                 Set your payout wallet.
                 <br />
                 <span>Keep test and live distinct.</span>
               </h2>
               <p>
-                Live purchases use supported crypto payment and settle to the
-                payout wallet in your cabinet. Agentify does not convert that
-                payment into a bank payout. The test channel remains available
-                before live publication is approved.
+                Buyers pay in USDC and the money goes straight to the wallet in
+                your cabinet. There is no payout from us and no settlement
+                period. Test publication stays open while live waits for
+                approval.
               </p>
-              <a className={styles.textLink} href="/cabinet/sign-in">
-                Open your cabinet <Arrow />
-              </a>
+              <div className={styles.settlementLinks}>
+                <a className={styles.textLink} href="/cabinet/sign-in">
+                  Open your cabinet <Arrow />
+                </a>
+                <a
+                  className={styles.textLink}
+                  href="https://docs.cdp.coinbase.com/x402/welcome"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  About x402 <Arrow diagonal />
+                </a>
+              </div>
             </div>
             <div
               className={styles.paymentDiagram}
               role="group"
-              aria-label="Live payment path: customer agent, x402 payment facilitator, merchant payout wallet."
+              aria-label="Live payment path: the customer's agent, the gateway, your payout wallet."
             >
               <div className={styles.paymentLabel}>
                 LIVE ONLY AFTER OPERATOR APPROVAL
@@ -391,22 +299,22 @@ export default function AgenticShopPage() {
                 <span className={styles.nodeIcon}>01</span>
                 <div>
                   <strong>Customer’s agent</strong>
-                  <span>Supported x402 payment</span>
+                  <span>Pays in USDC</span>
                 </div>
                 <span aria-hidden="true">↓</span>
               </div>
               <div className={styles.paymentRow}>
                 <span className={styles.nodeIcon}>02</span>
                 <div>
-                  <strong>Payment facilitator</strong>
-                  <span>Verifies and settles the supported token</span>
+                  <strong>The gateway</strong>
+                  <span>Checks the payment and sets it going</span>
                 </div>
                 <span aria-hidden="true">↓</span>
               </div>
               <div className={styles.paymentRow}>
                 <span className={styles.nodeIcon}>03</span>
                 <div>
-                  <strong>Merchant payout wallet</strong>
+                  <strong>Your payout wallet</strong>
                   <span>The address set in your cabinet</span>
                 </div>
                 <span aria-hidden="true">✓</span>
@@ -424,14 +332,11 @@ export default function AgenticShopPage() {
           id="loyalty"
           aria-labelledby="loyalty-title"
         >
-          <p className={styles.eyebrow}>
-            04 / Agent loyalty · Proposed program
-          </p>
           <div className={styles.sectionHeading}>
             <h2 id="loyalty-title">Reward the customer behind the agent.</h2>
             <p>
-              Give their agent a reason to choose your business again: clear
-              cashback terms and a track record of delivering what you promise.
+              Not live yet. The idea is cashback terms an agent can compare, and
+              a record of delivering what you promise.
             </p>
           </div>
           <div className={styles.steps}>
@@ -441,9 +346,9 @@ export default function AgenticShopPage() {
               </span>
               <h3>You fund the reward.</h3>
               <p>
-                After merchant verification, agree a cashback rate, budget and
-                return rules. Agents can read the offer and compare its value
-                for their customer.
+                Once your merchant is verified, agree a cashback rate, budget
+                and return rules. An agent can read the offer and compare what
+                it is worth to its customer.
               </p>
             </article>
             <article>
@@ -484,7 +389,6 @@ export default function AgenticShopPage() {
           className={`${styles.container} ${styles.section}`}
           id="businesses"
         >
-          <p className={styles.eyebrow}>05 / More than an online store</p>
           <div className={styles.sectionHeading}>
             <h2>
               If people can buy it,
@@ -492,9 +396,8 @@ export default function AgenticShopPage() {
               let’s explore an agent offer.
             </h2>
             <p>
-              From a digital product to a day in Bali. We start with a specific
-              service, a supported market and a process that can actually fulfil
-              the order.
+              From a digital product to a day in Bali. What matters is a process
+              that can fulfil the order.
             </p>
           </div>
           <div className={styles.categories}>
@@ -507,25 +410,11 @@ export default function AgenticShopPage() {
               </article>
             ))}
           </div>
-          <div className={styles.localNote}>
-            <span className={styles.localMark} aria-hidden="true">
-              ↗
-            </span>
-            <p>
-              <strong>Local business. Agent-ready offer.</strong> A restaurant
-              table, a coworking pass or a hotel stay can be the starting point.
-              Local availability and payment rules always shape the setup.
-            </p>
-            <a href="/cabinet/sign-in">
-              Open your cabinet <Arrow diagonal />
-            </a>
-          </div>
         </section>
 
         <section className={styles.entry} id="start">
           <div className={`${styles.container} ${styles.entryGrid}`}>
             <div>
-              <p className={styles.eyebrow}>06 / Your cabinet starts here</p>
               <h2>
                 Start with
                 <br />
@@ -533,8 +422,8 @@ export default function AgenticShopPage() {
               </h2>
               <p>
                 The one-time link signs you in or creates your cabinet. No
-                password, invitation code or application review stands between
-                your address and the test channel.
+                password, no invitation code, no review to pass before the test
+                channel.
               </p>
               <ul>
                 <li>Choose the seller name buyers see</li>
@@ -550,7 +439,6 @@ export default function AgenticShopPage() {
               </div>
             </div>
             <div className={styles.entryCard}>
-              <p className={styles.eyebrow}>Merchant cabinet</p>
               <h3>Open the door from your inbox.</h3>
               <p>
                 Enter your email in the cabinet. The message works once and
@@ -567,47 +455,20 @@ export default function AgenticShopPage() {
           </div>
         </section>
 
-        <section id="questions" className={`${styles.container} ${styles.faq}`}>
-          <div>
-            <p className={styles.eyebrow}>A few things worth knowing</p>
-            <h2>
-              Good questions.
-              <br />
-              Straight answers.
-            </h2>
-          </div>
-          <div>
-            {questions.map(([question, answer]) => (
-              <details key={question}>
-                <summary>
-                  {question}
-                  <span aria-hidden="true">+</span>
-                </summary>
-                <p>{answer}</p>
-              </details>
-            ))}
+        <section
+          className={`${styles.container} ${styles.section}`}
+          id="questions"
+        >
+          <div className={styles.sectionHeading}>
+            <h2>Questions about selling to agents</h2>
+            <p>
+              They are answered in the{" "}
+              <a href="/docs/faq">merchant documentation</a>.
+            </p>
           </div>
         </section>
       </main>
-
-      <footer className={styles.footer}>
-        <div className={styles.container}>
-          <Link className={styles.brand} href="/">
-            <BrandMark className={styles.mark} />
-            <span>Agentify</span>
-          </Link>
-          <p>
-            Ordinary businesses.
-            <br />
-            An extraordinary next chapter.
-          </p>
-          <div>
-            <a href="/privacy">Privacy</a>
-            <a href="#questions">Merchant questions</a>
-            <span>© {new Date().getFullYear()} Agentify</span>
-          </div>
-        </div>
-      </footer>
-    </div>
+      <SiteFooter />
+    </>
   );
 }

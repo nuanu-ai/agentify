@@ -13,7 +13,6 @@ import {
   PUBLIC_PAGE_PATHS,
   type PublicPagePath,
 } from "../content/public-page-metadata";
-import { getSource } from "../content/sources";
 import { getPublicAppConfig } from "./app-config";
 
 export const PUBLIC_MARKDOWN_PATHS = PUBLIC_PAGE_PATHS;
@@ -76,20 +75,7 @@ function renderLanding(config: LandingConfig): string {
         ]
       : []),
     "",
-    "## Why it matters",
-    "",
   ];
-
-  for (const pain of config.pains) {
-    output.push(`### ${pain.title}`, "", pain.body, "", "Sources:");
-    for (const sourceId of pain.sourceIds) {
-      const source = getSource(sourceId);
-      output.push(
-        `- [${source.title}](${source.url}) — ${source.publisher}, ${source.evidenceClass.toLowerCase()}. ${source.caveat}`,
-      );
-    }
-    output.push("");
-  }
 
   output.push(`## ${LANDING_SHARED_CONTENT.howTitle}`, "");
   for (const step of LANDING_SHARED_CONTENT.howSteps)
@@ -100,18 +86,13 @@ function renderLanding(config: LandingConfig): string {
     "",
     `**${LANDING_SHARED_CONTENT.reportLabel} · ${LANDING_SHARED_CONTENT.reportHeading}**`,
     "",
-    LANDING_SHARED_CONTENT.reportBody,
-    "",
     `[${LANDING_SHARED_CONTENT.reportMethodologyLink}](${new URL("/methodology", app.baseUrl).toString()})`,
     "",
   );
   for (const check of LANDING_EXAMPLE_CHECKS)
-    output.push(`- #${check.checkId} ${check.name} — ${check.status}`);
+    output.push(`- ${check.name} — ${check.status}`);
 
-  output.push("", `## ${LANDING_SHARED_CONTENT.faqTitle}`, "");
-  for (const item of config.faq)
-    output.push(`### ${item.question}`, "", item.answer, "");
-  output.push(`## ${LANDING_SHARED_CONTENT.finalCta}`, "");
+  output.push("", `## ${LANDING_SHARED_CONTENT.finalCta}`, "");
   return output.join("\n");
 }
 

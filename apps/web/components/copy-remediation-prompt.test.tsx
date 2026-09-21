@@ -2,10 +2,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import {
-  CopyRemediationPrompt,
-  gateStatusMessage,
-} from "./copy-remediation-prompt";
+import { CopyRemediationPrompt } from "./copy-remediation-prompt";
 
 describe("CopyRemediationPrompt", () => {
   it("renders a real button and no hidden prompt textarea by default", () => {
@@ -44,16 +41,6 @@ describe("CopyRemediationPrompt", () => {
     expect(markup).toContain("Copy AI fix prompt");
     expect(markup).toContain("Download .md");
     expect(markup).not.toContain("<dialog");
-    expect(markup).not.toContain("Confirm where to send access");
     expect(markup).not.toContain('type="email"');
-  });
-
-  it("explains the inline registration step when contact access is missing", () => {
-    expect(gateStatusMessage("copy-prompt")).toBe(
-      "Confirm your email in the highlighted form below — the prompt will be ready on your report.",
-    );
-    expect(gateStatusMessage("download-md")).toBe(
-      "Confirm your email in the highlighted form below — the download starts right after verification.",
-    );
   });
 });

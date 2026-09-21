@@ -530,8 +530,23 @@ services:
       # The landing and the routing are mounted over the copies baked into the
       # image so that editing either shows up on reload. The documentation is
       # not: it is a build, and it comes from the image.
+      #
+      # The landing is mounted a file at a time rather than as one directory,
+      # and that is the shared stylesheet's doing. It lives in packages/visual
+      # and the static landing links it at /styles/tokens.css, so the image
+      # copies it there (deploy/Dockerfile.web). A directory mount over
+      # /srv/landing would hide that copy, and a file mounted inside a
+      # read-only directory mount cannot make its own mountpoint — Docker
+      # refuses to start the container. Mounting each of the landing's files
+      # onto the image's own leaves /srv/landing/styles/tokens.css to the one
+      # mount that wants it. A file added to the landing needs a line here.
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./apps/landing/public:/srv/landing:ro
+      - ./apps/landing/public/index.html:/srv/landing/index.html:ro
+      - ./apps/landing/public/assets:/srv/landing/assets:ro
+      - ./apps/landing/public/styles/landing.css:/srv/landing/styles/landing.css:ro
+      - ./apps/landing/public/styles/fonts.css:/srv/landing/styles/fonts.css:ro
+      - ./apps/landing/public/styles/fonts:/srv/landing/styles/fonts:ro
+      - ./packages/visual/tokens.css:/srv/landing/styles/tokens.css:ro
       # Where Caddy keeps the certificate and the ACME account key. A named
       # volume rather than the container's own layer because recreating the
       # container is a thing that happens, and a certificate authority counts

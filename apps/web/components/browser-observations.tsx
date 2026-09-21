@@ -126,8 +126,7 @@ export function BrowserObservations({
           title="Browser observations are temporarily unavailable"
         />
         <p className={styles.notice}>
-          The base 18-check report is unaffected. This provider state is not a
-          failure of the scanned site and does not change its score.
+          The 18-check report is unaffected. This is not a failure of your site.
         </p>
       </section>
     );
@@ -143,7 +142,7 @@ export function BrowserObservations({
         title={browserObservationSummary(data)}
       />
       <div className={styles.meta}>
-        <span>Non-scoring enrichment</span>
+        <span>Does not change the score</span>
         <span>{data.version}</span>
         <span>
           {data.pages_assessed} {data.pages_assessed === 1 ? "page" : "pages"}
@@ -152,8 +151,7 @@ export function BrowserObservations({
 
       {data.status === "queued" || data.status === "running" ? (
         <p aria-live="polite" className={styles.notice} role="status">
-          This passive step runs after the base diagnostic. It does not delay or
-          recalculate the canonical score.
+          This step runs after the report.
         </p>
       ) : null}
       {data.status === "blocked" ? (
@@ -165,8 +163,7 @@ export function BrowserObservations({
       ) : null}
       {data.status === "unavailable" ? (
         <p className={styles.notice}>
-          The browser provider or safety budget could not produce a reliable
-          result. The base report remains valid and unchanged.
+          The browser step could not finish. The report is unchanged.
         </p>
       ) : null}
 
@@ -229,20 +226,15 @@ function BrowserFinding({
   const actionable = isActionableBrowserFinding(finding);
   const body = (
     <div className={styles.findingBody}>
+      <p>{formatRegistryCode(finding.summary_code)}</p>
       <p>
-        <strong>What we found:</strong>{" "}
-        {formatRegistryCode(finding.summary_code)}
-      </p>
-      <p>
-        <strong>Why it matters:</strong>{" "}
         {finding.user_impact_code
           ? formatRegistryCode(finding.user_impact_code)
           : browserObservationImpact(finding.id)}
       </p>
       {actionable && finding.remediation_code ? (
         <p>
-          <strong>How to improve:</strong>{" "}
-          {formatRegistryCode(finding.remediation_code)}
+          <strong>Fix:</strong> {formatRegistryCode(finding.remediation_code)}
         </p>
       ) : null}
       {surface === "report" && evidence.length > 0 ? (

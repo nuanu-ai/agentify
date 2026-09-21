@@ -129,7 +129,7 @@ export default async function ReportPage({
         shareEnabled={serverConfig.PUBLIC_SHARE_ENABLED}
       />
       {reportOwnerEmail ? (
-        <section>
+        <section className={styles.cabinet}>
           <h2>Selling to agents</h2>
           <p>
             If what you sell can be sent a second time without loss, an access,
@@ -147,7 +147,6 @@ export default async function ReportPage({
       ) : null}
       <section className={styles.checks}>
         <div className={styles.sectionHeading}>
-          <span className="eyebrow">Canonical rubric</span>
           <h2>All 18 checks</h2>
         </div>
         {REPORT_GROUPS.map((group) => (
@@ -169,12 +168,8 @@ export default async function ReportPage({
                     <StatusBadge status={check.status} />
                   </summary>
                   <div>
+                    <p>{canonicalSummaryCopy(check.summary_code)}</p>
                     <p>
-                      <strong>What we found:</strong>{" "}
-                      {canonicalSummaryCopy(check.summary_code)}
-                    </p>
-                    <p>
-                      <strong>Why it matters:</strong>{" "}
                       {check.status === "unavailable"
                         ? "This public surface could not be assessed, so no defect is inferred."
                         : canonicalImpactCopy(check.user_impact_code)}
@@ -187,8 +182,7 @@ export default async function ReportPage({
                     ) : null}
                     {check.status !== "unavailable" && check.fix_code ? (
                       <p>
-                        <strong>How to improve:</strong>{" "}
-                        {canonicalFixCopy(check.fix_code)}
+                        <strong>Fix:</strong> {canonicalFixCopy(check.fix_code)}
                       </p>
                     ) : null}
                     {Object.keys(check.evidence).length ? (

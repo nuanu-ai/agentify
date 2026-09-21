@@ -845,8 +845,12 @@ describe("what the settings screen says about a shop", () => {
     expect(screen.status).toBe(200);
     expect(readable(screen.html)).toContain("Connect a WooCommerce shop");
     expect(readable(screen.html)).toMatch(/experimental/i);
-    expect(readable(screen.html)).toMatch(/one protected download file/i);
     expect(readable(screen.html)).not.toMatch(/acceptance path/i);
+    // What a supported product is, is written on the shop screen this block
+    // links to, and nowhere else. It used to be here as well and in the import
+    // form beside it: three copies of one rule, two of them free to go stale
+    // against a connector whose rule is the only reason a card is refused.
+    expect(readable(screen.html)).not.toMatch(/one protected download file/i);
     expect(screen.html).toContain(`href="/woocommerce"`);
   });
 

@@ -15,7 +15,10 @@ import { withMermaid } from 'vitepress-plugin-mermaid'
 export default withMermaid(defineConfig({
   lang: 'en',
   title: 'Agentify',
-  appearance: { storageKey: 'agentify-theme' },
+  // The origin has one palette and it is light (ADR-0005 §6). Left on, the
+  // theme would offer a dark portal in front of a scanner and a cabinet that
+  // have none, which is the seam this setting used to widen rather than close.
+  appearance: false,
   description:
     'Selling to AI agents with Agentify: connecting, cards, money and what can go wrong.',
   head: [
@@ -104,22 +107,12 @@ export default withMermaid(defineConfig({
       )
     }
     const marked = code.replace('<div id="app"', `${SURFACE_MARKER}<div id="app"`)
-    const themed = marked.replace(
-      'localStorage.getItem("vitepress-theme-appearance")',
-      'localStorage.getItem("agentify-theme")',
-    )
-    if (themed === marked) {
-      throw new Error(
-        'the portal build no longer writes the expected appearance prepaint; update this ' +
-          'transform before shipping a page whose first paint ignores the shared theme',
-      )
-    }
 
     // A page with a diagram keeps every preload it was built with, and still
     // gets the marker.
-    if (themed.includes('class="mermaid"')) return themed
+    if (marked.includes('class="mermaid"')) return marked
 
-    return themed.replace(
+    return marked.replace(
       /[ \t]*<link rel="modulepreload" href="([^"]+)">\n?/g,
       (link, href) => (KEPT_CHUNK.test(href) ? link : ''),
     )

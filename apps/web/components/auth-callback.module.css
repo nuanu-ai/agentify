@@ -5,12 +5,12 @@
   justify-items: center;
   gap: 28px;
   padding: 32px 20px;
-  background: var(--paper);
+  background: var(--bg);
 }
 
 .card {
   width: min(100%, 520px);
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: var(--radius-panel);
   padding: clamp(28px, 6vw, 40px);
   background: var(--surface);
@@ -42,11 +42,11 @@
 .form input {
   width: 100%;
   min-height: 48px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: var(--radius-control);
   padding: 0 14px;
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--bg);
+  color: var(--fg);
   font: inherit;
 }
 

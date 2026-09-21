@@ -86,10 +86,24 @@ page for a person, so the shape of that is a decision rather than a detail.
    only the local commerce fixture. The scanner is a Next.js application by inheritance (ADR-0024)
    and is not the cabinet, so §4 stands for the cabinet as written.
 
-6. **One visual language across all three surfaces**, held in a shared
-   stylesheet with design tokens (colour, type scale, spacing) rather than
-   repeated per page. The portal keeps its VitePress theme and takes the same
-   palette, so the three do not read as three products.
+6. **One visual language, held in `packages/visual/tokens.css`.** One file
+   carries the colour, the type, the radius and the border weight, the base
+   element rules that follow from them, and the few primitives every surface
+   draws — the page width, the button, the focus ring, the lockup. It
+   covers the scanner, the cabinet, the documentation portal and the static
+   landing that is the local fixture. Nothing serves it over HTTP on the
+   deployed origin, because the shared-asset route names each path and this is
+   not one of them; every reader takes it at build time or off disk instead.
+   The portal is the one exception and copies its eight colours, because it is
+   a separate project with its own lockfile; a test reads both files and fails
+   the suite when a value stops matching.
+
+   The language is **light**, with no dark set and no theme switch. The page a
+   merchant lands on is the scanner's, which has never had one; what a dark
+   set would cost is in the rejected alternatives. The corners are a
+   scale of four rather than one value: a control is 12px, a card 14px, a panel
+   20px, and a pill is a pill. One radius described nothing, and every surface
+   that had one broke it within a few rules.
 
 7. **The whole chain runs from one command locally** (`docker compose up`),
    including Postgres, and that is the state Dmitry inspects before anything
@@ -116,3 +130,16 @@ page for a person, so the shape of that is a decision rather than a detail.
   is named above.
 - **The cabinet talking to Postgres directly** — faster to write, and it would
   have hidden exactly the API gaps this cabinet exists to expose.
+- **A dark theme across the origin** — three of the four surfaces had one and
+  the scanner did not, so a merchant whose machine is dark crossed from a paper
+  front page into a dark cabinet. Closing that by giving the scanner a dark set
+  meant inventing twenty-two colours and redesigning a footer that is a dark
+  band on a light page; dropping it was a few hundred lines deleted. The cost
+  is real: readers of technical documentation expect the portal to have one,
+  and the way back is to do the expensive half.
+- **The portal keeps its dark set while the scanner and the cabinet stay
+  light** — nothing to build, and it leaves one address with two behaviours:
+  a reader who crosses from the documentation into the cabinet changes
+  palette at the click, which is the seam this section exists to close. If
+  the portal's readers turn out to miss it, the way back is the expensive
+  half above, not a switch on one surface of three.

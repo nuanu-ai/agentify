@@ -1,0 +1,342 @@
+/*
+ * The visual language, shared by every surface on the origin.
+ *
+ * ADR-0005 §6 asks for one visual language held in one stylesheet rather than
+ * repeated per page. This is that stylesheet, and it lives in a package of its
+ * own because no two of its readers reach it the same way. Nothing serves it
+ * over HTTP on the deployed origin: deploy/Caddyfile names the shared browser
+ * assets one path at a time and this file is not among them, so a surface that
+ * linked /styles/tokens.css in production would get the scanner's 404. Each
+ * reader takes it at build time or off disk instead — the scanner imports it,
+ * the cabinet and the stand read it and serve it inside their own responses,
+ * and the local static landing gets it copied in beside its own stylesheets,
+ * where Caddy's fixture root does serve it at /styles/tokens.css.
+ *
+ * The language is light. There is no dark set and no theme attribute: the page
+ * a merchant actually lands on is the scanner's, which has never had one, and
+ * a second palette kept in step by hand is how the four stylesheets on this
+ * origin drifted apart in the first place (ADR-0005 §6).
+ *
+ * The file has three parts, in this order. The tokens: colour, type, radius and
+ * the border weight. The base element rules that follow from them, which is
+ * what a page looks like before anybody has written a class. And the handful of
+ * primitives every surface draws — the page width, the button, the wordmark's
+ * mark, the small typographic classes — because a button is not the layout of
+ * any one page and three copies of one is how the origin ended up with three
+ * different buttons wearing the same word.
+ *
+ * What does not belong here is the layout of a page. A rule that only the
+ * landing needs lives in landing.css, and a rule that only the cabinet needs
+ * lives with the cabinet.
+ *
+ * These are the Agentify colours. The teal is dark enough to carry ordinary
+ * text on paper, which is what lets one accent serve links, fills and focus
+ * rings without a second value for each.
+ */
+
+:root {
+  /* Surfaces, from the page backwards. --bg is the paper everything sits on,
+     --surface the card laid on it, --raised the fill that reads as recessed
+     against both — a table's header row, a code block — and --surface-sunken
+     the lighter of the two fills, for a tint that must stay under a border. */
+  --bg: #f6f4ef;
+  --surface: #fffefa;
+  --raised: #eeebe4;
+  --surface-sunken: #f4f1ea;
+
+  /* Ink, from the strongest to the faintest. --na is what "there is nothing to
+     say here" looks like: a disabled control, an empty cell. */
+  --fg: #1a1917;
+  --fg-strong: #2a2824;
+  --fg-2: #4b4842;
+  --muted: #6b6862;
+  --faint: #8a8781;
+  --na: #b4afa6;
+
+  /* Lines. The hairline of the design carries 1.31:1 against the page, which is
+     right for a rule between two cells and not enough for the edge of something
+     you are meant to click — a control's boundary needs 3:1 before it reads as
+     a control at all. --line draws the first, --line-strong the second, and
+     --line-soft and --divider are the two quieter rules inside a card. */
+  --line: #e7e3db;
+  --line-soft: #f0ede6;
+  --divider: #f5f2ec;
+  --line-strong: #8d8981;
+
+  --accent: #0f736e;
+  --accent-hover: #0b5a56;
+  --accent-soft: #e6f0ef;
+
+  /* Text laid on --accent. Fixed rather than derived, so that a fill and the
+     words on it are decided in one place. */
+  --on-accent: #ffffff;
+
+  /* A verdict has three states and they are named for what they say rather than
+     for their colour, so a check that changes its mind does not change its
+     vocabulary. --partial is darkened from the drawn #b6801f, which fails WCAG
+     AA on paper for small text, to ~5.5:1; the notice pair beneath it is ours
+     and has had no design review. */
+  --pass: #2e7d53;
+  --pass-soft: #e7f1ea;
+  --partial: #9a6811;
+  --notice-bg: #f8f0df;
+  --notice-ink: #76500e;
+  --fail: #b4462f;
+
+  /* The one band on the origin that is ink rather than paper: the footer.
+     Two foregrounds that mean nothing apart and are a pair together, which is
+     why they are named here rather than written into the two stylesheets that
+     draw the band. */
+  --footer-text: #c9c6bf;
+  --footer-faint: #8f8b84;
+
+  /* "Schibsted Grotesk Variable" is the family @fontsource-variable registers
+     and is how the scanner loads the face; "Schibsted Grotesk" is the family
+     the @font-face rules in /styles/fonts.css declare and is how every other
+     surface loads it. Both are named so that one stack serves both
+     arrangements and neither surface drops through to the system face. */
+  --font-sans:
+    "Schibsted Grotesk Variable", "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Four corners and no fifth. A control is 12, a card 14, a panel 20, and a
+     pill is a pill. One value described nothing: every surface that had one
+     broke it within a few rules, for a dot, a track or a tag, and then wrote a
+     literal. A scale of three plus the pill describes what is already being
+     drawn. */
+  --radius-control: 12px;
+  --radius-card: 14px;
+  --radius-panel: 20px;
+  --radius-pill: 999px;
+
+  --hairline: 1px;
+
+  --shadow-soft: 0 30px 70px -46px rgba(26, 25, 23, 0.42);
+
+  /* What the browser paints that this stylesheet does not: form controls, the
+     scrollbar, the caret. Told rather than left to guess, or a light page keeps
+     a dark scrollbar down its side on a machine set to dark. */
+  color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  /* The page background has to reach past the document box, or a rubber-band
+     scroll on a phone exposes a white strip under a warm page. */
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+/*
+ * A link: the accent, no underline at rest, underlined when it is under the
+ * cursor. Written inside :where() so that it carries no specificity at all —
+ * a surface whose links are chrome rather than prose overrides it with a plain
+ * `a` rule, and a component that styles one link does not have to out-specify
+ * a base rule it did not ask for. The scanner does exactly that
+ * (apps/web/app/globals.css).
+ */
+:where(a) {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+:where(a:hover) {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
+/* One ring, everywhere. A translucent halo at three pixels rather than a solid
+   two: it is visible against both paper and a filled control, and it does not
+   redraw the edge of the thing it is marking. */
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  outline-offset: 3px;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+/* --- the primitives every surface draws --------------------------------- */
+
+.container {
+  width: min(1200px, calc(100% - 80px));
+  margin-inline: auto;
+}
+
+.eyebrow {
+  color: var(--accent);
+  font: 500 0.75rem / 1.3 var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* The skip link every header carries: off the canvas until a keyboard reaches it. */
+.skip {
+  position: fixed;
+  top: -80px;
+  left: 20px;
+  z-index: 100;
+  padding: 12px;
+  background: var(--bg);
+}
+
+.skip:focus {
+  top: 12px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/*
+ * One button. There were three: 48 pixels tall at weight 600 on the scanner,
+ * roughly 29 at 13px in the cabinet, and a third size on the landing — the same
+ * word meaning three controls. This is the scanner's, because the scanner is
+ * what a merchant sees first.
+ *
+ * The height is the whole of the argument. 48 is what a thumb can hit and what
+ * puts a control's label on the same footing as the sentence next to it; the
+ * console's 29 was under the 44 the cabinet's own sign-in input asks for.
+ */
+.button {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-radius: var(--radius-control);
+  padding: 0 22px;
+  cursor: pointer;
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    transform 150ms ease;
+}
+
+.button:hover {
+  text-decoration: none;
+}
+
+.button-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.button-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  color: var(--on-accent);
+}
+
+.button-secondary {
+  border: 1.5px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  background: var(--raised);
+  color: var(--na);
+}
+
+/*
+ * The one exception to the height, and why it is a class rather than a second
+ * button. A table row in the cabinet is about 56 pixels tall: a 48-pixel
+ * control dropped into it fills the row edge to edge and reads as the row
+ * rather than as something in it, and a column of them turns the table into a
+ * column of buttons. 36 keeps the same corner, the same border weight and the
+ * same weight of type, so it is plainly the same control drawn smaller — and it
+ * is still a target a finger can find.
+ */
+.button-compact {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 0.875rem;
+}
+
+/*
+ * The lockup: the mark and the name, as every surface draws it in its corner.
+ * The hover rule takes back what the shared link rule would otherwise add — a
+ * lockup is a way home, not a link in running text.
+ */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--fg);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.brand:hover {
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.brand-mark {
+  width: 30px;
+  height: 30px;
+  display: block;
+  flex: none;
+}
+
+@media (max-width: 700px) {
+  .container {
+    width: min(100% - 32px, 1200px);
+  }
+
+  .brand {
+    gap: 8px;
+    font-size: 1.125rem;
+  }
+
+  .brand-mark {
+    width: 24px;
+    height: 24px;
+  }
+}

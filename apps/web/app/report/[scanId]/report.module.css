@@ -9,13 +9,28 @@
 .hero,
 .locked,
 .checks {
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: var(--radius-panel);
   background: var(--surface);
   box-shadow: var(--shadow-soft);
 }
 .browserSection {
   margin-top: 28px;
+}
+/* The bridge to the cabinet: the one section on this page that had no class of
+   its own and rendered as bare HTML between two designed blocks. */
+.cabinet {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  margin-top: 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  padding: clamp(20px, 4vw, 28px);
+  background: var(--surface);
+}
+.cabinet p {
+  color: var(--muted);
 }
 .hero {
   display: grid;
@@ -55,7 +70,7 @@
 }
 .checkGroup > h3 {
   margin: 0;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--line);
   padding: 16px 24px 10px;
   color: var(--muted);
   font: 600 0.75rem/1.5 var(--font-mono);
@@ -63,7 +78,7 @@
   text-transform: uppercase;
 }
 .check {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--line);
 }
 .check summary {
   min-height: 64px;
@@ -81,7 +96,11 @@
   color: var(--muted);
   font-size: 0.75rem;
 }
+/* The paragraphs inside a check used to be spaced by the browser's own margin
+   on <p>. The shared base sets that to zero, so the gap is stated here. */
 .check > div {
+  display: grid;
+  gap: 14px;
   padding: 0 24px 24px 70px;
   color: var(--muted);
   line-height: 1.55;
@@ -89,7 +108,7 @@
 .check dl {
   border-radius: var(--radius-control);
   padding: 12px;
-  background: var(--paper);
+  background: var(--bg);
   font: 0.75rem/1.5 var(--font-mono);
 }
 .check dl div {
@@ -98,7 +117,7 @@
   gap: 12px;
 }
 .check dt {
-  color: var(--ink-2);
+  color: var(--fg-2);
 }
 .check dd {
   margin: 0;
@@ -132,6 +151,9 @@
   text-underline-offset: 3px;
 }
 .locked {
+  display: grid;
+  justify-items: start;
+  gap: 16px;
   padding: 36px;
 }
 .locked p {

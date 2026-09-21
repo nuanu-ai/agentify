@@ -4,6 +4,7 @@ import "@fontsource-variable/schibsted-grotesk/wght.css";
 import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
 import "@fontsource/ibm-plex-mono/600.css";
+import "@agentify/visual/tokens.css";
 import "./globals.css";
 import { ConsentBanner } from "../components/consent-banner";
 import { AnalyticsRuntime } from "../components/analytics-runtime";

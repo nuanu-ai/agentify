@@ -174,7 +174,7 @@ export const payoutWalletBlock = (viewer: Viewer): string => {
   <div class="lede">
     <div>
       <h2>Where your money arrives</h2>
-      <p>${purpose} Agentify never holds a balance for you.</p>
+      <p>${purpose} <a href="/docs/money#where-the-money-arrives">Where the money arrives, and when</a>.</p>
       <p class="quiet">Enter only the public address. Never enter a private key or recovery phrase; Agentify will never ask for either.</p>
     </div>
   </div>${wallet === null ? "" : savedAddress(wallet)}
@@ -189,7 +189,7 @@ export const payoutWalletBlock = (viewer: Viewer): string => {
       <input id="payout_wallet" name="payout_wallet" type="text" autocomplete="off" spellcheck="false" maxlength="42" size="42" value="${escaped(typed ?? "")}" required>
       ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
     </div>
-    <button class="primary" type="submit">${wallet === null ? "Save it" : "Change the address"}</button>
+    <button class="button button-compact button-primary" type="submit">${wallet === null ? "Save it" : "Change the address"}</button>
   </form>
 `;
 };

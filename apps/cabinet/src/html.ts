@@ -84,82 +84,45 @@ const surface = (mode: SurfaceMode): string => {
   const words = SURFACE_WORDS[mode];
   return words === null
     ? `<div ${SURFACE_MARKER_ATTRIBUTE}="${escaped(mode)}"></div>`
-    : `<div class="surface" ${SURFACE_MARKER_ATTRIBUTE}="${escaped(mode)}"><p class="surface-words">${escaped(words)}</p></div>`;
+    : `<div class="container"><div class="stack-note" ${SURFACE_MARKER_ATTRIBUTE}="${escaped(mode)}"><p class="surface-words">${escaped(words)}</p></div></div>`;
 };
-
-/**
- * The way out of the cabinet, into the documentation.
- *
- * It is the other half of the way out of the documentation, which is a link in
- * the bar of the portal reading "← Agentify"
- * (apps/docs/.vitepress/theme/index.mjs). The two are one solution and are meant
- * to read as one: the same class name, the same shape — an arrow and the name
- * the destination wears in its own corner — the same muted colour until it is
- * hovered, and the same place, at the edge of the bar beside the navigation
- * rather than inside it. Only the arrow differs, because one side is going
- * back and this one is going out.
- *
- * Not a sixth tab, and that is the whole of why it sits in the right-hand
- * group. The tabs are the five places inside the cabinet, and every one of them
- * hangs off the mount point; a tab that took a merchant off this application
- * altogether would be the row lying about what it is. So it rides with the
- * things in the bar that are not navigation — the selling light, the address,
- * the control that signs a merchant out.
- *
- * The word is "Docs" and not "Documentation" because the page it lands on says
- * "Docs" in its own corner (apps/docs/.vitepress/config.mjs). Whoever presses it
- * arrives at the word they pressed.
- *
- * The address is absolute and carries no base path: ADR-0005 §1 puts the
- * documentation at /docs beside the cabinet at /cabinet on one origin, not
- * under it, so /docs/ is the address on every deployment and the trailing
- * slash is the form Caddy redirects to. Run on its own the cabinet has no
- * /docs and this 404s, exactly as /styles/fonts.css does above, and for the
- * same reason: the shared origin is Caddy's to assemble.
- *
- * The portal's half needs `target="_self"` to escape VitePress's router. There
- * is no router here, so a plain anchor is the whole of it.
- */
-const WAY_OUT = '<a class="way-out" href="/docs/" title="The Agentify documentation">Docs →</a>';
 
 /** The same compact lockup on the public site, the cabinet and every auth page. */
 export const brandLockup = (home = "/"): string =>
-  `<a class="wordmark" href="${escaped(home)}" aria-label="Agentify home"><span class="brand-mark" aria-hidden="true"><img class="mark--light" src="/assets/agentify-mark.svg" alt="" width="30" height="30"><img class="mark--dark" src="/assets/agentify-mark-dark.svg" alt="" width="30" height="30"></span><span>Agentify</span></a>`;
+  `<a class="brand" href="${escaped(home)}" aria-label="Agentify home"><img class="brand-mark" src="/assets/agentify-mark.svg" alt="" width="30" height="30"><span>Agentify</span></a>`;
 
-const THEME_HEAD = `<script>
-try {
-  const chosen = localStorage.getItem("agentify-theme");
-  if (chosen === "light" || chosen === "dark") document.documentElement.dataset.theme = chosen;
-} catch {}
-</script>`;
-
-const THEME_CONTROL = `<button class="theme-switch" type="button" role="switch" aria-checked="false" aria-label="Change colour theme" hidden><span class="theme-switch__knob"><svg class="theme-switch__sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"></circle><path d="M12 2.6v2.6M12 18.8v2.6M2.6 12h2.6M18.8 12h2.6M5.4 5.4l1.8 1.8M16.8 16.8l1.8 1.8M18.6 5.4l-1.8 1.8M7.2 16.8l-1.8 1.8"></path></svg><svg class="theme-switch__moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.2A8.4 8.4 0 0 1 9.8 4a8.4 8.4 0 1 0 10.2 10.2z"></path></svg></span></button>`;
-
-const THEME_SCRIPT = `<script>
-(() => {
-  const root = document.documentElement;
-  const system = window.matchMedia("(prefers-color-scheme: dark)");
-  const buttons = document.querySelectorAll(".theme-switch");
-  const dark = () => (root.dataset.theme || (system.matches ? "dark" : "light")) === "dark";
-  const show = () => buttons.forEach((button) => {
-    button.hidden = false;
-    button.setAttribute("aria-checked", dark() ? "true" : "false");
-    button.title = dark() ? "Switch to the light theme" : "Switch to the dark theme";
-  });
-  buttons.forEach((button) => button.addEventListener("click", () => {
-    const wanted = dark() ? "light" : "dark";
-    if (wanted === (system.matches ? "dark" : "light")) delete root.dataset.theme;
-    else root.dataset.theme = wanted;
-    try {
-      if (root.dataset.theme) localStorage.setItem("agentify-theme", wanted);
-      else localStorage.removeItem("agentify-theme");
-    } catch {}
-    show();
-  }));
-  system.addEventListener?.("change", show);
-  show();
-})();
-</script>`;
+/**
+ * The band at the foot of every working screen.
+ *
+ * One row and three things in it: the lockup, the three places outside the
+ * cabinet a signed-in merchant has the same need for as any visitor, and the
+ * copyright. It is the scanner's footer in colour and in type — ink rather than
+ * paper, the mark inverse, the small print in the monospaced face — and not in
+ * shape: the scanner's four columns of link groups carry a marketing site, and
+ * a console with five tabs has nothing to put in them.
+ *
+ * It also settles where the documentation goes. The link used to ride in the
+ * bar, where it had to argue at length that it was not a sixth tab; in a footer
+ * it plainly is not one, and the argument goes with it.
+ *
+ * The three addresses are absolute and carry no base path: ADR-0005 §1 puts the
+ * documentation at /docs and the scanner's own pages at the root of the same
+ * origin, beside the cabinet rather than under it. Run on its own the cabinet
+ * has none of them and all three 404, exactly as /styles/fonts.css does, and
+ * for the same reason: the shared origin is Caddy's to assemble.
+ */
+const FOOT = `  <footer class="foot">
+    <div class="foot-inner container">
+      ${brandLockup("/")}
+      <nav class="foot-links" aria-label="Agentify">
+        <a href="/docs/">Documentation</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+      </nav>
+      <span class="foot-copy">© 2026 Agentify</span>
+    </div>
+  </footer>
+`;
 
 /**
  * One whole page.
@@ -184,35 +147,49 @@ export const page = (chrome: Chrome): string => `<!doctype html>
 <link rel="icon" href="/assets/agentify-mark-heavy.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/styles/fonts.css">
 <link rel="stylesheet" href="${escaped(chrome.base)}/agentify.css">
-${THEME_HEAD}
 </head>
 <body>
 <div class="page">
 ${surface(chrome.mode)}
-  <div class="top">
-    <div class="brand">
-      ${brandLockup("/")}
-      <nav class="tabs">${TABS.map(([tab, label]) =>
-        tab === chrome.tab
-          ? `<span class="here">${label}</span>`
-          : `<a href="${escaped(chrome.base)}/${tab}">${label}</a>`,
-      ).join("")}</nav>
-    </div>
-    <div class="whoami">
-      ${THEME_CONTROL}
-      ${WAY_OUT}
+  <header class="top">
+    <div class="top-inner container">
+      <div class="bar-left">
+        ${brandLockup("/")}
+        <nav class="tabs" aria-label="Your cabinet">${TABS.map(([tab, label]) =>
+          tab === chrome.tab
+            ? `<span class="here" aria-current="page">${label}</span>`
+            : `<a href="${escaped(chrome.base)}/${tab}">${label}</a>`,
+        ).join("")}</nav>
+      </div>
       ${chrome.selling === undefined ? "" : state(chrome.selling)}
-      <a class="who" href="${escaped(chrome.base)}/settings">${escaped(chrome.who)}</a>
-      <form class="inline" method="post" action="${escaped(chrome.base)}/sign-out">
-        <button type="submit">Sign out</button>
-      </form>
     </div>
-  </div>
+  </header>
+  <div class="container">
 ${chrome.unnamed === true ? unnamedNote(chrome.base) : ""}${chrome.body}
-</div>
-${THEME_SCRIPT}
+${accountRow(chrome.base, chrome.who)}  </div>
+${FOOT}</div>
 </body>
 </html>
+`;
+
+/**
+ * Who is signed in, and how to stop being them.
+ *
+ * Under the content rather than in the bar, which is where the scanner puts the
+ * same two things (apps/web/app/report/[scanId]/report.module.css, `.account`).
+ * An address is a label and not a destination: in the bar it read as a fifth
+ * tab, and it pushed the one item up there that genuinely is status — the
+ * selling light — out to the far edge behind three things that are not.
+ *
+ * It is still a link, and it still leads to the settings, because pressing your
+ * own name means "show me my account" and the account is on that page.
+ */
+const accountRow = (base: string, who: string): string => `  <div class="account">
+    <a class="who" href="${escaped(base)}/settings">${escaped(who)}</a>
+    <form class="inline" method="post" action="${escaped(base)}/sign-out">
+      <button type="submit">Sign out</button>
+    </form>
+  </div>
 `;
 
 /**
@@ -235,34 +212,15 @@ const unnamedNote = (base: string): string => `  <div class="callout">
   </div>
 `;
 
-/** A page with no navigation, for a merchant who is not signed in yet. */
+/**
+ * A page with no navigation, for a merchant who is not signed in yet.
+ *
+ * There were two of these: one that carried the theme script and one for the
+ * pages whose behaviour has to be complete without JavaScript. With the theme
+ * gone there is no script on any of them, so the two were the same page written
+ * twice.
+ */
 export const bare = (
-  base: string,
-  title: string,
-  body: string,
-  mode: SurfaceMode,
-): string => `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escaped(title)} — Agentify</title>
-<link rel="icon" href="/assets/agentify-mark-heavy.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/styles/fonts.css">
-<link rel="stylesheet" href="${escaped(base)}/agentify.css">
-${THEME_HEAD}
-</head>
-<body>
-<div class="gate-tools">${THEME_CONTROL}</div>
-${surface(mode)}
-${body}
-${THEME_SCRIPT}
-</body>
-</html>
-`;
-
-/** A bare page whose behavior is complete without JavaScript. */
-export const bareWithoutScript = (
   base: string,
   title: string,
   body: string,
