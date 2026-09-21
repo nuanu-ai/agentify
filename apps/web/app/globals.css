@@ -15,7 +15,7 @@
   --border: #e7e3db;
   --border-soft: #f0ede6;
   --border-warm: #eee9e0; /* warm card border */
-  --hairline: #f5f2ec; /* faintest 1px divider */
+  --divider: #f5f2ec; /* faintest rule, for a line inside a card */
   --input-border: #e0dcd3;
 
   /* Accent */

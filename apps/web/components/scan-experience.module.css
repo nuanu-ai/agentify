@@ -72,7 +72,7 @@
   grid-template-columns: 26px minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
-  border-top: 1px solid var(--hairline);
+  border-top: 1px solid var(--divider);
   color: var(--faint);
   font-size: 0.9375rem;
   animation: riseIn 420ms ease both;
@@ -148,7 +148,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  border-top: 1px solid var(--hairline);
+  border-top: 1px solid var(--divider);
   font-size: 0.875rem;
 }
 
