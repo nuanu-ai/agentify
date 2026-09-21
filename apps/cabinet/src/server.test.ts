@@ -733,6 +733,8 @@ describe("the report-to-cabinet handoff", () => {
     const running = await start();
     const action = await freshLink(running);
     const valid = sealedHandoff(action);
+    const signatureStart = valid.lastIndexOf(".") + 1;
+    const tampered = `${valid.slice(0, signatureStart)}${valid[signatureStart] === "A" ? "B" : "A"}${valid.slice(signatureStart + 1)}`;
     const expired = sealedHandoff(action, {
       now: new Date(Date.now() - 2 * 60 * 60 * 1_000),
     });
@@ -747,9 +749,7 @@ describe("the report-to-cabinet handoff", () => {
       },
       {
         name: "tampered",
-        browser: running.browser.withRawCookie(
-          handoffCookie(`${valid.slice(0, -1)}${valid.endsWith("A") ? "B" : "A"}`),
-        ),
+        browser: running.browser.withRawCookie(handoffCookie(tampered)),
         email: PERSON,
         reportPath: REPORT_PATH,
       },

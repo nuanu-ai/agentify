@@ -26,7 +26,9 @@ describe("report-to-cabinet handoff envelope", () => {
       secret,
     });
 
-    expect(REPORT_CABINET_HANDOFF_COOKIE).toBe("agentify_report_cabinet_handoff");
+    expect(REPORT_CABINET_HANDOFF_COOKIE).toBe(
+      "agentify_report_cabinet_handoff",
+    );
     expect(REPORT_CABINET_HANDOFF_TTL_SECONDS).toBe(3600);
     expect(sealed).not.toContain(token);
     expect(
@@ -48,7 +50,8 @@ describe("report-to-cabinet handoff envelope", () => {
       scanId,
       secret,
     })!;
-    const changed = `${sealed.slice(0, -1)}${sealed.endsWith("A") ? "B" : "A"}`;
+    const signatureStart = sealed.lastIndexOf(".") + 1;
+    const changed = `${sealed.slice(0, signatureStart)}${sealed[signatureStart] === "A" ? "B" : "A"}${sealed.slice(signatureStart + 1)}`;
 
     for (const [value, expectedEmail, expectedPath, at] of [
       [changed, email, reportPath, now],
