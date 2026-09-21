@@ -878,7 +878,7 @@ describe("what the settings screen says about a shop", () => {
     const text = await settings(running);
 
     expect(text).toContain("4 minutes ago");
-    expect(text).toMatch(/no keys have reached us yet/);
+    expect(text).toMatch(/no keys from .* yet/i);
     expect(text).not.toContain("Connect a WooCommerce shop");
   });
 
@@ -909,7 +909,7 @@ describe("what the settings screen says about a shop", () => {
     const text = readable(screen.html);
 
     expect(text).toContain(SHOP);
-    expect(text).toMatch(/no keys arrived .* 15 minutes/);
+    expect(text).toMatch(/no keys from .* in the 15 minutes we wait/i);
     expect(text).toContain("Connect again");
     expect(screen.html).toContain(`href="/woocommerce"`);
     expect(text).not.toMatch(/could not reach us/);
@@ -1103,7 +1103,7 @@ describe("coming back from the shop with no session on the request", () => {
 
     const text = readable((await running.get("/woocommerce?from=shop")).html);
 
-    expect(text).toMatch(/no keys have reached us yet/);
+    expect(text).toMatch(/no keys from .* yet/i);
     expect(text).not.toContain("Connect a WooCommerce shop");
   });
 
@@ -1142,7 +1142,7 @@ describe("coming back from the shop with no session on the request", () => {
     const reloaded = await running.get("/woocommerce?from=shop");
 
     expect(came.to).toBe("/woocommerce?from=shop");
-    expect(readable(back.html)).toMatch(/no keys have reached us yet/);
+    expect(readable(back.html)).toMatch(/no keys from .* yet/i);
     expect(back.html).toBe(reloaded.html);
   });
 

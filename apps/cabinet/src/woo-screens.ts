@@ -140,27 +140,26 @@ const minutesAgo = (minutes: number): string =>
  * the three ways and what WooCommerce does about each; what a merchant acts on
  * is one of them — reload, or press Connect again — and that is what is left.
  */
-const noKeysYet = (state: ShopState): string => {
+const noKeysYet = (state: ShopState): string | null => {
   if (state.kind === "waiting") {
-    return `<p>${escaped(state.shopUrl)}: no keys have reached us yet, ${escaped(minutesAgo(state.startedMinutesAgo))}. Reload in a moment.</p>`;
+    return `No keys from ${escaped(state.shopUrl)} yet; you started ${escaped(minutesAgo(state.startedMinutesAgo))}. Reload in a moment.`;
   }
   if (state.kind === "unanswered") {
-    return `<p>${escaped(state.shopUrl)}: no keys arrived in the ${GRANT_MINUTES} minutes we wait. Why is not known here; connect again.</p>`;
+    return `No keys from ${escaped(state.shopUrl)} in the ${GRANT_MINUTES} minutes we wait. Why is unknown; connect again.`;
   }
-  return "";
+  return null;
 };
 
 /**
- * What this connector is, at the top of its own screen.
+ * What this connector is and what it will take, at the top of its own screen.
  *
- * What a supported product is used to be here as well, in a sentence a
- * merchant reads before they have a shop connected and acts on a screen later.
- * It is now the helper under the Import button, which is where it is acted on
- * and the only place it can be wrong about anything. There is no WooCommerce
- * page in the portal and this pass does not make one: the connector is
- * experimental and is not the acceptance gate for anything.
+ * One sentence, and it is the only place on the origin that the rule is
+ * written: a merchant deciding whether to connect needs it before they press
+ * Connect, and the settings block links here rather than repeating it. There
+ * is no WooCommerce page in the portal and this pass does not make one: the
+ * connector is experimental and is not the acceptance gate for anything.
  */
-const WHAT_THIS_IS = `<p>An experimental connector for one narrow kind of WooCommerce product, in TEST.</p>`;
+const WHAT_THIS_IS = `<p>An experimental connector, in TEST, for a published USD virtual download with one protected file, unlimited access, no managed stock and shop tax calculation off.</p>`;
 
 /**
  * The one thing about Connect a merchant cannot see coming.
@@ -170,7 +169,7 @@ const WHAT_THIS_IS = `<p>An experimental connector for one narrow kind of WooCom
  * here rather than there, that the password box on that screen is their own
  * shop's and never ours. Drawn only where a Connect is what happens next.
  */
-const WHOSE_SCREEN_ASKS = `<p class="quiet">Your shop asks for approval on its own screen; Agentify never asks for your WooCommerce password.</p>`;
+const WHOSE_SCREEN_ASKS = `<p class="quiet">Your shop asks for approval on its own screen; Agentify never asks for your password.</p>`;
 
 /** The page a merchant connects from, and comes back to. */
 export const wooScreen = (viewer: Viewer, view: WooView): string => {
@@ -224,16 +223,21 @@ const KEYS_ARRIVED = `  <div class="callout done">
   </div>
 `;
 
-/** The Connect that produced no keys, drawn above the form that starts another. */
+/**
+ * The Connect that produced no keys, drawn above the form that starts another.
+ *
+ * A notice and not a section, because that is what this cabinet draws for a
+ * state the merchant has to act on — the same box an order owing a refund gets
+ * on the orders screen (`agentify.css`, `.callout`). It was a heading and a
+ * paragraph under it, which is the shape of an explanation rather than of
+ * something to do.
+ */
 const waitingBlock = (state: ShopState): string => {
   const said = noKeysYet(state);
-  return said === ""
+  return said === null
     ? ""
-    : `  <div class="lede">
-    <div>
-      <h2>The connection you started</h2>
-      ${said}
-    </div>
+    : `  <div class="callout">
+    <div class="what">${said}</div>
   </div>
 `;
 };
@@ -325,18 +329,18 @@ const theConnection = (
   <form class="issue" method="post" action="${escaped(base)}/woocommerce/import">
     <div>
       <label>Import the catalogue</label>
-      <p class="quiet">Publishes your published USD virtual downloads with one protected file, unlimited access, no managed stock and tax calculation off. Up to ${PRODUCTS_AT_MOST}; more and the import is refused.</p>
-      <p class="quiet">A card stays listed after its shop product changes, and a price check refuses it before payment.</p>
+      <p class="quiet">Up to ${PRODUCTS_AT_MOST} products; more and the whole import is refused.</p>
     </div>
     <button class="button button-compact button-primary" type="submit">Import the catalogue</button>
   </form>
   <form class="issue" method="post" action="${escaped(base)}/woocommerce/disconnect">
     <div>
       <label>Disconnect</label>
-      <p class="quiet">Forgets your shop's keys. Cards stay listed and are then refused before payment; orders already paid stay yours.</p>
+      <p class="quiet">Forgets your shop's keys. Orders already paid stay yours.</p>
     </div>
     <button class="button button-compact button-secondary" type="submit">Forget this shop</button>
   </form>
+  <p class="note">A card outlives the shop product it came from and the connection itself; a price check refuses it before payment.</p>
 `;
 
 /** A product an import sent through the publish door, named as the shop names it. */
@@ -598,7 +602,7 @@ export const wooSettingsBlock = (base: string, state: ShopTile): string => {
         : state.kind === "none"
           ? `<p>An experimental connector for one narrow kind of WooCommerce product.</p>
       <p><a href="${escaped(base)}/woocommerce">Connect a WooCommerce shop</a></p>`
-          : `${noKeysYet(state)}
+          : `<p>${noKeysYet(state) ?? ""}</p>
       <p><a href="${escaped(base)}/woocommerce">${state.kind === "waiting" ? "Check the connection" : "Connect again"}</a></p>`;
 
   return `  <div class="lede">
