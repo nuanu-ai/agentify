@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-export const REPORT_CABINET_HANDOFF_COOKIE = "b2a_report_cabinet_handoff";
+export const REPORT_CABINET_HANDOFF_COOKIE = "agentify_report_cabinet_handoff";
 export const REPORT_CABINET_HANDOFF_TTL_SECONDS = 60 * 60;
 
 const PURPOSE = "agentify-report-cabinet-handoff-v1";

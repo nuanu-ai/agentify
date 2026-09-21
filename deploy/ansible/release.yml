@@ -7,7 +7,8 @@
   vars:
     channel_name: "{{ 'production' if inventory_hostname in groups['production'] else 'test' }}"
     channel: "{{ release_channels[channel_name] }}"
-    release_directory: "/home/dmitry/agentify-releases/{{ release_revision }}"
+    release_directory: "{{ agentify_home }}/agentify-releases/{{ release_revision }}"
+    configuration_directory: "{{ agentify_home }}/agentify-configuration"
     release_source_directory: "{{ release_directory }}/source"
     recovery_directory: "{{ release_directory }}/recovery"
     release_identity:
@@ -32,7 +33,7 @@
           - (release_revision | default('')) is match('^[0-9a-f]{40}$')
           - (release_evidence_directory | default('')) is match('^/')
           - ansible_play_hosts_all | length == 1
-          - inventory_hostname in ['agentify', 'codex-vm']
+          - inventory_hostname in ['agentify', 'agentify-test']
           - release_channel_ack | default('') == channel_name
         fail_msg: Select one explicit channel and the exact reviewed main revision.
     - name: Identify the controller checkout used for this release

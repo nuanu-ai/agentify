@@ -18,7 +18,7 @@
  * and returns an object, and the first request the process makes to a
  * facilitator is the first payment it has to ask about. That is a property worth
  * naming, because the obvious way to build this does not have it: the spike's
- * server — `spikes/bazaar-listing/server.mjs`, on the official all-in-one
+ * server — the Bazaar listing spike of docs/research/04, on the official all-in-one
  * resource server — synchronised its supported schemes with the facilitator
  * while starting, and died on startup when the facilitator was unreachable. A
  * storefront that a supplier's outage can stop from booting is a storefront that

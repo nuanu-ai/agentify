@@ -14,7 +14,7 @@ import { getServerConfig } from "./config";
 import { hmacHex, randomCapability } from "./crypto";
 import { getDatabase } from "./database";
 
-export const CONSENT_COOKIE = "b2a_anonymous";
+export const CONSENT_COOKIE = "agentify_anonymous";
 
 const sameCategories = (left: unknown, right: ConsentCategories): boolean => {
   if (!left || typeof left !== "object") return false;

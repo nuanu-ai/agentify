@@ -468,15 +468,15 @@
     - name: Install revision-pinned scheduled jobs for this release
       ansible.builtin.template:
         src: release-jobs.sh.j2
-        dest: /home/dmitry/agentify-configuration/scanner-jobs.sh
+        dest: "{{ configuration_directory }}/scanner-jobs.sh"
         mode: '0700'
     - ansible.builtin.copy:
         content: |
           SHELL=/bin/bash
           {% if channel_name == 'production' %}
-          17 3 * * * root /home/dmitry/agentify-configuration/scanner-jobs.sh backup
+          17 3 * * * root {{ configuration_directory }}/scanner-jobs.sh backup
           {% endif %}
-          23 4 * * * root /home/dmitry/agentify-configuration/scanner-jobs.sh privacy
+          23 4 * * * root {{ configuration_directory }}/scanner-jobs.sh privacy
         dest: /etc/cron.d/agentify-release
         mode: '0644'
 

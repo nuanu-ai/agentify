@@ -289,8 +289,8 @@ export const registrationIntents = pgTable(
     callbackStateHash: text("callback_state_hash").notNull(),
     emailNormalizedCiphertext: text("email_normalized_ciphertext").notNull(),
     emailLookupHash: text("email_lookup_hash").notNull(),
-    phoneE164Ciphertext: text("phone_e164_ciphertext").notNull(),
-    phoneLookupHash: text("phone_lookup_hash").notNull(),
+    phoneE164Ciphertext: text("phone_e164_ciphertext"),
+    phoneLookupHash: text("phone_lookup_hash"),
     partnerClickIdCiphertext: text("partner_click_id_ciphertext"),
     role: text("role").notNull(),
     siteOwnershipClaim: boolean("site_ownership_claim")

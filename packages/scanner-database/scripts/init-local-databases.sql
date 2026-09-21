@@ -1,1 +1,1 @@
-CREATE DATABASE b2a_migration_test;
+CREATE DATABASE agentify_scanner_migration_test;

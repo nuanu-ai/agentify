@@ -26,7 +26,7 @@ describe("report-to-cabinet handoff envelope", () => {
       secret,
     });
 
-    expect(REPORT_CABINET_HANDOFF_COOKIE).toBe("b2a_report_cabinet_handoff");
+    expect(REPORT_CABINET_HANDOFF_COOKIE).toBe("agentify_report_cabinet_handoff");
     expect(REPORT_CABINET_HANDOFF_TTL_SECONDS).toBe(3600);
     expect(sealed).not.toContain(token);
     expect(

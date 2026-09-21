@@ -18,7 +18,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
-verification_file="$(mktemp /tmp/b2a-local-e2e.XXXXXX)"
+verification_file="$(mktemp /tmp/agentify-local-e2e.XXXXXX)"
 trap 'rm -f "$verification_file"' EXIT
 
 LOCAL_E2E_FIXTURE_ACK=yes \

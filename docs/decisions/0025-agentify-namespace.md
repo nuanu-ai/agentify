@@ -20,8 +20,14 @@ that a new execution occurred. Copyright ownership and license terms remain.
 
 Commerce uses database/role `agentify_commerce` and scratch database
 `agentify_commerce_test`. Its queues, locks and cookies use the Agentify
-namespace. Scanner storage remains separate. Deployment variables, resource
-names and page markers change with their producers, consumers and checks.
+namespace. Scanner storage remains separate. The scanner's cookies, browser
+storage keys, DOM attributes, Postgres application names and the metadata it
+writes to Stripe use the Agentify namespace too: the report cookie rename ends
+open report sessions, which a reader recovers through the link, a consent
+choice stored under the former key is asked for once more, and a card-signal
+setup opened under the former metadata keys is not reconciled after the
+switch. Deployment variables, resource names and page markers change with
+their producers, consumers and checks.
 
 The cookie prefix change requires cabinet users to sign in again; accounts
 and credentials are retained. Cleanup for the pre-component credential cookies

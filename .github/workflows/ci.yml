@@ -107,20 +107,20 @@ jobs:
       postgres:
         image: postgres:16.9-alpine
         env:
-          POSTGRES_USER: b2a
+          POSTGRES_USER: agentify_scanner
           POSTGRES_PASSWORD: ci-only
-          POSTGRES_DB: b2a_migration_test
+          POSTGRES_DB: agentify_scanner_migration_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U b2a -d b2a_migration_test"
+          --health-cmd "pg_isready -U agentify_scanner -d agentify_scanner_migration_test"
           --health-interval 2s
           --health-timeout 3s
           --health-retries 15
 
     env:
-      DATABASE_URL: postgresql://b2a:ci-only@127.0.0.1:5432/b2a_migration_test
-      MIGRATION_TEST_DATABASE_URL: postgresql://b2a:ci-only@127.0.0.1:5432/b2a_migration_test
+      DATABASE_URL: postgresql://agentify_scanner:ci-only@127.0.0.1:5432/agentify_scanner_migration_test
+      MIGRATION_TEST_DATABASE_URL: postgresql://agentify_scanner:ci-only@127.0.0.1:5432/agentify_scanner_migration_test
       APP_BASE_URL: https://agentify.ad
 
     steps:
@@ -135,11 +135,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @agentify/browser-observer-actor exec playwright install --with-deps chromium
-      - run: pnpm check:agentify
-      - run: pnpm typecheck:agentify
-      - run: pnpm test:agentify
-      - run: pnpm agentify:test:actor
-      - run: pnpm agentify:test:integration
-      - run: pnpm agentify:test:db
-      - run: pnpm build:agentify
-      - run: pnpm agentify:self-readiness
+      - run: pnpm check:scanner
+      - run: pnpm typecheck:scanner
+      - run: pnpm test:scanner
+      - run: pnpm scanner:test:actor
+      - run: pnpm scanner:test:integration
+      - run: pnpm scanner:test:db
+      - run: pnpm build:scanner
+      - run: pnpm scanner:self-readiness

@@ -55,13 +55,13 @@ export function AnalyticsRuntime({
   const track = useCallback(
     async (event: PendingEvent) => {
       const snapshot = consent.current;
-      const eventIdKey = `b2a.analytics.event-id.${event.onceKey}`;
+      const eventIdKey = `agentify.analytics.event-id.${event.onceKey}`;
       const candidateEventId =
         window.sessionStorage.getItem(eventIdKey) ??
         createClientOwnedEventId(event.name);
       window.sessionStorage.setItem(eventIdKey, candidateEventId);
       const scanToken = event.scanId
-        ? window.sessionStorage.getItem(`b2a:scan-token:${event.scanId}`)
+        ? window.sessionStorage.getItem(`agentify:scan-token:${event.scanId}`)
         : null;
       try {
         await recordThenDeliverWithConsent({
@@ -137,8 +137,9 @@ export function AnalyticsRuntime({
         void captureLandingAttribution(segment, `${segment}-v1`);
       }
     };
-    window.addEventListener("b2a:consent-changed", changed);
-    return () => window.removeEventListener("b2a:consent-changed", changed);
+    window.addEventListener("agentify:consent-changed", changed);
+    return () =>
+      window.removeEventListener("agentify:consent-changed", changed);
   }, [pathname]);
 
   useEffect(() => {
@@ -157,8 +158,8 @@ export function AnalyticsRuntime({
     }
     const report = /^\/report\/([^/]+)$/.exec(pathname);
     const authorizedReportScanId = document
-      .querySelector("[data-b2a-results-viewed-scan]")
-      ?.getAttribute("data-b2a-results-viewed-scan");
+      .querySelector("[data-agentify-results-viewed-scan]")
+      ?.getAttribute("data-agentify-results-viewed-scan");
     if (report?.[1] && authorizedReportScanId === report[1]) {
       void track({
         name: "results_viewed",
@@ -187,8 +188,9 @@ export function AnalyticsRuntime({
         scanId: detail.scanId,
       });
     };
-    window.addEventListener("b2a:analytics-event", listener);
-    return () => window.removeEventListener("b2a:analytics-event", listener);
+    window.addEventListener("agentify:analytics-event", listener);
+    return () =>
+      window.removeEventListener("agentify:analytics-event", listener);
   }, [track]);
 
   return null;

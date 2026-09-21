@@ -1,7 +1,6 @@
 # Product code and documentation share one reproducible install. Agentify's
 # scanner and commerce components share this workspace while their scoped
 # commands keep their different compiler, lint and test policies separate.
-# Spikes remain isolated experiments.
 packages:
   - packages/*
   - apps/*
@@ -10,11 +9,3 @@ allowBuilds:
   core-js: false
   esbuild: true
   sharp: true
-
-minimumReleaseAgeExclude:
-  - "@supabase/auth-js@2.110.3"
-  - "@supabase/functions-js@2.110.3"
-  - "@supabase/postgrest-js@2.110.3"
-  - "@supabase/realtime-js@2.110.3"
-  - "@supabase/storage-js@2.110.3"
-  - "@supabase/supabase-js@2.110.3"

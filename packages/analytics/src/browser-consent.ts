@@ -1,6 +1,6 @@
 import type { ConsentSnapshot } from "./consent.js";
 
-export const CONSENT_STORAGE_KEY = "b2a.consent.current.v1";
+export const CONSENT_STORAGE_KEY = "agentify.consent.current.v1";
 
 export interface ConsentStorage {
   getItem(key: string): string | null;

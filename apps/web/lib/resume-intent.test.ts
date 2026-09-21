@@ -10,7 +10,7 @@ const NOW = 1_752_700_000_000;
 
 describe("resume intent storage format", () => {
   it("keys the intent to one scan", () => {
-    expect(resumeIntentKey("019f-abc")).toBe("b2a:resume-intent:019f-abc");
+    expect(resumeIntentKey("019f-abc")).toBe("agentify:resume-intent:019f-abc");
   });
 
   it("round-trips a stored intent while it is fresh", () => {

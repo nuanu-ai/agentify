@@ -127,6 +127,13 @@
       "when": 1789655234084,
       "tag": "0017_giant_agent_zero",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789977566033,
+      "tag": "0018_optional_registration_phone",
+      "breakpoints": true
     }
   ]
 }

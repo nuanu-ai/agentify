@@ -206,7 +206,7 @@ function ConsentBannerContent() {
       closePreferences();
       setVisible(false);
       window.dispatchEvent(
-        new CustomEvent("b2a:consent-changed", { detail: snapshot }),
+        new CustomEvent("agentify:consent-changed", { detail: snapshot }),
       );
     } catch {
       setError(

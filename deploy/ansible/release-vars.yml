@@ -1,11 +1,15 @@
-# Host-owned paths and channel boundaries. Secrets never live in this file.
+# Channel boundaries and the shape of the host-owned paths. Secrets never live
+# in this file, and neither does the account the deployment runs under: every
+# path below hangs off `agentify_home`, which the operator supplies alongside
+# the inventory (see inventory.local.yml.example). It has no default here — a
+# guessed home directory is a release written into somebody else's account.
 release_channels:
   production:
     origin: https://agentify.ad
     commerce_project: agentify-commerce
     scanner_project: agentify
-    commerce_environment: /home/dmitry/agentify-namespace-57eaca4/.env
-    scanner_environment: /home/dmitry/agentify-scanner/.env.namespace-57eaca4
+    commerce_environment: "{{ agentify_home }}/agentify-namespace-57eaca4/.env"
+    scanner_environment: "{{ agentify_home }}/agentify-scanner/.env.namespace-57eaca4"
     commerce_overlay: deploy/compose.hetzner-commerce.yaml
     ingress_network: agentify-ingress
     database_network: agentify-scanner-db
@@ -14,13 +18,13 @@ release_channels:
     postgres_container: agentify-commerce-postgres-1
     cabinet_container: agentify-commerce-cabinet-1
     edge_container: agentify-edge-caddy-1
-    edge_configuration: /home/dmitry/agentify-commerce/deploy/edge/Caddyfile
-    backup_directory: /home/dmitry/agentify-backups/scanner
+    edge_configuration: "{{ agentify_home }}/agentify-commerce/deploy/edge/Caddyfile"
+    backup_directory: "{{ agentify_home }}/agentify-backups/scanner"
   test:
     origin: https://test.agentify.ad
     commerce_project: agentify-test
     scanner_project: agentify-test-scanner
-    commerce_environment: /home/dmitry/agentify-test/.env
+    commerce_environment: "{{ agentify_home }}/agentify-test/.env"
     scanner_environment: ''
     commerce_overlay: deploy/compose.agentify-test.yaml
     ingress_network: agentify-test-ingress
@@ -30,4 +34,4 @@ release_channels:
     postgres_container: agentify-test-postgres-1
     cabinet_container: agentify-test-cabinet-1
     edge_container: ''
-    backup_directory: /home/dmitry/agentify-test-backups/scanner
+    backup_directory: "{{ agentify_home }}/agentify-test-backups/scanner"

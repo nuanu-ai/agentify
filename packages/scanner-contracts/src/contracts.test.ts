@@ -140,7 +140,7 @@ describe("canonical contracts", () => {
     ).toBe(true);
   });
 
-  it("requires and normalizes an international registration phone", () => {
+  it("normalizes an international registration phone and accepts none", () => {
     const base = {
       email: "owner@example.com",
       role: "business_owner",
@@ -158,7 +158,7 @@ describe("canonical contracts", () => {
       registrationRequestSchema.safeParse({ ...base, phone: "4155550123" })
         .success,
     ).toBe(false);
-    expect(registrationRequestSchema.safeParse(base).success).toBe(false);
+    expect(registrationRequestSchema.parse(base).phone).toBeUndefined();
   });
 
   it("limits browser-owned events to the three client trigger contracts", () => {

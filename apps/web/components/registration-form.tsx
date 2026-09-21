@@ -45,7 +45,7 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
     if (registrationStarted.current) return;
     registrationStarted.current = true;
     window.dispatchEvent(
-      new CustomEvent("b2a:analytics-event", {
+      new CustomEvent("agentify:analytics-event", {
         detail: { name: "registration_started", scanId },
       }),
     );
@@ -62,7 +62,7 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const token = sessionStorage.getItem(`b2a:scan-token:${scanId}`);
+    const token = sessionStorage.getItem(`agentify:scan-token:${scanId}`);
     if (!token) {
       setState("error");
       setMessage(
@@ -82,7 +82,7 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
         },
         body: JSON.stringify({
           email: form.get("email"),
-          phone: form.get("phone"),
+          phone: form.get("phone") || undefined,
           role: form.get("role"),
           site_is_mine: form.get("site_is_mine") === "on",
           marketing_email_opt_in: form.get("marketing_email_opt_in") === "on",
@@ -142,12 +142,11 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
           name="phone"
           pattern="\+[1-9][0-9 ()-]{7,20}"
           placeholder="+1 415 555 0123"
-          required
           type="tel"
         />
         <span className={styles.hint}>
-          Include the country code. We store it as contact information; only
-          your email is verified.
+          Optional. Include the country code if you add one. We store it as
+          contact information; only your email is verified.
         </span>
       </div>
       <div>

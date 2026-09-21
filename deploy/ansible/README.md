@@ -34,6 +34,16 @@ EVIDENCE="$PWD/.local/release-evidence/$SHA"
 mkdir -p "$EVIDENCE"
 ```
 
+The inventory names the groups but not the machines. Copy
+`deploy/ansible/inventory.local.yml.example` to
+`deploy/ansible/inventory.local.yml`, fill in each address, login and the
+deployment home directory, and pass it with `-e @deploy/ansible/inventory.local.yml`
+on every invocation below. That copy is gitignored and stays on the operator's
+machine: which hosts this repository may deploy to is an operator fact, not
+source. Nothing here has a default, so a missing value stops the play by name
+instead of resolving to somebody else's host. The `$AGENTIFY_HOME` used in the
+shell snippets further down is the same directory, exported into your shell.
+
 Every playbook invocation requires these two values, one phase, one inventory
 limit, and an acknowledgement matching that limit. The playbook refuses an
 abbreviated revision, a revision that is not public `main` history, a relative
@@ -65,7 +75,7 @@ ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
 ```
 
 For each channel, staging checks out a clean copy under
-`/home/dmitry/agentify-releases/<SHA>/source`, builds the first-party images,
+`<agentify_home>/agentify-releases/<SHA>/source`, builds the first-party images,
 pulls the pinned infrastructure images, preserves the host-owned environment,
 renders the actual Compose graph, and runs the preflight and isolated web
 configuration checks. It fetches the staged channel’s sanitized topology into the evidence directory:
@@ -91,7 +101,7 @@ ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
 
 Activation holds the existing schedules and records the pre-activation public
 catalog and non-recoverable aggregate row fingerprints under
-`/home/dmitry/agentify-releases/<SHA>/recovery`. It verifies those fingerprints
+`<agentify_home>/agentify-releases/<SHA>/recovery`. It verifies those fingerprints
 after migration, starts the selected revision, and records runtime, route,
 scheduled job, and image-identity evidence. It does not create database, role or
 environment dumps. The existing edge route file is retained for error recovery.
@@ -216,7 +226,7 @@ printf '%s\n' "$APPROVAL_EMAIL" | ssh -o BatchMode=yes -o ConnectTimeout=10 \
   -o ServerAliveInterval=10 -o ServerAliveCountMax=2 \
   -o ControlMaster=auto -o ControlPersist=60 \
   -o ControlPath=~/.ssh/agentify-approve-%C agentify \
-  "cd /home/dmitry/agentify-releases/$SHA/source && \
+  "cd $AGENTIFY_HOME/agentify-releases/$SHA/source && \
    sudo -n docker compose --project-name agentify-commerce --env-file ../commerce.env \
      -f compose.yaml -f deploy/compose.public.yaml \
      -f deploy/compose.hetzner-commerce.yaml \

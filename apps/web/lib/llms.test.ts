@@ -19,9 +19,11 @@ describe("llms.txt", () => {
     );
 
     expect(body).toMatch(/^# Agentify$/m);
-    expect(links).toEqual(
-      PUBLIC_PAGE_PATHS.map((path) => `https://agentify.ad${path}`),
-    );
+    expect(links).toEqual([
+      ...PUBLIC_PAGE_PATHS.map((path) => `https://agentify.ad${path}`),
+      "https://agentify.ad/agentic-shop",
+      "https://agentify.ad/docs/",
+    ]);
     expect(body).not.toMatch(/MCP|guarantee|certified/i);
   });
 });

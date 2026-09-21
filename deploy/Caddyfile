@@ -274,6 +274,21 @@
 		file_server
 	}
 
+	# The portal is a directory of files, so a page that is not there would be
+	# Caddy's bare, empty 404. VitePress builds its own 404 page under the same
+	# base, and this serves it with the status kept. The scanner and the
+	# cabinet answer their own missing pages, so nothing here touches theirs.
+	handle_errors {
+		@portal_missing `{err.status_code} == 404 && {http.request.orig_uri.path}.startsWith('/docs/')`
+		handle @portal_missing {
+			root * {$AGENTIFY_PORTAL_ROOT:/srv/docs}
+			rewrite * /404.html
+			file_server {
+				status {err.status_code}
+			}
+		}
+	}
+
 	# The same route table serves test and production. Only the isolated local
 	# fixture selects the static fallback.
 	import {$AGENTIFY_FRONT_PAGE}

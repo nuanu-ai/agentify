@@ -461,7 +461,7 @@ describe("P4 cabinet-owned scanner identity", () => {
             "content-type": "application/json",
             "idempotency-key": idempotencyKey,
             "x-forwarded-for": ip,
-            "x-b2a-submitted-without-scheme": spoofedHeader,
+            "x-agentify-submitted-without-scheme": spoofedHeader,
           },
           body: JSON.stringify({
             url,
@@ -509,7 +509,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         method: "POST",
         headers: {
           origin: "http://localhost:3000",
-          cookie: `b2a_anonymous=${anonymousToken}`,
+          cookie: `agentify_anonymous=${anonymousToken}`,
           "content-type": "application/json",
         },
         body: JSON.stringify({
@@ -566,7 +566,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         method: "POST",
         headers: {
           origin: "http://localhost:3000",
-          cookie: `b2a_anonymous=${anonymousToken}`,
+          cookie: `agentify_anonymous=${anonymousToken}`,
           "content-type": "application/json",
         },
         body: JSON.stringify({
@@ -586,7 +586,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         method: "POST",
         headers: {
           origin: "http://localhost:3000",
-          cookie: `b2a_anonymous=${anonymousToken}`,
+          cookie: `agentify_anonymous=${anonymousToken}`,
           "content-type": "application/json",
         },
         body: JSON.stringify({
@@ -614,7 +614,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         method: "POST",
         headers: {
           origin: "http://localhost:3000",
-          cookie: `b2a_anonymous=${anonymousToken}`,
+          cookie: `agentify_anonymous=${anonymousToken}`,
           "content-type": "application/json",
         },
         body: JSON.stringify({
@@ -722,6 +722,58 @@ describe("P4 cabinet-owned scanner identity", () => {
         [scanId],
       ),
     ).toMatchObject({ rows: [{ count: "1" }] });
+  });
+
+  it("unlocks a report without a phone and stores none for the lead", async () => {
+    const { db } = getDatabase();
+    const { scan } = await createFreshCompletedScan("no-phone-registration");
+    const sourceChecks = await db
+      .select()
+      .from(scanChecks)
+      .where(eq(scanChecks.scanId, scanId));
+    await db
+      .insert(scanChecks)
+      .values(sourceChecks.map((check) => ({ ...check, scanId: scan.id })));
+
+    const email = "no-phone@example.com";
+    await createScannerRegistrationIntent(
+      scan,
+      { ...registrationBody(email), phone: undefined },
+      {},
+    );
+    const link = latestLink(email, "registration");
+    const emailLookupHash = hmacHex(
+      process.env.TOKEN_HMAC_SECRET!,
+      "email",
+      email,
+    );
+    const intent = (
+      await db
+        .select()
+        .from(registrationIntents)
+        .where(
+          and(
+            eq(registrationIntents.scanId, scan.id),
+            eq(registrationIntents.emailLookupHash, emailLookupHash),
+          ),
+        )
+    )[0]!;
+    expect(intent.phoneE164Ciphertext).toBeNull();
+    expect(intent.phoneLookupHash).toBeNull();
+
+    const finalized = await verifyAndFinalizeScannerIdentity(
+      link.state,
+      link.token,
+    );
+    expect(finalized?.scanId).toBe(scan.id);
+    const lead = (
+      await db
+        .select()
+        .from(leads)
+        .where(eq(leads.emailLookupHash, emailLookupHash))
+    )[0]!;
+    expect(lead.phoneE164Ciphertext).toBeNull();
+    expect(lead.phoneLookupHash).toBeNull();
   });
 
   it("stores phone only encrypted and finalizes cabinet-backed identity once", async () => {

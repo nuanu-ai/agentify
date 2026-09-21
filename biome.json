@@ -29,7 +29,6 @@
       "!.prettierignore.scanner",
       "!.env.scanner.example",
       "!apps/docs",
-      "!spikes",
       "!apps/gateway/drizzle",
       "!pnpm-lock.yaml"
     ]

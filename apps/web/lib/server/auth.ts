@@ -4,7 +4,7 @@ import { and, eq, gt, isNull } from "drizzle-orm";
 import { sha256 } from "./crypto";
 import { getDatabase } from "./database";
 
-export const REPORT_SESSION_COOKIE = "b2a_report_session";
+export const REPORT_SESSION_COOKIE = "agentify_report_session";
 
 export async function getVerifiedSession(
   sessionToken: string | undefined,

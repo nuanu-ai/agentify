@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """Keep the one TEST Woo shop reachable without changing application DNS.
 
-The shop and Agentify TEST happen to share dmitry-dev. The host cannot hairpin
-through the Comino public address, while the application must still resolve and
+The shop and Agentify TEST happen to share one host. That host cannot hairpin
+through the shared public address, while the application must still resolve and
 pin that public address for its SSRF boundary. This rule translates only the
-TEST Compose subnet's connection to that one public address and port, below
-DNS and TLS. Production never installs this file.
+TEST Compose subnet's connection to that one public address and port, below DNS
+and TLS. Production never installs this file.
+
+The host name and the two addresses are deployment facts, not source. They are
+supplied by the operator through the environment or through a configuration
+file, and every one of them is required: a missing value refuses the run with
+the name of what is missing. There is no default, because a default here is a
+rule pointed at somebody else's address.
 """
 
 from __future__ import annotations
@@ -13,29 +19,122 @@ from __future__ import annotations
 import ipaddress
 import json
 import os
+import pathlib
 import shlex
 import socket
 import subprocess
 import sys
 from collections.abc import Sequence
+from dataclasses import dataclass
 
-EXPECTED_HOST = "dmitry-dev"
 NETWORKS = (
     ("agentify-test_default", "agentify-test", "default"),
     ("agentify-woo-lab", "agentify-woo-lab", "shop"),
 )
-PUBLIC_HOSTS = ("woo.nuanu.ai", "test.agentify.ad")
-PUBLIC_IP = "153.124.160.16"
-INGRESS_IP = "10.20.10.11"
 HTTPS_PORT = "443"
 CHAIN = "AGENTIFY_TEST_WOO"
 COMMENT = "agentify-test-woo-hairpin"
 JUMP_COMMENT = "agentify-test-woo-hairpin-jump"
 IPTABLES = ["iptables", "--wait", "10", "-t", "nat"]
 
+CONFIG_PATH_VARIABLE = "AGENTIFY_TEST_WOO_CONFIG"
+DEFAULT_CONFIG_PATH = "/etc/agentify/test-woo-hairpin.json"
+SETTING_VARIABLES = {
+    "expected_host": "AGENTIFY_TEST_WOO_EXPECTED_HOST",
+    "public_hosts": "AGENTIFY_TEST_WOO_PUBLIC_HOSTS",
+    "public_ip": "AGENTIFY_TEST_WOO_PUBLIC_IP",
+    "ingress_ip": "AGENTIFY_TEST_WOO_INGRESS_IP",
+}
+
 
 def refuse(message: str) -> RuntimeError:
     return RuntimeError(message)
+
+
+@dataclass(frozen=True)
+class Settings:
+    """The deployment facts this rule is pointed at."""
+
+    expected_host: str
+    public_hosts: tuple[str, ...]
+    public_ip: str
+    ingress_ip: str
+
+
+def _ipv4_address(value: str, field: str) -> str:
+    try:
+        parsed = ipaddress.ip_address(value)
+    except ValueError as error:
+        raise refuse(f"{SETTING_VARIABLES[field]} is not an IP address: {error}") from error
+    if not isinstance(parsed, ipaddress.IPv4Address):
+        raise refuse(f"{SETTING_VARIABLES[field]} must be IPv4")
+    return str(parsed)
+
+
+def _read_config_file() -> dict[str, object]:
+    configured = os.environ.get(CONFIG_PATH_VARIABLE)
+    path = pathlib.Path(configured or DEFAULT_CONFIG_PATH)
+    try:
+        document = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        if configured:
+            raise refuse(f"{CONFIG_PATH_VARIABLE} points at {path}, which does not exist") from None
+        return {}
+    except OSError as error:
+        raise refuse(f"the hairpin configuration at {path} is unreadable: {error}") from error
+    try:
+        decoded = json.loads(document)
+    except json.JSONDecodeError as error:
+        raise refuse(f"the hairpin configuration at {path} is not JSON: {error}") from error
+    if not isinstance(decoded, dict):
+        raise refuse(f"the hairpin configuration at {path} is not one JSON object")
+    return decoded
+
+
+def load_settings() -> Settings:
+    """Assemble the deployment facts, refusing loudly when any is absent."""
+
+    document = _read_config_file()
+    raw: dict[str, object] = {}
+    for field, variable in SETTING_VARIABLES.items():
+        from_environment = os.environ.get(variable)
+        if from_environment is not None and from_environment.strip():
+            raw[field] = from_environment
+        elif field in document:
+            raw[field] = document[field]
+
+    missing = [SETTING_VARIABLES[field] for field in SETTING_VARIABLES if field not in raw]
+    if missing:
+        raise refuse(
+            "the TEST hairpin has no deployment facts to work from; set "
+            + ", ".join(sorted(missing))
+            + f" in the environment or in {os.environ.get(CONFIG_PATH_VARIABLE, DEFAULT_CONFIG_PATH)}"
+        )
+
+    hosts_value = raw["public_hosts"]
+    if isinstance(hosts_value, str):
+        hosts = tuple(part.strip() for part in hosts_value.split(",") if part.strip())
+    elif isinstance(hosts_value, list) and all(isinstance(part, str) for part in hosts_value):
+        hosts = tuple(part.strip() for part in hosts_value if part.strip())
+    else:
+        raise refuse(f"{SETTING_VARIABLES['public_hosts']} must be a comma-separated list of hosts")
+    if not hosts:
+        raise refuse(f"{SETTING_VARIABLES['public_hosts']} names no host")
+
+    expected_host = raw["expected_host"]
+    if not isinstance(expected_host, str) or not expected_host.strip():
+        raise refuse(f"{SETTING_VARIABLES['expected_host']} names no host")
+
+    for field in ("public_ip", "ingress_ip"):
+        if not isinstance(raw[field], str):
+            raise refuse(f"{SETTING_VARIABLES[field]} must be a string")
+
+    return Settings(
+        expected_host=expected_host.strip(),
+        public_hosts=hosts,
+        public_ip=_ipv4_address(str(raw["public_ip"]), "public_ip"),
+        ingress_ip=_ipv4_address(str(raw["ingress_ip"]), "ingress_ip"),
+    )
 
 
 def private_ipv4(value: str) -> ipaddress.IPv4Network:
@@ -85,23 +184,23 @@ def validate_network(
     return str(private_ipv4(subnet))
 
 
-def validate_dns(host: str, addresses: Sequence[str]) -> None:
-    if set(addresses) != {PUBLIC_IP}:
+def validate_dns(host: str, addresses: Sequence[str], settings: Settings) -> None:
+    if set(addresses) != {settings.public_ip}:
         raise refuse(f"{host} DNS differs from the one reviewed public address")
 
 
-def chain_rule(subnet: str) -> list[str]:
+def chain_rule(subnet: str, settings: Settings) -> list[str]:
     private_ipv4(subnet)
     return [
         "-s", subnet,
-        "-d", f"{PUBLIC_IP}/32",
+        "-d", f"{settings.public_ip}/32",
         "-p", "tcp",
         "-m", "tcp",
         "--dport", HTTPS_PORT,
         "-m", "comment",
         "--comment", COMMENT,
         "-j", "DNAT",
-        "--to-destination", f"{INGRESS_IP}:{HTTPS_PORT}",
+        "--to-destination", f"{settings.ingress_ip}:{HTTPS_PORT}",
     ]
 
 
@@ -109,20 +208,22 @@ def jump_rule() -> list[str]:
     return ["-m", "comment", "--comment", JUMP_COMMENT, "-j", CHAIN]
 
 
-def is_owned_chain_rule(tokens: list[str]) -> bool:
+def is_owned_chain_rule(tokens: list[str], settings: Settings) -> bool:
     if len(tokens) < 4 or tokens[:3] != ["-A", CHAIN, "-s"]:
         return False
     try:
-        expected = ["-A", CHAIN, *chain_rule(tokens[3])]
+        expected = ["-A", CHAIN, *chain_rule(tokens[3], settings)]
     except RuntimeError:
         return False
     return tokens == expected
 
 
-def validate_existing(chain_lines: Sequence[str], prerouting_lines: Sequence[str]) -> None:
+def validate_existing(
+    chain_lines: Sequence[str], prerouting_lines: Sequence[str], settings: Settings
+) -> None:
     for line in chain_lines:
         tokens = shlex.split(line)
-        if tokens == ["-N", CHAIN] or is_owned_chain_rule(tokens):
+        if tokens == ["-N", CHAIN] or is_owned_chain_rule(tokens, settings):
             continue
         raise refuse(f"refusing unowned rule in {CHAIN}")
     expected_jump = ["-A", "PREROUTING", *jump_rule()]
@@ -145,10 +246,10 @@ def rule_lines(chain: str) -> list[str] | None:
     return [line for line in result.stdout.splitlines() if line]
 
 
-def require_host() -> None:
+def require_host(settings: Settings) -> None:
     if os.geteuid() != 0:
         raise refuse("the TEST hairpin must run as root")
-    if socket.gethostname().split(".", 1)[0] != EXPECTED_HOST:
+    if socket.gethostname().split(".", 1)[0] != settings.expected_host:
         raise refuse("the TEST hairpin is on the wrong host")
 
 
@@ -162,23 +263,23 @@ def current_subnets() -> list[str]:
     return subnets
 
 
-def require_public_dns() -> None:
-    for host in PUBLIC_HOSTS:
+def require_public_dns(settings: Settings) -> None:
+    for host in settings.public_hosts:
         answers = [
             address[4][0]
             for address in socket.getaddrinfo(
                 host, int(HTTPS_PORT), socket.AF_UNSPEC, socket.SOCK_STREAM
             )
         ]
-        validate_dns(host, answers)
+        validate_dns(host, answers, settings)
 
 
-def existing_rules() -> tuple[list[str] | None, list[str]]:
+def existing_rules(settings: Settings) -> tuple[list[str] | None, list[str]]:
     chain = rule_lines(CHAIN)
     prerouting = rule_lines("PREROUTING")
     if prerouting is None:
         raise refuse("the nat PREROUTING chain is unavailable")
-    validate_existing(chain or [], prerouting)
+    validate_existing(chain or [], prerouting, settings)
     return chain, prerouting
 
 
@@ -188,30 +289,32 @@ def delete_owned_jumps() -> None:
 
 
 def reconcile() -> None:
-    require_host()
+    settings = load_settings()
+    require_host(settings)
     subnets = current_subnets()
-    require_public_dns()
-    chain, _ = existing_rules()
+    require_public_dns(settings)
+    chain, _ = existing_rules(settings)
     if chain is None:
         run([*IPTABLES, "-N", CHAIN])
     delete_owned_jumps()
     run([*IPTABLES, "-F", CHAIN])
     for subnet in subnets:
-        run([*IPTABLES, "-A", CHAIN, *chain_rule(subnet)])
+        run([*IPTABLES, "-A", CHAIN, *chain_rule(subnet, settings)])
     run([*IPTABLES, "-I", "PREROUTING", "1", *jump_rule()])
     verify()
     print(f"TEST Woo hairpin reconciled for {', '.join(subnets)}")
 
 
 def verify() -> None:
-    require_host()
+    settings = load_settings()
+    require_host(settings)
     subnets = current_subnets()
-    require_public_dns()
-    chain, prerouting = existing_rules()
+    require_public_dns(settings)
+    chain, prerouting = existing_rules(settings)
     if chain is None:
         raise refuse("the TEST hairpin chain is absent")
     expected_chain = [f"-N {CHAIN}"] + [
-        " ".join(["-A", CHAIN, *chain_rule(subnet)]) for subnet in subnets
+        " ".join(["-A", CHAIN, *chain_rule(subnet, settings)]) for subnet in subnets
     ]
     if chain != expected_chain:
         raise refuse("the TEST hairpin chain is not exactly the assigned rule")
@@ -221,8 +324,9 @@ def verify() -> None:
 
 
 def remove() -> None:
-    require_host()
-    chain, _ = existing_rules()
+    settings = load_settings()
+    require_host(settings)
+    chain, _ = existing_rules(settings)
     if chain is None:
         print("TEST Woo hairpin already absent")
         return

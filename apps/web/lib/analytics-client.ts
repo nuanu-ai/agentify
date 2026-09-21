@@ -52,7 +52,7 @@ export const dispatchConsentedBrowserEvent = async (input: {
     sender: (eventId: string) => void | Promise<void>,
   ) => {
     if (!allowed) return;
-    const key = `b2a.analytics.once.${destination}.${input.onceKey}`;
+    const key = `agentify.analytics.once.${destination}.${input.onceKey}`;
     if (input.storage.getItem(key)) return;
     await sender(input.eventId);
     input.storage.setItem(key, input.eventId);

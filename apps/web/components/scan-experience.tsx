@@ -156,7 +156,7 @@ export function ScanExperience({
   useEffect(() => {
     if (!data?.teaser || fixtureName || accessState !== "ready") return;
     window.dispatchEvent(
-      new CustomEvent("b2a:analytics-event", {
+      new CustomEvent("agentify:analytics-event", {
         detail: { name: "results_viewed", scanId },
       }),
     );
@@ -411,7 +411,7 @@ function TeaserState({
               score: teaser.score,
             }}
             scanId={scanId}
-            tokenStorageKey={`b2a:scan-token:${scanId}`}
+            tokenStorageKey={`agentify:scan-token:${scanId}`}
           />
           {remediationPromptEnabled &&
           registrationEnabled &&
@@ -624,7 +624,7 @@ function captureFragmentToken(scanId: string) {
   const fragment = new URLSearchParams(window.location.hash.slice(1));
   const token = fragment.get("access_token");
   if (!token) return;
-  sessionStorage.setItem(`b2a:scan-token:${scanId}`, token);
+  sessionStorage.setItem(`agentify:scan-token:${scanId}`, token);
   window.history.replaceState(
     null,
     "",
@@ -633,7 +633,7 @@ function captureFragmentToken(scanId: string) {
 }
 
 function getStoredToken(scanId: string) {
-  return sessionStorage.getItem(`b2a:scan-token:${scanId}`);
+  return sessionStorage.getItem(`agentify:scan-token:${scanId}`);
 }
 
 function parseFixtureName(value?: string): FixtureName | undefined {

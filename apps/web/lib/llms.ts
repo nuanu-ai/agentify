@@ -26,5 +26,12 @@ export function buildLlmsText(): string {
     "",
     ...links,
     "",
+    "## Selling to agents",
+    "",
+    "Agentify also runs a merchant channel: an ordinary online business publishes product cards that AI agents buy and pay for over x402, and the money goes from the buyer's wallet to the merchant's.",
+    "",
+    `- [Agentic Shop, for the business owner](${new URL("/agentic-shop", baseUrl).toString()})`,
+    `- [Merchant documentation, for the engineer](${new URL("/docs/", baseUrl).toString()})`,
+    "",
   ].join("\n");
 }

@@ -69,7 +69,7 @@ services:
       wordpress:
         condition: service_healthy
     ports:
-      - "10.20.10.20:9444:443"
+      - "${WOO_LAB_LISTEN_ADDRESS:?set the address the lab Caddy binds on}:9444:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ${WOOCOMMERCE_DATA_ROOT}/caddy-data:/data

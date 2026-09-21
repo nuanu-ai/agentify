@@ -89,7 +89,10 @@ export default async function ReportPage({
     (check) => check.status === "fail",
   )?.id;
   return (
-    <main className={styles.page} data-b2a-results-viewed-scan={report.scan_id}>
+    <main
+      className={styles.page}
+      data-agentify-results-viewed-scan={report.scan_id}
+    >
       <Brand />
       <header className={styles.hero}>
         <div>
