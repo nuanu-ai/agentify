@@ -7,6 +7,8 @@ const globalDatabase = globalThis as typeof globalThis & {
 };
 
 export function getDatabase() {
-  globalDatabase.agentifyDatabase ??= createDatabase(getServerConfig().DATABASE_URL);
+  globalDatabase.agentifyDatabase ??= createDatabase(
+    getServerConfig().DATABASE_URL,
+  );
   return globalDatabase.agentifyDatabase;
 }

@@ -138,7 +138,8 @@ export function AnalyticsRuntime({
       }
     };
     window.addEventListener("agentify:consent-changed", changed);
-    return () => window.removeEventListener("agentify:consent-changed", changed);
+    return () =>
+      window.removeEventListener("agentify:consent-changed", changed);
   }, [pathname]);
 
   useEffect(() => {
@@ -188,7 +189,8 @@ export function AnalyticsRuntime({
       });
     };
     window.addEventListener("agentify:analytics-event", listener);
-    return () => window.removeEventListener("agentify:analytics-event", listener);
+    return () =>
+      window.removeEventListener("agentify:analytics-event", listener);
   }, [track]);
 
   return null;

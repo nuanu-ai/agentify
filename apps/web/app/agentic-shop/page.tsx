@@ -327,9 +327,9 @@ export default function AgenticShopPage() {
               </div>
               <h3>Connect your catalog.</h3>
               <p>
-                Use the <a href="/docs/quickstart">SDK</a> to publish the
-                offer, price and fulfilment promises. The WooCommerce connector
-                is experimental.
+                Use the <a href="/docs/quickstart">SDK</a> to publish the offer,
+                price and fulfilment promises. The WooCommerce connector is
+                experimental.
               </p>
               <span className={styles.stepOutput}>
                 Catalog. Ordering. Confirmation.
