@@ -207,11 +207,21 @@ rendering for agents and the content-negotiation proxy names `/` in place
 of `/owner`; the redirect settles the canonical address without a second
 page to compete with it.
 
+The shape of the front page is also asserted outside the application: the
+release gate, the CI self-readiness run and the smoke scripts all knew `/`
+as a redirect and `/owner` as the page, and they move with the change, so
+that the old address is now checked as a redirect whose response no cache
+may keep. The request-class map that the observability package and the
+Caddy files share counts `/` as a landing from now on, since that is what
+it serves.
+
 The test renders `/` and asks for the scan form, the doors and the second
-door; a second asks the analytics runtime, given a page that announces a
-segment and a variant, to record a landing view with those and not with a
-name derived from the path. If the first fails, the front page has gone
-back to being one product's page.
+door; a second asks the reader of the page's announcement, given a root that
+answers attribute selectors the way the DOM does, for the segment and the
+variant the page carries and for nothing when the page announces a segment
+the product does not know. The Markdown rendering that agents read carries
+the second door too, and a test asks for it. If the first fails, the front
+page has gone back to being one product's page.
 
 ### 3. The report says who the cabinet is for; the survey goes; the benchmark stays
 

@@ -69,6 +69,12 @@ function renderLanding(config: LandingConfig): string {
     config.hero.subtitle,
     "",
     ...LANDING_SHARED_CONTENT.assurances.map((item) => `- ${item}`),
+    ...(config.secondDoor
+      ? [
+          "",
+          `${config.secondDoor.lead} [${config.secondDoor.label}](${new URL(config.secondDoor.href, app.baseUrl).toString()})`,
+        ]
+      : []),
     "",
     "## Why it matters",
     "",
@@ -111,7 +117,7 @@ function renderLanding(config: LandingConfig): string {
 
 export function getPublicPageMarkdown(path: PublicPagePath): string {
   switch (path) {
-    case "/owner":
+    case "/":
       return renderLanding(LANDINGS.owner);
     case "/store":
       return renderLanding(LANDINGS.store);

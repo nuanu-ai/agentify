@@ -12,8 +12,8 @@
     follow_redirects: none
     return_content: false
   loop:
-    - {path: /, status: [307, 308]}
-    - {path: /owner, status: [200]}
+    - {path: /, status: [200]}
+    - {path: /owner, status: [308]}
     - {path: /api/health/live, status: [200]}
     - {path: /api/health, status: [200]}
     - {path: /cabinet/sign-in, status: [200]}
@@ -130,7 +130,7 @@
   become: false
 - ansible.builtin.assert:
     that:
-      - channel.origin + '/owner' in sitemap.content
+      - channel.origin + '/</loc>' in sitemap.content
       - "'app.agentify.ad' not in sitemap.content"
       - channel_name != 'test' or 'https://agentify.ad/' not in sitemap.content
     fail_msg: Scanner canonical URLs escaped their channel origin.

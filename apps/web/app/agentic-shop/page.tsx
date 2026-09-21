@@ -615,7 +615,7 @@ export default function AgenticShopPage() {
           <div>
             <a href="/privacy">Privacy</a>
             <a href="#questions">Merchant questions</a>
-            <Link href="/owner">
+            <Link href="/">
               Explore Agentify <Arrow diagonal />
             </Link>
             <span>© {new Date().getFullYear()} Agentify</span>

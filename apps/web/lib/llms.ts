@@ -2,7 +2,7 @@ import { PUBLIC_PAGE_PATHS } from "../content/public-page-metadata";
 import { getPublicAppConfig } from "./app-config";
 
 const labels = {
-  "/owner": "Business-owner diagnostic",
+  "/": "Website diagnostic and selling to agents",
   "/store": "Online-store diagnostic",
   "/local": "Local-business diagnostic",
   "/methodology": "Methodology and 18-check rubric",

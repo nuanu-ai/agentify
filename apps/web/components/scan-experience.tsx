@@ -201,7 +201,7 @@ export function ScanExperience({
         {data?.status === "failed" ? (
           <FailedState
             blocked={fixtureName === "blocked"}
-            onRetry={() => window.location.assign("/owner")}
+            onRetry={() => window.location.assign("/")}
           />
         ) : null}
         {data && (data.status === "completed" || data.status === "partial") ? (
@@ -572,7 +572,7 @@ function AccessError({ invalid }: Readonly<{ invalid: boolean }>) {
         Scan progress is private. The access token stays in this browser session
         and is never put in a query parameter.
       </p>
-      <Link className="button button-primary" href="/owner">
+      <Link className="button button-primary" href="/">
         Start a new scan
       </Link>
     </div>

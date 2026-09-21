@@ -8,7 +8,7 @@ export function Brand({ inverse = false }: Readonly<{ inverse?: boolean }>) {
   return (
     <Link
       className="brand"
-      href="/owner"
+      href="/"
       style={inverse ? { color: "var(--paper)" } : undefined}
     >
       <BrandMark className="brand-mark" />

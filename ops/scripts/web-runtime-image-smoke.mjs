@@ -155,12 +155,12 @@ async function assertRuntime(baseUrl, channel, reportPath, reportCookie) {
     ? "https://test-runtime.agentify.example"
     : "https://production-runtime.agentify.example";
 
-  const [robots, sitemap, llms, owner, privacy, scan, pending, report] =
+  const [robots, sitemap, llms, front, privacy, scan, pending, report] =
     await Promise.all([
       getText(baseUrl, "/robots.txt"),
       getText(baseUrl, "/sitemap.xml"),
       getText(baseUrl, "/llms.txt"),
-      getText(baseUrl, "/owner"),
+      getText(baseUrl, "/"),
       getText(baseUrl, "/privacy"),
       getText(baseUrl, "/scan/runtime-smoke"),
       getText(baseUrl, "/scan/pending"),
@@ -174,18 +174,23 @@ async function assertRuntime(baseUrl, channel, reportPath, reportCookie) {
   );
   assertIncludes(
     sitemap,
-    `<loc>${origin}/owner</loc>`,
+    `<loc>${origin}/</loc>`,
     `${channel} sitemap origin`,
   );
-  assertIncludes(llms, `](${origin}/owner)`, `${channel} llms origin`);
-  assertIncludes(owner, `${origin}/owner`, `${channel} canonical metadata`);
-  assertIncludes(owner, `posthog-${own}`, `${channel} PostHog key`);
+  assertIncludes(llms, `](${origin}/)`, `${channel} llms origin`);
+  // Next renders the root canonical as the bare origin, no trailing slash.
   assertIncludes(
-    owner,
+    front,
+    `rel="canonical" href="${origin}"/>`,
+    `${channel} canonical metadata`,
+  );
+  assertIncludes(front, `posthog-${own}`, `${channel} PostHog key`);
+  assertIncludes(
+    front,
     `posthog-${own}.example.com`,
     `${channel} PostHog host`,
   );
-  assertIncludes(owner, `meta-${own}`, `${channel} Meta destination`);
+  assertIncludes(front, `meta-${own}`, `${channel} Meta destination`);
   const serializedOwner = owner.replaceAll("\\", "");
   assert(
     new RegExp(
@@ -199,8 +204,8 @@ async function assertRuntime(baseUrl, channel, reportPath, reportCookie) {
     ).test(serializedOwner),
     `${channel} Meta destination environment was absent`,
   );
-  assertIncludes(owner, `abuse-${own}@example.com`, `${channel} abuse contact`);
-  assertExcludes(owner, other, `${channel} analytics configuration`);
+  assertIncludes(front, `abuse-${own}@example.com`, `${channel} abuse contact`);
+  assertExcludes(front, other, `${channel} analytics configuration`);
   assertIncludes(
     privacy,
     `privacy-${own}@example.com`,

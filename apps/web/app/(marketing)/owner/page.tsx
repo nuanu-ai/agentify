@@ -1,13 +1,6 @@
-import type { Metadata } from "next";
+import { permanentRedirect } from "next/navigation";
 
-import { LandingPage } from "../../../components/landing-page";
-import { LANDINGS } from "../../../content/landing";
-
-export const metadata: Metadata = {
-  title: "Website diagnostic for business owners",
-  alternates: { canonical: "/owner" },
-};
-
+/** The owner landing is the front page now; this address is kept for links already shared. */
 export default function OwnerPage() {
-  return <LandingPage config={LANDINGS.owner} />;
+  permanentRedirect("/");
 }

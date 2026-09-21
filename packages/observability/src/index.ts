@@ -159,8 +159,7 @@ export function createLogger(input: {
 }
 
 const routePatterns: ReadonlyArray<[RegExp, string]> = [
-  [/^\/$/, "page_home"],
-  [/^\/(store|owner|local)$/, "page_landing"],
+  [/^\/(store|local)?$/, "page_landing"],
   [/^\/(methodology|privacy|scanner|terms|data-request)$/, "page_trust"],
   [/^\/admin(?:\/.*)?$/, "page_admin"],
   [/^\/scan\/pending$/, "page_scan_pending"],

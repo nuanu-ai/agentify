@@ -22,13 +22,16 @@ describe("public Markdown variants", () => {
     }
   });
 
-  it("keeps the methodology rubric and landing source links in parity", () => {
+  it("keeps the methodology rubric and landing source links in parity, and hands an agent the second door", () => {
+    process.env.APP_BASE_URL = "https://agentify.ad";
     const methodology = getPublicPageMarkdown("/methodology");
-    const owner = getPublicPageMarkdown("/owner");
+    const owner = getPublicPageMarkdown("/");
+    const front = owner;
 
     expect(methodology.match(/^- `#\d+`/gm)).toHaveLength(18);
     expect(owner).toContain("Pew Research Center");
     expect(owner).toContain("How the scan works");
     expect(owner).toContain("Common questions");
+    expect(front).toContain("](https://agentify.ad/agentic-shop)");
   });
 });

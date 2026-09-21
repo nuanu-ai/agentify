@@ -63,7 +63,7 @@ export function SiteFooter() {
         </div>
         <FooterGroup title="Segments">
           <Link href="/agentic-shop">For merchants</Link>
-          <Link href="/owner">For owners</Link>
+          <Link href="/">For owners</Link>
           <Link href="/store">For stores</Link>
           <Link href="/local">For local</Link>
         </FooterGroup>

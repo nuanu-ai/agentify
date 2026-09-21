@@ -1,5 +1,5 @@
 export const PUBLIC_PAGE_PATHS = [
-  "/owner",
+  "/",
   "/store",
   "/local",
   "/methodology",
@@ -18,7 +18,7 @@ export type PublicPageMetadata = Readonly<{
 // These dates describe visible content revisions, not deployments. Update only
 // when the corresponding public page content changes.
 export const PUBLIC_PAGE_METADATA = {
-  "/owner": { lastModified: "2026-07-13", priority: 1 },
+  "/": { lastModified: "2026-09-21", priority: 1 },
   "/store": { lastModified: "2026-07-13", priority: 0.9 },
   "/local": { lastModified: "2026-07-13", priority: 0.9 },
   "/methodology": { lastModified: "2026-07-14", priority: 0.8 },

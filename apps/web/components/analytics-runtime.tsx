@@ -15,6 +15,7 @@ import {
   recordThenDeliverWithConsent,
 } from "../lib/analytics-client";
 import { captureLandingAttribution } from "../lib/attribution-client";
+import { readLandingAnnouncement } from "../lib/landing-announcement";
 
 type ClientEventName = Extract<
   AnalyticsEventName,
@@ -131,10 +132,9 @@ export function AnalyticsRuntime({
     const changed = (event: Event) => {
       const snapshot = (event as CustomEvent<ConsentSnapshot>).detail;
       consent.current = snapshot;
-      const landing = /^\/(store|owner|local)$/.exec(pathname);
+      const landing = readLandingAnnouncement(document);
       if (snapshot.categories.ads_measurement && landing) {
-        const segment = landing[1] as Segment;
-        void captureLandingAttribution(segment, `${segment}-v1`);
+        void captureLandingAttribution(landing.segment, landing.variant);
       }
     };
     window.addEventListener("agentify:consent-changed", changed);
@@ -143,10 +143,9 @@ export function AnalyticsRuntime({
   }, [pathname]);
 
   useEffect(() => {
-    const landing = /^\/(store|owner|local)$/.exec(pathname);
+    const landing = readLandingAnnouncement(document);
     if (landing) {
-      const segment = landing[1] as Segment;
-      const landingVariant = `${segment}-v1`;
+      const { segment, variant: landingVariant } = landing;
       void captureLandingAttribution(segment, landingVariant).then(() =>
         track({
           name: "landing_view",

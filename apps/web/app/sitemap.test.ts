@@ -27,6 +27,7 @@ describe("sitemap", () => {
       ...PUBLIC_PAGE_PATHS.map((path) => `https://agentify.ad${path}`),
       "https://agentify.ad/agentic-shop",
     ]);
+    expect(entries[0]?.url).toBe("https://agentify.ad/");
     for (const path of PUBLIC_PAGE_PATHS) {
       const metadata = PUBLIC_PAGE_METADATA[path];
       expect(Number.isNaN(Date.parse(metadata.lastModified))).toBe(false);

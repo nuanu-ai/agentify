@@ -32,7 +32,7 @@ try:
         time.sleep(1)
     else:
         raise RuntimeError('Candidate web configuration never became healthy; live services were not touched')
-    for path in ['/owner', '/sitemap.xml', '/robots.txt', '/llms.txt']:
+    for path in ['/', '/sitemap.xml', '/robots.txt', '/llms.txt']:
         subprocess.run(['docker', 'exec', name, 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3000'+path], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     print('Candidate public configuration and pages accepted in an isolated container')
 finally:

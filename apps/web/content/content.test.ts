@@ -27,10 +27,4 @@ describe("marketing content registry", () => {
       expect(EVIDENCE_CLASSES).toContain(source.evidenceClass);
     }
   });
-
-  it("keeps the approved owner headline", () => {
-    expect(LANDINGS.owner.hero.title).toBe(
-      "See what your website lets AI understand about your business.",
-    );
-  });
 });

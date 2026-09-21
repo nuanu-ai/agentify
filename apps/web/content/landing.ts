@@ -8,6 +8,12 @@ export type LandingConfig = Readonly<{
   locale: "en-US" | "ru-RU";
   eyebrow: string;
   hero: Readonly<{ title: string; subtitle: string; cta: string }>;
+  /**
+   * One line under the scan form for the person who came to sell rather than
+   * to scan: a lead-in and a link to the page about selling to agents. Only
+   * the front page carries it; the segment pages leave it out.
+   */
+  secondDoor?: Readonly<{ lead: string; label: string; href: string }>;
   pains: readonly Readonly<{
     title: string;
     body: string;
@@ -89,14 +95,20 @@ const sharedFaq = [
 export const LANDINGS = {
   owner: {
     segment: "owner",
-    variant: "owner-v1",
+    variant: "owner-v2",
     locale: "en-US",
-    eyebrow: "For business owners",
+    eyebrow: "For online businesses",
     hero: {
-      title: "See what your website lets AI understand about your business.",
+      title:
+        "See what your website shows to AI agents, and how to sell to them.",
       subtitle:
-        "Check the public business facts and machine-readable signals your site exposes — without pretending to test every model's answer.",
+        "Scan a public address and read what an agent can find on your site: the business facts, the structured data, the machine-readable output, without pretending to test any model's answer. If what you sell can be delivered digitally, a merchant cabinet and an SDK take it from there.",
       cta: "Scan my site",
+    },
+    secondDoor: {
+      lead: "Came here to sell?",
+      label: "How selling to agents works",
+      href: "/agentic-shop",
     },
     pains: [
       {

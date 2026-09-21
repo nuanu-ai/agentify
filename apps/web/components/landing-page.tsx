@@ -6,6 +6,10 @@ import {
   type LandingConfig,
 } from "../content/landing";
 import { getSource } from "../content/sources";
+import {
+  LANDING_SEGMENT_ATTRIBUTE,
+  LANDING_VARIANT_ATTRIBUTE,
+} from "../lib/landing-announcement";
 import { publicSiteSchema } from "../lib/schema";
 import { StatusBadge } from "./status-badge";
 import { StructuredData } from "./structured-data";
@@ -18,7 +22,12 @@ export function LandingPage({ config }: Readonly<{ config: LandingConfig }>) {
     <>
       <StructuredData schema={publicSiteSchema()} />
       <MarketingHeader />
-      <main>
+      <main
+        {...{
+          [LANDING_SEGMENT_ATTRIBUTE]: config.segment,
+          [LANDING_VARIANT_ATTRIBUTE]: config.variant,
+        }}
+      >
         <section className={`${styles.hero} container`}>
           <div className={styles.heroGrid}>
             <div className={styles.heroCopy}>
@@ -35,6 +44,14 @@ export function LandingPage({ config }: Readonly<{ config: LandingConfig }>) {
                   <span key={assurance}>{assurance}</span>
                 ))}
               </div>
+              {config.secondDoor ? (
+                <p className={styles.secondDoor}>
+                  {config.secondDoor.lead}{" "}
+                  <Link href={config.secondDoor.href}>
+                    {config.secondDoor.label} →
+                  </Link>
+                </p>
+              ) : null}
             </div>
             <ExampleSurface segmentPhase={config.segmentPhase} />
           </div>
