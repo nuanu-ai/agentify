@@ -1126,11 +1126,11 @@ describe("the passwordless cabinet door", () => {
 });
 
 describe("choosing the name buyers read", () => {
-  it("asks for the name on a screen of its own, with room to say what it is for", async () => {
-    // The whole reason the field left the registration form. Here it can say
-    // what the name does, show what one looks like, and promise that it can be
-    // changed — none of which fits beside a password box, and all of which
-    // decides whether what arrives is a name or "some stuff".
+  it("asks for the name on a screen of its own, and says what it is for in one line", async () => {
+    // The whole reason the field left the registration form: it can say what
+    // the name does without a password box beside it. What it says is one
+    // sentence — buyers read it, beside the products — and the rule the
+    // catalogue holds it to is in the box rather than in a paragraph over it.
     const running = await started();
     await unname(running);
     await running.browser.signIn();
@@ -1140,15 +1140,12 @@ describe("choosing the name buyers read", () => {
 
     expect(screen.status).toBe(200);
     expect(screen.html).toContain('name="seller_name"');
-    // What it is for, in terms somebody who has never seen a catalogue can act
-    // on: buyers read it, beside the products.
-    expect(text).toMatch(/buyers/i);
-    expect(text).toMatch(/name people already know/i);
-    // The rule the catalogue holds it to, before anybody types rather than
-    // after a refusal.
-    expect(text).toMatch(/32 characters/);
+    expect(text).toMatch(/buyers see this name beside your products/i);
+    // The limit is on the box, where a browser applies it, rather than in
+    // prose a merchant is asked to apply themselves.
+    expect(screen.html).toMatch(/<input id="seller_name"[^>]*maxlength="32"/);
     // That it can be changed, and where.
-    expect(text).toMatch(/change/i);
+    expect(text).toMatch(/change it later/i);
     expect(screen.html).toContain('href="/settings"');
     // And a way past it, for somebody who has not decided.
     expect(screen.html).toContain('href="/cards"');
@@ -1302,19 +1299,17 @@ describe("the settings screen", () => {
     }
   });
 
-  it("offers no control that removes the name", async () => {
-    // Not a gap somebody should fill in later: the refusal is the rule, and a
-    // button that provoked it would be a control whose whole result is a
-    // refusal page.
+  it("holds the rule in the box rather than in prose over it", async () => {
+    // The rule used to be a paragraph on this panel and is now the box's own
+    // limit. A browser applies that; a paragraph asks the merchant to. What a
+    // merchant who breaks it reads is the refusal, which is tested below.
     const { browser } = await started();
     await browser.signIn();
 
-    const text = readable((await browser.get("/settings")).html);
+    const screen = await browser.get("/settings");
 
-    expect(text).toMatch(/cannot|never/i);
-    expect(text).toMatch(/stop.*selling/i);
-    // And the rule, on the page rather than only in a refusal.
-    expect(text).toMatch(/32 characters/);
+    expect(screen.html).toMatch(/<input id="seller_name"[^>]*maxlength="32"/);
+    expect(readable(screen.html)).not.toMatch(/32 characters/);
   });
 
   it("refuses a name outside the rule and leaves the one there was", async () => {
@@ -1329,8 +1324,9 @@ describe("the settings screen", () => {
     // they are actually listed under.
     expect(readable(answered.html)).toMatch(/not saved/i);
     expect(readable(answered.html)).toMatch(/printable ASCII/i);
+    expect(readable(answered.html)).toMatch(/1 to 32/);
     expect(answered.html).toContain(`value="${"x".repeat(33)}"`);
-    expect(readable(answered.html)).toContain(running.harnessed.merchant.name);
+    expect(readable(answered.html)).toContain(`Still listed as ${running.harnessed.merchant.name}`);
     expect(await listedAs(running)).toBe(running.harnessed.merchant.name);
   });
 
@@ -1407,7 +1403,7 @@ describe("the address a merchant's money arrives at", () => {
 
     expect(screen.status).toBe(200);
     expect(screen.html).toContain('name="payout_wallet"');
-    expect(readable(screen.html)).toMatch(/where your money arrives/i);
+    expect(readable(screen.html)).toMatch(/payout address/i);
   });
 
   it("is saved, and the whole of it is on the page afterwards", async () => {

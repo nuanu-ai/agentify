@@ -1,14 +1,19 @@
 /**
  * The two screens the name buyers read is chosen on: the one a merchant meets
  * straight after their merchant is attached, and the settings page it is
- * changed on afterwards. The choice is a public answer printed beside the
- * products every buyer sees, so the first screen says what the name does before
- * asking for it and promises it can be changed.
+ * changed on afterwards.
  *
  * Skipping is allowed on the first of the two screens, because a name demanded
  * before somebody can answer it is a name nobody means. What is not allowed is
  * skipping it silently: until a name is set, publishing a card is refused, and
  * every screen a merchant works on says so with a way to fix it.
+ *
+ * Neither screen recites the rule before anybody types. The box carries it, in
+ * `maxlength`, `pattern` and a `title` the browser shows on a refusal, and the
+ * words are kept for the person who broke it. Dmitry read the settings page on
+ * 2026-09-21 and said three paragraphs about a seller name is not what an
+ * e-commerce admin looks like; a form that recites its own validation is the
+ * first of the three to go, because almost nobody who reads it needs it.
  *
  * Neither screen fetches anything or decides anything, which is what lets a
  * test read the page a merchant would be looking at.
@@ -22,29 +27,26 @@ import type { Viewer } from "./screens.js";
 import { wooSettingsBlock } from "./woo-screens.js";
 
 /**
- * What a name has to be, said in words a person can act on.
+ * What the box holds a name to, for the browser rather than for the reader.
  *
- * The rule itself is the contract's `ServiceNameSchema` and is applied by
- * asking it rather than by writing it out again in code: it is the discovery
- * catalogue's own rule, because that catalogue is where this name goes, and a
- * second copy of it here would be the copy that goes stale. What is written out
- * is only the sentence, because the schema's messages are one per broken rule
- * and somebody filling in a form is better served by the whole rule once.
- *
- * It is on both screens before anybody types, rather than only after a refusal,
- * so that the common case is a name that fits.
+ * The rule itself is the contract's `ServiceNameSchema`, applied by asking it
+ * rather than by writing the pattern out again in code. What is written out
+ * here is the browser's half of it: printable ASCII, at most thirty-two of
+ * them, and the `title` a browser shows when the box refuses. The schema's own
+ * rule about spaces at the ends is deliberately not in the pattern — the route
+ * trims those rather than refusing them, and a box that refused a trailing
+ * space would be the browser stopping a name the server would have taken.
  */
-export const NAME_RULE =
-  "Use 1 to 32 characters of printable ASCII: Latin letters, numbers, spaces or common punctuation," +
-  " with no space at either end.";
+export const NAME_BOX =
+  'maxlength="32" pattern="[ -~]{1,32}" title="1 to 32 printable ASCII characters"';
 
 /**
  * What somebody is told whose name the catalogue would not carry.
  *
- * The rule is already printed beside the box, so this does not repeat it: a
- * refusal that answers with the same paragraph a second time reads as the page
- * failing to notice anything happened. What the person cannot see for
- * themselves is that nothing was written, which is the half this carries.
+ * This is where the rule now lives in words: the screens no longer print it,
+ * so a refusal that only said "that will not do" would leave somebody guessing
+ * at a limit nothing on the page had named. The second half is what the person
+ * cannot see for themselves — that nothing was written.
  *
  * The name is checked here as well as at the gateway so that this is what comes
  * back rather than the gateway's own refusal, which is written for whoever is
@@ -78,26 +80,16 @@ export const whatIsWrongWithTheName = (name: string): string | null =>
   ServiceNameSchema.safeParse(name).success ? null : NAME_REFUSED;
 
 /**
- * What the name is for, and what one looks like.
- *
- * The example is the shape of the mistake rather than a decorated version of
- * the rule: the name people already know, not a description of the goods. A
- * merchant who writes their catalogue into this box ends up listed under their
- * own stock list, and nothing further down the line corrects it.
- *
- * On the first screen only. It was on both, and the settings panel is headed
- * "The name your products are sold under", which is the same sentence in four
- * words over the box it belongs to.
- */
-const WHAT_IT_IS_FOR = `<p>Buyers see this seller name beside your products and in the payment they approve. Use the name people already know you by, rather than a description of what you sell.</p>`;
-
-/**
  * The screen a merchant lands on the moment their account exists.
  *
  * Drawn with no navigation because it is the last step of first-time setup
- * rather than a page inside the cabinet. The way out
- * is a link and not a hidden field: whoever skips goes to their cards, which is
- * where the same fact is waiting for them with the page that fixes it.
+ * rather than a page inside the cabinet. The way out is a link and not a hidden
+ * field: whoever skips goes to their cards, which is where the same fact is
+ * waiting for them with the page that fixes it.
+ *
+ * One sentence of instruction, the box, the button, the way past. What the
+ * name is for is the one thing a merchant cannot work out from the label, and
+ * it is a line rather than a paragraph.
  */
 export const chooseNameScreen = (
   base: string,
@@ -112,14 +104,12 @@ export const chooseNameScreen = (
 ${brandLockup("/")}
 <form class="gate-card" method="post" action="${escaped(base)}/choose-name">
   <h1>Choose your seller name</h1>
-  <p>Your account is ready. Choose the seller name buyers will see.</p>
-  <label for="seller_name">The name your products are sold under</label>
-  <input id="seller_name" name="seller_name" type="text" autocomplete="organization" maxlength="32" value="${escaped(typed)}" autofocus required>
+  <p>Buyers see this name beside your products.</p>
+  <label for="seller_name">Seller name</label>
+  <input id="seller_name" name="seller_name" type="text" autocomplete="organization" ${NAME_BOX} value="${escaped(typed)}" autofocus required>
   ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
-  <p class="quiet">${escaped(NAME_RULE)}</p>
   <button class="button button-primary" type="submit">Use this name</button>
-  ${WHAT_IT_IS_FOR}
-  <p class="quiet">You can change it in <a href="${escaped(base)}/settings">Settings</a>; until it is set, nothing you publish goes on sale.</p>
+  <p class="quiet">You can change it later in <a href="${escaped(base)}/settings">Settings</a>.</p>
   <p class="quiet">Not decided yet? <a href="${escaped(base)}/cards">Leave it for now</a>.</p>
 </form>
 </div>`,
@@ -145,13 +135,15 @@ ${brandLockup("/")}
  * where they are paid, where their products come from, and only then how they
  * get back in.
  *
- * The four are not the same kind of thing, so each is under a heading that
- * names which it is. Somebody landing here should be able to tell which part
- * they came for without reading the others.
+ * The shape of every card is the same and is the shape Dmitry asked for on
+ * 2026-09-21: a heading, the control, and one helper line under the box. No
+ * lede over the page — a sentence naming what is on a page that fits on a
+ * screen is a table of contents for the screen you are already looking at —
+ * and no paragraph in front of a field. The rules the panels used to print are
+ * in the boxes and in the refusals.
  *
  * The name box normally shows what the gateway answered. After a refusal it
- * keeps the rejected value so the merchant can correct it; the heading still
- * says which name is actually saved.
+ * keeps the rejected value so the merchant can correct it.
  */
 export const settingsScreen = (viewer: Viewer, problem?: string, typedName?: string): string => {
   const { base } = viewer;
@@ -161,35 +153,41 @@ export const settingsScreen = (viewer: Viewer, problem?: string, typedName?: str
   <div class="lede">
     <div>
       <h1>Settings</h1>
-      <p>${escaped(
-        // The one thing on this page a merchant can be caught out by, and
-        // nothing else. What else is here is under headings a few lines down,
-        // and a sentence listing them would be a table of contents for a page
-        // that fits on a screen — one more thing to rewrite the day a third
-        // section is added, and one more line between somebody and the box
-        // they came to fill in.
-        name === null
-          ? "You have not chosen the name your products are sold under. Until you do, publishing a card is refused."
-          : `Your products are sold under ${name}.`,
-      )}</p>
     </div>
   </div>
   <div class="settings-grid">
   <section class="settings-panel">
   <div class="lede">
     <div>
-      <h2>The name your products are sold under</h2>
-      <p class="quiet">${escaped(NAME_RULE)}</p>
-      <p class="quiet">${escaped(NAME_CANNOT_BE_TAKEN_AWAY)}</p>
+      <h2>Seller name</h2>
     </div>
   </div>
   <form class="issue" method="post" action="${escaped(base)}/settings">
     <div>
       <label for="seller_name">The name buyers read</label>
-      <input id="seller_name" name="seller_name" type="text" autocomplete="organization" maxlength="32" value="${escaped(typedName ?? name ?? "")}" required>
-      ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
+      <input id="seller_name" name="seller_name" type="text" autocomplete="organization" ${NAME_BOX} value="${escaped(typedName ?? name ?? "")}" required>
+      ${
+        problem === undefined
+          ? ""
+          : `<p class="problem">${escaped(problem)}</p>${
+              // The box is holding what was refused, so the page has stopped
+              // showing what a merchant is actually listed under. Which name
+              // is live is the thing they cannot see for themselves after a
+              // refusal, and it is four words.
+              name === null ? "" : `<p class="quiet">Still listed as ${escaped(name)}.</p>`
+            }`
+      }
+      <p class="quiet">${
+        // Unset is not a preference, it is a state in which the merchant's own
+        // code is being refused, so the helper says the consequence while it
+        // lasts. The cards screen carries the same fact in a banner; this page
+        // is the one with the box that ends it.
+        name === null
+          ? "Buyers see this beside your products. Until it is set, publishing a card is refused."
+          : "The name buyers see beside your products."
+      } <a href="/docs/quickstart#_1-make-the-merchant-account-ready">Learn more</a>.</p>
     </div>
-    <button class="button button-compact button-primary" type="submit">Save it</button>
+    <button class="button button-compact button-primary" type="submit">Save</button>
   </form>
   </section>
   <section class="settings-panel">${payoutWalletBlock(viewer)}</section>

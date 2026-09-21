@@ -133,24 +133,19 @@ const minutesAgo = (minutes: number): string =>
  * failed. The rows hold the same nothing in all three, and "your shop could
  * not reach us", which the second sentence once said, was the third guess
  * presented as the fact — it sent a merchant who had declined off to repair a
- * firewall that was fine. What the sentence may say is the one thing that is
- * WooCommerce's own behaviour rather than a guess about the merchant's
- * network: a shop whose post fails, or whose post our own door refuses, shows
- * the merchant an error on its own screen and deletes the key it minted
- * (`class-wc-auth.php`, `post_consumer_data` and `maybe_delete_key`). So a
- * merchant who saw an error there was stopped at the post, and one who was
- * sent back here, or who closed the page, never sent anything. What the
- * error says is not promised: on a post our door refused, WooCommerce's
- * message names nothing.
+ * firewall that was fine. So the sentence says that why is not known here,
+ * which is the whole of what a row can support, and stops.
+ *
+ * Both were a sentence and a paragraph under it. The paragraph walked through
+ * the three ways and what WooCommerce does about each; what a merchant acts on
+ * is one of them — reload, or press Connect again — and that is what is left.
  */
 const noKeysYet = (state: ShopState): string => {
   if (state.kind === "waiting") {
-    return `<p>You started connecting ${escaped(state.shopUrl)} ${escaped(minutesAgo(state.startedMinutesAgo))}, and no keys have reached us yet.</p>
-      <p class="quiet">If you approved, your shop sends the keys in a separate request; reload in a moment to see whether they arrived. If you declined or closed the approval screen, you can start again now.</p>`;
+    return `<p>${escaped(state.shopUrl)}: no keys have reached us yet, ${escaped(minutesAgo(state.startedMinutesAgo))}. Reload in a moment.</p>`;
   }
   if (state.kind === "unanswered") {
-    return `<p>You started connecting ${escaped(state.shopUrl)}, and no keys arrived from it in the ${GRANT_MINUTES} minutes we wait for them.</p>
-      <p class="quiet">This page cannot tell whether approval was declined, closed or rejected before it was saved. No access from that attempt is active here. Press Connect again; if WooCommerce showed an error, it already removed the key from that attempt.</p>`;
+    return `<p>${escaped(state.shopUrl)}: no keys arrived in the ${GRANT_MINUTES} minutes we wait. Why is not known here; connect again.</p>`;
   }
   return "";
 };
@@ -567,8 +562,10 @@ const skippedBlock = (skipped: readonly SkippedProduct[]): string => `  <div cla
  * different things by two pages about one row is worse than being told nothing.
  * What a merchant does about any of it — the import, the disconnect, the form
  * that starts another Connect — is on the shop screen, and this block is the
- * way in from all four. The fifth case, `unread`, is this screen's alone: the
- * rows could not be read just now, and the block says so rather than going
+ * way in from all four. So the block is a heading, one line and that link:
+ * what a supported product is, and what Connect and Import each do, is on the
+ * screen the link leads to. The fifth case, `unread`, is this screen's alone:
+ * the rows could not be read just now, and the block says so rather than going
  * away, because a block that vanishes reads as "no shop is connected".
  *
  * A shop that granted less than read and write is said here too, for the same
@@ -582,8 +579,7 @@ export const wooSettingsBlock = (base: string, state: ShopTile): string => {
   // be the settings screen offering something that cannot be drawn.
   const said =
     state.kind === "unread"
-      ? `<p>Whether a shop is connected to this account could not be read just now.</p>
-      <p class="quiet">The fault is on our side, not in your shop, and nothing was disconnected by it. Reload this page in a moment.</p>`
+      ? `<p>Whether a shop is connected could not be read just now. Nothing was disconnected. Reload this page in a moment.</p>`
       : state.kind === "connected"
         ? `<p>${escaped(state.shop.shopUrl)}, connected ${escaped(moment(state.shop.connectedAt.toISOString()))}.</p>
       ${
@@ -593,7 +589,7 @@ export const wooSettingsBlock = (base: string, state: ShopTile): string => {
       }
       <p><a href="${escaped(base)}/woocommerce">Your shop</a></p>`
         : state.kind === "none"
-          ? `<p>This experimental connector publishes only one narrow kind of WooCommerce product as a card, and the shop screen says which. Connect a shop first, then import its supported products.</p>
+          ? `<p>An experimental connector for one narrow kind of WooCommerce product.</p>
       <p><a href="${escaped(base)}/woocommerce">Connect a WooCommerce shop</a></p>`
           : `${noKeysYet(state)}
       <p><a href="${escaped(base)}/woocommerce">${state.kind === "waiting" ? "Check the connection" : "Connect again"}</a></p>`;

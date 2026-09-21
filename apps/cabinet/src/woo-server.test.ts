@@ -997,7 +997,7 @@ describe("what the settings screen says about a shop", () => {
     const screen = await running.get("/settings");
 
     expect(screen.status).toBe(200);
-    expect(readable(screen.html)).toContain("Where your money arrives");
+    expect(readable(screen.html)).toContain("Payout address");
     expect(readable(screen.html)).toContain("could not be read just now");
     expect(readable(screen.html)).toContain("Reload this page in a moment");
     expect(readable(screen.html)).not.toContain("Connect a WooCommerce shop");

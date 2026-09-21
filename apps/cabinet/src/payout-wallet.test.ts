@@ -127,16 +127,27 @@ describe("the block on the settings screen", () => {
   it("says a sandbox address is optional because nothing settles", () => {
     const text = readable(payoutWalletBlock(looking({ wallet: null })));
 
-    expect(text).toMatch(/does not settle/i);
+    expect(text).toMatch(/settles no payment/i);
     expect(text).toMatch(/optional/i);
   });
 
-  it("names Base Sepolia and test USDC on the test stack", () => {
+  it("names the chain and the token the money arrives in on the test stack", () => {
+    // Which chain and which token, because "payout address" on three stacks is
+    // three different promises and on one of them none at all.
     const text = readable(payoutWalletBlock({ ...looking({ wallet: null }), mode: "test" }));
 
+    expect(text).toContain("USDC");
     expect(text).toContain("Base Sepolia");
-    expect(text).toContain("test USDC");
-    expect(text).toMatch(/settle/i);
+  });
+
+  it("says the checksum was read and ownership was not", () => {
+    // The fifth gate on this field: the schema read the shape and the capitals,
+    // which catches a character typed wrong. Nothing asked a chain whose
+    // address it is, and "saved" over an address is read as more than that.
+    const text = readable(payoutWalletBlock(looking({ wallet: SHAPED })));
+
+    expect(text).toMatch(/checksum checked/i);
+    expect(text).toMatch(/ownership is not/i);
   });
 
   it("shows what was wrong with an address just refused", () => {

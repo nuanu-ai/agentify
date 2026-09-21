@@ -18,8 +18,8 @@
  * name is refused everywhere, always. This one is not: where nothing settles,
  * publishing without an address is not refused, and a line saying "your
  * products cannot go on sale" would then be a page telling a merchant something
- * that is not happening. So the consequence is written once, here, in the form
- * that says which case is which.
+ * that is not happening. So the mode line under the box says which case is
+ * which, in a clause.
  *
  * The second is how a saved address is shown back. It is shown whole, never
  * with the middle left out. Forty characters is more than anybody reads, and
@@ -28,7 +28,9 @@
  * identical. So the whole of it is on the page, grouped in fours the way a
  * long number is, with no space actually in the text: a merchant reads it
  * against their wallet group by group, and a merchant who selects it gets the
- * address back rather than a spaced-out copy of it that pastes wrong.
+ * address back rather than a spaced-out copy of it that pastes wrong. Why it
+ * is whole used to be a paragraph beside it; it is now the layout doing the
+ * arguing, and the one sentence kept is the one the layout cannot say.
  *
  * What is shown is whatever the gateway answered with, untouched. That is not
  * indifference about the spelling — it is where the spelling is decided. The
@@ -46,24 +48,21 @@ import { escaped } from "./html.js";
 import type { Viewer } from "./screens.js";
 
 /**
- * What an address has to look like, and the two things this page cannot tell
- * anybody about it.
+ * The one line under the box, which has to carry two facts in thirteen words.
  *
- * The rule itself is the contract's and is applied by asking the schema rather
- * than by writing the pattern out again here; what is written out is the
- * sentence, because a schema's message is one per broken rule and somebody
- * filling in a box is better served by the whole rule once.
+ * What to paste, and what must never be pasted. The second is not caution for
+ * its own sake: somebody who has been asked for a recovery phrase once by a
+ * page that looked like this one has no other way to tell the two apart, and
+ * this is the only sentence on the screen that tells them.
  *
- * The second half is the part it would be easy to leave off. Nothing in the
- * cabinet looks an address up anywhere — there is no chain call on this path
- * and no balance read — so a box that turned green would be promising something
- * nobody checked. Said plainly, a merchant knows the check they still have to
- * do themselves is the only one there is.
+ * What is not here any more is the shape of the address written out in prose.
+ * The box holds it — `pattern`, `maxlength` and a `title` the browser shows on
+ * a refusal — and the refusal says which rule broke. Nor is "copy it from your
+ * wallet rather than typing it" here: it is advice, and a merchant who typed
+ * one out meets the checksum refusal, which is the sentence that actually
+ * helps.
  */
-export const WALLET_RULE =
-  "Paste an EVM address: 0x followed by 40 hexadecimal characters. Use the mixed-case spelling" +
-  " from your wallet or all lower case. This checks its shape and checksum, not the network or" +
-  " who owns it, so copy it from your wallet rather than typing it.";
+export const WALLET_RULE = "A public EVM address, 0x and 40 hex characters. Never a private key.";
 
 /** What somebody who pressed the button with an empty box is told. */
 export const WALLET_NEEDED =
@@ -134,12 +133,19 @@ const inFours = (address: string): string => {
     .join("")}`;
 };
 
-/** The address as it stands, with what to do with it before trusting it. */
+/**
+ * The address as it stands, with the one thing about it nobody checked.
+ *
+ * The clause is the fifth gate on this field. The schema read the shape and
+ * the capitals, which catches a character typed wrong; nothing here asked a
+ * chain whose address this is, and a merchant who reads "saved" over an
+ * address takes that for more than it is.
+ */
 const savedAddress = (address: string): string => `
   <div class="saved">
     <div class="label">Saved here</div>
     <div class="address">${inFours(address)}</div>
-    <p class="under">This is the spelling your own wallet shows, so read it against your wallet group by group. Two addresses that differ only in the middle look the same when the middle is left out, so the whole of it is here.</p>
+    <p class="under">Shape and checksum checked; ownership is not.</p>
   </div>`;
 
 /**
@@ -163,33 +169,30 @@ export const payoutWalletBlock = (viewer: Viewer): string => {
     return "";
   }
   const { wallet, problem, typed } = payout;
-  const purpose =
+  // Which chain and which token, in a clause, because a merchant reading
+  // "payout address" on three stacks is looking at three different promises —
+  // and on one of them at no promise at all.
+  const arrives =
     viewer.mode === "test"
-      ? "TEST settles test USDC on Base Sepolia to this address."
+      ? " Test payments arrive here in USDC on Base Sepolia."
       : viewer.mode === "live"
-        ? "LIVE settles real USDC on Base mainnet to this address."
-        : "SANDBOX does not settle a payment, so this address is optional here.";
+        ? " Live payments arrive here in USDC on Base."
+        : " Sandbox settles no payment, so this is optional here.";
 
   return `
   <div class="lede">
     <div>
-      <h2>Where your money arrives</h2>
-      <p>${purpose} <a href="/docs/money#where-the-money-arrives">Where the money arrives, and when</a>.</p>
-      <p class="quiet">Enter only the public address. Never enter a private key or recovery phrase; Agentify will never ask for either.</p>
+      <h2>Payout address</h2>
     </div>
   </div>${wallet === null ? "" : savedAddress(wallet)}
-  <div class="lede">
-    <div>
-      <p class="quiet">${escaped(WALLET_RULE)}</p>
-    </div>
-  </div>
   <form class="issue" method="post" action="${escaped(base)}/settings/payout-wallet">
     <div>
-      <label for="payout_wallet">${wallet === null ? "The address your money arrives at" : "Change it to a different address"}</label>
+      <label for="payout_wallet">${wallet === null ? "Where your money arrives" : "Change it to a different address"}</label>
       <input id="payout_wallet" name="payout_wallet" type="text" autocomplete="off" spellcheck="false" maxlength="42" size="42" value="${escaped(typed ?? "")}" required>
       ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
+      <p class="quiet">${escaped(`${WALLET_RULE}${arrives}`)} <a href="/docs/money#where-the-money-arrives">Learn more</a>.</p>
     </div>
-    <button class="button button-compact button-primary" type="submit">${wallet === null ? "Save it" : "Change the address"}</button>
+    <button class="button button-compact button-primary" type="submit">${wallet === null ? "Save" : "Change the address"}</button>
   </form>
 `;
 };
