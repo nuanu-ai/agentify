@@ -4,6 +4,12 @@
  * Asking for a link never says whether the address is new or already belongs
  * to a merchant. Opening the URL only draws a form. The token is spent by the
  * explicit POST from that form, so a mail preview cannot sign anybody in.
+ *
+ * One sentence of instruction per page, and the control. The two facts that
+ * are claims rather than instruction stay: the link is spent once and dies in
+ * an hour, and every address is answered the same way — the second is the
+ * whole of the non-enumeration promise, and a page that stopped saying it
+ * would be keeping a promise nobody could see it keeping.
  */
 
 import type { SurfaceMode } from "@agentify/commerce-core";
@@ -29,13 +35,13 @@ export const signInScreen = (
 ${brandLockup("/")}
 <form class="gate-card" method="post" action="${escaped(base)}/sign-in">
   <h1>Sign in</h1>
-  <p>Enter your email address. We will send one link that signs you in or makes your cabinet when you open it.</p>
+  <p>Enter your email. We send one link that signs you in, or makes your cabinet.</p>
   <label for="email">Email</label>
   <input id="email" name="email" type="email" value="${escaped(email)}" autocomplete="email" autocapitalize="off" spellcheck="false" autofocus required>
   ${destinationInput(destination)}
   <button class="button button-primary" type="submit">Send me a sign-in link</button>
   ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
-  <p class="quiet">The link works once and expires after one hour. There is no password to remember or reset.</p>
+  <p class="quiet">The link works once and expires in an hour. There is no password.</p>
 </form>
 </div>`,
     mode,
@@ -53,8 +59,7 @@ export const linkRequestedScreen = (
     retryAfterSeconds === undefined ? null : Math.max(1, Math.ceil(retryAfterSeconds / 60));
   const outcome =
     minutes === null
-      ? `<p>If a message can be sent to <strong>${escaped(email)}</strong>, a sign-in link is on its way. It works once and expires after one hour.</p>
-  <p class="quiet">If nothing arrives, check your spam folder, then send another link from this page.</p>`
+      ? `<p>If a message can be sent to <strong>${escaped(email)}</strong>, a link is on its way. It works once, for an hour.</p>`
       : `<p>No new link was sent to <strong>${escaped(email)}</strong>. Three links an hour for one address is the limit.</p>
   <p class="problem">Try again in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.</p>`;
 
@@ -66,7 +71,7 @@ ${brandLockup("/")}
 <div class="gate-card">
   <h1>${minutes === null ? "Check your mail" : "Try again later"}</h1>
   ${outcome}
-  <p class="quiet">We answer every address the same way.</p>
+  <p class="quiet">We answer every address the same way. Check your spam folder.</p>
   <form method="post" action="${escaped(base)}/sign-in">
     <input name="email" type="hidden" value="${escaped(email)}">
     ${destinationInput(destination)}
@@ -91,7 +96,7 @@ export const mailUnavailableScreen = (base: string, mode: SurfaceMode): string =
 ${brandLockup("/")}
 <form class="gate-card" method="get" action="${escaped(base)}/sign-in">
   <h1>Mail is unavailable</h1>
-  <p>We could not hand your sign-in message to the mail provider. No account or session was made. Please try again in a moment.</p>
+  <p>We could not hand your message to the mail provider. No account or session was made.</p>
   <button class="button button-primary" type="submit">Try again</button>
 </form>
 </div>`,
@@ -156,10 +161,9 @@ export const merchantSetupScreen = (base: string, mode: SurfaceMode, unavailable
 ${brandLockup("/")}
 <div class="gate-card">
   <h1>Finish setting up your cabinet</h1>
-  <p>Your email is confirmed and you are signed in. Your merchant${
-    unavailable ? " could not be made because the gateway did not answer" : " is not attached yet"
+  <p>You are signed in. Your merchant${
+    unavailable ? " could not be made: the gateway did not answer" : " is not attached yet"
   }.</p>
-  <p class="quiet">Trying again uses this signed-in session.</p>
   <form method="post" action="${escaped(base)}/merchant">
     <button class="button button-primary" type="submit">Try again</button>
   </form>
