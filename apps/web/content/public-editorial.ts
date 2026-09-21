@@ -186,10 +186,9 @@ const methodologyPage = (): PublicEditorialPageModel => ({
 
 const scannerPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
   path: "/scanner",
-  eyebrow: "Scanner identity · public HTTP and passive browser observation",
+  eyebrow: "Scanner identity",
   title: "About agentify-scanner",
-  intro:
-    "This page identifies the scanner honestly and describes the outbound behavior target-site operators can expect.",
+  intro: "What our requests look like to your site, and how to stop them.",
   sections: [
     {
       id: "identity",
@@ -218,14 +217,14 @@ const scannerPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
               {
                 kind: "notice" as const,
                 content:
-                  "The production domain is active, but final legal identity remains a paid-launch blocker.",
+                  "The production domain is active. The final legal identity is not published yet.",
               },
             ]),
       ],
     },
     {
       id: "behavior",
-      title: "Canonical HTTP scanner behavior",
+      title: "What the HTTP scanner does",
       blocks: [
         {
           kind: "list",
@@ -253,7 +252,7 @@ const scannerPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
               `agentify-browser-observer/1.0 (+${new URL("/scanner", config.baseUrl).toString()})`,
             ),
             text(
-              ". Provider, budget, or challenge failures never reduce the canonical score.",
+              ". Provider, budget, or challenge failures never reduce the score.",
             ),
           ],
         },
