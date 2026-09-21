@@ -261,6 +261,72 @@ describe("18-check engine", () => {
     expect(levelForScore(score, 1)).toBe(level),
   );
 
+  it("keeps the published level available at exactly seventy percent coverage", () => {
+    expect(levelForScore(70, 0.7)).toBe("ahead_of_market");
+    expect(levelForScore(70, 0.699)).toBe("incomplete");
+  });
+
+  it("derives score and terminal state from assessed applicable weight", () => {
+    const check = (
+      id: 1 | 2,
+      status: "pass" | "fail" | "unavailable",
+      applicableWeight: number,
+      earnedWeight: number,
+    ): CheckResult => ({
+      id,
+      status,
+      nominalWeight: applicableWeight,
+      applicableWeight,
+      earnedWeight,
+      summaryCode: "test",
+      evidence: {},
+      userImpactCode: "test",
+      durationMs: 0,
+    });
+
+    expect(
+      scoreChecks([check(1, "pass", 70, 70), check(2, "fail", 30, 0)]),
+    ).toMatchObject({
+      score: 70,
+      coverage: 1,
+      level: "ahead_of_market",
+      terminalStatus: "completed",
+      applicableWeight: 100,
+      assessedWeight: 100,
+      earnedWeight: 70,
+    });
+
+    expect(
+      scoreChecks([check(1, "pass", 30, 30), check(2, "unavailable", 70, 0)]),
+    ).toMatchObject({
+      score: 100,
+      coverage: 0.3,
+      level: "incomplete",
+      terminalStatus: "partial",
+    });
+
+    expect(
+      scoreChecks([check(1, "pass", 29, 29), check(2, "unavailable", 71, 0)]),
+    ).toMatchObject({
+      score: null,
+      coverage: 0.29,
+      level: "incomplete",
+      terminalStatus: "failed",
+    });
+
+    expect(
+      scoreChecks([
+        check(1, "unavailable", 0, 0),
+        check(2, "unavailable", 0, 0),
+      ]),
+    ).toMatchObject({
+      score: null,
+      coverage: 0,
+      assessedWeight: 0,
+      terminalStatus: "failed",
+    });
+  });
+
   it("hides score below 0.30 coverage", () => {
     const checks: CheckResult[] = Array.from({ length: 18 }, (_, index) => ({
       id: (index + 1) as CheckResult["id"],

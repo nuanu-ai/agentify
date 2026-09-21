@@ -1,7 +1,12 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import type { FetchArtifact } from "@agentify/scanner";
+import {
+  evaluateChecks,
+  type FetchArtifact,
+  type ScanArtifacts,
+} from "@agentify/scanner";
 import {
   RequestBudget,
   NodePinnedTransport,
@@ -59,6 +64,111 @@ describe("safe fetch policy", () => {
       );
     }
   });
+
+  it("reports decoded payloads one byte below and above the limit without hanging", async () => {
+    const limit = 1_024;
+    const server = createServer((request, response) => {
+      const decodedSize =
+        request.url === "/below"
+          ? limit - 1
+          : request.url === "/exact"
+            ? limit
+            : limit + 1;
+      const encoded = gzipSync(Buffer.alloc(decodedSize, "a"));
+      response
+        .writeHead(200, {
+          "content-type": "text/html",
+          "content-encoding": "gzip",
+        })
+        .end(encoded);
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const port = (server.address() as AddressInfo).port;
+    const transport = new NodePinnedTransport();
+    const request = (path: string) =>
+      transport.request({
+        url: new URL(`http://unresolvable.invalid:${port}/${path}`),
+        address: { address: "127.0.0.1", family: 4 },
+        method: "GET",
+        headers: { connection: "close", "accept-encoding": "gzip" },
+        timeoutMs: 2_000,
+        connectTimeoutMs: 1_000,
+        maxDecodedBytes: limit,
+        signal: new AbortController().signal,
+      });
+    try {
+      const [below, exact, above] = await Promise.all([
+        request("below"),
+        request("exact"),
+        request("above"),
+      ]);
+      expect({
+        status: below.status,
+        errorCode: below.errorCode,
+        decodedBytes: below.decodedBytes,
+        bodyBytes: Buffer.byteLength(below.body),
+        truncated: below.truncated,
+      }).toEqual({
+        status: 200,
+        errorCode: undefined,
+        decodedBytes: limit - 1,
+        bodyBytes: limit - 1,
+        truncated: false,
+      });
+      expect({
+        decodedBytes: exact.decodedBytes,
+        bodyBytes: Buffer.byteLength(exact.body),
+        truncated: exact.truncated,
+      }).toEqual({
+        decodedBytes: limit,
+        bodyBytes: limit,
+        truncated: false,
+      });
+      expect({
+        status: above.status,
+        errorCode: above.errorCode,
+        decodedBytes: above.decodedBytes,
+        bodyBytes: Buffer.byteLength(above.body),
+        truncated: above.truncated,
+      }).toEqual({
+        status: 200,
+        errorCode: undefined,
+        decodedBytes: limit,
+        bodyBytes: limit,
+        truncated: true,
+      });
+
+      const missingRobots: FetchArtifact = {
+        ...above,
+        status: 404,
+        body: "",
+        decodedBytes: 0,
+        truncated: false,
+      };
+      const artifacts: ScanArtifacts = {
+        segment: "owner",
+        canonicalTargetUrl: above.url,
+        robots: missingRobots,
+        base: above,
+        agentProbes: {},
+        sitemap: [],
+        mcp: [],
+        oauth: [],
+      };
+      expect(
+        evaluateChecks(artifacts).find(({ id }) => id === 14),
+      ).toMatchObject({
+        status: "fail",
+        evidence: { decoded_bytes: limit, truncated: true },
+      });
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  }, 3_000);
 
   it("falls back from scheme-less HTTPS to HTTP only after a network failure", async () => {
     const protocols: string[] = [];
