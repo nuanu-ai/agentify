@@ -224,20 +224,15 @@ function BrowserFinding({
   const actionable = isActionableBrowserFinding(finding);
   const body = (
     <div className={styles.findingBody}>
+      <p>{formatRegistryCode(finding.summary_code)}</p>
       <p>
-        <strong>What we found:</strong>{" "}
-        {formatRegistryCode(finding.summary_code)}
-      </p>
-      <p>
-        <strong>Why it matters:</strong>{" "}
         {finding.user_impact_code
           ? formatRegistryCode(finding.user_impact_code)
           : browserObservationImpact(finding.id)}
       </p>
       {actionable && finding.remediation_code ? (
         <p>
-          <strong>How to improve:</strong>{" "}
-          {formatRegistryCode(finding.remediation_code)}
+          <strong>Fix:</strong> {formatRegistryCode(finding.remediation_code)}
         </p>
       ) : null}
       {surface === "report" && evidence.length > 0 ? (

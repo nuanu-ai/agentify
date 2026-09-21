@@ -17,6 +17,21 @@
 .browserSection {
   margin-top: 28px;
 }
+/* The bridge to the cabinet: the one section on this page that had no class of
+   its own and rendered as bare HTML between two designed blocks. */
+.cabinet {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  margin-top: 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  padding: clamp(20px, 4vw, 28px);
+  background: var(--surface);
+}
+.cabinet p {
+  color: var(--muted);
+}
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -81,7 +96,11 @@
   color: var(--muted);
   font-size: 0.75rem;
 }
+/* The paragraphs inside a check used to be spaced by the browser's own margin
+   on <p>. The shared base sets that to zero, so the gap is stated here. */
 .check > div {
+  display: grid;
+  gap: 14px;
   padding: 0 24px 24px 70px;
   color: var(--muted);
   line-height: 1.55;
@@ -132,6 +151,9 @@
   text-underline-offset: 3px;
 }
 .locked {
+  display: grid;
+  justify-items: start;
+  gap: 16px;
   padding: 36px;
 }
 .locked p {
