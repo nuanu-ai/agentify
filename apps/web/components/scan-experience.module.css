@@ -309,11 +309,6 @@
   overflow-wrap: anywhere;
 }
 
-.findingDetail strong {
-  color: var(--fg-2);
-  font-weight: 600;
-}
-
 .attentionBadge {
   display: inline-flex;
   align-items: center;

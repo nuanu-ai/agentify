@@ -21,7 +21,6 @@ describe("ScanExperience teaser actions", () => {
     expect(markup).toContain("Copy AI fix prompt");
     expect(markup).toContain("Download .md");
     expect(markup).toContain("needs attention");
-    expect(markup).toContain("What we found:");
     expect(markup).toContain(
       "No segment-specific structured-data type was found",
     );
@@ -44,8 +43,9 @@ describe("ScanExperience teaser actions", () => {
         segment="owner"
       />,
     );
-    expect(markup).toContain("Your result is ready");
-    expect(markup).toContain("unlock after a confirmed email");
+    expect(markup.match(/The public link shows only the domain/g)).toHaveLength(
+      1,
+    );
   });
 
   it("keeps exactly one registration form and no modal dialog on the teaser", () => {

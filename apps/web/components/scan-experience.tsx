@@ -334,7 +334,7 @@ function ProgressState({
         <span>
           {data.status === "queued" || data.status === "accepted"
             ? "Waiting for scanner capacity"
-            : `${data.progress.completed} of ${data.progress.total} canonical checks reported`}
+            : `${data.progress.completed} of ${data.progress.total} checks reported`}
         </span>
         <span className="mono">{elapsedSeconds}s · usually under 60 s</span>
       </p>
@@ -401,7 +401,6 @@ function TeaserState({
         <span>Coverage {Math.round(teaser.coverage * 100)}%</span>
       </div>
       <div className={styles.teaserActions}>
-        <span className="eyebrow">Your result is ready</span>
         <div className={styles.teaserActionRows}>
           <PublicShareActions
             enabled={publicShareEnabled}
@@ -428,13 +427,10 @@ function TeaserState({
         </div>
         <p className={styles.teaserCaption}>
           The public link shows only the domain, level, score, and scan date.
-          {remediationPromptEnabled && registrationEnabled
-            ? " Prompt and .md unlock after a confirmed email."
-            : ""}
         </p>
       </div>
       <div className={styles.findings}>
-        <span className="eyebrow">Top findings</span>
+        <h2 className="eyebrow">Top findings</h2>
         {teaser.top_findings.map((finding, index) => (
           <Finding
             code={finding}
@@ -510,9 +506,7 @@ function Finding({
           +
         </span>
       </summary>
-      <p className={styles.findingDetail}>
-        <strong>What we found:</strong> {summary}
-      </p>
+      <p className={styles.findingDetail}>{summary}</p>
     </details>
   );
 }
@@ -568,10 +562,7 @@ function AccessError({ invalid }: Readonly<{ invalid: boolean }>) {
           ? "This scan link is no longer valid"
           : "Open the original private scan link"}
       </h1>
-      <p>
-        Scan progress is private. The access token stays in this browser session
-        and is never put in a query parameter.
-      </p>
+      <p>Scan progress is private.</p>
       <Link className="button button-primary" href="/owner">
         Start a new scan
       </Link>
@@ -582,7 +573,7 @@ function AccessError({ invalid }: Readonly<{ invalid: boolean }>) {
 function LoadingState() {
   return (
     <div aria-live="polite" className={styles.loading}>
-      Reading the private scan state…
+      Reading the scan state…
     </div>
   );
 }
