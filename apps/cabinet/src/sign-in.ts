@@ -125,9 +125,18 @@ export const refusedLinkScreen = (
     signedIn === undefined
       ? "<p>Ask for a fresh link.</p>"
       : `<p>You are already signed in as ${escaped(signedIn.email)}.</p>
-  <p><a class="button button-primary" href="${escaped(base)}/${signedIn.destination}">Open your cabinet</a></p>
-  <p class="quiet">Use a different email only if you meant to switch accounts.</p>`;
-  const another = signedIn === undefined ? "Ask for another link" : "Use a different email";
+  <p><a class="button button-primary" href="${escaped(base)}/${signedIn.destination}">Open your cabinet</a></p>`;
+  // Somebody already signed in cannot be sent to the sign-in form: that route
+  // reads their session and redirects them back into the cabinet. Ending the
+  // session is the only control here that can put them at another address.
+  const another =
+    signedIn === undefined
+      ? `<form method="get" action="${escaped(base)}/sign-in">
+    <button class="button button-secondary" type="submit">Ask for another link</button>
+  </form>`
+      : `<form method="post" action="${escaped(base)}/sign-out">
+    <button class="button button-secondary" type="submit">Sign out and use another address</button>
+  </form>`;
 
   return bare(
     base,
@@ -138,9 +147,7 @@ ${brandLockup("/")}
   <h1>That link does not work</h1>
   <p>It may have expired or already been used.</p>
   ${recovery}
-  <form method="get" action="${escaped(base)}/sign-in">
-    <button class="button button-secondary" type="submit">${another}</button>
-  </form>
+  ${another}
 </div>
 </div>`,
     mode,
