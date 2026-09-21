@@ -283,8 +283,8 @@ ${
       }</p>`
     : ""
 }
-  <div class="note"><span class="mark">&#8627;</span><span>${escaped(sellingNote(cards.selling))}</span></div>
-  <div class="note"><span class="mark">&#8627;</span><span>${escaped(
+  <p class="note">${escaped(sellingNote(cards.selling))}</p>
+  <p class="note">${escaped(
     // Text and not a link, and the reason is what happens when you press one.
     // Asking for this address without paying is answered with a demand for
     // payment that travels in a header, so a browser is handed a blank page
@@ -293,7 +293,7 @@ ${
       " answers with a demand for payment rather than a page, so it is for handing to an agent or" +
       " trying from a terminal, not for opening here. A card that is off sale is refused at that" +
       " address instead of being offered.",
-  )}</span></div>
+  )}</p>
 `;
 
   return framed({ viewer, tab: "cards", title: "Product cards", selling: cards.selling, body });
@@ -363,9 +363,9 @@ ${table(
   rows,
   open ? "Nothing is open. Every order you have is finished." : "No orders yet.",
 )}
-  <div class="note"><span class="mark">&#8627;</span><span>${escaped(
+  <p class="note">${escaped(
     "One kind of order cannot appear here: a purchase that closed before anybody named a price for it — a product you said was gone, or a price question you did not answer. The row every order is drawn in carries the price it sold at, and those have none. Nothing was charged for them.",
-  )}</span></div>
+  )}</p>
 ${wanting
   .map(
     (order) => `  <div class="callout">

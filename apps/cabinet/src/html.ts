@@ -84,7 +84,7 @@ const surface = (mode: SurfaceMode): string => {
   const words = SURFACE_WORDS[mode];
   return words === null
     ? `<div ${SURFACE_MARKER_ATTRIBUTE}="${escaped(mode)}"></div>`
-    : `<div class="container"><div class="surface" ${SURFACE_MARKER_ATTRIBUTE}="${escaped(mode)}"><p class="surface-words">${escaped(words)}</p></div></div>`;
+    : `<div class="container"><div class="stack-note" ${SURFACE_MARKER_ATTRIBUTE}="${escaped(mode)}"><p class="surface-words">${escaped(words)}</p></div></div>`;
 };
 
 /** The same compact lockup on the public site, the cabinet and every auth page. */

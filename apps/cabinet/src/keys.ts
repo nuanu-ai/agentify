@@ -146,19 +146,19 @@ ${
 <thead><tr><th>Name</th><th>Made</th><th>Last call</th><th>State</th><th></th></tr></thead>
 <tbody>${keys.keys.map((entry) => keyRow(base, entry)).join("")}</tbody>
 </table></div>
-  <div class="note"><span class="mark">&#8627;</span><span>${escaped(
+  <p class="note">${escaped(
     "This is what the gateway answered with, and its answer does not say whether it is all of" +
       " them. Nothing pages this list yet and nothing here counts your keys for you — the number" +
       " above counts the rows below and nothing more.",
-  )}</span></div>
-  <div class="note"><span class="mark">&#8627;</span><span>${escaped(
+  )}</p>
+  <p class="note">${escaped(
     "The last call is written down every few minutes rather than on every one, so a key" +
       ` something is using right now shows a time that far behind. "${NO_CALLS_RECORDED}" is` +
       ' what it says rather than "never used", and the difference matters for the keys you' +
       " have had the longest: we began recording this recently, so a key older than that shows" +
       " the same thing whether or not anything has been calling with it, and this page cannot" +
       " tell you which. Any key shows a time as soon as it is used again.",
-  )}</span></div>`
+  )}</p>`
 }
   <div class="lede">
     <div>
@@ -211,10 +211,10 @@ export const newKeyScreen = (viewer: Viewer, label: string, secret: string): str
   </div>
   <div class="scroller"><p class="secret" id="new-key-secret">${escaped(secret)}</p></div>
   <p><button class="button button-primary" id="copy-new-key" type="button">Copy key</button> <span id="copy-new-key-result" role="status"></span></p>
-  <div class="note"><span class="mark">&#8627;</span><span>${escaped(
+  <p class="note">${escaped(
     "Put it where your code reads its key from before you leave this page. If your browser ever" +
       " asks to resend the form, cancel: resending asks for another key.",
-  )}</span></div>
+  )}</p>
   <p class="quiet"><a href="${escaped(base)}/keys">Back to your API keys</a></p>
   <script>
     history.replaceState(null, "", ${reloadTarget});

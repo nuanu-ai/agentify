@@ -355,42 +355,64 @@ td.quiet {
   white-space: nowrap;
 }
 
-/* --- the state dot ------------------------------------------------------ */
+/* --- the state badge ---------------------------------------------------- */
 
+/*
+ * The scanner's badge (apps/web/components/status-badge.module.css), on the
+ * cabinet's four tones. The label is the monospaced face at 0.75rem, which is
+ * what tells a state apart from the sentence beside it without a colour having
+ * to do the work, and the dot is 8 pixels rather than 6.
+ *
+ * The substantive part is the hollow one. `busy` is a sale that is under way,
+ * and an outline says "not settled yet" where a filled teal circle says the
+ * same thing a delivered order says and leaves the colour to carry the whole
+ * difference. Everything with an ending — delivered, refused, refund due — is
+ * filled. There is no pulse on the hollow dot: these pages are drawn once and
+ * do not update themselves, and an animation would be the screen claiming to
+ * be watching something.
+ *
+ * `words.ts` is untouched. The four tones are the right vocabulary; what
+ * changes here is only how one is drawn.
+ */
 .state {
   display: inline-flex;
   align-items: center;
   gap: 7px;
   white-space: nowrap;
+  color: var(--muted);
+  font: 500 0.75rem / 1.4 var(--font-mono);
 }
 
 .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
+  width: 8px;
+  height: 8px;
   flex: none;
-  background: var(--muted);
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  background: currentColor;
 }
 
+/* `ok` is the scanner's pass, `warn` its fail, `busy` its running, and `quiet`
+   its pending — muted words over a fainter dot, so that a row nobody has to do
+   anything about does not draw the eye of somebody scanning for one that does. */
 .state.ok {
   color: var(--pass);
-}
-.state.ok .dot {
-  background: var(--pass);
 }
 
 .state.warn {
   color: var(--fail);
 }
-.state.warn .dot {
-  background: var(--fail);
-}
 
 .state.busy {
   color: var(--accent);
 }
+
 .state.busy .dot {
-  background: var(--accent);
+  background: none;
+}
+
+.state.quiet .dot {
+  color: var(--faint);
 }
 
 /*
@@ -477,38 +499,45 @@ td.control {
 
 /* --- notes and summaries ------------------------------------------------ */
 
+/*
+ * Two shapes for a box with text in it, where there were three.
+ *
+ * An aside is the first: something worth saying beside the data and not worth
+ * a box, which is how the scanner draws the note over the scope of a report
+ * (report.module.css `.scopeNote`). A rule down the left margin and nothing
+ * else — no dashed border, no arrow. The dashed box and the `↳` in front of it
+ * made a sentence about the last-call column look like an alert, and there are
+ * two of them under one table.
+ *
+ * A notice is the second: something the merchant has to act on, or a claim the
+ * page is making about the stack it belongs to. That one is a tinted panel on
+ * the notice pair, and `.callout` and the banner are now literally the same
+ * rule rather than two copies of it that happened to agree.
+ */
 .note {
   margin: 0 0 32px;
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  border: var(--hairline) dashed var(--line-strong);
-  border-radius: var(--radius-card);
-  padding: 16px 20px;
+  border-left: 3px solid var(--line-strong);
+  padding-left: 12px;
   color: var(--muted);
   font-size: 0.875rem;
   line-height: 1.55;
 }
 
-.note .mark {
-  color: var(--accent);
-}
-
-.callout {
+.callout,
+.stack-note {
   margin: 0 0 32px;
-  border: var(--hairline) solid var(--line);
-  border-left: 2px solid var(--fail);
+  border-left: 3px solid var(--notice-ink);
   border-radius: var(--radius-card);
   padding: 16px 20px;
-  background: var(--surface);
+  background: var(--notice-bg);
+  color: var(--notice-ink);
   line-height: 1.55;
 }
 
 /*
- * The same box for something that went right. Only the bar changes colour: the
- * callout is where this cabinet puts a line at the top of a page, and two
- * layouts for one job would drift. An orange bar beside "Link sent" reads as a
- * problem, which is the opposite of what the sentence says.
+ * The same panel for something that went right. Only the bar changes colour: an
+ * amber bar beside "Your shop is connected" reads as a problem, which is the
+ * opposite of what the sentence says.
  */
 .callout.done {
   border-left-color: var(--pass);
@@ -525,25 +554,15 @@ td.control {
   overflow-wrap: anywhere;
 }
 
+/* The consequence over the reason, told apart by size rather than by a second
+   colour: one ink on one tint is all this panel needs. */
 .callout .why {
-  color: var(--muted);
   margin-top: 4px;
   font-size: 0.875rem;
 }
 
-.surface {
-  margin: 0 0 32px;
-  border: var(--hairline) solid var(--line);
-  border-left: 2px solid var(--fail);
-  border-radius: var(--radius-card);
-  padding: 16px 20px;
-  background: var(--surface);
-  line-height: 1.55;
-}
-
 .surface-words {
   margin: 0;
-  color: var(--muted);
   font-size: 0.875rem;
 }
 
