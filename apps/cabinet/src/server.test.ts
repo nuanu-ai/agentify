@@ -1964,8 +1964,13 @@ describe("the orders screen", () => {
     const text = readable((await browser.get("/orders?open=true")).html);
 
     expect(text).toContain("goods were not released to the buyer");
-    expect(text).toContain("retry payment for this order with a fresh authorization");
-    expect(text).toContain("if that payment settles");
+    // The order is still open, which is the whole of what a merchant has to
+    // know here: nothing is owed and nothing is theirs to do. What can still
+    // happen to it — a fresh authorization on the same purchase, and the stored
+    // goods released without a second fulfillment call — is the portal's, and
+    // this page links there. What must never appear is the suggestion that the
+    // buyer start again, which would deliver twice.
+    expect(text).toContain("The order stays open");
     expect(text).not.toContain("repeat purchase");
   });
 });

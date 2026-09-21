@@ -119,7 +119,7 @@ const FOOT = `  <footer class="foot">
         <a href="/privacy">Privacy</a>
         <a href="/terms">Terms</a>
       </nav>
-      <span class="foot-copy">&copy; 2026 Agentify</span>
+      <span class="foot-copy">© 2026 Agentify</span>
     </div>
   </footer>
 `;

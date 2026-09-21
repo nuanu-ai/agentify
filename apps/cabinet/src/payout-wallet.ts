@@ -174,7 +174,7 @@ export const payoutWalletBlock = (viewer: Viewer): string => {
   <div class="lede">
     <div>
       <h2>Where your money arrives</h2>
-      <p>${purpose} Agentify never holds a balance for you.</p>
+      <p>${purpose} <a href="/docs/money#where-the-money-arrives">Where the money arrives, and when</a>.</p>
       <p class="quiet">Enter only the public address. Never enter a private key or recovery phrase; Agentify will never ask for either.</p>
     </div>
   </div>${wallet === null ? "" : savedAddress(wallet)}

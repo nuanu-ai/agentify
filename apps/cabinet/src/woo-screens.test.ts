@@ -19,6 +19,19 @@ import { wooImportScreen } from "./woo-screens.js";
 
 const SEEN_BY: Viewer = { base: "", mode: "sandbox", who: "dmitry@example.com", confirmed: true };
 
+/**
+ * The invitation to go and repair something, found by its shape rather than by
+ * a whole sentence nobody is testing.
+ *
+ * It used to be spelled out in full, so a copy edit to a sentence this test has
+ * no opinion about would have broken a test about the order of two sections.
+ * It cannot be shortened all the way to `/import again/i`, which is what a
+ * first reading suggests: the "No verdict" block's own line reads "Import again
+ * later", and that regex would then match in the half of the page where the
+ * invitation must not appear, failing on a page that is correct.
+ */
+const SENT_TO_THE_SHOP = /shop and import again/i;
+
 describe("what the import screen says about a product the door never answered about", () => {
   it("lists it apart from a refused product, counts it apart, and sends nobody to their shop for it", () => {
     const html = wooImportScreen(SEEN_BY, {
@@ -50,12 +63,12 @@ describe("what the import screen says about a product the door never answered ab
     const before = text.slice(0, unanswered);
     const after = text.slice(unanswered);
     expect(before).toContain("Абонемент на месяц");
-    expect(before).toContain("in your shop and import again");
+    expect(before).toMatch(SENT_TO_THE_SHOP);
     expect(before).not.toContain("Access code");
     expect(after).toContain("Access code");
     expect(after).toContain("the gateway could not be reached");
     expect(after).not.toContain("Абонемент на месяц");
-    expect(after).not.toContain("in your shop and import again");
+    expect(after).not.toMatch(SENT_TO_THE_SHOP);
   });
 
   it("keeps an operator-approval finding among the gateway's escaped publication reasons", () => {

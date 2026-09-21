@@ -55,7 +55,7 @@ export const linkRequestedScreen = (
     minutes === null
       ? `<p>If a message can be sent to <strong>${escaped(email)}</strong>, a sign-in link is on its way. It works once and expires after one hour.</p>
   <p class="quiet">If nothing arrives, check your spam folder, then send another link from this page.</p>`
-      : `<p>No new link was sent to <strong>${escaped(email)}</strong>.</p>
+      : `<p>No new link was sent to <strong>${escaped(email)}</strong>. Three links an hour for one address is the limit.</p>
   <p class="problem">Try again in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.</p>`;
 
   return bare(
@@ -66,7 +66,7 @@ ${brandLockup("/")}
 <div class="gate-card">
   <h1>${minutes === null ? "Check your mail" : "Try again later"}</h1>
   ${outcome}
-  <p class="quiet">You can request up to three links for one address in one hour. We answer every address the same way.</p>
+  <p class="quiet">We answer every address the same way.</p>
   <form method="post" action="${escaped(base)}/sign-in">
     <input name="email" type="hidden" value="${escaped(email)}">
     ${destinationInput(destination)}
@@ -159,7 +159,7 @@ ${brandLockup("/")}
   <p>Your email is confirmed and you are signed in. Your merchant${
     unavailable ? " could not be made because the gateway did not answer" : " is not attached yet"
   }.</p>
-  <p class="quiet">Trying again uses this signed-in session. You do not need another email.</p>
+  <p class="quiet">Trying again uses this signed-in session.</p>
   <form method="post" action="${escaped(base)}/merchant">
     <button class="button button-primary" type="submit">Try again</button>
   </form>

@@ -10,7 +10,7 @@ export const accountSettings = (viewer: Viewer): string => `
       <p>${escaped(
         `You sign in as ${viewer.who}. A one-time link sent to this address is the way back into your cabinet.`,
       )}</p>
-      <p class="quiet">There is no password. There is no way to change the address itself yet.</p>
+      <p class="quiet">There is no way to change the address itself yet.</p>
     </div>
   </div>
 `;

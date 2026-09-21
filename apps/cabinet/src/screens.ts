@@ -130,6 +130,16 @@ const framed = (frame: Frame): string =>
  * merchant is answerable for, because another promise happened to be checked
  * first, is the kind of truncation that has to be said or not done.
  */
+/**
+ * The link at the end of a sentence the portal finishes.
+ *
+ * These screens say the consequence — the part a merchant acts on while they
+ * are looking at the control — and the portal carries the mechanism. Written
+ * out rather than escaped because both halves are this file's own literals;
+ * everything that came from a document still goes through `escaped`.
+ */
+const restOf = (href: string, words: string): string => ` <a href="${href}">${words}</a>.`;
+
 const cardAside = (entry: MerchantCard): string => {
   const facts: string[] = [];
 
@@ -247,9 +257,9 @@ export const cardsScreen = (
   <div class="lede">
     <div>
       <h1>Product cards</h1>
-      <p>${escaped(
-        `${countOf(cards.cards.length, "card")} published, ${paused} paused by you.` +
-          " Your code creates and updates a card; here you can see it and stop it.",
+      <p>${escaped(`${countOf(cards.cards.length, "card")} published, ${paused} paused by you.`)}${restOf(
+        "/docs/quickstart#_3-describe-the-product-with-a-card",
+        "How your code publishes one",
       )}</p>
     </div>
     <div class="actions">
@@ -283,16 +293,14 @@ ${
       }</p>`
     : ""
 }
-  <p class="note">${escaped(sellingNote(cards.selling))}</p>
+  <p class="note">${escaped(sellingNote(cards.selling))}${sellingRest(cards.selling)}</p>
   <p class="note">${escaped(
     // Text and not a link, and the reason is what happens when you press one.
     // Asking for this address without paying is answered with a demand for
     // payment that travels in a header, so a browser is handed a blank page
     // and a merchant who clicked reads that as their card being broken.
-    "The line under each product is the address an agent buys it at. Asking for it without paying" +
-      " answers with a demand for payment rather than a page, so it is for handing to an agent or" +
-      " trying from a terminal, not for opening here. A card that is off sale is refused at that" +
-      " address instead of being offered.",
+    "The line under each product is the address an agent buys it at: for handing to an agent or" +
+      " trying from a terminal, not for opening here.",
   )}</p>
 `;
 
@@ -311,13 +319,19 @@ ${
 const sellingNote = (selling: MerchantCardList["selling"]): string => {
   switch (selling) {
     case "departed":
-      return "You have left. The cards are off sale, the orders that were open closed with you, and the money for anything paid for and not delivered is yours to return. Selling does not start again from this page.";
+      return "You have left. The orders that were open closed with you, and the money for anything paid for and not delivered is yours to return.";
     case "paused":
-      return "All selling is stopped: no new order is taken for any card, and the orders you have already accepted play out as usual. Resuming leaves the cards you paused yourself paused.";
+      return "All selling is stopped: no new order is taken for any card, and the orders you have already accepted play out as usual.";
     case "open":
-      return "A pause takes the card off sale without abandoning orders: the ones you already accepted play out as usual. No new orders arrive while it is paused.";
+      return "A pause takes the card off sale without abandoning orders: the ones you already accepted play out as usual.";
   }
 };
+
+/** Where the rest of what each of those words means is written out. */
+const sellingRest = (selling: MerchantCardList["selling"]): string =>
+  selling === "departed"
+    ? restOf("/docs/faq#can-i-leave-altogether", "What leaving settles and what it does not")
+    : restOf("/docs/faq#can-i-pause-the-selling", "What a pause does to the orders you have");
 
 export const ordersScreen = (
   viewer: Viewer,
@@ -370,7 +384,7 @@ ${wanting
   .map(
     (order) => `  <div class="callout">
     <div class="what">Order <span class="mono">${escaped(order.id)}</span> ${escaped(ORDER_WORDS[order.status].text)}</div>
-    <div class="why">${escaped(whyItNeedsYou(order.status))}</div>
+    <div class="why">${escaped(whyItNeedsYou(order.status))}${whereTheRestIs(order.status)}</div>
   </div>
 `,
   )
@@ -428,7 +442,23 @@ const testOrders = (orders: OrderList): string => {
 const whyItNeedsYou = (status: OrderList["orders"][number]["status"]): string =>
   status === "refund_due"
     ? "The money was taken, the delivery window ran out and nothing shipped. You return it from your own wallet — we recorded the amount and the order. A late delivery still clears the debt."
-    : "Your integration returned the goods, but payment did not settle, so the goods were not released to the buyer. The order stays open. The same buyer can retry payment for this order with a fresh authorization; if that payment settles, the stored goods are released without another fulfillment call.";
+    : "Your integration returned the goods, but payment did not settle, so the goods were not released to the buyer. The order stays open.";
+
+/**
+ * Where the rest of it is written, for the one of the two that has a rest.
+ *
+ * A refund is a thing to go and do, and the sentence above is the whole of what
+ * there is to know before doing it. Held goods are not: what can still happen
+ * to that order is a payment somebody else makes, and the portal's page on it
+ * carries what settles and what does not.
+ */
+const whereTheRestIs = (status: OrderList["orders"][number]["status"]): string =>
+  status === "refund_due"
+    ? ""
+    : restOf(
+        "/docs/orders#you-delivered-and-the-payment-did-not-execute",
+        "What can still happen to it",
+      );
 
 export const receiptsScreen = (
   viewer: Viewer,
@@ -456,7 +486,10 @@ export const receiptsScreen = (
   <div class="lede">
     <div>
       <h1>Receipts</h1>
-      <p>A receipt is written when the goods for an order are released: the amount, the moment the money moved, the moment we set that price for the sale, and the instant the price behind it was true. Those three are three different moments, and on a product whose price is asked for at the purchase they can be minutes apart.</p>
+      <p>A receipt is written when the goods for an order are released.${restOf(
+        "/docs/money#what-proves-a-sale-happened",
+        "What a receipt records, and which moment each column is",
+      )}</p>
       <p>This is not the whole of the money. A purchase whose goods have not gone out has no receipt yet, and in the mode where the money moves at the purchase that means a payment you have already been sent is not on this page. Neither is a refund you owe. Both are on Orders, and until they end there the list below is short of them. A purchase that ended before any payment leaves no receipt at all, and none is written while it is unknown whether the buyer was charged.</p>
       ${testWarning(receipts, viewer.mode)}
     </div>
@@ -482,7 +515,7 @@ export const receiptsScreen = (
 ${table(
   ["Receipt", "Order", "Product", "Amount", "Outcome", "Paid", "Price set", "Price true as of"],
   rows,
-  "No receipts yet. One is written when the goods for an order are released — a purchase that has been paid for and not delivered is on Orders, not here.",
+  "No receipts yet. One is written when the goods for an order are released.",
 )}
 `;
 

@@ -155,8 +155,18 @@ const noKeysYet = (state: ShopState): string => {
   return "";
 };
 
+/**
+ * What a supported product is, said once on the origin.
+ *
+ * It was said three times — here, in the import form beside it, and again in
+ * the settings block on another screen — which is three copies of one rule and
+ * two of them free to go stale. This is the copy that stays, because this is
+ * the page the Connect and the Import are on; the settings block links here.
+ * There is no WooCommerce page in the portal and this pass does not make one:
+ * the connector is experimental and is not the acceptance gate for anything.
+ */
 const WHAT_CONNECTING_DOES = `<p>This experimental connector sells one narrow kind of WooCommerce product in TEST: a published USD virtual download with one protected file, unlimited access, no managed stock and shop tax calculation disabled.</p>
-  <p class="quiet">Connect grants access to the shop. Import is a separate step that publishes supported products as cards. Your shop asks for approval on its own screen; Agentify never asks for your WooCommerce password.</p>`;
+  <p class="quiet">Connect grants access to the shop; Import publishes supported products as cards.</p>`;
 
 /** The page a merchant connects from, and comes back to. */
 export const wooScreen = (viewer: Viewer, view: WooView): string => {
@@ -440,7 +450,7 @@ const summaryOf = (
 const publishedBlock = (outcomes: readonly Published[]): string => `  <div class="lede">
     <div>
       <h2>Published</h2>
-      <p class="quiet">Each is one of your cards, carrying what this import read from your shop. Which of them can be bought this page does not say; your cards screen does. A card you paused stays paused through an import, and while all selling is stopped no card takes an order.</p>
+      <p class="quiet">Each is one of your cards. Whether it can be bought is on your cards screen.</p>
       <ul>${outcomes
         .map(
           (one) =>
@@ -463,7 +473,7 @@ const refusedBlock = (outcomes: readonly Refused[]): string => `  <div class="le
     <div>
       <h2>Refused</h2>
       <p class="quiet">These are our own publishing rules, and the sentences under each product are the ones the publish door gave. Change what they name in your shop and import again.</p>
-      <p class="quiet">Where one of them counts the characters in a description, the number is of your product's description with the formatting taken out and the runs of whitespace collapsed: the tags your shop stores around the words are not part of what a card carries, so they are not part of what is counted. Your shop's own editor will show you a larger number than this page does, and the difference is the markup.</p>
+      <p class="quiet">The count is of your description with markup removed, so your shop's editor shows a larger number.</p>
       <ul>${outcomes
         .map(
           (
@@ -530,7 +540,7 @@ const notAttemptedBlock = (outcomes: readonly NotAttempted[]): string => `  <div
 const skippedBlock = (skipped: readonly SkippedProduct[]): string => `  <div class="lede">
     <div>
       <h2>Left in the shop</h2>
-      <p class="quiet">Nothing was published for these, and nothing about them was changed in your shop.</p>
+      <p class="quiet">Nothing was published for these.</p>
       <ul>${skipped
         .map(
           (one) =>
@@ -583,7 +593,7 @@ export const wooSettingsBlock = (base: string, state: ShopTile): string => {
       }
       <p><a href="${escaped(base)}/woocommerce">Your shop</a></p>`
         : state.kind === "none"
-          ? `<p>The experimental WooCommerce connector imports only published USD virtual products with one protected download file, unlimited access, no managed stock and shop tax calculation disabled. Connect the shop first, then import supported products as cards.</p>
+          ? `<p>This experimental connector publishes only one narrow kind of WooCommerce product as a card, and the shop screen says which. Connect a shop first, then import its supported products.</p>
       <p><a href="${escaped(base)}/woocommerce">Connect a WooCommerce shop</a></p>`
           : `${noKeysYet(state)}
       <p><a href="${escaped(base)}/woocommerce">${state.kind === "waiting" ? "Check the connection" : "Connect again"}</a></p>`;
