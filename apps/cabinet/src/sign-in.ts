@@ -35,7 +35,7 @@ ${brandLockup("/")}
   ${destinationInput(destination)}
   <button class="button button-primary" type="submit">Send me a sign-in link</button>
   ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
-  <p class="quiet">Every sign-in gets its own link. It opens once and expires in an hour, so there is nothing to keep and no password to remember.</p>
+  <p class="quiet">Every sign-in gets its own link. It opens once and expires an hour after it is sent, so there is nothing to keep and no password to remember.</p>
 </form>
 </div>`,
     mode,
@@ -53,9 +53,9 @@ export const linkRequestedScreen = (
     retryAfterSeconds === undefined ? null : Math.max(1, Math.ceil(retryAfterSeconds / 60));
   const outcome =
     minutes === null
-      ? `<p>A sign-in link is on its way to <strong>${escaped(email)}</strong>. It opens once and expires in an hour.</p>
+      ? `<p>A sign-in link is on its way to the email address <strong>${escaped(email)}</strong>. It opens once and expires an hour after it is sent.</p>
   <p class="quiet">If nothing arrives, look in your spam folder, then send another link from this page.</p>`
-      : `<p>No new link was sent to <strong>${escaped(email)}</strong>. One address can ask for three links an hour, and this one has asked for three.</p>
+      : `<p>No new link was sent to <strong>${escaped(email)}</strong>. One email address gets three links an hour, and this one has had its three.</p>
   <p class="problem">Try again in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.</p>`;
 
   return bare(
@@ -81,16 +81,23 @@ ${brandLockup("/")}
   );
 };
 
-/** An honest provider outage: no message was accepted and no account was made. */
+/**
+ * A handover that failed, said without claiming to know what became of it.
+ *
+ * The postman answers "refused" both for a provider that rejected the message
+ * and for one that never answered inside the timeout, and a message of the
+ * second kind may well have been delivered. What this cabinet does know is
+ * that it cannot confirm the send and that the attempt wrote nothing down.
+ */
 export const mailUnavailableScreen = (base: string, mode: SurfaceMode): string =>
   bare(
     base,
-    "We could not send your sign-in link",
+    "We could not confirm your sign-in link went out",
     `<div class="gate">
 ${brandLockup("/")}
 <form class="gate-card" method="get" action="${escaped(base)}/sign-in">
-  <h1>We could not send your sign-in link</h1>
-  <p>Something on our side failed while the message was going out, so no link was sent. The attempt made nothing: no account and no session. Try again in a moment.</p>
+  <h1>We could not confirm your sign-in link went out</h1>
+  <p>Something failed while the message was going out, and we cannot tell whether it reached you. Nothing was created on this attempt — no account and no session. Try again in a moment, and if nothing arrives, check that the email address is spelled right.</p>
   <button class="button button-primary" type="submit">Try again</button>
 </form>
 </div>`,
@@ -123,8 +130,8 @@ export const refusedLinkScreen = (
   const heading = signedIn === undefined ? "That link no longer works" : "You are already signed in";
   const recovery =
     signedIn === undefined
-      ? `<p>A sign-in link opens once and expires an hour after it is sent, so this one has either been used already or run out of time.</p>
-  <p>Nothing is lost. Access belongs to your email address rather than to any one link, so ask for a new link and you are back in.</p>`
+      ? `<p>A sign-in link opens once and expires an hour after it is sent. This one no longer opens anything.</p>
+  <p>Nothing is lost: access belongs to your email address, not to any one link. Ask for a new one.</p>`
       : `<p>This link has already done its work, and you are signed in as ${escaped(signedIn.email)}.</p>
   <p><a class="button button-primary" href="${escaped(base)}/${signedIn.destination}">Open your cabinet</a></p>
   <p class="quiet">Every link opens once, so the next time you sign in, ask for a new one.</p>`;
@@ -166,10 +173,10 @@ ${brandLockup("/")}
   <h1>Finish setting up your cabinet</h1>
   <p>You are signed in${
     unavailable
-      ? ", but your cabinet could not be finished: a part of our system did not answer"
+      ? ", but your cabinet could not be finished because of a fault on our side"
       : ", and your cabinet is not finished yet"
   }. Nothing is lost.</p>
-  <p class="quiet">Your session stays open, so press Try again and you will not need another link.</p>
+  <p class="quiet">You are still signed in, so Try again does not need another link.</p>
   <form method="post" action="${escaped(base)}/merchant">
     <button class="button button-primary" type="submit">Try again</button>
   </form>

@@ -1040,15 +1040,18 @@ describe("the passwordless cabinet door", () => {
   });
 
   it("says when the provider refused the message and leaves no identity state", async () => {
-    const { browser, rows } = await started({ mailTakes: "refused" });
+    const { browser, rows, identity } = await started({ mailTakes: "refused" });
 
     const answered = await browser.post("/sign-in", { email: "new@example.com" });
 
     expect(answered.status).toBe(503);
-    expect(readable(answered.html)).toMatch(/no link was sent/i);
+    // The postman answers the same way for a rejection and for a timeout, and
+    // a message of the second kind may have arrived, so the page may not claim
+    // that nothing was sent. What it can claim is that nothing was written.
+    expect(readable(answered.html)).toMatch(/could not confirm/i);
     expect(readable(answered.html)).toMatch(/no account and no session/i);
     expect(answered.headers.getSetCookie()).toStrictEqual([]);
-    expect(rows.cabinet_accounts).toHaveLength(1);
+    expect(await identity.byEmail("new@example.com")).toBeNull();
     expect(rows.cabinet_sessions).toStrictEqual([]);
     expect(rows.cabinet_verifications).toStrictEqual([]);
     expect(rows.cabinet_link_sends).toStrictEqual([]);
