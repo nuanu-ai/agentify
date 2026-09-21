@@ -327,8 +327,9 @@ export default function AgenticShopPage() {
               </div>
               <h3>Connect your catalog.</h3>
               <p>
-                Use the SDK to publish the offer, price and fulfilment promises.
-                The WooCommerce connector is experimental.
+                Use the <a href="/docs/quickstart">SDK</a> to publish the
+                offer, price and fulfilment promises. The WooCommerce connector
+                is experimental.
               </p>
               <span className={styles.stepOutput}>
                 Catalog. Ordering. Confirmation.
@@ -543,7 +544,10 @@ export default function AgenticShopPage() {
               </p>
               <ul>
                 <li>Choose the seller name buyers see</li>
-                <li>Integrate through the Agentify SDK</li>
+                <li>
+                  Integrate through the{" "}
+                  <a href="/docs/quickstart">Agentify SDK</a>
+                </li>
                 <li>Publish and verify offers in the test channel</li>
               </ul>
               <div className={styles.entryNote}>
