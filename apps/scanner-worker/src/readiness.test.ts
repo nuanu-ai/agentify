@@ -124,4 +124,27 @@ describe("worker readiness refresh", () => {
     });
     expect(events.databaseError).toBe(true);
   });
+
+  it("uses the production clock after a successful heartbeat", async () => {
+    const state = health();
+    const before = Date.now();
+
+    await expect(
+      refreshWorkerReadiness({
+        health: state,
+        probeDatabase: async () => true,
+        probeQueue: async () => true,
+        writeHeartbeat: async () => undefined,
+      }),
+    ).resolves.toEqual({
+      ready: true,
+      queueConnected: true,
+      databaseConnected: true,
+    });
+
+    const heartbeatAt = Date.parse(state.lastHeartbeatAt ?? "");
+    expect(heartbeatAt).toBeGreaterThanOrEqual(before);
+    expect(heartbeatAt).toBeLessThanOrEqual(Date.now());
+    expect(state.ready).toBe(true);
+  });
 });
