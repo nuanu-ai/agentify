@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import { CONSENT_POLICY_VERSION } from "@agentify/analytics";
 import { CHECK_DEFINITIONS } from "@agentify/scanner-contracts";
+import { REPORT_CABINET_HANDOFF_COOKIE } from "@agentify/scanner-contracts/report-cabinet-handoff";
 import { reportIdentityTokenHash } from "@agentify/scanner-contracts/report-identity";
 import {
   consentSnapshots,
@@ -2109,12 +2110,15 @@ describe("P4 cabinet-owned scanner identity", () => {
       token: link.token,
     });
     expect(finalized.status).toBe(200);
-    expect(await finalized.json()).toMatchObject({
+    const finalizedPayload = await finalized.json();
+    expect(finalizedPayload).toMatchObject({
       status: "verified",
       report_url: `/report/${scan.id}`,
     });
+    expect(finalizedPayload).not.toHaveProperty("cabinet_action_url");
     const reportCookie = finalized.headers.get("set-cookie")!;
     expect(reportCookie).toContain(REPORT_SESSION_COOKIE);
+    expect(reportCookie).toContain(REPORT_CABINET_HANDOFF_COOKIE);
     expect(await db.select().from(consentSnapshots)).toEqual(beforeConsent);
     expect(await db.select().from(deliveryOutbox)).toEqual(beforeDelivery);
     expect(
@@ -2142,15 +2146,92 @@ describe("P4 cabinet-owned scanner identity", () => {
       report_url: `/report/${scan.id}`,
     });
 
+    const sessionCookie = reportCookie.split(";")[0]!;
+    const sessionRecoveryRequest = (state: string) =>
+      handleScannerRecoveryRequest(
+        new NextRequest("http://localhost:3000/api/v2/auth/recover", {
+          method: "POST",
+          headers: {
+            origin: "http://localhost:3000",
+            "content-type": "application/json",
+            cookie: sessionCookie,
+          },
+          body: JSON.stringify({ action: "session", state }),
+        }),
+      );
+
+    const { scan: secondOwnedScan } = await createFreshCompletedScan(
+      "same-owner-second-report",
+    );
+    const secondOwnedState = "S".repeat(43);
+    await db.insert(leadScans).values({
+      leadId,
+      scanId: secondOwnedScan.id,
+      siteOwnershipClaim: true,
+    });
+    await db.insert(waitlistEntries).values({
+      id: createUuidV7(),
+      leadId,
+      scanId: secondOwnedScan.id,
+    });
+    await db
+      .update(scans)
+      .set({ leadId, finishedAt: new Date(Date.now() + 60_000) })
+      .where(eq(scans.id, secondOwnedScan.id));
+    await db.insert(registrationIntents).values({
+      id: createUuidV7(),
+      scanId: secondOwnedScan.id,
+      sessionId: secondOwnedScan.sessionId,
+      callbackStateHash: sha256(secondOwnedState),
+      emailNormalizedCiphertext: encryptEmail(email, config.encryptionKey),
+      emailLookupHash: hmacHex(config.hmacSecret, "email", email),
+      phoneE164Ciphertext: encryptEmail("+14155550142", config.encryptionKey),
+      phoneLookupHash: hmacHex(config.hmacSecret, "phone", "+14155550142"),
+      role: "developer",
+      siteOwnershipClaim: true,
+      datasetReuseAcknowledged: true,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+
+    const secondOwned = await sessionRecoveryRequest(secondOwnedState);
+    expect(secondOwned.status).toBe(200);
+    expect(await secondOwned.json()).toMatchObject({
+      report_url: `/report/${secondOwnedScan.id}`,
+    });
+
+    const recoveredExact = await sessionRecoveryRequest(link.state);
+    expect(recoveredExact.status).toBe(200);
+    expect(await recoveredExact.json()).toMatchObject({
+      report_url: `/report/${scan.id}`,
+    });
+
+    const unknownState = await sessionRecoveryRequest("U".repeat(43));
+    expect(unknownState.status).toBe(202);
+
+    const retiredStateRecovery = await emailRecoveryRequest(
+      email,
+      "U".repeat(43),
+    );
+    expect(retiredStateRecovery.status).toBe(202);
+    const retiredStateLink = latestLink(email, "recovery");
+    expect(
+      (
+        await db
+          .select({ scanId: scannerRecoveryIntents.scanId })
+          .from(scannerRecoveryIntents)
+          .where(
+            eq(scannerRecoveryIntents.tokenHash, retiredStateLink.tokenHash),
+          )
+      )[0],
+    ).toEqual({ scanId: secondOwnedScan.id });
+
     const { scan: foreignScan } = await createFreshCompletedScan(
       "foreign-recovery-state",
     );
     const foreignState = "F".repeat(43);
-    await db.insert(registrationIntents).values({
-      id: createUuidV7(),
-      scanId: foreignScan.id,
-      sessionId: foreignScan.sessionId,
-      callbackStateHash: sha256(foreignState),
+    const foreignLeadId = createUuidV7();
+    await db.insert(leads).values({
+      id: foreignLeadId,
       emailNormalizedCiphertext: encryptEmail(
         "foreign-report-owner@example.com",
         config.encryptionKey,
@@ -2160,24 +2241,53 @@ describe("P4 cabinet-owned scanner identity", () => {
         "email",
         "foreign-report-owner@example.com",
       ),
-      phoneE164Ciphertext: encryptEmail("+14155550141", config.encryptionKey),
-      phoneLookupHash: hmacHex(config.hmacSecret, "phone", "+14155550141"),
       role: "developer",
-      datasetReuseAcknowledged: true,
-      expiresAt: new Date(Date.now() - 60_000),
+      verifiedAt: new Date(),
+      firstSegment: foreignScan.segment,
+      firstSessionId: foreignScan.sessionId,
     });
-    const foreignHint = await handleScannerRecoveryRequest(
-      new NextRequest("http://localhost:3000/api/v2/auth/recover", {
-        method: "POST",
-        headers: {
-          origin: "http://localhost:3000",
-          "content-type": "application/json",
-          cookie: reportCookie.split(";")[0]!,
-        },
-        body: JSON.stringify({ action: "session", state: foreignState }),
-      }),
-    );
+    await db.insert(scannerRecoveryIntents).values({
+      id: createUuidV7(),
+      tokenHash: "R".repeat(43),
+      stateHash: sha256(foreignState),
+      emailLookupHash: hmacHex(
+        config.hmacSecret,
+        "email",
+        "foreign-report-owner@example.com",
+      ),
+      leadId: foreignLeadId,
+      scanId: foreignScan.id,
+      expiresAt: new Date(Date.now() + 60_000),
+      activatedAt: new Date(),
+    });
+    const foreignHint = await sessionRecoveryRequest(foreignState);
     expect(foreignHint.status).toBe(202);
+
+    const ambiguousState = "A".repeat(43);
+    await db.insert(scannerRecoveryIntents).values([
+      {
+        id: createUuidV7(),
+        tokenHash: "B".repeat(43),
+        stateHash: sha256(ambiguousState),
+        emailLookupHash: hmacHex(config.hmacSecret, "email", email),
+        leadId,
+        scanId: scan.id,
+        expiresAt: new Date(Date.now() + 60_000),
+        activatedAt: new Date(),
+      },
+      {
+        id: createUuidV7(),
+        tokenHash: "C".repeat(43),
+        stateHash: sha256(ambiguousState),
+        emailLookupHash: hmacHex(config.hmacSecret, "email", email),
+        leadId,
+        scanId: secondOwnedScan.id,
+        expiresAt: new Date(Date.now() + 60_000),
+        activatedAt: new Date(),
+      },
+    ]);
+    const ambiguousHint = await sessionRecoveryRequest(ambiguousState);
+    expect(ambiguousHint.status).toBe(202);
 
     const reportSessionToken = reportCookie
       .split(";")[0]!

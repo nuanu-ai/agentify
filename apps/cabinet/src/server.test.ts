@@ -34,6 +34,10 @@ import {
   theMerchantKey,
 } from "@agentify/commerce-gateway/testing";
 import {
+  REPORT_CABINET_HANDOFF_COOKIE,
+  sealReportCabinetHandoff,
+} from "@agentify/scanner-contracts/report-cabinet-handoff";
+import {
   type Card,
   checksummedAddressOf,
   type MerchantKey,
@@ -60,6 +64,9 @@ const PAY_TO = "0x0000000000000000000000000000000000000001";
 
 /** The name the session cookie travels under. */
 const COOKIE = "agentify.session_token";
+const REPORT_IDENTITY_SECRET = "a-dedicated-report-secret-at-least-32-characters";
+const REPORT_SCAN_ID = "0199a2fd-4f2a-7ccd-90ba-d7266c7b5133";
+const REPORT_PATH = `/report/${REPORT_SCAN_ID}`;
 const SESSION_ENDED = "/sign-in?reason=session-ended";
 const SESSION_ENDED_UNSAVED = "/sign-in?reason=session-ended-unsaved";
 
@@ -607,6 +614,307 @@ const actionIn = (message: Message | undefined): URL => {
   if (found === undefined) throw new Error("the message carried no action URL");
   return new URL(found);
 };
+
+const sealedHandoff = (
+  action: URL,
+  options: { readonly email?: string; readonly now?: Date } = {},
+): string => {
+  const sealed = sealReportCabinetHandoff({
+    actionUrl: action.toString(),
+    email: options.email ?? PERSON,
+    now: options.now ?? new Date(),
+    publicOrigin: action.origin,
+    scanId: REPORT_SCAN_ID,
+    secret: REPORT_IDENTITY_SECRET,
+  });
+  if (sealed === null) throw new Error("the report handoff fixture could not be sealed");
+  return sealed;
+};
+
+const handoffCookie = (sealed: string): string => `${REPORT_CABINET_HANDOFF_COOKIE}=${sealed}`;
+
+const expectHandoffCleared = (answer: Visit, secure = false): void => {
+  const cleared = answer.headers
+    .getSetCookie()
+    .find((line) => line.startsWith(`${REPORT_CABINET_HANDOFF_COOKIE}=`));
+  expect(cleared).toBeDefined();
+  expect(cleared).toContain("Path=/cabinet");
+  expect(cleared).toContain("HttpOnly");
+  expect(cleared).toContain("SameSite=Strict");
+  expect(cleared).toContain("Expires=Thu, 01 Jan 1970 00:00:00 GMT");
+  if (secure) expect(cleared).toContain("Secure");
+  else expect(cleared).not.toContain("Secure");
+};
+
+describe("the report-to-cabinet handoff", () => {
+  const start = async (options: Starting = {}): Promise<Running> =>
+    await started({
+      ...options,
+      base: "/cabinet",
+      cabinet: {
+        REPORT_IDENTITY_SECRET,
+        COOKIE_SECURE: "true",
+        ...(options.cabinet ?? {}),
+      },
+    });
+
+  const freshLink = async (running: Running, email = PERSON): Promise<URL> => {
+    const requested = await running.browser.post("/cabinet/sign-in", { email });
+    expect(requested.status).toBe(202);
+    return actionIn(running.mails.at(-1));
+  };
+
+  it("opens the exact owner's existing link from the signed cookie and sends no mail", async () => {
+    const running = await start();
+    const action = await freshLink(running);
+    const token = action.searchParams.get("token") ?? "";
+    const beforeMails = running.mails.length;
+
+    const opened = await running.browser
+      .withRawCookie(handoffCookie(sealedHandoff(action)))
+      .post("/cabinet/report-handoff", { email: PERSON, report_path: REPORT_PATH });
+
+    expect(opened.status).toBe(303);
+    expect(opened.to).toBe("/cabinet/cards");
+    expectHandoffCleared(opened, true);
+    expect(running.mails).toHaveLength(beforeMails);
+    expect(
+      (await running.identity.whoIs(`${COOKIE}=${running.browser.sessionToken()}`))?.email,
+    ).toBe(PERSON);
+    expect(await running.identity.openLink(token)).toStrictEqual({ status: "refused" });
+  });
+
+  it("lets a matching live session through without requesting or opening a link, rotating a key, or renewing the session", async () => {
+    const issued = vi.fn();
+    const forgotten = vi.fn();
+    const running = await start({
+      client: (real) => ({
+        ...real,
+        issueCabinetKey: async () => {
+          issued();
+          return await real.issueCabinetKey();
+        },
+        forgetCabinetKey: async () => {
+          forgotten();
+          return await real.forgetCabinetKey();
+        },
+      }),
+    });
+    await running.browser.signIn();
+    const action = await freshLink(running);
+    const token = action.searchParams.get("token") ?? "";
+    const sessionToken = running.browser.sessionToken();
+    const sessions = structuredClone(running.rows.cabinet_sessions);
+    const issueCalls = issued.mock.calls.length;
+    const forgetCalls = forgotten.mock.calls.length;
+    const requestLink = vi.spyOn(running.identity, "requestLink");
+    const openLink = vi.spyOn(running.identity, "openLink");
+
+    const answer = await running.browser
+      .withRawCookie(`${COOKIE}=${sessionToken}; ${handoffCookie(sealedHandoff(action))}`)
+      .post("/cabinet/report-handoff", {
+        email: "  ＤＭＩＴＲＹ＠ＥＸＡＭＰＬＥ．ＣＯＭ  ",
+        report_path: REPORT_PATH,
+      });
+
+    expect(answer.status).toBe(303);
+    expect(answer.to).toBe("/cabinet/cards");
+    expectHandoffCleared(answer, true);
+    expect(requestLink).not.toHaveBeenCalled();
+    expect(openLink).not.toHaveBeenCalled();
+    expect(issued).toHaveBeenCalledTimes(issueCalls);
+    expect(forgotten).toHaveBeenCalledTimes(forgetCalls);
+    expect(running.browser.sessionToken()).toBe(sessionToken);
+    expect(running.rows.cabinet_sessions).toStrictEqual(sessions);
+    expect(await running.identity.openLink(token)).toMatchObject({ status: "opened" });
+  });
+
+  it("falls back to a prefilled ordinary form without mail for an absent, tampered, mismatched, or expired handoff", async () => {
+    const running = await start();
+    const action = await freshLink(running);
+    const valid = sealedHandoff(action);
+    const expired = sealedHandoff(action, {
+      now: new Date(Date.now() - 2 * 60 * 60 * 1_000),
+    });
+    const requestLink = vi.spyOn(running.identity, "requestLink");
+    const beforeMails = running.mails.length;
+    const cases = [
+      {
+        name: "absent",
+        browser: running.browser,
+        email: PERSON,
+        reportPath: REPORT_PATH,
+      },
+      {
+        name: "tampered",
+        browser: running.browser.withRawCookie(
+          handoffCookie(`${valid.slice(0, -1)}${valid.endsWith("A") ? "B" : "A"}`),
+        ),
+        email: PERSON,
+        reportPath: REPORT_PATH,
+      },
+      {
+        name: "email mismatch",
+        browser: running.browser.withRawCookie(handoffCookie(valid)),
+        email: OTHER,
+        reportPath: REPORT_PATH,
+      },
+      {
+        name: "report mismatch",
+        browser: running.browser.withRawCookie(handoffCookie(valid)),
+        email: PERSON,
+        reportPath: "/report/0199a2fd-4f2a-7ccd-90ba-d7266c7b5999",
+      },
+      {
+        name: "expired",
+        browser: running.browser.withRawCookie(handoffCookie(expired)),
+        email: PERSON,
+        reportPath: REPORT_PATH,
+      },
+    ];
+
+    for (const example of cases) {
+      const answer = await example.browser.post("/cabinet/report-handoff", {
+        email: example.email,
+        report_path: example.reportPath,
+      });
+      expect(answer.status, example.name).toBe(200);
+      expect(answer.to, example.name).toBeNull();
+      expect(answer.html, example.name).toContain('action="/cabinet/sign-in"');
+      expect(answer.html, example.name).toContain(
+        `name="email" type="email" value="${example.email}"`,
+      );
+      expectHandoffCleared(answer, true);
+    }
+    expect(requestLink).not.toHaveBeenCalled();
+    expect(running.mails).toHaveLength(beforeMails);
+    expect(await running.identity.openLink(action.searchParams.get("token") ?? "")).toMatchObject({
+      status: "opened",
+    });
+  });
+
+  it("shows the prefilled form when the otherwise valid one-use handoff was replayed", async () => {
+    const running = await start();
+    const action = await freshLink(running);
+    const sealed = sealedHandoff(action);
+    const firstBrowser = await running.another();
+    const beforeMails = running.mails.length;
+
+    const first = await firstBrowser
+      .withRawCookie(handoffCookie(sealed))
+      .post("/cabinet/report-handoff", { email: PERSON, report_path: REPORT_PATH });
+    expect(first.status).toBe(303);
+
+    const replay = await running.browser
+      .withRawCookie(handoffCookie(sealed))
+      .post("/cabinet/report-handoff", { email: PERSON, report_path: REPORT_PATH });
+
+    expect(replay.status).toBe(200);
+    expect(replay.html).toContain(`name="email" type="email" value="${PERSON}"`);
+    expectHandoffCleared(replay, true);
+    expect(running.mails).toHaveLength(beforeMails);
+  });
+
+  it("does not carry a session when the opened link belongs to a different email", async () => {
+    const running = await start();
+    await running.identity.make(OTHER, THE_MERCHANT);
+    const otherAction = await freshLink(running, OTHER);
+    const handoffSignedForOwner = sealedHandoff(otherAction, { email: PERSON });
+    const beforeMails = running.mails.length;
+
+    const refused = await running.browser
+      .withRawCookie(handoffCookie(handoffSignedForOwner))
+      .post("/cabinet/report-handoff", { email: PERSON, report_path: REPORT_PATH });
+
+    expect(refused.status).toBe(200);
+    expect(refused.html).toContain(`name="email" type="email" value="${PERSON}"`);
+    expect(running.browser.sessionToken()).toBeNull();
+    expectHandoffCleared(refused, true);
+    expect(running.mails).toHaveLength(beforeMails);
+  });
+
+  it("does not accept another account as the owner, but a valid handoff replaces its browser session", async () => {
+    const running = await start();
+    await running.identity.make(OTHER, THE_MERCHANT);
+    await running.browser.signIn(OTHER);
+    const otherSession = running.browser.sessionToken();
+    const action = await freshLink(running, PERSON);
+    const sealed = sealedHandoff(action);
+    const tampered = `${sealed.slice(0, -1)}${sealed.endsWith("A") ? "B" : "A"}`;
+    const beforeMails = running.mails.length;
+
+    const refused = await running.browser
+      .withRawCookie(`${COOKIE}=${otherSession}; ${handoffCookie(tampered)}`)
+      .post("/cabinet/report-handoff", { email: PERSON, report_path: REPORT_PATH });
+    expect(refused.status).toBe(200);
+    expect(refused.html).toContain(`name="email" type="email" value="${PERSON}"`);
+
+    const switched = await running.browser
+      .withRawCookie(`${COOKIE}=${otherSession}; ${handoffCookie(sealed)}`)
+      .post("/cabinet/report-handoff", { email: PERSON, report_path: REPORT_PATH });
+
+    expect(switched.status).toBe(303);
+    expect(switched.to).toBe("/cabinet/cards");
+    expect(running.browser.sessionToken()).not.toBe(otherSession);
+    expect(
+      (await running.identity.whoIs(`${COOKIE}=${running.browser.sessionToken()}`))?.email,
+    ).toBe(PERSON);
+    expect(running.mails).toHaveLength(beforeMails);
+  });
+
+  it("keeps the origin gate in front of the handoff without spending its link", async () => {
+    const running = await start();
+    const action = await freshLink(running);
+    const sealed = sealedHandoff(action);
+
+    const forged = await running.browser
+      .withRawCookie(handoffCookie(sealed))
+      .from("https://evil.example")
+      .post("/cabinet/report-handoff", { email: PERSON, report_path: REPORT_PATH });
+    expect(forged.status).toBe(403);
+
+    const honest = await running.browser
+      .withRawCookie(handoffCookie(sealed))
+      .post("/cabinet/report-handoff", { email: PERSON, report_path: REPORT_PATH });
+    expect(honest.status).toBe(303);
+  });
+
+  it("clears an unspent handoff when its signed-in browser signs out", async () => {
+    const running = await start();
+    await running.browser.signIn();
+    const action = await freshLink(running);
+    const token = action.searchParams.get("token") ?? "";
+
+    const signedOut = await running.browser
+      .withRawCookie(
+        `${COOKIE}=${running.browser.sessionToken()}; ${handoffCookie(sealedHandoff(action))}`,
+      )
+      .post("/cabinet/sign-out");
+
+    expect(signedOut.status).toBe(303);
+    expect(signedOut.to).toBe("/cabinet/sign-in");
+    expectHandoffCleared(signedOut, true);
+    expect(await running.identity.openLink(token)).toMatchObject({ status: "opened" });
+  });
+
+  it("clears an unspent handoff when a stale cabinet session signs out", async () => {
+    const running = await start();
+    await running.browser.signIn();
+    const sessionToken = running.browser.sessionToken() ?? "";
+    const action = await freshLink(running);
+    const token = action.searchParams.get("token") ?? "";
+    await running.identity.signOut(`${COOKIE}=${sessionToken}`);
+
+    const signedOut = await running.browser
+      .withRawCookie(`${COOKIE}=${sessionToken}; ${handoffCookie(sealedHandoff(action))}`)
+      .post("/cabinet/sign-out");
+
+    expect(signedOut.status).toBe(303);
+    expect(signedOut.to).toBe("/cabinet/sign-in");
+    expectHandoffCleared(signedOut, true);
+    expect(await running.identity.openLink(token)).toMatchObject({ status: "opened" });
+  });
+});
 
 describe("the passwordless cabinet door", () => {
   it("asks only for an address and answers known and unknown people identically", async () => {

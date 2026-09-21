@@ -156,7 +156,6 @@ export const authFinalizeResponseSchema = z
   .object({
     status: z.literal("verified"),
     report_url: z.string().startsWith("/report/"),
-    cabinet_action_url: z.url().max(2048).optional(),
   })
   .strict();
 export type AuthFinalizeResponse = z.infer<typeof authFinalizeResponseSchema>;

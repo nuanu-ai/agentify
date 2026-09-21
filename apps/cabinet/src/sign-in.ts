@@ -20,6 +20,7 @@ export const signInScreen = (
   mode: SurfaceMode,
   destination: CabinetDestination = "default",
   problem?: string,
+  email = "",
 ): string =>
   bare(
     base,
@@ -29,7 +30,7 @@ export const signInScreen = (
   <h1>${brandLockup("/")}</h1>
   <p>Enter your email address. We will send one link that signs you in or makes your cabinet when you open it.</p>
   <label for="email">Email</label>
-  <input id="email" name="email" type="email" autocomplete="email" autocapitalize="off" spellcheck="false" autofocus required>
+  <input id="email" name="email" type="email" value="${escaped(email)}" autocomplete="email" autocapitalize="off" spellcheck="false" autofocus required>
   ${destinationInput(destination)}
   <button class="primary" type="submit">Send me a sign-in link</button>
   ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}

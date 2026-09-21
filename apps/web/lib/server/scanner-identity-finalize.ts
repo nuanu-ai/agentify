@@ -105,6 +105,7 @@ async function findAuthority(
 }
 
 export type ScannerIdentityFinalization = Readonly<{
+  email: string;
   scanId: string;
   sessionToken: string;
   cabinetActionUrl?: string;
@@ -250,6 +251,7 @@ export async function verifyAndFinalizeScannerIdentity(
     // fresh cabinet link when the one-shot transition could not be returned.
   }
   return {
+    email: authority.email,
     scanId: finalized.scanId,
     sessionToken: finalized.sessionToken,
     ...(cabinetActionUrl ? { cabinetActionUrl } : {}),

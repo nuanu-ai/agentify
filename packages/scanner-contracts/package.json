@@ -11,6 +11,10 @@
     "./report-identity": {
       "types": "./src/report-identity.ts",
       "default": "./src/report-identity.ts"
+    },
+    "./report-cabinet-handoff": {
+      "types": "./src/report-cabinet-handoff.ts",
+      "default": "./src/report-cabinet-handoff.ts"
     }
   },
   "scripts": {

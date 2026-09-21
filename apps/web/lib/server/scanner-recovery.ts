@@ -32,6 +32,11 @@ type RecoveryTarget = Readonly<{
   scanId: string;
 }>;
 
+type RecoverableLead = Readonly<{
+  id: string;
+  emailLookupHash: string;
+}>;
+
 async function lockScannerEmail(
   tx: DatabaseTransaction,
   emailLookupHash: string,
@@ -47,7 +52,7 @@ async function recoverableLead(
 ) {
   return (
     await tx
-      .select({ id: leads.id })
+      .select({ id: leads.id, emailLookupHash: leads.emailLookupHash })
       .from(leads)
       .where(
         and(
@@ -63,28 +68,60 @@ async function recoverableLead(
 
 async function recoveryTargetForLead(
   tx: DatabaseTransaction,
-  lead: { id: string },
+  lead: RecoverableLead,
   state?: string,
+  latestWhenStateUnknown = false,
 ): Promise<RecoveryTarget | undefined> {
   if (state) {
-    const hintedScan = (
+    const stateHash = sha256(state);
+    const registration = (
       await tx
-        .select({ scanId: scans.id })
+        .select({
+          scanId: registrationIntents.scanId,
+          emailLookupHash: registrationIntents.emailLookupHash,
+        })
         .from(registrationIntents)
-        .innerJoin(scans, eq(scans.id, registrationIntents.scanId))
-        .where(
-          and(
-            eq(registrationIntents.callbackStateHash, sha256(state)),
-            inArray(scans.status, ["completed", "partial"]),
-          ),
-        )
+        .where(eq(registrationIntents.callbackStateHash, stateHash))
         .limit(1)
     )[0];
-    if (hintedScan) {
+    const recoveries = await tx
+      .select({
+        scanId: scannerRecoveryIntents.scanId,
+        leadId: scannerRecoveryIntents.leadId,
+        emailLookupHash: scannerRecoveryIntents.emailLookupHash,
+      })
+      .from(scannerRecoveryIntents)
+      .where(eq(scannerRecoveryIntents.stateHash, stateHash))
+      .limit(2);
+    if (recoveries.length > 1) return undefined;
+    const recovery = recoveries[0];
+    if (!registration && !recovery) {
+      if (!latestWhenStateUnknown) return undefined;
+    } else {
+      const registrationScan =
+        registration?.emailLookupHash === lead.emailLookupHash
+          ? registration.scanId
+          : undefined;
+      const recoveryScan =
+        recovery?.leadId === lead.id &&
+        recovery.emailLookupHash === lead.emailLookupHash
+          ? recovery.scanId
+          : undefined;
+      if (!registrationScan && !recoveryScan) return undefined;
+      if (
+        registrationScan !== undefined &&
+        recoveryScan !== undefined &&
+        registrationScan !== recoveryScan
+      ) {
+        return undefined;
+      }
+      const scanId = registrationScan ?? recoveryScan;
+      if (scanId === undefined) return undefined;
       const owned = (
         await tx
           .select({ scanId: leadScans.scanId })
           .from(leadScans)
+          .innerJoin(scans, eq(scans.id, leadScans.scanId))
           .innerJoin(
             waitlistEntries,
             and(
@@ -95,16 +132,13 @@ async function recoveryTargetForLead(
           .where(
             and(
               eq(leadScans.leadId, lead.id),
-              eq(leadScans.scanId, hintedScan.scanId),
+              eq(leadScans.scanId, scanId),
+              inArray(scans.status, ["completed", "partial"]),
             ),
           )
           .limit(1)
       )[0];
-      if (!owned) return undefined;
-      return {
-        leadId: lead.id,
-        scanId: hintedScan.scanId,
-      };
+      return owned ? { leadId: lead.id, scanId } : undefined;
     }
   }
 
@@ -143,7 +177,7 @@ async function recoveryTargetForEmail(
   state?: string,
 ) {
   const lead = await recoverableLead(tx, emailLookupHash);
-  return lead ? await recoveryTargetForLead(tx, lead, state) : undefined;
+  return lead ? await recoveryTargetForLead(tx, lead, state, true) : undefined;
 }
 
 export async function requestScannerReportRecovery(input: {
@@ -385,7 +419,7 @@ export async function recoverScannerReportSession(
   return await getDatabase().db.transaction(async (tx) => {
     const lead = (
       await tx
-        .select({ id: leads.id })
+        .select({ id: leads.id, emailLookupHash: leads.emailLookupHash })
         .from(leads)
         .where(
           and(

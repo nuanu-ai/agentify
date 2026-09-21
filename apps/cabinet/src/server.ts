@@ -24,7 +24,7 @@
  * something a stranger can read off it.
  *
  * What stands above the gate is written out in that decision and is short: the
- * sign-in, the page a mailed link lands on, the stylesheet,
+ * sign-in, the page a mailed link lands on, the report handoff, the stylesheet,
  * the health probe, the shop's own callback and the address a shop sends a
  * browser back to. Each is there because a session cannot reach it, and each
  * answers the same thing to everybody — which is the property that makes the
@@ -32,6 +32,10 @@
  */
 
 import { readFileSync } from "node:fs";
+import {
+  openReportCabinetHandoff,
+  REPORT_CABINET_HANDOFF_COOKIE,
+} from "@agentify/scanner-contracts/report-cabinet-handoff";
 import express, { type Express, type Request, type Response } from "express";
 import type { CabinetDestination, CabinetIdentity, Person } from "./cabinet-entry.js";
 import type { CabinetConfig } from "./config.js";
@@ -148,6 +152,8 @@ const KEY_AT_SIGN_IN_MS = 2_000;
  * the same shape the account command holds an address to, for the same reason.
  */
 const LOOKS_LIKE_AN_ADDRESS = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
+
+const normalizedEmail = (value: string): string => value.trim().normalize("NFKC").toLowerCase();
 
 const cabinetDestinationIn = (value: unknown): CabinetDestination =>
   value === "settings" || value === "woocommerce" ? value : "default";
@@ -358,6 +364,27 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     for (const name of identity.cookieNames) {
       response.clearCookie(name, { path: cookiePath });
     }
+  };
+
+  /** Removes the short-lived report handoff on every outcome that reads it. */
+  const forgetReportHandoff = (response: Response): void => {
+    response.clearCookie(REPORT_CABINET_HANDOFF_COOKIE, {
+      path: cookiePath,
+      httpOnly: true,
+      sameSite: "strict",
+      secure: config.cookieSecure,
+    });
+  };
+
+  const reportHandoffIn = (header: string | undefined): string | null => {
+    const values: string[] = [];
+    for (const pair of (header ?? "").split(";")) {
+      const at = pair.indexOf("=");
+      if (at === -1 || pair.slice(0, at).trim() !== REPORT_CABINET_HANDOFF_COOKIE) continue;
+      const value = pair.slice(at + 1).trim();
+      if (value !== "") values.push(value);
+    }
+    return values.length === 1 ? (values[0] ?? null) : null;
   };
 
   const carriesIdentityCookie = (header: string | undefined): boolean => {
@@ -750,6 +777,46 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       .send(merchantSetupScreen(base, config.surfaceMode, true));
   };
 
+  /**
+   * Exchanges the scanner's short-lived browser handoff for the cabinet link
+   * it already issued. The posted address and report path are untrusted: the
+   * signed cookie has to bind both before its one-use token is opened.
+   */
+  app.post(`${base}/report-handoff`, async (request, response) => {
+    const form = (request.body ?? {}) as { email?: unknown; report_path?: unknown };
+    const email = typeof form.email === "string" ? form.email : "";
+    const reportPath = typeof form.report_path === "string" ? form.report_path : "";
+    forgetReportHandoff(response);
+    response.setHeader("cache-control", "private, no-store");
+
+    const signedIn = await identity.whoIs(request.headers.cookie);
+    if (signedIn !== null && normalizedEmail(signedIn.email) === normalizedEmail(email)) {
+      response.redirect(303, signedIn.merchant === null ? `${base}/merchant` : `${base}/cards`);
+      return;
+    }
+
+    const sealed = reportHandoffIn(request.headers.cookie);
+    const handoff =
+      sealed === null || config.reportIdentitySecret === null
+        ? null
+        : openReportCabinetHandoff(sealed, {
+            email,
+            reportPath,
+            secret: config.reportIdentitySecret,
+            now: new Date(),
+          });
+    if (handoff !== null) {
+      const opened = await identity.openLink(handoff.token);
+      if (opened.status === "opened" && normalizedEmail(opened.person.email) === handoff.email) {
+        carryCookies(response, opened.setCookies);
+        await sendOpenedPerson(response, opened.person, opened.destination);
+        return;
+      }
+    }
+
+    response.type("html").send(signInScreen(base, config.surfaceMode, "default", undefined, email));
+  });
+
   const linkResponseHeaders = (_request: Request, response: Response, next: () => void): void => {
     response.setHeader("cache-control", "private, no-store");
     // no-referrer makes Chromium send Origin:null on the native POST, which the
@@ -798,9 +865,25 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     await sendOpenedPerson(response, opened.person, opened.destination);
   });
 
+  // The rows go, not merely the cookies. Clearing a cookie asks the browser to
+  // forget something; anybody who copied the value still holds a session.
+  // Every identifier the request carried, not one of them: a browser sends
+  // cookies of one name longest-path first and then oldest first, so the one
+  // this person is signed in on is not necessarily the first. Sign-out also
+  // clears a pending report handoff when the cabinet session has already
+  // expired or been revoked. It stays above the session gate so a stale tab
+  // cannot leave that fresh re-entry proof in the browser.
+  app.post(`${base}/sign-out`, async (request, response) => {
+    await identity.signOut(request.headers.cookie);
+    console.log("[cabinet] a session was signed out");
+    forget(response);
+    forgetReportHandoff(response);
+    response.redirect(303, `${base}/sign-in`);
+  });
+
   /**
    * The gate. Everything below this line needs a session; everything above it
-   * is the sign-in, the page a link lands on, the stylesheet,
+   * is the sign-in, the page a link lands on, the report handoff, the stylesheet,
    * the health probe, the shop's callback and the address a shop sends a browser
    * back to.
    *
@@ -847,18 +930,6 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
 
   app.get(`${base}/`, (request, response) => {
     response.redirect(303, whoIs(request).merchant === null ? `${base}/merchant` : `${base}/cards`);
-  });
-
-  app.post(`${base}/sign-out`, async (request, response) => {
-    // The rows go, not merely the cookies. Clearing a cookie asks the browser
-    // to forget something; anybody who copied the value still holds a session.
-    // Every identifier the request carried, not one of them: a browser sends
-    // cookies of one name longest-path first and then oldest first, so the one
-    // this person is signed in on is not necessarily the first.
-    await identity.signOut(request.headers.cookie);
-    console.log("[cabinet] a session was signed out");
-    forget(response);
-    response.redirect(303, `${base}/sign-in`);
   });
 
   app.get(`${base}/merchant`, (request, response) => {

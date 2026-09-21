@@ -1,4 +1,9 @@
 import { authFinalizeResponseSchema } from "@agentify/scanner-contracts";
+import {
+  REPORT_CABINET_HANDOFF_COOKIE,
+  REPORT_CABINET_HANDOFF_TTL_SECONDS,
+  sealReportCabinetHandoff,
+} from "@agentify/scanner-contracts/report-cabinet-handoff";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -25,6 +30,30 @@ export function attachReportSessionCookie(
     path: "/",
     maxAge: 30 * 86_400,
   });
+}
+
+export function attachReportCabinetHandoffCookie(
+  response: NextResponse,
+  input: {
+    actionUrl: string;
+    email: string;
+    now: Date;
+    production: boolean;
+    publicOrigin: string;
+    scanId: string;
+    secret: string;
+  },
+): boolean {
+  const sealed = sealReportCabinetHandoff(input);
+  if (sealed === null) return false;
+  response.cookies.set(REPORT_CABINET_HANDOFF_COOKIE, sealed, {
+    httpOnly: true,
+    secure: input.production,
+    sameSite: "strict",
+    path: "/cabinet",
+    maxAge: REPORT_CABINET_HANDOFF_TTL_SECONDS,
+  });
+  return true;
 }
 
 export async function POST(request: NextRequest) {
@@ -60,9 +89,6 @@ export async function POST(request: NextRequest) {
     const payload = authFinalizeResponseSchema.parse({
       status: "verified",
       report_url: `/report/${encodeURIComponent(finalized.scanId)}`,
-      ...(finalized.cabinetActionUrl
-        ? { cabinet_action_url: finalized.cabinetActionUrl }
-        : {}),
     });
     const response = NextResponse.json(payload, {
       headers: { "Cache-Control": "private, no-store" },
@@ -73,6 +99,17 @@ export async function POST(request: NextRequest) {
       finalized.sessionToken,
       config.production,
     );
+    if (finalized.cabinetActionUrl && config.REPORT_IDENTITY_SECRET) {
+      attachReportCabinetHandoffCookie(response, {
+        actionUrl: finalized.cabinetActionUrl,
+        email: finalized.email,
+        now: new Date(),
+        production: config.production,
+        publicOrigin: config.appBaseUrl,
+        scanId: finalized.scanId,
+        secret: config.REPORT_IDENTITY_SECRET,
+      });
+    }
     return response;
   } catch {
     return errorResponse(

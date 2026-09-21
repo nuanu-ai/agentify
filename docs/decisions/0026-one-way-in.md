@@ -52,16 +52,37 @@ When the scanner has just confirmed an address, it asks the cabinet — over the
 internal route it uses for its own links, reachable only on the compose network
 and authenticated by a secret the two processes share — to issue a link for
 that address instead of mailing it. The report's **Open your cabinet** control
-submits that token directly to the cabinet's ordinary same-origin verification
-POST. This explicit click opens the cabinet; there is no second confirmation
+submits only the report path and confirmed address to one same-origin cabinet
+entry POST. This explicit click opens the cabinet; there is no second confirmation
 page, second email or repeated address entry. The token has the same cabinet
-purpose, single use and lifetime as a mailed cabinet link. It stays in the
-current browser memory and form body, not a navigation URL or persistent browser
-storage. Rendering the report never submits it automatically. Mailed links still
-land on a page with one explicit confirmation, so mail previews cannot consume
-them. Pressed later, from a report
-cookie days old, the same control has the cabinet mail the link instead: the
-cookie is a right to read a report, not proof that anybody is at the mailbox.
+purpose, single use and lifetime as a mailed cabinet link. After report
+confirmation the scanner puts it in one host-only `HttpOnly`, `SameSite=Strict`
+cookie scoped to `/cabinet` for no longer than that one-hour lifetime. The value
+is authenticated with the private scanner-to-cabinet secret and binds the
+normalized address, exact report, token, issue time and expiry. It is absent
+from the response body, report page and form. One newer handoff replaces an
+older one; an ordinary reload does not lose it. The cabinet clears it after
+every entry decision and on sign-out. It grants no report access, widens no
+cabinet session and cannot renew one. Rendering the report never submits it
+automatically. Mailed links still land on a page with one explicit confirmation,
+so mail previews cannot consume them. If that exact registration or recovery
+link is opened again while its exact state-to-report mapping is still retained
+and a matching report session is live, the scanner opens that report directly
+without another confirmation and without consuming or reissuing the mail token.
+Without that matching session, first use still requires confirmation and an
+expired or refused token leads to recovery. Session lookup never substitutes a
+different or latest report for an unknown, foreign or ambiguous state. Email
+recovery may use the owner's latest report only when the supplied state is truly
+unknown or retired, and only a newly mailed recovery token proves access; a
+known state for another owner remains refused. Exact intent evidence is retained
+for seven days, while report sessions last up to thirty, so this repeat-link
+shortcut is bounded by the shorter retained mapping and does not extend PII
+retention. Pressed later, from a report cookie days
+old, the same control first uses a live cabinet session only when its address
+matches the report, then a valid fresh handoff. With neither it opens the
+ordinary email form, already filled with the report address; mail is sent only
+after the person explicitly asks there. A report cookie is a right to read a
+report, not proof that anybody is at the mailbox.
 The assertion crossing the boundary is "this address was confirmed now, by
 us", it crosses through one route that answers only the scanner's process,
 and nothing on the public origin can ask for a link to be returned rather
@@ -130,8 +151,10 @@ sequenceDiagram
     Note over S: the address was confirmed in this same request
     S->>C: issue a link for the cabinet's door (internal route)
     C-->>S: the link, not mailed
-    S-->>B: the report has one cabinet form, token held in memory
-    B->>C: presses Open your cabinet, same-origin POST with the token
+    S-->>B: sets a signed one-hour HttpOnly handoff cookie for /cabinet
+    Note over B: the report form contains only its path and confirmed address
+    B->>C: presses Open your cabinet, same-origin POST carries the cookie
+    Note over C: matching session first; otherwise verify the exact handoff
     Note over C: continues as the cabinet's door, from "token consumed"
 ```
 
@@ -170,9 +193,9 @@ Every way in.
 | scanner, asks for the full report | P0, P1, P2 | nothing | first diagram | the report; P0 is now P1 |
 | scanner, report opened within thirty days | any | report cookie | the cookie is read; no mail | the report |
 | scanner, cookie gone or expired | any | nothing | "recover": address, link mailed for the report; one answer for every address | the report, after the link |
-| report, control pressed right after confirming | P1 | a confirmation in this request | second diagram: token issued, not mailed; one explicit POST, no intermediate confirmation | the cabinet, name screen; now P2 |
+| report, control pressed right after confirming | P1 | a confirmation in this request | second diagram: token issued, not mailed; one explicit POST, no intermediate confirmation; ordinary reload preserves it until expiry | the cabinet, name screen; now P2 |
 | the same | P2 | the same | second diagram | the cabinet, cards |
-| report, control pressed days later | P1, P2 | report cookie only | the control posts the address to the cabinet's door; link mailed | the cabinet, after the link |
+| report, control pressed days later | P1, P2 | report cookie; perhaps a matching cabinet session | a matching cabinet session opens it; otherwise the prefilled cabinet door asks before mailing | the cabinet, directly or after the link |
 | Agentic Shop page, control pressed | any | nothing | the cabinet's door, address typed | the cabinet, after the link |
 | cabinet, the one field | P0 | nothing | third diagram: person, merchant, key | name screen |
 | cabinet, the one field | P1 | nothing | third diagram: merchant, key | name screen |

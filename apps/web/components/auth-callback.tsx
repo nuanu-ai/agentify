@@ -4,10 +4,6 @@ import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { authFinalizeResponseSchema } from "@agentify/scanner-contracts";
-import {
-  clearReportCabinetHandoff,
-  rememberReportCabinetHandoff,
-} from "../lib/client/report-cabinet-handoff";
 import { Brand } from "./brand";
 import {
   TURNSTILE_TOKEN_EVENT,
@@ -26,6 +22,29 @@ type CallbackState =
   | "error"
   | "unavailable";
 
+type SessionLookupFallback = "ready" | "recovery";
+type CapturedEntry =
+  | Readonly<{ kind: "link"; state: string; token: string }>
+  | Readonly<{ kind: "recovery"; state?: string }>
+  | Readonly<{ kind: "error" }>;
+
+export function sessionLookupResult(
+  payload: unknown,
+  fallback: SessionLookupFallback,
+):
+  Readonly<{ reportUrl: string }> | Readonly<{ state: SessionLookupFallback }> {
+  if (
+    typeof payload === "object" &&
+    payload !== null &&
+    "report_url" in payload &&
+    typeof payload.report_url === "string" &&
+    /^\/report\/[0-9a-f-]+$/i.test(payload.report_url)
+  ) {
+    return { reportUrl: payload.report_url };
+  }
+  return { state: fallback };
+}
+
 export function AuthCallback({
   turnstileSiteKey,
 }: Readonly<{ turnstileSiteKey: string | null }>) {
@@ -35,40 +54,54 @@ export function AuthCallback({
   const [recoveryState, setRecoveryState] = useState<string>();
   const [email, setEmail] = useState("");
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
-  const initialized = useRef(false);
+  const capturedEntry = useRef<CapturedEntry | undefined>(undefined);
+  const sessionLookup = useRef<AbortController | undefined>(undefined);
 
   useEffect(() => {
-    const capture = () => {
-      const fragment = new URLSearchParams(window.location.hash.slice(1));
-      const query = new URLSearchParams(window.location.search);
-      const callbackState = fragment.get("state");
-      const token = fragment.get("token");
-      const legacyState = query.get("state");
-      const recoveryRequested = query.get("recover") === "1";
-      window.history.replaceState({}, "", "/auth/callback");
-      if (callbackState && token) {
-        setLink({ state: callbackState, token });
-        setState("ready");
+    const capture = (reuseCaptured: boolean) => {
+      sessionLookup.current?.abort();
+      setState("loading");
+      let entry = reuseCaptured ? capturedEntry.current : undefined;
+      if (!entry) {
+        const fragment = new URLSearchParams(window.location.hash.slice(1));
+        const query = new URLSearchParams(window.location.search);
+        const callbackState = fragment.get("state");
+        const token = fragment.get("token");
+        const legacyState = query.get("state");
+        const recoveryRequested = query.get("recover") === "1";
+        entry =
+          callbackState && token
+            ? { kind: "link", state: callbackState, token }
+            : (legacyState && /^[A-Za-z0-9_-]{43}$/.test(legacyState)) ||
+                recoveryRequested
+              ? { kind: "recovery", state: legacyState ?? undefined }
+              : { kind: "error" };
+        capturedEntry.current = entry;
+        window.history.replaceState({}, "", "/auth/callback");
+      }
+      if (entry.kind === "link") {
+        setLink({ state: entry.state, token: entry.token });
+        startSessionLookup(entry.state, "ready");
         return;
       }
-      if (
-        (legacyState && /^[A-Za-z0-9_-]{43}$/.test(legacyState)) ||
-        recoveryRequested
-      ) {
-        const stateHint = legacyState ?? undefined;
-        setRecoveryState(stateHint);
-        void checkExistingSession(stateHint);
+      if (entry.kind === "recovery") {
+        setRecoveryState(entry.state);
+        startSessionLookup(entry.state, "recovery");
         return;
       }
       setLink(undefined);
       setState("error");
     };
-    if (!initialized.current) {
-      initialized.current = true;
-      capture();
-    }
-    window.addEventListener("hashchange", capture);
-    return () => window.removeEventListener("hashchange", capture);
+    capture(true);
+    const recapture = () => {
+      capturedEntry.current = undefined;
+      capture(false);
+    };
+    window.addEventListener("hashchange", recapture);
+    return () => {
+      sessionLookup.current?.abort();
+      window.removeEventListener("hashchange", recapture);
+    };
   }, []);
 
   useEffect(() => {
@@ -80,7 +113,21 @@ export function AuthCallback({
     return () => window.removeEventListener(TURNSTILE_TOKEN_EVENT, receive);
   }, []);
 
-  async function checkExistingSession(stateHint?: string) {
+  function startSessionLookup(
+    stateHint: string | undefined,
+    fallback: SessionLookupFallback,
+  ) {
+    sessionLookup.current?.abort();
+    const controller = new AbortController();
+    sessionLookup.current = controller;
+    void checkExistingSession(stateHint, fallback, controller.signal);
+  }
+
+  async function checkExistingSession(
+    stateHint: string | undefined,
+    fallback: SessionLookupFallback,
+    signal: AbortSignal,
+  ) {
     try {
       const response = await fetch("/api/v2/auth/recover", {
         method: "POST",
@@ -91,29 +138,28 @@ export function AuthCallback({
         }),
         credentials: "same-origin",
         cache: "no-store",
+        signal,
       });
+      if (signal.aborted) return;
       if (response.ok && response.status === 200) {
         const payload: unknown = await response.json();
-        if (
-          typeof payload === "object" &&
-          payload !== null &&
-          "report_url" in payload &&
-          typeof payload.report_url === "string" &&
-          payload.report_url.startsWith("/report/")
-        ) {
-          window.location.replace(payload.report_url);
+        if (signal.aborted) return;
+        const result = sessionLookupResult(payload, fallback);
+        if ("reportUrl" in result) {
+          window.location.replace(result.reportUrl);
           return;
         }
       }
     } catch {
+      if (signal.aborted) return;
       // The email recovery form remains available when session lookup fails.
     }
-    setState("recovery");
+    if (signal.aborted) return;
+    setState(fallback);
   }
 
   async function confirm() {
     if (!link || (state !== "ready" && state !== "unavailable")) return;
-    clearReportCabinetHandoff();
     setState("verifying");
     try {
       const response = await fetch("/api/v2/auth/finalize", {
@@ -129,8 +175,9 @@ export function AuthCallback({
       }
       if (!response.ok) {
         if (response.status === 401) {
-          setRecoveryState(link.state);
-          await checkExistingSession(link.state);
+          setRecoveryState(undefined);
+          setState("loading");
+          startSessionLookup(link.state, "recovery");
           return;
         }
         setLink(undefined);
@@ -141,16 +188,6 @@ export function AuthCallback({
         await response.json(),
       );
       if (!payload.success) throw new Error("verification_unavailable");
-      if (
-        payload.data.cabinet_action_url &&
-        !rememberReportCabinetHandoff(
-          payload.data.report_url,
-          payload.data.cabinet_action_url,
-          window.location.origin,
-        )
-      ) {
-        clearReportCabinetHandoff();
-      }
       router.replace(payload.data.report_url);
     } catch {
       setState("unavailable");
