@@ -22,7 +22,6 @@ import {
   canonicalSummaryCopy,
 } from "@agentify/remediation";
 
-import { useCountUp } from "../lib/count-up";
 import { Brand } from "./brand";
 import { BrowserObservations } from "./browser-observations";
 import { CopyRemediationPrompt } from "./copy-remediation-prompt";
@@ -368,7 +367,6 @@ function TeaserState({
   registrationEnabled: boolean;
   scanId: string;
 }>) {
-  const displayScore = useCountUp(data.teaser?.score ?? 0);
   const teaser = data.teaser;
   if (!teaser) return null;
   const provisional = teaser.coverage < 0.7 || teaser.level === "incomplete";
@@ -390,7 +388,7 @@ function TeaserState({
         </div>
         {teaser.score === null ? null : (
           <div className={styles.score}>
-            {displayScore}
+            {teaser.score}
             <span>/100</span>
           </div>
         )}
