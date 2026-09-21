@@ -3,7 +3,11 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-expected_root=/home/dmitry/.codex-project-storage/woocommerce-lab
+# Where the shop's data and baseline live on the fixture host. A deployment
+# fact, not source: supply it, because a guessed directory is a reset pointed
+# at the wrong tree.
+: "${WOO_LAB_DATA_ROOT:?set WOO_LAB_DATA_ROOT to the directory holding the lab data and baseline}"
+expected_root="$WOO_LAB_DATA_ROOT"
 env_file=.env
 mode="${1:-restore}"
 

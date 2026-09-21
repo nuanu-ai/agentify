@@ -1,20 +1,34 @@
+---
+# The group structure is the repository's; the addresses and login names are
+# the operator's and are not kept here. Each host reads two variables that this
+# file does not define. Supply them from an untracked file beside this one:
+#
+#   cp deploy/ansible/inventory.local.yml.example deploy/ansible/inventory.local.yml
+#   ansible-playbook -i deploy/ansible/inventory.yml \
+#     -e @deploy/ansible/inventory.local.yml deploy/ansible/release.yml
+#
+# or export them into the environment your wrapper passes through. There is no
+# default for any of them on purpose: an inventory that guesses an address is
+# an inventory that can point a release at somebody else's machine. A missing
+# variable stops the play before the first task with the name of what is
+# missing, which is the intended behaviour, not a failure to configure.
 all:
   children:
     production:
       hosts:
         agentify:
-          ansible_host: agentify
-          ansible_user: dmitry
+          ansible_host: "{{ agentify_production_host }}"
+          ansible_user: "{{ agentify_production_user }}"
           ansible_python_interpreter: /usr/bin/python3
     test:
       hosts:
-        codex-vm:
-          ansible_host: codex-vm
-          ansible_user: dmitry
+        agentify-test:
+          ansible_host: "{{ agentify_test_host }}"
+          ansible_user: "{{ agentify_test_user }}"
           ansible_python_interpreter: /usr/bin/python3
     scanner_source:
       hosts:
         scanner-donor:
-          ansible_host: 161.35.76.32
-          ansible_user: dima
+          ansible_host: "{{ agentify_scanner_donor_host }}"
+          ansible_user: "{{ agentify_scanner_donor_user }}"
           ansible_python_interpreter: /usr/bin/python3

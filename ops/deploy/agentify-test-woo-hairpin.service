@@ -3,11 +3,18 @@ Description=Agentify TEST Woo public-address hairpin
 After=docker.service network-online.target
 Requires=docker.service
 Wants=network-online.target
-ConditionHost=dmitry-dev
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+# The deployment facts — which host this may run on, which public hostnames and
+# which two addresses — live beside the unit on the server, not in the
+# repository. The path carries no leading dash on purpose: if the operator has
+# not placed the file, systemd fails the unit here instead of starting a rule
+# with no idea what it is pointed at. The command refuses for the same reason,
+# naming whatever is missing, and it refuses again if the host is not the one
+# the file names.
+EnvironmentFile=/etc/agentify/test-woo-hairpin.env
 ExecStart=/usr/local/libexec/agentify-test-woo-hairpin reconcile
 ExecReload=/usr/local/libexec/agentify-test-woo-hairpin reconcile
 ExecStop=/usr/local/libexec/agentify-test-woo-hairpin remove

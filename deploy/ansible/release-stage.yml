@@ -99,7 +99,7 @@
 
 - name: Preserve channel secrets and prepare runtime environment files
   ansible.builtin.command:
-    argv: [python3, "{{ release_source_directory }}/deploy/ansible/prepare-release-environments.py", "{{ channel | to_json }}", "{{ channel_name }}", "{{ release_directory }}", "{{ release_revision }}", "{{ release_identity | to_json }}"]
+    argv: [python3, "{{ release_source_directory }}/deploy/ansible/prepare-release-environments.py", "{{ channel | to_json }}", "{{ channel_name }}", "{{ release_directory }}", "{{ release_revision }}", "{{ release_identity | to_json }}", "{{ configuration_directory }}"]
   no_log: true
 
 - name: Render commerce with no image build definitions

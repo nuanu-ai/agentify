@@ -17,7 +17,12 @@ channel = json.loads(sys.argv[1])
 channel_name, directory = sys.argv[2], Path(sys.argv[3])
 revision = sys.argv[4]
 identity = json.loads(sys.argv[5])
-stable = Path('/home/dmitry/agentify-configuration')
+# The host-owned configuration directory is a deployment fact and is passed
+# in, never assumed: guessing it would write one channel's configuration
+# into another account's tree.
+if len(sys.argv) < 7 or not sys.argv[6].startswith('/'):
+    sys.exit('prepare-release-environments.py needs the absolute host configuration directory as its sixth argument')
+stable = Path(sys.argv[6])
 stable.mkdir(mode=0o700, exist_ok=True)
 
 

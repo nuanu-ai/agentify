@@ -1,9 +1,11 @@
-# The test data and application stay on dmitry-dev, behind its existing public
-# SNI ingress. The new hostname must be routed there before activation.
+# The test data and application stay on the fixture host, behind its existing
+# public SNI ingress. The new hostname must be routed there before activation.
+# The listen address is that host's, not this repository's: supply it, and the
+# stack refuses to start rather than binding somewhere unintended.
 services:
   web:
     ports: !override
-      - "10.20.10.20:8443:443"
+      - "${AGENTIFY_TEST_LISTEN_ADDRESS:?set the address the test edge binds on}:8443:443"
     environment:
       AGENTIFY_SITE_ADDRESS: "test.agentify.ad"
       AGENTIFY_FRONT_PAGE: scanner_front_page

@@ -13,6 +13,7 @@ fail() {
 bash -n reset-store.sh
 
 WOOCOMMERCE_DATA_ROOT=/tmp/agentify-woo-lab-static \
+WOO_LAB_LISTEN_ADDRESS=127.0.0.1 \
 WORDPRESS_DB_PASSWORD=static-check \
 MARIADB_ROOT_PASSWORD=static-check \
 WORDPRESS_ADMIN_PASSWORD=static-check \
@@ -23,6 +24,13 @@ if [[ "${1:-}" == "--static" ]]; then
   exit 0
 fi
 
+# The two addresses this check pins are deployment facts, not source: the
+# shared public address the shop's hostname resolves to, and the ingress
+# address behind it. Supply both; there is no default, because a default here
+# would quietly pass the check against the wrong machine.
+: "${WOO_LAB_PUBLIC_IP:?set WOO_LAB_PUBLIC_IP to the shared public address the shop hostname resolves to}"
+: "${WOO_LAB_INGRESS_IP:?set WOO_LAB_INGRESS_IP to the ingress address behind that public address}"
+
 docker_cmd=(sudo -n docker)
 compose() { "${docker_cmd[@]}" compose "$@"; }
 wp() { compose run --rm -T cli wp "$@"; }
@@ -32,12 +40,12 @@ compose ps --status running --services | grep -qx db || fail "database is not ru
 compose ps --status running --services | grep -qx caddy || fail "caddy is not running"
 
 resolved_addresses="$(getent ahostsv4 woo.nuanu.ai | awk '{print $1}' | sort -u)"
-[[ "$resolved_addresses" == 153.124.160.16 ]] || \
+[[ "$resolved_addresses" == "$WOO_LAB_PUBLIC_IP" ]] || \
   fail "woo.nuanu.ai does not resolve only to the shared ingress: $resolved_addresses"
 printf 'PASS: public DNS points woo.nuanu.ai at the shared ingress\n'
 
 products_json="$(curl -fsS --connect-timeout 5 --max-time 20 \
-  --resolve woo.nuanu.ai:443:10.20.10.11 \
+  --resolve "woo.nuanu.ai:443:$WOO_LAB_INGRESS_IP" \
   'https://woo.nuanu.ai/wp-json/wc/store/v1/products?per_page=100')"
 PRODUCTS_JSON="$products_json" python3 - <<'PY'
 import html

@@ -7,18 +7,19 @@ a test store. The catalogue contains five virtual gift cards with ordinary
 descriptions, prices and dedicated product photography. No WooCommerce payment
 gateway is enabled.
 
-The shop runs as an isolated Compose project on `dmitry-dev`. Its WordPress,
-MariaDB and Caddy data live under
-`/home/dmitry/.codex-project-storage/woocommerce-lab`, on the large data disk.
-Only Caddy is published, on `10.20.10.20:9444`; the shared Comino ingress sends
-the public hostname to that listener without terminating TLS.
+The shop runs as an isolated Compose project on the fixture host. Its
+WordPress, MariaDB and Caddy data live under the directory named by
+`WOOCOMMERCE_DATA_ROOT`, on that host's large data disk. Only Caddy is
+published, on the address and port the operator gives it; the shared ingress
+sends the public hostname to that listener without terminating TLS. Which host,
+which directory and which addresses are deployment facts and live with the
+operator, not in this repository.
 
 ## Reset the shop
 
-Run this on `dmitry-dev`:
+Run this on the fixture host, from the directory the lab is checked out into:
 
 ```sh
-cd /home/dmitry/woocommerce-lab
 ./reset-store.sh
 ```
 
@@ -41,10 +42,19 @@ That maintenance mode performs the network downloads once and atomically
 replaces the two baseline archives. A normal reset never enters it.
 
 Run `./verify.sh` afterward to check public DNS, the catalogue through the
-private side of the shared ingress, and payment-method state. Public edge
-availability is checked from outside `dmitry-dev`, which cannot hairpin through
-the Comino public address. `./verify-reset.sh` is the destructive acceptance
-check: it creates an
-extra product, performs a normal reset, and proves the mutation disappeared
-within one minute while Caddy's state remained. Administrator credentials are
-printed by the reset command and stored only in the server-owned `.env` file.
+private side of the shared ingress, and payment-method state. It needs two
+addresses and refuses without them, naming what is missing:
+
+```sh
+WOO_LAB_PUBLIC_IP=<address the shop hostname resolves to> \
+WOO_LAB_INGRESS_IP=<address behind that one> \
+  ./verify.sh
+```
+
+`./verify.sh --static` checks only that the lab's files resolve and needs
+neither. Public edge availability is checked from outside the fixture host,
+which cannot hairpin through the shared public address. `./verify-reset.sh` is
+the destructive acceptance check: it creates an extra product, performs a
+normal reset, and proves the mutation disappeared within one minute while
+Caddy's state remained. Administrator credentials are printed by the reset
+command and stored only in the server-owned `.env` file.

@@ -1,0 +1,33 @@
+---
+# Copy to deploy/ansible/inventory.local.yml and fill in with the real values.
+# The copy is ignored by git and must stay that way: it names the machines this
+# repository is allowed to deploy to, and that is an operator fact, not source.
+#
+#   ansible-playbook -i deploy/ansible/inventory.yml \
+#     -e @deploy/ansible/inventory.local.yml deploy/ansible/release.yml
+#
+# Each value is either an address or a resolvable name; ansible_user is the
+# login on that machine. Leave nothing blank — a blank is not a default, it is
+# a host you did not mean to touch.
+agentify_production_host: REPLACE_WITH_PRODUCTION_ADDRESS_OR_NAME
+agentify_production_user: REPLACE_WITH_PRODUCTION_LOGIN
+
+agentify_test_host: REPLACE_WITH_TEST_ADDRESS_OR_NAME
+agentify_test_user: REPLACE_WITH_TEST_LOGIN
+
+agentify_scanner_donor_host: REPLACE_WITH_SCANNER_DONOR_ADDRESS_OR_NAME
+agentify_scanner_donor_user: REPLACE_WITH_SCANNER_DONOR_LOGIN
+
+# The short name the fixture host reports for `hostname -s`. The Woo hairpin
+# refuses to run anywhere else.
+woo_hairpin_expected_hostname: REPLACE_WITH_FIXTURE_SHORT_HOSTNAME
+
+# The two addresses the TEST Woo hairpin translates between: the shared public
+# address the shop's hostname resolves to, and the ingress address on the far
+# side of it.
+woo_hairpin_public_ip: REPLACE_WITH_SHARED_PUBLIC_ADDRESS
+woo_hairpin_ingress_ip: REPLACE_WITH_INGRESS_ADDRESS
+
+# The home directory the deployment runs under on the server. release-vars.yml
+# builds every environment, edge-configuration and backup path from it.
+agentify_home: REPLACE_WITH_DEPLOYMENT_HOME_DIRECTORY

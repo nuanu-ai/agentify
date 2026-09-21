@@ -10,9 +10,8 @@
     - name: Require the exact TEST fixture operation
       ansible.builtin.assert:
         that:
-          - ansible_play_hosts_all == ['codex-vm']
-          - inventory_hostname == 'codex-vm'
-          - ansible_host == 'codex-vm'
+          - ansible_play_hosts_all == ['agentify-test']
+          - inventory_hostname == 'agentify-test'
           - woo_hairpin_channel_ack | default('') == 'test'
           - woo_hairpin_action | default('') in ['reconcile', 'remove']
           - (woo_hairpin_revision | default('')) is match('^[0-9a-f]{40}$')
@@ -57,10 +56,12 @@
       changed_when: false
       register: fixture_hostname
 
-    - name: Pin the operation to dmitry-dev
+    - name: Pin the operation to the one fixture host
       ansible.builtin.assert:
-        that: fixture_hostname.stdout == 'dmitry-dev'
-        fail_msg: The Woo acceptance hairpin may run only on dmitry-dev.
+        that: fixture_hostname.stdout == woo_hairpin_expected_hostname
+        fail_msg: >-
+          The Woo acceptance hairpin may run only on the host named by
+          woo_hairpin_expected_hostname, and this is not it.
 
     - name: Reconcile and verify the explicit Woo acceptance route
       when: woo_hairpin_action == 'reconcile'
@@ -80,6 +81,26 @@
             owner: root
             group: root
             mode: '0755'
+
+        - name: Create the root-owned configuration directory
+          ansible.builtin.file:
+            path: /etc/agentify
+            state: directory
+            owner: root
+            group: root
+            mode: '0755'
+
+        - name: Write the deployment facts the hairpin unit reads
+          ansible.builtin.copy:
+            dest: /etc/agentify/test-woo-hairpin.env
+            owner: root
+            group: root
+            mode: '0640'
+            content: |
+              AGENTIFY_TEST_WOO_EXPECTED_HOST={{ woo_hairpin_expected_hostname }}
+              AGENTIFY_TEST_WOO_PUBLIC_HOSTS={{ woo_hairpin_public_hosts | join(',') }}
+              AGENTIFY_TEST_WOO_PUBLIC_IP={{ woo_hairpin_public_ip }}
+              AGENTIFY_TEST_WOO_INGRESS_IP={{ woo_hairpin_ingress_ip }}
 
         - name: Install the persistent TEST Woo hairpin unit
           ansible.builtin.copy:
@@ -106,7 +127,7 @@
             docker exec -i agentify-test-cabinet-1 node - <<'JS'
             const dns = await import('node:dns/promises')
             const addresses = await dns.lookup('woo.nuanu.ai', { all: true })
-            if (addresses.length === 0 || addresses.some((answer) => answer.address !== '153.124.160.16')) {
+            if (addresses.length === 0 || addresses.some((answer) => answer.address !== '{{ woo_hairpin_public_ip }}')) {
               throw new Error('Cabinet DNS no longer returns only the reviewed public Woo address')
             }
             const checks = [
@@ -130,7 +151,7 @@
           ansible.builtin.shell: |
             set -eu
             addresses="$(docker exec agentify-woo-lab-wordpress-1 getent ahosts test.agentify.ad | awk '{print $1}' | sort -u)"
-            test "$addresses" = '153.124.160.16'
+            test "$addresses" = '{{ woo_hairpin_public_ip }}'
             status="$(docker exec agentify-woo-lab-wordpress-1 curl -sS --connect-timeout 5 --max-time 10 --output /dev/null --write-out '%{http_code}' https://test.agentify.ad/cabinet/healthz)"
             test "$status" = 200
             printf '{"dns":"public","cabinet_health":%s}\n' "$status"

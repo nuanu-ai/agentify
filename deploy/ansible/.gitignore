@@ -1,0 +1,5 @@
+# The operator's own inventory: the machines this repository may deploy to,
+# their login names and the addresses of the shared ingress. Deployment facts,
+# not source. The tracked neighbours are inventory.yml (structure only) and
+# inventory.local.yml.example (the shape to fill in).
+inventory.local.yml
