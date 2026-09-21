@@ -135,11 +135,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @agentify/browser-observer-actor exec playwright install --with-deps chromium
-      - run: pnpm check:agentify
-      - run: pnpm typecheck:agentify
-      - run: pnpm test:agentify
-      - run: pnpm agentify:test:actor
-      - run: pnpm agentify:test:integration
-      - run: pnpm agentify:test:db
-      - run: pnpm build:agentify
-      - run: pnpm agentify:self-readiness
+      - run: pnpm check:scanner
+      - run: pnpm typecheck:scanner
+      - run: pnpm test:scanner
+      - run: pnpm scanner:test:actor
+      - run: pnpm scanner:test:integration
+      - run: pnpm scanner:test:db
+      - run: pnpm build:scanner
+      - run: pnpm scanner:self-readiness

@@ -318,16 +318,16 @@ root:
 
 ```sh
 cp .env.scanner.example .env.scanner
-pnpm agentify:db:up
-pnpm agentify:db:migrate
-pnpm agentify:dev
+pnpm scanner:db:up
+pnpm scanner:db:migrate
+pnpm scanner:dev
 ```
 
 The web application listens on port 3000 and worker health on port 8081.
-`pnpm agentify:db:down` stops the scanner database without deleting its named
-volume. Scanner verification is exposed through `agentify:check`,
-`agentify:test:integration`, `agentify:test:actor`, `agentify:test:db`,
-`agentify:build` and `agentify:self-readiness`.
+`pnpm scanner:db:down` stops the scanner database without deleting its named
+volume. Scanner verification is exposed through `scanner:check`,
+`scanner:test:integration`, `scanner:test:actor`, `scanner:test:db`,
+`scanner:build` and `scanner:self-readiness`.
 
 Scanner email confirmation calls the cabinet's private identity route. The
 cabinet owns Better Auth and sends report links through Resend; scanner report
