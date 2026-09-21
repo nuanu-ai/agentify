@@ -24,7 +24,6 @@ const CHANNELS = {
     surfaceMode: "test",
     origin: "https://test.agentify.ad",
     siteAddress: "test.agentify.ad",
-    hostIp: "10.20.10.20",
     publishedPort: "8443",
     credentials: false,
   },
@@ -49,7 +48,22 @@ const WRITTEN_IN_THIS_REPOSITORY = {
 
 const envOf = (resolved, service) => resolved.services?.[service]?.environment ?? {};
 
-export function problemsWith(channel, resolved) {
+const isPrivateIpv4 = (value) => {
+  if (typeof value !== "string" || !/^\d{1,3}(?:\.\d{1,3}){3}$/.test(value)) {
+    return false;
+  }
+  const parts = value.split(".").map(Number);
+  if (parts.some((part) => part > 255)) {
+    return false;
+  }
+  return (
+    parts[0] === 10 ||
+    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+    (parts[0] === 192 && parts[1] === 168)
+  );
+};
+
+export function problemsWith(channel, resolved, testListenAddress) {
   const wanted = CHANNELS[channel];
   if (wanted === undefined) {
     return [`${channel} is not a release channel; the channels are agentify-test and commerce`];
@@ -59,6 +73,12 @@ export function problemsWith(channel, resolved) {
   const gateway = envOf(resolved, "gateway");
   const cabinet = envOf(resolved, "cabinet");
   const web = envOf(resolved, "web");
+
+  if (channel === "agentify-test" && !isPrivateIpv4(testListenAddress)) {
+    problems.push(
+      "the operator-supplied TEST listen address is not one private IPv4 address; refusing a public or guessed binding",
+    );
+  }
 
   const equal = (where, name, given, expected) => {
     if (given !== expected) {
@@ -245,8 +265,11 @@ export function problemsWith(channel, resolved) {
       problems.push("web: agentify-ingress must expose alias agentify-commerce-web to the edge");
     }
   } else {
-    const wantedBinding = `${wanted.hostIp}:${wanted.publishedPort}:443`;
-    if (bindings.length !== 1 || bindings[0] !== wantedBinding) {
+    const wantedBinding = `${testListenAddress}:${wanted.publishedPort}:443`;
+    if (
+      isPrivateIpv4(testListenAddress) &&
+      (bindings.length !== 1 || bindings[0] !== wantedBinding)
+    ) {
       problems.push(
         `web: the published bindings are ${JSON.stringify(bindings)} and the ${channel} channel is ` +
           `${JSON.stringify(wantedBinding)}`,
@@ -261,6 +284,7 @@ export function problemsWith(channel, resolved) {
 // stdin so no secret-bearing rendered file enters a build context.
 if (process.argv[1]?.endsWith("preflight.mjs")) {
   const channel = process.argv[2];
+  const testListenAddress = process.argv[3];
   const chunks = [];
   for await (const chunk of process.stdin) {
     chunks.push(chunk);
@@ -274,7 +298,7 @@ if (process.argv[1]?.endsWith("preflight.mjs")) {
     process.exit(65);
   }
 
-  const problems = problemsWith(channel, resolved);
+  const problems = problemsWith(channel, resolved, testListenAddress);
   if (problems.length > 0) {
     console.error(`preflight: the ${channel} channel is not what it claims to be:`);
     for (const problem of problems) {

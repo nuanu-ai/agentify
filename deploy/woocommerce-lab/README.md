@@ -17,10 +17,15 @@ operator, not in this repository.
 
 ## Reset the shop
 
-Run this on the fixture host, from the directory the lab is checked out into:
+Run this on the fixture host, from the directory the lab is checked out into.
+For an existing installation, keep these values in its server-owned `.env`;
+for the first initialization, supply them explicitly and the reset command
+persists them there:
 
 ```sh
-./reset-store.sh
+WOOCOMMERCE_DATA_ROOT=<directory holding the lab data and baseline> \
+WOO_LAB_LISTEN_ADDRESS=<address the lab Caddy binds on> \
+  ./reset-store.sh
 ```
 
 The command stops only the `agentify-woo-lab` Compose project, replaces its

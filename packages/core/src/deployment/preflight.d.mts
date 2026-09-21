@@ -29,4 +29,8 @@ interface ResolvedService {
 }
 
 /** Everything wrong with this configuration for this channel; empty is fit. */
-export function problemsWith(channel: string, resolved: ResolvedCompose): string[];
+export function problemsWith(
+  channel: string,
+  resolved: ResolvedCompose,
+  testListenAddress: string,
+): string[];

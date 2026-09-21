@@ -12,7 +12,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { ResolvedCompose } from "./preflight.d.mts";
-import { problemsWith } from "./preflight.mjs";
+import { problemsWith as inspectProblemsWith } from "./preflight.mjs";
 
 const fixture = (name: string): ResolvedCompose =>
   JSON.parse(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
@@ -27,13 +27,21 @@ const envFor = (resolved: ResolvedCompose, service: string): Record<string, stri
 
 const AGENTIFY_TEST_CHANNEL = fixture("test-channel");
 const COMMERCE_CHANNEL = fixture("live-channel");
+const TEST_LISTEN_ADDRESS = "10.20.10.20";
+
+const problemsWith = (channel: string, resolved: ResolvedCompose): string[] =>
+  inspectProblemsWith(channel, resolved, TEST_LISTEN_ADDRESS);
 
 /** The release entry point, run in a separate Node process with controlled stdin. */
 const runCli = (channel: string, input: string) =>
-  spawnSync(process.execPath, [new URL("./preflight.mjs", import.meta.url).pathname, channel], {
-    encoding: "utf8",
-    input,
-  });
+  spawnSync(
+    process.execPath,
+    [new URL("./preflight.mjs", import.meta.url).pathname, channel, TEST_LISTEN_ADDRESS],
+    {
+      encoding: "utf8",
+      input,
+    },
+  );
 
 /** Values a public preflight diagnostic must never repeat from a fixture. */
 const expectNoFixtureSecrets = (stderr: string, resolved: ResolvedCompose): void => {
@@ -78,6 +86,23 @@ describe("a channel that is what it claims to be", () => {
 
   it("accepts test only on the existing test ingress binding", () => {
     expect(problemsWith("agentify-test", AGENTIFY_TEST_CHANNEL)).toEqual([]);
+  });
+
+  it("accepts a changed private TEST binding only when it matches the operator input", () => {
+    const moved = structuredClone(AGENTIFY_TEST_CHANNEL);
+    moved.services.web.ports = [
+      { mode: "ingress", host_ip: "10.77.0.9", target: 443, published: "8443", protocol: "tcp" },
+    ];
+
+    expect(inspectProblemsWith("agentify-test", moved, "10.77.0.9")).toEqual([]);
+    expect(inspectProblemsWith("agentify-test", moved, TEST_LISTEN_ADDRESS)).toContainEqual(
+      expect.stringMatching(/published bindings/),
+    );
+    for (const unsafe of ["", "0.0.0.0", "203.0.113.9"]) {
+      expect(inspectProblemsWith("agentify-test", moved, unsafe)).toContainEqual(
+        expect.stringMatching(/private IPv4/),
+      );
+    }
   });
 
   it.each([

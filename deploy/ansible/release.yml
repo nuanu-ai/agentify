@@ -32,6 +32,9 @@
           - release_phase | default('') in ['stage', 'activate', 'verify']
           - (release_revision | default('')) is match('^[0-9a-f]{40}$')
           - (release_evidence_directory | default('')) is match('^/')
+          - (agentify_home | default('')).startswith('/')
+          - agentify_home != '/'
+          - "'..' not in agentify_home.split('/')"
           - ansible_play_hosts_all | length == 1
           - inventory_hostname in ['agentify', 'agentify-test']
           - release_channel_ack | default('') == channel_name

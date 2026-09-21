@@ -32,7 +32,7 @@
     cd '{{ release_source_directory }}'
     test "$(git rev-parse HEAD)" = '{{ release_revision }}'
     test -z "$(git status --porcelain=v1 --untracked-files=all)"
-  become_user: dmitry
+  become_user: "{{ ansible_user }}"
   changed_when: false
 
 - name: Prove staged image IDs are unchanged before stopping writers

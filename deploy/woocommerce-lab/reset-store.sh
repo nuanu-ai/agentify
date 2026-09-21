@@ -3,11 +3,6 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-# Where the shop's data and baseline live on the fixture host. A deployment
-# fact, not source: supply it, because a guessed directory is a reset pointed
-# at the wrong tree.
-: "${WOO_LAB_DATA_ROOT:?set WOO_LAB_DATA_ROOT to the directory holding the lab data and baseline}"
-expected_root="$WOO_LAB_DATA_ROOT"
 env_file=.env
 mode="${1:-restore}"
 
@@ -15,6 +10,20 @@ if [[ "$mode" != restore && "$mode" != --rebuild-baseline ]]; then
   printf 'Usage: %s [--rebuild-baseline]\n' "$0" >&2
   exit 2
 fi
+
+if [[ -f "$env_file" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$env_file"
+  set +a
+fi
+
+# Where the shop listens and where its data and baseline live are deployment
+# facts. Existing installations read them from the server-owned environment;
+# first initialization requires them explicitly and persists both.
+: "${WOOCOMMERCE_DATA_ROOT:?set WOOCOMMERCE_DATA_ROOT to the directory holding the lab data and baseline}"
+: "${WOO_LAB_LISTEN_ADDRESS:?set WOO_LAB_LISTEN_ADDRESS to the address the lab Caddy binds on}"
+expected_root="$WOOCOMMERCE_DATA_ROOT"
 
 if [[ ! -f "$env_file" ]]; then
   if [[ -e "$expected_root/baseline/wordpress.sql.gz" ||
@@ -28,6 +37,7 @@ if [[ ! -f "$env_file" ]]; then
   root_password="$(openssl rand -hex 24)"
   {
     printf 'WOOCOMMERCE_DATA_ROOT=%s\n' "$expected_root"
+    printf 'WOO_LAB_LISTEN_ADDRESS=%s\n' "$WOO_LAB_LISTEN_ADDRESS"
     printf 'WORDPRESS_DB_PASSWORD=%s\n' "$db_password"
     printf 'MARIADB_ROOT_PASSWORD=%s\n' "$root_password"
     printf 'WORDPRESS_ADMIN_PASSWORD=%s\n' "$admin_password"

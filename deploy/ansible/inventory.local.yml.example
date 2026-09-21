@@ -22,11 +22,18 @@ agentify_scanner_donor_user: REPLACE_WITH_SCANNER_DONOR_LOGIN
 # refuses to run anywhere else.
 woo_hairpin_expected_hostname: REPLACE_WITH_FIXTURE_SHORT_HOSTNAME
 
-# The two addresses the TEST Woo hairpin translates between: the shared public
-# address the shop's hostname resolves to, and the ingress address on the far
-# side of it.
+# The public hostnames and two addresses the TEST Woo hairpin translates
+# between: the shared public address those names resolve to, and the ingress
+# address on the far side of it.
+woo_hairpin_public_hosts:
+  - REPLACE_WITH_FIRST_PUBLIC_HOSTNAME
+  - REPLACE_WITH_SECOND_PUBLIC_HOSTNAME
 woo_hairpin_public_ip: REPLACE_WITH_SHARED_PUBLIC_ADDRESS
 woo_hairpin_ingress_ip: REPLACE_WITH_INGRESS_ADDRESS
+
+# The address on the fixture host where the ordinary TEST release publishes
+# its TLS listener for the shared ingress.
+agentify_test_listen_address: REPLACE_WITH_TEST_LISTEN_ADDRESS
 
 # The home directory the deployment runs under on the server. release-vars.yml
 # builds every environment, edge-configuration and backup path from it.

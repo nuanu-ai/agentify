@@ -37,12 +37,15 @@ mkdir -p "$EVIDENCE"
 The inventory names the groups but not the machines. Copy
 `deploy/ansible/inventory.local.yml.example` to
 `deploy/ansible/inventory.local.yml`, fill in each address, login and the
-deployment home directory, and pass it with `-e @deploy/ansible/inventory.local.yml`
-on every invocation below. That copy is gitignored and stays on the operator's
-machine: which hosts this repository may deploy to is an operator fact, not
-source. Nothing here has a default, so a missing value stops the play by name
-instead of resolving to somebody else's host. The `$AGENTIFY_HOME` used in the
-shell snippets further down is the same directory, exported into your shell.
+deployment home directory. The TEST listen address and Woo fixture fields are
+deployment facts too; the ordinary release consumes the listen address, while
+only the separate Woo operation consumes its fixture fields. Pass the file with
+`-e @deploy/ansible/inventory.local.yml` on every invocation below. That copy is
+gitignored and stays on the operator's machine: which hosts this repository may
+deploy to is an operator fact, not source. Nothing here has a default, so a
+missing value stops the play by name instead of resolving to somebody else's
+host. The `$AGENTIFY_HOME` used in the shell snippets further down is the same
+directory, exported into your shell.
 
 Every playbook invocation requires these two values, one phase, one inventory
 limit, and an acknowledgement matching that limit. The playbook refuses an
@@ -56,6 +59,7 @@ Check the playbook before contacting a host:
 
 ```sh
 ansible-playbook -i deploy/ansible/inventory.yml \
+  -e @deploy/ansible/inventory.local.yml \
   deploy/ansible/release.yml --syntax-check --limit test \
   -e release_phase=stage -e release_channel_ack=test \
   -e "release_revision=$SHA" \
@@ -69,6 +73,7 @@ for test activation:
 
 ```sh
 ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
+  -e @deploy/ansible/inventory.local.yml \
   --limit test -e release_phase=stage -e release_channel_ack=test \
   -e "release_revision=$SHA" \
   -e "release_evidence_directory=$EVIDENCE"
@@ -94,6 +99,7 @@ activation does not read production evidence or contact production:
 
 ```sh
 ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
+  -e @deploy/ansible/inventory.local.yml \
   --limit test -e release_phase=activate -e release_channel_ack=test \
   -e "release_revision=$SHA" \
   -e "release_evidence_directory=$EVIDENCE"
@@ -134,6 +140,7 @@ that same revision on production:
 
 ```sh
 ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
+  -e @deploy/ansible/inventory.local.yml \
   --limit production -e release_phase=stage \
   -e release_channel_ack=production \
   -e "release_revision=$SHA" \
@@ -149,6 +156,7 @@ approval, use the first-cutover procedure below instead. Later releases run:
 
 ```sh
 ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
+  -e @deploy/ansible/inventory.local.yml \
   --limit production -e release_phase=activate \
   -e release_channel_ack=production \
   -e "release_revision=$SHA" \
@@ -206,6 +214,7 @@ Run this activation in an interactive terminal, retaining the same `SHA` and
 
 ```sh
 ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
+  -e @deploy/ansible/inventory.local.yml \
   --limit production -e release_phase=activate \
   -e release_channel_ack=production \
   -e "release_revision=$SHA" \
@@ -263,11 +272,13 @@ one channel at a time:
 
 ```sh
 ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
+  -e @deploy/ansible/inventory.local.yml \
   --limit test -e release_phase=verify -e release_channel_ack=test \
   -e "release_revision=$SHA" \
   -e "release_evidence_directory=$EVIDENCE"
 
 ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
+  -e @deploy/ansible/inventory.local.yml \
   --limit production -e release_phase=verify \
   -e release_channel_ack=production \
   -e "release_revision=$SHA" \
@@ -290,6 +301,7 @@ verify the fixture route explicitly:
 
 ```sh
 ansible-playbook -i deploy/ansible/inventory.yml \
+  -e @deploy/ansible/inventory.local.yml \
   deploy/ansible/woo-test-hairpin.yml --limit test \
   -e woo_hairpin_channel_ack=test -e woo_hairpin_action=reconcile \
   -e "woo_hairpin_revision=$SHA"
@@ -301,6 +313,7 @@ systemd, and proves the dedicated chain and jump are absent:
 
 ```sh
 ansible-playbook -i deploy/ansible/inventory.yml \
+  -e @deploy/ansible/inventory.local.yml \
   deploy/ansible/woo-test-hairpin.yml --limit test \
   -e woo_hairpin_channel_ack=test -e woo_hairpin_action=remove \
   -e "woo_hairpin_revision=$SHA"

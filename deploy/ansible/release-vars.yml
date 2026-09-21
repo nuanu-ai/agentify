@@ -22,6 +22,7 @@ release_channels:
     backup_directory: "{{ agentify_home }}/agentify-backups/scanner"
   test:
     origin: https://test.agentify.ad
+    listen_address: "{{ agentify_test_listen_address }}"
     commerce_project: agentify-test
     scanner_project: agentify-test-scanner
     commerce_environment: "{{ agentify_home }}/agentify-test/.env"

@@ -157,8 +157,12 @@ else:
     scanner_source = (stable / 'scanner.env').read_text()
     scanner_overrides = {}
 
+commerce_overrides = {}
+if channel_name == 'test':
+    commerce_overrides['AGENTIFY_TEST_LISTEN_ADDRESS'] = channel['listen_address']
+
 write_environment('commerce.env', stable_commerce.read_text(), {
-    **common, **admin,
+    **common, **admin, **commerce_overrides,
     'REPORT_IDENTITY_SECRET': identity_secret,
     'AGENTIFY_APP_IMAGE': fp['commerce-app'], 'AGENTIFY_WEB_IMAGE': fp['commerce-web'],
     'AGENTIFY_PUBLIC_ORIGIN': channel['origin'],

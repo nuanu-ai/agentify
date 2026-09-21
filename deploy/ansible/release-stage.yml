@@ -24,7 +24,7 @@
   ansible.builtin.file:
     path: "{{ release_directory }}"
     state: directory
-    owner: dmitry
+    owner: "{{ ansible_user }}"
     mode: '0700'
 
 - name: Check out the exact public source revision
@@ -34,7 +34,7 @@
     version: "{{ release_revision }}"
     force: false
     update: true
-  become_user: dmitry
+  become_user: "{{ ansible_user }}"
 
 - name: Prove the source checkout is exact, public and clean
   ansible.builtin.shell: |
@@ -46,7 +46,7 @@
     test -z "$(git status --porcelain=v1 --untracked-files=all)"
   args:
     chdir: "{{ release_source_directory }}"
-  become_user: dmitry
+  become_user: "{{ ansible_user }}"
   changed_when: false
 
 - name: Pull exact infrastructure images before rendering or acceptance
@@ -120,7 +120,7 @@
 
 - name: Validate the actual channel before any application activation
   ansible.builtin.command:
-    argv: [docker, run, --rm, -i, --network, none, "{{ release_identity.firstParty['commerce-app'] }}", node, packages/core/src/deployment/preflight.mjs, "{{ 'commerce' if channel_name == 'production' else 'agentify-test' }}"]
+    argv: [docker, run, --rm, -i, --network, none, "{{ release_identity.firstParty['commerce-app'] }}", node, packages/core/src/deployment/preflight.mjs, "{{ 'commerce' if channel_name == 'production' else 'agentify-test' }}", "{{ channel.listen_address | default('') }}"]
     stdin: "{{ commerce_configuration.stdout }}"
   changed_when: false
   no_log: true

@@ -66,6 +66,12 @@ function networkAddress(containerName) {
 
 async function listen(role) {
   const server = http.createServer((request, response) => {
+    if (request.url?.endsWith("/missing")) {
+      response.statusCode = 404;
+      response.setHeader("Content-Type", "text/plain");
+      response.end(`${role} missing`);
+      return;
+    }
     response.setHeader("Content-Type", "application/json");
     response.end(
       JSON.stringify({
@@ -150,6 +156,12 @@ async function expectSharedAssets(baseUrl) {
   }
 }
 
+async function expectUpstreamMissing(baseUrl, requestPath, role) {
+  const response = await fetch(`${baseUrl}${requestPath}`);
+  assert.equal(response.status, 404, requestPath);
+  assert.equal(await response.text(), `${role} missing`, requestPath);
+}
+
 async function expectSingleForwardedClient(baseUrl, spoofed) {
   const response = await fetch(`${baseUrl}/api/health`, {
     headers: { "X-Forwarded-For": spoofed },
@@ -215,6 +227,10 @@ try {
   writeFileSync(
     path.join(docsRoot, "guide.html"),
     "<p>documentation guide</p>",
+  );
+  writeFileSync(
+    path.join(docsRoot, "404.html"),
+    "<p>documentation missing fixture</p>",
   );
   writeFileSync(
     path.join(docsRoot, "assets/doc.css"),
@@ -315,6 +331,17 @@ try {
   response = await fetch(`${innerBase}/docs/assets/doc.css`);
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/css(?:;|$)/);
+  response = await fetch(`${innerBase}/docs/missing`);
+  assert.equal(response.status, 404);
+  assert.match(await response.text(), /documentation missing fixture/);
+
+  for (const [requestPath, role] of [
+    ["/missing", "scanner"],
+    ["/cabinet/missing", "cabinet"],
+    ["/x402/missing", "gateway"],
+  ]) {
+    await expectUpstreamMissing(innerBase, requestPath, role);
+  }
 
   for (const [encodedEdge, role] of [
     ["/cabinet%2Fsign-in", "cabinet"],
