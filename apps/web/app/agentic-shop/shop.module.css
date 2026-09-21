@@ -216,61 +216,6 @@
   object-position: 44% center;
   border-radius: 22px;
 }
-.imageLabel {
-  position: absolute;
-  top: 24px;
-  right: 25px;
-  font-size: 0.875rem;
-  line-height: 1.5;
-  font-weight: 500;
-  text-align: right;
-  color: var(--fg);
-}
-.offerCard {
-  position: absolute;
-  bottom: 0;
-  left: 24px;
-  right: 24px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  padding: 22px;
-  border-radius: var(--radius-card);
-  box-shadow: 0 18px 42px -30px rgba(26, 25, 23, 0.45);
-}
-.offerCard > span:last-child {
-  font-size: 1.8rem;
-  margin-left: auto;
-  color: var(--accent);
-}
-.offerCard strong {
-  display: block;
-  font-size: 1.125rem;
-  letter-spacing: -0.025em;
-}
-.offerCard > div > span:last-child {
-  display: block;
-  font-size: 0.75rem;
-  color: var(--muted);
-  margin-top: 4px;
-}
-.offerSmall {
-  display: block;
-  font: 400 0.75rem var(--font-mono);
-  letter-spacing: 0.07em;
-  margin-bottom: 6px;
-  color: var(--muted);
-}
-.offerIcon {
-  width: 42px;
-  flex-shrink: 0;
-}
-.offerIcon svg {
-  width: 100%;
-  display: block;
-}
 .promiseStrip {
   display: flex;
   align-items: center;
@@ -306,21 +251,8 @@
   padding: 55px 0 40px;
   scroll-margin-top: 92px;
 }
-.sectionTop {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 25px;
-  border-bottom: 1px solid var(--shop-line);
-  padding-bottom: 25px;
-  margin-bottom: 50px;
-}
 .opportunity .eyebrow {
   color: var(--shop-mint);
-}
-.sectionMeta {
-  font-size: 0.75rem;
-  color: var(--shop-muted);
 }
 .marketGrid {
   display: grid;
@@ -561,33 +493,6 @@
   color: var(--fg-2);
   line-height: 1.7;
 }
-.stepOutput {
-  display: block;
-  font-size: 0.75rem;
-  color: var(--accent);
-  margin-top: 25px;
-  font-weight: 500;
-}
-.protocols {
-  border-top: 1px solid var(--line);
-  margin-top: 55px;
-  padding-top: 25px;
-  display: flex;
-  align-items: center;
-  gap: 25px;
-  font-size: 0.75rem;
-}
-.protocols p {
-  color: var(--muted);
-  margin-right: auto;
-}
-.protocols span {
-  font: 500 0.75rem var(--font-mono);
-  color: var(--fg-2);
-}
-.protocols a {
-  color: var(--muted);
-}
 .settlement {
   background: var(--shop-cream);
   padding: 75px 0;
@@ -609,6 +514,11 @@
   color: var(--fg-2);
   max-width: 500px;
   margin-bottom: 20px;
+}
+.settlementLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 28px;
 }
 .paymentDiagram {
   border-radius: var(--radius-panel);
@@ -704,10 +614,6 @@
   margin-top: 30px;
   padding: 25px 0;
   border-bottom: 1px solid var(--line);
-}
-.localMark {
-  font-size: 2rem;
-  color: var(--accent);
 }
 .localNote p {
   font-size: 0.875rem;
@@ -907,15 +813,6 @@
   .categories article {
     padding: 23px 20px;
   }
-  .offerCard {
-    left: 18px;
-    right: 18px;
-    padding: 19px;
-    gap: 12px;
-  }
-  .offerCard strong {
-    font-size: 1rem;
-  }
 }
 @media (max-width: 800px) {
   .header > .container {
@@ -976,15 +873,6 @@
   .growth strong {
     font-size: 4.5rem;
   }
-  .sectionTop {
-    align-items: flex-start;
-    gap: 15px;
-    margin-bottom: 35px;
-  }
-  .sectionMeta {
-    text-align: right;
-    max-width: 155px;
-  }
   .marketBottom {
     flex-wrap: wrap;
   }
@@ -1017,16 +905,6 @@
   }
   .stepSymbol {
     margin-bottom: 20px;
-  }
-  .stepOutput {
-    margin-top: 18px;
-  }
-  .protocols {
-    flex-wrap: wrap;
-    gap: 16px 25px;
-  }
-  .protocols p {
-    flex-basis: 100%;
   }
   .settlementGrid {
     grid-template-columns: 1fr;
@@ -1155,29 +1033,6 @@
     height: 390px;
     object-position: 45% center;
   }
-  .imageLabel {
-    font-size: 0.75rem;
-    top: 20px;
-    right: 20px;
-  }
-  .offerCard {
-    left: 14px;
-    right: 14px;
-    padding: 17px;
-    gap: 10px;
-  }
-  .offerIcon {
-    width: 32px;
-  }
-  .offerSmall {
-    font-size: 0.75rem;
-  }
-  .offerCard strong {
-    font-size: 0.875rem;
-  }
-  .offerCard > span:last-child {
-    font-size: 1.5rem;
-  }
   .promiseStrip {
     gap: 12px 24px;
     font-size: 0.875rem;
@@ -1185,16 +1040,6 @@
   }
   .promiseStrip > span {
     font-size: 0.75rem;
-  }
-  .sectionTop {
-    display: block;
-    padding-bottom: 20px;
-  }
-  .sectionMeta {
-    display: block;
-    max-width: none;
-    text-align: left;
-    margin-top: 10px;
   }
   .opportunity {
     padding-top: 35px;
@@ -1264,12 +1109,6 @@
   }
   .steps p {
     font-size: 1rem;
-  }
-  .protocols {
-    gap: 16px 20px;
-  }
-  .protocols span {
-    font-size: 0.75rem;
   }
   .settlementGrid {
     gap: 30px;
@@ -1361,12 +1200,6 @@
   .primary:hover {
     transform: none;
   }
-}
-
-.imageLabel {
-  padding: 10px 14px;
-  background: rgba(246, 244, 239, 0.96);
-  border-radius: 10px;
 }
 .opportunity a:focus-visible {
   outline-color: var(--shop-mint);
