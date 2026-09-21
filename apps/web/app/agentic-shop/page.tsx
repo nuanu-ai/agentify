@@ -86,7 +86,8 @@ export default function AgenticShopPage() {
               </a>
             </div>
             <p className={styles.heroNote}>
-              Start in the test channel. Live publication requires approval.
+              Start in the test channel. Live publication requires approval. No
+              AI assistant is guaranteed to recommend or buy your products.
             </p>
           </div>
           <div className={styles.heroVisual}>

@@ -166,7 +166,7 @@ const noKeysYet = (state: ShopState): string => {
  * the connector is experimental and is not the acceptance gate for anything.
  */
 const WHAT_CONNECTING_DOES = `<p>This experimental connector sells one narrow kind of WooCommerce product in TEST: a published USD virtual download with one protected file, unlimited access, no managed stock and shop tax calculation disabled.</p>
-  <p class="quiet">Connect grants access to the shop; Import publishes supported products as cards.</p>`;
+  <p class="quiet">Connect grants access to the shop; Import publishes supported products as cards. Your shop asks for approval on its own screen; Agentify never asks for your WooCommerce password.</p>`;
 
 /** The page a merchant connects from, and comes back to. */
 export const wooScreen = (viewer: Viewer, view: WooView): string => {
