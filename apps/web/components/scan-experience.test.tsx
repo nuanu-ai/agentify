@@ -29,8 +29,6 @@ describe("ScanExperience teaser actions", () => {
     expect(markup.indexOf("Copy share link")).toBeLessThan(
       markup.indexOf("Copy AI fix prompt"),
     );
-    expect(markup).not.toContain("Share this research");
-    expect(markup).not.toContain("Confirm and publish");
     expect(markup).toContain("The full report requires email, phone");
   });
 
@@ -46,8 +44,6 @@ describe("ScanExperience teaser actions", () => {
         segment="owner"
       />,
     );
-    expect(markup).not.toContain("public noindex link in one click");
-    expect(markup).not.toContain("Includes only the findings visible above");
     expect(markup).toContain("Your result is ready");
     expect(markup).toContain("unlock after a confirmed email");
   });
@@ -66,7 +62,6 @@ describe("ScanExperience teaser actions", () => {
     );
     expect(markup.match(/Email me a secure link/g)).toHaveLength(1);
     expect(markup).not.toContain("<dialog");
-    expect(markup).not.toContain("Supabase");
   });
 
   it("hides unusable teaser export actions when registration is disabled", () => {

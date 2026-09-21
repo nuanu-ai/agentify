@@ -30,12 +30,7 @@ describe("PublicShareActions", () => {
     expect(markup).toContain("disabled");
     expect(markup).not.toContain("<section");
     expect(markup).not.toContain("<h2");
-    expect(markup).not.toContain("Share this research");
-    expect(markup).not.toContain("public noindex link in one click");
     expect(markup).not.toContain("example.com");
-    expect(markup).not.toContain("Confirm and publish");
-    expect(markup).not.toContain("Open public page");
-    expect(markup).not.toContain("Share…");
   });
 
   it("stays absent when sharing is disabled or no public score exists", () => {

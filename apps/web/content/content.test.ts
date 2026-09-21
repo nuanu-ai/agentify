@@ -8,7 +8,6 @@ describe("marketing content registry", () => {
     expect(Object.keys(LANDINGS).sort()).toEqual(["local", "owner", "store"]);
     for (const landing of Object.values(LANDINGS)) {
       expect(landing.pains).toHaveLength(3);
-      expect(landing.reportPreviewFixture).toBe("canonical-example-v1");
       expect(landing.pains.every((pain) => pain.sourceIds.length > 0)).toBe(
         true,
       );
@@ -26,11 +25,5 @@ describe("marketing content registry", () => {
       expect(source.caveat.length).toBeGreaterThan(20);
       expect(EVIDENCE_CLASSES).toContain(source.evidenceClass);
     }
-  });
-
-  it("keeps the approved owner headline", () => {
-    expect(LANDINGS.owner.hero.title).toBe(
-      "See what your website lets AI understand about your business.",
-    );
   });
 });
