@@ -1007,10 +1007,20 @@ describe("the passwordless cabinet door", () => {
     const replay = await running.browser.from(running.url).post("/cabinet/sign-in/open", { token });
     expect(replay.status).toBe(401);
     expect(replay.headers.getSetCookie()).toStrictEqual([]);
-    expect(readable(replay.html)).toContain(`already signed in as ${PERSON}`);
+    expect(readable(replay.html)).toContain(`signed in as ${PERSON}`);
     expect(replay.html).toContain('href="/cabinet/cards"');
     expect(readable(replay.html)).toContain("Open your cabinet");
-    expect(readable(replay.html)).toContain("Use a different email");
+    // The second control is for somebody who wants another account, and the
+    // only thing that can give them one is sign-out: a browser that already
+    // carries a session is sent back into the cabinet by GET /sign-in, so a
+    // form pointing there would do nothing at all.
+    expect(replay.html).toContain('method="post" action="/cabinet/sign-out"');
+    expect(replay.html).not.toContain('action="/cabinet/sign-in"');
+
+    const switching = await running.browser.post("/cabinet/sign-out");
+    expect(switching.status).toBe(303);
+    expect(switching.to).toBe("/cabinet/sign-in");
+    expect(running.rows.cabinet_sessions).toStrictEqual([]);
   });
 
   it("refuses a cross-origin POST without consuming the link", async () => {
