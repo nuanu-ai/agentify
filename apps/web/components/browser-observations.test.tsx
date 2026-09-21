@@ -45,7 +45,7 @@ describe("BrowserObservations", () => {
         surface="report"
       />,
     );
-    expect(markup).toContain("Non-scoring enrichment");
+    expect(markup).toContain("Does not change the score");
     expect(markup).not.toContain("Build 1.0.42");
     expect(markup).toContain("Accessibility structure");
     expect(markup).toContain("unavailable");
@@ -65,7 +65,7 @@ describe("BrowserObservations", () => {
     expect(markup).toContain("not a site failure");
   });
 
-  it("announces queued work without changing the canonical score", () => {
+  it("announces queued work without claiming a score effect", () => {
     const markup = renderToStaticMarkup(
       <BrowserObservations
         initialData={observation({
@@ -79,7 +79,7 @@ describe("BrowserObservations", () => {
     );
     expect(markup).toContain("Browser analysis queued");
     expect(markup).toContain('role="status"');
-    expect(markup).toContain("does not delay or recalculate");
+    expect(markup).toContain("Does not change the score");
   });
 
   it("keeps off or shadow mode visually absent when no result is supplied", () => {
@@ -97,8 +97,8 @@ describe("BrowserObservations", () => {
         surface="report"
       />,
     );
-    expect(markup).toContain("provider or safety budget");
-    expect(markup).toContain("base report remains valid and unchanged");
+    expect(markup).toContain("could not finish");
+    expect(markup).toContain("The report is unchanged");
     expect(markup).not.toContain("/100");
   });
 

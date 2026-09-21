@@ -125,10 +125,7 @@ export function BrowserObservations({
           titleId={titleId}
           title="Browser observations are temporarily unavailable"
         />
-        <p className={styles.notice}>
-          The base 18-check report is unaffected. This provider state is not a
-          failure of the scanned site and does not change its score.
-        </p>
+        <p className={styles.notice}>The 18-check report is unaffected.</p>
       </section>
     );
   }
@@ -143,7 +140,7 @@ export function BrowserObservations({
         title={browserObservationSummary(data)}
       />
       <div className={styles.meta}>
-        <span>Non-scoring enrichment</span>
+        <span>Does not change the score</span>
         <span>{data.version}</span>
         <span>
           {data.pages_assessed} {data.pages_assessed === 1 ? "page" : "pages"}
@@ -152,8 +149,7 @@ export function BrowserObservations({
 
       {data.status === "queued" || data.status === "running" ? (
         <p aria-live="polite" className={styles.notice} role="status">
-          This passive step runs after the base diagnostic. It does not delay or
-          recalculate the canonical score.
+          This step runs after the report.
         </p>
       ) : null}
       {data.status === "blocked" ? (
@@ -165,8 +161,7 @@ export function BrowserObservations({
       ) : null}
       {data.status === "unavailable" ? (
         <p className={styles.notice}>
-          The browser provider or safety budget could not produce a reliable
-          result. The base report remains valid and unchanged.
+          The browser step could not finish. The report is unchanged.
         </p>
       ) : null}
 
