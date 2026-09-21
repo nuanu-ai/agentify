@@ -84,17 +84,6 @@
   --vp-code-block-bg: var(--agentify-raised);
 }
 
-.dark {
-  --agentify-bg: #111817;
-  --agentify-surface: #17201f;
-  --agentify-raised: #1d2927;
-  --agentify-line: #34423f;
-  --agentify-fg: #f6f4ef;
-  --agentify-muted: #aaa8a1;
-  --agentify-accent: #66c7be;
-  --agentify-on-accent: #10201e;
-}
-
 /* The paragraph is the band rather than its marker div. Caddy removes the
    paragraph for a live page while leaving the positive mode marker behind. */
 .surface-words {
@@ -151,23 +140,10 @@
   letter-spacing: -0.02em;
 }
 
-.way-out .brand-mark,
-.way-out img {
-  width: 24px;
-  height: 24px;
-}
-
 .way-out .brand-mark {
   display: block;
-}
-
-.way-out .mark--dark,
-.dark .way-out .mark--light {
-  display: none;
-}
-
-.dark .way-out .mark--dark {
-  display: block;
+  width: 24px;
+  height: 24px;
 }
 
 .way-out:hover {

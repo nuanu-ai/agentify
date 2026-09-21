@@ -8,7 +8,7 @@
 
 import type { SurfaceMode } from "@agentify/commerce-core";
 import type { CabinetDestination } from "./cabinet-entry.js";
-import { bare, bareWithoutScript, brandLockup, escaped } from "./html.js";
+import { bare, brandLockup, escaped } from "./html.js";
 
 const destinationInput = (destination: CabinetDestination): string =>
   destination === "default"
@@ -95,7 +95,7 @@ export const mailUnavailableScreen = (base: string, mode: SurfaceMode): string =
 
 /** The no-script GET target in the message. */
 export const openLinkScreen = (base: string, token: string, mode: SurfaceMode): string =>
-  bareWithoutScript(
+  bare(
     base,
     "Open your cabinet",
     `<div class="gate">
@@ -123,7 +123,7 @@ export const refusedLinkScreen = (
   <p class="quiet">Use a different email only if you meant to switch accounts.</p>`;
   const another = signedIn === undefined ? "Ask for another link" : "Use a different email";
 
-  return bareWithoutScript(
+  return bare(
     base,
     "That link does not work",
     `<div class="gate">

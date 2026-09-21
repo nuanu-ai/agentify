@@ -1,6 +1,6 @@
 .panel {
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: var(--radius-panel);
   background: var(--surface);
   box-shadow: var(--shadow-soft);
@@ -28,7 +28,7 @@
   flex: none;
   border-radius: var(--radius-pill);
   padding: 4px 10px;
-  background: var(--paper);
+  background: var(--bg);
   color: var(--muted);
   font: 500 0.6875rem/1.4 var(--font-mono);
   text-transform: uppercase;
@@ -67,8 +67,8 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px 18px;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
   padding: 10px clamp(20px, 4vw, 28px);
   color: var(--muted);
   font: 0.6875rem/1.5 var(--font-mono);
@@ -93,7 +93,7 @@
 
 .finding {
   min-width: 0;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--line);
 }
 
 .findings > .finding:first-child {
@@ -146,7 +146,7 @@ summary.findingHeader::marker {
 }
 
 .findingBody strong {
-  color: var(--ink-2);
+  color: var(--fg-2);
 }
 
 .findingBody dl {
@@ -155,7 +155,7 @@ summary.findingHeader::marker {
   margin: 2px 0 4px;
   border-radius: var(--radius-control);
   padding: 12px;
-  background: var(--paper);
+  background: var(--bg);
   font: 0.75rem/1.5 var(--font-mono);
 }
 
@@ -166,7 +166,7 @@ summary.findingHeader::marker {
 }
 
 .findingBody dt {
-  color: var(--ink-2);
+  color: var(--fg-2);
 }
 
 .findingBody dd {

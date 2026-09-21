@@ -4,7 +4,7 @@
   flex-direction: column;
   align-items: center;
   padding: 48px 24px 80px;
-  background: var(--canvas);
+  background: var(--raised);
 }
 
 .brandWrap {
@@ -14,7 +14,7 @@
 .card {
   width: min(100%, 700px);
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: var(--radius-panel);
   background: var(--surface);
   box-shadow: var(--shadow-soft);
@@ -26,7 +26,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  border-bottom: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--line-soft);
   padding: 18px 28px;
   color: var(--muted);
   font: 0.75rem/1.4 var(--font-mono);
@@ -97,7 +97,7 @@
 }
 
 .phases li:first-child {
-  color: var(--ink-2);
+  color: var(--fg-2);
 }
 
 .phases li:first-child .phaseIcon {

@@ -1,6 +1,6 @@
 .banner,
 .dialog {
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   background: var(--surface);
   box-shadow: var(--shadow-soft);
 }
@@ -16,7 +16,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px 24px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--line);
   border-radius: 0;
   padding: 14px clamp(16px, 4vw, 32px);
   box-shadow: 0 -8px 24px rgb(26 25 23 / 8%);
@@ -33,7 +33,7 @@
 
 .copy {
   margin: 2px 0 0;
-  color: var(--ink-2);
+  color: var(--fg-2);
   font-size: 0.875rem;
   line-height: 1.5;
 }

@@ -105,28 +105,6 @@
   height: 100%;
 }
 
-.wordmark__mark .mark--dark {
-  display: none;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .wordmark__mark .mark--light {
-    display: none;
-  }
-
-  :root:not([data-theme="light"]) .wordmark__mark .mark--dark {
-    display: block;
-  }
-}
-
-:root[data-theme="dark"] .wordmark__mark .mark--light {
-  display: none;
-}
-
-:root[data-theme="dark"] .wordmark__mark .mark--dark {
-  display: block;
-}
-
 .wordmark__name {
   font-size: 19px;
   font-weight: 650;
@@ -155,76 +133,6 @@
   display: inline-flex;
   align-items: center;
   min-height: 24px;
-}
-
-/* The theme switch, in the documentation's own measurements: a 40 by 22 track,
-   an 18 pixel knob that travels 18. A reader crosses between the two surfaces on
-   one origin, and a control that changes shape halfway reads as two products.
-   The one thing that is ours rather than theirs is the colour, which comes from
-   the tokens like everything else on the page.
-
-   Everything about the track is stated rather than inherited: a button takes
-   neither size nor background from the page on its own, and the square corners
-   the rest of the site uses would make this read as a box and not as a switch,
-   so it is the one place with a full radius. */
-.switch {
-  position: relative;
-  flex-shrink: 0;
-  width: 40px;
-  height: 22px;
-  padding: 0;
-  background: var(--raised);
-  border: var(--hairline) solid var(--line);
-  border-radius: 11px;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-
-.switch:hover {
-  border-color: var(--line-strong);
-}
-
-.switch__knob {
-  position: absolute;
-  top: 1px;
-  left: 1px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  background: var(--surface);
-  border-radius: 50%;
-  /* The travel is the one thing that has to be animated: it is what says the
-     press did something, on a control whose two states otherwise differ by a
-     glyph most people will not look at. */
-  transition: transform 0.25s;
-}
-
-.switch[aria-checked="true"] .switch__knob {
-  transform: translateX(18px);
-}
-
-.switch svg {
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  fill: none;
-  stroke: var(--muted);
-  stroke-width: 1.6;
-  stroke-linecap: round;
-}
-
-.switch__moon {
-  fill: var(--muted);
-  stroke: none;
-}
-
-/* One of the two, never both: the knob shows the state the page is in, and the
-   title on the button says where a press would take it. */
-.switch[aria-checked="true"] .switch__sun,
-.switch:not([aria-checked="true"]) .switch__moon {
-  display: none;
 }
 
 /* Buttons here are links: every one of them goes to a page, and none of them
@@ -374,7 +282,7 @@
 }
 
 .tok-str {
-  color: var(--ok);
+  color: var(--pass);
 }
 
 .caption {
@@ -584,12 +492,12 @@
 
 .open__list li::before {
   content: "—";
-  color: var(--warn);
+  color: var(--fail);
   flex: none;
 }
 
 .slot {
-  color: var(--warn);
+  color: var(--fail);
 }
 
 /* Footer */

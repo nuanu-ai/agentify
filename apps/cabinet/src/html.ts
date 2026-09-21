@@ -124,42 +124,7 @@ const WAY_OUT = '<a class="way-out" href="/docs/" title="The Agentify documentat
 
 /** The same compact lockup on the public site, the cabinet and every auth page. */
 export const brandLockup = (home = "/"): string =>
-  `<a class="wordmark" href="${escaped(home)}" aria-label="Agentify home"><span class="brand-mark" aria-hidden="true"><img class="mark--light" src="/assets/agentify-mark.svg" alt="" width="30" height="30"><img class="mark--dark" src="/assets/agentify-mark-dark.svg" alt="" width="30" height="30"></span><span>Agentify</span></a>`;
-
-const THEME_HEAD = `<script>
-try {
-  const chosen = localStorage.getItem("agentify-theme");
-  if (chosen === "light" || chosen === "dark") document.documentElement.dataset.theme = chosen;
-} catch {}
-</script>`;
-
-const THEME_CONTROL = `<button class="theme-switch" type="button" role="switch" aria-checked="false" aria-label="Change colour theme" hidden><span class="theme-switch__knob"><svg class="theme-switch__sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2"></circle><path d="M12 2.6v2.6M12 18.8v2.6M2.6 12h2.6M18.8 12h2.6M5.4 5.4l1.8 1.8M16.8 16.8l1.8 1.8M18.6 5.4l-1.8 1.8M7.2 16.8l-1.8 1.8"></path></svg><svg class="theme-switch__moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.2A8.4 8.4 0 0 1 9.8 4a8.4 8.4 0 1 0 10.2 10.2z"></path></svg></span></button>`;
-
-const THEME_SCRIPT = `<script>
-(() => {
-  const root = document.documentElement;
-  const system = window.matchMedia("(prefers-color-scheme: dark)");
-  const buttons = document.querySelectorAll(".theme-switch");
-  const dark = () => (root.dataset.theme || (system.matches ? "dark" : "light")) === "dark";
-  const show = () => buttons.forEach((button) => {
-    button.hidden = false;
-    button.setAttribute("aria-checked", dark() ? "true" : "false");
-    button.title = dark() ? "Switch to the light theme" : "Switch to the dark theme";
-  });
-  buttons.forEach((button) => button.addEventListener("click", () => {
-    const wanted = dark() ? "light" : "dark";
-    if (wanted === (system.matches ? "dark" : "light")) delete root.dataset.theme;
-    else root.dataset.theme = wanted;
-    try {
-      if (root.dataset.theme) localStorage.setItem("agentify-theme", wanted);
-      else localStorage.removeItem("agentify-theme");
-    } catch {}
-    show();
-  }));
-  system.addEventListener?.("change", show);
-  show();
-})();
-</script>`;
+  `<a class="wordmark" href="${escaped(home)}" aria-label="Agentify home"><img class="brand-mark" src="/assets/agentify-mark.svg" alt="" width="30" height="30"><span>Agentify</span></a>`;
 
 /**
  * One whole page.
@@ -184,7 +149,6 @@ export const page = (chrome: Chrome): string => `<!doctype html>
 <link rel="icon" href="/assets/agentify-mark-heavy.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/styles/fonts.css">
 <link rel="stylesheet" href="${escaped(chrome.base)}/agentify.css">
-${THEME_HEAD}
 </head>
 <body>
 <div class="page">
@@ -199,7 +163,6 @@ ${surface(chrome.mode)}
       ).join("")}</nav>
     </div>
     <div class="whoami">
-      ${THEME_CONTROL}
       ${WAY_OUT}
       ${chrome.selling === undefined ? "" : state(chrome.selling)}
       <a class="who" href="${escaped(chrome.base)}/settings">${escaped(chrome.who)}</a>
@@ -210,7 +173,6 @@ ${surface(chrome.mode)}
   </div>
 ${chrome.unnamed === true ? unnamedNote(chrome.base) : ""}${chrome.body}
 </div>
-${THEME_SCRIPT}
 </body>
 </html>
 `;
@@ -235,34 +197,15 @@ const unnamedNote = (base: string): string => `  <div class="callout">
   </div>
 `;
 
-/** A page with no navigation, for a merchant who is not signed in yet. */
+/**
+ * A page with no navigation, for a merchant who is not signed in yet.
+ *
+ * There were two of these: one that carried the theme script and one for the
+ * pages whose behaviour has to be complete without JavaScript. With the theme
+ * gone there is no script on any of them, so the two were the same page written
+ * twice.
+ */
 export const bare = (
-  base: string,
-  title: string,
-  body: string,
-  mode: SurfaceMode,
-): string => `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escaped(title)} — Agentify</title>
-<link rel="icon" href="/assets/agentify-mark-heavy.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/styles/fonts.css">
-<link rel="stylesheet" href="${escaped(base)}/agentify.css">
-${THEME_HEAD}
-</head>
-<body>
-<div class="gate-tools">${THEME_CONTROL}</div>
-${surface(mode)}
-${body}
-${THEME_SCRIPT}
-</body>
-</html>
-`;
-
-/** A bare page whose behavior is complete without JavaScript. */
-export const bareWithoutScript = (
   base: string,
   title: string,
   body: string,

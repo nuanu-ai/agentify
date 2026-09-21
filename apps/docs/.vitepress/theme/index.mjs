@@ -54,22 +54,14 @@ export default {
             title: "The Agentify site",
           },
           [
-            h("span", { class: "brand-mark", "aria-hidden": "true" }, [
-              h("img", {
-                class: "mark--light",
-                src: "/assets/agentify-mark.svg",
-                alt: "",
-                width: 24,
-                height: 24,
-              }),
-              h("img", {
-                class: "mark--dark",
-                src: "/assets/agentify-mark-dark.svg",
-                alt: "",
-                width: 24,
-                height: 24,
-              }),
-            ]),
+            h("img", {
+              class: "brand-mark",
+              "aria-hidden": "true",
+              src: "/assets/agentify-mark.svg",
+              alt: "",
+              width: 24,
+              height: 24,
+            }),
             "Agentify",
           ],
         ),

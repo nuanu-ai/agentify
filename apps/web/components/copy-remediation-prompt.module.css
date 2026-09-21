@@ -16,7 +16,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  font: 600 0.875rem/1.2 var(--font-human);
+  font: 600 0.875rem/1.2 var(--font-sans);
   cursor: pointer;
 }
 
@@ -28,7 +28,7 @@
 }
 
 .button:disabled {
-  border-color: var(--input-border);
+  border-color: var(--line-strong);
   background: var(--surface-sunken);
   color: var(--faint);
   cursor: wait;
@@ -48,9 +48,9 @@
 
 .secondary,
 .download {
-  border: 1.5px solid var(--input-border);
+  border: 1.5px solid var(--line-strong);
   background: var(--surface);
-  color: var(--ink);
+  color: var(--fg);
 }
 
 .secondary:hover,
@@ -79,7 +79,7 @@
 }
 
 .fallback label {
-  color: var(--ink-2);
+  color: var(--fg-2);
   font-size: 0.8125rem;
   font-weight: 600;
 }
@@ -88,11 +88,11 @@
   width: 100%;
   min-height: 148px;
   resize: vertical;
-  border: 1.5px solid var(--input-border);
+  border: 1.5px solid var(--line-strong);
   border-radius: var(--radius-control);
   padding: 12px;
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--bg);
+  color: var(--fg);
   font: 0.75rem/1.5 var(--font-mono);
 }
 

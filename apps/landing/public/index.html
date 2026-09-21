@@ -56,25 +56,6 @@
     <link rel="stylesheet" href="/styles/fonts.css" />
     <link rel="stylesheet" href="/styles/tokens.css" />
     <link rel="stylesheet" href="/styles/landing.css" />
-
-    <!-- The reader's choice of theme, applied before anything is painted.
-         Later — at the end of the body, with the control — and the page would
-         show the system's theme for a frame and then swap, which is the flash
-         everybody has seen on somebody else's site.
-
-         In a try, because reading storage throws rather than returning nothing
-         in a private window and behind a browser set to refuse site data. A
-         page that cannot remember a preference should still be a page. -->
-    <script>
-      try {
-        const chosen = localStorage.getItem("agentify-theme");
-        if (chosen === "light" || chosen === "dark") {
-          document.documentElement.dataset.theme = chosen;
-        }
-      } catch {
-        /* No stored choice, so the operating system decides. */
-      }
-    </script>
   </head>
   <body class="page">
     <!-- Which stack this is, rendered by Caddy from AGENTIFY_SURFACE_MODE
@@ -96,8 +77,7 @@
     <header class="masthead">
       <a class="wordmark" href="/" aria-label="Agentify home">
         <span class="wordmark__mark" aria-hidden="true">
-          <img class="mark--light" src="/assets/agentify-mark.svg" alt="" width="34" height="34" />
-          <img class="mark--dark" src="/assets/agentify-mark-dark.svg" alt="" width="34" height="34" />
+          <img src="/assets/agentify-mark.svg" alt="" width="34" height="34" />
         </span>
         <span class="wordmark__name">Agentify</span>
         <span class="wordmark__stage">pilot</span>
@@ -105,33 +85,6 @@
       <nav class="masthead__nav" aria-label="Main">
         <a href="/docs/">Documentation</a>
         <a class="button--small" href="/cabinet/">Cabinet</a>
-        <!-- The same switch the documentation carries, because a reader crosses
-             between the two on one origin and a control that changes shape
-             halfway reads as two different products. Its measurements are
-             VitePress's own: a 40 by 22 track, an 18 pixel knob that travels 18,
-             the sun and the moon riding inside it.
-
-             This is why there is no word on it. A word has to say either where
-             you are or where the press takes you, and one word in a bar is read
-             as both — "Dark" was read as "you are in dark mode" by the first
-             person who saw the version before this. A switch has a shape people
-             already know, and the sentence that would have been ambiguous lives
-             in the title where it can be as long as it needs to be.
-
-             Hidden until the script has wired it: a control that does nothing
-             when pressed is worse than one that is not there, and a reader with
-             no script keeps the theme their system asks for. -->
-        <button id="theme" class="switch" type="button" role="switch" aria-checked="false" hidden>
-          <span class="switch__knob">
-            <svg class="switch__sun" viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="12" cy="12" r="4.2" />
-              <path d="M12 2.6v2.6M12 18.8v2.6M2.6 12h2.6M18.8 12h2.6M5.4 5.4l1.8 1.8M16.8 16.8l1.8 1.8M18.6 5.4l-1.8 1.8M7.2 16.8l-1.8 1.8" />
-            </svg>
-            <svg class="switch__moon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M20 14.2A8.4 8.4 0 0 1 9.8 4a8.4 8.4 0 1 0 10.2 10.2z" />
-            </svg>
-          </span>
-        </button>
       </nav>
     </header>
 
@@ -342,8 +295,7 @@
     <footer class="colophon">
       <a class="wordmark wordmark--footer" href="/" aria-label="Agentify home">
         <span class="wordmark__mark" aria-hidden="true">
-          <img class="mark--light" src="/assets/agentify-mark.svg" alt="" width="30" height="30" />
-          <img class="mark--dark" src="/assets/agentify-mark-dark.svg" alt="" width="30" height="30" />
+          <img src="/assets/agentify-mark.svg" alt="" width="30" height="30" />
         </span>
         <span class="wordmark__name">Agentify</span>
       </a>
@@ -353,62 +305,5 @@
         <a href="/cabinet/sign-in">Open your cabinet</a>
       </div>
     </footer>
-
-    <!-- The theme control.
-         Two visible states and three real ones, which is how the documentation's
-         own switch behaves and is worth knowing before somebody calls it a bug.
-         A choice that lands on what the operating system already asks for is
-         stored as nothing at all, so the page goes back to following that system
-         rather than pinning today's answer for ever. Storing the word instead
-         would leave a reader who switches their machine to dark in the evening
-         looking at a light page and no way to explain it. -->
-    <script>
-      (() => {
-        const root = document.documentElement;
-        const button = document.getElementById("theme");
-        const system = window.matchMedia("(prefers-color-scheme: dark)");
-
-        const dark = () => (root.dataset.theme || (system.matches ? "dark" : "light")) === "dark";
-
-        function show() {
-          button.setAttribute("aria-checked", dark() ? "true" : "false");
-          button.title = dark() ? "Switch to the light theme" : "Switch to the dark theme";
-        }
-
-        button.hidden = false;
-        show();
-
-        button.addEventListener("click", () => {
-          const wanted = dark() ? "light" : "dark";
-          const asked = wanted === (system.matches ? "dark" : "light");
-          // Landing back on what the system asks for takes the attribute off as
-          // well as the stored word, so the page goes on following that system
-          // instead of being pinned to what it happened to say at this moment.
-          if (asked) {
-            delete root.dataset.theme;
-          } else {
-            root.dataset.theme = wanted;
-          }
-          show();
-          try {
-            if (asked) {
-              localStorage.removeItem("agentify-theme");
-            } else {
-              localStorage.setItem("agentify-theme", wanted);
-            }
-          } catch {
-            /* The page still changes; it just will not remember. */
-          }
-        });
-
-        // The system changing under an open page moves the switch with it, for
-        // a reader who never made a choice of their own.
-        system.addEventListener("change", () => {
-          if (!root.dataset.theme) {
-            show();
-          }
-        });
-      })();
-    </script>
   </body>
 </html>

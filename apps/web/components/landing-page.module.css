@@ -30,7 +30,7 @@
 .heroCopy > p {
   max-width: 48ch;
   margin: 0;
-  color: var(--ink-2);
+  color: var(--fg-2);
   font-size: 1.125rem;
   line-height: 1.55;
 }
@@ -52,7 +52,7 @@
 .surface {
   min-width: 0;
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: var(--radius-panel);
   background: var(--surface);
   box-shadow: var(--shadow-soft);
@@ -72,7 +72,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  border-bottom: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--line-soft);
   padding: 22px 24px;
   font: 0.875rem/1.4 var(--font-mono);
 }
@@ -88,13 +88,13 @@
   justify-content: space-between;
   gap: 16px;
   border-top: 1px solid var(--divider);
-  color: var(--ink-2);
+  color: var(--fg-2);
   font-size: 0.9375rem;
 }
 
 .surface > p {
   margin: 0;
-  border-top: 1px solid var(--border-soft);
+  border-top: 1px solid var(--line-soft);
   padding: 16px 24px;
   color: var(--muted);
   font: 0.6875rem/1.4 var(--font-mono);
@@ -116,7 +116,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 16px;
   padding: 26px;
   background: var(--surface);
@@ -163,7 +163,7 @@
 }
 
 .how {
-  border-block: 1px solid var(--border);
+  border-block: 1px solid var(--line);
   padding-block: 64px;
   background: var(--surface);
 }
@@ -217,7 +217,7 @@
 .reportHeading > span {
   border-radius: 999px;
   padding: 6px 12px;
-  background: var(--canvas);
+  background: var(--raised);
   color: var(--muted);
   font: 0.6875rem/1.4 var(--font-mono);
 }
@@ -228,7 +228,7 @@
   gap: 32px;
   border-radius: 20px;
   padding: 32px;
-  background: var(--canvas);
+  background: var(--raised);
 }
 
 .reportIntro h3 {
@@ -246,7 +246,7 @@
 
 .exampleChecks {
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--surface);
 }
@@ -257,7 +257,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  border-top: 1px solid var(--border-soft);
+  border-top: 1px solid var(--line-soft);
   padding: 12px 18px;
   font-size: 0.875rem;
 }
@@ -273,7 +273,7 @@
 }
 
 .faq {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--line);
   padding-block: 64px;
   background: var(--surface);
 }
@@ -287,12 +287,12 @@
 }
 
 .faq details {
-  border-top: 1px solid var(--border-soft);
+  border-top: 1px solid var(--line-soft);
   padding: 20px 0;
 }
 
 .faq details:last-child {
-  border-bottom: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--line-soft);
 }
 
 .faq summary {

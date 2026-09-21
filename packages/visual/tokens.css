@@ -12,111 +12,101 @@
  * and the local static landing gets it copied in beside its own stylesheets,
  * where Caddy's fixture root does serve it at /styles/tokens.css.
  *
+ * The language is light. There is no dark set and no theme attribute: the page
+ * a merchant actually lands on is the scanner's, which has never had one, and
+ * a second palette kept in step by hand is how the four stylesheets on this
+ * origin drifted apart in the first place (ADR-0005 §6).
+ *
  * What belongs here: colour, type, radius, the border weight, and the base
  * element rules that follow from them. What does not: the layout of any one
  * page. A rule that only the landing needs lives in landing.css, and a rule
  * that only the cabinet needs lives with the cabinet.
  *
- * These are the Agentify commerce colours. The teal is dark enough to carry
- * ordinary text on paper, while the lighter teal in the dark set keeps links
- * and focus rings clear against ink surfaces.
+ * These are the Agentify colours. The teal is dark enough to carry ordinary
+ * text on paper, which is what lets one accent serve links, fills and focus
+ * rings without a second value for each.
  */
 
 :root {
+  /* Surfaces, from the page backwards. --bg is the paper everything sits on,
+     --surface the card laid on it, --raised the fill that reads as recessed
+     against both — a table's header row, a code block — and --surface-sunken
+     the lighter of the two fills, for a tint that must stay under a border. */
   --bg: #f6f4ef;
   --surface: #fffefa;
   --raised: #eeebe4;
-  --line: #e7e3db;
-  --fg: #1a1917;
-  --muted: #6b6862;
-  --accent: #0f736e;
-  --accent-hover: #0b5a56;
-  --ok: #176a45;
-  --warn: #9a3f2c;
+  --surface-sunken: #f4f1ea;
 
-  /* The hairline of the design carries 1.31:1 against the page, which is right
-     for a rule between two cells and not enough for the edge of something you
-     are meant to click — a control's boundary needs 3:1 before it reads as a
-     control at all. --line draws the first, --line-strong the second. */
+  /* Ink, from the strongest to the faintest. --na is what "there is nothing to
+     say here" looks like: a disabled control, an empty cell. */
+  --fg: #1a1917;
+  --fg-strong: #2a2824;
+  --fg-2: #4b4842;
+  --muted: #6b6862;
+  --faint: #8a8781;
+  --na: #b4afa6;
+
+  /* Lines. The hairline of the design carries 1.31:1 against the page, which is
+     right for a rule between two cells and not enough for the edge of something
+     you are meant to click — a control's boundary needs 3:1 before it reads as
+     a control at all. --line draws the first, --line-strong the second, and
+     --line-soft and --divider are the two quieter rules inside a card. */
+  --line: #e7e3db;
+  --line-soft: #f0ede6;
+  --divider: #f5f2ec;
   --line-strong: #8d8981;
 
-  /* Text laid on --accent. Fixed rather than derived: the accent is dark in
-     the light theme and light in the dark one, so a single near-white would
-     fail the contrast it needs in one of them. */
+  --accent: #0f736e;
+  --accent-hover: #0b5a56;
+  --accent-soft: #e6f0ef;
+
+  /* Text laid on --accent. Fixed rather than derived, so that a fill and the
+     words on it are decided in one place. */
   --on-accent: #ffffff;
 
-  --font-sans: "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
+  /* A verdict has three states and they are named for what they say rather than
+     for their colour, so a check that changes its mind does not change its
+     vocabulary. --partial is darkened from the drawn #b6801f, which fails WCAG
+     AA on paper for small text, to ~5.5:1; the notice pair beneath it is ours
+     and has had no design review. */
+  --pass: #2e7d53;
+  --pass-soft: #e7f1ea;
+  --partial: #9a6811;
+  --notice-bg: #f8f0df;
+  --notice-ink: #76500e;
+  --fail: #b4462f;
+
+  /* The one band on the origin that is ink rather than paper: the scanner's
+     footer. Four foregrounds that mean nothing apart and are a palette
+     together, which is why they are named here rather than written into the
+     one component that draws them. */
+  --footer-text: #c9c6bf;
+  --footer-muted: #a8a49c;
+  --footer-faint: #8f8b84;
+  --footer-border: #2c2a27;
+
+  /* "Schibsted Grotesk Variable" is the family @fontsource-variable registers
+     and is how the scanner loads the face; "Schibsted Grotesk" is the family
+     the @font-face rules in /styles/fonts.css declare and is how every other
+     surface loads it. Both are named so that one stack serves both
+     arrangements and neither surface drops through to the system face. */
+  --font-sans:
+    "Schibsted Grotesk Variable", "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --radius: 8px;
+  --radius-control: 12px;
+  --radius-card: 14px;
+  --radius-panel: 20px;
+  --radius-pill: 999px;
   --hairline: 1px;
-}
 
-/*
- * The dark set, in the two places a reader can ask for it.
- *
- * There are three states rather than two. With nothing chosen the page follows
- * the operating system, which is the first block; a reader who has chosen gets
- * what they chose, which is the second, and the `:not()` above is what makes a
- * choice of light survive a system that is dark.
- *
- * The values are written twice and that is the cost of doing it in plain CSS: a
- * media query cannot be part of a selector, so the same block cannot serve both
- * conditions. `light-dark()` would state each colour once and was not taken —
- * a browser that does not know the function drops every declaration containing
- * it, and the front door of the product would render with no colours at all
- * rather than with the wrong ones. The pair below drifts apart the moment
- * somebody edits one of them, which is the reason this paragraph is here.
- */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #111817;
-    --surface: #17201f;
-    --raised: #1d2927;
-    --line: #34423f;
-    --line-strong: #75827f;
-    --fg: #f6f4ef;
-    --muted: #aaa8a1;
-    --accent: #66c7be;
-    --accent-hover: #84dbd2;
-    --ok: #72c99b;
-    --warn: #efa08f;
-    --on-accent: #10201e;
-  }
-}
+  --shadow-soft: 0 30px 70px -46px rgba(26, 25, 23, 0.42);
 
-:root[data-theme="dark"] {
-  --bg: #111817;
-  --surface: #17201f;
-  --raised: #1d2927;
-  --line: #34423f;
-  --line-strong: #75827f;
-  --fg: #f6f4ef;
-  --muted: #aaa8a1;
-  --accent: #66c7be;
-  --accent-hover: #84dbd2;
-  --ok: #72c99b;
-  --warn: #efa08f;
-  --on-accent: #10201e;
-}
-
-/*
- * What the browser paints that this stylesheet does not: form controls, the
- * scrollbar, the caret. Told rather than left to guess, or a light page keeps a
- * dark scrollbar down its side.
- */
-:root {
+  /* What the browser paints that this stylesheet does not: form controls, the
+     scrollbar, the caret. Told rather than left to guess, or a light page keeps
+     a dark scrollbar down its side on a machine set to dark. */
   color-scheme: light;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-  }
-}
-
-:root[data-theme="dark"] {
-  color-scheme: dark;
 }
 
 *,
@@ -126,13 +116,14 @@
 }
 
 html {
-  /* The dark theme's page background has to reach past the document box, or a
-     rubber-band scroll on a phone exposes a white strip under a dark page. */
+  /* The page background has to reach past the document box, or a rubber-band
+     scroll on a phone exposes a white strip under a warm page. */
   background: var(--bg);
 }
 
 body {
   margin: 0;
+  min-width: 320px;
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font-sans);
@@ -156,17 +147,12 @@ a:hover {
   text-decoration: underline;
 }
 
-a:focus-visible,
-button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+/* One ring, everywhere. A translucent halo at three pixels rather than a solid
+   two: it is visible against both paper and a filled control, and it does not
+   redraw the edge of the thing it is marking. */
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  outline-offset: 3px;
 }
 
 h1,
