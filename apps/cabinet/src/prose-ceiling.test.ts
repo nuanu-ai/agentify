@@ -333,7 +333,10 @@ const SCREENS: readonly {
     body: 69,
     footnote: 23,
   },
-  { name: "woocommerce, back from the shop", html: wooReturnScreen(BASE, "test"), body: 69 },
+  // The return page is a door and not a working screen: it is drawn for a
+  // browser with no session, it names no account and no shop, and all it does
+  // is send somebody on. So it is held to the ceiling the sign-in family has.
+  { name: "woocommerce, back from the shop", html: wooReturnScreen(BASE, "test"), body: 40 },
   {
     name: "woocommerce, what came over",
     html: wooImportScreen(SEEN_BY, {
