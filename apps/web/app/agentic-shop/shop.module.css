@@ -91,6 +91,15 @@
 .nav a:hover {
   color: var(--accent);
 }
+.headerDocs {
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.headerDocs:hover {
+  color: var(--accent);
+}
 .headerCta {
   display: inline-flex;
   gap: 18px;
@@ -975,7 +984,7 @@
   .nav {
     display: none;
   }
-  .headerCta {
+  .headerDocs {
     margin-left: auto;
   }
   .hero {

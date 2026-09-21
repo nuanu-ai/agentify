@@ -13,13 +13,16 @@ import styles from "./site-chrome.module.css";
  * not routes of this application, so they are plain anchors and not the
  * router's links. The words are the ones the destinations use of themselves:
  * the portal says "Docs" in its own corner, and the cabinet's sign-in page
- * says what one link does before anybody presses it. Every public header
- * renders this element, so a merchant who typed the site's name into a
- * browser has a way in that is not memory (docs/research/31-user-journey.md).
+ * says what one link does before anybody presses it. The landing and the
+ * trust headers both render this element, so a merchant who typed the site's
+ * name into a browser has a way in that is not memory
+ * (docs/research/31-user-journey.md). When the bar runs out of room it is the
+ * section links that go, never these two: the stylesheet hides the nav by
+ * steps and keeps the doors at every width down to 320px.
  */
 export function SiteDoors() {
   return (
-    <nav aria-label="Documentation and cabinet" className={styles.doors}>
+    <nav aria-label="Docs and cabinet" className={styles.doors}>
       <a href="/docs/">Docs</a>
       <a href="/cabinet/sign-in">Cabinet</a>
     </nav>

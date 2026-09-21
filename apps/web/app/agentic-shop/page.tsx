@@ -111,8 +111,10 @@ export default function AgenticShopPage() {
             <a href="#how-it-works">How it works</a>
             <a href="#loyalty">Agent loyalty</a>
             <a href="#questions">Questions</a>
-            <a href="/docs/">Docs</a>
           </nav>
+          <a href="/docs/" className={styles.headerDocs}>
+            Docs
+          </a>
           <a href="/cabinet/sign-in" className={styles.headerCta}>
             Open your cabinet <Arrow diagonal />
           </a>

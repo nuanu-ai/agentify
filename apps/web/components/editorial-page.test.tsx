@@ -2,20 +2,12 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { EditorialPage } from "./editorial-page";
+import MethodologyPage from "../app/(trust)/methodology/page";
 
-describe("EditorialPage", () => {
+describe("a trust page", () => {
   it("carries the doors to the documentation and the cabinet", () => {
-    const markup = renderToStaticMarkup(
-      <EditorialPage
-        eyebrow="Trust"
-        intro="What the scanner reads."
-        sections={[
-          { id: "scope", title: "Scope", content: <p>Public HTTP.</p> },
-        ]}
-        title="Methodology"
-      />,
-    );
+    Object.assign(globalThis, { React });
+    const markup = renderToStaticMarkup(<MethodologyPage />);
 
     expect(markup).toContain('href="/docs/"');
     expect(markup).toContain('href="/cabinet/sign-in"');
