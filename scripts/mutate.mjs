@@ -226,7 +226,10 @@ function liveRun() {
     command = execFileSync("ps", ["-p", String(pid), "-o", "command="], {
       encoding: "utf8",
     }).trim();
-  } catch {}
+  } catch {
+    return pid;
+  }
+  if (!command) return pid;
   return /(?:^|[ /])mutate\.mjs(?:\s|$)/.test(command) ? pid : undefined;
 }
 
