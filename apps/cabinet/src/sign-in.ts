@@ -26,8 +26,9 @@ export const signInScreen = (
     base,
     "Sign in",
     `<div class="gate">
-<form method="post" action="${escaped(base)}/sign-in">
-  <h1>${brandLockup("/")}</h1>
+${brandLockup("/")}
+<form class="gate-card" method="post" action="${escaped(base)}/sign-in">
+  <h1>Sign in</h1>
   <p>Enter your email address. We will send one link that signs you in or makes your cabinet when you open it.</p>
   <label for="email">Email</label>
   <input id="email" name="email" type="email" value="${escaped(email)}" autocomplete="email" autocapitalize="off" spellcheck="false" autofocus required>
@@ -61,18 +62,21 @@ export const linkRequestedScreen = (
     base,
     minutes === null ? "Check your mail" : "Try again later",
     `<div class="gate">
-<form method="post" action="${escaped(base)}/sign-in">
-  <h1>${brandLockup("/")}</h1>
+${brandLockup("/")}
+<div class="gate-card">
+  <h1>${minutes === null ? "Check your mail" : "Try again later"}</h1>
   ${outcome}
   <p class="quiet">You can request up to three links for one address in one hour. We answer every address the same way.</p>
-  <input name="email" type="hidden" value="${escaped(email)}">
-  ${destinationInput(destination)}
-  <button class="button button-primary" type="submit">Send another link</button>
-</form>
-<form method="get" action="${escaped(base)}/sign-in">
-  ${destinationInput(destination)}
-  <button class="button button-secondary" type="submit">Use a different email</button>
-</form>
+  <form method="post" action="${escaped(base)}/sign-in">
+    <input name="email" type="hidden" value="${escaped(email)}">
+    ${destinationInput(destination)}
+    <button class="button button-primary" type="submit">Send another link</button>
+  </form>
+  <form method="get" action="${escaped(base)}/sign-in">
+    ${destinationInput(destination)}
+    <button class="button button-secondary" type="submit">Use a different email</button>
+  </form>
+</div>
 </div>`,
     mode,
   );
@@ -84,8 +88,9 @@ export const mailUnavailableScreen = (base: string, mode: SurfaceMode): string =
     base,
     "Mail is unavailable",
     `<div class="gate">
-<form method="get" action="${escaped(base)}/sign-in">
-  <h1>${brandLockup("/")}</h1>
+${brandLockup("/")}
+<form class="gate-card" method="get" action="${escaped(base)}/sign-in">
+  <h1>Mail is unavailable</h1>
   <p>We could not hand your sign-in message to the mail provider. No account or session was made. Please try again in a moment.</p>
   <button class="button button-primary" type="submit">Try again</button>
 </form>
@@ -99,8 +104,9 @@ export const openLinkScreen = (base: string, token: string, mode: SurfaceMode): 
     base,
     "Open your cabinet",
     `<div class="gate">
-<form method="post" action="${escaped(base)}/sign-in/open">
-  <h1>${brandLockup("/")}</h1>
+${brandLockup("/")}
+<form class="gate-card" method="post" action="${escaped(base)}/sign-in/open">
+  <h1>Open your cabinet</h1>
   <p>Confirm that you want to open your cabinet in this browser.</p>
   <input type="hidden" name="token" value="${escaped(token)}">
   <button class="button button-primary" type="submit">Open my cabinet</button>
@@ -127,12 +133,15 @@ export const refusedLinkScreen = (
     base,
     "That link does not work",
     `<div class="gate">
-  <h1>${brandLockup("/")}</h1>
-  <p>That link does not work. It may have expired or already been used.</p>
+${brandLockup("/")}
+<div class="gate-card">
+  <h1>That link does not work</h1>
+  <p>It may have expired or already been used.</p>
   ${recovery}
-<form method="get" action="${escaped(base)}/sign-in">
-  <button class="button button-secondary" type="submit">${another}</button>
-</form>
+  <form method="get" action="${escaped(base)}/sign-in">
+    <button class="button button-secondary" type="submit">${another}</button>
+  </form>
+</div>
 </div>`,
     mode,
   );
@@ -144,17 +153,20 @@ export const merchantSetupScreen = (base: string, mode: SurfaceMode, unavailable
     base,
     "Finish setting up your cabinet",
     `<div class="gate">
-<form method="post" action="${escaped(base)}/merchant">
-  <h1>${brandLockup("/")}</h1>
+${brandLockup("/")}
+<div class="gate-card">
+  <h1>Finish setting up your cabinet</h1>
   <p>Your email is confirmed and you are signed in. Your merchant${
     unavailable ? " could not be made because the gateway did not answer" : " is not attached yet"
   }.</p>
   <p class="quiet">Trying again uses this signed-in session. You do not need another email.</p>
-  <button class="button button-primary" type="submit">Try again</button>
-</form>
-<form method="post" action="${escaped(base)}/sign-out">
-  <button class="button button-secondary" type="submit">Sign out</button>
-</form>
+  <form method="post" action="${escaped(base)}/merchant">
+    <button class="button button-primary" type="submit">Try again</button>
+  </form>
+  <form method="post" action="${escaped(base)}/sign-out">
+    <button class="button button-secondary" type="submit">Sign out</button>
+  </form>
+</div>
 </div>`,
     mode,
   );

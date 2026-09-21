@@ -616,43 +616,44 @@ td.control {
 
 /* --- signing in --------------------------------------------------------- */
 
+/*
+ * The pages outside the cabinet: sign in, check your mail, open the link,
+ * choose a name, come back from a shop, and every error page.
+ *
+ * One card on the page colour, at the measures of the scanner's own
+ * (apps/web/components/auth-callback.module.css): 520 pixels, the panel corner,
+ * the shared soft shadow, and padding that grows with the window. The teal
+ * radial gradient behind it is gone — nothing on the scanner has one, and it
+ * was the first thing a merchant saw after pressing a button on a page that
+ * did not.
+ *
+ * The lockup is above the card and not inside it, which is the scanner's
+ * arrangement and also an accessibility fix: every one of these pages had a
+ * logo as its only heading, so each has a real `h1` now saying which page it
+ * is. The heading is a hero here and not a section title, so it takes the
+ * larger step; inside the cabinet `.lede h1` is the calmer one.
+ */
 .gate {
   min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 28px;
   padding: 48px 24px;
-  background:
-    radial-gradient(
-      circle at 15% 10%,
-      color-mix(in srgb, var(--accent) 9%, transparent),
-      transparent 32rem
-    ),
-    var(--bg);
 }
 
-.gate form {
-  width: 100%;
-  max-width: 440px;
+.gate-card {
+  width: min(100%, 520px);
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-panel);
   background: var(--surface);
-  padding: 36px;
-  box-shadow: 0 20px 60px color-mix(in srgb, var(--fg) 8%, transparent);
+  padding: clamp(28px, 6vw, 40px);
+  box-shadow: var(--shadow-soft);
 }
 
 .gate h1 {
-  font-size: 18px;
-  margin-bottom: 22px;
-}
-
-.gate .wordmark {
-  font-size: 22px;
-}
-
-.gate .wordmark .brand-mark {
-  width: 38px;
-  height: 38px;
+  font-size: clamp(2rem, 5vw, 2.5rem);
+  margin-bottom: 16px;
 }
 
 .gate p {
@@ -700,8 +701,13 @@ td.control {
   }
 }
 
+/* The actions on a gate page are a column and not a row: the card is 520 wide
+   and two controls side by side in it read as one wide control cut in half.
+   Where there are two, the second is the secondary one under the first — which
+   is what "Use a different email" was not, before: it sat in a second card of
+   its own beside the first, at a different height. */
 .gate .button {
-  margin-top: 20px;
+  margin-top: 12px;
   width: 100%;
 }
 

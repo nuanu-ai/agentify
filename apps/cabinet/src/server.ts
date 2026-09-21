@@ -1958,11 +1958,14 @@ function problemPageAt(base: string, mode: CabinetConfig["surfaceMode"], said: s
   return bare(
     base,
     "Something went wrong",
-    `<div class="gate"><form method="get" action="${escaped(base)}/cards">
-<h1>${brandLockup("/")}</h1>
+    `<div class="gate">
+${brandLockup("/")}
+<form class="gate-card" method="get" action="${escaped(base)}/cards">
+<h1>Something went wrong</h1>
 <p>${escaped(said)}</p>
 <button class="button button-primary" type="submit">Try again</button>
-</form></div>`,
+</form>
+</div>`,
     mode,
   );
 }

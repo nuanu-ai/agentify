@@ -255,9 +255,9 @@ export const wooReturnScreen = (base: string, mode: SurfaceMode): string =>
     base,
     "Back from your shop",
     `<div class="gate">
-  <form method="get" action="${escaped(base)}/woocommerce">
-    <h1>${brandLockup("/")}</h1>
-    <h2>Back from your shop</h2>
+  ${brandLockup("/")}
+  <form class="gate-card" method="get" action="${escaped(base)}/woocommerce">
+    <h1>Back from your shop</h1>
     <p>Continue to your cabinet to see whether access reached Agentify. If you chose not to connect, you can try again there.</p>
     <input type="hidden" name="from" value="shop">
     <button class="button button-primary" type="submit">Continue to your cabinet</button>

@@ -105,8 +105,9 @@ export const chooseNameScreen = (
     base,
     "The name your products are sold under",
     `<div class="gate">
-<form method="post" action="${escaped(base)}/choose-name">
-  <h1>${brandLockup("/")}</h1>
+${brandLockup("/")}
+<form class="gate-card" method="post" action="${escaped(base)}/choose-name">
+  <h1>Choose your seller name</h1>
   <p>Your account is ready. Choose the seller name buyers will see.</p>
   <label for="seller_name">The name your products are sold under</label>
   <input id="seller_name" name="seller_name" type="text" autocomplete="organization" maxlength="32" value="${escaped(typed)}" autofocus required>
