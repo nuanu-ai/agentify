@@ -260,7 +260,7 @@ export const wooReturnScreen = (base: string, mode: SurfaceMode): string =>
     <h2>Back from your shop</h2>
     <p>Continue to your cabinet to see whether access reached Agentify. If you chose not to connect, you can try again there.</p>
     <input type="hidden" name="from" value="shop">
-    <button class="primary" type="submit">Continue to your cabinet</button>
+    <button class="button button-primary" type="submit">Continue to your cabinet</button>
   </form>
 </div>`,
     mode,
@@ -279,7 +279,7 @@ const theForm = (base: string, view: WooView): string => `  <div class="lede">
       <label for="shop_url">The address of your shop</label>
       <input id="shop_url" name="shop_url" type="url" inputmode="url" placeholder="https://shop.example.com" value="${escaped(view.typed ?? (view.state.kind === "waiting" || view.state.kind === "unanswered" ? view.state.shopUrl : ""))}" required>
     </div>
-    <button class="primary" type="submit">Connect</button>
+    <button class="button button-compact button-primary" type="submit">Connect</button>
     ${view.problem === undefined ? "" : `<p class="problem">${escaped(view.problem)}</p>`}
   </form>
 `;
@@ -315,14 +315,14 @@ const theConnection = (
       <p class="quiet">Reads up to ${PRODUCTS_AT_MOST} products and publishes only the supported single-file downloads described above. If the shop has more, the whole import is refused. Running it again updates the same cards.</p>
       <p class="quiet">A card remains listed if its shop product is later deleted, out of stock or unsupported, but a fresh price check refuses it before payment. Pause cards you no longer want agents to see.</p>
     </div>
-    <button class="primary" type="submit">Import the catalogue</button>
+    <button class="button button-compact button-primary" type="submit">Import the catalogue</button>
   </form>
   <form class="issue" method="post" action="${escaped(base)}/woocommerce/disconnect">
     <div>
       <label>Disconnect</label>
       <p class="quiet">Forgets the keys your shop gave us. Cards remain listed, but without a connected worker a fresh purchase cannot get a price and is refused before payment. Orders already paid remain obligations. Pause the cards first if you no longer want agents to see them; revoke the keys in WooCommerce → Settings → Advanced → REST API.</p>
     </div>
-    <button type="submit">Forget this shop</button>
+    <button class="button button-compact button-secondary" type="submit">Forget this shop</button>
   </form>
 `;
 

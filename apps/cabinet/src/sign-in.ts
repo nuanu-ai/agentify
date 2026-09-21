@@ -32,7 +32,7 @@ export const signInScreen = (
   <label for="email">Email</label>
   <input id="email" name="email" type="email" value="${escaped(email)}" autocomplete="email" autocapitalize="off" spellcheck="false" autofocus required>
   ${destinationInput(destination)}
-  <button class="primary" type="submit">Send me a sign-in link</button>
+  <button class="button button-primary" type="submit">Send me a sign-in link</button>
   ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
   <p class="quiet">The link works once and expires after one hour. There is no password to remember or reset.</p>
 </form>
@@ -67,11 +67,11 @@ export const linkRequestedScreen = (
   <p class="quiet">You can request up to three links for one address in one hour. We answer every address the same way.</p>
   <input name="email" type="hidden" value="${escaped(email)}">
   ${destinationInput(destination)}
-  <button type="submit">Send another link</button>
+  <button class="button button-primary" type="submit">Send another link</button>
 </form>
 <form method="get" action="${escaped(base)}/sign-in">
   ${destinationInput(destination)}
-  <button type="submit">Use a different email</button>
+  <button class="button button-secondary" type="submit">Use a different email</button>
 </form>
 </div>`,
     mode,
@@ -87,7 +87,7 @@ export const mailUnavailableScreen = (base: string, mode: SurfaceMode): string =
 <form method="get" action="${escaped(base)}/sign-in">
   <h1>${brandLockup("/")}</h1>
   <p>We could not hand your sign-in message to the mail provider. No account or session was made. Please try again in a moment.</p>
-  <button type="submit">Try again</button>
+  <button class="button button-primary" type="submit">Try again</button>
 </form>
 </div>`,
     mode,
@@ -103,7 +103,7 @@ export const openLinkScreen = (base: string, token: string, mode: SurfaceMode): 
   <h1>${brandLockup("/")}</h1>
   <p>Confirm that you want to open your cabinet in this browser.</p>
   <input type="hidden" name="token" value="${escaped(token)}">
-  <button class="primary" type="submit">Open my cabinet</button>
+  <button class="button button-primary" type="submit">Open my cabinet</button>
 </form>
 </div>`,
     mode,
@@ -119,7 +119,7 @@ export const refusedLinkScreen = (
     signedIn === undefined
       ? "<p>Ask for a fresh link.</p>"
       : `<p>You are already signed in as ${escaped(signedIn.email)}.</p>
-  <p><a class="button primary" href="${escaped(base)}/${signedIn.destination}">Open your cabinet</a></p>
+  <p><a class="button button-primary" href="${escaped(base)}/${signedIn.destination}">Open your cabinet</a></p>
   <p class="quiet">Use a different email only if you meant to switch accounts.</p>`;
   const another = signedIn === undefined ? "Ask for another link" : "Use a different email";
 
@@ -131,7 +131,7 @@ export const refusedLinkScreen = (
   <p>That link does not work. It may have expired or already been used.</p>
   ${recovery}
 <form method="get" action="${escaped(base)}/sign-in">
-  <button type="submit">${another}</button>
+  <button class="button button-secondary" type="submit">${another}</button>
 </form>
 </div>`,
     mode,
@@ -150,10 +150,10 @@ export const merchantSetupScreen = (base: string, mode: SurfaceMode, unavailable
     unavailable ? " could not be made because the gateway did not answer" : " is not attached yet"
   }.</p>
   <p class="quiet">Trying again uses this signed-in session. You do not need another email.</p>
-  <button class="primary" type="submit">Try again</button>
+  <button class="button button-primary" type="submit">Try again</button>
 </form>
 <form method="post" action="${escaped(base)}/sign-out">
-  <button type="submit">Sign out</button>
+  <button class="button button-secondary" type="submit">Sign out</button>
 </form>
 </div>`,
     mode,

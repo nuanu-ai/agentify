@@ -101,7 +101,7 @@ const keyControl = (base: string, entry: MerchantKey): string => {
   // one. The page says so in words above the table as well; a control with no
   // confirmation behind it should not be the only place that is said.
   return `<form class="inline" method="post" action="${escaped(base)}/keys/${encodeURIComponent(entry.id)}/disable">
-<button type="submit">Revoke</button></form>`;
+<button class="button button-compact button-secondary" type="submit">Revoke</button></form>`;
 };
 
 /**
@@ -171,7 +171,7 @@ ${
       <label for="label">What this key is for</label>
       <input id="label" name="label" type="text" autocomplete="off" required>
     </div>
-    <button class="primary" type="submit">Issue a key</button>
+    <button class="button button-compact button-primary" type="submit">Issue a key</button>
     ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
   </form>
 `;
@@ -210,7 +210,7 @@ export const newKeyScreen = (viewer: Viewer, label: string, secret: string): str
     </div>
   </div>
   <div class="scroller"><p class="secret" id="new-key-secret">${escaped(secret)}</p></div>
-  <p><button class="primary" id="copy-new-key" type="button">Copy key</button> <span id="copy-new-key-result" role="status"></span></p>
+  <p><button class="button button-primary" id="copy-new-key" type="button">Copy key</button> <span id="copy-new-key-result" role="status"></span></p>
   <div class="note"><span class="mark">&#8627;</span><span>${escaped(
     "Put it where your code reads its key from before you leave this page. If your browser ever" +
       " asks to resend the form, cancel: resending asks for another key.",

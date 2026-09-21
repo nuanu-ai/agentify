@@ -112,7 +112,7 @@ export const chooseNameScreen = (
   <input id="seller_name" name="seller_name" type="text" autocomplete="organization" maxlength="32" value="${escaped(typed)}" autofocus required>
   ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
   <p class="quiet">${escaped(NAME_RULE)}</p>
-  <button class="primary" type="submit">Use this name</button>
+  <button class="button button-primary" type="submit">Use this name</button>
   ${WHAT_IT_IS_FOR}
   <p class="quiet">You can change it whenever you like. Until it is set, nothing you publish goes on sale, and every screen in the cabinet says so.</p>
   <p class="quiet">Not decided yet? <a href="${escaped(base)}/cards">Leave it for now</a> — it is set under <a href="${escaped(base)}/settings">Settings</a> whenever you are ready.</p>
@@ -185,7 +185,7 @@ export const settingsScreen = (viewer: Viewer, problem?: string, typedName?: str
       <input id="seller_name" name="seller_name" type="text" autocomplete="organization" maxlength="32" value="${escaped(typedName ?? name ?? "")}" required>
       ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
     </div>
-    <button class="primary" type="submit">Save it</button>
+    <button class="button button-compact button-primary" type="submit">Save it</button>
   </form>
   </section>
   <section class="settings-panel">${payoutWalletBlock(viewer)}</section>

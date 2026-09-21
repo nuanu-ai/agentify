@@ -170,13 +170,13 @@ const cardAside = (entry: MerchantCard): string => {
 const cardControl = (base: string, entry: MerchantCard): string => {
   if (entry.paused) {
     return `<form class="inline" method="post" action="${escaped(base)}/cards/${encodeURIComponent(entry.id)}/resume">
-<button class="primary" type="submit">Resume</button></form>`;
+<button class="button button-compact button-primary" type="submit">Resume</button></form>`;
   }
   if (entry.selling !== "open") {
     return '<span class="quiet">All selling is stopped</span>';
   }
   return `<form class="inline" method="post" action="${escaped(base)}/cards/${encodeURIComponent(entry.id)}/pause">
-<button type="submit">Pause</button></form>`;
+<button class="button button-compact button-secondary" type="submit">Pause</button></form>`;
 };
 
 /**
@@ -257,7 +257,7 @@ export const cardsScreen = (
         gone
           ? ""
           : `<form class="inline" method="post" action="${escaped(base)}/selling/${stopped ? "resume" : "pause"}">
-        <button class="wide${stopped ? " primary" : ""}" type="submit">${stopped ? "Start selling again" : "Stop all selling"}</button>
+        <button class="button ${stopped ? "button-primary" : "button-secondary"}" type="submit">${stopped ? "Start selling again" : "Stop all selling"}</button>
       </form>`
       }
     </div>
