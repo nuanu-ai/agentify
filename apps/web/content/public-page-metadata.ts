@@ -21,7 +21,7 @@ export const PUBLIC_PAGE_METADATA = {
   "/owner": { lastModified: "2026-09-21", priority: 1 },
   "/store": { lastModified: "2026-09-21", priority: 0.9 },
   "/local": { lastModified: "2026-09-21", priority: 0.9 },
-  "/methodology": { lastModified: "2026-07-14", priority: 0.8 },
+  "/methodology": { lastModified: "2026-09-21", priority: 0.8 },
   "/scanner": { lastModified: "2026-07-13", priority: 0.8 },
   "/privacy": { lastModified: "2026-07-14", priority: 0.6 },
   "/terms": { lastModified: "2026-07-13", priority: 0.6 },
