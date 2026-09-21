@@ -307,7 +307,6 @@ lint and test policies.
 | `scripts/` | The commands the root `package.json` calls: the decision-log check, the outside install, the mutation run, worktree hygiene. |
 | `docs/decisions/` | The numbered decisions — what is expensive to reverse, and why it was decided that way. |
 | `docs/research/` | The working material behind them: research, runbooks, acceptance protocols. |
-| `spikes/` | Experiments living on their own dependencies. |
 
 Gateway and cabinet share one Postgres and each owns its migrations under
 `drizzle/`; `pnpm db:migrate` runs both.
