@@ -13,8 +13,10 @@
  * packages/visual/tokens.css, and that is a deliberate cost. The portal is a
  * separate project with its own lockfile and its own build; making its
  * stylesheet depend on a workspace package would tie the two builds together to
- * save a copy of eight values. They are the values of that file, and this
- * comment is where the next person is told to keep them in step.
+ * save a copy of eight values. They are the values of that file, and
+ * packages/core/src/deployment/portal-palette.test.ts is what keeps them so:
+ * it reads both files and fails the suite the moment a value here stops
+ * matching its counterpart there.
  */
 
 @font-face {
