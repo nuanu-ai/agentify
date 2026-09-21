@@ -203,12 +203,15 @@ const accountRow = (base: string, who: string): string => `  <div class="account
  * API response and the wrong one for somebody looking at a page — so this says
  * the same thing and points at the page that does it instead.
  *
+ * One sentence, where it was a consequence and a reason under it. Why a card
+ * with no seller on it is refused is not something a merchant standing in
+ * front of this banner does anything with; the link is.
+ *
  * It goes once the name is chosen. A line that never leaves is a line nobody
  * reads, and this one is about a state one form post ends.
  */
 const unnamedNote = (base: string): string => `  <div class="callout">
-    <div class="what">Your products cannot go on sale until you choose the name buyers see beside them.</div>
-    <div class="why">A card published while this is unset is refused, because it would be offered for sale with no seller on it. <a href="${escaped(base)}/settings">Choose the name in your settings</a>.</div>
+    <div class="what">Nothing of yours can go on sale until you choose the seller name buyers read. <a href="${escaped(base)}/settings">Choose it in settings</a>.</div>
   </div>
 `;
 

@@ -257,10 +257,7 @@ export const cardsScreen = (
   <div class="lede">
     <div>
       <h1>Product cards</h1>
-      <p>${escaped(`${countOf(cards.cards.length, "card")} published, ${paused} paused by you.`)}${restOf(
-        "/docs/quickstart#_3-describe-the-product-with-a-card",
-        "How your code publishes one",
-      )}</p>
+      <p>${escaped(`${countOf(cards.cards.length, "card")} published, ${paused} paused. ${sellingNote(cards.selling)}`)}${sellingRest(cards.selling)}</p>
     </div>
     <div class="actions">
       ${
@@ -275,35 +272,28 @@ export const cardsScreen = (
 ${table(
   ["Product", "Your key", "Price", "Delivery", "State", ""],
   rows,
-  // An empty catalogue has two readings and the merchant cannot tell them
-  // apart from here: nobody has published anything yet, or something published
-  // was refused. While no name is set, the second one is what happens to
-  // everything, so the line says it rather than leaving a merchant to work out
-  // why their code's card never arrived.
-  viewer.sellerName === null
-    ? "You have not published a card yet, and until you choose the name buyers see, publishing one is refused. Choose it in your settings and publish again."
-    : "You have not published a card yet. Your code publishes them; they appear here.",
+  // Why an empty catalogue is empty while no name is set is said once, in the
+  // banner at the top of this very page, which is drawn in exactly that case.
+  // Saying it twice on one screen is the shape Dmitry named on 2026-09-21.
+  "No cards yet. Your code publishes them.",
 )}
 ${
   cards.cards.length === 0
-    ? `<p><a href="/docs/quickstart">Publish your first card with the test-sale guide →</a>${
+    ? `<p><a href="/docs/quickstart">Publish your first card →</a>${
         wooAvailable
-          ? ` · <a href="${escaped(base)}/woocommerce">Or try the experimental WooCommerce download path →</a>`
+          ? ` · <a href="${escaped(base)}/woocommerce">Try the experimental WooCommerce path →</a>`
           : ""
       }</p>`
     : ""
 }
-  <p class="note">${escaped(sellingNote(cards.selling))}${sellingRest(cards.selling)}</p>
   <p class="note">${escaped(
     // Text and not a link, and the reason is what happens when you press one.
     // Asking for this address without paying is answered with a demand for
     // payment that travels in a header, so a browser is handed a blank page
     // and a merchant who clicked reads that as their card being broken.
-    "The line under each product is the address an agent buys it at. Asking for it without paying" +
-      " answers with a demand for payment rather than a page, so it is for handing to an agent or" +
-      " trying from a terminal, not for opening here. A card that is off sale is refused at that" +
-      " address instead of being offered.",
-  )}</p>
+    "The address under each product is for an agent, not a browser: it answers with a demand for" +
+      " payment.",
+  )}${restOf("/docs/quickstart#_6-walk-a-test-purchase", "Walking a test purchase")}</p>
 `;
 
   return framed({ viewer, tab: "cards", title: "Product cards", selling: cards.selling, body });
@@ -317,15 +307,19 @@ ${
  * orders to play out, and leaving closed them and left the money for anything
  * paid for and not delivered to be returned. One sentence for both would be
  * wrong for one of them.
+ *
+ * One sentence each, in the counts line beside the control they are about,
+ * rather than a paragraph under the table. The rest of what each word means is
+ * the link at the end of that line.
  */
 const sellingNote = (selling: MerchantCardList["selling"]): string => {
   switch (selling) {
     case "departed":
-      return "You have left. The orders that were open closed with you, and the money for anything paid for and not delivered is yours to return. Selling does not start again from this page.";
+      return "You have left: the open orders closed with you, and anything paid for and not delivered is yours to return.";
     case "paused":
-      return "All selling is stopped: no new order is taken for any card, and the orders you have already accepted play out as usual. Resuming leaves the cards you paused yourself paused.";
+      return "All selling is stopped; the orders you already accepted play out.";
     case "open":
-      return "A pause takes the card off sale without abandoning orders: the ones you already accepted play out as usual.";
+      return "A pause takes a card off sale; the orders you already accepted play out.";
   }
 };
 
@@ -380,8 +374,13 @@ ${table(
   open ? "Nothing is open. Every order you have is finished." : "No orders yet.",
 )}
   <p class="note">${escaped(
-    "One kind of order cannot appear here: a purchase that closed before anybody named a price for it — a product you said was gone, or a price question you did not answer. The row every order is drawn in carries the price it sold at, and those have none. Nothing was charged for them.",
-  )}</p>
+    // The truncation this table cannot avoid: every row carries the price the
+    // order sold at, and an order that closed before anybody named a price has
+    // none. It was a paragraph working through which purchases those are; the
+    // portal's own page on how an order can end does that, and this says the
+    // part a merchant reading the table has to know.
+    "Orders that closed before a price was named are not listed. Nothing was charged for them.",
+  )}${restOf("/docs/orders#how-an-order-can-end", "How an order can end")}</p>
 ${wanting
   .map(
     (order) => `  <div class="callout">
@@ -418,9 +417,9 @@ const ordersLede = (orders: OrderList, open: boolean): string => {
   const listed = `${countOf(orders.orders.length, `${scope} order`.trim())} listed.`;
 
   if (wanting === 0) {
-    return `${listed} None of them owes a refund, and none was delivered against a payment that did not execute.`;
+    return `${listed} None owes a refund, and none was delivered without payment.`;
   }
-  return `${listed} ${countOf(wanting, "order")} ${wanting === 1 ? "needs" : "need"} you, and each one is set out below.`;
+  return `${listed} ${countOf(wanting, "order")} ${wanting === 1 ? "needs" : "need"} you, below.`;
 };
 
 /**
@@ -443,8 +442,8 @@ const testOrders = (orders: OrderList): string => {
 
 const whyItNeedsYou = (status: OrderList["orders"][number]["status"]): string =>
   status === "refund_due"
-    ? "The money was taken, the delivery window ran out and nothing shipped. You return it from your own wallet — we recorded the amount and the order. A late delivery still clears the debt."
-    : "Your integration returned the goods, but payment did not settle, so the goods were not released to the buyer. The order stays open.";
+    ? "The money was taken and nothing shipped in time. Return it from your own wallet, or deliver late and clear the debt that way."
+    : "You returned the goods, payment did not settle, and the goods were not released to the buyer. The order stays open.";
 
 /**
  * Where the rest of it is written, for the one of the two that has a rest.
@@ -488,11 +487,6 @@ export const receiptsScreen = (
   <div class="lede">
     <div>
       <h1>Receipts</h1>
-      <p>A receipt is written when the goods for an order are released: the amount, the moment the money moved, the moment we set that price for the sale, and the instant the price behind it was true. Those three are three different moments, and on a product whose price is asked for at the purchase they can be minutes apart.${restOf(
-        "/docs/money#what-proves-a-sale-happened",
-        "What a receipt records, and which moment each column is",
-      )}</p>
-      <p>This is not the whole of the money. A purchase whose goods have not gone out has no receipt yet, and in the mode where the money moves at the purchase that means a payment you have already been sent is not on this page. Neither is a refund you owe. Both are on Orders, and until they end there the list below is short of them. A purchase that ended before any payment leaves no receipt at all, and none is written while it is unknown whether the buyer was charged.</p>
       ${testWarning(receipts, viewer.mode)}
     </div>
   </div>
@@ -507,8 +501,8 @@ export const receiptsScreen = (
            yet delivered would read nought forever — this gateway writes a
            receipt only when goods are released — and a nought is a positive
            claim that there is none, printed on the screen where a merchant
-           looks for money they are owed. What cannot be counted here is said in
-           words above the table instead, with the place it can be counted. -->
+           looks for money they are owed. What cannot be counted here is the
+           footnote under the table instead, with the place it can be. -->
       <div class="label">Delivered</div>
       <div class="figure${delivered === 0 ? "" : " ok"}">${delivered}</div>
       <div class="aside">of ${countOf(receipts.receipts.length, "receipt")}</div>
@@ -517,8 +511,15 @@ export const receiptsScreen = (
 ${table(
   ["Receipt", "Order", "Product", "Amount", "Outcome", "Paid", "Price set", "Price true as of"],
   rows,
-  "No receipts yet. One is written when the goods for an order are released.",
+  "No receipts yet.",
 )}
+  <p class="note">${escaped(
+    // What this page cannot show, in the words the fifth gate asks for: a
+    // merchant reading a list of receipts as their money is reading a list
+    // that is short of the two things they are owed something on. Both live on
+    // Orders, and until they end there they are nowhere on this screen.
+    "Not the whole of the money: purchases paid for but not delivered, and refunds you owe, are on Orders.",
+  )}${restOf("/docs/money#what-proves-a-sale-happened", "What a receipt records")}</p>
 `;
 
   return framed({ viewer, tab: "receipts", title: "Receipts", selling: cards.selling, body });

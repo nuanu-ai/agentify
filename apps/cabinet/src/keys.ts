@@ -105,34 +105,25 @@ const keyControl = (base: string, entry: MerchantKey): string => {
 };
 
 /**
- * What this list is of, which is the sentence the empty one turns on.
+ * Where the answer to "which key am I signed in with" is written.
  *
- * Said on the screen whether or not there is anything below it, because the
- * question a merchant has in front of no rows — "where is the key I am signed
- * in with, and should I be worried" — is answered by what the list is rather
- * than by what is missing from it. The answer to the second half of that
- * question is the link: the cabinet holds a key of its own, which is not on
- * this list and cannot be, and the portal's first step says so where somebody
- * setting up is reading anyway.
+ * The cabinet holds a key of its own, which is not on this list and cannot be.
+ * That used to be a sentence on the screen; it is a question somebody asks
+ * once, so it is the link at the end of the counts line and the portal's first
+ * step answers it where somebody setting up is reading anyway.
  */
-const WHAT_A_KEY_IS =
-  "A key is what your own code opens the door with, and this list is the keys you have asked for.";
-
 const WHICH_KEY_THE_CABINET_USES =
-  ' <a href="/docs/quickstart#_1-make-the-merchant-account-ready">Which key the cabinet itself' +
-  " signs in with</a>.";
+  ' <a href="/docs/quickstart#_1-make-the-merchant-account-ready">Which key the cabinet uses</a>.';
 
 /**
- * What revoking does, beside the controls that do it rather than in the lede.
+ * What revoking does, in the line over the table the Revoke buttons are in.
  *
- * It was four sentences at the top of the screen, read once by somebody who had
- * come to look at a list. What a merchant needs is the consequence at the
- * moment they are deciding which row to press, so it sits under the table the
- * Revoke buttons are in.
+ * It was four sentences at the top of the screen, then a paragraph under the
+ * table. There is no confirmation behind that button, so the fact that it does
+ * not come back has to be on the screen; what a merchant also wants to know at
+ * that moment is whether pressing it breaks anything else of theirs.
  */
-const WHAT_REVOKING_DOES =
-  "Revoking a key stops it from that moment and is not undone: your other keys go on working," +
-  " nobody is signed out of this cabinet, and what replaces a revoked key is a new one.";
+const REVOKING_IS_PERMANENT = "Revoking one is permanent; your other keys keep working.";
 
 export const keysScreen = (viewer: Viewer, keys: MerchantKeyList, problem?: string): string => {
   const { base } = viewer;
@@ -143,13 +134,16 @@ export const keysScreen = (viewer: Viewer, keys: MerchantKeyList, problem?: stri
   <div class="lede">
     <div>
       <h1>API Keys</h1>
-      <p>${escaped(
+      ${
+        // No counts line over an empty list. "0 of the 0 keys below work" is
+        // arithmetic about nothing, and the empty state below already says
+        // what a merchant with no keys is looking at.
         none
-          ? `You have issued no keys yet. ${WHAT_A_KEY_IS}` +
-              " The first one you ask for below becomes the first row here."
-          : `${working} of the ${keys.keys.length} ${keys.keys.length === 1 ? "key" : "keys"} below` +
-              `${working === 1 ? " works" : " work"}. ${WHAT_A_KEY_IS}`,
-      )}${WHICH_KEY_THE_CABINET_USES}</p>
+          ? ""
+          : `<p>${escaped(
+              `${working} of ${keys.keys.length} ${keys.keys.length === 1 ? "key" : "keys"} ${working === 1 ? "works" : "work"}. ${REVOKING_IS_PERMANENT}`,
+            )}${WHICH_KEY_THE_CABINET_USES}</p>`
+      }
     </div>
   </div>
 ${
@@ -159,34 +153,28 @@ ${
 <thead><tr><th>Name</th><th>Made</th><th>Last call</th><th>State</th><th></th></tr></thead>
 <tbody>${keys.keys.map((entry) => keyRow(base, entry)).join("")}</tbody>
 </table></div>
-  <p class="note">${escaped(WHAT_REVOKING_DOES)}</p>
   <p class="note">${escaped(
-    "This is what the gateway answered with, and its answer does not say whether it is all of" +
-      " them. Nothing pages this list yet and nothing here counts your keys for you — the number" +
-      " above counts the rows below and nothing more.",
-  )}</p>
-  <p class="note">${escaped(
-    "The last call is written down every few minutes rather than on every one, so a key" +
-      ` something is using right now shows a time that far behind. "${NO_CALLS_RECORDED}" is` +
-      ' what it says rather than "never used", and the difference matters for the keys you' +
-      " have had the longest: we began recording this recently, so a key older than that shows" +
-      " the same thing whether or not anything has been calling with it, and this page cannot" +
-      " tell you which. Any key shows a time as soon as it is used again.",
-  )}</p>`
+    // Three truncations in one footnote, because all three are about trusting
+    // this table before pressing Revoke. A blank cell is not a claim that
+    // nothing called; a time on it is not the last call but the last one
+    // written down; and the list is not a claim that these are all the keys.
+    `"${NO_CALLS_RECORDED}" means never used or older than our record; times lag a few minutes.` +
+      " The list may not be complete.",
+  )} <a href="/docs/quickstart#_1-make-the-merchant-account-ready">Keys and the first call</a>.</p>`
 }
   <div class="lede">
     <div>
       <h2>A new key</h2>
-      <p>The name is how you tell keys apart here. The key itself is shown once, on the page that makes it.</p>
     </div>
   </div>
   <form class="issue" method="post" action="${escaped(base)}/keys">
     <div>
       <label for="label">What this key is for</label>
       <input id="label" name="label" type="text" autocomplete="off" required>
+      <p class="quiet">The key itself is shown once, when it is made.</p>
+      ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
     </div>
     <button class="button button-compact button-primary" type="submit">Issue a key</button>
-    ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
   </form>
 `;
 
@@ -220,14 +208,13 @@ export const newKeyScreen = (viewer: Viewer, label: string, secret: string): str
   <div class="lede">
     <div>
       <h1>Your new key</h1>
-      <p>${escaped(`This is the key for "${label}". It is shown here and nowhere else, now and never again — nothing on our side keeps a readable copy of it, so a key you do not copy is a key you have to replace.`)}</p>
+      <p>${escaped(`The key for "${label}". Copy it now: this is the only time it is shown.`)}</p>
     </div>
   </div>
   <div class="scroller"><p class="secret" id="new-key-secret">${escaped(secret)}</p></div>
   <p><button class="button button-primary" id="copy-new-key" type="button">Copy key</button> <span id="copy-new-key-result" role="status"></span></p>
   <p class="note">${escaped(
-    "Put it where your code reads its key from before you leave this page. If your browser ever" +
-      " asks to resend the form, cancel: resending asks for another key.",
+    "If your browser asks to resend the form, cancel — resending issues another key.",
   )}</p>
   <p class="quiet"><a href="${escaped(base)}/keys">Back to your API keys</a></p>
   <script>

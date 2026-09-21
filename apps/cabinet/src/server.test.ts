@@ -1176,7 +1176,7 @@ describe("choosing the name buyers read", () => {
     const text = readable(cards.html);
 
     expect(cards.status).toBe(200);
-    expect(text).toMatch(/cannot go on sale/i);
+    expect(text).toMatch(/go on sale until you choose/i);
     expect(cards.html).toContain('href="/settings"');
     expect(await listedAs(running)).toBeNull();
   });
@@ -1544,7 +1544,7 @@ describe("a merchant who has chosen no name", () => {
       const screen = await running.browser.get(path);
       const text = readable(screen.html);
       expect(screen.status, path).toBe(200);
-      expect(text, path).toMatch(/cannot go on sale/i);
+      expect(text, path).toMatch(/go on sale until you choose/i);
     }
     // And the page it sends them to is the one that fixes it: a sentence with
     // nowhere to go is a sentence that leaves a merchant hunting.
@@ -1562,7 +1562,7 @@ describe("a merchant who has chosen no name", () => {
 
     for (const path of ["/cards", "/orders", "/receipts"]) {
       const text = readable((await running.browser.get(path)).html);
-      expect(text, path).not.toMatch(/cannot go on sale/i);
+      expect(text, path).not.toMatch(/go on sale until you choose/i);
     }
   });
 
@@ -1589,7 +1589,7 @@ describe("a merchant who has chosen no name", () => {
     expect(finding?.code).toBe("no_seller_name");
     expect(finding?.message).toContain("POST /v0/seller-name");
     // And the cabinet says the same thing without sending anybody to a route.
-    expect(text).toMatch(/cannot go on sale/i);
+    expect(text).toMatch(/go on sale until you choose/i);
     expect(cards.html).toContain('href="/settings"');
     expect(text).not.toContain("POST /v0/seller-name");
   });
@@ -1689,7 +1689,7 @@ describe("the cards screen", () => {
     const screen = await browser.signIn();
     const text = readable(screen.html);
 
-    expect(text).toContain("not published a card yet");
+    expect(text).toContain("No cards yet");
     expect(screen.html).toContain('href="/docs/quickstart"');
   });
 
@@ -1900,7 +1900,7 @@ describe("the orders screen", () => {
 
     expect(text).toContain("in progress");
     expect(text).not.toContain("owed money or goods");
-    expect(text).toContain("None of them owes a refund");
+    expect(text).toContain("None owes a refund");
   });
 
   it("says which orders it cannot show at all", async () => {
@@ -1914,7 +1914,7 @@ describe("the orders screen", () => {
 
     const text = readable((await browser.get("/orders")).html);
 
-    expect(text).toContain("closed before anybody named a price");
+    expect(text).toContain("closed before a price was named are not listed");
     expect(text).toContain("Nothing was charged for them");
   });
 
@@ -1956,7 +1956,7 @@ describe("the orders screen", () => {
 
     expect(text).toContain("refund due");
     expect(text).toContain("1 order needs you");
-    expect(text).toContain("You return it from your own wallet");
+    expect(text).toContain("Return it from your own wallet");
     // And nowhere on the page is the wire's own word for it. `refund_due` is
     // what a program branches on; a merchant reads a sentence.
     expect(text).not.toContain("refund_due");
@@ -2066,9 +2066,9 @@ describe("the receipts screen", () => {
     // The sentence itself, not only the explanation under it. A page that says
     // nothing is missing and then explains what is missing has still told a
     // merchant, in the line they will actually read, that this is the money.
-    expect(text).toContain("This is not the whole of the money");
-    expect(text).toContain("has no receipt yet");
-    expect(text).toContain("Both are on Orders");
+    expect(text).toContain("Not the whole of the money");
+    expect(text).toContain("paid for but not delivered");
+    expect(text).toContain("are on Orders");
   });
 
   it("does not claim a receipt appears when the money moves", async () => {
@@ -2090,7 +2090,7 @@ describe("the receipts screen", () => {
       },
     );
     expect(text).not.toContain("the moment a payment goes through");
-    expect(text).toContain("released");
+    expect(text).toContain("paid for but not delivered");
     // And the orders screen does show it, which is where the receipts page says
     // to look.
     expect(readable((await browser.get("/orders?open=true")).html)).toContain("8.00 USD");
@@ -2302,19 +2302,22 @@ describe("the keys screen", () => {
     expect(quiet).not.toBe(inColumn(page, ANOTHER.id, /made/i));
   });
 
-  it("says under the table that an empty last call is two situations", async () => {
-    // The words the removed field was carrying. A merchant reading "No calls
-    // recorded" beside a key they issued in June has to be able to find out
-    // that we began recording this recently and that their oldest keys show
-    // the same thing either way — otherwise the honest phrase in the cell is
-    // read as the confident one, which is where it started.
+  it("says under the table that an empty last call is two situations, and that the list may be short", async () => {
+    // A merchant reading "No calls recorded" beside a key they issued in June
+    // has to be able to find out that the blank covers a key nobody used and a
+    // key older than our record alike — otherwise the honest phrase in the
+    // cell is read as the confident one, which is where it started. Two more
+    // truncations ride in the same line: a time on this column is the last
+    // call written down rather than the last one made, and the answer the
+    // gateway gave does not say whether it is all of this merchant's keys.
     const { browser } = await started({ client: withKeys().client });
     await browser.signIn();
 
     const text = readable((await browser.get("/keys")).html);
 
-    expect(text).toMatch(/began recording|started recording/i);
-    expect(text).toMatch(/cannot tell you which|which it is/i);
+    expect(text).toMatch(/never used or older/i);
+    expect(text).toMatch(/lag/i);
+    expect(text).toMatch(/may not be complete/i);
   });
 
   it("issues a key, shows its secret once, and says that is the only time", async () => {
