@@ -89,7 +89,7 @@ page for a person, so the shape of that is a decision rather than a detail.
 6. **One visual language, held in `packages/visual/tokens.css`.** One file
    carries the colour, the type, the radius and the border weight, the base
    element rules that follow from them, and the few primitives every surface
-   draws — the page width, the button, the focus ring, the wordmark's mark. It
+   draws — the page width, the button, the focus ring, the lockup. It
    covers the scanner, the cabinet, the documentation portal and the static
    landing that is the local fixture. Nothing serves it over HTTP on the
    deployed origin, because the shared-asset route names each path and this is
@@ -99,9 +99,8 @@ page for a person, so the shape of that is a decision rather than a detail.
    the suite when a value stops matching.
 
    The language is **light**, with no dark set and no theme switch. The page a
-   merchant lands on is the scanner's, which has never had one and cannot be
-   given one cheaply — the shared file had dark values for a third of what the
-   scanner declares and the rest would have been invented. The corners are a
+   merchant lands on is the scanner's, which has never had one; what a dark
+   set would cost is in the rejected alternatives. The corners are a
    scale of four rather than one value: a control is 12px, a card 14px, a panel
    20px, and a pill is a pill. One radius described nothing, and every surface
    that had one broke it within a few rules.
