@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import Image from "next/image";
-import Link from "next/link";
 
-import { BrandMark } from "../../components/brand-mark";
 import { getPublicAppConfig } from "../../lib/app-config";
+import { MarketingHeader, SiteFooter } from "../../components/site-chrome";
 import styles from "./shop.module.css";
 import { AGENTIC_SHOP_RESEARCH } from "../../content/agentic-shop";
 
@@ -59,35 +58,9 @@ const categories = [
 
 export default function AgenticShopPage() {
   return (
-    <div className={styles.page}>
-      <a className={styles.skip} href="#main">
-        Skip to content
-      </a>
-      <header className={styles.header}>
-        <div className={styles.container}>
-          <Link
-            className={styles.brand}
-            href="/agentic-shop"
-            aria-label="Agentify Agentic Shop home"
-          >
-            <BrandMark className={styles.mark} />
-            <span>
-              Agentify<span className={styles.subbrand}>Agentic Shop</span>
-            </span>
-          </Link>
-          <nav aria-label="Agentic Shop navigation" className={styles.nav}>
-            <a href="#opportunity">The opportunity</a>
-            <a href="#how-it-works">How it works</a>
-            <a href="#loyalty">Agent loyalty</a>
-            <a href="#questions">Questions</a>
-          </nav>
-          <a href="/cabinet/sign-in" className={styles.headerCta}>
-            Open your cabinet <Arrow diagonal />
-          </a>
-        </div>
-      </header>
-
-      <main id="main">
+    <>
+      <MarketingHeader />
+      <main className={styles.page}>
         <section className={`${styles.container} ${styles.hero}`}>
           <div className={styles.heroCopy}>
             <p className={styles.eyebrow}>
@@ -495,25 +468,7 @@ export default function AgenticShopPage() {
           </div>
         </section>
       </main>
-
-      <footer className={styles.footer}>
-        <div className={styles.container}>
-          <Link className={styles.brand} href="/agentic-shop">
-            <BrandMark className={styles.mark} />
-            <span>
-              Agentify<span className={styles.subbrand}>Agentic Shop</span>
-            </span>
-          </Link>
-          <div>
-            <a href="/privacy">Privacy</a>
-            <a href="/docs/faq">Merchant questions</a>
-            <Link href="/owner">
-              Explore Agentify <Arrow diagonal />
-            </Link>
-            <span>© {new Date().getFullYear()} Agentify</span>
-          </div>
-        </div>
-      </footer>
-    </div>
+      <SiteFooter />
+    </>
   );
 }
