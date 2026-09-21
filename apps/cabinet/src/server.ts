@@ -1880,6 +1880,21 @@ const noted = (person: Person, did: string): void => {
   console.log(printable(`[cabinet] ${person.email} ${did}`));
 };
 
+/**
+ * The longest thing the problem page ever says, and the reason it is long.
+ *
+ * Named rather than written inline so that the ceiling test can measure the
+ * page under the worst sentence it carries instead of a short one that proves
+ * nothing. What it says is the whole truth including the uncomfortable half:
+ * the cabinet replaces this key at every sign-in and asks for the replacement
+ * with the key being refused, so signing in again is a loop we know the shape
+ * of and must not send anybody around.
+ */
+export const KEY_REFUSED_BY_GATEWAY =
+  "The gateway will not accept the key stored for this account, so no screen can be drawn." +
+  " Signing in again does not help — the cabinet asks for a fresh key with the one being" +
+  " refused — so this merchant needs a new account.";
+
 /** What a merchant is shown when the gateway would not answer. */
 function troubleAt(
   response: Response,
@@ -1906,15 +1921,7 @@ function troubleAt(
     response
       .status(502)
       .type("html")
-      .send(
-        problemPageAt(
-          base,
-          mode,
-          "The gateway will not accept the key stored for this account, so no screen can be" +
-            " drawn. Signing in again does not help — the cabinet asks for a fresh key with the" +
-            " one being refused — so this merchant needs a new account.",
-        ),
-      );
+      .send(problemPageAt(base, mode, KEY_REFUSED_BY_GATEWAY));
     return;
   }
   if (answer.status === 0) {
@@ -1952,7 +1959,18 @@ function tooLarge(thrown: unknown): boolean {
   );
 }
 
-function problemPageAt(base: string, mode: CabinetConfig["surfaceMode"], said: string): string {
+/**
+ * The page every failed gateway call lands on: one sentence and a way back.
+ *
+ * Exported so that the ceiling test can hold it to the same limit as every
+ * other screen. It is a screen like the rest; it was only ever private because
+ * nothing outside this file draws one.
+ */
+export function problemPageAt(
+  base: string,
+  mode: CabinetConfig["surfaceMode"],
+  said: string,
+): string {
   return bare(
     base,
     "Something went wrong",
