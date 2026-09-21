@@ -10,5 +10,5 @@ exec flock -n /run/lock/agentify-scanner-jobs \
   docker compose --project-name '{{ channel.scanner_project }}' \
     --env-file '{{ release_directory }}/scanner.env' \
     -f compose.production.yaml -f compose.hetzner.yaml \
-    -f compose.scanner-database.yaml -f compose.release.yaml \
+    -f compose.scanner-database.yaml -f '{{ release_controller_directory }}/scanner-release.yaml' \
     --profile jobs run --rm --no-deps -T "$service"

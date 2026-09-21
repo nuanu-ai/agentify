@@ -1,7 +1,7 @@
 ---
 - name: Verify exact running images, revision labels and configured environments
   ansible.builtin.command:
-    argv: [python3, "{{ release_source_directory }}/deploy/ansible/release-runtime.py", verify, "{{ release_directory }}", "{{ channel_name }}", "{{ channel | to_json }}", "{{ release_revision }}", "{{ release_identity | to_json }}"]
+    argv: [python3, "{{ release_controller_directory }}/release-runtime.py", verify, "{{ release_directory }}", "{{ channel_name }}", "{{ channel | to_json }}", "{{ release_revision }}", "{{ release_identity | to_json }}"]
   changed_when: false
   register: runtime_evidence
 

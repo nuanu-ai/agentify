@@ -10,6 +10,7 @@
     release_directory: "{{ agentify_home }}/agentify-releases/{{ release_revision }}"
     configuration_directory: "{{ agentify_home }}/agentify-configuration"
     release_source_directory: "{{ release_directory }}/source"
+    release_controller_directory: "{{ release_directory }}/controller"
     recovery_directory: "{{ release_directory }}/recovery"
     release_identity:
       firstParty:
@@ -22,15 +23,16 @@
         postgres: docker.io/library/postgres@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
         caddy: docker.io/library/caddy@sha256:ae4458638da8e1a91aafffb231c5f8778e964bca650c8a8cb23a7e8ac557aa3c
         alpine: docker.io/library/alpine@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
-    commerce_compose: [docker, compose, --project-name, "{{ channel.commerce_project }}", --env-file, "{{ release_directory }}/commerce.env", -f, compose.yaml, -f, deploy/compose.public.yaml, -f, "{{ channel.commerce_overlay }}", -f, deploy/compose.scanner-database.yaml, -f, deploy/compose.release.yaml]
+    commerce_compose: [docker, compose, --project-name, "{{ channel.commerce_project }}", --env-file, "{{ release_directory }}/commerce.env", -f, compose.yaml, -f, deploy/compose.public.yaml, -f, "{{ channel.commerce_overlay }}", -f, deploy/compose.scanner-database.yaml, -f, "{{ release_controller_directory }}/commerce-release.yaml"]
     identity_cutover_command: [docker, run, --rm, --user, '0:0', --read-only, --tmpfs, /tmp, --network, "{{ channel.database_network }}", --env-file, "{{ recovery_directory }}/identity-cutover.env", --mount, "type=bind,src={{ recovery_directory }},dst=/cutover", "{{ release_identity.firstParty['commerce-app'] }}", pnpm, --filter, '@agentify/commerce-cabinet', exec, tsx, src/scanner-identity-cutover.ts]
-    scanner_compose: [docker, compose, --project-name, "{{ channel.scanner_project }}", --env-file, "{{ release_directory }}/scanner.env", -f, compose.production.yaml, -f, compose.hetzner.yaml, -f, compose.scanner-database.yaml, -f, compose.release.yaml]
+    scanner_compose: [docker, compose, --project-name, "{{ channel.scanner_project }}", --env-file, "{{ release_directory }}/scanner.env", -f, compose.production.yaml, -f, compose.hetzner.yaml, -f, compose.scanner-database.yaml, -f, "{{ release_controller_directory }}/scanner-release.yaml"]
   tasks:
     - name: Require an explicit phase and exact channel inventory
       ansible.builtin.assert:
         that:
           - release_phase | default('') in ['stage', 'activate', 'verify']
           - (release_revision | default('')) is match('^[0-9a-f]{40}$')
+          - (release_controller_revision | default('')) is match('^[0-9a-f]{40}$')
           - (release_evidence_directory | default('')) is match('^/')
           - (agentify_home | default('')).startswith('/')
           - agentify_home != '/'
@@ -38,7 +40,7 @@
           - ansible_play_hosts_all | length == 1
           - inventory_hostname in ['agentify', 'agentify-test']
           - release_channel_ack | default('') == channel_name
-        fail_msg: Select one explicit channel and the exact reviewed main revision.
+        fail_msg: Select one explicit channel, candidate revision and trusted controller revision.
     - name: Identify the controller checkout used for this release
       ansible.builtin.command:
         argv: [git, -C, "{{ playbook_dir }}/../..", rev-parse, HEAD]
@@ -46,18 +48,18 @@
       become: false
       changed_when: false
       register: controller_revision
-    - name: Require release mechanics from the same clean source revision
+    - name: Require clean release mechanics from the assigned controller revision
       ansible.builtin.command:
         argv: [git, -C, "{{ playbook_dir }}/../..", status, --porcelain=v1, --untracked-files=all]
       delegate_to: localhost
       become: false
       changed_when: false
       register: controller_status
-      failed_when: controller_revision.stdout != release_revision or controller_status.stdout != ''
+      failed_when: controller_revision.stdout != release_controller_revision or controller_status.stdout != ''
     - name: Stage without replacing a running application
       ansible.builtin.include_tasks: release-stage.yml
       when: release_phase == 'stage'
-    - name: Activate the staged release after channel acceptance
+    - name: Activate the staged release after channel selection
       ansible.builtin.include_tasks: release-activate.yml
       when: release_phase == 'activate'
     - name: Verify the assigned release against the running services

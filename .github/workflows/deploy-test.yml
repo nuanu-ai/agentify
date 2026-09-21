@@ -1,0 +1,129 @@
+name: Deploy TEST
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: Branch, tag or full commit SHA from this repository
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-test
+  cancel-in-progress: false
+
+jobs:
+  select:
+    name: Resolve the TEST candidate once
+    runs-on: ubuntu-latest
+    outputs:
+      candidate: ${{ steps.candidate.outputs.sha }}
+      controller: ${{ steps.controller.outputs.sha }}
+    steps:
+      - name: Check out the trusted deployment controller
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Require this workflow to run from main
+        env:
+          EXPECTED: ${{ github.repository }}/.github/workflows/deploy-test.yml@refs/heads/main
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_WORKFLOW_REF" = "$EXPECTED"
+
+      - name: Record the trusted controller revision
+        id: controller
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve the repository candidate to one commit
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE: ${{ inputs.candidate }}
+        run: |
+          set -euo pipefail
+          encoded="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$CANDIDATE")"
+          sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$encoded" --jq .sha)"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: Build and deploy TEST on its server
+    needs: select
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: test
+    steps:
+      - name: Check out the selected trusted controller
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.select.outputs.controller }}
+
+      - name: Require the TEST deployment configuration
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
+          INVENTORY_JSON: ${{ secrets.INVENTORY_JSON }}
+          HEADSCALE_AUTH_KEY: ${{ secrets.HEADSCALE_AUTH_KEY }}
+          HEADSCALE_LOGIN_SERVER: ${{ vars.HEADSCALE_LOGIN_SERVER }}
+        run: |
+          set -euo pipefail
+          for variable in SSH_KEY KNOWN_HOSTS INVENTORY_JSON HEADSCALE_AUTH_KEY HEADSCALE_LOGIN_SERVER; do
+            test -n "${!variable:-}" || { echo "Missing TEST $variable" >&2; exit 1; }
+          done
+
+      - name: Join the private deployment mesh
+        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd
+        with:
+          authkey: ${{ secrets.HEADSCALE_AUTH_KEY }}
+          args: --login-server=${{ vars.HEADSCALE_LOGIN_SERVER }}
+          hostname: agentify-test-${{ github.run_id }}
+          timeout: 3m
+          version: 1.98.9
+
+      - name: Install the pinned deployment client
+        run: |
+          python3 -m venv "$RUNNER_TEMP/ansible"
+          "$RUNNER_TEMP/ansible/bin/pip" install --disable-pip-version-check -r deploy/ansible/requirements.txt
+          echo "$RUNNER_TEMP/ansible/bin" >> "$GITHUB_PATH"
+
+      - name: Install channel-scoped SSH and inventory facts
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
+          INVENTORY_JSON: ${{ secrets.INVENTORY_JSON }}
+        run: |
+          set -euo pipefail
+          install -d -m 0700 ~/.ssh "$RUNNER_TEMP/agentify-evidence"
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf '%s\n' "$INVENTORY_JSON" > "$RUNNER_TEMP/inventory.json"
+          chmod 0600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts "$RUNNER_TEMP/inventory.json"
+
+      - name: Stage TEST from the resolved candidate
+        env:
+          CANDIDATE: ${{ needs.select.outputs.candidate }}
+          CONTROLLER: ${{ needs.select.outputs.controller }}
+        run: |
+          ansible-playbook -i deploy/ansible/inventory.yml \
+            -e @"$RUNNER_TEMP/inventory.json" deploy/ansible/release.yml \
+            --limit test -e release_phase=stage -e release_channel_ack=test \
+            -e "release_revision=$CANDIDATE" -e "release_controller_revision=$CONTROLLER" \
+            -e "release_evidence_directory=$RUNNER_TEMP/agentify-evidence"
+
+      - name: Activate and verify TEST
+        env:
+          CANDIDATE: ${{ needs.select.outputs.candidate }}
+          CONTROLLER: ${{ needs.select.outputs.controller }}
+        run: |
+          ansible-playbook -i deploy/ansible/inventory.yml \
+            -e @"$RUNNER_TEMP/inventory.json" deploy/ansible/release.yml \
+            --limit test -e release_phase=activate -e release_channel_ack=test \
+            -e "release_revision=$CANDIDATE" -e "release_controller_revision=$CONTROLLER" \
+            -e "release_evidence_directory=$RUNNER_TEMP/agentify-evidence"

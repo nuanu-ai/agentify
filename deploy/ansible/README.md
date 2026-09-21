@@ -1,167 +1,71 @@
 # Agentify release operations
 
-Test and production releases use the same Ansible playbook and one reviewed,
-green revision from the public `main` branch. The revision is always a full
-40-character lowercase Git SHA. Each target checks out that exact public source
-and builds the five first-party images locally and sequentially. Infrastructure
-images remain pinned in `release.yml`.
+TEST and PRODUCTION use the same Ansible procedure, but select revisions
+independently. Each server checks out one full Git SHA and builds the five
+first-party images locally and sequentially. Infrastructure images remain pinned
+in `release.yml`; no image registry or release service sits between the channels.
 
-Staging builds and checks a candidate without replacing the running
-application. Activation is manual, test comes first, and production accepts
-only the revision recorded after test acceptance. Automatic delivery remains
-disabled.
+The server baseline remains in `nuanu-ai/infra`. These playbooks do not provision
+servers, change DNS, publish packages, or make paid requests. They preserve each
+channel's credentials, databases and authentication configuration. Activation
+keeps the retained-data, migration, runtime, route and image-identity checks. A
+release that begins a migration has no automatic downgrade or rollback.
 
-The server baseline remains in `nuanu-ai/infra`. These playbooks do not
-provision servers, change DNS, publish packages, or make paid requests. They
-preserve the channel-owned credentials and authentication configuration. This
-procedure installs the live-publication approval rule and the shared,
-passwordless identity described in ADR-0026. Test acceptance must cover the
-identity transition before the same revision is activated in production.
+## GitHub environments
 
-## Select the source revision
+Both workflows run on GitHub-hosted runners and reach their assigned server
+through the private Headscale mesh. Configure environments named `test` and
+`production` separately. Each has its own `SSH_KEY`, `KNOWN_HOSTS`,
+`INVENTORY_JSON` and `HEADSCALE_AUTH_KEY` secrets, plus a
+`HEADSCALE_LOGIN_SERVER` variable. The inventory contains the channel's mesh
+address, login and deployment paths; workflow files contain no host address.
+TEST permits only the workflow on `main`; PRODUCTION permits only `app-v*` tags.
+Neither environment needs a manual reviewer.
 
-Use a dedicated operator clone or worktree. Select a green revision on public
-`main`, put the controller checkout at exactly that revision, and keep all
-fetched evidence in an ignored local directory with an absolute path:
+Install each environment's dedicated public SSH key once with
+`release-access.yml`. It appends a restricted key without replacing operator
+access. Run it with the same mesh `ansible_host` and SSH port stored in that
+environment's `INVENTORY_JSON`, rather than an operator-only alias, and store its
+emitted known-hosts row verbatim in `KNOWN_HOSTS`.
 
-```sh
-git fetch --no-tags origin main
-SHA="$(git rev-parse FETCH_HEAD)"
-git switch --detach "$SHA"
-test "$(git rev-parse HEAD)" = "$SHA"
-test -z "$(git status --porcelain=v1 --untracked-files=all)"
-EVIDENCE="$PWD/.local/release-evidence/$SHA"
-mkdir -p "$EVIDENCE"
-```
+## Deploy TEST manually
 
-The inventory names the groups but not the machines. Copy
-`deploy/ansible/inventory.local.yml.example` to
-`deploy/ansible/inventory.local.yml`, fill in each address, login and the
-deployment home directory. The TEST listen address and Woo fixture fields are
-deployment facts too; the ordinary release consumes the listen address, while
-only the separate Woo operation consumes its fixture fields. Pass the file with
-`-e @deploy/ansible/inventory.local.yml` on every invocation below. That copy is
-gitignored and stays on the operator's machine: which hosts this repository may
-deploy to is an operator fact, not source. Nothing here has a default, so a
-missing value stops the play by name instead of resolving to somebody else's
-host. The `$AGENTIFY_HOME` used in the shell snippets further down is the same
-directory, exported into your shell.
+Run **Deploy TEST** from `main` and enter a branch, tag or full SHA from this
+repository. The selection job resolves that input once through GitHub to a full
+commit SHA. The deployment job checks out the recorded `main` controller and
+passes the candidate SHA separately to Ansible, so candidate workflow code never
+receives TEST credentials.
 
-Every playbook invocation requires these two values, one phase, one inventory
-limit, and an acknowledgement matching that limit. The playbook refuses an
-abbreviated revision, a revision that is not public `main` history, a relative
-evidence path, a controller checkout at another revision or with non-ignored
-changes, or a command that does not select exactly one channel. If `main`
-advances after test acceptance, keep using a clean checkout at the accepted
-SHA for production promotion.
+TEST does not require main ancestry or a prior CI run. This lets a branch itself
+be the reason for a test deployment. The current controller still requires a
+compatible application and Compose layout. It refuses unsafe migration state and
+never attempts to downgrade a database to fit older code.
 
-Check the playbook before contacting a host:
+## Deploy PRODUCTION by tag
 
-```sh
-ansible-playbook -i deploy/ansible/inventory.yml \
-  -e @deploy/ansible/inventory.local.yml \
-  deploy/ansible/release.yml --syntax-check --limit test \
-  -e release_phase=stage -e release_channel_ack=test \
-  -e "release_revision=$SHA" \
-  -e "release_evidence_directory=$EVIDENCE"
-```
+Pushing an `app-v*` tag starts **Deploy PRODUCTION**. The tag is the operator's
+human acceptance; there is no second approval or TEST marker. Before the job can
+read PRODUCTION secrets, an uncredentialed job proves that the tag names a commit
+in public `main` history and requires successful CI on that exact SHA.
 
-## Stage test
+The deployment job stages, activates and verifies only the tagged revision. It
+neither reads TEST evidence nor requires TEST to run the same SHA. Staging checks
+out a clean source under `<agentify_home>/agentify-releases/<SHA>/source`, builds
+the first-party images, pulls pinned infrastructure images, preserves host-owned
+configuration, renders the channel's Compose graph and records sanitized
+topology. Activation records pre-change data fingerprints, verifies them after
+migration, starts the selected revision and records runtime evidence. Separate
+server builds are not claimed to have identical bytes.
 
-Stage the selected revision on test. Production preparation is not required
-for test activation:
+PRODUCTION also reads the full OCI revision label from the running cabinet image
+and requires it to be an ancestor of, or equal to, the tagged revision. It checks
+once before building and again immediately before activation. A missing label or
+an older or divergent tag stops without touching writers and requires reviewed
+manual recovery; the workflow never automates a downgrade.
 
-```sh
-ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
-  -e @deploy/ansible/inventory.local.yml \
-  --limit test -e release_phase=stage -e release_channel_ack=test \
-  -e "release_revision=$SHA" \
-  -e "release_evidence_directory=$EVIDENCE"
-```
-
-For each channel, staging checks out a clean copy under
-`<agentify_home>/agentify-releases/<SHA>/source`, builds the first-party images,
-pulls the pinned infrastructure images, preserves the host-owned environment,
-renders the actual Compose graph, and runs the preflight and isolated web
-configuration checks. It fetches the staged channel’s sanitized topology into the evidence directory:
-`test-topology.json` for test, `production-topology.json` for production. It does not stop
-or replace a live service.
-
-The channel builds prove the same source SHA, image roles, commands, OCI source
-labels, and runtime topology. Because each host builds separately, image IDs
-and image bytes may differ; this procedure does not claim byte-identical
-artifacts.
-
-## Activate and accept test
-
-Activate the staged test candidate after its channel checks pass. Test
-activation does not read production evidence or contact production:
-
-```sh
-ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
-  -e @deploy/ansible/inventory.local.yml \
-  --limit test -e release_phase=activate -e release_channel_ack=test \
-  -e "release_revision=$SHA" \
-  -e "release_evidence_directory=$EVIDENCE"
-```
-
-Activation holds the existing schedules and records the pre-activation public
-catalog and non-recoverable aggregate row fingerprints under
-`<agentify_home>/agentify-releases/<SHA>/recovery`. It verifies those fingerprints
-after migration, starts the selected revision, and records runtime, route,
-scheduled job, and image-identity evidence. It does not create database, role or
-environment dumps. The existing edge route file is retained for error recovery.
-Public catalog and route probes run from the Ansible controller; Docker, image,
-environment and database checks run on the assigned host. The pre-activation
-catalog probe must succeed before the state changes or schedules are held.
-
-Review `test-runtime-verified.json` and perform product acceptance against the
-actual test service. Only after the revision is accepted, write its explicit
-marker:
-
-```sh
-python3 - "$SHA" "$EVIDENCE/test-accepted.json" <<'PY'
-import json
-import pathlib
-import sys
-
-pathlib.Path(sys.argv[2]).write_text(
-    json.dumps({"revision": sys.argv[1], "accepted": True}) + "\n"
-)
-PY
-```
-
-The marker records an operator decision; the playbook does not create it.
-
-## Activate production
-
-After test acceptance and authorization to proceed with production, stage
-that same revision on production:
-
-```sh
-ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
-  -e @deploy/ansible/inventory.local.yml \
-  --limit production -e release_phase=stage \
-  -e release_channel_ack=production \
-  -e "release_revision=$SHA" \
-  -e "release_evidence_directory=$EVIDENCE"
-```
-
-Production activation compares both actual rendered topology files before any
-runtime changes. It requires the same two topology files, the trusted acceptance marker,
-and `test-runtime-verified.json` for the selected revision. The runtime evidence
-must name channel `test` and contain all six expected resident containers and
-all five first-party image roles. If this is the first migration adding live
-approval, use the first-cutover procedure below instead. Later releases run:
-
-```sh
-ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
-  -e @deploy/ansible/inventory.local.yml \
-  --limit production -e release_phase=activate \
-  -e release_channel_ack=production \
-  -e "release_revision=$SHA" \
-  -e "release_evidence_directory=$EVIDENCE"
-```
+The first shared-identity or live-approval cutover remains an explicit recovery
+boundary. Prepare it with the procedures below before creating a production tag;
+the automatic workflow must stop rather than improvise missing private inputs.
 
 ### First shared-identity cutover
 
@@ -209,8 +113,9 @@ Use an empty array only when no existing merchant is intended to sell live.
 This file selects the set to verify; Ansible grants nothing from it. The
 preflight refuses a missing or malformed inventory before stopping writers.
 
-Run this activation in an interactive terminal, retaining the same `SHA` and
-`EVIDENCE` values used for staging and test acceptance:
+Run this activation in an interactive terminal, retaining the same production
+`SHA` and `EVIDENCE` values used for staging. The controller checkout must be
+clean at that SHA:
 
 ```sh
 ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
@@ -218,6 +123,7 @@ ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
   --limit production -e release_phase=activate \
   -e release_channel_ack=production \
   -e "release_revision=$SHA" \
+  -e "release_controller_revision=$SHA" \
   -e "release_evidence_directory=$EVIDENCE" \
   -e "@$EVIDENCE/initial-live-approvals.json"
 ```
@@ -275,6 +181,7 @@ ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
   -e @deploy/ansible/inventory.local.yml \
   --limit test -e release_phase=verify -e release_channel_ack=test \
   -e "release_revision=$SHA" \
+  -e "release_controller_revision=$(git rev-parse HEAD)" \
   -e "release_evidence_directory=$EVIDENCE"
 
 ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
@@ -282,6 +189,7 @@ ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
   --limit production -e release_phase=verify \
   -e release_channel_ack=production \
   -e "release_revision=$SHA" \
+  -e "release_controller_revision=$(git rev-parse HEAD)" \
   -e "release_evidence_directory=$EVIDENCE"
 ```
 

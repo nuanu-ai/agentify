@@ -27,6 +27,30 @@
     owner: "{{ ansible_user }}"
     mode: '0700'
 
+- name: Create the trusted controller directory outside the candidate source
+  ansible.builtin.file:
+    path: "{{ release_controller_directory }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    mode: '0700'
+
+- name: Install the deployment mechanics from the trusted controller
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ release_controller_directory }}/{{ item.dest }}"
+    owner: "{{ ansible_user }}"
+    mode: '0600'
+  loop:
+    - {src: "{{ playbook_dir }}/prepare-release-environments.py", dest: prepare-release-environments.py}
+    - {src: "{{ playbook_dir }}/prepare-identity-cutover.py", dest: prepare-identity-cutover.py}
+    - {src: "{{ playbook_dir }}/release-runtime.py", dest: release-runtime.py}
+    - {src: "{{ playbook_dir }}/check-web-configuration.py", dest: check-web-configuration.py}
+    - {src: "{{ playbook_dir }}/check-forward-revision.sh", dest: check-forward-revision.sh}
+    - {src: "{{ playbook_dir }}/release-data-fingerprint.sql", dest: release-data-fingerprint.sql}
+    - {src: "{{ playbook_dir }}/release-identity-target-fingerprint.sql", dest: release-identity-target-fingerprint.sql}
+    - {src: "{{ playbook_dir }}/../compose.release.yaml", dest: commerce-release.yaml}
+    - {src: "{{ playbook_dir }}/../../ops/deploy/droplet/compose.release.yaml", dest: scanner-release.yaml}
+
 - name: Check out the exact public source revision
   ansible.builtin.git:
     repo: https://github.com/nuanu-ai/agentify.git
@@ -41,15 +65,28 @@
     set -eu
     test "$(git rev-parse HEAD)" = '{{ release_revision }}'
     test "$(git remote get-url origin)" = 'https://github.com/nuanu-ai/agentify.git'
-    git fetch --quiet origin refs/heads/main:refs/remotes/origin/main
-    git merge-base --is-ancestor '{{ release_revision }}' refs/remotes/origin/main
     test -z "$(git status --porcelain=v1 --untracked-files=all)"
   args:
     chdir: "{{ release_source_directory }}"
   become_user: "{{ ansible_user }}"
   changed_when: false
 
-- name: Pull exact infrastructure images before rendering or acceptance
+- name: Require a production candidate from public main history
+  ansible.builtin.shell: |
+    set -eu
+    git fetch --quiet origin refs/heads/main:refs/remotes/origin/main
+    git merge-base --is-ancestor '{{ release_revision }}' refs/remotes/origin/main
+  args:
+    chdir: "{{ release_source_directory }}"
+  become_user: "{{ ansible_user }}"
+  changed_when: false
+  when: channel_name == 'production'
+
+- name: Require production to move forward from its running revision
+  ansible.builtin.include_tasks: release-forward-only.yml
+  when: channel_name == 'production'
+
+- name: Pull exact infrastructure images before rendering or activation
   ansible.builtin.command:
     argv: [docker, pull, "{{ item }}"]
   loop: "{{ release_identity.infrastructure.values() | list }}"
@@ -99,7 +136,7 @@
 
 - name: Preserve channel secrets and prepare runtime environment files
   ansible.builtin.command:
-    argv: [python3, "{{ release_source_directory }}/deploy/ansible/prepare-release-environments.py", "{{ channel | to_json }}", "{{ channel_name }}", "{{ release_directory }}", "{{ release_revision }}", "{{ release_identity | to_json }}", "{{ configuration_directory }}"]
+    argv: [python3, "{{ release_controller_directory }}/prepare-release-environments.py", "{{ channel | to_json }}", "{{ channel_name }}", "{{ release_directory }}", "{{ release_revision }}", "{{ release_identity | to_json }}", "{{ configuration_directory }}"]
   no_log: true
 
 - name: Render commerce with no image build definitions
@@ -137,10 +174,10 @@
 
 - name: Validate private runtime boundaries and capture a secret-free topology
   ansible.builtin.command:
-    argv: [python3, "{{ release_source_directory }}/deploy/ansible/release-runtime.py", topology, "{{ release_directory }}", "{{ channel_name }}", "{{ channel | to_json }}", "{{ release_revision }}", "{{ release_identity | to_json }}"]
+    argv: [python3, "{{ release_controller_directory }}/release-runtime.py", topology, "{{ release_directory }}", "{{ channel_name }}", "{{ channel | to_json }}", "{{ release_revision }}", "{{ release_identity | to_json }}"]
   changed_when: false
 
-- name: Fetch the sanitized topology for independent test-production comparison
+- name: Fetch the sanitized topology for this channel's release evidence
   ansible.builtin.fetch:
     src: "{{ release_directory }}/topology.json"
     dest: "{{ release_evidence_directory }}/{{ channel_name }}-topology.json"
@@ -148,7 +185,7 @@
 
 - name: Prove candidate web configuration before stopping a live service
   ansible.builtin.command:
-    argv: [python3, "{{ release_source_directory }}/deploy/ansible/check-web-configuration.py", "{{ release_directory }}", "{{ release_revision }}"]
+    argv: [python3, "{{ release_controller_directory }}/check-web-configuration.py", "{{ release_directory }}", "{{ release_revision }}"]
   changed_when: false
   no_log: true
 

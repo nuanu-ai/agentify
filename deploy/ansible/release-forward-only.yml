@@ -1,0 +1,37 @@
+---
+- name: Read the running production revision from its image identity
+  ansible.builtin.shell: |
+    python3 - <<'PY'
+    import json
+    import re
+    import subprocess
+
+    container = json.loads(subprocess.check_output([
+        'docker', 'container', 'inspect', '{{ channel.commerce_project }}-cabinet-1'
+    ]))[0]
+    if not container['State']['Running']:
+        raise RuntimeError('The production cabinet is not running; manual recovery is required')
+    image = json.loads(subprocess.check_output([
+        'docker', 'image', 'inspect', container['Image']
+    ]))[0]
+    labels = image.get('Config', {}).get('Labels', {}) or {}
+    if labels.get('org.opencontainers.image.source') != 'https://github.com/nuanu-ai/agentify':
+        raise RuntimeError('The running production image has no trusted source label; manual recovery is required')
+    revision = labels.get('org.opencontainers.image.revision', '')
+    if not re.fullmatch(r'[0-9a-f]{40}', revision):
+        raise RuntimeError('The running production image has no full revision label; manual recovery is required')
+    print(revision)
+    PY
+  changed_when: false
+  register: running_production_revision
+
+- name: Refuse a tagged revision behind the running production release
+  ansible.builtin.command:
+    argv:
+      - bash
+      - "{{ release_controller_directory }}/check-forward-revision.sh"
+      - "{{ release_source_directory }}"
+      - "{{ running_production_revision.stdout }}"
+      - "{{ release_revision }}"
+  become_user: "{{ ansible_user }}"
+  changed_when: false

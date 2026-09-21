@@ -53,56 +53,7 @@ def expected_images(identity):
     }
 
 
-def compare_topologies(test_path, production_path, revision, identity):
-    channels = {
-        'test': json.loads(Path(test_path).read_text()),
-        'production': json.loads(Path(production_path).read_text()),
-    }
-    for channel_name, topology in channels.items():
-        require(topology.get('revision') == revision, channel_name + ' topology names another revision')
-    assigned_images = expected_images(identity)
-    for surface in ['commerce', 'scanner']:
-        test_roles = channels['test'].get(surface, {})
-        production_roles = channels['production'].get(surface, {})
-        require(set(test_roles) == EXPECTED_ROLES[surface], 'test ' + surface + ' service roles differ from the reviewed topology')
-        require(set(production_roles) == EXPECTED_ROLES[surface], 'production ' + surface + ' service roles differ from the reviewed topology')
-        for role in sorted(test_roles):
-            require(test_roles[role].get('image') == assigned_images[surface][role], 'test ' + surface + '.' + role + ' uses an unassigned image')
-            require(production_roles[role].get('image') == assigned_images[surface][role], 'production ' + surface + '.' + role + ' uses an unassigned image')
-            for field in ['image', 'command']:
-                require(
-                    test_roles[role].get(field) == production_roles[role].get(field),
-                    surface + '.' + role + ' ' + field + ' differs between channels',
-                )
-    print('Test and production use the same revision, service roles, image tags and commands')
-
-
-def validate_test_acceptance(runtime_path, acceptance_path, revision):
-    runtime = json.loads(Path(runtime_path).read_text())
-    acceptance = json.loads(Path(acceptance_path).read_text())
-    require(runtime.get('revision') == revision, 'Test runtime evidence names another revision')
-    require(runtime.get('channel') == 'test', 'Runtime evidence is not from the test channel')
-    expected_services = {
-        'agentify-test-postgres-1', 'agentify-test-gateway-1',
-        'agentify-test-cabinet-1', 'agentify-test-web-1',
-        'agentify-test-scanner-web-1', 'agentify-test-scanner-worker-1',
-    }
-    require({entry.get('name') for entry in runtime.get('services', [])} == expected_services, 'Test runtime evidence omits a resident service')
-    expected_first_party = {'commerce-app', 'commerce-web', 'scanner-web', 'scanner-worker', 'scanner-privacy'}
-    require({entry.get('role') for entry in runtime.get('firstPartyImages', [])} == expected_first_party, 'Test runtime evidence omits a first-party image')
-    require(acceptance.get('revision') == revision, 'Test acceptance names another revision')
-    require(acceptance.get('accepted') is True, 'Test acceptance is absent')
-    print('Accepted test runtime evidence matches the selected revision and expected roles')
-
-
 mode = sys.argv[1]
-if mode == 'compare':
-    compare_topologies(sys.argv[2], sys.argv[3], sys.argv[4], json.loads(sys.argv[5]))
-    raise SystemExit(0)
-if mode == 'acceptance':
-    validate_test_acceptance(sys.argv[2], sys.argv[3], sys.argv[4])
-    raise SystemExit(0)
-
 directory, channel_name = sys.argv[2:4]
 root = Path(directory)
 channel = json.loads(sys.argv[4])

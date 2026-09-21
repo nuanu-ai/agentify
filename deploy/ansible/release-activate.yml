@@ -1,20 +1,4 @@
 ---
-- name: Require both actual rendered channel graphs to match the selected revision
-  ansible.builtin.command:
-    argv: [python3, "{{ playbook_dir }}/release-runtime.py", compare, "{{ release_evidence_directory }}/test-topology.json", "{{ release_evidence_directory }}/production-topology.json", "{{ release_revision }}", "{{ release_identity | to_json }}"]
-  delegate_to: localhost
-  become: false
-  changed_when: false
-  when: channel_name == 'production'
-
-- name: Require accepted test evidence before production promotion
-  ansible.builtin.command:
-    argv: [python3, "{{ playbook_dir }}/release-runtime.py", acceptance, "{{ release_evidence_directory }}/test-runtime-verified.json", "{{ release_evidence_directory }}/test-accepted.json", "{{ release_revision }}"]
-  delegate_to: localhost
-  become: false
-  changed_when: false
-  when: channel_name == 'production'
-
 - name: Read the staged activation state
   ansible.builtin.slurp:
     src: "{{ release_directory }}/release-state.json"
@@ -34,6 +18,10 @@
     test -z "$(git status --porcelain=v1 --untracked-files=all)"
   become_user: "{{ ansible_user }}"
   changed_when: false
+
+- name: Recheck production forward history immediately before activation
+  ansible.builtin.include_tasks: release-forward-only.yml
+  when: channel_name == 'production'
 
 - name: Prove staged image IDs are unchanged before stopping writers
   ansible.builtin.shell: |
@@ -242,7 +230,7 @@
         umask 077
         for db in agentify_commerce agentify_scanner; do
           if [ "$(docker exec '{{ channel.postgres_container }}' psql -U agentify_commerce -d agentify_commerce -Atc "select count(*) from pg_database where datname='$db'")" = 1 ]; then
-            docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 -v identity_cutover={{ identity_cutover_required | ternary('true', 'false') }} < '{{ release_source_directory }}/deploy/ansible/release-data-fingerprint.sql' > '{{ recovery_directory }}/'"$db".fingerprint
+            docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 -v identity_cutover={{ identity_cutover_required | ternary('true', 'false') }} < '{{ release_controller_directory }}/release-data-fingerprint.sql' > '{{ recovery_directory }}/'"$db".fingerprint
           fi
         done
       no_log: true
@@ -302,7 +290,7 @@
 
     - name: Prepare credentials for the stopped one-off identity importer
       ansible.builtin.command:
-        argv: [python3, "{{ release_source_directory }}/deploy/ansible/prepare-identity-cutover.py", "{{ release_directory }}"]
+        argv: [python3, "{{ release_controller_directory }}/prepare-identity-cutover.py", "{{ release_directory }}"]
       no_log: true
       when: identity_cutover_required
 
@@ -331,7 +319,7 @@
           before='{{ recovery_directory }}/'"$db".fingerprint
           if [ -f "$before" ]; then
             after='{{ recovery_directory }}/'"$db".after
-            docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 -v identity_cutover={{ identity_cutover_required | ternary('true', 'false') }} < '{{ release_source_directory }}/deploy/ansible/release-data-fingerprint.sql' > "$after"
+            docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 -v identity_cutover={{ identity_cutover_required | ternary('true', 'false') }} < '{{ release_controller_directory }}/release-data-fingerprint.sql' > "$after"
             cmp "$before" "$after"
           fi
         done
@@ -341,7 +329,7 @@
       ansible.builtin.shell: |
         set -eu
         umask 077
-        docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d agentify_commerce -At -v ON_ERROR_STOP=1 < '{{ release_source_directory }}/deploy/ansible/release-data-fingerprint.sql' > '{{ recovery_directory }}/commerce-post-import.fingerprint'
+        docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d agentify_commerce -At -v ON_ERROR_STOP=1 < '{{ release_controller_directory }}/release-data-fingerprint.sql' > '{{ recovery_directory }}/commerce-post-import.fingerprint'
       no_log: true
       when: identity_cutover_required
 
@@ -350,7 +338,7 @@
         set -eu
         umask 077
         for db in agentify_commerce agentify_scanner; do
-          docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 < '{{ release_source_directory }}/deploy/ansible/release-identity-target-fingerprint.sql' > '{{ recovery_directory }}/'"$db".identity-target
+          docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 < '{{ release_controller_directory }}/release-identity-target-fingerprint.sql' > '{{ recovery_directory }}/'"$db".identity-target
         done
       no_log: true
       when: identity_cutover_required
@@ -374,14 +362,14 @@
           before='{{ recovery_directory }}/'"$db".fingerprint
           if [ -f "$before" ]; then
             after='{{ recovery_directory }}/'"$db".after-cleanup
-            docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 -v identity_cutover={{ identity_cutover_required | ternary('true', 'false') }} < '{{ release_source_directory }}/deploy/ansible/release-data-fingerprint.sql' > "$after"
+            docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 -v identity_cutover={{ identity_cutover_required | ternary('true', 'false') }} < '{{ release_controller_directory }}/release-data-fingerprint.sql' > "$after"
             cmp "$before" "$after"
           fi
         done
-        docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d agentify_commerce -At -v ON_ERROR_STOP=1 < '{{ release_source_directory }}/deploy/ansible/release-data-fingerprint.sql' > '{{ recovery_directory }}/commerce-after-cleanup.fingerprint'
+        docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d agentify_commerce -At -v ON_ERROR_STOP=1 < '{{ release_controller_directory }}/release-data-fingerprint.sql' > '{{ recovery_directory }}/commerce-after-cleanup.fingerprint'
         cmp '{{ recovery_directory }}/commerce-post-import.fingerprint' '{{ recovery_directory }}/commerce-after-cleanup.fingerprint'
         for db in agentify_commerce agentify_scanner; do
-          docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 < '{{ release_source_directory }}/deploy/ansible/release-identity-target-fingerprint.sql' > '{{ recovery_directory }}/'"$db".identity-target-after-cleanup
+          docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 < '{{ release_controller_directory }}/release-identity-target-fingerprint.sql' > '{{ recovery_directory }}/'"$db".identity-target-after-cleanup
           cmp '{{ recovery_directory }}/'"$db".identity-target '{{ recovery_directory }}/'"$db".identity-target-after-cleanup
         done
       changed_when: false
