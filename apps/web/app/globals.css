@@ -42,25 +42,6 @@ a {
   text-decoration: revert;
 }
 
-/*
- * `.brand` stays here rather than joining the primitives, and that is a name
- * collision rather than a preference: in the cabinet and the stand `.brand` is
- * the left-hand group of the bar — the lockup and the tabs beside it — so a
- * shared rule setting a font size on it would resize their navigation. It moves
- * when that shell is rewritten.
- */
-.brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--fg);
-  font-size: 1.25rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1;
-  text-decoration: none;
-}
-
 /* Keyframes live in the CSS Modules that use them: Module `animation: <name>`
    references are scoped, so a global keyframe of the same name never matches. */
 
@@ -77,12 +58,5 @@ a {
     animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
-  }
-}
-
-@media (max-width: 700px) {
-  .brand {
-    gap: 8px;
-    font-size: 1.125rem;
   }
 }

@@ -110,23 +110,6 @@ textarea {
 
 /* The lockup, at the size and weight the scanner's `.brand` draws it. The mark
    beside it is the shared `.brand-mark` and needs nothing said here. */
-.wordmark {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--fg);
-  font-size: 1.25rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1;
-  text-decoration: none;
-}
-
-.wordmark:hover {
-  color: var(--fg);
-  text-decoration: none;
-}
-
 .tabs {
   display: flex;
   gap: 4px;
@@ -182,8 +165,8 @@ textarea {
   padding-block: 28px;
 }
 
-.foot .wordmark,
-.foot .wordmark:hover {
+.foot .brand,
+.foot .brand:hover {
   color: var(--bg);
 }
 
@@ -674,11 +657,6 @@ td.control {
 
   .bar-left {
     gap: 16px;
-  }
-
-  .wordmark {
-    gap: 8px;
-    font-size: 1.125rem;
   }
 
   .tabs a,

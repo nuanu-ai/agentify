@@ -60,7 +60,7 @@ h2 {
   flex-wrap: wrap;
 }
 
-.brand {
+.bar-left {
   display: flex;
   align-items: baseline;
   gap: 10px;

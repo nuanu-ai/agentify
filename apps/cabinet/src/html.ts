@@ -89,7 +89,7 @@ const surface = (mode: SurfaceMode): string => {
 
 /** The same compact lockup on the public site, the cabinet and every auth page. */
 export const brandLockup = (home = "/"): string =>
-  `<a class="wordmark" href="${escaped(home)}" aria-label="Agentify home"><img class="brand-mark" src="/assets/agentify-mark.svg" alt="" width="30" height="30"><span>Agentify</span></a>`;
+  `<a class="brand" href="${escaped(home)}" aria-label="Agentify home"><img class="brand-mark" src="/assets/agentify-mark.svg" alt="" width="30" height="30"><span>Agentify</span></a>`;
 
 /**
  * The band at the foot of every working screen.

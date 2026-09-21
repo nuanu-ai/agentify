@@ -284,6 +284,28 @@ p {
   font-size: 0.875rem;
 }
 
+/*
+ * The lockup: the mark and the name, as every surface draws it in its corner.
+ * The hover rule takes back what the shared link rule would otherwise add — a
+ * lockup is a way home, not a link in running text.
+ */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--fg);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.brand:hover {
+  color: var(--fg);
+  text-decoration: none;
+}
+
 .brand-mark {
   width: 30px;
   height: 30px;
@@ -294,6 +316,11 @@ p {
 @media (max-width: 700px) {
   .container {
     width: min(100% - 32px, 1200px);
+  }
+
+  .brand {
+    gap: 8px;
+    font-size: 1.125rem;
   }
 
   .brand-mark {

@@ -802,7 +802,7 @@ export const renderPage = (state: PageState): string => {
     `<div class="page">
   <div class="chrome">
     <div class="line1">
-      <div class="brand"><span class="wordmark">agentify</span><span class="what">stand</span></div>
+      <div class="bar-left"><span class="wordmark">agentify</span><span class="what">stand</span></div>
       <div class="who">
         ${state.keyEnvironment === null ? '<span class="tag">key names no environment</span>' : `<span class="tag${state.keyEnvironment === "live" ? " live" : ""}">${escaped(state.keyEnvironment)} key</span>`}
         <span class="addr">${escaped(state.address)}</span>
