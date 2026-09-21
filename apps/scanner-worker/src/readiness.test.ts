@@ -80,4 +80,34 @@ describe("worker readiness refresh", () => {
     });
     expect(state.ready).toBe(false);
   });
+
+  it("withdraws readiness when persisting the heartbeat fails", async () => {
+    const state = health();
+    const events = { databaseError: false };
+
+    await expect(
+      refreshWorkerReadiness({
+        health: state,
+        probeDatabase: async () => true,
+        probeQueue: async () => true,
+        writeHeartbeat: async () => {
+          throw new Error("heartbeat storage unavailable");
+        },
+        onDatabaseError: () => {
+          events.databaseError = true;
+        },
+      }),
+    ).resolves.toEqual({
+      ready: false,
+      queueConnected: true,
+      databaseConnected: false,
+    });
+    expect(state).toMatchObject({
+      ready: false,
+      queueConnected: true,
+      databaseConnected: false,
+      lastHeartbeatAt: null,
+    });
+    expect(events.databaseError).toBe(true);
+  });
 });

@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   PARTNER_POSTBACK_ENDPOINT,
   createDestinationDeliverer,
+  createPartnerRateLimitedDeliverer,
+  type AdvisoryLockClient,
+  type AdvisoryLockPool,
   type OutboxRow,
 } from "./analytics-outbox.js";
 
@@ -154,6 +157,64 @@ describe("analytics destination delivery", () => {
       ),
     ).toThrow("partner_tracker_secret_required");
     expect(provider.received).toBe(false);
+  });
+
+  it("returns a safe retryable result when the partner lock cannot be acquired", async () => {
+    const state = { delivered: false, connectionDestroyed: false };
+    const client: AdvisoryLockClient = {
+      async query(): Promise<never> {
+        throw new Error("database connection details");
+      },
+      release(error) {
+        state.connectionDestroyed = error instanceof Error;
+      },
+    };
+    const pool: AdvisoryLockPool = { connect: async () => client };
+
+    const result = await createPartnerRateLimitedDeliverer(pool, async () => {
+      state.delivered = true;
+      return { ok: true };
+    })(row({ destination: "partner_tracker" }));
+
+    expect(result).toEqual({
+      ok: false,
+      code: "partner_tracker_rate_limiter_error",
+      retryable: true,
+    });
+    expect(state).toEqual({ delivered: false, connectionDestroyed: true });
+    expect(JSON.stringify(result)).not.toContain("database connection details");
+  });
+
+  it("does not retry an accepted partner delivery when unlocking fails", async () => {
+    const state = {
+      queries: 0,
+      delivered: false,
+      connectionDestroyed: false,
+    };
+    const client: AdvisoryLockClient = {
+      async query<T extends Record<string, unknown>>() {
+        state.queries += 1;
+        if (state.queries === 1) return { rows: [] as T[] };
+        throw new Error("unlock failed");
+      },
+      release(error) {
+        state.connectionDestroyed = error instanceof Error;
+      },
+    };
+    const pool: AdvisoryLockPool = { connect: async () => client };
+
+    const result = await createPartnerRateLimitedDeliverer(
+      pool,
+      async () => {
+        state.delivered = true;
+        return { ok: true };
+      },
+      { now: () => 10_000, wait: async () => undefined },
+    )(row({ destination: "partner_tracker" }));
+
+    expect(result).toEqual({ ok: true });
+    expect(state.delivered).toBe(true);
+    expect(state.connectionDestroyed).toBe(true);
   });
 
   it.each([

@@ -201,6 +201,65 @@ describe("analytics outbox PostgreSQL effects", () => {
     expect(stored.next_attempt_at.getTime() - now.getTime()).toBe(1_000);
   });
 
+  it("uses the partner retry schedule instead of the generic backoff", async () => {
+    const occurredAt = new Date("2030-09-21T12:00:00.000Z");
+    const seeded = await seedOutbox({
+      destination: "partner_tracker",
+      payload: { clickid: "Xk8sJ2QpR4vN7bL0aZ9wQg", event: "reg" },
+      occurredAt,
+    });
+
+    await runOutboxCycle({
+      repository: new AnalyticsOutboxRepository(pool, ["partner_tracker"]),
+      deliver: async () => ({
+        ok: false,
+        code: "partner_tracker_http_503",
+        retryable: true,
+      }),
+      now: () => occurredAt,
+    });
+
+    const stored = await storedOutbox(seeded.id);
+    expect(stored).toMatchObject({
+      status: "pending",
+      attempts: 1,
+      last_error_code: "partner_tracker_http_503",
+    });
+    expect(stored.next_attempt_at.getTime() - occurredAt.getTime()).toBe(
+      60_000,
+    );
+  });
+
+  it("stops partner delivery at the 24-hour cutoff", async () => {
+    const occurredAt = new Date("2030-09-20T12:00:00.000Z");
+    const clickId = "Xk8sJ2QpR4vN7bL0aZ9wQg";
+    const seeded = await seedOutbox({
+      destination: "partner_tracker",
+      payload: { clickid: clickId, event: "reg" },
+      occurredAt,
+    });
+    const delivery = { attempted: false };
+
+    await runOutboxCycle({
+      repository: new AnalyticsOutboxRepository(pool, ["partner_tracker"]),
+      deliver: async () => {
+        delivery.attempted = true;
+        return { ok: true };
+      },
+      now: () => new Date("2030-09-21T12:00:00.000Z"),
+    });
+
+    const stored = await storedOutbox(seeded.id);
+    expect(delivery.attempted).toBe(false);
+    expect(stored).toMatchObject({
+      status: "dead_letter",
+      attempts: 1,
+      last_error_code: "partner_tracker_retry_window_exhausted",
+      payload: { event: "reg" },
+    });
+    expect(JSON.stringify(stored)).not.toContain(clickId);
+  });
+
   it("moves the terminal retry attempt to dead-letter", async () => {
     const seeded = await seedOutbox({ attempts: 16 });
 
@@ -253,6 +312,29 @@ describe("analytics outbox PostgreSQL effects", () => {
     });
     expect(JSON.stringify(stored)).not.toContain(clickId);
     expect(JSON.stringify(stored)).not.toContain(responseBody);
+  });
+
+  it("scrubs the partner click id after successful delivery", async () => {
+    const clickId = "Xk8sJ2QpR4vN7bL0aZ9wQg";
+    const seeded = await seedOutbox({
+      destination: "partner_tracker",
+      payload: { clickid: clickId, event: "reg" },
+    });
+
+    await runOutboxCycle({
+      repository: new AnalyticsOutboxRepository(pool, ["partner_tracker"]),
+      deliver: async () => ({ ok: true }),
+    });
+
+    const stored = await storedOutbox(seeded.id);
+    expect(stored).toMatchObject({
+      status: "delivered",
+      attempts: 1,
+      last_error_code: null,
+      payload: { event: "reg" },
+    });
+    expect(stored.delivered_at).toBeInstanceOf(Date);
+    expect(JSON.stringify(stored)).not.toContain(clickId);
   });
 
   it("uses the PostgreSQL advisory lock to serialize partner delivery", async () => {
