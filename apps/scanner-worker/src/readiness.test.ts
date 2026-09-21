@@ -13,7 +13,7 @@ const health = (): WorkerHealth => ({
 });
 
 describe("worker readiness refresh", () => {
-  it("recovers queue readiness after a transient pg-boss failure", async () => {
+  it("withdraws and recovers queue readiness after a transient pg-boss failure", async () => {
     const state = health();
     const heartbeats: unknown[] = [];
     const writeHeartbeat = async (heartbeat: unknown) => {
@@ -24,11 +24,25 @@ describe("worker readiness refresh", () => {
       refreshWorkerReadiness({
         health: state,
         probeDatabase: async () => true,
+        probeQueue: async () => true,
+        writeHeartbeat,
+        now: () => new Date("2026-07-17T00:00:00.000Z"),
+      }),
+    ).resolves.toEqual({
+      ready: true,
+      queueConnected: true,
+      databaseConnected: true,
+    });
+
+    await expect(
+      refreshWorkerReadiness({
+        health: state,
+        probeDatabase: async () => true,
         probeQueue: async () => {
           throw new Error("transient queue failure with secret details");
         },
         writeHeartbeat,
-        now: () => new Date("2026-07-17T00:00:00.000Z"),
+        now: () => new Date("2026-07-17T00:00:10.000Z"),
       }),
     ).resolves.toMatchObject({ ready: false, queueConnected: false });
     expect(heartbeats.at(-1)).toEqual({
@@ -43,7 +57,7 @@ describe("worker readiness refresh", () => {
         probeDatabase: async () => true,
         probeQueue: async () => true,
         writeHeartbeat,
-        now: () => new Date("2026-07-17T00:00:10.000Z"),
+        now: () => new Date("2026-07-17T00:00:20.000Z"),
       }),
     ).resolves.toEqual({
       ready: true,
@@ -54,7 +68,7 @@ describe("worker readiness refresh", () => {
       ready: true,
       queueConnected: true,
       databaseConnected: true,
-      lastHeartbeatAt: "2026-07-17T00:00:10.000Z",
+      lastHeartbeatAt: "2026-07-17T00:00:20.000Z",
     });
   });
 
