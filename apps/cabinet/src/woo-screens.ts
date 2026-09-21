@@ -293,11 +293,11 @@ const theForm = (base: string, view: WooView): string => `  <div class="lede">
   <form class="issue" method="post" action="${escaped(base)}/woocommerce/connect">
     <div>
       <label for="shop_url">The address of your shop</label>
-      <input id="shop_url" name="shop_url" type="url" inputmode="url" placeholder="https://shop.example.com" value="${escaped(view.typed ?? (view.state.kind === "waiting" || view.state.kind === "unanswered" ? view.state.shopUrl : ""))}" required>
-      <p class="quiet">The public https address at the root of your shop. Permalinks must not be Plain.</p>
-      ${view.problem === undefined ? "" : `<p class="problem">${escaped(view.problem)}</p>`}
+      <input id="shop_url" name="shop_url" type="url" inputmode="url" aria-describedby="shop_url_help" placeholder="https://shop.example.com" value="${escaped(view.typed ?? (view.state.kind === "waiting" || view.state.kind === "unanswered" ? view.state.shopUrl : ""))}" required>
     </div>
     <button class="button button-compact button-primary" type="submit">Connect</button>
+    <p class="quiet" id="shop_url_help">The public https address at the root of your shop. Permalinks must not be Plain.</p>
+    ${view.problem === undefined ? "" : `<p class="problem">${escaped(view.problem)}</p>`}
   </form>
 `;
 

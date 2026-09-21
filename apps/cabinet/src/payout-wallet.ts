@@ -188,11 +188,11 @@ export const payoutWalletBlock = (viewer: Viewer): string => {
   <form class="issue" method="post" action="${escaped(base)}/settings/payout-wallet">
     <div>
       <label for="payout_wallet">${wallet === null ? "Where your money arrives" : "Change it to a different address"}</label>
-      <input id="payout_wallet" name="payout_wallet" type="text" autocomplete="off" spellcheck="false" maxlength="42" size="42" value="${escaped(typed ?? "")}" required>
-      ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
-      <p class="quiet">${escaped(`${WALLET_RULE}${arrives}`)} <a href="/docs/money#where-the-money-arrives">Learn more</a>.</p>
+      <input id="payout_wallet" name="payout_wallet" type="text" autocomplete="off" spellcheck="false" aria-describedby="payout_wallet_help" maxlength="42" size="42" value="${escaped(typed ?? "")}" required>
     </div>
     <button class="button button-compact button-primary" type="submit">${wallet === null ? "Save" : "Change the address"}</button>
+    <p class="quiet" id="payout_wallet_help">${escaped(`${WALLET_RULE}${arrives}`)} <a href="/docs/money#where-the-money-arrives">Learn more</a>.</p>
+    ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
   </form>
 `;
 };

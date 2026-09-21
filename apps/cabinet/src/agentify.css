@@ -790,6 +790,21 @@ h2 {
 }
 
 /*
+ * The helper line under a control, and the refusal, each on a row of their own.
+ *
+ * A full basis rather than a place in the row, because the row ends its items
+ * at the bottom: a helper inside the box's own cell makes the cell taller and
+ * carries the button down with it, so "Save" ends up level with the small
+ * print instead of with the box it saves. On its own row it sits under both,
+ * which is where a form's helper belongs and where every admin puts one.
+ */
+.issue > p {
+  flex-basis: 100%;
+  margin: 0;
+  max-width: 68ch;
+}
+
+/*
  * The key itself, on the one page it is ever shown.
  *
  * Given a line of its own and set in the monospaced family so that it can be

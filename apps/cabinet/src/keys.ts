@@ -170,11 +170,11 @@ ${
   <form class="issue" method="post" action="${escaped(base)}/keys">
     <div>
       <label for="label">What this key is for</label>
-      <input id="label" name="label" type="text" autocomplete="off" required>
-      <p class="quiet">The key itself is shown once, when it is made.</p>
-      ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
+      <input id="label" name="label" type="text" autocomplete="off" aria-describedby="label_help" required>
     </div>
     <button class="button button-compact button-primary" type="submit">Issue a key</button>
+    <p class="quiet" id="label_help">The key itself is shown once, when it is made.</p>
+    ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
   </form>
 `;
 

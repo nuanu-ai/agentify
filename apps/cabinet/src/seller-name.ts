@@ -165,29 +165,29 @@ export const settingsScreen = (viewer: Viewer, problem?: string, typedName?: str
   <form class="issue" method="post" action="${escaped(base)}/settings">
     <div>
       <label for="seller_name">The name buyers read</label>
-      <input id="seller_name" name="seller_name" type="text" autocomplete="organization" ${NAME_BOX} value="${escaped(typedName ?? name ?? "")}" required>
-      ${
-        problem === undefined
-          ? ""
-          : `<p class="problem">${escaped(problem)}</p>${
-              // The box is holding what was refused, so the page has stopped
-              // showing what a merchant is actually listed under. Which name
-              // is live is the thing they cannot see for themselves after a
-              // refusal, and it is four words.
-              name === null ? "" : `<p class="quiet">Still listed as ${escaped(name)}.</p>`
-            }`
-      }
-      <p class="quiet">${
-        // Unset is not a preference, it is a state in which the merchant's own
-        // code is being refused, so the helper says the consequence while it
-        // lasts. The cards screen carries the same fact in a banner; this page
-        // is the one with the box that ends it.
-        name === null
-          ? "Buyers see this beside your products. Until it is set, publishing a card is refused."
-          : "The name buyers see beside your products."
-      } <a href="/docs/quickstart#_1-make-the-merchant-account-ready">Learn more</a>.</p>
+      <input id="seller_name" name="seller_name" type="text" autocomplete="organization" aria-describedby="seller_name_help" ${NAME_BOX} value="${escaped(typedName ?? name ?? "")}" required>
     </div>
     <button class="button button-compact button-primary" type="submit">Save</button>
+    <p class="quiet" id="seller_name_help">${
+      // Unset is not a preference, it is a state in which the merchant's own
+      // code is being refused, so the helper says the consequence while it
+      // lasts. The cards screen carries the same fact in a banner; this page
+      // is the one with the box that ends it.
+      name === null
+        ? "Buyers see this beside your products. Until it is set, publishing a card is refused."
+        : "The name buyers see beside your products."
+    } <a href="/docs/quickstart#_1-make-the-merchant-account-ready">Learn more</a>.</p>
+    ${
+      problem === undefined
+        ? ""
+        : `<p class="problem">${escaped(problem)}</p>${
+            // The box is holding what was refused, so the page has stopped
+            // showing what a merchant is actually listed under. Which name is
+            // live is the thing they cannot see for themselves after a
+            // refusal, and it is four words.
+            name === null ? "" : `<p class="quiet">Still listed as ${escaped(name)}.</p>`
+          }`
+    }
   </form>
   </section>
   <section class="settings-panel">${payoutWalletBlock(viewer)}</section>
