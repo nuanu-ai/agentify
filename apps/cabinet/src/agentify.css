@@ -797,11 +797,19 @@ h2 {
  * carries the button down with it, so "Save" ends up level with the small
  * print instead of with the box it saves. On its own row it sits under both,
  * which is where a form's helper belongs and where every admin puts one.
+ *
+ * It carries no `max-width`, and that is the whole of why this rule is written
+ * out rather than obvious. A maximum clamps a flex item's hypothetical size,
+ * and the hypothetical size is what the row is broken on — so a basis of 100%
+ * capped at a reading width is not a full row at all, it is a 68-character
+ * item that fits beside the button as soon as the form is wide enough. The
+ * settings panels are two to a grid and never were, so it looked right there
+ * and was wrong on the keys and WooCommerce forms, which have the page to
+ * themselves. Nothing in `.issue` needs a measure: a helper is one line.
  */
 .issue > p {
-  flex-basis: 100%;
+  flex: 0 0 100%;
   margin: 0;
-  max-width: 68ch;
 }
 
 /*
