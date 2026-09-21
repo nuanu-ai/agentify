@@ -94,6 +94,7 @@ const scannerTarget = defineConfig({
     exclude: [
       "**/node_modules/**",
       "**/actor.integration.test.ts",
+      "**/analytics-outbox.integration.test.ts",
       "**/migrations.integration.test.ts",
       "**/p4.integration.test.ts",
       "**/p5.integration.test.ts",

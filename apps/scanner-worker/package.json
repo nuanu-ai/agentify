@@ -10,9 +10,10 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "pretest": "pnpm --filter @agentify/scanner-contracts --filter @agentify/scanner-database --filter @agentify/analytics --filter @agentify/observability --filter @agentify/scanner build",
-    "test": "vitest run --config ../../vitest.scanner.config.ts",
+    "test": "vitest run --config ../../vitest.scanner.config.ts --exclude src/analytics-outbox.integration.test.ts",
     "pretest:unit": "pnpm --filter @agentify/scanner-contracts --filter @agentify/scanner-database --filter @agentify/analytics --filter @agentify/observability --filter @agentify/scanner build",
-    "test:unit": "vitest run --config ../../vitest.scanner.config.ts",
+    "test:unit": "vitest run --config ../../vitest.scanner.config.ts --exclude src/analytics-outbox.integration.test.ts",
+    "test:integration": "vitest run --config ../../vitest.scanner.config.ts src/analytics-outbox.integration.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
