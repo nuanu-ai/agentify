@@ -121,8 +121,30 @@ type ObjectContract = Readonly<{
   name: string;
   schema: ZodType;
   valid: Record<string, unknown>;
-  required: readonly string[];
+  required: readonly (string | readonly [string, ...(string | number)[]])[];
 }>;
+
+const pathSegments = (
+  path: string | readonly [string, ...(string | number)[]],
+): readonly (string | number)[] => (typeof path === "string" ? [path] : path);
+
+const withoutRequiredPath = (
+  valid: Record<string, unknown>,
+  path: string | readonly [string, ...(string | number)[]],
+): Record<string, unknown> => {
+  const incomplete = structuredClone(valid);
+  const segments = pathSegments(path);
+  let parent: unknown = incomplete;
+  for (const segment of segments.slice(0, -1)) {
+    parent = Array.isArray(parent)
+      ? parent[Number(segment)]
+      : (parent as Record<string, unknown>)[String(segment)];
+  }
+  const field = segments.at(-1)!;
+  if (Array.isArray(parent)) delete parent[Number(field)];
+  else delete (parent as Record<string, unknown>)[String(field)];
+  return incomplete;
+};
 
 const contracts = [
   {
@@ -147,7 +169,13 @@ const contracts = [
         request_id: "request-1",
       },
     },
-    required: ["error"],
+    required: [
+      "error",
+      ["error", "code"],
+      ["error", "message"],
+      ["error", "retryable"],
+      ["error", "request_id"],
+    ],
   },
   {
     name: "createScanRequestSchema",
@@ -184,10 +212,34 @@ const contracts = [
     valid: {
       status: "running",
       progress: { completed: 1, total: 18 },
-      checks: [],
+      checks: [{ id: 1, label_code: "robots", status: "pass" }],
       updated_at: timestamp,
+      teaser: {
+        score: 72,
+        coverage: 1,
+        level: "ahead_of_market",
+        top_findings: ["machine_interface_visible"],
+        positive: "public_evidence_available",
+        hidden_count: 17,
+      },
     },
-    required: ["status", "progress", "checks", "updated_at"],
+    required: [
+      "status",
+      "progress",
+      ["progress", "completed"],
+      ["progress", "total"],
+      "checks",
+      ["checks", 0, "id"],
+      ["checks", 0, "label_code"],
+      ["checks", 0, "status"],
+      "updated_at",
+      ["teaser", "score"],
+      ["teaser", "coverage"],
+      ["teaser", "level"],
+      ["teaser", "top_findings"],
+      ["teaser", "positive"],
+      ["teaser", "hidden_count"],
+    ],
   },
   {
     name: "registrationRequestSchema",
@@ -256,7 +308,7 @@ const contracts = [
       coverage: 1,
       level: "ahead_of_market",
       checks: Array.from({ length: 18 }, (_, index) => reportCheck(index + 1)),
-      benchmark: null,
+      benchmark: { sample_size: 30, average_score: 64 },
     },
     required: [
       "scan_id",
@@ -266,7 +318,16 @@ const contracts = [
       "coverage",
       "level",
       "checks",
+      ["checks", 0, "id"],
+      ["checks", 0, "label_code"],
+      ["checks", 0, "status"],
+      ["checks", 0, "summary_code"],
+      ["checks", 0, "user_impact_code"],
+      ["checks", 0, "fix_code"],
+      ["checks", 0, "evidence"],
       "benchmark",
+      ["benchmark", "sample_size"],
+      ["benchmark", "average_score"],
     ],
   },
   {
@@ -312,7 +373,14 @@ const contracts = [
   {
     name: "sharePreviewResponseSchema",
     schema: sharePreviewResponseSchema,
-    valid: { ...publicShare, existing_share: null },
+    valid: {
+      ...publicShare,
+      existing_share: {
+        slug: "s".repeat(32),
+        public_url: `https://agentify.ad/s/${"s".repeat(32)}`,
+        status: "published",
+      },
+    },
     required: [
       "host",
       "score",
@@ -320,6 +388,9 @@ const contracts = [
       "rubric_version",
       "generated_at",
       "existing_share",
+      ["existing_share", "slug"],
+      ["existing_share", "public_url"],
+      ["existing_share", "status"],
     ],
   },
   {
@@ -494,9 +565,22 @@ const contracts = [
       "schema_version",
       "operation_id",
       "target",
+      ["target", "canonical_url"],
+      ["target", "registrable_domain"],
+      ["target", "segment"],
       "representative_urls",
       "policy",
+      ["policy", "user_agent"],
+      ["policy", "methods"],
+      ["policy", "use_proxy"],
+      ["policy", "respect_robots"],
+      ["policy", "crawl_purpose"],
       "limits",
+      ["limits", "max_pages"],
+      ["limits", "max_requests_per_page"],
+      ["limits", "max_total_bytes"],
+      ["limits", "page_timeout_ms"],
+      ["limits", "run_timeout_ms"],
     ],
   },
   {
@@ -519,8 +603,32 @@ const contracts = [
       "status",
       "pages_assessed",
       "signals",
+      ["signals", "rendered_text_chars"],
+      ["signals", "raw_to_rendered_ratio"],
+      ["signals", "landmark_counts"],
+      ["signals", "heading_level_counts"],
+      ["signals", "interactive_control_count"],
+      ["signals", "unnamed_control_count"],
+      ["signals", "form_control_count"],
+      ["signals", "unlabeled_form_control_count"],
+      ["signals", "webmcp_present"],
+      ["signals", "webmcp_tool_count"],
+      ["signals", "console_error_categories"],
+      ["signals", "failed_resource_categories"],
+      ["signals", "mixed_content_count"],
+      ["signals", "dom_node_count"],
+      ["signals", "script_count"],
+      ["signals", "request_count"],
+      ["signals", "transferred_bytes"],
+      ["signals", "challenge_kind"],
       "observations",
+      ["observations", 0, "id"],
+      ["observations", 0, "status"],
+      ["observations", 0, "summary_code"],
+      ["observations", 0, "evidence"],
       "timings",
+      ["timings", "total_ms"],
+      ["timings", "pages"],
     ],
   },
   {
@@ -540,6 +648,10 @@ const contracts = [
       "non_scoring",
       "pages_assessed",
       "findings",
+      ["findings", 0, "id"],
+      ["findings", 0, "status"],
+      ["findings", 0, "summary_code"],
+      ["findings", 0, "evidence"],
       "updated_at",
     ],
   },
@@ -558,16 +670,21 @@ describe("exported scanner object schemas", () => {
       expect(schema.safeParse(valid).success).toBe(true);
 
       for (const field of required) {
-        const incomplete: Record<string, unknown> = { ...valid };
-        delete incomplete[field];
+        const expectedPath = pathSegments(field);
+        const label = expectedPath.join(".");
+        const incomplete = withoutRequiredPath(valid, field);
         const parsed = schema.safeParse(incomplete);
-        expect(parsed.success, field).toBe(false);
+        expect(parsed.success, label).toBe(false);
         if (parsed.success) continue;
         const issue = parsed.error.issues.find(
-          (candidate) => candidate.path[0] === field,
+          (candidate) =>
+            candidate.path.length === expectedPath.length &&
+            candidate.path.every(
+              (segment, index) => segment === expectedPath[index],
+            ),
         );
-        expect(issue, field).toBeDefined();
-        expect(issue?.message.trim().length, field).toBeGreaterThan(0);
+        expect(issue, label).toBeDefined();
+        expect(issue?.message.trim().length, label).toBeGreaterThan(0);
       }
     },
   );
