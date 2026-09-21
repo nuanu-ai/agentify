@@ -102,7 +102,7 @@ three delivered paid Agentify orders, three receipts, three Woo orders and
 three native permissions. The upstream sender logs were not retained, so the
 exact external nonce or fee cause is unknown; no Agentify settlement retry or
 concrete local source defect was found. No paid request was retried or
-authorized twice. [COIN-43](https://plan.nuanu.ai/project/COIN/issue/43) tracks
+authorized twice. COIN-43 tracks
 revalidation of this remaining settlement failure.
 
 Paid case 2 completed the exact registered sequence: one valid quote, exact-key
@@ -171,7 +171,7 @@ truthfully said money was taken, nothing shipped and late delivery can clear
 the debt, but its only stated action was for the owner to return funds from
 their own wallet. It did not direct the owner to reconnect the shop or request
 operator recovery for that exact order. With the public pilot-contact decision
-deferred in [COIN-42](https://plan.nuanu.ai/project/COIN/issue/42), the safe
+deferred in COIN-42, the safe
 late-delivery path remains discoverable only to the operator.
 
 ## Verdict and product boundary
