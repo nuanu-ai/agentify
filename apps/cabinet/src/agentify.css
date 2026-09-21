@@ -663,7 +663,7 @@ td.control {
     font-size: 0.8125rem;
   }
 
-  .gate form {
+  .gate-card {
     padding: 28px 22px;
   }
 }
