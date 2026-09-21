@@ -241,7 +241,7 @@
   background: var(--surface);
   border: 1px solid var(--line);
   padding: 22px;
-  border-radius: 16px;
+  border-radius: var(--radius-card);
   box-shadow: 0 18px 42px -30px rgba(26, 25, 23, 0.45);
 }
 .offerCard > span:last-child {
@@ -364,7 +364,7 @@
 .chartCard {
   background: var(--shop-darkest);
   border: 1px solid var(--shop-line);
-  border-radius: 20px;
+  border-radius: var(--radius-panel);
   padding: 30px;
 }
 .chartHeading {
@@ -552,7 +552,7 @@
   display: grid;
   place-content: center;
   font-size: 1.8rem;
-  border-radius: 14px;
+  border-radius: var(--radius-card);
   margin-bottom: 30px;
 }
 .steps h3 {
@@ -616,7 +616,7 @@
   margin-bottom: 20px;
 }
 .paymentDiagram {
-  border-radius: 20px;
+  border-radius: var(--radius-panel);
   background: var(--surface);
   border: 1px solid #d4ddd3;
   padding: 26px;
@@ -673,7 +673,7 @@
   gap: 1px;
   background: var(--line);
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: var(--radius-card);
   overflow: hidden;
 }
 .categories article {
@@ -783,7 +783,7 @@
   background: var(--bg);
   color: var(--fg);
   padding: 34px;
-  border-radius: 20px;
+  border-radius: var(--radius-panel);
   min-width: 0;
   align-self: start;
 }
@@ -1265,7 +1265,7 @@
   }
   .chartCard {
     padding: 22px 18px;
-    border-radius: 16px;
+    border-radius: var(--radius-card);
   }
   .chartHeading {
     font-size: 0.75rem;
@@ -1388,7 +1388,7 @@
   }
   .entryCard {
     padding: 25px 20px;
-    border-radius: 16px;
+    border-radius: var(--radius-card);
   }
   .entryCard h3 {
     font-size: 1.375rem;

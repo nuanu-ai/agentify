@@ -52,7 +52,7 @@
 }
 .sent {
   width: 100%;
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   padding: 18px;
   background: var(--accent-soft);
   color: var(--fg);

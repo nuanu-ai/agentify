@@ -94,11 +94,16 @@
     "Schibsted Grotesk Variable", "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  --radius: 8px;
+  /* Four corners and no fifth. A control is 12, a card 14, a panel 20, and a
+     pill is a pill. One value described nothing: every surface that had one
+     broke it within a few rules, for a dot, a track or a tag, and then wrote a
+     literal. A scale of three plus the pill describes what is already being
+     drawn. */
   --radius-control: 12px;
   --radius-card: 14px;
   --radius-panel: 20px;
   --radius-pill: 999px;
+
   --hairline: 1px;
 
   --shadow-soft: 0 30px 70px -46px rgba(26, 25, 23, 0.42);

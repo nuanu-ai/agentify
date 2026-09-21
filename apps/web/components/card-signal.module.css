@@ -1,7 +1,7 @@
 .panel {
   margin-top: 20px;
   border: 1px solid var(--line);
-  border-radius: 20px;
+  border-radius: var(--radius-panel);
   padding: clamp(24px, 5vw, 36px);
   background: var(--surface);
   box-shadow: none;
@@ -21,7 +21,7 @@
 
 .heading > strong {
   flex: 0 0 auto;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 8px 12px;
   background: var(--bg);
   color: var(--accent);

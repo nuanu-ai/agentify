@@ -206,7 +206,7 @@ h2 {
 
 .panel {
   border: var(--hairline) solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-panel);
   background: var(--surface);
 }
 
@@ -407,7 +407,7 @@ td.ctl {
 button {
   font: inherit;
   cursor: pointer;
-  border-radius: var(--radius);
+  border-radius: var(--radius-control);
   padding: 5px 11px;
   font-size: 12.5px;
   border: var(--hairline) solid var(--line-strong);
@@ -477,7 +477,7 @@ textarea {
   width: 100%;
   padding: 5px 9px;
   border: var(--hairline) solid var(--line-strong);
-  border-radius: var(--radius);
+  border-radius: var(--radius-control);
   background: var(--bg);
   color: var(--fg);
 }
@@ -554,7 +554,7 @@ details > summary:hover {
 .said-back {
   border: var(--hairline) solid var(--line);
   border-left: 2px solid var(--pass);
-  border-radius: var(--radius);
+  border-radius: var(--radius-card);
   background: var(--surface);
   padding: 11px 14px;
   font-size: 13px;
@@ -647,7 +647,7 @@ details > summary:hover {
   gap: 10px 18px;
   padding: 10px 12px;
   border: var(--hairline) dashed var(--line-strong);
-  border-radius: var(--radius);
+  border-radius: var(--radius-card);
 }
 
 .reqs .k {
@@ -755,7 +755,7 @@ pre {
   margin: 0;
   padding: 9px 11px;
   background: var(--raised);
-  border-radius: var(--radius);
+  border-radius: var(--radius-card);
   font-family: var(--font-mono);
   font-size: 11.5px;
   line-height: 1.5;
@@ -1019,7 +1019,7 @@ pre {
   width: 100%;
   max-width: 480px;
   border: var(--hairline) solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-panel);
   background: var(--surface);
   padding: 28px;
   display: flex;

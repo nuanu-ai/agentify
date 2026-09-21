@@ -80,7 +80,6 @@
   --vp-button-brand-hover-bg: var(--agentify-accent);
   --vp-button-brand-text: var(--agentify-on-accent);
 
-  /* The site is square-cornered everywhere else; the theme's default is not. */
   --vp-code-block-bg: var(--agentify-raised);
 }
 
@@ -111,11 +110,13 @@
   }
 }
 
-/* Three corners the theme rounds and the rest of the site does not. */
+/* Three corners the theme rounds to its own measure. The rest of the origin
+   draws a control at 12 (packages/visual/tokens.css, --radius-control); the
+   portal declares no tokens of its own, so it is written out. */
 .VPButton,
 .vp-doc div[class*="language-"],
 .custom-block {
-  border-radius: 3px;
+  border-radius: 12px;
 }
 
 /*

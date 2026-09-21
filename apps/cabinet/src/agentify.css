@@ -175,7 +175,7 @@ h1 {
 .scroller {
   margin: 24px 32px 32px;
   border: var(--hairline) solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-panel);
   background: var(--surface);
   overflow-x: auto;
 }
@@ -320,7 +320,7 @@ td.quiet {
 button {
   font: inherit;
   cursor: pointer;
-  border-radius: var(--radius);
+  border-radius: var(--radius-control);
   padding: 6px 12px;
   font-size: 13px;
   /* --line-strong and not --line: a hairline is right for a rule between two
@@ -362,7 +362,7 @@ td.control {
   display: flex;
   gap: 6px;
   border: var(--hairline) solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-control);
   padding: 3px;
 }
 
@@ -388,7 +388,7 @@ td.control {
   gap: 12px;
   align-items: flex-start;
   border: var(--hairline) dashed var(--line-strong);
-  border-radius: var(--radius);
+  border-radius: var(--radius-card);
   padding: 16px 20px;
   color: var(--muted);
   font-size: 13.5px;
@@ -403,7 +403,7 @@ td.control {
   margin: 0 32px 32px;
   border: var(--hairline) solid var(--line);
   border-left: 2px solid var(--fail);
-  border-radius: var(--radius);
+  border-radius: var(--radius-card);
   padding: 16px 20px;
   background: var(--surface);
   line-height: 1.55;
@@ -440,7 +440,7 @@ td.control {
   margin: 0 32px 32px;
   border: var(--hairline) solid var(--line);
   border-left: 2px solid var(--fail);
-  border-radius: var(--radius);
+  border-radius: var(--radius-card);
   padding: 16px 20px;
   background: var(--surface);
   line-height: 1.55;
@@ -461,7 +461,7 @@ td.control {
 
 .tile {
   border: var(--hairline) solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-card);
   background: var(--surface);
   padding: 20px 24px;
 }
@@ -522,7 +522,7 @@ td.control {
   width: 100%;
   max-width: 440px;
   border: var(--hairline) solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-panel);
   background: var(--surface);
   padding: 36px;
   box-shadow: 0 20px 60px color-mix(in srgb, var(--fg) 8%, transparent);
@@ -565,7 +565,7 @@ td.control {
   min-height: 44px;
   padding: 10px 12px;
   border: var(--hairline) solid var(--line-strong);
-  border-radius: var(--radius);
+  border-radius: var(--radius-control);
   background: var(--bg);
   color: var(--fg);
 }
@@ -727,7 +727,7 @@ h2 {
   max-width: 100%;
   padding: 6px 12px;
   border: var(--hairline) solid var(--line-strong);
-  border-radius: var(--radius);
+  border-radius: var(--radius-control);
   background: var(--bg);
   color: var(--fg);
 }
@@ -778,7 +778,7 @@ h2 {
   margin: 0 32px 24px;
   padding: 16px 20px;
   border: var(--hairline) solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-card);
   background: var(--surface);
 }
 
@@ -839,7 +839,7 @@ h2 {
 .integration-shell {
   min-width: 0;
   border: var(--hairline) solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-panel);
   background: var(--surface);
   box-shadow: 0 12px 32px color-mix(in srgb, var(--fg) 4%, transparent);
 }
