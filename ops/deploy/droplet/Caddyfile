@@ -1,7 +1,6 @@
 (observability) {
 	map {http.request.uri.path} {route_class} {
-		~^/$ page_home
-		~^/(store|owner|local)$ page_landing
+		~^/(store|local)?$ page_landing
 		~^/(methodology|privacy|scanner|terms|data-request)$ page_trust
 		~^/(robots\.txt|sitemap\.xml|llms\.txt)$ public_agent_surface
 		~^/admin(?:/.*)?$ page_admin
