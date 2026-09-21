@@ -159,13 +159,14 @@ const normalizedEmail = (value: string): string => value.trim().normalize("NFKC"
 /**
  * What a person is told when the gate found no session behind their click.
  *
- * It names the lifetime rather than leaving them to guess whether something
- * went wrong: a session is twelve hours old at most and nothing renews it, so
- * being asked for an address again is the ordinary end of one and not a fault.
+ * The gate cannot tell them why — the session may have run out, been signed
+ * out in another tab or been revoked — so what it gives is the general rule.
+ * Naming the lifetime is what makes being asked for an address again read as
+ * the ordinary end of a session rather than as a fault.
  */
 const SESSION_ENDED =
-  `Your session ended. A session lasts ${SESSION_HOURS} hours from the moment you sign in ` +
-  `and is never extended, so send yourself a new link to carry on.`;
+  `Your session ended; a session lasts at most ${SESSION_HOURS} hours. ` +
+  `Send yourself a new link to carry on.`;
 
 const cabinetDestinationIn = (value: unknown): CabinetDestination =>
   value === "settings" || value === "woocommerce" ? value : "default";

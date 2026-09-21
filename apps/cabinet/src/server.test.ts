@@ -46,7 +46,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type CabinetConfig, loadConfig } from "./config.js";
 import { type Answer, type GatewayClient, gatewayFor, type Registrar } from "./gateway.js";
-import { type Identity, identityFor } from "./identity.js";
+import { type Identity, identityFor, SESSION_HOURS } from "./identity.js";
 import type { Handover, Message, Postman } from "./mail.js";
 import { buildApp } from "./server.js";
 import { readable } from "./testing/html.js";
@@ -2981,6 +2981,7 @@ describe("a session that is ended while somebody is looking at a page", () => {
     const recovery = await browser.get(answered.to ?? "");
     const message = readable(recovery.html);
     expect(message).toContain("Your session ended");
+    expect(message).toContain(`${SESSION_HOURS} hours`);
     expect(message).not.toContain("not saved");
     expect(message).not.toContain("submitted a change");
   });
