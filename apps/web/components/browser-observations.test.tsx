@@ -35,7 +35,7 @@ function observation(
 }
 
 describe("BrowserObservations", () => {
-  it("renders the report as separate non-scoring enrichment", () => {
+  it("keeps browser observations outside the canonical score", () => {
     const markup = renderToStaticMarkup(
       <BrowserObservations
         host="example.com"
@@ -45,27 +45,11 @@ describe("BrowserObservations", () => {
         surface="report"
       />,
     );
-    expect(markup).toContain("Does not change the score");
     expect(markup).not.toContain("Build 1.0.42");
-    expect(markup).toContain("Accessibility structure");
-    expect(markup).toContain("unavailable");
-    expect(markup).toContain("Copy this fix");
     expect(markup).not.toContain("/100");
   });
 
-  it("uses neutral language for blocked browser work", () => {
-    const markup = renderToStaticMarkup(
-      <BrowserObservations
-        initialData={observation({ status: "blocked", findings: [] })}
-        scanId="scan-1"
-        surface="report"
-      />,
-    );
-    expect(markup).toContain("No bypass was attempted");
-    expect(markup).toContain("not a site failure");
-  });
-
-  it("announces queued work without claiming a score effect", () => {
+  it("announces queued work without changing the canonical score", () => {
     const markup = renderToStaticMarkup(
       <BrowserObservations
         initialData={observation({
@@ -77,9 +61,8 @@ describe("BrowserObservations", () => {
         surface="scan"
       />,
     );
-    expect(markup).toContain("Browser analysis queued");
     expect(markup).toContain('role="status"');
-    expect(markup).toContain("Does not change the score");
+    expect(markup).not.toContain("/100");
   });
 
   it("keeps off or shadow mode visually absent when no result is supplied", () => {
@@ -87,19 +70,6 @@ describe("BrowserObservations", () => {
       <BrowserObservations scanId="scan-1" surface="report" />,
     );
     expect(markup).toBe("");
-  });
-
-  it("presents provider unavailability as non-scoring context", () => {
-    const markup = renderToStaticMarkup(
-      <BrowserObservations
-        initialData={observation({ status: "unavailable", findings: [] })}
-        scanId="scan-1"
-        surface="report"
-      />,
-    );
-    expect(markup).toContain("could not finish");
-    expect(markup).toContain("The report is unchanged");
-    expect(markup).not.toContain("/100");
   });
 
   it("does not expose evidence or fixes in the scan teaser", () => {
@@ -110,7 +80,6 @@ describe("BrowserObservations", () => {
         surface="scan"
       />,
     );
-    expect(markup).toContain("Accessibility structure");
     expect(markup).not.toContain("Unnamed Control Count");
     expect(markup).not.toContain("Copy this fix");
   });

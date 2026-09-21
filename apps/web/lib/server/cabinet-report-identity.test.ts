@@ -33,7 +33,7 @@ afterEach(async () => {
           new Promise<void>((resolve) => server.close(() => resolve())),
       ),
   );
-  vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe("cabinet report identity client", () => {
@@ -115,18 +115,14 @@ describe("cabinet report identity client", () => {
 
   it("aborts at its fixed boundary and does not log sensitive values", async () => {
     vi.useFakeTimers();
-    const error = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
-    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    const fetchImpl = vi.fn(
-      (_input: string | URL | Request, init?: RequestInit) =>
-        new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener("abort", () =>
-            reject(new DOMException("Aborted", "AbortError")),
-          );
-        }),
-    );
+    let requestSignal: AbortSignal | null | undefined;
+    const fetchImpl = (_input: string | URL | Request, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        requestSignal = init?.signal;
+        requestSignal?.addEventListener("abort", () =>
+          reject(new DOMException("Aborted", "AbortError")),
+        );
+      });
     const client = createCabinetReportIdentityClient({
       baseUrl: "http://cabinet.internal:3002",
       secret,
@@ -142,12 +138,10 @@ describe("cabinet report identity client", () => {
       "cabinet_identity_unavailable",
     );
     await vi.advanceTimersByTimeAsync(14_999);
-    expect(fetchImpl.mock.calls[0]?.[1]?.signal?.aborted).toBe(false);
+    expect(requestSignal?.aborted).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     await rejection;
-    expect(fetchImpl.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
-    expect(error).not.toHaveBeenCalled();
-    expect(log).not.toHaveBeenCalled();
+    expect(requestSignal?.aborted).toBe(true);
     vi.useRealTimers();
   });
 

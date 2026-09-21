@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { verifyTurnstileToken } from "./turnstile";
 
@@ -10,11 +10,18 @@ const response = (body: unknown, status = 200) =>
 
 describe("verifyTurnstileToken", () => {
   it("accepts only a successful scan token for the configured hostname", async () => {
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValue(
-        response({ success: true, action: "scan", hostname: "agentify.ad" }),
-      );
+    let providerRequest: RequestInit | undefined;
+    const fetchImpl = async (
+      _input: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      providerRequest = init;
+      return response({
+        success: true,
+        action: "scan",
+        hostname: "agentify.ad",
+      });
+    };
 
     await expect(
       verifyTurnstileToken({
@@ -27,8 +34,7 @@ describe("verifyTurnstileToken", () => {
       }),
     ).resolves.toBe(true);
 
-    const request = fetchImpl.mock.calls[0]?.[1] as RequestInit;
-    expect(String(request.body)).toContain("remoteip=203.0.113.8");
+    expect(String(providerRequest?.body)).toContain("remoteip=203.0.113.8");
   });
 
   it.each([
@@ -43,7 +49,7 @@ describe("verifyTurnstileToken", () => {
         secret: "secret",
         expectedHostname: "agentify.ad",
         action: "scan",
-        fetchImpl: vi.fn().mockResolvedValue(response(payload)),
+        fetchImpl: async () => response(payload),
       }),
     ).resolves.toBe(false);
   });
@@ -56,7 +62,9 @@ describe("verifyTurnstileToken", () => {
         secret: "secret",
         expectedHostname: "agentify.ad",
         action: "scan",
-        fetchImpl: vi.fn().mockRejectedValue(new Error("network")),
+        fetchImpl: async () => {
+          throw new Error("network");
+        },
       }),
     ).resolves.toBe(false);
   });

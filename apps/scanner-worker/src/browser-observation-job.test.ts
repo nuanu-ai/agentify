@@ -2,7 +2,7 @@ import {
   BROWSER_OBSERVATION_VERSION,
   type BrowserObservationOutputV1,
 } from "@agentify/scanner-contracts";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type { BrowserProviderClient } from "./apify-browser-client";
 import {
@@ -63,51 +63,102 @@ const output: BrowserObservationOutputV1 = {
   timings: { total_ms: 100, pages: [100] },
 };
 
-function repository(
-  overrides: Partial<BrowserObservationRepository> = {},
-): BrowserObservationRepository {
-  return {
-    claim: vi.fn().mockResolvedValue({ state: "claimed", observation }),
-    attachRun: vi.fn().mockResolvedValue("attached"),
-    heartbeat: vi.fn().mockResolvedValue(true),
-    complete: vi.fn().mockResolvedValue("committed"),
-    markTerminal: vi.fn().mockResolvedValue(undefined),
-    listReconciliationCandidates: vi.fn().mockResolvedValue([]),
-    dailyUsageUsd: vi.fn().mockResolvedValue(0),
-    reserveDailyBudget: vi.fn().mockResolvedValue("reserved"),
-    listCleanupCandidates: vi.fn().mockResolvedValue([]),
-    listUsageReconciliationCandidates: vi.fn().mockResolvedValue([]),
-    reconcileUsage: vi.fn().mockResolvedValue({
+function repositoryFake(overrides: Partial<BrowserObservationRepository> = {}) {
+  const state = {
+    attachedRun: undefined as string | undefined,
+    completed: false,
+    terminal: undefined as
+      { status: string; reason: string; usageUsd?: number } | undefined,
+    storageCleaned: false,
+    reservations: 0,
+  };
+  const repo: BrowserObservationRepository = {
+    claim: async () => ({ state: "claimed", observation }),
+    attachRun: async (_observationId, _leaseToken, runId) => {
+      state.attachedRun = runId;
+      return "attached";
+    },
+    heartbeat: async () => true,
+    complete: async () => {
+      state.completed = true;
+      return "committed";
+    },
+    markTerminal: async (
+      _observationId,
+      _leaseToken,
+      status,
+      reason,
+      options,
+    ) => {
+      state.terminal = {
+        status,
+        reason,
+        ...(options?.usageUsd === undefined
+          ? {}
+          : { usageUsd: options.usageUsd }),
+      };
+      return true;
+    },
+    listReconciliationCandidates: async () => [],
+    dailyUsageUsd: async () => 0,
+    reserveDailyBudget: async () => {
+      state.reservations += 1;
+      return "reserved";
+    },
+    listCleanupCandidates: async () => [],
+    listUsageReconciliationCandidates: async () => [],
+    reconcileUsage: async () => ({
       state: "unchanged",
       deltaUsd: 0,
       dayTotalUsd: 0,
     }),
-    settleUsageConservatively: vi.fn().mockResolvedValue({
+    settleUsageConservatively: async () => ({
       state: "unchanged",
       deltaUsd: 0,
       dayTotalUsd: 0,
     }),
-    markStorageCleaned: vi.fn().mockResolvedValue(true),
-    getForScan: vi.fn().mockResolvedValue(null),
-    ...overrides,
-  } as BrowserObservationRepository;
-}
-
-function provider(
-  overrides: Partial<BrowserProviderClient> = {},
-): BrowserProviderClient {
-  return {
-    start: vi.fn().mockResolvedValue({ id: "run-1" }),
-    findRecentRun: vi.fn().mockResolvedValue(null),
-    waitForFinish: vi
-      .fn()
-      .mockResolvedValue({ id: "run-1", status: "SUCCEEDED", usageUsd: 0.01 }),
-    getUsage: vi.fn().mockResolvedValue(0.01),
-    getOutput: vi.fn().mockResolvedValue(output),
-    abort: vi.fn().mockResolvedValue(undefined),
-    cleanup: vi.fn().mockResolvedValue(undefined),
+    markStorageCleaned: async () => {
+      state.storageCleaned = true;
+      return true;
+    },
+    getForScan: async () => null,
     ...overrides,
   };
+  return { repo, state };
+}
+
+function providerFake(overrides: Partial<BrowserProviderClient> = {}) {
+  const state = {
+    started: false,
+    aborted: [] as string[],
+    cleaned: [] as string[],
+    lifecycle: [] as string[],
+  };
+  const provider: BrowserProviderClient = {
+    start: async () => {
+      state.started = true;
+      state.lifecycle.push("start");
+      return { id: "run-1" };
+    },
+    findRecentRun: async () => null,
+    waitForFinish: async () => ({
+      id: "run-1",
+      status: "SUCCEEDED",
+      usageUsd: 0.01,
+    }),
+    getUsage: async () => 0.01,
+    getOutput: async () => output,
+    abort: async (runId) => {
+      state.aborted.push(runId);
+      state.lifecycle.push("abort");
+    },
+    cleanup: async (runId) => {
+      state.cleaned.push(runId);
+      state.lifecycle.push("cleanup");
+    },
+    ...overrides,
+  };
+  return { provider, state };
 }
 
 describe("browser observation job", () => {
@@ -135,8 +186,8 @@ describe("browser observation job", () => {
   });
 
   it("starts, persists, validates and cleans a successful run", async () => {
-    const repo = repository();
-    const apify = provider();
+    const { repo, state: repositoryState } = repositoryFake();
+    const { provider: apify, state: providerState } = providerFake();
     await expect(
       processBrowserObservationJob(
         {
@@ -147,24 +198,22 @@ describe("browser observation job", () => {
         { repository: repo, provider: apify, config },
       ),
     ).resolves.toBe("committed");
-    expect(apify.start).toHaveBeenCalledOnce();
-    expect(repo.attachRun).toHaveBeenCalledWith(
-      observation.id,
-      observation.leaseToken,
-      "run-1",
-      expect.any(Date),
-      90_000,
-    );
-    expect(repo.complete).toHaveBeenCalledOnce();
-    expect(apify.cleanup).toHaveBeenCalledWith("run-1");
+    expect(repositoryState).toMatchObject({
+      attachedRun: "run-1",
+      completed: true,
+    });
+    expect(providerState).toMatchObject({
+      started: true,
+      cleaned: ["run-1"],
+    });
   });
 
   it("aborts an attached run before cleanup when provider wait is ambiguous", async () => {
-    const repo = repository({
-      markTerminal: vi.fn().mockResolvedValue(true),
-    });
-    const apify = provider({
-      waitForFinish: vi.fn().mockRejectedValue(new Error("provider_transport")),
+    const { repo, state: repositoryState } = repositoryFake();
+    const { provider: apify, state: providerState } = providerFake({
+      waitForFinish: async () => {
+        throw new Error("provider_transport");
+      },
     });
 
     await expect(
@@ -178,20 +227,16 @@ describe("browser observation job", () => {
       ),
     ).resolves.toBe("skipped");
 
-    expect(apify.abort).toHaveBeenCalledWith("run-1");
-    expect(apify.cleanup).toHaveBeenCalledWith("run-1");
-    expect(repo.markTerminal).toHaveBeenCalledOnce();
-    expect(repo.markStorageCleaned).toHaveBeenCalledOnce();
-    expect(vi.mocked(apify.abort).mock.invocationCallOrder[0]).toBeLessThan(
-      vi.mocked(apify.cleanup).mock.invocationCallOrder[0] ?? 0,
-    );
+    expect(providerState.lifecycle).toEqual(["start", "abort", "cleanup"]);
+    expect(repositoryState.terminal?.status).toBe("failed");
+    expect(repositoryState.storageCleaned).toBe(true);
   });
 
   it("stops before provider start when the daily budget is exhausted", async () => {
-    const repo = repository({
-      reserveDailyBudget: vi.fn().mockResolvedValue("exhausted"),
+    const { repo, state: repositoryState } = repositoryFake({
+      reserveDailyBudget: async () => "exhausted",
     });
-    const apify = provider();
+    const { provider: apify, state: providerState } = providerFake();
     await processBrowserObservationJob(
       {
         observation_id: observation.id,
@@ -200,20 +245,18 @@ describe("browser observation job", () => {
       },
       { repository: repo, provider: apify, config },
     );
-    expect(apify.start).not.toHaveBeenCalled();
-    expect(repo.markTerminal).toHaveBeenCalledWith(
-      observation.id,
-      observation.leaseToken,
-      "budget_skipped",
-      "daily_budget_exhausted",
-      { at: expect.any(Date), usageUsd: 0 },
-    );
+    expect(providerState.started).toBe(false);
+    expect(repositoryState.terminal).toEqual({
+      status: "budget_skipped",
+      reason: "daily_budget_exhausted",
+      usageUsd: 0,
+    });
   });
 
   it("rejects output from an unexpected Actor build", async () => {
-    const repo = repository();
-    const apify = provider({
-      getOutput: vi.fn().mockResolvedValue({
+    const { repo, state: repositoryState } = repositoryFake();
+    const { provider: apify } = providerFake({
+      getOutput: async () => ({
         ...output,
         actor_build: "1.0.999",
       }),
@@ -226,19 +269,17 @@ describe("browser observation job", () => {
       },
       { repository: repo, provider: apify, config },
     );
-    expect(repo.complete).not.toHaveBeenCalled();
-    expect(repo.markTerminal).toHaveBeenCalledWith(
-      observation.id,
-      observation.leaseToken,
-      "failed",
-      "actor_build_mismatch",
-      { at: expect.any(Date), usageUsd: 0.01 },
-    );
+    expect(repositoryState.completed).toBe(false);
+    expect(repositoryState.terminal).toEqual({
+      status: "failed",
+      reason: "actor_build_mismatch",
+      usageUsd: 0.01,
+    });
   });
 
   it("does not create a duplicate paid run when stale state is unknown", async () => {
-    const repo = repository({
-      claim: vi.fn().mockResolvedValue({
+    const { repo, state: repositoryState } = repositoryFake({
+      claim: async () => ({
         state: "claimed",
         observation: {
           ...observation,
@@ -247,7 +288,7 @@ describe("browser observation job", () => {
         },
       }),
     });
-    const apify = provider({ findRecentRun: vi.fn().mockResolvedValue(null) });
+    const { provider: apify, state: providerState } = providerFake();
     await processBrowserObservationJob(
       {
         observation_id: observation.id,
@@ -256,20 +297,17 @@ describe("browser observation job", () => {
       },
       { repository: repo, provider: apify, config },
     );
-    expect(apify.start).not.toHaveBeenCalled();
-    expect(repo.markTerminal).toHaveBeenCalledWith(
-      observation.id,
-      observation.leaseToken,
-      "failed",
-      "unknown_run_state",
-      { at: expect.any(Date) },
-    );
+    expect(providerState.started).toBe(false);
+    expect(repositoryState.terminal).toEqual({
+      status: "failed",
+      reason: "unknown_run_state",
+    });
   });
 
   it("keeps a recent missing run reconcileable across transient list lag", async () => {
     const current = new Date("2026-07-13T00:05:00.000Z");
-    const repo = repository({
-      claim: vi.fn().mockResolvedValue({
+    const { repo, state: repositoryState } = repositoryFake({
+      claim: async () => ({
         state: "claimed",
         observation: {
           ...observation,
@@ -278,7 +316,7 @@ describe("browser observation job", () => {
         },
       }),
     });
-    const apify = provider({ findRecentRun: vi.fn().mockResolvedValue(null) });
+    const { provider: apify, state: providerState } = providerFake();
     await processBrowserObservationJob(
       {
         observation_id: observation.id,
@@ -287,14 +325,14 @@ describe("browser observation job", () => {
       },
       { repository: repo, provider: apify, config, now: () => current },
     );
-    expect(apify.start).not.toHaveBeenCalled();
-    expect(repo.markTerminal).not.toHaveBeenCalled();
+    expect(providerState.started).toBe(false);
+    expect(repositoryState.terminal).toBeUndefined();
   });
 
   it("keeps a recent reconciliation provider error retryable", async () => {
     const current = new Date("2026-07-13T00:05:00.000Z");
-    const repo = repository({
-      claim: vi.fn().mockResolvedValue({
+    const { repo, state: repositoryState } = repositoryFake({
+      claim: async () => ({
         state: "claimed",
         observation: {
           ...observation,
@@ -303,8 +341,10 @@ describe("browser observation job", () => {
         },
       }),
     });
-    const apify = provider({
-      findRecentRun: vi.fn().mockRejectedValue(new Error("provider_503")),
+    const { provider: apify, state: providerState } = providerFake({
+      findRecentRun: async () => {
+        throw new Error("provider_503");
+      },
     });
     await processBrowserObservationJob(
       {
@@ -314,14 +354,16 @@ describe("browser observation job", () => {
       },
       { repository: repo, provider: apify, config, now: () => current },
     );
-    expect(apify.start).not.toHaveBeenCalled();
-    expect(repo.markTerminal).not.toHaveBeenCalled();
+    expect(providerState.started).toBe(false);
+    expect(repositoryState.terminal).toBeUndefined();
   });
 
   it("keeps an ambiguous provider start reconcileable", async () => {
-    const repo = repository();
-    const apify = provider({
-      start: vi.fn().mockRejectedValue(new Error("transport_reset")),
+    const { repo, state: repositoryState } = repositoryFake();
+    const { provider: apify, state: providerState } = providerFake({
+      start: async () => {
+        throw new Error("transport_reset");
+      },
     });
     await expect(
       processBrowserObservationJob(
@@ -333,14 +375,16 @@ describe("browser observation job", () => {
         { repository: repo, provider: apify, config },
       ),
     ).resolves.toBe("skipped");
-    expect(repo.reserveDailyBudget).toHaveBeenCalledOnce();
-    expect(repo.markTerminal).not.toHaveBeenCalled();
-    expect(apify.cleanup).not.toHaveBeenCalled();
+    expect(repositoryState.reservations).toBe(1);
+    expect(repositoryState.terminal).toBeUndefined();
+    expect(providerState.cleaned).toEqual([]);
   });
 
   it("aborts and cleans a run that loses the attach fence", async () => {
-    const repo = repository({ attachRun: vi.fn().mockResolvedValue("fenced") });
-    const apify = provider();
+    const { repo, state: repositoryState } = repositoryFake({
+      attachRun: async () => "fenced",
+    });
+    const { provider: apify, state: providerState } = providerFake();
     await processBrowserObservationJob(
       {
         observation_id: observation.id,
@@ -349,16 +393,18 @@ describe("browser observation job", () => {
       },
       { repository: repo, provider: apify, config },
     );
-    expect(apify.abort).toHaveBeenCalledWith("run-1");
-    expect(apify.cleanup).toHaveBeenCalledTimes(1);
-    expect(repo.markStorageCleaned).not.toHaveBeenCalled();
+    expect(providerState).toMatchObject({
+      aborted: ["run-1"],
+      cleaned: ["run-1"],
+    });
+    expect(repositoryState.storageCleaned).toBe(false);
   });
 
   it("does not disrupt a run already attached by the current lease owner", async () => {
-    const repo = repository({
-      attachRun: vi.fn().mockResolvedValue("owned_elsewhere"),
+    const { repo } = repositoryFake({
+      attachRun: async () => "owned_elsewhere",
     });
-    const apify = provider();
+    const { provider: apify, state: providerState } = providerFake();
     await processBrowserObservationJob(
       {
         observation_id: observation.id,
@@ -367,14 +413,13 @@ describe("browser observation job", () => {
       },
       { repository: repo, provider: apify, config },
     );
-    expect(apify.abort).not.toHaveBeenCalled();
-    expect(apify.cleanup).not.toHaveBeenCalled();
+    expect(providerState).toMatchObject({ aborted: [], cleaned: [] });
   });
 
   it("reconciles provider usage for a failed paid run", async () => {
-    const repo = repository();
-    const apify = provider({
-      waitForFinish: vi.fn().mockResolvedValue({
+    const { repo, state: repositoryState } = repositoryFake();
+    const { provider: apify } = providerFake({
+      waitForFinish: async () => ({
         id: "run-1",
         status: "TIMED-OUT",
         usageUsd: 0.037,
@@ -388,12 +433,10 @@ describe("browser observation job", () => {
       },
       { repository: repo, provider: apify, config },
     );
-    expect(repo.markTerminal).toHaveBeenCalledWith(
-      observation.id,
-      observation.leaseToken,
-      "failed",
-      "apify_timed_out",
-      { at: expect.any(Date), usageUsd: 0.037 },
-    );
+    expect(repositoryState.terminal).toEqual({
+      status: "failed",
+      reason: "apify_timed_out",
+      usageUsd: 0.037,
+    });
   });
 });

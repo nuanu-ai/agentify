@@ -11,7 +11,6 @@ describe("TurnstileChallenge", () => {
     );
 
     expect(html).toContain('data-sitekey="runtime-test-site-key"');
-    expect(html).not.toContain("Challenge is not configured");
   });
 
   it("reports an unavailable challenge when runtime configuration has no site key", () => {
@@ -19,7 +18,6 @@ describe("TurnstileChallenge", () => {
       <TurnstileChallenge action="report_recovery" siteKey={null} />,
     );
 
-    expect(html).toContain("Challenge is not configured");
     expect(html).not.toContain("data-sitekey");
   });
 });

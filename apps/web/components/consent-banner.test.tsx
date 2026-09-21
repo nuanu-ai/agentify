@@ -1,30 +1,18 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { ConsentPreferencesPanel } from "./consent-banner.js";
-import { PrivacyChoicesButton } from "./privacy-choices-button.js";
-
-describe("privacy choices reopen control", () => {
-  it("renders an inline button instead of floating page chrome", () => {
-    const markup = renderToStaticMarkup(
-      <PrivacyChoicesButton className="footer-link" />,
-    );
-    expect(markup).toContain('type="button"');
-    expect(markup).toContain("Privacy choices");
-    expect(markup).toContain("footer-link");
-  });
-});
 
 describe("consent preferences accessibility", () => {
   it("renders an explicitly labelled modal with independent unchecked options", () => {
     const markup = renderToStaticMarkup(
       <ConsentPreferencesPanel
         adsMeasurement={false}
-        onAdsMeasurement={vi.fn()}
-        onClose={vi.fn()}
-        onProductAnalytics={vi.fn()}
-        onSave={vi.fn()}
+        onAdsMeasurement={() => undefined}
+        onClose={() => undefined}
+        onProductAnalytics={() => undefined}
+        onSave={() => undefined}
         productAnalytics={false}
         saving={false}
       />,

@@ -35,10 +35,15 @@ describe("partner click attribution", () => {
     vi.stubGlobal("window", {
       localStorage: { getItem: () => null },
     });
-    const fetcher = vi
-      .fn()
-      .mockResolvedValueOnce(new Response(null, { status: 503 }))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const provider = { attempts: 0, accepted: false };
+    const fetcher = async () => {
+      provider.attempts += 1;
+      if (provider.attempts === 1) {
+        return new Response(null, { status: 503 });
+      }
+      provider.accepted = true;
+      return new Response(null, { status: 204 });
+    };
     vi.stubGlobal("fetch", fetcher);
     const source = {
       pathname: "/",
@@ -48,6 +53,6 @@ describe("partner click attribution", () => {
     await captureLandingAttribution("owner", "owner-retry-test", source);
     await captureLandingAttribution("owner", "owner-retry-test", source);
 
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(provider).toEqual({ attempts: 2, accepted: true });
   });
 });

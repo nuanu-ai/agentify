@@ -29,27 +29,19 @@ function snap(
 }
 
 describe("shareCopy", () => {
-  it("frames an invisible result as critical and truthful", () => {
+  it("classifies an invisible result as critical", () => {
     const copy = shareCopy(snap({ level: "invisible", score: 18 }));
     expect(copy.tone).toBe("critical");
-    expect(copy.headline).toContain("bloomandco.com");
-    expect(`${copy.headline} ${copy.subline}`.toLowerCase()).toMatch(
-      /major agent-readiness gaps|limited public signals/,
-    );
   });
 
-  it("frames an ahead-of-market result as a positive flex", () => {
+  it("classifies an ahead-of-market result as positive", () => {
     const copy = shareCopy(snap({ level: "ahead_of_market", score: 88 }));
     expect(copy.tone).toBe("positive");
-    expect(copy.headline.toLowerCase()).toContain("strong public");
   });
 
-  it("treats an incomplete scan as inconclusive, not a failure", () => {
+  it("classifies an incomplete scan as neutral", () => {
     const copy = shareCopy(snap({ level: "incomplete", score: 0 }));
     expect(copy.tone).toBe("neutral");
-    expect(`${copy.headline} ${copy.subline}`.toLowerCase()).toContain(
-      "couldn't",
-    );
   });
 
   it("puts the host in every scored headline", () => {

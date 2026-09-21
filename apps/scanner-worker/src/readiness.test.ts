@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type { WorkerHealth } from "./health.js";
 import { refreshWorkerReadiness } from "./readiness.js";
@@ -15,7 +15,10 @@ const health = (): WorkerHealth => ({
 describe("worker readiness refresh", () => {
   it("recovers queue readiness after a transient pg-boss failure", async () => {
     const state = health();
-    const writeHeartbeat = vi.fn().mockResolvedValue(undefined);
+    const heartbeats: unknown[] = [];
+    const writeHeartbeat = async (heartbeat: unknown) => {
+      heartbeats.push(heartbeat);
+    };
 
     await expect(
       refreshWorkerReadiness({
@@ -28,7 +31,7 @@ describe("worker readiness refresh", () => {
         now: () => new Date("2026-07-17T00:00:00.000Z"),
       }),
     ).resolves.toMatchObject({ ready: false, queueConnected: false });
-    expect(writeHeartbeat).toHaveBeenLastCalledWith({
+    expect(heartbeats.at(-1)).toEqual({
       ready: false,
       queueConnected: false,
       databaseConnected: true,
@@ -57,19 +60,24 @@ describe("worker readiness refresh", () => {
 
   it("does not publish a heartbeat when the database probe fails", async () => {
     const state = health();
-    const writeHeartbeat = vi.fn();
-    const onDatabaseError = vi.fn();
+    const events = { heartbeatPublished: false, databaseError: false };
     await refreshWorkerReadiness({
       health: state,
       probeDatabase: async () => {
         throw new Error("database unavailable");
       },
       probeQueue: async () => true,
-      writeHeartbeat,
-      onDatabaseError,
+      writeHeartbeat: async () => {
+        events.heartbeatPublished = true;
+      },
+      onDatabaseError: () => {
+        events.databaseError = true;
+      },
     });
-    expect(writeHeartbeat).not.toHaveBeenCalled();
-    expect(onDatabaseError).toHaveBeenCalledOnce();
+    expect(events).toEqual({
+      heartbeatPublished: false,
+      databaseError: true,
+    });
     expect(state.ready).toBe(false);
   });
 });

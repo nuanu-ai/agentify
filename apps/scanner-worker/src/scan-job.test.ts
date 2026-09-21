@@ -1,5 +1,5 @@
 import type { CheckResult, ScanJobV1 } from "@agentify/scanner-contracts";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { ScanEvaluation } from "@agentify/scanner";
 import { processScanJob, type ScanJobRepository } from "./scan-job.js";
 import type { ScanRunOptions } from "./scan-runner.js";
@@ -77,9 +77,7 @@ const repository = (
 describe("scan job lifecycle", () => {
   it("upserts checks before terminal commit and only resolves after commit", async () => {
     const { repo, calls } = repository();
-    const runner = {
-      run: vi.fn(async () => ({ ...evaluation, requestCount: 12 })),
-    };
+    const runner = { run: async () => ({ ...evaluation, requestCount: 12 }) };
     await expect(
       processScanJob(job, {
         repository: repo,
@@ -88,12 +86,15 @@ describe("scan job lifecycle", () => {
       }),
     ).resolves.toBe("committed");
     expect(calls).toEqual(["claim", "upsert", "commit"]);
-    expect(runner.run).toHaveBeenCalledOnce();
   });
 
   it("skips an immutable terminal scan on redelivery", async () => {
     const { repo, calls } = repository("terminal");
-    const runner = { run: vi.fn() };
+    const runner = {
+      run: async () => {
+        throw new Error("terminal scan must not run again");
+      },
+    };
     await expect(
       processScanJob(job, {
         repository: repo,
@@ -102,7 +103,6 @@ describe("scan job lifecycle", () => {
       }),
     ).resolves.toBe("skipped");
     expect(calls).toEqual(["claim"]);
-    expect(runner.run).not.toHaveBeenCalled();
   });
 
   it("uses a cache snapshot without reusing acquisition identity", async () => {
@@ -117,13 +117,16 @@ describe("scan job lifecycle", () => {
       commits.push(input);
       return "committed";
     };
-    const runner = { run: vi.fn() };
+    const runner = {
+      run: async () => {
+        throw new Error("cache hit must not acquire the target again");
+      },
+    };
     await processScanJob(job, {
       repository: repo,
       runner: runner as never,
       cacheEnabled: true,
     });
-    expect(runner.run).not.toHaveBeenCalled();
     expect(commits[0]).toMatchObject({
       scanId: job.scan_id,
       cacheHit: true,
@@ -139,11 +142,11 @@ describe("scan job lifecycle", () => {
       failures.push(args);
     };
     const runner = {
-      run: vi.fn(async () => {
+      run: async () => {
         throw new Error(
           "network sdk crashed with https://secret.example/?token=x",
         );
-      }),
+      },
     };
     await expect(
       processScanJob(job, {
@@ -168,10 +171,10 @@ describe("scan job lifecycle", () => {
       return false;
     };
     const runner = {
-      run: vi.fn(async (_job: ScanJobV1, options: ScanRunOptions) => {
+      run: async (_job: ScanJobV1, options: ScanRunOptions) => {
         await options.onChecksComplete?.([check]);
         return { ...evaluation, requestCount: 1 };
-      }),
+      },
     };
     await expect(
       processScanJob(job, {
@@ -191,16 +194,18 @@ describe("scan job lifecycle", () => {
       commits.push(input);
       return "committed";
     };
-    const enqueue = vi.fn().mockResolvedValue(undefined);
+    let queued: unknown;
     await processScanJob(job, {
       repository: repo,
-      runner: { run: vi.fn(async () => evaluation) } as never,
+      runner: { run: async () => evaluation } as never,
       cacheEnabled: false,
       browserObservation: {
         actorId: "owner/agentify-browser-observer",
         actorBuild: "1.0.42",
         sampleRate: 1,
-        enqueue,
+        enqueue: async (input) => {
+          queued = input;
+        },
       },
     });
     expect(commits[0]?.browserObservation).toMatchObject({
@@ -208,7 +213,7 @@ describe("scan job lifecycle", () => {
       actorId: "owner/agentify-browser-observer",
       actorBuild: "1.0.42",
     });
-    expect(enqueue).toHaveBeenCalledWith({
+    expect(queued).toEqual({
       observation_id: commits[0]?.browserObservation?.id,
       operation_id: commits[0]?.browserObservation?.operationId,
       attempt_no: 1,
@@ -224,11 +229,11 @@ describe("scan job lifecycle", () => {
         commits.push(input);
         return "committed";
       };
-      const enqueue = vi.fn().mockResolvedValue(undefined);
+      let queued = false;
       await processScanJob(job, {
         repository: repo,
         runner: {
-          run: vi.fn(async () => ({
+          run: async () => ({
             ...evaluation,
             checks: [
               {
@@ -240,19 +245,21 @@ describe("scan job lifecycle", () => {
                 errorCode,
               },
             ],
-          })),
+          }),
         } as never,
         cacheEnabled: false,
         browserObservation: {
           actorId: "owner/agentify-browser-observer",
           actorBuild: "1.0.42",
           sampleRate: 1,
-          enqueue,
+          enqueue: async () => {
+            queued = true;
+          },
         },
       });
 
       expect(commits[0]?.browserObservation).toBeUndefined();
-      expect(enqueue).not.toHaveBeenCalled();
+      expect(queued).toBe(false);
     },
   );
 });

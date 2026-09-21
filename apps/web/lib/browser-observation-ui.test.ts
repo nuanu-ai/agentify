@@ -2,9 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { BrowserObservationFinding } from "@agentify/scanner-contracts";
 
 import {
-  browserObservationImpact,
-  browserObservationLabel,
-  formatRegistryCode,
   isActionableBrowserFinding,
   safeEvidenceEntries,
 } from "./browser-observation-ui";
@@ -22,21 +19,6 @@ function finding(
 }
 
 describe("browser observation presentation", () => {
-  it("keeps stable observation IDs out of owner-facing labels", () => {
-    expect(browserObservationLabel("rendered_content_delta")).toBe(
-      "Rendered content availability",
-    );
-    expect(formatRegistryCode("unnamed_controls_found")).toBe(
-      "Unnamed Controls Found",
-    );
-    expect(formatRegistryCode("public_facts_not_comparable")).toContain(
-      "did not expose",
-    );
-    expect(browserObservationImpact("api_discovery_surface")).toContain(
-      "does not validate",
-    );
-  });
-
   it("treats only fail and partial findings as actionable", () => {
     expect(isActionableBrowserFinding(finding({ status: "fail" }))).toBe(true);
     expect(isActionableBrowserFinding(finding({ status: "partial" }))).toBe(

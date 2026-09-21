@@ -1,5 +1,5 @@
 import { createConsentSnapshot } from "@agentify/analytics/browser";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   createBrowserEventId,
@@ -10,19 +10,20 @@ import {
 
 describe("browser analytics dedup", () => {
   it("records canonical business state before consent without loading destinations", async () => {
-    const recordBusinessEvent = vi
-      .fn()
-      .mockResolvedValue({ eventId: "business-event" });
-    const deliverToBrowserDestinations = vi.fn();
+    const state = { recorded: false, delivered: false };
     await expect(
       recordThenDeliverWithConsent({
         consent: undefined,
-        recordBusinessEvent,
-        deliverToBrowserDestinations,
+        recordBusinessEvent: async () => {
+          state.recorded = true;
+          return { eventId: "business-event" };
+        },
+        deliverToBrowserDestinations: async () => {
+          state.delivered = true;
+        },
       }),
     ).resolves.toEqual({ eventId: "business-event" });
-    expect(recordBusinessEvent).toHaveBeenCalledOnce();
-    expect(deliverToBrowserDestinations).not.toHaveBeenCalled();
+    expect(state).toEqual({ recorded: true, delivered: false });
   });
 
   it("creates UUIDv7 event IDs for client-owned triggers", () => {
@@ -33,8 +34,7 @@ describe("browser analytics dedup", () => {
   });
 
   it("does not call either SDK when consent is denied", async () => {
-    const posthog = vi.fn();
-    const meta = vi.fn();
+    const delivered = { posthog: false, meta: false };
     const consent = createConsentSnapshot({
       policy: {
         policyVersion: "v1",
@@ -53,11 +53,14 @@ describe("browser analytics dedup", () => {
         getItem: (key) => storage.get(key) ?? null,
         setItem: (key, value) => storage.set(key, value),
       },
-      sendPosthog: posthog,
-      sendMetaPixel: meta,
+      sendPosthog: () => {
+        delivered.posthog = true;
+      },
+      sendMetaPixel: () => {
+        delivered.meta = true;
+      },
     });
-    expect(posthog).not.toHaveBeenCalled();
-    expect(meta).not.toHaveBeenCalled();
+    expect(delivered).toEqual({ posthog: false, meta: false });
   });
 
   it("deduplicates per destination only after successful delivery", async () => {
@@ -71,8 +74,7 @@ describe("browser analytics dedup", () => {
       source: "banner",
     });
     const values = new Map<string, string>();
-    const posthog = vi.fn();
-    const meta = vi.fn();
+    const deliveries = { posthog: 0, meta: 0 };
     const input = {
       eventId: createBrowserEventId(),
       onceKey: "result:session:scan",
@@ -81,13 +83,17 @@ describe("browser analytics dedup", () => {
         getItem: (key: string) => values.get(key) ?? null,
         setItem: (key: string, value: string) => values.set(key, value),
       },
-      sendPosthog: posthog,
-      sendMetaPixel: meta,
+      sendPosthog: () => {
+        deliveries.posthog += 1;
+      },
+      sendMetaPixel: () => {
+        deliveries.meta += 1;
+      },
     };
     await dispatchConsentedBrowserEvent(input);
     await dispatchConsentedBrowserEvent(input);
-    expect(posthog).toHaveBeenCalledOnce();
-    expect(meta).toHaveBeenCalledOnce();
+    expect(deliveries).toEqual({ posthog: 1, meta: 1 });
+    expect(values.size).toBe(2);
   });
 
   it("retries only the destination that failed before its once-key was stored", async () => {
@@ -101,11 +107,7 @@ describe("browser analytics dedup", () => {
       source: "banner",
     });
     const values = new Map<string, string>();
-    const posthog = vi
-      .fn<() => Promise<void>>()
-      .mockRejectedValueOnce(new Error("posthog_unavailable"))
-      .mockResolvedValue();
-    const meta = vi.fn();
+    const deliveries = { posthog: 0, meta: 0 };
     const input = {
       eventId: createBrowserEventId(),
       onceKey: "landing:retry",
@@ -114,14 +116,21 @@ describe("browser analytics dedup", () => {
         getItem: (key: string) => values.get(key) ?? null,
         setItem: (key: string, value: string) => values.set(key, value),
       },
-      sendPosthog: posthog,
-      sendMetaPixel: meta,
+      sendPosthog: () => {
+        deliveries.posthog += 1;
+        if (deliveries.posthog === 1) {
+          throw new Error("posthog_unavailable");
+        }
+      },
+      sendMetaPixel: () => {
+        deliveries.meta += 1;
+      },
     };
     await expect(dispatchConsentedBrowserEvent(input)).rejects.toThrow(
       "posthog_unavailable",
     );
     await dispatchConsentedBrowserEvent(input);
-    expect(posthog).toHaveBeenCalledTimes(2);
-    expect(meta).toHaveBeenCalledOnce();
+    expect(deliveries).toEqual({ posthog: 2, meta: 1 });
+    expect(values.size).toBe(2);
   });
 });

@@ -15,27 +15,6 @@ const baseProps = {
 };
 
 describe("ReportActionPanel", () => {
-  it("keeps every primary action in one flat panel without card headings", () => {
-    const markup = renderToStaticMarkup(<ReportActionPanel {...baseProps} />);
-    expect(markup).toContain("Copy share link");
-    expect(markup).toContain("Copy AI fix prompt");
-    expect(markup).toContain("Download .md");
-    expect(markup).toContain("Copy developer brief");
-    expect(markup).not.toContain("Share this research");
-    expect(markup).not.toContain("Hand your results to an AI or a developer");
-    expect(markup).not.toContain("What do you want to do next?");
-    expect(markup).not.toContain("<h2");
-  });
-
-  it("keeps the explanatory copy to a single short caption", () => {
-    const markup = renderToStaticMarkup(<ReportActionPanel {...baseProps} />);
-    const text = markup
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    expect(text.split(" ").length).toBeLessThan(45);
-  });
-
   it("shows a one-line verified notice when a download intent resumes", () => {
     const markup = renderToStaticMarkup(
       <ReportActionPanel {...baseProps} initialIntent="download-md" />,

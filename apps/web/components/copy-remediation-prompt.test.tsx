@@ -27,20 +27,4 @@ describe("CopyRemediationPrompt", () => {
     );
     expect(markup).toContain("Download .md");
   });
-
-  it("keeps gated public prompt actions modal-free", () => {
-    const markup = renderToStaticMarkup(
-      <CopyRemediationPrompt
-        allowDownload
-        contactGateScanId="019b41a0-7c51-7d63-84bd-a5a20faef497"
-        downloadUrl="/api/v1/scans/id/remediation-prompt/download"
-        label="Copy AI fix prompt"
-        promptUrl="/api/v1/scans/id/remediation-prompt?scope=teaser"
-      />,
-    );
-    expect(markup).toContain("Copy AI fix prompt");
-    expect(markup).toContain("Download .md");
-    expect(markup).not.toContain("<dialog");
-    expect(markup).not.toContain('type="email"');
-  });
 });

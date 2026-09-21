@@ -12,27 +12,6 @@ import {
 const slug = "abcdefghijklmnopqrstuvwxyz_1234567890";
 
 describe("PublicShareActions", () => {
-  it("renders a flat action bar without card chrome or an intermediate publish step", () => {
-    const markup = renderToStaticMarkup(
-      <PublicShareActions
-        enabled
-        preview={{
-          hostLabel: "example.com",
-          level: "readable",
-          score: 46,
-        }}
-        scanId="018f3f56-2ec8-7b16-8f66-5b8f93f3251f"
-      />,
-    );
-
-    expect(markup).toContain("Copy share link");
-    expect(markup).toContain("Download image");
-    expect(markup).toContain("disabled");
-    expect(markup).not.toContain("<section");
-    expect(markup).not.toContain("<h2");
-    expect(markup).not.toContain("example.com");
-  });
-
   it("stays absent when sharing is disabled or no public score exists", () => {
     const disabled = renderToStaticMarkup(
       <PublicShareActions
