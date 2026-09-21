@@ -508,7 +508,7 @@ services:
       # A deployment sets the whole mapping instead, because both halves move at
       # once: Caddy listens on 443 rather than 8080 as soon as the address below
       # is a hostname, and the host side is one interface rather than every one
-      # — `10.20.10.20:443:443` is a door open to the edge that passes SNI to it
+      # — `192.0.2.10:443:443` is a door open to the edge that passes SNI to it
       # and to nothing else on the machine.
       - "${AGENTIFY_WEB_PUBLISH:-${AGENTIFY_HOST_PORT:-8080}:8080}"
     environment:

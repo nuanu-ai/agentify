@@ -17,7 +17,7 @@
  * run from the root of the checkout, from which Stryker copies the checkout
  * into a sandbox, mutates the copies and runs vitest there. Nothing it does
  * reaches the checkout, and a run killed half-way leaves nothing behind but
- * its sandbox on the sdb disk. Its `inPlace` mode, the one the spike
+ * its sandbox in the operator storage directory. Its `inPlace` mode, the one the spike
  * (`docs/research/27-stryker-spike.md`) had to use, is the opposite: it
  * rewrites the tree itself and leaves it dirty when the process dies.
  *
@@ -58,7 +58,7 @@
  *   characters minimatch reads as a pattern are escaped in it. Untracked
  *   files that git does not ignore are copied, as they would be run by
  *   `pnpm test`.
- * - Everything Stryker writes goes to the sdb disk: the sandbox
+ * - Everything Stryker writes goes to the operator storage directory: the sandbox
  *   (`tempDirName`) and the report (`jsonReporter.fileName`) are absolute
  *   paths under STORAGE, because the root disk is small and because a file
  *   that appears inside the checkout is a file `git status` has to explain.
@@ -93,12 +93,13 @@
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Stryker } from "@stryker-mutator/core";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
-const STORAGE = "/home/dmitry/.codex-project-storage/stryker";
+const STORAGE = path.join(homedir(), ".codex-project-storage", "stryker");
 
 /** The workspace packages: directories under packages/ and apps/ that hold a package.json. */
 function workspacePackages() {
