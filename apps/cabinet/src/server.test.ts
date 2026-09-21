@@ -840,7 +840,8 @@ describe("the report-to-cabinet handoff", () => {
     const otherSession = running.browser.sessionToken();
     const action = await freshLink(running, PERSON);
     const sealed = sealedHandoff(action);
-    const tampered = `${sealed.slice(0, -1)}${sealed.endsWith("A") ? "B" : "A"}`;
+    const signatureStart = sealed.lastIndexOf(".") + 1;
+    const tampered = `${sealed.slice(0, signatureStart)}${sealed[signatureStart] === "A" ? "B" : "A"}${sealed.slice(signatureStart + 1)}`;
     const beforeMails = running.mails.length;
 
     const refused = await running.browser
