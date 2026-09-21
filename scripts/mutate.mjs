@@ -95,14 +95,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -198,17 +191,13 @@ const selectedFiles = requestedFiles.length
       const relative = path.posix.relative(packageDir, repositoryPath);
       const inProductionRoot =
         packageDir === "apps/web"
-          ? ["app", "components", "content", "lib"].includes(
-              relative.split("/")[0],
-            )
+          ? ["app", "components", "content", "lib"].includes(relative.split("/")[0])
           : relative.startsWith("src/");
       return inProductionRoot && isProductionTypeScript(relative);
     });
 
 if (selectedFiles.length === 0) {
-  console.error(
-    `did not apply: ${name} has no selected production TypeScript files`,
-  );
+  console.error(`did not apply: ${name} has no selected production TypeScript files`);
   process.exit(4);
 }
 
@@ -254,9 +243,7 @@ function takeLock() {
     }
     rmSync(lock, { force: true });
   }
-  console.error(
-    "Another pnpm mutate took the lock at the same moment; try again.",
-  );
+  console.error("Another pnpm mutate took the lock at the same moment; try again.");
   process.exit(3);
 }
 
@@ -264,22 +251,12 @@ function takeLock() {
 function ignoredByGit() {
   return execFileSync(
     "git",
-    [
-      "ls-files",
-      "--others",
-      "--ignored",
-      "--exclude-standard",
-      "--directory",
-      "-z",
-    ],
+    ["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"],
     { cwd: ROOT, encoding: "utf8" },
   )
     .split("\0")
     .filter(Boolean)
-    .map(
-      (entry) =>
-        `/${entry.replace(/\/$/, "").replace(/[[\]{}()*?!+@|\\]/g, "\\$&")}`,
-    );
+    .map((entry) => `/${entry.replace(/\/$/, "").replace(/[[\]{}()*?!+@|\\]/g, "\\$&")}`);
 }
 
 process.chdir(ROOT);

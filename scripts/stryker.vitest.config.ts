@@ -61,25 +61,21 @@ const alias = ["packages", "apps"].flatMap((group) =>
     .map((entry) => path.join(root, group, entry.name))
     .filter((dir) => existsSync(path.join(dir, "package.json")))
     .flatMap((dir) => {
-      const manifest = JSON.parse(
-        readFileSync(path.join(dir, "package.json"), "utf8"),
-      ) as {
+      const manifest = JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8")) as {
         name: string;
         exports?: Record<string, ExportTarget>;
       };
-      return Object.entries(manifest.exports ?? {}).flatMap(
-        ([subpath, target]) => {
-          const source = sourceTarget(target);
-          return source
-            ? [
-                {
-                  find: exact(path.posix.join(manifest.name, subpath)),
-                  replacement: path.join(dir, source),
-                },
-              ]
-            : [];
-        },
-      );
+      return Object.entries(manifest.exports ?? {}).flatMap(([subpath, target]) => {
+        const source = sourceTarget(target);
+        return source
+          ? [
+              {
+                find: exact(path.posix.join(manifest.name, subpath)),
+                replacement: path.join(dir, source),
+              },
+            ]
+          : [];
+      });
     }),
 );
 
