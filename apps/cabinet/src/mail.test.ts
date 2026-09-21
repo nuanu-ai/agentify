@@ -15,7 +15,7 @@ import { isSandboxMail, type Message, postmanFor, SANDBOX_MAIL } from "./mail.js
 
 const MESSAGE: Message = {
   to: "dmitry@example.com",
-  subject: "Open your Agentify cabinet",
+  subject: "Sign in to your Agentify cabinet",
   body: "Open this:\n\n    https://agentify.example/sign-in/open?token=abc\n",
   html: '<a href="https://agentify.example/sign-in/open?token=abc">Open your cabinet</a>',
 };
