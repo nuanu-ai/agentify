@@ -1,8 +1,8 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import React, { type ReactNode } from "react";
 
 import { Brand } from "./brand";
-import { SiteFooter } from "./site-chrome";
+import { SiteDoors, SiteFooter } from "./site-chrome";
 import { StructuredData } from "./structured-data";
 import { publicSiteSchema } from "../lib/schema";
 import styles from "./editorial-page.module.css";
@@ -32,11 +32,14 @@ export function EditorialPage({
       <header className={styles.header}>
         <div className="container">
           <Brand />
-          <nav aria-label="Trust pages">
-            <Link href="/scanner">Scanner</Link>
-            <Link href="/methodology">Methodology</Link>
-            <Link href="/privacy">Privacy</Link>
-          </nav>
+          <div className={styles.headerLinks}>
+            <nav aria-label="Trust pages">
+              <Link href="/scanner">Scanner</Link>
+              <Link href="/methodology">Methodology</Link>
+              <Link href="/privacy">Privacy</Link>
+            </nav>
+            <SiteDoors />
+          </div>
         </div>
       </header>
       <main className={`${styles.layout} container`}>

@@ -11,6 +11,12 @@
   gap: 24px;
 }
 
+.headerLinks {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
 .header nav {
   display: flex;
   gap: 26px;
@@ -145,6 +151,10 @@
 }
 
 @media (max-width: 760px) {
+  .headerLinks {
+    gap: 14px;
+  }
+
   .header nav {
     gap: 14px;
     font-size: 0.8125rem;

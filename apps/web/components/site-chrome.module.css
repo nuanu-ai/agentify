@@ -15,12 +15,38 @@
   gap: 24px;
 }
 
+.headerLinks {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
 .nav {
   display: flex;
   align-items: center;
   gap: 28px;
   color: var(--muted);
   font-size: 0.875rem;
+}
+
+.doors {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding-left: 24px;
+  border-left: 1px solid var(--border);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.doors a {
+  text-decoration: none;
+  color: var(--ink);
+}
+
+.doors a:hover,
+.doors a:focus-visible {
+  color: var(--accent);
 }
 
 .nav a,
@@ -120,6 +146,20 @@
   }
 
   .nav a:first-child {
+    display: none;
+  }
+
+  .headerLinks {
+    gap: 14px;
+  }
+
+  .doors {
+    gap: 12px;
+    padding-left: 14px;
+    font-size: 0.8125rem;
+  }
+
+  .doors a:first-child {
     display: none;
   }
 

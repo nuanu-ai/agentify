@@ -6,17 +6,40 @@ import { Brand } from "./brand";
 import { PrivacyChoicesButton } from "./privacy-choices-button";
 import styles from "./site-chrome.module.css";
 
+/**
+ * The two doors out of the scanner: the documentation and the cabinet.
+ *
+ * Both destinations are other processes on the same origin (ADR-0005 §1),
+ * not routes of this application, so they are plain anchors and not the
+ * router's links. The words are the ones the destinations use of themselves:
+ * the portal says "Docs" in its own corner, and the cabinet's sign-in page
+ * says what one link does before anybody presses it. Every public header
+ * renders this element, so a merchant who typed the site's name into a
+ * browser has a way in that is not memory (docs/research/31-user-journey.md).
+ */
+export function SiteDoors() {
+  return (
+    <nav aria-label="Documentation and cabinet" className={styles.doors}>
+      <a href="/docs/">Docs</a>
+      <a href="/cabinet/sign-in">Cabinet</a>
+    </nav>
+  );
+}
+
 export function MarketingHeader() {
   return (
     <header className={styles.header}>
       <div className={`${styles.headerInner} container`}>
         <Brand />
-        <nav aria-label="Primary" className={styles.nav}>
-          <Link href="/agentic-shop">Agentic Shop</Link>
-          <Link href="/scanner">Scanner</Link>
-          <Link href="/methodology">Methodology</Link>
-          <Link href="/privacy">Privacy</Link>
-        </nav>
+        <div className={styles.headerLinks}>
+          <nav aria-label="Primary" className={styles.nav}>
+            <Link href="/agentic-shop">Agentic Shop</Link>
+            <Link href="/scanner">Scanner</Link>
+            <Link href="/methodology">Methodology</Link>
+            <Link href="/privacy">Privacy</Link>
+          </nav>
+          <SiteDoors />
+        </div>
       </div>
     </header>
   );

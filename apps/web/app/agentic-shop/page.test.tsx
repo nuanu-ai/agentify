@@ -18,6 +18,7 @@ describe("the Agentic Shop entry", () => {
     const { html, links } = rendered();
 
     expect(links).toContain("/cabinet/sign-in");
+    expect(links).toContain("/docs/");
     expect(links).not.toContain("#apply");
     expect(html).not.toMatch(/<form\b/);
     expect(html).not.toContain("/api/v1/merchant-applications");

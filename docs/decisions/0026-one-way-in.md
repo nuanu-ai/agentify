@@ -197,6 +197,7 @@ Every way in.
 | the same | P2 | the same | second diagram | the cabinet, cards |
 | report, control pressed days later | P1, P2 | report cookie; perhaps a matching cabinet session | a matching cabinet session opens it; otherwise the prefilled cabinet door asks before mailing | the cabinet, directly or after the link |
 | Agentic Shop page, control pressed | any | nothing | the cabinet's door, address typed | the cabinet, after the link |
+| any public header of the scanner, Cabinet pressed | any | perhaps a cabinet session | a live session is sent to its cards without a question; otherwise the one field | the cabinet, directly or after the link |
 | cabinet, the one field | P0 | nothing | third diagram: person, merchant, key | name screen |
 | cabinet, the one field | P1 | nothing | third diagram: merchant, key | name screen |
 | cabinet, the one field | P2 | nothing | third diagram: signs into the merchant | cards |

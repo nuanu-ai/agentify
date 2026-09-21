@@ -918,6 +918,16 @@ describe("the report-to-cabinet handoff", () => {
 });
 
 describe("the passwordless cabinet door", () => {
+  it("sends a person with a live session straight to their cards instead of asking for an address", async () => {
+    const running = await started();
+    await running.browser.signIn();
+
+    const again = await running.browser.get("/sign-in");
+
+    expect(again.status).toBe(303);
+    expect(again.to).toBe("/cards");
+  });
+
   it("asks only for an address and answers known and unknown people identically", async () => {
     const { browser, rows, mails } = await started();
 
