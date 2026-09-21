@@ -83,14 +83,12 @@
   --notice-ink: #76500e;
   --fail: #b4462f;
 
-  /* The one band on the origin that is ink rather than paper: the scanner's
-     footer. Four foregrounds that mean nothing apart and are a palette
-     together, which is why they are named here rather than written into the
-     one component that draws them. */
+  /* The one band on the origin that is ink rather than paper: the footer.
+     Two foregrounds that mean nothing apart and are a pair together, which is
+     why they are named here rather than written into the two stylesheets that
+     draw the band. */
   --footer-text: #c9c6bf;
-  --footer-muted: #a8a49c;
   --footer-faint: #8f8b84;
-  --footer-border: #2c2a27;
 
   /* "Schibsted Grotesk Variable" is the family @fontsource-variable registers
      and is how the scanner loads the face; "Schibsted Grotesk" is the family

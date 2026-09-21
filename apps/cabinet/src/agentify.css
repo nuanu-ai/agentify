@@ -108,8 +108,6 @@ textarea {
   align-self: stretch;
 }
 
-/* The lockup, at the size and weight the scanner's `.brand` draws it. The mark
-   beside it is the shared `.brand-mark` and needs nothing said here. */
 .tabs {
   display: flex;
   gap: 4px;
