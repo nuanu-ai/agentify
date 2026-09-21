@@ -6,8 +6,10 @@ import {
   BRAND_IMAGE_MONO_FONT,
 } from "../../lib/server/brand-image";
 
+/** The tag beside the brand inside the image; exported so a test can read the image's own words. */
+export const tag = "SELL TO AGENTS";
 export const alt =
-  "Agentic Shop by Agentify — Your next customer sends an agent";
+  "Agentify — Sell to agents: your next customer sends an agent";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -41,7 +43,7 @@ export default function AgenticShopImage() {
             fontFamily: BRAND_IMAGE_MONO_FONT,
           }}
         >
-          AGENTIC SHOP
+          {tag}
         </span>
       </div>
       <div

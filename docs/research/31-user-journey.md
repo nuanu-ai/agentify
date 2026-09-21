@@ -280,23 +280,27 @@ and shares it, and counts the events that remain.
 ### 4. One name
 
 The commerce page keeps its address, `/agentic-shop`, and loses its second
-name. The header's link to it says what it does, "Sell to agents"; the
-page's own lockup, its footer and the historical privacy notice under the
-same prefix carry the plain brand and lead to `/` like every other lockup;
-its title, description, social image and the eyebrow that named "the Agentic
-Shop model" say the same in words rather than a name; the `llms.txt` entry
-is reworded; and ADR-0026 is edited where it names "the Agentic Shop page".
-The address is kept because an address is not a name: changing it breaks
-every link already shared and gives a visitor nothing they can see. The
-text of the privacy notice stays as it is, since it describes an application
-form that once existed.
+name. The header's link to it and the footer's say what it does, "Sell to
+agents", and so does the page's title; the page's own lockup, its footer and
+the historical privacy notice under the same prefix carry the plain brand
+and lead to `/` like every other lockup, and the footer's second link to `/`
+goes, one door per destination; the description, the social image and the
+eyebrow that named "the Agentic Shop model" say the same in words rather
+than a name; the `llms.txt` entry names the page; and ADR-0026 is edited
+where it names "the Agentic Shop page". The address is kept because an
+address is not a name: changing it breaks every link already shared and
+gives a visitor nothing they can see. The privacy notice keeps describing
+the application form that once existed and calls it the merchant
+application form, since the form's old name was carrying nothing.
 
-The test renders the page, the privacy notice and the header, reads the
-page's metadata and the `llms.txt`, and asks that none of them carries the
-second name. This is a check on words, which the charter is wary of; it is
-kept because the promise it guards is the one Dmitry made, that the site has
-one name, and the file already holds a test of the same shape for the
-application form that was removed.
+The test renders the page, the privacy notice and the header, reads both
+pages' metadata, the social image's words and the `llms.txt`, and asks that
+none of them carries the second name, comparing words the way a reader
+meets them, with tags stripped and case ignored, so that a capitalised or
+split rendering cannot slip through. This is a check on words, which the
+charter is wary of; it is kept because the promise it guards is the one
+Dmitry made, that the site has one name, and the file already holds a test
+of the same shape for the application form that was removed.
 
 ## What is not done, and why
 

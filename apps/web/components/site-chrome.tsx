@@ -36,7 +36,7 @@ export function MarketingHeader() {
         <Brand />
         <div className={styles.headerLinks}>
           <nav aria-label="Primary" className={styles.nav}>
-            <Link href="/agentic-shop">Agentic Shop</Link>
+            <Link href="/agentic-shop">Sell to agents</Link>
             <Link href="/scanner">Scanner</Link>
             <Link href="/methodology">Methodology</Link>
             <Link href="/privacy">Privacy</Link>
@@ -62,7 +62,7 @@ export function SiteFooter() {
           </p>
         </div>
         <FooterGroup title="Segments">
-          <Link href="/agentic-shop">For merchants</Link>
+          <Link href="/agentic-shop">Sell to agents</Link>
           <Link href="/">For owners</Link>
           <Link href="/store">For stores</Link>
           <Link href="/local">For local</Link>

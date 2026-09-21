@@ -12,14 +12,13 @@ const adobeSource = AGENTIC_SHOP_RESEARCH.sourceUrl;
 export function generateMetadata(): Metadata {
   const url = new URL("/agentic-shop", getPublicAppConfig().baseUrl).toString();
   return {
-    title: "Agentic Shop — Make your business buyable by AI agents",
+    title: "Sell to agents",
     description:
       "Open your Agentify cabinet with an email link, integrate through the SDK and test agent-ready offers. Live publication requires operator approval.",
     alternates: { canonical: url },
     openGraph: {
       title: "Your next customer sends an agent. Be ready.",
-      description:
-        "Agentic Shop by Agentify. Your products and services, ready for a new way to buy.",
+      description: "Your products and services, ready for a new way to buy.",
       url,
       type: "website",
     },
@@ -96,17 +95,11 @@ export default function AgenticShopPage() {
       </a>
       <header className={styles.header}>
         <div className={styles.container}>
-          <Link
-            className={styles.brand}
-            href="/agentic-shop"
-            aria-label="Agentify Agentic Shop home"
-          >
+          <Link className={styles.brand} href="/" aria-label="Agentify home">
             <BrandMark className={styles.mark} />
-            <span>
-              Agentify<span className={styles.subbrand}>Agentic Shop</span>
-            </span>
+            <span>Agentify</span>
           </Link>
-          <nav aria-label="Agentic Shop navigation" className={styles.nav}>
+          <nav aria-label="Page sections" className={styles.nav}>
             <a href="#opportunity">The opportunity</a>
             <a href="#how-it-works">How it works</a>
             <a href="#loyalty">Agent loyalty</a>
@@ -170,9 +163,7 @@ export default function AgenticShopPage() {
                 <BrandMark />
               </div>
               <div>
-                <span className={styles.offerSmall}>
-                  THE AGENTIC SHOP MODEL
-                </span>
+                <span className={styles.offerSmall}>THE SELLING MODEL</span>
                 <strong>Your business, agent-ready.</strong>
                 <span>Discover → order → fulfil</span>
               </div>
@@ -601,11 +592,9 @@ export default function AgenticShopPage() {
 
       <footer className={styles.footer}>
         <div className={styles.container}>
-          <Link className={styles.brand} href="/agentic-shop">
+          <Link className={styles.brand} href="/">
             <BrandMark className={styles.mark} />
-            <span>
-              Agentify<span className={styles.subbrand}>Agentic Shop</span>
-            </span>
+            <span>Agentify</span>
           </Link>
           <p>
             Ordinary businesses.
@@ -615,9 +604,6 @@ export default function AgenticShopPage() {
           <div>
             <a href="/privacy">Privacy</a>
             <a href="#questions">Merchant questions</a>
-            <Link href="/">
-              Explore Agentify <Arrow diagonal />
-            </Link>
             <span>© {new Date().getFullYear()} Agentify</span>
           </div>
         </div>

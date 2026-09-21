@@ -142,11 +142,12 @@
 
 /*
  * The header bar yields its section links before it yields a door. The
- * measurements behind these steps: at 760px the full row with the doors no
- * longer fits beside the brand, at 640px the two-word merchant link and the
- * scanner link have to go, and under 480px only the brand and the doors fit
- * in the 320px body minimum. The page clips horizontal overflow, so a link
- * that did not fit would be cut, not scrolled to.
+ * measurements behind these steps, taken in a browser with the labels as
+ * they are now ("Sell to agents" being the widest): at 760px the full row
+ * with the doors no longer fits beside the brand, at 640px the merchant link
+ * and the scanner link have to go, and under 480px only the brand and the
+ * doors fit in the 320px body minimum. The page clips horizontal overflow,
+ * so a link that did not fit would be cut, not scrolled to.
  */
 @media (max-width: 760px) {
   .nav a:first-child {
