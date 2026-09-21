@@ -35,7 +35,8 @@ describe("report link mail", () => {
     });
     expect(message.body).toContain(one.heading);
     expect(message.body).toContain(one.detail);
-    expect(message.body).toContain(`${one.action}: ${link}`);
+    expect(message.body).toContain(`${one.action}:`);
+    expect(message.body.split("\n")).toContain(link);
     expect(message.body).toContain("opens once and expires an hour after it was sent");
     expect(message.body).toContain("If you did not ask for it, ignore this message.");
 
@@ -58,6 +59,6 @@ describe("report link mail", () => {
     expect(message.html).toContain(
       "https://agentify.ad/auth/callback#state=s&amp;token=a&amp;return=&quot;&gt;&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;",
     );
-    expect(message.body).toContain(link);
+    expect(message.body.split("\n")).toContain(link);
   });
 });

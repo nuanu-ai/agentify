@@ -28,7 +28,9 @@ export function reportLinkMessage(to: string, purpose: ReportMailPurpose, url: s
   return {
     to,
     subject: content.subject,
-    body: `Agentify\n\n${content.heading}\n\n${content.body}\n\n${content.action}: ${url}\n\n${lifetime}`,
+    // The URL stands on a line of its own, so that a client that draws no
+    // button and a person copying it by hand both get the whole of it.
+    body: `Agentify\n\n${content.heading}\n\n${content.body}\n\n${content.action}:\n\n${url}\n\n${lifetime}`,
     html: transactionalEmailHtml({
       preview: content.body,
       eyebrow: content.eyebrow,

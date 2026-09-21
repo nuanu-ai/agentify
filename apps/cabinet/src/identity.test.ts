@@ -38,7 +38,29 @@ function tokenIn(message: Message): string {
   return decodeURIComponent(found);
 }
 
+function linkIn(message: Message): string {
+  const found = /https?:\/\/\S+\/sign-in\/open\?token=[^\s]+/.exec(message.body)?.[0];
+  if (found === undefined) throw new Error("the cabinet link was not in the message");
+  return found;
+}
+
 describe("cabinet magic links", () => {
+  it("tells the person what the link does, how long it lasts, and carries it on a line of its own", async () => {
+    const { identity, messages } = memoryIdentity();
+
+    await identity.requestLink("person@example.com", "default");
+
+    const message = messages[0] as Message;
+    expect(message.subject).toMatch(/sign in/i);
+    // A client that draws no button leaves the person with the plain text, and
+    // a URL sharing a line with words is a URL somebody copies half of.
+    expect(message.body.split("\n")).toContain(linkIn(message));
+    for (const said of [message.body, message.html]) {
+      expect(said).toMatch(/opens once/i);
+      expect(said).toMatch(/expires an hour after it was sent/i);
+    }
+  });
+
   it("keeps two links independent and creates a person only when each is opened", async () => {
     const { identity, messages, rows } = memoryIdentity();
 
