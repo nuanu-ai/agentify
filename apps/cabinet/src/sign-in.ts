@@ -53,7 +53,7 @@ export const linkRequestedScreen = (
     retryAfterSeconds === undefined ? null : Math.max(1, Math.ceil(retryAfterSeconds / 60));
   const outcome =
     minutes === null
-      ? `<p>A sign-in link is on its way to the email address <strong>${escaped(email)}</strong>. It opens once and expires an hour after it is sent.</p>
+      ? `<p>A sign-in link is on its way to <strong>${escaped(email)}</strong>. It opens once and expires an hour after it is sent.</p>
   <p class="quiet">If nothing arrives, look in your spam folder, then send another link from this page.</p>`
       : `<p>No new link was sent to <strong>${escaped(email)}</strong>. One email address gets three links an hour, and this one has had its three.</p>
   <p class="problem">Try again in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.</p>`;
