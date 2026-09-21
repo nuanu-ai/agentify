@@ -15,6 +15,12 @@
   gap: 24px;
 }
 
+.headerLinks {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
 .nav {
   display: flex;
   align-items: center;
@@ -23,9 +29,34 @@
   font-size: 0.875rem;
 }
 
+.doors {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding-left: 24px;
+  border-left: 1px solid var(--border);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.doors a {
+  text-decoration: none;
+  color: var(--ink);
+}
+
+.doors a:hover,
+.doors a:focus-visible {
+  color: var(--accent);
+}
+
 .nav a,
 .footer a {
   text-decoration: none;
+}
+
+.nav a,
+.doors a {
+  white-space: nowrap;
 }
 
 .nav a:hover,
@@ -83,6 +114,21 @@
   font: 0.75rem/1.5 var(--font-mono);
 }
 
+/*
+ * The header bar yields its section links before it yields a door. The
+ * measurements behind these steps, taken in a browser with the labels as
+ * they are now ("Sell to agents" being the widest): at 760px the full row
+ * with the doors no longer fits beside the brand, at 640px the merchant link
+ * and the scanner link have to go, and under 480px only the brand and the
+ * doors fit in the 320px body minimum. The page clips horizontal overflow,
+ * so a link that did not fit would be cut, not scrolled to.
+ */
+@media (max-width: 760px) {
+  .nav a:first-child {
+    display: none;
+  }
+}
+
 @media (max-width: 640px) {
   .headerInner {
     min-height: 60px;
@@ -93,13 +139,28 @@
     font-size: 0.8125rem;
   }
 
-  .nav a:first-child {
+  .nav a:nth-child(2) {
     display: none;
+  }
+
+  .headerLinks {
+    gap: 14px;
+  }
+
+  .doors {
+    gap: 12px;
+    padding-left: 14px;
+    font-size: 0.8125rem;
   }
 }
 
-@media (max-width: 380px) {
-  .nav a:nth-child(2) {
+@media (max-width: 480px) {
+  .nav {
     display: none;
+  }
+
+  .doors {
+    padding-left: 0;
+    border-left: 0;
   }
 }

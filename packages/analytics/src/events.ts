@@ -14,7 +14,6 @@ const PROPERTY_ALLOWLIST: Record<AnalyticsEventName, ReadonlySet<string>> = {
   results_viewed: new Set(["coverage_band"]),
   registration_started: new Set([]),
   registration_completed: new Set(["role"]),
-  waitlist_question_answered: new Set([]),
   card_attached: new Set(["card_signal_version"]),
   result_shared: new Set(["share_method"]),
 };
@@ -81,7 +80,6 @@ export const eventOnceKey = (
     results_viewed: ["session_id", "scan_id"],
     registration_started: ["session_id", "scan_id"],
     registration_completed: ["lead_id", "scan_id"],
-    waitlist_question_answered: ["entry_id"],
     card_attached: ["setup_intent_id"],
     result_shared: ["share_id"],
   };

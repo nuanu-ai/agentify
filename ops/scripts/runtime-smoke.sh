@@ -52,7 +52,7 @@ check_asset() {
   [[ -s "$body" ]] || { echo "$path returned an empty body" >&2; exit 1; }
 }
 
-for path in /store /owner /local /scanner /methodology /privacy /terms /data-request /agentic-shop /agentic-shop/privacy; do
+for path in / /store /owner /local /scanner /methodology /privacy /terms /data-request /agentic-shop /agentic-shop/privacy; do
   check_200 "$path"
 done
 
@@ -77,7 +77,7 @@ sitemap="$(curl --silent --show-error --fail --max-time 20 "$WEB_BASE_URL/sitema
   echo "sitemap.xml does not contain eight canonical URLs" >&2
   exit 1
 }
-for path in /owner /store /local /methodology /scanner /privacy /terms /agentic-shop; do
+for path in / /store /local /methodology /scanner /privacy /terms /agentic-shop; do
   grep -q "<loc>https://agentify.ad$path</loc>" <<<"$sitemap" || {
     echo "sitemap.xml is missing $path" >&2
     exit 1
@@ -91,13 +91,13 @@ grep -Eq '\[[^]]+\]\(https://agentify\.ad/[^)]+\)' <<<"$llms" || {
   exit 1
 }
 
-owner_html="$(curl --silent --show-error --fail --max-time 20 "$WEB_BASE_URL/owner")"
-grep -q 'application/ld+json' <<<"$owner_html" || {
-  echo "/owner is missing JSON-LD" >&2
+front_html="$(curl --silent --show-error --fail --max-time 20 "$WEB_BASE_URL/")"
+grep -q 'application/ld+json' <<<"$front_html" || {
+  echo "/ is missing JSON-LD" >&2
   exit 1
 }
-grep -q '"@type":"Organization"' <<<"$owner_html" || {
-  echo "/owner is missing Organization JSON-LD" >&2
+grep -q '"@type":"Organization"' <<<"$front_html" || {
+  echo "/ is missing Organization JSON-LD" >&2
   exit 1
 }
 data_request_html="$(curl --silent --show-error --fail --max-time 20 "$WEB_BASE_URL/data-request")"
@@ -106,43 +106,48 @@ if grep -q 'application/ld+json' <<<"$data_request_html"; then
   exit 1
 fi
 
-markdown_headers="$tmp/owner-markdown.headers"
-markdown_body="$tmp/owner-markdown.body"
+markdown_headers="$tmp/front-markdown.headers"
+markdown_body="$tmp/front-markdown.body"
 curl --silent --show-error --fail --max-time 20 \
   --header 'Accept: text/markdown' \
   --dump-header "$markdown_headers" --output "$markdown_body" \
-  "$WEB_BASE_URL/owner"
+  "$WEB_BASE_URL/"
 grep -qi '^content-type: *text/markdown' "$markdown_headers" || {
-  echo "/owner Markdown has the wrong content type" >&2
+  echo "/ Markdown has the wrong content type" >&2
   exit 1
 }
 grep -qi '^vary:.*accept' "$markdown_headers" || {
-  echo "/owner Markdown is missing Vary: Accept" >&2
+  echo "/ Markdown is missing Vary: Accept" >&2
   exit 1
 }
-grep -q '^# ' "$markdown_body" || { echo "/owner Markdown is empty" >&2; exit 1; }
+grep -q '^# ' "$markdown_body" || { echo "/ Markdown is empty" >&2; exit 1; }
 
-html_headers="$tmp/owner-html.headers"
+html_headers="$tmp/front-html.headers"
 curl --silent --show-error --fail --max-time 20 \
   --header 'Accept: text/markdown;q=0, text/html' \
-  --dump-header "$html_headers" --output /dev/null "$WEB_BASE_URL/owner"
+  --dump-header "$html_headers" --output /dev/null "$WEB_BASE_URL/"
 grep -qi '^content-type: *text/html' "$html_headers" || {
-  echo "/owner returned Markdown when q=0" >&2
+  echo "/ returned Markdown when q=0" >&2
   exit 1
 }
 grep -qi '^vary:.*accept' "$html_headers" || {
-  echo "/owner HTML is missing Vary: Accept" >&2
+  echo "/ HTML is missing Vary: Accept" >&2
   exit 1
 }
 
 for ua in 'ChatGPT-User/1.0' 'OAI-SearchBot/1.0' 'Claude-User' 'PerplexityBot/1.0'; do
-  status="$(curl --silent --show-error --max-time 20 --user-agent "$ua" --output /dev/null --write-out '%{http_code}' "$WEB_BASE_URL/owner")"
+  status="$(curl --silent --show-error --max-time 20 --user-agent "$ua" --output /dev/null --write-out '%{http_code}' "$WEB_BASE_URL/")"
   [[ "$status" == "200" ]] || { echo "$ua received $status" >&2; exit 1; }
 done
 
-apex_headers="$(curl --silent --show-error --max-time 20 --head "$WEB_BASE_URL/")"
-grep -q '^HTTP/.* 308 ' <<<"$apex_headers" || { echo "apex is not a 308" >&2; exit 1; }
-grep -qi '^location: .*/owner' <<<"$apex_headers" || { echo "apex target is not /owner" >&2; exit 1; }
+# The owner landing is the front page; its old address redirects there with a
+# response no cache may keep, since a cached redirect in either direction loops.
+front_headers="$(curl --silent --show-error --max-time 20 --head "$WEB_BASE_URL/")"
+grep -q '^HTTP/.* 200 ' <<<"$front_headers" || { echo "front page is not a 200" >&2; exit 1; }
+owner_headers="$(curl --silent --show-error --max-time 20 --head "$WEB_BASE_URL/owner")"
+grep -q '^HTTP/.* 308 ' <<<"$owner_headers" || { echo "/owner is not a 308" >&2; exit 1; }
+grep -qi '^location: /[[:space:]]*$' <<<"$owner_headers" || { echo "/owner target is not /" >&2; exit 1; }
+grep -qi '^cache-control: .*no-store' <<<"$owner_headers" || { echo "/owner redirect may be cached" >&2; exit 1; }
 
 check_asset "/icon.svg" "image/svg+xml"
 check_asset "/apple-icon" "image/png"

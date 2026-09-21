@@ -36,7 +36,7 @@ const baseEvent = (name: AnalyticsEventName) =>
   });
 
 describe("analytics privacy and dedup contracts", () => {
-  it("supports exactly the canonical 9 events", () => {
+  it("supports exactly the canonical events, one destination name each", () => {
     expect(Object.keys(META_EVENT_MAPPING)).toEqual([...ANALYTICS_EVENT_NAMES]);
     expect(META_EVENT_MAPPING.scan_started).toBe("ScanStart");
     expect(META_EVENT_MAPPING.scan_started).not.toBe("InitiateCheckout");
@@ -194,12 +194,11 @@ describe("analytics privacy and dedup contracts", () => {
       day: "2026-07-12",
       scan_id: "scan",
       lead_id: "lead",
-      entry_id: "entry",
       setup_intent_id: "seti",
       share_id: "share",
     };
     const keys = ANALYTICS_EVENT_NAMES.map((name) => eventOnceKey(name, ids));
-    expect(new Set(keys).size).toBe(9);
+    expect(new Set(keys).size).toBe(ANALYTICS_EVENT_NAMES.length);
     expect(eventOnceKey("registration_completed", ids)).toBe(
       "registration_completed:lead:scan",
     );

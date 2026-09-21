@@ -166,7 +166,7 @@ sequenceDiagram
     participant C as Cabinet
     participant G as Gateway
     participant M as Mail
-    B->>C: an address — typed, carried from a report days old, or from the Agentic Shop page
+    B->>C: an address — typed, carried from a report days old, or from the sell-to-agents page
     C->>M: one message, one button
     C-->>B: the same screen for every address, resend after a cooldown
     B->>C: opens the link, presses the one control
@@ -196,7 +196,7 @@ Every way in.
 | report, control pressed right after confirming | P1 | a confirmation in this request | second diagram: token issued, not mailed; one explicit POST, no intermediate confirmation; ordinary reload preserves it until expiry | the cabinet, name screen; now P2 |
 | the same | P2 | the same | second diagram | the cabinet, cards |
 | report, control pressed days later | P1, P2 | report cookie; perhaps a matching cabinet session | a matching cabinet session opens it; otherwise the prefilled cabinet door asks before mailing | the cabinet, directly or after the link |
-| Agentic Shop page, control pressed | any | nothing | the cabinet's door, address typed | the cabinet, after the link |
+| the sell-to-agents page's control, or Cabinet in the header of a landing or trust page | any | perhaps a cabinet session | a live session is sent on without a question, to its cards or, with no merchant yet, to the name screen; otherwise the one field, address typed | the cabinet, directly or after the link |
 | cabinet, the one field | P0 | nothing | third diagram: person, merchant, key | name screen |
 | cabinet, the one field | P1 | nothing | third diagram: merchant, key | name screen |
 | cabinet, the one field | P2 | nothing | third diagram: signs into the merchant | cards |
@@ -261,7 +261,7 @@ on the cabinet with four verbs — send a link for the scanner's door, verify
 its token, issue a link for the cabinet's door, and remove a person who owns
 no merchant when the scanner is asked to delete; one secret in two
 deployments;
-a control in the report and the same control on the Agentic Shop page, in
+a control in the report and the same control on the sell-to-agents page, in
 place of the application form. The token is consumed in the cabinet and the
 lead is written in the scanner, which is not one transaction: verify first,
 then write, idempotent on the token, so a token verified and never turned

@@ -34,7 +34,6 @@ function report(overrides: Partial<ReportResponse> = {}): ReportResponse {
     coverage: 0.78,
     level: "readable",
     checks: [],
-    waitlist: { entry_id: "e1", position: "7", answer: null },
     benchmark: null,
     ...overrides,
   } as ReportResponse;

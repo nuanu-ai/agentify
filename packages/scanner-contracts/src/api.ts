@@ -164,11 +164,6 @@ export const contactAccessResponseSchema = z
   .object({ status: z.literal("verified") })
   .strict();
 
-export const waitlistAnswerRequestSchema = z
-  .object({ answer: z.string().trim().min(10).max(2000) })
-  .strict();
-export type WaitlistAnswerRequest = z.infer<typeof waitlistAnswerRequestSchema>;
-
 const publicEvidenceValueSchema = z.union([
   z.string(),
   z.number(),
@@ -197,13 +192,6 @@ export const reportResponseSchema = z
     coverage: z.number().min(0).max(1),
     level: diagnosticLevelSchema,
     checks: z.array(reportCheckSchema).length(18),
-    waitlist: z
-      .object({
-        entry_id: uuidV7Schema,
-        position: z.string(),
-        answer: z.string().nullable(),
-      })
-      .strict(),
     benchmark: z
       .object({
         sample_size: z.number().int().min(30),

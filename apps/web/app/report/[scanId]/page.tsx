@@ -6,9 +6,9 @@ import { Brand } from "../../../components/brand";
 import { BrowserObservations } from "../../../components/browser-observations";
 import { CardSignal } from "../../../components/card-signal";
 import { CopyRemediationPrompt } from "../../../components/copy-remediation-prompt";
-import { NextStep } from "../../../components/next-step";
 import { PrivacyChoicesButton } from "../../../components/privacy-choices-button";
 import { ReportActionPanel } from "../../../components/report-action-panel";
+import { ReportBenchmark } from "../../../components/report-benchmark";
 import { ReportCabinetControl } from "../../../components/report-cabinet-control";
 import { StatusBadge } from "../../../components/status-badge";
 import { getPublicAppConfig } from "../../../lib/app-config";
@@ -107,6 +107,7 @@ export default async function ReportPage({
           Coverage {Math.round(report.coverage * 100)}% · diagnostic, not
           certification
         </p>
+        <ReportBenchmark benchmark={report.benchmark} />
         {report.level === "callable_ready" ? (
           <p>
             Callable-ready describes public discovery metadata. Agentify did not
@@ -129,8 +130,15 @@ export default async function ReportPage({
       />
       {reportOwnerEmail ? (
         <section className={styles.cabinet}>
-          <h2>Your cabinet</h2>
-          <p>Manage cards and integrations through the same verified email.</p>
+          <h2>Selling to agents</h2>
+          <p>
+            If what you sell can be sent a second time without loss, an access,
+            a key, a link, a subscription, the same address opens a merchant
+            cabinet: your engineer publishes the cards and takes orders in the
+            test channel, and selling live needs a seller name, a payout wallet
+            and our switch. If not, this report is the whole result, and you can
+            scan the site again whenever it changes.
+          </p>
           <ReportCabinetControl
             email={reportOwnerEmail}
             reportPath={`/report/${encodeURIComponent(report.scan_id)}`}
@@ -211,13 +219,6 @@ export default async function ReportPage({
           </section>
         ))}
       </section>
-      <NextStep
-        benchmark={report.benchmark}
-        entryId={report.waitlist.entry_id}
-        initialAnswer={report.waitlist.answer}
-        scanId={report.scan_id}
-        waitlistPosition={report.waitlist.position}
-      />
       {browserObservation ? (
         <div className={styles.browserSection}>
           <BrowserObservations

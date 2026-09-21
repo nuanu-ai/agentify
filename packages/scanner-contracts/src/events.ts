@@ -7,7 +7,6 @@ export const ANALYTICS_EVENT_NAMES = [
   "results_viewed",
   "registration_started",
   "registration_completed",
-  "waitlist_question_answered",
   "card_attached",
   "result_shared",
 ] as const;

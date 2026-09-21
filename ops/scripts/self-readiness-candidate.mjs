@@ -4,7 +4,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 const canonicalOrigin = "https://agentify.ad";
 const publicPaths = [
-  "/owner",
+  "/",
   "/store",
   "/local",
   "/methodology",
@@ -28,6 +28,7 @@ const fail = (message) => {
 const safeHeaders = (headers) => {
   const output = {};
   for (const name of [
+    "cache-control",
     "content-type",
     "vary",
     "server",
@@ -70,7 +71,7 @@ async function waitForServer() {
   const deadline = Date.now() + 45_000;
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`${baseUrl}/owner`, {
+      const response = await fetch(`${baseUrl}/`, {
         signal: AbortSignal.timeout(2_000),
       });
       if (response.ok) return;
@@ -214,12 +215,12 @@ async function main() {
     a2a,
   ] = await Promise.all([
     fetchArtifact("/robots.txt"),
-    fetchArtifact("/owner", { headers: { Accept: "text/html" } }),
-    fetchArtifact("/owner", { headers: { Accept: "text/markdown" } }),
-    fetchArtifact("/owner", {
+    fetchArtifact("/", { headers: { Accept: "text/html" } }),
+    fetchArtifact("/", { headers: { Accept: "text/markdown" } }),
+    fetchArtifact("/", {
       headers: { Accept: "text/html", "User-Agent": "ChatGPT-User/1.0" },
     }),
-    fetchArtifact("/owner", {
+    fetchArtifact("/", {
       headers: { Accept: "text/html", "User-Agent": "Claude-User" },
     }),
     fetchArtifact("/sitemap.xml"),
@@ -257,7 +258,7 @@ async function main() {
 
   const jsonLd = parseJsonLd(base.body);
   if (!jsonLd.nodes.some((node) => node["@type"] === "Organization"))
-    fail("owner page is missing Organization JSON-LD");
+    fail("front page is missing Organization JSON-LD");
   for (const path of ["/data-request", "/auth/callback"]) {
     const privatePage = await fetchArtifact(path);
     if (parseJsonLd(privatePage.body).scriptCount !== 0)
@@ -266,7 +267,7 @@ async function main() {
 
   const evaluation = evaluateScan({
     segment: "owner",
-    canonicalTargetUrl: `${canonicalOrigin}/owner`,
+    canonicalTargetUrl: `${canonicalOrigin}/`,
     robots,
     base,
     markdown,
@@ -291,13 +292,17 @@ async function main() {
   if (evaluation.score.coverage !== 1)
     fail(`candidate coverage ${evaluation.score.coverage} is not 1.0`);
 
-  const apex = await fetchArtifact("/");
+  // The owner landing became the front page (docs/research/31-user-journey.md
+  // §2). Its old address answers with a redirect that no cache may keep: a
+  // browser holding a cached redirect in either direction would loop.
+  const ownerAlias = await fetchArtifact("/owner");
   if (
-    apex.status !== 308 ||
-    new URL(apex.redirectLocation ?? "", baseUrl).pathname !== "/owner"
+    ownerAlias.status !== 308 ||
+    new URL(ownerAlias.redirectLocation ?? "", baseUrl).pathname !== "/" ||
+    !/no-store/i.test(ownerAlias.headers["cache-control"] ?? "")
   )
     fail(
-      `apex redirect is ${apex.status} ${apex.redirectLocation ?? "<none>"}`,
+      `/owner redirect is ${ownerAlias.status} ${ownerAlias.redirectLocation ?? "<none>"} (${ownerAlias.headers["cache-control"] ?? "no cache-control"})`,
     );
 
   console.log(

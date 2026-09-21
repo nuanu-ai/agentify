@@ -2,7 +2,7 @@ import { PUBLIC_PAGE_PATHS } from "../content/public-page-metadata";
 import { getPublicAppConfig } from "./app-config";
 
 const labels = {
-  "/owner": "Business-owner diagnostic",
+  "/": "Website diagnostic and selling to agents",
   "/store": "Online-store diagnostic",
   "/local": "Local-business diagnostic",
   "/methodology": "Methodology and 18-check rubric",
@@ -30,7 +30,7 @@ export function buildLlmsText(): string {
     "",
     "Agentify also runs a merchant channel: an ordinary online business publishes product cards that AI agents buy and pay for over x402, and the money goes from the buyer's wallet to the merchant's.",
     "",
-    `- [Agentic Shop, for the business owner](${new URL("/agentic-shop", baseUrl).toString()})`,
+    `- [The sell-to-agents page, for the business owner](${new URL("/agentic-shop", baseUrl).toString()})`,
     `- [Merchant documentation, for the engineer](${new URL("/docs/", baseUrl).toString()})`,
     "",
   ].join("\n");

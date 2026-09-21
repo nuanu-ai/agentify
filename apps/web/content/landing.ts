@@ -6,6 +6,12 @@ export type LandingConfig = Readonly<{
   locale: "en-US" | "ru-RU";
   eyebrow: string;
   hero: Readonly<{ title: string; subtitle: string; cta: string }>;
+  /**
+   * One line under the scan form for the person who came to sell rather than
+   * to scan: a lead-in and a link to the page about selling to agents. Only
+   * the front page carries it; the segment pages leave it out.
+   */
+  secondDoor?: Readonly<{ lead: string; label: string; href: string }>;
   segmentPhase: string;
 }>;
 
@@ -53,14 +59,20 @@ export const LANDING_EXAMPLE_CHECKS = [
 export const LANDINGS = {
   owner: {
     segment: "owner",
-    variant: "owner-v1",
+    variant: "owner-v2",
     locale: "en-US",
-    eyebrow: "For business owners",
+    eyebrow: "For online businesses",
     hero: {
-      title: "See what your website lets AI understand about your business.",
+      title:
+        "See what your website shows to AI agents, and how to sell to them.",
       subtitle:
         "We read what your site makes public. We do not test any model's answer.",
       cta: "Scan my site",
+    },
+    secondDoor: {
+      lead: "Came here to sell?",
+      label: "How selling to agents works",
+      href: "/agentic-shop",
     },
     segmentPhase: "Checking public business signals",
   },

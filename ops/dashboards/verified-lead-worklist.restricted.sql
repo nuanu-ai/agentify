@@ -6,8 +6,6 @@ select
   s.segment,
   l.role,
   l.verified_at,
-  w.position as waitlist_position,
-  w.answered_at is not null as pain_answered,
   s.score,
   s.coverage,
   s.level,
@@ -25,4 +23,4 @@ join lead_scans ls on ls.lead_id = l.id
 join scans s on s.id = ls.scan_id
 left join waitlist_entries w on w.lead_id = l.id and w.scan_id = s.id
 where l.verified_at is not null
-order by w.position nulls last, l.verified_at;
+order by l.verified_at;

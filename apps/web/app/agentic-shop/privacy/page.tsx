@@ -10,7 +10,7 @@ import styles from "../shop.module.css";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
-  title: "Agentic Shop — Historical application privacy",
+  title: "Historical application privacy",
   description:
     "How Agentify retains and removes information submitted through the retired merchant application form.",
   alternates: { canonical: "/agentic-shop/privacy" },
@@ -31,7 +31,7 @@ export default function MerchantPrivacyPage() {
           Existing submissions still expire.
         </h1>
         <p>
-          This notice covers information sent through the former Agentic Shop
+          This notice covers information sent through the former merchant
           application form. Agentify no longer accepts applications at that
           path. A new merchant now opens the cabinet with an email link instead;
           that action does not add anything to the historical application data.
@@ -91,7 +91,7 @@ export default function MerchantPrivacyPage() {
           Notice version: {MERCHANT_APPLICATION_POLICY}
         </p>
         <Link href="/agentic-shop" className={styles.textLink}>
-          ← Back to Agentic Shop
+          ← Back to selling to agents
         </Link>
       </main>
       <SiteFooter />

@@ -11,14 +11,13 @@ const adobeSource = AGENTIC_SHOP_RESEARCH.sourceUrl;
 export function generateMetadata(): Metadata {
   const url = new URL("/agentic-shop", getPublicAppConfig().baseUrl).toString();
   return {
-    title: "Agentic Shop — Make your business buyable by AI agents",
+    title: "Sell to agents",
     description:
       "Open your Agentify cabinet with an email link, integrate through the SDK and test agent-ready offers. Live publication requires operator approval.",
     alternates: { canonical: url },
     openGraph: {
       title: "Your next customer sends an agent. Be ready.",
-      description:
-        "Agentic Shop by Agentify. Your products and services, ready for a new way to buy.",
+      description: "Your products and services, ready for a new way to buy.",
       url,
       type: "website",
     },

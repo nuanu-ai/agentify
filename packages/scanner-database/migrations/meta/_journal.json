@@ -134,6 +134,13 @@
       "when": 1789977566033,
       "tag": "0018_optional_registration_phone",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789986930878,
+      "tag": "0019_drop_waitlist_survey_columns",
+      "breakpoints": true
     }
   ]
 }

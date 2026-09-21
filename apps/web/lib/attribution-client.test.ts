@@ -41,7 +41,7 @@ describe("partner click attribution", () => {
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetcher);
     const source = {
-      pathname: "/owner",
+      pathname: "/",
       search: "?utm_campaign=retry-test",
     };
 

@@ -169,7 +169,7 @@ export function PendingScanExperience({
                   Retry scan
                 </button>
               ) : null}
-              <Link className="button button-secondary" href="/owner">
+              <Link className="button button-secondary" href="/">
                 Enter another website
               </Link>
             </div>

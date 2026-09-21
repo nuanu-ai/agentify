@@ -14,7 +14,7 @@ PWCLI="${PWCLI:-$CODEX_HOME/skills/playwright/scripts/playwright_cli.sh}"
 session="agentify-release-$$"
 run_output="$(mktemp /tmp/agentify-playwright-output.XXXXXX)"
 trap 'rm -f "$run_output"; "$PWCLI" --session "$session" close >/dev/null 2>&1 || true' EXIT
-"$PWCLI" --session "$session" open "$WEB_BASE_URL/owner" >/dev/null
+"$PWCLI" --session "$session" open "$WEB_BASE_URL/" >/dev/null
 
 base_json="$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$WEB_BASE_URL")"
 scan_path_json="$(node -e 'process.stdout.write(JSON.stringify(process.argv[1] || ""))' "${BROWSER_SCAN_PATH:-}")"
@@ -31,7 +31,7 @@ set +e
   const expectLocalCard = $expect_local_card_json;
   const expectBrowserObservations = $expect_browser_observations_json;
   const axePath = $axe_path_json;
-  const routes = ['/owner','/store','/local','/scan/pending','/scanner','/methodology','/privacy','/terms','/data-request','/verification/error'];
+  const routes = ['/','/store','/local','/scan/pending','/scanner','/methodology','/privacy','/terms','/data-request','/verification/error'];
   if (scanPath) routes.push(scanPath);
   const widths = [360,390,768,1024,1440];
   const failures = [];
@@ -75,7 +75,7 @@ set +e
         const markBox = await brandMark.boundingBox();
         if (!markBox || markBox.width < 24 || markBox.height < 24) failures.push(route + '@' + width + ': logo below the 24px minimum');
       }
-      if (width <= 390 && ['/owner','/store','/local'].includes(route)) {
+      if (width <= 390 && ['/','/store','/local'].includes(route)) {
         const button = page.locator('main form button').first();
         if (await button.count() !== 1) failures.push(route + '@' + width + ': primary CTA missing');
         else {
@@ -120,7 +120,7 @@ set +e
   if (unauthorizedReport.status() !== 404) failures.push('anonymous full report did not return 404');
 
   if (localFlow) {
-    await page.goto(base + '/owner', { waitUntil: 'networkidle' });
+    await page.goto(base + '/', { waitUntil: 'networkidle' });
     await page.evaluate(() => localStorage.removeItem('agentify.consent.current.v1'));
     await page.reload({ waitUntil: 'networkidle' });
     const consentDialog = page.getByRole('dialog', { name: 'Privacy choices' });
@@ -172,10 +172,6 @@ set +e
     if (privateReportViolations.length) failures.push('private report axe ' + privateReportViolations.join(','));
     const canonicalChecks = page.locator('section').filter({ has: page.getByRole('heading', { name: 'All 18 checks' }) }).locator('details');
     if (await canonicalChecks.count() !== 18) failures.push('verified report does not contain 18 canonical checks');
-    const intentResponse = page.waitForResponse(response => response.url().includes('/waitlist/') && response.url().endsWith('/answer'));
-    await page.getByRole('button', { name: 'Fix it with AI' }).click();
-    if ((await intentResponse).status() !== 200) failures.push('post-registration intent API failed');
-    await page.getByText('Saved. Your report and tools stay available on this page.', { exact: true }).waitFor();
     const promptResponse = page.waitForResponse(response => response.url().includes('/remediation-prompt?scope=full'));
     await page.getByRole('button', { name: 'Copy AI fix prompt' }).click();
     if ((await promptResponse).status() !== 200) failures.push('full remediation prompt API failed');

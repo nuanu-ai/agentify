@@ -6,7 +6,7 @@ import styles from "./system-message-page.module.css";
 export function SystemMessagePage({
   actionLabel,
   description,
-  href = "/owner",
+  href = "/",
   title,
 }: Readonly<{
   actionLabel: string;

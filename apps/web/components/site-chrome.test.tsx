@@ -10,6 +10,13 @@ describe("MarketingHeader", () => {
 
     expect(markup).toContain('href="/agentic-shop"');
   });
+
+  it("carries the doors to the documentation and the cabinet", () => {
+    const markup = renderToStaticMarkup(<MarketingHeader />);
+
+    expect(markup).toContain('href="/docs/"');
+    expect(markup).toContain('href="/cabinet/sign-in"');
+  });
 });
 
 describe("SiteFooter", () => {

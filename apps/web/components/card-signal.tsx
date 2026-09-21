@@ -189,9 +189,7 @@ export function CardSignal({
       );
     } catch {
       setStatus("failed");
-      setMessage(
-        "Card confirmation failed. Your report and waitlist are unaffected.",
-      );
+      setMessage("Card confirmation failed. Your report is unaffected.");
     } finally {
       setBusy(false);
     }

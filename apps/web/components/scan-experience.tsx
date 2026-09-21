@@ -200,7 +200,7 @@ export function ScanExperience({
         {data?.status === "failed" ? (
           <FailedState
             blocked={fixtureName === "blocked"}
-            onRetry={() => window.location.assign("/owner")}
+            onRetry={() => window.location.assign("/")}
           />
         ) : null}
         {data && (data.status === "completed" || data.status === "partial") ? (
@@ -561,7 +561,7 @@ function AccessError({ invalid }: Readonly<{ invalid: boolean }>) {
           : "Open the original private scan link"}
       </h1>
       <p>Scan progress is private.</p>
-      <Link className="button button-primary" href="/owner">
+      <Link className="button button-primary" href="/">
         Start a new scan
       </Link>
     </div>
