@@ -124,7 +124,6 @@ async function expectProxy(baseUrl, requestPath, role) {
 async function expectSharedAssets(baseUrl) {
   const expected = new Map([
     ["/assets/agentify-mark.svg", "image/svg+xml"],
-    ["/assets/agentify-mark-dark.svg", "image/svg+xml"],
     ["/assets/agentify-mark-heavy.svg", "image/svg+xml"],
     ["/styles/fonts.css", "text/css"],
   ]);

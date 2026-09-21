@@ -107,11 +107,11 @@
 }
 
 # The cabinet's HTML shares only these browser assets with the landing. They
-# remain Caddy-owned when the scanner owns the front page. Naming the three
-# marks and the font subtree is deliberate: a broad /assets or /styles route
-# would silently reserve scanner namespaces that the cabinet does not use.
+# remain Caddy-owned when the scanner owns the front page. Naming the two marks
+# and the font subtree is deliberate: a broad /assets or /styles route would
+# silently reserve scanner namespaces that the cabinet does not use.
 (commerce_shared_assets) {
-	@commerce_shared_assets path /assets/agentify-mark.svg /assets/agentify-mark-dark.svg /assets/agentify-mark-heavy.svg /styles/fonts.css /styles/fonts/*.woff2
+	@commerce_shared_assets path /assets/agentify-mark.svg /assets/agentify-mark-heavy.svg /styles/fonts.css /styles/fonts/*.woff2
 	handle @commerce_shared_assets {
 		root * {$AGENTIFY_LANDING_ROOT:/srv/landing}
 		file_server

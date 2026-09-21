@@ -1,4 +1,6 @@
 <svg viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Agentify">
-  <path d="M50 40H40a6 6 0 0 0-6 6v36a6 6 0 0 0 6 6h10M78 40h10a6 6 0 0 1 6 6v36a6 6 0 0 1-6 6H78" fill="none" stroke="#0f736e" stroke-width="7" stroke-linecap="round"/>
-  <circle cx="64" cy="64" r="10" fill="#0f736e"/>
+  <rect width="128" height="128" rx="30" fill="#0F736E"/>
+  <path d="M50 40 H40 A6 6 0 0 0 34 46 V82 A6 6 0 0 0 40 88 H50" fill="none" stroke="#F6F4EF" stroke-width="7" stroke-linecap="round"/>
+  <path d="M78 40 H88 A6 6 0 0 1 94 46 V82 A6 6 0 0 1 88 88 H78" fill="none" stroke="#F6F4EF" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="64" cy="64" r="10" fill="#F6F4EF"/>
 </svg>
