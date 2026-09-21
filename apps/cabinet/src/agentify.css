@@ -57,34 +57,58 @@ h1 {
   flex-direction: column;
 }
 
+/*
+ * The bar is the scanner's, and the tabs are the cabinet's.
+ *
+ * Everything around them comes from apps/web/components/site-chrome.module.css:
+ * 68 pixels tall, stuck to the top, a translucent page colour with the content
+ * blurred behind it and one hairline under it. What does not come from there is
+ * the navigation itself, because the scanner's is marketing nav with no notion
+ * of "you are here" and five destinations inside one application with a current
+ * location is exactly what a tab row is for. The inset rule under the current
+ * tab stays: it is the only active marker available and it is quiet.
+ *
+ * Nothing in this bar wraps. The tabs are a row and a row that becomes two rows
+ * moves everything under it by a line, which on a sticky bar means the page
+ * changes height as you navigate it. Under 760 the tab row scrolls sideways
+ * instead, and the lockup takes the smaller size the scanner's does.
+ */
 .top {
+  position: sticky;
+  z-index: 20;
+  top: 0;
   border-bottom: var(--hairline) solid var(--line);
-  background: var(--surface);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(12px);
 }
 
 .top-inner {
+  min-height: 68px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  flex-wrap: wrap;
 }
 
-.brand {
+.bar-left {
   display: flex;
   align-items: center;
   gap: 36px;
-  flex-wrap: wrap;
+  min-width: 0;
+  align-self: stretch;
 }
 
+/* The lockup, at the size and weight the scanner's `.brand` draws it. The mark
+   beside it is the shared `.brand-mark` and needs nothing said here. */
 .wordmark {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   color: var(--fg);
-  font-size: 17px;
-  font-weight: 650;
+  font-size: 1.25rem;
+  font-weight: 600;
   letter-spacing: -0.02em;
+  line-height: 1;
   text-decoration: none;
 }
 
@@ -93,35 +117,35 @@ h1 {
   text-decoration: none;
 }
 
-.wordmark .brand-mark {
-  display: block;
-  width: 30px;
-  height: 30px;
-  flex: none;
-}
-
 .tabs {
   display: flex;
   gap: 4px;
+  min-width: 0;
+  align-self: stretch;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
 }
 
 .tabs a,
 .tabs span {
-  padding: 18px 14px;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
   color: var(--muted);
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.tabs a:hover {
+  color: var(--fg);
+  text-decoration: none;
 }
 
 .tabs .here {
   color: var(--fg);
   font-weight: 500;
   box-shadow: inset 0 -2px 0 var(--accent);
-}
-
-.whoami {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  font-size: 13px;
 }
 
 /*
@@ -588,39 +612,23 @@ td.control {
 
 @media (max-width: 760px) {
   .top-inner {
-    padding: 14px 0 0;
-    min-width: 0;
-    overflow: hidden;
+    min-height: 60px;
+    gap: 14px;
   }
 
-  .brand {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    width: 100%;
-    min-width: 0;
+  .bar-left {
+    gap: 16px;
+  }
+
+  .wordmark {
     gap: 8px;
-  }
-
-  .tabs {
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
-    overflow-x: auto;
-    overscroll-behavior-inline: contain;
+    font-size: 1.125rem;
   }
 
   .tabs a,
   .tabs span {
-    padding: 12px 10px;
-    white-space: nowrap;
-  }
-
-  .whoami {
-    width: 100%;
-    min-width: 0;
-    flex-wrap: wrap;
-    padding: 0 0 14px;
-    gap: 12px;
+    padding: 0 10px;
+    font-size: 0.8125rem;
   }
 
   .gate form {
@@ -650,16 +658,40 @@ td.control {
   font-size: 13.5px;
 }
 
-/* The address of the person signed in, in the corner of every page. Until
-   ADR-0009 there was nobody to name: the cabinet held a merchant key and the
-   screen could not say whose hand was on the control that stops all selling.
-   It is a link because pressing your own name means "show me my account", and
-   it leads to the settings, where the account is. The colour is the muted one
-   so that it reads as a label rather than as a fifth tab. */
-.who {
+/* Who is signed in, under the content, in the shape the scanner gives the same
+   row (report.module.css `.account`). Until ADR-0009 there was nobody to name:
+   the cabinet held a merchant key and the screen could not say whose hand was
+   on the control that stops all selling. The address is a link because pressing
+   your own name means "show me my account", and it leads to the settings, where
+   the account is. */
+.account {
+  display: flex;
+  align-items: baseline;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin: 28px 0 40px;
   color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.account button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.account button:hover {
+  color: var(--accent-hover);
+}
+
+.who {
+  color: inherit;
   text-decoration: none;
-  border-bottom: var(--hairline) solid var(--line);
   max-width: 100%;
   overflow-wrap: anywhere;
 }

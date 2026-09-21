@@ -153,32 +153,46 @@ export const page = (chrome: Chrome): string => `<!doctype html>
 <body>
 <div class="page">
 ${surface(chrome.mode)}
-  <div class="top">
+  <header class="top">
     <div class="top-inner container">
-      <div class="brand">
+      <div class="bar-left">
         ${brandLockup("/")}
-        <nav class="tabs">${TABS.map(([tab, label]) =>
+        <nav class="tabs" aria-label="Your cabinet">${TABS.map(([tab, label]) =>
           tab === chrome.tab
-            ? `<span class="here">${label}</span>`
+            ? `<span class="here" aria-current="page">${label}</span>`
             : `<a href="${escaped(chrome.base)}/${tab}">${label}</a>`,
         ).join("")}</nav>
       </div>
-      <div class="whoami">
-        ${WAY_OUT}
-        ${chrome.selling === undefined ? "" : state(chrome.selling)}
-        <a class="who" href="${escaped(chrome.base)}/settings">${escaped(chrome.who)}</a>
-        <form class="inline" method="post" action="${escaped(chrome.base)}/sign-out">
-          <button type="submit">Sign out</button>
-        </form>
-      </div>
+      ${chrome.selling === undefined ? "" : state(chrome.selling)}
     </div>
-  </div>
+  </header>
   <div class="container">
 ${chrome.unnamed === true ? unnamedNote(chrome.base) : ""}${chrome.body}
-  </div>
+${accountRow(chrome.base, chrome.who)}  </div>
 </div>
 </body>
 </html>
+`;
+
+/**
+ * Who is signed in, and how to stop being them.
+ *
+ * Under the content rather than in the bar, which is where the scanner puts the
+ * same two things (apps/web/app/report/[scanId]/report.module.css, `.account`).
+ * An address is a label and not a destination: in the bar it read as a fifth
+ * tab, and it pushed the one item up there that genuinely is status — the
+ * selling light — out to the far edge behind three things that are not.
+ *
+ * It is still a link, and it still leads to the settings, because pressing your
+ * own name means "show me my account" and the account is on that page.
+ */
+const accountRow = (base: string, who: string): string => `  <div class="account">
+    <a class="who" href="${escaped(base)}/settings">${escaped(who)}</a>
+    ${WAY_OUT}
+    <form class="inline" method="post" action="${escaped(base)}/sign-out">
+      <button type="submit">Sign out</button>
+    </form>
+  </div>
 `;
 
 /**
