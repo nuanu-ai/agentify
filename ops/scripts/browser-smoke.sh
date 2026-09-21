@@ -172,10 +172,6 @@ set +e
     if (privateReportViolations.length) failures.push('private report axe ' + privateReportViolations.join(','));
     const canonicalChecks = page.locator('section').filter({ has: page.getByRole('heading', { name: 'All 18 checks' }) }).locator('details');
     if (await canonicalChecks.count() !== 18) failures.push('verified report does not contain 18 canonical checks');
-    const intentResponse = page.waitForResponse(response => response.url().includes('/waitlist/') && response.url().endsWith('/answer'));
-    await page.getByRole('button', { name: 'Fix it with AI' }).click();
-    if ((await intentResponse).status() !== 200) failures.push('post-registration intent API failed');
-    await page.getByText('Saved. Your report and tools stay available on this page.', { exact: true }).waitFor();
     const promptResponse = page.waitForResponse(response => response.url().includes('/remediation-prompt?scope=full'));
     await page.getByRole('button', { name: 'Copy AI fix prompt' }).click();
     if ((await promptResponse).status() !== 200) failures.push('full remediation prompt API failed');

@@ -44,14 +44,19 @@ import { join } from 'node:path';
 const folder = process.env.SCANNER_BASE_MIGRATIONS;
 const journalPath = join(folder, 'meta', '_journal.json');
 const journal = JSON.parse(readFileSync(journalPath, 'utf8'));
+// Every migration after the restore baseline: the shared-identity ones and
+// what followed them. The list is exact so that a new migration is added here
+// on purpose, with the baseline still ending at 0014.
 const identityMigrations = [
   '0015_noisy_gladiator',
   '0016_superb_zuras',
   '0017_giant_agent_zero',
+  '0018_optional_registration_phone',
+  '0019_drop_waitlist_survey_columns',
 ];
 const journalTail = journal.entries.slice(-identityMigrations.length).map(({ tag }) => tag);
 if (JSON.stringify(journalTail) !== JSON.stringify(identityMigrations)) {
-  throw new Error('Expected the shared-identity migrations at the end of the current scanner journal');
+  throw new Error('Expected the migrations after the 0014 baseline at the end of the current scanner journal');
 }
 journal.entries.splice(-identityMigrations.length);
 if (journal.entries.at(-1)?.tag !== '0014_merchant_web_policy') {

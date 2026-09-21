@@ -19,7 +19,6 @@ const forbiddenAggregateFields = [
   "session_token_hash",
   "access_token_hash",
   "idempotency_key_hash",
-  "pain_answer",
   "payment_method_id_ciphertext",
   "stripe_customer_id",
   "setup_intent_id",

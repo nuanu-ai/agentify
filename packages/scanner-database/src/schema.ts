@@ -1,7 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
-  bigserial,
   boolean,
   check,
   date,
@@ -678,6 +677,13 @@ export const scannerIdentityDeletionOperations = pgTable(
   ],
 );
 
+/**
+ * The record that a lead registered for a scan: registration writes one row
+ * per lead and scan, the report opens only for a lead with one, and access
+ * recovery joins it. The name is the former product's, where the row was also
+ * a place in a queue and carried a survey answer; those columns are gone
+ * (docs/research/31-user-journey.md §3), and the rename is a step of its own.
+ */
 export const waitlistEntries = pgTable(
   "waitlist_entries",
   {
@@ -688,21 +694,13 @@ export const waitlistEntries = pgTable(
     scanId: uuid("scan_id")
       .notNull()
       .references(() => scans.id, { onDelete: "cascade" }),
-    position: bigserial("position", { mode: "bigint" }).notNull(),
-    painAnswer: text("pain_answer"),
     createdAt: utcTimestamp("created_at").notNull().defaultNow(),
-    answeredAt: utcTimestamp("answered_at"),
   },
   (table) => [
     check("waitlist_entries_id_uuidv7", uuidV7Check(table.id)),
     uniqueIndex("waitlist_entries_lead_scan_uidx").on(
       table.leadId,
       table.scanId,
-    ),
-    uniqueIndex("waitlist_entries_position_uidx").on(table.position),
-    check(
-      "waitlist_entries_answer_length",
-      sql`${table.painAnswer} is null or char_length(${table.painAnswer}) between 10 and 2000`,
     ),
   ],
 );

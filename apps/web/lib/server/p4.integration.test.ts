@@ -61,7 +61,6 @@ import {
   getFullReport,
   getPublicShare,
   revokePublicShare,
-  saveWaitlistAnswer,
 } from "./reporting";
 import { authorizeScan, createOrReplayScan } from "./scans";
 
@@ -986,7 +985,7 @@ describe("P4 cabinet-owned scanner identity", () => {
     ).toHaveLength(1);
   });
 
-  it("verifies once, authorizes 18-row report, saves waitlist and revocable safe share", async () => {
+  it("verifies once, authorizes 18-row report and a revocable safe share", async () => {
     const scan = (
       await getDatabase()
         .db.select()
@@ -1052,13 +1051,6 @@ describe("P4 cabinet-owned scanner identity", () => {
     expect(await verifiedView.json()).toMatchObject({
       status: "already_recorded",
     });
-    expect(
-      await saveWaitlistAnswer(
-        report!.waitlist.entry_id,
-        "A clear implementation priority list.",
-        verified!.sessionToken,
-      ),
-    ).toBe(true);
     expect(await getDatabase().db.select().from(scanShares)).toHaveLength(0);
     const unauthorizedPreview = await previewShare(
       new NextRequest(
@@ -1144,7 +1136,7 @@ describe("P4 cabinet-owned scanner identity", () => {
       }>(
         `select name, count(*)::text as count, count(once_key)::text as once_count
          from analytics_events
-         where scan_id = $1 and name in ('registration_completed', 'waitlist_question_answered', 'result_shared')
+         where scan_id = $1 and name in ('registration_completed', 'result_shared')
          group by name order by name`,
         [scanId],
       ),
@@ -1152,11 +1144,6 @@ describe("P4 cabinet-owned scanner identity", () => {
       rows: [
         { name: "registration_completed", count: "1", once_count: "1" },
         { name: "result_shared", count: "1", once_count: "1" },
-        {
-          name: "waitlist_question_answered",
-          count: "1",
-          once_count: "1",
-        },
       ],
     });
     await getDatabase()

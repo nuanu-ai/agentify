@@ -71,9 +71,11 @@ export async function getFullReport(
   const scan = (
     await db.select().from(scans).where(eq(scans.id, scanId)).limit(1)
   )[0];
-  const waitlist = (
+  // The row in waitlist_entries is the record that this lead registered for
+  // this scan; a report opens only for a registered lead.
+  const registered = (
     await db
-      .select()
+      .select({ id: waitlistEntries.id })
       .from(waitlistEntries)
       .where(
         and(
@@ -83,7 +85,7 @@ export async function getFullReport(
       )
       .limit(1)
   )[0];
-  if (!scan || !waitlist || scan.coverage === null || !scan.level)
+  if (!scan || !registered || scan.coverage === null || !scan.level)
     return undefined;
   const checkRows = await db
     .select()
@@ -135,11 +137,6 @@ export async function getFullReport(
     coverage: Number(scan.coverage),
     level: scan.level,
     checks,
-    waitlist: {
-      entry_id: waitlist.id,
-      position: waitlist.position.toString(),
-      answer: waitlist.painAnswer,
-    },
     benchmark,
   };
 }
@@ -200,66 +197,6 @@ export async function getFullBrowserObservation(
     })),
     updated_at: observation.updatedAt.toISOString(),
   };
-}
-
-export async function saveWaitlistAnswer(
-  entryId: string,
-  answer: string,
-  sessionToken: string | undefined,
-): Promise<boolean> {
-  const verified = await getVerifiedSession(sessionToken);
-  if (!verified) return false;
-  const { db } = getDatabase();
-  return await db.transaction(async (tx) => {
-    const result = await tx.execute<{
-      id: string;
-      scan_id: string;
-      pain_answer: string | null;
-    }>(
-      sql`select id, scan_id, pain_answer from waitlist_entries where id = ${entryId} and lead_id = ${verified.leadId} for update`,
-    );
-    const entry = result.rows[0];
-    if (!entry) return false;
-    const firstAnswer = !entry.pain_answer;
-    await tx
-      .update(waitlistEntries)
-      .set({
-        painAnswer: answer,
-        answeredAt: firstAnswer ? new Date() : undefined,
-      })
-      .where(eq(waitlistEntries.id, entry.id));
-    if (firstAnswer) {
-      const scan = (
-        await tx
-          .select()
-          .from(scans)
-          .where(eq(scans.id, entry.scan_id))
-          .limit(1)
-      )[0];
-      const session = scan
-        ? (
-            await tx
-              .select()
-              .from(sessions)
-              .where(eq(sessions.id, scan.sessionId))
-              .limit(1)
-          )[0]
-        : undefined;
-      if (scan && session?.consentSnapshotId) {
-        await emitStoredBusinessEvent(tx, {
-          name: "waitlist_question_answered",
-          identifiers: { entry_id: entry.id },
-          sessionId: scan.sessionId,
-          consentSnapshotId: session.consentSnapshotId,
-          leadId: verified.leadId,
-          scanId: scan.id,
-          segment: scan.segment,
-          landingVariant: session.firstLandingVariant ?? "unknown",
-        });
-      }
-    }
-    return true;
-  });
 }
 
 type ShareAuthorization = {

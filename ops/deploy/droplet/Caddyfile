@@ -16,7 +16,6 @@
 		~^/api/v1/scans/[^/]+/.*$ api_v1_scan_action
 		~^/api/v1/reports/[^/]+(?:/.*)?$ api_v1_report
 		~^/api/v1/shares/[^/]+$ api_v1_share
-		~^/api/v1/waitlist/[^/]+/answer$ api_v1_waitlist
 		~^/api/v1/card-signals(?:/.*)?$ api_v1_card_signal
 		~^/api/v1/(attribution|consent|events)$ api_v1_analytics
 		~^/api/v1/account/.*$ api_v1_account

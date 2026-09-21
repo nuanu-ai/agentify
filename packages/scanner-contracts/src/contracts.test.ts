@@ -11,6 +11,7 @@ import {
   clientAnalyticsEventRequestSchema,
   createScanRequestSchema,
   registrationRequestSchema,
+  reportResponseSchema,
   scanStatusResponseSchema,
   scanUrlWasSubmittedWithoutScheme,
   sharePreviewResponseSchema,
@@ -27,9 +28,38 @@ describe("canonical contracts", () => {
     ).toBe(100);
   });
 
-  it("keeps the nine-event taxonomy unique", () => {
-    expect(ANALYTICS_EVENT_NAMES).toHaveLength(9);
-    expect(new Set(ANALYTICS_EVENT_NAMES).size).toBe(9);
+  it("keeps the eight-event taxonomy unique", () => {
+    expect(ANALYTICS_EVENT_NAMES).toHaveLength(8);
+    expect(new Set(ANALYTICS_EVENT_NAMES).size).toBe(8);
+  });
+
+  it("answers a report without a waitlist, and refuses one that still carries it", () => {
+    const report = {
+      scan_id: "018f3f56-2ec8-7b16-8f66-5b8f93f3251f",
+      host: "bloomandco.com",
+      segment: "owner",
+      score: 46,
+      coverage: 0.78,
+      level: "readable",
+      checks: CHECK_DEFINITIONS.map((definition) => ({
+        id: definition.id,
+        label_code: definition.labelCode,
+        status: "unavailable",
+        summary_code: null,
+        user_impact_code: null,
+        fix_code: null,
+        evidence: {},
+      })),
+      benchmark: null,
+    };
+
+    expect(reportResponseSchema.safeParse(report).success).toBe(true);
+    expect(
+      reportResponseSchema.safeParse({
+        ...report,
+        waitlist: { entry_id: report.scan_id, position: "7", answer: null },
+      }).success,
+    ).toBe(false);
   });
 
   it("reports the existing published share alongside the exact preview", () => {

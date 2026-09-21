@@ -193,7 +193,6 @@ const routePatterns: ReadonlyArray<[RegExp, string]> = [
     "api_v1_report_remediation",
   ],
   [/^\/api\/v1\/shares\/[^/]+$/, "api_v1_share"],
-  [/^\/api\/v1\/waitlist\/[^/]+\/answer$/, "api_v1_waitlist_answer"],
   [/^\/api\/v1\/card-signals\/setup-intents$/, "api_v1_card_setup"],
   [
     /^\/api\/v1\/card-signals\/[^/]+(?:\/payment-method|\/local-confirm)?$/,

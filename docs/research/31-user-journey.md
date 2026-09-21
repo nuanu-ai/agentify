@@ -258,12 +258,24 @@ deployment deletes the answers visitors have typed so far, and nothing reads
 them today. Renaming the table is left for a follow-up, because a name is
 not a shape and a rename with data behind it deserves its own step.
 
+The survey had roots outside the application too, and they go in the same
+change: the operator's restricted worklist query read the ordinal and the
+answer's time, the browser smoke pressed a survey button and waited for its
+route, the request-class map in both Caddyfiles named the route, the
+dashboard validator forbade a column that no longer exists, and the
+migration rehearsal hashed every column of the registration table, which a
+deliberate drop must not fail; it now hashes the columns that must survive.
+The migration file itself says what it deletes, since that is where an
+operator reads. The methodology page stops calling the benchmark's gate
+"documented" and states it: thirty finished scans of the segment with
+coverage of 70% or more.
+
 The tests: the report's schema, which is strict, refuses a payload that
 still carries `waitlist`, which is the negative control for the removed
-member; the benchmark line renders the average and the sample when given
-one and renders nothing when given none; the P4 integration test still
-verifies once, opens the report and shares it, and counts the events that
-remain.
+member; the benchmark line renders the sentence with the average before the
+sample when given one, so the two cannot swap, and renders nothing when
+given none; the P4 integration test still verifies once, opens the report
+and shares it, and counts the events that remain.
 
 ### 4. One name
 
