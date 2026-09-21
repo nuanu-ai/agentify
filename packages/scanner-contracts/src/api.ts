@@ -133,7 +133,7 @@ export const phoneE164Schema = z
 export const registrationRequestSchema = z
   .object({
     email: z.email().max(320),
-    phone: phoneE164Schema,
+    phone: phoneE164Schema.optional(),
     role: z.string().trim().min(1).max(100),
     site_is_mine: z.boolean(),
     marketing_email_opt_in: z.boolean(),

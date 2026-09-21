@@ -108,8 +108,12 @@ export async function createScannerRegistrationIntent(
         config.encryptionKey,
       ),
       emailLookupHash,
-      phoneE164Ciphertext: encryptEmail(body.phone, config.encryptionKey),
-      phoneLookupHash: hmacHex(config.hmacSecret, "phone", body.phone),
+      phoneE164Ciphertext: body.phone
+        ? encryptEmail(body.phone, config.encryptionKey)
+        : null,
+      phoneLookupHash: body.phone
+        ? hmacHex(config.hmacSecret, "phone", body.phone)
+        : null,
       partnerClickIdCiphertext: partnerClickId.success
         ? encryptSensitiveValue(partnerClickId.data, config.encryptionKey)
         : null,
@@ -251,6 +255,15 @@ async function finalizeRegistrationIntentInTransaction(
       .where(eq(leads.emailLookupHash, emailLookupHash))
       .limit(1)
   )[0];
+  // The phone is optional on the form: one given now replaces the stored
+  // one, and none given leaves a stored one alone.
+  const phoneUpdate =
+    intent.phoneE164Ciphertext && intent.phoneLookupHash
+      ? {
+          phoneE164Ciphertext: intent.phoneE164Ciphertext,
+          phoneLookupHash: intent.phoneLookupHash,
+        }
+      : {};
   let firstVerification: boolean;
   if (!lead) {
     const leadId = createUuidV7();
@@ -275,8 +288,7 @@ async function finalizeRegistrationIntentInTransaction(
         .update(leads)
         .set({
           emailNormalizedCiphertext: intent.emailNormalizedCiphertext,
-          phoneE164Ciphertext: intent.phoneE164Ciphertext,
-          phoneLookupHash: intent.phoneLookupHash,
+          ...phoneUpdate,
           role: intent.role,
           verifiedAt: now,
         })
@@ -288,8 +300,7 @@ async function finalizeRegistrationIntentInTransaction(
       .update(leads)
       .set({
         emailNormalizedCiphertext: intent.emailNormalizedCiphertext,
-        phoneE164Ciphertext: intent.phoneE164Ciphertext,
-        phoneLookupHash: intent.phoneLookupHash,
+        ...phoneUpdate,
         role: intent.role,
       })
       .where(eq(leads.id, lead.id));

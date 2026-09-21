@@ -70,7 +70,7 @@ export async function POST(
       request,
       400,
       "invalid_registration",
-      "Check the email, international phone, and consent fields.",
+      "Check the email, the phone if given, and the consent fields.",
     );
   try {
     const partnerClickId = partnerClickIdSchema.safeParse(

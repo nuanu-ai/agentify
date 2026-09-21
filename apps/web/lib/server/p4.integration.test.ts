@@ -723,6 +723,58 @@ describe("P4 cabinet-owned scanner identity", () => {
     ).toMatchObject({ rows: [{ count: "1" }] });
   });
 
+  it("unlocks a report without a phone and stores none for the lead", async () => {
+    const { db } = getDatabase();
+    const { scan } = await createFreshCompletedScan("no-phone-registration");
+    const sourceChecks = await db
+      .select()
+      .from(scanChecks)
+      .where(eq(scanChecks.scanId, scanId));
+    await db
+      .insert(scanChecks)
+      .values(sourceChecks.map((check) => ({ ...check, scanId: scan.id })));
+
+    const email = "no-phone@example.com";
+    await createScannerRegistrationIntent(
+      scan,
+      { ...registrationBody(email), phone: undefined },
+      {},
+    );
+    const link = latestLink(email, "registration");
+    const emailLookupHash = hmacHex(
+      process.env.TOKEN_HMAC_SECRET!,
+      "email",
+      email,
+    );
+    const intent = (
+      await db
+        .select()
+        .from(registrationIntents)
+        .where(
+          and(
+            eq(registrationIntents.scanId, scan.id),
+            eq(registrationIntents.emailLookupHash, emailLookupHash),
+          ),
+        )
+    )[0]!;
+    expect(intent.phoneE164Ciphertext).toBeNull();
+    expect(intent.phoneLookupHash).toBeNull();
+
+    const finalized = await verifyAndFinalizeScannerIdentity(
+      link.state,
+      link.token,
+    );
+    expect(finalized?.scanId).toBe(scan.id);
+    const lead = (
+      await db
+        .select()
+        .from(leads)
+        .where(eq(leads.emailLookupHash, emailLookupHash))
+    )[0]!;
+    expect(lead.phoneE164Ciphertext).toBeNull();
+    expect(lead.phoneLookupHash).toBeNull();
+  });
+
   it("stores phone only encrypted and finalizes cabinet-backed identity once", async () => {
     const { db } = getDatabase();
     const { scan, accessToken } = await createFreshCompletedScan(
