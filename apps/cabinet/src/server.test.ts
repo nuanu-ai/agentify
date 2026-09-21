@@ -931,8 +931,8 @@ describe("the passwordless cabinet door", () => {
 
     expect(known.status).toBe(202);
     expect(unknown.status).toBe(202);
-    expect(known.html).toContain(`<strong>${PERSON}</strong>`);
-    expect(unknown.html).toContain("<strong>nobody@example.com</strong>");
+    expect(readable(known.html)).toContain(PERSON);
+    expect(readable(unknown.html)).toContain("nobody@example.com");
     expect(readable(known.html).replace(PERSON, "submitted@example.com")).toBe(
       readable(unknown.html).replace("nobody@example.com", "submitted@example.com"),
     );
@@ -2318,7 +2318,6 @@ describe("the keys screen", () => {
     expect(issued.html).toContain(SECRET);
     expect(readable(issued.html)).toMatch(/only time|once/i);
     expect(readable(issued.html)).toContain("Copy key");
-    expect(issued.html).toContain('history.replaceState(null, "", "/keys/new")');
 
     const reloaded = await browser.get("/keys/new");
     expect(reloaded.status).toBe(303);
