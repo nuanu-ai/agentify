@@ -1049,6 +1049,7 @@ describe("the passwordless cabinet door", () => {
     // a message of the second kind may have arrived, so the page may not claim
     // that nothing was sent. What it can claim is that nothing was written.
     expect(readable(answered.html)).toMatch(/could not confirm/i);
+    expect(readable(answered.html)).not.toMatch(/no link was sent|nothing was sent/i);
     expect(readable(answered.html)).toMatch(/no account and no session/i);
     expect(answered.headers.getSetCookie()).toStrictEqual([]);
     expect(await identity.byEmail("new@example.com")).toBeNull();
