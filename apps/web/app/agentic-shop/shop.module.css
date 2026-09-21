@@ -511,8 +511,7 @@
 }
 .section h2,
 .settlement h2,
-.entry h2,
-.faq h2 {
+.entry h2 {
   font-size: clamp(2.25rem, 3.6vw, 3.5rem);
   font-weight: 500;
   line-height: 1.1;
@@ -809,49 +808,6 @@
   margin-top: 15px !important;
   line-height: 1.6 !important;
 }
-.faq {
-  display: grid;
-  grid-template-columns: 0.85fr 1.2fr;
-  gap: 100px;
-  padding: 85px 0;
-}
-.faq h2 {
-  margin-top: 20px;
-  font-size: 2.5rem;
-}
-.faq details {
-  border-top: 1px solid var(--line-strong);
-}
-.faq details:last-child {
-  border-bottom: 1px solid var(--line-strong);
-}
-.faq summary {
-  list-style: none;
-  padding: 22px 0;
-  display: flex;
-  justify-content: space-between;
-  gap: 25px;
-  font-size: 1rem;
-  font-weight: 500;
-  cursor: pointer;
-}
-.faq summary::-webkit-details-marker {
-  display: none;
-}
-.faq summary > span {
-  font-size: 1.5rem;
-  color: var(--accent);
-  line-height: 1;
-  flex-shrink: 0;
-}
-.faq details[open] summary > span {
-  transform: rotate(45deg);
-}
-.faq details p {
-  font-size: 1rem;
-  color: var(--fg-2);
-  padding: 0 28px 25px 0;
-}
 .footer {
   border-top: 1px solid var(--line);
   padding: 45px 0;
@@ -950,9 +906,6 @@
   }
   .categories article {
     padding: 23px 20px;
-  }
-  .faq {
-    gap: 45px;
   }
   .offerCard {
     left: 18px;
@@ -1125,11 +1078,6 @@
     max-width: 590px;
     width: 100%;
     margin: auto;
-  }
-  .faq {
-    grid-template-columns: 1fr;
-    gap: 30px;
-    padding: 60px 0;
   }
   .footer > .container {
     flex-wrap: wrap;
@@ -1389,17 +1337,6 @@
   .entryCard h3 {
     font-size: 1.375rem;
   }
-  .faq h2 {
-    font-size: 2.25rem;
-  }
-  .faq summary {
-    font-size: 1rem;
-    gap: 20px;
-    padding: 20px 0;
-  }
-  .faq details p {
-    font-size: 0.9375rem;
-  }
   .footer {
     padding: 35px 0;
   }
@@ -1426,18 +1363,10 @@
   }
 }
 
-.faq {
-  scroll-margin-top: 110px;
-}
 .imageLabel {
   padding: 10px 14px;
   background: rgba(246, 244, 239, 0.96);
   border-radius: 10px;
-}
-@media (max-width: 800px) {
-  .faq {
-    scroll-margin-top: 92px;
-  }
 }
 .opportunity a:focus-visible {
   outline-color: var(--shop-mint);

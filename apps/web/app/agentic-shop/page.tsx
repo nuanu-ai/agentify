@@ -57,37 +57,6 @@ const categories = [
   ],
 ];
 
-const questions = [
-  [
-    "Do I need to understand crypto or build an API?",
-    "No crypto expertise is needed to open a cabinet. Publishing through the current product path requires an engineer to integrate the Agentify SDK. The WooCommerce connector is experimental.",
-  ],
-  [
-    "Can you connect a local business?",
-    "A cabinet can represent a local business when its offers and fulfilment fit a supported integration. Creating a cabinet does not promise a bespoke booking connection or live publication.",
-  ],
-  [
-    "Will I receive money in my bank account?",
-    "No bank settlement service is active. The live channel uses a supported payout wallet. A seller name, that wallet and an operator approval are all required before live publication.",
-  ],
-  [
-    "Do you guarantee sales or placement in an AI assistant?",
-    "No. Offers from a supported ordering channel may be published through compatible discovery surfaces. Visibility, traffic and sales depend on adoption and demand. No specific AI assistant is guaranteed to recommend or buy your products.",
-  ],
-  [
-    "Who controls prices, availability and cancellations?",
-    "You control the products, prices and availability that your integration publishes. An order follows the public contract attached to that offer; the cabinet does not invent availability, cancellation or refund terms that the integration did not provide.",
-  ],
-  [
-    "How would agent loyalty work?",
-    "The proposed model combines merchant-funded cashback with a record of reliable service. You set a funded reward budget and clear terms that an agent can compare for its customer. A reward becomes payable only after verified delivery, subject to agreed return rules. The benefit belongs to the customer; a bigger reward does not guarantee an agent’s recommendation. This program is not live yet.",
-  ],
-  [
-    "What happens after I open a cabinet?",
-    "The email link creates or opens your merchant cabinet. Set the name buyers see and the test payout wallet, integrate the SDK, and publish against the test channel. Live publication uses a separate wallet and remains closed until an operator approves the merchant.",
-  ],
-];
-
 export default function AgenticShopPage() {
   return (
     <div className={styles.page}>
@@ -573,25 +542,16 @@ export default function AgenticShopPage() {
           </div>
         </section>
 
-        <section id="questions" className={`${styles.container} ${styles.faq}`}>
-          <div>
-            <p className={styles.eyebrow}>A few things worth knowing</p>
-            <h2>
-              Good questions.
-              <br />
-              Straight answers.
-            </h2>
-          </div>
-          <div>
-            {questions.map(([question, answer]) => (
-              <details key={question}>
-                <summary>
-                  {question}
-                  <span aria-hidden="true">+</span>
-                </summary>
-                <p>{answer}</p>
-              </details>
-            ))}
+        <section
+          className={`${styles.container} ${styles.section}`}
+          id="questions"
+        >
+          <div className={styles.sectionHeading}>
+            <h2>Questions about selling to agents</h2>
+            <p>
+              They are answered in the{" "}
+              <a href="/docs/faq">merchant documentation</a>.
+            </p>
           </div>
         </section>
       </main>
@@ -611,7 +571,7 @@ export default function AgenticShopPage() {
           </p>
           <div>
             <a href="/privacy">Privacy</a>
-            <a href="#questions">Merchant questions</a>
+            <a href="/docs/faq">Merchant questions</a>
             <Link href="/owner">
               Explore Agentify <Arrow diagonal />
             </Link>

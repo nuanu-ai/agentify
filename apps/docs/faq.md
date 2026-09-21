@@ -24,6 +24,16 @@ orders through your API. The WooCommerce connector is experimental and is not
 the SDK acceptance path; delivery by a message is not available. The working
 path is described in [Your hands or ours](/).
 
+### Can a restaurant or a hotel sell this way?
+
+A card can describe a table, a room night or a pass, as long as your own system
+can hold the booking and your handler can answer for it when the order arrives.
+Local rules on payment and availability decide what the card may promise, and
+those are yours to set. Opening a cabinet is not a commitment from us to build
+a booking connection for your case: the test channel comes first, and live
+publication waits for the approval of your merchant. What a card has to say is
+in the [card reference](/cards).
+
 ### What does it cost?
 
 We take no percentage of the payments: the money goes from the buyer's wallet
