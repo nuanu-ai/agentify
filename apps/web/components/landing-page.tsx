@@ -22,6 +22,7 @@ export function LandingPage({ config }: Readonly<{ config: LandingConfig }>) {
       <StructuredData schema={publicSiteSchema()} />
       <MarketingHeader />
       <main
+        id="main"
         {...{
           [LANDING_SEGMENT_ATTRIBUTE]: config.segment,
           [LANDING_VARIANT_ATTRIBUTE]: config.variant,

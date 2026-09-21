@@ -299,8 +299,10 @@ ${
     // Asking for this address without paying is answered with a demand for
     // payment that travels in a header, so a browser is handed a blank page
     // and a merchant who clicked reads that as their card being broken.
-    "The line under each product is the address an agent buys it at: for handing to an agent or" +
-      " trying from a terminal, not for opening here.",
+    "The line under each product is the address an agent buys it at. Asking for it without paying" +
+      " answers with a demand for payment rather than a page, so it is for handing to an agent or" +
+      " trying from a terminal, not for opening here. A card that is off sale is refused at that" +
+      " address instead of being offered.",
   )}</p>
 `;
 
@@ -319,9 +321,9 @@ ${
 const sellingNote = (selling: MerchantCardList["selling"]): string => {
   switch (selling) {
     case "departed":
-      return "You have left. The orders that were open closed with you, and the money for anything paid for and not delivered is yours to return.";
+      return "You have left. The orders that were open closed with you, and the money for anything paid for and not delivered is yours to return. Selling does not start again from this page.";
     case "paused":
-      return "All selling is stopped: no new order is taken for any card, and the orders you have already accepted play out as usual.";
+      return "All selling is stopped: no new order is taken for any card, and the orders you have already accepted play out as usual. Resuming leaves the cards you paused yourself paused.";
     case "open":
       return "A pause takes the card off sale without abandoning orders: the ones you already accepted play out as usual.";
   }
@@ -486,7 +488,7 @@ export const receiptsScreen = (
   <div class="lede">
     <div>
       <h1>Receipts</h1>
-      <p>A receipt is written when the goods for an order are released.${restOf(
+      <p>A receipt is written when the goods for an order are released: the amount, the moment the money moved, the moment we set that price for the sale, and the instant the price behind it was true. Those three are three different moments, and on a product whose price is asked for at the purchase they can be minutes apart.${restOf(
         "/docs/money#what-proves-a-sale-happened",
         "What a receipt records, and which moment each column is",
       )}</p>

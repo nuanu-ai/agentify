@@ -19,6 +19,7 @@ export const LANDING_SHARED_CONTENT = {
   assurances: [
     "Public HTTP only",
     "No login or plugin",
+    "Nothing on your site is changed",
     "Bounded scan deadline",
   ],
   howTitle: "How the scan works",

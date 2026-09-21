@@ -125,7 +125,9 @@ export function BrowserObservations({
           titleId={titleId}
           title="Browser observations are temporarily unavailable"
         />
-        <p className={styles.notice}>The 18-check report is unaffected.</p>
+        <p className={styles.notice}>
+          The 18-check report is unaffected. This is not a failure of your site.
+        </p>
       </section>
     );
   }

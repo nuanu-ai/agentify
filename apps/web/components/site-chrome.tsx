@@ -32,6 +32,9 @@ export function SiteDoors() {
 export function MarketingHeader() {
   return (
     <header className={styles.header}>
+      <a className="skip" href="#main">
+        Skip to content
+      </a>
       <div className={`${styles.headerInner} container`}>
         <Brand />
         <div className={styles.headerLinks}>
@@ -57,6 +60,8 @@ export function SiteFooter() {
         <Brand inverse />
         <nav aria-label="Site" className={styles.footerLinks}>
           <Link href="/agentic-shop">Sell to agents</Link>
+          <Link href="/store">For stores</Link>
+          <Link href="/local">For local</Link>
           <Link href="/scanner">Scanner</Link>
           <Link href="/methodology">Methodology</Link>
           <Link href="/privacy">Privacy</Link>

@@ -34,14 +34,14 @@
   align-items: center;
   gap: 18px;
   padding-left: 24px;
-  border-left: 1px solid var(--border);
+  border-left: 1px solid var(--line);
   font-size: 0.875rem;
   font-weight: 500;
 }
 
 .doors a {
   text-decoration: none;
-  color: var(--ink);
+  color: var(--fg);
 }
 
 .doors a:hover,

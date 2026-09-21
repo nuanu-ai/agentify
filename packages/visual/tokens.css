@@ -201,6 +201,20 @@ p {
   text-transform: uppercase;
 }
 
+/* The skip link every header carries: off the canvas until a keyboard reaches it. */
+.skip {
+  position: fixed;
+  top: -80px;
+  left: 20px;
+  z-index: 100;
+  padding: 12px;
+  background: var(--bg);
+}
+
+.skip:focus {
+  top: 12px;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

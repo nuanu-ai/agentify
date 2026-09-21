@@ -48,9 +48,12 @@ describe("how much a screen asks a reader to read", () => {
     );
 
     // The doors to the documentation and the cabinet, the second door under
-    // the form and one name for the merchant page (docs/research/31-user-journey.md)
-    // are words a reader acts on; the ceiling moved by exactly what they added.
-    expect(visibleWords(markup)).toBeLessThan(200);
+    // the form, one name for the merchant page (docs/research/31-user-journey.md),
+    // the footer's way to the two segment landings, the skip link and the
+    // disclosure that the site is left alone are words a reader acts on or
+    // relies on; the ceiling moved by what they added, and the floor beside
+    // this file (screen-boundaries.test.tsx) is what keeps the next trim honest.
+    expect(visibleWords(markup)).toBeLessThan(210);
   });
 
   it("keeps the waiting screen to what is happening", () => {

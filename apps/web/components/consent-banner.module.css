@@ -62,12 +62,12 @@
   margin-top: 18px;
 }
 
-.dialog .actions button {
+.actions button {
   min-height: 44px;
 }
 
 .preferencesLink {
-  min-height: 24px;
+  min-height: 44px;
   border: 0;
   padding: 0;
   background: none;

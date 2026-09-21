@@ -59,7 +59,7 @@ export default function AgenticShopPage() {
   return (
     <>
       <MarketingHeader />
-      <main className={styles.page}>
+      <main className={styles.page} id="main">
         <section className={`${styles.container} ${styles.hero}`}>
           <div className={styles.heroCopy}>
             <p className={styles.eyebrow}>

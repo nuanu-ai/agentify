@@ -21,7 +21,7 @@ export default function MerchantPrivacyPage() {
   return (
     <div className={styles.page}>
       <MarketingHeader />
-      <main className={`${styles.container} ${styles.privacy}`}>
+      <main className={`${styles.container} ${styles.privacy}`} id="main">
         <p className={styles.eyebrow}>
           Historical merchant applications · September 9, 2026
         </p>

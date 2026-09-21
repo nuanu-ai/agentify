@@ -137,3 +137,9 @@ page for a person, so the shape of that is a decision rather than a detail.
   band on a light page; dropping it was a few hundred lines deleted. The cost
   is real: readers of technical documentation expect the portal to have one,
   and the way back is to do the expensive half.
+- **The portal keeps its dark set while the scanner and the cabinet stay
+  light** — nothing to build, and it leaves one address with two behaviours:
+  a reader who crosses from the documentation into the cabinet changes
+  palette at the click, which is the seam this section exists to close. If
+  the portal's readers turn out to miss it, the way back is the expensive
+  half above, not a switch on one surface of three.

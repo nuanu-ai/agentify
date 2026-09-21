@@ -450,7 +450,7 @@ const summaryOf = (
 const publishedBlock = (outcomes: readonly Published[]): string => `  <div class="lede">
     <div>
       <h2>Published</h2>
-      <p class="quiet">Each is one of your cards. Whether it can be bought is on your cards screen.</p>
+      <p class="quiet">Each is one of your cards. Whether it can be bought is on your cards screen. A card you paused stays paused through an import, and while all selling is stopped no card takes an order.</p>
       <ul>${outcomes
         .map(
           (one) =>
@@ -540,7 +540,7 @@ const notAttemptedBlock = (outcomes: readonly NotAttempted[]): string => `  <div
 const skippedBlock = (skipped: readonly SkippedProduct[]): string => `  <div class="lede">
     <div>
       <h2>Left in the shop</h2>
-      <p class="quiet">Nothing was published for these.</p>
+      <p class="quiet">Nothing was published for these, and nothing about them was changed in your shop.</p>
       <ul>${skipped
         .map(
           (one) =>

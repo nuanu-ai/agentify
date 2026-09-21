@@ -30,6 +30,9 @@ export function EditorialPage({
     <>
       {structuredData ? <StructuredData schema={publicSiteSchema()} /> : null}
       <header className={styles.header}>
+        <a className="skip" href="#main">
+          Skip to content
+        </a>
         <div className="container">
           <Brand />
           <div className={styles.headerLinks}>
@@ -42,7 +45,7 @@ export function EditorialPage({
           </div>
         </div>
       </header>
-      <main className={`${styles.layout} container`}>
+      <main className={`${styles.layout} container`} id="main">
         <aside className={styles.desktopToc}>
           <span>On this page</span>
           {sections.map((section) => (
