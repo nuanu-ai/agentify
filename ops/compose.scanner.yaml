@@ -1,4 +1,7 @@
-name: agentify
+# Its own project, because the commerce stack in the root compose.yaml also
+# has a service named postgres: under one project name, bringing this one up
+# would recreate that container with this definition.
+name: agentify-scanner
 
 services:
   postgres:
