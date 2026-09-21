@@ -1017,7 +1017,7 @@ describe("the passwordless cabinet door", () => {
     expect(replay.html).toContain('method="post" action="/cabinet/sign-out"');
     expect(replay.html).not.toContain('action="/cabinet/sign-in"');
 
-    const switching = await running.browser.post("/cabinet/sign-out");
+    const switching = await running.browser.from(running.url).post("/cabinet/sign-out");
     expect(switching.status).toBe(303);
     expect(switching.to).toBe("/cabinet/sign-in");
     expect(running.rows.cabinet_sessions).toStrictEqual([]);
