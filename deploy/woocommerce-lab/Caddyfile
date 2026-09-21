@@ -1,7 +1,3 @@
-{
-	email dmitry@nuanu.com
-}
-
 woo.nuanu.ai {
 	encode zstd gzip
 	reverse_proxy wordpress:80
