@@ -4,7 +4,7 @@
  * Stryker's mutation report for one workspace package, with the working tree
  * left alone.
  *
- * Usage: pnpm mutate <package>
+ * Usage: pnpm mutate <package> [--file <package-relative-path>]...
  *
  * A package is a directory under `packages/` or `apps/` that holds a
  * `package.json`, and <package> is its name, exactly as `ls` prints it. The
@@ -44,8 +44,8 @@
  *   every `node_modules` beneath it. Run from `packages/core` the sandbox
  *   would hold core alone: not the vitest config, not the network guard it
  *   loads, none of the tests in gateway and slice that import core. Run from
- *   the root, all of them are copied and the runner picks the test files that
- *   import the mutated ones. The one thing the copy gets wrong, a workspace
+ *   the root, all of them are copied and the runner selects the commerce or
+ *   scanner suite for the target package. The one thing the copy gets wrong, a workspace
  *   symlink that leads back to the real checkout, is corrected by
  *   `scripts/stryker.vitest.config.ts`, which is why that file is passed as
  *   the vitest config rather than `vitest.config.ts` directly.
@@ -84,15 +84,25 @@
  *   diff and the tests that ran against it, and the score table; the list of
  *   every test in the dry run, twelve hundred lines that say nothing about a
  *   mutant, is switched off.
- * - Only `.ts` files are mutated, tests and their `fixtures.ts` excluded. The
- *   count is then the count the spike measured. `preflight.mjs` in core is
+ * - Tracked `.ts` and `.tsx` production files are mutated, with tests and
+ *   fixtures excluded. `apps/web` has production roots under `app`,
+ *   `components`, `content` and `lib`; other workspaces use `src`. Repeated
+ *   `--file` narrows that production scope without accepting an untracked or
+ *   out-of-package path. `preflight.mjs` in core is
  *   spawned as a child process by its test, where a mutant switched on in this
  *   process is not seen, so mutating it would only report survivors that are
  *   not holes.
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -100,6 +110,17 @@ import { Stryker } from "@stryker-mutator/core";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const STORAGE = path.join(homedir(), ".codex-project-storage", "stryker");
+const SCANNER_PACKAGES = new Set([
+  "apps/web",
+  "apps/scanner-worker",
+  "apps/browser-observer-actor",
+  "packages/scanner-contracts",
+  "packages/scanner-database",
+  "packages/scanner",
+  "packages/analytics",
+  "packages/observability",
+  "packages/remediation",
+]);
 
 /** The workspace packages: directories under packages/ and apps/ that hold a package.json. */
 function workspacePackages() {
@@ -111,21 +132,94 @@ function workspacePackages() {
   );
 }
 
-const name = process.argv[2];
+const [name, ...cliArgs] = process.argv.slice(2);
 const packageDir = workspacePackages().find((p) => p.name === name)?.dir;
 
 if (packageDir === undefined) {
   console.error(
-    `Usage: pnpm mutate <package>, where <package> is one of: ${workspacePackages()
+    `Usage: pnpm mutate <package> [--file <package-relative-path>]..., where <package> is one of: ${workspacePackages()
       .map((p) => p.name)
       .join(", ")}`,
   );
   process.exit(2);
 }
 
+const requestedFiles = [];
+for (let index = 0; index < cliArgs.length; index += 2) {
+  if (cliArgs[index] !== "--file" || !cliArgs[index + 1]) {
+    console.error(
+      "Every mutation scope argument must be --file followed by a package-relative path.",
+    );
+    process.exit(2);
+  }
+  requestedFiles.push(cliArgs[index + 1]);
+}
+
+const tracked = new Set(
+  execFileSync("git", ["ls-files", "-z", "--", packageDir], {
+    cwd: ROOT,
+    encoding: "utf8",
+  })
+    .split("\0")
+    .filter(Boolean),
+);
+
+const isProductionTypeScript = (relative) => {
+  const parts = relative.split("/");
+  const file = parts.at(-1) ?? "";
+  return (
+    /\.tsx?$/.test(file) &&
+    !/\.d\.ts$/.test(file) &&
+    !/\.(test|spec)\.tsx?$/.test(file) &&
+    !/^fixtures?\.tsx?$/.test(file) &&
+    !parts.some((part) => part === "fixture" || part === "fixtures")
+  );
+};
+
+const selectedFiles = requestedFiles.length
+  ? requestedFiles.map((relative) => {
+      const normalized = path.posix.normalize(relative);
+      const repositoryPath = path.posix.join(packageDir, normalized);
+      if (
+        normalized !== relative ||
+        path.posix.isAbsolute(relative) ||
+        normalized.startsWith("../") ||
+        !tracked.has(repositoryPath) ||
+        !isProductionTypeScript(normalized)
+      ) {
+        console.error(
+          `Mutation file must be a tracked production .ts/.tsx file inside ${packageDir}: ${relative}`,
+        );
+        process.exit(2);
+      }
+      return repositoryPath;
+    })
+  : [...tracked].filter((repositoryPath) => {
+      const relative = path.posix.relative(packageDir, repositoryPath);
+      const inProductionRoot =
+        packageDir === "apps/web"
+          ? ["app", "components", "content", "lib"].includes(
+              relative.split("/")[0],
+            )
+          : relative.startsWith("src/");
+      return inProductionRoot && isProductionTypeScript(relative);
+    });
+
+if (selectedFiles.length === 0) {
+  console.error(
+    `did not apply: ${name} has no selected production TypeScript files`,
+  );
+  process.exit(4);
+}
+
+const family = SCANNER_PACKAGES.has(packageDir) ? "scanner" : "commerce";
+process.env.AGENTIFY_MUTATION_FAMILY = family;
+process.env.AGENTIFY_MUTATION_PACKAGE_DIR = packageDir;
+
 const lock = path.join(STORAGE, "lock");
 const sandboxes = path.join(STORAGE, "sandboxes");
 const report = path.join(STORAGE, "reports", name, "mutation.json");
+const literalGlob = (value) => value.replace(/[[\]{}()*?!+@|\\]/g, "\\$&");
 
 /** The PID in the lock file if that process is alive and is a mutate run. */
 function liveRun() {
@@ -160,7 +254,9 @@ function takeLock() {
     }
     rmSync(lock, { force: true });
   }
-  console.error("Another pnpm mutate took the lock at the same moment; try again.");
+  console.error(
+    "Another pnpm mutate took the lock at the same moment; try again.",
+  );
   process.exit(3);
 }
 
@@ -168,12 +264,22 @@ function takeLock() {
 function ignoredByGit() {
   return execFileSync(
     "git",
-    ["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"],
+    [
+      "ls-files",
+      "--others",
+      "--ignored",
+      "--exclude-standard",
+      "--directory",
+      "-z",
+    ],
     { cwd: ROOT, encoding: "utf8" },
   )
     .split("\0")
     .filter(Boolean)
-    .map((entry) => `/${entry.replace(/\/$/, "").replace(/[[\]{}()*?!+@|\\]/g, "\\$&")}`);
+    .map(
+      (entry) =>
+        `/${entry.replace(/\/$/, "").replace(/[[\]{}()*?!+@|\\]/g, "\\$&")}`,
+    );
 }
 
 process.chdir(ROOT);
@@ -187,9 +293,12 @@ mkdirSync(path.dirname(report), { recursive: true });
 const stryker = new Stryker({
   plugins: ["@stryker-mutator/vitest-runner"],
   testRunner: "vitest",
-  vitest: { configFile: "scripts/stryker.vitest.config.ts" },
+  vitest: {
+    configFile: "scripts/stryker.vitest.config.ts",
+    related: false,
+  },
   tsconfigFile: "stryker.tsconfig-rewrite-off.json",
-  mutate: [`${packageDir}/src/**/!(*.test|fixtures).ts`],
+  mutate: selectedFiles.map(literalGlob),
   ignorePatterns: ignoredByGit(),
   coverageAnalysis: "perTest",
   ignoreStatic: true,
@@ -202,8 +311,27 @@ const stryker = new Stryker({
 });
 
 try {
-  await stryker.runMutationTest();
-  console.log(`The report is at ${report}`);
+  const results = await stryker.runMutationTest();
+  if (!existsSync(report)) {
+    console.error("mutation run finished without its JSON report");
+    process.exitCode = 1;
+  } else if (results.every((mutant) => mutant.status === "Ignored")) {
+    console.error("did not apply: Stryker produced zero mutants");
+    process.exitCode = 4;
+  } else {
+    const counts = Object.create(null);
+    for (const mutant of results) {
+      counts[mutant.status] = (counts[mutant.status] ?? 0) + 1;
+    }
+    const applied = results.length - (counts.Ignored ?? 0);
+    console.log(
+      `Mutation result: ${applied} applied; ` +
+        `killed=${counts.Killed ?? 0}, survived=${counts.Survived ?? 0}, ` +
+        `noCoverage=${counts.NoCoverage ?? 0}, timedOut=${counts.Timeout ?? 0}, ` +
+        `runtimeError=${counts.RuntimeError ?? 0}, compileError=${counts.CompileError ?? 0}.`,
+    );
+    console.log(`The report is at ${report}`);
+  }
 } catch {
   // Stryker has already said what went wrong; the exit code says it went wrong.
   process.exit(1);
