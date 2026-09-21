@@ -151,17 +151,26 @@ const noKeysYet = (state: ShopState): string => {
 };
 
 /**
- * What a supported product is, said once on the origin.
+ * What this connector is, at the top of its own screen.
  *
- * It was said three times — here, in the import form beside it, and again in
- * the settings block on another screen — which is three copies of one rule and
- * two of them free to go stale. This is the copy that stays, because this is
- * the page the Connect and the Import are on; the settings block links here.
- * There is no WooCommerce page in the portal and this pass does not make one:
- * the connector is experimental and is not the acceptance gate for anything.
+ * What a supported product is used to be here as well, in a sentence a
+ * merchant reads before they have a shop connected and acts on a screen later.
+ * It is now the helper under the Import button, which is where it is acted on
+ * and the only place it can be wrong about anything. There is no WooCommerce
+ * page in the portal and this pass does not make one: the connector is
+ * experimental and is not the acceptance gate for anything.
  */
-const WHAT_CONNECTING_DOES = `<p>This experimental connector sells one narrow kind of WooCommerce product in TEST: a published USD virtual download with one protected file, unlimited access, no managed stock and shop tax calculation disabled.</p>
-  <p class="quiet">Connect grants access to the shop; Import publishes supported products as cards. Your shop asks for approval on its own screen; Agentify never asks for your WooCommerce password.</p>`;
+const WHAT_THIS_IS = `<p>An experimental connector for one narrow kind of WooCommerce product, in TEST.</p>`;
+
+/**
+ * The one thing about Connect a merchant cannot see coming.
+ *
+ * Their browser is about to leave for their own shop, and the page it lands on
+ * asks them to approve. Somebody who has been phished once needs to be told,
+ * here rather than there, that the password box on that screen is their own
+ * shop's and never ours. Drawn only where a Connect is what happens next.
+ */
+const WHOSE_SCREEN_ASKS = `<p class="quiet">Your shop asks for approval on its own screen; Agentify never asks for your WooCommerce password.</p>`;
 
 /** The page a merchant connects from, and comes back to. */
 export const wooScreen = (viewer: Viewer, view: WooView): string => {
@@ -171,7 +180,7 @@ export const wooScreen = (viewer: Viewer, view: WooView): string => {
   <div class="lede">
     <div>
       <h1>WooCommerce</h1>
-      ${WHAT_CONNECTING_DOES}
+      ${WHAT_THIS_IS}${view.state.kind === "connected" ? "" : WHOSE_SCREEN_ASKS}
     </div>
   </div>
 ${view.cameBack === true && view.state.kind === "connected" ? KEYS_ARRIVED : ""}${
@@ -263,7 +272,7 @@ export const wooReturnScreen = (base: string, mode: SurfaceMode): string =>
   ${brandLockup("/")}
   <form class="gate-card" method="get" action="${escaped(base)}/woocommerce">
     <h1>Back from your shop</h1>
-    <p>Continue to your cabinet to see whether access reached Agentify. If you chose not to connect, you can try again there.</p>
+    <p>Continue to your cabinet to see whether access reached Agentify.</p>
     <input type="hidden" name="from" value="shop">
     <button class="button button-primary" type="submit">Continue to your cabinet</button>
   </form>
@@ -271,21 +280,20 @@ export const wooReturnScreen = (base: string, mode: SurfaceMode): string =>
     mode,
   );
 
-/** The box the shop's address is typed into. */
+/** The box the shop's address is typed into, and the one line under it. */
 const theForm = (base: string, view: WooView): string => `  <div class="lede">
     <div>
       <h2>Connect your shop</h2>
-      <p>Type the address you open your own shop at. Your browser goes there next, so that WooCommerce can ask you to approve.</p>
-      <p class="quiet">Use the public https address at the root of the shop. WooCommerce permalinks must be set to anything other than Plain.</p>
     </div>
   </div>
   <form class="issue" method="post" action="${escaped(base)}/woocommerce/connect">
     <div>
       <label for="shop_url">The address of your shop</label>
       <input id="shop_url" name="shop_url" type="url" inputmode="url" placeholder="https://shop.example.com" value="${escaped(view.typed ?? (view.state.kind === "waiting" || view.state.kind === "unanswered" ? view.state.shopUrl : ""))}" required>
+      <p class="quiet">The public https address at the root of your shop. Permalinks must not be Plain.</p>
+      ${view.problem === undefined ? "" : `<p class="problem">${escaped(view.problem)}</p>`}
     </div>
     <button class="button button-compact button-primary" type="submit">Connect</button>
-    ${view.problem === undefined ? "" : `<p class="problem">${escaped(view.problem)}</p>`}
   </form>
 `;
 
@@ -317,15 +325,15 @@ const theConnection = (
   <form class="issue" method="post" action="${escaped(base)}/woocommerce/import">
     <div>
       <label>Import the catalogue</label>
-      <p class="quiet">Reads up to ${PRODUCTS_AT_MOST} products and publishes only the supported single-file downloads described above. If the shop has more, the whole import is refused. Running it again updates the same cards.</p>
-      <p class="quiet">A card remains listed if its shop product is later deleted, out of stock or unsupported, but a fresh price check refuses it before payment. Pause cards you no longer want agents to see.</p>
+      <p class="quiet">Publishes your published USD virtual downloads with one protected file, unlimited access, no managed stock and tax calculation off. Up to ${PRODUCTS_AT_MOST}; more and the import is refused.</p>
+      <p class="quiet">A card stays listed after its shop product changes, and a price check refuses it before payment.</p>
     </div>
     <button class="button button-compact button-primary" type="submit">Import the catalogue</button>
   </form>
   <form class="issue" method="post" action="${escaped(base)}/woocommerce/disconnect">
     <div>
       <label>Disconnect</label>
-      <p class="quiet">Forgets the keys your shop gave us. Cards remain listed, but without a connected worker a fresh purchase cannot get a price and is refused before payment. Orders already paid remain obligations. Pause the cards first if you no longer want agents to see them; revoke the keys in WooCommerce → Settings → Advanced → REST API.</p>
+      <p class="quiet">Forgets your shop's keys. Cards stay listed and are then refused before payment; orders already paid stay yours.</p>
     </div>
     <button class="button button-compact button-secondary" type="submit">Forget this shop</button>
   </form>
@@ -426,10 +434,10 @@ const summaryOf = (
 ): string => {
   const parts = [
     `${published} ${published === 1 ? "product" : "products"} published`,
-    ...(refused === 0 ? [] : [`${refused} refused by our publishing rules`]),
+    ...(refused === 0 ? [] : [`${refused} refused`]),
     ...(unanswered === 0 ? [] : [`${unanswered} got no verdict`]),
     ...(notAttempted === 0 ? [] : [`${notAttempted} not attempted`]),
-    ...(skipped === 0 ? [] : [`${skipped} could not be turned into a card at all`]),
+    ...(skipped === 0 ? [] : [`${skipped} could not be read as a card`]),
   ];
   return `${parts.join(", ")}.`;
 };
@@ -445,7 +453,7 @@ const summaryOf = (
 const publishedBlock = (outcomes: readonly Published[]): string => `  <div class="lede">
     <div>
       <h2>Published</h2>
-      <p class="quiet">Each is one of your cards. Whether it can be bought is on your cards screen. A card you paused stays paused through an import, and while all selling is stopped no card takes an order.</p>
+      <p class="quiet">Whether each can be bought is on your cards screen.</p>
       <ul>${outcomes
         .map(
           (one) =>
@@ -467,8 +475,7 @@ const publishedBlock = (outcomes: readonly Published[]): string => `  <div class
 const refusedBlock = (outcomes: readonly Refused[]): string => `  <div class="lede">
     <div>
       <h2>Refused</h2>
-      <p class="quiet">These are our own publishing rules, and the sentences under each product are the ones the publish door gave. Change what they name in your shop and import again.</p>
-      <p class="quiet">The count is of your description with markup removed, so your shop's editor shows a larger number.</p>
+      <p class="quiet">Our own publishing rules. Change what these lines name in your shop and import again.</p>
       <ul>${outcomes
         .map(
           (
@@ -497,7 +504,7 @@ const refusedBlock = (outcomes: readonly Refused[]): string => `  <div class="le
 const unansweredBlock = (outcomes: readonly Unanswered[]): string => `  <div class="lede">
     <div>
       <h2>No verdict</h2>
-      <p class="quiet">Nothing here is a finding about the product, and nothing in your shop needs changing: the part of Agentify that keeps your cards — the lines below call it the gateway — did not answer when this product was sent to it, or answered with something other than its verdict. Import again later; importing again does not double cards.</p>
+      <p class="quiet">Not a finding about the product: the part of Agentify that keeps your cards — the gateway — did not answer. Import again later; importing again does not double cards.</p>
       <ul>${outcomes
         .map(
           (
@@ -513,7 +520,7 @@ const unansweredBlock = (outcomes: readonly Unanswered[]): string => `  <div cla
 const notAttemptedBlock = (outcomes: readonly NotAttempted[]): string => `  <div class="lede">
     <div>
       <h2>Not attempted</h2>
-      <p class="quiet">Import stopped after the first product got no verdict, so these products were not sent to Agentify. Import again later.</p>
+      <p class="quiet">Import stopped at the first product with no verdict.</p>
       <ul>${outcomes
         .map(
           (one) =>
@@ -535,7 +542,7 @@ const notAttemptedBlock = (outcomes: readonly NotAttempted[]): string => `  <div
 const skippedBlock = (skipped: readonly SkippedProduct[]): string => `  <div class="lede">
     <div>
       <h2>Left in the shop</h2>
-      <p class="quiet">Nothing was published for these, and nothing about them was changed in your shop.</p>
+      <p class="quiet">Nothing was published, and nothing in your shop changed.</p>
       <ul>${skipped
         .map(
           (one) =>
