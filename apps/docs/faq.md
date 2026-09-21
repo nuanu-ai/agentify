@@ -31,7 +31,7 @@ can hold the booking and your handler can answer for it when the order arrives.
 Local rules on payment and availability decide what the card may promise, and
 those are yours to set. Opening a cabinet is not a commitment from us to build
 a booking connection for your case: the test channel comes first, and live
-publication waits for the approval of your merchant. What a card has to say is
+publication waits for our approval. What a card has to say is
 in the [card reference](/cards).
 
 ### What does it cost?
