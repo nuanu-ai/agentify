@@ -1,9 +1,9 @@
 /*
  * What the cabinet needs on top of the shared visual language.
  *
- * ADR-0005 §6 asks for one visual language across the landing, the portal and
- * the cabinet, held in one stylesheet rather than repeated per page. That file
- * is `apps/landing/public/styles/tokens.css`, and it is the one this branch
+ * ADR-0005 §6 asks for one visual language across the surfaces, held in one
+ * stylesheet rather than repeated per page. That file is
+ * `packages/visual/tokens.css`, and it is the one this branch
  * used to carry a second copy of — with the pre-contrast-fix values, which is
  * exactly how "one visual language" becomes two that look almost alike. The
  * copy is gone: the cabinet serves the shared file itself, ahead of this one,

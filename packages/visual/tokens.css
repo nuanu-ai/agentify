@@ -1,11 +1,16 @@
 /*
  * The visual language, shared by every surface on the origin.
  *
- * ADR-0005 §6 asks for one visual language across the landing, the portal and
- * the cabinet, held in one stylesheet rather than repeated per page. Caddy
- * serves this file at /styles/tokens.css on the same origin as all three
- * (ADR-0005 §1), so the cabinet's server-rendered pages link it directly and
- * the three cannot drift apart without somebody editing this file.
+ * ADR-0005 §6 asks for one visual language held in one stylesheet rather than
+ * repeated per page. This is that stylesheet, and it lives in a package of its
+ * own because no two of its readers reach it the same way. Nothing serves it
+ * over HTTP on the deployed origin: deploy/Caddyfile names the shared browser
+ * assets one path at a time and this file is not among them, so a surface that
+ * linked /styles/tokens.css in production would get the scanner's 404. Each
+ * reader takes it at build time or off disk instead — the scanner imports it,
+ * the cabinet and the stand read it and serve it inside their own responses,
+ * and the local static landing gets it copied in beside its own stylesheets,
+ * where Caddy's fixture root does serve it at /styles/tokens.css.
  *
  * What belongs here: colour, type, radius, the border weight, and the base
  * element rules that follow from them. What does not: the layout of any one

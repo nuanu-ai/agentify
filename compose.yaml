@@ -532,6 +532,10 @@ services:
       # not: it is a build, and it comes from the image.
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./apps/landing/public:/srv/landing:ro
+      # The shared visual language is not the landing's to hold any more, and
+      # the static landing still links /styles/tokens.css. One file, mounted
+      # where Caddy's fixture root already looks for it.
+      - ./packages/visual/tokens.css:/srv/landing/styles/tokens.css:ro
       # Where Caddy keeps the certificate and the ACME account key. A named
       # volume rather than the container's own layer because recreating the
       # container is a thing that happens, and a certificate authority counts

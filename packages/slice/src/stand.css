@@ -3,8 +3,8 @@
  *
  * ADR-0005 §6 asks for one visual language across the surfaces, held in one
  * stylesheet rather than repeated per page. That file is
- * `apps/landing/public/styles/tokens.css`, and the stand serves it — and the
- * faces beside it — straight out of the repository rather than keeping a copy,
+ * `packages/visual/tokens.css`, and the stand serves it — and the faces the
+ * landing holds — straight out of the repository rather than keeping a copy,
  * for the reason the cabinet gives above its own stylesheet: two copies of one
  * palette is how a single visual language quietly becomes two that look almost
  * alike. So nothing here declares a colour, a family or a radius.

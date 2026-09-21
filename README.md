@@ -199,6 +199,7 @@ Prettier and ESLint under the `*.scanner.*` configurations at the root.
 | `packages/core` | The order state machine: pure logic, zero IO, zero runtime dependencies. |
 | `packages/sdk` | `@nuanu-ai/agentify`: what a merchant integrates against. Its runtime tree is the contracts package and zod, and nothing else. |
 | `packages/slice` | A mock merchant and a buyer, driving the offline gate, the `buy` and `smoke` commands, and the stand. |
+| `packages/visual` | `@agentify/visual`: one stylesheet — the tokens, the base element rules and the shared primitives every surface on the origin is drawn with (ADR-0005 §6). No build step and no JavaScript. |
 | `packages/scanner-contracts`, `packages/scanner-database`, `packages/scanner` | The scanner's private contracts, storage and evaluation engine. |
 | `packages/analytics`, `packages/observability`, `packages/remediation` | The scanner's remaining packages, kept separate from the engine. |
 | `deploy/` | Dockerfiles, the Compose overlays for test and production, the Caddy route table and the Ansible release playbooks. |

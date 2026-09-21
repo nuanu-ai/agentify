@@ -10,11 +10,11 @@
  * nothing is broken.
  *
  * The colours are written out here rather than imported from
- * apps/landing/public/styles/tokens.css, and that is a deliberate cost. The
- * portal is a separate project with its own lockfile and its own build; making
- * its stylesheet depend on a file inside another application would tie the two
- * builds together to save a copy of eleven values. They are the values of that
- * file, and this comment is where the next person is told to keep them in step.
+ * packages/visual/tokens.css, and that is a deliberate cost. The portal is a
+ * separate project with its own lockfile and its own build; making its
+ * stylesheet depend on a workspace package would tie the two builds together to
+ * save a copy of eight values. They are the values of that file, and this
+ * comment is where the next person is told to keep them in step.
  */
 
 @font-face {

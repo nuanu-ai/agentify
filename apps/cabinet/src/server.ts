@@ -169,37 +169,34 @@ const cabinetPathFor = (base: string, destination: CabinetDestination): string =
  * The stylesheet the cabinet serves: the shared visual language, then the
  * cabinet's own layout. Read once at startup — neither changes while we run.
  *
- * ADR-0005 §6 wants one visual language across the three surfaces, held in one
- * stylesheet rather than repeated per page, and that file is the landing's
- * `styles/tokens.css` — served by Caddy at /styles/tokens.css on the same
- * origin as all three. The cabinet reads it off disk and serves it inside its
- * own response rather than linking that address, for one reason: the cabinet
- * has to render correctly when it is run on its own, without Caddy in front of
- * it, which is how it is developed and how every one of its tests drives it. A
- * link to an absolute path that only exists behind the proxy would leave the
- * pages with no palette at all in exactly the situation somebody is looking at
- * them closely.
+ * ADR-0005 §6 wants one visual language across the surfaces, held in one
+ * stylesheet rather than repeated per page, and that file is
+ * `packages/visual/tokens.css`. Nothing serves it over HTTP on the deployed
+ * origin, so every reader takes it at build time or off disk; the cabinet reads
+ * it off disk and serves it inside its own response. That also suits how the
+ * cabinet is run: it has to render correctly on its own, without Caddy in front
+ * of it, which is how it is developed and how every one of its tests drives it.
  *
  * What matters is that it is one file on disk and not a copy. This branch did
  * carry a copy, with the palette from before the contrast fix, which is how one
  * visual language quietly becomes two that look almost alike.
  */
-const TOKENS_AT = new URL("../../landing/public/styles/tokens.css", import.meta.url);
+const TOKENS_AT = new URL("../../../packages/visual/tokens.css", import.meta.url);
 const TOKENS = readTokens();
 
 function readTokens(): string {
   try {
     return readFileSync(TOKENS_AT, "utf8");
   } catch (thrown) {
-    // An ENOENT here is a packaging mistake — a workspace pruned to the
-    // cabinet's own dependencies, which the landing is not one of — and the
-    // bare exception names a path and nothing about why anybody wanted it. The
-    // configuration goes to lengths to name every problem at once; this is the
-    // same courtesy for the one file it does not read.
+    // An ENOENT here is a packaging mistake — an image built from a context
+    // that leaves `packages/visual` out — and the bare exception names a path
+    // and nothing about why anybody wanted it. The configuration goes to
+    // lengths to name every problem at once; this is the same courtesy for the
+    // one file it does not read.
     throw new Error(
       `The cabinet cannot start: it serves the shared visual language from ${TOKENS_AT.pathname},` +
-        " which is not there. That file is the landing's styles/tokens.css, and ADR-0005 §6 makes" +
-        " it the one place the three surfaces take their palette from — so the cabinet ships" +
+        " which is not there. That file is packages/visual/tokens.css, and ADR-0005 §6 makes" +
+        " it the one place every surface takes its palette from — so the cabinet ships" +
         ` beside it rather than carrying a copy. ${String(thrown)}`,
     );
   }

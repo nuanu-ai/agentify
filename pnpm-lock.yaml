@@ -260,6 +260,9 @@ importers:
       '@agentify/scanner-database':
         specifier: workspace:*
         version: link:../../packages/scanner-database
+      '@agentify/visual':
+        specifier: workspace:*
+        version: link:../../packages/visual
       '@fontsource-variable/schibsted-grotesk':
         specifier: 5.2.8
         version: 5.2.8
@@ -523,6 +526,8 @@ importers:
       vitest:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@26.3.0)(vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(tsx@4.23.12)(yaml@2.9.0))
+
+  packages/visual: {}
 
 packages:
 

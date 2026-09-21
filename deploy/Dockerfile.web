@@ -27,4 +27,8 @@ FROM caddy:2.10.0-alpine@sha256:ae4458638da8e1a91aafffb231c5f8778e964bca650c8a8c
 
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
 COPY apps/landing/public /srv/landing
+# The shared visual language lives in packages/visual and the static landing
+# links it at /styles/tokens.css, so it is copied in beside the landing's own
+# stylesheets rather than kept twice.
+COPY packages/visual/tokens.css /srv/landing/styles/tokens.css
 COPY --from=portal /app/apps/docs/.vitepress/dist /srv/docs

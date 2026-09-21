@@ -16,6 +16,7 @@ COPY packages/analytics/package.json packages/analytics/package.json
 COPY packages/observability/package.json packages/observability/package.json
 COPY packages/scanner/package.json packages/scanner/package.json
 COPY packages/remediation/package.json packages/remediation/package.json
+COPY packages/visual/package.json packages/visual/package.json
 COPY apps/web/package.json apps/web/package.json
 RUN pnpm install --frozen-lockfile --filter @agentify/web...
 
@@ -29,6 +30,7 @@ COPY packages/analytics packages/analytics
 COPY packages/observability packages/observability
 COPY packages/scanner packages/scanner
 COPY packages/remediation packages/remediation
+COPY packages/visual packages/visual
 COPY apps/web apps/web
 RUN pnpm --filter @agentify/web build
 
