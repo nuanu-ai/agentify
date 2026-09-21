@@ -336,7 +336,7 @@ const theConnection = (
   <form class="issue" method="post" action="${escaped(base)}/woocommerce/disconnect">
     <div>
       <label>Disconnect</label>
-      <p class="quiet">Forgets your shop's keys. Orders already paid stay yours.</p>
+      <p class="quiet">Forgets your shop's keys; revoke them in WooCommerce too. Orders already paid stay yours.</p>
     </div>
     <button class="button button-compact button-secondary" type="submit">Forget this shop</button>
   </form>
