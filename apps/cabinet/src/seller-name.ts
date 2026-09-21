@@ -153,7 +153,7 @@ export const settingsScreen = (viewer: Viewer, problem?: string, typedName?: str
   const name = viewer.sellerName ?? null;
 
   const body = `
-  <div class="lede settings-heading">
+  <div class="lede">
     <div>
       <h1>Settings</h1>
       <p>${escaped(

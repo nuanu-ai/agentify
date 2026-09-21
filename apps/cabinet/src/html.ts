@@ -84,7 +84,7 @@ const surface = (mode: SurfaceMode): string => {
   const words = SURFACE_WORDS[mode];
   return words === null
     ? `<div ${SURFACE_MARKER_ATTRIBUTE}="${escaped(mode)}"></div>`
-    : `<div class="surface" ${SURFACE_MARKER_ATTRIBUTE}="${escaped(mode)}"><p class="surface-words">${escaped(words)}</p></div>`;
+    : `<div class="container"><div class="surface" ${SURFACE_MARKER_ATTRIBUTE}="${escaped(mode)}"><p class="surface-words">${escaped(words)}</p></div></div>`;
 };
 
 /**
@@ -154,24 +154,28 @@ export const page = (chrome: Chrome): string => `<!doctype html>
 <div class="page">
 ${surface(chrome.mode)}
   <div class="top">
-    <div class="brand">
-      ${brandLockup("/")}
-      <nav class="tabs">${TABS.map(([tab, label]) =>
-        tab === chrome.tab
-          ? `<span class="here">${label}</span>`
-          : `<a href="${escaped(chrome.base)}/${tab}">${label}</a>`,
-      ).join("")}</nav>
-    </div>
-    <div class="whoami">
-      ${WAY_OUT}
-      ${chrome.selling === undefined ? "" : state(chrome.selling)}
-      <a class="who" href="${escaped(chrome.base)}/settings">${escaped(chrome.who)}</a>
-      <form class="inline" method="post" action="${escaped(chrome.base)}/sign-out">
-        <button type="submit">Sign out</button>
-      </form>
+    <div class="top-inner container">
+      <div class="brand">
+        ${brandLockup("/")}
+        <nav class="tabs">${TABS.map(([tab, label]) =>
+          tab === chrome.tab
+            ? `<span class="here">${label}</span>`
+            : `<a href="${escaped(chrome.base)}/${tab}">${label}</a>`,
+        ).join("")}</nav>
+      </div>
+      <div class="whoami">
+        ${WAY_OUT}
+        ${chrome.selling === undefined ? "" : state(chrome.selling)}
+        <a class="who" href="${escaped(chrome.base)}/settings">${escaped(chrome.who)}</a>
+        <form class="inline" method="post" action="${escaped(chrome.base)}/sign-out">
+          <button type="submit">Sign out</button>
+        </form>
+      </div>
     </div>
   </div>
+  <div class="container">
 ${chrome.unnamed === true ? unnamedNote(chrome.base) : ""}${chrome.body}
+  </div>
 </div>
 </body>
 </html>
