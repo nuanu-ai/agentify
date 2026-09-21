@@ -1544,21 +1544,26 @@ function laterDate(one: Date, two: Date): Date {
 }
 
 function cabinetLinkMessage(to: string, link: string): Message {
-  const subject = "Open your Agentify cabinet";
-  const lead = "Use this secure link to open your merchant cabinet.";
-  const lifetime = "The link expires in one hour and can be used once.";
+  const title = "Sign in to your cabinet";
+  const lifetime =
+    "This link opens once and expires an hour after it was sent. There is nothing here to keep:" +
+    " the next time you sign in, ask for a new link.";
+  const unasked =
+    "If you did not ask for this, ignore the message. Nothing happens until the link is pressed.";
   return {
     to,
-    subject,
-    body: `Agentify\n\n${lead}\n\nOpen my cabinet: ${link}\n\n${lifetime}`,
+    subject: "Sign in to your Agentify cabinet",
+    // The URL stands on a line of its own, so that a client that draws no
+    // button and a person copying it by hand both get the whole of it.
+    body: `Agentify\n\n${title}\n\nOpen this link to sign in to your cabinet:\n\n${link}\n\n${lifetime}\n\n${unasked}`,
     html: transactionalEmailHtml({
-      preview: lead,
-      eyebrow: "Cabinet access",
-      title: "Open your cabinet",
-      lead,
-      action: "Open my cabinet",
+      preview: "Press the button to sign in to your cabinet.",
+      eyebrow: "Cabinet sign-in",
+      title,
+      lead: "Press the button below to sign in to your cabinet.",
+      action: "Sign in to my cabinet",
       link,
-      paragraphs: [lifetime, "If you did not request this link, you can ignore this message."],
+      paragraphs: [lifetime, unasked],
     }),
   };
 }

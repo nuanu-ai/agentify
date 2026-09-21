@@ -36,16 +36,16 @@ describe("report link mail", () => {
     expect(message.body).toContain(one.heading);
     expect(message.body).toContain(one.detail);
     expect(message.body).toContain(`${one.action}: ${link}`);
-    expect(message.body).toContain("expires in one hour and can be used once");
-    expect(message.body).toContain("If you did not request it, you can ignore this email.");
+    expect(message.body).toContain("opens once and expires an hour after it was sent");
+    expect(message.body).toContain("If you did not ask for it, ignore this message.");
 
     expect(message.html).toContain("<!doctype html>");
     expect(message.html).toContain(one.heading);
     expect(message.html).toContain(one.detail);
     expect(message.html).toContain(one.action);
     expect(message.html).toContain(link.replaceAll("&", "&amp;"));
-    expect(message.html).toContain("expires in one hour and can be used once");
-    expect(message.html).toContain("Agentify secure access message");
+    expect(message.html).toContain("opens once and expires an hour after it was sent");
+    expect(message.html).toContain("This message was sent because this address was entered at Agentify.");
     expect(message.html).not.toContain("commerce account");
   });
 

@@ -55,7 +55,7 @@ describe("transactional email HTML", () => {
       paragraphs: ["The link expires in an hour."],
     });
 
-    expect(html).toContain("Agentify secure access message");
+    expect(html).toContain("This message was sent because this address was entered at Agentify.");
     expect(html).not.toContain("commerce account");
   });
 });

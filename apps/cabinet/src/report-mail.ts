@@ -23,7 +23,7 @@ const copy = {
 export function reportLinkMessage(to: string, purpose: ReportMailPurpose, url: string): Message {
   const content = copy[purpose];
   const lifetime =
-    "This secure link expires in one hour and can be used once. If you did not request it, you can ignore this email.";
+    "This link opens once and expires an hour after it was sent. If you did not ask for it, ignore this message.";
 
   return {
     to,
