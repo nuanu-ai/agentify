@@ -45,7 +45,7 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
     if (registrationStarted.current) return;
     registrationStarted.current = true;
     window.dispatchEvent(
-      new CustomEvent("b2a:analytics-event", {
+      new CustomEvent("agentify:analytics-event", {
         detail: { name: "registration_started", scanId },
       }),
     );
@@ -62,7 +62,7 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const token = sessionStorage.getItem(`b2a:scan-token:${scanId}`);
+    const token = sessionStorage.getItem(`agentify:scan-token:${scanId}`);
     if (!token) {
       setState("error");
       setMessage(

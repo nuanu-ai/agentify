@@ -90,7 +90,7 @@ class StripeProvider implements StripeCardSignalProvider {
 
   async createCustomer(input: { leadId: string; idempotencyKey: string }) {
     const customer = await this.#stripe.customers.create(
-      { metadata: { b2a_lead_id: input.leadId, purpose: "card_signal" } },
+      { metadata: { agentify_lead_id: input.leadId, purpose: "card_signal" } },
       { idempotencyKey: `card-customer:${input.idempotencyKey}` },
     );
     return customer.id;
@@ -118,8 +118,8 @@ class StripeProvider implements StripeCardSignalProvider {
         payment_method_types: ["card"],
         usage: "on_session",
         metadata: {
-          b2a_lead_id: input.leadId,
-          b2a_scan_id: input.scanId,
+          agentify_lead_id: input.leadId,
+          agentify_scan_id: input.scanId,
           purpose: "card_signal",
         },
       },
@@ -178,8 +178,8 @@ class StripeProvider implements StripeCardSignalProvider {
 function stripeSetupReadback(setup: Stripe.SetupIntent): SetupReadback {
   const customerId = objectId(setup.customer);
   const paymentMethodId = objectId(setup.payment_method);
-  const leadId = setup.metadata?.b2a_lead_id;
-  const scanId = setup.metadata?.b2a_scan_id;
+  const leadId = setup.metadata?.agentify_lead_id;
+  const scanId = setup.metadata?.agentify_scan_id;
   if (!customerId || !leadId || !scanId || setup.usage !== "on_session")
     throw new Error("stripe_setup_readback_invalid");
   return {
@@ -196,7 +196,7 @@ function stripeSetupReadback(setup: Stripe.SetupIntent): SetupReadback {
 
 type LocalSetup = SetupReadback;
 const localState = globalThis as typeof globalThis & {
-  b2aLocalStripe?: {
+  agentifyLocalStripe?: {
     customers: Map<string, string>;
     deletedCustomers: Set<string>;
     setups: Map<string, LocalSetup>;
@@ -205,14 +205,14 @@ const localState = globalThis as typeof globalThis & {
 };
 
 function getLocalState() {
-  localState.b2aLocalStripe ??= {
+  localState.agentifyLocalStripe ??= {
     customers: new Map(),
     deletedCustomers: new Set(),
     setups: new Map(),
     methods: new Map(),
   };
-  localState.b2aLocalStripe.deletedCustomers ??= new Set();
-  return localState.b2aLocalStripe;
+  localState.agentifyLocalStripe.deletedCustomers ??= new Set();
+  return localState.agentifyLocalStripe;
 }
 
 export class LocalStripeCardSignalProvider implements StripeCardSignalProvider {

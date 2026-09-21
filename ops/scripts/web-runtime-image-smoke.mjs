@@ -300,7 +300,7 @@ async function main() {
   });
   const evidence = JSON.parse(await readFile(evidenceFile, "utf8"));
   const reportPath = new URL(evidence.reportUrl).pathname;
-  const reportCookie = `b2a_report_session=${evidence.reportSessionToken}`;
+  const reportCookie = `agentify_report_session=${evidence.reportSessionToken}`;
 
   startWeb(testWeb, webEnvironment("test", containerDatabaseUrl));
   startWeb(productionWeb, webEnvironment("production", containerDatabaseUrl));

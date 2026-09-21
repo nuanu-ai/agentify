@@ -3,7 +3,7 @@ export type ResumeIntent = "copy-prompt" | "download-md";
 const RESUME_INTENT_TTL_MS = 24 * 60 * 60 * 1000;
 
 export function resumeIntentKey(scanId: string) {
-  return `b2a:resume-intent:${scanId}`;
+  return `agentify:resume-intent:${scanId}`;
 }
 
 export function serializeResumeIntent(intent: ResumeIntent, now: number) {

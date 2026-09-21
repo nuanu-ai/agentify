@@ -55,7 +55,7 @@ export function BrowserObservations({
 
     async function load() {
       const token =
-        sessionStorage.getItem(`b2a:scan-token:${scanId}`) ??
+        sessionStorage.getItem(`agentify:scan-token:${scanId}`) ??
         new URLSearchParams(window.location.hash.slice(1)).get("access_token");
       if (!token) {
         if (missingTokenAttempts < 3) {

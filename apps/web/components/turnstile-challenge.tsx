@@ -5,7 +5,7 @@ import React, { useEffect, useRef } from "react";
 import styles from "./turnstile-challenge.module.css";
 import type { TurnstileAction } from "../lib/server/turnstile";
 
-export const TURNSTILE_TOKEN_EVENT = "b2a:turnstile-token";
+export const TURNSTILE_TOKEN_EVENT = "agentify:turnstile-token";
 
 export function TurnstileChallenge({
   siteKey,
@@ -15,7 +15,7 @@ export function TurnstileChallenge({
 
   useEffect(() => {
     if (!siteKey || !containerRef.current) return;
-    const callbackName = `b2aTurnstile_${crypto.randomUUID().replaceAll("-", "")}`;
+    const callbackName = `agentifyTurnstile_${crypto.randomUUID().replaceAll("-", "")}`;
     const windowRecord = window as unknown as Record<string, unknown>;
     windowRecord[callbackName] = (token: string) => {
       window.dispatchEvent(

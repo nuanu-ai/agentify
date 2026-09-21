@@ -11,8 +11,8 @@ export CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 PWCLI="${PWCLI:-$CODEX_HOME/skills/playwright/scripts/playwright_cli.sh}"
 [[ -x "$PWCLI" ]] || { echo "Playwright CLI wrapper not found at $PWCLI" >&2; exit 1; }
 
-session="b2a-release-$$"
-run_output="$(mktemp /tmp/b2a-playwright-output.XXXXXX)"
+session="agentify-release-$$"
+run_output="$(mktemp /tmp/agentify-playwright-output.XXXXXX)"
 trap 'rm -f "$run_output"; "$PWCLI" --session "$session" close >/dev/null 2>&1 || true' EXIT
 "$PWCLI" --session "$session" open "$WEB_BASE_URL/owner" >/dev/null
 
@@ -44,17 +44,17 @@ set +e
     }
   };
   await page.addInitScript(() => {
-    window.__b2aPerf = { lcp: 0, cls: 0, inp: 0 };
+    window.__agentifyPerf = { lcp: 0, cls: 0, inp: 0 };
     new PerformanceObserver(list => {
       const entries = list.getEntries();
       const latest = entries[entries.length - 1];
-      if (latest) window.__b2aPerf.lcp = latest.startTime;
+      if (latest) window.__agentifyPerf.lcp = latest.startTime;
     }).observe({ type: 'largest-contentful-paint', buffered: true });
     new PerformanceObserver(list => {
-      for (const entry of list.getEntries()) if (!entry.hadRecentInput) window.__b2aPerf.cls += entry.value;
+      for (const entry of list.getEntries()) if (!entry.hadRecentInput) window.__agentifyPerf.cls += entry.value;
     }).observe({ type: 'layout-shift', buffered: true });
     new PerformanceObserver(list => {
-      for (const entry of list.getEntries()) window.__b2aPerf.inp = Math.max(window.__b2aPerf.inp, entry.duration || 0);
+      for (const entry of list.getEntries()) window.__agentifyPerf.inp = Math.max(window.__agentifyPerf.inp, entry.duration || 0);
     }).observe({ type: 'event', buffered: true, durationThreshold: 16 });
   });
   page.on('console', message => {
@@ -90,7 +90,7 @@ set +e
       }
       if (width === 390) {
         await page.waitForTimeout(250);
-        const perf = await page.evaluate(() => window.__b2aPerf);
+        const perf = await page.evaluate(() => window.__agentifyPerf);
         if (perf.lcp > 2500) failures.push(route + ': LCP ' + perf.lcp.toFixed(1) + 'ms');
         if (perf.cls >= 0.1) failures.push(route + ': CLS ' + perf.cls.toFixed(3));
         if (perf.inp > 200) failures.push(route + ': INP ' + perf.inp.toFixed(1) + 'ms');
@@ -121,7 +121,7 @@ set +e
 
   if (localFlow) {
     await page.goto(base + '/owner', { waitUntil: 'networkidle' });
-    await page.evaluate(() => localStorage.removeItem('b2a.consent.current.v1'));
+    await page.evaluate(() => localStorage.removeItem('agentify.consent.current.v1'));
     await page.reload({ waitUntil: 'networkidle' });
     const consentDialog = page.getByRole('dialog', { name: 'Privacy choices' });
     for (let attempt = 0; attempt < 3 && !await consentDialog.isVisible(); attempt += 1) {
@@ -158,7 +158,7 @@ set +e
     const marketing = contactDialog.getByRole('checkbox', { name: 'Send optional product research updates.' });
     if (await marketing.isChecked()) failures.push('marketing consent was preselected');
     await contactDialog.getByRole('button', { name: 'Close registration' }).click();
-    await page.context().addCookies([{ name: 'b2a_report_session', value: localFlow.reportSessionToken, url: base }]);
+    await page.context().addCookies([{ name: 'agentify_report_session', value: localFlow.reportSessionToken, url: base }]);
     await page.reload({ waitUntil: 'domcontentloaded' });
     const teaserPromptResponse = page.waitForResponse(response => response.url().includes('/remediation-prompt?scope=teaser'));
     await page.getByRole('button', { name: 'Copy AI fix prompt' }).click();

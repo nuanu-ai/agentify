@@ -14,17 +14,17 @@ import { fromDrizzle, PgBoss } from "pg-boss";
 import { getServerConfig } from "./config";
 
 const globalQueue = globalThis as typeof globalThis & {
-  b2aWebQueue?: Promise<PgBoss>;
+  agentifyWebQueue?: Promise<PgBoss>;
 };
 
 export function getScanQueue(): Promise<PgBoss> {
-  globalQueue.b2aWebQueue ??= (async () => {
+  globalQueue.agentifyWebQueue ??= (async () => {
     const boss = new PgBoss({
       connectionString: normalizeNodePostgresConnectionString(
         getServerConfig().DATABASE_URL,
       ),
       schema: "pgboss",
-      application_name: "b2a-web-enqueuer",
+      application_name: "agentify-web-enqueuer",
       supervise: false,
       schedule: false,
     });
@@ -36,12 +36,12 @@ export function getScanQueue(): Promise<PgBoss> {
     });
     return boss;
   })();
-  return globalQueue.b2aWebQueue;
+  return globalQueue.agentifyWebQueue;
 }
 
 export async function stopScanQueue(): Promise<void> {
-  const queue = globalQueue.b2aWebQueue;
-  globalQueue.b2aWebQueue = undefined;
+  const queue = globalQueue.agentifyWebQueue;
+  globalQueue.agentifyWebQueue = undefined;
   if (queue) await (await queue).stop();
 }
 

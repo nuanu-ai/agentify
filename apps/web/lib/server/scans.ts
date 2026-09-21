@@ -24,7 +24,7 @@ import { deriveCapability, hmacHex, sha256 } from "./crypto";
 import { getDatabase } from "./database";
 import { enqueueScanInTransaction, getScanQueue } from "./queue";
 
-export const ANONYMOUS_COOKIE = "b2a_anonymous";
+export const ANONYMOUS_COOKIE = "agentify_anonymous";
 
 type ScanCreation = {
   scanId: string;

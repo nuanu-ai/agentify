@@ -460,7 +460,7 @@ describe("P4 cabinet-owned scanner identity", () => {
             "content-type": "application/json",
             "idempotency-key": idempotencyKey,
             "x-forwarded-for": ip,
-            "x-b2a-submitted-without-scheme": spoofedHeader,
+            "x-agentify-submitted-without-scheme": spoofedHeader,
           },
           body: JSON.stringify({
             url,
@@ -508,7 +508,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         method: "POST",
         headers: {
           origin: "http://localhost:3000",
-          cookie: `b2a_anonymous=${anonymousToken}`,
+          cookie: `agentify_anonymous=${anonymousToken}`,
           "content-type": "application/json",
         },
         body: JSON.stringify({
@@ -565,7 +565,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         method: "POST",
         headers: {
           origin: "http://localhost:3000",
-          cookie: `b2a_anonymous=${anonymousToken}`,
+          cookie: `agentify_anonymous=${anonymousToken}`,
           "content-type": "application/json",
         },
         body: JSON.stringify({
@@ -585,7 +585,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         method: "POST",
         headers: {
           origin: "http://localhost:3000",
-          cookie: `b2a_anonymous=${anonymousToken}`,
+          cookie: `agentify_anonymous=${anonymousToken}`,
           "content-type": "application/json",
         },
         body: JSON.stringify({
@@ -613,7 +613,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         method: "POST",
         headers: {
           origin: "http://localhost:3000",
-          cookie: `b2a_anonymous=${anonymousToken}`,
+          cookie: `agentify_anonymous=${anonymousToken}`,
           "content-type": "application/json",
         },
         body: JSON.stringify({
