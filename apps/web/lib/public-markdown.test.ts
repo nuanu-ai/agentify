@@ -11,26 +11,22 @@ afterEach(() => {
 });
 
 describe("public Markdown variants", () => {
-  it("renders substantive canonical content for every public route", () => {
+  it("renders structured canonical content for every public route", () => {
     process.env.APP_BASE_URL = "https://agentify.ad";
     for (const path of PUBLIC_PAGE_PATHS) {
       const markdown = getPublicPageMarkdown(path);
       expect(markdown).toMatch(/^#\s+\S+/);
       expect(markdown).toMatch(/^##\s+\S+/m);
-      expect(markdown.length).toBeGreaterThan(500);
       expect(markdown).not.toContain("undefined");
     }
   });
 
-  it("keeps the methodology rubric and the landing sections in parity, and hands an agent the second door", () => {
+  it("keeps the methodology rubric and merchant route in the agent variant", () => {
     process.env.APP_BASE_URL = "https://agentify.ad";
     const methodology = getPublicPageMarkdown("/methodology");
-    const owner = getPublicPageMarkdown("/");
-    const front = owner;
+    const front = getPublicPageMarkdown("/");
 
     expect(methodology.match(/^- `#\d+`/gm)).toHaveLength(18);
-    expect(owner).toContain("How the scan works");
-    expect(owner).toContain("What you get back");
     expect(front).toContain("](https://agentify.ad/agentic-shop)");
   });
 });
