@@ -87,44 +87,42 @@ const surface = (mode: SurfaceMode): string => {
     : `<div class="container"><div class="surface" ${SURFACE_MARKER_ATTRIBUTE}="${escaped(mode)}"><p class="surface-words">${escaped(words)}</p></div></div>`;
 };
 
-/**
- * The way out of the cabinet, into the documentation.
- *
- * It is the other half of the way out of the documentation, which is a link in
- * the bar of the portal reading "← Agentify"
- * (apps/docs/.vitepress/theme/index.mjs). The two are one solution and are meant
- * to read as one: the same class name, the same shape — an arrow and the name
- * the destination wears in its own corner — the same muted colour until it is
- * hovered, and the same place, at the edge of the bar beside the navigation
- * rather than inside it. Only the arrow differs, because one side is going
- * back and this one is going out.
- *
- * Not a sixth tab, and that is the whole of why it sits in the right-hand
- * group. The tabs are the five places inside the cabinet, and every one of them
- * hangs off the mount point; a tab that took a merchant off this application
- * altogether would be the row lying about what it is. So it rides with the
- * things in the bar that are not navigation — the selling light, the address,
- * the control that signs a merchant out.
- *
- * The word is "Docs" and not "Documentation" because the page it lands on says
- * "Docs" in its own corner (apps/docs/.vitepress/config.mjs). Whoever presses it
- * arrives at the word they pressed.
- *
- * The address is absolute and carries no base path: ADR-0005 §1 puts the
- * documentation at /docs beside the cabinet at /cabinet on one origin, not
- * under it, so /docs/ is the address on every deployment and the trailing
- * slash is the form Caddy redirects to. Run on its own the cabinet has no
- * /docs and this 404s, exactly as /styles/fonts.css does above, and for the
- * same reason: the shared origin is Caddy's to assemble.
- *
- * The portal's half needs `target="_self"` to escape VitePress's router. There
- * is no router here, so a plain anchor is the whole of it.
- */
-const WAY_OUT = '<a class="way-out" href="/docs/" title="The Agentify documentation">Docs →</a>';
-
 /** The same compact lockup on the public site, the cabinet and every auth page. */
 export const brandLockup = (home = "/"): string =>
   `<a class="wordmark" href="${escaped(home)}" aria-label="Agentify home"><img class="brand-mark" src="/assets/agentify-mark.svg" alt="" width="30" height="30"><span>Agentify</span></a>`;
+
+/**
+ * The band at the foot of every working screen.
+ *
+ * One row and three things in it: the lockup, the three places outside the
+ * cabinet a signed-in merchant has the same need for as any visitor, and the
+ * copyright. It is the scanner's footer in colour and in type — ink rather than
+ * paper, the mark inverse, the small print in the monospaced face — and not in
+ * shape: the scanner's four columns of link groups carry a marketing site, and
+ * a console with five tabs has nothing to put in them.
+ *
+ * It also settles where the documentation goes. The link used to ride in the
+ * bar, where it had to argue at length that it was not a sixth tab; in a footer
+ * it plainly is not one, and the argument goes with it.
+ *
+ * The three addresses are absolute and carry no base path: ADR-0005 §1 puts the
+ * documentation at /docs and the scanner's own pages at the root of the same
+ * origin, beside the cabinet rather than under it. Run on its own the cabinet
+ * has none of them and all three 404, exactly as /styles/fonts.css does, and
+ * for the same reason: the shared origin is Caddy's to assemble.
+ */
+const FOOT = `  <footer class="foot">
+    <div class="foot-inner container">
+      ${brandLockup("/")}
+      <nav class="foot-links" aria-label="Agentify">
+        <a href="/docs/">Documentation</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+      </nav>
+      <span class="foot-copy">&copy; 2026 Agentify</span>
+    </div>
+  </footer>
+`;
 
 /**
  * One whole page.
@@ -169,7 +167,7 @@ ${surface(chrome.mode)}
   <div class="container">
 ${chrome.unnamed === true ? unnamedNote(chrome.base) : ""}${chrome.body}
 ${accountRow(chrome.base, chrome.who)}  </div>
-</div>
+${FOOT}</div>
 </body>
 </html>
 `;
@@ -188,7 +186,6 @@ ${accountRow(chrome.base, chrome.who)}  </div>
  */
 const accountRow = (base: string, who: string): string => `  <div class="account">
     <a class="who" href="${escaped(base)}/settings">${escaped(who)}</a>
-    ${WAY_OUT}
     <form class="inline" method="post" action="${escaped(base)}/sign-out">
       <button type="submit">Sign out</button>
     </form>

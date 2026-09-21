@@ -149,21 +149,54 @@ h1 {
 }
 
 /*
- * The way out to the documentation, and the counterpart of the way out of it
- * (apps/docs/.vitepress/theme/agentify.css, same class name). Both are muted
- * until they are hovered, so that neither reads as one of the places the bar
- * navigates to; both stop at one line, because a bar that reflows around a
- * link is a bar that moves under the cursor. Everything else about it —
- * no underline at rest, one on hover — is the cabinet's own convention for a
- * link, taken from tokens.css the way the portal's half takes VitePress's.
+ * The one band on these screens that is ink rather than paper, in the colours
+ * the shared file names for the scanner's footer. One row: the lockup with the
+ * word in paper, the three places outside the cabinet, and the copyright in the
+ * monospaced face. `margin-top: auto` is what holds it against the bottom of a
+ * short page — the page is a flex column of full height, so the last child
+ * taking the slack puts the band under the content rather than halfway up a
+ * window with two rows on the screen.
  */
-.way-out {
-  color: var(--muted);
-  white-space: nowrap;
+.foot {
+  margin-top: auto;
+  background: var(--fg);
+  color: var(--footer-text);
 }
 
-.way-out:hover {
-  color: var(--fg);
+.foot-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 28px;
+  flex-wrap: wrap;
+  padding-block: 28px;
+}
+
+.foot .wordmark,
+.foot .wordmark:hover {
+  color: var(--bg);
+}
+
+.foot-links {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  font-size: 0.875rem;
+}
+
+.foot-links a {
+  color: var(--footer-text);
+  text-decoration: none;
+}
+
+.foot-links a:hover {
+  color: var(--bg);
+  text-decoration: none;
+}
+
+.foot-copy {
+  color: var(--footer-faint);
+  font: 0.75rem / 1.5 var(--font-mono);
 }
 
 /*
