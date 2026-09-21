@@ -1,7 +1,8 @@
 /*
  * What the scanner needs on top of the shared visual language.
  *
- * The tokens, the base element rules and the focus ring come from
+ * The tokens, the base element rules, the focus ring and the primitives — the
+ * container, the button, the eyebrow, the mark — come from
  * `@agentify/visual/tokens.css`, imported ahead of this file in app/layout.tsx
  * (ADR-0005 §6). Nothing here declares a colour, a family or a radius.
  */
@@ -26,81 +27,28 @@ a {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* The scanner's links are chrome and editorial text rather than links in prose:
-   the header nav, the footer groups and the report rows all take their colour
-   from the block they sit in, so the shared accent would repaint most of the
-   site's navigation teal. */
+/*
+ * The scanner's links are chrome and editorial text rather than links in prose:
+ * the header nav, the footer groups and the report rows all take their colour
+ * and their underline from the block they sit in. The shared base gives a link
+ * the accent with an underline on hover, which is the commerce surfaces'
+ * convention and would repaint most of this site's navigation; `revert` hands
+ * the decoration back to the browser, which is what the scanner drew before
+ * there was a shared base to inherit from. Which of the two conventions the
+ * origin should settle on has not been decided.
+ */
 a {
   color: inherit;
+  text-decoration: revert;
 }
 
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-.mono {
-  font-family: var(--font-mono);
-}
-
-.container {
-  width: min(1200px, calc(100% - 80px));
-  margin-inline: auto;
-}
-
-.eyebrow {
-  color: var(--accent);
-  font: 500 0.75rem/1.3 var(--font-mono);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.button {
-  min-height: 48px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border: 0;
-  border-radius: var(--radius-control);
-  padding: 0 22px;
-  cursor: pointer;
-  font-weight: 600;
-  text-decoration: none;
-  transition:
-    background 150ms ease,
-    border-color 150ms ease,
-    transform 150ms ease;
-}
-
-.button-primary {
-  background: var(--accent);
-  color: var(--on-accent);
-}
-
-.button-primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
-
-.button-secondary {
-  border: 1.5px solid var(--line-strong);
-  background: var(--surface);
-  color: var(--fg);
-}
-
-.button:disabled {
-  cursor: not-allowed;
-  background: var(--raised);
-  color: var(--na);
-}
-
+/*
+ * `.brand` stays here rather than joining the primitives, and that is a name
+ * collision rather than a preference: in the cabinet and the stand `.brand` is
+ * the left-hand group of the bar — the lockup and the tabs beside it — so a
+ * shared rule setting a font size on it would resize their navigation. It moves
+ * when that shell is rewritten.
+ */
 .brand {
   display: inline-flex;
   align-items: center;
@@ -111,13 +59,6 @@ a {
   letter-spacing: -0.02em;
   line-height: 1;
   text-decoration: none;
-}
-
-.brand-mark {
-  width: 30px;
-  height: 30px;
-  display: block;
-  flex: none;
 }
 
 /* Keyframes live in the CSS Modules that use them: Module `animation: <name>`
@@ -140,17 +81,8 @@ a {
 }
 
 @media (max-width: 700px) {
-  .container {
-    width: min(100% - 32px, 1200px);
-  }
-
   .brand {
     gap: 8px;
     font-size: 1.125rem;
-  }
-
-  .brand-mark {
-    width: 24px;
-    height: 24px;
   }
 }

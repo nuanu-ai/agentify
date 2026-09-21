@@ -20,10 +20,6 @@
 .page a {
   text-underline-offset: 4px;
 }
-.page :focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: 5px;
-}
 .container {
   width: min(1280px, calc(100% - 80px));
   margin-inline: auto;

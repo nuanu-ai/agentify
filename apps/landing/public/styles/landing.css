@@ -45,14 +45,6 @@
   grid-column: span 7;
 }
 
-.eyebrow {
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
 /* A link sitting inside a sentence is underlined, because inside a sentence
    colour is the only thing separating it from the words around it and colour
    alone is not a signal everyone receives. Links that are already shaped like
@@ -125,56 +117,15 @@
   font-size: 14px;
 }
 
-/* A link in the header or the footer is a thing a thumb has to hit, and a line
-   of 14px text is 22px tall at most. These give every one of them a 24px box
-   without moving anything on the page. */
-.masthead__nav a,
+/* A plain link in the header or the footer is a thing a thumb has to hit, and a
+   line of 14px text is 22px tall at most. These give every one of them a 24px
+   box without moving anything on the page. A link drawn as a button is not one
+   of them: it carries the shared control's own height. */
+.masthead__nav a:not(.button),
 .colophon__links a {
   display: inline-flex;
   align-items: center;
   min-height: 24px;
-}
-
-/* Buttons here are links: every one of them goes to a page, and none of them
-   submits anything. */
-
-.button {
-  display: inline-block;
-  border-radius: var(--radius-control);
-  padding: 12px 22px;
-  font-size: 15px;
-  line-height: 1.3;
-}
-
-.button--primary {
-  background: var(--accent);
-  color: var(--on-accent);
-  font-weight: 500;
-}
-
-.button--primary:hover {
-  background: var(--accent-hover);
-  color: var(--on-accent);
-  text-decoration: none;
-}
-
-/* The bordered buttons take --line-strong rather than the page's hairline: at
-   1.31:1 the drawn hairline left "Talk to us" looking like a sentence that
-   happened to have a box near it. */
-
-.button--quiet {
-  color: var(--fg);
-  border: var(--hairline) solid var(--line-strong);
-}
-
-.button--small {
-  display: inline-flex;
-  align-items: center;
-  padding: 7px 14px;
-  font-size: 14px;
-  color: var(--fg);
-  border: var(--hairline) solid var(--line-strong);
-  border-radius: var(--radius-control);
 }
 
 /* Hero */

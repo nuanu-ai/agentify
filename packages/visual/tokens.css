@@ -17,10 +17,17 @@
  * a second palette kept in step by hand is how the four stylesheets on this
  * origin drifted apart in the first place (ADR-0005 §6).
  *
- * What belongs here: colour, type, radius, the border weight, and the base
- * element rules that follow from them. What does not: the layout of any one
- * page. A rule that only the landing needs lives in landing.css, and a rule
- * that only the cabinet needs lives with the cabinet.
+ * The file has three parts, in this order. The tokens: colour, type, radius and
+ * the border weight. The base element rules that follow from them, which is
+ * what a page looks like before anybody has written a class. And the handful of
+ * primitives every surface draws — the page width, the button, the wordmark's
+ * mark, the small typographic classes — because a button is not the layout of
+ * any one page and three copies of one is how the origin ended up with three
+ * different buttons wearing the same word.
+ *
+ * What does not belong here is the layout of a page. A rule that only the
+ * landing needs lives in landing.css, and a rule that only the cabinet needs
+ * lives with the cabinet.
  *
  * These are the Agentify colours. The teal is dark enough to carry ordinary
  * text on paper, which is what lets one accent serve links, fills and focus
@@ -142,12 +149,20 @@ body {
   font-family: var(--font-mono);
 }
 
-a {
+/*
+ * A link: the accent, no underline at rest, underlined when it is under the
+ * cursor. Written inside :where() so that it carries no specificity at all —
+ * a surface whose links are chrome rather than prose overrides it with a plain
+ * `a` rule, and a component that styles one link does not have to out-specify
+ * a base rule it did not ask for. The scanner does exactly that
+ * (apps/web/app/globals.css).
+ */
+:where(a) {
   color: var(--accent);
   text-decoration: none;
 }
 
-a:hover {
+:where(a:hover) {
   color: var(--accent-hover);
   text-decoration: underline;
 }
@@ -172,4 +187,117 @@ h3 {
 p {
   margin: 0;
   text-wrap: pretty;
+}
+
+/* --- the primitives every surface draws --------------------------------- */
+
+.container {
+  width: min(1200px, calc(100% - 80px));
+  margin-inline: auto;
+}
+
+.eyebrow {
+  color: var(--accent);
+  font: 500 0.75rem / 1.3 var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/*
+ * One button. There were three: 48 pixels tall at weight 600 on the scanner,
+ * roughly 29 at 13px in the cabinet, and a third size on the landing — the same
+ * word meaning three controls. This is the scanner's, because the scanner is
+ * what a merchant sees first.
+ *
+ * The height is the whole of the argument. 48 is what a thumb can hit and what
+ * puts a control's label on the same footing as the sentence next to it; the
+ * console's 29 was under the 44 the cabinet's own sign-in input asks for.
+ */
+.button {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-radius: var(--radius-control);
+  padding: 0 22px;
+  cursor: pointer;
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    transform 150ms ease;
+}
+
+.button:hover {
+  text-decoration: none;
+}
+
+.button-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.button-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  color: var(--on-accent);
+}
+
+.button-secondary {
+  border: 1.5px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  background: var(--raised);
+  color: var(--na);
+}
+
+/*
+ * The one exception to the height, and why it is a class rather than a second
+ * button. A table row in the cabinet is about 56 pixels tall: a 48-pixel
+ * control dropped into it fills the row edge to edge and reads as the row
+ * rather than as something in it, and a column of them turns the table into a
+ * column of buttons. 36 keeps the same corner, the same border weight and the
+ * same weight of type, so it is plainly the same control drawn smaller — and it
+ * is still a target a finger can find.
+ */
+.button-compact {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 0.875rem;
+}
+
+.brand-mark {
+  width: 30px;
+  height: 30px;
+  display: block;
+  flex: none;
+}
+
+@media (max-width: 700px) {
+  .container {
+    width: min(100% - 32px, 1200px);
+  }
+
+  .brand-mark {
+    width: 24px;
+    height: 24px;
+  }
 }
