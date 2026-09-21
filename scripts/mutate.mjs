@@ -215,15 +215,19 @@ function liveRun() {
   let pid;
   try {
     pid = Number.parseInt(readFileSync(lock, "utf8"), 10);
+    if (!Number.isSafeInteger(pid) || pid <= 0) return undefined;
     process.kill(pid, 0);
   } catch {
     return undefined;
   }
-  let cmdline = "";
+
+  let command = "";
   try {
-    cmdline = readFileSync(`/proc/${pid}/cmdline`, "utf8");
+    command = execFileSync("ps", ["-p", String(pid), "-o", "command="], {
+      encoding: "utf8",
+    }).trim();
   } catch {}
-  return cmdline.includes("mutate.mjs") ? pid : undefined;
+  return /(?:^|[ /])mutate\.mjs(?:\s|$)/.test(command) ? pid : undefined;
 }
 
 function takeLock() {
