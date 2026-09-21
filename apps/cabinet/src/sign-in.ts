@@ -29,13 +29,13 @@ export const signInScreen = (
 ${brandLockup("/")}
 <form class="gate-card" method="post" action="${escaped(base)}/sign-in">
   <h1>Sign in</h1>
-  <p>Enter your email address. We will send one link that signs you in or makes your cabinet when you open it.</p>
-  <label for="email">Email</label>
+  <p>Enter your email address and we will send you a sign-in link.</p>
+  <label for="email">Email address</label>
   <input id="email" name="email" type="email" value="${escaped(email)}" autocomplete="email" autocapitalize="off" spellcheck="false" autofocus required>
   ${destinationInput(destination)}
   <button class="button button-primary" type="submit">Send me a sign-in link</button>
   ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
-  <p class="quiet">The link works once and expires after one hour. There is no password to remember or reset.</p>
+  <p class="quiet">Every sign-in gets its own link. It opens once and expires in an hour, so there is nothing to keep and no password to remember.</p>
 </form>
 </div>`,
     mode,
@@ -53,9 +53,9 @@ export const linkRequestedScreen = (
     retryAfterSeconds === undefined ? null : Math.max(1, Math.ceil(retryAfterSeconds / 60));
   const outcome =
     minutes === null
-      ? `<p>If a message can be sent to <strong>${escaped(email)}</strong>, a sign-in link is on its way. It works once and expires after one hour.</p>
-  <p class="quiet">If nothing arrives, check your spam folder, then send another link from this page.</p>`
-      : `<p>No new link was sent to <strong>${escaped(email)}</strong>. Three links an hour for one address is the limit.</p>
+      ? `<p>A sign-in link is on its way to <strong>${escaped(email)}</strong>. It opens once and expires in an hour.</p>
+  <p class="quiet">If nothing arrives, look in your spam folder, then send another link from this page.</p>`
+      : `<p>No new link was sent to <strong>${escaped(email)}</strong>. One address can ask for three links an hour, and this one has asked for three.</p>
   <p class="problem">Try again in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.</p>`;
 
   return bare(
@@ -66,7 +66,6 @@ ${brandLockup("/")}
 <div class="gate-card">
   <h1>${minutes === null ? "Check your mail" : "Try again later"}</h1>
   ${outcome}
-  <p class="quiet">We answer every address the same way.</p>
   <form method="post" action="${escaped(base)}/sign-in">
     <input name="email" type="hidden" value="${escaped(email)}">
     ${destinationInput(destination)}
@@ -74,7 +73,7 @@ ${brandLockup("/")}
   </form>
   <form method="get" action="${escaped(base)}/sign-in">
     ${destinationInput(destination)}
-    <button class="button button-secondary" type="submit">Use a different email</button>
+    <button class="button button-secondary" type="submit">Use a different address</button>
   </form>
 </div>
 </div>`,
@@ -86,12 +85,12 @@ ${brandLockup("/")}
 export const mailUnavailableScreen = (base: string, mode: SurfaceMode): string =>
   bare(
     base,
-    "Mail is unavailable",
+    "We could not send your sign-in link",
     `<div class="gate">
 ${brandLockup("/")}
 <form class="gate-card" method="get" action="${escaped(base)}/sign-in">
-  <h1>Mail is unavailable</h1>
-  <p>We could not hand your sign-in message to the mail provider. No account or session was made. Please try again in a moment.</p>
+  <h1>We could not send your sign-in link</h1>
+  <p>Something on our side failed while the message was going out, so no link was sent. The attempt made nothing: no account and no session. Try again in a moment.</p>
   <button class="button button-primary" type="submit">Try again</button>
 </form>
 </div>`,
@@ -121,11 +120,14 @@ export const refusedLinkScreen = (
   mode: SurfaceMode,
   signedIn?: { readonly email: string; readonly destination: "cards" | "merchant" },
 ): string => {
+  const heading = signedIn === undefined ? "That link no longer works" : "You are already signed in";
   const recovery =
     signedIn === undefined
-      ? "<p>Ask for a fresh link.</p>"
-      : `<p>You are already signed in as ${escaped(signedIn.email)}.</p>
-  <p><a class="button button-primary" href="${escaped(base)}/${signedIn.destination}">Open your cabinet</a></p>`;
+      ? `<p>A sign-in link opens once and expires an hour after it is sent, so this one has either been used already or run out of time.</p>
+  <p>Nothing is lost. Access belongs to your email address rather than to any one link, so ask for a new link and you are back in.</p>`
+      : `<p>This link has already done its work, and you are signed in as ${escaped(signedIn.email)}.</p>
+  <p><a class="button button-primary" href="${escaped(base)}/${signedIn.destination}">Open your cabinet</a></p>
+  <p class="quiet">Every link opens once, so the next time you sign in, ask for a new one.</p>`;
   // Somebody already signed in cannot be sent to the sign-in form: that route
   // reads their session and redirects them back into the cabinet. Ending the
   // session is the only control here that can put them at another address.
@@ -140,12 +142,11 @@ export const refusedLinkScreen = (
 
   return bare(
     base,
-    "That link does not work",
+    heading,
     `<div class="gate">
 ${brandLockup("/")}
 <div class="gate-card">
-  <h1>That link does not work</h1>
-  <p>It may have expired or already been used.</p>
+  <h1>${heading}</h1>
   ${recovery}
   ${another}
 </div>
@@ -163,10 +164,12 @@ export const merchantSetupScreen = (base: string, mode: SurfaceMode, unavailable
 ${brandLockup("/")}
 <div class="gate-card">
   <h1>Finish setting up your cabinet</h1>
-  <p>Your email is confirmed and you are signed in. Your merchant${
-    unavailable ? " could not be made because the gateway did not answer" : " is not attached yet"
-  }.</p>
-  <p class="quiet">Trying again uses this signed-in session.</p>
+  <p>You are signed in${
+    unavailable
+      ? ", but your cabinet could not be finished: a part of our system did not answer"
+      : ", and your cabinet is not finished yet"
+  }. Nothing is lost.</p>
+  <p class="quiet">Your session stays open, so press Try again and you will not need another link.</p>
   <form method="post" action="${escaped(base)}/merchant">
     <button class="button button-primary" type="submit">Try again</button>
   </form>

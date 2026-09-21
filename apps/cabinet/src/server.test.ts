@@ -973,7 +973,7 @@ describe("the passwordless cabinet door", () => {
     expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);
     expect(readable(limited.html)).toContain("No new link was sent");
     expect(readable(limited.html)).toMatch(/Try again in \d+ minutes/);
-    expect(readable(limited.html)).not.toContain("a sign-in link is on its way");
+    expect(readable(limited.html)).not.toContain("is on its way");
     expect(mails).toHaveLength(3);
   });
 
@@ -1045,7 +1045,8 @@ describe("the passwordless cabinet door", () => {
     const answered = await browser.post("/sign-in", { email: "new@example.com" });
 
     expect(answered.status).toBe(503);
-    expect(readable(answered.html)).toMatch(/could not hand.*mail provider/i);
+    expect(readable(answered.html)).toMatch(/no link was sent/i);
+    expect(readable(answered.html)).toMatch(/no account and no session/i);
     expect(answered.headers.getSetCookie()).toStrictEqual([]);
     expect(rows.cabinet_accounts).toHaveLength(1);
     expect(rows.cabinet_sessions).toStrictEqual([]);

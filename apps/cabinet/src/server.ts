@@ -47,6 +47,7 @@ import {
   registrarFor,
 } from "./gateway.js";
 import { bare, brandLockup, escaped } from "./html.js";
+import { SESSION_HOURS } from "./identity.js";
 import { keysScreen, newKeyScreen } from "./keys.js";
 import { WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
 import { printable } from "./printable.js";
@@ -154,6 +155,17 @@ const KEY_AT_SIGN_IN_MS = 2_000;
 const LOOKS_LIKE_AN_ADDRESS = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
 
 const normalizedEmail = (value: string): string => value.trim().normalize("NFKC").toLowerCase();
+
+/**
+ * What a person is told when the gate found no session behind their click.
+ *
+ * It names the lifetime rather than leaving them to guess whether something
+ * went wrong: a session is twelve hours old at most and nothing renews it, so
+ * being asked for an address again is the ordinary end of one and not a fault.
+ */
+const SESSION_ENDED =
+  `Your session ended. A session lasts ${SESSION_HOURS} hours from the moment you sign in ` +
+  `and is never extended, so send yourself a new link to carry on.`;
 
 const cabinetDestinationIn = (value: unknown): CabinetDestination =>
   value === "settings" || value === "woocommerce" ? value : "default";
@@ -562,9 +574,9 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     const destination = cabinetDestinationIn(request.query.destination);
     const problem =
       request.query.reason === "session-ended-unsaved"
-        ? "Your session ended. Sign in again. The change you submitted was not saved."
+        ? `${SESSION_ENDED} The change you submitted was not saved.`
         : request.query.reason === "session-ended"
-          ? "Your session ended. Sign in again."
+          ? SESSION_ENDED
           : undefined;
     response.type("html").send(signInScreen(base, config.surfaceMode, destination, problem));
   });

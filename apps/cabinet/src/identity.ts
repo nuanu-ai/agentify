@@ -100,7 +100,8 @@ export interface Identity extends CabinetIdentity {
 
 export const emailAs = (raw: string): string => raw.trim().toLowerCase();
 
-const SESSION_HOURS = 12;
+/** How long a session lasts from the moment it opens; it is never extended. */
+export const SESSION_HOURS = 12;
 export const LINK_TTL_SECONDS = 60 * 60;
 export const LINK_RATE_WINDOW_MS = 60 * 60 * 1000;
 export const LINK_RATE_LIMIT = 3;
