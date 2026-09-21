@@ -24,30 +24,19 @@ import {
 type StartState =
   "starting" | "challenge" | "hard-limit" | "busy" | "error" | "missing";
 
-const PHASES = [
-  "Accepting the private scan",
-  "Checking safe access to the site",
-  "Reading public website signals",
-  "Preparing the diagnostic report",
-] as const;
-
 export function PendingScanExperience({
   turnstileSiteKey,
 }: Readonly<{ turnstileSiteKey: string | null }>) {
   const [request, setRequest] = useState<PendingScanRequest | null>(null);
   const [state, setState] = useState<StartState>("starting");
-  const [message, setMessage] = useState(
-    "Your request is secure. The live scan will start as soon as it is accepted.",
-  );
+  const [message, setMessage] = useState("Starting as soon as it is accepted.");
   const started = useRef(false);
   const challengeRetried = useRef(false);
 
   const startScan = useCallback(
     async (pending: PendingScanRequest, turnstileToken?: string) => {
       setState("starting");
-      setMessage(
-        "Your request is secure. The live scan will start as soon as it is accepted.",
-      );
+      setMessage("Starting as soon as it is accepted.");
       try {
         await captureLandingAttribution(pending.segment, pending.variant, {
           pathname: pending.landingPath,
@@ -83,9 +72,7 @@ export function PendingScanExperience({
         if (code === "challenge_required") {
           challengeRetried.current = false;
           setState("challenge");
-          setMessage(
-            "Complete the privacy-preserving challenge to continue this scan.",
-          );
+          setMessage("Complete the challenge to continue.");
           return;
         }
         if (code === "hard_rate_limit") {
@@ -123,7 +110,7 @@ export function PendingScanExperience({
     if (!pending) {
       setState("missing");
       setMessage(
-        "This private scan request is missing or expired. Return to the scanner and submit the site again.",
+        "This scan request is missing or expired. Submit the site again.",
       );
       return;
     }
@@ -160,25 +147,12 @@ export function PendingScanExperience({
           </span>
         </header>
         <div className={styles.body}>
-          <span className="eyebrow">Scan progress</span>
           <h1>
             {starting ? "Your report is getting ready" : "Scan needs attention"}
           </h1>
           <p aria-live="polite" className={styles.message} role="status">
             {message}
           </p>
-          {starting ? (
-            <ol className={styles.phases}>
-              {PHASES.map((phase, index) => (
-                <li key={phase}>
-                  <span aria-hidden="true" className={styles.phaseIcon}>
-                    {index + 1}
-                  </span>
-                  <span>{phase}</span>
-                </li>
-              ))}
-            </ol>
-          ) : null}
           {state === "challenge" ? (
             <div className={styles.challenge}>
               <TurnstileChallenge action="scan" siteKey={turnstileSiteKey} />
