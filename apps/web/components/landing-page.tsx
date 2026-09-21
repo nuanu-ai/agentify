@@ -5,7 +5,6 @@ import {
   LANDING_SHARED_CONTENT,
   type LandingConfig,
 } from "../content/landing";
-import { getSource } from "../content/sources";
 import { publicSiteSchema } from "../lib/schema";
 import { StatusBadge } from "./status-badge";
 import { StructuredData } from "./structured-data";
@@ -40,50 +39,6 @@ export function LandingPage({ config }: Readonly<{ config: LandingConfig }>) {
           </div>
         </section>
 
-        <section className={`${styles.pains} container`}>
-          <div className="eyebrow">Why it matters</div>
-          <div className={styles.painGrid}>
-            {config.pains.map((pain, painIndex) => (
-              <article className={styles.painCard} key={pain.title}>
-                <h2>{pain.title}</h2>
-                <p>{pain.body}</p>
-                <div className={styles.sources}>
-                  {pain.sourceIds.map((sourceId) => {
-                    const source = getSource(sourceId);
-                    return (
-                      <a
-                        href={source.url}
-                        key={source.id}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        [{painIndex + 1}] {source.publisher} ·{" "}
-                        {source.evidenceClass.toLowerCase()}
-                        <span className="sr-only"> (opens in a new tab)</span>
-                      </a>
-                    );
-                  })}
-                </div>
-              </article>
-            ))}
-          </div>
-          <ol className={styles.footnotes}>
-            {config.pains.map((pain, index) => {
-              const firstSourceId = pain.sourceIds[0];
-              if (!firstSourceId) return null;
-              const source = getSource(firstSourceId);
-              return (
-                <li key={`${source.id}-${index}`}>
-                  <a href={source.url} rel="noreferrer" target="_blank">
-                    [{index + 1}] {source.title}
-                  </a>
-                  . {source.caveat}
-                </li>
-              );
-            })}
-          </ol>
-        </section>
-
         <section className={styles.how} id="how">
           <div className="container">
             <h2>{LANDING_SHARED_CONTENT.howTitle}</h2>
@@ -104,11 +59,7 @@ export function LandingPage({ config }: Readonly<{ config: LandingConfig }>) {
           </div>
           <div className={styles.reportCard}>
             <div className={styles.reportIntro}>
-              <div className="eyebrow">
-                {LANDING_SHARED_CONTENT.reportEyebrow}
-              </div>
               <h3>{LANDING_SHARED_CONTENT.reportHeading}</h3>
-              <p>{LANDING_SHARED_CONTENT.reportBody}</p>
               <Link href="/methodology">
                 {LANDING_SHARED_CONTENT.reportMethodologyLink}
               </Link>
@@ -116,25 +67,11 @@ export function LandingPage({ config }: Readonly<{ config: LandingConfig }>) {
             <div className={styles.exampleChecks}>
               {LANDING_EXAMPLE_CHECKS.map((check) => (
                 <div className={styles.exampleCheck} key={check.checkId}>
-                  <span>
-                    <span className="mono">#{check.checkId}</span> {check.name}
-                  </span>
+                  <span>{check.name}</span>
                   <StatusBadge status={check.status} />
                 </div>
               ))}
             </div>
-          </div>
-        </section>
-
-        <section className={styles.faq} id="faq">
-          <div className="container">
-            <h2>{LANDING_SHARED_CONTENT.faqTitle}</h2>
-            {config.faq.map((item) => (
-              <details key={item.question}>
-                <summary>{item.question}</summary>
-                <p>{item.answer}</p>
-              </details>
-            ))}
           </div>
         </section>
 
@@ -157,7 +94,7 @@ function ExampleSurface({ segmentPhase }: Readonly<{ segmentPhase: string }>) {
   return (
     <div aria-label="Example of scanner phases" className={styles.surface}>
       <div className={styles.surfaceHeader}>
-        <span>example.com</span>
+        <span>Example · example.com</span>
         <StatusBadge status="running" />
       </div>
       <div className={styles.surfaceRows}>
@@ -167,7 +104,6 @@ function ExampleSurface({ segmentPhase }: Readonly<{ segmentPhase: string }>) {
         <SurfaceRow label={segmentPhase} status="running" />
         <SurfaceRow label="Diagnostic report" status="pending" />
       </div>
-      <p>Example surface · real scans show real backend states</p>
     </div>
   );
 }

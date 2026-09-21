@@ -22,13 +22,12 @@ describe("public Markdown variants", () => {
     }
   });
 
-  it("keeps the methodology rubric and landing source links in parity", () => {
+  it("keeps the methodology rubric and the landing sections in parity", () => {
     const methodology = getPublicPageMarkdown("/methodology");
     const owner = getPublicPageMarkdown("/owner");
 
     expect(methodology.match(/^- `#\d+`/gm)).toHaveLength(18);
-    expect(owner).toContain("Pew Research Center");
     expect(owner).toContain("How the scan works");
-    expect(owner).toContain("Common questions");
+    expect(owner).toContain("What you get back");
   });
 });

@@ -92,74 +92,9 @@
   font-size: 0.9375rem;
 }
 
-.surface > p {
-  margin: 0;
-  border-top: 1px solid var(--line-soft);
-  padding: 16px 24px;
-  color: var(--muted);
-  font: 0.6875rem/1.4 var(--font-mono);
-}
-
-.pains {
-  padding-block: 64px 72px;
-}
-
-.painGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-  margin-top: 26px;
-}
-
-.painCard {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-card);
-  padding: 26px;
-  background: var(--surface);
-}
-
-.painCard h2 {
-  margin: 0;
-  font-size: 1.375rem;
-  font-weight: 600;
-  letter-spacing: -0.015em;
-}
-
-.painCard p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.9375rem;
-  line-height: 1.6;
-}
-
-.sources {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: auto;
-  padding-top: 8px;
-  color: var(--muted);
-  font: 0.6875rem/1.45 var(--font-mono);
-}
-
-.sources a,
-.footnotes a,
 .reportIntro a {
   color: var(--accent-hover);
   text-underline-offset: 3px;
-}
-
-.footnotes {
-  display: grid;
-  gap: 8px;
-  margin: 22px 0 0;
-  padding-left: 22px;
-  color: var(--muted);
-  font: 0.6875rem/1.55 var(--font-mono);
 }
 
 .how {
@@ -170,7 +105,6 @@
 
 .how h2,
 .reportHeading h2,
-.faq h2,
 .finalCta h2 {
   margin: 0;
   font-size: clamp(1.875rem, 3vw, 2.125rem);
@@ -232,16 +166,10 @@
 }
 
 .reportIntro h3 {
-  margin: 12px 0 8px;
+  margin: 0 0 14px;
   font-size: 2rem;
   font-weight: 600;
   letter-spacing: -0.03em;
-}
-
-.reportIntro p {
-  margin: 0 0 18px;
-  color: var(--muted);
-  line-height: 1.6;
 }
 
 .exampleChecks {
@@ -264,64 +192,6 @@
 
 .exampleCheck:first-child {
   border-top: 0;
-}
-
-.exampleCheck > span:first-child .mono {
-  margin-right: 8px;
-  color: var(--faint);
-  font-size: 0.75rem;
-}
-
-.faq {
-  border-top: 1px solid var(--line);
-  padding-block: 64px;
-  background: var(--surface);
-}
-
-.faq :global(.container) {
-  max-width: 900px;
-}
-
-.faq h2 {
-  margin-bottom: 32px;
-}
-
-.faq details {
-  border-top: 1px solid var(--line-soft);
-  padding: 20px 0;
-}
-
-.faq details:last-child {
-  border-bottom: 1px solid var(--line-soft);
-}
-
-.faq summary {
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  cursor: pointer;
-  font-size: 1.0625rem;
-  font-weight: 600;
-  list-style: none;
-}
-
-.faq summary::after {
-  content: "+";
-  color: var(--faint);
-  font: 1.2rem var(--font-mono);
-}
-
-.faq details[open] summary::after {
-  content: "−";
-}
-
-.faq details p {
-  max-width: 70ch;
-  margin: 8px 0 0;
-  color: var(--muted);
-  line-height: 1.65;
 }
 
 .finalCta {
@@ -347,10 +217,6 @@
     max-width: 19ch;
   }
 
-  .painGrid {
-    grid-template-columns: 1fr;
-  }
-
   .reportCard {
     grid-template-columns: 1fr;
   }
@@ -374,8 +240,7 @@
   }
 
   .surfaceHeader,
-  .surfaceRows,
-  .surface > p {
+  .surfaceRows {
     padding-inline: 18px;
   }
 
@@ -384,14 +249,9 @@
     padding-block: 14px;
   }
 
-  .pains,
   .report,
   .finalCta {
     padding-block: 52px;
-  }
-
-  .painCard {
-    padding: 22px;
   }
 
   .how {
