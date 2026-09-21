@@ -34,6 +34,7 @@ Object.assign(globalThis, { React });
 
 function visibleWords(markup: string): number {
   return markup
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim()
@@ -46,7 +47,7 @@ describe("how much a screen asks a reader to read", () => {
       <LandingPage config={LANDINGS.owner} />,
     );
 
-    expect(visibleWords(markup)).toBeLessThan(210);
+    expect(visibleWords(markup)).toBeLessThan(190);
   });
 
   it("keeps the waiting screen to what is happening", () => {
