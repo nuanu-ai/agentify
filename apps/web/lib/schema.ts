@@ -1,6 +1,9 @@
 import { getPublicAppConfig } from "./app-config";
 
-const VISIBLE_FOOTER_DESCRIPTION =
+// What a crawler reads as the site's description. It says what the
+// /methodology intro says to a person (content/public-editorial.ts); the
+// footer used to repeat it and no longer does.
+const SITE_DESCRIPTION =
   "A diagnostic for public, machine-readable website signals. We do not modify sites or test a particular model's answer.";
 
 export function publicSiteSchema(): object {
@@ -18,7 +21,7 @@ export function publicSiteSchema(): object {
         name: config.displayBrand,
         url: baseUrl,
         logo: new URL("/icon.svg", baseUrl).toString(),
-        description: VISIBLE_FOOTER_DESCRIPTION,
+        description: SITE_DESCRIPTION,
         contactPoint: {
           "@type": "ContactPoint",
           contactType: "abuse reports",
