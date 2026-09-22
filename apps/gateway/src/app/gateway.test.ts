@@ -434,6 +434,60 @@ describe("a synchronous purchase", () => {
     expect(await harnessed.store.receiptForOrder(orderId)).not.toBeNull();
     expect((await harnessed.store.receiptForOrder(orderId))?.outcome).toBe("delivered");
   });
+
+  it("sends an agent back to a quiet order as one still open, not one that is over", async () => {
+    // One authorisation buys one order, and an agent that presented the same
+    // one twice is told which order is holding it. Whether it is sent to
+    // collect anything there turns on whether that order is still open, and an
+    // order whose charge went quiet is: the goods are made and the buyer's
+    // money may well have moved. Told it was over, the agent goes and pays for
+    // the same thing a second time.
+    const harnessed = await started({
+      QUOTE_RESPONSE_MS: "50",
+      SYNC_RESPONSE_MS: "200",
+      SETTLE_RESPONSE_MS: "100",
+      SYNC_BUDGET_MS: "2000",
+    });
+    const itemId = await published(harnessed, syncCard);
+    harnessed.facilitator.willSettle({ settled: "unknown", reason: "the facilitator timed out" });
+    const quiet = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
+    const again = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
+    if (quiet.step !== "pay" || again.step !== "pay") throw new Error("no price was offered");
+    const worker = workUntilStopped(harnessed, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    await harnessed.gateway.payPurchase(quiet.order.order.id, "SIGNED", "SIGNED");
+    await worker.stop();
+    const held = await harnessed.store.orderById(quiet.order.order.id);
+    expect(held?.order.state).toBe("delivered_unpaid");
+    expect(held?.order.payment).toBe("outcome_unknown");
+
+    const replayed = await harnessed.gateway.payPurchase(again.order.order.id, "SIGNED", "SIGNED");
+
+    expect(replayed.step).toBe("payment_already_spent");
+    if (replayed.step !== "payment_already_spent") throw new Error("the replay was taken");
+    expect(replayed.heldBy).toBe(quiet.order.order.id);
+    expect(replayed.collectable).toBe(true);
+
+    // The other sentence, on an order that really is over. The merchant
+    // refused, nothing was charged and nothing was made, so there is nothing
+    // at that order to go and collect.
+    const doomed = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
+    const afterwards = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
+    if (doomed.step !== "pay" || afterwards.step !== "pay") throw new Error("no price was offered");
+    const refusing = workUntilStopped(harnessed, {
+      onOrder: () => ({ refused: { code: "out_of_stock", message: "the room is taken" } }),
+    });
+    await harnessed.gateway.payPurchase(doomed.order.order.id, "OTHER", "OTHER");
+    await refusing.stop();
+    expect((await harnessed.store.orderById(doomed.order.order.id))?.order.state).toBe("failed");
+
+    const dead = await harnessed.gateway.payPurchase(afterwards.order.order.id, "OTHER", "OTHER");
+
+    expect(dead.step).toBe("payment_already_spent");
+    if (dead.step !== "payment_already_spent") throw new Error("the replay was taken");
+    expect(dead.collectable).toBe(false);
+  });
 });
 
 describe("an asynchronous purchase", () => {
