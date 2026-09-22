@@ -1,4 +1,5 @@
 import { partnerClickIdSchema, type RegistrationRequest } from "@agentify/scanner-contracts";
+import type { SendReportLinkResponse } from "@agentify/scanner-contracts/report-identity";
 import {
   consentSnapshots,
   createUuidV7,
@@ -14,10 +15,7 @@ import {
   waitlistEntries,
 } from "@agentify/scanner-database";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import {
-  CabinetIdentityUnavailableError,
-  getCabinetReportIdentityClient,
-} from "./cabinet-report-identity";
+import { getCabinetReportIdentityClient } from "./cabinet-report-identity";
 import { getServerConfig } from "./config";
 import {
   decryptSensitiveValue,
@@ -29,23 +27,21 @@ import {
   sha256,
 } from "./crypto";
 import { getDatabase } from "./database";
-import { consumeRateLimitsAtomically } from "./rate-limit";
+import type { LinkSendOutcome } from "./link-wait";
+import { consumeRateLimitsAtomically, refundRateLimitEvent } from "./rate-limit";
 
 const REGISTRATION_INTENT_TTL_MS = 60 * 60 * 1000;
 
 type RegistrationIntentOptions = Readonly<{
   partnerClickId?: string;
-  sendReportLink?: (
-    email: string,
-    state: string,
-  ) => Promise<"accepted" | "cooldown" | "unavailable">;
+  sendReportLink?: (email: string, state: string) => Promise<SendReportLinkResponse>;
 }>;
 
 export async function createScannerRegistrationIntent(
   scan: typeof scans.$inferSelect,
   body: RegistrationRequest,
   options: RegistrationIntentOptions = {},
-) {
+): Promise<LinkSendOutcome> {
   const config = getServerConfig();
   const partnerClickId = partnerClickIdSchema.safeParse(options.partnerClickId);
   const normalizedEmail = normalizeEmail(body.email);
@@ -62,7 +58,15 @@ export async function createScannerRegistrationIntent(
       limit: 10,
     },
   ]);
-  if (!limits.allowed) return { sent: false as const };
+  if (!limits.allowed)
+    return {
+      sent: false as const,
+      retryAt: limits.retryAt,
+      wall:
+        limits.wall === "registration_email_hour"
+          ? ("address_hour" as const)
+          : ("unspecified" as const),
+    };
 
   const state = randomCapability();
   const now = new Date();
@@ -107,21 +111,32 @@ export async function createScannerRegistrationIntent(
     });
   });
 
+  let handover: SendReportLinkResponse;
   try {
-    const status = options.sendReportLink
+    handover = options.sendReportLink
       ? await options.sendReportLink(normalizedEmail, state)
-      : (
-          await getCabinetReportIdentityClient().sendReportLink({
-            email: normalizedEmail,
-            intentKind: "registration",
-            state,
-          })
-        ).status;
-    if (status === "cooldown") return { sent: false as const };
-    if (status !== "accepted") throw new CabinetIdentityUnavailableError();
+      : await getCabinetReportIdentityClient().sendReportLink({
+          email: normalizedEmail,
+          intentKind: "registration",
+          state,
+        });
   } catch {
     throw new Error("cabinet_identity_unavailable");
   }
+  // The cabinet's walls are the ones that know when they fall; `retry_at` is
+  // that moment, and it reaches the caller instead of being thrown away. No
+  // letter went out, so the address gets its link back — see the refund in
+  // `rate-limit.ts` for why the session's hour does not.
+  if (handover.status === "cooldown") {
+    const letter = limits.spent.find(({ kind }) => kind === "registration_email_hour");
+    if (letter) await refundRateLimitEvent(letter.eventId);
+    return {
+      sent: false as const,
+      retryAt: new Date(handover.retry_at),
+      wall: "unspecified" as const,
+    };
+  }
+  if (handover.status !== "accepted") throw new Error("cabinet_identity_unavailable");
   await db.transaction(async (tx) => {
     await lockScannerEmail(tx, emailLookupHash);
     if (!(await currentRegistrationScan(tx, scan)))

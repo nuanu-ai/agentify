@@ -3,13 +3,19 @@
 import { registrationResponseSchema } from "@agentify/scanner-contracts";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 
+import { linkAnswerFailure, waitLabel } from "../lib/link-answer";
 import styles from "./registration-form.module.css";
 
 type RegistrationState = "idle" | "sending" | "sent" | "error";
 
-export function registrationSubmitLabel(state: RegistrationState, resendCooldown: number) {
+/**
+ * The wait is the server's to name. This button used to count sixty seconds
+ * of its own after a send, which was a guess at the cabinet's minute and told
+ * a person nothing about the wall actually in front of them.
+ */
+export function registrationSubmitLabel(state: RegistrationState, resendWait: number) {
   if (state === "sending") return "Sending…";
-  if (state === "sent" && resendCooldown > 0) return `Resend link in ${resendCooldown}s`;
+  if (resendWait > 0) return `Try again in ${waitLabel(resendWait)}`;
   if (state === "sent") return "Resend secure link";
   return "Email me a secure link";
 }
@@ -27,7 +33,7 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
   const [state, setState] = useState<RegistrationState>("idle");
   const [message, setMessage] = useState("");
   const [sentTo, setSentTo] = useState("");
-  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendWait, setResendWait] = useState(0);
   const registrationStarted = useRef(false);
 
   function markRegistrationStarted() {
@@ -41,13 +47,10 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
   }
 
   useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const timer = window.setTimeout(
-      () => setResendCooldown((value) => Math.max(0, value - 1)),
-      1_000,
-    );
+    if (resendWait <= 0) return;
+    const timer = window.setTimeout(() => setResendWait((value) => Math.max(0, value - 1)), 1_000);
     return () => window.clearTimeout(timer);
-  }, [resendCooldown]);
+  }, [resendWait]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -74,19 +77,18 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
         dataset_reuse_acknowledged: form.get("dataset_reuse_acknowledged") === "on",
       }),
     });
-    const parsed = registrationResponseSchema.safeParse(await response.json().catch(() => null));
+    const payload: unknown = await response.json().catch(() => null);
+    const parsed = registrationResponseSchema.safeParse(payload);
     if (response.ok && parsed.success) {
       setState("sent");
-      setResendCooldown(60);
+      setResendWait(0);
       setSentTo(typeof form.get("email") === "string" ? String(form.get("email")) : "");
       setMessage("");
     } else {
+      const failure = linkAnswerFailure(payload);
       setState("error");
-      setMessage(
-        response.status === 429
-          ? "Too many verification requests. Please try again later."
-          : "Verification email is temporarily unavailable. Please retry.",
-      );
+      setMessage(failure.message);
+      setResendWait(failure.waitSeconds);
     }
   }
 
@@ -144,10 +146,10 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
       </label>
       <button
         className="button button-primary"
-        disabled={state === "sending" || (state === "sent" && resendCooldown > 0)}
+        disabled={state === "sending" || resendWait > 0}
         type="submit"
       >
-        {registrationSubmitLabel(state, resendCooldown)}
+        {registrationSubmitLabel(state, resendWait)}
       </button>
       {message && state === "error" ? (
         <p className={styles.error} aria-live="polite">

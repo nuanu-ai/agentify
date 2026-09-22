@@ -6,7 +6,12 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { getServerConfig } from "../../../../lib/server/config";
 import { hmacHex } from "../../../../lib/server/crypto";
-import { errorResponse, hasSameOrigin } from "../../../../lib/server/http";
+import {
+  errorResponse,
+  hasSameOrigin,
+  waitResponse,
+  waitSeconds,
+} from "../../../../lib/server/http";
 import { consumeScanRateLimits } from "../../../../lib/server/rate-limit";
 import {
   ANONYMOUS_COOKIE,
@@ -137,7 +142,9 @@ export async function POST(request: NextRequest) {
     targetKey,
     challengePassed,
   });
-  if (rateResult === "challenge_required") {
+  if (rateResult.verdict === "challenge_required") {
+    // Waiting does not clear a challenge — passing one does — so the number
+    // here stays a hint in the envelope and carries no Retry-After.
     return errorResponse(
       request,
       429,
@@ -147,14 +154,13 @@ export async function POST(request: NextRequest) {
       60,
     );
   }
-  if (rateResult === "hard_rate_limit") {
-    return errorResponse(
+  if (rateResult.verdict === "hard_rate_limit") {
+    return waitResponse(
       request,
       429,
       "hard_rate_limit",
       "The scan limit has been reached.",
-      true,
-      3600,
+      waitSeconds(rateResult.retryAt),
     );
   }
 

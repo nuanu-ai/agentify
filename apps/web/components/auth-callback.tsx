@@ -4,6 +4,7 @@ import { authFinalizeResponseSchema } from "@agentify/scanner-contracts";
 import { useRouter } from "next/navigation";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
+import { linkAnswerFailure, waitLabel } from "../lib/link-answer";
 import styles from "./auth-callback.module.css";
 import { Brand } from "./brand";
 import { TURNSTILE_TOKEN_EVENT, TurnstileChallenge } from "./turnstile-challenge";
@@ -46,6 +47,12 @@ export function AuthCallback({ turnstileSiteKey }: Readonly<{ turnstileSiteKey: 
   const [state, setState] = useState<CallbackState>("loading");
   const [link, setLink] = useState<{ state: string; token: string }>();
   const [recoveryState, setRecoveryState] = useState<string>();
+  // What the door answered when it refused, and the wait it named. The screen
+  // repeats the words and holds the button for the seconds, so that pressing
+  // it again cannot spend an hour's links on refusals. Both belong to the
+  // address that was asked about: typing another one drops them.
+  const [recoveryNotice, setRecoveryNotice] = useState<string>();
+  const [recoveryWait, setRecoveryWait] = useState(0);
   const [email, setEmail] = useState("");
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const capturedEntry = useRef<CapturedEntry | undefined>(undefined);
@@ -97,6 +104,15 @@ export function AuthCallback({ turnstileSiteKey }: Readonly<{ turnstileSiteKey: 
       window.removeEventListener("hashchange", recapture);
     };
   }, []);
+
+  useEffect(() => {
+    if (recoveryWait <= 0) return;
+    const timer = window.setTimeout(
+      () => setRecoveryWait((value) => Math.max(0, value - 1)),
+      1_000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [recoveryWait]);
 
   useEffect(() => {
     const receive = (event: Event) => {
@@ -188,9 +204,12 @@ export function AuthCallback({ turnstileSiteKey }: Readonly<{ turnstileSiteKey: 
     if (
       (state !== "recovery" && state !== "recovery-unavailable") ||
       !email ||
+      recoveryWait > 0 ||
       (turnstileSiteKey && !turnstileToken)
     )
       return;
+    setRecoveryNotice(undefined);
+    setRecoveryWait(0);
     setState("recovery-sending");
     try {
       const response = await fetch("/api/v2/auth/recover", {
@@ -206,13 +225,18 @@ export function AuthCallback({ turnstileSiteKey }: Readonly<{ turnstileSiteKey: 
         cache: "no-store",
       });
       setTurnstileToken(null);
-      setState(
-        response.ok
-          ? "recovery-sent"
-          : response.status >= 500
-            ? "recovery-unavailable"
-            : "recovery",
-      );
+      if (response.ok) {
+        setState("recovery-sent");
+        return;
+      }
+      if (response.status >= 500) {
+        setState("recovery-unavailable");
+        return;
+      }
+      const failure = linkAnswerFailure(await response.json().catch(() => null));
+      setRecoveryNotice(failure.message);
+      setRecoveryWait(failure.waitSeconds);
+      setState("recovery");
     } catch {
       setTurnstileToken(null);
       setState("recovery-unavailable");
@@ -265,6 +289,8 @@ export function AuthCallback({ turnstileSiteKey }: Readonly<{ turnstileSiteKey: 
                 Email delivery is temporarily unavailable. Complete a fresh challenge and try again
                 shortly.
               </p>
+            ) : recoveryNotice ? (
+              <p role="alert">{recoveryNotice}</p>
             ) : null}
             <p>
               Enter the email used for the report. If it matches a saved report, we’ll send a fresh
@@ -276,7 +302,11 @@ export function AuthCallback({ turnstileSiteKey }: Readonly<{ turnstileSiteKey: 
                 autoComplete="email"
                 id="report-recovery-email"
                 name="email"
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  setRecoveryNotice(undefined);
+                  setRecoveryWait(0);
+                }}
                 required
                 type="email"
                 value={email}
@@ -286,10 +316,12 @@ export function AuthCallback({ turnstileSiteKey }: Readonly<{ turnstileSiteKey: 
               ) : null}
               <button
                 className="button button-primary"
-                disabled={Boolean(turnstileSiteKey && !turnstileToken)}
+                disabled={recoveryWait > 0 || Boolean(turnstileSiteKey && !turnstileToken)}
                 type="submit"
               >
-                Send verification link
+                {recoveryWait > 0
+                  ? `Try again in ${waitLabel(recoveryWait)}`
+                  : "Send verification link"}
               </button>
             </form>
           </>

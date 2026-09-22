@@ -82,6 +82,38 @@ export function errorResponse(
   );
 }
 
+/**
+ * A moment as the seconds a caller must wait, rounded up so nobody is sent
+ * back before the wall has gone, and never below one.
+ */
+export function waitSeconds(retryAt: Date, now = new Date()): number {
+  return Math.max(1, Math.ceil((retryAt.getTime() - now.getTime()) / 1000));
+}
+
+/**
+ * A refusal a machine may act on by waiting, with the wait in the header.
+ *
+ * `Retry-After` is an instruction, not a hint: whatever reads it comes back
+ * when it says to, and comes back again. So it belongs only where the number
+ * is a wait that actually ends — a wall that falls at a known moment. A
+ * status that may never change (a scan that failed) and a refusal that
+ * waiting does not clear (a challenge) carry their number in the envelope as
+ * a hint and no header, because an agent obeying a header there would poll a
+ * dead thing forever. The envelope and the header are one claim about one
+ * wait, so both carry the same number.
+ */
+export function waitResponse(
+  request: Request,
+  status: number,
+  code: string,
+  message: string,
+  seconds: number,
+) {
+  const response = errorResponse(request, status, code, message, true, seconds);
+  response.headers.set("Retry-After", String(seconds));
+  return response;
+}
+
 export function hasSameOrigin(request: Request): boolean {
   const origin = request.headers.get("origin");
   if (!origin) return false;
