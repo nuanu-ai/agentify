@@ -1,6 +1,7 @@
-# Product code and documentation share one reproducible install. Agentify's
-# scanner and commerce components share this workspace while their scoped
-# commands keep their different compiler, lint and test policies separate.
+# One product, one reproducible install: every package of it is installed from
+# this workspace and its lockfile, code and documentation alike. The scanner's
+# packages are for now checked under a lint and compiler configuration of their
+# own, which is why the root commands that run over them are scoped.
 packages:
   - packages/*
   - apps/*

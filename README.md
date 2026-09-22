@@ -5,14 +5,13 @@
 [![npm: @nuanu-ai/agentify-contracts](https://img.shields.io/npm/v/@nuanu-ai/agentify-contracts?label=%40nuanu-ai%2Fagentify-contracts)](https://www.npmjs.com/package/@nuanu-ai/agentify-contracts)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Agentify is two things on one origin. The first is a scanner: a public site
-where the owner of an ordinary online business enters their address and reads
-what their site exposes to AI agents — the robots file and the sitemap, the
-structured data, the machine-readable output — as a report of named checks
-with the evidence behind each verdict. The second is a channel: the gateway
-through which that business sells its goods to AI agents, paid in stablecoins
-over the x402 protocol, with the money going from the buyer's wallet to the
-merchant's and never passing through us.
+Agentify is a site for the owner of an ordinary online business. They enter the
+address of their shop and read what it exposes to AI agents — the robots file
+and the sitemap, the structured data, the machine-readable output — as a report
+of named checks with the evidence behind each verdict. Through the same site
+they then sell their goods to those agents: the gateway behind it takes the
+purchase, the agent pays in stablecoins over the x402 protocol, and the money
+goes from the buyer's wallet to the merchant's without passing through us.
 
 This file orients an engineer who has just opened the repository. What a
 merchant reads is at [agentify.ad/docs](https://agentify.ad/docs/), built from
@@ -54,7 +53,7 @@ Deployed, one origin serves all of it: the scanner at `/`, the merchant
 documentation at `/docs`, the cabinet at `/cabinet`, the merchant's own calls
 at `/v0` and the storefront an agent buys from under `/x402`. The static
 landing in `apps/landing` is not part of a deployment; it stands in for the
-scanner in the local stack below, which is a commerce fixture and nothing more.
+scanner in the local stack below and is a fixture of that stack, nothing more.
 
 ## Prerequisites
 
@@ -74,7 +73,7 @@ Conventional Commits format. Docker with Compose v2 runs the stacks below, and
 
 ## Run it
 
-The commerce stack is one command:
+The stack is one command:
 
 ```sh
 docker compose up --build
@@ -114,7 +113,8 @@ stack and nothing else — the buy command runs on the host and needs
 `GATEWAY_URL=http://localhost:8090 pnpm buy`.
 
 The scanner runs separately, on its own PostgreSQL 16.9 at `127.0.0.1:55432`,
-and never reads the commerce `.env`:
+and reads `.env.scanner` rather than the `.env` the stack above takes its
+settings from:
 
 ```sh
 cp .env.scanner.example .env.scanner
@@ -181,11 +181,19 @@ SDK, in `packages/slice/src/stand-merchant.ts`, and
 
 ## Repository layout
 
-One pnpm workspace holds the commerce product and the scanner. They share the
-toolchain and the lockfile; their check, test and build commands are scoped
-separately in the root `package.json` because the two keep different compiler,
-lint and test policies — the commerce side is checked by Biome, the scanner by
-Prettier and ESLint under the `*.scanner.*` configurations at the root.
+One pnpm workspace holds all of it, on one toolchain and one lockfile. The
+packages do not yet share one policy for the compiler, the lint and the tests.
+Which files a linter reads is decided in two places. The exclusions in
+`biome.json` keep Biome out of the scanner's nine directories, the
+`*.scanner.*` configuration files at the root, the portal under `apps/docs`,
+`ops/` and `fixtures/`. The globs of the `scanner:lint` and
+`scanner:format:check` commands cover the TypeScript and JSON inside those
+nine directories and a few named files besides. Whatever falls outside both is
+read by no linter today — the scanner's stylesheets, the portal's sources, the
+operational scripts, the test inputs and `vitest.scanner.config.ts` among
+them. That is why the commands in the root `package.json` are scoped:
+`check`, `typecheck`, `build` and `test` run each set in turn, and `build`
+finishes with the portal.
 
 | Path | What it is |
 | --- | --- |
