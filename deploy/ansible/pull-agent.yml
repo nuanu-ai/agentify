@@ -119,6 +119,13 @@
               dest: "{{ pull_agent_staging_directory }}/requirements.txt"
               mode: '0644'
 
+        - name: Install the distribution's Python virtual-environment support
+          ansible.builtin.apt:
+            name: python3-venv
+            state: present
+            update_cache: true
+            cache_valid_time: 86400
+
         - name: Create the isolated deployment client environment
           ansible.builtin.command:
             argv: [python3, -m, venv, "{{ pull_agent_staging_directory }}/venv"]

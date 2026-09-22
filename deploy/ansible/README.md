@@ -5,11 +5,13 @@ independently. Each server checks out one full Git SHA and builds the five
 first-party images locally and sequentially. Infrastructure images remain pinned
 in `release.yml`; no image registry or release service sits between the channels.
 
-The server baseline remains in `nuanu-ai/infra`. These playbooks do not provision
-servers, change DNS, publish packages, or make paid requests. They preserve each
-channel's credentials, databases and authentication configuration. Activation
-keeps the retained-data, migration, runtime, route and image-identity checks. A
-release that begins a migration has no automatic downgrade or rollback.
+The server baseline remains in `nuanu-ai/infra`. Release playbooks do not
+provision servers, change DNS, publish packages, or make paid requests. The
+one-time agent bootstrap installs the distribution's `python3-venv` package for
+its isolated pinned Ansible client. The playbooks preserve each channel's
+credentials, databases and authentication configuration. Activation keeps the
+retained-data, migration, runtime, route and image-identity checks. A release
+that begins a migration has no automatic downgrade or rollback.
 
 ## Install the outbound pull agents
 
