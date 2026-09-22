@@ -293,8 +293,6 @@ name or payout wallet; the test channel never needs it.
   the same for the contracts.
 - [`docs/decisions/`](docs/decisions/) — what is expensive to reverse, and why
   it was decided that way.
-- [`docs/vision.md`](docs/vision.md) — the product vision, for whoever is
-  deciding whether to connect.
 - [`AGENTS.md`](AGENTS.md) — the working discipline: how decisions are
   recorded, what a test has to answer for, why a check that did not run never
   reports success.
