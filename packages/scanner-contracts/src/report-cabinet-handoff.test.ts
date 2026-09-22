@@ -5,7 +5,7 @@ import {
   REPORT_CABINET_HANDOFF_COOKIE,
   REPORT_CABINET_HANDOFF_TTL_SECONDS,
   sealReportCabinetHandoff,
-} from "./report-cabinet-handoff";
+} from "./report-cabinet-handoff.js";
 
 const secret = "shared-report-identity-secret-with-32-bytes";
 const now = new Date("2026-09-21T08:00:00.000Z");

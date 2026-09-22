@@ -1,4 +1,10 @@
 {
-  "extends": "../../tsconfig.scanner.json",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    // Playwright's evaluate callbacks are compiled here and run in the page,
+    // so this package compiles against the document's names as well as node's.
+    "lib": ["es2024", "dom", "dom.iterable"]
+  },
   "include": ["src/**/*.ts"]
 }

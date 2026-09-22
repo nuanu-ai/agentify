@@ -7,7 +7,7 @@ RUN corepack enable && corepack prepare pnpm@11.12.0 --activate
 USER myuser
 
 COPY --chown=myuser:myuser package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY --chown=myuser:myuser tsconfig.scanner.json ./
+COPY --chown=myuser:myuser tsconfig.base.json ./
 COPY --chown=myuser:myuser packages/scanner-contracts/package.json packages/scanner-contracts/package.json
 COPY --chown=myuser:myuser packages/scanner/package.json packages/scanner/package.json
 COPY --chown=myuser:myuser apps/browser-observer-actor/package.json apps/browser-observer-actor/package.json

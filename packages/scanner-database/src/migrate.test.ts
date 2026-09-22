@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { migrationModeFromArgs } from "./migrate";
+import { migrationModeFromArgs } from "./migrate.js";
 
 describe("scanner migration mode", () => {
   it("has one fixed additive identity preflight and no arbitrary version knob", () => {

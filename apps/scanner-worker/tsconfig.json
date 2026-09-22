@@ -1,4 +1,10 @@
 {
-  "extends": "../../tsconfig.scanner.json",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    // The passive browser observation runs its callbacks inside the page, so
+    // this package compiles against the document's names as well as node's.
+    "lib": ["es2024", "dom", "dom.iterable"]
+  },
   "include": ["src/**/*.ts"]
 }

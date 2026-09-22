@@ -6,7 +6,7 @@
 !/pnpm-lock.yaml
 !/pnpm-workspace.yaml
 !/.npmrc
-!/tsconfig.scanner.json
+!/tsconfig.base.json
 !/packages/scanner-contracts/package.json
 !/packages/scanner-contracts/tsconfig.json
 !/packages/scanner-contracts/tsconfig.build.json

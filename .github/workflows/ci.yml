@@ -60,7 +60,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
-      - run: pnpm typecheck:commerce
+      - run: pnpm typecheck
       - run: pnpm test:commerce
       - run: pnpm test:db
         env:
@@ -137,7 +137,6 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @agentify/browser-observer-actor exec playwright install --with-deps chromium
-      - run: pnpm typecheck:scanner
       - run: pnpm test:scanner
       - run: pnpm scanner:test:actor
       - run: pnpm scanner:test:integration

@@ -183,10 +183,13 @@ SDK, in `packages/slice/src/stand-merchant.ts`, and
 One pnpm workspace holds all of it, on one toolchain and one lockfile. Biome
 formats and lints every file in it; `biome.json` excludes only what a machine
 wrote — the two drizzle migration directories and the lockfile — so `pnpm
-check` is the whole of the lint. The compiler and the test runner are still
-configured twice, which is why `typecheck`, `build` and `test` in the root
-`package.json` run the commerce set and the scanner set in turn, and `build`
-finishes with the portal.
+check` is the whole of the lint. Every package compiles under
+`tsconfig.base.json` and overrides it only where the runtime differs — Next
+keeps the JSX and resolves like a bundler, and the two packages whose callbacks
+run inside a page read the browser's names. The test runner is still configured
+twice, which is why `build` and `test` in the root `package.json` run the
+commerce set and the scanner set in turn, and `build` finishes with the
+portal.
 
 | Path | What it is |
 | --- | --- |
@@ -248,10 +251,9 @@ kept apart for that reason:
   everything it needs.
 - `pnpm mutate <package>` runs Stryker over one workspace package and prints
   the survivors. It is a triage tool for the hand-over ritual, not a gate.
-- The scanner's own gates are `pnpm scanner:check` for lint, types and unit
-  tests, `pnpm scanner:test:integration` and `pnpm scanner:test:db` against
-  its database, `pnpm scanner:test:actor` for the browser observer, and
-  `pnpm scanner:build`.
+- The scanner's own gates are `pnpm scanner:test:integration` and
+  `pnpm scanner:test:db` against its database, `pnpm scanner:test:actor` for
+  the browser observer, and `pnpm scanner:build`.
 
 ## Releasing
 

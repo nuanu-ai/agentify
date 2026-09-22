@@ -9,7 +9,7 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@11.12.0 --activate
 
 COPY --chown=node:node package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY --chown=node:node tsconfig.scanner.json ./
+COPY --chown=node:node tsconfig.base.json ./
 COPY --chown=node:node packages/scanner-contracts/package.json packages/scanner-contracts/package.json
 COPY --chown=node:node packages/scanner-database/package.json packages/scanner-database/package.json
 COPY --chown=node:node packages/analytics/package.json packages/analytics/package.json

@@ -4,12 +4,12 @@ import {
 } from "@agentify/scanner-contracts";
 import { describe, expect, it } from "vitest";
 
-import type { BrowserProviderClient } from "./apify-browser-client";
+import type { BrowserProviderClient } from "./apify-browser-client.js";
 import {
   type BrowserObservationRepository,
   buildBrowserObservationInput,
   processBrowserObservationJob,
-} from "./browser-observation-job";
+} from "./browser-observation-job.js";
 
 const observation = {
   id: "019b41a0-7c51-7d63-84bd-a5a20faef491",

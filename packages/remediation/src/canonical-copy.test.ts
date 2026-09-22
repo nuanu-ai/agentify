@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { canonicalFindingHeadline, canonicalSummaryCopy } from "./canonical-copy";
+import { canonicalFindingHeadline, canonicalSummaryCopy } from "./canonical-copy.js";
 
 describe("canonical finding copy", () => {
   it("uses concise evidence-safe teaser headlines", () => {
