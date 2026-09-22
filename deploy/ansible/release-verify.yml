@@ -6,25 +6,31 @@
   register: runtime_evidence
 
 - name: Verify public routes without sending mail or making a purchase
-  ansible.builtin.uri:
-    url: "{{ channel.origin }}{{ item.path }}"
-    status_code: "{{ item.status }}"
-    follow_redirects: none
-    return_content: false
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ release_controller_directory }}/release_http.py"
+      - --url
+      - "{{ channel.origin }}{{ item.path }}"
+      - --connect-host
+      - "{{ channel.probe_connect_address }}"
+      - --connect-port
+      - "{{ channel.probe_connect_port }}"
+      - --expect
+      - "{{ item.status }}"
   loop:
-    - {path: /, status: [200]}
-    - {path: /owner, status: [308]}
-    - {path: /api/health/live, status: [200]}
-    - {path: /api/health, status: [200]}
-    - {path: /cabinet/sign-in, status: [200]}
-    - {path: /cabinet/healthz, status: [200]}
-    - {path: /docs/, status: [200]}
-    - {path: /healthz, status: [200]}
-    - {path: /x402/catalog, status: [200]}
-    - {path: /admin, status: [401]}
+    - {path: /, status: 200}
+    - {path: /owner, status: 308}
+    - {path: /api/health/live, status: 200}
+    - {path: /api/health, status: 200}
+    - {path: /cabinet/sign-in, status: 200}
+    - {path: /cabinet/healthz, status: 200}
+    - {path: /docs/, status: 200}
+    - {path: /healthz, status: 200}
+    - {path: /x402/catalog, status: 200}
+    - {path: /admin, status: 401}
+  changed_when: false
   register: route_evidence
-  delegate_to: localhost
-  become: false
 
 - name: Read the pre-activation public resource inventory
   ansible.builtin.slurp:
@@ -34,27 +40,27 @@
 - name: Verify unpaid resource challenges name this channel and cannot spend
   ansible.builtin.shell: |
     python3 - <<'PY'
-    import base64,json,os,urllib.request,urllib.error,urllib.parse
+    import base64,json,os,sys,urllib.parse
+    sys.path.insert(0,'{{ release_controller_directory }}')
+    from release_http import fetch
     origin='{{ channel.origin }}'
-    with urllib.request.urlopen(origin+'/x402/catalog',timeout=20) as response:
-        catalog=json.load(response)
+    connection={'connect_host':'{{ channel.probe_connect_address }}','connect_port':{{ channel.probe_connect_port }}}
+    response=fetch(origin+'/x402/catalog',**connection)
+    assert response.status==200, 'Public catalog did not answer successfully'
+    catalog=json.loads(response.body)
     before=json.loads(base64.b64decode(os.environ['PUBLISHED_RESOURCE_IDS_B64']))
     assert sorted(item['id'] for item in catalog['items'])==before, 'Public catalog differs from its pre-activation inventory'
     checked=0
     for card in catalog.get('items',[]):
         url=origin+'/x402/'+urllib.parse.quote(card['id'],safe='')+'/purchase'
-        try:
-            response=urllib.request.urlopen(url,timeout=20)
-        except urllib.error.HTTPError as response:
-            assert response.code==402, 'Published card did not answer an unpaid challenge'
-            header=response.headers.get('PAYMENT-REQUIRED')
-            assert header, 'Unpaid challenge header is absent'
-            challenge=json.loads(base64.b64decode(header))
-            assert challenge['resource']['url']==url, 'Challenge names a different public resource'
-            assert all(a['network']=='{{ "eip155:8453" if channel_name == "production" else "eip155:84532" }}' for a in challenge['accepts']), 'Challenge uses the wrong payment network'
-            checked+=1
-        else:
-            raise RuntimeError('An unpaid purchase probe was unexpectedly accepted')
+        response=fetch(url,**connection)
+        assert response.status==402, 'Published card did not answer an unpaid challenge'
+        header=response.headers.get('payment-required')
+        assert header, 'Unpaid challenge header is absent'
+        challenge=json.loads(base64.b64decode(header))
+        assert challenge['resource']['url']==url, 'Challenge names a different public resource'
+        assert all(a['network']=='{{ "eip155:8453" if channel_name == "production" else "eip155:84532" }}' for a in challenge['accepts']), 'Challenge uses the wrong payment network'
+        checked+=1
     print(json.dumps({'status':'verified' if checked else 'no_published_resources', 'published_resources_verified':checked,'spent':0}))
     PY
   changed_when: false
@@ -128,18 +134,26 @@
   become: false
 
 - name: Verify canonical documents stay on the channel origin
-  ansible.builtin.uri:
-    url: "{{ channel.origin }}/sitemap.xml"
-    status_code: 200
-    return_content: true
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ release_controller_directory }}/release_http.py"
+      - --url
+      - "{{ channel.origin }}/sitemap.xml"
+      - --connect-host
+      - "{{ channel.probe_connect_address }}"
+      - --connect-port
+      - "{{ channel.probe_connect_port }}"
+      - --expect
+      - '200'
+      - --body
+  changed_when: false
   register: sitemap
-  delegate_to: localhost
-  become: false
 - ansible.builtin.assert:
     that:
-      - channel.origin + '/</loc>' in sitemap.content
-      - "'app.agentify.ad' not in sitemap.content"
-      - channel_name != 'test' or 'https://agentify.ad/' not in sitemap.content
+      - channel.origin + '/</loc>' in sitemap.stdout
+      - "'app.agentify.ad' not in sitemap.stdout"
+      - channel_name != 'test' or 'https://agentify.ad/' not in sitemap.stdout
     fail_msg: Scanner canonical URLs escaped their channel origin.
 
 - name: Record verified runtime identity without overstating product acceptance

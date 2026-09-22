@@ -6,6 +6,8 @@
 release_channels:
   production:
     origin: https://agentify.ad
+    probe_connect_address: 127.0.0.1
+    probe_connect_port: 443
     commerce_project: agentify-commerce
     scanner_project: agentify
     commerce_environment: "{{ agentify_home }}/agentify-namespace-57eaca4/.env"
@@ -23,6 +25,8 @@ release_channels:
   test:
     origin: https://test.agentify.ad
     listen_address: "{{ agentify_test_listen_address }}"
+    probe_connect_address: "{{ agentify_test_listen_address }}"
+    probe_connect_port: 8443
     commerce_project: agentify-test
     scanner_project: agentify-test-scanner
     commerce_environment: "{{ agentify_home }}/agentify-test/.env"

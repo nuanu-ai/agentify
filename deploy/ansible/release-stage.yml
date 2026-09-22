@@ -44,6 +44,7 @@
     - {src: "{{ playbook_dir }}/prepare-release-environments.py", dest: prepare-release-environments.py}
     - {src: "{{ playbook_dir }}/prepare-identity-cutover.py", dest: prepare-identity-cutover.py}
     - {src: "{{ playbook_dir }}/release-runtime.py", dest: release-runtime.py}
+    - {src: "{{ playbook_dir }}/release_http.py", dest: release_http.py}
     - {src: "{{ playbook_dir }}/check-web-configuration.py", dest: check-web-configuration.py}
     - {src: "{{ playbook_dir }}/check-forward-revision.sh", dest: check-forward-revision.sh}
     - {src: "{{ playbook_dir }}/release-data-fingerprint.sql", dest: release-data-fingerprint.sql}

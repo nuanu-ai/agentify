@@ -101,12 +101,20 @@
         origin_changed: "{{ current_public_origin.stdout != channel.origin }}"
 
     - name: Read the current public catalog from the controller perspective
-      ansible.builtin.uri:
-        url: "{{ current_public_origin.stdout }}/x402/catalog"
-        status_code: 200
-        return_content: true
-      delegate_to: localhost
-      become: false
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ release_controller_directory }}/release_http.py"
+          - --url
+          - "{{ current_public_origin.stdout }}/x402/catalog"
+          - --connect-host
+          - "{{ channel.probe_connect_address }}"
+          - --connect-port
+          - "{{ channel.probe_connect_port }}"
+          - --expect
+          - '200'
+          - --body
+      changed_when: false
       register: current_public_catalog
 
     - name: Identify the first live-approval schema activation
@@ -146,7 +154,7 @@
 
     - name: Preserve only the pre-activation public resource inventory
       ansible.builtin.copy:
-        content: "{{ current_public_catalog.json['items'] | map(attribute='id') | sort | list | to_json }}\n"
+        content: "{{ (current_public_catalog.stdout | from_json)['items'] | map(attribute='id') | sort | list | to_json }}\n"
         dest: "{{ recovery_directory }}/published-resource-ids.json"
         mode: '0600'
 

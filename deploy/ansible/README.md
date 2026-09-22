@@ -86,6 +86,12 @@ topology. Activation fingerprints retained data, verifies it after migration,
 starts the selected revision and records runtime evidence. Separate server builds
 are not claimed to have identical bytes.
 
+Each server performs its TLS route checks against its own listener while keeping
+the public hostname as the HTTP Host and TLS SNI name. This proves the selected
+edge without depending on public DNS hairpin routing. It is not an independent
+Internet vantage point, so release acceptance also includes the outside probes
+listed below.
+
 The first shared-identity or live-approval cutover remains an explicit recovery
 boundary. Prepare it with the procedures below before creating a production tag;
 the pull agent must stop rather than improvise missing private inputs.
