@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { newOrder, reach, T0, walk } from "./fixtures.js";
 import type { OrderState } from "./model.js";
 import { ORDER_STATES } from "./model.js";
-import { ORDER_OUTCOMES, outcomeFor } from "./outcome.js";
+import { ORDER_OUTCOMES, onTheMerchantsOpenList, outcomeFor } from "./outcome.js";
 
 /**
  * The projection an agent reads. The promise it carries is the fifth gate: the
@@ -57,16 +57,19 @@ describe("what the agent is told an order came to", () => {
     expect(outcomeFor(unresolved)).not.toBe("rejected");
   });
 
-  it("keeps saying so while it is still finding out", () => {
-    // The same not-knowing on an order that is still open — the merchant's
-    // goods are made and we are waiting on the payment network. There the
-    // honest word is the one for an answer that has not arrived.
-    const stillAsking = walk(reach("fulfilled"), [
+  it("does not say the answer is still on its way once it has stopped asking", () => {
+    // The goods are made and the charge went quiet. Nothing is asking the
+    // payment network again, so "in progress" would be a claim that an answer
+    // is still coming. The merchant's restart list reads this same word.
+    const silent = walk(reach("fulfilled"), [
       { kind: "deadline_expired", at: T0 + 999_999, deadline: "settle_response" },
     ]);
 
-    expect(stillAsking.payment).toBe("outcome_unknown");
-    expect(outcomeFor(stillAsking)).toBe("in_progress");
+    expect(silent.payment).toBe("outcome_unknown");
+    expect(silent.state).toBe("delivered_unpaid");
+    expect(outcomeFor(silent)).toBe("payment_unresolved");
+    expect(outcomeFor(silent)).not.toBe("in_progress");
+    expect(outcomeFor(silent)).not.toBe("delivered_unpaid");
   });
 
   it("goes back to a plain refusal once the payment network does answer", () => {
@@ -124,6 +127,36 @@ describe("what the agent is told an order came to", () => {
     const repaid = walk(owed, [{ kind: "refund_settled", at: T0 + 1_000_001 }]);
 
     expect(outcomeFor(repaid)).toBe("refunded");
+  });
+
+  it("keeps an unpaid quote off the list a restarted worker walks, and keeps one he took on", () => {
+    // Both read `in_progress` to the buyer. Only one of them is the merchant's
+    // to finish. A list that holds both is how a restart delivers goods for a
+    // purchase that was never paid.
+    const unpaid = reach("quoted");
+    const takenOn = walk(reach("dispatched"), [{ kind: "handler_accepted", at: T0 + 4 }]);
+    const handed = reach("paid");
+    const debt = reach("refund_due");
+    const goodsUnpaid = reach("delivered_unpaid");
+    const silent = walk(reach("fulfilled"), [
+      { kind: "deadline_expired", at: T0 + 999_999, deadline: "settle_response" },
+    ]);
+
+    expect(outcomeFor(unpaid)).toBe("in_progress");
+    expect(outcomeFor(takenOn)).toBe("in_progress");
+    expect(onTheMerchantsOpenList(unpaid)).toBe(false);
+    expect(onTheMerchantsOpenList(reach("created"))).toBe(false);
+    expect(onTheMerchantsOpenList(reach("awaiting_confirmation"))).toBe(false);
+    expect(onTheMerchantsOpenList(reach("confirmed"))).toBe(false);
+    expect(onTheMerchantsOpenList(takenOn)).toBe(true);
+    expect(onTheMerchantsOpenList(handed)).toBe(true);
+    expect(onTheMerchantsOpenList(reach("dispatched"))).toBe(true);
+    expect(onTheMerchantsOpenList(reach("fulfilled"))).toBe(true);
+    expect(onTheMerchantsOpenList(debt)).toBe(true);
+    expect(onTheMerchantsOpenList(goodsUnpaid)).toBe(true);
+    expect(onTheMerchantsOpenList(silent)).toBe(true);
+    expect(onTheMerchantsOpenList(reach("delivered"))).toBe(false);
+    expect(onTheMerchantsOpenList(reach("rejected"))).toBe(false);
   });
 
   it("shows the two endings where money is owed as what they are", () => {

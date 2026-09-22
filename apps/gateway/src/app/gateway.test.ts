@@ -1,3 +1,4 @@
+import { outcomeFor } from "@agentify/commerce-core";
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import {
   CARD_REJECTED,
@@ -15,7 +16,7 @@ import {
   workOnce,
   workUntilStopped,
 } from "../testing/harness.js";
-import { orderDocumentOf } from "./runner.js";
+import { agentOrderStatusOf, orderDocumentOf } from "./runner.js";
 
 /** Two wallets, for the tests that turn on which of them signed. */
 const ALICE = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -382,6 +383,10 @@ describe("a synchronous purchase", () => {
     const parked = await harnessed.store.orderById(offered.order.order.id);
     expect(parked?.order.state).toBe("delivered_unpaid");
     expect(parked?.order.payment).toBe("outcome_unknown");
+    if (parked === null) throw new Error("the order went missing");
+    // Not `in_progress`: nothing is asking the payment network again, and that
+    // word is what a restarted worker treats as an order still waiting on him.
+    expect(agentOrderStatusOf(parked).status).toBe("payment_unresolved");
     // And no second charge went out on top of the one nobody has heard from.
     expect(harnessed.facilitator.settles).toHaveLength(1);
   });
@@ -2188,6 +2193,36 @@ describe("the merchant's list of orders", () => {
     expect(
       (await harnessed.gateway.orders(harnessed.merchant.id, true)).map((o) => o.order.id),
     ).toStrictEqual([second.order.order.id]);
+  });
+
+  it("does not put an unpaid quote beside an order the merchant has taken on", async () => {
+    // A restarted worker walks this list to find what it still owes. An order
+    // that was priced and never paid never reached the handler; delivering
+    // against it makes goods for a purchase that did not happen. The buyer's
+    // word for that order stays `in_progress` — the purchase is not finished —
+    // and that word is not an instruction to the merchant.
+    const harnessed = await started();
+    const itemId = await published(harnessed, asyncCard);
+    const unpaid = await harnessed.gateway.beginPurchase(itemId, {});
+    const taken = await harnessed.gateway.beginPurchase(itemId, {});
+    if (unpaid.step !== "pay" || taken.step !== "pay") throw new Error("no price was offered");
+    await harnessed.gateway.payPurchase(taken.order.order.id, "PAYMENT-TAKEN", "PAYMENT-TAKEN");
+    expect(
+      await harnessed.gateway.acceptOrder(harnessed.merchant.id, taken.order.order.id, {}),
+    ).toStrictEqual({ ok: true });
+
+    const openIds = (await harnessed.gateway.orders(harnessed.merchant.id, true)).map(
+      (held) => held.order.id,
+    );
+
+    expect(openIds).toContain(taken.order.order.id);
+    expect(openIds).not.toContain(unpaid.order.order.id);
+    const stillThere = await harnessed.gateway.merchantOrder(
+      harnessed.merchant.id,
+      unpaid.order.order.id,
+    );
+    expect(stillThere).not.toBeNull();
+    expect(outcomeFor(stillThere?.order ?? taken.order.order)).toBe("in_progress");
   });
 });
 

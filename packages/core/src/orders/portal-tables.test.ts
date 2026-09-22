@@ -255,8 +255,9 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
     });
 
     // The word the page tells him to read: not `delivered_unpaid`, which is
-    // the paragraph above this one and the paragraph with the repeat in it.
-    expect(outcomeFor(order)).toBe("in_progress");
+    // the paragraph above this one and the paragraph with the repeat in it,
+    // and not `in_progress`, which is an order still waiting on him.
+    expect(outcomeFor(order)).toBe("payment_unresolved");
 
     // "A repeat is refused there": no second charge goes out on a guess about
     // the first.
