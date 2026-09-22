@@ -60,7 +60,6 @@
     version: "{{ release_revision }}"
     force: false
     update: true
-  become_user: "{{ ansible_user }}"
 
 - name: Prove the source checkout is exact, public and clean
   ansible.builtin.shell: |
@@ -70,7 +69,6 @@
     test -z "$(git status --porcelain=v1 --untracked-files=all)"
   args:
     chdir: "{{ release_source_directory }}"
-  become_user: "{{ ansible_user }}"
   changed_when: false
 
 - name: Require a production candidate from public main history
@@ -80,7 +78,6 @@
     git merge-base --is-ancestor '{{ release_revision }}' refs/remotes/origin/main
   args:
     chdir: "{{ release_source_directory }}"
-  become_user: "{{ ansible_user }}"
   changed_when: false
   when: channel_name == 'production'
 

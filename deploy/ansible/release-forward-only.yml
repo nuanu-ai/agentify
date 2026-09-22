@@ -33,5 +33,4 @@
       - "{{ release_source_directory }}"
       - "{{ running_production_revision.stdout }}"
       - "{{ release_revision }}"
-  become_user: "{{ ansible_user }}"
   changed_when: false
