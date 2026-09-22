@@ -66,9 +66,9 @@ The workflow refuses a tag that is not `app-v*`, a manifest still at `0.0.0`,
 a tag whose commit is not the commit being built, and a tagged commit that is
 not reachable from `origin/main`. A tag whose SDK and contracts versions are
 already on the registry publishes nothing. It also waits for the `CI`
-workflow to succeed for that exact commit. Stage 0 publishes stable versions only and assigns them
-npm dist-tag `latest`; prereleases are refused instead of deriving another
-public channel from an unchecked name.
+workflow to succeed for that exact commit. Stage 0 publishes stable versions
+only and assigns them npm dist-tag `latest`; prereleases are refused instead
+of deriving another public channel from an unchecked name.
 
 ## Bootstrap the two package names once
 
