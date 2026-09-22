@@ -63,13 +63,20 @@
   environment:
     PUBLISHED_RESOURCE_IDS_B64: "{{ published_resource_ids.content }}"
 
-- name: Require test automatic delivery to remain unavailable
+- name: Require the legacy test pull timer to remain masked
   ansible.builtin.command:
     argv: [systemctl, is-enabled, agentify-test-pull.timer]
   changed_when: false
   register: timer_state
   failed_when: timer_state.stdout != 'masked'
   when: channel_name == 'test'
+
+- name: Require this channel's reviewed pull timer to remain enabled
+  ansible.builtin.command:
+    argv: [systemctl, is-enabled, "agentify-pull@{{ channel_name }}.timer"]
+  changed_when: false
+  register: pull_timer_state
+  failed_when: pull_timer_state.stdout != 'enabled'
 
 - name: Read the installed scheduled jobs and schedule
   ansible.builtin.slurp:

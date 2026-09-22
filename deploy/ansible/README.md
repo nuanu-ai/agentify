@@ -11,61 +11,98 @@ channel's credentials, databases and authentication configuration. Activation
 keeps the retained-data, migration, runtime, route and image-identity checks. A
 release that begins a migration has no automatic downgrade or rollback.
 
-## GitHub environments
+## Install the outbound pull agents
 
-Both workflows run on GitHub-hosted runners and reach their assigned server
-through the private Headscale mesh. Configure environments named `test` and
-`production` separately. Each has its own `SSH_KEY`, `KNOWN_HOSTS`,
-`INVENTORY_JSON` and `HEADSCALE_AUTH_KEY` secrets, plus a
-`HEADSCALE_LOGIN_SERVER` variable. The inventory contains the channel's mesh
-address, login and deployment paths; workflow files contain no host address.
-TEST permits only the workflow on `main`; PRODUCTION permits only `app-v*` tags.
-Neither environment needs a manual reviewer.
+The same root-owned agent runs on both servers. It needs outbound HTTPS to the
+public repository and no GitHub credential, inbound SSH route, Headscale session
+or public webhook. Installation remains an operator action because it changes a
+root service. Run it from a clean checkout at the exact reviewed `main` SHA,
+using the ignored operator inventory:
 
-Install each environment's dedicated public SSH key once with
-`release-access.yml`. It appends a restricted key without replacing operator
-access. Run it with the same mesh `ansible_host` and SSH port stored in that
-environment's `INVENTORY_JSON`, rather than an operator-only alias, and store its
-emitted known-hosts row verbatim in `KNOWN_HOSTS`.
+```sh
+SHA=$(git rev-parse HEAD)
+ansible-playbook -i deploy/ansible/inventory.yml \
+  -e @deploy/ansible/inventory.local.yml deploy/ansible/pull-agent.yml \
+  --limit test -e pull_agent_channel_ack=test \
+  -e "pull_agent_controller_revision=$SHA"
 
-## Deploy TEST manually
+ansible-playbook -i deploy/ansible/inventory.yml \
+  -e @deploy/ansible/inventory.local.yml deploy/ansible/pull-agent.yml \
+  --limit production -e pull_agent_channel_ack=production \
+  -e "pull_agent_controller_revision=$SHA"
+```
+
+The timers poll independently. Their closed configuration lives in
+`/etc/agentify-pull-agent`, while selection state, retained controller checkouts
+and evidence live under `/var/lib/agentify-pull-agent/<channel>`. Reapplying the
+bootstrap prepares a complete controller-SHA version under
+`/opt/agentify-pull-agent/releases`, refuses an active deployment, then switches
+the installed version while polling is held. A failed reapply restores the prior
+timer. It changes no channel secret or application data. Bootstrap also removes
+only the retired channel-specific GitHub runner key block; operator SSH access
+is left intact.
+
+## Deploy TEST by moving `deploy-test`
 
 Run **Deploy TEST** from `main` and enter a branch, tag or full SHA from this
-repository. The selection job resolves that input once through GitHub to a full
-commit SHA. The deployment job checks out the recorded `main` controller and
-passes the candidate SHA separately to Ansible, so candidate workflow code never
-receives TEST credentials.
+repository, or move the pointer directly:
 
-TEST does not require main ancestry or a prior CI run. This lets a branch itself
-be the reason for a test deployment. The current controller still requires a
-compatible application and Compose layout. It refuses unsafe migration state and
-never attempts to downgrade a database to fit older code.
+```sh
+git push --force origin <branch-tag-or-sha>:refs/tags/deploy-test
+```
 
-## Deploy PRODUCTION by tag
+The workflow only resolves the input and moves `deploy-test`; it has no server
+credential or route. Within one polling interval the TEST agent resolves that
+tag to a full commit, fetches the current `main` controller, then stages,
+activates and verifies locally. TEST does not require main ancestry or a prior CI
+run. The controller still refuses incompatible layout, unsafe migration state
+and channel drift.
+
+A tag that still resolves to the last verified SHA is a no-op. A failed or
+uncertain SHA is not tried again: inspect its evidence and move `deploy-test` to
+make a new selection. Deleting the tag leaves the running TEST revision in place.
+
+## Deploy PRODUCTION by accepted tag
 
 Pushing an `app-v*` tag starts **Deploy PRODUCTION**. The tag is the operator's
-human acceptance; there is no second approval or TEST marker. Before the job can
-read PRODUCTION secrets, an uncredentialed job proves that the tag names a commit
-in public `main` history and requires successful CI on that exact SHA.
+human acceptance; there is no second approval or TEST marker. The workflow proves
+that the tag belongs to public `main` and that CI passed for that exact SHA, then
+moves the internal `deploy-production` pointer. It does not connect to a server.
+Do not move `deploy-production` directly. The server nevertheless repeats the
+`app-v*` and exact successful main-CI checks, so a direct move bypasses nothing.
 
-The deployment job stages, activates and verifies only the tagged revision. It
-neither reads TEST evidence nor requires TEST to run the same SHA. Staging checks
-out a clean source under `<agentify_home>/agentify-releases/<SHA>/source`, builds
-the first-party images, pulls pinned infrastructure images, preserves host-owned
-configuration, renders the channel's Compose graph and records sanitized
-topology. Activation records pre-change data fingerprints, verifies them after
-migration, starts the selected revision and records runtime evidence. Separate
-server builds are not claimed to have identical bytes.
+The PRODUCTION agent uses the same program and procedure as TEST. It additionally
+executes release mechanics from the accepted SHA itself, then requires the
+candidate to be in public `main` history and forward from the running OCI
+revision, once before building and again before activation. A missing identity
+or backward or divergent selection stops without touching writers.
 
-PRODUCTION also reads the full OCI revision label from the running cabinet image
-and requires it to be an ancestor of, or equal to, the tagged revision. It checks
-once before building and again immediately before activation. A missing label or
-an older or divergent tag stops without touching writers and requires reviewed
-manual recovery; the workflow never automates a downgrade.
+Staging checks out a clean source under
+`<agentify_home>/agentify-releases/<SHA>/source`, builds first-party images, pulls
+pinned infrastructure images, preserves host configuration and records sanitized
+topology. Activation fingerprints retained data, verifies it after migration,
+starts the selected revision and records runtime evidence. Separate server builds
+are not claimed to have identical bytes.
 
 The first shared-identity or live-approval cutover remains an explicit recovery
 boundary. Prepare it with the procedures below before creating a production tag;
-the automatic workflow must stop rather than improvise missing private inputs.
+the pull agent must stop rather than improvise missing private inputs.
+
+## Observe a selection
+
+The GitHub workflow proves only that it moved a tag. Runtime truth stays on the
+assigned server:
+
+```sh
+sudo systemctl status agentify-pull@test.timer
+sudo journalctl -u agentify-pull@test.service -n 200 --no-pager
+sudo cat /var/lib/agentify-pull-agent/test/state.json
+```
+
+Use `production` in those paths and unit names for the live channel. A verified
+state names the exact source and controller SHA. A failed state names the phase
+and exit code; preserve the evidence directory and do not clear state merely to
+make the timer try the same uncertain operation again.
 
 ### First shared-identity cutover
 
@@ -229,9 +266,11 @@ ansible-playbook -i deploy/ansible/inventory.yml \
 
 Verification checks the running image identities and source labels, configured
 environments, public routes, unpaid challenges, scheduled jobs, and production
-edge configuration. Public HTTP checks use the controller's external
-perspective; local runtime checks stay on the assigned host. It sends no mail
-and spends no money.
+edge configuration. Under the pull agent, public HTTP checks leave the assigned
+server through public DNS and TLS; they do not prove reachability from an
+independent internet client. Local image evidence proves the selected revision,
+and an operator's outside-in probe remains separate evidence. Verification sends
+no mail and spends no money.
 
 If a read-only gate fails before the recovery boundary, the candidate remains
 `staged`. If activation fails after entering that boundary, the candidate stays
