@@ -54,12 +54,9 @@ async function main() {
         `${JSON.stringify({
           dryRun: true,
           overdueMerchantApplications: overdueMerchants.rows[0]?.count ?? 0,
-          overdueRegistrationIntents:
-            overdueRegistrationIntents.rows[0]?.count ?? 0,
-          expiredScannerRecoveryIntents:
-            expiredScannerRecoveryIntents.rows[0]?.count ?? 0,
-          expiredScannerIdentityCompletions:
-            expiredScannerIdentityCompletions.rows[0]?.count ?? 0,
+          overdueRegistrationIntents: overdueRegistrationIntents.rows[0]?.count ?? 0,
+          expiredScannerRecoveryIntents: expiredScannerRecoveryIntents.rows[0]?.count ?? 0,
+          expiredScannerIdentityCompletions: expiredScannerIdentityCompletions.rows[0]?.count ?? 0,
           expiredRateLimitRows: expiredRateLimits.rows[0]?.count ?? 0,
           unverifiedLeadCandidates: candidates.length,
         })}\n`,

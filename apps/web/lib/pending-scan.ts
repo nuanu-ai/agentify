@@ -18,19 +18,14 @@ export type PendingScanRequest = z.infer<typeof pendingScanRequestSchema>;
 
 type ScanStorage = Pick<Storage, "getItem" | "removeItem" | "setItem">;
 
-export function savePendingScan(
-  storage: ScanStorage,
-  request: PendingScanRequest,
-) {
+export function savePendingScan(storage: ScanStorage, request: PendingScanRequest) {
   storage.setItem(
     PENDING_SCAN_STORAGE_KEY,
     JSON.stringify(pendingScanRequestSchema.parse(request)),
   );
 }
 
-export function readPendingScan(
-  storage: ScanStorage,
-): PendingScanRequest | null {
+export function readPendingScan(storage: ScanStorage): PendingScanRequest | null {
   const raw = storage.getItem(PENDING_SCAN_STORAGE_KEY);
   if (!raw) return null;
   try {

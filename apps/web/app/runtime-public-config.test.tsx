@@ -66,9 +66,7 @@ describe("browser-visible runtime configuration", () => {
       POSTHOG_BROWSER_HOST: "",
     });
 
-    expect(() => RootLayout({ children: null })).toThrow(
-      "browser_posthog_requires_key_and_host",
-    );
+    expect(() => RootLayout({ children: null })).toThrow("browser_posthog_requires_key_and_host");
   });
 
   it("passes the Stripe publishable key through the authenticated report server boundary", () => {

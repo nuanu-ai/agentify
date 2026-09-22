@@ -36,7 +36,7 @@
   flex-direction: column;
   gap: 4px;
   color: var(--muted);
-  font: 0.75rem/1.4 var(--font-mono);
+  font: 0.75rem / 1.4 var(--font-mono);
 }
 
 .scanId {
@@ -53,7 +53,7 @@
   padding: 12px 28px;
   background: var(--notice-bg);
   color: var(--notice-ink);
-  font: 0.75rem/1.5 var(--font-mono);
+  font: 0.75rem / 1.5 var(--font-mono);
 }
 
 .progress {
@@ -92,7 +92,7 @@
   border-radius: 50%;
   background: var(--surface-sunken);
   color: var(--na);
-  font: 600 0.75rem/1 var(--font-mono);
+  font: 600 0.75rem / 1 var(--font-mono);
 }
 
 .phases .done,
@@ -123,7 +123,7 @@
   gap: 4px 16px;
   margin: 18px 0 0;
   color: var(--faint);
-  font: 0.75rem/1.5 var(--font-mono);
+  font: 0.75rem / 1.5 var(--font-mono);
 }
 
 .checkDetails {
@@ -217,7 +217,7 @@
   flex-wrap: wrap;
   margin-top: 12px;
   color: var(--muted);
-  font: 0.6875rem/1.5 var(--font-mono);
+  font: 0.6875rem / 1.5 var(--font-mono);
 }
 
 .findings {
@@ -288,7 +288,7 @@
 
 .findingChevron {
   color: var(--muted);
-  font: 500 1.25rem/1 var(--font-mono);
+  font: 500 1.25rem / 1 var(--font-mono);
   transition: transform 160ms ease;
 }
 
@@ -316,7 +316,7 @@
   padding: 4px 8px;
   background: var(--bg);
   color: var(--fg-2);
-  font: 500 0.625rem/1.2 var(--font-mono);
+  font: 500 0.625rem / 1.2 var(--font-mono);
   letter-spacing: 0.02em;
   white-space: nowrap;
 }
@@ -350,7 +350,7 @@
 .teaserCaption {
   margin: 0;
   color: var(--muted);
-  font: 0.75rem/1.5 var(--font-mono);
+  font: 0.75rem / 1.5 var(--font-mono);
 }
 
 .reportCta {
@@ -449,7 +449,7 @@
   place-items: center;
   padding: 28px;
   color: var(--faint);
-  font: 0.75rem/1.5 var(--font-mono);
+  font: 0.75rem / 1.5 var(--font-mono);
 }
 
 .pollNotice {
@@ -464,7 +464,7 @@
   justify-content: center;
   margin-top: 24px;
   color: var(--muted);
-  font: 0.75rem/1.5 var(--font-mono);
+  font: 0.75rem / 1.5 var(--font-mono);
 }
 
 .browserWrap {
@@ -577,4 +577,3 @@
     transform: scale(0.75);
   }
 }
-

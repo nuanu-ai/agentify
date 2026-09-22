@@ -42,15 +42,13 @@ describe("structured observability", () => {
       status_code: 503,
       suppressed_count: 3,
     });
-    expect(JSON.stringify(record)).not.toMatch(
-      /owner@|secret\.example|token=|secret stack/i,
-    );
+    expect(JSON.stringify(record)).not.toMatch(/owner@|secret\.example|token=|secret stack/i);
   });
 
   it("rejects URL-shaped values even under an allowed key", () => {
-    expect(
-      sanitizeLogAttributes({ error_code: "https://secret.example/?x=1" }),
-    ).toEqual({ suppressed_count: 1 });
+    expect(sanitizeLogAttributes({ error_code: "https://secret.example/?x=1" })).toEqual({
+      suppressed_count: 1,
+    });
   });
 
   it("extracts only the safe error class", () => {
@@ -58,23 +56,15 @@ describe("structured observability", () => {
     error.name = "ProviderTimeout";
     expect(safeErrorType(error)).toBe("ProviderTimeout");
     expect(safeErrorType("secret")).toBe("UnknownError");
-    expect(safeErrorCode({ code: "SELF_SIGNED_CERT_IN_CHAIN" })).toBe(
-      "SELF_SIGNED_CERT_IN_CHAIN",
-    );
-    expect(safeErrorCode({ errors: [{ code: "ECONNRESET" }] })).toBe(
-      "ECONNRESET",
-    );
-    expect(safeErrorCode({ code: "https://secret.example/?token=x" })).toBe(
-      undefined,
-    );
+    expect(safeErrorCode({ code: "SELF_SIGNED_CERT_IN_CHAIN" })).toBe("SELF_SIGNED_CERT_IN_CHAIN");
+    expect(safeErrorCode({ errors: [{ code: "ECONNRESET" }] })).toBe("ECONNRESET");
+    expect(safeErrorCode({ code: "https://secret.example/?token=x" })).toBe(undefined);
   });
 
   it("classifies dynamic capability paths without returning identifiers", () => {
-    expect(
-      classifyHttpRoute(
-        "/api/v1/scans/019f5b6a-4b9f-7000-8000-000000000001/status",
-      ),
-    ).toBe("api_v1_scan_status");
+    expect(classifyHttpRoute("/api/v1/scans/019f5b6a-4b9f-7000-8000-000000000001/status")).toBe(
+      "api_v1_scan_status",
+    );
     expect(classifyHttpRoute("/s/public-secret-slug")).toBe("page_share");
     expect(classifyHttpRoute("/owner@example.com")).toBe("other");
   });

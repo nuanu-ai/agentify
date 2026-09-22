@@ -4,11 +4,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import {
-  type PendingScanRequest,
-  readPendingScan,
-  savePendingScan,
-} from "../lib/pending-scan";
+import { type PendingScanRequest, readPendingScan, savePendingScan } from "../lib/pending-scan";
 import { PendingScanExperience } from "./pending-scan-experience";
 
 const pending = (variant: string): PendingScanRequest => ({
@@ -83,11 +79,7 @@ describe("pending scan acceptance", () => {
   );
 
   it("removes the pending request once the server accepts it", async () => {
-    window.history.replaceState(
-      {},
-      "",
-      "/scan/018f3f56-2ec8-7b16-8f66-5b8f93f3251f?segment=owner",
-    );
+    window.history.replaceState({}, "", "/scan/018f3f56-2ec8-7b16-8f66-5b8f93f3251f?segment=owner");
     savePendingScan(window.sessionStorage, pending("accepted"));
     installNetwork(
       response(
@@ -104,8 +96,6 @@ describe("pending scan acceptance", () => {
 
     render(<PendingScanExperience turnstileSiteKey={null} />);
 
-    await waitFor(() =>
-      expect(readPendingScan(window.sessionStorage)).toBeNull(),
-    );
+    await waitFor(() => expect(readPendingScan(window.sessionStorage)).toBeNull());
   });
 });

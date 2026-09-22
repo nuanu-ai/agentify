@@ -67,8 +67,7 @@ function repositoryFake(overrides: Partial<BrowserObservationRepository> = {}) {
   const state = {
     attachedRun: undefined as string | undefined,
     completed: false,
-    terminal: undefined as
-      { status: string; reason: string; usageUsd?: number } | undefined,
+    terminal: undefined as { status: string; reason: string; usageUsd?: number } | undefined,
     storageCleaned: false,
     reservations: 0,
   };
@@ -83,19 +82,11 @@ function repositoryFake(overrides: Partial<BrowserObservationRepository> = {}) {
       state.completed = true;
       return "committed";
     },
-    markTerminal: async (
-      _observationId,
-      _leaseToken,
-      status,
-      reason,
-      options,
-    ) => {
+    markTerminal: async (_observationId, _leaseToken, status, reason, options) => {
       state.terminal = {
         status,
         reason,
-        ...(options?.usageUsd === undefined
-          ? {}
-          : { usageUsd: options.usageUsd }),
+        ...(options?.usageUsd === undefined ? {} : { usageUsd: options.usageUsd }),
       };
       return true;
     },
@@ -164,9 +155,7 @@ function providerFake(overrides: Partial<BrowserProviderClient> = {}) {
 describe("browser observation job", () => {
   it("strips query/fragment and preserves strict passive limits", () => {
     const input = buildBrowserObservationInput(observation, config);
-    expect(input.target.canonical_url).toBe(
-      "https://shop.example.com/products",
-    );
+    expect(input.target.canonical_url).toBe("https://shop.example.com/products");
     expect(input.target.registrable_domain).toBe("example.com");
     expect(input.policy.methods).toEqual(["GET", "HEAD"]);
     expect(input.policy.use_proxy).toBe(false);

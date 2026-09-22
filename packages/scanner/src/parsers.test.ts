@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  parseJsonLd,
-  parseSafeJson,
-  parseSitemap,
-  visibleText,
-} from "./parsers.js";
+import { parseJsonLd, parseSafeJson, parseSitemap, visibleText } from "./parsers.js";
 import { explicitAiPolicies, isPathAllowed, parseRobots } from "./robots.js";
 
 describe("deterministic parsers", () => {
@@ -27,9 +22,7 @@ User-agent: Google-Extended
 Allow: /
 `);
     expect(isPathAllowed(parsed, "agentify-scanner", "/private/x")).toBe(false);
-    expect(isPathAllowed(parsed, "agentify-scanner", "/private/public/x")).toBe(
-      true,
-    );
+    expect(isPathAllowed(parsed, "agentify-scanner", "/private/public/x")).toBe(true);
     expect(parsed.contentSignal).toEqual({
       search: "yes",
       "ai-input": "no",
@@ -52,12 +45,8 @@ Allow: /
 User-agent: agentify-scanner
 Disallow: /
 `);
-    expect(isPathAllowed(specificDeny, "agentify-scanner", "/public")).toBe(
-      false,
-    );
-    expect(isPathAllowed(specificDeny, "agentify-scanner/1.0", "/public")).toBe(
-      false,
-    );
+    expect(isPathAllowed(specificDeny, "agentify-scanner", "/public")).toBe(false);
+    expect(isPathAllowed(specificDeny, "agentify-scanner/1.0", "/public")).toBe(false);
 
     const specificAllow = parseRobots(`
 User-agent: *
@@ -65,19 +54,13 @@ Disallow: /
 User-agent: agentify-scanner
 Allow: /
 `);
-    expect(isPathAllowed(specificAllow, "agentify-scanner", "/public")).toBe(
-      true,
-    );
-    expect(isPathAllowed(specificAllow, "unmatched-bot", "/public")).toBe(
-      false,
-    );
+    expect(isPathAllowed(specificAllow, "agentify-scanner", "/public")).toBe(true);
+    expect(isPathAllowed(specificAllow, "unmatched-bot", "/public")).toBe(false);
   });
 
   it("rejects XML entities and bounds sitemap entries", () => {
     expect(
-      parseSitemap(
-        `<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><urlset/>`,
-      ),
+      parseSitemap(`<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><urlset/>`),
     ).toMatchObject({
       valid: false,
       errorCode: "xml_entity_blocked",
@@ -91,9 +74,7 @@ Allow: /
 
   it("blocks prototype keys and deeply nested JSON", () => {
     expect(parseSafeJson('{"__proto__":{"polluted":true}}')).toBeUndefined();
-    expect(
-      parseSafeJson(`${"[".repeat(42)}0${"]".repeat(42)}`),
-    ).toBeUndefined();
+    expect(parseSafeJson(`${"[".repeat(42)}0${"]".repeat(42)}`)).toBeUndefined();
   });
 
   it("extracts JSON-LD without script or nav text", () => {

@@ -15,24 +15,17 @@ afterEach(() => vi.unstubAllEnvs());
 
 describe("web configuration readiness", () => {
   it("accepts valid runtime settings without contacting a database", () => {
-    expect(
-      GET(new Request("https://test.agentify.ad/api/health/live")).status,
-    ).toBe(200);
+    expect(GET(new Request("https://test.agentify.ad/api/health/live")).status).toBe(200);
   });
   it.each([
     ["REGISTRATION_ENABLED", "flase"],
     ["APP_BASE_URL", "not-an-origin"],
     ["POSTHOG_BROWSER_KEY", "configured-without-a-host"],
     ["ANALYTICS_RUNTIME_ENV", "unknown-environment"],
-  ])(
-    "refuses invalid %s before the image can be accepted as healthy",
-    async (key, value) => {
-      vi.stubEnv(key, value);
-      const response = GET(
-        new Request("https://test.agentify.ad/api/health/live"),
-      );
-      expect(response.status).toBe(503);
-      expect(await response.text()).not.toContain(value);
-    },
-  );
+  ])("refuses invalid %s before the image can be accepted as healthy", async (key, value) => {
+    vi.stubEnv(key, value);
+    const response = GET(new Request("https://test.agentify.ad/api/health/live"));
+    expect(response.status).toBe(503);
+    expect(await response.text()).not.toContain(value);
+  });
 });

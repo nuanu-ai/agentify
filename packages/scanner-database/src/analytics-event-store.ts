@@ -5,9 +5,7 @@ import type { Database } from "./client.js";
 import { createUuidV7 } from "./ids.js";
 import { analyticsEvents, deliveryOutbox } from "./schema.js";
 
-export type BusinessEventInput = Parameters<
-  BusinessEventStore["insertOnce"]
->[0];
+export type BusinessEventInput = Parameters<BusinessEventStore["insertOnce"]>[0];
 export type BusinessEventExecutor = Pick<Database, "select" | "insert">;
 
 export const insertBusinessEventOnce = async (
@@ -65,8 +63,6 @@ export const insertBusinessEventOnce = async (
 
 export const createBusinessEventStore = (db: Database): BusinessEventStore => ({
   async insertOnce(input) {
-    return await db.transaction(async (tx) =>
-      insertBusinessEventOnce(tx, input),
-    );
+    return await db.transaction(async (tx) => insertBusinessEventOnce(tx, input));
   },
 });

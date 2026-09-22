@@ -41,12 +41,9 @@ export type SafeFetchOptions = {
   signal?: AbortSignal;
 };
 
-export const selectPinnedAddress = (
-  answers: readonly ResolvedAddress[],
-): ResolvedAddress => {
+export const selectPinnedAddress = (answers: readonly ResolvedAddress[]): ResolvedAddress => {
   const selected =
-    answers.find(({ family }) => family === 4) ??
-    answers.find(({ family }) => family === 6);
+    answers.find(({ family }) => family === 4) ?? answers.find(({ family }) => family === 6);
   if (!selected) throw new Error("dns_no_answers");
   return selected;
 };
@@ -62,13 +59,10 @@ const SAFE_HEADERS = new Set<SafeHeaderName>([
   "link",
 ]);
 
-const headerValue = (
-  value: string | string[] | undefined,
-): string | undefined => (Array.isArray(value) ? value.join(", ") : value);
+const headerValue = (value: string | string[] | undefined): string | undefined =>
+  Array.isArray(value) ? value.join(", ") : value;
 
-const allowlistedHeaders = (
-  headers: IncomingHttpHeaders,
-): FetchArtifact["headers"] => {
+const allowlistedHeaders = (headers: IncomingHttpHeaders): FetchArtifact["headers"] => {
   const output: FetchArtifact["headers"] = {};
   for (const name of SAFE_HEADERS) {
     const value = headerValue(headers[name]);
@@ -77,38 +71,28 @@ const allowlistedHeaders = (
   return output;
 };
 
-export const transportErrorCode = (
-  error: unknown,
-  protocol: string,
-): string => {
+export const transportErrorCode = (error: unknown, protocol: string): string => {
   if (error instanceof Error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (
       protocol === "https:" &&
       ((code !== undefined &&
-        (/^(?:ERR_TLS|ERR_SSL|CERT_|DEPTH_ZERO|SELF_SIGNED|UNABLE_TO_(?:GET|VERIFY))/.test(
-          code,
-        ) ||
+        (/^(?:ERR_TLS|ERR_SSL|CERT_|DEPTH_ZERO|SELF_SIGNED|UNABLE_TO_(?:GET|VERIFY))/.test(code) ||
           code === "EPROTO")) ||
         /\b(?:certificate|tls|ssl|handshake)\b/i.test(error.message))
     )
       return "tls_invalid";
-    if (code === "ETIMEDOUT" || error.name === "AbortError")
-      return "fetch_timeout";
+    if (code === "ETIMEDOUT" || error.name === "AbortError") return "fetch_timeout";
     if (code === "ECONNRESET") return "connection_reset";
     if (code === "ENOTFOUND" || code === "EAI_AGAIN") return "dns_error";
   }
   return "network_error";
 };
 
-const decoderFor = (
-  stream: Readable,
-  encoding: string | undefined,
-): Readable => {
+const decoderFor = (stream: Readable, encoding: string | undefined): Readable => {
   const normalized = encoding?.toLowerCase().trim();
   if (!normalized || normalized === "identity") return stream;
-  if (normalized === "gzip" || normalized === "x-gzip")
-    return stream.pipe(createGunzip());
+  if (normalized === "gzip" || normalized === "x-gzip") return stream.pipe(createGunzip());
   if (normalized === "deflate") return stream.pipe(createInflate());
   if (normalized === "br") return stream.pipe(createBrotliDecompress());
   throw new Error("unsupported_content_encoding");
@@ -161,20 +145,13 @@ export class NodePinnedTransport implements PinnedTransport {
           ? { servername: input.url.hostname, rejectUnauthorized: true }
           : {}),
       };
-      const request = (input.url.protocol === "https:" ? https : http).request(
-        options,
-      );
+      const request = (input.url.protocol === "https:" ? https : http).request(options);
       const abort = () =>
-        request.destroy(
-          Object.assign(new Error("aborted"), { name: "AbortError" }),
-        );
+        request.destroy(Object.assign(new Error("aborted"), { name: "AbortError" }));
       input.signal.addEventListener("abort", abort, { once: true });
       timers.total = setTimeout(abort, input.timeoutMs);
       timers.connect = setTimeout(
-        () =>
-          request.destroy(
-            Object.assign(new Error("connect_timeout"), { code: "ETIMEDOUT" }),
-          ),
+        () => request.destroy(Object.assign(new Error("connect_timeout"), { code: "ETIMEDOUT" })),
         input.connectTimeoutMs,
       );
 
@@ -199,18 +176,13 @@ export class NodePinnedTransport implements PinnedTransport {
           return;
         }
         try {
-          const decoded = decoderFor(
-            response,
-            headerValue(response.headers["content-encoding"]),
-          );
+          const decoded = decoderFor(response, headerValue(response.headers["content-encoding"]));
           const chunks: Buffer[] = [];
           let decodedBytes = 0;
           let truncated = false;
           try {
             for await (const chunk of decoded) {
-              const buffer = Buffer.isBuffer(chunk)
-                ? chunk
-                : Buffer.from(chunk as Uint8Array);
+              const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array);
               const remaining = input.maxDecodedBytes - decodedBytes;
               if (buffer.length > remaining) {
                 if (remaining > 0) chunks.push(buffer.subarray(0, remaining));
@@ -252,8 +224,7 @@ export const systemDnsResolver: DnsResolver = {
   async resolve(hostname) {
     const answers = await dnsLookup(hostname, { all: true, verbatim: true });
     return answers.filter(
-      (answer): answer is ResolvedAddress =>
-        answer.family === 4 || answer.family === 6,
+      (answer): answer is ResolvedAddress => answer.family === 4 || answer.family === 6,
     );
   },
 };
@@ -291,11 +262,7 @@ class OriginSemaphore {
       released = true;
       const waiter = this.waiters.get(origin)?.shift();
       if (waiter) waiter();
-      else
-        this.active.set(
-          origin,
-          Math.max(0, (this.active.get(origin) ?? 1) - 1),
-        );
+      else this.active.set(origin, Math.max(0, (this.active.get(origin) ?? 1) - 1));
     };
   }
 }
@@ -333,17 +300,12 @@ export class SafeFetcher {
     private readonly defaultUserAgent: string,
   ) {}
 
-  async fetch(
-    input: string | URL,
-    options: SafeFetchOptions = {},
-  ): Promise<FetchArtifact> {
+  async fetch(input: string | URL, options: SafeFetchOptions = {}): Promise<FetchArtifact> {
     const rawInput = input.toString();
-    const schemeWasMissing =
-      typeof input === "string" && !/^[a-z][a-z\d+.-]*:/i.test(rawInput);
+    const schemeWasMissing = typeof input === "string" && !/^[a-z][a-z\d+.-]*:/i.test(rawInput);
     let url = canonicalizeTarget(rawInput);
     const method = options.method ?? "GET";
-    if (method !== "GET" && method !== "HEAD")
-      throw new UrlPolicyError("method_blocked");
+    if (method !== "GET" && method !== "HEAD") throw new UrlPolicyError("method_blocked");
     const controller = new AbortController();
     const relayAbort = () => controller.abort(options.signal?.reason);
     options.signal?.addEventListener("abort", relayAbort, { once: true });
@@ -357,10 +319,7 @@ export class SafeFetcher {
         const answers = await this.resolver.resolve(url.hostname);
         assertPublicAddresses(answers.map((answer) => answer.address));
         const pinnedAddress = selectPinnedAddress(answers);
-        const release = await this.budget.acquire(
-          url.origin,
-          controller.signal,
-        );
+        const release = await this.budget.acquire(url.origin, controller.signal);
         let artifact: FetchArtifact;
         try {
           artifact = await this.transport.request({
@@ -369,9 +328,7 @@ export class SafeFetcher {
             method,
             headers: {
               "user-agent": options.userAgent ?? this.defaultUserAgent,
-              accept:
-                options.accept ??
-                "text/html,application/xhtml+xml;q=0.9,*/*;q=0.1",
+              accept: options.accept ?? "text/html,application/xhtml+xml;q=0.9,*/*;q=0.1",
               "accept-encoding": "gzip, deflate, br",
               connection: "close",
             },
@@ -390,22 +347,17 @@ export class SafeFetcher {
           redirects === 0 &&
           url.protocol === "https:" &&
           artifact.errorCode &&
-          new Set([
-            "network_error",
-            "connection_reset",
-            "dns_error",
-            "fetch_timeout",
-          ]).has(artifact.errorCode)
+          new Set(["network_error", "connection_reset", "dns_error", "fetch_timeout"]).has(
+            artifact.errorCode,
+          )
         ) {
           url = new URL(url);
           url.protocol = "http:";
           usedHttpFallback = true;
           continue;
         }
-        if (artifact.status < 300 || artifact.status >= 400 || !location)
-          return artifact;
-        if (redirects >= 5)
-          return { ...artifact, errorCode: "redirect_limit_exceeded" };
+        if (artifact.status < 300 || artifact.status >= 400 || !location) return artifact;
+        if (redirects >= 5) return { ...artifact, errorCode: "redirect_limit_exceeded" };
         redirects += 1;
         url = validateRedirect(url, location);
       }

@@ -30,7 +30,7 @@
   padding: 4px 10px;
   background: var(--bg);
   color: var(--muted);
-  font: 500 0.6875rem/1.4 var(--font-mono);
+  font: 500 0.6875rem / 1.4 var(--font-mono);
   text-transform: uppercase;
 }
 
@@ -71,7 +71,7 @@
   border-bottom: 1px solid var(--line);
   padding: 10px clamp(20px, 4vw, 28px);
   color: var(--muted);
-  font: 0.6875rem/1.5 var(--font-mono);
+  font: 0.6875rem / 1.5 var(--font-mono);
 }
 
 .meta span:first-child {
@@ -128,7 +128,7 @@ summary.findingHeader::marker {
   padding: 3px 8px;
   background: var(--accent-soft);
   color: var(--accent-hover);
-  font: 0.625rem/1.4 var(--font-mono);
+  font: 0.625rem / 1.4 var(--font-mono);
   text-transform: uppercase;
 }
 
@@ -156,7 +156,7 @@ summary.findingHeader::marker {
   border-radius: var(--radius-control);
   padding: 12px;
   background: var(--bg);
-  font: 0.75rem/1.5 var(--font-mono);
+  font: 0.75rem / 1.5 var(--font-mono);
 }
 
 .findingBody dl div {

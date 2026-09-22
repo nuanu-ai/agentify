@@ -38,8 +38,7 @@ export type ScanRunOptions = {
 };
 
 const robotsUrl = (target: URL): URL => new URL("/robots.txt", target.origin);
-const discoveryUrl = (target: URL, path: string): URL =>
-  new URL(path, target.origin);
+const discoveryUrl = (target: URL, path: string): URL => new URL(path, target.origin);
 
 const registrableDomain = (url: URL): string | null =>
   getDomain(url.hostname, { allowPrivateDomains: true });
@@ -69,15 +68,10 @@ const canonicalSameSiteUrl = (
 };
 
 const authDeclared = (artifacts: Pick<ScanArtifacts, "mcp" | "ucp">): boolean =>
-  [...artifacts.mcp, ...(artifacts.ucp ? [artifacts.ucp] : [])].some(
-    (artifact) => {
-      const parsed = parseSafeJson(artifact.body);
-      return (
-        parsed !== undefined &&
-        /oauth|bearer|authorization/i.test(JSON.stringify(parsed))
-      );
-    },
-  );
+  [...artifacts.mcp, ...(artifacts.ucp ? [artifacts.ucp] : [])].some((artifact) => {
+    const parsed = parseSafeJson(artifact.body);
+    return parsed !== undefined && /oauth|bearer|authorization/i.test(JSON.stringify(parsed));
+  });
 
 const unavailableArtifact = (url: URL, errorCode: string): FetchArtifact => ({
   url: url.toString(),
@@ -91,11 +85,7 @@ const unavailableArtifact = (url: URL, errorCode: string): FetchArtifact => ({
   errorCode,
 });
 
-const skeletonArtifacts = (
-  job: ScanJobV1,
-  target: URL,
-  robots: FetchArtifact,
-): ScanArtifacts => ({
+const skeletonArtifacts = (job: ScanJobV1, target: URL, robots: FetchArtifact): ScanArtifacts => ({
   segment: job.segment,
   canonicalTargetUrl: target.toString(),
   robots,
@@ -119,9 +109,7 @@ const productCandidates = (
     const candidate = canonicalSameSiteUrl(value, target, useFallbackOrigin);
     if (
       !candidate ||
-      !/(?:^|\/)(?:products?|shop|items?|sku)(?:\/|$)|\/p\//i.test(
-        candidate.pathname,
-      ) ||
+      !/(?:^|\/)(?:products?|shop|items?|sku)(?:\/|$)|\/p\//i.test(candidate.pathname) ||
       seen.has(candidate.toString())
     )
       continue;
@@ -163,21 +151,17 @@ export class ScanRunner {
       fetchOptions: Parameters<SafeFetcher["fetch"]>[1] = {},
     ) => {
       const canonical = canonicalizeTarget(input.toString());
-      if (controller.signal.aborted)
-        return unavailableArtifact(canonical, "global_deadline");
+      if (controller.signal.aborted) return unavailableArtifact(canonical, "global_deadline");
       const artifact = await fetcher
         .fetch(input, { ...fetchOptions, signal: controller.signal })
         .catch((error: unknown) => {
           if (
             error instanceof Error &&
-            (error.name === "AbortError" ||
-              error.message === "request_budget_exhausted")
+            (error.name === "AbortError" || error.message === "request_budget_exhausted")
           )
             return unavailableArtifact(
               canonical,
-              error.name === "AbortError"
-                ? "global_deadline"
-                : "request_budget_exhausted",
+              error.name === "AbortError" ? "global_deadline" : "request_budget_exhausted",
             );
           throw error;
         });
@@ -190,10 +174,7 @@ export class ScanRunner {
       return artifact;
     };
     const emitted = new Set<number>();
-    const emitChecks = async (
-      artifacts: ScanArtifacts,
-      checkIds: readonly number[],
-    ) => {
+    const emitChecks = async (artifacts: ScanArtifacts, checkIds: readonly number[]) => {
       if (!options.onChecksComplete) return;
       const results = evaluateChecks(artifacts).filter(
         (check) => checkIds.includes(check.id) && !emitted.has(check.id),
@@ -204,15 +185,12 @@ export class ScanRunner {
     };
 
     try {
-      const robotsInput = schemeWasMissing
-        ? `${target.host}/robots.txt`
-        : robotsUrl(target);
+      const robotsInput = schemeWasMissing ? `${target.host}/robots.txt` : robotsUrl(target);
       const robots = await fetch(robotsInput, {
         bodyLimit: 512 * 1024,
         accept: "text/plain,*/*;q=0.1",
       });
-      const usedHttpFallback =
-        schemeWasMissing && new URL(robots.url).protocol === "http:";
+      const usedHttpFallback = schemeWasMissing && new URL(robots.url).protocol === "http:";
       if (usedHttpFallback) target.protocol = "http:";
       const initialArtifacts = skeletonArtifacts(job, target, robots);
       await emitChecks(initialArtifacts, [1, 2, 3]);
@@ -220,8 +198,7 @@ export class ScanRunner {
       const parsedRobots = parseRobots(robots.body);
       const robotsDecisionKnown =
         !robots.errorCode &&
-        ([404, 410].includes(robots.status) ||
-          (robots.status === 200 && !parsedRobots.fatal));
+        ([404, 410].includes(robots.status) || (robots.status === 200 && !parsedRobots.fatal));
       const robotsAllows = (url: URL): boolean =>
         robots.status === 404 ||
         robots.status === 410 ||
@@ -237,9 +214,7 @@ export class ScanRunner {
       const sitemapTargets = declaredSitemaps.length
         ? declaredSitemaps
         : [discoveryUrl(target, "/sitemap.xml")];
-      const blockedCode = robotsDecisionKnown
-        ? "robots_disallowed"
-        : "robots_unavailable";
+      const blockedCode = robotsDecisionKnown ? "robots_disallowed" : "robots_unavailable";
       const fetchIfRobotsAllowed = (
         url: URL,
         fetchOptions: Parameters<SafeFetcher["fetch"]>[1],
@@ -288,30 +263,20 @@ export class ScanRunner {
                 accept: "application/xml,text/xml,*/*;q=0.1",
               });
               artifacts.push(artifact);
-              if (
-                artifact.errorCode ||
-                artifact.status < 200 ||
-                artifact.status >= 300
-              )
-                continue;
+              if (artifact.errorCode || artifact.status < 200 || artifact.status >= 300) continue;
               const parsed = parseSitemap(artifact.body);
               if (!parsed.valid || !parsed.isIndex) continue;
               const children = parsed.urls
-                .map((value) =>
-                  canonicalSameSiteUrl(value, target, usedHttpFallback),
-                )
+                .map((value) => canonicalSameSiteUrl(value, target, usedHttpFallback))
                 .filter(
-                  (value): value is URL =>
-                    value !== undefined && !seen.has(value.toString()),
+                  (value): value is URL => value !== undefined && !seen.has(value.toString()),
                 );
               pending.unshift(...children);
             }
             return artifacts;
           })()
         : Promise.resolve(
-            sitemapTargets.map((url) =>
-              unavailableArtifact(url, "robots_disallowed"),
-            ),
+            sitemapTargets.map((url) => unavailableArtifact(url, "robots_disallowed")),
           );
       const llmsUrl = discoveryUrl(target, "/llms.txt");
       const llmsPromise = targetAllowed
@@ -321,10 +286,7 @@ export class ScanRunner {
           })
         : Promise.resolve(unavailableArtifact(llmsUrl, "robots_disallowed"));
       const mcpUrl = discoveryUrl(target, "/.well-known/mcp.json");
-      const mcpCardUrl = discoveryUrl(
-        target,
-        "/.well-known/mcp/server-card.json",
-      );
+      const mcpCardUrl = discoveryUrl(target, "/.well-known/mcp/server-card.json");
       const ucpUrl = discoveryUrl(target, "/.well-known/ucp");
       const a2aUrl = discoveryUrl(target, "/.well-known/agent-card.json");
       const wellKnown = Promise.all([
@@ -359,9 +321,7 @@ export class ScanRunner {
       // The well-known batch answers in the order it was assembled: the two
       // MCP documents, the UCP document for a store, and the A2A document.
       const [mcpWellKnown, mcpServerCard, ...furtherKnown] = knownResults;
-      const mcp = [mcpWellKnown, mcpServerCard].filter(
-        (artifact) => artifact !== undefined,
-      );
+      const mcp = [mcpWellKnown, mcpServerCard].filter((artifact) => artifact !== undefined);
       const ucp = job.segment === "store" ? furtherKnown[0] : undefined;
       const a2a = job.segment === "store" ? furtherKnown[1] : furtherKnown[0];
       const phaseArtifacts: ScanArtifacts = {
@@ -392,23 +352,18 @@ export class ScanRunner {
                 accept: "application/json,*/*;q=0.1",
               },
             ),
-            fetchExplicitDiscovery(
-              discoveryUrl(target, "/.well-known/oauth-protected-resource"),
-              {
-                bodyLimit: 1024 * 1024,
-                accept: "application/json,*/*;q=0.1",
-              },
-            ),
+            fetchExplicitDiscovery(discoveryUrl(target, "/.well-known/oauth-protected-resource"), {
+              bodyLimit: 1024 * 1024,
+              accept: "application/json,*/*;q=0.1",
+            }),
           ])
         : Promise.resolve([]);
       const representativePromise =
         job.segment === "store" && robotsDecisionKnown && targetAllowed
           ? (async () => {
-              const candidates = productCandidates(
-                target,
-                sitemap,
-                usedHttpFallback,
-              ).filter(robotsAllows);
+              const candidates = productCandidates(target, sitemap, usedHttpFallback).filter(
+                robotsAllows,
+              );
               const heads = await Promise.all(
                 candidates.map((candidate) =>
                   fetch(candidate, {
@@ -424,10 +379,8 @@ export class ScanRunner {
               const unsupportedHeadIndex = heads.findIndex((head) =>
                 [405, 501].includes(head.status),
               );
-              const index =
-                successfulIndex === -1 ? unsupportedHeadIndex : successfulIndex;
-              const representative =
-                index === -1 ? undefined : candidates[index];
+              const index = successfulIndex === -1 ? unsupportedHeadIndex : successfulIndex;
+              const representative = index === -1 ? undefined : candidates[index];
               return representative
                 ? await fetch(representative, {
                     bodyLimit: 2 * 1024 * 1024,
@@ -435,10 +388,7 @@ export class ScanRunner {
                 : undefined;
             })()
           : Promise.resolve(undefined);
-      const [oauth, representative] = await Promise.all([
-        oauthPromise,
-        representativePromise,
-      ]);
+      const [oauth, representative] = await Promise.all([oauthPromise, representativePromise]);
       const artifacts: ScanArtifacts = {
         ...phaseArtifacts,
         oauth,

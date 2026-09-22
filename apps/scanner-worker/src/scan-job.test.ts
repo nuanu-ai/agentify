@@ -1,11 +1,7 @@
 import type { ScanEvaluation } from "@agentify/scanner";
 import type { CheckResult, ScanJobV1 } from "@agentify/scanner-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  processScanJob,
-  type ScanJobRepository,
-  type TerminalCommit,
-} from "./scan-job.js";
+import { processScanJob, type ScanJobRepository, type TerminalCommit } from "./scan-job.js";
 import type { ScanRunOptions } from "./scan-runner.js";
 
 const job: ScanJobV1 = {
@@ -50,9 +46,7 @@ const evaluation: ScanEvaluation = {
   findings: { negativeCheckIds: [], positiveCheckId: 1 },
 };
 
-const repository = (
-  claim: "claimed" | "terminal" | "in_progress" = "claimed",
-) => {
+const repository = (claim: "claimed" | "terminal" | "in_progress" = "claimed") => {
   const state: {
     claimed: boolean;
     checks: Map<number, CheckResult>;
@@ -84,8 +78,7 @@ const repository = (
     },
     findReusableSnapshot: async () => undefined,
     commitTerminal: async (input) => {
-      if (!state.checks.has(check.id))
-        throw new Error("terminal_commit_without_persisted_check");
+      if (!state.checks.has(check.id)) throw new Error("terminal_commit_without_persisted_check");
       state.terminal = input;
       return "committed";
     },
@@ -157,18 +150,14 @@ describe("scan job lifecycle", () => {
       cacheHit: true,
       sourceScanId: "source-scan",
     });
-    expect(JSON.stringify(state.terminal)).not.toMatch(
-      /lead|utm|token|session/i,
-    );
+    expect(JSON.stringify(state.terminal)).not.toMatch(/lead|utm|token|session/i);
   });
 
   it("marks retryable system failure on first attempt", async () => {
     const { repo, state } = repository();
     const runner = {
       run: async () => {
-        throw new Error(
-          "network sdk crashed with https://secret.example/?token=x",
-        );
+        throw new Error("network sdk crashed with https://secret.example/?token=x");
       },
     };
     await expect(
@@ -226,9 +215,7 @@ describe("scan job lifecycle", () => {
     await vi.advanceTimersByTimeAsync(20_000);
 
     expect(state.heartbeatAt?.toISOString()).toBe("2026-09-21T12:00:20.000Z");
-    expect(state.leaseExpiresAt?.toISOString()).toBe(
-      "2026-09-21T12:00:35.000Z",
-    );
+    expect(state.leaseExpiresAt?.toISOString()).toBe("2026-09-21T12:00:35.000Z");
 
     complete(evaluation);
     await expect(processing).resolves.toBe("committed");

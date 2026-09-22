@@ -1,10 +1,6 @@
 import type { Metadata } from "next";
 import { AccountActions } from "../../../components/account-actions";
-import {
-  EditorialPage,
-  Notice,
-  ProseList,
-} from "../../../components/editorial-page";
+import { EditorialPage, Notice, ProseList } from "../../../components/editorial-page";
 import { getPublicAppConfig } from "../../../lib/app-config";
 
 export const metadata: Metadata = {
@@ -31,9 +27,9 @@ export default function DataRequestPage() {
                 <a href={`mailto:${config.privacyEmail}?subject=${subject}`}>
                   {config.privacyEmail}
                 </a>{" "}
-                from the address connected to the report when possible. State
-                the request type and public domain. Do not include scan/report
-                tokens, Stripe details, passwords, or a private URL.
+                from the address connected to the report when possible. State the request type and
+                public domain. Do not include scan/report tokens, Stripe details, passwords, or a
+                private URL.
               </p>
               <AccountActions mode="data" />
             </Notice>
@@ -45,14 +41,12 @@ export default function DataRequestPage() {
           content: (
             <ProseList>
               <li>Access or correct lead information.</li>
-              <li>
-                Complete verified deletion with an explicit final confirmation.
-              </li>
+              <li>Complete verified deletion with an explicit final confirmation.</li>
               <li>Revoke active report sessions and public shares.</li>
               <li>Unsubscribe from optional marketing email.</li>
               <li>
-                Detach an optional Stripe payment method, verify provider
-                readback, and remove the provider customer before anonymization.
+                Detach an optional Stripe payment method, verify provider readback, and remove the
+                provider customer before anonymization.
               </li>
               <li>Object to optional dataset reuse or analytics processing.</li>
             </ProseList>
@@ -63,10 +57,9 @@ export default function DataRequestPage() {
           title: "Identity and safety",
           content: (
             <p>
-              We may ask for a verification step before disclosing or changing a
-              private record. We do not use a public website domain alone as
-              proof that someone controls an email, report session, share, or
-              payment signal.
+              We may ask for a verification step before disclosing or changing a private record. We
+              do not use a public website domain alone as proof that someone controls an email,
+              report session, share, or payment signal.
             </p>
           ),
         },

@@ -94,10 +94,7 @@ const corpus = (artifact?: FetchArtifact): string => {
     .join("\n")}\n${artifact.body.slice(0, 524_288)}`;
 };
 
-const detect = (
-  input: string,
-  detector: Detector,
-): FingerprintSignal | undefined => {
+const detect = (input: string, detector: Detector): FingerprintSignal | undefined => {
   const strong = detector.strong
     .filter((pattern) => pattern.test(input))
     .map((pattern) => pattern.source);
@@ -118,9 +115,9 @@ const detect = (
 
 export const fingerprint = (artifact?: FetchArtifact) => {
   const input = corpus(artifact);
-  const platforms = PLATFORM_DETECTORS.map((detector) =>
-    detect(input, detector),
-  ).filter((result): result is FingerprintSignal => Boolean(result));
+  const platforms = PLATFORM_DETECTORS.map((detector) => detect(input, detector)).filter(
+    (result): result is FingerprintSignal => Boolean(result),
+  );
   const platform = platforms.sort(
     (left, right) =>
       ({ high: 3, medium: 2, low: 1 })[right.confidence] -

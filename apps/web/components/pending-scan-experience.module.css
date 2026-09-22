@@ -29,7 +29,7 @@
   border-bottom: 1px solid var(--line-soft);
   padding: 18px 28px;
   color: var(--muted);
-  font: 0.75rem/1.4 var(--font-mono);
+  font: 0.75rem / 1.4 var(--font-mono);
 }
 
 .status {

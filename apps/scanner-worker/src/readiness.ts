@@ -29,8 +29,7 @@ export async function refreshWorkerReadiness(input: {
     input.onQueueError?.(error);
   }
 
-  input.health.ready =
-    input.health.databaseConnected && input.health.queueConnected;
+  input.health.ready = input.health.databaseConnected && input.health.queueConnected;
   const snapshot = {
     ready: input.health.ready,
     queueConnected: input.health.queueConnected,
@@ -40,9 +39,7 @@ export async function refreshWorkerReadiness(input: {
   if (!snapshot.databaseConnected) return snapshot;
   try {
     await input.writeHeartbeat(snapshot);
-    input.health.lastHeartbeatAt = (
-      input.now ?? (() => new Date())
-    )().toISOString();
+    input.health.lastHeartbeatAt = (input.now ?? (() => new Date()))().toISOString();
   } catch (error) {
     input.health.databaseConnected = false;
     input.health.ready = false;

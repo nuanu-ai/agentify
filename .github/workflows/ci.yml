@@ -59,7 +59,7 @@ jobs:
       - run: corepack enable
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm check:commerce
+      - run: pnpm check
       - run: pnpm typecheck:commerce
       - run: pnpm test:commerce
       - run: pnpm test:db
@@ -137,7 +137,6 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @agentify/browser-observer-actor exec playwright install --with-deps chromium
-      - run: pnpm check:scanner
       - run: pnpm typecheck:scanner
       - run: pnpm test:scanner
       - run: pnpm scanner:test:actor

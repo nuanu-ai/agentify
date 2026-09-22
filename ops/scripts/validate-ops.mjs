@@ -1,13 +1,9 @@
-import { readFile, readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const dashboards = new URL("../dashboards/", import.meta.url).pathname;
-const files = (await readdir(dashboards)).filter((name) =>
-  name.endsWith(".sql"),
-);
-const aggregateFiles = files.filter(
-  (name) => !name.endsWith(".restricted.sql"),
-);
+const files = (await readdir(dashboards)).filter((name) => name.endsWith(".sql"));
+const aggregateFiles = files.filter((name) => !name.endsWith(".restricted.sql"));
 const forbiddenAggregateFields = [
   "email_normalized_ciphertext",
   "email_lookup_hash",
@@ -31,13 +27,10 @@ const forbiddenAggregateFields = [
 const failures = [];
 for (const name of aggregateFiles) {
   const sql = (await readFile(join(dashboards, name), "utf8")).toLowerCase();
-  if (!sql.trim().endsWith(";"))
-    failures.push(`${name}: SQL must end with semicolon`);
+  if (!sql.trim().endsWith(";")) failures.push(`${name}: SQL must end with semicolon`);
   for (const field of forbiddenAggregateFields) {
     if (sql.includes(field))
-      failures.push(
-        `${name}: aggregate SQL references sensitive field ${field}`,
-      );
+      failures.push(`${name}: aggregate SQL references sensitive field ${field}`);
   }
 }
 

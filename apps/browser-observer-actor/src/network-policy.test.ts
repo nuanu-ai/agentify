@@ -183,9 +183,7 @@ describe("browser network policy", () => {
         code: "ssrf_blocked",
       }),
     );
-    await expect(resolvePublicHost("localhost")).rejects.toThrow(
-      /ssrf_blocked/,
-    );
+    await expect(resolvePublicHost("localhost")).rejects.toThrow(/ssrf_blocked/);
     expect(() =>
       selectPublicAddress([
         { address: "93.184.216.34", family: 4 },
@@ -208,14 +206,12 @@ describe("browser network policy", () => {
         else resolve({ address, family });
       });
     });
-    const all = await new Promise<string | LookupAddress[]>(
-      (resolve, reject) => {
-        lookup("example.com", { all: true }, (error, addresses) => {
-          if (error) reject(error);
-          else resolve(addresses);
-        });
-      },
-    );
+    const all = await new Promise<string | LookupAddress[]>((resolve, reject) => {
+      lookup("example.com", { all: true }, (error, addresses) => {
+        if (error) reject(error);
+        else resolve(addresses);
+      });
+    });
 
     expect(single).toEqual({ address: "93.184.216.34", family: 4 });
     expect(all).toEqual([{ address: "93.184.216.34", family: 4 }]);

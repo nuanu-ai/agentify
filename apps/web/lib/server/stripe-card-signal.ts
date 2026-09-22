@@ -16,17 +16,13 @@ import { getServerConfig } from "./config";
 import { sha256 } from "./crypto";
 import { getDatabase } from "./database";
 import { getStripeCardSignalConfig } from "./stripe-card-signal-config";
-import {
-  decryptPaymentMethodId,
-  encryptPaymentMethodId,
-} from "./stripe-card-signal-crypto";
+import { decryptPaymentMethodId, encryptPaymentMethodId } from "./stripe-card-signal-crypto";
 import {
   getStripeCardSignalProvider,
   type StripeCardSignalProvider,
 } from "./stripe-card-signal-provider";
 
-export type CardSignalState =
-  "not_started" | "setup_pending" | "attached" | "detached" | "failed";
+export type CardSignalState = "not_started" | "setup_pending" | "attached" | "detached" | "failed";
 
 export type SetupCardSignalResult =
   | Readonly<{ status: "disabled" }>
@@ -49,9 +45,7 @@ export async function setupCardSignal(input: {
   const verified = await getVerifiedSession(input.sessionToken, input.scanId);
   if (!verified) return { status: "unauthorized" };
   const { db } = getDatabase();
-  const scan = (
-    await db.select().from(scans).where(eq(scans.id, input.scanId)).limit(1)
-  )[0];
+  const scan = (await db.select().from(scans).where(eq(scans.id, input.scanId)).limit(1))[0];
   if (!scan) return { status: "unauthorized" };
 
   const provider = input.provider ?? getStripeCardSignalProvider(cardConfig);
@@ -101,17 +95,12 @@ export async function setupCardSignal(input: {
     scanId: scan.id,
     idempotencyKey: stableKey,
   });
-  if (setup.usage !== "on_session")
-    throw new Error("card_signal_usage_invariant_failed");
+  if (setup.usage !== "on_session") throw new Error("card_signal_usage_invariant_failed");
 
   const signalId = createUuidV7();
   const stored = await db.transaction(async (tx) => {
     const session = (
-      await tx
-        .select()
-        .from(sessions)
-        .where(eq(sessions.id, scan.sessionId))
-        .limit(1)
+      await tx.select().from(sessions).where(eq(sessions.id, scan.sessionId)).limit(1)
     )[0];
     if (!session) throw new Error("card_signal_session_missing");
     const currentConsent = session.consentSnapshotId
@@ -170,10 +159,7 @@ export async function setupCardSignal(input: {
   };
 }
 
-export async function getCardSignalState(
-  signalId: string,
-  sessionToken: string | undefined,
-) {
+export async function getCardSignalState(signalId: string, sessionToken: string | undefined) {
   const verified = await getVerifiedSession(sessionToken);
   if (!verified) return undefined;
   const { db } = getDatabase();
@@ -181,12 +167,7 @@ export async function getCardSignalState(
     await db
       .select({ id: paymentSignals.id, status: paymentSignals.status })
       .from(paymentSignals)
-      .where(
-        and(
-          eq(paymentSignals.id, signalId),
-          eq(paymentSignals.leadId, verified.leadId),
-        ),
-      )
+      .where(and(eq(paymentSignals.id, signalId), eq(paymentSignals.leadId, verified.leadId)))
       .limit(1)
   )[0];
   return signal;
@@ -211,11 +192,8 @@ export async function getOwnedCardSignalForReport(
   let clientSecret: string | null = null;
   if (signal.status === "setup_pending") {
     try {
-      clientSecret = (
-        await getStripeCardSignalProvider(config).retrieveSetup(
-          signal.setupIntentId,
-        )
-      ).clientSecret;
+      clientSecret = (await getStripeCardSignalProvider(config).retrieveSetup(signal.setupIntentId))
+        .clientSecret;
     } catch {
       // Status still hydrates honestly; provider recovery remains retryable.
     }
@@ -240,12 +218,7 @@ export async function detachCardSignal(input: {
     await db
       .select()
       .from(paymentSignals)
-      .where(
-        and(
-          eq(paymentSignals.id, input.signalId),
-          eq(paymentSignals.leadId, verified.leadId),
-        ),
-      )
+      .where(and(eq(paymentSignals.id, input.signalId), eq(paymentSignals.leadId, verified.leadId)))
       .limit(1)
   )[0];
   if (!signal) return undefined;
@@ -260,22 +233,13 @@ export async function detachCardSignal(input: {
   const provider = input.provider ?? getStripeCardSignalProvider();
   const detached = await provider.detachPaymentMethod(methodId);
   const readback = await provider.retrievePaymentMethod(methodId);
-  if (
-    detached.id !== methodId ||
-    detached.customerId !== null ||
-    readback.customerId !== null
-  ) {
+  if (detached.id !== methodId || detached.customerId !== null || readback.customerId !== null) {
     throw new Error("card_signal_detach_readback_failed");
   }
   await db
     .update(paymentSignals)
     .set({ status: "detached", detachedAt: new Date() })
-    .where(
-      and(
-        eq(paymentSignals.id, signal.id),
-        eq(paymentSignals.status, "attached"),
-      ),
-    );
+    .where(and(eq(paymentSignals.id, signal.id), eq(paymentSignals.status, "attached")));
   return { status: "detached" as const };
 }
 
@@ -295,11 +259,7 @@ export async function processCardSignalWebhook(input: {
       return { status: "ignored" as const };
     }
     const setup = await provider.retrieveSetup(event.setupIntentId);
-    if (
-      setup.status !== "succeeded" ||
-      setup.usage !== "on_session" ||
-      !setup.paymentMethodId
-    ) {
+    if (setup.status !== "succeeded" || setup.usage !== "on_session" || !setup.paymentMethodId) {
       throw new Error("card_signal_setup_readback_failed");
     }
     const method = await provider.retrieveCustomerPaymentMethod(
@@ -348,16 +308,12 @@ async function registerReceipt(eventId: string, payloadHash: string) {
         })
         .from(webhookReceipts)
         .where(
-          and(
-            eq(webhookReceipts.provider, "stripe"),
-            eq(webhookReceipts.providerEventId, eventId),
-          ),
+          and(eq(webhookReceipts.provider, "stripe"), eq(webhookReceipts.providerEventId, eventId)),
         )
         .limit(1)
     )[0];
     if (!receipt) throw new Error("stripe_receipt_conflict_without_row");
-    if (receipt.payloadHash !== payloadHash)
-      throw new Error("stripe_event_replay_mismatch");
+    if (receipt.payloadHash !== payloadHash) throw new Error("stripe_event_replay_mismatch");
     if (receipt.status === "processed") return "duplicate" as const;
 
     const staleBefore = new Date(leaseStartedAt.getTime() - 5 * 60_000);
@@ -388,10 +344,7 @@ async function completeReceipt(eventId: string) {
     .update(webhookReceipts)
     .set({ status: "processed", processedAt: new Date() })
     .where(
-      and(
-        eq(webhookReceipts.provider, "stripe"),
-        eq(webhookReceipts.providerEventId, eventId),
-      ),
+      and(eq(webhookReceipts.provider, "stripe"), eq(webhookReceipts.providerEventId, eventId)),
     );
 }
 
@@ -401,10 +354,7 @@ async function failReceipt(eventId: string) {
     .update(webhookReceipts)
     .set({ status: "failed", processedAt: new Date() })
     .where(
-      and(
-        eq(webhookReceipts.provider, "stripe"),
-        eq(webhookReceipts.providerEventId, eventId),
-      ),
+      and(eq(webhookReceipts.provider, "stripe"), eq(webhookReceipts.providerEventId, eventId)),
     );
 }
 
@@ -439,22 +389,11 @@ async function attachFromReadback(input: {
       await tx
         .select({ leadId: leadScans.leadId })
         .from(leadScans)
-        .where(
-          and(
-            eq(leadScans.leadId, signal.lead_id),
-            eq(leadScans.scanId, input.scanId),
-          ),
-        )
+        .where(and(eq(leadScans.leadId, signal.lead_id), eq(leadScans.scanId, input.scanId)))
         .limit(1)
     )[0];
     const scan = linked
-      ? (
-          await tx
-            .select()
-            .from(scans)
-            .where(eq(scans.id, input.scanId))
-            .limit(1)
-        )[0]
+      ? (await tx.select().from(scans).where(eq(scans.id, input.scanId)).limit(1))[0]
       : undefined;
     if (!scan) throw new Error("card_signal_scan_binding_mismatch");
     await tx
@@ -470,11 +409,7 @@ async function attachFromReadback(input: {
       })
       .where(eq(paymentSignals.id, signal.id));
     const session = (
-      await tx
-        .select()
-        .from(sessions)
-        .where(eq(sessions.id, scan.sessionId))
-        .limit(1)
+      await tx.select().from(sessions).where(eq(sessions.id, scan.sessionId)).limit(1)
     )[0];
     if (!session) throw new Error("card_signal_event_session_missing");
     await emitStoredBusinessEvent(tx, {
@@ -515,18 +450,12 @@ export async function confirmLocalCardSignal(input: {
     await db
       .select()
       .from(paymentSignals)
-      .where(
-        and(
-          eq(paymentSignals.id, input.signalId),
-          eq(paymentSignals.leadId, verified.leadId),
-        ),
-      )
+      .where(and(eq(paymentSignals.id, input.signalId), eq(paymentSignals.leadId, verified.leadId)))
       .limit(1)
   )[0];
   if (!signal) return undefined;
   const provider = input.provider ?? getStripeCardSignalProvider(config);
-  if (!provider.confirmLocalSetup)
-    throw new Error("local_card_confirmation_unavailable");
+  if (!provider.confirmLocalSetup) throw new Error("local_card_confirmation_unavailable");
   const event = await provider.confirmLocalSetup(signal.setupIntentId);
   await processCardSignalWebhook({ ...event, provider });
   return await getCardSignalState(signal.id, input.sessionToken);
@@ -542,17 +471,13 @@ export async function detachLeadCardSignalsForDeletion(
   provider?: StripeCardSignalProvider,
 ) {
   const { db } = getDatabase();
-  const signals = await db
-    .select()
-    .from(paymentSignals)
-    .where(eq(paymentSignals.leadId, leadId));
+  const signals = await db.select().from(paymentSignals).where(eq(paymentSignals.leadId, leadId));
   const activeSignals = signals.filter(
     (signal) =>
       !signal.setupIntentId.startsWith("deleted:") &&
       !signal.stripeCustomerId.startsWith("deleted:"),
   );
-  if (!activeSignals.length)
-    return { detachedCount: 0, customersDeleted: 0 } as const;
+  if (!activeSignals.length) return { detachedCount: 0, customersDeleted: 0 } as const;
   const cardProvider = provider ?? getStripeCardSignalProvider();
   const customerIds = new Set<string>();
   for (const signal of signals) {
@@ -566,30 +491,19 @@ export async function detachLeadCardSignalsForDeletion(
     if (setup.customerId !== signal.stripeCustomerId)
       throw new Error("card_signal_deletion_customer_mismatch");
     const storedMethodId = signal.paymentMethodIdCiphertext
-      ? decryptPaymentMethodId(
-          signal.paymentMethodIdCiphertext,
-          getServerConfig().encryptionKey,
-        )
+      ? decryptPaymentMethodId(signal.paymentMethodIdCiphertext, getServerConfig().encryptionKey)
       : null;
-    if (
-      storedMethodId &&
-      setup.paymentMethodId &&
-      storedMethodId !== setup.paymentMethodId
-    ) {
+    if (storedMethodId && setup.paymentMethodId && storedMethodId !== setup.paymentMethodId) {
       throw new Error("card_signal_deletion_method_mismatch");
     }
     const methodId = storedMethodId ?? setup.paymentMethodId;
     if (methodId) {
       const current = await cardProvider.retrievePaymentMethod(methodId);
-      if (
-        current.customerId !== null &&
-        current.customerId !== setup.customerId
-      )
+      if (current.customerId !== null && current.customerId !== setup.customerId)
         throw new Error("card_signal_deletion_binding_mismatch");
       if (current.customerId === setup.customerId) {
         const detached = await cardProvider.detachPaymentMethod(methodId);
-        if (detached.customerId !== null)
-          throw new Error("card_signal_deletion_detach_failed");
+        if (detached.customerId !== null) throw new Error("card_signal_deletion_detach_failed");
       }
       const readback = await cardProvider.retrievePaymentMethod(methodId);
       if (readback.customerId !== null)
@@ -605,12 +519,10 @@ export async function detachLeadCardSignalsForDeletion(
     const customer = await cardProvider.retrieveCustomer(customerId);
     if (!customer.deleted) {
       const deleted = await cardProvider.deleteCustomer(customerId);
-      if (!deleted.deleted)
-        throw new Error("card_signal_deletion_customer_delete_failed");
+      if (!deleted.deleted) throw new Error("card_signal_deletion_customer_delete_failed");
     }
     const readback = await cardProvider.retrieveCustomer(customerId);
-    if (!readback.deleted)
-      throw new Error("card_signal_deletion_customer_readback_failed");
+    if (!readback.deleted) throw new Error("card_signal_deletion_customer_readback_failed");
   }
   const detachedAt = new Date();
   await db

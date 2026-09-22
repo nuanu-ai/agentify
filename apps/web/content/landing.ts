@@ -64,10 +64,8 @@ export const LANDINGS = {
     locale: "en-US",
     eyebrow: "For online businesses",
     hero: {
-      title:
-        "See what your website shows to AI agents, and how to sell to them.",
-      subtitle:
-        "We read what your site makes public. We do not test any model's answer.",
+      title: "See what your website shows to AI agents, and how to sell to them.",
+      subtitle: "We read what your site makes public. We do not test any model's answer.",
       cta: "Scan my site",
     },
     secondDoor: {
@@ -84,8 +82,7 @@ export const LANDINGS = {
     eyebrow: "For online stores",
     hero: {
       title: "Can agents read your products, prices, and stock correctly?",
-      subtitle:
-        "We read your public product pages. We do not place an order or test checkout.",
+      subtitle: "We read your public product pages. We do not place an order or test checkout.",
       cta: "Scan my store",
     },
     segmentPhase: "Checking catalog and commerce signals",
@@ -97,8 +94,7 @@ export const LANDINGS = {
     eyebrow: "For local and service businesses",
     hero: {
       title: "Can agents find your hours, services, and direct booking path?",
-      subtitle:
-        "We read your public pages. We do not make a booking or test open slots.",
+      subtitle: "We read your public pages. We do not make a booking or test open slots.",
       cta: "Scan my business",
     },
     segmentPhase: "Checking local business signals",

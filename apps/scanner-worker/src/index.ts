@@ -1,8 +1,4 @@
-import {
-  createLogger,
-  safeErrorCode,
-  safeErrorType,
-} from "@agentify/observability";
+import { createLogger, safeErrorCode, safeErrorType } from "@agentify/observability";
 
 import { readWorkerEnv } from "./env.js";
 import { startHealthServer, type WorkerHealth } from "./health.js";
@@ -43,11 +39,7 @@ const health: WorkerHealth = {
 const healthServer = startHealthServer(env.WORKER_HEALTH_PORT, health);
 
 try {
-  const stopInfrastructure = await startWorkerInfrastructure(
-    env,
-    health,
-    logger,
-  );
+  const stopInfrastructure = await startWorkerInfrastructure(env, health, logger);
   const shutdown = async () => {
     logger.info("worker_process_shutdown_requested", {
       worker_id: env.WORKER_ID,

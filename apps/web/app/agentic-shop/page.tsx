@@ -72,8 +72,8 @@ export default function AgenticShopPage() {
               <span>an agent.</span>
             </h1>
             <p className={styles.heroDescription}>
-              Your products and services, ready for a new way to buy. An agent
-              finds the offer, orders it and pays.
+              Your products and services, ready for a new way to buy. An agent finds the offer,
+              orders it and pays.
             </p>
             <div className={styles.heroActions}>
               <a className={styles.primary} href="/cabinet/sign-in">
@@ -84,8 +84,8 @@ export default function AgenticShopPage() {
               </a>
             </div>
             <p className={styles.heroNote}>
-              Start in the test channel. Live publication requires approval. No
-              AI assistant is guaranteed to recommend or buy your products.
+              Start in the test channel. Live publication requires approval. No AI assistant is
+              guaranteed to recommend or buy your products.
             </p>
           </div>
           <div className={styles.heroVisual}>
@@ -125,9 +125,8 @@ export default function AgenticShopPage() {
                   <span>Don’t sit this one out.</span>
                 </h2>
                 <p>
-                  Customers are already using AI to find what to buy. The next
-                  opportunity is making your business easier for their agents to
-                  order from.
+                  Customers are already using AI to find what to buy. The next opportunity is making
+                  your business easier for their agents to order from.
                 </p>
                 <a href="/cabinet/sign-in" className={styles.lightLink}>
                   Open your cabinet <Arrow diagonal />
@@ -173,15 +172,11 @@ export default function AgenticShopPage() {
                 </figure>
                 <p className={styles.source}>
                   Source:{" "}
-                  <a
-                    href={adobeSource}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
+                  <a href={adobeSource} target="_blank" rel="noopener noreferrer">
                     Adobe Digital Insights, April 16, 2026 <Arrow diagonal />
                   </a>
-                  . Measures AI-referred visits to U.S. retail sites, not
-                  autonomous purchases or x402 volume.
+                  . Measures AI-referred visits to U.S. retail sites, not autonomous purchases or
+                  x402 volume.
                 </p>
               </div>
             </div>
@@ -193,9 +188,8 @@ export default function AgenticShopPage() {
               <p>
                 Higher conversion for AI-referred visits vs. non-AI traffic.
                 <span>
-                  U.S. retail · March 2026 · Adobe. Purchases after a visit to a
-                  retailer’s website, not checkout inside an AI chat. This does
-                  not establish demand for x402 orders.
+                  U.S. retail · March 2026 · Adobe. Purchases after a visit to a retailer’s website,
+                  not checkout inside an AI chat. This does not establish demand for x402 orders.
                 </span>
               </p>
               <a href={adobeSource} target="_blank" rel="noopener noreferrer">
@@ -205,18 +199,15 @@ export default function AgenticShopPage() {
           </div>
         </section>
 
-        <section
-          id="how-it-works"
-          className={`${styles.container} ${styles.section}`}
-        >
+        <section id="how-it-works" className={`${styles.container} ${styles.section}`}>
           <div className={styles.sectionHeading}>
             <h2>
               A new channel.
               <br />A familiar business.
             </h2>
             <p>
-              One email link opens the cabinet. Your SDK integration publishes
-              the offers and the rules an order follows.
+              One email link opens the cabinet. Your SDK integration publishes the offers and the
+              rules an order follows.
             </p>
           </div>
           <div className={styles.steps}>
@@ -227,8 +218,8 @@ export default function AgenticShopPage() {
               </div>
               <h3>Open your cabinet.</h3>
               <p>
-                Enter your email and use the one-time link. The first visit
-                creates your merchant and asks for the name buyers will see.
+                Enter your email and use the one-time link. The first visit creates your merchant
+                and asks for the name buyers will see.
               </p>
             </article>
             <article>
@@ -238,9 +229,8 @@ export default function AgenticShopPage() {
               </div>
               <h3>Connect your catalog.</h3>
               <p>
-                Use the <a href="/docs/quickstart">SDK</a> to publish the offer,
-                price and fulfilment promises. The WooCommerce connector is
-                experimental.
+                Use the <a href="/docs/quickstart">SDK</a> to publish the offer, price and
+                fulfilment promises. The WooCommerce connector is experimental.
               </p>
             </article>
             <article>
@@ -250,9 +240,8 @@ export default function AgenticShopPage() {
               </div>
               <h3>Prove it in test.</h3>
               <p>
-                Test publication needs the seller name and test payout wallet.
-                Live publication uses a separate wallet and also needs the
-                operator’s approval for that merchant.
+                Test publication needs the seller name and test payout wallet. Live publication uses
+                a separate wallet and also needs the operator’s approval for that merchant.
               </p>
             </article>
           </div>
@@ -267,10 +256,9 @@ export default function AgenticShopPage() {
                 <span>Keep test and live distinct.</span>
               </h2>
               <p>
-                Buyers pay in USDC and the money goes straight to the wallet in
-                your cabinet. There is no payout from us and no settlement
-                period. Test publication stays open while live waits for
-                approval.
+                Buyers pay in USDC and the money goes straight to the wallet in your cabinet. There
+                is no payout from us and no settlement period. Test publication stays open while
+                live waits for approval.
               </p>
               <div className={styles.settlementLinks}>
                 <a className={styles.textLink} href="/cabinet/sign-in">
@@ -291,9 +279,7 @@ export default function AgenticShopPage() {
               role="group"
               aria-label="Live payment path: the customer's agent, the gateway, your payout wallet."
             >
-              <div className={styles.paymentLabel}>
-                LIVE ONLY AFTER OPERATOR APPROVAL
-              </div>
+              <div className={styles.paymentLabel}>LIVE ONLY AFTER OPERATOR APPROVAL</div>
               <div className={styles.paymentRow}>
                 <span className={styles.nodeIcon}>01</span>
                 <div>
@@ -319,8 +305,8 @@ export default function AgenticShopPage() {
                 <span aria-hidden="true">✓</span>
               </div>
               <p>
-                A seller name, payout wallet and operator approval are separate
-                live-publication gates. Opening a cabinet grants none of them.
+                A seller name, payout wallet and operator approval are separate live-publication
+                gates. Opening a cabinet grants none of them.
               </p>
             </div>
           </div>
@@ -334,8 +320,8 @@ export default function AgenticShopPage() {
           <div className={styles.sectionHeading}>
             <h2 id="loyalty-title">Reward the customer behind the agent.</h2>
             <p>
-              Not live yet. The idea is cashback terms an agent can compare, and
-              a record of delivering what you promise.
+              Not live yet. The idea is cashback terms an agent can compare, and a record of
+              delivering what you promise.
             </p>
           </div>
           <div className={styles.steps}>
@@ -345,9 +331,8 @@ export default function AgenticShopPage() {
               </span>
               <h3>You fund the reward.</h3>
               <p>
-                Once your merchant is verified, agree a cashback rate, budget
-                and return rules. An agent can read the offer and compare what
-                it is worth to its customer.
+                Once your merchant is verified, agree a cashback rate, budget and return rules. An
+                agent can read the offer and compare what it is worth to its customer.
               </p>
             </article>
             <article>
@@ -356,9 +341,8 @@ export default function AgenticShopPage() {
               </span>
               <h3>Delivery unlocks it.</h3>
               <p>
-                Cashback becomes payable to the customer only after verified
-                delivery of the product or service, under the agreed terms.
-                Payment alone does not trigger a reward.
+                Cashback becomes payable to the customer only after verified delivery of the product
+                or service, under the agreed terms. Payment alone does not trigger a reward.
               </p>
             </article>
             <article>
@@ -367,16 +351,16 @@ export default function AgenticShopPage() {
               </span>
               <h3>Reliability earns trust.</h3>
               <p>
-                Delivery success, service quality and refund speed build a
-                record that agents can weigh alongside price and cashback.
+                Delivery success, service quality and refund speed build a record that agents can
+                weigh alongside price and cashback.
               </p>
             </article>
           </div>
           <div className={styles.localNote}>
             <p>
-              <strong>A loyalty model we’re developing.</strong> Reward funding
-              and refund reserves would be accounted for separately. Program
-              terms and availability must be agreed before activation.
+              <strong>A loyalty model we’re developing.</strong> Reward funding and refund reserves
+              would be accounted for separately. Program terms and availability must be agreed
+              before activation.
             </p>
             <a href="/cabinet/sign-in">
               Open your cabinet <Arrow diagonal />
@@ -384,10 +368,7 @@ export default function AgenticShopPage() {
           </div>
         </section>
 
-        <section
-          className={`${styles.container} ${styles.section}`}
-          id="businesses"
-        >
+        <section className={`${styles.container} ${styles.section}`} id="businesses">
           <div className={styles.sectionHeading}>
             <h2>
               If people can buy it,
@@ -395,8 +376,8 @@ export default function AgenticShopPage() {
               let’s explore an agent offer.
             </h2>
             <p>
-              From a digital product to a day in Bali. What matters is a process
-              that can fulfil the order.
+              From a digital product to a day in Bali. What matters is a process that can fulfil the
+              order.
             </p>
           </div>
           <div className={styles.categories}>
@@ -420,49 +401,41 @@ export default function AgenticShopPage() {
                 your email.
               </h2>
               <p>
-                The one-time link signs you in or creates your cabinet. No
-                password, no invitation code, no review to pass before the test
-                channel.
+                The one-time link signs you in or creates your cabinet. No password, no invitation
+                code, no review to pass before the test channel.
               </p>
               <ul>
                 <li>Choose the seller name buyers see</li>
                 <li>
-                  Integrate through the{" "}
-                  <a href="/docs/quickstart">Agentify SDK</a>
+                  Integrate through the <a href="/docs/quickstart">Agentify SDK</a>
                 </li>
                 <li>Publish and verify offers in the test channel</li>
               </ul>
               <div className={styles.entryNote}>
-                Live publication still needs a payout wallet and a one-time
-                operator approval for the merchant.
+                Live publication still needs a payout wallet and a one-time operator approval for
+                the merchant.
               </div>
             </div>
             <div className={styles.entryCard}>
               <h3>Open the door from your inbox.</h3>
               <p>
-                Enter your email in the cabinet. The message works once and
-                expires after one hour.
+                Enter your email in the cabinet. The message works once and expires after one hour.
               </p>
               <a className={styles.primary} href="/cabinet/sign-in">
                 Open your cabinet <Arrow diagonal />
               </a>
               <p className={styles.entryFootnote}>
-                The mailbox is the key to the cabinet. A shared mailbox means a
-                shared cabinet.
+                The mailbox is the key to the cabinet. A shared mailbox means a shared cabinet.
               </p>
             </div>
           </div>
         </section>
 
-        <section
-          className={`${styles.container} ${styles.section}`}
-          id="questions"
-        >
+        <section className={`${styles.container} ${styles.section}`} id="questions">
           <div className={styles.sectionHeading}>
             <h2>Questions about selling to agents</h2>
             <p>
-              They are answered in the{" "}
-              <a href="/docs/faq">merchant documentation</a>.
+              They are answered in the <a href="/docs/faq">merchant documentation</a>.
             </p>
           </div>
         </section>

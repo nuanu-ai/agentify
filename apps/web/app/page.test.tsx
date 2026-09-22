@@ -16,9 +16,7 @@ const rendered = (): {
 } => {
   Object.assign(globalThis, { React });
   const html = renderToStaticMarkup(<HomePage />);
-  const links = [...html.matchAll(/<a\b[^>]*\bhref="([^"]+)"/g)].map(
-    (match) => match[1] ?? "",
-  );
+  const links = [...html.matchAll(/<a\b[^>]*\bhref="([^"]+)"/g)].map((match) => match[1] ?? "");
   const formAt = html.indexOf("<form");
   const underTheForm = html.slice(formAt, html.indexOf("</section>", formAt));
   return { html, links, underTheForm };
@@ -38,8 +36,6 @@ describe("the front page", () => {
     const { html } = rendered();
 
     expect(html).toContain('data-agentify-landing-segment="owner"');
-    expect(html).toContain(
-      `data-agentify-landing-variant="${LANDINGS.owner.variant}"`,
-    );
+    expect(html).toContain(`data-agentify-landing-variant="${LANDINGS.owner.variant}"`);
   });
 });

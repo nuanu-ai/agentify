@@ -45,9 +45,7 @@ export const createConsentSnapshot = (input: {
   };
   return {
     policyVersion: input.policy.policyVersion,
-    ...(input.country
-      ? { country: input.country.toUpperCase().slice(0, 2) }
-      : {}),
+    ...(input.country ? { country: input.country.toUpperCase().slice(0, 2) } : {}),
     categories,
     capturedAt: (input.capturedAt ?? new Date()).toISOString(),
     source: input.source,
@@ -66,6 +64,5 @@ export const assertDestinationIsolation = (
   runtime: ConsentEnvironment,
   destination: ConsentEnvironment,
 ): void => {
-  if (runtime !== destination)
-    throw new Error("analytics_environment_mismatch");
+  if (runtime !== destination) throw new Error("analytics_environment_mismatch");
 };

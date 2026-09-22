@@ -6,13 +6,9 @@ export type RemediationCatalogEntry = {
   standard: string;
 };
 
-export const BROWSER_REMEDIATION_CATALOG: Record<
-  BrowserObservationId,
-  RemediationCatalogEntry
-> = {
+export const BROWSER_REMEDIATION_CATALOG: Record<BrowserObservationId, RemediationCatalogEntry> = {
   rendered_content_delta: {
-    desiredState:
-      "Critical public facts are present in initial HTML as well as the rendered DOM.",
+    desiredState: "Critical public facts are present in initial HTML as well as the rendered DOM.",
     verification:
       "Fetch the page without JavaScript and compare the main facts with a browser render.",
     standard:
@@ -21,10 +17,8 @@ export const BROWSER_REMEDIATION_CATALOG: Record<
   accessibility_structure: {
     desiredState:
       "The rendered page has one clear main landmark, ordered headings, and named controls.",
-    verification:
-      "Run an accessibility tree/axe check and resolve unnamed interactive controls.",
-    standard:
-      "https://www.w3.org/WAI/ARIA/apg/practices/names-and-descriptions/",
+    verification: "Run an accessibility tree/axe check and resolve unnamed interactive controls.",
+    standard: "https://www.w3.org/WAI/ARIA/apg/practices/names-and-descriptions/",
   },
   form_semantics: {
     desiredState:
@@ -36,8 +30,7 @@ export const BROWSER_REMEDIATION_CATALOG: Record<
   webmcp_surface: {
     desiredState:
       "If WebMCP is exposed, tools have stable names/descriptions and do not mutate state without confirmation.",
-    verification:
-      "Inspect the declared tool surface without invoking any tool.",
+    verification: "Inspect the declared tool surface without invoking any tool.",
     standard: "https://webmachinelearning.github.io/webmcp/",
   },
   browser_console_health: {
@@ -80,8 +73,7 @@ export const BROWSER_REMEDIATION_CATALOG: Record<
       "Hidden/off-screen content does not contain instructions aimed at agents or models.",
     verification:
       "Audit visually hidden content and keep only legitimate accessibility or UI text.",
-    standard:
-      "https://www.w3.org/WAI/WCAG22/Understanding/info-and-relationships.html",
+    standard: "https://www.w3.org/WAI/WCAG22/Understanding/info-and-relationships.html",
   },
   api_discovery_surface: {
     desiredState:

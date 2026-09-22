@@ -1,9 +1,4 @@
-import {
-  createServer,
-  type IncomingMessage,
-  type Server,
-  type ServerResponse,
-} from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -28,10 +23,7 @@ afterEach(async () => {
   await Promise.all(
     servers
       .splice(0)
-      .map(
-        (server) =>
-          new Promise<void>((resolve) => server.close(() => resolve())),
-      ),
+      .map((server) => new Promise<void>((resolve) => server.close(() => resolve()))),
   );
   vi.useRealTimers();
 });
@@ -54,9 +46,7 @@ describe("cabinet report identity client", () => {
           body,
         });
         response.setHeader("content-type", "application/json");
-        response.end(
-          JSON.stringify({ status: "accepted", token_hash: "B".repeat(43) }),
-        );
+        response.end(JSON.stringify({ status: "accepted", token_hash: "B".repeat(43) }));
       });
     });
     servers.push(running.server);
@@ -134,9 +124,7 @@ describe("cabinet report identity client", () => {
       intentKind: "recovery",
       state,
     });
-    const rejection = expect(result).rejects.toThrow(
-      "cabinet_identity_unavailable",
-    );
+    const rejection = expect(result).rejects.toThrow("cabinet_identity_unavailable");
     await vi.advanceTimersByTimeAsync(14_999);
     expect(requestSignal?.aborted).toBe(false);
     await vi.advanceTimersByTimeAsync(1);

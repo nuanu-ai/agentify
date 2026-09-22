@@ -8,8 +8,7 @@ import { ApifyClient } from "apify-client";
 
 export type FinishedBrowserRun = {
   id: string;
-  status:
-    "SUCCEEDED" | "FAILED" | "ABORTED" | "TIMED-OUT" | "RUNNING" | "READY";
+  status: "SUCCEEDED" | "FAILED" | "ABORTED" | "TIMED-OUT" | "RUNNING" | "READY";
   usageUsd?: number;
 };
 
@@ -27,10 +26,7 @@ export interface BrowserProviderClient {
     operationId: string,
     startedAfter: Date,
   ): Promise<RecentBrowserRun | null>;
-  waitForFinish(
-    runId: string,
-    waitSeconds: number,
-  ): Promise<FinishedBrowserRun>;
+  waitForFinish(runId: string, waitSeconds: number): Promise<FinishedBrowserRun>;
   getUsage(runId: string): Promise<number | undefined>;
   getOutput(runId: string): Promise<BrowserObservationOutputV1>;
   abort(runId: string): Promise<void>;
@@ -73,10 +69,7 @@ export class ApifyBrowserProviderClient implements BrowserProviderClient {
       startedAfter,
     });
     for (const run of page.items) {
-      const record = await this.#client
-        .run(run.id)
-        .keyValueStore()
-        .getRecord("INPUT");
+      const record = await this.#client.run(run.id).keyValueStore().getRecord("INPUT");
       const parsed = browserObservationInputV1Schema.safeParse(record?.value);
       if (parsed.success && parsed.data.operation_id === operationId)
         return { id: run.id, status: run.status } as RecentBrowserRun;
@@ -84,35 +77,23 @@ export class ApifyBrowserProviderClient implements BrowserProviderClient {
     return null;
   }
 
-  async waitForFinish(
-    runId: string,
-    waitSeconds: number,
-  ): Promise<FinishedBrowserRun> {
-    const run = await this.#client
-      .run(runId)
-      .waitForFinish({ waitSecs: waitSeconds });
+  async waitForFinish(runId: string, waitSeconds: number): Promise<FinishedBrowserRun> {
+    const run = await this.#client.run(runId).waitForFinish({ waitSecs: waitSeconds });
     return {
       id: run.id,
       status: run.status,
-      ...(run.usageTotalUsd === undefined
-        ? {}
-        : { usageUsd: run.usageTotalUsd }),
+      ...(run.usageTotalUsd === undefined ? {} : { usageUsd: run.usageTotalUsd }),
     } as FinishedBrowserRun;
   }
 
   async getUsage(runId: string): Promise<number | undefined> {
     const run = await this.#client.run(runId).get();
     const usage = run?.usageTotalUsd;
-    return typeof usage === "number" && Number.isFinite(usage) && usage >= 0
-      ? usage
-      : undefined;
+    return typeof usage === "number" && Number.isFinite(usage) && usage >= 0 ? usage : undefined;
   }
 
   async getOutput(runId: string): Promise<BrowserObservationOutputV1> {
-    const record = await this.#client
-      .run(runId)
-      .keyValueStore()
-      .getRecord("OUTPUT");
+    const record = await this.#client.run(runId).keyValueStore().getRecord("OUTPUT");
     if (!record) throw new Error("apify_output_missing");
     return browserObservationOutputV1Schema.parse(record.value);
   }

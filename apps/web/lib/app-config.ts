@@ -21,8 +21,7 @@ export function getPublicAppConfig(): PublicAppConfig {
     scannerUserAgent: `agentify-scanner/1.0 (+${baseUrl}/scanner)`,
     privacyEmail: process.env.PRIVACY_EMAIL || "privacy@agentify.ad",
     abuseEmail: process.env.ABUSE_EMAIL || "abuse@agentify.ad",
-    legalOperator:
-      process.env.LEGAL_OPERATOR || "Operator identity pending confirmation",
+    legalOperator: process.env.LEGAL_OPERATOR || "Operator identity pending confirmation",
     legalIdentityConfirmed: process.env.LEGAL_IDENTITY_CONFIRMED === "true",
   };
 }

@@ -1,9 +1,6 @@
 // @vitest-environment jsdom
 
-import {
-  CONSENT_STORAGE_KEY,
-  readCurrentConsent,
-} from "@agentify/analytics/browser";
+import { CONSENT_STORAGE_KEY, readCurrentConsent } from "@agentify/analytics/browser";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
@@ -29,15 +26,11 @@ describe("consent persistence", () => {
     const user = userEvent.setup();
     render(<ConsentBanner />);
 
-    await user.click(
-      screen.getByRole("button", { name: "Allow optional analytics" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Allow optional analytics" }));
 
     await screen.findByRole("status");
     expect(window.localStorage.getItem(CONSENT_STORAGE_KEY)).toBeNull();
-    expect(
-      screen.queryByRole("complementary", { name: "Privacy choices" }),
-    ).not.toBeNull();
+    expect(screen.queryByRole("complementary", { name: "Privacy choices" })).not.toBeNull();
   });
 
   it("stores only the optional categories the visitor selected", async () => {
@@ -46,9 +39,7 @@ describe("consent persistence", () => {
     render(<ConsentBanner />);
 
     await user.click(screen.getByRole("button", { name: "Preferences" }));
-    await user.click(
-      screen.getByRole("checkbox", { name: /product analytics/i }),
-    );
+    await user.click(screen.getByRole("checkbox", { name: /product analytics/i }));
     await user.click(screen.getByRole("button", { name: "Save choices" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());

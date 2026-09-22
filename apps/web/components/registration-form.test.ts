@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  registrationSubmitLabel,
-  sentConfirmationCopy,
-} from "./registration-form";
+import { registrationSubmitLabel, sentConfirmationCopy } from "./registration-form";
 
 describe("registration resend state", () => {
   it("shows sending, cooldown, and resend labels explicitly", () => {

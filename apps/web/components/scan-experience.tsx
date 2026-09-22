@@ -1,9 +1,6 @@
 "use client";
 
-import {
-  canonicalFindingHeadline,
-  canonicalSummaryCopy,
-} from "@agentify/remediation";
+import { canonicalFindingHeadline, canonicalSummaryCopy } from "@agentify/remediation";
 import {
   CHECK_DEFINITIONS,
   type DiagnosticLevel,
@@ -12,13 +9,7 @@ import {
   scanStatusResponseSchema,
 } from "@agentify/scanner-contracts";
 import Link from "next/link";
-import {
-  type CSSProperties,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
 
 import { Brand } from "./brand";
 import { BrowserObservations } from "./browser-observations";
@@ -73,14 +64,12 @@ export function ScanExperience({
   const [data, setData] = useState<ScanStatusResponse | null>(() =>
     fixtureName ? createDevFixture(fixtureName) : null,
   );
-  const [accessState, setAccessState] = useState<
-    "loading" | "ready" | "missing" | "invalid"
-  >(fixtureName ? "ready" : "loading");
+  const [accessState, setAccessState] = useState<"loading" | "ready" | "missing" | "invalid">(
+    fixtureName ? "ready" : "loading",
+  );
   const [requestError, setRequestError] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const terminal = data
-    ? ["completed", "partial", "failed"].includes(data.status)
-    : false;
+  const terminal = data ? ["completed", "partial", "failed"].includes(data.status) : false;
 
   useEffect(() => {
     if (terminal || fixtureName) return;
@@ -101,13 +90,10 @@ export function ScanExperience({
     }
     setAccessState("ready");
     try {
-      const response = await fetch(
-        `/api/v1/scans/${encodeURIComponent(scanId)}/status`,
-        {
-          cache: "no-store",
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      );
+      const response = await fetch(`/api/v1/scans/${encodeURIComponent(scanId)}/status`, {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (response.status === 401 || response.status === 403) {
         setAccessState("invalid");
         return;
@@ -115,17 +101,13 @@ export function ScanExperience({
       const payload: unknown = await response.json();
       const parsed = scanStatusResponseSchema.safeParse(payload);
       if (!response.ok || !parsed.success) {
-        setRequestError(
-          "The scanner returned an invalid or unavailable status response.",
-        );
+        setRequestError("The scanner returned an invalid or unavailable status response.");
         return;
       }
       setData(parsed.data);
       setRequestError(null);
     } catch {
-      setRequestError(
-        "Live status is temporarily unreachable. We will keep trying.",
-      );
+      setRequestError("Live status is temporarily unreachable. We will keep trying.");
     }
   }, [fixtureName, scanId]);
 
@@ -136,13 +118,7 @@ export function ScanExperience({
   }, [fixtureName, poll, scanId]);
 
   useEffect(() => {
-    if (
-      fixtureName ||
-      terminal ||
-      accessState === "invalid" ||
-      accessState === "missing"
-    )
-      return;
+    if (fixtureName || terminal || accessState === "invalid" || accessState === "missing") return;
     const interval = window.setInterval(
       () => void poll(),
       data?.status === "running" ? 1000 : 2000,
@@ -189,11 +165,7 @@ export function ScanExperience({
         ) : null}
         {accessState === "ready" && !data ? <LoadingState /> : null}
         {data && !terminal ? (
-          <ProgressState
-            data={data}
-            elapsedSeconds={elapsedSeconds}
-            phases={phases}
-          />
+          <ProgressState data={data} elapsedSeconds={elapsedSeconds} phases={phases} />
         ) : null}
         {data?.status === "failed" ? (
           <FailedState
@@ -243,10 +215,7 @@ type Phase = Readonly<{
   status: "done" | "active" | "pending" | "unavailable";
 }>;
 
-function buildPhases(
-  data: ScanStatusResponse | null,
-  segment: Segment,
-): readonly Phase[] {
+function buildPhases(data: ScanStatusResponse | null, segment: Segment): readonly Phase[] {
   const labels = [
     "Checking safe access to the site",
     "Reading robots.txt and sitemap",
@@ -269,9 +238,7 @@ function buildPhases(
   }
 
   const terminalChecks = data.checks.filter((check) =>
-    ["pass", "partial", "fail", "unavailable", "not_applicable"].includes(
-      check.status,
-    ),
+    ["pass", "partial", "fail", "unavailable", "not_applicable"].includes(check.status),
   ).length;
   const runningChecks = data.checks
     .filter((check) => check.status === "running")
@@ -290,8 +257,7 @@ function buildPhases(
 
   return labels.map((label, index) => ({
     label,
-    status:
-      index < phaseIndex ? "done" : index === phaseIndex ? "active" : "pending",
+    status: index < phaseIndex ? "done" : index === phaseIndex ? "active" : "pending",
   }));
 }
 
@@ -307,8 +273,8 @@ function ProgressState({
   return (
     <div className={styles.progress}>
       <div aria-atomic="true" aria-live="polite" className="sr-only">
-        Scan {data.status}. {data.progress.completed} of {data.progress.total}{" "}
-        checks have a terminal result.
+        Scan {data.status}. {data.progress.completed} of {data.progress.total} checks have a
+        terminal result.
       </div>
       <ol className={styles.phases}>
         {phases.map((phase, index) => (
@@ -321,9 +287,7 @@ function ProgressState({
               {phase.status === "done" ? "✓" : index + 1}
             </span>
             <span>{phase.label}</span>
-            <span className="mono">
-              {phase.status === "active" ? "reading…" : phase.status}
-            </span>
+            <span className="mono">{phase.status === "active" ? "reading…" : phase.status}</span>
           </li>
         ))}
       </ol>
@@ -373,8 +337,8 @@ function TeaserState({
     <div className={styles.teaser}>
       {data.status === "partial" ? (
         <div className={styles.partialNotice}>
-          Some checks were unavailable. They reduce coverage and are not treated
-          as confirmed failures.
+          Some checks were unavailable. They reduce coverage and are not treated as confirmed
+          failures.
         </div>
       ) : null}
       <div className={styles.scoreLine}>
@@ -408,9 +372,7 @@ function TeaserState({
             scanId={scanId}
             tokenStorageKey={`agentify:scan-token:${scanId}`}
           />
-          {remediationPromptEnabled &&
-          registrationEnabled &&
-          teaser.top_findings.length > 0 ? (
+          {remediationPromptEnabled && registrationEnabled && teaser.top_findings.length > 0 ? (
             <CopyRemediationPrompt
               allowDownload
               contactGateScanId={scanId}
@@ -428,19 +390,10 @@ function TeaserState({
       <div className={styles.findings}>
         <h2 className="eyebrow">Top findings</h2>
         {teaser.top_findings.map((finding, index) => (
-          <Finding
-            code={finding}
-            index={index}
-            key={finding}
-            status="attention"
-          />
+          <Finding code={finding} index={index} key={finding} status="attention" />
         ))}
         {teaser.positive ? (
-          <Finding
-            code={teaser.positive}
-            index={teaser.top_findings.length}
-            status="pass"
-          />
+          <Finding code={teaser.positive} index={teaser.top_findings.length} status="pass" />
         ) : null}
       </div>
       <div className={styles.reportCta} id="registration">
@@ -474,10 +427,7 @@ function Finding({
   const summary = canonicalSummaryCopy(code);
   if (status === "pass") {
     return (
-      <div
-        className={`${styles.finding} ${styles.pass}`}
-        style={{ "--i": index } as CSSProperties}
-      >
+      <div className={`${styles.finding} ${styles.pass}`} style={{ "--i": index } as CSSProperties}>
         <StatusBadge status="pass" />
         <span>{summary}</span>
       </div>
@@ -495,9 +445,7 @@ function Finding({
           <span aria-hidden="true" />
           needs attention
         </span>
-        <strong className={styles.findingHeadline}>
-          {canonicalFindingHeadline(code)}
-        </strong>
+        <strong className={styles.findingHeadline}>{canonicalFindingHeadline(code)}</strong>
         <span aria-hidden="true" className={styles.findingChevron}>
           +
         </span>
@@ -525,18 +473,11 @@ function ScoreScale({ score }: Readonly<{ score: number }>) {
   );
 }
 
-function FailedState({
-  blocked,
-  onRetry,
-}: Readonly<{ blocked: boolean; onRetry: () => void }>) {
+function FailedState({ blocked, onRetry }: Readonly<{ blocked: boolean; onRetry: () => void }>) {
   return (
     <div className={styles.failed}>
       <span aria-hidden="true">◔</span>
-      <h1>
-        {blocked
-          ? "The site blocked our reader"
-          : "No reliable diagnostic was produced"}
-      </h1>
+      <h1>{blocked ? "The site blocked our reader" : "No reliable diagnostic was produced"}</h1>
       <p>
         {blocked
           ? "Public requests were blocked before enough checks could reach a verdict. No score or registration gate is shown."
@@ -554,9 +495,7 @@ function AccessError({ invalid }: Readonly<{ invalid: boolean }>) {
     <div className={styles.failed}>
       <span aria-hidden="true">↗</span>
       <h1>
-        {invalid
-          ? "This scan link is no longer valid"
-          : "Open the original private scan link"}
+        {invalid ? "This scan link is no longer valid" : "Open the original private scan link"}
       </h1>
       <p>Scan progress is private.</p>
       <Link className="button button-primary" href="/">
@@ -593,8 +532,7 @@ function scanStatusLine(
   status: ScanStatusResponse["status"] | undefined,
   accessState: "loading" | "ready" | "missing" | "invalid",
 ) {
-  if (accessState === "missing" || accessState === "invalid")
-    return "Private access required";
+  if (accessState === "missing" || accessState === "invalid") return "Private access required";
   if (!status) return "Reading scan state…";
   const lines: Record<ScanStatusResponse["status"], string> = {
     accepted: "Scan accepted",
@@ -612,11 +550,7 @@ function captureFragmentToken(scanId: string) {
   const token = fragment.get("access_token");
   if (!token) return;
   sessionStorage.setItem(`agentify:scan-token:${scanId}`, token);
-  window.history.replaceState(
-    null,
-    "",
-    `${window.location.pathname}${window.location.search}`,
-  );
+  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
 }
 
 function getStoredToken(scanId: string) {
@@ -625,8 +559,7 @@ function getStoredToken(scanId: string) {
 
 function parseFixtureName(value?: string): FixtureName | undefined {
   if (process.env.NODE_ENV === "production") return undefined;
-  return value &&
-    ["running", "partial", "failed", "blocked", "teaser"].includes(value)
+  return value && ["running", "partial", "failed", "blocked", "teaser"].includes(value)
     ? (value as FixtureName)
     : undefined;
 }
@@ -654,11 +587,7 @@ function createDevFixture(name: FixtureName): ScanStatusResponse {
         id: check.id,
         label_code: check.labelCode,
         status:
-          index < 7
-            ? ("pass" as const)
-            : index === 7
-              ? ("running" as const)
-              : ("pending" as const),
+          index < 7 ? ("pass" as const) : index === 7 ? ("running" as const) : ("pending" as const),
       })),
       updated_at: now,
       target_host: "example.com",
@@ -691,10 +620,7 @@ function createDevFixture(name: FixtureName): ScanStatusResponse {
 }
 
 function labelFor(labelCode: string) {
-  return (
-    CHECK_LABELS[labelCode as keyof typeof CHECK_LABELS] ??
-    labelCode.replaceAll("_", " ")
-  );
+  return CHECK_LABELS[labelCode as keyof typeof CHECK_LABELS] ?? labelCode.replaceAll("_", " ");
 }
 
 function formatLevel(level: DiagnosticLevel) {

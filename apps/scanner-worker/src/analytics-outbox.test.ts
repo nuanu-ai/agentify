@@ -260,35 +260,32 @@ describe("analytics destination delivery", () => {
     { status: 429, retryable: true },
     { status: 500, retryable: true },
     { status: 503, retryable: true },
-  ])(
-    "classifies partner HTTP $status with retryable=$retryable",
-    async ({ status, retryable }) => {
-      const deliver = createDestinationDeliverer(
-        {
-          runtimeEnvironment: "production",
-          partner: {
-            destinationEnvironment: "production",
-            enabled: true,
-            secret: "partner-secret-value",
-          },
+  ])("classifies partner HTTP $status with retryable=$retryable", async ({ status, retryable }) => {
+    const deliver = createDestinationDeliverer(
+      {
+        runtimeEnvironment: "production",
+        partner: {
+          destinationEnvironment: "production",
+          enabled: true,
+          secret: "partner-secret-value",
         },
-        async () => new Response(null, { status }),
-      );
-      await expect(
-        deliver(
-          row({
-            destination: "partner_tracker",
-            payload: {
-              clickid: "Xk8sJ2QpR4vN7bL0aZ9wQg",
-              event: "reg",
-            },
-          }),
-        ),
-      ).resolves.toEqual({
-        ok: false,
-        code: `partner_tracker_http_${status}`,
-        retryable,
-      });
-    },
-  );
+      },
+      async () => new Response(null, { status }),
+    );
+    await expect(
+      deliver(
+        row({
+          destination: "partner_tracker",
+          payload: {
+            clickid: "Xk8sJ2QpR4vN7bL0aZ9wQg",
+            event: "reg",
+          },
+        }),
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      code: `partner_tracker_http_${status}`,
+      retryable,
+    });
+  });
 });

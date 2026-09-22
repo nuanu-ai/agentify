@@ -11,9 +11,5 @@ export const metadata: Metadata = {
 
 export default function PendingScanPage() {
   const config = getServerConfig();
-  return (
-    <PendingScanExperience
-      turnstileSiteKey={config.TURNSTILE_SITE_KEY ?? null}
-    />
-  );
+  return <PendingScanExperience turnstileSiteKey={config.TURNSTILE_SITE_KEY ?? null} />;
 }

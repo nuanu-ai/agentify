@@ -13,7 +13,5 @@ export const metadata: Metadata = {
 
 export default function ScannerPage() {
   const config = getPublicAppConfig();
-  return (
-    <PublicEditorialPage page={getPublicEditorialPage("/scanner", config)} />
-  );
+  return <PublicEditorialPage page={getPublicEditorialPage("/scanner", config)} />;
 }

@@ -105,11 +105,7 @@ async function main() {
         nominalWeight: String(check.nominalWeight),
         applicableWeight: String(check.nominalWeight),
         earnedWeight: String(
-          check.id === 6
-            ? 0
-            : check.id === 12
-              ? check.nominalWeight / 2
-              : check.nominalWeight,
+          check.id === 6 ? 0 : check.id === 12 ? check.nominalWeight / 2 : check.nominalWeight,
         ),
         summaryCode: `${check.labelCode}_observed`,
         userImpactCode: `${check.labelCode}_impact`,

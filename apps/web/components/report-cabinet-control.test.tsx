@@ -10,15 +10,9 @@ describe("fresh report cabinet action", () => {
       <ReportCabinetAction email="owner@example.com" reportPath={reportPath} />,
     );
 
-    expect(markup).toContain(
-      '<form action="/cabinet/report-handoff" method="post">',
-    );
-    expect(markup).toContain(
-      'type="hidden" name="email" value="owner@example.com"',
-    );
-    expect(markup).toContain(
-      `type="hidden" name="report_path" value="${reportPath}"`,
-    );
+    expect(markup).toContain('<form action="/cabinet/report-handoff" method="post">');
+    expect(markup).toContain('type="hidden" name="email" value="owner@example.com"');
+    expect(markup).toContain(`type="hidden" name="report_path" value="${reportPath}"`);
     expect(markup).toContain('type="submit">Open your cabinet</button>');
     expect(markup).not.toContain("token");
     expect(markup).not.toContain("<a");

@@ -1,7 +1,4 @@
-import {
-  createDatabase,
-  normalizeNodePostgresConnectionString,
-} from "@agentify/scanner-database";
+import { createDatabase, normalizeNodePostgresConnectionString } from "@agentify/scanner-database";
 import { PgBoss } from "pg-boss";
 import { z } from "zod";
 
@@ -206,9 +203,7 @@ try {
     ALTER DEFAULT PRIVILEGES IN SCHEMA pgboss
       GRANT EXECUTE ON FUNCTIONS TO agentify_web, agentify_worker;
   `);
-  process.stdout.write(
-    "Queue schema and runtime grants prepared successfully.\n",
-  );
+  process.stdout.write("Queue schema and runtime grants prepared successfully.\n");
 } finally {
   await pool.end();
 }

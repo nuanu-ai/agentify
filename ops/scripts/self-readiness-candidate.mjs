@@ -3,21 +3,12 @@ import { once } from "node:events";
 import { setTimeout as sleep } from "node:timers/promises";
 
 const canonicalOrigin = "https://agentify.ad";
-const publicPaths = [
-  "/",
-  "/store",
-  "/local",
-  "/methodology",
-  "/scanner",
-  "/privacy",
-  "/terms",
-];
+const publicPaths = ["/", "/store", "/local", "/methodology", "/scanner", "/privacy", "/terms"];
 const sitemapPaths = [...publicPaths, "/agentic-shop"];
 const requiredPasses = [1, 2, 3, 4, 5, 6, 7, 8, 12, 13, 14];
 
 const baseUrl =
-  process.env.SELF_READINESS_BASE_URL ??
-  `http://127.0.0.1:${41_000 + (process.pid % 1_000)}`;
+  process.env.SELF_READINESS_BASE_URL ?? `http://127.0.0.1:${41_000 + (process.pid % 1_000)}`;
 let server;
 let serverOutput = "";
 
@@ -79,9 +70,7 @@ async function waitForServer() {
       // The standalone server may still be starting.
     }
     if (server?.exitCode !== null && server?.exitCode !== undefined)
-      fail(
-        `candidate server exited early (${server.exitCode})\n${serverOutput}`,
-      );
+      fail(`candidate server exited early (${server.exitCode})\n${serverOutput}`);
     await sleep(250);
   }
   fail(`candidate server did not become ready\n${serverOutput}`);
@@ -90,21 +79,17 @@ async function waitForServer() {
 async function startServer() {
   if (process.env.SELF_READINESS_BASE_URL) return;
   const port = new URL(baseUrl).port;
-  server = spawn(
-    process.execPath,
-    ["apps/web/.next/standalone/apps/web/server.js"],
-    {
-      cwd: process.cwd(),
-      detached: true,
-      env: {
-        ...process.env,
-        HOSTNAME: "127.0.0.1",
-        NODE_ENV: "production",
-        PORT: port,
-      },
-      stdio: ["ignore", "pipe", "pipe"],
+  server = spawn(process.execPath, ["apps/web/.next/standalone/apps/web/server.js"], {
+    cwd: process.cwd(),
+    detached: true,
+    env: {
+      ...process.env,
+      HOSTNAME: "127.0.0.1",
+      NODE_ENV: "production",
+      PORT: port,
     },
-  );
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   for (const stream of [server.stdout, server.stderr])
     stream.on("data", (chunk) => {
       serverOutput = `${serverOutput}${chunk}`.slice(-20_000);
@@ -134,9 +119,7 @@ const decodeHeading = (value) =>
     .trim();
 
 const headingsFromHtml = (html) =>
-  [...html.matchAll(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/gi)].map((match) =>
-    decodeHeading(match[1]),
-  );
+  [...html.matchAll(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/gi)].map((match) => decodeHeading(match[1]));
 
 const assertHeaderToken = (artifact, header, token, label) => {
   const value = artifact.headers[header] ?? "";
@@ -163,10 +146,7 @@ async function verifyPublicVariants() {
       headers: { Accept: "text/x-component", RSC: "1" },
     });
 
-    if (
-      html.status !== 200 ||
-      !/text\/html/i.test(html.headers["content-type"])
-    )
+    if (html.status !== 200 || !/text\/html/i.test(html.headers["content-type"]))
       fail(`${path} HTML variant is invalid`);
     if (
       markdown.status !== 200 ||
@@ -178,10 +158,7 @@ async function verifyPublicVariants() {
     assertHeaderToken(markdown, "vary", "accept", `${path} Markdown`);
     if (!/text\/html/i.test(rejectedMarkdown.headers["content-type"] ?? ""))
       fail(`${path} returned Markdown for q=0`);
-    if (
-      head.body !== "" ||
-      !/text\/markdown/i.test(head.headers["content-type"] ?? "")
-    )
+    if (head.body !== "" || !/text\/markdown/i.test(head.headers["content-type"] ?? ""))
       fail(`${path} Markdown HEAD semantics are invalid`);
     if (/text\/markdown/i.test(rsc.headers["content-type"] ?? ""))
       fail(`${path} intercepted an RSC request`);
@@ -197,38 +174,29 @@ async function verifyPublicVariants() {
 
 async function main() {
   await startServer();
-  const { evaluateScan, parseJsonLd, parseRobots, parseSitemap } =
-    await import("../../packages/scanner/dist/index.js");
+  const { evaluateScan, parseJsonLd, parseRobots, parseSitemap } = await import(
+    "../../packages/scanner/dist/index.js"
+  );
 
   await verifyPublicVariants();
 
-  const [
-    robots,
-    base,
-    markdown,
-    chatgpt,
-    claude,
-    sitemap,
-    llms,
-    mcpA,
-    mcpB,
-    a2a,
-  ] = await Promise.all([
-    fetchArtifact("/robots.txt"),
-    fetchArtifact("/", { headers: { Accept: "text/html" } }),
-    fetchArtifact("/", { headers: { Accept: "text/markdown" } }),
-    fetchArtifact("/", {
-      headers: { Accept: "text/html", "User-Agent": "ChatGPT-User/1.0" },
-    }),
-    fetchArtifact("/", {
-      headers: { Accept: "text/html", "User-Agent": "Claude-User" },
-    }),
-    fetchArtifact("/sitemap.xml"),
-    fetchArtifact("/llms.txt"),
-    fetchArtifact("/.well-known/mcp.json"),
-    fetchArtifact("/.well-known/mcp/server-card.json"),
-    fetchArtifact("/.well-known/agent-card.json"),
-  ]);
+  const [robots, base, markdown, chatgpt, claude, sitemap, llms, mcpA, mcpB, a2a] =
+    await Promise.all([
+      fetchArtifact("/robots.txt"),
+      fetchArtifact("/", { headers: { Accept: "text/html" } }),
+      fetchArtifact("/", { headers: { Accept: "text/markdown" } }),
+      fetchArtifact("/", {
+        headers: { Accept: "text/html", "User-Agent": "ChatGPT-User/1.0" },
+      }),
+      fetchArtifact("/", {
+        headers: { Accept: "text/html", "User-Agent": "Claude-User" },
+      }),
+      fetchArtifact("/sitemap.xml"),
+      fetchArtifact("/llms.txt"),
+      fetchArtifact("/.well-known/mcp.json"),
+      fetchArtifact("/.well-known/mcp/server-card.json"),
+      fetchArtifact("/.well-known/agent-card.json"),
+    ]);
 
   const parsedRobots = parseRobots(robots.body);
   if (
@@ -244,16 +212,11 @@ async function main() {
     sitemap.status !== 200 ||
     !parsedSitemap.valid ||
     parsedSitemap.urls.length !== sitemapPaths.length ||
-    parsedSitemap.urls.some(
-      (url, index) => url !== `${canonicalOrigin}${sitemapPaths[index]}`,
-    )
+    parsedSitemap.urls.some((url, index) => url !== `${canonicalOrigin}${sitemapPaths[index]}`)
   )
     fail("sitemap.xml contract failed");
 
-  if (
-    !/^# Agentify$/m.test(llms.body) ||
-    !/\[[^\]]+\]\(https:\/\//.test(llms.body)
-  )
+  if (!/^# Agentify$/m.test(llms.body) || !/\[[^\]]+\]\(https:\/\//.test(llms.body))
     fail("llms.txt contract failed");
 
   const jsonLd = parseJsonLd(base.body);
@@ -284,9 +247,7 @@ async function main() {
       fail(`required check #${id} is ${checks.get(id)?.status ?? "missing"}`);
   }
   if (checks.get(9)?.status !== "fail")
-    fail(
-      `MCP check #9 must remain an honest fail, got ${checks.get(9)?.status}`,
-    );
+    fail(`MCP check #9 must remain an honest fail, got ${checks.get(9)?.status}`);
   if (evaluation.score.score === null || evaluation.score.score < 90)
     fail(`candidate score ${evaluation.score.score} is below 90`);
   if (evaluation.score.coverage !== 1)

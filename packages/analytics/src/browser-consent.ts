@@ -7,15 +7,12 @@ export interface ConsentStorage {
   setItem(key: string, value: string): void;
 }
 
-export const readCurrentConsent = (
-  storage: ConsentStorage,
-): ConsentSnapshot | undefined => {
+export const readCurrentConsent = (storage: ConsentStorage): ConsentSnapshot | undefined => {
   const stored = storage.getItem(CONSENT_STORAGE_KEY);
   if (!stored) return undefined;
   try {
     const parsed = JSON.parse(stored) as ConsentSnapshot;
-    if (!parsed.policyVersion || !parsed.capturedAt || !parsed.categories)
-      return undefined;
+    if (!parsed.policyVersion || !parsed.capturedAt || !parsed.categories) return undefined;
     return parsed;
   } catch {
     return undefined;
@@ -37,9 +34,7 @@ export const loadConsentedAnalytics = async (input: {
   loadMetaPixel: () => Promise<void>;
 }): Promise<void> => {
   const tasks: Promise<void>[] = [];
-  if (input.snapshot.categories.product_analytics)
-    tasks.push(input.loadPosthog());
-  if (input.snapshot.categories.ads_measurement)
-    tasks.push(input.loadMetaPixel());
+  if (input.snapshot.categories.product_analytics) tasks.push(input.loadPosthog());
+  if (input.snapshot.categories.ads_measurement) tasks.push(input.loadMetaPixel());
   await Promise.all(tasks);
 };

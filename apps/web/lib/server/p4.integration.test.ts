@@ -1,9 +1,4 @@
-import {
-  createServer,
-  type IncomingMessage,
-  type Server,
-  type ServerResponse,
-} from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { fileURLToPath } from "node:url";
 
 import { CONSENT_POLICY_VERSION } from "@agentify/analytics";
@@ -52,12 +47,7 @@ import { decryptEmail, encryptEmail, hmacHex, sha256 } from "./crypto";
 import { getDatabase } from "./database";
 import { enqueueScanInTransaction, stopScanQueue } from "./queue";
 import { consumeScanRateLimits, readRateCount } from "./rate-limit";
-import {
-  createPublicShare,
-  getFullReport,
-  getPublicShare,
-  revokePublicShare,
-} from "./reporting";
+import { createPublicShare, getFullReport, getPublicShare, revokePublicShare } from "./reporting";
 import { requestScannerIdentityDeletion } from "./scanner-identity-deletion";
 import { verifyAndFinalizeScannerIdentity } from "./scanner-identity-finalize";
 import { requestScannerReportRecovery } from "./scanner-recovery";
@@ -66,9 +56,7 @@ import { authorizeScan, createOrReplayScan } from "./scans";
 
 const connectionString = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!connectionString?.includes("_migration_test")) {
-  throw new Error(
-    "P4 integration requires a dedicated *_migration_test database",
-  );
+  throw new Error("P4 integration requires a dedicated *_migration_test database");
 }
 process.env.DATABASE_URL = connectionString;
 process.env.APP_BASE_URL = "http://localhost:3000";
@@ -111,8 +99,7 @@ const anonymousToken = "p4-attribution-anonymous-token";
 
 function latestLink(email: string, intentKind: "registration" | "recovery") {
   const record = links.findLast(
-    (candidate) =>
-      candidate.email === email && candidate.intentKind === intentKind,
+    (candidate) => candidate.email === email && candidate.intentKind === intentKind,
   );
   if (!record) throw new Error("cabinet_test_link_missing");
   return record;
@@ -126,10 +113,7 @@ function respondJson(response: ServerResponse, status: number, body: object) {
 async function readJson(request: IncomingMessage) {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(Buffer.from(chunk));
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<
-    string,
-    unknown
-  >;
+  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
 }
 
 // A fixture query that must find its row: an empty result is a broken test, and
@@ -175,9 +159,7 @@ async function createCompletedScan(label: string) {
 
 async function createFreshCompletedScan(label: string) {
   const { db } = getDatabase();
-  const source = onlyRow(
-    await db.select().from(scans).where(eq(scans.id, scanId)),
-  );
+  const source = onlyRow(await db.select().from(scans).where(eq(scans.id, scanId)));
   const sessionId = createUuidV7();
   const id = createUuidV7();
   const accessToken = `fresh-${label}-private-access-token-with-more-than-192-bits`;
@@ -272,10 +254,7 @@ beforeAll(async () => {
     categories: { essential_processing: true },
     source: "test",
   });
-  await db
-    .update(sessions)
-    .set({ consentSnapshotId: consentId })
-    .where(eq(sessions.id, sessionId));
+  await db.update(sessions).set({ consentSnapshotId: consentId }).where(eq(sessions.id, sessionId));
   await db.insert(scans).values({
     id: scanId,
     sessionId,
@@ -301,10 +280,7 @@ beforeAll(async () => {
     CHECK_DEFINITIONS.map((check) => ({
       scanId,
       checkId: check.id,
-      status:
-        check.id === 8 || check.id === 17
-          ? ("not_applicable" as const)
-          : ("pass" as const),
+      status: check.id === 8 || check.id === 17 ? ("not_applicable" as const) : ("pass" as const),
       nominalWeight: String(check.nominalWeight),
       applicableWeight: String(check.nominalWeight),
       earnedWeight: String(check.nominalWeight),
@@ -322,8 +298,7 @@ beforeAll(async () => {
     if (
       request.url !== "/internal/report-identity" ||
       request.method !== "POST" ||
-      request.headers.authorization !==
-        `Bearer ${process.env.REPORT_IDENTITY_SECRET}`
+      request.headers.authorization !== `Bearer ${process.env.REPORT_IDENTITY_SECRET}`
     ) {
       respondJson(response, 404, { error: "not_found" });
       return;
@@ -374,9 +349,7 @@ beforeAll(async () => {
       return;
     }
     if (body.operation === "verify" && body.phase === "acknowledge") {
-      const record = links.find(
-        (candidate) => candidate.receiptId === body.receipt_id,
-      );
+      const record = links.find((candidate) => candidate.receiptId === body.receipt_id);
       if (!record || record.tokenHash !== body.token_hash) {
         respondJson(response, 200, { status: "refused" });
         return;
@@ -391,9 +364,7 @@ beforeAll(async () => {
       return;
     }
     if (body.operation === "issue") {
-      const record = links.find(
-        (candidate) => candidate.receiptId === body.receipt_id,
-      );
+      const record = links.find((candidate) => candidate.receiptId === body.receipt_id);
       if (!record || record.tokenHash !== body.token_hash) {
         respondJson(response, 200, { status: "refused" });
         return;
@@ -405,9 +376,7 @@ beforeAll(async () => {
         record.issueCount === 1
           ? {
               status: "issued",
-              action_url:
-                "http://localhost:3000/cabinet/sign-in/open?token=" +
-                "C".repeat(32),
+              action_url: `http://localhost:3000/cabinet/sign-in/open?token=${"C".repeat(32)}`,
             }
           : { status: "already_attempted" },
       );
@@ -419,12 +388,9 @@ beforeAll(async () => {
     }
     respondJson(response, 400, { status: "refused" });
   });
-  await new Promise<void>((resolve) =>
-    cabinetServer.listen(0, "127.0.0.1", resolve),
-  );
+  await new Promise<void>((resolve) => cabinetServer.listen(0, "127.0.0.1", resolve));
   const address = cabinetServer.address();
-  if (!address || typeof address === "string")
-    throw new Error("server_address");
+  if (!address || typeof address === "string") throw new Error("server_address");
   process.env.CABINET_IDENTITY_URL = `http://127.0.0.1:${address.port}`;
 }, 30_000);
 
@@ -490,12 +456,8 @@ describe("P4 cabinet-owned scanner identity", () => {
       })
       .from(scans)
       .where(sql`${scans.id} in (${explicit.scan_id}, ${omitted.scan_id})`);
-    expect(
-      rows.find(({ id }) => id === explicit.scan_id)?.submittedWithoutScheme,
-    ).toBe(false);
-    expect(
-      rows.find(({ id }) => id === omitted.scan_id)?.submittedWithoutScheme,
-    ).toBe(true);
+    expect(rows.find(({ id }) => id === explicit.scan_id)?.submittedWithoutScheme).toBe(false);
+    expect(rows.find(({ id }) => id === omitted.scan_id)?.submittedWithoutScheme).toBe(true);
   });
 
   it("keeps attribution neutral and both accepted registration links usable", async () => {
@@ -519,29 +481,16 @@ describe("P4 cabinet-owned scanner identity", () => {
         }),
       });
     expect(
-      (
-        await persistAttribution(
-          attributionRequest("first-campaign", "a".repeat(64)),
-        )
-      ).status,
+      (await persistAttribution(attributionRequest("first-campaign", "a".repeat(64)))).status,
     ).toBe(204);
     expect(
-      (
-        await persistAttribution(
-          attributionRequest("last-campaign", "b".repeat(64)),
-        )
-      ).status,
+      (await persistAttribution(attributionRequest("last-campaign", "b".repeat(64)))).status,
     ).toBe(204);
     const attributedSession = onlyRow(
       await db
         .select()
         .from(sessions)
-        .where(
-          eq(
-            sessions.anonymousIdHash,
-            hmacHex(tokenHmacSecret, "anonymous", anonymousToken),
-          ),
-        )
+        .where(eq(sessions.anonymousIdHash, hmacHex(tokenHmacSecret, "anonymous", anonymousToken)))
         .limit(1),
     );
     expect(attributedSession).toMatchObject({
@@ -569,9 +518,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         }),
       });
     expect(
-      (await persistAttribution(partnerAttributionRequest())).headers.get(
-        "set-cookie",
-      ) ?? "",
+      (await persistAttribution(partnerAttributionRequest())).headers.get("set-cookie") ?? "",
     ).not.toContain(`clickid=${partnerClickId}`);
     const consentRequest = (adsMeasurement: boolean) =>
       new NextRequest("http://localhost:3000/api/v1/consent", {
@@ -595,9 +542,7 @@ describe("P4 cabinet-owned scanner identity", () => {
       });
     expect((await persistConsent(consentRequest(true))).status).toBe(201);
     expect(
-      (await persistAttribution(partnerAttributionRequest())).headers.get(
-        "set-cookie",
-      ),
+      (await persistAttribution(partnerAttributionRequest())).headers.get("set-cookie"),
     ).toContain(`clickid=${partnerClickId}`);
     const revoked = await persistConsent(consentRequest(false));
     expect(revoked.headers.get("set-cookie")).toMatch(/clickid=;.*Max-Age=0/i);
@@ -645,9 +590,7 @@ describe("P4 cabinet-owned scanner identity", () => {
       ),
     ).toMatchObject({ rows: [{ count: "0" }] });
 
-    const scan = onlyRow(
-      await db.select().from(scans).where(eq(scans.id, scanId)).limit(1),
-    );
+    const scan = onlyRow(await db.select().from(scans).where(eq(scans.id, scanId)).limit(1));
     const body = registrationBody("Owner@Example.com");
     await expect(createScannerRegistrationIntent(scan, body)).resolves.toEqual({
       sent: true,
@@ -663,9 +606,7 @@ describe("P4 cabinet-owned scanner identity", () => {
       .from(registrationIntents)
       .where(eq(registrationIntents.scanId, scanId));
     expect(intents).toHaveLength(2);
-    expect(intents.filter((intent) => intent.consumedAt === null)).toHaveLength(
-      2,
-    );
+    expect(intents.filter((intent) => intent.consumedAt === null)).toHaveLength(2);
     expect(JSON.stringify(intents)).not.toContain("Owner@Example.com");
     expect(firstLink.tokenHash).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(secondLink.tokenHash).toMatch(/^[A-Za-z0-9_-]{43}$/);
@@ -684,25 +625,14 @@ describe("P4 cabinet-owned scanner identity", () => {
       await db
         .select()
         .from(leads)
-        .where(
-          eq(
-            leads.emailLookupHash,
-            hmacHex(tokenHmacSecret, "email", "owner@example.com"),
-          ),
-        ),
+        .where(eq(leads.emailLookupHash, hmacHex(tokenHmacSecret, "email", "owner@example.com"))),
     );
     expect(ownerLead).toBeDefined();
     expect(
-      await db
-        .select()
-        .from(leadScans)
-        .where(eq(leadScans.leadId, ownerLead.id)),
+      await db.select().from(leadScans).where(eq(leadScans.leadId, ownerLead.id)),
     ).toHaveLength(1);
     expect(
-      await db
-        .select()
-        .from(reportSessions)
-        .where(eq(reportSessions.leadId, ownerLead.id)),
+      await db.select().from(reportSessions).where(eq(reportSessions.leadId, ownerLead.id)),
     ).toHaveLength(2);
     expect(
       await getDatabase().pool.query<{ count: string }>(
@@ -715,10 +645,7 @@ describe("P4 cabinet-owned scanner identity", () => {
   it("unlocks a report without a phone and stores none for the lead", async () => {
     const { db } = getDatabase();
     const { scan } = await createFreshCompletedScan("no-phone-registration");
-    const sourceChecks = await db
-      .select()
-      .from(scanChecks)
-      .where(eq(scanChecks.scanId, scanId));
+    const sourceChecks = await db.select().from(scanChecks).where(eq(scanChecks.scanId, scanId));
     await db
       .insert(scanChecks)
       .values(sourceChecks.map((check) => ({ ...check, scanId: scan.id })));
@@ -745,16 +672,10 @@ describe("P4 cabinet-owned scanner identity", () => {
     expect(intent.phoneE164Ciphertext).toBeNull();
     expect(intent.phoneLookupHash).toBeNull();
 
-    const finalized = await verifyAndFinalizeScannerIdentity(
-      link.state,
-      link.token,
-    );
+    const finalized = await verifyAndFinalizeScannerIdentity(link.state, link.token);
     expect(finalized?.scanId).toBe(scan.id);
     const lead = onlyRow(
-      await db
-        .select()
-        .from(leads)
-        .where(eq(leads.emailLookupHash, emailLookupHash)),
+      await db.select().from(leads).where(eq(leads.emailLookupHash, emailLookupHash)),
     );
     expect(lead.phoneE164Ciphertext).toBeNull();
     expect(lead.phoneLookupHash).toBeNull();
@@ -762,13 +683,8 @@ describe("P4 cabinet-owned scanner identity", () => {
 
   it("stores phone only encrypted and finalizes cabinet-backed identity once", async () => {
     const { db } = getDatabase();
-    const { scan, accessToken } = await createFreshCompletedScan(
-      "encrypted-registration",
-    );
-    const sourceChecks = await db
-      .select()
-      .from(scanChecks)
-      .where(eq(scanChecks.scanId, scanId));
+    const { scan, accessToken } = await createFreshCompletedScan("encrypted-registration");
+    const sourceChecks = await db.select().from(scanChecks).where(eq(scanChecks.scanId, scanId));
     await db
       .insert(scanChecks)
       .values(sourceChecks.map((check) => ({ ...check, scanId: scan.id })));
@@ -839,20 +755,14 @@ describe("P4 cabinet-owned scanner identity", () => {
     await expect(
       verifyAndFinalizeScannerIdentity(firstLink.state, "Z".repeat(32)),
     ).resolves.toBeUndefined();
-    const finalized = await verifyAndFinalizeScannerIdentity(
-      firstLink.state,
-      firstLink.token,
-    );
+    const finalized = await verifyAndFinalizeScannerIdentity(firstLink.state, firstLink.token);
     expect(finalized?.scanId).toBe(scan.id);
-    if (!finalized)
-      throw new Error("finalizing a verified link opened no session");
+    if (!finalized) throw new Error("finalizing a verified link opened no session");
     const authorizedCookie = `${REPORT_SESSION_COOKIE}=${finalized.sessionToken}`;
     expect(
       (
         await getContactAccess(
-          new NextRequest(
-            `http://localhost:3000/api/v2/scans/${scan.id}/contact-access`,
-          ),
+          new NextRequest(`http://localhost:3000/api/v2/scans/${scan.id}/contact-access`),
           { params: Promise.resolve({ id: scan.id }) },
         )
       ).status,
@@ -860,10 +770,9 @@ describe("P4 cabinet-owned scanner identity", () => {
     expect(
       (
         await getContactAccess(
-          new NextRequest(
-            `http://localhost:3000/api/v2/scans/${scan.id}/contact-access`,
-            { headers: { cookie: authorizedCookie } },
-          ),
+          new NextRequest(`http://localhost:3000/api/v2/scans/${scan.id}/contact-access`, {
+            headers: { cookie: authorizedCookie },
+          }),
           { params: Promise.resolve({ id: scan.id }) },
         )
       ).status,
@@ -891,21 +800,15 @@ describe("P4 cabinet-owned scanner identity", () => {
       ).status,
     ).toBe(200);
     const verifiedDownload = await downloadTeaserPrompt(
-      new NextRequest(
-        `http://localhost:3000/api/v1/scans/${scan.id}/remediation-prompt/download`,
-        { headers: { cookie: authorizedCookie } },
-      ),
+      new NextRequest(`http://localhost:3000/api/v1/scans/${scan.id}/remediation-prompt/download`, {
+        headers: { cookie: authorizedCookie },
+      }),
       { params: Promise.resolve({ id: scan.id }) },
     );
     expect(verifiedDownload.status).toBe(200);
-    expect(verifiedDownload.headers.get("content-type")).toBe(
-      "text/markdown; charset=utf-8",
-    );
+    expect(verifiedDownload.headers.get("content-type")).toBe("text/markdown; charset=utf-8");
     const lead = onlyRow(
-      await db
-        .select()
-        .from(leads)
-        .where(eq(leads.emailLookupHash, emailLookupHash)),
+      await db.select().from(leads).where(eq(leads.emailLookupHash, emailLookupHash)),
     );
     expect(lead.phoneE164Ciphertext).not.toContain("+14155550123");
     expect(lead.phoneLookupHash).toMatch(/^[a-f0-9]{64}$/);
@@ -933,8 +836,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         .where(eq(deliveryOutbox.destination, "partner_tracker")),
     ).toHaveLength(1);
 
-    const { scan: revokedScan } =
-      await createFreshCompletedScan("revoked-partner");
+    const { scan: revokedScan } = await createFreshCompletedScan("revoked-partner");
     const revokedConsentId = createUuidV7();
     await db.insert(consentSnapshots).values({
       id: revokedConsentId,
@@ -951,11 +853,9 @@ describe("P4 cabinet-owned scanner identity", () => {
       .set({ consentSnapshotId: revokedConsentId })
       .where(eq(sessions.id, revokedScan.sessionId));
     const revokedEmail = "revoked-partner@example.com";
-    await createScannerRegistrationIntent(
-      revokedScan,
-      registrationBody(revokedEmail),
-      { partnerClickId },
-    );
+    await createScannerRegistrationIntent(revokedScan, registrationBody(revokedEmail), {
+      partnerClickId,
+    });
     const revokedLink = latestLink(revokedEmail, "registration");
     await expect(
       verifyAndFinalizeScannerIdentity(revokedLink.state, revokedLink.token),
@@ -970,28 +870,15 @@ describe("P4 cabinet-owned scanner identity", () => {
 
   it("verifies once, authorizes 18-row report and a revocable safe share", async () => {
     const scan = onlyRow(
-      await getDatabase()
-        .db.select()
-        .from(scans)
-        .where(eq(scans.id, scanId))
-        .limit(1),
+      await getDatabase().db.select().from(scans).where(eq(scans.id, scanId)).limit(1),
     );
-    await createScannerRegistrationIntent(
-      scan,
-      registrationBody("owner@example.com"),
-    );
+    await createScannerRegistrationIntent(scan, registrationBody("owner@example.com"));
     const link = latestLink("owner@example.com", "registration");
     expect(await getFullReport(scanId, undefined)).toBeUndefined();
-    const verified = await verifyAndFinalizeScannerIdentity(
-      link.state,
-      link.token,
-    );
+    const verified = await verifyAndFinalizeScannerIdentity(link.state, link.token);
     expect(verified).toMatchObject({ scanId });
-    if (!verified)
-      throw new Error("verifying the identity link opened no session");
-    expect(
-      await verifyAndFinalizeScannerIdentity(link.state, link.token),
-    ).toBeUndefined();
+    if (!verified) throw new Error("verifying the identity link opened no session");
+    expect(await verifyAndFinalizeScannerIdentity(link.state, link.token)).toBeUndefined();
     const report = await getFullReport(scanId, verified.sessionToken);
     expect(report?.checks).toHaveLength(18);
     expect(JSON.stringify(report)).not.toContain("private.example");
@@ -1008,15 +895,11 @@ describe("P4 cabinet-owned scanner identity", () => {
       { params: Promise.resolve({ scanId }) },
     );
     expect(fullDownload.status).toBe(200);
-    expect(fullDownload.headers.get("content-type")).toBe(
-      "text/markdown; charset=utf-8",
-    );
+    expect(fullDownload.headers.get("content-type")).toBe("text/markdown; charset=utf-8");
     expect(fullDownload.headers.get("content-disposition")).toBe(
       'attachment; filename="agentify-complete-implementation-prompt.md"',
     );
-    expect(await fullDownload.text()).toContain(
-      "# Agentify remediation implementation prompt",
-    );
+    expect(await fullDownload.text()).toContain("# Agentify remediation implementation prompt");
     const verifiedView = await persistClientEvent(
       new NextRequest("http://localhost:3000/api/v1/events", {
         method: "POST",
@@ -1038,17 +921,14 @@ describe("P4 cabinet-owned scanner identity", () => {
     });
     expect(await getDatabase().db.select().from(scanShares)).toHaveLength(0);
     const unauthorizedPreview = await previewShare(
-      new NextRequest(
-        `http://localhost:3000/api/v1/scans/${scanId}/share-preview`,
-      ),
+      new NextRequest(`http://localhost:3000/api/v1/scans/${scanId}/share-preview`),
       { params: Promise.resolve({ id: scanId }) },
     );
     expect(unauthorizedPreview.status).toBe(404);
     const previewResponse = await previewShare(
-      new NextRequest(
-        `http://localhost:3000/api/v1/scans/${scanId}/share-preview`,
-        { headers: { authorization: `Bearer ${scanAccessToken}` } },
-      ),
+      new NextRequest(`http://localhost:3000/api/v1/scans/${scanId}/share-preview`, {
+        headers: { authorization: `Bearer ${scanAccessToken}` },
+      }),
       { params: Promise.resolve({ id: scanId }) },
     );
     expect(previewResponse.status).toBe(200);
@@ -1086,10 +966,9 @@ describe("P4 cabinet-owned scanner identity", () => {
     expect(shared && !shared.conflict).toBe(true);
     if (!shared || shared.conflict) throw new Error("share_failed");
     const publishedPreview = await previewShare(
-      new NextRequest(
-        `http://localhost:3000/api/v1/scans/${scanId}/share-preview`,
-        { headers: { authorization: `Bearer ${scanAccessToken}` } },
-      ),
+      new NextRequest(`http://localhost:3000/api/v1/scans/${scanId}/share-preview`, {
+        headers: { authorization: `Bearer ${scanAccessToken}` },
+      }),
       { params: Promise.resolve({ id: scanId }) },
     );
     expect(await publishedPreview.json()).toMatchObject({
@@ -1162,11 +1041,7 @@ describe("P4 cabinet-owned scanner identity", () => {
     const first = await createOrReplayScan(body, stableKey, undefined);
     expect(first.anonymousToken).toBeTruthy();
     const stored = onlyRow(
-      await getDatabase()
-        .db.select()
-        .from(scans)
-        .where(eq(scans.id, first.scanId))
-        .limit(1),
+      await getDatabase().db.select().from(scans).where(eq(scans.id, first.scanId)).limit(1),
     );
     expect(stored.status).toBe("queued");
     const jobCount = async (id: string) =>
@@ -1177,17 +1052,12 @@ describe("P4 cabinet-owned scanner identity", () => {
         )
       ).rows[0]?.count;
     expect(await jobCount(first.scanId)).toBe("1");
-    const stableReplay = await createOrReplayScan(
-      body,
-      stableKey,
-      first.anonymousToken,
-    );
+    const stableReplay = await createOrReplayScan(body, stableKey, first.anonymousToken);
     expect(stableReplay.scanId).toBe(first.scanId);
     expect(await jobCount(first.scanId)).toBe("1");
-    expect(
-      (await createOrReplayScan(body, stableKey, first.anonymousToken, true))
-        .conflict,
-    ).toBe(true);
+    expect((await createOrReplayScan(body, stableKey, first.anonymousToken, true)).conflict).toBe(
+      true,
+    );
     await getDatabase()
       .db.update(scans)
       .set({
@@ -1266,9 +1136,7 @@ describe("P4 cabinet-owned scanner identity", () => {
       ),
     );
     expect(initial.filter((result) => result === "allowed")).toHaveLength(3);
-    expect(
-      initial.filter((result) => result === "challenge_required"),
-    ).toHaveLength(2);
+    expect(initial.filter((result) => result === "challenge_required")).toHaveLength(2);
     expect(await readRateCount(ipKey, "scan_ip_hour")).toBe(3);
     expect(await readRateCount(targetKey, "scan_target_day")).toBe(3);
 
@@ -1324,9 +1192,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         now: afterRollingExpiry,
       }),
     ).resolves.toBe("allowed");
-    expect(await readRateCount(ipKey, "scan_ip_hour", afterRollingExpiry)).toBe(
-      1,
-    );
+    expect(await readRateCount(ipKey, "scan_ip_hour", afterRollingExpiry)).toBe(1);
   });
 
   it("spends a cabinet mail link once and refuses mismatched or cross-site confirmation", async () => {
@@ -1346,28 +1212,15 @@ describe("P4 cabinet-owned scanner identity", () => {
         .select()
         .from(leads)
         .where(
-          eq(
-            leads.emailLookupHash,
-            hmacHex(tokenHmacSecret, "email", "scanner-live@example.com"),
-          ),
+          eq(leads.emailLookupHash, hmacHex(tokenHmacSecret, "email", "scanner-live@example.com")),
         ),
     ).toHaveLength(0);
-    expect(
-      (await finalizeRequest(first, "https://foreign.example")).status,
-    ).toBe(403);
-    expect(
-      (await finalizeRequest({ state: second.state, token: first.token }))
-        .status,
-    ).toBe(401);
-    const [winner, replay] = await Promise.all([
-      finalizeRequest(first),
-      finalizeRequest(first),
-    ]);
+    expect((await finalizeRequest(first, "https://foreign.example")).status).toBe(403);
+    expect((await finalizeRequest({ state: second.state, token: first.token })).status).toBe(401);
+    const [winner, replay] = await Promise.all([finalizeRequest(first), finalizeRequest(first)]);
     expect([winner.status, replay.status].sort()).toEqual([200, 401]);
     const successful = winner.status === 200 ? winner : replay;
-    expect(successful.headers.get("set-cookie")).toContain(
-      REPORT_SESSION_COOKIE,
-    );
+    expect(successful.headers.get("set-cookie")).toContain(REPORT_SESSION_COOKIE);
     expect(successful.headers.get("set-cookie")).not.toContain("scanner-auth");
     expect((await finalizeRequest(first)).status).toBe(401);
     const linked = onlyRow(
@@ -1375,18 +1228,12 @@ describe("P4 cabinet-owned scanner identity", () => {
         .select()
         .from(leads)
         .where(
-          eq(
-            leads.emailLookupHash,
-            hmacHex(tokenHmacSecret, "email", "scanner-live@example.com"),
-          ),
+          eq(leads.emailLookupHash, hmacHex(tokenHmacSecret, "email", "scanner-live@example.com")),
         ),
     );
     expect(linked.verifiedAt).toBeInstanceOf(Date);
     expect(
-      await db
-        .select()
-        .from(reportSessions)
-        .where(eq(reportSessions.leadId, linked.id)),
+      await db.select().from(reportSessions).where(eq(reportSessions.leadId, linked.id)),
     ).toHaveLength(1);
   });
 
@@ -1402,17 +1249,13 @@ describe("P4 cabinet-owned scanner identity", () => {
       linksForEmail.push(latestLink(email, "registration"));
     }
     const responses = await Promise.all(
-      linksForEmail.map((link) =>
-        finalizeRequest({ state: link.state, token: link.token }),
-      ),
+      linksForEmail.map((link) => finalizeRequest({ state: link.state, token: link.token })),
     );
     expect(responses.map((response) => response.status)).toEqual([200, 200]);
     const matchingLeads = await db
       .select()
       .from(leads)
-      .where(
-        eq(leads.emailLookupHash, hmacHex(tokenHmacSecret, "email", email)),
-      );
+      .where(eq(leads.emailLookupHash, hmacHex(tokenHmacSecret, "email", email)));
     expect(matchingLeads).toHaveLength(1);
     const lead = onlyRow(matchingLeads);
     expect(
@@ -1421,10 +1264,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         .sort(),
     ).toEqual(scanIds.sort());
     expect(
-      await db
-        .select()
-        .from(reportSessions)
-        .where(eq(reportSessions.leadId, lead.id)),
+      await db.select().from(reportSessions).where(eq(reportSessions.leadId, lead.id)),
     ).toHaveLength(2);
   });
 
@@ -1454,9 +1294,7 @@ describe("P4 cabinet-owned scanner identity", () => {
       leadId,
       scanId: original.id,
     });
-    const scan = onlyRow(
-      await db.select().from(scans).where(eq(scans.id, original.id)),
-    );
+    const scan = onlyRow(await db.select().from(scans).where(eq(scans.id, original.id)));
     await createScannerRegistrationIntent(scan, registrationBody(email));
     const firstLink = latestLink(email, "registration");
     let markSending!: () => void;
@@ -1467,27 +1305,21 @@ describe("P4 cabinet-owned scanner identity", () => {
     const continueSending = new Promise<void>((resolve) => {
       releaseSending = resolve;
     });
-    const lateRequest = createScannerRegistrationIntent(
-      scan,
-      registrationBody(email),
-      {
-        sendReportLink: async (address, state) => {
-          markSending();
-          await continueSending;
-          return (
-            await getCabinetReportIdentityClient().sendReportLink({
-              email: address,
-              intentKind: "registration",
-              state,
-            })
-          ).status;
-        },
+    const lateRequest = createScannerRegistrationIntent(scan, registrationBody(email), {
+      sendReportLink: async (address, state) => {
+        markSending();
+        await continueSending;
+        return (
+          await getCabinetReportIdentityClient().sendReportLink({
+            email: address,
+            intentKind: "registration",
+            state,
+          })
+        ).status;
       },
-    );
+    });
     await sending;
-    await expect(requestScannerIdentityDeletion({ leadId })).resolves.toBe(
-      "completed",
-    );
+    await expect(requestScannerIdentityDeletion({ leadId })).resolves.toBe("completed");
     releaseSending();
     await expect(lateRequest).rejects.toThrow("registration_scan_unavailable");
     expect(
@@ -1498,36 +1330,28 @@ describe("P4 cabinet-owned scanner identity", () => {
         })
       ).status,
     ).toBe(401);
-    expect(
-      (await db.select().from(scans).where(eq(scans.id, scan.id)))[0]?.leadId,
-    ).toBeNull();
-    expect(
-      (await db.select().from(leads).where(eq(leads.id, leadId)))[0]?.role,
-    ).toBe("deleted");
+    expect((await db.select().from(scans).where(eq(scans.id, scan.id)))[0]?.leadId).toBeNull();
+    expect((await db.select().from(leads).where(eq(leads.id, leadId)))[0]?.role).toBe("deleted");
   });
 
   it("keeps an admitted cabinet link valid when the scan bearer expires during delivery", async () => {
     const { db } = getDatabase();
     const { scan } = await createFreshCompletedScan("bearer-expiry");
     const email = "scanner-bearer-expiry@example.com";
-    const result = await createScannerRegistrationIntent(
-      scan,
-      registrationBody(email),
-      {
-        sendReportLink: async (address, state) => {
-          const sent = await getCabinetReportIdentityClient().sendReportLink({
-            email: address,
-            intentKind: "registration",
-            state,
-          });
-          await db
-            .update(scans)
-            .set({ accessTokenExpiresAt: new Date(Date.now() - 1_000) })
-            .where(eq(scans.id, scan.id));
-          return sent.status;
-        },
+    const result = await createScannerRegistrationIntent(scan, registrationBody(email), {
+      sendReportLink: async (address, state) => {
+        const sent = await getCabinetReportIdentityClient().sendReportLink({
+          email: address,
+          intentKind: "registration",
+          state,
+        });
+        await db
+          .update(scans)
+          .set({ accessTokenExpiresAt: new Date(Date.now() - 1_000) })
+          .where(eq(scans.id, scan.id));
+        return sent.status;
       },
-    );
+    });
     expect(result.sent).toBe(true);
     const link = latestLink(email, "registration");
     const response = await finalizeRequest({
@@ -1566,14 +1390,12 @@ describe("P4 cabinet-owned scanner identity", () => {
     });
     await createScannerRegistrationIntent(scan, registrationBody(email));
     const link = latestLink(email, "registration");
-    await admin.pool
-      .query(`create function hold_report_session_for_deletion() returns trigger
+    await admin.pool.query(`create function hold_report_session_for_deletion() returns trigger
       language plpgsql as $$ begin
         if new.lead_id = '${leadId}'::uuid then perform pg_advisory_xact_lock(479926); end if;
         return new;
       end $$`);
-    await admin.pool
-      .query(`create trigger hold_report_session_for_deletion before insert
+    await admin.pool.query(`create trigger hold_report_session_for_deletion before insert
       on report_sessions for each row execute function hold_report_session_for_deletion()`);
     const blocker = await admin.pool.connect();
     await blocker.query("begin");
@@ -1600,29 +1422,21 @@ describe("P4 cabinet-owned scanner identity", () => {
       expect(
         await Promise.race([
           deletion.then(() => true),
-          new Promise<false>((resolve) =>
-            setTimeout(() => resolve(false), 150),
-          ),
+          new Promise<false>((resolve) => setTimeout(() => resolve(false), 150)),
         ]),
       ).toBe(false);
     } finally {
       await blocker.query("commit");
       blocker.release();
       await Promise.allSettled([confirmation, deletion]);
-      await admin.pool.query(
-        "drop trigger hold_report_session_for_deletion on report_sessions",
-      );
-      await admin.pool.query(
-        "drop function hold_report_session_for_deletion() ",
-      );
+      await admin.pool.query("drop trigger hold_report_session_for_deletion on report_sessions");
+      await admin.pool.query("drop function hold_report_session_for_deletion() ");
     }
     if (!confirmation || !deletion)
       throw new Error("the blocked confirmation and deletion never started");
     expect((await confirmation).status).toBe(200);
     await expect(deletion).resolves.toBe("completed");
-    const after = onlyRow(
-      await db.select().from(scans).where(eq(scans.id, scan.id)),
-    );
+    const after = onlyRow(await db.select().from(scans).where(eq(scans.id, scan.id)));
     expect(after.leadId).toBeNull();
     expect(after.sessionId).not.toBe(scan.sessionId);
     expect(after.submittedUrlRedacted).toBe("redacted://deleted");
@@ -1644,10 +1458,7 @@ describe("P4 cabinet-owned scanner identity", () => {
       firstSegment: "owner",
       firstSessionId: scan.sessionId,
     });
-    await db
-      .update(scans)
-      .set({ leadId: oldLeadId })
-      .where(eq(scans.id, scan.id));
+    await db.update(scans).set({ leadId: oldLeadId }).where(eq(scans.id, scan.id));
     await db.insert(leadScans).values({
       leadId: oldLeadId,
       scanId: scan.id,
@@ -1660,11 +1471,9 @@ describe("P4 cabinet-owned scanner identity", () => {
     });
     await createScannerRegistrationIntent(scan, registrationBody(newEmail));
     const link = latestLink(newEmail, "registration");
-    await admin.pool
-      .query(`create function hold_cross_email_report_session() returns trigger
+    await admin.pool.query(`create function hold_cross_email_report_session() returns trigger
       language plpgsql as $$ begin perform pg_advisory_xact_lock(479927); return new; end $$`);
-    await admin.pool
-      .query(`create trigger hold_cross_email_report_session before insert
+    await admin.pool.query(`create trigger hold_cross_email_report_session before insert
       on report_sessions for each row execute function hold_cross_email_report_session()`);
     const blocker = await admin.pool.connect();
     await blocker.query("begin");
@@ -1691,27 +1500,21 @@ describe("P4 cabinet-owned scanner identity", () => {
       expect(
         await Promise.race([
           deletion.then(() => true),
-          new Promise<false>((resolve) =>
-            setTimeout(() => resolve(false), 150),
-          ),
+          new Promise<false>((resolve) => setTimeout(() => resolve(false), 150)),
         ]),
       ).toBe(false);
     } finally {
       await blocker.query("commit");
       blocker.release();
       await Promise.allSettled([confirmation, deletion]);
-      await admin.pool.query(
-        "drop trigger hold_cross_email_report_session on report_sessions",
-      );
+      await admin.pool.query("drop trigger hold_cross_email_report_session on report_sessions");
       await admin.pool.query("drop function hold_cross_email_report_session()");
     }
     if (!confirmation || !deletion)
       throw new Error("the blocked confirmation and deletion never started");
     expect((await confirmation).status).toBe(200);
     await expect(deletion).resolves.toBe("completed");
-    const after = onlyRow(
-      await db.select().from(scans).where(eq(scans.id, scan.id)),
-    );
+    const after = onlyRow(await db.select().from(scans).where(eq(scans.id, scan.id)));
     expect(after.leadId).toBeNull();
     expect(after.sessionId).not.toBe(scan.sessionId);
     expect(after.submittedUrlRedacted).toBe("redacted://deleted");
@@ -1721,25 +1524,20 @@ describe("P4 cabinet-owned scanner identity", () => {
     const { scan, accessToken } = await createFreshCompletedScan("rate-limit");
     const body = registrationBody("scanner-rate-limit@example.com");
     for (let index = 0; index < 3; index += 1) {
-      await expect(
-        createScannerRegistrationIntent(scan, body),
-      ).resolves.toEqual({ sent: true });
+      await expect(createScannerRegistrationIntent(scan, body)).resolves.toEqual({ sent: true });
     }
     process.env.REGISTRATION_ENABLED = "true";
     try {
       const response = await requestScannerRegistration(
-        new NextRequest(
-          `http://localhost:3000/api/v2/scans/${scan.id}/registrations`,
-          {
-            method: "POST",
-            headers: {
-              origin: "http://localhost:3000",
-              "content-type": "application/json",
-              authorization: `Bearer ${accessToken}`,
-            },
-            body: JSON.stringify(body),
+        new NextRequest(`http://localhost:3000/api/v2/scans/${scan.id}/registrations`, {
+          method: "POST",
+          headers: {
+            origin: "http://localhost:3000",
+            "content-type": "application/json",
+            authorization: `Bearer ${accessToken}`,
           },
-        ),
+          body: JSON.stringify(body),
+        }),
         { params: Promise.resolve({ id: scan.id }) },
       );
       expect(response.status).toBe(429);
@@ -1752,15 +1550,13 @@ describe("P4 cabinet-owned scanner identity", () => {
   it("resumes a consumed registration receipt after local failure and original intent expiry", async () => {
     const email = "registration-expiry@example.com";
     const scan = await createCompletedScan("registration-expiry");
-    await expect(
-      createScannerRegistrationIntent(scan, registrationBody(email)),
-    ).resolves.toEqual({ sent: true });
+    await expect(createScannerRegistrationIntent(scan, registrationBody(email))).resolves.toEqual({
+      sent: true,
+    });
     const link = latestLink(email, "registration");
 
     await installReportSessionFailureTrigger();
-    await expectLocalReportSessionFailure(
-      verifyAndFinalizeScannerIdentity(link.state, link.token),
-    );
+    await expectLocalReportSessionFailure(verifyAndFinalizeScannerIdentity(link.state, link.token));
     expect(link.consumeCount).toBe(1);
     expect(
       await getDatabase()
@@ -1775,10 +1571,7 @@ describe("P4 cabinet-owned scanner identity", () => {
       .where(eq(registrationIntents.callbackStateHash, sha256(link.state)));
     await removeReportSessionFailureTrigger();
 
-    const finalized = await verifyAndFinalizeScannerIdentity(
-      link.state,
-      link.token,
-    );
+    const finalized = await verifyAndFinalizeScannerIdentity(link.state, link.token);
     expect(finalized).toMatchObject({
       scanId: scan.id,
       cabinetActionUrl: expect.stringContaining("/cabinet/sign-in/open"),
@@ -1796,9 +1589,7 @@ describe("P4 cabinet-owned scanner identity", () => {
       await getDatabase()
         .db.select()
         .from(leads)
-        .where(
-          eq(leads.emailLookupHash, hmacHex(tokenHmacSecret, "email", email)),
-        ),
+        .where(eq(leads.emailLookupHash, hmacHex(tokenHmacSecret, "email", email))),
     );
     expect(
       await getDatabase()
@@ -1806,14 +1597,10 @@ describe("P4 cabinet-owned scanner identity", () => {
         .from(reportSessions)
         .where(eq(reportSessions.leadId, lead.id)),
     ).toHaveLength(1);
-    expect(
-      decryptEmail(lead.emailNormalizedCiphertext, Buffer.alloc(32, 9)),
-    ).toBe(email);
+    expect(decryptEmail(lead.emailNormalizedCiphertext, Buffer.alloc(32, 9))).toBe(email);
     expect(lead.emailLookupHash).toBe(hmacHex(tokenHmacSecret, "email", email));
 
-    await expect(
-      verifyAndFinalizeScannerIdentity(link.state, link.token),
-    ).resolves.toBeUndefined();
+    await expect(verifyAndFinalizeScannerIdentity(link.state, link.token)).resolves.toBeUndefined();
     expect(link.acknowledgeCount).toBe(2);
     expect(link.issueCount).toBe(1);
     expect(
@@ -1827,28 +1614,20 @@ describe("P4 cabinet-owned scanner identity", () => {
   it("refuses untouched expiry and an expired cabinet completion deadline", async () => {
     const untouchedEmail = "untouched-expired@example.com";
     const untouchedScan = await createCompletedScan("untouched-expired");
-    await createScannerRegistrationIntent(
-      untouchedScan,
-      registrationBody(untouchedEmail),
-    );
+    await createScannerRegistrationIntent(untouchedScan, registrationBody(untouchedEmail));
     const untouched = latestLink(untouchedEmail, "registration");
     untouched.refuseConsume = true;
     await getDatabase()
       .db.update(registrationIntents)
       .set({ expiresAt: new Date(Date.now() - 1) })
-      .where(
-        eq(registrationIntents.callbackStateHash, sha256(untouched.state)),
-      );
+      .where(eq(registrationIntents.callbackStateHash, sha256(untouched.state)));
     await expect(
       verifyAndFinalizeScannerIdentity(untouched.state, untouched.token),
     ).resolves.toBeUndefined();
 
     const deadlineEmail = "deadline-expired@example.com";
     const deadlineScan = await createCompletedScan("deadline-expired");
-    await createScannerRegistrationIntent(
-      deadlineScan,
-      registrationBody(deadlineEmail),
-    );
+    await createScannerRegistrationIntent(deadlineScan, registrationBody(deadlineEmail));
     const deadline = latestLink(deadlineEmail, "registration");
     await installReportSessionFailureTrigger();
     await expectLocalReportSessionFailure(
@@ -1878,9 +1657,9 @@ describe("P4 cabinet-owned scanner identity", () => {
     const link = latestLink(email, "registration");
     link.acknowledgeFailures = 1;
 
-    await expect(
-      verifyAndFinalizeScannerIdentity(link.state, link.token),
-    ).rejects.toThrow("cabinet_identity_unavailable");
+    await expect(verifyAndFinalizeScannerIdentity(link.state, link.token)).rejects.toThrow(
+      "cabinet_identity_unavailable",
+    );
     expect(
       await getDatabase()
         .db.select()
@@ -1889,9 +1668,7 @@ describe("P4 cabinet-owned scanner identity", () => {
     ).toHaveLength(1);
     expect(link.issueCount).toBe(0);
 
-    await expect(
-      verifyAndFinalizeScannerIdentity(link.state, link.token),
-    ).resolves.toBeUndefined();
+    await expect(verifyAndFinalizeScannerIdentity(link.state, link.token)).resolves.toBeUndefined();
     expect(link.consumeCount).toBe(1);
     expect(link.acknowledgeCount).toBe(2);
     expect(link.issueCount).toBe(0);
@@ -1906,12 +1683,7 @@ describe("P4 cabinet-owned scanner identity", () => {
               await getDatabase()
                 .db.select({ id: leads.id })
                 .from(leads)
-                .where(
-                  eq(
-                    leads.emailLookupHash,
-                    hmacHex(tokenHmacSecret, "email", email),
-                  ),
-                ),
+                .where(eq(leads.emailLookupHash, hmacHex(tokenHmacSecret, "email", email))),
             ).id,
           ),
         ),
@@ -1968,18 +1740,16 @@ describe("P4 cabinet-owned scanner identity", () => {
       });
 
     await installReportSessionFailureTrigger();
-    await expectLocalReportSessionFailure(
-      verifyAndFinalizeScannerIdentity(link.state, link.token),
-    );
+    await expectLocalReportSessionFailure(verifyAndFinalizeScannerIdentity(link.state, link.token));
     await removeReportSessionFailureTrigger();
     await getDatabase()
       .db.update(scannerRecoveryIntents)
       .set({ expiresAt: new Date(Date.now() - 1) })
       .where(eq(scannerRecoveryIntents.tokenHash, link.tokenHash));
 
-    await expect(
-      verifyAndFinalizeScannerIdentity(link.state, link.token),
-    ).resolves.toMatchObject({ scanId: scan.id });
+    await expect(verifyAndFinalizeScannerIdentity(link.state, link.token)).resolves.toMatchObject({
+      scanId: scan.id,
+    });
     const recovery = onlyRow(
       await getDatabase()
         .db.select()
@@ -2017,9 +1787,9 @@ describe("P4 cabinet-owned scanner identity", () => {
         firstSegment: "owner",
         firstSessionId: scan.sessionId,
       });
-    await expect(
-      requestScannerReportRecovery({ email, ip: "203.0.113.82" }),
-    ).resolves.toBe("accepted");
+    await expect(requestScannerReportRecovery({ email, ip: "203.0.113.82" })).resolves.toBe(
+      "accepted",
+    );
     expect(latestLink(email, "recovery")).toBeDefined();
     expect(
       await getDatabase()
@@ -2027,10 +1797,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         .from(scannerRecoveryIntents)
         .where(
           and(
-            eq(
-              scannerRecoveryIntents.emailLookupHash,
-              hmacHex(tokenHmacSecret, "email", email),
-            ),
+            eq(scannerRecoveryIntents.emailLookupHash, hmacHex(tokenHmacSecret, "email", email)),
             sql`${scannerRecoveryIntents.tokenHash} is not null`,
           ),
         ),
@@ -2109,10 +1876,7 @@ describe("P4 cabinet-owned scanner identity", () => {
     expect(requested.status).toBe(202);
     expect(await requested.json()).toEqual({ status: "recovery_requested" });
     const link = latestLink(email, "recovery");
-    expect(
-      (await finalizeRequest({ state: "X".repeat(43), token: link.token }))
-        .status,
-    ).toBe(401);
+    expect((await finalizeRequest({ state: "X".repeat(43), token: link.token })).status).toBe(401);
     const finalized = await finalizeRequest({
       state: link.state,
       token: link.token,
@@ -2125,13 +1889,11 @@ describe("P4 cabinet-owned scanner identity", () => {
     });
     expect(finalizedPayload).not.toHaveProperty("cabinet_action_url");
     const reportCookie = finalized.headers.get("set-cookie");
-    if (!reportCookie)
-      throw new Error("the finalize response set no cookie at all");
+    if (!reportCookie) throw new Error("the finalize response set no cookie at all");
     expect(reportCookie).toContain(REPORT_SESSION_COOKIE);
     expect(reportCookie).toContain(REPORT_CABINET_HANDOFF_COOKIE);
     const [sessionCookie] = reportCookie.split(";");
-    if (!sessionCookie)
-      throw new Error("the finalize response set an empty cookie");
+    if (!sessionCookie) throw new Error("the finalize response set an empty cookie");
     expect(await db.select().from(consentSnapshots)).toEqual(beforeConsent);
     expect(await db.select().from(deliveryOutbox)).toEqual(beforeDelivery);
     expect(
@@ -2172,9 +1934,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         }),
       );
 
-    const { scan: secondOwnedScan } = await createFreshCompletedScan(
-      "same-owner-second-report",
-    );
+    const { scan: secondOwnedScan } = await createFreshCompletedScan("same-owner-second-report");
     const secondOwnedState = "S".repeat(43);
     await db.insert(leadScans).values({
       leadId,
@@ -2220,10 +1980,7 @@ describe("P4 cabinet-owned scanner identity", () => {
     const unknownState = await sessionRecoveryRequest("U".repeat(43));
     expect(unknownState.status).toBe(202);
 
-    const retiredStateRecovery = await emailRecoveryRequest(
-      email,
-      "U".repeat(43),
-    );
+    const retiredStateRecovery = await emailRecoveryRequest(email, "U".repeat(43));
     expect(retiredStateRecovery.status).toBe(202);
     const retiredStateLink = latestLink(email, "recovery");
     expect(
@@ -2231,15 +1988,11 @@ describe("P4 cabinet-owned scanner identity", () => {
         await db
           .select({ scanId: scannerRecoveryIntents.scanId })
           .from(scannerRecoveryIntents)
-          .where(
-            eq(scannerRecoveryIntents.tokenHash, retiredStateLink.tokenHash),
-          )
+          .where(eq(scannerRecoveryIntents.tokenHash, retiredStateLink.tokenHash))
       )[0],
     ).toEqual({ scanId: secondOwnedScan.id });
 
-    const { scan: foreignScan } = await createFreshCompletedScan(
-      "foreign-recovery-state",
-    );
+    const { scan: foreignScan } = await createFreshCompletedScan("foreign-recovery-state");
     const foreignState = "F".repeat(43);
     const foreignLeadId = createUuidV7();
     await db.insert(leads).values({
@@ -2248,11 +2001,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         "foreign-report-owner@example.com",
         config.encryptionKey,
       ),
-      emailLookupHash: hmacHex(
-        config.hmacSecret,
-        "email",
-        "foreign-report-owner@example.com",
-      ),
+      emailLookupHash: hmacHex(config.hmacSecret, "email", "foreign-report-owner@example.com"),
       role: "developer",
       verifiedAt: new Date(),
       firstSegment: foreignScan.segment,
@@ -2262,11 +2011,7 @@ describe("P4 cabinet-owned scanner identity", () => {
       id: createUuidV7(),
       tokenHash: "R".repeat(43),
       stateHash: sha256(foreignState),
-      emailLookupHash: hmacHex(
-        config.hmacSecret,
-        "email",
-        "foreign-report-owner@example.com",
-      ),
+      emailLookupHash: hmacHex(config.hmacSecret, "email", "foreign-report-owner@example.com"),
       leadId: foreignLeadId,
       scanId: foreignScan.id,
       expiresAt: new Date(Date.now() + 60_000),
@@ -2301,12 +2046,10 @@ describe("P4 cabinet-owned scanner identity", () => {
     const ambiguousHint = await sessionRecoveryRequest(ambiguousState);
     expect(ambiguousHint.status).toBe(202);
 
-    const reportSessionToken = sessionCookie.slice(
-      `${REPORT_SESSION_COOKIE}=`.length,
-    );
-    await expect(
-      getFullReport(scan.id, reportSessionToken),
-    ).resolves.toMatchObject({ scan_id: scan.id });
+    const reportSessionToken = sessionCookie.slice(`${REPORT_SESSION_COOKIE}=`.length);
+    await expect(getFullReport(scan.id, reportSessionToken)).resolves.toMatchObject({
+      scan_id: scan.id,
+    });
     await db
       .update(reportSessions)
       .set({ expiresAt: new Date(Date.now() - 1_000) })
@@ -2335,19 +2078,9 @@ describe("P4 cabinet-owned scanner identity", () => {
         .where(eq(scannerRecoveryIntents.tokenHash, unknownLink.tokenHash)),
     ).toHaveLength(0);
     expect(
-      (
-        await emailRecoveryRequest(
-          email,
-          legacyState,
-          "https://attacker.invalid",
-        )
-      ).status,
+      (await emailRecoveryRequest(email, legacyState, "https://attacker.invalid")).status,
     ).toBe(403);
-    for (const invalidBody of [
-      { action: "email" },
-      { action: "unknown", email },
-      {},
-    ]) {
+    for (const invalidBody of [{ action: "email" }, { action: "unknown", email }, {}]) {
       const invalid = await handleScannerRecoveryRequest(
         new NextRequest("http://localhost:3000/api/v2/auth/recover", {
           method: "POST",
@@ -2360,21 +2093,15 @@ describe("P4 cabinet-owned scanner identity", () => {
       );
       expect(invalid.status).toBe(400);
     }
-    expect(
-      (await finalizeRequest({ state: link.state, token: link.token })).status,
-    ).toBe(401);
+    expect((await finalizeRequest({ state: link.state, token: link.token })).status).toBe(401);
 
-    const heldConnections = await Promise.all(
-      Array.from({ length: 9 }, () => pool.connect()),
-    );
+    const heldConnections = await Promise.all(Array.from({ length: 9 }, () => pool.connect()));
     let saturatedRequest: Promise<Response> | undefined;
     try {
       saturatedRequest = emailRecoveryRequest(email);
       const completedWithOneConnection = await Promise.race([
         saturatedRequest.then(() => true),
-        new Promise<false>((resolve) =>
-          setTimeout(() => resolve(false), 1_000),
-        ),
+        new Promise<false>((resolve) => setTimeout(() => resolve(false), 1_000)),
       ]);
       expect(completedWithOneConnection).toBe(true);
     } finally {
@@ -2400,9 +2127,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         .from(scannerRecoveryIntents)
         .where(eq(scannerRecoveryIntents.tokenHash, deletionLink.tokenHash)),
     ).toHaveLength(1);
-    await expect(requestScannerIdentityDeletion({ leadId })).resolves.toBe(
-      "completed",
-    );
+    await expect(requestScannerIdentityDeletion({ leadId })).resolves.toBe("completed");
     expect(
       await db
         .select()

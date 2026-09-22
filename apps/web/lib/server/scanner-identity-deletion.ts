@@ -77,22 +77,12 @@ export async function beginScannerIdentityDeletion(leadId: string) {
       leadId,
       createdAt: now,
     });
-    await tx
-      .update(leads)
-      .set({ deletionRequestedAt: now })
-      .where(eq(leads.id, leadId));
+    await tx.update(leads).set({ deletionRequestedAt: now }).where(eq(leads.id, leadId));
     await tx
       .update(reportSessions)
       .set({ revokedAt: now })
-      .where(
-        and(
-          eq(reportSessions.leadId, leadId),
-          isNull(reportSessions.revokedAt),
-        ),
-      );
-    await tx
-      .delete(scannerRecoveryIntents)
-      .where(eq(scannerRecoveryIntents.leadId, leadId));
+      .where(and(eq(reportSessions.leadId, leadId), isNull(reportSessions.revokedAt)));
+    await tx.delete(scannerRecoveryIntents).where(eq(scannerRecoveryIntents.leadId, leadId));
     await tx
       .delete(registrationIntents)
       .where(eq(registrationIntents.emailLookupHash, lead.emailLookupHash));
@@ -102,9 +92,7 @@ export async function beginScannerIdentityDeletion(leadId: string) {
       .where(eq(scannerIdentityDeletionOperations.operationId, operationId))
       .limit(1);
     if (!operation)
-      throw new Error(
-        "the deletion operation this transaction wrote was not there to read back",
-      );
+      throw new Error("the deletion operation this transaction wrote was not there to read back");
     return operation;
   });
 }
@@ -154,10 +142,7 @@ async function claimDeletionOperation(operationId?: string) {
 }
 
 export async function runScannerIdentityDeletionOperation(
-  input: {
-    operationId?: string;
-    provider?: StripeCardSignalProvider;
-  } = {},
+  input: { operationId?: string; provider?: StripeCardSignalProvider } = {},
 ): Promise<"completed" | "pending" | "not_found"> {
   const claimed = await claimDeletionOperation(input.operationId);
   if (!claimed?.leaseToken) return "not_found";
@@ -173,20 +158,17 @@ export async function runScannerIdentityDeletionOperation(
   )[0];
   if (!lead || lead.encryptedEmail === "deleted") return "pending";
   const config = getServerConfig();
-  const email = normalizeEmail(
-    decryptEmail(lead.encryptedEmail, config.encryptionKey),
-  );
+  const email = normalizeEmail(decryptEmail(lead.encryptedEmail, config.encryptionKey));
   if (hmacHex(config.hmacSecret, "email", email) !== lead.emailLookupHash) {
     throw new Error("lead_email_identity_mismatch");
   }
 
   let cabinetResult = claimed.cabinetResult as CabinetResult | null;
   if (!cabinetResult) {
-    const response =
-      await getCabinetReportIdentityClient().deleteUnattachedPerson({
-        operationId: claimed.operationId,
-        email,
-      });
+    const response = await getCabinetReportIdentityClient().deleteUnattachedPerson({
+      operationId: claimed.operationId,
+      email,
+    });
     if (response.status === "refused") return "pending";
     cabinetResult = response.status;
     const stored = await getDatabase()
@@ -194,10 +176,7 @@ export async function runScannerIdentityDeletionOperation(
       .set({ cabinetResult })
       .where(
         and(
-          eq(
-            scannerIdentityDeletionOperations.operationId,
-            claimed.operationId,
-          ),
+          eq(scannerIdentityDeletionOperations.operationId, claimed.operationId),
           eq(scannerIdentityDeletionOperations.leaseToken, claimed.leaseToken),
           isNull(scannerIdentityDeletionOperations.cabinetResult),
           isNull(scannerIdentityDeletionOperations.completedAt),
@@ -238,15 +217,9 @@ export async function runScannerIdentityDeletionOperation(
           .from(scannerIdentityDeletionOperations)
           .where(
             and(
-              eq(
-                scannerIdentityDeletionOperations.operationId,
-                claimed.operationId,
-              ),
+              eq(scannerIdentityDeletionOperations.operationId, claimed.operationId),
               eq(scannerIdentityDeletionOperations.leadId, leadId),
-              eq(
-                scannerIdentityDeletionOperations.leaseToken,
-                claimed.leaseToken,
-              ),
+              eq(scannerIdentityDeletionOperations.leaseToken, claimed.leaseToken),
               isNull(scannerIdentityDeletionOperations.completedAt),
             ),
           )
@@ -260,9 +233,7 @@ export async function runScannerIdentityDeletionOperation(
       ) {
         throw new Error("scanner_deletion_lease_lost");
       }
-      await tx
-        .delete(scannerRecoveryIntents)
-        .where(eq(scannerRecoveryIntents.leadId, leadId));
+      await tx.delete(scannerRecoveryIntents).where(eq(scannerRecoveryIntents.leadId, leadId));
       await tx
         .delete(scannerIdentityCompletions)
         .where(eq(scannerIdentityCompletions.leadId, leadId));
@@ -271,14 +242,8 @@ export async function runScannerIdentityDeletionOperation(
         .set({ completedAt: now, leaseToken: null, leaseExpiresAt: null })
         .where(
           and(
-            eq(
-              scannerIdentityDeletionOperations.operationId,
-              claimed.operationId,
-            ),
-            eq(
-              scannerIdentityDeletionOperations.leaseToken,
-              claimed.leaseToken,
-            ),
+            eq(scannerIdentityDeletionOperations.operationId, claimed.operationId),
+            eq(scannerIdentityDeletionOperations.leaseToken, claimed.leaseToken),
             isNull(scannerIdentityDeletionOperations.completedAt),
           ),
         )

@@ -1,48 +1,35 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
 import test from "node:test";
 
 const compose = readFileSync(
   new URL("../deploy/droplet/compose.production.yaml", import.meta.url),
   "utf8",
 );
-const caddy = readFileSync(
-  new URL("../deploy/droplet/Caddyfile", import.meta.url),
-  "utf8",
-);
+const caddy = readFileSync(new URL("../deploy/droplet/Caddyfile", import.meta.url), "utf8");
 const productionHealthMonitor = readFileSync(
-  new URL(
-    "../deploy/workflows/production-health-monitor.yml",
-    import.meta.url,
-  ),
+  new URL("../deploy/workflows/production-health-monitor.yml", import.meta.url),
   "utf8",
 );
-const reconcile = new URL(
-  "../deploy/droplet/reconcile-runtime-roles.sh",
-  import.meta.url,
-).pathname;
-const runtimeRoles = new URL(
-  "../deploy/droplet/postgres-init/10-runtime-roles.sh",
-  import.meta.url,
-).pathname;
+const reconcile = new URL("../deploy/droplet/reconcile-runtime-roles.sh", import.meta.url).pathname;
+const runtimeRoles = new URL("../deploy/droplet/postgres-init/10-runtime-roles.sh", import.meta.url)
+  .pathname;
 
 test("external database startup is not gated by the local postgres service", () => {
-  const rolesService = compose.match(
-    /  roles-reconcile:\n(?<body>[\s\S]*?)\n  queue-init:/,
-  )?.groups?.body;
+  const rolesService = compose.match(/ {2}roles-reconcile:\n(?<body>[\s\S]*?)\n {2}queue-init:/)
+    ?.groups?.body;
   assert.ok(rolesService, "roles-reconcile service must exist");
   assert.doesNotMatch(rolesService, /depends_on:[\s\S]*?postgres:/);
 });
 
 test("local postgres is opt-in and excluded from external default services", () => {
-  const postgresService = compose.match(
-    /  postgres:\n(?<body>[\s\S]*?)\n  migrate:/,
-  )?.groups?.body;
+  const postgresService = compose.match(/ {2}postgres:\n(?<body>[\s\S]*?)\n {2}migrate:/)?.groups
+    ?.body;
   assert.ok(postgresService, "postgres service must exist");
-  assert.match(postgresService, /^    profiles: \[local\]$/m);
+  assert.match(postgresService, /^ {4}profiles: \[local\]$/m);
 });
 
 test("operator dashboard is protected at the edge and uses a read-only database URL", () => {
@@ -71,15 +58,9 @@ test("production health monitor is fixed, scheduled and incident-deduplicated", 
   assert.match(productionHealthMonitor, /cron: "\*\/5 \* \* \* \*"/);
   assert.match(productionHealthMonitor, /mode:/);
   assert.match(productionHealthMonitor, /- test_failure/);
-  assert.match(
-    productionHealthMonitor,
-    /https:\/\/agentify\.ad\/api\/health/,
-  );
+  assert.match(productionHealthMonitor, /https:\/\/agentify\.ad\/api\/health/);
   assert.match(productionHealthMonitor, /https:\/\/agentify\.ad\/store/);
-  assert.match(
-    productionHealthMonitor,
-    /\[Production\] Agentify health degraded/,
-  );
+  assert.match(productionHealthMonitor, /\[Production\] Agentify health degraded/);
   assert.match(productionHealthMonitor, /state: "open"/);
   assert.match(productionHealthMonitor, /state: "closed"/);
   assert.match(
@@ -232,10 +213,7 @@ test("external reconciliation defaults to a non-rotating credential preflight", 
   const psql = join(directory, "psql");
   const roles = join(directory, "roles.sh");
   writeFileSync(psql, `#!/bin/sh\necho call >> "${calls}"\nexit 0\n`);
-  writeFileSync(
-    roles,
-    `#!/bin/sh\necho "$RECONCILE_RUNTIME_ROLE_PASSWORDS" > "${mode}"\n`,
-  );
+  writeFileSync(roles, `#!/bin/sh\necho "$RECONCILE_RUNTIME_ROLE_PASSWORDS" > "${mode}"\n`);
   chmodSync(psql, 0o700);
   chmodSync(roles, 0o700);
 

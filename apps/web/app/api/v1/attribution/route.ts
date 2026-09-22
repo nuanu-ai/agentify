@@ -40,22 +40,10 @@ const requestSchema = z
 
 export async function POST(request: NextRequest) {
   if (!hasSameOrigin(request))
-    return errorResponse(
-      request,
-      403,
-      "invalid_origin",
-      "The request origin is not allowed.",
-    );
-  const parsed = requestSchema.safeParse(
-    await request.json().catch(() => null),
-  );
+    return errorResponse(request, 403, "invalid_origin", "The request origin is not allowed.");
+  const parsed = requestSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success)
-    return errorResponse(
-      request,
-      400,
-      "invalid_attribution",
-      "Campaign attribution is invalid.",
-    );
+    return errorResponse(request, 400, "invalid_attribution", "Campaign attribution is invalid.");
   try {
     const result = await persistAttributionTouch({
       anonymousToken: request.cookies.get(ANONYMOUS_COOKIE)?.value,
@@ -78,17 +66,13 @@ export async function POST(request: NextRequest) {
       });
     }
     if (result.partnerClickIdAccepted && parsed.data.partner_click_id) {
-      response.cookies.set(
-        PARTNER_CLICK_ID_COOKIE,
-        parsed.data.partner_click_id,
-        {
-          httpOnly: true,
-          secure: getServerConfig().production,
-          sameSite: "lax",
-          path: "/",
-          maxAge: 30 * 86_400,
-        },
-      );
+      response.cookies.set(PARTNER_CLICK_ID_COOKIE, parsed.data.partner_click_id, {
+        httpOnly: true,
+        secure: getServerConfig().production,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 30 * 86_400,
+      });
     }
     return response;
   } catch {

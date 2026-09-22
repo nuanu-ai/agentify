@@ -14,18 +14,8 @@ export const ANALYTICS_EVENT_NAMES = [
 export const analyticsEventNameSchema = z.enum(ANALYTICS_EVENT_NAMES);
 export type AnalyticsEventName = z.infer<typeof analyticsEventNameSchema>;
 
-export const deliveryDestinationSchema = z.enum([
-  "posthog",
-  "meta",
-  "partner_tracker",
-]);
+export const deliveryDestinationSchema = z.enum(["posthog", "meta", "partner_tracker"]);
 export type DeliveryDestination = z.infer<typeof deliveryDestinationSchema>;
 
-export const PARTNER_CLICK_ID_ALIASES = [
-  "clickid",
-  "click_id",
-  "cid",
-  "sub_id",
-  "subid",
-] as const;
+export const PARTNER_CLICK_ID_ALIASES = ["clickid", "click_id", "cid", "sub_id", "subid"] as const;
 export const partnerClickIdSchema = z.string().regex(/^[A-Za-z0-9_-]{16,64}$/);

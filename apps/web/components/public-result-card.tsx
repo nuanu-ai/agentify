@@ -62,17 +62,14 @@ export function PublicResultCard({
         </div>
         <div className={styles.labels}>
           {ZONES.map((zone) => (
-            <span
-              className={zone.key === preview.level ? styles.active : undefined}
-              key={zone.key}
-            >
+            <span className={zone.key === preview.level ? styles.active : undefined} key={zone.key}>
               {zone.label}
             </span>
           ))}
         </div>
         <p className={styles.disclosure}>
-          Only the domain, level, score, scale and scan date are public.
-          Detailed findings and contact details stay private.
+          Only the domain, level, score, scale and scan date are public. Detailed findings and
+          contact details stay private.
           {preview.level === "callable_ready"
             ? " Callable-ready describes discovery metadata; tool execution was not tested."
             : ""}

@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  PUBLIC_PAGE_METADATA,
-  PUBLIC_PAGE_PATHS,
-} from "../content/public-page-metadata";
+import { PUBLIC_PAGE_METADATA, PUBLIC_PAGE_PATHS } from "../content/public-page-metadata";
 import sitemap from "./sitemap";
 
 const originalBaseUrl = process.env.APP_BASE_URL;
@@ -20,9 +17,7 @@ describe("sitemap", () => {
     const now = Date.now();
 
     expect(entries).toHaveLength(PUBLIC_PAGE_PATHS.length + 1);
-    expect(new Set(entries.map((entry) => entry.url)).size).toBe(
-      PUBLIC_PAGE_PATHS.length + 1,
-    );
+    expect(new Set(entries.map((entry) => entry.url)).size).toBe(PUBLIC_PAGE_PATHS.length + 1);
     expect(entries.map((entry) => entry.url)).toEqual([
       ...PUBLIC_PAGE_PATHS.map((path) => `https://agentify.ad${path}`),
       "https://agentify.ad/agentic-shop",

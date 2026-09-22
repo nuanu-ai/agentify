@@ -47,8 +47,7 @@ export function buildRobotsPolicy(
 ): string {
   const { baseUrl } = getPublicAppConfig();
   const publicRules = privateRules();
-  const trainingRules =
-    policy.aiTrain === "yes" ? publicRules : ["Disallow: /"];
+  const trainingRules = policy.aiTrain === "yes" ? publicRules : ["Disallow: /"];
 
   return [
     ...agentGroup(["*"], publicRules),

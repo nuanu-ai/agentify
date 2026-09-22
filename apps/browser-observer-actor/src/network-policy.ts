@@ -53,8 +53,7 @@ export class BrowserNetworkPolicyError extends Error {
   }
 }
 
-const normalizeDomain = (value: string): string =>
-  value.trim().toLowerCase().replace(/\.$/, "");
+const normalizeDomain = (value: string): string => value.trim().toLowerCase().replace(/\.$/, "");
 
 export const registrableDomain = (hostname: string): string | null =>
   getDomain(normalizeDomain(hostname), { allowPrivateDomains: true }) ??
@@ -158,25 +157,23 @@ export const validateActorTarget = (input: {
     throw new BrowserNetworkPolicyError("declared_domain_invalid");
   }
 
-  const urls = [input.canonicalUrl, ...input.representativeUrls].map(
-    (raw, index) => {
-      const decision = inspectRequest({
-        url: raw,
-        method: "GET",
-        isNavigation: true,
-        allowedDomain: declared,
-      });
-      if (!decision.allowed) {
-        throw new BrowserNetworkPolicyError(
-          index === 0 ? "target_blocked" : "representative_blocked",
-        );
-      }
-      if (decision.url.search || decision.url.hash) {
-        throw new BrowserNetworkPolicyError("input_query_or_fragment_blocked");
-      }
-      return decision.url;
-    },
-  );
+  const urls = [input.canonicalUrl, ...input.representativeUrls].map((raw, index) => {
+    const decision = inspectRequest({
+      url: raw,
+      method: "GET",
+      isNavigation: true,
+      allowedDomain: declared,
+    });
+    if (!decision.allowed) {
+      throw new BrowserNetworkPolicyError(
+        index === 0 ? "target_blocked" : "representative_blocked",
+      );
+    }
+    if (decision.url.search || decision.url.hash) {
+      throw new BrowserNetworkPolicyError("input_query_or_fragment_blocked");
+    }
+    return decision.url;
+  });
 
   if (new Set(urls.map((url) => url.toString())).size !== urls.length) {
     throw new BrowserNetworkPolicyError("duplicate_page");
@@ -200,9 +197,7 @@ type SafeRequestOptions = {
   consumeBytes: (bytes: number) => boolean;
 };
 
-const responseHeaders = (
-  source: IncomingHttpHeaders,
-): Record<string, string> => {
+const responseHeaders = (source: IncomingHttpHeaders): Record<string, string> => {
   const result: Record<string, string> = {};
   for (const [name, value] of Object.entries(source)) {
     const lower = name.toLowerCase();
@@ -212,9 +207,7 @@ const responseHeaders = (
   return result;
 };
 
-const requestHeaders = (
-  source: Record<string, string>,
-): Record<string, string> => {
+const requestHeaders = (source: Record<string, string>): Record<string, string> => {
   const result: Record<string, string> = {};
   for (const [name, value] of Object.entries(source)) {
     const lower = name.toLowerCase();
@@ -225,10 +218,7 @@ const requestHeaders = (
   return result;
 };
 
-const decodedStream = (
-  response: Readable,
-  encoding: string | undefined,
-): Readable => {
+const decodedStream = (response: Readable, encoding: string | undefined): Readable => {
   const normalized = encoding?.trim().toLowerCase();
   if (!normalized || normalized === "identity") return response;
   if (normalized === "gzip" || normalized === "x-gzip") {
@@ -280,13 +270,10 @@ export const createPinnedLookup =
     callback(null, resolved.address, resolved.family);
   };
 
-export const safeBrowserRequest = async (
-  options: SafeRequestOptions,
-): Promise<SafeResponse> => {
+export const safeBrowserRequest = async (options: SafeRequestOptions): Promise<SafeResponse> => {
   const resolved = await resolvePublicHost(options.url.hostname);
   const lookup = createPinnedLookup(resolved);
-  const port =
-    options.url.port || (options.url.protocol === "https:" ? "443" : "80");
+  const port = options.url.port || (options.url.protocol === "https:" ? "443" : "80");
   const requestOptions: RequestOptions = {
     protocol: options.url.protocol,
     hostname: options.url.hostname,
@@ -334,11 +321,7 @@ export const safeBrowserRequest = async (
         stream = decodedStream(response, response.headers["content-encoding"]);
       } catch (error) {
         response.destroy();
-        fail(
-          error instanceof Error
-            ? error
-            : new BrowserNetworkPolicyError("decode_failed"),
-        );
+        fail(error instanceof Error ? error : new BrowserNetworkPolicyError("decode_failed"));
         return;
       }
       const chunks: Buffer[] = [];

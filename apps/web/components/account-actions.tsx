@@ -8,16 +8,13 @@ export function AccountActions({ mode }: { mode: "unsubscribe" | "data" }) {
   const [busy, setBusy] = useState(false);
   async function act(action: "unsubscribe" | "access" | "deletion") {
     const endpoint =
-      action === "unsubscribe"
-        ? "/api/v1/account/unsubscribe"
-        : "/api/v1/account/data-request";
+      action === "unsubscribe" ? "/api/v1/account/unsubscribe" : "/api/v1/account/data-request";
     setBusy(true);
     try {
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body:
-          action === "unsubscribe" ? "{}" : JSON.stringify({ type: action }),
+        body: action === "unsubscribe" ? "{}" : JSON.stringify({ type: action }),
       });
       const payload = (await response.json().catch(() => null)) as {
         status?: "requested" | "completed";
@@ -68,9 +65,8 @@ export function AccountActions({ mode }: { mode: "unsubscribe" | "data" }) {
           ) : (
             <div>
               <p>
-                This revokes report access and shares, removes any saved card,
-                and irreversibly anonymizes your lead and owned scan
-                identifiers.
+                This revokes report access and shares, removes any saved card, and irreversibly
+                anonymizes your lead and owned scan identifiers.
               </p>
               <button
                 className="button button-primary"

@@ -180,18 +180,12 @@ SDK, in `packages/slice/src/stand-merchant.ts`, and
 
 ## Repository layout
 
-One pnpm workspace holds all of it, on one toolchain and one lockfile. The
-packages do not yet share one policy for the compiler, the lint and the tests.
-Which files a linter reads is decided in two places. The exclusions in
-`biome.json` keep Biome out of the scanner's nine directories, the
-`*.scanner.*` configuration files at the root, the portal under `apps/docs`,
-`ops/` and `fixtures/`. The globs of the `scanner:lint` and
-`scanner:format:check` commands cover the TypeScript and JSON inside those
-nine directories and a few named files besides. Whatever falls outside both is
-read by no linter today — the scanner's stylesheets, the portal's sources, the
-operational scripts, the test inputs and `vitest.scanner.config.ts` among
-them. That is why the commands in the root `package.json` are scoped:
-`check`, `typecheck`, `build` and `test` run each set in turn, and `build`
+One pnpm workspace holds all of it, on one toolchain and one lockfile. Biome
+formats and lints every file in it; `biome.json` excludes only what a machine
+wrote — the two drizzle migration directories and the lockfile — so `pnpm
+check` is the whole of the lint. The compiler and the test runner are still
+configured twice, which is why `typecheck`, `build` and `test` in the root
+`package.json` run the commerce set and the scanner set in turn, and `build`
 finishes with the portal.
 
 | Path | What it is |

@@ -43,9 +43,7 @@ const inspectValue = (value: unknown, key = ""): void => {
   }
 };
 
-export const sanitizeBrowserOutput = (
-  value: unknown,
-): BrowserObservationOutputV1 => {
+export const sanitizeBrowserOutput = (value: unknown): BrowserObservationOutputV1 => {
   const parsed = browserObservationOutputV1Schema.parse(value);
   inspectValue(parsed);
   return parsed;

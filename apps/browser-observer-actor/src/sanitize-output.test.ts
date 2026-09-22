@@ -70,15 +70,11 @@ describe("sanitized Actor output", () => {
     firstObservation(urlLeak).evidence = {
       debug_value: "ftp://localhost",
     };
-    expect(() => sanitizeBrowserOutput(urlLeak)).toThrowError(
-      "forbidden_output_value",
-    );
+    expect(() => sanitizeBrowserOutput(urlLeak)).toThrowError("forbidden_output_value");
 
     const rawLeak = validOutput();
     firstObservation(rawLeak).evidence = { storage: "redacted" };
-    expect(() => sanitizeBrowserOutput(rawLeak)).toThrowError(
-      "forbidden_output_key",
-    );
+    expect(() => sanitizeBrowserOutput(rawLeak)).toThrowError("forbidden_output_key");
 
     const instructionLeak = validOutput();
     firstObservation(instructionLeak).evidence = {

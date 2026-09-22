@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -19,10 +19,25 @@ function run(links, newAuth = [], sourceRows = source, privateBaseline = false) 
     const linksPath = join(dir, "links.ndjson");
     const newAuthPath = join(dir, "new.ndjson");
     const reportPath = join(dir, "report.json");
-    for (const [path, rows] of [[sourcePath, sourceRows], [linksPath, links], [newAuthPath, newAuth]]) {
+    for (const [path, rows] of [
+      [sourcePath, sourceRows],
+      [linksPath, links],
+      [newAuthPath, newAuth],
+    ]) {
       writeFileSync(path, `${rows.map((r) => JSON.stringify(r)).join("\n")}\n`, { mode: 0o600 });
     }
-    const result = spawnSync(process.execPath, [script, sourcePath, linksPath, reportPath, ...(privateBaseline ? ["--private-baseline"] : []), newAuthPath], { encoding: "utf8" });
+    const result = spawnSync(
+      process.execPath,
+      [
+        script,
+        sourcePath,
+        linksPath,
+        reportPath,
+        ...(privateBaseline ? ["--private-baseline"] : []),
+        newAuthPath,
+      ],
+      { encoding: "utf8" },
+    );
     return { result, report: JSON.parse(readFileSync(reportPath, "utf8")) };
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -53,7 +68,12 @@ test("Auth-window reconciliation uses current private lead links instead of stal
     { id: "u2", email: "unlinked@example.invalid", confirmed: true },
     { id: "u3", email: "pending@example.invalid", confirmed: false },
   ];
-  const { result, report } = run([{ id: "new-lead", supabase_user_id: "u1" }], [], sourceAfterBridge, true);
+  const { result, report } = run(
+    [{ id: "new-lead", supabase_user_id: "u1" }],
+    [],
+    sourceAfterBridge,
+    true,
+  );
   assert.equal(result.status, 2);
   assert.deepEqual(report.changed_source_links, []);
   assert.equal(report.confirmed_unlinked_needing_fresh_verification[0].auth_id, "u2");

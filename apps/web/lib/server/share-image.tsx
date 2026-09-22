@@ -4,11 +4,7 @@ import { ImageResponse } from "next/og";
 import { BrandMark } from "../../components/brand-mark";
 import { getPublicAppConfig } from "../app-config";
 import { type ShareTone, shareCopy } from "../share-copy";
-import {
-  BRAND_IMAGE_FONTS,
-  BRAND_IMAGE_HUMAN_FONT,
-  BRAND_IMAGE_MONO_FONT,
-} from "./brand-image";
+import { BRAND_IMAGE_FONTS, BRAND_IMAGE_HUMAN_FONT, BRAND_IMAGE_MONO_FONT } from "./brand-image";
 
 const TONE: Record<ShareTone, { color: string; soft: string }> = {
   critical: { color: "#B4462F", soft: "#F7E9E4" },
@@ -138,9 +134,7 @@ export function renderShareImage(snapshot: PublicShareSnapshot) {
             <strong style={{ fontSize: 52, fontWeight: 600, lineHeight: 1.12 }}>
               {copy.headline}
             </strong>
-            <span style={{ fontSize: 25, color: "#6B6862", lineHeight: 1.4 }}>
-              {copy.subline}
-            </span>
+            <span style={{ fontSize: 25, color: "#6B6862", lineHeight: 1.4 }}>{copy.subline}</span>
           </div>
 
           <div
@@ -153,20 +147,8 @@ export function renderShareImage(snapshot: PublicShareSnapshot) {
               justifyContent: "center",
             }}
           >
-            <svg
-              width="280"
-              height="280"
-              viewBox="0 0 280 280"
-              style={{ position: "absolute" }}
-            >
-              <circle
-                cx="140"
-                cy="140"
-                r="120"
-                fill="none"
-                stroke="#E7E3DB"
-                strokeWidth="20"
-              />
+            <svg width="280" height="280" viewBox="0 0 280 280" style={{ position: "absolute" }}>
+              <circle cx="140" cy="140" r="120" fill="none" stroke="#E7E3DB" strokeWidth="20" />
               <circle
                 cx="140"
                 cy="140"
@@ -229,9 +211,7 @@ export function renderShareImage(snapshot: PublicShareSnapshot) {
                   }}
                 >
                   <span style={{ fontSize: 18 }}>{zone.name}</span>
-                  <span style={{ fontSize: 15, color: "#8A8781" }}>
-                    {zone.range}
-                  </span>
+                  <span style={{ fontSize: 15, color: "#8A8781" }}>{zone.range}</span>
                 </div>
               );
             })}
@@ -246,12 +226,8 @@ export function renderShareImage(snapshot: PublicShareSnapshot) {
               fontSize: 19,
             }}
           >
-            <span style={{ color: "#8A8781" }}>
-              Diagnostic, not a certification
-            </span>
-            <span style={{ color: "#0F736E", fontWeight: 500 }}>
-              Scan yours → agentify.ad
-            </span>
+            <span style={{ color: "#8A8781" }}>Diagnostic, not a certification</span>
+            <span style={{ color: "#0F736E", fontWeight: 500 }}>Scan yours → agentify.ad</span>
           </div>
         </div>
       </div>

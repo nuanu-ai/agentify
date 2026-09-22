@@ -50,10 +50,7 @@ class MemoryStorage implements Storage {
   }
 }
 
-const originalSessionStorage = Object.getOwnPropertyDescriptor(
-  window,
-  "sessionStorage",
-);
+const originalSessionStorage = Object.getOwnPropertyDescriptor(window, "sessionStorage");
 
 function installStorage(storage: Storage) {
   Object.defineProperty(window, "sessionStorage", {
@@ -84,32 +81,22 @@ describe("landing scan handoff", () => {
     const user = userEvent.setup();
     render(<UrlScanForm cta="Scan" segment="owner" variant="owner-v1" />);
 
-    await user.type(
-      screen.getByRole("textbox", { name: "Website URL" }),
-      "http://localhost",
-    );
+    await user.type(screen.getByRole("textbox", { name: "Website URL" }), "http://localhost");
     await user.click(screen.getByRole("button", { name: /scan/i }));
 
     expect(readPendingScan(window.sessionStorage)).toBeNull();
     expect(navigation.route).toBeNull();
-    expect(
-      document.querySelector('[aria-live="polite"]')?.textContent,
-    ).not.toBe("");
+    expect(document.querySelector('[aria-live="polite"]')?.textContent).not.toBe("");
   });
 
   it("stores a schema-valid request before moving to the private pending route", async () => {
     const user = userEvent.setup();
     render(<UrlScanForm cta="Scan" segment="owner" variant="owner-v1" />);
 
-    await user.type(
-      screen.getByRole("textbox", { name: "Website URL" }),
-      "example.com",
-    );
+    await user.type(screen.getByRole("textbox", { name: "Website URL" }), "example.com");
     await user.click(screen.getByRole("button", { name: /scan/i }));
 
-    await waitFor(() =>
-      expect(navigation.route).toBe("/scan/pending?segment=owner"),
-    );
+    await waitFor(() => expect(navigation.route).toBe("/scan/pending?segment=owner"));
     expect(readPendingScan(window.sessionStorage)).toMatchObject({
       url: "example.com",
       segment: "owner",
@@ -137,8 +124,6 @@ describe("landing scan handoff", () => {
     expect(readPendingScan(storage)).toBeNull();
     expect(navigation.route).toBeNull();
     expect(input.disabled).toBe(false);
-    expect(
-      document.querySelector('[aria-live="polite"]')?.textContent,
-    ).not.toBe("");
+    expect(document.querySelector('[aria-live="polite"]')?.textContent).not.toBe("");
   });
 });

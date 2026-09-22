@@ -11,25 +11,8 @@
       "!**/node_modules",
       "!**/dist",
       "!.claude",
-      "!apps/web",
-      "!apps/scanner-worker",
-      "!apps/browser-observer-actor",
-      "!packages/scanner-contracts",
-      "!packages/scanner-database",
-      "!packages/scanner",
-      "!packages/analytics",
-      "!packages/observability",
-      "!packages/remediation",
-      "!ops",
-      "!fixtures",
-      "!tsconfig.scanner.json",
-      "!vitest.scanner.config.ts",
-      "!eslint.scanner.config.mjs",
-      "!prettier.scanner.config.json",
-      "!.prettierignore.scanner",
-      "!.env.scanner.example",
-      "!apps/docs",
       "!apps/gateway/drizzle",
+      "!packages/scanner-database/migrations",
       "!pnpm-lock.yaml"
     ]
   },
@@ -75,7 +58,10 @@
       },
       "correctness": {
         "preset": "recommended",
-        "noUndeclaredDependencies": "error"
+        "noUndeclaredDependencies": "error",
+        "noUnusedImports": "error",
+        "noUnusedVariables": "error",
+        "noUnusedFunctionParameters": "error"
       },
       "performance": {
         "preset": "recommended"
@@ -86,6 +72,7 @@
       "style": {
         "preset": "recommended",
         "noNonNullAssertion": "error",
+        "useImportType": "error",
         "useNodejsImportProtocol": "error",
         "useConsistentArrayType": {
           "level": "error",

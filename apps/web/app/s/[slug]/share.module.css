@@ -20,7 +20,7 @@
   gap: 16px;
   border-bottom: 1px solid var(--line);
   color: var(--muted);
-  font: 0.75rem/1.4 var(--font-mono);
+  font: 0.75rem / 1.4 var(--font-mono);
 }
 
 .main {
@@ -71,7 +71,7 @@
   gap: 12px 24px;
   border-top: 1px solid var(--line);
   color: var(--muted);
-  font: 0.75rem/1.5 var(--font-mono);
+  font: 0.75rem / 1.5 var(--font-mono);
 }
 
 .footer nav {

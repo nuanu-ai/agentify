@@ -36,11 +36,7 @@ const dateTime = new Intl.DateTimeFormat("en-GB", {
 const ratio = (value: number, denominator: number) =>
   denominator > 0 ? percent.format(value / denominator) : "—";
 
-function Metric({
-  label,
-  value,
-  note,
-}: Readonly<{ label: string; value: string; note: string }>) {
+function Metric({ label, value, note }: Readonly<{ label: string; value: string; note: string }>) {
   return (
     <article className={styles.metric}>
       <p>{label}</p>
@@ -78,8 +74,7 @@ function DailyBars({ rows }: Readonly<{ rows: OperatorDailyFunnel[] }>) {
 const statusClass = (status: string | null) => {
   if (status === "pass" || status === "completed") return styles.good;
   if (status === "partial" || status === "running") return styles.warn;
-  if (status === "fail" || status === "failed" || status === "blocked")
-    return styles.bad;
+  if (status === "fail" || status === "failed" || status === "blocked") return styles.bad;
   return styles.neutral;
 };
 
@@ -93,8 +88,7 @@ export default async function AdminPage() {
         <Brand />
         <div>
           <span className={styles.liveDot} aria-hidden="true" />
-          Live operator view · refreshed{" "}
-          {dateTime.format(new Date(data.generatedAt))} UTC
+          Live operator view · refreshed {dateTime.format(new Date(data.generatedAt))} UTC
         </div>
       </header>
 
@@ -102,8 +96,8 @@ export default async function AdminPage() {
         <p className="eyebrow">Private · read-only</p>
         <h1>Agentify operating dashboard</h1>
         <p>
-          Traffic, conversion, scanned sites, scanner health, and the latest
-          self-check. Contact details and raw evidence are deliberately absent.
+          Traffic, conversion, scanned sites, scanner health, and the latest self-check. Contact
+          details and raw evidence are deliberately absent.
         </p>
         <a className="button button-secondary" href="/admin">
           Refresh data
@@ -180,10 +174,7 @@ export default async function AdminPage() {
             <>
               <div className={styles.selfScore}>
                 <strong>{selfScan.score ?? "—"}</strong>
-                <span>
-                  / 100 ·{" "}
-                  {selfScan.level?.replaceAll("_", " ") ?? selfScan.status}
-                </span>
+                <span>/ 100 · {selfScan.level?.replaceAll("_", " ") ?? selfScan.status}</span>
               </div>
               <dl className={styles.definitionList}>
                 <div>
@@ -206,16 +197,12 @@ export default async function AdminPage() {
                 </div>
                 <div>
                   <dt>Coverage</dt>
-                  <dd>
-                    {selfScan.coverage === null
-                      ? "—"
-                      : percent.format(selfScan.coverage)}
-                  </dd>
+                  <dd>{selfScan.coverage === null ? "—" : percent.format(selfScan.coverage)}</dd>
                 </div>
               </dl>
               <p className={styles.caveat}>
-                A pass proves public HTTP compatibility at scan time. It does
-                not prove that a model indexed, cited, or recommended Agentify.
+                A pass proves public HTTP compatibility at scan time. It does not prove that a model
+                indexed, cited, or recommended Agentify.
               </p>
             </>
           ) : (
@@ -227,12 +214,8 @@ export default async function AdminPage() {
           <p className="eyebrow">Budget protection</p>
           <h2 id="protection-title">Abuse controls</h2>
           <div className={styles.protectionState}>
-            <span
-              className={data.turnstileEnforced ? styles.good : styles.warn}
-            >
-              {data.turnstileEnforced
-                ? "Turnstile enforced"
-                : "Turnstile keys pending"}
+            <span className={data.turnstileEnforced ? styles.good : styles.warn}>
+              {data.turnstileEnforced ? "Turnstile enforced" : "Turnstile keys pending"}
             </span>
           </div>
           <dl className={styles.definitionList}>
@@ -254,11 +237,7 @@ export default async function AdminPage() {
             </div>
             <div>
               <dt>Verified challenges · rolling hour</dt>
-              <dd>
-                {data.turnstileEnforced
-                  ? number.format(overview.challengePasses1h)
-                  : "—"}
-              </dd>
+              <dd>{data.turnstileEnforced ? number.format(overview.challengePasses1h) : "—"}</dd>
             </div>
             <div>
               <dt>Browser cost · today</dt>
@@ -266,8 +245,8 @@ export default async function AdminPage() {
             </div>
           </dl>
           <p className={styles.caveat}>
-            Hard ceilings remain active even when the third-party challenge is
-            unavailable, so one source cannot drain the browser budget.
+            Hard ceilings remain active even when the third-party challenge is unavailable, so one
+            source cannot drain the browser budget.
           </p>
         </section>
       </div>
@@ -308,22 +287,12 @@ export default async function AdminPage() {
                   </td>
                   <td>{scan.segment}</td>
                   <td>
-                    <span className={statusClass(scan.status)}>
-                      {scan.status}
-                    </span>
+                    <span className={statusClass(scan.status)}>{scan.status}</span>
                   </td>
                   <td>{scan.score ?? "—"}</td>
-                  <td>
-                    {scan.coverage === null
-                      ? "—"
-                      : percent.format(scan.coverage)}
-                  </td>
+                  <td>{scan.coverage === null ? "—" : percent.format(scan.coverage)}</td>
                   <td>{scan.browserStatus ?? "—"}</td>
-                  <td>
-                    {scan.durationSeconds === null
-                      ? "—"
-                      : `${scan.durationSeconds}s`}
-                  </td>
+                  <td>{scan.durationSeconds === null ? "—" : `${scan.durationSeconds}s`}</td>
                   <td>{dateTime.format(new Date(scan.acceptedAt))}</td>
                 </tr>
               ))}

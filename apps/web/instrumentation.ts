@@ -26,8 +26,9 @@ export async function register() {
     return;
   }
   scannerInstrumentation.scannerDeletionRetryStarted = true;
-  const { retryPendingScannerIdentityDeletions } =
-    await import("./lib/server/scanner-identity-deletion");
+  const { retryPendingScannerIdentityDeletions } = await import(
+    "./lib/server/scanner-identity-deletion"
+  );
   const run = () => {
     void retryPendingScannerIdentityDeletions().catch(() => undefined);
   };
@@ -36,14 +37,9 @@ export async function register() {
   timer.unref();
 }
 
-export const onRequestError: Instrumentation.onRequestError = (
-  error,
-  request,
-) => {
+export const onRequestError: Instrumentation.onRequestError = (error, request) => {
   const rawRequestId = request.headers["x-request-id"];
-  const requestId = Array.isArray(rawRequestId)
-    ? rawRequestId[0]
-    : rawRequestId;
+  const requestId = Array.isArray(rawRequestId) ? rawRequestId[0] : rawRequestId;
   logger.error("web_unhandled_request_error", {
     request_id: requestId,
     route: classifyHttpRoute(request.path.split("?", 1)[0] ?? "/"),

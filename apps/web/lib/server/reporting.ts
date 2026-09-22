@@ -23,12 +23,7 @@ import { and, avg, count, eq, sql } from "drizzle-orm";
 
 import { getVerifiedSession } from "./auth";
 import { getServerConfig } from "./config";
-import {
-  decryptEmail,
-  deriveCapability,
-  hmacHex,
-  normalizeEmail,
-} from "./crypto";
+import { decryptEmail, deriveCapability, hmacHex, normalizeEmail } from "./crypto";
 import { getDatabase } from "./database";
 import { requestScannerIdentityDeletion } from "./scanner-identity-deletion";
 
@@ -37,21 +32,15 @@ const PRIVATE_EVIDENCE_KEY =
 const PRIVATE_EVIDENCE_VALUE =
   /(?:https?:\/\/|www\.|(?:^|\s)(?:\d{1,3}\.){3}\d{1,3}(?:\s|$)|(?:^|\s)\/?(?:\.well-known|api\/)|[\w.-]+\.[a-z]{2,}(?:\/|\s|$))/i;
 
-function sanitizeEvidence(
-  value: unknown,
-): Record<string, string | number | boolean | string[]> {
+function sanitizeEvidence(value: unknown): Record<string, string | number | boolean | string[]> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const output: Record<string, string | number | boolean | string[]> = {};
   for (const [key, item] of Object.entries(value)) {
     if (PRIVATE_EVIDENCE_KEY.test(key)) continue;
     if (typeof item === "string" && !PRIVATE_EVIDENCE_VALUE.test(item))
       output[key] = item.slice(0, 300);
-    else if (typeof item === "number" || typeof item === "boolean")
-      output[key] = item;
-    else if (
-      Array.isArray(item) &&
-      item.every((entry) => typeof entry === "string")
-    ) {
+    else if (typeof item === "number" || typeof item === "boolean") output[key] = item;
+    else if (Array.isArray(item) && item.every((entry) => typeof entry === "string")) {
       output[key] = item
         .filter((entry) => !PRIVATE_EVIDENCE_VALUE.test(entry))
         .slice(0, 20)
@@ -68,29 +57,18 @@ export async function getFullReport(
   const verified = await getVerifiedSession(sessionToken, scanId);
   if (!verified) return undefined;
   const { db } = getDatabase();
-  const scan = (
-    await db.select().from(scans).where(eq(scans.id, scanId)).limit(1)
-  )[0];
+  const scan = (await db.select().from(scans).where(eq(scans.id, scanId)).limit(1))[0];
   // The row in waitlist_entries is the record that this lead registered for
   // this scan; a report opens only for a registered lead.
   const registered = (
     await db
       .select({ id: waitlistEntries.id })
       .from(waitlistEntries)
-      .where(
-        and(
-          eq(waitlistEntries.leadId, verified.leadId),
-          eq(waitlistEntries.scanId, scanId),
-        ),
-      )
+      .where(and(eq(waitlistEntries.leadId, verified.leadId), eq(waitlistEntries.scanId, scanId)))
       .limit(1)
   )[0];
-  if (!scan || !registered || scan.coverage === null || !scan.level)
-    return undefined;
-  const checkRows = await db
-    .select()
-    .from(scanChecks)
-    .where(eq(scanChecks.scanId, scanId));
+  if (!scan || !registered || scan.coverage === null || !scan.level) return undefined;
+  const checkRows = await db.select().from(scanChecks).where(eq(scanChecks.scanId, scanId));
   const byId = new Map(checkRows.map((row) => [row.checkId, row]));
   const checks = CHECK_DEFINITIONS.map((definition) => {
     const row = byId.get(definition.id);
@@ -118,11 +96,7 @@ export async function getFullReport(
           sql`${scans.coverage} >= 0.700`,
         ),
       );
-    if (
-      aggregate &&
-      aggregate.sampleSize >= 30 &&
-      aggregate.averageScore !== null
-    ) {
+    if (aggregate && aggregate.sampleSize >= 30 && aggregate.averageScore !== null) {
       benchmark = {
         sample_size: aggregate.sampleSize,
         average_score: Number(aggregate.averageScore),
@@ -159,9 +133,7 @@ export async function getReportOwnerEmail(
   )[0];
   if (!lead || lead.encryptedEmail === "deleted") return undefined;
   const config = getServerConfig();
-  const email = normalizeEmail(
-    decryptEmail(lead.encryptedEmail, config.encryptionKey),
-  );
+  const email = normalizeEmail(decryptEmail(lead.encryptedEmail, config.encryptionKey));
   if (hmacHex(config.hmacSecret, "email", email) !== lead.emailLookupHash) {
     throw new Error("lead_email_identity_mismatch");
   }
@@ -176,14 +148,12 @@ export async function getFullBrowserObservation(
   const verified = await getVerifiedSession(sessionToken, scanId);
   if (!verified) return undefined;
   const { db } = getDatabase();
-  const observation =
-    await createBrowserObservationRepository(db).getForScan(scanId);
+  const observation = await createBrowserObservationRepository(db).getForScan(scanId);
   if (!observation) return undefined;
   const status: BrowserObservationStatusResponse["status"] =
     observation.status === "starting" || observation.status === "running"
       ? "running"
-      : observation.status === "failed" ||
-          observation.status === "budget_skipped"
+      : observation.status === "failed" || observation.status === "budget_skipped"
         ? "unavailable"
         : observation.status;
   return {
@@ -210,9 +180,7 @@ export async function getPublicSharePreview(
   const config = getServerConfig();
   if (!config.PUBLIC_SHARE_ENABLED) return undefined;
   const { db } = getDatabase();
-  const scan = (
-    await db.select().from(scans).where(eq(scans.id, scanId)).limit(1)
-  )[0];
+  const scan = (await db.select().from(scans).where(eq(scans.id, scanId)).limit(1))[0];
   if (
     !scan ||
     scan.score === null ||
@@ -224,9 +192,7 @@ export async function getPublicSharePreview(
     await db
       .select({ id: scanShares.id })
       .from(scanShares)
-      .where(
-        and(eq(scanShares.scanId, scanId), eq(scanShares.status, "published")),
-      )
+      .where(and(eq(scanShares.scanId, scanId), eq(scanShares.status, "published")))
       .limit(1)
   )[0];
   const existingSlug = existing
@@ -260,9 +226,7 @@ export async function createPublicShare(
 ) {
   if (!getServerConfig().PUBLIC_SHARE_ENABLED) return undefined;
   const { db } = getDatabase();
-  const scan = (
-    await db.select().from(scans).where(eq(scans.id, scanId)).limit(1)
-  )[0];
+  const scan = (await db.select().from(scans).where(eq(scans.id, scanId)).limit(1))[0];
   if (
     !scan ||
     scan.score === null ||
@@ -274,19 +238,13 @@ export async function createPublicShare(
     await db
       .select({ id: scanShares.id })
       .from(scanShares)
-      .where(
-        and(eq(scanShares.scanId, scanId), eq(scanShares.status, "published")),
-      )
+      .where(and(eq(scanShares.scanId, scanId), eq(scanShares.status, "published")))
       .limit(1)
   )[0];
   if (existing) {
     return {
       conflict: false as const,
-      slug: deriveCapability(
-        getServerConfig().hmacSecret,
-        "share-slug",
-        existing.id,
-      ),
+      slug: deriveCapability(getServerConfig().hmacSecret, "share-slug", existing.id),
       snapshot: undefined,
     };
   }
@@ -297,21 +255,14 @@ export async function createPublicShare(
         .select({ claim: leadScans.siteOwnershipClaim })
         .from(leadScans)
         .where(
-          and(
-            eq(leadScans.leadId, authorization.verifiedLeadId),
-            eq(leadScans.scanId, scanId),
-          ),
+          and(eq(leadScans.leadId, authorization.verifiedLeadId), eq(leadScans.scanId, scanId)),
         )
         .limit(1)
     )[0];
     allowIndexing = ownership?.claim === true;
   }
   const shareId = createUuidV7();
-  const slug = deriveCapability(
-    getServerConfig().hmacSecret,
-    "share-slug",
-    shareId,
-  );
+  const slug = deriveCapability(getServerConfig().hmacSecret, "share-slug", shareId);
   const snapshot: PublicShareSnapshot = {
     host: scan.targetHost,
     score: scan.score,
@@ -333,11 +284,7 @@ export async function createPublicShare(
       allowIndexing,
     });
     const session = (
-      await tx
-        .select()
-        .from(sessions)
-        .where(eq(sessions.id, scan.sessionId))
-        .limit(1)
+      await tx.select().from(sessions).where(eq(sessions.id, scan.sessionId)).limit(1)
     )[0];
     if (session?.consentSnapshotId) {
       await emitStoredBusinessEvent(tx, {
@@ -362,12 +309,7 @@ export async function getPublicShare(slug: string) {
     await db
       .select()
       .from(scanShares)
-      .where(
-        eq(
-          scanShares.shareSlugHash,
-          hmacHex(getServerConfig().hmacSecret, "share", slug),
-        ),
-      )
+      .where(eq(scanShares.shareSlugHash, hmacHex(getServerConfig().hmacSecret, "share", slug)))
       .limit(1)
   )[0];
   if (row?.status !== "published") return undefined;
@@ -397,8 +339,7 @@ export async function revokePublicShare(
         )[0],
       )
     : false;
-  if (!authorization.scanTokenAuthorized && !verifiedAllowed)
-    return "unauthorized";
+  if (!authorization.scanTokenAuthorized && !verifiedAllowed) return "unauthorized";
   await getDatabase()
     .db.update(scanShares)
     .set({ status: "revoked", revokedAt: new Date() })
@@ -413,17 +354,11 @@ export async function updateAccountState(
   const { db } = getDatabase();
   const now = new Date();
   if (action === "unsubscribe") {
-    await db
-      .update(leads)
-      .set({ unsubscribedAt: now })
-      .where(eq(leads.id, leadId));
+    await db.update(leads).set({ unsubscribedAt: now }).where(eq(leads.id, leadId));
     return "requested";
   }
   if (action === "access") {
-    await db
-      .update(leads)
-      .set({ dataAccessRequestedAt: now })
-      .where(eq(leads.id, leadId));
+    await db.update(leads).set({ dataAccessRequestedAt: now }).where(eq(leads.id, leadId));
     return "requested";
   }
   return await requestScannerIdentityDeletion({ leadId });

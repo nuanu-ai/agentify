@@ -1,8 +1,4 @@
-import type {
-  CheckResult,
-  DiagnosticLevel,
-  ScanJobV1,
-} from "@agentify/scanner-contracts";
+import type { CheckResult, DiagnosticLevel, ScanJobV1 } from "@agentify/scanner-contracts";
 import { and, eq, sql } from "drizzle-orm";
 import { emitStoredBusinessEvent } from "./analytics-runtime.js";
 import type { Database } from "./client.js";
@@ -74,22 +70,16 @@ type SnapshotData = ScanEvaluationData & {
 
 export function createScanJobRepository(db: Database) {
   return {
-    async claim(
-      job: ScanJobV1,
-    ): Promise<"claimed" | "terminal" | "in_progress"> {
+    async claim(job: ScanJobV1): Promise<"claimed" | "terminal" | "in_progress"> {
       return await db.transaction(async (tx) => {
         const result = await tx.execute<{ status: string; attempt_no: number }>(
           sql`select status, attempt_no from scans where id = ${job.scan_id} for update`,
         );
         const current = result.rows[0];
         if (!current) throw new Error("scan_not_found");
-        if (["completed", "partial", "failed"].includes(current.status))
-          return "terminal";
+        if (["completed", "partial", "failed"].includes(current.status)) return "terminal";
         if (current.attempt_no > job.attempt_no) return "in_progress";
-        if (
-          current.status === "running" &&
-          current.attempt_no >= job.attempt_no
-        )
+        if (current.status === "running" && current.attempt_no >= job.attempt_no)
           return "in_progress";
         if (job.attempt_no > current.attempt_no) {
           await tx.delete(scanChecks).where(eq(scanChecks.scanId, job.scan_id));
@@ -107,20 +97,12 @@ export function createScanJobRepository(db: Database) {
       });
     },
 
-    async heartbeat(
-      scanId: string,
-      attemptNo: number,
-      at: Date,
-    ): Promise<void> {
+    async heartbeat(scanId: string, attemptNo: number, at: Date): Promise<void> {
       await db
         .update(scans)
         .set({ workerHeartbeatAt: at })
         .where(
-          and(
-            eq(scans.id, scanId),
-            eq(scans.status, "running"),
-            eq(scans.attemptNo, attemptNo),
-          ),
+          and(eq(scans.id, scanId), eq(scans.status, "running"), eq(scans.attemptNo, attemptNo)),
         );
     },
 
@@ -163,10 +145,7 @@ export function createScanJobRepository(db: Database) {
       });
     },
 
-    async findReusableSnapshot(
-      cacheKey: string,
-      now: Date,
-    ): Promise<SnapshotData | undefined> {
+    async findReusableSnapshot(cacheKey: string, now: Date): Promise<SnapshotData | undefined> {
       const [snapshot] = await db
         .select()
         .from(scanSnapshots)
@@ -189,9 +168,7 @@ export function createScanJobRepository(db: Database) {
       };
     },
 
-    async commitTerminal(
-      input: TerminalCommitData,
-    ): Promise<"committed" | "already_terminal"> {
+    async commitTerminal(input: TerminalCommitData): Promise<"committed" | "already_terminal"> {
       return await db.transaction(async (tx) => {
         const locked = await tx.execute<{
           status: string;
@@ -204,12 +181,8 @@ export function createScanJobRepository(db: Database) {
         );
         const current = locked.rows[0];
         if (!current) throw new Error("scan_not_found");
-        if (["completed", "partial", "failed"].includes(current.status))
-          return "already_terminal";
-        if (
-          current.status !== "running" ||
-          current.attempt_no !== input.attemptNo
-        )
+        if (["completed", "partial", "failed"].includes(current.status)) return "already_terminal";
+        if (current.status !== "running" || current.attempt_no !== input.attemptNo)
           return "already_terminal";
 
         const score = input.evaluation.score;
@@ -285,10 +258,7 @@ export function createScanJobRepository(db: Database) {
             .onConflictDoNothing({ target: scanSnapshots.cacheKey });
         }
 
-        if (
-          input.browserObservation &&
-          ["completed", "partial"].includes(score.terminalStatus)
-        ) {
+        if (input.browserObservation && ["completed", "partial"].includes(score.terminalStatus)) {
           await tx
             .insert(browserObservations)
             .values({
@@ -304,10 +274,7 @@ export function createScanJobRepository(db: Database) {
               updatedAt: input.finishedAt,
             })
             .onConflictDoNothing({
-              target: [
-                browserObservations.scanId,
-                browserObservations.observationVersion,
-              ],
+              target: [browserObservations.scanId, browserObservations.observationVersion],
             });
         }
 
@@ -320,8 +287,7 @@ export function createScanJobRepository(db: Database) {
             .from(sessions)
             .where(eq(sessions.id, current.session_id))
             .limit(1);
-          if (!session?.consentSnapshotId)
-            throw new Error("scan_session_missing_consent_snapshot");
+          if (!session?.consentSnapshotId) throw new Error("scan_session_missing_consent_snapshot");
           await emitStoredBusinessEvent(tx, {
             name: "scan_completed",
             identifiers: { scan_id: input.scanId },
@@ -363,11 +329,7 @@ export function createScanJobRepository(db: Database) {
               },
         )
         .where(
-          and(
-            eq(scans.id, scanId),
-            eq(scans.attemptNo, attemptNo),
-            eq(scans.status, "running"),
-          ),
+          and(eq(scans.id, scanId), eq(scans.attemptNo, attemptNo), eq(scans.status, "running")),
         );
     },
   };

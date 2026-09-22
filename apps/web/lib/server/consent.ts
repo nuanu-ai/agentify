@@ -3,11 +3,7 @@ import {
   type ConsentCategories,
   createConsentSnapshot,
 } from "@agentify/analytics";
-import {
-  consentSnapshots,
-  createUuidV7,
-  sessions,
-} from "@agentify/scanner-database";
+import { consentSnapshots, createUuidV7, sessions } from "@agentify/scanner-database";
 import { eq } from "drizzle-orm";
 
 import { getServerConfig } from "./config";
@@ -60,19 +56,9 @@ export const persistConsentSnapshot = async (input: {
       const sessionId = createUuidV7();
       await tx.insert(sessions).values({
         id: sessionId,
-        anonymousIdHash: hmacHex(
-          config.hmacSecret,
-          "anonymous",
-          anonymousToken,
-        ),
+        anonymousIdHash: hmacHex(config.hmacSecret, "anonymous", anonymousToken),
       });
-      session = (
-        await tx
-          .select()
-          .from(sessions)
-          .where(eq(sessions.id, sessionId))
-          .limit(1)
-      )[0];
+      session = (await tx.select().from(sessions).where(eq(sessions.id, sessionId)).limit(1))[0];
     }
     if (!session) throw new Error("consent_session_creation_failed");
 

@@ -20,25 +20,19 @@ describe("IP and URL SSRF policy", () => {
     expect(classifyIp(address)).toMatchObject({ allowed: false, reason });
   });
 
-  it.each([
-    "8.8.8.8",
-    "1.1.1.1",
-    "2606:4700:4700::1111",
-    "2001:4860:4860::8888",
-  ])("allows public unicast %s", (address) =>
-    expect(classifyIp(address)).toMatchObject({ allowed: true }),
+  it.each(["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111", "2001:4860:4860::8888"])(
+    "allows public unicast %s",
+    (address) => expect(classifyIp(address)).toMatchObject({ allowed: true }),
   );
 
   it("rejects mixed public/private DNS answers", () => {
-    expect(() => assertPublicAddresses(["8.8.8.8", "10.0.0.1"])).toThrow(
-      "ssrf_blocked:private",
-    );
+    expect(() => assertPublicAddresses(["8.8.8.8", "10.0.0.1"])).toThrow("ssrf_blocked:private");
   });
 
   it("canonicalizes and redacts tracking parameters", () => {
-    expect(
-      canonicalizeTarget("Example.COM/path?utm_source=x&ok=1#frag").toString(),
-    ).toBe("https://example.com/path?ok=1");
+    expect(canonicalizeTarget("Example.COM/path?utm_source=x&ok=1#frag").toString()).toBe(
+      "https://example.com/path?ok=1",
+    );
   });
 
   it.each([
@@ -54,13 +48,11 @@ describe("IP and URL SSRF policy", () => {
     "https://example.com:8080/",
     "https://example.com/?access_token=secret",
     "https://example.com/?signature=x",
-  ])("rejects unsafe target %s", (target) =>
-    expect(() => canonicalizeTarget(target)).toThrow(),
-  );
+  ])("rejects unsafe target %s", (target) => expect(() => canonicalizeTarget(target)).toThrow());
 
   it("blocks HTTPS downgrade redirects", () => {
-    expect(() =>
-      validateRedirect(new URL("https://example.com/"), "http://example.com/"),
-    ).toThrow("redirect_downgrade_blocked");
+    expect(() => validateRedirect(new URL("https://example.com/"), "http://example.com/")).toThrow(
+      "redirect_downgrade_blocked",
+    );
   });
 });

@@ -14,13 +14,7 @@ import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { getVerifiedSession } from "./auth";
 import { getCabinetReportIdentityClient } from "./cabinet-report-identity";
 import { getServerConfig } from "./config";
-import {
-  decryptEmail,
-  hmacHex,
-  normalizeEmail,
-  randomCapability,
-  sha256,
-} from "./crypto";
+import { decryptEmail, hmacHex, normalizeEmail, randomCapability, sha256 } from "./crypto";
 import { getDatabase } from "./database";
 import { consumeRateLimitsAtomically } from "./rate-limit";
 
@@ -37,19 +31,11 @@ type RecoverableLead = Readonly<{
   emailLookupHash: string;
 }>;
 
-async function lockScannerEmail(
-  tx: DatabaseTransaction,
-  emailLookupHash: string,
-) {
-  await tx.execute(
-    sql`select pg_advisory_xact_lock(hashtextextended(${emailLookupHash}, 0))`,
-  );
+async function lockScannerEmail(tx: DatabaseTransaction, emailLookupHash: string) {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${emailLookupHash}, 0))`);
 }
 
-async function recoverableLead(
-  tx: DatabaseTransaction,
-  emailLookupHash: string,
-) {
+async function recoverableLead(tx: DatabaseTransaction, emailLookupHash: string) {
   return (
     await tx
       .select({ id: leads.id, emailLookupHash: leads.emailLookupHash })
@@ -99,12 +85,9 @@ async function recoveryTargetForLead(
       if (!latestWhenStateUnknown) return undefined;
     } else {
       const registrationScan =
-        registration?.emailLookupHash === lead.emailLookupHash
-          ? registration.scanId
-          : undefined;
+        registration?.emailLookupHash === lead.emailLookupHash ? registration.scanId : undefined;
       const recoveryScan =
-        recovery?.leadId === lead.id &&
-        recovery.emailLookupHash === lead.emailLookupHash
+        recovery?.leadId === lead.id && recovery.emailLookupHash === lead.emailLookupHash
           ? recovery.scanId
           : undefined;
       if (!registrationScan && !recoveryScan) return undefined;
@@ -149,17 +132,9 @@ async function recoveryTargetForLead(
       .innerJoin(scans, eq(scans.id, leadScans.scanId))
       .innerJoin(
         waitlistEntries,
-        and(
-          eq(waitlistEntries.scanId, scans.id),
-          eq(waitlistEntries.leadId, lead.id),
-        ),
+        and(eq(waitlistEntries.scanId, scans.id), eq(waitlistEntries.leadId, lead.id)),
       )
-      .where(
-        and(
-          eq(leadScans.leadId, lead.id),
-          inArray(scans.status, ["completed", "partial"]),
-        ),
-      )
+      .where(and(eq(leadScans.leadId, lead.id), inArray(scans.status, ["completed", "partial"])))
       .orderBy(desc(scans.finishedAt), desc(scans.acceptedAt))
       .limit(1)
   )[0];
@@ -208,11 +183,7 @@ export async function requestScannerReportRecovery(input: {
   const target = await getDatabase().db.transaction(async (tx) => {
     // Privacy deletion takes the same lock before removing pending links.
     await lockScannerEmail(tx, emailLookupHash);
-    const target = await recoveryTargetForEmail(
-      tx,
-      emailLookupHash,
-      input.state,
-    );
+    const target = await recoveryTargetForEmail(tx, emailLookupHash, input.state);
     if (!target) return undefined;
     await tx.insert(scannerRecoveryIntents).values({
       id: intentId,
@@ -230,9 +201,7 @@ export async function requestScannerReportRecovery(input: {
   });
 
   let result: Awaited<
-    ReturnType<
-      ReturnType<typeof getCabinetReportIdentityClient>["sendReportLink"]
-    >
+    ReturnType<ReturnType<typeof getCabinetReportIdentityClient>["sendReportLink"]>
   >;
   try {
     result = await getCabinetReportIdentityClient().sendReportLink({
@@ -264,9 +233,7 @@ export async function requestScannerReportRecovery(input: {
       await lockScannerEmail(tx, emailLookupHash);
       const currentLead = await recoverableLead(tx, emailLookupHash);
       if (!currentLead || currentLead.id !== target.leadId) {
-        await tx
-          .delete(scannerRecoveryIntents)
-          .where(eq(scannerRecoveryIntents.id, intentId));
+        await tx.delete(scannerRecoveryIntents).where(eq(scannerRecoveryIntents.id, intentId));
         return;
       }
       const activated = await tx
@@ -281,8 +248,7 @@ export async function requestScannerReportRecovery(input: {
           ),
         )
         .returning({ id: scannerRecoveryIntents.id });
-      if (!activated.length)
-        throw new Error("recovery_intent_activation_failed");
+      if (!activated.length) throw new Error("recovery_intent_activation_failed");
     });
   }
   return "accepted";
@@ -341,12 +307,8 @@ export async function findActiveScannerRecoveryAuthority(
         .limit(1)
     )[0];
     if (!authority) return undefined;
-    const email = normalizeEmail(
-      decryptEmail(authority.encryptedEmail, config.encryptionKey),
-    );
-    if (
-      hmacHex(config.hmacSecret, "email", email) !== authority.emailLookupHash
-    ) {
+    const email = normalizeEmail(decryptEmail(authority.encryptedEmail, config.encryptionKey));
+    if (hmacHex(config.hmacSecret, "email", email) !== authority.emailLookupHash) {
       throw new Error("lead_email_identity_mismatch");
     }
     return { ...authority, email };

@@ -15,9 +15,5 @@ export function generateMetadata(): Metadata {
 
 export default function MethodologyPage() {
   const config = getPublicAppConfig();
-  return (
-    <PublicEditorialPage
-      page={getPublicEditorialPage("/methodology", config)}
-    />
-  );
+  return <PublicEditorialPage page={getPublicEditorialPage("/methodology", config)} />;
 }

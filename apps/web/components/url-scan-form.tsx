@@ -62,9 +62,7 @@ export function UrlScanForm({
       });
     } catch {
       setState("error");
-      setMessage(
-        "This browser blocked private scan storage. Allow site storage and retry.",
-      );
+      setMessage("This browser blocked private scan storage. Allow site storage and retry.");
       return;
     }
 
@@ -97,9 +95,7 @@ export function UrlScanForm({
           Website URL
         </label>
         <div className={styles.inputWrap}>
-          {showSchemeHint(url) ? (
-            <span aria-hidden="true">https://</span>
-          ) : null}
+          {showSchemeHint(url) ? <span aria-hidden="true">https://</span> : null}
           <input
             aria-describedby={`${inputId}-status`}
             autoCapitalize="none"
@@ -114,11 +110,7 @@ export function UrlScanForm({
             value={url}
           />
         </div>
-        <button
-          className="button button-primary"
-          disabled={submitting}
-          type="submit"
-        >
+        <button className="button button-primary" disabled={submitting} type="submit">
           {submitting ? "Opening scan…" : `${cta} →`}
         </button>
       </form>

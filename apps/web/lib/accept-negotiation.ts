@@ -15,9 +15,7 @@ function parseAccept(value: string): MediaPreference[] {
         const [rawName, rawValue] = parameter.split("=");
         if (rawName?.trim().toLowerCase() !== "q") continue;
         const parsed = Number(rawValue?.trim());
-        quality = Number.isFinite(parsed)
-          ? Math.max(0, Math.min(1, parsed))
-          : 0;
+        quality = Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : 0;
       }
       return { mediaType, quality, order };
     })
@@ -29,8 +27,7 @@ function qualityFor(
   mediaType: "text/html" | "text/markdown",
 ): Readonly<{ quality: number; explicit: boolean; order: number }> {
   const exact = entries.find((entry) => entry.mediaType === mediaType);
-  if (exact)
-    return { quality: exact.quality, explicit: true, order: exact.order };
+  if (exact) return { quality: exact.quality, explicit: true, order: exact.order };
   const typeWildcard = entries.find((entry) => entry.mediaType === "text/*");
   if (typeWildcard)
     return {

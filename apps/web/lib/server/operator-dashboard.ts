@@ -80,17 +80,12 @@ export type OperatorDashboard = {
 
 export async function getOperatorDashboard(): Promise<OperatorDashboard> {
   const { pool } = getDashboardDatabase();
-  const [overviewResult, dailyResult, scansResult, selfResult] =
-    await Promise.all([
-      pool.query("select * from metabase.operator_overview"),
-      pool.query(
-        "select * from metabase.operator_daily_funnel order by day asc",
-      ),
-      pool.query(
-        "select * from metabase.operator_recent_scans order by accepted_at desc limit 50",
-      ),
-      pool.query("select * from metabase.operator_self_scan limit 1"),
-    ]);
+  const [overviewResult, dailyResult, scansResult, selfResult] = await Promise.all([
+    pool.query("select * from metabase.operator_overview"),
+    pool.query("select * from metabase.operator_daily_funnel order by day asc"),
+    pool.query("select * from metabase.operator_recent_scans order by accepted_at desc limit 50"),
+    pool.query("select * from metabase.operator_self_scan limit 1"),
+  ]);
 
   const overview = overviewResult.rows[0];
   if (!overview) throw new Error("operator_dashboard_overview_missing");
@@ -133,8 +128,7 @@ export async function getOperatorDashboard(): Promise<OperatorDashboard> {
       acceptedAt: asIso(row.accepted_at),
       finishedAt: row.finished_at === null ? null : asIso(row.finished_at),
       durationSeconds: asNullableNumber(row.duration_seconds),
-      browserStatus:
-        row.browser_status === null ? null : String(row.browser_status),
+      browserStatus: row.browser_status === null ? null : String(row.browser_status),
     })),
     selfScan: selfResult.rows[0]
       ? {
@@ -144,15 +138,10 @@ export async function getOperatorDashboard(): Promise<OperatorDashboard> {
           status: String(selfResult.rows[0].status),
           score: asNullableNumber(selfResult.rows[0].score),
           coverage: asNullableNumber(selfResult.rows[0].coverage),
-          level:
-            selfResult.rows[0].level === null
-              ? null
-              : String(selfResult.rows[0].level),
+          level: selfResult.rows[0].level === null ? null : String(selfResult.rows[0].level),
           acceptedAt: asIso(selfResult.rows[0].accepted_at),
           finishedAt:
-            selfResult.rows[0].finished_at === null
-              ? null
-              : asIso(selfResult.rows[0].finished_at),
+            selfResult.rows[0].finished_at === null ? null : asIso(selfResult.rows[0].finished_at),
           substantiveHtmlStatus:
             selfResult.rows[0].substantive_html_status === null
               ? null

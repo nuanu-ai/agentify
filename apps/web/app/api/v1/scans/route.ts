@@ -17,10 +17,7 @@ import { verifyTurnstileToken } from "../../../../lib/server/turnstile";
 
 export const runtime = "nodejs";
 
-async function verifyTurnstile(
-  token: string | null,
-  remoteIp: string,
-): Promise<boolean> {
+async function verifyTurnstile(token: string | null, remoteIp: string): Promise<boolean> {
   const config = getServerConfig();
   if (!config.TURNSTILE_ENFORCED) return true;
   if (!token || !config.TURNSTILE_SECRET_KEY) return false;
@@ -35,12 +32,7 @@ async function verifyTurnstile(
 
 export async function POST(request: NextRequest) {
   if (!hasSameOrigin(request))
-    return errorResponse(
-      request,
-      403,
-      "invalid_origin",
-      "The request origin is not allowed.",
-    );
+    return errorResponse(request, 403, "invalid_origin", "The request origin is not allowed.");
   const config = getServerConfig();
   if (!config.SCAN_ACCEPTANCE_ENABLED) {
     return errorResponse(
@@ -53,11 +45,7 @@ export async function POST(request: NextRequest) {
     );
   }
   const idempotencyKey = request.headers.get("idempotency-key");
-  if (
-    !idempotencyKey ||
-    idempotencyKey.length < 8 ||
-    idempotencyKey.length > 200
-  ) {
+  if (!idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 200) {
     return errorResponse(
       request,
       400,
@@ -68,18 +56,11 @@ export async function POST(request: NextRequest) {
   const rawBody: unknown = await request.json().catch(() => null);
   const parsed = createScanRequestSchema.safeParse(rawBody);
   if (!parsed.success)
-    return errorResponse(
-      request,
-      400,
-      "invalid_url",
-      "Provide a valid public HTTP(S) URL.",
-    );
+    return errorResponse(request, 400, "invalid_url", "Provide a valid public HTTP(S) URL.");
 
   const anonymousToken = request.cookies.get(ANONYMOUS_COOKIE)?.value;
   const submittedWithoutScheme = scanUrlWasSubmittedWithoutScheme(
-    rawBody && typeof rawBody === "object" && "url" in rawBody
-      ? rawBody.url
-      : undefined,
+    rawBody && typeof rawBody === "object" && "url" in rawBody ? rawBody.url : undefined,
   );
   try {
     const replay = await lookupScanReplay(
@@ -135,8 +116,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const remoteIp =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const remoteIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const ipKey = hmacHex(config.hmacSecret, "rate-ip", remoteIp);
   let targetHost: string;
   try {
@@ -151,10 +131,7 @@ export async function POST(request: NextRequest) {
     );
   }
   const targetKey = hmacHex(config.hmacSecret, "rate-target", targetHost);
-  const challengePassed = await verifyTurnstile(
-    parsed.data.turnstile_token,
-    remoteIp,
-  );
+  const challengePassed = await verifyTurnstile(parsed.data.turnstile_token, remoteIp);
   const rateResult = await consumeScanRateLimits({
     ipKey,
     targetKey,

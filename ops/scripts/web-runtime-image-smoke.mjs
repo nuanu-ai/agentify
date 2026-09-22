@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import { readFile, rm } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
+import { readFile, rm } from "node:fs/promises";
 
 const image = process.argv[2];
 const postgresImage = process.argv[3] ?? "postgres:17-alpine";
@@ -47,10 +47,10 @@ function assert(condition, message) {
 }
 
 function publishedPort(container, internalPort) {
-  const mapping = docker(
-    ["container", "port", container, `${internalPort}/tcp`],
-    { quiet: true, error: "Docker did not publish the expected port" },
-  );
+  const mapping = docker(["container", "port", container, `${internalPort}/tcp`], {
+    quiet: true,
+    error: "Docker did not publish the expected port",
+  });
   const port = mapping.match(/:(\d+)$/)?.[1];
   assert(port, `Could not parse the published port for ${internalPort}`);
   return port;
@@ -87,10 +87,7 @@ function assertIncludes(body, expected, description) {
 }
 
 function assertExcludes(body, unexpected, description) {
-  assert(
-    !body.includes(unexpected),
-    `${description} leaked from the other runtime`,
-  );
+  assert(!body.includes(unexpected), `${description} leaked from the other runtime`);
 }
 
 function webEnvironment(channel, databaseUrl) {
@@ -126,9 +123,10 @@ function webEnvironment(channel, databaseUrl) {
 }
 
 function startWeb(name, environment) {
-  const environmentArgs = Object.entries(environment).flatMap(
-    ([key, value]) => ["-e", `${key}=${value}`],
-  );
+  const environmentArgs = Object.entries(environment).flatMap(([key, value]) => [
+    "-e",
+    `${key}=${value}`,
+  ]);
   docker(
     [
       "run",
@@ -155,41 +153,24 @@ async function assertRuntime(baseUrl, channel, reportPath, reportCookie) {
     ? "https://test-runtime.agentify.example"
     : "https://production-runtime.agentify.example";
 
-  const [robots, sitemap, llms, front, privacy, scan, pending, report] =
-    await Promise.all([
-      getText(baseUrl, "/robots.txt"),
-      getText(baseUrl, "/sitemap.xml"),
-      getText(baseUrl, "/llms.txt"),
-      getText(baseUrl, "/"),
-      getText(baseUrl, "/privacy"),
-      getText(baseUrl, "/scan/runtime-smoke"),
-      getText(baseUrl, "/scan/pending"),
-      getText(baseUrl, reportPath, reportCookie),
-    ]);
+  const [robots, sitemap, llms, front, privacy, scan, pending, report] = await Promise.all([
+    getText(baseUrl, "/robots.txt"),
+    getText(baseUrl, "/sitemap.xml"),
+    getText(baseUrl, "/llms.txt"),
+    getText(baseUrl, "/"),
+    getText(baseUrl, "/privacy"),
+    getText(baseUrl, "/scan/runtime-smoke"),
+    getText(baseUrl, "/scan/pending"),
+    getText(baseUrl, reportPath, reportCookie),
+  ]);
 
-  assertIncludes(
-    robots,
-    `Sitemap: ${origin}/sitemap.xml`,
-    `${channel} robots origin`,
-  );
-  assertIncludes(
-    sitemap,
-    `<loc>${origin}/</loc>`,
-    `${channel} sitemap origin`,
-  );
+  assertIncludes(robots, `Sitemap: ${origin}/sitemap.xml`, `${channel} robots origin`);
+  assertIncludes(sitemap, `<loc>${origin}/</loc>`, `${channel} sitemap origin`);
   assertIncludes(llms, `](${origin}/)`, `${channel} llms origin`);
   // Next renders the root canonical as the bare origin, no trailing slash.
-  assertIncludes(
-    front,
-    `rel="canonical" href="${origin}"/>`,
-    `${channel} canonical metadata`,
-  );
+  assertIncludes(front, `rel="canonical" href="${origin}"/>`, `${channel} canonical metadata`);
   assertIncludes(front, `posthog-${own}`, `${channel} PostHog key`);
-  assertIncludes(
-    front,
-    `posthog-${own}.example.com`,
-    `${channel} PostHog host`,
-  );
+  assertIncludes(front, `posthog-${own}.example.com`, `${channel} PostHog host`);
   assertIncludes(front, `meta-${own}`, `${channel} Meta destination`);
   const serializedOwner = owner.replaceAll("\\", "");
   assert(
@@ -199,38 +180,26 @@ async function assertRuntime(baseUrl, channel, reportPath, reportCookie) {
     `${channel} PostHog destination environment was absent`,
   );
   assert(
-    new RegExp(
-      `meta.{0,240}destinationEnvironment.{0,30}${isTest ? "local" : "preview"}`,
-    ).test(serializedOwner),
+    new RegExp(`meta.{0,240}destinationEnvironment.{0,30}${isTest ? "local" : "preview"}`).test(
+      serializedOwner,
+    ),
     `${channel} Meta destination environment was absent`,
   );
   assertIncludes(front, `abuse-${own}@example.com`, `${channel} abuse contact`);
   assertExcludes(front, other, `${channel} analytics configuration`);
-  assertIncludes(
-    privacy,
-    `privacy-${own}@example.com`,
-    `${channel} privacy contact`,
-  );
+  assertIncludes(privacy, `privacy-${own}@example.com`, `${channel} privacy contact`);
   assertIncludes(privacy, `${own} legal operator`, `${channel} legal operator`);
-  const pendingLegalIdentity =
-    "Final legal identity, jurisdiction-specific lawful basis";
-  if (isTest)
-    assertIncludes(privacy, pendingLegalIdentity, `${channel} legal status`);
+  const pendingLegalIdentity = "Final legal identity, jurisdiction-specific lawful basis";
+  if (isTest) assertIncludes(privacy, pendingLegalIdentity, `${channel} legal status`);
   else assertExcludes(privacy, pendingLegalIdentity, `${channel} legal status`);
   assertExcludes(privacy, other, `${channel} legal configuration`);
   assert(
-    new RegExp(`registrationEnabled.{0,12}${isTest ? "false" : "true"}`).test(
-      scan,
-    ),
+    new RegExp(`registrationEnabled.{0,12}${isTest ? "false" : "true"}`).test(scan),
     `${channel} registration flag was absent`,
   );
   assertIncludes(pending, `turnstile-${own}`, `${channel} Turnstile site key`);
   assertExcludes(pending, other, `${channel} Turnstile configuration`);
-  assertIncludes(
-    report,
-    `stripe-publishable-${own}`,
-    `${channel} Stripe publishable key`,
-  );
+  assertIncludes(report, `stripe-publishable-${own}`, `${channel} Stripe publishable key`);
   assertExcludes(report, other, `${channel} Stripe configuration`);
 }
 
@@ -312,28 +281,18 @@ async function main() {
   const testImageId = docker(["inspect", "--format", "{{.Image}}", testWeb], {
     quiet: true,
   });
-  const productionImageId = docker(
-    ["inspect", "--format", "{{.Image}}", productionWeb],
-    { quiet: true },
-  );
-  assert(
-    testImageId === imageId,
-    "Test runtime did not use the requested image",
-  );
-  assert(
-    productionImageId === imageId,
-    "Production runtime did not use the requested image",
-  );
+  const productionImageId = docker(["inspect", "--format", "{{.Image}}", productionWeb], {
+    quiet: true,
+  });
+  assert(testImageId === imageId, "Test runtime did not use the requested image");
+  assert(productionImageId === imageId, "Production runtime did not use the requested image");
   assert(testImageId === productionImageId, "Runtime image identities differ");
 
   const testBaseUrl = `http://127.0.0.1:${publishedPort(testWeb, 3000)}`;
   const productionBaseUrl = `http://127.0.0.1:${publishedPort(productionWeb, 3000)}`;
   await Promise.all([
     waitFor(() => getText(testBaseUrl, "/api/health/live"), "test web runtime"),
-    waitFor(
-      () => getText(productionBaseUrl, "/api/health/live"),
-      "production web runtime",
-    ),
+    waitFor(() => getText(productionBaseUrl, "/api/health/live"), "production web runtime"),
   ]);
   await Promise.all([
     assertRuntime(testBaseUrl, "test", reportPath, reportCookie),
@@ -341,10 +300,7 @@ async function main() {
   ]);
   for (const [label, overrides] of [
     ["bad-registration", { REGISTRATION_ENABLED: "flase" }],
-    [
-      "bad-analytics",
-      { POSTHOG_BROWSER_KEY: "public-key", POSTHOG_BROWSER_HOST: "" },
-    ],
+    ["bad-analytics", { POSTHOG_BROWSER_KEY: "public-key", POSTHOG_BROWSER_HOST: "" }],
   ]) {
     const name = `${prefix}-${label}`;
     startWeb(name, {
@@ -358,10 +314,7 @@ async function main() {
         }),
       );
       if (!state.Running) {
-        assert(
-          state.ExitCode !== 0,
-          "Invalid configuration exited successfully",
-        );
+        assert(state.ExitCode !== 0, "Invalid configuration exited successfully");
         return true;
       }
       const base = `http://127.0.0.1:${publishedPort(name, 3000)}`;
@@ -371,10 +324,7 @@ async function main() {
       } catch {
         return false;
       }
-      assert(
-        response.status === 503,
-        "Invalid runtime configuration was accepted as healthy",
-      );
+      assert(response.status === 503, "Invalid runtime configuration was accepted as healthy");
       return true;
     }, label);
   }

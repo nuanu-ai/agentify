@@ -15,7 +15,5 @@ export function generateMetadata(): Metadata {
 
 export default function PrivacyPage() {
   const config = getPublicAppConfig();
-  return (
-    <PublicEditorialPage page={getPublicEditorialPage("/privacy", config)} />
-  );
+  return <PublicEditorialPage page={getPublicEditorialPage("/privacy", config)} />;
 }

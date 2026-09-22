@@ -48,10 +48,7 @@ function canonicalizeSubmittedUrl(value: string): {
   };
 }
 
-function scanBodyHash(
-  body: CreateScanRequest,
-  submittedWithoutScheme: boolean,
-): string {
+function scanBodyHash(body: CreateScanRequest, submittedWithoutScheme: boolean): string {
   const normalized = canonicalizeSubmittedUrl(body.url);
   return sha256(
     JSON.stringify({
@@ -94,44 +91,22 @@ export async function lookupScanReplay(
   const { db } = getDatabase();
   const anonymousHash = hmacHex(config.hmacSecret, "anonymous", anonymousToken);
   const session = (
-    await db
-      .select()
-      .from(sessions)
-      .where(eq(sessions.anonymousIdHash, anonymousHash))
-      .limit(1)
+    await db.select().from(sessions).where(eq(sessions.anonymousIdHash, anonymousHash)).limit(1)
   )[0];
   if (!session) return undefined;
-  const idempotencyHash = hmacHex(
-    config.hmacSecret,
-    "idempotency",
-    idempotencyKey,
-  );
+  const idempotencyHash = hmacHex(config.hmacSecret, "idempotency", idempotencyKey);
   const existing = (
     await db
       .select()
       .from(scans)
-      .where(
-        and(
-          eq(scans.sessionId, session.id),
-          eq(scans.idempotencyKeyHash, idempotencyHash),
-        ),
-      )
+      .where(and(eq(scans.sessionId, session.id), eq(scans.idempotencyKeyHash, idempotencyHash)))
       .limit(1)
   )[0];
   if (!existing) return undefined;
   return {
     scanId: existing.id,
-    accessToken: deriveCapability(
-      config.hmacSecret,
-      "scan-access",
-      session.id,
-      idempotencyHash,
-    ),
-    conflict: !scanBodyMatches(
-      existing.idempotencyBodyHash,
-      body,
-      submittedWithoutScheme,
-    ),
+    accessToken: deriveCapability(config.hmacSecret, "scan-access", session.id, idempotencyHash),
+    conflict: !scanBodyMatches(existing.idempotencyBodyHash, body, submittedWithoutScheme),
     status: existing.status,
   };
 }
@@ -146,11 +121,7 @@ export async function createOrReplayScan(
   const { db } = getDatabase();
   const normalized = canonicalizeSubmittedUrl(body.url);
   const bodyHash = scanBodyHash(body, submittedWithoutScheme);
-  const idempotencyHash = hmacHex(
-    config.hmacSecret,
-    "idempotency",
-    idempotencyKey,
-  );
+  const idempotencyHash = hmacHex(config.hmacSecret, "idempotency", idempotencyKey);
   const suppliedAnonymousHash = anonymousToken
     ? hmacHex(config.hmacSecret, "anonymous", anonymousToken)
     : undefined;
@@ -172,15 +143,10 @@ export async function createOrReplayScan(
     let newAnonymousToken: string | undefined;
     if (!session) {
       newAnonymousToken =
-        crypto.randomUUID().replaceAll("-", "") +
-        crypto.randomUUID().replaceAll("-", "");
+        crypto.randomUUID().replaceAll("-", "") + crypto.randomUUID().replaceAll("-", "");
       const sessionId = createUuidV7();
       const consentId = createUuidV7();
-      const anonymousHash = hmacHex(
-        config.hmacSecret,
-        "anonymous",
-        newAnonymousToken,
-      );
+      const anonymousHash = hmacHex(config.hmacSecret, "anonymous", newAnonymousToken);
       await tx.insert(sessions).values({
         id: sessionId,
         anonymousIdHash: anonymousHash,
@@ -205,13 +171,7 @@ export async function createOrReplayScan(
         .update(sessions)
         .set({ consentSnapshotId: consentId })
         .where(eq(sessions.id, sessionId));
-      session = (
-        await tx
-          .select()
-          .from(sessions)
-          .where(eq(sessions.id, sessionId))
-          .limit(1)
-      )[0];
+      session = (await tx.select().from(sessions).where(eq(sessions.id, sessionId)).limit(1))[0];
     }
     if (!session?.consentSnapshotId) throw new Error("session_consent_missing");
     await tx.execute(
@@ -220,8 +180,7 @@ export async function createOrReplayScan(
     await tx
       .update(sessions)
       .set({
-        firstLandingVariant:
-          session.firstLandingVariant ?? body.landing_variant,
+        firstLandingVariant: session.firstLandingVariant ?? body.landing_variant,
         lastLandingVariant: body.landing_variant,
         lastSeenAt: new Date(),
       })
@@ -231,12 +190,7 @@ export async function createOrReplayScan(
       await tx
         .select()
         .from(scans)
-        .where(
-          and(
-            eq(scans.sessionId, session.id),
-            eq(scans.idempotencyKeyHash, idempotencyHash),
-          ),
-        )
+        .where(and(eq(scans.sessionId, session.id), eq(scans.idempotencyKeyHash, idempotencyHash)))
         .limit(1)
     )[0];
     const accessToken = deriveCapability(
@@ -246,11 +200,7 @@ export async function createOrReplayScan(
       idempotencyHash,
     );
     if (existing) {
-      const conflict = !scanBodyMatches(
-        existing.idempotencyBodyHash,
-        body,
-        submittedWithoutScheme,
-      );
+      const conflict = !scanBodyMatches(existing.idempotencyBodyHash, body, submittedWithoutScheme);
       if (!conflict && existing.status === "accepted") {
         await enqueueScanInTransaction(tx, {
           scanId: existing.id,
@@ -341,20 +291,13 @@ export async function getScanStatusForVerifiedSession(
 ): Promise<ScanStatusResponse | undefined> {
   if (!(await getVerifiedSession(sessionToken, scanId))) return undefined;
   const { db } = getDatabase();
-  const scan = (
-    await db.select().from(scans).where(eq(scans.id, scanId)).limit(1)
-  )[0];
+  const scan = (await db.select().from(scans).where(eq(scans.id, scanId)).limit(1))[0];
   return scan ? await buildScanStatus(scan) : undefined;
 }
 
-async function buildScanStatus(
-  scan: typeof scans.$inferSelect,
-): Promise<ScanStatusResponse> {
+async function buildScanStatus(scan: typeof scans.$inferSelect): Promise<ScanStatusResponse> {
   const { db } = getDatabase();
-  const rows = await db
-    .select()
-    .from(scanChecks)
-    .where(eq(scanChecks.scanId, scan.id));
+  const rows = await db.select().from(scanChecks).where(eq(scanChecks.scanId, scan.id));
   const byId = new Map(rows.map((row) => [row.checkId, row]));
   const checks = CHECK_DEFINITIONS.map((definition) => {
     const row = byId.get(definition.id);
@@ -364,22 +307,15 @@ async function buildScanStatus(
       status: row?.status ?? "pending",
     };
   });
-  const completed = checks.filter(
-    ({ status }) => !["pending", "running"].includes(status),
-  ).length;
+  const completed = checks.filter(({ status }) => !["pending", "running"].includes(status)).length;
   const terminal = scan.status === "completed" || scan.status === "partial";
   const parsedResults = rows.flatMap((row) => {
-    if (
-      !["pass", "partial", "fail", "unavailable", "not_applicable"].includes(
-        row.status,
-      )
-    )
+    if (!["pass", "partial", "fail", "unavailable", "not_applicable"].includes(row.status))
       return [];
     return [
       {
         id: row.checkId as (typeof CHECK_DEFINITIONS)[number]["id"],
-        status: row.status as
-          "pass" | "partial" | "fail" | "unavailable" | "not_applicable",
+        status: row.status as "pass" | "partial" | "fail" | "unavailable" | "not_applicable",
         nominalWeight: Number(row.nominalWeight),
         applicableWeight: Number(row.applicableWeight),
         earnedWeight: Number(row.earnedWeight),
@@ -419,9 +355,8 @@ async function buildScanStatus(
               : null,
             hidden_count: Math.max(
               0,
-              parsedResults.filter(
-                ({ status }) => status === "fail" || status === "partial",
-              ).length - findings.negativeCheckIds.length,
+              parsedResults.filter(({ status }) => status === "fail" || status === "partial")
+                .length - findings.negativeCheckIds.length,
             ),
           },
         }
@@ -453,14 +388,12 @@ export async function getBrowserObservationForScan(
   const scan = await authorizeScan(scanId, token);
   if (!scan) return undefined;
   const { db } = getDatabase();
-  const observation =
-    await createBrowserObservationRepository(db).getForScan(scanId);
+  const observation = await createBrowserObservationRepository(db).getForScan(scanId);
   if (!observation) return undefined;
   const teaserFindings = observation.findings
     .filter(
       ({ status, remediation_code }) =>
-        status === "fail" ||
-        (status === "partial" && Boolean(remediation_code)),
+        status === "fail" || (status === "partial" && Boolean(remediation_code)),
     )
     .slice(0, 3)
     .map((finding) => ({ ...finding, evidence: {} }));

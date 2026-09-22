@@ -79,12 +79,8 @@ describe("browser observation evaluator", () => {
     const findings = buildObservations(runtime([page()]));
     expect(findings).toHaveLength(14);
     expect(new Set(findings.map((finding) => finding.id)).size).toBe(14);
-    expect(findings.map((finding) => finding.id)).toEqual(
-      BROWSER_OBSERVATION_IDS,
-    );
-    expect(findings.find((item) => item.id === "webmcp_surface")?.status).toBe(
-      "not_applicable",
-    );
+    expect(findings.map((finding) => finding.id)).toEqual(BROWSER_OBSERVATION_IDS);
+    expect(findings.find((item) => item.id === "webmcp_surface")?.status).toBe("not_applicable");
   });
 
   it("separates observed site problems from provider unavailability", () => {
@@ -99,24 +95,14 @@ describe("browser observation evaluator", () => {
         }),
       ]),
     );
-    expect(
-      findings.find((item) => item.id === "rendered_content_delta")?.status,
-    ).toBe("fail");
-    expect(
-      findings.find((item) => item.id === "accessibility_structure")?.status,
-    ).toBe("fail");
-    expect(
-      findings.find((item) => item.id === "session_or_challenge_wall")?.status,
-    ).toBe("fail");
-    expect(
-      findings.find((item) => item.id === "hidden_instruction_risk")?.status,
-    ).toBe("fail");
+    expect(findings.find((item) => item.id === "rendered_content_delta")?.status).toBe("fail");
+    expect(findings.find((item) => item.id === "accessibility_structure")?.status).toBe("fail");
+    expect(findings.find((item) => item.id === "session_or_challenge_wall")?.status).toBe("fail");
+    expect(findings.find((item) => item.id === "hidden_instruction_risk")?.status).toBe("fail");
 
     const unavailable = buildObservations(runtime([]));
     expect(unavailable).toHaveLength(14);
-    expect(unavailable.every((item) => item.status === "unavailable")).toBe(
-      true,
-    );
+    expect(unavailable.every((item) => item.status === "unavailable")).toBe(true);
   });
 
   it("caps aggregate signals to the strict output contract", () => {
@@ -201,13 +187,10 @@ describe("browser observation evaluator", () => {
         }),
       ]),
     );
-    expect(findings.find((item) => item.id === "form_semantics")?.status).toBe(
-      "partial",
+    expect(findings.find((item) => item.id === "form_semantics")?.status).toBe("partial");
+    expect(findings.find((item) => item.id === "representative_page_consistency")?.status).toBe(
+      "pass",
     );
-    expect(
-      findings.find((item) => item.id === "representative_page_consistency")
-        ?.status,
-    ).toBe("pass");
   });
 });
 

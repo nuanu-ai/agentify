@@ -1,13 +1,9 @@
 import { canonicalCheckLabel } from "@agentify/remediation";
-import {
-  CHECK_DEFINITIONS,
-  SCAN_RUBRIC_VERSION,
-} from "@agentify/scanner-contracts";
+import { CHECK_DEFINITIONS, SCAN_RUBRIC_VERSION } from "@agentify/scanner-contracts";
 
 import type { PublicAppConfig } from "../lib/app-config";
 
-export type PublicEditorialPath =
-  "/methodology" | "/scanner" | "/privacy" | "/terms";
+export type PublicEditorialPath = "/methodology" | "/scanner" | "/privacy" | "/terms";
 
 export type InlineNode = Readonly<{
   kind: "text" | "code" | "strong" | "link";
@@ -196,17 +192,12 @@ const scannerPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
       blocks: [
         {
           kind: "paragraph",
-          content: [
-            text("Scanner user agent: "),
-            code(config.scannerUserAgent),
-          ],
+          content: [text("Scanner user agent: "), code(config.scannerUserAgent)],
         },
         {
           kind: "paragraph",
           content: [
-            text(
-              `Operator: ${config.legalOperator}. Abuse and opt-out contact: `,
-            ),
+            text(`Operator: ${config.legalOperator}. Abuse and opt-out contact: `),
             link(config.abuseEmail, `mailto:${config.abuseEmail}`),
             text("."),
           ],
@@ -251,9 +242,7 @@ const scannerPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
             code(
               `agentify-browser-observer/1.0 (+${new URL("/scanner", config.baseUrl).toString()})`,
             ),
-            text(
-              ". Provider, budget, or challenge failures never reduce the score.",
-            ),
+            text(". Provider, budget, or challenge failures never reduce the score."),
           ],
         },
         {
@@ -316,9 +305,7 @@ const scannerPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
               "Send the affected host, approximate UTC time, and request identifier if available to ",
             ),
             link(config.abuseEmail, `mailto:${config.abuseEmail}`),
-            text(
-              ". Do not email access tokens, private URLs, credentials, or personal data.",
-            ),
+            text(". Do not email access tokens, private URLs, credentials, or personal data."),
           ],
         },
       ],

@@ -68,7 +68,7 @@
   min-height: 22px;
   margin-top: 8px;
   color: var(--muted);
-  font: 0.75rem/1.5 var(--font-mono);
+  font: 0.75rem / 1.5 var(--font-mono);
 }
 
 .error {

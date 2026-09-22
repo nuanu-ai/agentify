@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  decryptEmail,
-  deriveCapability,
-  encryptEmail,
-  normalizeEmail,
-  sha256,
-} from "./crypto";
+import { decryptEmail, deriveCapability, encryptEmail, normalizeEmail, sha256 } from "./crypto";
 
 describe("private capability and email crypto", () => {
   it("encrypts email with randomized authenticated ciphertext", () => {

@@ -58,15 +58,8 @@ export function attachReportCabinetHandoffCookie(
 
 export async function POST(request: NextRequest) {
   if (!hasSameOrigin(request))
-    return errorResponse(
-      request,
-      403,
-      "invalid_origin",
-      "The request origin is not allowed.",
-    );
-  const parsed = verificationRequestSchema.safeParse(
-    await request.json().catch(() => null),
-  );
+    return errorResponse(request, 403, "invalid_origin", "The request origin is not allowed.");
+  const parsed = verificationRequestSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success)
     return errorResponse(
       request,
@@ -75,10 +68,7 @@ export async function POST(request: NextRequest) {
       "The verification link is invalid or expired.",
     );
   try {
-    const finalized = await verifyAndFinalizeScannerIdentity(
-      parsed.data.state,
-      parsed.data.token,
-    );
+    const finalized = await verifyAndFinalizeScannerIdentity(parsed.data.state, parsed.data.token);
     if (!finalized)
       return errorResponse(
         request,
@@ -94,11 +84,7 @@ export async function POST(request: NextRequest) {
       headers: { "Cache-Control": "private, no-store" },
     });
     const config = getServerConfig();
-    attachReportSessionCookie(
-      response,
-      finalized.sessionToken,
-      config.production,
-    );
+    attachReportSessionCookie(response, finalized.sessionToken, config.production);
     if (finalized.cabinetActionUrl && config.REPORT_IDENTITY_SECRET) {
       attachReportCabinetHandoffCookie(response, {
         actionUrl: finalized.cabinetActionUrl,

@@ -8,13 +8,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -48,12 +42,7 @@ function dockerResult(...args) {
 
 function networkAddress(containerName) {
   const networks = JSON.parse(
-    docker(
-      "inspect",
-      "--format",
-      "{{json .NetworkSettings.Networks}}",
-      containerName,
-    ),
+    docker("inspect", "--format", "{{json .NetworkSettings.Networks}}", containerName),
   );
   const address = networks[networkName]?.IPAddress;
   assert.match(
@@ -110,11 +99,7 @@ function publishedBase(containerName) {
 async function expectProxy(baseUrl, requestPath, role) {
   const response = await fetch(`${baseUrl}${requestPath}`);
   assert.equal(response.status, 200, requestPath);
-  assert.equal(
-    response.headers.get("referrer-policy"),
-    "same-origin",
-    requestPath,
-  );
+  assert.equal(response.headers.get("referrer-policy"), "same-origin", requestPath);
   const body = await response.json();
   assert.equal(body.role, role, requestPath);
   assert.equal(body.path, requestPath, requestPath);
@@ -139,18 +124,14 @@ async function expectSharedAssets(baseUrl) {
   }
 
   const stylesheet = await (await fetch(`${baseUrl}/styles/fonts.css`)).text();
-  const fontPaths = [
-    ...stylesheet.matchAll(/url\(["']?(\/styles\/fonts\/[^"')]+\.woff2)/g),
-  ].map((match) => match[1]);
+  const fontPaths = [...stylesheet.matchAll(/url\(["']?(\/styles\/fonts\/[^"')]+\.woff2)/g)].map(
+    (match) => match[1],
+  );
   assert.equal(fontPaths.length, 7, "the browser font inventory changed");
   for (const fontPath of fontPaths) {
     const response = await fetch(`${baseUrl}${fontPath}`);
     assert.equal(response.status, 200, fontPath);
-    assert.match(
-      response.headers.get("content-type") ?? "",
-      /^font\/woff2(?:;|$)/,
-      fontPath,
-    );
+    assert.match(response.headers.get("content-type") ?? "", /^font\/woff2(?:;|$)/, fontPath);
     assert.ok((await response.arrayBuffer()).byteLength > 0, fontPath);
   }
 }
@@ -174,13 +155,7 @@ async function expectSingleForwardedClient(baseUrl, spoofed) {
   assert.equal(body.forwardedFor.includes(","), false, body.forwardedFor);
 }
 
-function runInner({
-  configPath,
-  containerName,
-  trustedEdge,
-  ports,
-  adminHash,
-}) {
+function runInner({ configPath, containerName, trustedEdge, ports, adminHash }) {
   docker(
     "run",
     "-d",
@@ -219,22 +194,10 @@ function runInner({
 try {
   const docsRoot = path.join(temporary, "docs");
   mkdirSync(path.join(docsRoot, "assets"), { recursive: true });
-  writeFileSync(
-    path.join(docsRoot, "index.html"),
-    "<p>documentation fixture</p>",
-  );
-  writeFileSync(
-    path.join(docsRoot, "guide.html"),
-    "<p>documentation guide</p>",
-  );
-  writeFileSync(
-    path.join(docsRoot, "404.html"),
-    "<p>documentation missing fixture</p>",
-  );
-  writeFileSync(
-    path.join(docsRoot, "assets/doc.css"),
-    "body { color: black; }\n",
-  );
+  writeFileSync(path.join(docsRoot, "index.html"), "<p>documentation fixture</p>");
+  writeFileSync(path.join(docsRoot, "guide.html"), "<p>documentation guide</p>");
+  writeFileSync(path.join(docsRoot, "404.html"), "<p>documentation missing fixture</p>");
+  writeFileSync(path.join(docsRoot, "assets/doc.css"), "body { color: black; }\n");
 
   const ports = {
     scanner: await listen("scanner"),
@@ -358,18 +321,14 @@ try {
     for (const adminPath of ["/admin", "/admin%2Fusers"]) {
       const admin = await fetch(`${baseUrl}${adminPath}`);
       assert.equal(admin.status, 401, adminPath);
-      assert.equal(
-        admin.headers.get("referrer-policy"),
-        "same-origin",
-        adminPath,
-      );
+      assert.equal(admin.headers.get("referrer-policy"), "same-origin", adminPath);
     }
   }
   response = await fetch(`${edgeBase}/admin`, {
     headers: {
-      Authorization: `Basic ${Buffer.from(
-        "acceptance:acceptance-only-not-a-secret",
-      ).toString("base64")}`,
+      Authorization: `Basic ${Buffer.from("acceptance:acceptance-only-not-a-secret").toString(
+        "base64",
+      )}`,
     },
   });
   assert.equal(response.status, 200);
@@ -386,11 +345,7 @@ try {
     "--config",
     "/etc/caddy/Caddyfile",
   );
-  assert.notEqual(
-    missingSelector.status,
-    0,
-    "missing front-page selector was accepted",
-  );
+  assert.notEqual(missingSelector.status, 0, "missing front-page selector was accepted");
   assert.match(missingSelector.stderr, /AGENTIFY_FRONT_PAGE|import|filename/i);
 
   const original = readFileSync(sourceCaddyfile, "utf8");

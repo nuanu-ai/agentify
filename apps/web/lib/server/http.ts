@@ -9,8 +9,7 @@ import { NextResponse } from "next/server";
 import { getServerConfig } from "./config";
 
 const ids = new WeakMap<Request, string>();
-const safeRequestId =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const safeRequestId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const logger = createLogger({
   service: "web",
   environment: process.env.NODE_ENV ?? "development",
@@ -20,8 +19,7 @@ export function requestId(request: Request): string {
   const existing = ids.get(request);
   if (existing) return existing;
   const provided = request.headers.get("x-request-id")?.slice(0, 100);
-  const value =
-    provided && safeRequestId.test(provided) ? provided : crypto.randomUUID();
+  const value = provided && safeRequestId.test(provided) ? provided : crypto.randomUUID();
   ids.set(request, value);
   return value;
 }
@@ -76,9 +74,7 @@ export function errorResponse(
         code,
         message,
         retryable,
-        ...(retryAfter === undefined
-          ? {}
-          : { retry_after_seconds: retryAfter }),
+        ...(retryAfter === undefined ? {} : { retry_after_seconds: retryAfter }),
         request_id: id,
       },
     },
@@ -90,9 +86,7 @@ export function hasSameOrigin(request: Request): boolean {
   const origin = request.headers.get("origin");
   if (!origin) return false;
   try {
-    return (
-      new URL(origin).origin === new URL(getServerConfig().appBaseUrl).origin
-    );
+    return new URL(origin).origin === new URL(getServerConfig().appBaseUrl).origin;
   } catch {
     return false;
   }

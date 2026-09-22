@@ -12,7 +12,5 @@ export const metadata: Metadata = {
 
 export default function TermsPage() {
   const config = getPublicAppConfig();
-  return (
-    <PublicEditorialPage page={getPublicEditorialPage("/terms", config)} />
-  );
+  return <PublicEditorialPage page={getPublicEditorialPage("/terms", config)} />;
 }

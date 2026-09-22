@@ -4,18 +4,14 @@ import { z } from "zod";
 const base64urlCapabilitySchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 const rawIdentityTokenSchema = z.string().regex(/^[A-Za-z0-9]{32}$/);
 const receiptIdSchema = z.uuid();
-const operationIdSchema = z
-  .uuid()
-  .refine((value) => value[14] === "7", "Expected UUIDv7");
+const operationIdSchema = z.uuid().refine((value) => value[14] === "7", "Expected UUIDv7");
 const timestampSchema = z.iso.datetime({ offset: true });
 const actionUrlSchema = z
   .url({ protocol: /^https?$/ })
   .max(2048)
   .refine((value) => {
     const parsed = new URL(value);
-    return (
-      parsed.username === "" && parsed.password === "" && parsed.hash === ""
-    );
+    return parsed.username === "" && parsed.password === "" && parsed.hash === "";
   });
 
 const normalizedEmailSchema = z
@@ -50,9 +46,7 @@ export const sendReportLinkResponseSchema = z.union([
       token_hash: base64urlCapabilitySchema,
     })
     .strict(),
-  z
-    .object({ status: z.literal("cooldown"), retry_at: timestampSchema })
-    .strict(),
+  z.object({ status: z.literal("cooldown"), retry_at: timestampSchema }).strict(),
   z.object({ status: z.literal("unavailable") }).strict(),
 ]);
 
@@ -106,9 +100,7 @@ export const issueCabinetLinkRequestSchema = z
   .strict();
 
 export const issueCabinetLinkResponseSchema = z.union([
-  z
-    .object({ status: z.literal("issued"), action_url: actionUrlSchema })
-    .strict(),
+  z.object({ status: z.literal("issued"), action_url: actionUrlSchema }).strict(),
   z.object({ status: z.literal("already_attempted") }).strict(),
   z.object({ status: z.literal("refused") }).strict(),
 ]);
@@ -136,31 +128,13 @@ export const reportIdentityRequestSchema = z.union([
 ]);
 
 export type SendReportLinkRequest = z.infer<typeof sendReportLinkRequestSchema>;
-export type SendReportLinkResponse = z.infer<
-  typeof sendReportLinkResponseSchema
->;
-export type ConsumeReportLinkRequest = z.infer<
-  typeof consumeReportLinkRequestSchema
->;
-export type ConsumeReportLinkResponse = z.infer<
-  typeof consumeReportLinkResponseSchema
->;
-export type AcknowledgeReportLinkRequest = z.infer<
-  typeof acknowledgeReportLinkRequestSchema
->;
-export type AcknowledgeReportLinkResponse = z.infer<
-  typeof acknowledgeReportLinkResponseSchema
->;
-export type IssueCabinetLinkRequest = z.infer<
-  typeof issueCabinetLinkRequestSchema
->;
-export type IssueCabinetLinkResponse = z.infer<
-  typeof issueCabinetLinkResponseSchema
->;
-export type DeleteUnattachedPersonRequest = z.infer<
-  typeof deleteUnattachedPersonRequestSchema
->;
-export type DeleteUnattachedPersonResponse = z.infer<
-  typeof deleteUnattachedPersonResponseSchema
->;
+export type SendReportLinkResponse = z.infer<typeof sendReportLinkResponseSchema>;
+export type ConsumeReportLinkRequest = z.infer<typeof consumeReportLinkRequestSchema>;
+export type ConsumeReportLinkResponse = z.infer<typeof consumeReportLinkResponseSchema>;
+export type AcknowledgeReportLinkRequest = z.infer<typeof acknowledgeReportLinkRequestSchema>;
+export type AcknowledgeReportLinkResponse = z.infer<typeof acknowledgeReportLinkResponseSchema>;
+export type IssueCabinetLinkRequest = z.infer<typeof issueCabinetLinkRequestSchema>;
+export type IssueCabinetLinkResponse = z.infer<typeof issueCabinetLinkResponseSchema>;
+export type DeleteUnattachedPersonRequest = z.infer<typeof deleteUnattachedPersonRequestSchema>;
+export type DeleteUnattachedPersonResponse = z.infer<typeof deleteUnattachedPersonResponseSchema>;
 export type ReportIdentityRequest = z.infer<typeof reportIdentityRequestSchema>;

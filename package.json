@@ -10,9 +10,7 @@
   },
   "scripts": {
     "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
-    "check": "pnpm check:commerce && pnpm check:scanner",
-    "check:commerce": "biome check .",
-    "check:scanner": "pnpm scanner:format:check && pnpm scanner:lint",
+    "check": "biome check .",
     "check:fix": "biome check --write .",
     "check:decisions": "./scripts/check-decisions.sh",
     "db:migrate": "pnpm --filter @agentify/gateway db:migrate && pnpm --filter @agentify/cabinet db:migrate",
@@ -38,7 +36,6 @@
     "stand": "pnpm --filter @agentify/slice run stand",
     "changeset": "changeset",
     "mutate": "node scripts/mutate.mjs",
-    "scanner:check": "pnpm check:scanner && pnpm typecheck:scanner && pnpm test:scanner",
     "scanner:test:integration": "node ops/scripts/with-env.mjs pnpm run scanner:test:integration:inner",
     "scanner:test:actor": "pnpm --filter @agentify/browser-observer-actor test:integration",
     "scanner:test:db": "pnpm scanner:db:check && pnpm scanner:db:test:migrations",
@@ -52,9 +49,6 @@
     "scanner:clean": "pnpm --filter './apps/web' --filter './apps/scanner-worker' --filter './apps/browser-observer-actor' --filter './packages/scanner-contracts' --filter './packages/scanner-database' --filter './packages/scanner' --filter './packages/analytics' --filter './packages/observability' --filter './packages/remediation' --recursive --if-present run clean",
     "scanner:dev:web": "node ops/scripts/with-env.mjs pnpm --filter @agentify/web dev",
     "scanner:dev:worker": "node ops/scripts/with-env.mjs pnpm --filter @agentify/scanner-worker dev",
-    "scanner:format": "prettier --write --config prettier.scanner.config.json --ignore-path .prettierignore.scanner \"{apps/web,apps/scanner-worker,apps/browser-observer-actor,packages/scanner-contracts,packages/scanner-database,packages/scanner,packages/analytics,packages/observability,packages/remediation}/**/*.{ts,tsx,json}\" \"tsconfig.scanner.json\" \"prettier.scanner.config.json\" \"ops/compose.scanner.yaml\" \"eslint.scanner.config.mjs\"",
-    "scanner:format:check": "prettier --check --config prettier.scanner.config.json --ignore-path .prettierignore.scanner \"{apps/web,apps/scanner-worker,apps/browser-observer-actor,packages/scanner-contracts,packages/scanner-database,packages/scanner,packages/analytics,packages/observability,packages/remediation}/**/*.{ts,tsx,json}\" \"tsconfig.scanner.json\" \"prettier.scanner.config.json\" \"ops/compose.scanner.yaml\" \"eslint.scanner.config.mjs\"",
-    "scanner:lint": "eslint --config eslint.scanner.config.mjs apps/web apps/scanner-worker apps/browser-observer-actor packages/scanner-contracts packages/scanner-database packages/scanner packages/analytics packages/observability packages/remediation --max-warnings=0",
     "scanner:test:unit": "pnpm --filter @agentify/scanner-contracts build && pnpm --filter @agentify/scanner-contracts run test:unit && pnpm --filter @agentify/scanner-database run test:unit && pnpm --filter @agentify/scanner run test:unit && pnpm --filter @agentify/analytics run test:unit && pnpm --filter @agentify/observability run test:unit && pnpm --filter @agentify/remediation run test:unit && pnpm --filter @agentify/browser-observer-actor run test:unit && pnpm --filter @agentify/scanner-worker run test:unit && pnpm --filter @agentify/web run test:unit",
     "scanner:db:generate": "pnpm --filter @agentify/scanner-database db:generate",
     "scanner:db:check": "pnpm --filter @agentify/scanner-database db:check",
@@ -77,11 +71,6 @@
     "@types/node": "^26.3.0",
     "typescript": "5.9.3",
     "vitest": "^4.1.11",
-    "@eslint/js": "10.0.1",
-    "axe-core": "4.12.1",
-    "eslint": "10.0.1",
-    "globals": "17.7.0",
-    "prettier": "3.9.5",
-    "typescript-eslint": "8.63.0"
+    "axe-core": "4.12.1"
   }
 }

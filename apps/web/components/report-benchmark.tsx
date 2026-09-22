@@ -14,8 +14,7 @@ export function ReportBenchmark({
   if (!benchmark) return null;
   return (
     <p>
-      Segment average {Math.round(benchmark.average_score)} from{" "}
-      {benchmark.sample_size} scans
+      Segment average {Math.round(benchmark.average_score)} from {benchmark.sample_size} scans
     </p>
   );
 }

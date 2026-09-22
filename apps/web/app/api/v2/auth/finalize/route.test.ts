@@ -5,10 +5,7 @@ import {
 import { NextResponse } from "next/server";
 import { describe, expect, it } from "vitest";
 import { REPORT_SESSION_COOKIE } from "../../../../../lib/server/auth";
-import {
-  attachReportCabinetHandoffCookie,
-  attachReportSessionCookie,
-} from "./route";
+import { attachReportCabinetHandoffCookie, attachReportSessionCookie } from "./route";
 
 describe("report session cookie", () => {
   it("is HttpOnly, Secure, SameSite=Lax, path-wide and bounded in production", () => {
@@ -52,8 +49,7 @@ describe("fresh report cabinet handoff cookie", () => {
     expect(cookie).not.toContain("Domain=");
     expect(cookie).not.toContain(token);
 
-    const value =
-      response.cookies.get(REPORT_CABINET_HANDOFF_COOKIE)?.value ?? "";
+    const value = response.cookies.get(REPORT_CABINET_HANDOFF_COOKIE)?.value ?? "";
     expect(
       openReportCabinetHandoff(value, {
         email: "owner@example.com",
@@ -81,9 +77,7 @@ describe("fresh report cabinet handoff cookie", () => {
           secret,
         }),
       ).toBe(false);
-      expect(
-        response.cookies.get(REPORT_CABINET_HANDOFF_COOKIE),
-      ).toBeUndefined();
+      expect(response.cookies.get(REPORT_CABINET_HANDOFF_COOKIE)).toBeUndefined();
     }
   });
 });

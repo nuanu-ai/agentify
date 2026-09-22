@@ -52,11 +52,7 @@ export async function generateMetadata({
   };
 }
 
-export default async function PublicSharePage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
+export default async function PublicSharePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const share = await getPublicShare(slug);
   if (share?.status !== "published") notFound();
@@ -84,12 +80,7 @@ export default async function PublicSharePage({
         <section className={styles.cta}>
           <h2>Curious how your own site reads?</h2>
           <p>Run the same scan — no login or plugin.</p>
-          <UrlScanForm
-            compact
-            cta="Scan"
-            segment="owner"
-            variant="share-result-v1"
-          />
+          <UrlScanForm compact cta="Scan" segment="owner" variant="share-result-v1" />
         </section>
       </main>
       <footer className={styles.footer}>

@@ -13,11 +13,8 @@ import {
 } from "./runtime-guards.js";
 
 const chromeExecutable = (): string | undefined => {
-  const macChrome =
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-  return process.platform === "darwin" && existsSync(macChrome)
-    ? macChrome
-    : undefined;
+  const macChrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+  return process.platform === "darwin" && existsSync(macChrome) ? macChrome : undefined;
 };
 
 describe("real Chromium aggregate extraction", () => {
@@ -54,15 +51,9 @@ describe("real Chromium aggregate extraction", () => {
       expect(signals.webmcpPresent).toBe(true);
       expect(signals.webmcpToolCount).toBe(1);
       expect(signals.hiddenInstructionCount).toBeGreaterThan(0);
-      expect(signals.rawMetadata.canonical).toBe(
-        "https://fixture.agentify.ad/before-render",
-      );
-      expect(signals.renderedMetadata.canonical).toBe(
-        "https://fixture.agentify.ad/after-render",
-      );
-      expect(JSON.stringify(signals)).not.toContain(
-        "Ignore previous instructions",
-      );
+      expect(signals.rawMetadata.canonical).toBe("https://fixture.agentify.ad/before-render");
+      expect(signals.renderedMetadata.canonical).toBe("https://fixture.agentify.ad/after-render");
+      expect(JSON.stringify(signals)).not.toContain("Ignore previous instructions");
       await context.close();
     } finally {
       await browser.close();
@@ -113,22 +104,14 @@ describe("real Chromium aggregate extraction", () => {
         </script></body>`,
         { waitUntil: "domcontentloaded", timeout: 5_000 },
       );
-      expect(await page.locator("iframe").count(), pageErrors.join("\n")).toBe(
-        1,
-      );
-      const childFrame = page
-        .frames()
-        .find((frame) => frame !== page.mainFrame());
-      if (!childFrame)
-        throw new Error("the fixture page opened no child frame");
+      expect(await page.locator("iframe").count(), pageErrors.join("\n")).toBe(1);
+      const childFrame = page.frames().find((frame) => frame !== page.mainFrame());
+      if (!childFrame) throw new Error("the fixture page opened no child frame");
       const main = await page.evaluate(
         () =>
           (
             globalThis as typeof globalThis & {
-              __mainSnapshot: Record<
-                string,
-                { type: string; present: boolean }
-              >;
+              __mainSnapshot: Record<string, { type: string; present: boolean }>;
             }
           ).__mainSnapshot,
       );

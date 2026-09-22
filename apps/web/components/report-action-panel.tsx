@@ -30,9 +30,7 @@ export function ReportActionPanel({
   scanId: string;
   shareEnabled: boolean;
 }>) {
-  const [intent, setIntent] = useState<ResumeIntent | null>(
-    initialIntent ?? null,
-  );
+  const [intent, setIntent] = useState<ResumeIntent | null>(initialIntent ?? null);
   const [downloadStarted, setDownloadStarted] = useState(false);
 
   useEffect(() => {
@@ -72,11 +70,7 @@ export function ReportActionPanel({
       ) : null}
       <div className={styles.rows}>
         {shareEnabled ? (
-          <PublicShareActions
-            enabled={shareEnabled}
-            preview={preview}
-            scanId={scanId}
-          />
+          <PublicShareActions enabled={shareEnabled} preview={preview} scanId={scanId} />
         ) : null}
         {promptEnabled ? (
           <CopyRemediationPrompt
@@ -90,17 +84,11 @@ export function ReportActionPanel({
       </div>
       {promptEnabled ? (
         <div className={styles.secondaryRow}>
-          <CopyRemediationPrompt
-            label="Copy developer brief"
-            prompt={devBrief}
-            secondary
-            small
-          />
+          <CopyRemediationPrompt label="Copy developer brief" prompt={devBrief} secondary small />
         </div>
       ) : null}
       <p className={styles.caption}>
-        The public link shows only the domain, level, score, and scan date.
-        Prompts stay private.
+        The public link shows only the domain, level, score, and scan date. Prompts stay private.
       </p>
     </section>
   );

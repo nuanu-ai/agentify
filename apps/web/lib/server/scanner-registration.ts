@@ -1,7 +1,4 @@
-import {
-  partnerClickIdSchema,
-  type RegistrationRequest,
-} from "@agentify/scanner-contracts";
+import { partnerClickIdSchema, type RegistrationRequest } from "@agentify/scanner-contracts";
 import {
   consentSnapshots,
   createUuidV7,
@@ -55,20 +52,12 @@ export async function createScannerRegistrationIntent(
   const emailLookupHash = hmacHex(config.hmacSecret, "email", normalizedEmail);
   const limits = await consumeRateLimitsAtomically([
     {
-      keyHash: hmacHex(
-        config.hmacSecret,
-        "registration-email",
-        emailLookupHash,
-      ),
+      keyHash: hmacHex(config.hmacSecret, "registration-email", emailLookupHash),
       kind: "registration_email_hour",
       limit: 3,
     },
     {
-      keyHash: hmacHex(
-        config.hmacSecret,
-        "registration-session",
-        scan.sessionId,
-      ),
+      keyHash: hmacHex(config.hmacSecret, "registration-session", scan.sessionId),
       kind: "registration_session_hour",
       limit: 10,
     },
@@ -102,17 +91,10 @@ export async function createScannerRegistrationIntent(
       scanId: scan.id,
       sessionId: scan.sessionId,
       callbackStateHash: sha256(state),
-      emailNormalizedCiphertext: encryptEmail(
-        normalizedEmail,
-        config.encryptionKey,
-      ),
+      emailNormalizedCiphertext: encryptEmail(normalizedEmail, config.encryptionKey),
       emailLookupHash,
-      phoneE164Ciphertext: body.phone
-        ? encryptEmail(body.phone, config.encryptionKey)
-        : null,
-      phoneLookupHash: body.phone
-        ? hmacHex(config.hmacSecret, "phone", body.phone)
-        : null,
+      phoneE164Ciphertext: body.phone ? encryptEmail(body.phone, config.encryptionKey) : null,
+      phoneLookupHash: body.phone ? hmacHex(config.hmacSecret, "phone", body.phone) : null,
       partnerClickIdCiphertext: partnerClickId.success
         ? encryptSensitiveValue(partnerClickId.data, config.encryptionKey)
         : null,
@@ -160,13 +142,8 @@ type FinalizedRegistration = Readonly<{
   sessionToken: string;
 }>;
 
-async function lockScannerEmail(
-  tx: DatabaseTransaction,
-  emailLookupHash: string,
-) {
-  await tx.execute(
-    sql`select pg_advisory_xact_lock(hashtextextended(${emailLookupHash}, 0))`,
-  );
+async function lockScannerEmail(tx: DatabaseTransaction, emailLookupHash: string) {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${emailLookupHash}, 0))`);
 }
 
 async function currentRegistrationScan(
@@ -197,11 +174,7 @@ export async function finalizeCabinetScannerRegistrationInTransaction(
   state: string,
   email: string,
 ): Promise<FinalizedRegistration | undefined> {
-  return await finalizeRegistrationIntentInTransaction(
-    tx,
-    state,
-    normalizeEmail(email),
-  );
+  return await finalizeRegistrationIntentInTransaction(tx, state, normalizeEmail(email));
 }
 
 async function finalizeRegistrationIntentInTransaction(
@@ -232,12 +205,7 @@ async function finalizeRegistrationIntentInTransaction(
   if (!intent) return undefined;
 
   const scan = (
-    await tx
-      .select()
-      .from(scans)
-      .where(eq(scans.id, intent.scanId))
-      .limit(1)
-      .for("update")
+    await tx.select().from(scans).where(eq(scans.id, intent.scanId)).limit(1).for("update")
   )[0];
   if (
     !scan ||
@@ -248,11 +216,7 @@ async function finalizeRegistrationIntentInTransaction(
   }
 
   let lead = (
-    await tx
-      .select()
-      .from(leads)
-      .where(eq(leads.emailLookupHash, emailLookupHash))
-      .limit(1)
+    await tx.select().from(leads).where(eq(leads.emailLookupHash, emailLookupHash)).limit(1)
   )[0];
   // The phone is optional on the form: one given now replaces the stored
   // one, and none given leaves a stored one alone.
@@ -277,9 +241,7 @@ async function finalizeRegistrationIntentInTransaction(
       firstSegment: scan.segment,
       firstSessionId: intent.sessionId,
     });
-    lead = (
-      await tx.select().from(leads).where(eq(leads.id, leadId)).limit(1)
-    )[0];
+    lead = (await tx.select().from(leads).where(eq(leads.id, leadId)).limit(1))[0];
     firstVerification = true;
   } else {
     const newlyVerified = (
@@ -320,11 +282,7 @@ async function finalizeRegistrationIntentInTransaction(
   await tx.update(scans).set({ leadId: lead.id }).where(eq(scans.id, scan.id));
 
   const registrationSession = (
-    await tx
-      .select()
-      .from(sessions)
-      .where(eq(sessions.id, intent.sessionId))
-      .limit(1)
+    await tx.select().from(sessions).where(eq(sessions.id, intent.sessionId)).limit(1)
   )[0];
   const previousConsent = registrationSession?.consentSnapshotId
     ? (
@@ -342,9 +300,7 @@ async function finalizeRegistrationIntentInTransaction(
     policyVersion: "phase-a-v2",
     country: previousConsent?.country,
     categories: {
-      ...(typeof previousConsent?.categories === "object"
-        ? previousConsent.categories
-        : {}),
+      ...(typeof previousConsent?.categories === "object" ? previousConsent.categories : {}),
       essential_processing: true,
       dataset_reuse: true,
       marketing_email: intent.marketingEmailOptIn,
@@ -383,8 +339,7 @@ async function finalizeRegistrationIntentInTransaction(
     },
   });
   const previousCategories =
-    typeof previousConsent?.categories === "object" &&
-    previousConsent.categories !== null
+    typeof previousConsent?.categories === "object" && previousConsent.categories !== null
       ? (previousConsent.categories as Record<string, unknown>)
       : {};
   if (
@@ -394,10 +349,7 @@ async function finalizeRegistrationIntentInTransaction(
     intent.partnerClickIdCiphertext
   ) {
     const partnerClickId = partnerClickIdSchema.parse(
-      decryptSensitiveValue(
-        intent.partnerClickIdCiphertext,
-        config.encryptionKey,
-      ),
+      decryptSensitiveValue(intent.partnerClickIdCiphertext, config.encryptionKey),
     );
     await tx
       .insert(deliveryOutbox)

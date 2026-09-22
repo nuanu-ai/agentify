@@ -27,9 +27,7 @@ describe("report-to-cabinet handoff envelope", () => {
     });
     if (!sealed) throw new Error("sealing a valid handoff produced nothing");
 
-    expect(REPORT_CABINET_HANDOFF_COOKIE).toBe(
-      "agentify_report_cabinet_handoff",
-    );
+    expect(REPORT_CABINET_HANDOFF_COOKIE).toBe("agentify_report_cabinet_handoff");
     expect(REPORT_CABINET_HANDOFF_TTL_SECONDS).toBe(3600);
     expect(sealed).not.toContain(token);
     expect(
@@ -91,19 +89,16 @@ describe("report-to-cabinet handoff envelope", () => {
     `${actionUrl}#fragment`,
     `https://user@agentify.example/cabinet/sign-in/open?token=${token}`,
     `https://agentify.example/cabinet/cards?token=${token}`,
-  ])(
-    "refuses a cabinet action outside the closed same-origin shape: %s",
-    (candidate) => {
-      expect(
-        sealReportCabinetHandoff({
-          actionUrl: candidate,
-          email,
-          now,
-          publicOrigin: "https://agentify.example",
-          scanId,
-          secret,
-        }),
-      ).toBeNull();
-    },
-  );
+  ])("refuses a cabinet action outside the closed same-origin shape: %s", (candidate) => {
+    expect(
+      sealReportCabinetHandoff({
+        actionUrl: candidate,
+        email,
+        now,
+        publicOrigin: "https://agentify.example",
+        scanId,
+        secret,
+      }),
+    ).toBeNull();
+  });
 });

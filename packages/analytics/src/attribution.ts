@@ -32,9 +32,7 @@ export const readAttributionTouch = (
     utmCampaign: clean(params.get("utm_campaign")),
     utmContent: clean(params.get("utm_content")),
     utmTerm: clean(params.get("utm_term")),
-    ...(fbclid
-      ? { fbclidHash: createHash("sha256").update(fbclid).digest("hex") }
-      : {}),
+    ...(fbclid ? { fbclidHash: createHash("sha256").update(fbclid).digest("hex") } : {}),
   };
 };
 

@@ -21,14 +21,11 @@ export function generateMetadata(): Metadata {
       default: `${config.displayBrand} — website agent-readiness diagnostic`,
       template: `%s · ${config.displayBrand}`,
     },
-    description:
-      "A public-HTTP diagnostic showing what your website makes readable to AI agents.",
+    description: "A public-HTTP diagnostic showing what your website makes readable to AI agents.",
   };
 }
 
-export default function RootLayout({
-  children,
-}: Readonly<{ children: ReactNode }>) {
+export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   const analyticsConfig = getBrowserAnalyticsConfig();
   return (
     <html lang="en-US">

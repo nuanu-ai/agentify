@@ -1,7 +1,0 @@
-node_modules
-.next
-dist
-coverage
-06-design/reference
-output
-pnpm-lock.yaml

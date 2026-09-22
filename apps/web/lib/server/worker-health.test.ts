@@ -72,21 +72,21 @@ describe("operational health thresholds", () => {
       scannerCapacity: true,
       analyticsOutbox: true,
     });
-    expect(
-      evaluateOperationalSignals({ ...healthy, queue_age_seconds: 11 }),
-    ).toMatchObject({ scannerCapacity: false });
-    expect(
-      evaluateOperationalSignals({ ...healthy, stale_running: 1 }),
-    ).toMatchObject({ scannerCapacity: false });
-    expect(
-      evaluateOperationalSignals({ ...healthy, failed_15m: 2 }),
-    ).toMatchObject({ scannerCapacity: false });
-    expect(
-      evaluateOperationalSignals({ ...healthy, outbox_age_seconds: 301 }),
-    ).toMatchObject({ analyticsOutbox: false });
-    expect(
-      evaluateOperationalSignals({ ...healthy, outbox_dead_letters: 1 }),
-    ).toMatchObject({ analyticsOutbox: false });
+    expect(evaluateOperationalSignals({ ...healthy, queue_age_seconds: 11 })).toMatchObject({
+      scannerCapacity: false,
+    });
+    expect(evaluateOperationalSignals({ ...healthy, stale_running: 1 })).toMatchObject({
+      scannerCapacity: false,
+    });
+    expect(evaluateOperationalSignals({ ...healthy, failed_15m: 2 })).toMatchObject({
+      scannerCapacity: false,
+    });
+    expect(evaluateOperationalSignals({ ...healthy, outbox_age_seconds: 301 })).toMatchObject({
+      analyticsOutbox: false,
+    });
+    expect(evaluateOperationalSignals({ ...healthy, outbox_dead_letters: 1 })).toMatchObject({
+      analyticsOutbox: false,
+    });
   });
 
   it("does not call one low-volume target failure systemic", () => {

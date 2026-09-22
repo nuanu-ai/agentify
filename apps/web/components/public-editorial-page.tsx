@@ -7,10 +7,7 @@ import type {
 } from "../content/public-editorial";
 import { EditorialPage, Notice, ProseList } from "./editorial-page";
 
-function renderNode(
-  node: Exclude<RichText, string>[number],
-  key: string,
-): ReactNode {
+function renderNode(node: Exclude<RichText, string>[number], key: string): ReactNode {
   switch (node.kind) {
     case "code":
       return <code key={key}>{node.value}</code>;
@@ -29,9 +26,7 @@ function renderNode(
 
 function renderRichText(content: RichText): ReactNode {
   if (typeof content === "string") return content;
-  return content.map((node, index) =>
-    renderNode(node, `${node.kind}-${index}`),
-  );
+  return content.map((node, index) => renderNode(node, `${node.kind}-${index}`));
 }
 
 function renderBlock(block: EditorialBlock, index: number): ReactNode {
@@ -56,9 +51,7 @@ function renderBlock(block: EditorialBlock, index: number): ReactNode {
   }
 }
 
-export function PublicEditorialPage({
-  page,
-}: Readonly<{ page: PublicEditorialPageModel }>) {
+export function PublicEditorialPage({ page }: Readonly<{ page: PublicEditorialPageModel }>) {
   return (
     <EditorialPage
       eyebrow={page.eyebrow}

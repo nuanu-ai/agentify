@@ -58,21 +58,13 @@ type Client = Readonly<{
   }): Promise<DeleteUnattachedPersonResponse>;
 }>;
 
-export function createCabinetReportIdentityClient(
-  options: ClientOptions,
-): Client {
+export function createCabinetReportIdentityClient(options: ClientOptions): Client {
   const fetchImpl = options.fetchImpl ?? fetch;
   const endpoint = new URL(REPORT_IDENTITY_PATH, options.baseUrl);
 
-  async function post<T>(
-    body: object,
-    responseSchema: z.ZodType<T>,
-  ): Promise<T> {
+  async function post<T>(body: object, responseSchema: z.ZodType<T>): Promise<T> {
     const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      REPORT_IDENTITY_TIMEOUT_MS,
-    );
+    const timeout = setTimeout(() => controller.abort(), REPORT_IDENTITY_TIMEOUT_MS);
     try {
       const response = await fetchImpl(endpoint, {
         method: "POST",

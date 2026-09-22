@@ -37,9 +37,7 @@ export const parseSitemap = (body: string): SitemapResult => {
     .slice(0, 5000)
     .map((match) => decodeXml(captured(match).trim()))
     .filter((value) => /^https?:\/\//i.test(value));
-  const lastmods = [
-    ...body.matchAll(/<lastmod(?:\s[^>]*)?>([\s\S]*?)<\/lastmod>/gi),
-  ]
+  const lastmods = [...body.matchAll(/<lastmod(?:\s[^>]*)?>([\s\S]*?)<\/lastmod>/gi)]
     .slice(0, 5000)
     .map((match) => captured(match).trim());
   return {
@@ -56,27 +54,20 @@ const blockedJsonKey = new Set(["__proto__", "prototype", "constructor"]);
 const validateJsonShape = (value: unknown, depth = 0): boolean => {
   if (depth > 40) return false;
   if (Array.isArray(value))
-    return (
-      value.length <= 10_000 &&
-      value.every((entry) => validateJsonShape(entry, depth + 1))
-    );
+    return value.length <= 10_000 && value.every((entry) => validateJsonShape(entry, depth + 1));
   if (value && typeof value === "object") {
     const entries = Object.entries(value as Record<string, unknown>);
     return (
       entries.length <= 10_000 &&
       entries.every(
-        ([key, entry]) =>
-          !blockedJsonKey.has(key) && validateJsonShape(entry, depth + 1),
+        ([key, entry]) => !blockedJsonKey.has(key) && validateJsonShape(entry, depth + 1),
       )
     );
   }
   return true;
 };
 
-export const parseSafeJson = (
-  body: string,
-  maxBytes = 1_048_576,
-): unknown | undefined => {
+export const parseSafeJson = (body: string, maxBytes = 1_048_576): unknown | undefined => {
   if (Buffer.byteLength(body) > maxBytes) return undefined;
   try {
     const parsed: unknown = JSON.parse(body);
@@ -96,9 +87,7 @@ const flattenJsonLd = (value: unknown): Record<string, unknown>[] => {
   if (Array.isArray(value)) return value.flatMap(flattenJsonLd);
   if (!value || typeof value !== "object") return [];
   const record = value as Record<string, unknown>;
-  const graph = Array.isArray(record["@graph"])
-    ? record["@graph"].flatMap(flattenJsonLd)
-    : [];
+  const graph = Array.isArray(record["@graph"]) ? record["@graph"].flatMap(flattenJsonLd) : [];
   return [record, ...graph];
 };
 
@@ -106,8 +95,7 @@ const flattenJsonLd = (value: unknown): Record<string, unknown>[] => {
 // broken pattern rather than a page we could not read.
 const captured = (match: RegExpMatchArray): string => {
   const value = match[1];
-  if (value === undefined)
-    throw new Error("the pattern matched without filling its capture group");
+  if (value === undefined) throw new Error("the pattern matched without filling its capture group");
   return value;
 };
 
@@ -149,14 +137,9 @@ export const htmlSignals = (html: string) => ({
   textLength: visibleText(html).length,
   hasH1: /<h1\b[^>]*>[^<]+/i.test(html),
   hasTitle: /<title\b[^>]*>[^<]+/i.test(html),
-  hasPrice: /(?:[$€£¥]\s?\d|\d(?:[.,]\d{2})?\s?(?:USD|EUR|GBP|AUD|CAD))/i.test(
-    html,
-  ),
-  productLinkCount: [
-    ...html.matchAll(
-      /<a\b[^>]*href=["'][^"']*(?:product|shop|item)[^"']*["']/gi,
-    ),
-  ].length,
+  hasPrice: /(?:[$€£¥]\s?\d|\d(?:[.,]\d{2})?\s?(?:USD|EUR|GBP|AUD|CAD))/i.test(html),
+  productLinkCount: [...html.matchAll(/<a\b[^>]*href=["'][^"']*(?:product|shop|item)[^"']*["']/gi)]
+    .length,
   hreflangs: [
     ...html.matchAll(
       /<link\b[^>]*rel=["'][^"']*alternate[^"']*["'][^>]*hreflang=["']([^"']+)["'][^>]*>/gi,
@@ -174,12 +157,8 @@ export const comparableBodies = (left: string, right: string): boolean => {
   const a = visibleText(left).slice(0, 20_000).toLowerCase();
   const b = visibleText(right).slice(0, 20_000).toLowerCase();
   if (!a || !b) return false;
-  const leftTokens = new Set(
-    a.split(/\W+/).filter((token) => token.length > 3),
-  );
-  const rightTokens = new Set(
-    b.split(/\W+/).filter((token) => token.length > 3),
-  );
+  const leftTokens = new Set(a.split(/\W+/).filter((token) => token.length > 3));
+  const rightTokens = new Set(b.split(/\W+/).filter((token) => token.length > 3));
   if (!leftTokens.size || !rightTokens.size)
     return Math.min(a.length, b.length) / Math.max(a.length, b.length) >= 0.7;
   let overlap = 0;

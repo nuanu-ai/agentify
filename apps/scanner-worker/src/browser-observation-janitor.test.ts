@@ -15,20 +15,15 @@ describe("browser observation orphan janitor", () => {
   it("finds an unattached run, reconciles usage and marks storage clean", async () => {
     const persisted = {
       reconciliation: undefined as
-        { observationId: string; runId: string; usageUsd: number } | undefined,
+        | { observationId: string; runId: string; usageUsd: number }
+        | undefined,
       storageCleaned: false,
     };
     const providerState = { cleaned: [] as string[] };
     const repository = {
-      listCleanupCandidates: async () => [
-        { ...cleanupCandidate, apifyRunId: null },
-      ],
+      listCleanupCandidates: async () => [{ ...cleanupCandidate, apifyRunId: null }],
       listUsageReconciliationCandidates: async () => [cleanupCandidate],
-      reconcileUsage: async (
-        observationId: string,
-        runId: string,
-        usageUsd: number,
-      ) => {
+      reconcileUsage: async (observationId: string, runId: string, usageUsd: number) => {
         persisted.reconciliation = { observationId, runId, usageUsd };
         return { state: "updated", deltaUsd: 0.001, dayTotalUsd: 0.011 };
       },
@@ -51,9 +46,7 @@ describe("browser observation orphan janitor", () => {
       },
     } as unknown as BrowserProviderClient;
 
-    await expect(
-      cleanupBrowserObservationOrphans({ repository, provider }),
-    ).resolves.toBe(1);
+    await expect(cleanupBrowserObservationOrphans({ repository, provider })).resolves.toBe(1);
     expect(providerState.cleaned).toEqual(["orphan-run"]);
     expect(persisted).toEqual({
       reconciliation: {
@@ -68,9 +61,7 @@ describe("browser observation orphan janitor", () => {
   it("leaves a failed cleanup pending for the next janitor pass", async () => {
     const persisted = { storageCleaned: false, cleanupError: false };
     const repository = {
-      listCleanupCandidates: async () => [
-        { ...cleanupCandidate, apifyRunId: "run-1" },
-      ],
+      listCleanupCandidates: async () => [{ ...cleanupCandidate, apifyRunId: "run-1" }],
       listUsageReconciliationCandidates: async () => [],
       reconcileUsage: async () => ({
         state: "unchanged",
@@ -117,11 +108,7 @@ describe("browser observation orphan janitor", () => {
     const repository = {
       listCleanupCandidates: async () => [],
       listUsageReconciliationCandidates: async () => [cleanupCandidate],
-      reconcileUsage: async (
-        _observationId: string,
-        _runId: string,
-        usageUsd: number,
-      ) => {
+      reconcileUsage: async (_observationId: string, _runId: string, usageUsd: number) => {
         state.reconciledUsageUsd = usageUsd;
         return {
           state: "updated",
@@ -169,9 +156,7 @@ describe("browser observation orphan janitor", () => {
   it("finishes storage cleanup before conservative usage settlement", async () => {
     const lifecycle: string[] = [];
     const repository = {
-      listCleanupCandidates: async () => [
-        { ...cleanupCandidate, apifyRunId: "cleanup-run" },
-      ],
+      listCleanupCandidates: async () => [{ ...cleanupCandidate, apifyRunId: "cleanup-run" }],
       listUsageReconciliationCandidates: async () => [
         {
           ...cleanupCandidate,
@@ -202,14 +187,7 @@ describe("browser observation orphan janitor", () => {
       },
     } as unknown as BrowserProviderClient;
 
-    await expect(
-      cleanupBrowserObservationOrphans({ repository, provider }),
-    ).resolves.toBe(1);
-    expect(lifecycle).toEqual([
-      "cleanup",
-      "mark-clean",
-      "usage-failed",
-      "settle",
-    ]);
+    await expect(cleanupBrowserObservationOrphans({ repository, provider })).resolves.toBe(1);
+    expect(lifecycle).toEqual(["cleanup", "mark-clean", "usage-failed", "settle"]);
   });
 });

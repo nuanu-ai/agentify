@@ -126,9 +126,7 @@ describe("browser analytics dedup", () => {
         deliveries.meta += 1;
       },
     };
-    await expect(dispatchConsentedBrowserEvent(input)).rejects.toThrow(
-      "posthog_unavailable",
-    );
+    await expect(dispatchConsentedBrowserEvent(input)).rejects.toThrow("posthog_unavailable");
     await dispatchConsentedBrowserEvent(input);
     expect(deliveries).toEqual({ posthog: 2, meta: 1 });
     expect(values.size).toBe(2);

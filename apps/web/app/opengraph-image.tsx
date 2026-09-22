@@ -40,9 +40,7 @@ export default function OpenGraphImage() {
       >
         <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
           <BrandMark size={54} />
-          <strong
-            style={{ fontSize: 40, fontWeight: 600, letterSpacing: "-0.02em" }}
-          >
+          <strong style={{ fontSize: 40, fontWeight: 600, letterSpacing: "-0.02em" }}>
             {displayBrand}
           </strong>
         </div>

@@ -1,10 +1,6 @@
 import { CONSENT_POLICY_VERSION } from "@agentify/analytics";
 import type { Segment } from "@agentify/scanner-contracts";
-import {
-  consentSnapshots,
-  createUuidV7,
-  sessions,
-} from "@agentify/scanner-database";
+import { consentSnapshots, createUuidV7, sessions } from "@agentify/scanner-database";
 import { eq } from "drizzle-orm";
 
 import { getServerConfig } from "./config";
@@ -55,11 +51,7 @@ export async function persistAttributionTouch(input: {
       const consentId = createUuidV7();
       await tx.insert(sessions).values({
         id: sessionId,
-        anonymousIdHash: hmacHex(
-          config.hmacSecret,
-          "anonymous",
-          anonymousToken,
-        ),
+        anonymousIdHash: hmacHex(config.hmacSecret, "anonymous", anonymousToken),
         firstLandingVariant: input.landingVariant,
         firstUtmSource: input.touch.utm_source ?? null,
         firstUtmMedium: input.touch.utm_medium ?? null,
@@ -93,13 +85,7 @@ export async function persistAttributionTouch(input: {
         .update(sessions)
         .set({ consentSnapshotId: consentId })
         .where(eq(sessions.id, sessionId));
-      session = (
-        await tx
-          .select()
-          .from(sessions)
-          .where(eq(sessions.id, sessionId))
-          .limit(1)
-      )[0];
+      session = (await tx.select().from(sessions).where(eq(sessions.id, sessionId)).limit(1))[0];
     } else {
       const firstTouch = !session.firstLandingVariant;
       let consentSnapshotId = session.consentSnapshotId;
@@ -167,8 +153,7 @@ export async function persistAttributionTouch(input: {
       Boolean(input.partnerClickId) &&
       typeof currentConsent?.categories === "object" &&
       currentConsent.categories !== null &&
-      (currentConsent.categories as Record<string, unknown>).ads_measurement ===
-        true;
+      (currentConsent.categories as Record<string, unknown>).ads_measurement === true;
     return {
       ...(anonymousToken ? { anonymousToken } : {}),
       sessionId: session.id,

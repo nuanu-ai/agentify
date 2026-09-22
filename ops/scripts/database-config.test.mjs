@@ -2,10 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 
-const script = new URL(
-  "../deploy/droplet/validate-database-config.sh",
-  import.meta.url,
-).pathname;
+const script = new URL("../deploy/droplet/validate-database-config.sh", import.meta.url).pathname;
 const target = "aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres";
 
 function url(role, projectRef = "projectref", targetOverride = target) {
@@ -117,7 +114,8 @@ test("private scanner mode accepts only its separate database and least-privileg
   wrongAdmin.ADMIN_DATABASE_URL = privateUrl("postgres");
   assert.notEqual(run(wrongAdmin).status, 0);
   const splitHost = validPrivate();
-  splitHost.PRIVACY_DATABASE_URL = "postgresql://agentify_privacy:secret@other-postgres:5432/agentify_scanner";
+  splitHost.PRIVACY_DATABASE_URL =
+    "postgresql://agentify_privacy:secret@other-postgres:5432/agentify_scanner";
   assert.notEqual(run(splitHost).status, 0);
   const missingRole = validPrivate();
   delete missingRole.DASHBOARD_DATABASE_URL;
@@ -133,7 +131,8 @@ test("private admin scope needs no runtime secrets and never prints a password",
   assert.equal(accepted.status, 0, accepted.stderr);
   const rejected = run({
     DATABASE_MODE: "private",
-    ADMIN_DATABASE_URL: "postgresql://agentify_commerce:do-not-print@agentify-scanner-postgres:5432/agentify_commerce",
+    ADMIN_DATABASE_URL:
+      "postgresql://agentify_commerce:do-not-print@agentify-scanner-postgres:5432/agentify_commerce",
   });
   assert.notEqual(rejected.status, 0);
   assert.equal(`${rejected.stdout}${rejected.stderr}`.includes("do-not-print"), false);

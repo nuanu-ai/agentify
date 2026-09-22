@@ -17,10 +17,7 @@ import { ReportBenchmark } from "../../../components/report-benchmark";
 import { ReportCabinetControl } from "../../../components/report-cabinet-control";
 import { StatusBadge } from "../../../components/status-badge";
 import { getPublicAppConfig } from "../../../lib/app-config";
-import {
-  buildCanonicalFixPrompt,
-  buildFixPrompts,
-} from "../../../lib/fix-prompts";
+import { buildCanonicalFixPrompt, buildFixPrompts } from "../../../lib/fix-prompts";
 import { REPORT_SESSION_COOKIE } from "../../../lib/server/auth";
 import { getServerConfig } from "../../../lib/server/config";
 import {
@@ -38,11 +35,7 @@ export const metadata: Metadata = {
   referrer: "strict-origin",
 };
 
-export default async function ReportPage({
-  params,
-}: {
-  params: Promise<{ scanId: string }>;
-}) {
+export default async function ReportPage({ params }: { params: Promise<{ scanId: string }> }) {
   const { scanId } = await params;
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get(REPORT_SESSION_COOKIE)?.value;
@@ -54,13 +47,10 @@ export default async function ReportPage({
         <section className={styles.locked}>
           <h1>Private report access required</h1>
           <p>
-            Open the one-time verification link sent after this scan. A scan
-            token alone cannot open the full report.
+            Open the one-time verification link sent after this scan. A scan token alone cannot open
+            the full report.
           </p>
-          <Link
-            className="button button-primary"
-            href="/auth/callback?recover=1"
-          >
+          <Link className="button button-primary" href="/auth/callback?recover=1">
             Recover report access
           </Link>
         </section>
@@ -68,15 +58,9 @@ export default async function ReportPage({
     );
   }
   const serverConfig = getServerConfig();
-  const browserObservation = await getFullBrowserObservation(
-    scanId,
-    sessionToken,
-  );
+  const browserObservation = await getFullBrowserObservation(scanId, sessionToken);
   const cardSignal = getCardSignalPublicConfig();
-  const initialCardSignal = await getOwnedCardSignalForReport(
-    scanId,
-    sessionToken,
-  );
+  const initialCardSignal = await getOwnedCardSignalForReport(scanId, sessionToken);
   const publicConfig = getPublicAppConfig();
   const reportOwnerEmail = await getReportOwnerEmail(scanId, sessionToken);
   const { aiPrompt, devBrief } = buildFixPrompts(
@@ -84,14 +68,9 @@ export default async function ReportPage({
     publicConfig.displayBrand,
     browserObservation,
   );
-  const firstFailId = report.checks.find(
-    (check) => check.status === "fail",
-  )?.id;
+  const firstFailId = report.checks.find((check) => check.status === "fail")?.id;
   return (
-    <main
-      className={styles.page}
-      data-agentify-results-viewed-scan={report.scan_id}
-    >
+    <main className={styles.page} data-agentify-results-viewed-scan={report.scan_id}>
       <Brand />
       <header className={styles.hero}>
         <div>
@@ -102,15 +81,12 @@ export default async function ReportPage({
           {report.score ?? "—"}
           <small>/100</small>
         </strong>
-        <p>
-          Coverage {Math.round(report.coverage * 100)}% · diagnostic, not
-          certification
-        </p>
+        <p>Coverage {Math.round(report.coverage * 100)}% · diagnostic, not certification</p>
         <ReportBenchmark benchmark={report.benchmark} />
         {report.level === "callable_ready" ? (
           <p>
-            Callable-ready describes public discovery metadata. Agentify did not
-            invoke tools or verify authenticated actions.
+            Callable-ready describes public discovery metadata. Agentify did not invoke tools or
+            verify authenticated actions.
           </p>
         ) : null}
       </header>
@@ -131,12 +107,11 @@ export default async function ReportPage({
         <section className={styles.cabinet}>
           <h2>Selling to agents</h2>
           <p>
-            If what you sell can be sent a second time without loss, an access,
-            a key, a link, a subscription, the same address opens a merchant
-            cabinet: your engineer publishes the cards and takes orders in the
-            test channel, and selling live needs a seller name, a payout wallet
-            and our switch. If not, this report is the whole result, and you can
-            scan the site again whenever it changes.
+            If what you sell can be sent a second time without loss, an access, a key, a link, a
+            subscription, the same address opens a merchant cabinet: your engineer publishes the
+            cards and takes orders in the test channel, and selling live needs a seller name, a
+            payout wallet and our switch. If not, this report is the whole result, and you can scan
+            the site again whenever it changes.
           </p>
           <ReportCabinetControl
             email={reportOwnerEmail}
@@ -154,15 +129,9 @@ export default async function ReportPage({
             {report.checks
               .filter((check) => group.ids.includes(check.id))
               .map((check) => (
-                <details
-                  className={styles.check}
-                  key={check.id}
-                  open={check.id === firstFailId}
-                >
+                <details className={styles.check} key={check.id} open={check.id === firstFailId}>
                   <summary>
-                    <span className="mono">
-                      {String(check.id).padStart(2, "0")}
-                    </span>
+                    <span className="mono">{String(check.id).padStart(2, "0")}</span>
                     <strong>{canonicalCheckLabel(check.label_code)}</strong>
                     <StatusBadge status={check.status} />
                   </summary>
@@ -189,11 +158,7 @@ export default async function ReportPage({
                         {Object.entries(check.evidence).map(([key, value]) => (
                           <div key={key}>
                             <dt>{formatCode(key)}</dt>
-                            <dd>
-                              {Array.isArray(value)
-                                ? value.join(", ")
-                                : String(value)}
-                            </dd>
+                            <dd>{Array.isArray(value) ? value.join(", ") : String(value)}</dd>
                           </div>
                         ))}
                       </dl>
@@ -203,11 +168,7 @@ export default async function ReportPage({
                       <div className={styles.copyFix}>
                         <CopyRemediationPrompt
                           label="Copy this fix"
-                          prompt={buildCanonicalFixPrompt(
-                            report,
-                            check,
-                            publicConfig.displayBrand,
-                          )}
+                          prompt={buildCanonicalFixPrompt(report, check, publicConfig.displayBrand)}
                           secondary
                         />
                       </div>
@@ -249,9 +210,7 @@ export default async function ReportPage({
 
 function formatCode(value: string) {
   if (value === "callable_ready") return "Callable-ready";
-  return value
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
+  return value.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 const REPORT_GROUPS: readonly Readonly<{

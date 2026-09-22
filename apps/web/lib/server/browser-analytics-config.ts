@@ -2,10 +2,7 @@ import { z } from "zod";
 
 const environment = z.enum(["local", "test", "preview", "production"]);
 const optionalNonEmpty = <T extends z.ZodType>(schema: T) =>
-  z.preprocess(
-    (value) => (value === "" ? undefined : value),
-    schema.optional(),
-  );
+  z.preprocess((value) => (value === "" ? undefined : value), schema.optional());
 
 const schema = z.object({
   ANALYTICS_RUNTIME_ENV: environment.default("local"),
@@ -18,9 +15,7 @@ const schema = z.object({
 
 export function getBrowserAnalyticsConfig() {
   const parsed = schema.parse(process.env);
-  if (
-    Boolean(parsed.POSTHOG_BROWSER_KEY) !== Boolean(parsed.POSTHOG_BROWSER_HOST)
-  )
+  if (Boolean(parsed.POSTHOG_BROWSER_KEY) !== Boolean(parsed.POSTHOG_BROWSER_HOST))
     throw new Error("browser_posthog_requires_key_and_host");
   return {
     runtimeEnvironment: parsed.ANALYTICS_RUNTIME_ENV,

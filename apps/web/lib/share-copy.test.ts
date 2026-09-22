@@ -15,9 +15,7 @@ const LEVELS: PublicShareSnapshot["level"][] = [
 // claim. The provocative tone must never cross into these (brand §11 + truth).
 const FORBIDDEN = /guarantee|ranking|\btraffic\b|\bsales\b|#1|in chatgpt/i;
 
-function snap(
-  overrides: Partial<PublicShareSnapshot> = {},
-): PublicShareSnapshot {
+function snap(overrides: Partial<PublicShareSnapshot> = {}): PublicShareSnapshot {
   return {
     host: "bloomandco.com",
     score: 46,
@@ -62,8 +60,7 @@ describe("shareCopy", () => {
       const copy = shareCopy(snap({ level }));
       const all = `${copy.kicker} ${copy.headline} ${copy.subline}`;
       expect(all).not.toMatch(FORBIDDEN);
-      if (/certification/i.test(all))
-        expect(all).toMatch(/not a certification/i);
+      if (/certification/i.test(all)) expect(all).toMatch(/not a certification/i);
     }
   });
 

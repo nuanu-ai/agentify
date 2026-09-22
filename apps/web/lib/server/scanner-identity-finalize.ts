@@ -30,8 +30,7 @@ type RegistrationAuthority = Readonly<{
   scanId: string;
 }>;
 
-type RecoveryAuthority = ActiveRecoveryAuthority &
-  Readonly<{ intentKind: "recovery" }>;
+type RecoveryAuthority = ActiveRecoveryAuthority & Readonly<{ intentKind: "recovery" }>;
 
 type Authority = RegistrationAuthority | RecoveryAuthority;
 
@@ -80,9 +79,7 @@ async function findRegistrationAuthority(
         .limit(1)
     )[0];
     if (deletingLead?.deletionRequestedAt) return undefined;
-    const email = normalizeEmail(
-      decryptEmail(intent.encryptedEmail, config.encryptionKey),
-    );
+    const email = normalizeEmail(decryptEmail(intent.encryptedEmail, config.encryptionKey));
     if (hmacHex(config.hmacSecret, "email", email) !== intent.emailLookupHash) {
       throw new Error("registration_email_identity_mismatch");
     }
@@ -95,10 +92,7 @@ async function findRegistrationAuthority(
   });
 }
 
-async function findAuthority(
-  tokenHash: string,
-  state: string,
-): Promise<Authority | undefined> {
+async function findAuthority(tokenHash: string, state: string): Promise<Authority | undefined> {
   const recovery = await findActiveScannerRecoveryAuthority(tokenHash, state);
   if (recovery) return { ...recovery, intentKind: "recovery" };
   return await findRegistrationAuthority(state);
@@ -188,17 +182,8 @@ export async function verifyAndFinalizeScannerIdentity(
     if (deadline.getTime() <= Date.now()) return undefined;
     const local =
       authority.intentKind === "recovery"
-        ? await finalizeCabinetScannerRecoveryInTransaction(
-            tx,
-            authority,
-            tokenHash,
-            state,
-          )
-        : await finalizeCabinetScannerRegistrationInTransaction(
-            tx,
-            state,
-            authority.email,
-          );
+        ? await finalizeCabinetScannerRecoveryInTransaction(tx, authority, tokenHash, state)
+        : await finalizeCabinetScannerRegistrationInTransaction(tx, state, authority.email);
     if (!local) return undefined;
     const completedAt = new Date();
     await tx.insert(scannerIdentityCompletions).values({

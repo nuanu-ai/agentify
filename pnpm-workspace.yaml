@@ -1,7 +1,6 @@
 # One product, one reproducible install: every package of it is installed from
-# this workspace and its lockfile, code and documentation alike. The scanner's
-# packages are for now checked under a lint and compiler configuration of their
-# own, which is why the root commands that run over them are scoped.
+# this workspace and its lockfile, code and documentation alike, and one linter
+# reads all of it.
 packages:
   - packages/*
   - apps/*

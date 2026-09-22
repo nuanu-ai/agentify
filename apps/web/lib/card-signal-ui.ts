@@ -12,9 +12,6 @@ export function canLoadStripeSdk(input: {
   publishableKey: string | null;
 }) {
   return Boolean(
-    input.consented &&
-    input.clientSecret &&
-    input.adapter === "stripe" &&
-    input.publishableKey,
+    input.consented && input.clientSecret && input.adapter === "stripe" && input.publishableKey,
   );
 }

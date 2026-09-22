@@ -10,10 +10,8 @@ const SENSITIVE_QUERY_KEY = /(token|key|secret|password|signature|auth)/i;
 
 export function validateSubmittedUrl(value: string): UrlSyntaxResult {
   const input = value.trim();
-  if (!input)
-    return { ok: false, message: "Enter a domain or public website URL." };
-  if (input.length > 2048)
-    return { ok: false, message: "The URL is too long." };
+  if (!input) return { ok: false, message: "Enter a domain or public website URL." };
+  if (input.length > 2048) return { ok: false, message: "The URL is too long." };
 
   let parsed: URL;
   try {
@@ -35,11 +33,7 @@ export function validateSubmittedUrl(value: string): UrlSyntaxResult {
       message: "Remove the username or password from this URL.",
     };
   }
-  if (
-    !parsed.hostname ||
-    parsed.hostname === "localhost" ||
-    parsed.hostname.endsWith(".local")
-  ) {
+  if (!parsed.hostname || parsed.hostname === "localhost" || parsed.hostname.endsWith(".local")) {
     return { ok: false, message: "Enter a public website domain." };
   }
   if (parsed.port && !["80", "443"].includes(parsed.port)) {
@@ -48,9 +42,7 @@ export function validateSubmittedUrl(value: string): UrlSyntaxResult {
       message: "Only standard web ports 80 and 443 are supported.",
     };
   }
-  if (
-    [...parsed.searchParams.keys()].some((key) => SENSITIVE_QUERY_KEY.test(key))
-  ) {
+  if ([...parsed.searchParams.keys()].some((key) => SENSITIVE_QUERY_KEY.test(key))) {
     return {
       ok: false,
       message: "Remove secret or authentication parameters before scanning.",

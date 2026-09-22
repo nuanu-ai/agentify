@@ -32,9 +32,7 @@ describe("ReportActionPanel", () => {
   });
 
   it("drops prompt actions when the export flag is off", () => {
-    const markup = renderToStaticMarkup(
-      <ReportActionPanel {...baseProps} promptEnabled={false} />,
-    );
+    const markup = renderToStaticMarkup(<ReportActionPanel {...baseProps} promptEnabled={false} />);
     expect(markup).toContain("Copy share link");
     expect(markup).not.toContain("Copy AI fix prompt");
     expect(markup).not.toContain("Download .md");

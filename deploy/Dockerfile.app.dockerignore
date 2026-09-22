@@ -36,9 +36,6 @@ release-state.json
 /ops
 /fixtures
 /vitest.scanner.config.ts
-/eslint.scanner.config.mjs
-/prettier.scanner.config.json
-/.prettierignore.scanner
 /.env.scanner.example
 /.actor
 /.actorignore

@@ -132,9 +132,7 @@ describe("clean-clone environment", () => {
       CABINET_IDENTITY_URL: "",
       REPORT_IDENTITY_SECRET: "",
     });
-    expect(() => getServerConfig()).toThrow(
-      "cabinet_identity_configuration_missing",
-    );
+    expect(() => getServerConfig()).toThrow("cabinet_identity_configuration_missing");
   });
 
   it("rejects incomplete enforced Turnstile configuration", () => {
@@ -146,9 +144,7 @@ describe("clean-clone environment", () => {
       TURNSTILE_SITE_KEY: "",
       REGISTRATION_ENABLED: "false",
     });
-    expect(() => getServerConfig()).toThrow(
-      "turnstile_enforcement_requires_both_keys",
-    );
+    expect(() => getServerConfig()).toThrow("turnstile_enforcement_requires_both_keys");
   });
 
   it("requires the cabinet identity URL and dedicated secret together", () => {
@@ -158,8 +154,6 @@ describe("clean-clone environment", () => {
       CABINET_IDENTITY_URL: "http://cabinet.internal:3002",
       REPORT_IDENTITY_SECRET: "",
     });
-    expect(() => getServerConfig()).toThrow(
-      "cabinet_identity_url_and_secret_required_together",
-    );
+    expect(() => getServerConfig()).toThrow("cabinet_identity_url_and_secret_required_together");
   });
 });
