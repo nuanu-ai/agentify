@@ -1084,10 +1084,15 @@ export class Gateway {
       return {
         step: "payment_already_spent",
         heldBy: claim.heldBy,
-        // Whether pointing the agent at that order is any use to it. A claim
-        // held by an order that is over is a dead end, and saying "go and
-        // collect it" would send the agent somewhere with nothing to collect.
-        collectable: holder !== null && outcomeFor(holder.order) === "in_progress",
+        // Whether pointing the agent at that order is any use to it, which is
+        // the question of whether that order is still open and no other. A
+        // claim held by an order that is over is a dead end, and saying "go
+        // and collect it" would send the agent somewhere with nothing to
+        // collect. An order still open is worth going back to whatever its
+        // status reads — an order whose charge went quiet has its goods made
+        // and the buyer's money may have moved, and an agent told that one was
+        // over goes and pays for the same thing a second time.
+        collectable: holder !== null && isOpen(holder.order.state),
       };
     }
 
