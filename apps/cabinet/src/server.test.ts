@@ -46,10 +46,17 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type CabinetConfig, loadConfig } from "./config.js";
 import { type Answer, type GatewayClient, gatewayFor, type Registrar } from "./gateway.js";
-import { type Identity, identityFor, SESSION_HOURS } from "./identity.js";
+import {
+  type Identity,
+  identityFor,
+  LINK_MIN_INTERVAL_MS,
+  LINK_RATE_WINDOW_MS,
+  SESSION_HOURS,
+} from "./identity.js";
 import type { Handover, Message, Postman } from "./mail.js";
 import { buildApp } from "./server.js";
-import { readable } from "./testing/html.js";
+import { readable, waitingButton } from "./testing/html.js";
+import { rewindLinkSends } from "./testing/link-sends.js";
 
 /**
  * The key the gateway harness's own merchant holds, named rather than spelled
@@ -182,6 +189,11 @@ interface Browser {
   /**
    * Signs in as a person and follows the redirect, the way a browser does.
    * The account every test in this file starts with is the default.
+   *
+   * The minute the door keeps between two links to one address is moved out of
+   * the way first, so that a test signing a second device in — or signing the
+   * same person in twice — gets a link rather than the cooldown screen. The
+   * tests about the cooldown itself ask for their links directly.
    */
   signIn(email?: string): Promise<Visit>;
   /** The identifier in this browser's session cookie, or null. */
@@ -309,7 +321,7 @@ const started = async (options: Starting = {}): Promise<Running> => {
     forgetMerchant,
     rows,
     mails,
-    another: async () => await attachedTo(url, basePath, () => mails.at(-1)),
+    another: async () => await attachedTo(url, basePath, () => mails.at(-1), rows),
     async stopGateway() {
       if (stopped) {
         return;
@@ -412,7 +424,7 @@ async function visiting(
   const { port } = server.address() as AddressInfo;
 
   const url = `http://127.0.0.1:${port}`;
-  const browser = await attachedTo(url, basePath, () => mails.at(-1));
+  const browser = await attachedTo(url, basePath, () => mails.at(-1), rows);
   return {
     url,
     identity,
@@ -449,6 +461,7 @@ async function attachedTo(
   url: string,
   basePath: string,
   latestMail: () => Message | undefined = () => undefined,
+  rows: Record<string, Record<string, unknown>[]> = {},
 ): Promise<Browser> {
   const jar = new Map<string, string>();
 
@@ -505,6 +518,7 @@ async function attachedTo(
     postRaw: (path, contentType, body) =>
       call("POST", path, undefined, { raw: { contentType, body } }),
     async signIn(email = PERSON) {
+      rewindLinkSends(rows);
       const requested = await call("POST", `${basePath}/sign-in`, { email });
       if (requested.status !== 202) return requested;
       const found = /(https?:\/\/\S+)/.exec(latestMail()?.body ?? "")?.[1];
@@ -659,6 +673,7 @@ describe("the report-to-cabinet handoff", () => {
     });
 
   const freshLink = async (running: Running, email = PERSON): Promise<URL> => {
+    rewindLinkSends(running.rows);
     const requested = await running.browser.post("/cabinet/sign-in", { email });
     expect(requested.status).toBe(202);
     return actionIn(running.mails.at(-1));
@@ -957,15 +972,47 @@ describe("the passwordless cabinet door", () => {
     expect(known.html).toContain('method="post" action="/sign-in"');
     expect(known.html).toContain('method="get" action="/sign-in"');
     expect(known.html).toContain(`name="email" type="hidden" value="${PERSON}"`);
+    // A link has just gone out, so the resend carries the minute the door
+    // keeps between two of them — and carries it pressable. The script greys
+    // the button out; a browser that runs none is left the button it has
+    // always had, and the door refuses the early press in words.
+    const resend = waitingButton(known.html);
+    expect(resend.attributes.get("data-link-wait")).toBe(String(LINK_MIN_INTERVAL_MS / 1_000));
+    expect(resend.attributes.has("disabled")).toBe(false);
+  });
+
+  it("greys the resend for the hour, not the minute, on the page for this hour's third link", async () => {
+    const { browser, rows, mails } = await started();
+
+    let page = await browser.post("/sign-in", { email: PERSON });
+    for (let sent = 1; sent < 3; sent += 1) {
+      rewindLinkSends(rows);
+      page = await browser.post("/sign-in", { email: PERSON });
+    }
+
+    expect(page.status).toBe(202);
+    expect(mails).toHaveLength(3);
+    // Production break: the third link spends the hour, and a page that greys
+    // its resend for sixty seconds hands the button back, invites the press in
+    // words, and buys the person "try again in fifty-seven minutes".
+    const oldest = new Date(rows.cabinet_link_sends?.[0]?.sentAt as Date).getTime();
+    const owed = Math.ceil((oldest + LINK_RATE_WINDOW_MS - Date.now()) / 1_000);
+    const said = Number(waitingButton(page.html).attributes.get("data-link-wait"));
+    expect(said).toBeGreaterThan(LINK_MIN_INTERVAL_MS / 1_000);
+    expect(Math.abs(said - owed)).toBeLessThanOrEqual(2);
   });
 
   it("keeps the known address on the page and names the wait after its hourly limit", async () => {
-    const { browser, mails } = await started();
+    const { browser, mails, rows } = await started();
 
+    // Three links an hour take at least two minutes to ask for, so the rows
+    // are moved back a minute between them: what this test is about is the
+    // wall at the end of the three, not the minute in front of each.
     for (let sent = 0; sent < 3; sent += 1) {
       const answer = await browser.post("/sign-in", { email: PERSON });
       expect(answer.status).toBe(202);
       expect(answer.html).toContain(`name="email" type="hidden" value="${PERSON}"`);
+      rewindLinkSends(rows);
     }
 
     const limited = await browser.post("/sign-in", { email: PERSON });
@@ -974,7 +1021,43 @@ describe("the passwordless cabinet door", () => {
     expect(readable(limited.html)).toContain("No new link was sent");
     expect(readable(limited.html)).toMatch(/Try again in \d+ minutes/);
     expect(readable(limited.html)).not.toContain("is on its way");
+    // The resend stays, with the hour the server computed on it and nothing
+    // disabling it: a button served disabled is one no scriptless browser can
+    // ever press again, and this is the page where that would be felt.
+    expect(limited.html).toContain('method="post" action="/sign-in"');
+    expect(limited.html).toContain('method="get" action="/sign-in"');
+    const resend = waitingButton(limited.html);
+    expect(resend.attributes.get("data-link-wait")).toBe(limited.headers.get("retry-after"));
+    expect(resend.attributes.has("disabled")).toBe(false);
     expect(mails).toHaveLength(3);
+  });
+
+  it("says a link is already on its way and keeps the resend waiting inside the minute", async () => {
+    const { browser, mails } = await started();
+    const first = await browser.post("/sign-in", { email: PERSON });
+    expect(first.status).toBe(202);
+
+    const again = await browser.post("/sign-in", { email: PERSON });
+
+    expect(again.status).toBe(202);
+    const retryAfter = Number(again.headers.get("retry-after"));
+    expect(retryAfter).toBeGreaterThan(0);
+    expect(retryAfter).toBeLessThanOrEqual(LINK_MIN_INTERVAL_MS / 1_000);
+    const said = readable(again.html);
+    expect(said).toContain(PERSON);
+    // The wait is under a minute, so the hourly sentence would be a lie, and
+    // the three this address still has are untouched.
+    expect(said).not.toContain("three links an hour");
+    expect(said).not.toMatch(/Try again in \d+ minutes/);
+    // The seconds the door computed reach the page on the button, which is
+    // what counts them down, and the button is served pressable. Somebody at
+    // the wrong address still has the other way out beside it.
+    const resend = waitingButton(again.html);
+    expect(resend.attributes.get("data-link-wait")).toBe(again.headers.get("retry-after"));
+    expect(resend.attributes.has("disabled")).toBe(false);
+    expect(again.html).toContain('method="post" action="/sign-in"');
+    expect(again.html).toContain('method="get" action="/sign-in"');
+    expect(mails).toHaveLength(1);
   });
 
   it("does not spend a query token on GET and opens it once on an explicit same-origin POST", async () => {
@@ -2533,7 +2616,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
       REGISTRATION_INVITATION: "the-existing-gateway-process-secret",
     });
     const messages: Message[] = [];
-    const { identity } = await withIdentity(config, async (message) => {
+    const { identity, rows } = await withIdentity(config, async (message) => {
       messages.push(message);
       return "accepted";
     });
@@ -2561,7 +2644,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     await new Promise<void>((resolve) => server.once("listening", resolve));
     const { port } = server.address() as AddressInfo;
     return {
-      browser: await attachedTo(`http://127.0.0.1:${port}`, "", () => messages.at(-1)),
+      browser: await attachedTo(`http://127.0.0.1:${port}`, "", () => messages.at(-1), rows),
       close: async () => {
         await identity.close();
         await new Promise<void>((resolve, reject) => {

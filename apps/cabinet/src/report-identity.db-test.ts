@@ -7,7 +7,7 @@ import { reportIdentityTokenHash } from "@agentify/scanner-contracts/report-iden
 import { Pool } from "pg";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "./config.js";
-import { identityFor } from "./identity.js";
+import { identityFor, LINK_MIN_INTERVAL_MS } from "./identity.js";
 import type { Message } from "./mail.js";
 
 const wanted = (() => {
@@ -121,11 +121,47 @@ if (databaseUrl === null) {
     return token;
   }
 
+  /**
+   * A report link now, whatever this address asked for a moment ago.
+   *
+   * The door keeps a minute between two links to one address. These tests are
+   * about what happens to a link once it exists — a receipt, a tombstone, a
+   * deletion racing a send — so every send already on record is dated a minute
+   * further back before the next one is asked for, which is the minute a
+   * person would have waited. It leaves them inside the rolling hour, so the
+   * three an hour still count the links that went out.
+   */
+  async function rewindSends(): Promise<void> {
+    await pool.query("update cabinet_link_sends set sent_at = sent_at - $1::interval", [
+      "1 minute",
+    ]);
+  }
+
+  /**
+   * A cabinet link now, on an address these tests have already written to.
+   *
+   * The same minute `sendReport` waits out, on the other purpose. A test that
+   * needs a session — to delete a person, to read what a deletion left behind —
+   * is not a test about the door, and a link it did not get would not announce
+   * itself: the token would be read off whatever message came last, which is
+   * one that has already been spent. So the refusal is raised here.
+   */
+  async function cabinetLink(
+    identity: ReturnType<typeof identityFor>,
+    messages: Message[],
+  ): Promise<string> {
+    await rewindSends();
+    const asked = await identity.requestLink(EMAIL, "default");
+    if (asked.status !== "accepted") throw new Error("the cabinet link was not accepted");
+    return tokenIn(messages.at(-1) as Message);
+  }
+
   async function sendReport(
     identity: ReturnType<typeof identityFor>,
     messages: Message[],
     intentKind: "registration" | "recovery" = "registration",
   ) {
+    await rewindSends();
     const sent = await identity.sendReportLink({
       operation: "send",
       email: EMAIL,
@@ -155,6 +191,36 @@ if (databaseUrl === null) {
     beforeEach(async () => {
       await emptyEverything();
       await migrate();
+    });
+
+    it("keeps the same minute between two report links that the cabinet's door keeps", async () => {
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      const ask = async () =>
+        await identity.sendReportLink({
+          operation: "send",
+          email: EMAIL,
+          intent_kind: "registration",
+          state: STATE,
+        });
+      await expect(ask()).resolves.toMatchObject({ status: "accepted" });
+
+      // Asked for directly rather than through `sendReport`, which dates the
+      // sends back: this is the one test here about the minute itself, and
+      // every other one waits it out on the way to its own subject.
+      const again = await ask();
+
+      expect(again).toMatchObject({ status: "cooldown", retry_at: expect.any(String) });
+      expect(messages).toHaveLength(1);
+      expect(
+        (await pool.query("select count(*)::int as count from cabinet_link_sends")).rows[0],
+      ).toStrictEqual({ count: 1 });
+      // The contract carries a moment and no wall, so the minute is told from
+      // the hour by how far away the moment is.
+      if (again.status !== "cooldown") throw new Error("the second report link should be refused");
+      const owed = new Date(again.retry_at).getTime() - Date.now();
+      expect(owed).toBeGreaterThan(0);
+      expect(owed).toBeLessThanOrEqual(LINK_MIN_INTERVAL_MS);
     });
 
     it("rolls verification, person and generated session back when receipt storage fails", async () => {
@@ -585,8 +651,7 @@ if (databaseUrl === null) {
 
       const replacement = await first.make(EMAIL, MERCHANT);
       if (replacement === null) throw new Error("the replacement person was not made");
-      await first.requestLink(EMAIL, "default");
-      const replacementLink = tokenIn(messages.at(-1) as Message);
+      const replacementLink = await cabinetLink(first, messages);
       const restarted = identityOn(
         [],
         undefined,
@@ -616,8 +681,7 @@ if (databaseUrl === null) {
       await expect(first.deleteUnattachedPerson(request)).resolves.toStrictEqual({
         status: "retained",
       });
-      await first.requestLink(EMAIL, "default");
-      const newLink = tokenIn(messages.at(-1) as Message);
+      const newLink = await cabinetLink(first, messages);
       const restarted = identityOn(
         [],
         undefined,
@@ -638,8 +702,7 @@ if (databaseUrl === null) {
       const p1Report = await sendReport(identity, messages);
       const p1Receipt = await consume(identity, p1Report.token);
       expect(p1Receipt.status).toBe("pending");
-      await identity.requestLink(EMAIL, "default");
-      const p1Session = await identity.openLink(tokenIn(messages.at(-1) as Message));
+      const p1Session = await identity.openLink(await cabinetLink(identity, messages));
       expect(p1Session.status).toBe("opened");
       await expect(
         identity.deleteUnattachedPerson({
@@ -667,12 +730,12 @@ if (databaseUrl === null) {
          values ($1, 'https://shop.example', 'ck_preserved', 'cs_preserved', 'read_write', now())`,
         [p2.id],
       );
-      await identity.requestLink(EMAIL, "default");
-      await expect(identity.openLink(tokenIn(messages.at(-1) as Message))).resolves.toMatchObject({
-        status: "opened",
-      });
-      await identity.requestLink(EMAIL, "default");
-      const p2CabinetToken = tokenIn(messages.at(-1) as Message);
+      await expect(identity.openLink(await cabinetLink(identity, messages))).resolves.toMatchObject(
+        {
+          status: "opened",
+        },
+      );
+      const p2CabinetToken = await cabinetLink(identity, messages);
       const p2Report = await sendReport(identity, messages, "recovery");
       const p2Receipt = await consume(identity, p2Report.token, "recovery");
       if (p2Receipt.status !== "pending") throw new Error("the recovery link was refused");
@@ -824,8 +887,7 @@ if (databaseUrl === null) {
       });
       const made = await identity.make(EMAIL, MERCHANT);
       if (made === null) throw new Error("the replacement person was not made");
-      await identity.requestLink(EMAIL, "default");
-      const cabinetToken = tokenIn(messages.at(-1) as Message);
+      const cabinetToken = await cabinetLink(identity, messages);
 
       await expect(identity.deleteUnattachedPerson(request)).resolves.toStrictEqual({
         status: "already_absent",

@@ -2,8 +2,9 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { CabinetIdentity } from "./cabinet-entry.js";
 import { loadConfig } from "./config.js";
-import { identityFor } from "./identity.js";
+import { identityFor, LINK_MIN_INTERVAL_MS, LINK_RATE_WINDOW_MS } from "./identity.js";
 import type { Message } from "./mail.js";
+import { rewindLinkSends } from "./testing/link-sends.js";
 
 const config = loadConfig({
   DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
@@ -66,9 +67,12 @@ describe("cabinet magic links", () => {
 
     await expect(identity.requestLink(" Person@Example.com ", "default")).resolves.toStrictEqual({
       status: "accepted",
+      retryAt: expect.any(Date),
     });
+    rewindLinkSends(rows);
     await expect(identity.requestLink("person@example.com", "settings")).resolves.toStrictEqual({
       status: "accepted",
+      retryAt: expect.any(Date),
     });
 
     expect(rows.cabinet_accounts).toHaveLength(0);
@@ -101,6 +105,96 @@ describe("cabinet magic links", () => {
     });
     expect(rows.cabinet_accounts).toHaveLength(1);
     expect(rows.cabinet_sessions).toHaveLength(2);
+  });
+
+  it("sends nothing and spends nothing when a second link is asked for inside the minute", async () => {
+    const { identity, messages, rows } = memoryIdentity();
+    await expect(identity.requestLink("person@example.com", "default")).resolves.toStrictEqual({
+      status: "accepted",
+      retryAt: expect.any(Date),
+    });
+    const sentAt = new Date(rows.cabinet_link_sends?.[0]?.sentAt as Date);
+
+    const refused = await identity.requestLink("person@example.com", "default");
+
+    expect(refused).toStrictEqual({
+      status: "cooldown",
+      wall: "interval",
+      retryAt: new Date(sentAt.getTime() + LINK_MIN_INTERVAL_MS),
+    });
+    expect(messages).toHaveLength(1);
+    // A request the interval refused was never a send, so it may not take one
+    // of the three the hour allows: the row count is what that costs.
+    expect(rows.cabinet_link_sends).toHaveLength(1);
+  });
+
+  it("answers an accepted link with the wait in front of the next one, which after the third is the hour", async () => {
+    const { identity, rows } = memoryIdentity();
+
+    const first = await identity.requestLink("person@example.com", "default");
+    const firstSentAt = new Date(rows.cabinet_link_sends?.[0]?.sentAt as Date);
+    expect(first).toStrictEqual({
+      status: "accepted",
+      retryAt: new Date(firstSentAt.getTime() + LINK_MIN_INTERVAL_MS),
+    });
+
+    rewindLinkSends(rows);
+    await identity.requestLink("person@example.com", "default");
+    rewindLinkSends(rows);
+    const third = await identity.requestLink("person@example.com", "default");
+
+    // Production break: the third link spends the hour's allowance, and an
+    // accepted answer that still said "a minute" is a page that greys its
+    // resend for sixty seconds, hands it back, and buys the person a refusal
+    // for the rest of the hour. The wait behind a link is the wait in front of
+    // the next one, whichever wall that is.
+    const oldest = new Date(rows.cabinet_link_sends?.[0]?.sentAt as Date);
+    expect(third).toStrictEqual({
+      status: "accepted",
+      retryAt: new Date(oldest.getTime() + LINK_RATE_WINDOW_MS),
+    });
+    if (third.status !== "accepted") throw new Error("the third link should have gone out");
+    expect(third.retryAt.getTime() - Date.now()).toBeGreaterThan(LINK_MIN_INTERVAL_MS);
+  });
+
+  it("lets the next link out once the minute has passed and still stops at three in the hour", async () => {
+    const { identity, messages, rows } = memoryIdentity();
+
+    for (let sent = 0; sent < 3; sent += 1) {
+      await expect(identity.requestLink("person@example.com", "default")).resolves.toStrictEqual({
+        status: "accepted",
+        retryAt: expect.any(Date),
+      });
+      rewindLinkSends(rows);
+    }
+
+    expect(messages).toHaveLength(3);
+    const oldest = new Date(rows.cabinet_link_sends?.[0]?.sentAt as Date);
+    await expect(identity.requestLink("person@example.com", "default")).resolves.toStrictEqual({
+      status: "cooldown",
+      wall: "hourly",
+      retryAt: new Date(oldest.getTime() + LINK_RATE_WINDOW_MS),
+    });
+    expect(messages).toHaveLength(3);
+    expect(rows.cabinet_link_sends).toHaveLength(3);
+  });
+
+  it("names the hourly wall, not the minute, when waiting out the minute would change nothing", async () => {
+    const { identity, rows } = memoryIdentity();
+    for (let sent = 0; sent < 3; sent += 1) {
+      await identity.requestLink("person@example.com", "default");
+      if (sent < 2) rewindLinkSends(rows);
+    }
+
+    // The third link went out a moment ago, so both walls stand. The one the
+    // answer names is the one that is still there after the other has gone:
+    // told "forty seconds", a person presses in forty seconds and is refused
+    // for another hour.
+    const refused = await identity.requestLink("person@example.com", "default");
+
+    expect(refused).toMatchObject({ status: "cooldown", wall: "hourly" });
+    if (refused.status !== "cooldown") throw new Error("the fourth link should be refused");
+    expect(refused.retryAt.getTime() - Date.now()).toBeGreaterThan(LINK_MIN_INTERVAL_MS);
   });
 
   it("keeps the Woo destination inside the one-time cabinet claim", async () => {

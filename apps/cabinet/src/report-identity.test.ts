@@ -2,8 +2,9 @@ import { createHmac } from "node:crypto";
 import { reportIdentityTokenHash } from "@agentify/scanner-contracts/report-identity";
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
-import { identityFor } from "./identity.js";
+import { identityFor, LINK_MIN_INTERVAL_MS } from "./identity.js";
 import type { Message } from "./mail.js";
+import { rewindLinkSends } from "./testing/link-sends.js";
 
 const EMAIL = "owner@example.com";
 const STATE = "s".repeat(43);
@@ -67,10 +68,20 @@ function actionIn(message: Message): URL {
   return new URL(raw);
 }
 
+/**
+ * A report link now, whatever this address asked for a moment ago.
+ *
+ * The door keeps a minute between two links to one address, and the tests
+ * below are about what a link is worth once it arrives — a claim, a receipt, a
+ * person who does or does not exist. So the sends already recorded are moved
+ * back out of the way, the same minute a person would have waited. The test
+ * that is about the walls asks for its links without this.
+ */
 async function sendReport(
   one: ReturnType<typeof fixture>,
   intentKind: "registration" | "recovery" = "registration",
 ) {
+  rewindLinkSends(one.rows);
   const result = await one.identity.sendReportLink({
     operation: "send",
     email: EMAIL,
@@ -105,6 +116,35 @@ describe("private report identity", () => {
     expect(await one.identity.byEmail(EMAIL)).toBeNull();
   });
 
+  it("keeps the same minute between two report links that the cabinet's door keeps", async () => {
+    const one = fixture();
+    const ask = async () =>
+      await one.identity.sendReportLink({
+        operation: "send",
+        email: EMAIL,
+        intent_kind: "registration",
+        state: STATE,
+      });
+    await expect(ask()).resolves.toMatchObject({ status: "accepted" });
+
+    const again = await ask();
+
+    // One rule, two doors: the rate rows the cabinet's minute is read off are
+    // the report door's rows too, and nothing in the tests below would notice
+    // if this door lost it — they all date their sends back before asking.
+    // A second link inside the minute is refused, sends nothing, and spends
+    // none of the three the hour allows.
+    expect(again).toMatchObject({ status: "cooldown", retry_at: expect.any(String) });
+    expect(one.messages).toHaveLength(1);
+    expect(one.rows.cabinet_link_sends).toHaveLength(1);
+    // The report contract carries a moment and no wall, so which wall refused
+    // is visible only in how far away that moment is. This one is the minute.
+    if (again.status !== "cooldown") throw new Error("the second report link should be refused");
+    const owed = new Date(again.retry_at).getTime() - Date.now();
+    expect(owed).toBeGreaterThan(0);
+    expect(owed).toBeLessThanOrEqual(LINK_MIN_INTERVAL_MS);
+  });
+
   it("limits report sends independently without storing the raw address as rate evidence", async () => {
     const one = fixture();
     for (let count = 0; count < 3; count += 1) {
@@ -116,6 +156,9 @@ describe("private report identity", () => {
           state: STATE,
         }),
       ).resolves.toMatchObject({ status: "accepted" });
+      // The report door keeps the same minute between two links as the
+      // cabinet's; what this test is about is the three an hour behind it.
+      rewindLinkSends(one.rows);
     }
     await expect(
       one.identity.sendReportLink({
@@ -127,6 +170,7 @@ describe("private report identity", () => {
     ).resolves.toMatchObject({ status: "cooldown", retry_at: expect.any(String) });
     await expect(one.identity.requestLink(EMAIL, "default")).resolves.toStrictEqual({
       status: "accepted",
+      retryAt: expect.any(Date),
     });
     expect(JSON.stringify(one.rows.cabinet_link_sends)).not.toContain(EMAIL);
   });

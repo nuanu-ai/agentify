@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Agentify merchant cabinet — cards, orders and receipts, server-rendered",
+  "description": "Agentify merchant cabinet \u2014 cards, orders and receipts, server-rendered",
   "exports": {
     ".": "./src/index.ts"
   },
@@ -31,6 +31,7 @@
     "@types/express": "^5.0.6",
     "@types/pg": "^8.23.1",
     "drizzle-kit": "0.31.10",
+    "jsdom": "30.1.0",
     "tsx": "^4.23.12",
     "vitest": "^4.1.11"
   }

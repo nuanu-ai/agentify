@@ -7,7 +7,7 @@ import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "@agentify/gatewa
 import { Pool } from "pg";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "./config.js";
-import { identityFor } from "./identity.js";
+import { identityFor, LINK_MIN_INTERVAL_MS, LINK_RATE_WINDOW_MS } from "./identity.js";
 import type { Message } from "./mail.js";
 
 const wanted = (() => {
@@ -92,6 +92,20 @@ if (databaseUrl === null) {
         return handover;
       },
     });
+  }
+
+  /**
+   * The minute between two links to one address, moved out of the way.
+   *
+   * Every send this address has on record is dated a minute further back, so
+   * the next request is not refused by the interval and the ones already made
+   * stay inside the rolling hour they are counted in. A test that needs two
+   * links, or three, says so here rather than sleeping through the minute.
+   */
+  async function rewindLinkSends(): Promise<void> {
+    await pool.query("update cabinet_link_sends set sent_at = sent_at - $1::interval", [
+      "1 minute",
+    ]);
   }
 
   function tokenIn(message: Message): string {
@@ -244,6 +258,7 @@ if (databaseUrl === null) {
       await expect(identity.requestLink(" Person@Example.com ", "settings")).resolves.toStrictEqual(
         {
           status: "accepted",
+          retryAt: expect.any(Date),
         },
       );
       expect(
@@ -268,6 +283,7 @@ if (databaseUrl === null) {
       const one = identityOn(messages);
       const two = identityOn(messages);
       await one.requestLink("person@example.com", "default");
+      await rewindLinkSends();
       await two.requestLink("person@example.com", "settings");
       await pool.query(`
         create function slow_cabinet_person() returns trigger language plpgsql as $$
@@ -474,16 +490,44 @@ if (databaseUrl === null) {
       expect(written).not.toContain('update "cabinet_accounts"');
     });
 
-    it("enforces three sends per rolling hour without storing the raw address", async () => {
+    it("enforces a minute between links and three sends per rolling hour without storing the raw address", async () => {
       const messages: Message[] = [];
       const identity = identityOn(messages);
-      for (let count = 0; count < 3; count += 1) {
-        await expect(identity.requestLink("person@example.com", "default")).resolves.toStrictEqual({
-          status: "accepted",
-        });
-      }
+      await expect(identity.requestLink("person@example.com", "default")).resolves.toStrictEqual({
+        status: "accepted",
+        retryAt: expect.any(Date),
+      });
       await expect(identity.requestLink("person@example.com", "default")).resolves.toMatchObject({
         status: "cooldown",
+        wall: "interval",
+        retryAt: expect.any(Date),
+      });
+      // The refused request sent nothing, so it took nothing: the row count is
+      // what the three an hour are counted from.
+      expect(
+        (await pool.query("select count(*)::int as count from cabinet_link_sends")).rows[0],
+      ).toStrictEqual({ count: 1 });
+      expect(messages).toHaveLength(1);
+
+      let latest: Awaited<ReturnType<typeof identity.requestLink>> | undefined;
+      for (let count = 0; count < 2; count += 1) {
+        await rewindLinkSends();
+        latest = await identity.requestLink("person@example.com", "default");
+        expect(latest).toStrictEqual({ status: "accepted", retryAt: expect.any(Date) });
+      }
+      // This store answers an accepted link the way the memory one does: with
+      // the wait in front of the next link. The third of the hour spent the
+      // allowance, so that wait is the hour and not the minute — a page told
+      // the minute hands its resend back sixty seconds later to be refused.
+      const oldest = (await pool.query("select min(sent_at) as at from cabinet_link_sends"))
+        .rows[0] as { at: Date };
+      if (latest?.status !== "accepted") throw new Error("the third link should have gone out");
+      expect(latest.retryAt).toStrictEqual(new Date(oldest.at.getTime() + LINK_RATE_WINDOW_MS));
+      expect(latest.retryAt.getTime() - Date.now()).toBeGreaterThan(LINK_MIN_INTERVAL_MS);
+      await rewindLinkSends();
+      await expect(identity.requestLink("person@example.com", "default")).resolves.toMatchObject({
+        status: "cooldown",
+        wall: "hourly",
         retryAt: expect.any(Date),
       });
       const evidence = await pool.query("select email_hash from cabinet_link_sends");

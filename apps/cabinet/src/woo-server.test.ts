@@ -30,6 +30,7 @@ import { type Identity, identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 import { buildApp } from "./server.js";
 import { readable } from "./testing/html.js";
+import { rewindLinkSends } from "./testing/link-sends.js";
 import type { StoreProduct } from "./woo-catalog.js";
 import type { Preflight } from "./woo-connect.js";
 import type { CatalogueRead, inspectProductInTheShop, ProductInspection } from "./woo-shop.js";
@@ -151,14 +152,15 @@ const started = async (standing: Standing = {}): Promise<Running> => {
     REGISTRATION_INVITATION: "the-existing-gateway-process-secret",
   });
   const messages: Message[] = [];
+  const rows: Record<string, Record<string, unknown>[]> = {
+    cabinet_accounts: [],
+    cabinet_sessions: [],
+    cabinet_credentials: [],
+    cabinet_verifications: [],
+    cabinet_link_sends: [],
+  };
   const identity = identityFor(config, {
-    rows: {
-      cabinet_accounts: [],
-      cabinet_sessions: [],
-      cabinet_credentials: [],
-      cabinet_verifications: [],
-      cabinet_link_sends: [],
-    },
+    rows,
     postman: async (message) => {
       messages.push(message);
       return "accepted";
@@ -267,6 +269,11 @@ const started = async (standing: Standing = {}): Promise<Running> => {
         noCookie: true,
       }),
     async signIn(destination = "default") {
+      // The door keeps a minute between two links to one address. A test here
+      // that signs in twice — once to lose the session, once to come back — is
+      // about where WooCommerce sends a merchant, so the minute is moved out
+      // of the way rather than waited out.
+      rewindLinkSends(rows);
       await visit("POST", "/sign-in", {
         body: new URLSearchParams({
           email: PERSON,
