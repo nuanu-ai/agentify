@@ -42,6 +42,7 @@ RUN pnpm install --frozen-lockfile --offline
 # Not root. Two of the four are reached from outside through Caddy, and none of
 # them has any reason to be able to write to its own source.
 USER node
+RUN test -r packages/core/src/deployment/preflight.mjs
 
 # Overridden by compose; named here so the image is runnable on its own.
 CMD ["pnpm", "--filter", "@agentify/gateway", "start"]

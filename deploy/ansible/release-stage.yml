@@ -71,6 +71,13 @@
     chdir: "{{ release_source_directory }}"
   changed_when: false
 
+- name: Make the public checkout readable by non-root image users
+  ansible.builtin.file:
+    path: "{{ release_source_directory }}"
+    state: directory
+    recurse: true
+    mode: a+rX
+
 - name: Require a production candidate from public main history
   ansible.builtin.shell: |
     set -eu
