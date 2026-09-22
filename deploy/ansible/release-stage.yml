@@ -45,6 +45,7 @@
     - {src: "{{ playbook_dir }}/prepare-identity-cutover.py", dest: prepare-identity-cutover.py}
     - {src: "{{ playbook_dir }}/release-runtime.py", dest: release-runtime.py}
     - {src: "{{ playbook_dir }}/release_http.py", dest: release_http.py}
+    - {src: "{{ playbook_dir }}/release-docker-cleanup.py", dest: release-docker-cleanup.py}
     - {src: "{{ playbook_dir }}/check-web-configuration.py", dest: check-web-configuration.py}
     - {src: "{{ playbook_dir }}/check-forward-revision.sh", dest: check-forward-revision.sh}
     - {src: "{{ playbook_dir }}/release-data-fingerprint.sql", dest: release-data-fingerprint.sql}
@@ -86,6 +87,18 @@
 - name: Require production to move forward from its running revision
   ansible.builtin.include_tasks: release-forward-only.yml
   when: channel_name == 'production'
+
+- name: Bound old release images and build cache before building
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ release_controller_directory }}/release-docker-cleanup.py"
+      - "{{ release_revision }}"
+      - --minimum-free-gib
+      - '30'
+      - --protect-installed-jobs
+      - "{{ configuration_directory }}/scanner-jobs.sh"
+  changed_when: false
 
 - name: Pull exact infrastructure images before rendering or activation
   ansible.builtin.command:
@@ -134,6 +147,18 @@
     PYCODE
   changed_when: false
   register: built_image_evidence
+
+- name: Drop transient build cache and require an activation reserve
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ release_controller_directory }}/release-docker-cleanup.py"
+      - "{{ release_revision }}"
+      - --minimum-free-gib
+      - '10'
+      - --protect-installed-jobs
+      - "{{ configuration_directory }}/scanner-jobs.sh"
+  changed_when: false
 
 - name: Preserve channel secrets and prepare runtime environment files
   ansible.builtin.command:

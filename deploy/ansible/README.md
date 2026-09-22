@@ -79,6 +79,14 @@ candidate to be in public `main` history and forward from the running OCI
 revision, once before building and again before activation. A missing identity
 or backward or divergent selection stops without touching writers.
 
+Before a build, staging removes unreferenced first-party image tags from older
+revisions and clears Docker's build cache. It retains the selected revision,
+the revisions used by running Agentify containers or the installed scheduled
+jobs, and any image referenced by a stopped container; it never removes
+containers, volumes or third-party images. The build starts only with at least
+30 GiB free. Staging clears transient build cache again after all five images
+exist and requires a 10 GiB reserve before activation.
+
 Staging checks out a clean source under
 `<agentify_home>/agentify-releases/<SHA>/source`, builds first-party images, pulls
 pinned infrastructure images, preserves host configuration and records sanitized
