@@ -6,7 +6,7 @@
  * asserted is what we sent it — a Store API read with no credential on it at
  * all, and a `wc/v3` order carrying `set_paid` and the key pair as HTTP Basic.
  * Those two facts are the whole of the integration, and each was measured
- * rather than assumed (`docs/research/27-woo-connect-probe.md`).
+ * rather than assumed (`docs/research/33-woo-connect-probe.md`).
  */
 
 import { createServer, type Server } from "node:http";

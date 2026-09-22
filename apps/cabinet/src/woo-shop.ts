@@ -5,7 +5,7 @@
  * anybody with no authentication at all — so no key is sent, because a secret
  * sent where it buys nothing is a secret in one more log. Creating the order
  * goes to `wc/v3` with the granted key pair as HTTP Basic, which is the scheme
- * WooCommerce accepts over https (`docs/research/27-woo-connect-probe.md`); the
+ * WooCommerce accepts over https (`docs/research/33-woo-connect-probe.md`); the
  * shop address is refused at the door unless it is https, so there is one
  * scheme here and not two.
  *

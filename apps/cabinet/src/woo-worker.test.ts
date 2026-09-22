@@ -9,7 +9,7 @@
  * card, a paid order exists in the shop, and the buyer is handed its number.
  *
  * The shop here is a small server rather than a WooCommerce. What it stands in
- * for is measured: `docs/research/27-woo-connect-probe.md` records a real shop
+ * for is measured: `docs/research/33-woo-connect-probe.md` records a real shop
  * answering `POST wc/v3/orders` with `set_paid: true` under 201, with the order
  * then agreeing with itself in four independent places.
  */

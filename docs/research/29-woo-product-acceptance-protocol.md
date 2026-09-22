@@ -304,7 +304,7 @@ is recorded; until then the three-execution, 30,000-atomic run is closed.
 ## Sources
 
 - Product boundary: `AGENTS.md`; `docs/decisions/0023-*.md`;
-  `docs/research/27-woo-connect-probe.md`.
+  `docs/research/33-woo-connect-probe.md`.
 - Current connector: `apps/cabinet/src/woo-catalog.ts`, `woo-shop.ts`,
   `woo-shops.ts`, `woo-worker.ts`, `gateway.ts`, `schema.ts` and tests.
 - Async contract: `packages/contracts/src/api.ts`, `order.ts`, `card.ts`;

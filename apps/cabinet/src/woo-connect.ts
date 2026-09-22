@@ -6,7 +6,7 @@
  * browser goes to `/wc-auth/v1/authorize` with five parameters, the signed-in
  * administrator approves, and the shop posts a freshly minted
  * `consumer_key`/`consumer_secret` to a callback address we supplied
- * (`docs/research/27-woo-connect-probe.md`). Three facts out of that probe are
+ * (`docs/research/33-woo-connect-probe.md`). Three facts out of that probe are
  * load-bearing here and each one is a refusal in this file.
  *
  * **All five parameters, always.** `app_name`, `user_id`, `return_url`,
