@@ -52,14 +52,15 @@ jobs:
           CANDIDATE: ${{ steps.candidate.outputs.sha }}
         run: |
           set -euo pipefail
-          ref="repos/$GITHUB_REPOSITORY/git/ref/tags/deploy-test"
-          if gh api "$ref" >/dev/null 2>&1; then
-            gh api --method PATCH "$ref" -f "sha=$CANDIDATE" -F force=true >/dev/null
+          read_ref="repos/$GITHUB_REPOSITORY/git/ref/tags/deploy-test"
+          write_ref="repos/$GITHUB_REPOSITORY/git/refs/tags/deploy-test"
+          if gh api "$read_ref" >/dev/null 2>&1; then
+            gh api --method PATCH "$write_ref" -f "sha=$CANDIDATE" -F force=true >/dev/null
           else
             gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
               -f ref=refs/tags/deploy-test -f "sha=$CANDIDATE" >/dev/null
           fi
-          test "$(gh api "$ref" --jq .object.sha)" = "$CANDIDATE"
+          test "$(gh api "$read_ref" --jq .object.sha)" = "$CANDIDATE"
           {
             echo "### TEST selection published"
             echo

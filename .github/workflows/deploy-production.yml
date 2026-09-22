@@ -85,14 +85,15 @@ jobs:
           REVISION: ${{ needs.validate.outputs.revision }}
         run: |
           set -euo pipefail
-          ref="repos/$GITHUB_REPOSITORY/git/ref/tags/deploy-production"
-          if gh api "$ref" >/dev/null 2>&1; then
-            gh api --method PATCH "$ref" -f "sha=$REVISION" -F force=true >/dev/null
+          read_ref="repos/$GITHUB_REPOSITORY/git/ref/tags/deploy-production"
+          write_ref="repos/$GITHUB_REPOSITORY/git/refs/tags/deploy-production"
+          if gh api "$read_ref" >/dev/null 2>&1; then
+            gh api --method PATCH "$write_ref" -f "sha=$REVISION" -F force=true >/dev/null
           else
             gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
               -f ref=refs/tags/deploy-production -f "sha=$REVISION" >/dev/null
           fi
-          test "$(gh api "$ref" --jq .object.sha)" = "$REVISION"
+          test "$(gh api "$read_ref" --jq .object.sha)" = "$REVISION"
           {
             echo "### PRODUCTION selection published"
             echo
