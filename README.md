@@ -111,7 +111,7 @@ If port 8080 is taken, `AGENTIFY_HOST_PORT=8090 docker compose up` moves the
 stack and nothing else — the buy command runs on the host and needs
 `GATEWAY_URL=http://localhost:8090 pnpm buy`.
 
-The scanner runs separately, on its own PostgreSQL 16.9 at `127.0.0.1:55432`,
+The scanner runs separately, on its own PostgreSQL 17 at `127.0.0.1:55432`,
 and reads `.env.scanner` rather than the `.env` the stack above takes its
 settings from:
 
@@ -121,6 +121,12 @@ pnpm scanner:db:up
 pnpm scanner:db:migrate
 pnpm scanner:dev
 ```
+
+`pnpm scanner:db:down` keeps the volume, and PostgreSQL refuses to start on a
+data directory written by another major version — so a machine that ran the
+scanner before this one moved to 17 gets a clear message on the next
+`scanner:db:up` and needs
+`docker volume rm agentify-scanner_agentify-scanner-postgres` once.
 
 The web application listens on port 3000 and the worker's health endpoint on
 8081; `pnpm scanner:db:down` stops the database without deleting its volume.
