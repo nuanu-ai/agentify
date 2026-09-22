@@ -1,13 +1,13 @@
 # The one door: Caddy, with everything static it serves already inside it.
 #
-# ADR-0005 §1 puts the landing, the portal, the cabinet and the gateway on one
-# origin. Two of those four are files rather than processes, and this image is
-# where those files come from — so the image can be run on its own and the
-# compose file does not have to make a host build the documentation first.
+# ADR-0005 §1 puts the scanner, the portal, the cabinet and the gateway on one
+# origin. One of those four is a directory of files rather than a process, and
+# this image is where it comes from — so the image can be run on its own and
+# the compose file does not have to make a host build the documentation first.
 #
 # The portal is built here, and with the mount point passed in: built without
 # `--base /docs/` every page asks for /assets/... at the root of the origin,
-# where the landing answers and has nothing by that name. The flag is a build
+# where the scanner answers and has nothing by that name. The flag is a build
 # argument and not an edit to apps/docs/.vitepress/config.mjs on purpose — where
 # the documentation is mounted is this directory's business, and the portal
 # should not carry the answer in a file of its own (deploy/Caddyfile).
@@ -26,9 +26,8 @@ RUN pnpm --filter @agentify/docs exec vitepress build --base /docs/
 FROM caddy:2.10.0-alpine@sha256:ae4458638da8e1a91aafffb231c5f8778e964bca650c8a8cb23a7e8ac557aa3c
 
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
-COPY apps/landing/public /srv/landing
-# The shared visual language lives in packages/visual and the static landing
-# links it at /styles/tokens.css, so it is copied in beside the landing's own
-# stylesheets rather than kept twice.
-COPY packages/visual/tokens.css /srv/landing/styles/tokens.css
+# The mark and the faces the cabinet's pages ask for. They live in the visual
+# package with the stylesheet they belong to; this image is what puts them at
+# the addresses the route table names.
+COPY packages/visual/public /srv/assets
 COPY --from=portal /app/apps/docs/.vitepress/dist /srv/docs

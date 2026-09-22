@@ -32,9 +32,9 @@ second shape for the same fact, and two shapes drift.
 
 ## Consequences
 
-What this buys: the landing, the quickstart and the door all take the
-same eight-line card, while every consumer downstream keeps exactly one
-shape to parse. What it costs: the card schema carries the opening-out
+What this buys: the card reference, the quickstart and the door all take
+the same eight-line card, while every consumer downstream keeps exactly
+one shape to parse. What it costs: the card schema carries the opening-out
 logic, and anyone extending it must put new leniency there and nowhere
 else.
 

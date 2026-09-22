@@ -8,9 +8,10 @@
  * assets one path at a time and this file is not among them, so a surface that
  * linked /styles/tokens.css in production would get the scanner's 404. Each
  * reader takes it at build time or off disk instead — the scanner imports it,
- * the cabinet and the stand read it and serve it inside their own responses,
- * and the local static landing gets it copied in beside its own stylesheets,
- * where Caddy's fixture root does serve it at /styles/tokens.css.
+ * and the cabinet and the stand read it and serve it inside their own
+ * responses. The marks and the font faces beside this file are the exception,
+ * because a browser asks for those by address; they sit under public/ in the
+ * shape the route table serves them at.
  *
  * The language is light. There is no dark set and no theme attribute: the page
  * a merchant actually lands on is the scanner's, which has never had one, and
@@ -26,7 +27,7 @@
  * different buttons wearing the same word.
  *
  * What does not belong here is the layout of a page. A rule that only the
- * landing needs lives in landing.css, and a rule that only the cabinet needs
+ * scanner needs lives with the scanner, and a rule that only the cabinet needs
  * lives with the cabinet.
  *
  * These are the Agentify colours. The teal is dark enough to carry ordinary
@@ -229,9 +230,9 @@ p {
 
 /*
  * One button. There were three: 48 pixels tall at weight 600 on the scanner,
- * roughly 29 at 13px in the cabinet, and a third size on the landing — the same
- * word meaning three controls. This is the scanner's, because the scanner is
- * what a merchant sees first.
+ * roughly 29 at 13px in the cabinet, and a third size again on the static page
+ * that used to stand at the front — the same word meaning three controls. This
+ * is the scanner's, because the scanner is what a merchant sees first.
  *
  * The height is the whole of the argument. 48 is what a thumb can hit and what
  * puts a control's label on the same footing as the sentence next to it; the

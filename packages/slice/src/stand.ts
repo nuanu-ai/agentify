@@ -924,14 +924,14 @@ const queueAction = (form: URLSearchParams): Promise<boolean> => {
  * palette living beside this console is exactly how one visual language becomes
  * two that look almost alike.
  *
- * The faces come from somewhere else: the stand still borrows the landing's
- * font subtree, which Caddy owns on the origin and which nothing else in the
- * repository holds. So there are two roots under /styles/ here, and the token
- * file is named on its own rather than reached through the directory.
+ * The faces sit beside it in the same package, under the directory shape the
+ * route table serves them at. So there are two roots under /styles/ here, and
+ * the token file is named on its own rather than reached through the
+ * directory.
  */
 const SHARED_TOKENS = fileURLToPath(new URL("../../visual/tokens.css", import.meta.url));
 const SHARED_FACES = resolve(
-  fileURLToPath(new URL("../../../apps/landing/public/styles/", import.meta.url)),
+  fileURLToPath(new URL("../../visual/public/styles/", import.meta.url)),
 );
 const OWN_STYLESHEET = fileURLToPath(new URL("./stand.css", import.meta.url));
 

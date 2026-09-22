@@ -28,7 +28,6 @@ output
 *.tsbuildinfo
 /apps/cabinet
 /apps/gateway
-/apps/landing
 /apps/browser-observer-actor
 /apps/scanner-worker
 /packages/contracts

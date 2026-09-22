@@ -207,6 +207,23 @@ describe("the portal's examples are files, and every file is checked", () => {
 });
 
 describe("the pages agree with each other", () => {
+  it("shows the same card written short and written out in full", () => {
+    // The card reference prints one product twice: once as the smallest card
+    // that sells, once with nothing written short. It says in so many words
+    // that "a card that uses none of the shorter ones says exactly what the
+    // card at the top says", and a reader takes either spelling and publishes
+    // it. Anything the short form gains or loses on its way — a field, a
+    // currency, a delivered value — is a page selling something the page below
+    // it does not describe.
+    //
+    // Written as a comparison of two parses rather than of two files, because
+    // what has to agree is the card each becomes at our door: the short form
+    // is opened out there, and the two are the same card or they are not.
+    expect(CardSchema.parse(jsonOf("card/access-monthly-short.json"))).toStrictEqual(
+      CardSchema.parse(jsonOf("card/access-monthly.json")),
+    );
+  });
+
   it("every delivery the orders page shows carries what the card example declares", () => {
     // The promise, and it spans two pages: a merchant who declares a result on
     // one and copies a delivery call from the other has to end up with a

@@ -170,7 +170,7 @@ function runInner({ configPath, containerName, trustedEdge, ports, adminHash }) 
     "-v",
     `${configPath}:/etc/caddy/Caddyfile:ro`,
     "-v",
-    `${path.join(projectRoot, "apps/landing/public")}:/srv/landing:ro`,
+    `${path.join(projectRoot, "packages/visual/public")}:/srv/assets:ro`,
     "-v",
     `${path.join(temporary, "docs")}:/srv/docs:ro`,
     "-e",
@@ -273,7 +273,7 @@ try {
     ["/x402-other", "scanner"],
     ["/assets/scanner-owned.svg", "scanner"],
     ["/styles/scanner-owned.css", "scanner"],
-    ["/styles/landing.css", "scanner"],
+    ["/styles/site.css", "scanner"],
     ["/styles/fonts/OFL-Schibsted-Grotesk.txt", "scanner"],
   ]) {
     await expectProxy(innerBase, requestPath, role);
@@ -349,7 +349,7 @@ try {
   assert.match(missingSelector.stderr, /AGENTIFY_FRONT_PAGE|import|filename/i);
 
   const original = readFileSync(sourceCaddyfile, "utf8");
-  const mutationNeedle = "\n\timport commerce_shared_assets\n";
+  const mutationNeedle = "\n\timport shared_assets\n";
   assert.ok(
     original.includes(mutationNeedle),
     "shared-asset import moved without updating the smoke",
