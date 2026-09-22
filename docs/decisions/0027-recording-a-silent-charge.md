@@ -11,7 +11,9 @@ charge already sent. The machine forbids a second settle. It can still accept
 a later `payment_settled` or `payment_settle_failed`, and nothing in the
 running gateway produced those events. While the order stayed open, the
 status said `in_progress`, which is what a restarted worker treats as work it
-owes.
+owes. This amends ADR-0002 §3, which records a silent decision about the
+charge as always a closed failure: after the goods are made it is not one,
+and the order stays open with the buyer holding them.
 
 ## Decision
 
