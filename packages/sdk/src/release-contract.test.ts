@@ -1,8 +1,12 @@
 /**
- * The release tag is the authority that makes an immutable package version
- * public. These tests execute the same resolver as the workflow: a similarly
- * named tag, an unreleased manifest or an unearned npm dist-tag must stop
- * before authentication and before `npm publish`.
+ * One application tag, `app-v<release>`, is the acceptance that puts a revision
+ * on production (ADR-0016) and publishes whatever SDK and contracts versions
+ * that revision carries and the registry does not yet hold. These tests
+ * execute the same resolver as the publish workflow: a tag that is not the
+ * application's, an unreleased manifest, a prerelease or a third public
+ * package must stop before authentication and before `npm publish`. The
+ * number in the tag is the application's and says nothing about the SDK
+ * version, which comes from the manifest alone.
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
@@ -59,27 +63,35 @@ const resolve = (tag: string, sdkVersion: string, contractsVersion = sdkVersion)
 const refuse = (tag: string, sdkVersion: string, contractsVersion = sdkVersion) =>
   spawnSync(resolverFor(sdkVersion, contractsVersion), [tag], { encoding: "utf8" });
 
-describe("the SDK release tag", () => {
-  it("names the exact SDK version and the stable npm channel", () => {
-    expect(resolve("sdk-v0.1.0", "0.1.0")).toBe(
+describe("the application release tag", () => {
+  it("names the manifest versions and the stable npm channel", () => {
+    expect(resolve("app-v2026.09.22", "0.1.0")).toBe(
       "sdk_version=0.1.0\ncontracts_version=0.1.0\ndist_tag=latest\n",
     );
   });
 
+  it("takes the SDK version from the manifest, not from the number in the tag", () => {
+    expect(resolve("app-v7", "0.2.6", "0.3.2")).toBe(
+      "sdk_version=0.2.6\ncontracts_version=0.3.2\ndist_tag=latest\n",
+    );
+  });
+
+  it("refuses a tag that is not the application's acceptance tag", () => {
+    for (const tag of ["sdk-v0.1.0", "v0.1.0", "app-v", "app-v0.1.0 extra"]) {
+      const result = refuse(tag, "0.1.0");
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("must be an app-v<release> acceptance tag");
+    }
+  });
+
   it("refuses prereleases instead of deriving an unsafe npm channel", () => {
     for (const version of ["0.2.0-rc.3", "0.2.0-latest.1", "0.2.0-1"]) {
-      const result = refuse(`sdk-v${version}`, version);
+      const result = refuse("app-v1", version);
 
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain("not a stable semantic version");
     }
-  });
-
-  it("refuses a tag for any version other than the one it would publish", () => {
-    const result = refuse("sdk-v0.1.1", "0.1.0");
-
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain("must be sdk-v0.1.0");
   });
 
   it("refuses manifests that still say unreleased", () => {
@@ -87,7 +99,7 @@ describe("the SDK release tag", () => {
       ["0.0.0", "0.1.0"],
       ["0.1.0", "0.0.0"],
     ] as const) {
-      const result = refuse(`sdk-v${sdk}`, sdk, contracts);
+      const result = refuse("app-v1", sdk, contracts);
 
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain("0.0.0 is not publishable");
@@ -95,7 +107,7 @@ describe("the SDK release tag", () => {
   });
 
   it("refuses to let Changesets publish another public workspace package", () => {
-    const result = spawnSync(resolverFor("0.1.0", "0.1.0", "@nuanu-ai/extra"), ["sdk-v0.1.0"], {
+    const result = spawnSync(resolverFor("0.1.0", "0.1.0", "@nuanu-ai/extra"), ["app-v1"], {
       encoding: "utf8",
     });
 
