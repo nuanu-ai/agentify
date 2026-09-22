@@ -1,18 +1,18 @@
 import {
-  BROWSER_OBSERVATION_VERSION,
-  browserObservationInputV1Schema,
-  type BrowserObservationInputV1,
-  type BrowserObservationOutputV1,
-} from "@agentify/scanner-contracts";
-import {
   isPathAllowed,
   parseRobots,
   type RobotsParseResult,
 } from "@agentify/scanner";
 import {
-  chromium,
+  BROWSER_OBSERVATION_VERSION,
+  type BrowserObservationInputV1,
+  type BrowserObservationOutputV1,
+  browserObservationInputV1Schema,
+} from "@agentify/scanner-contracts";
+import {
   type Browser,
   type ConsoleMessage,
+  chromium,
   type Page,
   type Request,
 } from "playwright";
@@ -21,8 +21,8 @@ import { collectPageSignals, type PageSignals } from "./browser-signals.js";
 import {
   BrowserNetworkPolicyError,
   inspectRequest,
-  resolveSafeNavigationRedirect,
   resolvePublicHost,
+  resolveSafeNavigationRedirect,
   safeBrowserRequest,
   validateActorTarget,
 } from "./network-policy.js";
@@ -201,7 +201,7 @@ const robotsAllows = async (options: {
     let robotsBytes = 0;
     try {
       let robotsUrl = new URL("/robots.txt", options.url.origin);
-      let response;
+      let response: Awaited<ReturnType<typeof safeBrowserRequest>>;
       for (let redirectCount = 0; ; redirectCount += 1) {
         response = await safeBrowserRequest({
           url: robotsUrl,
@@ -641,8 +641,7 @@ export const runBrowserObservation = async (options: {
       .catch(() => undefined);
     browser = await raceWithAbort(browserLaunch, runController.signal);
     runtimeStage = "page";
-    for (let pageIndex = 0; pageIndex < allowedUrls.length; pageIndex += 1) {
-      const url = allowedUrls[pageIndex]!;
+    for (const [pageIndex, url] of allowedUrls.entries()) {
       if (runController.signal.aborted) break;
       try {
         const result = await observePage({

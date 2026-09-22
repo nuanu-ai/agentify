@@ -1,12 +1,12 @@
-import { describe, expect, it } from "vitest";
 import type { LookupAddress } from "node:dns";
+import { describe, expect, it } from "vitest";
 
 import type { BrowserNetworkPolicyError } from "./network-policy.js";
 import {
   createPinnedLookup,
   inspectRequest,
-  resolveSafeNavigationRedirect,
   resolvePublicHost,
+  resolveSafeNavigationRedirect,
   selectPublicAddress,
   validateActorTarget,
 } from "./network-policy.js";

@@ -1,27 +1,25 @@
+import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-
-import { Pool } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { z } from "zod";
 import {
   BROWSER_OBSERVATION_IDS,
   BROWSER_OBSERVATION_VERSION,
   type CheckResult,
   type ScanJobV1,
 } from "@agentify/scanner-contracts";
-
-import { createDatabase } from "./client.js";
+import { Pool } from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   createBusinessEventStore,
   insertBusinessEventOnce,
 } from "./analytics-event-store.js";
-import { createUuidV7 } from "./ids.js";
-import { recordWorkerHeartbeat } from "./heartbeat.js";
 import { emitStoredBusinessEvent } from "./analytics-runtime.js";
 import { createBrowserObservationRepository } from "./browser-observation-repository.js";
+import { createDatabase } from "./client.js";
+import { recordWorkerHeartbeat } from "./heartbeat.js";
+import { createUuidV7 } from "./ids.js";
 import {
   migrateDatabase,
   migrateDatabaseThroughIdentityPreflight,
@@ -1040,10 +1038,10 @@ describe("initial database migration", () => {
         ),
       );
       expect([...budgetResults].sort()).toEqual(["exhausted", "reserved"]);
-      const reservedIndex = budgetResults.findIndex(
-        (result) => result === "reserved",
-      );
-      const reservedRow = budgetRows[reservedIndex]!;
+      const reservedIndex = budgetResults.indexOf("reserved");
+      const reservedRow = budgetRows[reservedIndex];
+      if (!reservedRow)
+        throw new Error("no row reserved the browser observation budget");
       await expect(
         browserRepository.attachRun(
           reservedRow.observationId,
@@ -1361,7 +1359,10 @@ describe("initial database migration", () => {
       expect(new Set(concurrentResults.map(({ eventId: id }) => id)).size).toBe(
         1,
       );
-      const concurrentEventId = concurrentResults[0]!.eventId;
+      const [firstConcurrent] = concurrentResults;
+      if (!firstConcurrent)
+        throw new Error("the concurrent inserts answered with nothing");
+      const concurrentEventId = firstConcurrent.eventId;
       const concurrentStored = await pool.query<{
         events: string;
         outbox: string;

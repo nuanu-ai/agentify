@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
-
-import RootLayout from "./layout";
 import { getPublicAppConfig } from "../lib/app-config";
 import { getCardSignalPublicConfig } from "../lib/server/stripe-card-signal-config";
+import RootLayout from "./layout";
 
 const originalEnv = { ...process.env };
 

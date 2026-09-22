@@ -1,26 +1,24 @@
 "use client";
 
-import Link from "next/link";
-import React from "react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type CSSProperties,
-} from "react";
-
-import {
-  CHECK_DEFINITIONS,
-  scanStatusResponseSchema,
-  type DiagnosticLevel,
-  type ScanStatusResponse,
-  type Segment,
-} from "@agentify/scanner-contracts";
 import {
   canonicalFindingHeadline,
   canonicalSummaryCopy,
 } from "@agentify/remediation";
+import {
+  CHECK_DEFINITIONS,
+  type DiagnosticLevel,
+  type ScanStatusResponse,
+  type Segment,
+  scanStatusResponseSchema,
+} from "@agentify/scanner-contracts";
+import Link from "next/link";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import { Brand } from "./brand";
 import { BrowserObservations } from "./browser-observations";
@@ -28,8 +26,8 @@ import { CopyRemediationPrompt } from "./copy-remediation-prompt";
 import { PrivacyChoicesButton } from "./privacy-choices-button";
 import { PublicShareActions } from "./public-share-actions";
 import { RegistrationForm } from "./registration-form";
-import { StatusBadge } from "./status-badge";
 import styles from "./scan-experience.module.css";
+import { StatusBadge } from "./status-badge";
 
 const CHECK_LABELS = {
   robots: "robots.txt",

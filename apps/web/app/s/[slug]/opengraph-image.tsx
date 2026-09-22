@@ -11,7 +11,6 @@ export default async function Image({
 }) {
   const { slug } = await params;
   const share = await getPublicShare(slug);
-  if (!share || share.status !== "published")
-    throw new Error("share_not_found");
+  if (share?.status !== "published") throw new Error("share_not_found");
   return renderShareImage(share.snapshot);
 }

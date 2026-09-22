@@ -1,7 +1,6 @@
-import React from "react";
+import type { BrowserObservationStatusResponse } from "@agentify/scanner-contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { BrowserObservationStatusResponse } from "@agentify/scanner-contracts";
 
 import { BrowserObservations } from "./browser-observations";
 

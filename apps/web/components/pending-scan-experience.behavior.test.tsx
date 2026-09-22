@@ -5,9 +5,9 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  type PendingScanRequest,
   readPendingScan,
   savePendingScan,
-  type PendingScanRequest,
 } from "../lib/pending-scan";
 import { PendingScanExperience } from "./pending-scan-experience";
 

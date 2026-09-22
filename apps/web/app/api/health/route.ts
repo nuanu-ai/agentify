@@ -6,8 +6,8 @@ import { logServerError, requestHeaders } from "../../../lib/server/http";
 import {
   evaluateOperationalSignals,
   evaluateWorkerHeartbeat,
-  READINESS_OUTBOX_DESTINATIONS,
   type OperationalSignalRow,
+  READINESS_OUTBOX_DESTINATIONS,
   type WorkerHeartbeatRow,
 } from "../../../lib/server/worker-health";
 

@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import React from "react";
 
 import { PendingScanExperience } from "../../../components/pending-scan-experience";
 import { getServerConfig } from "../../../lib/server/config";

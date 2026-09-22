@@ -1,15 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import React, {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react";
-
 import type { Segment } from "@agentify/scanner-contracts";
+import { useRouter } from "next/navigation";
+import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 
 import { captureLandingAttribution } from "../lib/attribution-client";
 import { savePendingScan } from "../lib/pending-scan";

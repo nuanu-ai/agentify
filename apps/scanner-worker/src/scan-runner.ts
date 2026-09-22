@@ -1,22 +1,22 @@
-import type { CheckResult, ScanJobV1 } from "@agentify/scanner-contracts";
-import { getDomain } from "tldts";
 import {
   canonicalizeTarget,
   evaluateChecks,
   evaluateScan,
+  type FetchArtifact,
   isPathAllowed,
   parseRobots,
   parseSafeJson,
   parseSitemap,
-  type FetchArtifact,
   type ScanArtifacts,
   type ScanEvaluation,
 } from "@agentify/scanner";
+import type { CheckResult, ScanJobV1 } from "@agentify/scanner-contracts";
+import { getDomain } from "tldts";
 import {
-  RequestBudget,
-  SafeFetcher,
   type DnsResolver,
   type PinnedTransport,
+  RequestBudget,
+  SafeFetcher,
 } from "./safe-fetch.js";
 
 export type ScanMetric =
@@ -277,8 +277,9 @@ export class ScanRunner {
             const pending = [...sitemapTargets];
             const seen = new Set<string>();
             const artifacts: FetchArtifact[] = [];
-            while (pending.length && artifacts.length < 3) {
-              const url = pending.shift()!;
+            while (artifacts.length < 3) {
+              const url = pending.shift();
+              if (!url) break;
               const key = url.toString();
               if (seen.has(key)) continue;
               seen.add(key);
@@ -355,11 +356,14 @@ export class ScanRunner {
         llmsPromise,
         wellKnown,
       ]);
-      let knownCursor = 0;
-      const mcp = [knownResults[knownCursor++]!, knownResults[knownCursor++]!];
-      const ucp =
-        job.segment === "store" ? knownResults[knownCursor++] : undefined;
-      const a2a = knownResults[knownCursor++];
+      // The well-known batch answers in the order it was assembled: the two
+      // MCP documents, the UCP document for a store, and the A2A document.
+      const [mcpWellKnown, mcpServerCard, ...furtherKnown] = knownResults;
+      const mcp = [mcpWellKnown, mcpServerCard].filter(
+        (artifact) => artifact !== undefined,
+      );
+      const ucp = job.segment === "store" ? furtherKnown[0] : undefined;
+      const a2a = job.segment === "store" ? furtherKnown[1] : furtherKnown[0];
       const phaseArtifacts: ScanArtifacts = {
         segment: job.segment,
         canonicalTargetUrl: target.toString(),
@@ -422,11 +426,13 @@ export class ScanRunner {
               );
               const index =
                 successfulIndex === -1 ? unsupportedHeadIndex : successfulIndex;
-              return index === -1
-                ? undefined
-                : await fetch(candidates[index]!, {
+              const representative =
+                index === -1 ? undefined : candidates[index];
+              return representative
+                ? await fetch(representative, {
                     bodyLimit: 2 * 1024 * 1024,
-                  });
+                  })
+                : undefined;
             })()
           : Promise.resolve(undefined);
       const [oauth, representative] = await Promise.all([

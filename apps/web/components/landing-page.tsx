@@ -10,11 +10,11 @@ import {
   LANDING_VARIANT_ATTRIBUTE,
 } from "../lib/landing-announcement";
 import { publicSiteSchema } from "../lib/schema";
+import styles from "./landing-page.module.css";
+import { MarketingHeader, SiteFooter } from "./site-chrome";
 import { StatusBadge } from "./status-badge";
 import { StructuredData } from "./structured-data";
-import { MarketingHeader, SiteFooter } from "./site-chrome";
 import { UrlScanForm } from "./url-scan-form";
-import styles from "./landing-page.module.css";
 
 export function LandingPage({ config }: Readonly<{ config: LandingConfig }>) {
   return (

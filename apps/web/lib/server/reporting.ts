@@ -1,9 +1,9 @@
 import {
-  CHECK_DEFINITIONS,
   BROWSER_OBSERVATION_VERSION,
   type BrowserObservationStatusResponse,
-  publicShareSnapshotSchema,
+  CHECK_DEFINITIONS,
   type PublicShareSnapshot,
+  publicShareSnapshotSchema,
   type ReportResponse,
   type SharePreviewResponse,
 } from "@agentify/scanner-contracts";
@@ -11,8 +11,8 @@ import {
   createBrowserObservationRepository,
   createUuidV7,
   emitStoredBusinessEvent,
-  leads,
   leadScans,
+  leads,
   scanChecks,
   scanShares,
   scans,
@@ -370,7 +370,7 @@ export async function getPublicShare(slug: string) {
       )
       .limit(1)
   )[0];
-  if (!row || row.status !== "published") return undefined;
+  if (row?.status !== "published") return undefined;
   const snapshot = publicShareSnapshotSchema.safeParse(row.publicSnapshot);
   return snapshot.success ? { ...row, snapshot: snapshot.data } : undefined;
 }

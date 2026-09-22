@@ -1,10 +1,10 @@
 import { CONSENT_POLICY_VERSION } from "@agentify/analytics";
+import type { Segment } from "@agentify/scanner-contracts";
 import {
   consentSnapshots,
   createUuidV7,
   sessions,
 } from "@agentify/scanner-database";
-import type { Segment } from "@agentify/scanner-contracts";
 import { eq } from "drizzle-orm";
 
 import { getServerConfig } from "./config";

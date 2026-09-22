@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
 import type {
   BrowserObservationStatusResponse,
   ReportResponse,
 } from "@agentify/scanner-contracts";
+import { describe, expect, it } from "vitest";
 
 import {
   buildBrowserFixPrompt,
@@ -183,10 +183,9 @@ describe("single-finding prompts", () => {
       report(),
       check({ id: 12, status: "fail", label_code: "raw_html_ssr" }),
     );
-    const browser = buildBrowserFixPrompt(
-      "bloomandco.com",
-      browserObservation().findings[0]!,
-    );
+    const [finding] = browserObservation().findings;
+    if (!finding) throw new Error("the observation fixture has no findings");
+    const browser = buildBrowserFixPrompt("bloomandco.com", finding);
     expect(canonical).toContain("Canonical check 12");
     expect(browser).toContain("non-scoring");
     expect(browser).toContain("Accessibility structure");

@@ -1,12 +1,12 @@
 import {
   assertDestinationIsolation,
+  type ConsentEnvironment,
   retryDelayMs,
   shouldDeadLetter,
-  type ConsentEnvironment,
 } from "@agentify/analytics";
 import {
-  partnerClickIdSchema,
   type DeliveryDestination,
+  partnerClickIdSchema,
 } from "@agentify/scanner-contracts";
 import { z } from "zod";
 
@@ -20,6 +20,17 @@ const PARTNER_RETRY_DELAYS_MS = [
   2 * 60 * 60_000,
   6 * 60 * 60_000,
 ] as const;
+// The n-th partner retry waits the n-th delay, and every attempt past the end
+// of the list waits the last one until the retry window closes.
+const partnerRetryDelayMs = (attempts: number): number => {
+  const delay =
+    PARTNER_RETRY_DELAYS_MS[
+      Math.min(attempts - 1, PARTNER_RETRY_DELAYS_MS.length - 1)
+    ];
+  if (delay === undefined)
+    throw new Error(`partner delivery attempt ${attempts} has no retry delay`);
+  return delay;
+};
 const PARTNER_GLOBAL_MIN_INTERVAL_MS = 1_100;
 const PARTNER_RATE_LIMIT_ADVISORY_KEYS = [
   1_094_730_062, 1_414_092_377,
@@ -322,15 +333,28 @@ export const createDestinationDeliverer = (
         retryable: false,
       };
     try {
-      const url =
-        row.destination === "posthog"
-          ? new URL("/capture/", config.posthog!.host)
-          : new URL(
-              `${encodeURIComponent(config.meta!.apiVersion)}/${encodeURIComponent(config.meta!.datasetId)}/events`,
-              config.meta!.graphBaseUrl.replace(/\/$/, "") + "/",
-            );
-      if (row.destination === "meta")
-        url.searchParams.set("access_token", config.meta!.accessToken);
+      // The row says where it is going, and the configuration for that
+      // destination is what the guard above has just found enabled.
+      let url: URL;
+      if (row.destination === "posthog") {
+        const posthog = config.posthog;
+        if (!posthog)
+          throw new Error(
+            "a posthog row was delivered without a posthog destination in the configuration",
+          );
+        url = new URL("/capture/", posthog.host);
+      } else {
+        const meta = config.meta;
+        if (!meta)
+          throw new Error(
+            "a meta row was delivered without a meta destination in the configuration",
+          );
+        url = new URL(
+          `${encodeURIComponent(meta.apiVersion)}/${encodeURIComponent(meta.datasetId)}/events`,
+          `${meta.graphBaseUrl.replace(/\/$/, "")}/`,
+        );
+        url.searchParams.set("access_token", meta.accessToken);
+      }
       const response = await fetcher(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -421,13 +445,7 @@ export const runOutboxCycle = async (input: {
           row.destination === "partner_tracker"
             ? new Date(
                 Math.min(
-                  now.getTime() +
-                    PARTNER_RETRY_DELAYS_MS[
-                      Math.min(
-                        row.attempts - 1,
-                        PARTNER_RETRY_DELAYS_MS.length - 1,
-                      )
-                    ]!,
+                  now.getTime() + partnerRetryDelayMs(row.attempts),
                   occurredAt.getTime() + PARTNER_RETRY_WINDOW_MS,
                 ),
               )

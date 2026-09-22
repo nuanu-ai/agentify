@@ -1,14 +1,13 @@
 import type { BrowserObservationId } from "@agentify/scanner-contracts";
-
-import { BROWSER_REMEDIATION_CATALOG } from "./catalog/browser-observations.js";
-import { HTTP_CHECK_CATALOG } from "./catalog/http-checks.js";
 import {
   canonicalCheckLabel,
   canonicalFixCopy,
   canonicalImpactCopy,
   canonicalSummaryCopy,
 } from "./canonical-copy.js";
-import { safeCode, sanitizeEvidence, type SafeEvidence } from "./sanitize.js";
+import { BROWSER_REMEDIATION_CATALOG } from "./catalog/browser-observations.js";
+import { HTTP_CHECK_CATALOG } from "./catalog/http-checks.js";
+import { type SafeEvidence, safeCode, sanitizeEvidence } from "./sanitize.js";
 
 export type RemediationFindingInput = {
   id: string;

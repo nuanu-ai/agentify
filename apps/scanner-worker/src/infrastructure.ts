@@ -1,39 +1,38 @@
 import {
+  createLogger,
+  type StructuredLogger,
+  safeErrorCode,
+  safeErrorType,
+} from "@agentify/observability";
+import {
   createBrowserObservationRepository,
   createDatabase,
   createScanJobRepository,
   normalizeNodePostgresConnectionString,
   recordWorkerHeartbeat,
 } from "@agentify/scanner-database";
-import {
-  createLogger,
-  safeErrorCode,
-  safeErrorType,
-  type StructuredLogger,
-} from "@agentify/observability";
 import { PgBoss } from "pg-boss";
-
-import type { WorkerEnv } from "./env.js";
-import type { WorkerHealth } from "./health.js";
-import { ApifyBrowserProviderClient } from "./apify-browser-client.js";
-import { startBrowserObservationJanitor } from "./browser-observation-janitor.js";
 import {
+  type AdvisoryLockPool,
   AnalyticsOutboxRepository,
   createDestinationDeliverer,
   createPartnerRateLimitedDeliverer,
-  startAnalyticsOutboxConsumer,
-  type AdvisoryLockPool,
   type SqlPool,
+  startAnalyticsOutboxConsumer,
 } from "./analytics-outbox.js";
-import { NodePinnedTransport, systemDnsResolver } from "./safe-fetch.js";
+import { ApifyBrowserProviderClient } from "./apify-browser-client.js";
+import { startBrowserObservationJanitor } from "./browser-observation-janitor.js";
 import { registerBrowserObservationWorker } from "./browser-observation-job.js";
 import { startBrowserObservationReconciler } from "./browser-observation-reconciler.js";
-import { registerScanWorker, type ScanBoss } from "./scan-job.js";
-import { ScanRunner } from "./scan-runner.js";
+import type { WorkerEnv } from "./env.js";
+import type { WorkerHealth } from "./health.js";
 import {
   refreshWorkerReadiness,
   type WorkerReadinessSnapshot,
 } from "./readiness.js";
+import { NodePinnedTransport, systemDnsResolver } from "./safe-fetch.js";
+import { registerScanWorker, type ScanBoss } from "./scan-job.js";
+import { ScanRunner } from "./scan-runner.js";
 
 type WorkerMetric = {
   name: string;

@@ -1,7 +1,7 @@
 import {
   CONSENT_POLICY_VERSION,
-  createConsentSnapshot,
   type ConsentCategories,
+  createConsentSnapshot,
 } from "@agentify/analytics";
 import {
   consentSnapshots,

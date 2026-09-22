@@ -55,9 +55,9 @@ const decodeEntities = (value: string): string =>
 export const rawTextCharacterCount = (html: string): number =>
   decodeEntities(
     html
-      .replace(/<!--[^]*?-->/g, " ")
+      .replace(/<!--[\s\S]*?-->/g, " ")
       .replace(
-        /<(?:script|style|noscript|template)\b[^>]*>[^]*?<\/(?:script|style|noscript|template)>/gi,
+        /<(?:script|style|noscript|template)\b[^>]*>[\s\S]*?<\/(?:script|style|noscript|template)>/gi,
         " ",
       )
       .replace(/<[^>]+>/g, " "),
@@ -175,10 +175,11 @@ export const extractRawMetadata = (
   }
   const jsonLdValues: string[] = [];
   const pattern =
-    /<script\b[^>]*type\s*=\s*(?:"application\/ld\+json"|'application\/ld\+json'|application\/ld\+json)[^>]*>([^]*?)<\/script>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(html)) && jsonLdValues.length < 50) {
+    /<script\b[^>]*type\s*=\s*(?:"application\/ld\+json"|'application\/ld\+json'|application\/ld\+json)[^>]*>([\s\S]*?)<\/script>/gi;
+  let match = pattern.exec(html);
+  while (match && jsonLdValues.length < 50) {
     jsonLdValues.push(match[1] ?? "");
+    match = pattern.exec(html);
   }
   return {
     canonical,
@@ -188,10 +189,19 @@ export const extractRawMetadata = (
   };
 };
 
+// The pattern captures one mandatory group, so a match without it is a broken
+// pattern rather than a snapshot we could not read.
+const captured = (match: RegExpMatchArray): string => {
+  const value = match[1];
+  if (value === undefined)
+    throw new Error("the pattern matched without filling its capture group");
+  return value;
+};
+
 const countAriaRoles = (snapshot: string): Record<string, number> => {
   const counts: Record<string, number> = {};
   for (const match of snapshot.matchAll(/^\s*-\s+([a-z][a-z0-9_-]*)\b/gim)) {
-    const role = match[1]!.toLowerCase();
+    const role = captured(match).toLowerCase();
     counts[role] = (counts[role] ?? 0) + 1;
   }
   return Object.fromEntries(

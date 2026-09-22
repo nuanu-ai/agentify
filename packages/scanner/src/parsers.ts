@@ -35,13 +35,13 @@ export const parseSitemap = (body: string): SitemapResult => {
     };
   const urls = [...body.matchAll(/<loc(?:\s[^>]*)?>([\s\S]*?)<\/loc>/gi)]
     .slice(0, 5000)
-    .map((match) => decodeXml(match[1]!.trim()))
+    .map((match) => decodeXml(captured(match).trim()))
     .filter((value) => /^https?:\/\//i.test(value));
   const lastmods = [
     ...body.matchAll(/<lastmod(?:\s[^>]*)?>([\s\S]*?)<\/lastmod>/gi),
   ]
     .slice(0, 5000)
-    .map((match) => match[1]!.trim());
+    .map((match) => captured(match).trim());
   return {
     valid: urls.length > 0,
     isIndex,
@@ -102,6 +102,15 @@ const flattenJsonLd = (value: unknown): Record<string, unknown>[] => {
   return [record, ...graph];
 };
 
+// Every pattern below captures one mandatory group, so a match without it is a
+// broken pattern rather than a page we could not read.
+const captured = (match: RegExpMatchArray): string => {
+  const value = match[1];
+  if (value === undefined)
+    throw new Error("the pattern matched without filling its capture group");
+  return value;
+};
+
 export const parseJsonLd = (html: string): JsonLdResult => {
   const scripts = [
     ...html.matchAll(
@@ -111,7 +120,7 @@ export const parseJsonLd = (html: string): JsonLdResult => {
   const nodes: Record<string, unknown>[] = [];
   let invalidCount = 0;
   for (const script of scripts) {
-    const parsed = parseSafeJson(script[1]!, 524_288);
+    const parsed = parseSafeJson(captured(script), 524_288);
     if (parsed === undefined) invalidCount += 1;
     else nodes.push(...flattenJsonLd(parsed));
   }
@@ -152,7 +161,7 @@ export const htmlSignals = (html: string) => ({
     ...html.matchAll(
       /<link\b[^>]*rel=["'][^"']*alternate[^"']*["'][^>]*hreflang=["']([^"']+)["'][^>]*>/gi,
     ),
-  ].map((match) => match[1]!),
+  ].map((match) => captured(match)),
 });
 
 export const isChallenge = (status: number, body: string): boolean =>

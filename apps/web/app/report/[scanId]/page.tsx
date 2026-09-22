@@ -1,7 +1,12 @@
+import {
+  canonicalCheckLabel,
+  canonicalFixCopy,
+  canonicalImpactCopy,
+  canonicalSummaryCopy,
+} from "@agentify/remediation";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import Link from "next/link";
-
 import { Brand } from "../../../components/brand";
 import { BrowserObservations } from "../../../components/browser-observations";
 import { CardSignal } from "../../../components/card-signal";
@@ -23,15 +28,9 @@ import {
   getFullReport,
   getReportOwnerEmail,
 } from "../../../lib/server/reporting";
-import { getCardSignalPublicConfig } from "../../../lib/server/stripe-card-signal-config";
 import { getOwnedCardSignalForReport } from "../../../lib/server/stripe-card-signal";
+import { getCardSignalPublicConfig } from "../../../lib/server/stripe-card-signal-config";
 import styles from "./report.module.css";
-import {
-  canonicalCheckLabel,
-  canonicalFixCopy,
-  canonicalImpactCopy,
-  canonicalSummaryCopy,
-} from "@agentify/remediation";
 
 export const metadata: Metadata = {
   title: "Private diagnostic report",

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import React from "react";
 
 import { getPublicAppConfig } from "../lib/app-config";
 import { Brand } from "./brand";

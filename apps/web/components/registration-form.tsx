@@ -1,14 +1,7 @@
 "use client";
 
-import React, {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react";
-
 import { registrationResponseSchema } from "@agentify/scanner-contracts";
+import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 
 import styles from "./registration-form.module.css";
 

@@ -1,15 +1,15 @@
-import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 import { lookup as dnsLookup } from "node:dns/promises";
 import http, { type IncomingHttpHeaders, type RequestOptions } from "node:http";
 import https from "node:https";
 import type { Readable } from "node:stream";
+import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 import {
   assertPublicAddresses,
   canonicalizeTarget,
-  validateRedirect,
   type FetchArtifact,
   type SafeHeaderName,
   UrlPolicyError,
+  validateRedirect,
 } from "@agentify/scanner";
 
 export type ResolvedAddress = { address: string; family: 4 | 6 };

@@ -1,14 +1,13 @@
+import { partnerClickIdSchema } from "@agentify/scanner-contracts";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { partnerClickIdSchema } from "@agentify/scanner-contracts";
-
-import { ANONYMOUS_COOKIE } from "../../../../lib/server/scans";
 import {
   PARTNER_CLICK_ID_COOKIE,
   persistAttributionTouch,
 } from "../../../../lib/server/attribution";
 import { getServerConfig } from "../../../../lib/server/config";
 import { errorResponse, hasSameOrigin } from "../../../../lib/server/http";
+import { ANONYMOUS_COOKIE } from "../../../../lib/server/scans";
 
 export const runtime = "nodejs";
 

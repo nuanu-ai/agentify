@@ -1,8 +1,8 @@
+import type { FetchArtifact } from "@agentify/scanner";
 import type { ScanJobV1 } from "@agentify/scanner-contracts";
 import { describe, expect, it } from "vitest";
-import type { FetchArtifact } from "@agentify/scanner";
-import { isSameSite, ScanRunner } from "./scan-runner.js";
 import type { PinnedTransport, PinnedTransportRequest } from "./safe-fetch.js";
+import { isSameSite, ScanRunner } from "./scan-runner.js";
 
 const product = JSON.stringify({
   "@type": "Product",

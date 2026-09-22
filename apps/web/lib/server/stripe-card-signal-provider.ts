@@ -1,15 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import Stripe from "stripe";
-
-import {
-  localWebhookSignature,
-  verifyLocalWebhookSignature,
-} from "./stripe-card-signal-crypto";
 import {
   getStripeCardSignalConfig,
   type StripeCardSignalConfig,
 } from "./stripe-card-signal-config";
+import {
+  localWebhookSignature,
+  verifyLocalWebhookSignature,
+} from "./stripe-card-signal-crypto";
 
 export type SetupReadback = Readonly<{
   id: string;

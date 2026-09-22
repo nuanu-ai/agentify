@@ -1,21 +1,21 @@
 import { createHash } from "node:crypto";
 
 import {
-  DEFAULT_CONSENT,
   buildMetaPayload,
   buildOutboxInserts,
   buildPosthogPayload,
-  createAnalyticsEvent,
-  eventOnceKey,
   type ConsentCategories,
   type ConsentEnvironment,
+  createAnalyticsEvent,
+  DEFAULT_CONSENT,
+  eventOnceKey,
 } from "@agentify/analytics";
 import type { AnalyticsEventName, Segment } from "@agentify/scanner-contracts";
 import { eq } from "drizzle-orm";
 
 import {
-  insertBusinessEventOnce,
   type BusinessEventExecutor,
+  insertBusinessEventOnce,
 } from "./analytics-event-store.js";
 import { createUuidV7 } from "./ids.js";
 import { consentSnapshots, sessions } from "./schema.js";

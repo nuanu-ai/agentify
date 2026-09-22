@@ -6,9 +6,9 @@ import { describe, expect, it } from "vitest";
 
 import type { BrowserProviderClient } from "./apify-browser-client";
 import {
+  type BrowserObservationRepository,
   buildBrowserObservationInput,
   processBrowserObservationJob,
-  type BrowserObservationRepository,
 } from "./browser-observation-job";
 
 const observation = {

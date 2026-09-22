@@ -1,12 +1,12 @@
 import {
   BROWSER_OBSERVATION_VERSION,
-  browserObservationJobV1Schema,
   type BrowserObservationInputV1,
   type BrowserObservationJobV1,
+  browserObservationJobV1Schema,
 } from "@agentify/scanner-contracts";
 import type {
-  createBrowserObservationRepository,
   BrowserObservationClaim,
+  createBrowserObservationRepository,
 } from "@agentify/scanner-database";
 import { getDomain } from "tldts";
 

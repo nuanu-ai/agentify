@@ -1,18 +1,17 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
-
 import {
   apiErrorEnvelopeSchema,
   createScanResponseSchema,
 } from "@agentify/scanner-contracts";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { captureLandingAttribution } from "../lib/attribution-client";
 import {
   clearPendingScan,
-  readPendingScan,
   type PendingScanRequest,
+  readPendingScan,
 } from "../lib/pending-scan";
 import { Brand } from "./brand";
 import styles from "./pending-scan-experience.module.css";

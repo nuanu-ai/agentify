@@ -1,7 +1,5 @@
 "use client";
 
-import React from "react";
-
 export const OPEN_PRIVACY_CHOICES_EVENT = "agentify:open-privacy-choices";
 
 export function PrivacyChoicesButton({

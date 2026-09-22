@@ -7,8 +7,8 @@ import { PrivacyChoicesButton } from "../../../components/privacy-choices-button
 import { PublicResultCard } from "../../../components/public-result-card";
 import { UrlScanForm } from "../../../components/url-scan-form";
 import { getPublicAppConfig } from "../../../lib/app-config";
-import { shareCopy } from "../../../lib/share-copy";
 import { getPublicShare } from "../../../lib/server/reporting";
+import { shareCopy } from "../../../lib/share-copy";
 import styles from "./share.module.css";
 
 export async function generateMetadata({
@@ -19,7 +19,7 @@ export async function generateMetadata({
   const { slug } = await params;
   const { displayBrand } = getPublicAppConfig();
   const share = await getPublicShare(slug);
-  if (!share || share.status !== "published")
+  if (share?.status !== "published")
     return {
       title: "Result unavailable",
       robots: { index: false, follow: false },
@@ -59,7 +59,7 @@ export default async function PublicSharePage({
 }) {
   const { slug } = await params;
   const share = await getPublicShare(slug);
-  if (!share || share.status !== "published") notFound();
+  if (share?.status !== "published") notFound();
   const snapshot = share.snapshot;
   const scanDate = new Intl.DateTimeFormat("en-US", {
     dateStyle: "medium",

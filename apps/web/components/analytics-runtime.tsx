@@ -1,12 +1,12 @@
 "use client";
 
 import {
-  readCurrentConsent,
   type ConsentSnapshot,
+  readCurrentConsent,
 } from "@agentify/analytics/browser";
 import type { AnalyticsEventName, Segment } from "@agentify/scanner-contracts";
-import type { PostHog } from "posthog-js";
 import { usePathname } from "next/navigation";
+import type { PostHog } from "posthog-js";
 import { useCallback, useEffect, useRef } from "react";
 
 import {
@@ -127,6 +127,7 @@ export function AnalyticsRuntime({
     [config],
   );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the route is what re-reads the stored consent snapshot, so a choice made on another page is not carried into this one
   useEffect(() => {
     consent.current = readCurrentConsent(window.localStorage);
     const changed = (event: Event) => {

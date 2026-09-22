@@ -1,6 +1,6 @@
+import type { ScanEvaluation } from "@agentify/scanner";
 import type { CheckResult, ScanJobV1 } from "@agentify/scanner-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ScanEvaluation } from "@agentify/scanner";
 import {
   processScanJob,
   type ScanJobRepository,

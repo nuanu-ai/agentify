@@ -125,8 +125,9 @@ export const isPathAllowed = (
   const matches = rules
     .filter(({ rule }) => ruleMatches(path, rule))
     .sort((a, b) => b.rule.length - a.rule.length);
-  if (!matches.length) return true;
-  const longest = matches[0]!.rule.length;
+  const [closest] = matches;
+  if (!closest) return true;
+  const longest = closest.rule.length;
   return matches
     .filter(({ rule }) => rule.length === longest)
     .some(({ allow }) => allow);

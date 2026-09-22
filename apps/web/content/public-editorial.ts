@@ -1,8 +1,8 @@
+import { canonicalCheckLabel } from "@agentify/remediation";
 import {
   CHECK_DEFINITIONS,
   SCAN_RUBRIC_VERSION,
 } from "@agentify/scanner-contracts";
-import { canonicalCheckLabel } from "@agentify/remediation";
 
 import type { PublicAppConfig } from "../lib/app-config";
 

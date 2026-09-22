@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { REPORT_SESSION_COOKIE } from "../../../../../lib/server/auth";
+import { getServerConfig } from "../../../../../lib/server/config";
 import {
   errorResponse,
   hasSameOrigin,
@@ -11,7 +12,6 @@ import {
   recoverScannerReportSession,
   requestScannerReportRecovery,
 } from "../../../../../lib/server/scanner-recovery";
-import { getServerConfig } from "../../../../../lib/server/config";
 import { verifyTurnstileToken } from "../../../../../lib/server/turnstile";
 
 export const runtime = "nodejs";

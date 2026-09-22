@@ -113,7 +113,8 @@ const hasPrefix = (
   for (let index = 0; index < Math.ceil(bits / 16); index += 1) {
     const used = Math.min(16, bits - index * 16);
     const mask = used === 16 ? 0xffff : (0xffff << (16 - used)) & 0xffff;
-    if ((words[index]! & mask) !== ((prefix[index] ?? 0) & mask)) return false;
+    if (((words[index] ?? 0) & mask) !== ((prefix[index] ?? 0) & mask))
+      return false;
   }
   return true;
 };
@@ -150,7 +151,7 @@ export const classifyIp = (address: string): IpClassification => {
   if (hasPrefix(words, [0x2001, 0x0010], 28))
     return { allowed: false, family: 6, reason: "reserved" };
   if (hasPrefix(words, [0x0000, 0, 0, 0, 0, 0xffff], 96)) {
-    const mapped = ((words[6]! << 16) | words[7]!) >>> 0;
+    const mapped = (((words[6] ?? 0) << 16) | (words[7] ?? 0)) >>> 0;
     for (const [network, prefix, reason] of V4_BLOCKS) {
       if (isInV4Range(mapped, network, prefix))
         return { allowed: false, family: 6, reason };

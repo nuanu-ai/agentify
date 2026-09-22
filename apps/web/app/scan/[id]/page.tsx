@@ -1,7 +1,5 @@
-import type { Metadata } from "next";
-import React from "react";
-
 import { segmentSchema } from "@agentify/scanner-contracts";
+import type { Metadata } from "next";
 
 import { ScanExperience } from "../../../components/scan-experience";
 import { getServerConfig } from "../../../lib/server/config";

@@ -302,18 +302,25 @@ export const safeBrowserRequest = async (
 
   return await new Promise<SafeResponse>((resolve, reject) => {
     let settled = false;
-    const finish = (error?: Error, value?: SafeResponse): void => {
-      if (settled) return;
+    // The first outcome wins: whichever of the response, the stream and the
+    // request speaks first is the one this promise answers with.
+    const settle = (): boolean => {
+      if (settled) return false;
       settled = true;
       options.signal.removeEventListener("abort", onAbort);
-      if (error) reject(error);
-      else resolve(value!);
+      return true;
+    };
+    const fail = (error: Error): void => {
+      if (settle()) reject(error);
+    };
+    const finish = (value: SafeResponse): void => {
+      if (settle()) resolve(value);
     };
     const request = transport.request(requestOptions, (response) => {
       const status = response.statusCode ?? 0;
       if (options.method === "HEAD") {
         response.resume();
-        finish(undefined, {
+        finish({
           status,
           headers: responseHeaders(response.headers),
           body: Buffer.alloc(0),
@@ -327,7 +334,7 @@ export const safeBrowserRequest = async (
         stream = decodedStream(response, response.headers["content-encoding"]);
       } catch (error) {
         response.destroy();
-        finish(
+        fail(
           error instanceof Error
             ? error
             : new BrowserNetworkPolicyError("decode_failed"),
@@ -345,9 +352,9 @@ export const safeBrowserRequest = async (
         bytes += buffer.length;
         chunks.push(buffer);
       });
-      stream.once("error", (error) => finish(error));
+      stream.once("error", (error) => fail(error));
       stream.once("end", () => {
-        finish(undefined, {
+        finish({
           status,
           headers: responseHeaders(response.headers),
           body: Buffer.concat(chunks, bytes),
@@ -363,7 +370,7 @@ export const safeBrowserRequest = async (
     request.once("timeout", () => {
       request.destroy(new BrowserNetworkPolicyError("request_timeout"));
     });
-    request.once("error", (error) => finish(error));
+    request.once("error", (error) => fail(error));
     request.end();
   });
 };

@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
-
 import { sharePreviewResponseSchema } from "@agentify/scanner-contracts";
+import { useEffect, useRef, useState } from "react";
 
 import type { PublicResultPreview } from "./public-result-card";
 import styles from "./public-share-actions.module.css";

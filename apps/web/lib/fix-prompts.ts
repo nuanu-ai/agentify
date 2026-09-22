@@ -1,14 +1,14 @@
-import type {
-  BrowserObservationFinding,
-  BrowserObservationStatusResponse,
-  ReportResponse,
-} from "@agentify/scanner-contracts";
 import {
   canonicalCheckLabel,
   canonicalFixCopy,
   canonicalImpactCopy,
   canonicalSummaryCopy,
 } from "@agentify/remediation";
+import type {
+  BrowserObservationFinding,
+  BrowserObservationStatusResponse,
+  ReportResponse,
+} from "@agentify/scanner-contracts";
 
 import {
   browserObservationImpact,

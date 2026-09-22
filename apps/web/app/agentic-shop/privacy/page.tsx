@@ -1,9 +1,9 @@
-import type { Metadata } from "next";
-import Link from "next/link";
 import {
   MERCHANT_APPLICATION_POLICY,
   MERCHANT_APPLICATION_RETENTION_DAYS,
 } from "@agentify/scanner-contracts";
+import type { Metadata } from "next";
+import Link from "next/link";
 import { MarketingHeader, SiteFooter } from "../../../components/site-chrome";
 import { getPublicAppConfig } from "../../../lib/app-config";
 import styles from "../shop.module.css";

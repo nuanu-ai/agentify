@@ -1,8 +1,8 @@
 import {
-  browserObservationInputV1Schema,
-  browserObservationOutputV1Schema,
   type BrowserObservationInputV1,
   type BrowserObservationOutputV1,
+  browserObservationInputV1Schema,
+  browserObservationOutputV1Schema,
 } from "@agentify/scanner-contracts";
 import { ApifyClient } from "apify-client";
 

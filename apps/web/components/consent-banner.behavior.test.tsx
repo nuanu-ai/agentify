@@ -1,14 +1,13 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import React from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import {
   CONSENT_STORAGE_KEY,
   readCurrentConsent,
 } from "@agentify/analytics/browser";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import React from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ConsentBanner } from "./consent-banner";
 

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { ScanEvaluation } from "@agentify/scanner";
 import {
   BROWSER_OBSERVATION_VERSION,
   type BrowserObservationJobV1,
@@ -6,7 +7,6 @@ import {
   type ScanJobV1,
 } from "@agentify/scanner-contracts";
 import { createUuidV7 } from "@agentify/scanner-database";
-import type { ScanEvaluation } from "@agentify/scanner";
 import type { ScanRunner } from "./scan-runner.js";
 
 export type ReusableScanSnapshot = ScanEvaluation & {

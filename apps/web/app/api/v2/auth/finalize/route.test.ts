@@ -1,10 +1,9 @@
+import {
+  openReportCabinetHandoff,
+  REPORT_CABINET_HANDOFF_COOKIE,
+} from "@agentify/scanner-contracts/report-cabinet-handoff";
 import { NextResponse } from "next/server";
 import { describe, expect, it } from "vitest";
-
-import {
-  REPORT_CABINET_HANDOFF_COOKIE,
-  openReportCabinetHandoff,
-} from "@agentify/scanner-contracts/report-cabinet-handoff";
 import { REPORT_SESSION_COOKIE } from "../../../../../lib/server/auth";
 import {
   attachReportCabinetHandoffCookie,

@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import type { PublicShareSnapshot } from "@agentify/scanner-contracts";
+import { describe, expect, it } from "vitest";
 
 import { shareCopy } from "./share-copy";
 

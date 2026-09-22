@@ -16,10 +16,10 @@ import {
   loadConsentedAnalytics,
   META_EVENT_MAPPING,
   POSTHOG_BROWSER_OPTIONS,
-  retryDelayMs,
   readAttributionTouch,
-  saveConsentDecision,
+  retryDelayMs,
   sanitizeEventProperties,
+  saveConsentDecision,
   shouldDeadLetter,
   updateAttribution,
 } from "./index.js";

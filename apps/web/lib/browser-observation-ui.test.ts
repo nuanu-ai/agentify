@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import type { BrowserObservationFinding } from "@agentify/scanner-contracts";
+import { describe, expect, it } from "vitest";
 
 import {
   isActionableBrowserFinding,

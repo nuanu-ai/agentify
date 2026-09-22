@@ -1,6 +1,6 @@
-import { readFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
 import { createSocket } from "node:dgram";
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 
 import { chromium } from "playwright";
 import { describe, expect, it } from "vitest";
@@ -119,7 +119,8 @@ describe("real Chromium aggregate extraction", () => {
       const childFrame = page
         .frames()
         .find((frame) => frame !== page.mainFrame());
-      expect(childFrame).toBeDefined();
+      if (!childFrame)
+        throw new Error("the fixture page opened no child frame");
       const main = await page.evaluate(
         () =>
           (
@@ -131,7 +132,7 @@ describe("real Chromium aggregate extraction", () => {
             }
           ).__mainSnapshot,
       );
-      const frame = await childFrame!.evaluate(
+      const frame = await childFrame.evaluate(
         (blocked) => {
           const scope = globalThis as unknown as Record<string, unknown>;
           return Object.fromEntries(

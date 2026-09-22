@@ -1,4 +1,3 @@
-import { migrate } from "drizzle-orm/node-postgres/migrator";
 import {
   copyFile,
   mkdir,
@@ -7,8 +6,9 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
 
 import type { Database } from "./client.js";
 

@@ -37,9 +37,11 @@ describe("local Stripe card-signal provider", () => {
     });
     const confirmed = await provider.retrieveSetup(first.id);
     expect(confirmed.status).toBe("succeeded");
+    if (!confirmed.paymentMethodId)
+      throw new Error("a succeeded setup carries no payment method");
     const attached = await provider.retrieveCustomerPaymentMethod(
       customerId,
-      confirmed.paymentMethodId!,
+      confirmed.paymentMethodId,
     );
     expect(attached.customerId).toBe(customerId);
     await provider.detachPaymentMethod(attached.id);

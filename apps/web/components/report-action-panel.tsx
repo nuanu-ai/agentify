@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
-import { takeResumeIntent, type ResumeIntent } from "../lib/resume-intent";
+import { type ResumeIntent, takeResumeIntent } from "../lib/resume-intent";
 import { CopyRemediationPrompt } from "./copy-remediation-prompt";
 import type { PublicResultPreview } from "./public-result-card";
 import { PublicShareActions } from "./public-share-actions";

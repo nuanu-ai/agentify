@@ -11,8 +11,8 @@ import {
   AnalyticsOutboxRepository,
   createDestinationDeliverer,
   createPartnerRateLimitedDeliverer,
-  runOutboxCycle,
   type OutboxRow,
+  runOutboxCycle,
 } from "./analytics-outbox.js";
 
 const connectionString = process.env.MIGRATION_TEST_DATABASE_URL;

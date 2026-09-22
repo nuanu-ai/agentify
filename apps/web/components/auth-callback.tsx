@@ -1,15 +1,15 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-
 import { authFinalizeResponseSchema } from "@agentify/scanner-contracts";
+import { useRouter } from "next/navigation";
+import type React from "react";
+import { useEffect, useRef, useState } from "react";
+import styles from "./auth-callback.module.css";
 import { Brand } from "./brand";
 import {
   TURNSTILE_TOKEN_EVENT,
   TurnstileChallenge,
 } from "./turnstile-challenge";
-import styles from "./auth-callback.module.css";
 
 type CallbackState =
   | "loading"
@@ -57,6 +57,7 @@ export function AuthCallback({
   const capturedEntry = useRef<CapturedEntry | undefined>(undefined);
   const sessionLookup = useRef<AbortController | undefined>(undefined);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: this runs once, on mount: it reads the callback token out of the URL and replaces the history entry, and a second run would find nothing there
   useEffect(() => {
     const capture = (reuseCaptured: boolean) => {
       sessionLookup.current?.abort();

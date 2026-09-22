@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  openReportCabinetHandoff,
   REPORT_CABINET_HANDOFF_COOKIE,
   REPORT_CABINET_HANDOFF_TTL_SECONDS,
-  openReportCabinetHandoff,
   sealReportCabinetHandoff,
 } from "./report-cabinet-handoff";
 
@@ -25,6 +25,7 @@ describe("report-to-cabinet handoff envelope", () => {
       scanId,
       secret,
     });
+    if (!sealed) throw new Error("sealing a valid handoff produced nothing");
 
     expect(REPORT_CABINET_HANDOFF_COOKIE).toBe(
       "agentify_report_cabinet_handoff",
@@ -32,7 +33,7 @@ describe("report-to-cabinet handoff envelope", () => {
     expect(REPORT_CABINET_HANDOFF_TTL_SECONDS).toBe(3600);
     expect(sealed).not.toContain(token);
     expect(
-      openReportCabinetHandoff(sealed!, {
+      openReportCabinetHandoff(sealed, {
         email,
         now: new Date(now.getTime() + 3_599_000),
         reportPath,
@@ -49,7 +50,8 @@ describe("report-to-cabinet handoff envelope", () => {
       publicOrigin: "https://agentify.example",
       scanId,
       secret,
-    })!;
+    });
+    if (!sealed) throw new Error("sealing a valid handoff produced nothing");
     const signatureStart = sealed.lastIndexOf(".") + 1;
     const changed = `${sealed.slice(0, signatureStart)}${sealed[signatureStart] === "A" ? "B" : "A"}${sealed.slice(signatureStart + 1)}`;
 
@@ -83,12 +85,12 @@ describe("report-to-cabinet handoff envelope", () => {
   });
 
   it.each([
-    "https://evil.example/cabinet/sign-in/open?token=" + token,
+    `https://evil.example/cabinet/sign-in/open?token=${token}`,
     "https://agentify.example/cabinet/sign-in/open?token=short",
-    actionUrl + "&next=/cabinet/cards",
-    actionUrl + "#fragment",
-    "https://user@agentify.example/cabinet/sign-in/open?token=" + token,
-    "https://agentify.example/cabinet/cards?token=" + token,
+    `${actionUrl}&next=/cabinet/cards`,
+    `${actionUrl}#fragment`,
+    `https://user@agentify.example/cabinet/sign-in/open?token=${token}`,
+    `https://agentify.example/cabinet/cards?token=${token}`,
   ])(
     "refuses a cabinet action outside the closed same-origin shape: %s",
     (candidate) => {

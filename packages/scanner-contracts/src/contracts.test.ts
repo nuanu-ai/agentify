@@ -3,19 +3,19 @@ import { describe, expect, it } from "vitest";
 import {
   ANALYTICS_EVENT_NAMES,
   BROWSER_OBSERVATION_IDS,
-  CHECK_DEFINITIONS,
   BROWSER_OBSERVATION_VERSION,
   browserObservationInputV1Schema,
   browserObservationOutputV1Schema,
   browserObservationStatusResponseSchema,
+  CHECK_DEFINITIONS,
   clientAnalyticsEventRequestSchema,
   createScanRequestSchema,
   registrationRequestSchema,
   reportResponseSchema,
+  scanJobV1Schema,
   scanStatusResponseSchema,
   scanUrlWasSubmittedWithoutScheme,
   sharePreviewResponseSchema,
-  scanJobV1Schema,
   uuidV7Schema,
 } from "./index.js";
 
@@ -275,6 +275,9 @@ describe("canonical contracts", () => {
       })),
       timings: { total_ms: 100, pages: [100] },
     };
+    const [firstObservation] = output.observations;
+    if (!firstObservation)
+      throw new Error("the observation fixture has no observations");
     for (const status of ["completed", "partial", "blocked", "failed"]) {
       expect(
         browserObservationOutputV1Schema.safeParse({ ...output, status })
@@ -307,7 +310,7 @@ describe("canonical contracts", () => {
         ...output,
         observations: output.observations.map((finding, index) =>
           index === output.observations.length - 1
-            ? { ...finding, id: output.observations[0]!.id }
+            ? { ...finding, id: firstObservation.id }
             : finding,
         ),
       }).success,

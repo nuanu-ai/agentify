@@ -1,9 +1,10 @@
+import { canonicalizeTarget, selectFindings } from "@agentify/scanner";
 import {
-  CHECK_DEFINITIONS,
-  SCAN_RUBRIC_VERSION,
   BROWSER_OBSERVATION_VERSION,
   type BrowserObservationStatusResponse,
+  CHECK_DEFINITIONS,
   type CreateScanRequest,
+  SCAN_RUBRIC_VERSION,
   type ScanStatusResponse,
 } from "@agentify/scanner-contracts";
 import {
@@ -15,7 +16,6 @@ import {
   scans,
   sessions,
 } from "@agentify/scanner-database";
-import { canonicalizeTarget, selectFindings } from "@agentify/scanner";
 import { and, eq, sql } from "drizzle-orm";
 
 import { getVerifiedSession } from "./auth";

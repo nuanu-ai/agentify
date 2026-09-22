@@ -1,4 +1,4 @@
-import { type NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 
 import { REPORT_SESSION_COOKIE } from "../../../../../../../lib/server/auth";
 import { getServerConfig } from "../../../../../../../lib/server/config";

@@ -1,8 +1,9 @@
 import { contactAccessResponseSchema } from "@agentify/scanner-contracts";
 import { type NextRequest, NextResponse } from "next/server";
-
-import { REPORT_SESSION_COOKIE } from "../../../../../../lib/server/auth";
-import { getVerifiedSession } from "../../../../../../lib/server/auth";
+import {
+  getVerifiedSession,
+  REPORT_SESSION_COOKIE,
+} from "../../../../../../lib/server/auth";
 import { errorResponse } from "../../../../../../lib/server/http";
 
 export const runtime = "nodejs";

@@ -21,9 +21,9 @@ import {
   registrationIntents,
   reportSessions,
   scanChecks,
-  scanShares,
   scannerIdentityCompletions,
   scannerRecoveryIntents,
+  scanShares,
   scans,
   sessions,
   waitlistEntries,
@@ -38,22 +38,18 @@ import { POST as persistClientEvent } from "../../app/api/v1/events/route";
 import { GET as downloadFullPrompt } from "../../app/api/v1/reports/[scanId]/remediation-prompt/download/route";
 import { GET as downloadTeaserPrompt } from "../../app/api/v1/scans/[id]/remediation-prompt/download/route";
 import { GET as getTeaserPrompt } from "../../app/api/v1/scans/[id]/remediation-prompt/route";
-import { GET as previewShare } from "../../app/api/v1/scans/[id]/share-preview/route";
 import { POST as publishShare } from "../../app/api/v1/scans/[id]/share/route";
+import { GET as previewShare } from "../../app/api/v1/scans/[id]/share-preview/route";
 import { POST as acceptScan } from "../../app/api/v1/scans/route";
-import { GET as getContactAccess } from "../../app/api/v2/scans/[id]/contact-access/route";
 import { POST as finalizeScannerAuth } from "../../app/api/v2/auth/finalize/route";
 import { handleScannerRecoveryRequest } from "../../app/api/v2/auth/recover/route";
+import { GET as getContactAccess } from "../../app/api/v2/scans/[id]/contact-access/route";
 import { POST as requestScannerRegistration } from "../../app/api/v2/scans/[id]/registrations/route";
 import { REPORT_SESSION_COOKIE } from "./auth";
 import { getCabinetReportIdentityClient } from "./cabinet-report-identity";
 import { getServerConfig } from "./config";
 import { decryptEmail, encryptEmail, hmacHex, sha256 } from "./crypto";
 import { getDatabase } from "./database";
-import { requestScannerIdentityDeletion } from "./scanner-identity-deletion";
-import { requestScannerReportRecovery } from "./scanner-recovery";
-import { createScannerRegistrationIntent } from "./scanner-registration";
-import { verifyAndFinalizeScannerIdentity } from "./scanner-identity-finalize";
 import { enqueueScanInTransaction, stopScanQueue } from "./queue";
 import { consumeScanRateLimits, readRateCount } from "./rate-limit";
 import {
@@ -62,6 +58,10 @@ import {
   getPublicShare,
   revokePublicShare,
 } from "./reporting";
+import { requestScannerIdentityDeletion } from "./scanner-identity-deletion";
+import { verifyAndFinalizeScannerIdentity } from "./scanner-identity-finalize";
+import { requestScannerReportRecovery } from "./scanner-recovery";
+import { createScannerRegistrationIntent } from "./scanner-registration";
 import { authorizeScan, createOrReplayScan } from "./scans";
 
 const connectionString = process.env.MIGRATION_TEST_DATABASE_URL;
@@ -72,8 +72,8 @@ if (!connectionString?.includes("_migration_test")) {
 }
 process.env.DATABASE_URL = connectionString;
 process.env.APP_BASE_URL = "http://localhost:3000";
-process.env.TOKEN_HMAC_SECRET =
-  "p4-integration-hmac-secret-with-at-least-32-bytes";
+const tokenHmacSecret = "p4-integration-hmac-secret-with-at-least-32-bytes";
+process.env.TOKEN_HMAC_SECRET = tokenHmacSecret;
 process.env.EMAIL_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString("base64");
 process.env.TURNSTILE_ENFORCED = "false";
 process.env.PUBLIC_SHARE_ENABLED = "true";
@@ -104,8 +104,6 @@ type LinkRecord = {
 
 const links: LinkRecord[] = [];
 let tokenSequence = 0;
-let deletionMode: "deleted" | "retained" | "unavailable" = "deleted";
-let deletionRequests = 0;
 let cabinetServer: Server;
 let scanId = "";
 let scanAccessToken = "";
@@ -132,6 +130,14 @@ async function readJson(request: IncomingMessage) {
     string,
     unknown
   >;
+}
+
+// A fixture query that must find its row: an empty result is a broken test, and
+// it should say so here rather than fail later on a property of undefined.
+function onlyRow<T>(rows: readonly T[]): T {
+  const [row] = rows;
+  if (!row) throw new Error("a query that must return one row returned none");
+  return row;
 }
 
 async function createCompletedScan(label: string) {
@@ -164,14 +170,14 @@ async function createCompletedScan(label: string) {
     idempotencyKeyHash: `idem-${label}-${scanId}`,
     idempotencyBodyHash: `body-${label}-${scanId}`,
   });
-  return (await db.select().from(scans).where(eq(scans.id, scanId)))[0]!;
+  return onlyRow(await db.select().from(scans).where(eq(scans.id, scanId)));
 }
 
 async function createFreshCompletedScan(label: string) {
   const { db } = getDatabase();
-  const source = (
-    await db.select().from(scans).where(eq(scans.id, scanId))
-  )[0]!;
+  const source = onlyRow(
+    await db.select().from(scans).where(eq(scans.id, scanId)),
+  );
   const sessionId = createUuidV7();
   const id = createUuidV7();
   const accessToken = `fresh-${label}-private-access-token-with-more-than-192-bits`;
@@ -191,7 +197,7 @@ async function createFreshCompletedScan(label: string) {
     idempotencyBodyHash: `fresh-${label}-body-${id}`,
   });
   return {
-    scan: (await db.select().from(scans).where(eq(scans.id, id)))[0]!,
+    scan: onlyRow(await db.select().from(scans).where(eq(scans.id, id))),
     accessToken,
   };
 }
@@ -257,11 +263,7 @@ beforeAll(async () => {
   scanAccessToken = "scan-access-token-with-more-than-192-random-looking-bits";
   await db.insert(sessions).values({
     id: sessionId,
-    anonymousIdHash: hmacHex(
-      process.env.TOKEN_HMAC_SECRET!,
-      "anonymous",
-      anonymousToken,
-    ),
+    anonymousIdHash: hmacHex(tokenHmacSecret, "anonymous", anonymousToken),
   });
   await db.insert(consentSnapshots).values({
     id: consentId,
@@ -412,12 +414,7 @@ beforeAll(async () => {
       return;
     }
     if (body.operation === "delete") {
-      deletionRequests += 1;
-      if (deletionMode === "unavailable") {
-        respondJson(response, 503, { status: "unavailable" });
-      } else {
-        respondJson(response, 200, { status: deletionMode });
-      }
+      respondJson(response, 200, { status: "deleted" });
       return;
     }
     respondJson(response, 400, { status: "refused" });
@@ -535,22 +532,18 @@ describe("P4 cabinet-owned scanner identity", () => {
         )
       ).status,
     ).toBe(204);
-    const attributedSession = (
+    const attributedSession = onlyRow(
       await db
         .select()
         .from(sessions)
         .where(
           eq(
             sessions.anonymousIdHash,
-            hmacHex(
-              process.env.TOKEN_HMAC_SECRET!,
-              "anonymous",
-              anonymousToken,
-            ),
+            hmacHex(tokenHmacSecret, "anonymous", anonymousToken),
           ),
         )
-        .limit(1)
-    )[0]!;
+        .limit(1),
+    );
     expect(attributedSession).toMatchObject({
       firstUtmCampaign: "first-campaign",
       firstFbclidHash: "a".repeat(64),
@@ -652,9 +645,9 @@ describe("P4 cabinet-owned scanner identity", () => {
       ),
     ).toMatchObject({ rows: [{ count: "0" }] });
 
-    const scan = (
-      await db.select().from(scans).where(eq(scans.id, scanId)).limit(1)
-    )[0]!;
+    const scan = onlyRow(
+      await db.select().from(scans).where(eq(scans.id, scanId)).limit(1),
+    );
     const body = registrationBody("Owner@Example.com");
     await expect(createScannerRegistrationIntent(scan, body)).resolves.toEqual({
       sent: true,
@@ -687,21 +680,17 @@ describe("P4 cabinet-owned scanner identity", () => {
       expect.objectContaining({ scanId }),
       expect.objectContaining({ scanId }),
     ]);
-    const ownerLead = (
+    const ownerLead = onlyRow(
       await db
         .select()
         .from(leads)
         .where(
           eq(
             leads.emailLookupHash,
-            hmacHex(
-              process.env.TOKEN_HMAC_SECRET!,
-              "email",
-              "owner@example.com",
-            ),
+            hmacHex(tokenHmacSecret, "email", "owner@example.com"),
           ),
-        )
-    )[0]!;
+        ),
+    );
     expect(ownerLead).toBeDefined();
     expect(
       await db
@@ -741,12 +730,8 @@ describe("P4 cabinet-owned scanner identity", () => {
       {},
     );
     const link = latestLink(email, "registration");
-    const emailLookupHash = hmacHex(
-      process.env.TOKEN_HMAC_SECRET!,
-      "email",
-      email,
-    );
-    const intent = (
+    const emailLookupHash = hmacHex(tokenHmacSecret, "email", email);
+    const intent = onlyRow(
       await db
         .select()
         .from(registrationIntents)
@@ -755,8 +740,8 @@ describe("P4 cabinet-owned scanner identity", () => {
             eq(registrationIntents.scanId, scan.id),
             eq(registrationIntents.emailLookupHash, emailLookupHash),
           ),
-        )
-    )[0]!;
+        ),
+    );
     expect(intent.phoneE164Ciphertext).toBeNull();
     expect(intent.phoneLookupHash).toBeNull();
 
@@ -765,12 +750,12 @@ describe("P4 cabinet-owned scanner identity", () => {
       link.token,
     );
     expect(finalized?.scanId).toBe(scan.id);
-    const lead = (
+    const lead = onlyRow(
       await db
         .select()
         .from(leads)
-        .where(eq(leads.emailLookupHash, emailLookupHash))
-    )[0]!;
+        .where(eq(leads.emailLookupHash, emailLookupHash)),
+    );
     expect(lead.phoneE164Ciphertext).toBeNull();
     expect(lead.phoneLookupHash).toBeNull();
   });
@@ -813,12 +798,8 @@ describe("P4 cabinet-owned scanner identity", () => {
       partnerClickId,
     });
     const firstLink = latestLink(email, "registration");
-    const emailLookupHash = hmacHex(
-      process.env.TOKEN_HMAC_SECRET!,
-      "email",
-      email,
-    );
-    const activeIntent = (
+    const emailLookupHash = hmacHex(tokenHmacSecret, "email", email);
+    const activeIntent = onlyRow(
       await db
         .select()
         .from(registrationIntents)
@@ -828,8 +809,8 @@ describe("P4 cabinet-owned scanner identity", () => {
             eq(registrationIntents.emailLookupHash, emailLookupHash),
             isNull(registrationIntents.consumedAt),
           ),
-        )
-    )[0]!;
+        ),
+    );
     expect(activeIntent.callbackStateHash).toMatch(/^[a-f0-9]{64}$/);
     expect(JSON.stringify(activeIntent)).not.toContain("+14155550123");
     expect(JSON.stringify(activeIntent)).not.toContain(partnerClickId);
@@ -863,7 +844,9 @@ describe("P4 cabinet-owned scanner identity", () => {
       firstLink.token,
     );
     expect(finalized?.scanId).toBe(scan.id);
-    const authorizedCookie = `${REPORT_SESSION_COOKIE}=${finalized!.sessionToken}`;
+    if (!finalized)
+      throw new Error("finalizing a verified link opened no session");
+    const authorizedCookie = `${REPORT_SESSION_COOKIE}=${finalized.sessionToken}`;
     expect(
       (
         await getContactAccess(
@@ -918,12 +901,12 @@ describe("P4 cabinet-owned scanner identity", () => {
     expect(verifiedDownload.headers.get("content-type")).toBe(
       "text/markdown; charset=utf-8",
     );
-    const lead = (
+    const lead = onlyRow(
       await db
         .select()
         .from(leads)
-        .where(eq(leads.emailLookupHash, emailLookupHash))
-    )[0]!;
+        .where(eq(leads.emailLookupHash, emailLookupHash)),
+    );
     expect(lead.phoneE164Ciphertext).not.toContain("+14155550123");
     expect(lead.phoneLookupHash).toMatch(/^[a-f0-9]{64}$/);
     expect(
@@ -986,13 +969,13 @@ describe("P4 cabinet-owned scanner identity", () => {
   });
 
   it("verifies once, authorizes 18-row report and a revocable safe share", async () => {
-    const scan = (
+    const scan = onlyRow(
       await getDatabase()
         .db.select()
         .from(scans)
         .where(eq(scans.id, scanId))
-        .limit(1)
-    )[0]!;
+        .limit(1),
+    );
     await createScannerRegistrationIntent(
       scan,
       registrationBody("owner@example.com"),
@@ -1004,10 +987,12 @@ describe("P4 cabinet-owned scanner identity", () => {
       link.token,
     );
     expect(verified).toMatchObject({ scanId });
+    if (!verified)
+      throw new Error("verifying the identity link opened no session");
     expect(
       await verifyAndFinalizeScannerIdentity(link.state, link.token),
     ).toBeUndefined();
-    const report = await getFullReport(scanId, verified!.sessionToken);
+    const report = await getFullReport(scanId, verified.sessionToken);
     expect(report?.checks).toHaveLength(18);
     expect(JSON.stringify(report)).not.toContain("private.example");
     expect(report?.benchmark).toBeNull();
@@ -1016,7 +1001,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         `http://localhost:3000/api/v1/reports/${scanId}/remediation-prompt/download`,
         {
           headers: {
-            cookie: `${REPORT_SESSION_COOKIE}=${verified!.sessionToken}`,
+            cookie: `${REPORT_SESSION_COOKIE}=${verified.sessionToken}`,
           },
         },
       ),
@@ -1037,7 +1022,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         method: "POST",
         headers: {
           origin: "http://localhost:3000",
-          cookie: `${REPORT_SESSION_COOKIE}=${verified!.sessionToken}`,
+          cookie: `${REPORT_SESSION_COOKIE}=${verified.sessionToken}`,
           "content-type": "application/json",
         },
         body: JSON.stringify({
@@ -1076,13 +1061,13 @@ describe("P4 cabinet-owned scanner identity", () => {
       existing_share: null,
     });
     expect(await getDatabase().db.select().from(scanShares)).toHaveLength(0);
-    const leadId = (
+    const leadId = onlyRow(
       await getDatabase()
         .db.select({ leadId: leadScans.leadId })
         .from(leadScans)
         .where(eq(leadScans.scanId, scanId))
-        .limit(1)
-    )[0]!.leadId;
+        .limit(1),
+    ).leadId;
     process.env.PUBLIC_SHARE_ENABLED = "false";
     expect(
       await createPublicShare(
@@ -1176,13 +1161,13 @@ describe("P4 cabinet-owned scanner identity", () => {
     const stableKey = `queue-atomic-${createUuidV7()}`;
     const first = await createOrReplayScan(body, stableKey, undefined);
     expect(first.anonymousToken).toBeTruthy();
-    const stored = (
+    const stored = onlyRow(
       await getDatabase()
         .db.select()
         .from(scans)
         .where(eq(scans.id, first.scanId))
-        .limit(1)
-    )[0]!;
+        .limit(1),
+    );
     expect(stored.status).toBe("queued");
     const jobCount = async (id: string) =>
       (
@@ -1363,11 +1348,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         .where(
           eq(
             leads.emailLookupHash,
-            hmacHex(
-              process.env.TOKEN_HMAC_SECRET!,
-              "email",
-              "scanner-live@example.com",
-            ),
+            hmacHex(tokenHmacSecret, "email", "scanner-live@example.com"),
           ),
         ),
     ).toHaveLength(0);
@@ -1389,21 +1370,17 @@ describe("P4 cabinet-owned scanner identity", () => {
     );
     expect(successful.headers.get("set-cookie")).not.toContain("scanner-auth");
     expect((await finalizeRequest(first)).status).toBe(401);
-    const linked = (
+    const linked = onlyRow(
       await db
         .select()
         .from(leads)
         .where(
           eq(
             leads.emailLookupHash,
-            hmacHex(
-              process.env.TOKEN_HMAC_SECRET!,
-              "email",
-              "scanner-live@example.com",
-            ),
+            hmacHex(tokenHmacSecret, "email", "scanner-live@example.com"),
           ),
-        )
-    )[0]!;
+        ),
+    );
     expect(linked.verifiedAt).toBeInstanceOf(Date);
     expect(
       await db
@@ -1434,13 +1411,10 @@ describe("P4 cabinet-owned scanner identity", () => {
       .select()
       .from(leads)
       .where(
-        eq(
-          leads.emailLookupHash,
-          hmacHex(process.env.TOKEN_HMAC_SECRET!, "email", email),
-        ),
+        eq(leads.emailLookupHash, hmacHex(tokenHmacSecret, "email", email)),
       );
     expect(matchingLeads).toHaveLength(1);
-    const lead = matchingLeads[0]!;
+    const lead = onlyRow(matchingLeads);
     expect(
       (await db.select().from(leadScans).where(eq(leadScans.leadId, lead.id)))
         .map((row) => row.scanId)
@@ -1480,9 +1454,9 @@ describe("P4 cabinet-owned scanner identity", () => {
       leadId,
       scanId: original.id,
     });
-    const scan = (
-      await db.select().from(scans).where(eq(scans.id, original.id))
-    )[0]!;
+    const scan = onlyRow(
+      await db.select().from(scans).where(eq(scans.id, original.id)),
+    );
     await createScannerRegistrationIntent(scan, registrationBody(email));
     const firstLink = latestLink(email, "registration");
     let markSending!: () => void;
@@ -1642,11 +1616,13 @@ describe("P4 cabinet-owned scanner identity", () => {
         "drop function hold_report_session_for_deletion() ",
       );
     }
-    expect((await confirmation!).status).toBe(200);
-    await expect(deletion!).resolves.toBe("completed");
-    const after = (
-      await db.select().from(scans).where(eq(scans.id, scan.id))
-    )[0]!;
+    if (!confirmation || !deletion)
+      throw new Error("the blocked confirmation and deletion never started");
+    expect((await confirmation).status).toBe(200);
+    await expect(deletion).resolves.toBe("completed");
+    const after = onlyRow(
+      await db.select().from(scans).where(eq(scans.id, scan.id)),
+    );
     expect(after.leadId).toBeNull();
     expect(after.sessionId).not.toBe(scan.sessionId);
     expect(after.submittedUrlRedacted).toBe("redacted://deleted");
@@ -1729,11 +1705,13 @@ describe("P4 cabinet-owned scanner identity", () => {
       );
       await admin.pool.query("drop function hold_cross_email_report_session()");
     }
-    expect((await confirmation!).status).toBe(200);
-    await expect(deletion!).resolves.toBe("completed");
-    const after = (
-      await db.select().from(scans).where(eq(scans.id, scan.id))
-    )[0]!;
+    if (!confirmation || !deletion)
+      throw new Error("the blocked confirmation and deletion never started");
+    expect((await confirmation).status).toBe(200);
+    await expect(deletion).resolves.toBe("completed");
+    const after = onlyRow(
+      await db.select().from(scans).where(eq(scans.id, scan.id)),
+    );
     expect(after.leadId).toBeNull();
     expect(after.sessionId).not.toBe(scan.sessionId);
     expect(after.submittedUrlRedacted).toBe("redacted://deleted");
@@ -1814,17 +1792,14 @@ describe("P4 cabinet-owned scanner identity", () => {
         .from(scannerIdentityCompletions)
         .where(eq(scannerIdentityCompletions.tokenHash, link.tokenHash)),
     ).toHaveLength(1);
-    const lead = (
+    const lead = onlyRow(
       await getDatabase()
         .db.select()
         .from(leads)
         .where(
-          eq(
-            leads.emailLookupHash,
-            hmacHex(process.env.TOKEN_HMAC_SECRET!, "email", email),
-          ),
-        )
-    )[0]!;
+          eq(leads.emailLookupHash, hmacHex(tokenHmacSecret, "email", email)),
+        ),
+    );
     expect(
       await getDatabase()
         .db.select()
@@ -1834,9 +1809,7 @@ describe("P4 cabinet-owned scanner identity", () => {
     expect(
       decryptEmail(lead.emailNormalizedCiphertext, Buffer.alloc(32, 9)),
     ).toBe(email);
-    expect(lead.emailLookupHash).toBe(
-      hmacHex(process.env.TOKEN_HMAC_SECRET!, "email", email),
-    );
+    expect(lead.emailLookupHash).toBe(hmacHex(tokenHmacSecret, "email", email));
 
     await expect(
       verifyAndFinalizeScannerIdentity(link.state, link.token),
@@ -1929,17 +1902,17 @@ describe("P4 cabinet-owned scanner identity", () => {
         .where(
           eq(
             reportSessions.leadId,
-            (
+            onlyRow(
               await getDatabase()
                 .db.select({ id: leads.id })
                 .from(leads)
                 .where(
                   eq(
                     leads.emailLookupHash,
-                    hmacHex(process.env.TOKEN_HMAC_SECRET!, "email", email),
+                    hmacHex(tokenHmacSecret, "email", email),
                   ),
-                )
-            )[0]!.id,
+                ),
+            ).id,
           ),
         ),
     ).toHaveLength(1);
@@ -1949,7 +1922,7 @@ describe("P4 cabinet-owned scanner identity", () => {
     const email = "recovery-expiry@example.com";
     const scan = await createCompletedScan("recovery-expiry");
     const leadId = createUuidV7();
-    const emailHash = hmacHex(process.env.TOKEN_HMAC_SECRET!, "email", email);
+    const emailHash = hmacHex(tokenHmacSecret, "email", email);
     await getDatabase()
       .db.insert(leads)
       .values({
@@ -2007,19 +1980,19 @@ describe("P4 cabinet-owned scanner identity", () => {
     await expect(
       verifyAndFinalizeScannerIdentity(link.state, link.token),
     ).resolves.toMatchObject({ scanId: scan.id });
-    const recovery = (
+    const recovery = onlyRow(
       await getDatabase()
         .db.select()
         .from(scannerRecoveryIntents)
-        .where(eq(scannerRecoveryIntents.tokenHash, link.tokenHash))
-    )[0]!;
+        .where(eq(scannerRecoveryIntents.tokenHash, link.tokenHash)),
+    );
     expect(recovery.consumedAt).toBeInstanceOf(Date);
-    const registration = (
+    const registration = onlyRow(
       await getDatabase()
         .db.select()
         .from(registrationIntents)
-        .where(eq(registrationIntents.callbackStateHash, sha256(link.state)))
-    )[0]!;
+        .where(eq(registrationIntents.callbackStateHash, sha256(link.state))),
+    );
     expect(registration.consumedAt).toBeNull();
   });
 
@@ -2037,11 +2010,7 @@ describe("P4 cabinet-owned scanner identity", () => {
       .values({
         id: createUuidV7(),
         emailNormalizedCiphertext: encryptEmail(email, Buffer.alloc(32, 9)),
-        emailLookupHash: hmacHex(
-          process.env.TOKEN_HMAC_SECRET!,
-          "email",
-          email,
-        ),
+        emailLookupHash: hmacHex(tokenHmacSecret, "email", email),
         role: "business_owner",
         verifiedAt: new Date(),
         deletionRequestedAt: new Date(),
@@ -2060,7 +2029,7 @@ describe("P4 cabinet-owned scanner identity", () => {
           and(
             eq(
               scannerRecoveryIntents.emailLookupHash,
-              hmacHex(process.env.TOKEN_HMAC_SECRET!, "email", email),
+              hmacHex(tokenHmacSecret, "email", email),
             ),
             sql`${scannerRecoveryIntents.tokenHash} is not null`,
           ),
@@ -2155,9 +2124,14 @@ describe("P4 cabinet-owned scanner identity", () => {
       report_url: `/report/${scan.id}`,
     });
     expect(finalizedPayload).not.toHaveProperty("cabinet_action_url");
-    const reportCookie = finalized.headers.get("set-cookie")!;
+    const reportCookie = finalized.headers.get("set-cookie");
+    if (!reportCookie)
+      throw new Error("the finalize response set no cookie at all");
     expect(reportCookie).toContain(REPORT_SESSION_COOKIE);
     expect(reportCookie).toContain(REPORT_CABINET_HANDOFF_COOKIE);
+    const [sessionCookie] = reportCookie.split(";");
+    if (!sessionCookie)
+      throw new Error("the finalize response set an empty cookie");
     expect(await db.select().from(consentSnapshots)).toEqual(beforeConsent);
     expect(await db.select().from(deliveryOutbox)).toEqual(beforeDelivery);
     expect(
@@ -2175,7 +2149,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         headers: {
           origin: "http://localhost:3000",
           "content-type": "application/json",
-          cookie: reportCookie.split(";")[0]!,
+          cookie: sessionCookie,
         },
         body: JSON.stringify({ action: "session", state: legacyState }),
       }),
@@ -2185,7 +2159,6 @@ describe("P4 cabinet-owned scanner identity", () => {
       report_url: `/report/${scan.id}`,
     });
 
-    const sessionCookie = reportCookie.split(";")[0]!;
     const sessionRecoveryRequest = (state: string) =>
       handleScannerRecoveryRequest(
         new NextRequest("http://localhost:3000/api/v2/auth/recover", {
@@ -2328,9 +2301,9 @@ describe("P4 cabinet-owned scanner identity", () => {
     const ambiguousHint = await sessionRecoveryRequest(ambiguousState);
     expect(ambiguousHint.status).toBe(202);
 
-    const reportSessionToken = reportCookie
-      .split(";")[0]!
-      .slice(`${REPORT_SESSION_COOKIE}=`.length);
+    const reportSessionToken = sessionCookie.slice(
+      `${REPORT_SESSION_COOKIE}=`.length,
+    );
     await expect(
       getFullReport(scan.id, reportSessionToken),
     ).resolves.toMatchObject({ scan_id: scan.id });
@@ -2344,7 +2317,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         headers: {
           origin: "http://localhost:3000",
           "content-type": "application/json",
-          cookie: reportCookie.split(";")[0]!,
+          cookie: sessionCookie,
         },
         body: JSON.stringify({ action: "session", state: legacyState }),
       }),
@@ -2446,12 +2419,3 @@ describe("P4 cabinet-owned scanner identity", () => {
     ).toBe(401);
   });
 });
-
-export const cabinetDeletionTestControl = {
-  setMode(mode: typeof deletionMode) {
-    deletionMode = mode;
-  },
-  requestCount() {
-    return deletionRequests;
-  },
-};

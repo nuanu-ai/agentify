@@ -13,8 +13,8 @@ export const createBrowserEventId = (now = Date.now()): string => {
     bytes[index] = Number(timestamp & 0xffn);
     timestamp >>= 8n;
   }
-  bytes[6] = 0x70 | (bytes[6]! & 0x0f);
-  bytes[8] = 0x80 | (bytes[8]! & 0x3f);
+  bytes[6] = 0x70 | ((bytes[6] ?? 0) & 0x0f);
+  bytes[8] = 0x80 | ((bytes[8] ?? 0) & 0x3f);
   const hex = [...bytes]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");

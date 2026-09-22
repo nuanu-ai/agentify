@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import { parseRobots } from "@agentify/scanner";
+import { describe, expect, it } from "vitest";
 
 import {
   authorizeMainFrameNavigation,

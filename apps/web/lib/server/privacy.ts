@@ -1,8 +1,8 @@
 import {
+  type DatabaseTransaction,
   runRetentionCleanup,
   scannerIdentityCompletions,
   scannerRecoveryIntents,
-  type DatabaseTransaction,
 } from "@agentify/scanner-database";
 import { eq, lte, sql } from "drizzle-orm";
 

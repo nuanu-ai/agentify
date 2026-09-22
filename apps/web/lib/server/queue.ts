@@ -4,9 +4,9 @@ import {
   type Segment,
 } from "@agentify/scanner-contracts";
 import {
+  type DatabaseTransaction,
   normalizeNodePostgresConnectionString,
   scans,
-  type DatabaseTransaction,
 } from "@agentify/scanner-database";
 import { and, eq, sql } from "drizzle-orm";
 import { fromDrizzle, PgBoss } from "pg-boss";

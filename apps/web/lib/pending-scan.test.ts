@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  PENDING_SCAN_STORAGE_KEY,
   clearPendingScan,
+  PENDING_SCAN_STORAGE_KEY,
+  type PendingScanRequest,
   readPendingScan,
   savePendingScan,
-  type PendingScanRequest,
 } from "./pending-scan";
 
 class MemoryStorage {

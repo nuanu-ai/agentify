@@ -1,12 +1,11 @@
 "use client";
 
-import React, { useEffect, useId, useState } from "react";
-
 import {
-  browserObservationStatusResponseSchema,
   type BrowserObservationFinding,
   type BrowserObservationStatusResponse,
+  browserObservationStatusResponseSchema,
 } from "@agentify/scanner-contracts";
+import { useEffect, useId, useState } from "react";
 
 import { DISPLAY_BRAND } from "../lib/brand";
 import {
@@ -19,9 +18,9 @@ import {
   safeEvidenceEntries,
 } from "../lib/browser-observation-ui";
 import { buildBrowserFixPrompt } from "../lib/fix-prompts";
+import styles from "./browser-observations.module.css";
 import { CopyRemediationPrompt } from "./copy-remediation-prompt";
 import { StatusBadge } from "./status-badge";
-import styles from "./browser-observations.module.css";
 
 type ViewState = "hidden" | "ready" | "error";
 

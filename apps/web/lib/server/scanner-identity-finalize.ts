@@ -15,9 +15,9 @@ import { getServerConfig } from "./config";
 import { decryptEmail, hmacHex, normalizeEmail, sha256 } from "./crypto";
 import { getDatabase } from "./database";
 import {
+  type ActiveRecoveryAuthority,
   finalizeCabinetScannerRecoveryInTransaction,
   findActiveScannerRecoveryAuthority,
-  type ActiveRecoveryAuthority,
 } from "./scanner-recovery";
 import { finalizeCabinetScannerRegistrationInTransaction } from "./scanner-registration";
 

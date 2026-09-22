@@ -1,5 +1,4 @@
 import type { DiagnosticLevel } from "@agentify/scanner-contracts";
-import React from "react";
 
 import { Brand } from "./brand";
 import styles from "./public-result-card.module.css";

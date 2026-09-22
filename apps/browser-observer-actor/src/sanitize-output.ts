@@ -1,6 +1,6 @@
 import {
-  browserObservationOutputV1Schema,
   type BrowserObservationOutputV1,
+  browserObservationOutputV1Schema,
 } from "@agentify/scanner-contracts";
 
 const FORBIDDEN_KEY =

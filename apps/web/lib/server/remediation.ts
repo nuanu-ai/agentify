@@ -1,18 +1,17 @@
+import {
+  generateRemediationPrompt,
+  type RemediationFindingInput,
+} from "@agentify/remediation";
 import type {
   BrowserObservationFinding,
   RemediationPromptResponse,
 } from "@agentify/scanner-contracts";
 import { CHECK_DEFINITIONS } from "@agentify/scanner-contracts";
 import { scanChecks, scans } from "@agentify/scanner-database";
-import {
-  generateRemediationPrompt,
-  type RemediationFindingInput,
-} from "@agentify/remediation";
 import { eq } from "drizzle-orm";
-
+import { getDatabase } from "./database";
 import { getFullBrowserObservation, getFullReport } from "./reporting";
 import { getScanStatusForVerifiedSession } from "./scans";
-import { getDatabase } from "./database";
 
 const CHECK_LABEL_BY_ID = new Map<number, string>(
   CHECK_DEFINITIONS.map((definition) => [definition.id, definition.labelCode]),

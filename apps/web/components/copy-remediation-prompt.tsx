@@ -1,12 +1,11 @@
 "use client";
 
-import React, { useId, useRef, useState } from "react";
-
 import { remediationPromptResponseSchema } from "@agentify/scanner-contracts";
+import { useId, useRef, useState } from "react";
 
 import {
-  rememberResumeIntent,
   type ResumeIntent as GateIntent,
+  rememberResumeIntent,
 } from "../lib/resume-intent";
 import styles from "./copy-remediation-prompt.module.css";
 

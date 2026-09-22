@@ -1,4 +1,4 @@
-import React, { type CSSProperties } from "react";
+import type { CSSProperties } from "react";
 
 export const AGENTIFY_MARK_LEFT_PATH =
   "M50 40 H40 A6 6 0 0 0 34 46 V82 A6 6 0 0 0 40 88 H50";

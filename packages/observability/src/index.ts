@@ -158,7 +158,7 @@ export function createLogger(input: {
   };
 }
 
-const routePatterns: ReadonlyArray<[RegExp, string]> = [
+const routePatterns: readonly [RegExp, string][] = [
   [/^\/(store|local)?$/, "page_landing"],
   [/^\/(methodology|privacy|scanner|terms|data-request)$/, "page_trust"],
   [/^\/admin(?:\/.*)?$/, "page_admin"],

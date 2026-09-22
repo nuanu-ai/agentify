@@ -1,14 +1,14 @@
 import {
-  acknowledgeReportLinkResponseSchema,
-  consumeReportLinkResponseSchema,
-  deleteUnattachedPersonResponseSchema,
-  issueCabinetLinkResponseSchema,
-  sendReportLinkResponseSchema,
   type AcknowledgeReportLinkResponse,
+  acknowledgeReportLinkResponseSchema,
   type ConsumeReportLinkResponse,
+  consumeReportLinkResponseSchema,
   type DeleteUnattachedPersonResponse,
+  deleteUnattachedPersonResponseSchema,
   type IssueCabinetLinkResponse,
+  issueCabinetLinkResponseSchema,
   type SendReportLinkResponse,
+  sendReportLinkResponseSchema,
 } from "@agentify/scanner-contracts/report-identity";
 import type { z } from "zod";
 

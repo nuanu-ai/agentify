@@ -3,16 +3,15 @@ import {
   registrationRequestSchema,
 } from "@agentify/scanner-contracts";
 import { type NextRequest, NextResponse } from "next/server";
-
+import { PARTNER_CLICK_ID_COOKIE } from "../../../../../../lib/server/attribution";
 import { getServerConfig } from "../../../../../../lib/server/config";
 import {
   bearerToken,
   errorResponse,
   hasSameOrigin,
 } from "../../../../../../lib/server/http";
-import { authorizeScan } from "../../../../../../lib/server/scans";
 import { createScannerRegistrationIntent } from "../../../../../../lib/server/scanner-registration";
-import { PARTNER_CLICK_ID_COOKIE } from "../../../../../../lib/server/attribution";
+import { authorizeScan } from "../../../../../../lib/server/scans";
 
 export const runtime = "nodejs";
 

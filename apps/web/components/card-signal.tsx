@@ -7,7 +7,7 @@ import {
   useStripe,
 } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js/pure";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   CARD_SIGNAL_DISCLOSURES,

@@ -1,4 +1,4 @@
-import { type NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 
 import { errorResponse } from "../../../../../../lib/server/http";
 import { getPublicShare } from "../../../../../../lib/server/reporting";
@@ -10,7 +10,7 @@ export async function GET(
 ) {
   const { slug } = await params;
   const share = await getPublicShare(slug);
-  if (!share || share.status !== "published")
+  if (share?.status !== "published")
     return errorResponse(
       request,
       404,

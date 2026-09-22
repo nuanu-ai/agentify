@@ -1,11 +1,10 @@
 import Link from "next/link";
-import React, { type ReactNode } from "react";
-
+import type { ReactNode } from "react";
+import { publicSiteSchema } from "../lib/schema";
 import { Brand } from "./brand";
+import styles from "./editorial-page.module.css";
 import { SiteDoors, SiteFooter } from "./site-chrome";
 import { StructuredData } from "./structured-data";
-import { publicSiteSchema } from "../lib/schema";
-import styles from "./editorial-page.module.css";
 
 export type EditorialSection = Readonly<{
   id: string;

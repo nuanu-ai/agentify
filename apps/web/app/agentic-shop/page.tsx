@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
 import Image from "next/image";
-
-import { getPublicAppConfig } from "../../lib/app-config";
 import { MarketingHeader, SiteFooter } from "../../components/site-chrome";
-import styles from "./shop.module.css";
 import { AGENTIC_SHOP_RESEARCH } from "../../content/agentic-shop";
+import { getPublicAppConfig } from "../../lib/app-config";
+import styles from "./shop.module.css";
 
 const adobeSource = AGENTIC_SHOP_RESEARCH.sourceUrl;
 

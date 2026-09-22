@@ -1,5 +1,5 @@
-import { anonymizeLeadData } from "@agentify/scanner-database";
 import {
+  anonymizeLeadData,
   createUuidV7,
   leads,
   registrationIntents,
@@ -96,13 +96,16 @@ export async function beginScannerIdentityDeletion(leadId: string) {
     await tx
       .delete(registrationIntents)
       .where(eq(registrationIntents.emailLookupHash, lead.emailLookupHash));
-    return (
-      await tx
-        .select()
-        .from(scannerIdentityDeletionOperations)
-        .where(eq(scannerIdentityDeletionOperations.operationId, operationId))
-        .limit(1)
-    )[0]!;
+    const [operation] = await tx
+      .select()
+      .from(scannerIdentityDeletionOperations)
+      .where(eq(scannerIdentityDeletionOperations.operationId, operationId))
+      .limit(1);
+    if (!operation)
+      throw new Error(
+        "the deletion operation this transaction wrote was not there to read back",
+      );
+    return operation;
   });
 }
 
@@ -157,7 +160,7 @@ export async function runScannerIdentityDeletionOperation(
   } = {},
 ): Promise<"completed" | "pending" | "not_found"> {
   const claimed = await claimDeletionOperation(input.operationId);
-  if (!claimed || !claimed.leaseToken) return "not_found";
+  if (!claimed?.leaseToken) return "not_found";
   const lead = (
     await getDatabase()
       .db.select({

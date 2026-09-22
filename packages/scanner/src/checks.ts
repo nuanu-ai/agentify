@@ -20,6 +20,13 @@ export const CHECK_WEIGHTS: readonly number[] = CHECK_DEFINITIONS.map(
   (definition) => definition.nominalWeight,
 );
 
+const checkWeight = (id: number): number => {
+  const weight = CHECK_WEIGHTS[id - 1];
+  if (weight === undefined)
+    throw new Error(`check ${id} has no definition, so it has no weight`);
+  return weight;
+};
+
 type TerminalCheckStatus =
   "pass" | "partial" | "fail" | "unavailable" | "not_applicable";
 type ResultInput = {
@@ -49,8 +56,8 @@ const result = ({
 }: ResultInput): CheckResult => ({
   id: id as CheckResult["id"],
   status,
-  nominalWeight: CHECK_WEIGHTS[id - 1]!,
-  applicableWeight: applicable ? CHECK_WEIGHTS[id - 1]! : 0,
+  nominalWeight: checkWeight(id),
+  applicableWeight: applicable ? checkWeight(id) : 0,
   earnedWeight,
   summaryCode,
   evidence,
@@ -441,7 +448,8 @@ const jsonLdChecks = (artifacts: ScanArtifacts): CheckResult[] => {
       }),
     ];
   const profile = verticalProfile(artifacts.segment, parsed.nodes);
-  if (!profile.selected)
+  const selected = profile.selected;
+  if (!selected)
     return [
       check5,
       result({
@@ -457,10 +465,10 @@ const jsonLdChecks = (artifacts: ScanArtifacts): CheckResult[] => {
       }),
     ];
   const requiredFound = profile.required.filter((field) =>
-    fieldPresent(profile.selected!.node, field),
+    fieldPresent(selected.node, field),
   );
   const recommendedFound = profile.recommended.filter((field) =>
-    fieldPresent(profile.selected!.node, field),
+    fieldPresent(selected.node, field),
   );
   const requiredRatio = requiredFound.length / profile.required.length;
   const recommendedRatio = recommendedFound.length / profile.recommended.length;
@@ -484,7 +492,7 @@ const jsonLdChecks = (artifacts: ScanArtifacts): CheckResult[] => {
         ? "vertical_jsonld_complete"
         : "vertical_jsonld_incomplete",
       evidence: {
-        type: jsonLdTypes(profile.selected.node)[0] ?? "unknown",
+        type: jsonLdTypes(selected.node)[0] ?? "unknown",
         required_found: requiredFound,
         required_missing: profile.required.filter(
           (field) => !requiredFound.includes(field),
@@ -870,8 +878,9 @@ const agentUaCheck = (artifacts: ScanArtifacts): CheckResult => {
       userImpactCode: "agent_ua_not_assessed",
       errorCode: base?.errorCode ?? "neutral_unavailable",
     });
-  const probes = [artifacts.agentProbes.chatgpt, artifacts.agentProbes.claude];
-  if (probes.some((probe) => !probe || inaccessible(probe)))
+  const chatgpt = artifacts.agentProbes.chatgpt;
+  const claude = artifacts.agentProbes.claude;
+  if (!chatgpt || !claude || inaccessible(chatgpt) || inaccessible(claude))
     return result({
       id: 13,
       status: "unavailable",
@@ -880,14 +889,14 @@ const agentUaCheck = (artifacts: ScanArtifacts): CheckResult => {
       userImpactCode: "agent_ua_not_assessed",
       errorCode: "agent_probe_unavailable",
     });
-  const accessible = probes.map(
-    (probe) =>
-      probe!.status >= 200 &&
-      probe!.status < 300 &&
-      !isChallenge(probe!.status, probe!.body) &&
-      comparableBodies(base.body, probe!.body),
-  );
-  const count = accessible.filter(Boolean).length;
+  const probeAccessible = (probe: typeof chatgpt): boolean =>
+    probe.status >= 200 &&
+    probe.status < 300 &&
+    !isChallenge(probe.status, probe.body) &&
+    comparableBodies(base.body, probe.body);
+  const chatgptAccessible = probeAccessible(chatgpt);
+  const claudeAccessible = probeAccessible(claude);
+  const count = [chatgptAccessible, claudeAccessible].filter(Boolean).length;
   return result({
     id: 13,
     status: count === 2 ? "pass" : count === 1 ? "partial" : "fail",
@@ -899,8 +908,8 @@ const agentUaCheck = (artifacts: ScanArtifacts): CheckResult => {
           ? "agent_ua_partial"
           : "agent_ua_blocked",
     evidence: {
-      chatgpt_probe_accessible: accessible[0]!,
-      claude_probe_accessible: accessible[1]!,
+      chatgpt_probe_accessible: chatgptAccessible,
+      claude_probe_accessible: claudeAccessible,
     },
     userImpactCode: "agent_ua_accessibility",
     fixCode: count === 2 ? undefined : "allow_agent_user_agents",

@@ -1,17 +1,18 @@
 import {
   createUuidV7,
-  leads,
+  type DatabaseTransaction,
   leadScans,
+  leads,
   registrationIntents,
   reportSessions,
   scannerRecoveryIntents,
   scans,
   waitlistEntries,
-  type DatabaseTransaction,
 } from "@agentify/scanner-database";
 import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 
 import { getVerifiedSession } from "./auth";
+import { getCabinetReportIdentityClient } from "./cabinet-report-identity";
 import { getServerConfig } from "./config";
 import {
   decryptEmail,
@@ -22,7 +23,6 @@ import {
 } from "./crypto";
 import { getDatabase } from "./database";
 import { consumeRateLimitsAtomically } from "./rate-limit";
-import { getCabinetReportIdentityClient } from "./cabinet-report-identity";
 
 const REPORT_SESSION_TTL_MS = 30 * 86_400_000;
 const RECOVERY_INTENT_TTL_MS = 60 * 60 * 1000;

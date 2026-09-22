@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
-
+import { AccountActions } from "../../../components/account-actions";
 import {
   EditorialPage,
   Notice,
   ProseList,
 } from "../../../components/editorial-page";
-import { AccountActions } from "../../../components/account-actions";
 import { getPublicAppConfig } from "../../../lib/app-config";
 
 export const metadata: Metadata = {

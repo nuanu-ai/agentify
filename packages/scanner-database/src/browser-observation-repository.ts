@@ -1,11 +1,11 @@
 import {
   BROWSER_OBSERVATION_VERSION,
-  browserObservationFindingSchema,
-  browserObservationOutputV1Schema,
-  browserObservationSignalsSchema,
   type BrowserObservationJobV1,
   type BrowserObservationLifecycleStatus,
   type BrowserObservationOutputV1,
+  browserObservationFindingSchema,
+  browserObservationOutputV1Schema,
+  browserObservationSignalsSchema,
 } from "@agentify/scanner-contracts";
 import { and, asc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 

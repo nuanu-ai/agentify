@@ -2,18 +2,18 @@
 
 import {
   CONSENT_POLICY_VERSION,
+  type ConsentCategories,
+  type ConsentSnapshot,
   createConsentSnapshot,
   readCurrentConsent,
   saveConsentDecision,
-  type ConsentCategories,
-  type ConsentSnapshot,
 } from "@agentify/analytics/browser";
-import React, { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { DISPLAY_BRAND } from "../lib/brand";
-import { OPEN_PRIVACY_CHOICES_EVENT } from "./privacy-choices-button";
 import styles from "./consent-banner.module.css";
+import { OPEN_PRIVACY_CHOICES_EVENT } from "./privacy-choices-button";
 
 const policy = {
   policyVersion: CONSENT_POLICY_VERSION,

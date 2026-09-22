@@ -1,5 +1,4 @@
 import type { ReportResponse } from "@agentify/scanner-contracts";
-import React from "react";
 
 /**
  * The segment average beside the score. It renders only once the sample

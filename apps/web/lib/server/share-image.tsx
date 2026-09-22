@@ -3,7 +3,7 @@ import { ImageResponse } from "next/og";
 
 import { BrandMark } from "../../components/brand-mark";
 import { getPublicAppConfig } from "../app-config";
-import { shareCopy, type ShareTone } from "../share-copy";
+import { type ShareTone, shareCopy } from "../share-copy";
 import {
   BRAND_IMAGE_FONTS,
   BRAND_IMAGE_HUMAN_FONT,

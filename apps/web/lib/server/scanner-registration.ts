@@ -5,19 +5,22 @@ import {
 import {
   consentSnapshots,
   createUuidV7,
+  type DatabaseTransaction,
   deliveryOutbox,
   emitStoredBusinessEvent,
-  leads,
   leadScans,
+  leads,
   registrationIntents,
   reportSessions,
   scans,
   sessions,
   waitlistEntries,
-  type DatabaseTransaction,
 } from "@agentify/scanner-database";
 import { and, eq, isNull, sql } from "drizzle-orm";
-
+import {
+  CabinetIdentityUnavailableError,
+  getCabinetReportIdentityClient,
+} from "./cabinet-report-identity";
 import { getServerConfig } from "./config";
 import {
   decryptSensitiveValue,
@@ -30,10 +33,6 @@ import {
 } from "./crypto";
 import { getDatabase } from "./database";
 import { consumeRateLimitsAtomically } from "./rate-limit";
-import {
-  CabinetIdentityUnavailableError,
-  getCabinetReportIdentityClient,
-} from "./cabinet-report-identity";
 
 const REGISTRATION_INTENT_TTL_MS = 60 * 60 * 1000;
 

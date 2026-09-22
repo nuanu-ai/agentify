@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
-
-import styles from "./turnstile-challenge.module.css";
+import { useEffect, useRef } from "react";
 import type { TurnstileAction } from "../lib/server/turnstile";
+import styles from "./turnstile-challenge.module.css";
 
 export const TURNSTILE_TOKEN_EVENT = "agentify:turnstile-token";
 

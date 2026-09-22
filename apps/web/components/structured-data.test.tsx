@@ -1,5 +1,4 @@
 import { parseJsonLd } from "@agentify/scanner";
-import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 

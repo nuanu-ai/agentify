@@ -4,9 +4,8 @@ import type {
   ScanJobV1,
 } from "@agentify/scanner-contracts";
 import { and, eq, sql } from "drizzle-orm";
-
-import type { Database } from "./client.js";
 import { emitStoredBusinessEvent } from "./analytics-runtime.js";
+import type { Database } from "./client.js";
 import {
   browserObservations,
   scanChecks,

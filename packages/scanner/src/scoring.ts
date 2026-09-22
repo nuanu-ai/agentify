@@ -1,6 +1,6 @@
 import type { CheckResult } from "@agentify/scanner-contracts";
-import type { ScanScore } from "./model.js";
 import { CHECK_WEIGHTS } from "./checks.js";
+import type { ScanScore } from "./model.js";
 
 const ASSESSED = new Set(["pass", "partial", "fail"]);
 

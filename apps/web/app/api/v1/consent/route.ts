@@ -1,13 +1,12 @@
 import { CONSENT_POLICY_VERSION } from "@agentify/analytics/browser";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-
+import { PARTNER_CLICK_ID_COOKIE } from "../../../../lib/server/attribution";
+import { getServerConfig } from "../../../../lib/server/config";
 import {
   CONSENT_COOKIE,
   persistConsentSnapshot,
 } from "../../../../lib/server/consent";
-import { PARTNER_CLICK_ID_COOKIE } from "../../../../lib/server/attribution";
-import { getServerConfig } from "../../../../lib/server/config";
 import { errorResponse, hasSameOrigin } from "../../../../lib/server/http";
 
 export const runtime = "nodejs";

@@ -1,21 +1,21 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { gzipSync } from "node:zlib";
-import { describe, expect, it } from "vitest";
 import {
   evaluateChecks,
   type FetchArtifact,
   type ScanArtifacts,
 } from "@agentify/scanner";
+import { describe, expect, it } from "vitest";
 import {
-  RequestBudget,
+  type DnsResolver,
   NodePinnedTransport,
+  type PinnedTransport,
+  type PinnedTransportRequest,
+  RequestBudget,
   SafeFetcher,
   selectPinnedAddress,
   transportErrorCode,
-  type DnsResolver,
-  type PinnedTransport,
-  type PinnedTransportRequest,
 } from "./safe-fetch.js";
 
 const publicResolver: DnsResolver = {
