@@ -181,15 +181,12 @@ SDK, in `packages/slice/src/stand-merchant.ts`, and
 ## Repository layout
 
 One pnpm workspace holds all of it, on one toolchain and one lockfile. Biome
-formats and lints every file in it; `biome.json` excludes only what a machine
-wrote — the two drizzle migration directories and the lockfile — so `pnpm
-check` is the whole of the lint. Every package compiles under
-`tsconfig.base.json` and overrides it only where the runtime differs — Next
-keeps the JSX and resolves like a bundler, and the two packages whose callbacks
-run inside a page read the browser's names. One vitest config runs every unit
-test in `apps/*` and `packages/*`, and `pnpm test` is that run plus the
-operational scripts' own tests. `build` still runs the commerce set and the
-scanner set in turn and finishes with the portal.
+reads the JavaScript, TypeScript, JSON and CSS of every package — the Markdown,
+the YAML, the shell scripts and the Python are read by no linter — every
+package extends one compiler base and overrides it only where its runtime
+differs, and one command runs every test that costs nothing. What needs a
+database, a browser or the network is not in `pnpm test` and has a command of
+its own.
 
 | Path | What it is |
 | --- | --- |
@@ -251,9 +248,13 @@ kept apart for that reason:
   everything it needs.
 - `pnpm mutate <package>` runs Stryker over one workspace package and prints
   the survivors. It is a triage tool for the hand-over ritual, not a gate.
-- The scanner's own gates are `pnpm scanner:test:integration` and
-  `pnpm scanner:test:db` against its database, `pnpm scanner:test:actor` for
-  the browser observer, and `pnpm scanner:build`.
+- The scanner's own gates are `pnpm scanner:test:integration` and the migration
+  half of `pnpm scanner:test:db`, which take their connection from
+  `.env.scanner` and reach the Postgres that `pnpm scanner:db:up` starts on
+  port 55432. The other half of `scanner:test:db` is `drizzle-kit check`, which
+  reads the migration files and no database at all. `pnpm scanner:test:actor`
+  needs neither: it drives a Chromium, put there once with
+  `pnpm --filter @agentify/browser-observer-actor exec playwright install chromium`.
 
 ## Releasing
 

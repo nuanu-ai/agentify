@@ -68,7 +68,7 @@ jobs:
       # `build` and `typecheck` compile different sets of files. The former uses
       # the package tsconfig that decides what ships; the latter reads the whole
       # source tree including tests and emits nothing.
-      - run: pnpm build:commerce
+      - run: pnpm build
 
   # The portal keeps a separate gate because its rendered examples are a
   # distinct release promise. It installs from the same workspace lockfile.
@@ -140,5 +140,4 @@ jobs:
       - run: pnpm scanner:test:actor
       - run: pnpm scanner:test:integration
       - run: pnpm scanner:test:db
-      - run: pnpm build:scanner
       - run: pnpm scanner:self-readiness
