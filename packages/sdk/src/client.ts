@@ -325,11 +325,16 @@ export interface OrdersNamespace {
   get(orderId: string): Promise<LiveOrderWithStatus>;
 
   /**
-   * Orders and the states they are in; with `open`, only those still owed
-   * something.
+   * Orders and the states they are in; with `open`, only the ones this worker
+   * should walk.
    *
-   * The list is what a process reads after a restart: every order it still
-   * owes a delivery for, each one able to be delivered or refused on the spot.
+   * The list is what a process reads after a restart: the orders it was handed
+   * and has not finished, each able to be delivered or refused on the spot,
+   * together with the two that stay open once the purchase itself is over — an
+   * order owing a refund, and one delivered that was never paid for. An order
+   * that was priced and never paid is not on it. That one never reached the
+   * handler, and making the goods for it would be making them for a purchase
+   * that did not happen; it stays readable by its identifier through `get`.
    */
   list(query?: { readonly open?: boolean }): Promise<readonly LiveOrderWithStatus[]>;
 }
