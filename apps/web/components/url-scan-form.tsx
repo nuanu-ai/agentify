@@ -1,15 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import React, {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react";
-
 import type { Segment } from "@agentify/scanner-contracts";
+import { useRouter } from "next/navigation";
+import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 
 import { captureLandingAttribution } from "../lib/attribution-client";
 import { savePendingScan } from "../lib/pending-scan";
@@ -69,9 +62,7 @@ export function UrlScanForm({
       });
     } catch {
       setState("error");
-      setMessage(
-        "This browser blocked private scan storage. Allow site storage and retry.",
-      );
+      setMessage("This browser blocked private scan storage. Allow site storage and retry.");
       return;
     }
 
@@ -104,9 +95,7 @@ export function UrlScanForm({
           Website URL
         </label>
         <div className={styles.inputWrap}>
-          {showSchemeHint(url) ? (
-            <span aria-hidden="true">https://</span>
-          ) : null}
+          {showSchemeHint(url) ? <span aria-hidden="true">https://</span> : null}
           <input
             aria-describedby={`${inputId}-status`}
             autoCapitalize="none"
@@ -121,11 +110,7 @@ export function UrlScanForm({
             value={url}
           />
         </div>
-        <button
-          className="button button-primary"
-          disabled={submitting}
-          type="submit"
-        >
+        <button className="button button-primary" disabled={submitting} type="submit">
           {submitting ? "Opening scan…" : `${cta} →`}
         </button>
       </form>

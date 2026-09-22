@@ -1,15 +1,12 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-
 import { authFinalizeResponseSchema } from "@agentify/scanner-contracts";
-import { Brand } from "./brand";
-import {
-  TURNSTILE_TOKEN_EVENT,
-  TurnstileChallenge,
-} from "./turnstile-challenge";
+import { useRouter } from "next/navigation";
+import type React from "react";
+import { useEffect, useRef, useState } from "react";
 import styles from "./auth-callback.module.css";
+import { Brand } from "./brand";
+import { TURNSTILE_TOKEN_EVENT, TurnstileChallenge } from "./turnstile-challenge";
 
 type CallbackState =
   | "loading"
@@ -31,8 +28,7 @@ type CapturedEntry =
 export function sessionLookupResult(
   payload: unknown,
   fallback: SessionLookupFallback,
-):
-  Readonly<{ reportUrl: string }> | Readonly<{ state: SessionLookupFallback }> {
+): Readonly<{ reportUrl: string }> | Readonly<{ state: SessionLookupFallback }> {
   if (
     typeof payload === "object" &&
     payload !== null &&
@@ -45,9 +41,7 @@ export function sessionLookupResult(
   return { state: fallback };
 }
 
-export function AuthCallback({
-  turnstileSiteKey,
-}: Readonly<{ turnstileSiteKey: string | null }>) {
+export function AuthCallback({ turnstileSiteKey }: Readonly<{ turnstileSiteKey: string | null }>) {
   const router = useRouter();
   const [state, setState] = useState<CallbackState>("loading");
   const [link, setLink] = useState<{ state: string; token: string }>();
@@ -57,6 +51,7 @@ export function AuthCallback({
   const capturedEntry = useRef<CapturedEntry | undefined>(undefined);
   const sessionLookup = useRef<AbortController | undefined>(undefined);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: this runs once, on mount: it reads the callback token out of the URL and replaces the history entry, and a second run would find nothing there
   useEffect(() => {
     const capture = (reuseCaptured: boolean) => {
       sessionLookup.current?.abort();
@@ -72,8 +67,7 @@ export function AuthCallback({
         entry =
           callbackState && token
             ? { kind: "link", state: callbackState, token }
-            : (legacyState && /^[A-Za-z0-9_-]{43}$/.test(legacyState)) ||
-                recoveryRequested
+            : (legacyState && /^[A-Za-z0-9_-]{43}$/.test(legacyState)) || recoveryRequested
               ? { kind: "recovery", state: legacyState ?? undefined }
               : { kind: "error" };
         capturedEntry.current = entry;
@@ -113,10 +107,7 @@ export function AuthCallback({
     return () => window.removeEventListener(TURNSTILE_TOKEN_EVENT, receive);
   }, []);
 
-  function startSessionLookup(
-    stateHint: string | undefined,
-    fallback: SessionLookupFallback,
-  ) {
+  function startSessionLookup(stateHint: string | undefined, fallback: SessionLookupFallback) {
     sessionLookup.current?.abort();
     const controller = new AbortController();
     sessionLookup.current = controller;
@@ -184,9 +175,7 @@ export function AuthCallback({
         setState("error");
         return;
       }
-      const payload = authFinalizeResponseSchema.safeParse(
-        await response.json(),
-      );
+      const payload = authFinalizeResponseSchema.safeParse(await response.json());
       if (!payload.success) throw new Error("verification_unavailable");
       router.replace(payload.data.report_url);
     } catch {
@@ -242,9 +231,7 @@ export function AuthCallback({
         ) : state === "ready" || state === "unavailable" ? (
           <>
             <h1>
-              {state === "ready"
-                ? "Confirm your email"
-                : "Verification is temporarily unavailable"}
+              {state === "ready" ? "Confirm your email" : "Verification is temporarily unavailable"}
             </h1>
             <p>
               {state === "ready"
@@ -263,11 +250,7 @@ export function AuthCallback({
         ) : state === "verifying" || state === "recovery-sending" ? (
           <>
             <span aria-hidden="true" className={styles.spinner} />
-            <h1>
-              {state === "verifying"
-                ? "Confirming your email…"
-                : "Requesting a fresh link…"}
-            </h1>
+            <h1>{state === "verifying" ? "Confirming your email…" : "Requesting a fresh link…"}</h1>
             <p>
               {state === "verifying"
                 ? "We are opening your private report."
@@ -279,13 +262,13 @@ export function AuthCallback({
             <h1>Recover your private report</h1>
             {state === "recovery-unavailable" ? (
               <p role="alert">
-                Email delivery is temporarily unavailable. Complete a fresh
-                challenge and try again shortly.
+                Email delivery is temporarily unavailable. Complete a fresh challenge and try again
+                shortly.
               </p>
             ) : null}
             <p>
-              Enter the email used for the report. If it matches a saved report,
-              we’ll send a fresh verification link.
+              Enter the email used for the report. If it matches a saved report, we’ll send a fresh
+              verification link.
             </p>
             <form className={styles.form} onSubmit={requestRecovery}>
               <label htmlFor="report-recovery-email">Email</label>
@@ -299,10 +282,7 @@ export function AuthCallback({
                 value={email}
               />
               {turnstileSiteKey ? (
-                <TurnstileChallenge
-                  action="report_recovery"
-                  siteKey={turnstileSiteKey}
-                />
+                <TurnstileChallenge action="report_recovery" siteKey={turnstileSiteKey} />
               ) : null}
               <button
                 className="button button-primary"
@@ -317,21 +297,17 @@ export function AuthCallback({
           <>
             <h1>Check your email</h1>
             <p>
-              If this email has a saved report, a fresh verification link is on
-              its way. The link expires in one hour.
+              If this email has a saved report, a fresh verification link is on its way. The link
+              expires in one hour.
             </p>
           </>
         ) : (
           <>
             <h1>This verification link cannot be used</h1>
             <p>
-              It may have expired or already been used. Request a fresh link for
-              your saved report.
+              It may have expired or already been used. Request a fresh link for your saved report.
             </p>
-            <a
-              className="button button-primary"
-              href="/auth/callback?recover=1"
-            >
+            <a className="button button-primary" href="/auth/callback?recover=1">
               Recover a saved report
             </a>
           </>

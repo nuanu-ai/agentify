@@ -1,28 +1,18 @@
+import { isPathAllowed, parseRobots, type RobotsParseResult } from "@agentify/scanner";
 import {
   BROWSER_OBSERVATION_VERSION,
-  browserObservationInputV1Schema,
   type BrowserObservationInputV1,
   type BrowserObservationOutputV1,
+  browserObservationInputV1Schema,
 } from "@agentify/scanner-contracts";
-import {
-  isPathAllowed,
-  parseRobots,
-  type RobotsParseResult,
-} from "@agentify/scanner";
-import {
-  chromium,
-  type Browser,
-  type ConsoleMessage,
-  type Page,
-  type Request,
-} from "playwright";
+import { type Browser, type ConsoleMessage, chromium, type Page, type Request } from "playwright";
 
 import { collectPageSignals, type PageSignals } from "./browser-signals.js";
 import {
   BrowserNetworkPolicyError,
   inspectRequest,
-  resolveSafeNavigationRedirect,
   resolvePublicHost,
+  resolveSafeNavigationRedirect,
   safeBrowserRequest,
   validateActorTarget,
 } from "./network-policy.js";
@@ -32,22 +22,12 @@ import {
   type ObservationRuntime,
 } from "./observations.js";
 import { discoverRepresentativeUrls } from "./representative-pages.js";
-import {
-  installPassiveRuntimeGuards,
-  PASSIVE_BROWSER_ARGS,
-} from "./runtime-guards.js";
-import {
-  OutputSanitizationError,
-  sanitizeBrowserOutput,
-} from "./sanitize-output.js";
+import { installPassiveRuntimeGuards, PASSIVE_BROWSER_ARGS } from "./runtime-guards.js";
+import { OutputSanitizationError, sanitizeBrowserOutput } from "./sanitize-output.js";
 
-const HONEST_USER_AGENT =
-  "agentify-browser-observer/1.0 (+https://agentify.ad/scanner)";
+const HONEST_USER_AGENT = "agentify-browser-observer/1.0 (+https://agentify.ad/scanner)";
 
-export const raceWithAbort = async <T>(
-  operation: Promise<T>,
-  signal: AbortSignal,
-): Promise<T> => {
+export const raceWithAbort = async <T>(operation: Promise<T>, signal: AbortSignal): Promise<T> => {
   if (signal.aborted) {
     throw new BrowserNetworkPolicyError("run_timeout");
   }
@@ -146,8 +126,7 @@ const emptyRuntime = (
   requestBudgetExceeded: false,
   pageFailureCount: 0,
   maxTotalBytes: input.limits.max_total_bytes,
-  maxRequests:
-    input.limits.max_pages * (input.limits.max_requests_per_page + 1),
+  maxRequests: input.limits.max_pages * (input.limits.max_requests_per_page + 1),
 });
 
 const consumeRuntimeBytes = (
@@ -171,12 +150,8 @@ type RobotsCacheValue =
 export const permitsSearchPurpose = (parsed: RobotsParseResult): boolean =>
   parsed.contentSignal?.search !== "no";
 
-export const permitsBrowserNavigation = (
-  parsed: RobotsParseResult,
-  pathname: string,
-): boolean =>
-  permitsSearchPurpose(parsed) &&
-  isPathAllowed(parsed, "agentify-browser-observer", pathname);
+export const permitsBrowserNavigation = (parsed: RobotsParseResult, pathname: string): boolean =>
+  permitsSearchPurpose(parsed) && isPathAllowed(parsed, "agentify-browser-observer", pathname);
 
 export const authorizeMainFrameNavigation = async (options: {
   isNavigation: boolean;
@@ -184,9 +159,7 @@ export const authorizeMainFrameNavigation = async (options: {
   url: URL;
   checkRobots: (url: URL) => Promise<boolean>;
 }): Promise<boolean> =>
-  !options.isNavigation ||
-  !options.isMainFrame ||
-  (await options.checkRobots(options.url));
+  !options.isNavigation || !options.isMainFrame || (await options.checkRobots(options.url));
 
 const robotsAllows = async (options: {
   url: URL;
@@ -201,7 +174,7 @@ const robotsAllows = async (options: {
     let robotsBytes = 0;
     try {
       let robotsUrl = new URL("/robots.txt", options.url.origin);
-      let response;
+      let response: Awaited<ReturnType<typeof safeBrowserRequest>>;
       for (let redirectCount = 0; ; redirectCount += 1) {
         response = await safeBrowserRequest({
           url: robotsUrl,
@@ -219,8 +192,7 @@ const robotsAllows = async (options: {
           },
         });
         const location = response.headers.location;
-        if (!location || ![301, 302, 303, 307, 308].includes(response.status))
-          break;
+        if (!location || ![301, 302, 303, 307, 308].includes(response.status)) break;
         if (redirectCount >= 2) {
           throw new BrowserNetworkPolicyError("redirect_limit");
         }
@@ -355,8 +327,7 @@ const observePage = async (options: {
   let pageRequestCount = 0;
   const policyBlocked = new WeakSet<Request>();
   const pageAbort = new AbortController();
-  let pageStage: "setup" | "new_page" | "navigation" | "load" | "extraction" =
-    "setup";
+  let pageStage: "setup" | "new_page" | "navigation" | "load" | "extraction" = "setup";
   const abortPage = (): void => {
     pageAbort.abort();
     void settleWithin(context.close({ reason: "run_deadline" }));
@@ -418,10 +389,7 @@ const observePage = async (options: {
         return;
       }
 
-      if (
-        options.url.protocol === "https:" &&
-        decision.url.protocol === "http:"
-      ) {
+      if (options.url.protocol === "https:" && decision.url.protocol === "http:") {
         options.runtime.mixedContentCount += 1;
       }
 
@@ -445,16 +413,12 @@ const observePage = async (options: {
           request.frame() === primaryPage?.mainFrame() &&
           response.status >= 200 &&
           response.status < 400 &&
-          (response.headers["content-type"] ?? "")
-            .toLowerCase()
-            .includes("text/html")
+          (response.headers["content-type"] ?? "").toLowerCase().includes("text/html")
         ) {
           rawHtml = response.body.toString("utf8");
         }
         if (response.status >= 400) {
-          options.runtime.failedResourceCategories.push(
-            resourceFailureCategory(request),
-          );
+          options.runtime.failedResourceCategories.push(resourceFailureCategory(request));
         }
         await route.fulfill({
           status: response.status,
@@ -489,9 +453,7 @@ const observePage = async (options: {
     });
     primaryPage.on("requestfailed", (request) => {
       if (!policyBlocked.has(request)) {
-        options.runtime.failedResourceCategories.push(
-          resourceFailureCategory(request),
-        );
+        options.runtime.failedResourceCategories.push(resourceFailureCategory(request));
       }
     });
     primaryPage.on("dialog", (dialog) => {
@@ -547,10 +509,7 @@ const observePage = async (options: {
         limit: 2,
       }),
     ]);
-    const [signals, representativeUrls] = await raceWithAbort(
-      extraction,
-      options.runSignal,
-    );
+    const [signals, representativeUrls] = await raceWithAbort(extraction, options.runSignal);
     return {
       signals,
       durationMs: Date.now() - startedAt,
@@ -559,9 +518,7 @@ const observePage = async (options: {
   } catch (error) {
     const code = safeRuntimeFailureCode(error);
     throw new BrowserNetworkPolicyError(
-      code === "browser_runtime_failed"
-        ? `${pageStage}_failed`
-        : `${pageStage}_${code}`,
+      code === "browser_runtime_failed" ? `${pageStage}_failed` : `${pageStage}_${code}`,
     );
   } finally {
     options.runSignal.removeEventListener("abort", abortPage);
@@ -641,8 +598,7 @@ export const runBrowserObservation = async (options: {
       .catch(() => undefined);
     browser = await raceWithAbort(browserLaunch, runController.signal);
     runtimeStage = "page";
-    for (let pageIndex = 0; pageIndex < allowedUrls.length; pageIndex += 1) {
-      const url = allowedUrls[pageIndex]!;
+    for (const [pageIndex, url] of allowedUrls.entries()) {
       if (runController.signal.aborted) break;
       try {
         const result = await observePage({
@@ -658,11 +614,7 @@ export const runBrowserObservation = async (options: {
         if (pageIndex === 0 && allowedUrls.length < input.limits.max_pages) {
           for (const candidate of result.representativeUrls) {
             if (allowedUrls.length >= input.limits.max_pages) break;
-            if (
-              allowedUrls.some(
-                (existing) => existing.toString() === candidate.toString(),
-              )
-            ) {
+            if (allowedUrls.some((existing) => existing.toString() === candidate.toString())) {
               continue;
             }
             try {

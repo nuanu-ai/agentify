@@ -2,9 +2,7 @@ import { z } from "zod";
 
 export const SCAN_RUBRIC_VERSION = "gtm-v1.0.0" as const;
 
-export const CHECK_IDS = [
-  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-] as const;
+export const CHECK_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18] as const;
 export type CheckId = (typeof CHECK_IDS)[number];
 
 export const checkIdSchema = z
@@ -39,23 +37,12 @@ export const CHECK_DEFINITIONS = [
   nominalWeight: number;
 }>;
 
-const evidenceValueSchema = z.union([
-  z.string(),
-  z.number(),
-  z.boolean(),
-  z.array(z.string()),
-]);
+const evidenceValueSchema = z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]);
 
 export const checkResultSchema = z
   .object({
     id: checkIdSchema,
-    status: z.enum([
-      "pass",
-      "partial",
-      "fail",
-      "unavailable",
-      "not_applicable",
-    ]),
+    status: z.enum(["pass", "partial", "fail", "unavailable", "not_applicable"]),
     nominalWeight: z.number().nonnegative(),
     applicableWeight: z.number().nonnegative(),
     earnedWeight: z.number().nonnegative(),

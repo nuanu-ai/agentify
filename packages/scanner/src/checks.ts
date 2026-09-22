@@ -1,8 +1,4 @@
-import {
-  CHECK_DEFINITIONS,
-  type CheckResult,
-  type Segment,
-} from "@agentify/scanner-contracts";
+import { CHECK_DEFINITIONS, type CheckResult, type Segment } from "@agentify/scanner-contracts";
 import type { FetchArtifact, ScanArtifacts } from "./model.js";
 import {
   comparableBodies,
@@ -20,8 +16,13 @@ export const CHECK_WEIGHTS: readonly number[] = CHECK_DEFINITIONS.map(
   (definition) => definition.nominalWeight,
 );
 
-type TerminalCheckStatus =
-  "pass" | "partial" | "fail" | "unavailable" | "not_applicable";
+const checkWeight = (id: number): number => {
+  const weight = CHECK_WEIGHTS[id - 1];
+  if (weight === undefined) throw new Error(`check ${id} has no definition, so it has no weight`);
+  return weight;
+};
+
+type TerminalCheckStatus = "pass" | "partial" | "fail" | "unavailable" | "not_applicable";
 type ResultInput = {
   id: number;
   status: TerminalCheckStatus;
@@ -49,8 +50,8 @@ const result = ({
 }: ResultInput): CheckResult => ({
   id: id as CheckResult["id"],
   status,
-  nominalWeight: CHECK_WEIGHTS[id - 1]!,
-  applicableWeight: applicable ? CHECK_WEIGHTS[id - 1]! : 0,
+  nominalWeight: checkWeight(id),
+  applicableWeight: applicable ? checkWeight(id) : 0,
   earnedWeight,
   summaryCode,
   evidence,
@@ -61,10 +62,7 @@ const result = ({
 });
 
 const inaccessible = (artifact?: FetchArtifact): boolean =>
-  !artifact ||
-  Boolean(artifact.errorCode) ||
-  artifact.status === 0 ||
-  artifact.status >= 500;
+  !artifact || Boolean(artifact.errorCode) || artifact.status === 0 || artifact.status >= 500;
 const missing = (artifact?: FetchArtifact): boolean =>
   !artifact || artifact.status === 404 || artifact.status === 410;
 
@@ -108,8 +106,7 @@ const robotsChecks = (artifacts: ScanArtifacts): CheckResult[] => {
     });
   } else {
     const partial =
-      parsed.malformedDirectives > 0 ||
-      /text\/html/i.test(fetch.headers["content-type"] ?? "");
+      parsed.malformedDirectives > 0 || /text\/html/i.test(fetch.headers["content-type"] ?? "");
     robots = result({
       id: 1,
       status: partial ? "partial" : "pass",
@@ -206,9 +203,7 @@ const robotsChecks = (artifacts: ScanArtifacts): CheckResult[] => {
       summaryCode: "content_signal_parseable",
       evidence: {
         keys: Object.keys(parsed.contentSignal ?? {}),
-        values: Object.entries(parsed.contentSignal ?? {}).map(
-          ([key, value]) => `${key}:${value}`,
-        ),
+        values: Object.entries(parsed.contentSignal ?? {}).map(([key, value]) => `${key}:${value}`),
       },
       userImpactCode: "content_signal_explicit",
     });
@@ -253,12 +248,10 @@ const sitemapCheck = (artifacts: ScanArtifacts): CheckResult => {
   const lastmods = valid.flatMap((entry) => entry.lastmods);
   const staleCutoff = Date.now() - 180 * 86_400_000;
   const stale = lastmods.filter(
-    (value) =>
-      !Number.isFinite(Date.parse(value)) || Date.parse(value) < staleCutoff,
+    (value) => !Number.isFinite(Date.parse(value)) || Date.parse(value) < staleCutoff,
   ).length;
   const childUnavailable =
-    valid.some((entry) => entry.isIndex) &&
-    artifacts.sitemap.some(inaccessible);
+    valid.some((entry) => entry.isIndex) && artifacts.sitemap.some(inaccessible);
   const staleRatio = lastmods.length ? stale / lastmods.length : 1;
   const partial = childUnavailable || !lastmods.length || staleRatio > 0.8;
   return result({
@@ -274,10 +267,7 @@ const sitemapCheck = (artifacts: ScanArtifacts): CheckResult => {
     },
     userImpactCode: "sitemap_discovery",
     fixCode: partial ? "improve_sitemap" : undefined,
-    durationMs: artifacts.sitemap.reduce(
-      (sum, artifact) => sum + artifact.durationMs,
-      0,
-    ),
+    durationMs: artifacts.sitemap.reduce((sum, artifact) => sum + artifact.durationMs, 0),
   });
 };
 
@@ -291,23 +281,14 @@ const fieldPresent = (node: Record<string, unknown>, path: string): boolean => {
   return current !== undefined && current !== null && current !== "";
 };
 
-const verticalProfile = (
-  segment: Segment,
-  nodes: Record<string, unknown>[],
-) => {
+const verticalProfile = (segment: Segment, nodes: Record<string, unknown>[]) => {
   const nodeTypes = nodes.map((node) => ({ node, types: jsonLdTypes(node) }));
   const choose = (...types: string[]) =>
     nodeTypes.find((entry) => entry.types.some((type) => types.includes(type)));
   if (segment === "store")
     return {
       selected: choose("Product"),
-      required: [
-        "name",
-        "image",
-        "url",
-        "offers.price",
-        "offers.priceCurrency",
-      ],
+      required: ["name", "image", "url", "offers.price", "offers.priceCurrency"],
       recommended: ["offers.availability"],
     };
   if (segment === "local")
@@ -321,25 +302,13 @@ const verticalProfile = (
         ),
       ),
       required: ["name", "address"],
-      recommended: [
-        "telephone",
-        "openingHoursSpecification",
-        "geo",
-        "priceRange",
-        "makesOffer",
-      ],
+      recommended: ["telephone", "openingHoursSpecification", "geo", "priceRange", "makesOffer"],
     };
   const product = choose("Product");
   if (product)
     return {
       selected: product,
-      required: [
-        "name",
-        "image",
-        "url",
-        "offers.price",
-        "offers.priceCurrency",
-      ],
+      required: ["name", "image", "url", "offers.price", "offers.priceCurrency"],
       recommended: ["offers.availability"],
     };
   const local = choose("LocalBusiness", "Restaurant", "Hotel", "Store");
@@ -347,12 +316,7 @@ const verticalProfile = (
     return {
       selected: local,
       required: ["name", "address"],
-      recommended: [
-        "telephone",
-        "openingHoursSpecification",
-        "geo",
-        "priceRange",
-      ],
+      recommended: ["telephone", "openingHoursSpecification", "geo", "priceRange"],
     };
   const article = choose("Article", "NewsArticle", "BlogPosting");
   if (article)
@@ -381,9 +345,7 @@ const jsonLdChecks = (artifacts: ScanArtifacts): CheckResult[] => {
         summaryCode: "jsonld_unavailable",
         userImpactCode: "structured_data_not_assessed",
         errorCode:
-          artifacts.base?.errorCode ??
-          artifacts.representative?.errorCode ??
-          "base_unavailable",
+          artifacts.base?.errorCode ?? artifacts.representative?.errorCode ?? "base_unavailable",
       }),
       result({
         id: 6,
@@ -392,9 +354,7 @@ const jsonLdChecks = (artifacts: ScanArtifacts): CheckResult[] => {
         summaryCode: "vertical_jsonld_unavailable",
         userImpactCode: "structured_data_not_assessed",
         errorCode:
-          artifacts.base?.errorCode ??
-          artifacts.representative?.errorCode ??
-          "base_unavailable",
+          artifacts.base?.errorCode ?? artifacts.representative?.errorCode ?? "base_unavailable",
       }),
     ];
   const parsedPages = pages.map((page) => parseJsonLd(page.body));
@@ -403,11 +363,7 @@ const jsonLdChecks = (artifacts: ScanArtifacts): CheckResult[] => {
     scriptCount: parsedPages.reduce((sum, page) => sum + page.scriptCount, 0),
     invalidCount: parsedPages.reduce((sum, page) => sum + page.invalidCount, 0),
   };
-  const presence = parsed.nodes.length
-    ? parsed.invalidCount
-      ? "partial"
-      : "pass"
-    : "fail";
+  const presence = parsed.nodes.length ? (parsed.invalidCount ? "partial" : "pass") : "fail";
   const check5 = result({
     id: 5,
     status: presence,
@@ -441,7 +397,8 @@ const jsonLdChecks = (artifacts: ScanArtifacts): CheckResult[] => {
       }),
     ];
   const profile = verticalProfile(artifacts.segment, parsed.nodes);
-  if (!profile.selected)
+  const selected = profile.selected;
+  if (!selected)
     return [
       check5,
       result({
@@ -456,39 +413,27 @@ const jsonLdChecks = (artifacts: ScanArtifacts): CheckResult[] => {
         fixCode: "publish_vertical_jsonld",
       }),
     ];
-  const requiredFound = profile.required.filter((field) =>
-    fieldPresent(profile.selected!.node, field),
-  );
+  const requiredFound = profile.required.filter((field) => fieldPresent(selected.node, field));
   const recommendedFound = profile.recommended.filter((field) =>
-    fieldPresent(profile.selected!.node, field),
+    fieldPresent(selected.node, field),
   );
   const requiredRatio = requiredFound.length / profile.required.length;
   const recommendedRatio = recommendedFound.length / profile.recommended.length;
   const complete = requiredRatio === 1 && recommendedRatio >= 0.5;
   const points = complete
     ? 12
-    : Math.max(
-        3,
-        Math.min(
-          9,
-          Math.round(12 * (requiredRatio * 0.7 + recommendedRatio * 0.3)),
-        ),
-      );
+    : Math.max(3, Math.min(9, Math.round(12 * (requiredRatio * 0.7 + recommendedRatio * 0.3))));
   return [
     check5,
     result({
       id: 6,
       status: complete ? "pass" : "partial",
       earnedWeight: points,
-      summaryCode: complete
-        ? "vertical_jsonld_complete"
-        : "vertical_jsonld_incomplete",
+      summaryCode: complete ? "vertical_jsonld_complete" : "vertical_jsonld_incomplete",
       evidence: {
-        type: jsonLdTypes(profile.selected.node)[0] ?? "unknown",
+        type: jsonLdTypes(selected.node)[0] ?? "unknown",
         required_found: requiredFound,
-        required_missing: profile.required.filter(
-          (field) => !requiredFound.includes(field),
-        ),
+        required_missing: profile.required.filter((field) => !requiredFound.includes(field)),
         recommended_found: recommendedFound,
       },
       userImpactCode: "vertical_data_machine_readability",
@@ -606,8 +551,7 @@ const llmsCheck = (artifact?: FetchArtifact): CheckResult => {
 const validDiscovery = (
   artifact: FetchArtifact | undefined,
 ): Record<string, unknown> | undefined => {
-  if (!artifact || artifact.status < 200 || artifact.status >= 300)
-    return undefined;
+  if (!artifact || artifact.status < 200 || artifact.status >= 300) return undefined;
   const parsed = parseSafeJson(artifact.body);
   return parsed && typeof parsed === "object" && !Array.isArray(parsed)
     ? (parsed as Record<string, unknown>)
@@ -702,9 +646,7 @@ const ucpCheck = (artifacts: ScanArtifacts): CheckResult => {
   return result({
     id: 10,
     status: complete ? "pass" : "partial",
-    earnedWeight: complete
-      ? 6
-      : Math.max(2, Math.min(4, fields.length + Number(endpoint))),
+    earnedWeight: complete ? 6 : Math.max(2, Math.min(4, fields.length + Number(endpoint))),
     summaryCode: complete ? "ucp_valid" : "ucp_incomplete",
     evidence: {
       fields_present: fields,
@@ -717,16 +659,11 @@ const ucpCheck = (artifacts: ScanArtifacts): CheckResult => {
 };
 
 const declaresAuth = (artifacts: ScanArtifacts): boolean => {
-  const documents = [
-    ...artifacts.mcp,
-    ...(artifacts.ucp ? [artifacts.ucp] : []),
-  ]
+  const documents = [...artifacts.mcp, ...(artifacts.ucp ? [artifacts.ucp] : [])]
     .map(validDiscovery)
     .filter(Boolean);
   return (
-    documents.some((document) =>
-      /oauth|bearer|authorization/i.test(JSON.stringify(document)),
-    ) ||
+    documents.some((document) => /oauth|bearer|authorization/i.test(JSON.stringify(document))) ||
     [artifacts.base, ...artifacts.mcp].some((artifact) =>
       /bearer|oauth/i.test(artifact?.headers["www-authenticate"] ?? ""),
     )
@@ -774,8 +711,7 @@ const oauthCheck = (artifacts: ScanArtifacts): CheckResult => {
     ])
     .filter((value): value is string => typeof value === "string");
   const consistent =
-    httpsFields.length > 0 &&
-    httpsFields.every((value) => value.startsWith("https://"));
+    httpsFields.length > 0 && httpsFields.every((value) => value.startsWith("https://"));
   const complete = documents.length >= 2 && consistent;
   return result({
     id: 11,
@@ -792,9 +728,7 @@ const ssrCheck = (artifacts: ScanArtifacts): CheckResult => {
   const base = artifacts.base;
   const representative = artifacts.representative;
   const usableBase =
-    base && !inaccessible(base) && !isChallenge(base.status, base.body)
-      ? base
-      : undefined;
+    base && !inaccessible(base) && !isChallenge(base.status, base.body) ? base : undefined;
   const usableRepresentative =
     representative &&
     !inaccessible(representative) &&
@@ -808,14 +742,12 @@ const ssrCheck = (artifacts: ScanArtifacts): CheckResult => {
       earnedWeight: 0,
       summaryCode: "ssr_unavailable",
       userImpactCode: "ssr_not_assessed",
-      errorCode:
-        base?.errorCode ?? (base ? "base_blocked" : "robots_disallowed"),
+      errorCode: base?.errorCode ?? (base ? "base_blocked" : "robots_disallowed"),
     });
   const baseSignals = htmlSignals(usableBase?.body ?? "");
   const representativeSignals = htmlSignals(usableRepresentative?.body ?? "");
   const baseJsonLd = parseJsonLd(usableBase?.body ?? "").nodes.length > 0;
-  const representativeJsonLd =
-    parseJsonLd(usableRepresentative?.body ?? "").nodes.length > 0;
+  const representativeJsonLd = parseJsonLd(usableRepresentative?.body ?? "").nodes.length > 0;
   const storeHomepagePass =
     baseSignals.textLength >= 300 &&
     (baseSignals.productLinkCount > 0 || (baseSignals.hasPrice && baseJsonLd));
@@ -826,30 +758,20 @@ const ssrCheck = (artifacts: ScanArtifacts): CheckResult => {
   const pass =
     artifacts.segment === "store"
       ? storeHomepagePass || representativePass
-      : baseSignals.textLength >= 500 &&
-        baseSignals.hasH1 &&
-        baseSignals.hasTitle;
-  const maximumTextLength = Math.max(
-    baseSignals.textLength,
-    representativeSignals.textLength,
-  );
+      : baseSignals.textLength >= 500 && baseSignals.hasH1 && baseSignals.hasTitle;
+  const maximumTextLength = Math.max(baseSignals.textLength, representativeSignals.textLength);
   const anyJsonLd = baseJsonLd || representativeJsonLd;
   const partial = !pass && (maximumTextLength >= 150 || anyJsonLd);
   return result({
     id: 12,
     status: pass ? "pass" : partial ? "partial" : "fail",
     earnedWeight: pass ? 10 : partial ? 4 : 0,
-    summaryCode: pass
-      ? "ssr_content_substantive"
-      : partial
-        ? "ssr_content_thin"
-        : "ssr_shell_only",
+    summaryCode: pass ? "ssr_content_substantive" : partial ? "ssr_content_thin" : "ssr_shell_only",
     evidence: {
       visible_text_chars: maximumTextLength,
       has_h1: baseSignals.hasH1 || representativeSignals.hasH1,
       has_title: baseSignals.hasTitle || representativeSignals.hasTitle,
-      product_link_count:
-        baseSignals.productLinkCount + representativeSignals.productLinkCount,
+      product_link_count: baseSignals.productLinkCount + representativeSignals.productLinkCount,
       has_price_signal: baseSignals.hasPrice || representativeSignals.hasPrice,
       has_jsonld: anyJsonLd,
       representative_checked: Boolean(usableRepresentative),
@@ -870,8 +792,9 @@ const agentUaCheck = (artifacts: ScanArtifacts): CheckResult => {
       userImpactCode: "agent_ua_not_assessed",
       errorCode: base?.errorCode ?? "neutral_unavailable",
     });
-  const probes = [artifacts.agentProbes.chatgpt, artifacts.agentProbes.claude];
-  if (probes.some((probe) => !probe || inaccessible(probe)))
+  const chatgpt = artifacts.agentProbes.chatgpt;
+  const claude = artifacts.agentProbes.claude;
+  if (!chatgpt || !claude || inaccessible(chatgpt) || inaccessible(claude))
     return result({
       id: 13,
       status: "unavailable",
@@ -880,27 +803,23 @@ const agentUaCheck = (artifacts: ScanArtifacts): CheckResult => {
       userImpactCode: "agent_ua_not_assessed",
       errorCode: "agent_probe_unavailable",
     });
-  const accessible = probes.map(
-    (probe) =>
-      probe!.status >= 200 &&
-      probe!.status < 300 &&
-      !isChallenge(probe!.status, probe!.body) &&
-      comparableBodies(base.body, probe!.body),
-  );
-  const count = accessible.filter(Boolean).length;
+  const probeAccessible = (probe: typeof chatgpt): boolean =>
+    probe.status >= 200 &&
+    probe.status < 300 &&
+    !isChallenge(probe.status, probe.body) &&
+    comparableBodies(base.body, probe.body);
+  const chatgptAccessible = probeAccessible(chatgpt);
+  const claudeAccessible = probeAccessible(claude);
+  const count = [chatgptAccessible, claudeAccessible].filter(Boolean).length;
   return result({
     id: 13,
     status: count === 2 ? "pass" : count === 1 ? "partial" : "fail",
     earnedWeight: count === 2 ? 8 : count === 1 ? 4 : 0,
     summaryCode:
-      count === 2
-        ? "agent_ua_compatible"
-        : count === 1
-          ? "agent_ua_partial"
-          : "agent_ua_blocked",
+      count === 2 ? "agent_ua_compatible" : count === 1 ? "agent_ua_partial" : "agent_ua_blocked",
     evidence: {
-      chatgpt_probe_accessible: accessible[0]!,
-      claude_probe_accessible: accessible[1]!,
+      chatgpt_probe_accessible: chatgptAccessible,
+      claude_probe_accessible: claudeAccessible,
     },
     userImpactCode: "agent_ua_accessibility",
     fixCode: count === 2 ? undefined : "allow_agent_user_agents",
@@ -977,9 +896,7 @@ const feedCheck = (artifacts: ScanArtifacts): CheckResult => {
       summaryCode: "feed_unavailable",
       userImpactCode: "feed_not_assessed",
       errorCode:
-        artifacts.base?.errorCode ??
-        artifacts.representative?.errorCode ??
-        "base_unavailable",
+        artifacts.base?.errorCode ?? artifacts.representative?.errorCode ?? "base_unavailable",
     });
   const body = pages.map((page) => page.body).join("\n");
   const feedLink =
@@ -987,14 +904,9 @@ const feedCheck = (artifacts: ScanArtifacts): CheckResult => {
       body,
     );
   const product =
-    /(?:og:type["'][^>]*content=["']product|product:price|\bsku\b|\bgtin\b)/i.test(
-      body,
-    ) ||
-    parseJsonLd(body).nodes.some((node) =>
-      jsonLdTypes(node).includes("Product"),
-    );
-  const priceAvailability =
-    /(?:price|availability|in_stock|out_of_stock)/i.test(body);
+    /(?:og:type["'][^>]*content=["']product|product:price|\bsku\b|\bgtin\b)/i.test(body) ||
+    parseJsonLd(body).nodes.some((node) => jsonLdTypes(node).includes("Product"));
+  const priceAvailability = /(?:price|availability|in_stock|out_of_stock)/i.test(body);
   if (feedLink)
     return result({
       id: 15,
@@ -1054,10 +966,7 @@ const a2aCheck = (artifacts: ScanArtifacts): CheckResult => {
         userImpactCode: "a2a_not_assessed",
         errorCode: artifacts.a2a.errorCode ?? "a2a_unavailable",
       });
-    if (
-      artifacts.noncanonicalA2aHint ||
-      (artifacts.a2a && !missing(artifacts.a2a))
-    )
+    if (artifacts.noncanonicalA2aHint || (artifacts.a2a && !missing(artifacts.a2a)))
       return result({
         id: 17,
         status: "partial",
@@ -1076,11 +985,8 @@ const a2aCheck = (artifacts: ScanArtifacts): CheckResult => {
     });
   }
   const valid =
-    ["name", "version", "skills"].every((field) =>
-      fieldPresent(document, field),
-    ) &&
-    (fieldPresent(document, "url") ||
-      fieldPresent(document, "supportedInterfaces"));
+    ["name", "version", "skills"].every((field) => fieldPresent(document, field)) &&
+    (fieldPresent(document, "url") || fieldPresent(document, "supportedInterfaces"));
   return result({
     id: 17,
     status: valid ? "pass" : "partial",
@@ -1090,8 +996,7 @@ const a2aCheck = (artifacts: ScanArtifacts): CheckResult => {
       name_present: fieldPresent(document, "name"),
       version_present: fieldPresent(document, "version"),
       interface_present:
-        fieldPresent(document, "url") ||
-        fieldPresent(document, "supportedInterfaces"),
+        fieldPresent(document, "url") || fieldPresent(document, "supportedInterfaces"),
       skills_present: fieldPresent(document, "skills"),
     },
     userImpactCode: "a2a_informational",
@@ -1120,9 +1025,7 @@ const hreflangCheck = (artifacts: ScanArtifacts): CheckResult => {
       userImpactCode: "hreflang_conditional",
       applicable: false,
     });
-  const valid = tags.filter(
-    (tag) => tag === "x-default" || /^[a-z]{2,3}(?:-[A-Z]{2})?$/.test(tag),
-  );
+  const valid = tags.filter((tag) => tag === "x-default" || /^[a-z]{2,3}(?:-[A-Z]{2})?$/.test(tag));
   const duplicate = new Set(tags).size !== tags.length;
   const complete = valid.length === tags.length && !duplicate;
   return result({

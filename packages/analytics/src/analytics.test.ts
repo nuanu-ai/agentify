@@ -1,7 +1,4 @@
-import {
-  ANALYTICS_EVENT_NAMES,
-  type AnalyticsEventName,
-} from "@agentify/scanner-contracts";
+import { ANALYTICS_EVENT_NAMES, type AnalyticsEventName } from "@agentify/scanner-contracts";
 import { describe, expect, it } from "vitest";
 import {
   assertDestinationIsolation,
@@ -16,10 +13,10 @@ import {
   loadConsentedAnalytics,
   META_EVENT_MAPPING,
   POSTHOG_BROWSER_OPTIONS,
-  retryDelayMs,
   readAttributionTouch,
-  saveConsentDecision,
+  retryDelayMs,
   sanitizeEventProperties,
+  saveConsentDecision,
   shouldDeadLetter,
   updateAttribution,
 } from "./index.js";
@@ -45,9 +42,7 @@ describe("analytics privacy and dedup contracts", () => {
 
   it("uses one event ID for PostHog, Pixel and CAPI", () => {
     const event = baseEvent("registration_completed");
-    expect(buildPosthogPayload(event, "ph_project").properties.$insert_id).toBe(
-      event.eventId,
-    );
+    expect(buildPosthogPayload(event, "ph_project").properties.$insert_id).toBe(event.eventId);
     expect(buildMetaPixelCommand(event).options.eventID).toBe(event.eventId);
     expect(
       buildMetaPayload(event, {
@@ -86,9 +81,7 @@ describe("analytics privacy and dedup contracts", () => {
         allowTransientNetworkData: false,
       }),
     ]);
-    expect(serialized).not.toMatch(
-      /owner@|secret\.example|token=|checkout fails/i,
-    );
+    expect(serialized).not.toMatch(/owner@|secret\.example|token=|checkout fails/i);
   });
 
   it("never enables PostHog autocapture or replay", () => {
@@ -182,9 +175,7 @@ describe("analytics privacy and dedup contracts", () => {
     expect(() => assertDestinationIsolation("test", "production")).toThrow(
       "analytics_environment_mismatch",
     );
-    expect(() =>
-      assertDestinationIsolation("production", "production"),
-    ).not.toThrow();
+    expect(() => assertDestinationIsolation("production", "production")).not.toThrow();
   });
 
   it("produces stable business once keys for all events", () => {
@@ -199,25 +190,18 @@ describe("analytics privacy and dedup contracts", () => {
     };
     const keys = ANALYTICS_EVENT_NAMES.map((name) => eventOnceKey(name, ids));
     expect(new Set(keys).size).toBe(ANALYTICS_EVENT_NAMES.length);
-    expect(eventOnceKey("registration_completed", ids)).toBe(
-      "registration_completed:lead:scan",
-    );
+    expect(eventOnceKey("registration_completed", ids)).toBe("registration_completed:lead:scan");
   });
 
   it("preserves first touch, updates last touch and hashes fbclid", () => {
     const first = readAttributionTouch(
-      new URLSearchParams(
-        "utm_source=meta&utm_campaign=launch&fbclid=raw-click-id",
-      ),
+      new URLSearchParams("utm_source=meta&utm_campaign=launch&fbclid=raw-click-id"),
       "store-v1",
     );
     const state = updateAttribution(undefined, first);
     const updated = updateAttribution(
       state,
-      readAttributionTouch(
-        new URLSearchParams("utm_source=organic"),
-        "owner-v1",
-      ),
+      readAttributionTouch(new URLSearchParams("utm_source=organic"), "owner-v1"),
     );
     expect(updated.first.utmSource).toBe("meta");
     expect(updated.last.utmSource).toBe("organic");

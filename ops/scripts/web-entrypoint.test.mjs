@@ -1,14 +1,11 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
 import test from "node:test";
 
-const entrypoint = new URL(
-  "../deploy/droplet/web-entrypoint.sh",
-  import.meta.url,
-).pathname;
+const entrypoint = new URL("../deploy/droplet/web-entrypoint.sh", import.meta.url).pathname;
 
 function runEntrypoint(overrides = {}) {
   const directory = mkdtempSync(join(tmpdir(), "agentify-web-entrypoint-"));
@@ -21,7 +18,8 @@ function runEntrypoint(overrides = {}) {
       PATH: process.env.PATH,
       REGISTRATION_ENABLED: "true",
       APP_BASE_URL: "https://agentify.ad",
-      DATABASE_URL: "postgresql://agentify_web:synthetic@agentify-scanner-postgres:5432/agentify_scanner",
+      DATABASE_URL:
+        "postgresql://agentify_web:synthetic@agentify-scanner-postgres:5432/agentify_scanner",
       TOKEN_HMAC_SECRET: "synthetic-hmac-key-000000000000000000000000",
       CABINET_IDENTITY_URL: "http://agentify-cabinet-identity:3002",
       REPORT_IDENTITY_SECRET: "synthetic-report-identity-secret-32-bytes",

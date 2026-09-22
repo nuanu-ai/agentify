@@ -1,8 +1,8 @@
+import type { FetchArtifact } from "@agentify/scanner";
 import type { ScanJobV1 } from "@agentify/scanner-contracts";
 import { describe, expect, it } from "vitest";
-import type { FetchArtifact } from "@agentify/scanner";
-import { isSameSite, ScanRunner } from "./scan-runner.js";
 import type { PinnedTransport, PinnedTransportRequest } from "./safe-fetch.js";
+import { isSameSite, ScanRunner } from "./scan-runner.js";
 
 const product = JSON.stringify({
   "@type": "Product",
@@ -56,8 +56,7 @@ const transport = (robotsBody = robots) => {
       await new Promise((resolve) => setTimeout(resolve, 1));
       active -= 1;
       const path = input.url.pathname;
-      if (path === "/robots.txt")
-        return makeArtifact(input, 200, robotsBody, "text/plain");
+      if (path === "/robots.txt") return makeArtifact(input, 200, robotsBody, "text/plain");
       if (path === "/") {
         if (input.headers.accept === "text/markdown")
           return makeArtifact(
@@ -76,14 +75,8 @@ const transport = (robotsBody = robots) => {
           "application/xml",
         );
       if (path === "/products/widget")
-        return makeArtifact(
-          input,
-          200,
-          input.method === "HEAD" ? "" : html,
-          "text/html",
-        );
-      if (path === "/llms.txt")
-        return makeArtifact(input, 404, "not found", "text/plain");
+        return makeArtifact(input, 200, input.method === "HEAD" ? "" : html, "text/html");
+      if (path === "/llms.txt") return makeArtifact(input, 404, "not found", "text/plain");
       if (path === "/.well-known/mcp.json")
         return makeArtifact(
           input,
@@ -107,23 +100,14 @@ const transport = (robotsBody = robots) => {
 describe("bounded scan graph", () => {
   it("uses PSL registrable domains for same-site boundaries", () => {
     expect(
-      isSameSite(
-        new URL("https://www.example.co.uk/"),
-        new URL("https://example.co.uk/"),
-      ),
+      isSameSite(new URL("https://www.example.co.uk/"), new URL("https://example.co.uk/")),
     ).toBe(true);
     expect(
-      isSameSite(
-        new URL("https://example.com.evil.co.uk/"),
-        new URL("https://example.com/"),
-      ),
+      isSameSite(new URL("https://example.com.evil.co.uk/"), new URL("https://example.com/")),
     ).toBe(false);
-    expect(
-      isSameSite(
-        new URL("https://foo.github.io/"),
-        new URL("https://bar.github.io/"),
-      ),
-    ).toBe(false);
+    expect(isSameSite(new URL("https://foo.github.io/"), new URL("https://bar.github.io/"))).toBe(
+      false,
+    );
   });
 
   it("runs all 18 checks under the request and per-origin limits", async () => {
@@ -140,19 +124,13 @@ describe("bounded scan graph", () => {
     expect(evaluation.requestCount).toBeLessThanOrEqual(18);
     expect(target.getMaxActive()).toBeLessThanOrEqual(2);
     expect(
-      target.paths.every(
-        (request) => request.startsWith("GET ") || request.startsWith("HEAD "),
-      ),
+      target.paths.every((request) => request.startsWith("GET ") || request.startsWith("HEAD ")),
     ).toBe(true);
     expect(
-      target.paths.filter((request) =>
-        request.startsWith("HEAD /products/widget"),
-      ),
+      target.paths.filter((request) => request.startsWith("HEAD /products/widget")),
     ).toHaveLength(1);
     expect(
-      target.paths.filter((request) =>
-        request.startsWith("GET /products/widget"),
-      ),
+      target.paths.filter((request) => request.startsWith("GET /products/widget")),
     ).toHaveLength(1);
   });
 
@@ -170,9 +148,7 @@ describe("bounded scan graph", () => {
     const [first, second] = await Promise.all([run(), run()]);
     expect(first.score).toEqual(second.score);
     expect(first.findings).toEqual(second.findings);
-    expect(
-      first.checks.map(({ durationMs: _durationMs, ...check }) => check),
-    ).toEqual(
+    expect(first.checks.map(({ durationMs: _durationMs, ...check }) => check)).toEqual(
       second.checks.map(({ durationMs: _durationMs, ...check }) => check),
     );
   });
@@ -187,27 +163,13 @@ describe("bounded scan graph", () => {
       appBaseUrl: "https://agentify.ad",
     });
     const evaluation = await runner.run(job);
-    expect(
-      target.paths.some((request) => request.startsWith("GET / text/html")),
-    ).toBe(false);
-    expect(
-      target.paths.some((request) => request.includes("/.well-known/mcp.json")),
-    ).toBe(true);
-    expect(
-      target.paths.some((request) => request.includes("/sitemap.xml")),
-    ).toBe(false);
-    expect(target.paths.some((request) => request.includes("/llms.txt"))).toBe(
-      false,
-    );
-    expect(
-      target.paths.some((request) => request.includes("/products/widget")),
-    ).toBe(false);
-    expect(evaluation.checks.find((check) => check.id === 12)?.status).toBe(
-      "unavailable",
-    );
-    expect(evaluation.checks.find((check) => check.id === 13)?.status).toBe(
-      "unavailable",
-    );
+    expect(target.paths.some((request) => request.startsWith("GET / text/html"))).toBe(false);
+    expect(target.paths.some((request) => request.includes("/.well-known/mcp.json"))).toBe(true);
+    expect(target.paths.some((request) => request.includes("/sitemap.xml"))).toBe(false);
+    expect(target.paths.some((request) => request.includes("/llms.txt"))).toBe(false);
+    expect(target.paths.some((request) => request.includes("/products/widget"))).toBe(false);
+    expect(evaluation.checks.find((check) => check.id === 12)?.status).toBe("unavailable");
+    expect(evaluation.checks.find((check) => check.id === 13)?.status).toBe("unavailable");
   });
 
   it("does not fetch a disallowed representative path", async () => {
@@ -221,16 +183,8 @@ describe("bounded scan graph", () => {
       transport: target.adapter,
       appBaseUrl: "https://agentify.ad",
     }).run(job);
-    expect(
-      target.paths.some((request) =>
-        request.startsWith("HEAD /products/widget"),
-      ),
-    ).toBe(false);
-    expect(
-      target.paths.some((request) =>
-        request.startsWith("GET /products/widget"),
-      ),
-    ).toBe(false);
+    expect(target.paths.some((request) => request.startsWith("HEAD /products/widget"))).toBe(false);
+    expect(target.paths.some((request) => request.startsWith("GET /products/widget"))).toBe(false);
     expect(evaluation.requestCount).toBeLessThanOrEqual(18);
   });
 
@@ -245,8 +199,7 @@ describe("bounded scan graph", () => {
         request: async (input) => {
           if (input.url.pathname === "/products/widget") {
             methods.push(input.method);
-            if (input.method === "HEAD")
-              return makeArtifact(input, 405, "", "text/html");
+            if (input.method === "HEAD") return makeArtifact(input, 405, "", "text/html");
           }
           return await backing.adapter.request(input);
         },
@@ -254,9 +207,7 @@ describe("bounded scan graph", () => {
       appBaseUrl: "https://agentify.ad",
     }).run(job);
     expect(methods).toEqual(["HEAD", "GET"]);
-    expect(evaluation.checks.find((check) => check.id === 12)?.status).toBe(
-      "pass",
-    );
+    expect(evaluation.checks.find((check) => check.id === 12)?.status).toBe("pass");
     expect(evaluation.requestCount).toBeLessThanOrEqual(18);
   });
 
@@ -333,12 +284,8 @@ describe("bounded scan graph", () => {
       status: "pass",
       evidence: { pages_checked: 2 },
     });
-    expect(evaluation.checks.find((check) => check.id === 6)?.status).toBe(
-      "pass",
-    );
-    expect(evaluation.checks.find((check) => check.id === 12)?.status).toBe(
-      "pass",
-    );
+    expect(evaluation.checks.find((check) => check.id === 6)?.status).toBe("pass");
+    expect(evaluation.checks.find((check) => check.id === 12)?.status).toBe("pass");
   });
 
   it("writes real terminal check batches monotonically as phases finish", async () => {
@@ -354,13 +301,7 @@ describe("bounded scan graph", () => {
       onChecksComplete: async (checks) => {
         expect(
           checks.every((check) =>
-            [
-              "pass",
-              "partial",
-              "fail",
-              "unavailable",
-              "not_applicable",
-            ].includes(check.status),
+            ["pass", "partial", "fail", "unavailable", "not_applicable"].includes(check.status),
           ),
         ).toBe(true);
         batches.push(checks.map(({ id }) => id));
@@ -387,12 +328,7 @@ describe("bounded scan graph", () => {
         request: async (input) => {
           requests.push(input.url.pathname);
           return {
-            ...makeArtifact(
-              input,
-              failure.status,
-              "upstream unavailable",
-              "text/plain",
-            ),
+            ...makeArtifact(input, failure.status, "upstream unavailable", "text/plain"),
             ...(failure.errorCode ? { errorCode: failure.errorCode } : {}),
           };
         },
@@ -401,9 +337,7 @@ describe("bounded scan graph", () => {
     }).run(job);
     expect(requests).toEqual(["/robots.txt"]);
     expect(evaluation.requestCount).toBe(1);
-    expect(evaluation.checks.find((check) => check.id === 12)?.status).toBe(
-      "unavailable",
-    );
+    expect(evaluation.checks.find((check) => check.id === 12)?.status).toBe("unavailable");
   });
 
   it("fails closed on a fatally invalid robots body", async () => {
@@ -415,12 +349,7 @@ describe("bounded scan graph", () => {
       transport: {
         request: async (input) => {
           requests.push(input.url.pathname);
-          return makeArtifact(
-            input,
-            200,
-            "User-agent: *\nAllow: /\u0000",
-            "text/plain",
-          );
+          return makeArtifact(input, 200, "User-agent: *\nAllow: /\u0000", "text/plain");
         },
       },
       appBaseUrl: "https://agentify.ad",
@@ -429,30 +358,27 @@ describe("bounded scan graph", () => {
     expect(evaluation.requestCount).toBe(1);
   });
 
-  it.each([404, 410])(
-    "treats robots %s as allow-all for the fetch graph",
-    async (status) => {
-      const backing = transport();
-      const paths: string[] = [];
-      const evaluation = await new ScanRunner({
-        resolver: {
-          resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+  it.each([404, 410])("treats robots %s as allow-all for the fetch graph", async (status) => {
+    const backing = transport();
+    const paths: string[] = [];
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: {
+        request: async (input) => {
+          paths.push(input.url.pathname);
+          return input.url.pathname === "/robots.txt"
+            ? makeArtifact(input, status, "not found", "text/plain")
+            : await backing.adapter.request(input);
         },
-        transport: {
-          request: async (input) => {
-            paths.push(input.url.pathname);
-            return input.url.pathname === "/robots.txt"
-              ? makeArtifact(input, status, "not found", "text/plain")
-              : await backing.adapter.request(input);
-          },
-        },
-        appBaseUrl: "https://agentify.ad",
-      }).run(job);
-      expect(paths).toContain("/");
-      expect(paths).toContain("/.well-known/mcp.json");
-      expect(evaluation.requestCount).toBeLessThanOrEqual(18);
-    },
-  );
+      },
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(paths).toContain("/");
+    expect(paths).toContain("/.well-known/mcp.json");
+    expect(evaluation.requestCount).toBeLessThanOrEqual(18);
+  });
 
   it("uses the submitted-without-scheme signal for one safe HTTP fallback", async () => {
     const backing = transport();
@@ -464,10 +390,7 @@ describe("bounded scan graph", () => {
       transport: {
         request: async (input) => {
           protocols.push(input.url.protocol);
-          if (
-            input.url.protocol === "https:" &&
-            input.url.pathname === "/robots.txt"
-          )
+          if (input.url.protocol === "https:" && input.url.pathname === "/robots.txt")
             return {
               ...makeArtifact(input, 0, "", "text/plain"),
               errorCode: "network_error",
@@ -478,9 +401,7 @@ describe("bounded scan graph", () => {
       appBaseUrl: "https://agentify.ad",
     }).run({ ...job, submitted_without_scheme: true });
     expect(protocols.slice(0, 2)).toEqual(["https:", "http:"]);
-    expect(protocols.slice(2).every((protocol) => protocol === "http:")).toBe(
-      true,
-    );
+    expect(protocols.slice(2).every((protocol) => protocol === "http:")).toBe(true);
     expect(evaluation.requestCount).toBeLessThanOrEqual(18);
   });
 });

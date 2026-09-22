@@ -17,18 +17,9 @@ const setupRequest = z
 
 export async function POST(request: NextRequest) {
   if (!hasSameOrigin(request))
-    return errorResponse(
-      request,
-      403,
-      "invalid_origin",
-      "The request origin is not allowed.",
-    );
+    return errorResponse(request, 403, "invalid_origin", "The request origin is not allowed.");
   const idempotencyKey = request.headers.get("idempotency-key");
-  if (
-    !idempotencyKey ||
-    idempotencyKey.length < 8 ||
-    idempotencyKey.length > 200
-  )
+  if (!idempotencyKey || idempotencyKey.length < 8 || idempotencyKey.length > 200)
     return errorResponse(
       request,
       400,
@@ -57,12 +48,7 @@ export async function POST(request: NextRequest) {
         "The optional card signal is not enabled.",
       );
     if (result.status === "unauthorized")
-      return errorResponse(
-        request,
-        404,
-        "report_not_found",
-        "The verified report was not found.",
-      );
+      return errorResponse(request, 404, "report_not_found", "The verified report was not found.");
     return NextResponse.json(
       {
         signal_id: result.signalId,

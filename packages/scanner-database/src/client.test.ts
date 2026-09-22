@@ -27,8 +27,6 @@ describe("normalizeNodePostgresConnectionString", () => {
       "postgresql://agentify:secret@db.example:5432/postgres?sslmode=require&uselibpqcompat=false",
     );
 
-    expect(new URL(normalized).searchParams.get("uselibpqcompat")).toBe(
-      "false",
-    );
+    expect(new URL(normalized).searchParams.get("uselibpqcompat")).toBe("false");
   });
 });

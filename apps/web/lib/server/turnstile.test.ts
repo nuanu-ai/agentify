@@ -11,10 +11,7 @@ const response = (body: unknown, status = 200) =>
 describe("verifyTurnstileToken", () => {
   it("accepts only a successful scan token for the configured hostname", async () => {
     let providerRequest: RequestInit | undefined;
-    const fetchImpl = async (
-      _input: string | URL | Request,
-      init?: RequestInit,
-    ) => {
+    const fetchImpl = async (_input: string | URL | Request, init?: RequestInit) => {
       providerRequest = init;
       return response({
         success: true,

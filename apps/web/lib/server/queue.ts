@@ -1,12 +1,8 @@
+import { SCAN_RUBRIC_VERSION, type ScanJobV1, type Segment } from "@agentify/scanner-contracts";
 import {
-  SCAN_RUBRIC_VERSION,
-  type ScanJobV1,
-  type Segment,
-} from "@agentify/scanner-contracts";
-import {
+  type DatabaseTransaction,
   normalizeNodePostgresConnectionString,
   scans,
-  type DatabaseTransaction,
 } from "@agentify/scanner-database";
 import { and, eq, sql } from "drizzle-orm";
 import { fromDrizzle, PgBoss } from "pg-boss";
@@ -20,9 +16,7 @@ const globalQueue = globalThis as typeof globalThis & {
 export function getScanQueue(): Promise<PgBoss> {
   globalQueue.agentifyWebQueue ??= (async () => {
     const boss = new PgBoss({
-      connectionString: normalizeNodePostgresConnectionString(
-        getServerConfig().DATABASE_URL,
-      ),
+      connectionString: normalizeNodePostgresConnectionString(getServerConfig().DATABASE_URL),
       schema: "pgboss",
       application_name: "agentify-web-enqueuer",
       supervise: false,
@@ -68,9 +62,7 @@ export async function enqueueScanInTransaction(
     ...(input.submittedWithoutScheme ? { submitted_without_scheme: true } : {}),
     segment: input.segment,
     rubric_version: SCAN_RUBRIC_VERSION,
-    deadline_at: (
-      input.deadlineAt ?? new Date(Date.now() + 55_000)
-    ).toISOString(),
+    deadline_at: (input.deadlineAt ?? new Date(Date.now() + 55_000)).toISOString(),
     attempt_no: 1,
   };
   const queue = await getScanQueue();

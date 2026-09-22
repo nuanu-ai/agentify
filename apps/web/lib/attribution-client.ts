@@ -20,18 +20,11 @@ export function captureLandingAttribution(
     search: window.location.search,
   },
 ): Promise<void> {
-  const partnerClickId = adsMeasurementAllowed()
-    ? readPartnerClickId(source.search)
-    : undefined;
+  const partnerClickId = adsMeasurementAllowed() ? readPartnerClickId(source.search) : undefined;
   const key = `${source.pathname}?${source.search}:${landingVariant}:partner=${partnerClickId ? "yes" : "no"}`;
   const existing = captures.get(key);
   if (existing) return existing;
-  const capture = persist(
-    segment,
-    landingVariant,
-    source.search,
-    partnerClickId,
-  ).catch(() => {
+  const capture = persist(segment, landingVariant, source.search, partnerClickId).catch(() => {
     captures.delete(key);
   });
   captures.set(key, capture);
@@ -52,10 +45,7 @@ export function readPartnerClickId(search: string): string | undefined {
 
 function adsMeasurementAllowed(): boolean {
   try {
-    return (
-      readCurrentConsent(window.localStorage)?.categories.ads_measurement ===
-      true
-    );
+    return readCurrentConsent(window.localStorage)?.categories.ads_measurement === true;
   } catch {
     return false;
   }
@@ -69,22 +59,13 @@ async function persist(
 ) {
   const query = new URLSearchParams(sourceSearch);
   const touch: Record<string, string> = {};
-  for (const key of [
-    "utm_source",
-    "utm_medium",
-    "utm_campaign",
-    "utm_content",
-    "utm_term",
-  ]) {
+  for (const key of ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"]) {
     const value = query.get(key);
     if (value) touch[key] = value.slice(0, 100);
   }
   const fbclid = query.get("fbclid");
   if (fbclid && fbclid.length <= 1024) {
-    const digest = await crypto.subtle.digest(
-      "SHA-256",
-      new TextEncoder().encode(fbclid),
-    );
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(fbclid));
     touch.fbclid_hash = [...new Uint8Array(digest)]
       .map((byte) => byte.toString(16).padStart(2, "0"))
       .join("");

@@ -1,4 +1,4 @@
-import React, { Fragment, type ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 
 import type {
   EditorialBlock,
@@ -7,25 +7,26 @@ import type {
 } from "../content/public-editorial";
 import { EditorialPage, Notice, ProseList } from "./editorial-page";
 
+function renderNode(node: Exclude<RichText, string>[number], key: string): ReactNode {
+  switch (node.kind) {
+    case "code":
+      return <code key={key}>{node.value}</code>;
+    case "strong":
+      return <strong key={key}>{node.value}</strong>;
+    case "link":
+      return (
+        <a href={node.href} key={key}>
+          {node.value}
+        </a>
+      );
+    case "text":
+      return <Fragment key={key}>{node.value}</Fragment>;
+  }
+}
+
 function renderRichText(content: RichText): ReactNode {
   if (typeof content === "string") return content;
-  return content.map((node, index) => {
-    const key = `${node.kind}-${index}`;
-    switch (node.kind) {
-      case "code":
-        return <code key={key}>{node.value}</code>;
-      case "strong":
-        return <strong key={key}>{node.value}</strong>;
-      case "link":
-        return (
-          <a href={node.href} key={key}>
-            {node.value}
-          </a>
-        );
-      case "text":
-        return <Fragment key={key}>{node.value}</Fragment>;
-    }
-  });
+  return content.map((node, index) => renderNode(node, `${node.kind}-${index}`));
 }
 
 function renderBlock(block: EditorialBlock, index: number): ReactNode {
@@ -42,6 +43,7 @@ function renderBlock(block: EditorialBlock, index: number): ReactNode {
       return (
         <ProseList key={index}>
           {block.items.map((item, itemIndex) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: the list is editorial content fixed at build time, so an item's position is its identity
             <li key={itemIndex}>{renderRichText(item)}</li>
           ))}
         </ProseList>
@@ -49,9 +51,7 @@ function renderBlock(block: EditorialBlock, index: number): ReactNode {
   }
 }
 
-export function PublicEditorialPage({
-  page,
-}: Readonly<{ page: PublicEditorialPageModel }>) {
+export function PublicEditorialPage({ page }: Readonly<{ page: PublicEditorialPageModel }>) {
   return (
     <EditorialPage
       eyebrow={page.eyebrow}

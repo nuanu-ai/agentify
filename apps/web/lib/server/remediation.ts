@@ -1,18 +1,14 @@
+import { generateRemediationPrompt, type RemediationFindingInput } from "@agentify/remediation";
 import type {
   BrowserObservationFinding,
   RemediationPromptResponse,
 } from "@agentify/scanner-contracts";
 import { CHECK_DEFINITIONS } from "@agentify/scanner-contracts";
 import { scanChecks, scans } from "@agentify/scanner-database";
-import {
-  generateRemediationPrompt,
-  type RemediationFindingInput,
-} from "@agentify/remediation";
 import { eq } from "drizzle-orm";
-
+import { getDatabase } from "./database";
 import { getFullBrowserObservation, getFullReport } from "./reporting";
 import { getScanStatusForVerifiedSession } from "./scans";
-import { getDatabase } from "./database";
 
 const CHECK_LABEL_BY_ID = new Map<number, string>(
   CHECK_DEFINITIONS.map((definition) => [definition.id, definition.labelCode]),
@@ -22,8 +18,7 @@ const fromBrowser = (
   findings: BrowserObservationFinding[] | undefined,
 ): RemediationFindingInput[] =>
   (findings ?? []).flatMap((finding) =>
-    finding.status === "fail" ||
-    (finding.status === "partial" && Boolean(finding.remediation_code))
+    finding.status === "fail" || (finding.status === "partial" && Boolean(finding.remediation_code))
       ? [
           {
             id: finding.id,
@@ -46,14 +41,9 @@ export async function getTeaserRemediationPrompt(
   const status = await getScanStatusForVerifiedSession(scanId, sessionToken);
   if (!status?.teaser) return undefined;
   const { db } = getDatabase();
-  const scan = (
-    await db.select().from(scans).where(eq(scans.id, scanId)).limit(1)
-  )[0];
+  const scan = (await db.select().from(scans).where(eq(scans.id, scanId)).limit(1))[0];
   if (!scan) return undefined;
-  const rows = await db
-    .select()
-    .from(scanChecks)
-    .where(eq(scanChecks.scanId, scanId));
+  const rows = await db.select().from(scanChecks).where(eq(scanChecks.scanId, scanId));
   const visibleCodes = new Set(status.teaser.top_findings);
   const canonicalFindings: RemediationFindingInput[] = rows.flatMap((row) =>
     (row.status === "fail" || row.status === "partial") &&
@@ -64,8 +54,7 @@ export async function getTeaserRemediationPrompt(
             id: String(row.checkId),
             source: "canonical-http" as const,
             status: row.status,
-            labelCode:
-              CHECK_LABEL_BY_ID.get(row.checkId) ?? `check_${row.checkId}`,
+            labelCode: CHECK_LABEL_BY_ID.get(row.checkId) ?? `check_${row.checkId}`,
             summaryCode: row.summaryCode,
             impactCode: row.userImpactCode,
             remediationCode: row.fixCode,
@@ -95,22 +84,21 @@ export async function getFullRemediationPrompt(
   const report = await getFullReport(scanId, sessionToken);
   if (!report) return undefined;
   const browser = await getFullBrowserObservation(scanId, sessionToken);
-  const canonicalFindings: RemediationFindingInput[] = report.checks.flatMap(
-    (check) =>
-      check.status === "fail" || check.status === "partial"
-        ? [
-            {
-              id: String(check.id),
-              source: "canonical-http" as const,
-              status: check.status,
-              labelCode: check.label_code,
-              summaryCode: check.summary_code,
-              impactCode: check.user_impact_code,
-              remediationCode: check.fix_code,
-              evidence: check.evidence,
-            },
-          ]
-        : [],
+  const canonicalFindings: RemediationFindingInput[] = report.checks.flatMap((check) =>
+    check.status === "fail" || check.status === "partial"
+      ? [
+          {
+            id: String(check.id),
+            source: "canonical-http" as const,
+            status: check.status,
+            labelCode: check.label_code,
+            summaryCode: check.summary_code,
+            impactCode: check.user_impact_code,
+            remediationCode: check.fix_code,
+            evidence: check.evidence,
+          },
+        ]
+      : [],
   );
   const generated = generateRemediationPrompt({
     scope: "full",

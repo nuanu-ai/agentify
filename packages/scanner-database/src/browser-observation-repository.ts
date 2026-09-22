@@ -1,11 +1,11 @@
 import {
   BROWSER_OBSERVATION_VERSION,
-  browserObservationFindingSchema,
-  browserObservationOutputV1Schema,
-  browserObservationSignalsSchema,
   type BrowserObservationJobV1,
   type BrowserObservationLifecycleStatus,
   type BrowserObservationOutputV1,
+  browserObservationFindingSchema,
+  browserObservationOutputV1Schema,
+  browserObservationSignalsSchema,
 } from "@agentify/scanner-contracts";
 import { and, asc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 
@@ -18,13 +18,7 @@ import {
 } from "./schema.js";
 
 const ACTIVE_STATUSES = ["starting", "running"] as const;
-const TERMINAL_STATUSES = [
-  "completed",
-  "partial",
-  "blocked",
-  "failed",
-  "budget_skipped",
-] as const;
+const TERMINAL_STATUSES = ["completed", "partial", "blocked", "failed", "budget_skipped"] as const;
 
 export type BrowserObservationClaim = {
   id: string;
@@ -48,8 +42,7 @@ export type BrowserObservationCleanupCandidate = {
   apifyRunId: string | null;
 };
 
-export type BrowserObservationUsageCandidate =
-  BrowserObservationCleanupCandidate;
+export type BrowserObservationUsageCandidate = BrowserObservationCleanupCandidate;
 
 export type BrowserObservationUsageReconciliation = {
   state: "updated" | "unchanged" | "missing";
@@ -70,10 +63,7 @@ export type BrowserObservationRecord = {
 
 const utcBudgetDay = (at: Date): string => at.toISOString().slice(0, 10);
 
-const actualUsageUsd = (
-  value: number | undefined,
-  reservedUsd: number,
-): number =>
+const actualUsageUsd = (value: number | undefined, reservedUsd: number): number =>
   value !== undefined && Number.isFinite(value) && value >= 0
     ? Math.min(value, 9_999)
     : reservedUsd;
@@ -192,8 +182,7 @@ export function createBrowserObservationRepository(db: Database) {
         .where(eq(browserObservations.id, observationId))
         .limit(1);
       return current &&
-        (current.apifyRunId === runId ||
-          ACTIVE_STATUSES.includes(current.status as never))
+        (current.apifyRunId === runId || ACTIVE_STATUSES.includes(current.status as never))
         ? "owned_elsewhere"
         : "fenced";
     },
@@ -263,10 +252,7 @@ export function createBrowserObservationRepository(db: Database) {
         `);
         const totals = day.rows[0];
         if (!totals) throw new Error("browser_budget_day_missing");
-        if (
-          Number(totals.reserved_usd) + Number(totals.usage_usd) + maxRunUsd >
-          dailyBudgetUsd
-        )
+        if (Number(totals.reserved_usd) + Number(totals.usage_usd) + maxRunUsd > dailyBudgetUsd)
           return "exhausted" as const;
 
         await tx
@@ -326,10 +312,7 @@ export function createBrowserObservationRepository(db: Database) {
         const reservedUsd = Number(current.budget_reserved_usd);
         const usageUsd = actualUsageUsd(input.usageUsd, reservedUsd);
         const settledReservationUsd = Math.min(reservedUsd, usageUsd);
-        const remainingReservationUsd = Math.max(
-          0,
-          reservedUsd - settledReservationUsd,
-        );
+        const remainingReservationUsd = Math.max(0, reservedUsd - settledReservationUsd);
         if (current.budget_day && reservedUsd > 0) {
           await tx.execute(sql`
             update browser_observation_budget_days
@@ -384,8 +367,7 @@ export function createBrowserObservationRepository(db: Database) {
             ),
           )
           .returning({ id: browserObservations.id });
-        if (terminalRows.length !== 1)
-          throw new Error("browser_observation_fence_lost");
+        if (terminalRows.length !== 1) throw new Error("browser_observation_fence_lost");
         return "committed";
       });
     },
@@ -415,10 +397,7 @@ export function createBrowserObservationRepository(db: Database) {
         const reservedUsd = Number(current.budget_reserved_usd);
         const usageUsd = actualUsageUsd(input.usageUsd, reservedUsd);
         const settledReservationUsd = Math.min(reservedUsd, usageUsd);
-        const remainingReservationUsd = Math.max(
-          0,
-          reservedUsd - settledReservationUsd,
-        );
+        const remainingReservationUsd = Math.max(0, reservedUsd - settledReservationUsd);
         if (current.budget_day && reservedUsd > 0) {
           await tx.execute(sql`
             update browser_observation_budget_days
@@ -478,10 +457,7 @@ export function createBrowserObservationRepository(db: Database) {
           return { state: "missing", deltaUsd: 0, dayTotalUsd: 0 };
 
         const currentUsageUsd = Number(current.usage_usd ?? 0);
-        const reconciledUsageUsd = Math.max(
-          currentUsageUsd,
-          safeProviderUsageUsd,
-        );
+        const reconciledUsageUsd = Math.max(currentUsageUsd, safeProviderUsageUsd);
         const deltaUsd = Math.max(0, reconciledUsageUsd - currentUsageUsd);
         const remainingReservationUsd = Number(current.budget_reserved_usd);
         let dayTotalUsd = reconciledUsageUsd;
@@ -496,9 +472,7 @@ export function createBrowserObservationRepository(db: Database) {
             where budget_day = ${current.budget_day}::date
             returning (usage_usd + reserved_usd)::text as breaker_usage_usd
           `);
-          dayTotalUsd = Number(
-            totals.rows[0]?.breaker_usage_usd ?? reconciledUsageUsd,
-          );
+          dayTotalUsd = Number(totals.rows[0]?.breaker_usage_usd ?? reconciledUsageUsd);
         }
 
         await tx
@@ -511,10 +485,7 @@ export function createBrowserObservationRepository(db: Database) {
           })
           .where(eq(browserObservations.id, observationId));
         return {
-          state:
-            deltaUsd > 0 || remainingReservationUsd > 0
-              ? "updated"
-              : "unchanged",
+          state: deltaUsd > 0 || remainingReservationUsd > 0 ? "updated" : "unchanged",
           deltaUsd,
           dayTotalUsd,
         };
@@ -557,9 +528,7 @@ export function createBrowserObservationRepository(db: Database) {
             where budget_day = ${current.budget_day}::date
             returning (usage_usd + reserved_usd)::text as breaker_usage_usd
           `);
-          dayTotalUsd = Number(
-            totals.rows[0]?.breaker_usage_usd ?? conservativeUsageUsd,
-          );
+          dayTotalUsd = Number(totals.rows[0]?.breaker_usage_usd ?? conservativeUsageUsd);
         }
         await tx
           .update(browserObservations)
@@ -679,10 +648,7 @@ export function createBrowserObservationRepository(db: Database) {
           and(
             eq(browserObservations.id, observationId),
             isNull(browserObservations.storageCleanedAt),
-            or(
-              isNull(browserObservations.apifyRunId),
-              eq(browserObservations.apifyRunId, runId),
-            ),
+            or(isNull(browserObservations.apifyRunId), eq(browserObservations.apifyRunId, runId)),
           ),
         )
         .returning({ id: browserObservations.id });
@@ -696,10 +662,7 @@ export function createBrowserObservationRepository(db: Database) {
         .where(
           and(
             eq(browserObservations.scanId, scanId),
-            eq(
-              browserObservations.observationVersion,
-              BROWSER_OBSERVATION_VERSION,
-            ),
+            eq(browserObservations.observationVersion, BROWSER_OBSERVATION_VERSION),
           ),
         )
         .limit(1);
@@ -714,20 +677,14 @@ export function createBrowserObservationRepository(db: Database) {
         actorBuild: row.actorBuild,
         status: row.status,
         pagesAssessed: row.pagesAssessed,
-        signals: row.signals
-          ? browserObservationSignalsSchema.parse(row.signals)
-          : null,
+        signals: row.signals ? browserObservationSignalsSchema.parse(row.signals) : null,
         findings: findings.map((finding) =>
           browserObservationFindingSchema.parse({
             id: finding.findingId,
             status: finding.status,
             summary_code: finding.summaryCode,
-            ...(finding.userImpactCode
-              ? { user_impact_code: finding.userImpactCode }
-              : {}),
-            ...(finding.remediationCode
-              ? { remediation_code: finding.remediationCode }
-              : {}),
+            ...(finding.userImpactCode ? { user_impact_code: finding.userImpactCode } : {}),
+            ...(finding.remediationCode ? { remediation_code: finding.remediationCode } : {}),
             evidence: finding.evidence,
           }),
         ),

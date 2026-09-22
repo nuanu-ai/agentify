@@ -20,8 +20,7 @@ const PROPERTY_ALLOWLIST: Record<AnalyticsEventName, ReadonlySet<string>> = {
 
 const FORBIDDEN_KEY =
   /(?:email|url|uri|host|domain|query|pain|answer|free.?text|name|token|secret|ip|user.?agent|fbp|fbc)/i;
-const EMAIL_OR_URL =
-  /(?:https?:\/\/|www\.|[\w.+-]+@[\w.-]+\.[a-z]{2,}|\?[^\s=]+=)/i;
+const EMAIL_OR_URL = /(?:https?:\/\/|www\.|[\w.+-]+@[\w.-]+\.[a-z]{2,}|\?[^\s=]+=)/i;
 
 export type AnalyticsEvent = {
   eventId: string;
@@ -41,11 +40,7 @@ export const sanitizeEventProperties = (
   for (const [key, value] of Object.entries(properties)) {
     if (!PROPERTY_ALLOWLIST[name].has(key) || FORBIDDEN_KEY.test(key)) continue;
     if (!["string", "number", "boolean"].includes(typeof value)) continue;
-    if (
-      typeof value === "string" &&
-      (value.length > 80 || EMAIL_OR_URL.test(value))
-    )
-      continue;
+    if (typeof value === "string" && (value.length > 80 || EMAIL_OR_URL.test(value))) continue;
     output[key] = value as AnalyticsScalar;
   }
   return output;
@@ -56,10 +51,8 @@ export const createAnalyticsEvent = (
     properties?: Readonly<Record<string, unknown>>;
   },
 ): AnalyticsEvent => {
-  if (!ANALYTICS_EVENT_NAMES.includes(input.name))
-    throw new Error("event_not_allowlisted");
-  if (!/^[0-9a-f-]{36}$/i.test(input.eventId))
-    throw new Error("event_id_invalid");
+  if (!ANALYTICS_EVENT_NAMES.includes(input.name)) throw new Error("event_not_allowlisted");
+  if (!/^[0-9a-f-]{36}$/i.test(input.eventId)) throw new Error("event_id_invalid");
   if (!input.pseudonymousId || EMAIL_OR_URL.test(input.pseudonymousId)) {
     throw new Error("pseudonymous_id_invalid");
   }
@@ -84,7 +77,6 @@ export const eventOnceKey = (
     result_shared: ["share_id"],
   };
   const fields = required[name];
-  if (fields.some((field) => !identifiers[field]))
-    throw new Error("event_once_key_incomplete");
+  if (fields.some((field) => !identifiers[field])) throw new Error("event_once_key_incomplete");
   return `${name}:${fields.map((field) => identifiers[field]).join(":")}`;
 };

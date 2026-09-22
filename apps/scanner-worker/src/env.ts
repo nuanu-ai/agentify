@@ -9,29 +9,19 @@ const workerEnvSchema = z
       .default("false")
       .transform((value) => value === "true"),
     SCANNER_CONCURRENCY: z.coerce.number().int().min(1).max(50).default(10),
-    ANALYTICS_ENV: z
-      .enum(["local", "test", "preview", "production"])
-      .default("local"),
+    ANALYTICS_ENV: z.enum(["local", "test", "preview", "production"]).default("local"),
     POSTHOG_ENABLED: z
       .enum(["true", "false"])
       .default("false")
       .transform((value) => value === "true"),
-    POSTHOG_DESTINATION_ENV: z
-      .enum(["local", "test", "preview", "production"])
-      .default("local"),
-    POSTHOG_HOST: z
-      .url({ protocol: /^https?$/ })
-      .default("http://127.0.0.1:8000"),
+    POSTHOG_DESTINATION_ENV: z.enum(["local", "test", "preview", "production"]).default("local"),
+    POSTHOG_HOST: z.url({ protocol: /^https?$/ }).default("http://127.0.0.1:8000"),
     META_CAPI_ENABLED: z
       .enum(["true", "false"])
       .default("false")
       .transform((value) => value === "true"),
-    META_DESTINATION_ENV: z
-      .enum(["local", "test", "preview", "production"])
-      .default("local"),
-    META_GRAPH_BASE_URL: z
-      .url({ protocol: /^https$/ })
-      .default("https://graph.facebook.com"),
+    META_DESTINATION_ENV: z.enum(["local", "test", "preview", "production"]).default("local"),
+    META_GRAPH_BASE_URL: z.url({ protocol: /^https$/ }).default("https://graph.facebook.com"),
     META_API_VERSION: z
       .string()
       .regex(/^v\d+\.\d+$/)
@@ -55,38 +45,20 @@ const workerEnvSchema = z
     APIFY_BROWSER_ACTOR_BUILD: z.string().trim().max(200).default(""),
     APIFY_BROWSER_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0.1),
     APIFY_BROWSER_CONCURRENCY: z.coerce.number().int().min(1).max(5).default(1),
-    APIFY_BROWSER_TIMEOUT_SECONDS: z.coerce
-      .number()
-      .int()
-      .min(10)
-      .max(120)
-      .default(60),
-    APIFY_BROWSER_MAX_RUN_USD: z.coerce
-      .number()
-      .positive()
-      .max(1)
-      .default(0.05),
-    APIFY_BROWSER_DAILY_BUDGET_USD: z.coerce
-      .number()
-      .positive()
-      .max(10_000)
-      .default(25),
+    APIFY_BROWSER_TIMEOUT_SECONDS: z.coerce.number().int().min(10).max(120).default(60),
+    APIFY_BROWSER_MAX_RUN_USD: z.coerce.number().positive().max(1).default(0.05),
+    APIFY_BROWSER_DAILY_BUDGET_USD: z.coerce.number().positive().max(10_000).default(25),
     APIFY_BROWSER_MAX_PAGES: z.coerce.number().int().min(1).max(3).default(3),
   })
   .superRefine((env, context) => {
-    if (
-      env.PARTNER_POSTBACK_ENABLED &&
-      env.PARTNER_POSTBACK_SECRET.length < 16
-    ) {
+    if (env.PARTNER_POSTBACK_ENABLED && env.PARTNER_POSTBACK_SECRET.length < 16) {
       context.addIssue({
         code: "custom",
         path: ["PARTNER_POSTBACK_SECRET"],
-        message:
-          "PARTNER_POSTBACK_SECRET is required when partner postback is active",
+        message: "PARTNER_POSTBACK_SECRET is required when partner postback is active",
       });
     }
-    const active =
-      env.APIFY_BROWSER_ENABLED && env.APIFY_BROWSER_MODE !== "off";
+    const active = env.APIFY_BROWSER_ENABLED && env.APIFY_BROWSER_MODE !== "off";
     if (!active) return;
     for (const key of [
       "APIFY_API_TOKEN",
@@ -105,16 +77,13 @@ const workerEnvSchema = z
       context.addIssue({
         code: "custom",
         path: ["APIFY_BROWSER_ACTOR_BUILD"],
-        message:
-          "APIFY_BROWSER_ACTOR_BUILD must be an immutable build number/tag",
+        message: "APIFY_BROWSER_ACTOR_BUILD must be an immutable build number/tag",
       });
     }
   });
 
 export type WorkerEnv = z.infer<typeof workerEnvSchema>;
 
-export function readWorkerEnv(
-  input: NodeJS.ProcessEnv = process.env,
-): WorkerEnv {
+export function readWorkerEnv(input: NodeJS.ProcessEnv = process.env): WorkerEnv {
   return workerEnvSchema.parse(input);
 }

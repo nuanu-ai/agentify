@@ -3,19 +3,19 @@ import { describe, expect, it } from "vitest";
 import {
   ANALYTICS_EVENT_NAMES,
   BROWSER_OBSERVATION_IDS,
-  CHECK_DEFINITIONS,
   BROWSER_OBSERVATION_VERSION,
   browserObservationInputV1Schema,
   browserObservationOutputV1Schema,
   browserObservationStatusResponseSchema,
+  CHECK_DEFINITIONS,
   clientAnalyticsEventRequestSchema,
   createScanRequestSchema,
   registrationRequestSchema,
   reportResponseSchema,
+  scanJobV1Schema,
   scanStatusResponseSchema,
   scanUrlWasSubmittedWithoutScheme,
   sharePreviewResponseSchema,
-  scanJobV1Schema,
   uuidV7Schema,
 } from "./index.js";
 
@@ -23,9 +23,7 @@ describe("canonical contracts", () => {
   it("keeps exactly 18 checks with nominal weight 100", () => {
     expect(CHECK_DEFINITIONS).toHaveLength(18);
     expect(new Set(CHECK_DEFINITIONS.map(({ id }) => id)).size).toBe(18);
-    expect(
-      CHECK_DEFINITIONS.reduce((sum, check) => sum + check.nominalWeight, 0),
-    ).toBe(100);
+    expect(CHECK_DEFINITIONS.reduce((sum, check) => sum + check.nominalWeight, 0)).toBe(100);
   });
 
   it("keeps the eight-event taxonomy unique", () => {
@@ -71,10 +69,9 @@ describe("canonical contracts", () => {
       generated_at: "2026-07-13T12:00:00.000Z",
     };
     const slug = "abcdefghijklmnopqrstuvwxyz_1234567890";
-    expect(
-      sharePreviewResponseSchema.safeParse({ ...base, existing_share: null })
-        .success,
-    ).toBe(true);
+    expect(sharePreviewResponseSchema.safeParse({ ...base, existing_share: null }).success).toBe(
+      true,
+    );
     expect(
       sharePreviewResponseSchema.safeParse({
         ...base,
@@ -112,9 +109,7 @@ describe("canonical contracts", () => {
       }).success,
     ).toBe(true);
     expect(scanStatusResponseSchema.safeParse(base).success).toBe(true);
-    expect(
-      scanStatusResponseSchema.safeParse({ ...base, target_host: "" }).success,
-    ).toBe(false);
+    expect(scanStatusResponseSchema.safeParse({ ...base, target_host: "" }).success).toBe(false);
   });
 
   it("rejects credentialed and non-http scan URLs", () => {
@@ -145,18 +140,12 @@ describe("canonical contracts", () => {
     });
     expect(parsed.url).toBe("https://example.com/path");
     expect(scanUrlWasSubmittedWithoutScheme("example.com/path")).toBe(true);
-    expect(scanUrlWasSubmittedWithoutScheme("https://example.com/path")).toBe(
-      false,
-    );
+    expect(scanUrlWasSubmittedWithoutScheme("https://example.com/path")).toBe(false);
   });
 
   it("requires UUIDv7 for record and job IDs", () => {
-    expect(
-      uuidV7Schema.safeParse("019b41a0-7c51-7d63-84bd-a5a20faef497").success,
-    ).toBe(true);
-    expect(
-      uuidV7Schema.safeParse("550e8400-e29b-41d4-a716-446655440000").success,
-    ).toBe(false);
+    expect(uuidV7Schema.safeParse("019b41a0-7c51-7d63-84bd-a5a20faef497").success).toBe(true);
+    expect(uuidV7Schema.safeParse("550e8400-e29b-41d4-a716-446655440000").success).toBe(false);
     expect(
       scanJobV1Schema.safeParse({
         scan_id: "019b41a0-7c51-7d63-84bd-a5a20faef497",
@@ -184,10 +173,9 @@ describe("canonical contracts", () => {
         phone: "+1 (415) 555-0123",
       }).phone,
     ).toBe("+14155550123");
-    expect(
-      registrationRequestSchema.safeParse({ ...base, phone: "4155550123" })
-        .success,
-    ).toBe(false);
+    expect(registrationRequestSchema.safeParse({ ...base, phone: "4155550123" }).success).toBe(
+      false,
+    );
     expect(registrationRequestSchema.parse(base).phone).toBeUndefined();
   });
 
@@ -275,11 +263,10 @@ describe("canonical contracts", () => {
       })),
       timings: { total_ms: 100, pages: [100] },
     };
+    const [firstObservation] = output.observations;
+    if (!firstObservation) throw new Error("the observation fixture has no observations");
     for (const status of ["completed", "partial", "blocked", "failed"]) {
-      expect(
-        browserObservationOutputV1Schema.safeParse({ ...output, status })
-          .success,
-      ).toBe(true);
+      expect(browserObservationOutputV1Schema.safeParse({ ...output, status }).success).toBe(true);
     }
     expect(
       browserObservationOutputV1Schema.safeParse({
@@ -307,7 +294,7 @@ describe("canonical contracts", () => {
         ...output,
         observations: output.observations.map((finding, index) =>
           index === output.observations.length - 1
-            ? { ...finding, id: output.observations[0]!.id }
+            ? { ...finding, id: firstObservation.id }
             : finding,
         ),
       }).success,
@@ -363,11 +350,7 @@ describe("canonical contracts", () => {
       "line\nbreak",
     ];
 
-    for (const field of [
-      "summary_code",
-      "user_impact_code",
-      "remediation_code",
-    ] as const) {
+    for (const field of ["summary_code", "user_impact_code", "remediation_code"] as const) {
       for (const unsafe of unsafeValues) {
         expect(
           browserObservationOutputV1Schema.safeParse({
@@ -389,16 +372,13 @@ describe("canonical contracts", () => {
         { ...output.signals, challenge_kind: unsafe },
       ];
       for (const signals of unsafeSignalVariants) {
-        expect(
-          browserObservationOutputV1Schema.safeParse({ ...output, signals })
-            .success,
-        ).toBe(false);
+        expect(browserObservationOutputV1Schema.safeParse({ ...output, signals }).success).toBe(
+          false,
+        );
       }
     }
 
-    expect(browserObservationOutputV1Schema.safeParse(output).success).toBe(
-      true,
-    );
+    expect(browserObservationOutputV1Schema.safeParse(output).success).toBe(true);
   });
 
   it("keeps Actor build metadata out of the public browser response", () => {
@@ -410,9 +390,7 @@ describe("canonical contracts", () => {
       findings: [],
       updated_at: "2026-07-13T12:00:00.000Z",
     };
-    expect(
-      browserObservationStatusResponseSchema.safeParse(publicResponse).success,
-    ).toBe(true);
+    expect(browserObservationStatusResponseSchema.safeParse(publicResponse).success).toBe(true);
     expect(
       browserObservationStatusResponseSchema.safeParse({
         ...publicResponse,

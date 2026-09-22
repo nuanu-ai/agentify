@@ -12,7 +12,7 @@
   min-height: 56px;
   border-bottom: 1px solid var(--line);
   color: var(--muted);
-  font: 500 0.75rem/1.4 var(--font-mono);
+  font: 500 0.75rem / 1.4 var(--font-mono);
 }
 
 .liveDot {
@@ -79,7 +79,7 @@
 .sectionHeading > p {
   margin: 0;
   color: var(--muted);
-  font: 0.75rem/1.4 var(--font-mono);
+  font: 0.75rem / 1.4 var(--font-mono);
 }
 
 .metrics {
@@ -141,7 +141,7 @@
 .barColumn > span {
   overflow: hidden;
   color: var(--muted);
-  font: 0.62rem/1 var(--font-mono);
+  font: 0.62rem / 1 var(--font-mono);
 }
 
 .barTrack {
@@ -246,7 +246,7 @@
   width: fit-content;
   border-radius: var(--radius-pill);
   padding: 5px 10px;
-  font: 600 0.7rem/1.2 var(--font-mono);
+  font: 600 0.7rem / 1.2 var(--font-mono);
   text-transform: uppercase;
 }
 
@@ -302,7 +302,7 @@
 
 .tableWrap th {
   color: var(--muted);
-  font: 500 0.68rem/1.3 var(--font-mono);
+  font: 500 0.68rem / 1.3 var(--font-mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -312,7 +312,7 @@
 }
 .tableWrap small {
   color: var(--faint);
-  font: 0.65rem/1 var(--font-mono);
+  font: 0.65rem / 1 var(--font-mono);
 }
 
 @media (max-width: 1150px) {

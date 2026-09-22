@@ -1,28 +1,16 @@
 "use client";
 
+import { apiErrorEnvelopeSchema, createScanResponseSchema } from "@agentify/scanner-contracts";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import {
-  apiErrorEnvelopeSchema,
-  createScanResponseSchema,
-} from "@agentify/scanner-contracts";
-
 import { captureLandingAttribution } from "../lib/attribution-client";
-import {
-  clearPendingScan,
-  readPendingScan,
-  type PendingScanRequest,
-} from "../lib/pending-scan";
+import { clearPendingScan, type PendingScanRequest, readPendingScan } from "../lib/pending-scan";
 import { Brand } from "./brand";
 import styles from "./pending-scan-experience.module.css";
-import {
-  TURNSTILE_TOKEN_EVENT,
-  TurnstileChallenge,
-} from "./turnstile-challenge";
+import { TURNSTILE_TOKEN_EVENT, TurnstileChallenge } from "./turnstile-challenge";
 
-type StartState =
-  "starting" | "challenge" | "hard-limit" | "busy" | "error" | "missing";
+type StartState = "starting" | "challenge" | "hard-limit" | "busy" | "error" | "missing";
 
 export function PendingScanExperience({
   turnstileSiteKey,
@@ -33,85 +21,71 @@ export function PendingScanExperience({
   const started = useRef(false);
   const challengeRetried = useRef(false);
 
-  const startScan = useCallback(
-    async (pending: PendingScanRequest, turnstileToken?: string) => {
-      setState("starting");
-      setMessage("Starting as soon as it is accepted.");
-      try {
-        await captureLandingAttribution(pending.segment, pending.variant, {
-          pathname: pending.landingPath,
-          search: pending.landingSearch,
+  const startScan = useCallback(async (pending: PendingScanRequest, turnstileToken?: string) => {
+    setState("starting");
+    setMessage("Starting as soon as it is accepted.");
+    try {
+      await captureLandingAttribution(pending.segment, pending.variant, {
+        pathname: pending.landingPath,
+        search: pending.landingSearch,
+      });
+      const response = await fetch("/api/v1/scans", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": pending.idempotencyKey,
+        },
+        body: JSON.stringify({
+          url: pending.url,
+          segment: pending.segment,
+          landing_variant: pending.variant,
+          turnstile_token: turnstileToken ?? null,
+        }),
+      });
+      const payload: unknown = await response.json().catch(() => null);
+      const accepted = createScanResponseSchema.safeParse(payload);
+      if (response.ok && accepted.success) {
+        clearPendingScan(window.sessionStorage);
+        const fragment = new URLSearchParams({
+          access_token: accepted.data.access_token,
         });
-        const response = await fetch("/api/v1/scans", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Idempotency-Key": pending.idempotencyKey,
-          },
-          body: JSON.stringify({
-            url: pending.url,
-            segment: pending.segment,
-            landing_variant: pending.variant,
-            turnstile_token: turnstileToken ?? null,
-          }),
-        });
-        const payload: unknown = await response.json().catch(() => null);
-        const accepted = createScanResponseSchema.safeParse(payload);
-        if (response.ok && accepted.success) {
-          clearPendingScan(window.sessionStorage);
-          const fragment = new URLSearchParams({
-            access_token: accepted.data.access_token,
-          });
-          window.location.replace(
-            `/scan/${encodeURIComponent(accepted.data.scan_id)}?segment=${pending.segment}#${fragment.toString()}`,
-          );
-          return;
-        }
-
-        const code = readErrorCode(payload);
-        if (code === "challenge_required") {
-          challengeRetried.current = false;
-          setState("challenge");
-          setMessage("Complete the challenge to continue.");
-          return;
-        }
-        if (code === "hard_rate_limit") {
-          setState("hard-limit");
-          setMessage(
-            "This network or target reached the hard scan limit. Try again later.",
-          );
-          return;
-        }
-        if (code === "temporarily_busy") {
-          setState("busy");
-          setMessage(
-            "The scanner is at capacity. No scan was promised; please retry shortly.",
-          );
-          return;
-        }
-
-        setState("error");
-        setMessage(
-          readErrorMessage(payload) ??
-            "The scan could not be accepted. Please retry.",
+        window.location.replace(
+          `/scan/${encodeURIComponent(accepted.data.scan_id)}?segment=${pending.segment}#${fragment.toString()}`,
         );
-      } catch {
-        setState("busy");
-        setMessage(
-          "The scanner cannot be reached right now. Please retry shortly.",
-        );
+        return;
       }
-    },
-    [],
-  );
+
+      const code = readErrorCode(payload);
+      if (code === "challenge_required") {
+        challengeRetried.current = false;
+        setState("challenge");
+        setMessage("Complete the challenge to continue.");
+        return;
+      }
+      if (code === "hard_rate_limit") {
+        setState("hard-limit");
+        setMessage("This network or target reached the hard scan limit. Try again later.");
+        return;
+      }
+      if (code === "temporarily_busy") {
+        setState("busy");
+        setMessage("The scanner is at capacity. No scan was promised; please retry shortly.");
+        return;
+      }
+
+      setState("error");
+      setMessage(readErrorMessage(payload) ?? "The scan could not be accepted. Please retry.");
+    } catch {
+      setState("busy");
+      setMessage("The scanner cannot be reached right now. Please retry shortly.");
+    }
+  }, []);
 
   useEffect(() => {
     const pending = readPendingScan(window.sessionStorage);
     if (!pending) {
       setState("missing");
-      setMessage(
-        "This scan request is missing or expired. Submit the site again.",
-      );
+      setMessage("This scan request is missing or expired. Submit the site again.");
       return;
     }
     setRequest(pending);
@@ -142,14 +116,10 @@ export function PendingScanExperience({
       <section className={styles.card}>
         <header className={styles.header}>
           <span>Private website diagnostic</span>
-          <span className={styles.status}>
-            {starting ? "starting" : state.replace("-", " ")}
-          </span>
+          <span className={styles.status}>{starting ? "starting" : state.replace("-", " ")}</span>
         </header>
         <div className={styles.body}>
-          <h1>
-            {starting ? "Your report is getting ready" : "Scan needs attention"}
-          </h1>
+          <h1>{starting ? "Your report is getting ready" : "Scan needs attention"}</h1>
           <p aria-live="polite" className={styles.message} role="status">
             {message}
           </p>

@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  extractRawMetadata,
-  rawTextCharacterCount,
-} from "./browser-signals.js";
+import { extractRawMetadata, rawTextCharacterCount } from "./browser-signals.js";
 
 describe("browser signal extraction", () => {
   it("counts useful raw text without scripts and styles", () => {
@@ -11,9 +8,7 @@ describe("browser signal extraction", () => {
       <html><head><style>.x { display:none }</style></head>
       <body><h1>Useful title</h1><script>secret text</script><p>Hello &amp; world</p></body></html>
     `;
-    expect(rawTextCharacterCount(html)).toBe(
-      "Useful title Hello & world".length,
-    );
+    expect(rawTextCharacterCount(html)).toBe("Useful title Hello & world".length);
   });
 
   it("extracts only aggregate metadata and structured facts", () => {

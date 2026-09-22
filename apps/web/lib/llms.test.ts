@@ -14,9 +14,7 @@ describe("llms.txt", () => {
   it("contains an H1 and only real absolute public links", () => {
     process.env.APP_BASE_URL = "https://agentify.ad";
     const body = buildLlmsText();
-    const links = [...body.matchAll(/\[[^\]]+\]\((https:\/\/[^)]+)\)/g)].map(
-      (match) => match[1],
-    );
+    const links = [...body.matchAll(/\[[^\]]+\]\((https:\/\/[^)]+)\)/g)].map((match) => match[1]);
 
     expect(body).toMatch(/^# Agentify$/m);
     expect(links).toEqual([

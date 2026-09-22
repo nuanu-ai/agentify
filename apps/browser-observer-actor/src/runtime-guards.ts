@@ -42,8 +42,6 @@ const passiveRuntimeGuardScript = `(() => {
 })();`;
 
 /** Installs before any document or child-frame script in this context. */
-export const installPassiveRuntimeGuards = async (
-  context: BrowserContext,
-): Promise<void> => {
+export const installPassiveRuntimeGuards = async (context: BrowserContext): Promise<void> => {
   await context.addInitScript({ content: passiveRuntimeGuardScript });
 };

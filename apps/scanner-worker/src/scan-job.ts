@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { ScanEvaluation } from "@agentify/scanner";
 import {
   BROWSER_OBSERVATION_VERSION,
   type BrowserObservationJobV1,
@@ -6,7 +7,6 @@ import {
   type ScanJobV1,
 } from "@agentify/scanner-contracts";
 import { createUuidV7 } from "@agentify/scanner-database";
-import type { ScanEvaluation } from "@agentify/scanner";
 import type { ScanRunner } from "./scan-runner.js";
 
 export type ReusableScanSnapshot = ScanEvaluation & {
@@ -36,20 +36,10 @@ export interface ScanJobRepository {
   /** Atomic queued/running-stale -> running CAS. Terminal scans return terminal. */
   claim(job: ScanJobV1): Promise<"claimed" | "terminal" | "in_progress">;
   heartbeat(scanId: string, attemptNo: number, at: Date): Promise<void>;
-  upsertCheck(
-    scanId: string,
-    attemptNo: number,
-    check: CheckResult,
-    at: Date,
-  ): Promise<boolean>;
-  findReusableSnapshot(
-    cacheKey: string,
-    now: Date,
-  ): Promise<ReusableScanSnapshot | undefined>;
+  upsertCheck(scanId: string, attemptNo: number, check: CheckResult, at: Date): Promise<boolean>;
+  findReusableSnapshot(cacheKey: string, now: Date): Promise<ReusableScanSnapshot | undefined>;
   /** One transaction: score/fingerprint/snapshot/terminal status/scan_completed unique business event. */
-  commitTerminal(
-    input: TerminalCommit,
-  ): Promise<"committed" | "already_terminal">;
+  commitTerminal(input: TerminalCommit): Promise<"committed" | "already_terminal">;
   markSystemFailure(
     scanId: string,
     attemptNo: number,
@@ -85,28 +75,19 @@ export type ProcessScanJobDependencies = {
 
 const cacheKeyFor = (job: ScanJobV1): string =>
   createHash("sha256")
-    .update(
-      `${job.rubric_version}\0${job.segment}\0${job.canonical_target_url}`,
-    )
+    .update(`${job.rubric_version}\0${job.segment}\0${job.canonical_target_url}`)
     .digest("hex");
 
-const sampledForBrowserObservation = (
-  scanId: string,
-  sampleRate: number,
-): boolean => {
+const sampledForBrowserObservation = (scanId: string, sampleRate: number): boolean => {
   if (sampleRate >= 1) return true;
   if (sampleRate <= 0) return false;
   const sample = createHash("sha256").update(scanId).digest().readUInt32BE(0);
   return sample / 0x1_0000_0000 < sampleRate;
 };
 
-const browserObservationAllowedByRobots = (
-  checks: readonly CheckResult[],
-): boolean =>
+const browserObservationAllowedByRobots = (checks: readonly CheckResult[]): boolean =>
   !checks.some(
-    (check) =>
-      check.errorCode === "robots_disallowed" ||
-      check.errorCode === "robots_unavailable",
+    (check) => check.errorCode === "robots_disallowed" || check.errorCode === "robots_unavailable",
   );
 
 const operationalCode = (error: unknown): string => {
@@ -119,8 +100,7 @@ const operationalCode = (error: unknown): string => {
     "redirect_limit_exceeded",
   ]);
   if (known.has(error.message)) return error.message;
-  if (error.message.startsWith("ssrf_blocked:"))
-    return error.message.slice(0, 64);
+  if (error.message.startsWith("ssrf_blocked:")) return error.message.slice(0, 64);
   return "scan_system_error";
 };
 
@@ -156,11 +136,9 @@ export const processScanJob = async (
 
   const now = dependencies.now ?? (() => new Date());
   const heartbeat = setInterval(() => {
-    void dependencies.repository
-      .heartbeat(job.scan_id, job.attempt_no, now())
-      .catch(() => {
-        // Heartbeat failure is observable by repository metrics; final CAS still protects state.
-      });
+    void dependencies.repository.heartbeat(job.scan_id, job.attempt_no, now()).catch(() => {
+      // Heartbeat failure is observable by repository metrics; final CAS still protects state.
+    });
   }, 10_000);
   heartbeat.unref();
   const cacheKey = cacheKeyFor(job);
@@ -200,10 +178,7 @@ export const processScanJob = async (
       dependencies.browserObservation &&
       evaluation.score.terminalStatus !== "failed" &&
       browserObservationAllowedByRobots(evaluation.checks) &&
-      sampledForBrowserObservation(
-        job.scan_id,
-        dependencies.browserObservation.sampleRate,
-      )
+      sampledForBrowserObservation(job.scan_id, dependencies.browserObservation.sampleRate)
         ? (() => {
             const id = createUuidV7();
             const operationId = createUuidV7();
@@ -262,8 +237,7 @@ export const processScanJob = async (
     });
     return committed === "committed" ? "committed" : "skipped";
   } catch (error) {
-    if (error instanceof Error && error.message === "scan_attempt_fenced")
-      return "skipped";
+    if (error instanceof Error && error.message === "scan_attempt_fenced") return "skipped";
     const code = operationalCode(error);
     dependencies.emitMetric?.({
       name: "scan_job_failure",
@@ -313,14 +287,8 @@ export const registerScanWorker = async (
     },
     async (jobs) => {
       for (const job of jobs) {
-        const effectiveAttempt = Math.min(
-          2,
-          job.data.attempt_no + job.retryCount,
-        );
-        await processScanJob(
-          { ...job.data, attempt_no: effectiveAttempt },
-          dependencies,
-        );
+        const effectiveAttempt = Math.min(2, job.data.attempt_no + job.retryCount);
+        await processScanJob({ ...job.data, attempt_no: effectiveAttempt }, dependencies);
       }
     },
   );

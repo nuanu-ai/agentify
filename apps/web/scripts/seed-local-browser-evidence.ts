@@ -2,16 +2,16 @@ import { chmod, writeFile } from "node:fs/promises";
 
 import {
   BROWSER_OBSERVATION_VERSION,
-  CHECK_DEFINITIONS,
   browserObservationIdSchema,
+  CHECK_DEFINITIONS,
 } from "@agentify/scanner-contracts";
 import {
   browserObservationFindings,
   browserObservations,
   consentSnapshots,
   createUuidV7,
-  leads,
   leadScans,
+  leads,
   reportSessions,
   scanChecks,
   scans,
@@ -19,9 +19,8 @@ import {
   waitlistEntries,
 } from "@agentify/scanner-database";
 import { eq } from "drizzle-orm";
-
-import { encryptEmail, hmacHex, sha256 } from "../lib/server/crypto";
 import { getServerConfig } from "../lib/server/config";
+import { encryptEmail, hmacHex, sha256 } from "../lib/server/crypto";
 import { getDatabase } from "../lib/server/database";
 
 if (process.env.LOCAL_E2E_FIXTURE_ACK !== "yes")
@@ -106,11 +105,7 @@ async function main() {
         nominalWeight: String(check.nominalWeight),
         applicableWeight: String(check.nominalWeight),
         earnedWeight: String(
-          check.id === 6
-            ? 0
-            : check.id === 12
-              ? check.nominalWeight / 2
-              : check.nominalWeight,
+          check.id === 6 ? 0 : check.id === 12 ? check.nominalWeight / 2 : check.nominalWeight,
         ),
         summaryCode: `${check.labelCode}_observed`,
         userImpactCode: `${check.labelCode}_impact`,

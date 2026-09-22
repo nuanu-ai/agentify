@@ -45,12 +45,7 @@ export type ScanScore = {
   rubricVersion: "gtm-v1.0.0";
   score: number | null;
   coverage: number;
-  level:
-    | "invisible"
-    | "readable"
-    | "callable_ready"
-    | "ahead_of_market"
-    | "incomplete";
+  level: "invisible" | "readable" | "callable_ready" | "ahead_of_market" | "incomplete";
   terminalStatus: "completed" | "partial" | "failed";
   nominalWeight: number;
   applicableWeight: number;

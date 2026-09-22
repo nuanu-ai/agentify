@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { ZodType } from "zod";
 
 import {
-  BROWSER_OBSERVATION_IDS,
-  BROWSER_OBSERVATION_VERSION,
   accountDataRequestSchema,
   apiErrorEnvelopeSchema,
   apiErrorSchema,
   authFinalizeRequestSchema,
   authFinalizeResponseSchema,
+  BROWSER_OBSERVATION_IDS,
+  BROWSER_OBSERVATION_VERSION,
   browserObservationFindingSchema,
   browserObservationInputV1Schema,
   browserObservationJobV1Schema,
@@ -140,7 +140,8 @@ const withoutRequiredPath = (
       ? parent[Number(segment)]
       : (parent as Record<string, unknown>)[String(segment)];
   }
-  const field = segments.at(-1)!;
+  const field = segments.at(-1);
+  if (field === undefined) throw new Error("a required-field path with no segments to strip");
   if (Array.isArray(parent)) delete parent[Number(field)];
   else delete (parent as Record<string, unknown>)[String(field)];
   return incomplete;
@@ -198,13 +199,7 @@ const contracts = [
       status_url: `/api/v1/scans/${uuid}`,
       estimated_seconds: 30,
     },
-    required: [
-      "scan_id",
-      "access_token",
-      "status",
-      "status_url",
-      "estimated_seconds",
-    ],
+    required: ["scan_id", "access_token", "status", "status_url", "estimated_seconds"],
   },
   {
     name: "scanStatusResponseSchema",
@@ -340,13 +335,7 @@ const contracts = [
       included_findings: ["missing_machine_interface"],
       generated_at: timestamp,
     },
-    required: [
-      "version",
-      "scope",
-      "content",
-      "included_findings",
-      "generated_at",
-    ],
+    required: ["version", "scope", "content", "included_findings", "generated_at"],
   },
   {
     name: "createShareRequestSchema",
@@ -462,14 +451,7 @@ const contracts = [
       country: "Indonesia",
       consent: true,
     },
-    required: [
-      "businessName",
-      "website",
-      "email",
-      "category",
-      "country",
-      "consent",
-    ],
+    required: ["businessName", "website", "email", "category", "country", "consent"],
   },
   {
     name: "sendReportLinkRequestSchema",
@@ -679,9 +661,7 @@ describe("exported scanner object schemas", () => {
         const issue = parsed.error.issues.find(
           (candidate) =>
             candidate.path.length === expectedPath.length &&
-            candidate.path.every(
-              (segment, index) => segment === expectedPath[index],
-            ),
+            candidate.path.every((segment, index) => segment === expectedPath[index]),
         );
         expect(issue, label).toBeDefined();
         expect(issue?.message.trim().length, label).toBeGreaterThan(0);

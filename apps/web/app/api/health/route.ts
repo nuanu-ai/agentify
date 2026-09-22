@@ -6,8 +6,8 @@ import { logServerError, requestHeaders } from "../../../lib/server/http";
 import {
   evaluateOperationalSignals,
   evaluateWorkerHeartbeat,
-  READINESS_OUTBOX_DESTINATIONS,
   type OperationalSignalRow,
+  READINESS_OUTBOX_DESTINATIONS,
   type WorkerHeartbeatRow,
 } from "../../../lib/server/worker-health";
 
@@ -61,8 +61,7 @@ export async function GET(request: Request) {
         outbox_dead_letters: Number.POSITIVE_INFINITY,
       },
     );
-    const healthy =
-      worker.ready && signals.scannerCapacity && signals.analyticsOutbox;
+    const healthy = worker.ready && signals.scannerCapacity && signals.analyticsOutbox;
     return NextResponse.json(
       {
         status: healthy ? "ok" : "degraded",

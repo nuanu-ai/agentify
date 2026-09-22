@@ -1,15 +1,6 @@
-export const TERMINAL_SCAN_STATUSES = new Set([
-  "completed",
-  "partial",
-  "failed",
-]);
+export const TERMINAL_SCAN_STATUSES = new Set(["completed", "partial", "failed"]);
 
-const KNOWN_SCAN_STATUSES = new Set([
-  "accepted",
-  "queued",
-  "running",
-  ...TERMINAL_SCAN_STATUSES,
-]);
+const KNOWN_SCAN_STATUSES = new Set(["accepted", "queued", "running", ...TERMINAL_SCAN_STATUSES]);
 
 export function percentile(values, quantile) {
   if (!values.length) return Number.POSITIVE_INFINITY;
@@ -49,8 +40,7 @@ export async function pollAcceptedScans(
     timeoutMs,
     maxConsecutiveErrors = 3,
     now = () => performance.now(),
-    sleep = (milliseconds) =>
-      new Promise((resolve) => setTimeout(resolve, milliseconds)),
+    sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
   },
 ) {
   const runningIds = new Set();
@@ -133,11 +123,9 @@ export async function pollAcceptedScans(
 
 export function statusCounts(results) {
   return Object.fromEntries(
-    [...new Set(results.map((result) => String(result.status)))].map(
-      (status) => [
-        status,
-        results.filter((result) => String(result.status) === status).length,
-      ],
-    ),
+    [...new Set(results.map((result) => String(result.status)))].map((status) => [
+      status,
+      results.filter((result) => String(result.status) === status).length,
+    ]),
   );
 }

@@ -1,13 +1,9 @@
 "use client";
 
-import React, { useId, useRef, useState } from "react";
-
 import { remediationPromptResponseSchema } from "@agentify/scanner-contracts";
+import { useId, useRef, useState } from "react";
 
-import {
-  rememberResumeIntent,
-  type ResumeIntent as GateIntent,
-} from "../lib/resume-intent";
+import { type ResumeIntent as GateIntent, rememberResumeIntent } from "../lib/resume-intent";
 import styles from "./copy-remediation-prompt.module.css";
 
 type CopyState = "idle" | "loading" | "copied" | "fallback" | "error" | "gated";
@@ -109,9 +105,7 @@ export function CopyRemediationPrompt({
 
   async function resolvePrompt(): Promise<string> {
     if (promptUrl) {
-      const token = tokenStorageKey
-        ? sessionStorage.getItem(tokenStorageKey)
-        : undefined;
+      const token = tokenStorageKey ? sessionStorage.getItem(tokenStorageKey) : undefined;
       const response = await fetch(promptUrl, {
         cache: "no-store",
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,

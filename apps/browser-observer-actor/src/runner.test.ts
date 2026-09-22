@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import { parseRobots } from "@agentify/scanner";
+import { describe, expect, it } from "vitest";
 
 import {
   authorizeMainFrameNavigation,
@@ -27,9 +27,7 @@ describe("Actor build identity", () => {
         APIFY_ACTOR_BUILD_ID: "opaque-id",
       }),
     ).toBe("2026.07.13.2");
-    expect(
-      resolveActorBuild({ APIFY_ACTOR_BUILD_NUMBER: "2026.07.13.1" }),
-    ).toBe("2026.07.13.1");
+    expect(resolveActorBuild({ APIFY_ACTOR_BUILD_NUMBER: "2026.07.13.1" })).toBe("2026.07.13.1");
   });
 
   it("fails closed before browser launch for a spoofed user agent", async () => {
@@ -68,18 +66,12 @@ describe("Actor build identity", () => {
 describe("search-purpose policy", () => {
   it("fails closed when Content-Signal explicitly denies search", () => {
     expect(
-      permitsSearchPurpose(
-        parseRobots("User-agent: *\nAllow: /\nContent-Signal: search=no"),
-      ),
+      permitsSearchPurpose(parseRobots("User-agent: *\nAllow: /\nContent-Signal: search=no")),
     ).toBe(false);
     expect(
-      permitsSearchPurpose(
-        parseRobots("User-agent: *\nAllow: /\nContent-Signal: search=yes"),
-      ),
+      permitsSearchPurpose(parseRobots("User-agent: *\nAllow: /\nContent-Signal: search=yes")),
     ).toBe(true);
-    expect(permitsSearchPurpose(parseRobots("User-agent: *\nAllow: /"))).toBe(
-      true,
-    );
+    expect(permitsSearchPurpose(parseRobots("User-agent: *\nAllow: /"))).toBe(true);
   });
 
   it("rejects every disallowed main-frame path from the shared robots parse result", () => {
@@ -88,9 +80,7 @@ describe("search-purpose policy", () => {
     );
     expect(permitsBrowserNavigation(parsed, "/")).toBe(true);
     expect(permitsBrowserNavigation(parsed, "/private")).toBe(false);
-    expect(permitsBrowserNavigation(parsed, "/private/js-navigation")).toBe(
-      false,
-    );
+    expect(permitsBrowserNavigation(parsed, "/private/js-navigation")).toBe(false);
   });
 
   it("checks robots before redirect or script navigation can fetch content", async () => {

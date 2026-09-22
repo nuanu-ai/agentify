@@ -1,7 +1,6 @@
 /** Independent market observations, not Agentify results or x402 transaction volume. */
 export const AGENTIC_SHOP_RESEARCH = {
-  sourceUrl:
-    "https://business.adobe.com/blog/ai-traffic-surge-retail-sites-not-machine-readable",
+  sourceUrl: "https://business.adobe.com/blog/ai-traffic-surge-retail-sites-not-machine-readable",
   publisher: "Adobe Digital Insights",
   publishedAt: "2026-04-16",
   checkedAt: "2026-09-09",

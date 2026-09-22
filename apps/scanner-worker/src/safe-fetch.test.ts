@@ -1,21 +1,17 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { gzipSync } from "node:zlib";
+import { evaluateChecks, type FetchArtifact, type ScanArtifacts } from "@agentify/scanner";
 import { describe, expect, it } from "vitest";
 import {
-  evaluateChecks,
-  type FetchArtifact,
-  type ScanArtifacts,
-} from "@agentify/scanner";
-import {
-  RequestBudget,
+  type DnsResolver,
   NodePinnedTransport,
+  type PinnedTransport,
+  type PinnedTransportRequest,
+  RequestBudget,
   SafeFetcher,
   selectPinnedAddress,
   transportErrorCode,
-  type DnsResolver,
-  type PinnedTransport,
-  type PinnedTransportRequest,
 } from "./safe-fetch.js";
 
 const publicResolver: DnsResolver = {
@@ -42,9 +38,7 @@ describe("safe fetch policy", () => {
     const server = createServer((_request, response) => {
       response.writeHead(200, { "content-type": "text/plain" }).end("pinned");
     });
-    await new Promise<void>((resolve) =>
-      server.listen(0, "127.0.0.1", resolve),
-    );
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const port = (server.address() as AddressInfo).port;
     try {
       const artifact = await new NodePinnedTransport().request({
@@ -69,11 +63,7 @@ describe("safe fetch policy", () => {
     const limit = 1_024;
     const server = createServer((request, response) => {
       const decodedSize =
-        request.url === "/below"
-          ? limit - 1
-          : request.url === "/exact"
-            ? limit
-            : limit + 1;
+        request.url === "/below" ? limit - 1 : request.url === "/exact" ? limit : limit + 1;
       const encoded = gzipSync(Buffer.alloc(decodedSize, "a"));
       response
         .writeHead(200, {
@@ -82,9 +72,7 @@ describe("safe fetch policy", () => {
         })
         .end(encoded);
     });
-    await new Promise<void>((resolve) =>
-      server.listen(0, "127.0.0.1", resolve),
-    );
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const port = (server.address() as AddressInfo).port;
     const transport = new NodePinnedTransport();
     const request = (path: string) =>
@@ -157,9 +145,7 @@ describe("safe fetch policy", () => {
         mcp: [],
         oauth: [],
       };
-      expect(
-        evaluateChecks(artifacts).find(({ id }) => id === 14),
-      ).toMatchObject({
+      expect(evaluateChecks(artifacts).find(({ id }) => id === 14)).toMatchObject({
         status: "fail",
         evidence: { decoded_bytes: limit, truncated: true },
       });
@@ -223,10 +209,7 @@ describe("safe fetch policy", () => {
     "EPROTO",
   ])("classifies %s as TLS failure before fallback policy", (code) => {
     expect(
-      transportErrorCode(
-        Object.assign(new Error("transport failed"), { code }),
-        "https:",
-      ),
+      transportErrorCode(Object.assign(new Error("transport failed"), { code }), "https:"),
     ).toBe("tls_invalid");
   });
 
@@ -252,10 +235,7 @@ describe("safe fetch policy", () => {
       status: 0,
       errorCode: "network_error",
     });
-    expect(urls).toEqual([
-      "https://example.com/path",
-      "https://www.example.com/path",
-    ]);
+    expect(urls).toEqual(["https://example.com/path", "https://www.example.com/path"]);
   });
 
   it("prefers validated IPv4 when a dual-stack resolver returns IPv6 first", async () => {
@@ -331,17 +311,13 @@ describe("safe fetch policy", () => {
     };
     const fetcher = new SafeFetcher(
       {
-        resolve: async () => [
-          { address, family: address.includes(":") ? 6 : 4 },
-        ],
+        resolve: async () => [{ address, family: address.includes(":") ? 6 : 4 }],
       },
       transport,
       new RequestBudget(),
       "scanner",
     );
-    await expect(fetcher.fetch("https://example.com/")).rejects.toThrow(
-      `ssrf_blocked:${reason}`,
-    );
+    await expect(fetcher.fetch("https://example.com/")).rejects.toThrow(`ssrf_blocked:${reason}`);
     expect(calls).toBe(0);
   });
 
@@ -364,9 +340,7 @@ describe("safe fetch policy", () => {
       new RequestBudget(),
       "scanner",
     );
-    await expect(fetcher.fetch("https://example.com/")).rejects.toThrow(
-      "ssrf_blocked:private",
-    );
+    await expect(fetcher.fetch("https://example.com/")).rejects.toThrow("ssrf_blocked:private");
     expect(calls).toBe(0);
   });
 
@@ -387,15 +361,8 @@ describe("safe fetch policy", () => {
         return response(input, { status: 302, redirectLocation: "/second" });
       },
     };
-    const fetcher = new SafeFetcher(
-      resolver,
-      transport,
-      new RequestBudget(),
-      "scanner",
-    );
-    await expect(fetcher.fetch("https://example.com/")).rejects.toThrow(
-      "ssrf_blocked:loopback",
-    );
+    const fetcher = new SafeFetcher(resolver, transport, new RequestBudget(), "scanner");
+    await expect(fetcher.fetch("https://example.com/")).rejects.toThrow("ssrf_blocked:loopback");
     expect(calls).toBe(1);
     expect(resolutions).toBe(2);
   });
@@ -411,15 +378,8 @@ describe("safe fetch policy", () => {
         });
       },
     };
-    const fetcher = new SafeFetcher(
-      publicResolver,
-      transport,
-      new RequestBudget(),
-      "scanner",
-    );
-    await expect(fetcher.fetch("https://example.com/")).rejects.toThrow(
-      "hostname_blocked",
-    );
+    const fetcher = new SafeFetcher(publicResolver, transport, new RequestBudget(), "scanner");
+    await expect(fetcher.fetch("https://example.com/")).rejects.toThrow("hostname_blocked");
     expect(calls).toBe(1);
   });
 
@@ -435,16 +395,9 @@ describe("safe fetch policy", () => {
         return response(input);
       },
     };
-    const fetcher = new SafeFetcher(
-      publicResolver,
-      transport,
-      new RequestBudget(18, 2),
-      "scanner",
-    );
+    const fetcher = new SafeFetcher(publicResolver, transport, new RequestBudget(18, 2), "scanner");
     await Promise.all(
-      Array.from({ length: 8 }, (_, index) =>
-        fetcher.fetch(`https://example.com/${index}`),
-      ),
+      Array.from({ length: 8 }, (_, index) => fetcher.fetch(`https://example.com/${index}`)),
     );
     expect(maximum).toBe(2);
   });
@@ -458,16 +411,9 @@ describe("safe fetch policy", () => {
       },
     };
     const budget = new RequestBudget(18, 2);
-    const fetcher = new SafeFetcher(
-      publicResolver,
-      transport,
-      budget,
-      "scanner",
-    );
+    const fetcher = new SafeFetcher(publicResolver, transport, budget, "scanner");
     await Promise.all(
-      Array.from({ length: 18 }, (_, index) =>
-        fetcher.fetch(`https://example.com/${index}`),
-      ),
+      Array.from({ length: 18 }, (_, index) => fetcher.fetch(`https://example.com/${index}`)),
     );
     await expect(fetcher.fetch("https://example.com/overflow")).rejects.toThrow(
       "request_budget_exhausted",

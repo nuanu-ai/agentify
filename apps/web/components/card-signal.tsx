@@ -1,22 +1,13 @@
 "use client";
 
-import {
-  Elements,
-  PaymentElement,
-  useElements,
-  useStripe,
-} from "@stripe/react-stripe-js";
+import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js/pure";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
-import {
-  CARD_SIGNAL_DISCLOSURES,
-  canLoadStripeSdk,
-} from "../lib/card-signal-ui";
+import { CARD_SIGNAL_DISCLOSURES, canLoadStripeSdk } from "../lib/card-signal-ui";
 import styles from "./card-signal.module.css";
 
-type CardSignalStatus =
-  "not_started" | "setup_pending" | "attached" | "detached" | "failed";
+type CardSignalStatus = "not_started" | "setup_pending" | "attached" | "detached" | "failed";
 
 type SetupResponse = Readonly<{
   signal_id: string;
@@ -44,12 +35,8 @@ export function CardSignal({
 }>) {
   const [consented, setConsented] = useState(Boolean(initialSignal));
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<CardSignalStatus>(
-    initialSignal?.status ?? "not_started",
-  );
-  const [signalId, setSignalId] = useState<string | undefined>(
-    initialSignal?.signalId,
-  );
+  const [status, setStatus] = useState<CardSignalStatus>(initialSignal?.status ?? "not_started");
+  const [signalId, setSignalId] = useState<string | undefined>(initialSignal?.signalId);
   const [clientSecret, setClientSecret] = useState<string | undefined>(
     initialSignal?.clientSecret ?? undefined,
   );
@@ -136,7 +123,9 @@ export function CardSignal({
         }),
       });
       const payload = (await response.json().catch(() => null)) as
-        SetupResponse | { error?: { message?: string } } | null;
+        | SetupResponse
+        | { error?: { message?: string } }
+        | null;
       if (!response.ok || !payload || !("signal_id" in payload)) {
         throw new Error(
           payload && "error" in payload
@@ -172,15 +161,13 @@ export function CardSignal({
     setStatus("setup_pending");
     setMessage("Waiting for signed provider confirmation…");
     try {
-      const response = await fetch(
-        `/api/v1/card-signals/${signalId}/local-confirm`,
-        { method: "POST" },
-      );
+      const response = await fetch(`/api/v1/card-signals/${signalId}/local-confirm`, {
+        method: "POST",
+      });
       const payload = (await response.json().catch(() => null)) as {
         status?: CardSignalStatus;
       } | null;
-      if (!response.ok || !payload?.status)
-        throw new Error("Local provider confirmation failed.");
+      if (!response.ok || !payload?.status) throw new Error("Local provider confirmation failed.");
       setStatus(payload.status);
       setMessage(
         payload.status === "attached"
@@ -200,10 +187,9 @@ export function CardSignal({
     setBusy(true);
     setMessage("Removing the card and checking provider state…");
     try {
-      const response = await fetch(
-        `/api/v1/card-signals/${signalId}/payment-method`,
-        { method: "DELETE" },
-      );
+      const response = await fetch(`/api/v1/card-signals/${signalId}/payment-method`, {
+        method: "DELETE",
+      });
       const payload = (await response.json().catch(() => null)) as {
         status?: CardSignalStatus;
       } | null;
@@ -213,9 +199,7 @@ export function CardSignal({
       setConfirmingDetach(false);
       setMessage("Card removed and verified with the provider.");
     } catch {
-      setMessage(
-        "Removal could not be verified, so the card is not marked removed.",
-      );
+      setMessage("Removal could not be verified, so the card is not marked removed.");
     } finally {
       setBusy(false);
     }
@@ -245,8 +229,7 @@ export function CardSignal({
               type="checkbox"
             />
             <span>
-              I explicitly agree to save a card as an interest signal under the
-              terms above.
+              I explicitly agree to save a card as an interest signal under the terms above.
             </span>
           </label>
           <button
@@ -264,10 +247,7 @@ export function CardSignal({
         </div>
       ) : null}
 
-      {clientSecret &&
-      adapter === "stripe" &&
-      stripePromise &&
-      status === "setup_pending" ? (
+      {clientSecret && adapter === "stripe" && stripePromise && status === "setup_pending" ? (
         <Elements
           options={{
             clientSecret,
@@ -288,9 +268,7 @@ export function CardSignal({
             }}
             onPending={() => {
               setStatus("setup_pending");
-              setMessage(
-                "Card submitted. Waiting for signed provider confirmation…",
-              );
+              setMessage("Card submitted. Waiting for signed provider confirmation…");
             }}
           />
         </Elements>
@@ -345,9 +323,7 @@ export function CardSignal({
         </div>
       ) : null}
 
-      {status === "detached" ? (
-        <strong className={styles.detached}>Card removed</strong>
-      ) : null}
+      {status === "detached" ? <strong className={styles.detached}>Card removed</strong> : null}
       <p aria-live="polite" className={styles.status}>
         {message}
       </p>
@@ -379,20 +355,14 @@ function StripeCardForm({
     });
     setSubmitting(false);
     if (result.error) {
-      onFailure(
-        result.error.message ??
-          "Card confirmation failed. Your report is unaffected.",
-      );
+      onFailure(result.error.message ?? "Card confirmation failed. Your report is unaffected.");
       return;
     }
     onPending();
   }
 
   return (
-    <form
-      className={styles.stripeForm}
-      onSubmit={(event) => void submit(event)}
-    >
+    <form className={styles.stripeForm} onSubmit={(event) => void submit(event)}>
       <PaymentElement />
       <button
         className="button button-secondary"

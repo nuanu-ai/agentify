@@ -10,13 +10,7 @@ describe("server HTTP correlation", () => {
         "x-request-id": "019f5b6a-4b9f-7000-8000-000000000001",
       },
     });
-    const response = errorResponse(
-      request,
-      503,
-      "database_unavailable",
-      "Please retry.",
-      true,
-    );
+    const response = errorResponse(request, 503, "database_unavailable", "Please retry.", true);
     const body = (await response.json()) as {
       error: { request_id: string };
     };

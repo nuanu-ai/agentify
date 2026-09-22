@@ -76,15 +76,13 @@ export const browserObservationEvidenceSchema = z
         values.some(
           (entry) =>
             typeof entry === "string" &&
-            (privateEvidenceValue.test(entry) ||
-              containsControlCharacters(entry)),
+            (privateEvidenceValue.test(entry) || containsControlCharacters(entry)),
         )
       ) {
         context.addIssue({
           code: "custom",
           path: [key],
-          message:
-            "Raw URLs, paths, IPs, query strings, or secrets are forbidden",
+          message: "Raw URLs, paths, IPs, query strings, or secrets are forbidden",
         });
       }
     }
@@ -109,17 +107,9 @@ const categorySchema = safeBrowserCodeSchema(100);
 export const browserObservationSignalsSchema = z
   .object({
     rendered_text_chars: z.number().int().nonnegative().max(5_000_000),
-    raw_to_rendered_ratio: z
-      .number()
-      .finite()
-      .nonnegative()
-      .max(100)
-      .nullable(),
+    raw_to_rendered_ratio: z.number().finite().nonnegative().max(100).nullable(),
     landmark_counts: z.record(categorySchema, z.number().int().nonnegative()),
-    heading_level_counts: z.record(
-      categorySchema,
-      z.number().int().nonnegative(),
-    ),
+    heading_level_counts: z.record(categorySchema, z.number().int().nonnegative()),
     interactive_control_count: z.number().int().nonnegative().max(100_000),
     unnamed_control_count: z.number().int().nonnegative().max(100_000),
     form_control_count: z.number().int().nonnegative().max(100_000),
@@ -136,9 +126,7 @@ export const browserObservationSignalsSchema = z
     challenge_kind: categorySchema.nullable(),
   })
   .strict();
-export type BrowserObservationSignals = z.infer<
-  typeof browserObservationSignalsSchema
->;
+export type BrowserObservationSignals = z.infer<typeof browserObservationSignalsSchema>;
 
 export const browserObservationFindingSchema = z
   .object({
@@ -150,9 +138,7 @@ export const browserObservationFindingSchema = z
     evidence: browserObservationEvidenceSchema,
   })
   .strict();
-export type BrowserObservationFinding = z.infer<
-  typeof browserObservationFindingSchema
->;
+export type BrowserObservationFinding = z.infer<typeof browserObservationFindingSchema>;
 
 export const browserObservationInputV1Schema = z
   .object({
@@ -190,9 +176,7 @@ export const browserObservationInputV1Schema = z
       .strict(),
   })
   .strict();
-export type BrowserObservationInputV1 = z.infer<
-  typeof browserObservationInputV1Schema
->;
+export type BrowserObservationInputV1 = z.infer<typeof browserObservationInputV1Schema>;
 
 export const browserObservationOutputV1Schema = z
   .object({
@@ -202,9 +186,7 @@ export const browserObservationOutputV1Schema = z
     status: z.enum(["completed", "partial", "blocked", "failed"]),
     pages_assessed: z.number().int().min(0).max(3),
     signals: browserObservationSignalsSchema,
-    observations: z
-      .array(browserObservationFindingSchema)
-      .length(BROWSER_OBSERVATION_IDS.length),
+    observations: z.array(browserObservationFindingSchema).length(BROWSER_OBSERVATION_IDS.length),
     timings: z
       .object({
         total_ms: z.number().int().nonnegative().max(120_000),
@@ -223,15 +205,11 @@ export const browserObservationOutputV1Schema = z
       });
     }
     const expectedIds = new Set<string>(BROWSER_OBSERVATION_IDS);
-    if (
-      ids.some((id) => !expectedIds.has(id)) ||
-      ids.length !== expectedIds.size
-    ) {
+    if (ids.some((id) => !expectedIds.has(id)) || ids.length !== expectedIds.size) {
       context.addIssue({
         code: "custom",
         path: ["observations"],
-        message:
-          "Browser output must contain every observation ID exactly once",
+        message: "Browser output must contain every observation ID exactly once",
       });
     }
     if (JSON.stringify(value).length > 128 * 1024) {
@@ -241,21 +219,12 @@ export const browserObservationOutputV1Schema = z
       });
     }
   });
-export type BrowserObservationOutputV1 = z.infer<
-  typeof browserObservationOutputV1Schema
->;
+export type BrowserObservationOutputV1 = z.infer<typeof browserObservationOutputV1Schema>;
 
 export const browserObservationStatusResponseSchema = z
   .object({
     version: z.literal(BROWSER_OBSERVATION_VERSION),
-    status: z.enum([
-      "queued",
-      "running",
-      "completed",
-      "partial",
-      "blocked",
-      "unavailable",
-    ]),
+    status: z.enum(["queued", "running", "completed", "partial", "blocked", "unavailable"]),
     non_scoring: z.literal(true),
     pages_assessed: z.number().int().min(0).max(3),
     findings: z.array(browserObservationFindingSchema).max(14),
@@ -273,6 +242,4 @@ export const browserObservationJobV1Schema = z
     attempt_no: z.literal(1),
   })
   .strict();
-export type BrowserObservationJobV1 = z.infer<
-  typeof browserObservationJobV1Schema
->;
+export type BrowserObservationJobV1 = z.infer<typeof browserObservationJobV1Schema>;

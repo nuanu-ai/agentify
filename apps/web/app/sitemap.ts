@@ -1,9 +1,6 @@
 import type { MetadataRoute } from "next";
 
-import {
-  PUBLIC_PAGE_METADATA,
-  PUBLIC_PAGE_PATHS,
-} from "../content/public-page-metadata";
+import { PUBLIC_PAGE_METADATA, PUBLIC_PAGE_PATHS } from "../content/public-page-metadata";
 import { getPublicAppConfig } from "../lib/app-config";
 
 export const dynamic = "force-dynamic";

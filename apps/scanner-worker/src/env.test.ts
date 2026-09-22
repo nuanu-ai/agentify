@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { readWorkerEnv } from "./env";
+import { readWorkerEnv } from "./env.js";
 
 const base = {
   DATABASE_URL: "postgresql://localhost/agentify",

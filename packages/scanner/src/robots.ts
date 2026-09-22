@@ -49,8 +49,7 @@ export const parseRobots = (body: string): RobotsParseResult => {
         seenRules = true;
       }
     } else if (field === "sitemap") {
-      if (/^https?:\/\//i.test(value) && sitemaps.length < 20)
-        sitemaps.push(value);
+      if (/^https?:\/\//i.test(value) && sitemaps.length < 20) sitemaps.push(value);
       else malformedDirectives += 1;
     } else if (field === "content-signal") {
       const parsed: Record<string, "yes" | "no"> = {};
@@ -69,8 +68,7 @@ export const parseRobots = (body: string): RobotsParseResult => {
         }
         parsed[key] = setting;
       }
-      if (Object.keys(parsed).length)
-        contentSignal = { ...contentSignal, ...parsed };
+      if (Object.keys(parsed).length) contentSignal = { ...contentSignal, ...parsed };
     }
   }
 
@@ -114,9 +112,7 @@ export const isPathAllowed = (
     ...groupsWithSpecificity.map(({ specificity }) => specificity),
   );
   const groups = groupsWithSpecificity
-    .filter(
-      ({ specificity }) => specificity === maxSpecificity && specificity >= 0,
-    )
+    .filter(({ specificity }) => specificity === maxSpecificity && specificity >= 0)
     .map(({ group }) => group);
   const rules = groups.flatMap((group) => [
     ...group.allow.map((rule) => ({ rule, allow: true })),
@@ -125,11 +121,10 @@ export const isPathAllowed = (
   const matches = rules
     .filter(({ rule }) => ruleMatches(path, rule))
     .sort((a, b) => b.rule.length - a.rule.length);
-  if (!matches.length) return true;
-  const longest = matches[0]!.rule.length;
-  return matches
-    .filter(({ rule }) => rule.length === longest)
-    .some(({ allow }) => allow);
+  const [closest] = matches;
+  if (!closest) return true;
+  const longest = closest.rule.length;
+  return matches.filter(({ rule }) => rule.length === longest).some(({ allow }) => allow);
 };
 
 const PROVIDERS: ReadonlyArray<readonly [string, string[]]> = [
@@ -139,14 +134,10 @@ const PROVIDERS: ReadonlyArray<readonly [string, string[]]> = [
   ["google", ["google-extended"]],
 ];
 
-export const explicitAiPolicies = (
-  parsed: RobotsParseResult,
-): Record<string, string[]> => {
+export const explicitAiPolicies = (parsed: RobotsParseResult): Record<string, string[]> => {
   const output: Record<string, string[]> = {};
   const tokens = new Set(
-    parsed.groups.flatMap((group) =>
-      group.agents.map((agent) => agent.replace(/\/[\d.]+$/, "")),
-    ),
+    parsed.groups.flatMap((group) => group.agents.map((agent) => agent.replace(/\/[\d.]+$/, ""))),
   );
   for (const [provider, agents] of PROVIDERS) {
     const found = agents.filter((agent) => tokens.has(agent));

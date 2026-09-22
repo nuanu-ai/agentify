@@ -32,9 +32,7 @@ export function readLandingAnnouncement(
 ): LandingAnnouncement | null {
   const element = root.querySelector(`[${LANDING_SEGMENT_ATTRIBUTE}]`);
   if (!element) return null;
-  const segment = segmentSchema.safeParse(
-    element.getAttribute(LANDING_SEGMENT_ATTRIBUTE),
-  );
+  const segment = segmentSchema.safeParse(element.getAttribute(LANDING_SEGMENT_ATTRIBUTE));
   const variant = element.getAttribute(LANDING_VARIANT_ATTRIBUTE);
   if (!segment.success || !variant) return null;
   return { segment: segment.data, variant };

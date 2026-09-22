@@ -2,9 +2,8 @@ import { NextResponse } from "next/server";
 
 import { getBrowserAnalyticsConfig } from "../../../../lib/server/browser-analytics-config";
 import { getServerConfig } from "../../../../lib/server/config";
-import { getStripeCardSignalConfig } from "../../../../lib/server/stripe-card-signal-config";
-
 import { requestHeaders } from "../../../../lib/server/http";
+import { getStripeCardSignalConfig } from "../../../../lib/server/stripe-card-signal-config";
 
 export const dynamic = "force-dynamic";
 

@@ -1,7 +1,6 @@
-import React from "react";
+import type { BrowserObservationStatusResponse } from "@agentify/scanner-contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { BrowserObservationStatusResponse } from "@agentify/scanner-contracts";
 
 import { BrowserObservations } from "./browser-observations";
 
@@ -66,19 +65,13 @@ describe("BrowserObservations", () => {
   });
 
   it("keeps off or shadow mode visually absent when no result is supplied", () => {
-    const markup = renderToStaticMarkup(
-      <BrowserObservations scanId="scan-1" surface="report" />,
-    );
+    const markup = renderToStaticMarkup(<BrowserObservations scanId="scan-1" surface="report" />);
     expect(markup).toBe("");
   });
 
   it("does not expose evidence or fixes in the scan teaser", () => {
     const markup = renderToStaticMarkup(
-      <BrowserObservations
-        initialData={observation()}
-        scanId="scan-1"
-        surface="scan"
-      />,
+      <BrowserObservations initialData={observation()} scanId="scan-1" surface="scan" />,
     );
     expect(markup).not.toContain("Unnamed Control Count");
     expect(markup).not.toContain("Copy this fix");

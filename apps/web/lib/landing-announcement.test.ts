@@ -40,10 +40,6 @@ describe("what a landing page announces about itself", () => {
         }),
       ),
     ).toBeNull();
-    expect(
-      readLandingAnnouncement(
-        rootWith({ [LANDING_SEGMENT_ATTRIBUTE]: "owner" }),
-      ),
-    ).toBeNull();
+    expect(readLandingAnnouncement(rootWith({ [LANDING_SEGMENT_ATTRIBUTE]: "owner" }))).toBeNull();
   });
 });

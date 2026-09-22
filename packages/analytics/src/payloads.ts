@@ -15,10 +15,7 @@ export const META_EVENT_MAPPING = {
 export const sha256NormalizedEmail = (email: string): string =>
   createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
 
-export const buildPosthogPayload = (
-  event: AnalyticsEvent,
-  projectKey: string,
-) => ({
+export const buildPosthogPayload = (event: AnalyticsEvent, projectKey: string) => ({
   api_key: projectKey,
   event: event.name,
   properties: {
@@ -70,15 +67,9 @@ export const buildMetaPayload = (
         action_source: "website",
         user_data: {
           external_id: [context.externalId],
-          ...(context.allowHashedEmail && context.emailSha256
-            ? { em: [context.emailSha256] }
-            : {}),
-          ...(context.allowTransientNetworkData && context.fbp
-            ? { fbp: context.fbp }
-            : {}),
-          ...(context.allowTransientNetworkData && context.fbc
-            ? { fbc: context.fbc }
-            : {}),
+          ...(context.allowHashedEmail && context.emailSha256 ? { em: [context.emailSha256] } : {}),
+          ...(context.allowTransientNetworkData && context.fbp ? { fbp: context.fbp } : {}),
+          ...(context.allowTransientNetworkData && context.fbc ? { fbc: context.fbc } : {}),
           ...(context.allowTransientNetworkData && context.clientIpAddress
             ? { client_ip_address: context.clientIpAddress }
             : {}),
@@ -98,9 +89,7 @@ export const buildMetaPayload = (
 };
 
 export const buildMetaPixelCommand = (event: AnalyticsEvent) => ({
-  method: ["landing_view", "results_viewed", "registration_completed"].includes(
-    event.name,
-  )
+  method: ["landing_view", "results_viewed", "registration_completed"].includes(event.name)
     ? "track"
     : "trackCustom",
   eventName: META_EVENT_MAPPING[event.name],

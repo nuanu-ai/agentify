@@ -5,9 +5,7 @@ import type { Database } from "./client.js";
 import { createUuidV7 } from "./ids.js";
 import { analyticsEvents, deliveryOutbox } from "./schema.js";
 
-export type BusinessEventInput = Parameters<
-  BusinessEventStore["insertOnce"]
->[0];
+export type BusinessEventInput = Parameters<BusinessEventStore["insertOnce"]>[0];
 export type BusinessEventExecutor = Pick<Database, "select" | "insert">;
 
 export const insertBusinessEventOnce = async (
@@ -21,7 +19,7 @@ export const insertBusinessEventOnce = async (
     .limit(1);
   if (existing[0]) return { inserted: false, eventId: existing[0].eventId };
 
-  const inserted = await executor
+  const [insertedEvent] = await executor
     .insert(analyticsEvents)
     .values({
       id: createUuidV7(),
@@ -40,7 +38,7 @@ export const insertBusinessEventOnce = async (
     .onConflictDoNothing({ target: analyticsEvents.onceKey })
     .returning({ eventId: analyticsEvents.eventId });
 
-  if (!inserted[0]) {
+  if (!insertedEvent) {
     const raced = await executor
       .select({ eventId: analyticsEvents.eventId })
       .from(analyticsEvents)
@@ -54,19 +52,17 @@ export const insertBusinessEventOnce = async (
     await executor.insert(deliveryOutbox).values(
       input.outbox.map((row) => ({
         id: createUuidV7(),
-        eventId: inserted[0]!.eventId,
+        eventId: insertedEvent.eventId,
         destination: row.destination,
         payload: row.payload,
       })),
     );
   }
-  return { inserted: true, eventId: inserted[0].eventId };
+  return { inserted: true, eventId: insertedEvent.eventId };
 };
 
 export const createBusinessEventStore = (db: Database): BusinessEventStore => ({
   async insertOnce(input) {
-    return await db.transaction(async (tx) =>
-      insertBusinessEventOnce(tx, input),
-    );
+    return await db.transaction(async (tx) => insertBusinessEventOnce(tx, input));
   },
 });

@@ -2,18 +2,18 @@
 
 import {
   CONSENT_POLICY_VERSION,
+  type ConsentCategories,
+  type ConsentSnapshot,
   createConsentSnapshot,
   readCurrentConsent,
   saveConsentDecision,
-  type ConsentCategories,
-  type ConsentSnapshot,
 } from "@agentify/analytics/browser";
-import React, { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { DISPLAY_BRAND } from "../lib/brand";
-import { OPEN_PRIVACY_CHOICES_EVENT } from "./privacy-choices-button";
 import styles from "./consent-banner.module.css";
+import { OPEN_PRIVACY_CHOICES_EVENT } from "./privacy-choices-button";
 
 const policy = {
   policyVersion: CONSENT_POLICY_VERSION,
@@ -21,10 +21,7 @@ const policy = {
   requireOptInForProductAnalytics: true,
 };
 
-const decisions = (
-  product: boolean,
-  ads: boolean,
-): Partial<ConsentCategories> => ({
+const decisions = (product: boolean, ads: boolean): Partial<ConsentCategories> => ({
   product_analytics: product,
   ads_measurement: ads,
 });
@@ -40,11 +37,7 @@ export function ConsentPreferencesPanel(props: {
   onClose: () => void;
 }) {
   return (
-    <div
-      className={styles.backdrop}
-      role="presentation"
-      onMouseDown={props.onClose}
-    >
+    <div className={styles.backdrop} role="presentation" onMouseDown={props.onClose}>
       <section
         aria-describedby="consent-description"
         aria-labelledby="consent-title"
@@ -57,15 +50,13 @@ export function ConsentPreferencesPanel(props: {
           Privacy choices
         </h2>
         <p className={styles.copy} id="consent-description">
-          Optional measurement is off until you choose otherwise. Your location
-          never changes these choices automatically.
+          Optional measurement is off until you choose otherwise. Your location never changes these
+          choices automatically.
         </p>
         <label className={styles.option}>
           <input checked disabled type="checkbox" />
           <strong>Essential processing</strong>
-          <span>
-            Required to save your preferences and run a scan you request.
-          </span>
+          <span>Required to save your preferences and run a scan you request.</span>
         </label>
         <label className={styles.option}>
           <input
@@ -75,8 +66,7 @@ export function ConsentPreferencesPanel(props: {
           />
           <strong>Product analytics</strong>
           <span>
-            Explicit, pseudonymous product events in PostHog. No autocapture or
-            session replay.
+            Explicit, pseudonymous product events in PostHog. No autocapture or session replay.
           </span>
         </label>
         <label className={styles.option}>
@@ -87,8 +77,8 @@ export function ConsentPreferencesPanel(props: {
           />
           <strong>Ads measurement</strong>
           <span>
-            Allows Meta Pixel and server-side campaign measurement. Scanned
-            sites and report details are excluded.
+            Allows Meta Pixel and server-side campaign measurement. Scanned sites and report details
+            are excluded.
           </span>
         </label>
         {props.error ? (
@@ -138,8 +128,7 @@ function ConsentBannerContent() {
   const closePreferences = useCallback(() => {
     setPreferencesOpen(false);
     window.requestAnimationFrame(() => {
-      if (preferencesOpener.current?.isConnected)
-        preferencesOpener.current.focus();
+      if (preferencesOpener.current?.isConnected) preferencesOpener.current.focus();
     });
   }, []);
 
@@ -154,9 +143,7 @@ function ConsentBannerContent() {
   useEffect(() => {
     const open = () => {
       preferencesOpener.current =
-        document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null;
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
       setPreferencesOpen(true);
     };
     window.addEventListener(OPEN_PRIVACY_CHOICES_EVENT, open);
@@ -205,13 +192,9 @@ function ConsentBannerContent() {
       setAdsMeasurement(ads);
       closePreferences();
       setVisible(false);
-      window.dispatchEvent(
-        new CustomEvent("agentify:consent-changed", { detail: snapshot }),
-      );
+      window.dispatchEvent(new CustomEvent("agentify:consent-changed", { detail: snapshot }));
     } catch {
-      setError(
-        "We could not save your choices. No optional analytics were enabled.",
-      );
+      setError("We could not save your choices. No optional analytics were enabled.");
     } finally {
       setSaving(false);
     }

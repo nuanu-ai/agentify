@@ -1,20 +1,18 @@
 import {
   BROWSER_OBSERVATION_VERSION,
-  browserObservationJobV1Schema,
   type BrowserObservationInputV1,
   type BrowserObservationJobV1,
+  browserObservationJobV1Schema,
 } from "@agentify/scanner-contracts";
 import type {
-  createBrowserObservationRepository,
   BrowserObservationClaim,
+  createBrowserObservationRepository,
 } from "@agentify/scanner-database";
 import { getDomain } from "tldts";
 
 import type { BrowserProviderClient } from "./apify-browser-client.js";
 
-export type BrowserObservationRepository = ReturnType<
-  typeof createBrowserObservationRepository
->;
+export type BrowserObservationRepository = ReturnType<typeof createBrowserObservationRepository>;
 
 export type BrowserObservationJobConfig = {
   timeoutSeconds: number;
@@ -57,8 +55,7 @@ export const buildBrowserObservationInput = (
     },
     representative_urls: [],
     policy: {
-      user_agent:
-        "agentify-browser-observer/1.0 (+https://agentify.ad/scanner)",
+      user_agent: "agentify-browser-observer/1.0 (+https://agentify.ad/scanner)",
       methods: ["GET", "HEAD"],
       use_proxy: false,
       respect_robots: true,
@@ -76,10 +73,7 @@ export const buildBrowserObservationInput = (
 
 const safeFailureCode = (error: unknown): string => {
   if (!(error instanceof Error)) return "browser_provider_error";
-  const known = new Set([
-    "apify_output_missing",
-    "apify_storage_cleanup_failed",
-  ]);
+  const known = new Set(["apify_output_missing", "apify_storage_cleanup_failed"]);
   return known.has(error.message) ? error.message : "browser_provider_error";
 };
 
@@ -95,10 +89,7 @@ export async function processBrowserObservationJob(
 ): Promise<"committed" | "skipped"> {
   const job = browserObservationJobV1Schema.parse(untrustedJob);
   const now = dependencies.now ?? (() => new Date());
-  const leaseMs = Math.max(
-    90_000,
-    (dependencies.config.timeoutSeconds + 30) * 1_000,
-  );
+  const leaseMs = Math.max(90_000, (dependencies.config.timeoutSeconds + 30) * 1_000);
   const claim = await dependencies.repository.claim(job, now(), leaseMs);
   if (claim.state !== "claimed") return "skipped";
   const observation = claim.observation;
@@ -117,8 +108,7 @@ export async function processBrowserObservationJob(
   try {
     if (!runId && observation.resuming) {
       const reconciliationExpired =
-        now().getTime() - observation.startedAt.getTime() >=
-        6 * 60 * 60 * 1_000;
+        now().getTime() - observation.startedAt.getTime() >= 6 * 60 * 60 * 1_000;
       try {
         const match = await dependencies.provider.findRecentRun(
           observation.actorId,
@@ -280,12 +270,10 @@ export async function processBrowserObservationJob(
       if (!marked) runId = null;
       return "skipped";
     }
-    const committed = await dependencies.repository.complete(
-      observation.id,
-      leaseToken,
-      output,
-      { usageUsd: runUsageUsd, finishedAt: now() },
-    );
+    const committed = await dependencies.repository.complete(observation.id, leaseToken, output, {
+      usageUsd: runUsageUsd,
+      finishedAt: now(),
+    });
     if (committed !== "committed") {
       runId = null;
       return "skipped";
@@ -352,8 +340,7 @@ export async function registerBrowserObservationWorker(
     "browser-observation-v1",
     { localConcurrency: concurrency, batchSize: 1, includeMetadata: true },
     async (jobs) => {
-      for (const job of jobs)
-        await processBrowserObservationJob(job.data, dependencies);
+      for (const job of jobs) await processBrowserObservationJob(job.data, dependencies);
     },
   );
 }

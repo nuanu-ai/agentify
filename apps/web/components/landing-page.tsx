@@ -5,16 +5,13 @@ import {
   LANDING_SHARED_CONTENT,
   type LandingConfig,
 } from "../content/landing";
-import {
-  LANDING_SEGMENT_ATTRIBUTE,
-  LANDING_VARIANT_ATTRIBUTE,
-} from "../lib/landing-announcement";
+import { LANDING_SEGMENT_ATTRIBUTE, LANDING_VARIANT_ATTRIBUTE } from "../lib/landing-announcement";
 import { publicSiteSchema } from "../lib/schema";
+import styles from "./landing-page.module.css";
+import { MarketingHeader, SiteFooter } from "./site-chrome";
 import { StatusBadge } from "./status-badge";
 import { StructuredData } from "./structured-data";
-import { MarketingHeader, SiteFooter } from "./site-chrome";
 import { UrlScanForm } from "./url-scan-form";
-import styles from "./landing-page.module.css";
 
 export function LandingPage({ config }: Readonly<{ config: LandingConfig }>) {
   return (
@@ -47,9 +44,7 @@ export function LandingPage({ config }: Readonly<{ config: LandingConfig }>) {
               {config.secondDoor ? (
                 <p className={styles.secondDoor}>
                   {config.secondDoor.lead}{" "}
-                  <Link href={config.secondDoor.href}>
-                    {config.secondDoor.label} →
-                  </Link>
+                  <Link href={config.secondDoor.href}>{config.secondDoor.label} →</Link>
                 </p>
               ) : null}
             </div>
@@ -78,9 +73,7 @@ export function LandingPage({ config }: Readonly<{ config: LandingConfig }>) {
           <div className={styles.reportCard}>
             <div className={styles.reportIntro}>
               <h3>{LANDING_SHARED_CONTENT.reportHeading}</h3>
-              <Link href="/methodology">
-                {LANDING_SHARED_CONTENT.reportMethodologyLink}
-              </Link>
+              <Link href="/methodology">{LANDING_SHARED_CONTENT.reportMethodologyLink}</Link>
             </div>
             <div className={styles.exampleChecks}>
               {LANDING_EXAMPLE_CHECKS.map((check) => (

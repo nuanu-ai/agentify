@@ -1,28 +1,21 @@
 import { fileURLToPath } from "node:url";
 
-import {
-  createDatabase,
-  createUuidV7,
-  migrateDatabase,
-} from "@agentify/scanner-database";
+import { createDatabase, createUuidV7, migrateDatabase } from "@agentify/scanner-database";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import {
   AnalyticsOutboxRepository,
   createDestinationDeliverer,
   createPartnerRateLimitedDeliverer,
-  runOutboxCycle,
   type OutboxRow,
+  runOutboxCycle,
 } from "./analytics-outbox.js";
 
 const connectionString = process.env.MIGRATION_TEST_DATABASE_URL;
-if (!connectionString)
-  throw new Error("MIGRATION_TEST_DATABASE_URL is required");
+if (!connectionString) throw new Error("MIGRATION_TEST_DATABASE_URL is required");
 const databaseName = new URL(connectionString).pathname.slice(1);
 if (!databaseName.endsWith("_migration_test")) {
-  throw new Error(
-    "MIGRATION_TEST_DATABASE_URL must name a dedicated *_migration_test database",
-  );
+  throw new Error("MIGRATION_TEST_DATABASE_URL must name a dedicated *_migration_test database");
 }
 
 const migrationsFolder = fileURLToPath(
@@ -51,10 +44,10 @@ async function seedOutbox(
   const payload = input.payload ?? { event: "scan_completed" };
   seededSessionIds.push(sessionId);
 
-  await pool.query(
-    "insert into sessions (id, anonymous_id_hash) values ($1, $2)",
-    [sessionId, `outbox-integration-${sessionId}`],
-  );
+  await pool.query("insert into sessions (id, anonymous_id_hash) values ($1, $2)", [
+    sessionId,
+    `outbox-integration-${sessionId}`,
+  ]);
   await pool.query(
     `insert into consent_snapshots
        (id, session_id, policy_version, categories, source)
@@ -84,13 +77,7 @@ async function seedOutbox(
     `insert into delivery_outbox
        (id, event_id, destination, payload, attempts, next_attempt_at)
      values ($1, $2, $3, $4, $5, now() - interval '1 second')`,
-    [
-      outboxId,
-      eventId,
-      destination,
-      JSON.stringify(payload),
-      input.attempts ?? 0,
-    ],
+    [outboxId, eventId, destination, JSON.stringify(payload), input.attempts ?? 0],
   );
   return { id: outboxId, eventId };
 }
@@ -131,12 +118,8 @@ afterEach(async () => {
       "delete from delivery_outbox where event_id in (select event_id from analytics_events where session_id = $1)",
       [sessionId],
     );
-    await pool.query("delete from analytics_events where session_id = $1", [
-      sessionId,
-    ]);
-    await pool.query("delete from consent_snapshots where session_id = $1", [
-      sessionId,
-    ]);
+    await pool.query("delete from analytics_events where session_id = $1", [sessionId]);
+    await pool.query("delete from consent_snapshots where session_id = $1", [sessionId]);
     await pool.query("delete from sessions where id = $1", [sessionId]);
   }
 });
@@ -225,9 +208,7 @@ describe("analytics outbox PostgreSQL effects", () => {
       attempts: 1,
       last_error_code: "partner_tracker_http_503",
     });
-    expect(stored.next_attempt_at.getTime() - occurredAt.getTime()).toBe(
-      60_000,
-    );
+    expect(stored.next_attempt_at.getTime() - occurredAt.getTime()).toBe(60_000);
   });
 
   it("stops partner delivery at the 24-hour cutoff", async () => {

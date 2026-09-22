@@ -13,10 +13,7 @@ export async function cleanupBrowserObservationOrphans(input: {
   onBudgetExceeded?: (observationId: string, dayTotalUsd: number) => void;
 }): Promise<number> {
   const now = input.now ?? new Date();
-  const cleanupCandidates = await input.repository.listCleanupCandidates(
-    now,
-    input.limit,
-  );
+  const cleanupCandidates = await input.repository.listCleanupCandidates(now, input.limit);
   let cleaned = 0;
   for (const candidate of cleanupCandidates) {
     try {
@@ -30,22 +27,17 @@ export async function cleanupBrowserObservationOrphans(input: {
       if (!match) continue;
       await input.provider.abort(match.id).catch(() => undefined);
       await input.provider.cleanup(match.id);
-      await input.repository.markStorageCleaned(
-        candidate.observationId,
-        match.id,
-        now,
-      );
+      await input.repository.markStorageCleaned(candidate.observationId, match.id, now);
       cleaned += 1;
     } catch {
       input.onCleanupError?.(candidate.observationId);
     }
   }
 
-  const usageCandidates =
-    await input.repository.listUsageReconciliationCandidates(
-      now,
-      input.usageLimit,
-    );
+  const usageCandidates = await input.repository.listUsageReconciliationCandidates(
+    now,
+    input.usageLimit,
+  );
   for (const candidate of usageCandidates) {
     let result: {
       state: "updated" | "unchanged" | "missing";
@@ -72,10 +64,7 @@ export async function cleanupBrowserObservationOrphans(input: {
     } catch {
       input.onUsageError?.(candidate.observationId);
       try {
-        result = await input.repository.settleUsageConservatively(
-          candidate.observationId,
-          now,
-        );
+        result = await input.repository.settleUsageConservatively(candidate.observationId, now);
       } catch {
         continue;
       }

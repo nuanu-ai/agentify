@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
-
 import { sharePreviewResponseSchema } from "@agentify/scanner-contracts";
+import { useEffect, useRef, useState } from "react";
 
 import type { PublicResultPreview } from "./public-result-card";
 import styles from "./public-share-actions.module.css";
@@ -36,10 +35,8 @@ export function PublicShareActions({
   const [resolvedPreview, setResolvedPreview] = useState<
     Readonly<{ scanId: string; value: PublicResultPreview }> | undefined
   >();
-  const exactPreview =
-    resolvedPreview?.scanId === scanId ? resolvedPreview.value : undefined;
-  const currentPublished =
-    published?.scanId === scanId ? published.value : undefined;
+  const exactPreview = resolvedPreview?.scanId === scanId ? resolvedPreview.value : undefined;
+  const currentPublished = published?.scanId === scanId ? published.value : undefined;
   const copyRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -54,20 +51,15 @@ export function PublicShareActions({
     const load = async () => {
       setMessage("Preparing the exact public preview…");
       try {
-        const storedToken = tokenStorageKey
-          ? sessionStorage.getItem(tokenStorageKey)
-          : null;
-        const fragmentToken = new URLSearchParams(
-          window.location.hash.slice(1),
-        ).get("access_token");
-        const response = await fetch(
-          `/api/v1/scans/${encodeURIComponent(scanId)}/share-preview`,
-          {
-            cache: "no-store",
-            credentials: "same-origin",
-            headers: shareRequestHeaders(storedToken ?? fragmentToken, false),
-          },
+        const storedToken = tokenStorageKey ? sessionStorage.getItem(tokenStorageKey) : null;
+        const fragmentToken = new URLSearchParams(window.location.hash.slice(1)).get(
+          "access_token",
         );
+        const response = await fetch(`/api/v1/scans/${encodeURIComponent(scanId)}/share-preview`, {
+          cache: "no-store",
+          credentials: "same-origin",
+          headers: shareRequestHeaders(storedToken ?? fragmentToken, false),
+        });
         const parsed = parseSharePreviewResponse(
           await response.json().catch(() => null),
           window.location.origin,
@@ -78,18 +70,14 @@ export function PublicShareActions({
           if (parsed.existingShare) {
             const restored = parsed.existingShare;
             setPublished((current) =>
-              current?.scanId === scanId
-                ? current
-                : { scanId, value: restored },
+              current?.scanId === scanId ? current : { scanId, value: restored },
             );
           }
           setMessage("");
         }
       } catch {
         if (active)
-          setMessage(
-            "The exact public preview could not be loaded. Publishing remains disabled.",
-          );
+          setMessage("The exact public preview could not be loaded. Publishing remains disabled.");
       }
     };
     void load();
@@ -100,8 +88,7 @@ export function PublicShareActions({
 
   if (!enabled || preview.score === null) return null;
 
-  const token = () =>
-    tokenStorageKey ? sessionStorage.getItem(tokenStorageKey) : null;
+  const token = () => (tokenStorageKey ? sessionStorage.getItem(tokenStorageKey) : null);
 
   async function ensurePublished(): Promise<PublishedShare> {
     if (currentPublished) return currentPublished;
@@ -109,15 +96,12 @@ export function PublicShareActions({
     setActionState("publishing");
     setManualCopy(false);
     setCopied(false);
-    const response = await fetch(
-      `/api/v1/scans/${encodeURIComponent(scanId)}/share`,
-      {
-        method: "POST",
-        credentials: "same-origin",
-        headers: shareRequestHeaders(token(), true),
-        body: JSON.stringify({ allow_indexing: false }),
-      },
-    );
+    const response = await fetch(`/api/v1/scans/${encodeURIComponent(scanId)}/share`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: shareRequestHeaders(token(), true),
+      body: JSON.stringify({ allow_indexing: false }),
+    });
     const share = validatePublishedShare(
       await response.json().catch(() => null),
       window.location.origin,
@@ -133,8 +117,7 @@ export function PublicShareActions({
     successMessage = "Public link copied. It is live and remains noindex.",
   ) {
     try {
-      if (!navigator.clipboard?.writeText)
-        throw new Error("clipboard_unavailable");
+      if (!navigator.clipboard?.writeText) throw new Error("clipboard_unavailable");
       await navigator.clipboard.writeText(share.url);
       setManualCopy(false);
       setCopied(true);
@@ -144,9 +127,7 @@ export function PublicShareActions({
     } catch {
       setCopied(false);
       setManualCopy(true);
-      setMessage(
-        "Clipboard access is unavailable. Copy the selected link below.",
-      );
+      setMessage("Clipboard access is unavailable. Copy the selected link below.");
       return false;
     }
   }
@@ -174,9 +155,7 @@ export function PublicShareActions({
       anchor.click();
       anchor.remove();
       setActionState("published");
-      setMessage(
-        "Image download started. The public link is live and noindex.",
-      );
+      setMessage("Image download started. The public link is live and noindex.");
     } catch {
       setActionState("idle");
       setMessage("The share image could not be prepared. Try again.");
@@ -188,14 +167,11 @@ export function PublicShareActions({
     setActionState("revoking");
     setMessage("Revoking the public link…");
     try {
-      const response = await fetch(
-        `/api/v1/shares/${encodeURIComponent(currentPublished.slug)}`,
-        {
-          method: "DELETE",
-          credentials: "same-origin",
-          headers: shareRequestHeaders(token(), false),
-        },
-      );
+      const response = await fetch(`/api/v1/shares/${encodeURIComponent(currentPublished.slug)}`, {
+        method: "DELETE",
+        credentials: "same-origin",
+        headers: shareRequestHeaders(token(), false),
+      });
       if (!response.ok) throw new Error("share_revoke_failed");
       setPublished(undefined);
       setManualCopy(false);
@@ -219,11 +195,7 @@ export function PublicShareActions({
           onClick={() => void publishAndCopy()}
           type="button"
         >
-          {actionState === "publishing"
-            ? "Preparing…"
-            : copied
-              ? "Copied"
-              : "Copy share link"}
+          {actionState === "publishing" ? "Preparing…" : copied ? "Copied" : "Copy share link"}
         </button>
         <button
           className="button button-secondary"
@@ -270,10 +242,7 @@ export function PublicShareActions({
   );
 }
 
-export function shareRequestHeaders(
-  token: string | null,
-  includeContentType: boolean,
-) {
+export function shareRequestHeaders(token: string | null, includeContentType: boolean) {
   return {
     ...(includeContentType ? { "Content-Type": "application/json" } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),

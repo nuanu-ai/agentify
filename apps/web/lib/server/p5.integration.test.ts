@@ -37,31 +37,30 @@ import {
   retryPendingScannerIdentityDeletions,
   runScannerIdentityDeletionOperation,
 } from "./scanner-identity-deletion";
-import { localWebhookSignature } from "./stripe-card-signal-crypto";
-import { LocalStripeCardSignalProvider } from "./stripe-card-signal-provider";
 import {
   detachCardSignal,
   getOwnedCardSignalForReport,
   processCardSignalWebhook,
   setupCardSignal,
 } from "./stripe-card-signal";
+import { localWebhookSignature } from "./stripe-card-signal-crypto";
+import { LocalStripeCardSignalProvider } from "./stripe-card-signal-provider";
 
 const connectionString = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!connectionString?.includes("_migration_test")) {
-  throw new Error(
-    "P5 integration requires a dedicated *_migration_test database",
-  );
+  throw new Error("P5 integration requires a dedicated *_migration_test database");
 }
 process.env.DATABASE_URL = connectionString;
 process.env.APP_BASE_URL = "http://localhost:3000";
-process.env.TOKEN_HMAC_SECRET =
-  "p5-integration-hmac-secret-with-at-least-32-bytes";
+const tokenHmacSecret = "p5-integration-hmac-secret-with-at-least-32-bytes";
+process.env.TOKEN_HMAC_SECRET = tokenHmacSecret;
 process.env.EMAIL_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
 process.env.REPORT_IDENTITY_SECRET = "d".repeat(32);
 process.env.CABINET_IDENTITY_URL = "http://127.0.0.1:1";
 process.env.CARD_SIGNAL_ENABLED = "true";
 process.env.STRIPE_ADAPTER = "local";
-process.env.STRIPE_WEBHOOK_SECRET = "p5-webhook-secret";
+const stripeWebhookSecret = "p5-webhook-secret";
+process.env.STRIPE_WEBHOOK_SECRET = stripeWebhookSecret;
 process.env.ANALYTICS_RUNTIME_ENV = "test";
 process.env.ANALYTICS_SERVER_DELIVERY_ENABLED = "true";
 process.env.POSTHOG_API_KEY = "p5-posthog-test-key";
@@ -83,10 +82,15 @@ function respondJson(response: ServerResponse, status: number, body: object) {
   response.end(JSON.stringify(body));
 }
 
-async function createLeadFixture(
-  label: string,
-  input: { verified?: boolean } = {},
-) {
+// A fixture query that must find its row: an empty result is a broken test, and
+// it should say so here rather than fail later on a property of undefined.
+function onlyRow<T>(rows: readonly T[]): T {
+  const [row] = rows;
+  if (!row) throw new Error("a query that must return one row returned none");
+  return row;
+}
+
+async function createLeadFixture(label: string, input: { verified?: boolean } = {}) {
   const { db } = getDatabase();
   const sessionId = createUuidV7();
   const consentId = createUuidV7();
@@ -108,14 +112,11 @@ async function createLeadFixture(
     },
     source: "test",
   });
-  await db
-    .update(sessions)
-    .set({ consentSnapshotId: consentId })
-    .where(eq(sessions.id, sessionId));
+  await db.update(sessions).set({ consentSnapshotId: consentId }).where(eq(sessions.id, sessionId));
   await db.insert(leads).values({
     id: leadId,
     emailNormalizedCiphertext: encryptEmail(email, Buffer.alloc(32, 7)),
-    emailLookupHash: hmacHex(process.env.TOKEN_HMAC_SECRET!, "email", email),
+    emailLookupHash: hmacHex(tokenHmacSecret, "email", email),
     role: "business_owner",
     verifiedAt: input.verified === false ? null : new Date(),
     firstSegment: "owner",
@@ -171,8 +172,7 @@ beforeAll(async () => {
     if (
       request.url !== "/internal/report-identity" ||
       request.method !== "POST" ||
-      request.headers.authorization !==
-        `Bearer ${process.env.REPORT_IDENTITY_SECRET}`
+      request.headers.authorization !== `Bearer ${process.env.REPORT_IDENTITY_SECRET}`
     ) {
       respondJson(response, 404, { error: "not_found" });
       return;
@@ -199,8 +199,7 @@ beforeAll(async () => {
   cabinetServer = server;
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
-  if (!address || typeof address === "string")
-    throw new Error("server_address");
+  if (!address || typeof address === "string") throw new Error("server_address");
   process.env.CABINET_IDENTITY_URL = `http://127.0.0.1:${address.port}`;
 }, 30_000);
 
@@ -242,40 +241,30 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
       clientSecret: expect.any(String),
     });
     if (!("signalId" in setup)) throw new Error("setup_failed");
-    await expect(
-      getOwnedCardSignalForReport(fixture.scanId, sessionToken),
-    ).resolves.toMatchObject({
+    await expect(getOwnedCardSignalForReport(fixture.scanId, sessionToken)).resolves.toMatchObject({
       signalId: setup.signalId,
       status: "setup_pending",
       clientSecret: expect.any(String),
     });
-    const signal = (
+    const signal = onlyRow(
       await getDatabase()
         .db.select()
         .from(paymentSignals)
-        .where(eq(paymentSignals.id, setup.signalId))
-    )[0]!;
+        .where(eq(paymentSignals.id, setup.signalId)),
+    );
     const delivery = await provider.confirmLocalSetup(signal.setupIntentId);
     const concurrent = await Promise.all([
       processCardSignalWebhook({ ...delivery, provider }),
       processCardSignalWebhook({ ...delivery, provider }),
     ]);
-    expect(concurrent.map((result) => result.status).sort()).toEqual([
-      "duplicate",
-      "processed",
-    ]);
-    const stored = (
-      await getDatabase()
-        .db.select()
-        .from(paymentSignals)
-        .where(eq(paymentSignals.id, signal.id))
-    )[0]!;
+    expect(concurrent.map((result) => result.status).sort()).toEqual(["duplicate", "processed"]);
+    const stored = onlyRow(
+      await getDatabase().db.select().from(paymentSignals).where(eq(paymentSignals.id, signal.id)),
+    );
     expect(stored.status).toBe("attached");
     expect(stored.paymentMethodIdCiphertext).toMatch(/^v1\./);
     expect(stored.paymentMethodIdCiphertext).not.toContain("pm_local");
-    await expect(
-      getOwnedCardSignalForReport(fixture.scanId, sessionToken),
-    ).resolves.toMatchObject({
+    await expect(getOwnedCardSignalForReport(fixture.scanId, sessionToken)).resolves.toMatchObject({
       signalId: signal.id,
       status: "attached",
       clientSecret: null,
@@ -289,40 +278,27 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
       )[0]?.count,
     ).toBe(1);
     expect(
-      (
-        await getDatabase()
-          .db.select({ count: sql<number>`count(*)::int` })
-          .from(deliveryOutbox)
-      )[0]?.count,
+      (await getDatabase().db.select({ count: sql<number>`count(*)::int` }).from(deliveryOutbox))[0]
+        ?.count,
     ).toBe(1);
     expect(
       (
-        await getDatabase()
-          .db.select({ count: sql<number>`count(*)::int` })
-          .from(webhookReceipts)
+        await getDatabase().db.select({ count: sql<number>`count(*)::int` }).from(webhookReceipts)
       )[0]?.count,
     ).toBe(1);
 
-    const replayBody = delivery.rawBody.replace(
-      '"data":',
-      '"unexpected":"changed","data":',
-    );
+    const replayBody = delivery.rawBody.replace('"data":', '"unexpected":"changed","data":');
     await expect(
       processCardSignalWebhook({
         rawBody: replayBody,
-        signature: localWebhookSignature(
-          replayBody,
-          process.env.STRIPE_WEBHOOK_SECRET!,
-        ),
+        signature: localWebhookSignature(replayBody, stripeWebhookSecret),
         provider,
       }),
     ).rejects.toThrow("stripe_event_replay_mismatch");
     await expect(
       detachCardSignal({ signalId: signal.id, sessionToken, provider }),
     ).resolves.toEqual({ status: "detached" });
-    await expect(
-      getOwnedCardSignalForReport(fixture.scanId, sessionToken),
-    ).resolves.toMatchObject({
+    await expect(getOwnedCardSignalForReport(fixture.scanId, sessionToken)).resolves.toMatchObject({
       signalId: signal.id,
       status: "detached",
       clientSecret: null,
@@ -377,11 +353,7 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
         id: createUuidV7(),
         tokenHash: "R".repeat(43),
         stateHash: "a".repeat(64),
-        emailLookupHash: hmacHex(
-          process.env.TOKEN_HMAC_SECRET!,
-          "email",
-          fixture.email,
-        ),
+        emailLookupHash: hmacHex(tokenHmacSecret, "email", fixture.email),
         leadId: fixture.leadId,
         scanId: fixture.scanId,
         expiresAt: new Date(Date.now() + 60_000),
@@ -404,12 +376,9 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
     await expect(
       requestScannerIdentityDeletion({ leadId: fixture.leadId, provider }),
     ).resolves.toBe("requested");
-    const blockedLead = (
-      await getDatabase()
-        .db.select()
-        .from(leads)
-        .where(eq(leads.id, fixture.leadId))
-    )[0]!;
+    const blockedLead = onlyRow(
+      await getDatabase().db.select().from(leads).where(eq(leads.id, fixture.leadId)),
+    );
     expect(blockedLead.deletionRequestedAt).toBeInstanceOf(Date);
     expect(blockedLead.anonymizedAt).toBeNull();
     expect(
@@ -428,21 +397,16 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
     ).toEqual([]);
     expect((await provider.retrieveCustomer(customerId)).deleted).toBe(false);
 
-    const operation = (
+    const operation = onlyRow(
       await getDatabase()
         .db.select()
         .from(scannerIdentityDeletionOperations)
-        .where(eq(scannerIdentityDeletionOperations.leadId, fixture.leadId))
-    )[0]!;
+        .where(eq(scannerIdentityDeletionOperations.leadId, fixture.leadId)),
+    );
     await getDatabase()
       .db.update(scannerIdentityDeletionOperations)
       .set({ leaseExpiresAt: new Date(Date.now() - 1) })
-      .where(
-        eq(
-          scannerIdentityDeletionOperations.operationId,
-          operation.operationId,
-        ),
-      );
+      .where(eq(scannerIdentityDeletionOperations.operationId, operation.operationId));
     cabinetMode = "retained";
     await expect(
       runScannerIdentityDeletionOperation({
@@ -451,12 +415,9 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
       }),
     ).resolves.toBe("completed");
 
-    const deletedLead = (
-      await getDatabase()
-        .db.select()
-        .from(leads)
-        .where(eq(leads.id, fixture.leadId))
-    )[0]!;
+    const deletedLead = onlyRow(
+      await getDatabase().db.select().from(leads).where(eq(leads.id, fixture.leadId)),
+    );
     expect(deletedLead.emailNormalizedCiphertext).toBe("deleted");
     expect(deletedLead.anonymizedAt).toBeInstanceOf(Date);
     expect((await provider.retrieveCustomer(customerId)).deleted).toBe(true);
@@ -468,10 +429,7 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
         .where(eq(paymentSignals.leadId, fixture.leadId)),
     ).toEqual([]);
     expect(
-      await getDatabase()
-        .db.select()
-        .from(leadScans)
-        .where(eq(leadScans.leadId, fixture.leadId)),
+      await getDatabase().db.select().from(leadScans).where(eq(leadScans.leadId, fixture.leadId)),
     ).toEqual([]);
     expect(
       await getDatabase()
@@ -480,12 +438,7 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
         .where(eq(waitlistEntries.leadId, fixture.leadId)),
     ).toEqual([]);
     expect(
-      (
-        await getDatabase()
-          .db.select()
-          .from(scans)
-          .where(eq(scans.id, fixture.scanId))
-      )[0],
+      (await getDatabase().db.select().from(scans).where(eq(scans.id, fixture.scanId)))[0],
     ).toMatchObject({
       leadId: null,
       targetHost: "deleted.invalid",
@@ -514,12 +467,7 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
         await getDatabase()
           .db.select()
           .from(scannerIdentityDeletionOperations)
-          .where(
-            eq(
-              scannerIdentityDeletionOperations.operationId,
-              operation.operationId,
-            ),
-          )
+          .where(eq(scannerIdentityDeletionOperations.operationId, operation.operationId))
       )[0],
     ).toMatchObject({
       cabinetResult: "retained",
@@ -531,21 +479,16 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
     const fixture = await createLeadFixture("deletion-lease");
     cabinetMode = "unavailable";
     await requestScannerIdentityDeletion({ leadId: fixture.leadId });
-    const operation = (
+    const operation = onlyRow(
       await getDatabase()
         .db.select()
         .from(scannerIdentityDeletionOperations)
-        .where(eq(scannerIdentityDeletionOperations.leadId, fixture.leadId))
-    )[0]!;
+        .where(eq(scannerIdentityDeletionOperations.leadId, fixture.leadId)),
+    );
     await getDatabase()
       .db.update(scannerIdentityDeletionOperations)
       .set({ leaseExpiresAt: new Date(Date.now() - 1) })
-      .where(
-        eq(
-          scannerIdentityDeletionOperations.operationId,
-          operation.operationId,
-        ),
-      );
+      .where(eq(scannerIdentityDeletionOperations.operationId, operation.operationId));
 
     cabinetMode = "deleted";
     cabinetDelayMs = 75;
@@ -569,23 +512,17 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
     await getDatabase()
       .db.update(leads)
       .set({
-        emailNormalizedCiphertext: encryptEmail(
-          "different-owner@example.com",
-          Buffer.alloc(32, 7),
-        ),
+        emailNormalizedCiphertext: encryptEmail("different-owner@example.com", Buffer.alloc(32, 7)),
       })
       .where(eq(leads.id, fixture.leadId));
     const beforeRequests = cabinetDeleteRequests;
-    await expect(
-      requestScannerIdentityDeletion({ leadId: fixture.leadId }),
-    ).resolves.toBe("requested");
+    await expect(requestScannerIdentityDeletion({ leadId: fixture.leadId })).resolves.toBe(
+      "requested",
+    );
     expect(cabinetDeleteRequests).toBe(beforeRequests);
-    const lead = (
-      await getDatabase()
-        .db.select()
-        .from(leads)
-        .where(eq(leads.id, fixture.leadId))
-    )[0]!;
+    const lead = onlyRow(
+      await getDatabase().db.select().from(leads).where(eq(leads.id, fixture.leadId)),
+    );
     expect(lead.deletionRequestedAt).toBeInstanceOf(Date);
     expect(lead.anonymizedAt).toBeNull();
   });
@@ -623,12 +560,8 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
     releaseWaiting();
     expect((await cleanup).leadsAnonymized).toBe(0);
     expect(
-      (
-        await getDatabase()
-          .db.select()
-          .from(leads)
-          .where(eq(leads.id, fixture.leadId))
-      )[0]?.anonymizedAt,
+      (await getDatabase().db.select().from(leads).where(eq(leads.id, fixture.leadId)))[0]
+        ?.anonymizedAt,
     ).toBeNull();
   });
 
@@ -641,11 +574,7 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
         {
           id: createUuidV7(),
           stateHash: "c".repeat(64),
-          emailLookupHash: hmacHex(
-            process.env.TOKEN_HMAC_SECRET!,
-            "email",
-            fixture.email,
-          ),
+          emailLookupHash: hmacHex(tokenHmacSecret, "email", fixture.email),
           leadId: fixture.leadId,
           scanId: fixture.scanId,
           expiresAt: new Date(now.getTime() - 8 * 86_400_000),
@@ -653,11 +582,7 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
         {
           id: createUuidV7(),
           stateHash: "d".repeat(64),
-          emailLookupHash: hmacHex(
-            process.env.TOKEN_HMAC_SECRET!,
-            "email",
-            fixture.email,
-          ),
+          emailLookupHash: hmacHex(tokenHmacSecret, "email", fixture.email),
           leadId: fixture.leadId,
           scanId: fixture.scanId,
           expiresAt: new Date(now.getTime() + 86_400_000),
@@ -743,21 +668,15 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
         },
       ]);
 
-    await expect(
-      executeRetentionCleanup({ now, batchSize: 10, provider }),
-    ).resolves.toMatchObject({
+    await expect(executeRetentionCleanup({ now, batchSize: 10, provider })).resolves.toMatchObject({
       merchantApplicationsDeleted: 1,
       registrationIntentsDeleted: 1,
       rateLimitRowsDeleted: 2,
       expiredScannerRecoveryIntents: 1,
       expiredScannerIdentityCompletions: 1,
     });
-    expect(
-      await getDatabase().db.select().from(scannerRecoveryIntents),
-    ).toHaveLength(1);
-    expect(
-      await getDatabase().db.select().from(scannerIdentityCompletions),
-    ).toHaveLength(1);
+    expect(await getDatabase().db.select().from(scannerRecoveryIntents)).toHaveLength(1);
+    expect(await getDatabase().db.select().from(scannerIdentityCompletions)).toHaveLength(1);
     expect(
       await getDatabase()
         .db.select()
@@ -774,9 +693,7 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
         expiresAt: expect.any(Date),
       },
     ]);
-    await expect(
-      executeRetentionCleanup({ now, batchSize: 10, provider }),
-    ).resolves.toMatchObject({
+    await expect(executeRetentionCleanup({ now, batchSize: 10, provider })).resolves.toMatchObject({
       merchantApplicationsDeleted: 0,
       registrationIntentsDeleted: 0,
       rateLimitRowsDeleted: 0,
@@ -790,9 +707,7 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
       await expect(
         admin.db.transaction(async (tx) => {
           await tx.execute(sql.raw(`set local role ${role}`));
-          return tx.execute(
-            sql`select id from public.merchant_applications limit 1`,
-          );
+          return tx.execute(sql`select id from public.merchant_applications limit 1`);
         }),
       ).resolves.toMatchObject({ rows: [expect.any(Object)] });
     }
@@ -800,16 +715,12 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
       try {
         await admin.db.transaction(async (tx) => {
           await tx.execute(sql.raw(`set local role ${role}`));
-          return tx.execute(
-            sql`select id from public.merchant_applications limit 1`,
-          );
+          return tx.execute(sql`select id from public.merchant_applications limit 1`);
         });
         throw new Error("expected_merchant_application_permission_denied");
       } catch (error) {
         const cause = (error as { cause?: unknown }).cause;
-        expect(cause instanceof Error ? cause.message : String(error)).toMatch(
-          /permission denied/,
-        );
+        expect(cause instanceof Error ? cause.message : String(error)).toMatch(/permission denied/);
       }
     }
   });

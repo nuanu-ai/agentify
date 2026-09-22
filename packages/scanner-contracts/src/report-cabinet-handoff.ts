@@ -6,8 +6,7 @@ export const REPORT_CABINET_HANDOFF_TTL_SECONDS = 60 * 60;
 const PURPOSE = "agentify-report-cabinet-handoff-v1";
 const CLOCK_SKEW_SECONDS = 60;
 const TOKEN = /^[A-Za-z0-9]{32}$/;
-const SCAN_ID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SCAN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Claims = Readonly<{
   v: 1;
@@ -31,11 +30,7 @@ function normalizeEmail(value: string): string {
 }
 
 function signature(secret: string, encodedClaims: string): Buffer {
-  return createHmac("sha256", secret)
-    .update(PURPOSE)
-    .update("\0")
-    .update(encodedClaims)
-    .digest();
+  return createHmac("sha256", secret).update(PURPOSE).update("\0").update(encodedClaims).digest();
 }
 
 function actionToken(actionUrl: string, publicOrigin: string): string | null {
@@ -86,9 +81,7 @@ export function sealReportCabinetHandoff(input: {
     i: issuedAt,
     x: issuedAt + REPORT_CABINET_HANDOFF_TTL_SECONDS,
   };
-  const encodedClaims = Buffer.from(JSON.stringify(claims)).toString(
-    "base64url",
-  );
+  const encodedClaims = Buffer.from(JSON.stringify(claims)).toString("base64url");
   return `v1.${encodedClaims}.${signature(input.secret, encodedClaims).toString("base64url")}`;
 }
 
@@ -122,9 +115,7 @@ export function openReportCabinetHandoff(
 
   let claims: unknown;
   try {
-    claims = JSON.parse(
-      Buffer.from(encodedClaims, "base64url").toString("utf8"),
-    );
+    claims = JSON.parse(Buffer.from(encodedClaims, "base64url").toString("utf8"));
   } catch {
     return null;
   }

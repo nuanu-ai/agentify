@@ -74,9 +74,7 @@ export function browserObservationImpact(id: BrowserObservationId): string {
   return OBSERVATION_IMPACTS[id];
 }
 
-export function isExperimentalBrowserObservation(
-  id: BrowserObservationId,
-): boolean {
+export function isExperimentalBrowserObservation(id: BrowserObservationId): boolean {
   return [
     "webmcp_surface",
     "hidden_instruction_risk",
@@ -85,12 +83,9 @@ export function isExperimentalBrowserObservation(
   ].includes(id);
 }
 
-export function isActionableBrowserFinding(
-  finding: BrowserObservationFinding,
-): boolean {
+export function isActionableBrowserFinding(finding: BrowserObservationFinding): boolean {
   return (
-    finding.status === "fail" ||
-    (finding.status === "partial" && Boolean(finding.remediation_code))
+    finding.status === "fail" || (finding.status === "partial" && Boolean(finding.remediation_code))
   );
 }
 
@@ -103,8 +98,7 @@ const REGISTRY_COPY: Readonly<Record<string, string>> = {
     "The rendered page is missing a clear main landmark, heading structure, or names for some controls.",
   api_discovery_declared_unverified:
     "A public API-discovery link was declared, but this passive version did not fetch or validate its document.",
-  api_discovery_not_declared:
-    "No explicit public API-discovery link was observed.",
+  api_discovery_not_declared: "No explicit public API-discovery link was observed.",
   browser_console_errors_observed:
     "The public page produced one or more categories of browser runtime errors.",
   browser_console_multiple_error_categories:
@@ -113,8 +107,7 @@ const REGISTRY_COPY: Readonly<Record<string, string>> = {
     "No uncaught browser runtime error category was observed during the passive render.",
   browser_network_healthy:
     "Required public resources loaded without an observed mixed-content or systemic network failure.",
-  browser_network_mixed_content:
-    "The HTTPS page attempted to load insecure mixed content.",
+  browser_network_mixed_content: "The HTTPS page attempted to load insecure mixed content.",
   browser_network_policy_limited:
     "Some browser requests were blocked by the passive scanner's safety policy; this is not automatically a site defect.",
   browser_network_resource_failures:
@@ -131,12 +124,10 @@ const REGISTRY_COPY: Readonly<Record<string, string>> = {
     "The public render stayed within the documented request and transfer budgets.",
   content_license_declared_unverified:
     "A content-license link was declared, but this passive version did not fetch or validate the policy document.",
-  content_license_not_declared:
-    "No explicit machine-readable content-license link was observed.",
+  content_license_not_declared: "No explicit machine-readable content-license link was observed.",
   forms_many_unlabeled_controls:
     "Many public form controls lack a programmatic label, stable name, or relevant autocomplete declaration.",
-  forms_not_present:
-    "No public form controls were present on the assessed pages.",
+  forms_not_present: "No public form controls were present on the assessed pages.",
   forms_semantics_clear:
     "The assessed public form controls have programmatic labels, stable names, and relevant autocomplete declarations.",
   forms_some_unlabeled_controls:
@@ -155,16 +146,14 @@ const REGISTRY_COPY: Readonly<Record<string, string>> = {
     "A public login, bot challenge, or blocking consent wall prevented ordinary reading.",
   public_page_no_challenge_observed:
     "No public login or bot challenge blocked the bounded passive render.",
-  rendered_canonical_changed:
-    "The canonical URL declaration changed after JavaScript rendering.",
+  rendered_canonical_changed: "The canonical URL declaration changed after JavaScript rendering.",
   rendered_content_csr_dependent:
     "Most substantive public content appeared only after JavaScript rendering.",
   rendered_content_material_delta:
     "JavaScript materially changed the amount of public text available to an automated reader.",
   rendered_content_stable:
     "The initial HTML and rendered page expose a comparable amount of substantive public text.",
-  rendered_metadata_changed:
-    "hreflang or JSON-LD declarations changed after JavaScript rendering.",
+  rendered_metadata_changed: "hreflang or JSON-LD declarations changed after JavaScript rendering.",
   rendered_metadata_consistent:
     "Canonical, hreflang, and JSON-LD declarations stayed stable after rendering.",
   representative_pages_consistent:
@@ -173,8 +162,7 @@ const REGISTRY_COPY: Readonly<Record<string, string>> = {
     "At least one assessed representative page lacked a basic main landmark, heading, or substantive public text.",
   representative_pages_not_assessed:
     "Fewer than two representative pages were available, so cross-page readability was not assessed.",
-  webmcp_surface_absent:
-    "No WebMCP surface was observed. This experimental surface is optional.",
+  webmcp_surface_absent: "No WebMCP surface was observed. This experimental surface is optional.",
   webmcp_surface_declared:
     "A WebMCP surface was observed; tool behavior was not invoked or certified.",
   align_representative_page_facts:
@@ -202,8 +190,7 @@ const REGISTRY_COPY: Readonly<Record<string, string>> = {
 };
 
 export function formatRegistryCode(value: string | undefined): string {
-  if (!value || !REGISTRY_CODE.test(value))
-    return "No public summary available";
+  if (!value || !REGISTRY_CODE.test(value)) return "No public summary available";
   if (REGISTRY_COPY[value]) return REGISTRY_COPY[value];
   return value
     .replaceAll(":", " ")
@@ -228,9 +215,7 @@ export function safeEvidenceEntries(
   });
 }
 
-export function browserObservationSummary(
-  data: BrowserObservationStatusResponse,
-): string {
+export function browserObservationSummary(data: BrowserObservationStatusResponse): string {
   switch (data.status) {
     case "queued":
       return "Browser analysis queued";
@@ -247,11 +232,8 @@ export function browserObservationSummary(
   }
 }
 
-function renderSafeEvidenceValue(
-  value: string | number | boolean | string[],
-): string | undefined {
-  if (typeof value === "number")
-    return Number.isFinite(value) ? String(value) : undefined;
+function renderSafeEvidenceValue(value: string | number | boolean | string[]): string | undefined {
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : undefined;
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (Array.isArray(value)) {
     const safe = value.filter(isSafeEvidenceText).slice(0, 20);

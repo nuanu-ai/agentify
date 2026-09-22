@@ -1,26 +1,15 @@
 "use client";
 
-import React, {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react";
-
 import { registrationResponseSchema } from "@agentify/scanner-contracts";
+import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 
 import styles from "./registration-form.module.css";
 
 type RegistrationState = "idle" | "sending" | "sent" | "error";
 
-export function registrationSubmitLabel(
-  state: RegistrationState,
-  resendCooldown: number,
-) {
+export function registrationSubmitLabel(state: RegistrationState, resendCooldown: number) {
   if (state === "sending") return "Sending…";
-  if (state === "sent" && resendCooldown > 0)
-    return `Resend link in ${resendCooldown}s`;
+  if (state === "sent" && resendCooldown > 0) return `Resend link in ${resendCooldown}s`;
   if (state === "sent") return "Resend secure link";
   return "Email me a secure link";
 }
@@ -65,41 +54,31 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
     const token = sessionStorage.getItem(`agentify:scan-token:${scanId}`);
     if (!token) {
       setState("error");
-      setMessage(
-        "Open the original private scan link before requesting the report.",
-      );
+      setMessage("Open the original private scan link before requesting the report.");
       return;
     }
     const form = new FormData(event.currentTarget);
     setState("sending");
-    const response = await fetch(
-      `/api/v2/scans/${encodeURIComponent(scanId)}/registrations`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: form.get("email"),
-          phone: form.get("phone") || undefined,
-          role: form.get("role"),
-          site_is_mine: form.get("site_is_mine") === "on",
-          marketing_email_opt_in: form.get("marketing_email_opt_in") === "on",
-          dataset_reuse_acknowledged:
-            form.get("dataset_reuse_acknowledged") === "on",
-        }),
+    const response = await fetch(`/api/v2/scans/${encodeURIComponent(scanId)}/registrations`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
-    );
-    const parsed = registrationResponseSchema.safeParse(
-      await response.json().catch(() => null),
-    );
+      body: JSON.stringify({
+        email: form.get("email"),
+        phone: form.get("phone") || undefined,
+        role: form.get("role"),
+        site_is_mine: form.get("site_is_mine") === "on",
+        marketing_email_opt_in: form.get("marketing_email_opt_in") === "on",
+        dataset_reuse_acknowledged: form.get("dataset_reuse_acknowledged") === "on",
+      }),
+    });
+    const parsed = registrationResponseSchema.safeParse(await response.json().catch(() => null));
     if (response.ok && parsed.success) {
       setState("sent");
       setResendCooldown(60);
-      setSentTo(
-        typeof form.get("email") === "string" ? String(form.get("email")) : "",
-      );
+      setSentTo(typeof form.get("email") === "string" ? String(form.get("email")) : "");
       setMessage("");
     } else {
       setState("error");
@@ -125,13 +104,7 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
       ) : null}
       <div>
         <label htmlFor={emailId}>Email</label>
-        <input
-          id={emailId}
-          name="email"
-          type="email"
-          autoComplete="email"
-          required
-        />
+        <input id={emailId} name="email" type="email" autoComplete="email" required />
       </div>
       <div>
         <label htmlFor={phoneId}>Phone</label>
@@ -145,18 +118,13 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
           type="tel"
         />
         <span className={styles.hint}>
-          Optional. Include the country code if you add one. We store it as
-          contact information; only your email is verified.
+          Optional. Include the country code if you add one. We store it as contact information;
+          only your email is verified.
         </span>
       </div>
       <div>
         <label htmlFor={`${emailId}-role`}>Your role</label>
-        <select
-          id={`${emailId}-role`}
-          name="role"
-          defaultValue="business_owner"
-          required
-        >
+        <select id={`${emailId}-role`} name="role" defaultValue="business_owner" required>
           <option value="business_owner">Business owner</option>
           <option value="commerce_lead">Commerce lead</option>
           <option value="developer">Developer / agency</option>
@@ -167,18 +135,16 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
         <input name="site_is_mine" type="checkbox" /> I own or manage this site.
       </label>
       <label className={styles.check}>
-        <input name="dataset_reuse_acknowledged" type="checkbox" required /> I
-        acknowledge the scanner data notice.
+        <input name="dataset_reuse_acknowledged" type="checkbox" required /> I acknowledge the
+        scanner data notice.
       </label>
       <label className={styles.check}>
-        <input name="marketing_email_opt_in" type="checkbox" /> Send optional
-        product research updates.
+        <input name="marketing_email_opt_in" type="checkbox" /> Send optional product research
+        updates.
       </label>
       <button
         className="button button-primary"
-        disabled={
-          state === "sending" || (state === "sent" && resendCooldown > 0)
-        }
+        disabled={state === "sending" || (state === "sent" && resendCooldown > 0)}
         type="submit"
       >
         {registrationSubmitLabel(state, resendCooldown)}

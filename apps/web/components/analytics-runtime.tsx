@@ -1,12 +1,9 @@
 "use client";
 
-import {
-  readCurrentConsent,
-  type ConsentSnapshot,
-} from "@agentify/analytics/browser";
+import { type ConsentSnapshot, readCurrentConsent } from "@agentify/analytics/browser";
 import type { AnalyticsEventName, Segment } from "@agentify/scanner-contracts";
-import type { PostHog } from "posthog-js";
 import { usePathname } from "next/navigation";
+import type { PostHog } from "posthog-js";
 import { useCallback, useEffect, useRef } from "react";
 
 import {
@@ -47,9 +44,7 @@ const META_CLIENT_EVENT = {
   registration_started: "RegistrationStart",
 } as const;
 
-export function AnalyticsRuntime({
-  config,
-}: Readonly<{ config: BrowserAnalyticsConfig }>) {
+export function AnalyticsRuntime({ config }: Readonly<{ config: BrowserAnalyticsConfig }>) {
   const pathname = usePathname();
   const consent = useRef<ConsentSnapshot | undefined>(undefined);
 
@@ -58,8 +53,7 @@ export function AnalyticsRuntime({
       const snapshot = consent.current;
       const eventIdKey = `agentify.analytics.event-id.${event.onceKey}`;
       const candidateEventId =
-        window.sessionStorage.getItem(eventIdKey) ??
-        createClientOwnedEventId(event.name);
+        window.sessionStorage.getItem(eventIdKey) ?? createClientOwnedEventId(event.name);
       window.sessionStorage.setItem(eventIdKey, candidateEventId);
       const scanToken = event.scanId
         ? window.sessionStorage.getItem(`agentify:scan-token:${event.scanId}`)
@@ -79,9 +73,7 @@ export function AnalyticsRuntime({
                 name: event.name,
                 ...(event.scanId ? { scan_id: event.scanId } : {}),
                 ...(event.segment ? { segment: event.segment } : {}),
-                ...(event.landingVariant
-                  ? { landing_variant: event.landingVariant }
-                  : {}),
+                ...(event.landingVariant ? { landing_variant: event.landingVariant } : {}),
                 properties: {},
               }),
             });
@@ -101,21 +93,9 @@ export function AnalyticsRuntime({
               consent: allowedConsent,
               storage: window.localStorage,
               sendPosthog: async (eventId) =>
-                sendPosthog(
-                  config,
-                  event.name,
-                  eventId,
-                  result.segment,
-                  result.landing_variant,
-                ),
+                sendPosthog(config, event.name, eventId, result.segment, result.landing_variant),
               sendMetaPixel: async (eventId) =>
-                sendMetaPixel(
-                  config,
-                  event.name,
-                  eventId,
-                  result.segment,
-                  result.landing_variant,
-                ),
+                sendMetaPixel(config, event.name, eventId, result.segment, result.landing_variant),
             });
           },
         });
@@ -127,6 +107,7 @@ export function AnalyticsRuntime({
     [config],
   );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the route is what re-reads the stored consent snapshot, so a choice made on another page is not carried into this one
   useEffect(() => {
     consent.current = readCurrentConsent(window.localStorage);
     const changed = (event: Event) => {
@@ -138,8 +119,7 @@ export function AnalyticsRuntime({
       }
     };
     window.addEventListener("agentify:consent-changed", changed);
-    return () =>
-      window.removeEventListener("agentify:consent-changed", changed);
+    return () => window.removeEventListener("agentify:consent-changed", changed);
   }, [pathname]);
 
   useEffect(() => {
@@ -170,11 +150,9 @@ export function AnalyticsRuntime({
 
   useEffect(() => {
     const listener = (event: Event) => {
-      const detail = (event as CustomEvent<{ name?: string; scanId?: string }>)
-        .detail;
+      const detail = (event as CustomEvent<{ name?: string; scanId?: string }>).detail;
       if (
-        (detail?.name !== "registration_started" &&
-          detail?.name !== "results_viewed") ||
+        (detail?.name !== "registration_started" && detail?.name !== "results_viewed") ||
         !detail.scanId
       )
         return;
@@ -188,8 +166,7 @@ export function AnalyticsRuntime({
       });
     };
     window.addEventListener("agentify:analytics-event", listener);
-    return () =>
-      window.removeEventListener("agentify:analytics-event", listener);
+    return () => window.removeEventListener("agentify:analytics-event", listener);
   }, [track]);
 
   return null;
@@ -205,8 +182,7 @@ async function sendPosthog(
   landingVariant: string,
 ) {
   const { key, host, destinationEnvironment } = config.posthog;
-  if (!key || !host || destinationEnvironment !== config.runtimeEnvironment)
-    return;
+  if (!key || !host || destinationEnvironment !== config.runtimeEnvironment) return;
   posthogPromise ??= import("posthog-js").then(({ default: posthog }) => {
     posthog.init(key, {
       api_host: host,
@@ -237,12 +213,9 @@ type MetaWindow = Window & {
   _fbq?: (...args: unknown[]) => void;
 };
 
-function ensureMetaPixel(
-  config: BrowserAnalyticsConfig,
-): MetaWindow["fbq"] | undefined {
+function ensureMetaPixel(config: BrowserAnalyticsConfig): MetaWindow["fbq"] | undefined {
   const { pixelId, destinationEnvironment } = config.meta;
-  if (!pixelId || destinationEnvironment !== config.runtimeEnvironment)
-    return undefined;
+  if (!pixelId || destinationEnvironment !== config.runtimeEnvironment) return undefined;
   const target = window as MetaWindow;
   if (!target.fbq) {
     const fbq = ((...args: unknown[]) => {
@@ -273,9 +246,7 @@ async function sendMetaPixel(
   const fbq = ensureMetaPixel(config);
   if (!fbq) return;
   fbq(
-    name === "landing_view" || name === "results_viewed"
-      ? "track"
-      : "trackCustom",
+    name === "landing_view" || name === "results_viewed" ? "track" : "trackCustom",
     META_CLIENT_EVENT[name],
     { segment, landing_variant: landingVariant },
     { eventID: eventId },

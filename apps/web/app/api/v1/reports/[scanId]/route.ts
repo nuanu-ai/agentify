@@ -11,10 +11,7 @@ export async function GET(
   { params }: { params: Promise<{ scanId: string }> },
 ) {
   const { scanId } = await params;
-  const report = await getFullReport(
-    scanId,
-    request.cookies.get(REPORT_SESSION_COOKIE)?.value,
-  );
+  const report = await getFullReport(scanId, request.cookies.get(REPORT_SESSION_COOKIE)?.value);
   if (!report)
     return errorResponse(
       request,

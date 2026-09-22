@@ -1,13 +1,9 @@
 import { CONSENT_POLICY_VERSION } from "@agentify/analytics/browser";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-
-import {
-  CONSENT_COOKIE,
-  persistConsentSnapshot,
-} from "../../../../lib/server/consent";
 import { PARTNER_CLICK_ID_COOKIE } from "../../../../lib/server/attribution";
 import { getServerConfig } from "../../../../lib/server/config";
+import { CONSENT_COOKIE, persistConsentSnapshot } from "../../../../lib/server/consent";
 import { errorResponse, hasSameOrigin } from "../../../../lib/server/http";
 
 export const runtime = "nodejs";
@@ -32,29 +28,14 @@ const requestSchema = z
 
 export async function POST(request: NextRequest) {
   if (!hasSameOrigin(request)) {
-    return errorResponse(
-      request,
-      403,
-      "origin_forbidden",
-      "Request origin is not allowed.",
-    );
+    return errorResponse(request, 403, "origin_forbidden", "Request origin is not allowed.");
   }
-  const parsed = requestSchema.safeParse(
-    await request.json().catch(() => null),
-  );
+  const parsed = requestSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    return errorResponse(
-      request,
-      400,
-      "invalid_consent",
-      "Consent preferences are invalid.",
-    );
+    return errorResponse(request, 400, "invalid_consent", "Consent preferences are invalid.");
   }
   const countryHeader = request.headers.get("x-vercel-ip-country");
-  const country =
-    countryHeader && /^[A-Z]{2}$/i.test(countryHeader)
-      ? countryHeader
-      : undefined;
+  const country = countryHeader && /^[A-Z]{2}$/i.test(countryHeader) ? countryHeader : undefined;
   try {
     const result = await persistConsentSnapshot({
       anonymousToken: request.cookies.get(CONSENT_COOKIE)?.value,

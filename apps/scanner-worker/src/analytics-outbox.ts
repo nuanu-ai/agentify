@@ -1,17 +1,13 @@
 import {
   assertDestinationIsolation,
+  type ConsentEnvironment,
   retryDelayMs,
   shouldDeadLetter,
-  type ConsentEnvironment,
 } from "@agentify/analytics";
-import {
-  partnerClickIdSchema,
-  type DeliveryDestination,
-} from "@agentify/scanner-contracts";
+import { type DeliveryDestination, partnerClickIdSchema } from "@agentify/scanner-contracts";
 import { z } from "zod";
 
-export const PARTNER_POSTBACK_ENDPOINT =
-  "https://aisamuraihub.com/postback" as const;
+export const PARTNER_POSTBACK_ENDPOINT = "https://aisamuraihub.com/postback" as const;
 const PARTNER_RETRY_WINDOW_MS = 24 * 60 * 60 * 1_000;
 const PARTNER_RETRY_DELAYS_MS = [
   60_000,
@@ -20,10 +16,16 @@ const PARTNER_RETRY_DELAYS_MS = [
   2 * 60 * 60_000,
   6 * 60 * 60_000,
 ] as const;
+// The n-th partner retry waits the n-th delay, and every attempt past the end
+// of the list waits the last one until the retry window closes.
+const partnerRetryDelayMs = (attempts: number): number => {
+  const delay = PARTNER_RETRY_DELAYS_MS[Math.min(attempts - 1, PARTNER_RETRY_DELAYS_MS.length - 1)];
+  if (delay === undefined)
+    throw new Error(`partner delivery attempt ${attempts} has no retry delay`);
+  return delay;
+};
 const PARTNER_GLOBAL_MIN_INTERVAL_MS = 1_100;
-const PARTNER_RATE_LIMIT_ADVISORY_KEYS = [
-  1_094_730_062, 1_414_092_377,
-] as const;
+const PARTNER_RATE_LIMIT_ADVISORY_KEYS = [1_094_730_062, 1_414_092_377] as const;
 const partnerPayloadSchema = z
   .object({
     clickid: partnerClickIdSchema,
@@ -144,8 +146,7 @@ export type DestinationConfig = {
   };
 };
 
-export type DeliveryResult =
-  { ok: true } | { ok: false; code: string; retryable: boolean };
+export type DeliveryResult = { ok: true } | { ok: false; code: string; retryable: boolean };
 export type FetchLike = typeof fetch;
 
 const waitFor = (milliseconds: number): Promise<void> =>
@@ -192,8 +193,7 @@ export const createPartnerRateLimitedDeliverer = (
         };
       }
       deliveryFinished = true;
-      const remainingInterval =
-        PARTNER_GLOBAL_MIN_INTERVAL_MS - (now() - requestStartedAt);
+      const remainingInterval = PARTNER_GLOBAL_MIN_INTERVAL_MS - (now() - requestStartedAt);
       if (remainingInterval > 0) await wait(remainingInterval);
     } catch {
       destroyConnection = client !== undefined;
@@ -222,8 +222,7 @@ export const createPartnerRateLimitedDeliverer = (
         }
       }
       if (client) {
-        if (destroyConnection)
-          client.release(new Error("partner_tracker_rate_limiter_error"));
+        if (destroyConnection) client.release(new Error("partner_tracker_rate_limiter_error"));
         else client.release();
       }
     }
@@ -232,10 +231,7 @@ export const createPartnerRateLimitedDeliverer = (
   };
 };
 
-const safeStatusCode = (
-  destination: DeliveryDestination,
-  status: number,
-): string =>
+const safeStatusCode = (destination: DeliveryDestination, status: number): string =>
   `${destination}_http_${Math.max(0, Math.min(999, Math.trunc(status)))}`;
 
 export const createDestinationDeliverer = (
@@ -243,30 +239,20 @@ export const createDestinationDeliverer = (
   fetcher: FetchLike = fetch,
 ) => {
   if (config.posthog?.enabled) {
-    assertDestinationIsolation(
-      config.runtimeEnvironment,
-      config.posthog.destinationEnvironment,
-    );
+    assertDestinationIsolation(config.runtimeEnvironment, config.posthog.destinationEnvironment);
     const host = new URL(config.posthog.host);
     if (host.protocol !== "https:" && config.runtimeEnvironment !== "local") {
       throw new Error("posthog_https_required");
     }
   }
   if (config.meta?.enabled) {
-    assertDestinationIsolation(
-      config.runtimeEnvironment,
-      config.meta.destinationEnvironment,
-    );
+    assertDestinationIsolation(config.runtimeEnvironment, config.meta.destinationEnvironment);
     if (new URL(config.meta.graphBaseUrl).protocol !== "https:")
       throw new Error("meta_https_required");
   }
   if (config.partner?.enabled) {
-    assertDestinationIsolation(
-      config.runtimeEnvironment,
-      config.partner.destinationEnvironment,
-    );
-    if (config.partner.secret.length < 16)
-      throw new Error("partner_tracker_secret_required");
+    assertDestinationIsolation(config.runtimeEnvironment, config.partner.destinationEnvironment);
+    if (config.partner.secret.length < 16) throw new Error("partner_tracker_secret_required");
   }
 
   return async (row: OutboxRow): Promise<DeliveryResult> => {
@@ -305,16 +291,14 @@ export const createDestinationDeliverer = (
         return {
           ok: false,
           code:
-            error instanceof Error &&
-            (error.name === "TimeoutError" || error.name === "AbortError")
+            error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")
               ? "partner_tracker_timeout"
               : "partner_tracker_network_error",
           retryable: true,
         };
       }
     }
-    const destination =
-      row.destination === "posthog" ? config.posthog : config.meta;
+    const destination = row.destination === "posthog" ? config.posthog : config.meta;
     if (!destination?.enabled)
       return {
         ok: false,
@@ -322,15 +306,28 @@ export const createDestinationDeliverer = (
         retryable: false,
       };
     try {
-      const url =
-        row.destination === "posthog"
-          ? new URL("/capture/", config.posthog!.host)
-          : new URL(
-              `${encodeURIComponent(config.meta!.apiVersion)}/${encodeURIComponent(config.meta!.datasetId)}/events`,
-              config.meta!.graphBaseUrl.replace(/\/$/, "") + "/",
-            );
-      if (row.destination === "meta")
-        url.searchParams.set("access_token", config.meta!.accessToken);
+      // The row says where it is going, and the configuration for that
+      // destination is what the guard above has just found enabled.
+      let url: URL;
+      if (row.destination === "posthog") {
+        const posthog = config.posthog;
+        if (!posthog)
+          throw new Error(
+            "a posthog row was delivered without a posthog destination in the configuration",
+          );
+        url = new URL("/capture/", posthog.host);
+      } else {
+        const meta = config.meta;
+        if (!meta)
+          throw new Error(
+            "a meta row was delivered without a meta destination in the configuration",
+          );
+        url = new URL(
+          `${encodeURIComponent(meta.apiVersion)}/${encodeURIComponent(meta.datasetId)}/events`,
+          `${meta.graphBaseUrl.replace(/\/$/, "")}/`,
+        );
+        url.searchParams.set("access_token", meta.accessToken);
+      }
       const response = await fetcher(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -388,10 +385,7 @@ export const runOutboxCycle = async (input: {
         row.destination === "partner_tracker" &&
         now.getTime() - occurredAt.getTime() >= PARTNER_RETRY_WINDOW_MS;
       if (partnerExpired) {
-        await input.repository.deadLetter(
-          row.id,
-          "partner_tracker_retry_window_exhausted",
-        );
+        await input.repository.deadLetter(row.id, "partner_tracker_retry_window_exhausted");
         input.emitMetric?.({
           name: "analytics_dead_letter",
           destination: row.destination,
@@ -421,13 +415,7 @@ export const runOutboxCycle = async (input: {
           row.destination === "partner_tracker"
             ? new Date(
                 Math.min(
-                  now.getTime() +
-                    PARTNER_RETRY_DELAYS_MS[
-                      Math.min(
-                        row.attempts - 1,
-                        PARTNER_RETRY_DELAYS_MS.length - 1,
-                      )
-                    ]!,
+                  now.getTime() + partnerRetryDelayMs(row.attempts),
                   occurredAt.getTime() + PARTNER_RETRY_WINDOW_MS,
                 ),
               )

@@ -1,15 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import Stripe from "stripe";
-
-import {
-  localWebhookSignature,
-  verifyLocalWebhookSignature,
-} from "./stripe-card-signal-crypto";
 import {
   getStripeCardSignalConfig,
   type StripeCardSignalConfig,
 } from "./stripe-card-signal-config";
+import { localWebhookSignature, verifyLocalWebhookSignature } from "./stripe-card-signal-crypto";
 
 export type SetupReadback = Readonly<{
   id: string;
@@ -46,10 +42,7 @@ export type CardSignalWebhookEvent = Readonly<{
 
 export interface StripeCardSignalProvider {
   readonly adapter: "local" | "stripe";
-  createCustomer(input: {
-    leadId: string;
-    idempotencyKey: string;
-  }): Promise<string>;
+  createCustomer(input: { leadId: string; idempotencyKey: string }): Promise<string>;
   retrieveCustomer(id: string): Promise<CustomerReadback>;
   deleteCustomer(id: string): Promise<CustomerReadback>;
   createSetup(input: {
@@ -136,14 +129,8 @@ class StripeProvider implements StripeCardSignalProvider {
     return stripeSetupReadback(await this.#stripe.setupIntents.cancel(id));
   }
 
-  async retrieveCustomerPaymentMethod(
-    customerId: string,
-    paymentMethodId: string,
-  ) {
-    const method = await this.#stripe.customers.retrievePaymentMethod(
-      customerId,
-      paymentMethodId,
-    );
+  async retrieveCustomerPaymentMethod(customerId: string, paymentMethodId: string) {
+    const method = await this.#stripe.customers.retrievePaymentMethod(customerId, paymentMethodId);
     return { id: method.id, customerId: objectId(method.customer) };
   }
 
@@ -158,19 +145,13 @@ class StripeProvider implements StripeCardSignalProvider {
   }
 
   verifyWebhook(rawBody: string, signature: string) {
-    const event = this.#stripe.webhooks.constructEvent(
-      rawBody,
-      signature,
-      this.#webhookSecret,
-    );
+    const event = this.#stripe.webhooks.constructEvent(rawBody, signature, this.#webhookSecret);
     const object = event.data.object as { id?: unknown };
     return {
       id: event.id,
       type: event.type,
       setupIntentId:
-        event.type === "setup_intent.succeeded" && typeof object.id === "string"
-          ? object.id
-          : null,
+        event.type === "setup_intent.succeeded" && typeof object.id === "string" ? object.id : null,
     };
   }
 }
@@ -276,17 +257,13 @@ export class LocalStripeCardSignalProvider implements StripeCardSignalProvider {
 
   async cancelSetup(id: string) {
     const current = await this.retrieveSetup(id);
-    if (current.status === "succeeded")
-      throw new Error("local_setup_already_succeeded");
+    if (current.status === "succeeded") throw new Error("local_setup_already_succeeded");
     const canceled: LocalSetup = { ...current, status: "canceled" };
     getLocalState().setups.set(id, canceled);
     return canceled;
   }
 
-  async retrieveCustomerPaymentMethod(
-    customerId: string,
-    paymentMethodId: string,
-  ) {
+  async retrieveCustomerPaymentMethod(customerId: string, paymentMethodId: string) {
     const method = getLocalState().methods.get(paymentMethodId);
     if (!method || method.customerId !== customerId)
       throw new Error("local_payment_method_not_attached");
@@ -319,8 +296,7 @@ export class LocalStripeCardSignalProvider implements StripeCardSignalProvider {
       id: event.id,
       type: event.type,
       setupIntentId:
-        event.type === "setup_intent.succeeded" &&
-        typeof event.data?.object?.id === "string"
+        event.type === "setup_intent.succeeded" && typeof event.data?.object?.id === "string"
           ? event.data.object.id
           : null,
     };

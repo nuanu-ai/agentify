@@ -1,6 +1,6 @@
 import {
-  browserObservationOutputV1Schema,
   type BrowserObservationOutputV1,
+  browserObservationOutputV1Schema,
 } from "@agentify/scanner-contracts";
 
 const FORBIDDEN_KEY =
@@ -43,9 +43,7 @@ const inspectValue = (value: unknown, key = ""): void => {
   }
 };
 
-export const sanitizeBrowserOutput = (
-  value: unknown,
-): BrowserObservationOutputV1 => {
+export const sanitizeBrowserOutput = (value: unknown): BrowserObservationOutputV1 => {
   const parsed = browserObservationOutputV1Schema.parse(value);
   inspectValue(parsed);
   return parsed;

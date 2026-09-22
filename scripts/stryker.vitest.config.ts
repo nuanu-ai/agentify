@@ -11,20 +11,24 @@
  * test that killed a mutant the spike named (`packages/slice/src/stand.test.ts`)
  * would not even count as related to it.
  *
- * So this file takes the workspace config as it is and adds one thing: an
- * alias for every workspace package, built from its `exports` map, pointing
- * at the copy inside the sandbox. A package is a directory under `packages/`
- * or `apps/` that holds a `package.json`, the definition `scripts/mutate.mjs`
- * uses at its door; a stray file beside the packages is not one. This file is
- * loaded only by `scripts/mutate.mjs`; `pnpm test` keeps reading
- * `vitest.config.ts` and never sees it.
+ * So this file takes the unit project's settings — the same include, exclude
+ * and setup `pnpm test` runs under, without the integration project beside it
+ * — and adds one thing: an alias for every workspace package, built from its
+ * `exports` map, pointing at the copy inside the sandbox. It is the only alias
+ * here: the settings are imported by name, so the workspace's own alias, which
+ * points at the real checkout, never enters the merge. Merging the default
+ * export instead would bring it along, and vite takes the first match, so the
+ * sandbox would be quietly bypassed. A package is a directory under
+ * `packages/` or `apps/` that holds a `package.json`, the definition
+ * `scripts/mutate.mjs` uses at its door; a stray file beside the packages is
+ * not one. This file is loaded only by `scripts/mutate.mjs`; `pnpm test` reads
+ * `vitest.config.ts` itself and never sees this one.
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { defineConfig, mergeConfig } from "vitest/config";
-import commerce from "../vitest.config.js";
-import scanner from "../vitest.scanner.config.js";
+import { jsxRuntime, unitTests } from "../vitest.config.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const packageDir = process.env.AGENTIFY_MUTATION_PACKAGE_DIR;
@@ -80,11 +84,11 @@ const alias = ["packages", "apps"].flatMap((group) =>
 );
 
 const targetRoot = path.join(root, packageDir);
+// A scanner package is mutated against its own tests rather than the whole
+// workspace pool. That is the scope of the run, not a second toolchain: the
+// settings it overrides are the ones `pnpm test` runs under.
 const scannerTarget = defineConfig({
   root: targetRoot,
-  // Next keeps JSX for its own compiler. The mutation runner uses plain Vite,
-  // so its sandbox has to lower TSX before Vite's import analysis sees it.
-  oxc: { jsx: { runtime: "automatic" } },
   test: {
     include: ["**/*.test.ts", "**/*.spec.ts", "**/*.test.tsx", "**/*.spec.tsx"],
     exclude: [
@@ -99,7 +103,7 @@ const scannerTarget = defineConfig({
 });
 
 export default mergeConfig(
-  family === "commerce" ? commerce : scanner,
+  defineConfig({ oxc: jsxRuntime, test: unitTests }),
   defineConfig({
     ...(family === "scanner" ? scannerTarget : {}),
     resolve: { alias },

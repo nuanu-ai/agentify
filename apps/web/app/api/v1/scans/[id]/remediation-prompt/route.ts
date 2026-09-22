@@ -7,24 +7,11 @@ import { getTeaserRemediationPrompt } from "../../../../../../lib/server/remedia
 
 export const runtime = "nodejs";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!getServerConfig().REMEDIATION_PROMPT_ENABLED)
-    return errorResponse(
-      request,
-      404,
-      "not_found",
-      "Prompt export is disabled.",
-    );
+    return errorResponse(request, 404, "not_found", "Prompt export is disabled.");
   if (request.nextUrl.searchParams.get("scope") !== "teaser")
-    return errorResponse(
-      request,
-      400,
-      "invalid_scope",
-      "Expected scope=teaser.",
-    );
+    return errorResponse(request, 400, "invalid_scope", "Expected scope=teaser.");
   const { id } = await params;
   const result = await getTeaserRemediationPrompt(
     id,

@@ -16,12 +16,7 @@ export async function GET(
     request.cookies.get(REPORT_SESSION_COOKIE)?.value,
   );
   if (!signal)
-    return errorResponse(
-      request,
-      404,
-      "card_signal_not_found",
-      "The card signal was not found.",
-    );
+    return errorResponse(request, 404, "card_signal_not_found", "The card signal was not found.");
   return NextResponse.json(signal, {
     headers: { "Cache-Control": "private, no-store" },
   });

@@ -1,5 +1,5 @@
-import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { loadEnvFile } from "node:process";
 
 const [command, ...args] = process.argv.slice(2);

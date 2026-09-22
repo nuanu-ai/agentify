@@ -1,21 +1,11 @@
-import { migrate } from "drizzle-orm/node-postgres/migrator";
-import {
-  copyFile,
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
-import { join } from "node:path";
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
 
 import type { Database } from "./client.js";
 
-export async function migrateDatabase(
-  db: Database,
-  migrationsFolder: string,
-): Promise<void> {
+export async function migrateDatabase(db: Database, migrationsFolder: string): Promise<void> {
   await migrate(db, { migrationsFolder });
 }
 
@@ -35,18 +25,14 @@ export async function migrateDatabaseThroughIdentityPreflight(
   db: Database,
   migrationsFolder: string,
 ): Promise<void> {
-  const boundedFolder = await mkdtemp(
-    join(tmpdir(), "agentify-scanner-identity-preflight-"),
-  );
+  const boundedFolder = await mkdtemp(join(tmpdir(), "agentify-scanner-identity-preflight-"));
   try {
     await mkdir(join(boundedFolder, "meta"));
     const journal = JSON.parse(
       await readFile(join(migrationsFolder, "meta", "_journal.json"), "utf8"),
     ) as { entries?: Array<{ tag?: string }> };
     const entries = journal.entries ?? [];
-    const cutoff = entries.findIndex(
-      (entry) => entry.tag === IDENTITY_PREFLIGHT_LAST_MIGRATION,
-    );
+    const cutoff = entries.findIndex((entry) => entry.tag === IDENTITY_PREFLIGHT_LAST_MIGRATION);
     if (cutoff < 0) throw new Error("identity_preflight_migration_missing");
     const boundedEntries = entries.slice(0, cutoff + 1);
     await writeFile(

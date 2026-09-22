@@ -1,8 +1,8 @@
 import {
+  type DatabaseTransaction,
   runRetentionCleanup,
   scannerIdentityCompletions,
   scannerRecoveryIntents,
-  type DatabaseTransaction,
 } from "@agentify/scanner-database";
 import { eq, lte, sql } from "drizzle-orm";
 
@@ -10,16 +10,9 @@ import { getDatabase } from "./database";
 import { detachLeadCardSignalsForDeletion } from "./stripe-card-signal";
 import type { StripeCardSignalProvider } from "./stripe-card-signal-provider";
 
-async function deleteScannerReportIdentityRows(
-  tx: DatabaseTransaction,
-  leadId: string,
-) {
-  await tx
-    .delete(scannerRecoveryIntents)
-    .where(eq(scannerRecoveryIntents.leadId, leadId));
-  await tx
-    .delete(scannerIdentityCompletions)
-    .where(eq(scannerIdentityCompletions.leadId, leadId));
+async function deleteScannerReportIdentityRows(tx: DatabaseTransaction, leadId: string) {
+  await tx.delete(scannerRecoveryIntents).where(eq(scannerRecoveryIntents.leadId, leadId));
+  await tx.delete(scannerIdentityCompletions).where(eq(scannerIdentityCompletions.leadId, leadId));
 }
 
 export async function executeRetentionCleanup(input: {

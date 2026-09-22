@@ -5,9 +5,7 @@ export type HttpRemediationCatalogEntry = Readonly<{
   standard: string;
 }>;
 
-export const HTTP_CHECK_CATALOG: Readonly<
-  Record<string, HttpRemediationCatalogEntry>
-> = {
+export const HTTP_CHECK_CATALOG: Readonly<Record<string, HttpRemediationCatalogEntry>> = {
   "1": {
     labelCode: "robots",
     desiredState:
@@ -63,15 +61,13 @@ export const HTTP_CHECK_CATALOG: Readonly<
       "Accept: text/markdown returns a non-empty, fact-equivalent Markdown representation with the correct media type and Vary: Accept.",
     verification:
       "Compare neutral and Markdown requests, media types, Vary behavior, and substantive content, then re-run check 7.",
-    standard:
-      "https://developer.mozilla.org/docs/Web/HTTP/Guides/Content_negotiation",
+    standard: "https://developer.mozilla.org/docs/Web/HTTP/Guides/Content_negotiation",
   },
   "8": {
     labelCode: "llms_txt",
     desiredState:
       "If the optional llms.txt convention is used, it has a clear heading and links to maintained public sources without claiming model support.",
-    verification:
-      "Parse /llms.txt as the optional informational surface and re-run check 8.",
+    verification: "Parse /llms.txt as the optional informational surface and re-run check 8.",
     standard: "https://llmstxt.org/",
   },
   "9": {
@@ -80,8 +76,7 @@ export const HTTP_CHECK_CATALOG: Readonly<
       "Only sites with a real MCP endpoint publish a complete server card, clearly labeled as an experimental discovery convention.",
     verification:
       "Validate the declared JSON fields without invoking tools, then re-run check 9 and keep tool execution out of scope.",
-    standard:
-      "https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1649",
+    standard: "https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1649",
   },
   "10": {
     labelCode: "ucp_profile",

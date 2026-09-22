@@ -1,22 +1,19 @@
 import { createHash } from "node:crypto";
 
 import {
-  DEFAULT_CONSENT,
   buildMetaPayload,
   buildOutboxInserts,
   buildPosthogPayload,
-  createAnalyticsEvent,
-  eventOnceKey,
   type ConsentCategories,
   type ConsentEnvironment,
+  createAnalyticsEvent,
+  DEFAULT_CONSENT,
+  eventOnceKey,
 } from "@agentify/analytics";
 import type { AnalyticsEventName, Segment } from "@agentify/scanner-contracts";
 import { eq } from "drizzle-orm";
 
-import {
-  insertBusinessEventOnce,
-  type BusinessEventExecutor,
-} from "./analytics-event-store.js";
+import { type BusinessEventExecutor, insertBusinessEventOnce } from "./analytics-event-store.js";
 import { createUuidV7 } from "./ids.js";
 import { consentSnapshots, sessions } from "./schema.js";
 
@@ -35,9 +32,7 @@ type StoredBusinessEventInput = {
 };
 
 const environment = (value: string | undefined): ConsentEnvironment =>
-  value === "test" || value === "preview" || value === "production"
-    ? value
-    : "local";
+  value === "test" || value === "preview" || value === "production" ? value : "local";
 
 const enabled = (value: string | undefined): boolean => value === "true";
 
@@ -70,9 +65,7 @@ export async function emitStoredBusinessEvent(
     ...(consentRow.categories as Partial<ConsentCategories>),
   };
   const runtimeEnvironment = environment(process.env.ANALYTICS_RUNTIME_ENV);
-  const serverDeliveryEnabled = enabled(
-    process.env.ANALYTICS_SERVER_DELIVERY_ENABLED,
-  );
+  const serverDeliveryEnabled = enabled(process.env.ANALYTICS_SERVER_DELIVERY_ENABLED);
   const posthogConfigured = Boolean(process.env.POSTHOG_API_KEY);
   const metaConfigured =
     enabled(process.env.META_CAPI_ENABLED) &&
@@ -110,24 +103,15 @@ export async function emitStoredBusinessEvent(
     source: "api" as const,
     categories: {
       ...categories,
-      product_analytics:
-        categories.product_analytics &&
-        serverDeliveryEnabled &&
-        posthogConfigured,
-      ads_measurement:
-        categories.ads_measurement && serverDeliveryEnabled && metaConfigured,
+      product_analytics: categories.product_analytics && serverDeliveryEnabled && posthogConfigured,
+      ads_measurement: categories.ads_measurement && serverDeliveryEnabled && metaConfigured,
     },
   };
-  const externalId = createHash("sha256")
-    .update(session.anonymousIdHash)
-    .digest("hex");
+  const externalId = createHash("sha256").update(session.anonymousIdHash).digest("hex");
   const outbox = buildOutboxInserts({
     event,
     consent: effectiveConsent,
-    posthogPayload: buildPosthogPayload(
-      event,
-      process.env.POSTHOG_API_KEY ?? "disabled",
-    ),
+    posthogPayload: buildPosthogPayload(event, process.env.POSTHOG_API_KEY ?? "disabled"),
     metaPayload: buildMetaPayload(
       event,
       {

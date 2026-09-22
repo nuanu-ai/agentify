@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  PARTNER_POSTBACK_ENDPOINT,
-  createDestinationDeliverer,
-  createPartnerRateLimitedDeliverer,
   type AdvisoryLockClient,
   type AdvisoryLockPool,
+  createDestinationDeliverer,
+  createPartnerRateLimitedDeliverer,
   type OutboxRow,
+  PARTNER_POSTBACK_ENDPOINT,
 } from "./analytics-outbox.js";
 
 const row = (overrides: Partial<OutboxRow> = {}): OutboxRow => ({
@@ -67,6 +67,42 @@ describe("analytics destination delivery", () => {
       retryable: true,
     });
     expect(JSON.stringify(result)).not.toContain("provider secret body");
+  });
+
+  it("sends a meta row to the graph endpoint its configuration names", async () => {
+    let providerRequest: { url: string; headers?: HeadersInit } | undefined;
+    const deliver = createDestinationDeliverer(
+      {
+        runtimeEnvironment: "test",
+        posthog: {
+          destinationEnvironment: "test",
+          host: "https://test.posthog.invalid",
+          enabled: true,
+        },
+        meta: {
+          destinationEnvironment: "test",
+          graphBaseUrl: "https://graph.meta.invalid/",
+          apiVersion: "v21.0",
+          datasetId: "1234567890",
+          accessToken: "meta-access-token",
+          enabled: true,
+        },
+      },
+      async (input, init) => {
+        providerRequest = { url: String(input), headers: init?.headers };
+        return new Response(null, { status: 200 });
+      },
+    );
+
+    await expect(deliver(row({ destination: "meta" }))).resolves.toEqual({
+      ok: true,
+    });
+    expect(providerRequest?.url).toBe(
+      "https://graph.meta.invalid/v21.0/1234567890/events?access_token=meta-access-token",
+    );
+    expect(providerRequest?.headers).toEqual({
+      "content-type": "application/json",
+    });
   });
 
   it("sends the fixed partner payload without placing the secret in the URL", async () => {
@@ -224,35 +260,32 @@ describe("analytics destination delivery", () => {
     { status: 429, retryable: true },
     { status: 500, retryable: true },
     { status: 503, retryable: true },
-  ])(
-    "classifies partner HTTP $status with retryable=$retryable",
-    async ({ status, retryable }) => {
-      const deliver = createDestinationDeliverer(
-        {
-          runtimeEnvironment: "production",
-          partner: {
-            destinationEnvironment: "production",
-            enabled: true,
-            secret: "partner-secret-value",
-          },
+  ])("classifies partner HTTP $status with retryable=$retryable", async ({ status, retryable }) => {
+    const deliver = createDestinationDeliverer(
+      {
+        runtimeEnvironment: "production",
+        partner: {
+          destinationEnvironment: "production",
+          enabled: true,
+          secret: "partner-secret-value",
         },
-        async () => new Response(null, { status }),
-      );
-      await expect(
-        deliver(
-          row({
-            destination: "partner_tracker",
-            payload: {
-              clickid: "Xk8sJ2QpR4vN7bL0aZ9wQg",
-              event: "reg",
-            },
-          }),
-        ),
-      ).resolves.toEqual({
-        ok: false,
-        code: `partner_tracker_http_${status}`,
-        retryable,
-      });
-    },
-  );
+      },
+      async () => new Response(null, { status }),
+    );
+    await expect(
+      deliver(
+        row({
+          destination: "partner_tracker",
+          payload: {
+            clickid: "Xk8sJ2QpR4vN7bL0aZ9wQg",
+            event: "reg",
+          },
+        }),
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      code: `partner_tracker_http_${status}`,
+      retryable,
+    });
+  });
 });

@@ -2,16 +2,12 @@ import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { REPORT_SESSION_COOKIE } from "../../../../../lib/server/auth";
-import {
-  errorResponse,
-  hasSameOrigin,
-  logServerError,
-} from "../../../../../lib/server/http";
+import { getServerConfig } from "../../../../../lib/server/config";
+import { errorResponse, hasSameOrigin, logServerError } from "../../../../../lib/server/http";
 import {
   recoverScannerReportSession,
   requestScannerReportRecovery,
 } from "../../../../../lib/server/scanner-recovery";
-import { getServerConfig } from "../../../../../lib/server/config";
 import { verifyTurnstileToken } from "../../../../../lib/server/turnstile";
 
 export const runtime = "nodejs";
@@ -36,15 +32,8 @@ function accepted() {
 
 export async function handleScannerRecoveryRequest(request: NextRequest) {
   if (!hasSameOrigin(request))
-    return errorResponse(
-      request,
-      403,
-      "invalid_origin",
-      "The request origin is not allowed.",
-    );
-  const body = recoveryRequestSchema.safeParse(
-    await request.json().catch(() => null),
-  );
+    return errorResponse(request, 403, "invalid_origin", "The request origin is not allowed.");
+  const body = recoveryRequestSchema.safeParse(await request.json().catch(() => null));
   if (!body.success)
     return errorResponse(
       request,
@@ -74,9 +63,7 @@ export async function handleScannerRecoveryRequest(request: NextRequest) {
   }
 
   // Caddy appends the trusted peer address at the right-hand side.
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim() ||
-    "unknown";
+  const ip = request.headers.get("x-forwarded-for")?.split(",").at(-1)?.trim() || "unknown";
   const config = getServerConfig();
   if (
     config.TURNSTILE_ENFORCED &&

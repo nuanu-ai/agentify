@@ -4,9 +4,7 @@ import { sessionLookupResult } from "./auth-callback";
 
 describe("report callback session lookup", () => {
   it("keeps a fresh valid link behind explicit confirmation when no session matches", () => {
-    expect(
-      sessionLookupResult({ status: "recovery_requested" }, "ready"),
-    ).toEqual({
+    expect(sessionLookupResult({ status: "recovery_requested" }, "ready")).toEqual({
       state: "ready",
     });
   });

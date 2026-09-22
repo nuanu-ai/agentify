@@ -18,10 +18,8 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-const utcTimestamp = (name: string) =>
-  timestamp(name, { withTimezone: true, mode: "date" });
-const uuidV7Check = (column: AnyPgColumn) =>
-  sql`substring(${column}::text, 15, 1) = '7'`;
+const utcTimestamp = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
+const uuidV7Check = (column: AnyPgColumn) => sql`substring(${column}::text, 15, 1) = '7'`;
 
 export const merchantApplications = pgTable(
   "merchant_applications",
@@ -36,9 +34,7 @@ export const merchantApplications = pgTable(
   },
   (table) => [
     check("merchant_applications_id_uuidv7", uuidV7Check(table.id)),
-    uniqueIndex("merchant_applications_idempotency_uidx").on(
-      table.idempotencyKeyHash,
-    ),
+    uniqueIndex("merchant_applications_idempotency_uidx").on(table.idempotencyKeyHash),
     index("merchant_applications_expiry_idx").on(table.expiresAt),
   ],
 );
@@ -92,19 +88,16 @@ export const webhookReceiptStatusEnum = pgEnum("webhook_receipt_status", [
   "processed",
   "failed",
 ]);
-export const browserObservationStatusEnum = pgEnum(
-  "browser_observation_status",
-  [
-    "queued",
-    "starting",
-    "running",
-    "completed",
-    "partial",
-    "blocked",
-    "failed",
-    "budget_skipped",
-  ],
-);
+export const browserObservationStatusEnum = pgEnum("browser_observation_status", [
+  "queued",
+  "starting",
+  "running",
+  "completed",
+  "partial",
+  "blocked",
+  "failed",
+  "budget_skipped",
+]);
 
 export const sessions = pgTable(
   "sessions",
@@ -151,10 +144,7 @@ export const consentSnapshots = pgTable(
   },
   (table) => [
     check("consent_snapshots_id_uuidv7", uuidV7Check(table.id)),
-    index("consent_snapshots_session_captured_idx").on(
-      table.sessionId,
-      table.capturedAt,
-    ),
+    index("consent_snapshots_session_captured_idx").on(table.sessionId, table.capturedAt),
   ],
 );
 
@@ -188,11 +178,7 @@ export const leads = pgTable(
       .on(table.supabaseUserId)
       .where(sql`${table.supabaseUserId} is not null`),
     index("leads_verified_at_idx").on(table.verifiedAt),
-    index("leads_retention_idx").on(
-      table.verifiedAt,
-      table.anonymizedAt,
-      table.createdAt,
-    ),
+    index("leads_retention_idx").on(table.verifiedAt, table.anonymizedAt, table.createdAt),
   ],
 );
 
@@ -210,9 +196,7 @@ export const scans = pgTable(
     rubricVersion: text("rubric_version").notNull(),
     submittedUrlRedacted: text("submitted_url_redacted").notNull(),
     canonicalTargetUrl: text("canonical_target_url").notNull(),
-    submittedWithoutScheme: boolean("submitted_without_scheme")
-      .notNull()
-      .default(false),
+    submittedWithoutScheme: boolean("submitted_without_scheme").notNull().default(false),
     targetHost: text("target_host").notNull(),
     targetHash: text("target_hash").notNull(),
     status: scanStatusEnum("status").notNull().default("accepted"),
@@ -228,10 +212,9 @@ export const scans = pgTable(
     applicableWeight: numeric("applicable_weight", { precision: 7, scale: 3 }),
     earnedWeight: numeric("earned_weight", { precision: 7, scale: 3 }),
     cacheHit: boolean("cache_hit").notNull().default(false),
-    sourceScanId: uuid("source_scan_id").references(
-      (): AnyPgColumn => scans.id,
-      { onDelete: "set null" },
-    ),
+    sourceScanId: uuid("source_scan_id").references((): AnyPgColumn => scans.id, {
+      onDelete: "set null",
+    }),
     failureCode: text("failure_code"),
     accessTokenHash: text("access_token_hash").notNull(),
     accessTokenExpiresAt: utcTimestamp("access_token_expires_at").notNull(),
@@ -240,10 +223,7 @@ export const scans = pgTable(
   },
   (table) => [
     check("scans_id_uuidv7", uuidV7Check(table.id)),
-    check(
-      "scans_score_range",
-      sql`${table.score} is null or ${table.score} between 0 and 100`,
-    ),
+    check("scans_score_range", sql`${table.score} is null or ${table.score} between 0 and 100`),
     check(
       "scans_coverage_range",
       sql`${table.coverage} is null or ${table.coverage} between 0 and 1`,
@@ -265,10 +245,7 @@ export const scans = pgTable(
       "scans_failed_level_invariant",
       sql`${table.status} <> 'failed' or (${table.score} is null and (${table.level} is null or ${table.level} = 'incomplete'))`,
     ),
-    uniqueIndex("scans_session_idempotency_uidx").on(
-      table.sessionId,
-      table.idempotencyKeyHash,
-    ),
+    uniqueIndex("scans_session_idempotency_uidx").on(table.sessionId, table.idempotencyKeyHash),
     index("scans_target_accepted_idx").on(table.targetHash, table.acceptedAt),
     index("scans_status_accepted_idx").on(table.status, table.acceptedAt),
     index("scans_segment_finished_idx").on(table.segment, table.finishedAt),
@@ -292,15 +269,9 @@ export const registrationIntents = pgTable(
     phoneLookupHash: text("phone_lookup_hash"),
     partnerClickIdCiphertext: text("partner_click_id_ciphertext"),
     role: text("role").notNull(),
-    siteOwnershipClaim: boolean("site_ownership_claim")
-      .notNull()
-      .default(false),
-    marketingEmailOptIn: boolean("marketing_email_opt_in")
-      .notNull()
-      .default(false),
-    datasetReuseAcknowledged: boolean("dataset_reuse_acknowledged")
-      .notNull()
-      .default(false),
+    siteOwnershipClaim: boolean("site_ownership_claim").notNull().default(false),
+    marketingEmailOptIn: boolean("marketing_email_opt_in").notNull().default(false),
+    datasetReuseAcknowledged: boolean("dataset_reuse_acknowledged").notNull().default(false),
     expiresAt: utcTimestamp("expires_at").notNull(),
     consumedAt: utcTimestamp("consumed_at"),
     createdAt: utcTimestamp("created_at").notNull().defaultNow(),
@@ -311,9 +282,7 @@ export const registrationIntents = pgTable(
       "registration_intents_dataset_acknowledged",
       sql`${table.datasetReuseAcknowledged} = true`,
     ),
-    uniqueIndex("registration_intents_callback_state_uidx").on(
-      table.callbackStateHash,
-    ),
+    uniqueIndex("registration_intents_callback_state_uidx").on(table.callbackStateHash),
     index("registration_intents_expiry_idx").on(table.expiresAt),
   ],
 );
@@ -373,10 +342,7 @@ export const scanSnapshots = pgTable(
   (table) => [
     check("scan_snapshots_id_uuidv7", uuidV7Check(table.id)),
     check("scan_snapshots_score_range", sql`${table.score} between 0 and 100`),
-    check(
-      "scan_snapshots_coverage_range",
-      sql`${table.coverage} between 0 and 1`,
-    ),
+    check("scan_snapshots_coverage_range", sql`${table.coverage} between 0 and 1`),
     uniqueIndex("scan_snapshots_cache_key_uidx").on(table.cacheKey),
   ],
 );
@@ -389,18 +355,9 @@ export const scanFingerprints = pgTable("scan_fingerprints", {
   platformConfidence: text("platform_confidence").notNull(),
   cmsVersion: text("cms_version"),
   versionConfidence: text("version_confidence"),
-  wafCdn: text("waf_cdn")
-    .array()
-    .notNull()
-    .default(sql`'{}'::text[]`),
-  pspMarkers: text("psp_markers")
-    .array()
-    .notNull()
-    .default(sql`'{}'::text[]`),
-  feedSignals: text("feed_signals")
-    .array()
-    .notNull()
-    .default(sql`'{}'::text[]`),
+  wafCdn: text("waf_cdn").array().notNull().default(sql`'{}'::text[]`),
+  pspMarkers: text("psp_markers").array().notNull().default(sql`'{}'::text[]`),
+  feedSignals: text("feed_signals").array().notNull().default(sql`'{}'::text[]`),
   headerSignals: jsonb("header_signals").notNull().default({}),
   htmlSignals: jsonb("html_signals").notNull().default({}),
   detectorVersion: text("detector_version").notNull(),
@@ -447,15 +404,9 @@ export const browserObservations = pgTable(
   },
   (table) => [
     check("browser_observations_id_uuidv7", uuidV7Check(table.id)),
-    check(
-      "browser_observations_operation_id_uuidv7",
-      uuidV7Check(table.operationId),
-    ),
+    check("browser_observations_operation_id_uuidv7", uuidV7Check(table.operationId)),
     check("browser_observations_attempt_once", sql`${table.attemptNo} = 1`),
-    check(
-      "browser_observations_pages_range",
-      sql`${table.pagesAssessed} between 0 and 3`,
-    ),
+    check("browser_observations_pages_range", sql`${table.pagesAssessed} between 0 and 3`),
     check(
       "browser_observations_usage_nonnegative",
       sql`${table.usageUsd} is null or ${table.usageUsd} >= 0`,
@@ -464,18 +415,13 @@ export const browserObservations = pgTable(
       "browser_observations_budget_reservation_nonnegative",
       sql`${table.budgetReservedUsd} >= 0`,
     ),
-    uniqueIndex("browser_observations_operation_key_uidx").on(
-      table.operationKey,
-    ),
+    uniqueIndex("browser_observations_operation_key_uidx").on(table.operationKey),
     uniqueIndex("browser_observations_operation_id_uidx").on(table.operationId),
     uniqueIndex("browser_observations_scan_version_uidx").on(
       table.scanId,
       table.observationVersion,
     ),
-    index("browser_observations_status_queued_idx").on(
-      table.status,
-      table.queuedAt,
-    ),
+    index("browser_observations_status_queued_idx").on(table.status, table.queuedAt),
     index("browser_observations_run_idx").on(table.apifyRunId),
   ],
 );
@@ -484,23 +430,13 @@ export const browserObservationBudgetDays = pgTable(
   "browser_observation_budget_days",
   {
     budgetDay: date("budget_day", { mode: "string" }).primaryKey(),
-    reservedUsd: numeric("reserved_usd", { precision: 12, scale: 6 })
-      .notNull()
-      .default("0"),
-    usageUsd: numeric("usage_usd", { precision: 12, scale: 6 })
-      .notNull()
-      .default("0"),
+    reservedUsd: numeric("reserved_usd", { precision: 12, scale: 6 }).notNull().default("0"),
+    usageUsd: numeric("usage_usd", { precision: 12, scale: 6 }).notNull().default("0"),
     updatedAt: utcTimestamp("updated_at").notNull().defaultNow(),
   },
   (table) => [
-    check(
-      "browser_observation_budget_days_reserved_nonnegative",
-      sql`${table.reservedUsd} >= 0`,
-    ),
-    check(
-      "browser_observation_budget_days_usage_nonnegative",
-      sql`${table.usageUsd} >= 0`,
-    ),
+    check("browser_observation_budget_days_reserved_nonnegative", sql`${table.reservedUsd} >= 0`),
+    check("browser_observation_budget_days_usage_nonnegative", sql`${table.usageUsd} >= 0`),
   ],
 );
 
@@ -524,10 +460,7 @@ export const browserObservationFindings = pgTable(
       "browser_observation_findings_terminal_status",
       sql`${table.status} not in ('pending', 'running')`,
     ),
-    index("browser_observation_findings_status_idx").on(
-      table.observationId,
-      table.status,
-    ),
+    index("browser_observation_findings_status_idx").on(table.observationId, table.status),
   ],
 );
 
@@ -540,9 +473,7 @@ export const leadScans = pgTable(
     scanId: uuid("scan_id")
       .notNull()
       .references(() => scans.id, { onDelete: "cascade" }),
-    siteOwnershipClaim: boolean("site_ownership_claim")
-      .notNull()
-      .default(false),
+    siteOwnershipClaim: boolean("site_ownership_claim").notNull().default(false),
     createdAt: utcTimestamp("created_at").notNull().defaultNow(),
   },
   (table) => [primaryKey({ columns: [table.leadId, table.scanId] })],
@@ -590,10 +521,7 @@ export const scannerRecoveryIntents = pgTable(
       "scanner_recovery_intents_token_hash_format",
       sql`${table.tokenHash} is null or ${table.tokenHash} ~ '^[A-Za-z0-9_-]{43}$'`,
     ),
-    check(
-      "scanner_recovery_intents_state_hash_format",
-      sql`${table.stateHash} ~ '^[a-f0-9]{64}$'`,
-    ),
+    check("scanner_recovery_intents_state_hash_format", sql`${table.stateHash} ~ '^[a-f0-9]{64}$'`),
     check(
       "scanner_recovery_intents_activation",
       sql`(${table.tokenHash} is null and ${table.activatedAt} is null and ${table.consumedAt} is null) or (${table.tokenHash} is not null and ${table.activatedAt} is not null)`,
@@ -635,9 +563,7 @@ export const scannerIdentityCompletions = pgTable(
       "scanner_identity_completions_intent_kind",
       sql`${table.intentKind} in ('registration', 'recovery')`,
     ),
-    uniqueIndex("scanner_identity_completions_token_hash_uidx").on(
-      table.tokenHash,
-    ),
+    uniqueIndex("scanner_identity_completions_token_hash_uidx").on(table.tokenHash),
     index("scanner_identity_completions_retention_idx").on(table.retainUntil),
   ],
 );
@@ -656,10 +582,7 @@ export const scannerIdentityDeletionOperations = pgTable(
     completedAt: utcTimestamp("completed_at"),
   },
   (table) => [
-    check(
-      "scanner_identity_deletion_operations_id_uuidv7",
-      uuidV7Check(table.operationId),
-    ),
+    check("scanner_identity_deletion_operations_id_uuidv7", uuidV7Check(table.operationId)),
     check(
       "scanner_identity_deletion_operations_result",
       sql`${table.cabinetResult} is null or ${table.cabinetResult} in ('deleted', 'already_absent', 'retained')`,
@@ -668,9 +591,7 @@ export const scannerIdentityDeletionOperations = pgTable(
       "scanner_identity_deletion_operations_completion",
       sql`${table.completedAt} is null or ${table.cabinetResult} is not null`,
     ),
-    uniqueIndex("scanner_identity_deletion_operations_lead_uidx").on(
-      table.leadId,
-    ),
+    uniqueIndex("scanner_identity_deletion_operations_lead_uidx").on(table.leadId),
     index("scanner_identity_deletion_operations_pending_idx")
       .on(table.leaseExpiresAt, table.createdAt)
       .where(sql`${table.completedAt} is null`),
@@ -698,10 +619,7 @@ export const waitlistEntries = pgTable(
   },
   (table) => [
     check("waitlist_entries_id_uuidv7", uuidV7Check(table.id)),
-    uniqueIndex("waitlist_entries_lead_scan_uidx").on(
-      table.leadId,
-      table.scanId,
-    ),
+    uniqueIndex("waitlist_entries_lead_scan_uidx").on(table.leadId, table.scanId),
   ],
 );
 
@@ -784,10 +702,7 @@ export const analyticsEvents = pgTable(
     uniqueIndex("analytics_events_registration_business_uidx")
       .on(table.leadId, table.scanId, table.name)
       .where(sql`${table.name} = 'registration_completed'`),
-    index("analytics_events_name_occurred_idx").on(
-      table.name,
-      table.occurredAt,
-    ),
+    index("analytics_events_name_occurred_idx").on(table.name, table.occurredAt),
     index("analytics_events_segment_name_occurred_idx").on(
       table.segment,
       table.name,
@@ -814,14 +729,8 @@ export const deliveryOutbox = pgTable(
   (table) => [
     check("delivery_outbox_id_uuidv7", uuidV7Check(table.id)),
     check("delivery_outbox_attempts_nonnegative", sql`${table.attempts} >= 0`),
-    uniqueIndex("delivery_outbox_event_destination_uidx").on(
-      table.eventId,
-      table.destination,
-    ),
-    index("delivery_outbox_status_next_attempt_idx").on(
-      table.status,
-      table.nextAttemptAt,
-    ),
+    uniqueIndex("delivery_outbox_event_destination_uidx").on(table.eventId, table.destination),
+    index("delivery_outbox_status_next_attempt_idx").on(table.status, table.nextAttemptAt),
   ],
 );
 
@@ -845,18 +754,13 @@ export const rateWindows = pgTable(
     windowStart: utcTimestamp("window_start").notNull(),
     kind: text("kind").notNull(),
     count: integer("count").notNull().default(0),
-    challengePassedCount: integer("challenge_passed_count")
-      .notNull()
-      .default(0),
+    challengePassedCount: integer("challenge_passed_count").notNull().default(0),
     expiresAt: utcTimestamp("expires_at").notNull(),
   },
   (table) => [
     primaryKey({ columns: [table.keyHash, table.windowStart, table.kind] }),
     check("rate_windows_count_nonnegative", sql`${table.count} >= 0`),
-    check(
-      "rate_windows_challenge_count_nonnegative",
-      sql`${table.challengePassedCount} >= 0`,
-    ),
+    check("rate_windows_challenge_count_nonnegative", sql`${table.challengePassedCount} >= 0`),
     index("rate_windows_expires_idx").on(table.expiresAt),
   ],
 );
@@ -873,11 +777,7 @@ export const rateLimitEvents = pgTable(
   },
   (table) => [
     check("rate_limit_events_id_uuidv7", uuidV7Check(table.id)),
-    index("rate_limit_events_lookup_idx").on(
-      table.keyHash,
-      table.kind,
-      table.occurredAt,
-    ),
+    index("rate_limit_events_lookup_idx").on(table.keyHash, table.kind, table.occurredAt),
     index("rate_limit_events_expires_idx").on(table.expiresAt),
   ],
 );

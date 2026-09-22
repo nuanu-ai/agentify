@@ -7,8 +7,8 @@ import { PrivacyChoicesButton } from "../../../components/privacy-choices-button
 import { PublicResultCard } from "../../../components/public-result-card";
 import { UrlScanForm } from "../../../components/url-scan-form";
 import { getPublicAppConfig } from "../../../lib/app-config";
-import { shareCopy } from "../../../lib/share-copy";
 import { getPublicShare } from "../../../lib/server/reporting";
+import { shareCopy } from "../../../lib/share-copy";
 import styles from "./share.module.css";
 
 export async function generateMetadata({
@@ -19,7 +19,7 @@ export async function generateMetadata({
   const { slug } = await params;
   const { displayBrand } = getPublicAppConfig();
   const share = await getPublicShare(slug);
-  if (!share || share.status !== "published")
+  if (share?.status !== "published")
     return {
       title: "Result unavailable",
       robots: { index: false, follow: false },
@@ -52,14 +52,10 @@ export async function generateMetadata({
   };
 }
 
-export default async function PublicSharePage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
+export default async function PublicSharePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const share = await getPublicShare(slug);
-  if (!share || share.status !== "published") notFound();
+  if (share?.status !== "published") notFound();
   const snapshot = share.snapshot;
   const scanDate = new Intl.DateTimeFormat("en-US", {
     dateStyle: "medium",
@@ -84,12 +80,7 @@ export default async function PublicSharePage({
         <section className={styles.cta}>
           <h2>Curious how your own site reads?</h2>
           <p>Run the same scan — no login or plugin.</p>
-          <UrlScanForm
-            compact
-            cta="Scan"
-            segment="owner"
-            variant="share-result-v1"
-          />
+          <UrlScanForm compact cta="Scan" segment="owner" variant="share-result-v1" />
         </section>
       </main>
       <footer className={styles.footer}>

@@ -1,9 +1,8 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
-
-import styles from "./turnstile-challenge.module.css";
+import { useEffect, useRef } from "react";
 import type { TurnstileAction } from "../lib/server/turnstile";
+import styles from "./turnstile-challenge.module.css";
 
 export const TURNSTILE_TOKEN_EVENT = "agentify:turnstile-token";
 
@@ -18,9 +17,7 @@ export function TurnstileChallenge({
     const callbackName = `agentifyTurnstile_${crypto.randomUUID().replaceAll("-", "")}`;
     const windowRecord = window as unknown as Record<string, unknown>;
     windowRecord[callbackName] = (token: string) => {
-      window.dispatchEvent(
-        new CustomEvent(TURNSTILE_TOKEN_EVENT, { detail: token }),
-      );
+      window.dispatchEvent(new CustomEvent(TURNSTILE_TOKEN_EVENT, { detail: token }));
     };
     containerRef.current.dataset.sitekey = siteKey;
     containerRef.current.dataset.callback = callbackName;
@@ -44,10 +41,7 @@ export function TurnstileChallenge({
       {siteKey ? (
         <div data-sitekey={siteKey} ref={containerRef} />
       ) : (
-        <p>
-          Challenge is not configured in this environment. Retry from a
-          configured deployment.
-        </p>
+        <p>Challenge is not configured in this environment. Retry from a configured deployment.</p>
       )}
     </div>
   );

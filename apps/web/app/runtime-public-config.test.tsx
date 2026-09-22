@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
-
-import RootLayout from "./layout";
 import { getPublicAppConfig } from "../lib/app-config";
 import { getCardSignalPublicConfig } from "../lib/server/stripe-card-signal-config";
+import RootLayout from "./layout";
 
 const originalEnv = { ...process.env };
 
@@ -67,9 +66,7 @@ describe("browser-visible runtime configuration", () => {
       POSTHOG_BROWSER_HOST: "",
     });
 
-    expect(() => RootLayout({ children: null })).toThrow(
-      "browser_posthog_requires_key_and_host",
-    );
+    expect(() => RootLayout({ children: null })).toThrow("browser_posthog_requires_key_and_host");
   });
 
   it("passes the Stripe publishable key through the authenticated report server boundary", () => {

@@ -9,7 +9,7 @@ RUN corepack enable && corepack prepare pnpm@11.12.0 --activate
 FROM base AS dependencies
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY tsconfig.scanner.json ./
+COPY tsconfig.base.json ./
 COPY packages/scanner-contracts/package.json packages/scanner-contracts/package.json
 COPY packages/scanner-database/package.json packages/scanner-database/package.json
 COPY packages/analytics/package.json packages/analytics/package.json

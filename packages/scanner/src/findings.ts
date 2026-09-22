@@ -25,16 +25,12 @@ const priorityIndex = (segment: Segment, id: number): number => {
   return index === -1 ? 100 + id : index;
 };
 
-export const selectFindings = (
-  segment: Segment,
-  checks: readonly CheckResult[],
-) => {
+export const selectFindings = (segment: Segment, checks: readonly CheckResult[]) => {
   const sorted = checks
     .filter((check) => check.status === "fail" || check.status === "partial")
     .sort((left, right) => {
       if (left.status !== right.status) return left.status === "fail" ? -1 : 1;
-      const impact =
-        priorityIndex(segment, left.id) - priorityIndex(segment, right.id);
+      const impact = priorityIndex(segment, left.id) - priorityIndex(segment, right.id);
       if (impact) return impact;
       const leftLoss = left.applicableWeight - left.earnedWeight;
       const rightLoss = right.applicableWeight - right.earnedWeight;
@@ -51,10 +47,7 @@ export const selectFindings = (
   }
   const positive = checks
     .filter((check) => check.status === "pass" && check.earnedWeight > 0)
-    .sort(
-      (left, right) =>
-        right.earnedWeight - left.earnedWeight || left.id - right.id,
-    )[0];
+    .sort((left, right) => right.earnedWeight - left.earnedWeight || left.id - right.id)[0];
   return {
     negativeCheckIds: negatives,
     ...(positive ? { positiveCheckId: positive.id } : {}),

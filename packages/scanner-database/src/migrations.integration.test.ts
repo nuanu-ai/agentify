@@ -1,31 +1,23 @@
+import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-
-import { Pool } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { z } from "zod";
 import {
   BROWSER_OBSERVATION_IDS,
   BROWSER_OBSERVATION_VERSION,
   type CheckResult,
   type ScanJobV1,
 } from "@agentify/scanner-contracts";
-
-import { createDatabase } from "./client.js";
-import {
-  createBusinessEventStore,
-  insertBusinessEventOnce,
-} from "./analytics-event-store.js";
-import { createUuidV7 } from "./ids.js";
-import { recordWorkerHeartbeat } from "./heartbeat.js";
+import { Pool } from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
+import { createBusinessEventStore, insertBusinessEventOnce } from "./analytics-event-store.js";
 import { emitStoredBusinessEvent } from "./analytics-runtime.js";
 import { createBrowserObservationRepository } from "./browser-observation-repository.js";
-import {
-  migrateDatabase,
-  migrateDatabaseThroughIdentityPreflight,
-} from "./migrate.js";
+import { createDatabase } from "./client.js";
+import { recordWorkerHeartbeat } from "./heartbeat.js";
+import { createUuidV7 } from "./ids.js";
+import { migrateDatabase, migrateDatabaseThroughIdentityPreflight } from "./migrate.js";
 import { createScanJobRepository } from "./scan-job-repository.js";
 
 const TABLES = [
@@ -62,56 +54,39 @@ const connectionString = z
   .parse(process.env.MIGRATION_TEST_DATABASE_URL);
 const databaseName = new URL(connectionString).pathname.slice(1);
 if (!databaseName.endsWith("_migration_test")) {
-  throw new Error(
-    "MIGRATION_TEST_DATABASE_URL must name a dedicated *_migration_test database",
-  );
+  throw new Error("MIGRATION_TEST_DATABASE_URL must name a dedicated *_migration_test database");
 }
 
-const migrationsFolder = fileURLToPath(
-  new URL("../migrations", import.meta.url),
-);
-const downFile = fileURLToPath(
-  new URL("../scripts/0000_initial.down.sql", import.meta.url),
-);
+const migrationsFolder = fileURLToPath(new URL("../migrations", import.meta.url));
+const downFile = fileURLToPath(new URL("../scripts/0000_initial.down.sql", import.meta.url));
 const dashboardInstallFile = fileURLToPath(
-  new URL(
-    "../../../ops/dashboards/install-aggregate-views.sql",
-    import.meta.url,
-  ),
+  new URL("../../../ops/dashboards/install-aggregate-views.sql", import.meta.url),
 );
 const adminPool = new Pool({ connectionString, max: 1 });
 const executeFile = promisify(execFile);
 const queueInitCli = fileURLToPath(
-  new URL(
-    "../../../apps/scanner-worker/src/queue-init-cli.ts",
-    import.meta.url,
-  ),
+  new URL("../../../apps/scanner-worker/src/queue-init-cli.ts", import.meta.url),
 );
 const scannerWorkerTsx = fileURLToPath(
-  new URL(
-    "../../../apps/scanner-worker/node_modules/.bin/tsx",
-    import.meta.url,
-  ),
+  new URL("../../../apps/scanner-worker/node_modules/.bin/tsx", import.meta.url),
 );
 
 type LegacyPrivacyAuditShape =
-  "legacy" | "registration-second" | "registration-last" | "unexpected";
+  | "legacy"
+  | "registration-second"
+  | "registration-last"
+  | "unexpected";
 
 function legacyPrivacyAuditViewSql(shape: LegacyPrivacyAuditShape): string {
   const columns = {
-    token:
-      "(select count(*) from public.verification_tokens) as overdue_verification_tokens",
+    token: "(select count(*) from public.verification_tokens) as overdue_verification_tokens",
     registration:
       "(select count(*) from public.registration_intents) as overdue_registration_intents",
-    unverified:
-      "(select count(*) from public.leads) as overdue_unverified_leads",
-    sessions:
-      "(select count(*) from public.report_sessions) as expired_active_report_sessions",
+    unverified: "(select count(*) from public.leads) as overdue_unverified_leads",
+    sessions: "(select count(*) from public.report_sessions) as expired_active_report_sessions",
     shares: "(select count(*) from public.scan_shares) as active_public_shares",
-    signals:
-      "(select count(*) from public.payment_signals) as attached_card_signals",
-    deadLetters:
-      "(select count(*) from public.delivery_outbox) as analytics_dead_letters",
+    signals: "(select count(*) from public.payment_signals) as attached_card_signals",
+    deadLetters: "(select count(*) from public.delivery_outbox) as analytics_dead_letters",
   } as const;
   const common = [
     columns.unverified,
@@ -233,10 +208,9 @@ describe("initial database migration", () => {
       const leadId = createUuidV7();
       const reportId = createUuidV7();
       const oldAuthId = "scanner-migration-test-user";
-      await pool.query(
-        "insert into sessions (id, anonymous_id_hash) values ($1, 'old-session')",
-        [sessionId],
-      );
+      await pool.query("insert into sessions (id, anonymous_id_hash) values ($1, 'old-session')", [
+        sessionId,
+      ]);
       await pool.query(
         `insert into scanner_auth_users (id, email, email_verified)
          values ($1, 'scanner-migration@example.com', true)`,
@@ -271,12 +245,8 @@ describe("initial database migration", () => {
         /scanner_identity_cleanup_requires_verified_cutover/,
       );
       expect(
-        (
-          await pool.query(
-            "select scanner_auth_user_id from leads where id = $1",
-            [leadId],
-          )
-        ).rows[0]?.scanner_auth_user_id,
+        (await pool.query("select scanner_auth_user_id from leads where id = $1", [leadId])).rows[0]
+          ?.scanner_auth_user_id,
       ).toBe(oldAuthId);
 
       await pool.query(`create table scanner_identity_cutover_ready (
@@ -301,9 +271,7 @@ describe("initial database migration", () => {
         "insert into scanner_identity_cutover_ready (id, plan_digest) values (true, $1)",
         ["b".repeat(64)],
       );
-      await expect(
-        pool.query("drop table verification_tokens"),
-      ).rejects.toThrow(
+      await expect(pool.query("drop table verification_tokens")).rejects.toThrow(
         /cannot drop table verification_tokens because other objects depend on it/,
       );
       await migrateDatabase(db, migrationsFolder);
@@ -380,9 +348,7 @@ describe("initial database migration", () => {
         await pool.query(legacyPrivacyAuditViewSql(shape));
         const identity = await privacyAuditIdentity(pool);
 
-        await expect(
-          pool.query("drop table verification_tokens"),
-        ).rejects.toThrow(
+        await expect(pool.query("drop table verification_tokens")).rejects.toThrow(
           /cannot drop table verification_tokens because other objects depend on it/,
         );
 
@@ -415,9 +381,7 @@ describe("initial database migration", () => {
               as view_definition
         `);
         expect(dependency.rows[0]?.legacy_dependencies).toBe(0);
-        expect(dependency.rows[0]?.view_definition).not.toMatch(
-          /verification_tokens/,
-        );
+        expect(dependency.rows[0]?.view_definition).not.toMatch(/verification_tokens/);
       } finally {
         await pool.end();
       }
@@ -496,10 +460,7 @@ describe("initial database migration", () => {
         env: { ...process.env, DATABASE_URL: connectionString },
         timeout: 30_000,
       });
-      for (const table of [
-        "scanner_recovery_intents",
-        "scanner_identity_completions",
-      ]) {
+      for (const table of ["scanner_recovery_intents", "scanner_identity_completions"]) {
         const grants = await pool.query(`select
           has_table_privilege('agentify_web', 'public.${table}', 'SELECT,INSERT,UPDATE,DELETE') as web_crud,
           has_table_privilege('agentify_privacy', 'public.${table}', 'SELECT,DELETE') as privacy_cleanup,
@@ -530,11 +491,7 @@ describe("initial database migration", () => {
         service_select: false,
       });
       await expect(
-        queryAsRole(
-          pool,
-          "agentify_worker",
-          "select * from public.scanner_recovery_intents",
-        ),
+        queryAsRole(pool, "agentify_worker", "select * from public.scanner_recovery_intents"),
       ).rejects.toThrow(/permission denied/);
       await expect(
         queryAsRole(
@@ -581,9 +538,7 @@ describe("initial database migration", () => {
       }>(
         "select tablename, rowsecurity from pg_tables where schemaname = 'public' order by tablename",
       );
-      expect(tableRows.rows.map(({ tablename }) => tablename)).toEqual(
-        [...TABLES].sort(),
-      );
+      expect(tableRows.rows.map(({ tablename }) => tablename)).toEqual([...TABLES].sort());
       expect(tableRows.rows.every(({ rowsecurity }) => rowsecurity)).toBe(true);
 
       await pool.query(`
@@ -630,12 +585,7 @@ describe("initial database migration", () => {
           ($3, $4, 'owner', 'gtm-v1.0.0', 'https://example.org/',
            'https://example.org/', 'example.org', 'operator-target-b',
            'operator-token-b', now() + interval '1 hour', 'operator-key-b', 'operator-body-b')`,
-        [
-          createUuidV7(),
-          operatorSessionIds[0],
-          createUuidV7(),
-          operatorSessionIds[1],
-        ],
+        [createUuidV7(), operatorSessionIds[0], createUuidV7(), operatorSessionIds[1]],
       );
       const operatorViews = await pool.query<{ table_name: string }>(`
         select table_name
@@ -658,9 +608,9 @@ describe("initial database migration", () => {
         accepted_requests_24h: "2",
         challenge_passes_24h: "1",
       });
-      expect(
-        (await pool.query("select * from metabase.operator_daily_funnel")).rows,
-      ).toHaveLength(30);
+      expect((await pool.query("select * from metabase.operator_daily_funnel")).rows).toHaveLength(
+        30,
+      );
       const budgetViewColumns = await pool.query<{ column_name: string }>(`
         select column_name
         from information_schema.columns
@@ -668,9 +618,7 @@ describe("initial database migration", () => {
           and table_name = 'browser_observation_budget_health'
         order by ordinal_position
       `);
-      expect(
-        budgetViewColumns.rows.map(({ column_name }) => column_name),
-      ).toEqual([
+      expect(budgetViewColumns.rows.map(({ column_name }) => column_name)).toEqual([
         "budget_day",
         "reconciled_usage_usd",
         "reserved_usage_usd",
@@ -809,16 +757,14 @@ describe("initial database migration", () => {
       }>(
         "select started_at, metadata from worker_heartbeats where worker_id = 'restart-fence-worker'",
       );
-      expect(restartFence.rows[0]?.started_at.toISOString()).toBe(
-        newWorkerStart.toISOString(),
-      );
+      expect(restartFence.rows[0]?.started_at.toISOString()).toBe(newWorkerStart.toISOString());
       expect(restartFence.rows[0]?.metadata).toEqual({ generation: "new" });
 
       const sessionId = createUuidV7();
-      await pool.query(
-        "insert into sessions (id, anonymous_id_hash) values ($1, $2)",
-        [sessionId, "anon-hash"],
-      );
+      await pool.query("insert into sessions (id, anonymous_id_hash) values ($1, $2)", [
+        sessionId,
+        "anon-hash",
+      ]);
       const scanValues = [
         createUuidV7(),
         sessionId,
@@ -886,9 +832,7 @@ describe("initial database migration", () => {
       expect(secondLease.state).toBe("claimed");
       if (firstLease.state !== "claimed" || secondLease.state !== "claimed")
         throw new Error("browser lease setup failed");
-      expect(secondLease.observation.leaseToken).not.toBe(
-        firstLease.observation.leaseToken,
-      );
+      expect(secondLease.observation.leaseToken).not.toBe(firstLease.observation.leaseToken);
       await expect(
         browserRepository.attachRun(
           browserObservationId,
@@ -1040,10 +984,9 @@ describe("initial database migration", () => {
         ),
       );
       expect([...budgetResults].sort()).toEqual(["exhausted", "reserved"]);
-      const reservedIndex = budgetResults.findIndex(
-        (result) => result === "reserved",
-      );
-      const reservedRow = budgetRows[reservedIndex]!;
+      const reservedIndex = budgetResults.indexOf("reserved");
+      const reservedRow = budgetRows[reservedIndex];
+      if (!reservedRow) throw new Error("no row reserved the browser observation budget");
       await expect(
         browserRepository.attachRun(
           reservedRow.observationId,
@@ -1113,15 +1056,9 @@ describe("initial database migration", () => {
       );
       expect(Number(reconciledBudget.rows[0]?.reserved_usd)).toBe(0);
       expect(Number(reconciledBudget.rows[0]?.usage_usd)).toBe(0.002566);
-      expect(Number(reconciledBudget.rows[0]?.observation_reserved_usd)).toBe(
-        0,
-      );
-      expect(Number(reconciledBudget.rows[0]?.observation_usage_usd)).toBe(
-        0.002566,
-      );
-      expect(reconciledBudget.rows[0]?.usage_reconciled_at).toBeInstanceOf(
-        Date,
-      );
+      expect(Number(reconciledBudget.rows[0]?.observation_reserved_usd)).toBe(0);
+      expect(Number(reconciledBudget.rows[0]?.observation_usage_usd)).toBe(0.002566);
+      expect(reconciledBudget.rows[0]?.usage_reconciled_at).toBeInstanceOf(Date);
 
       await expect(
         pool.query(
@@ -1186,15 +1123,13 @@ describe("initial database migration", () => {
         durationMs: 1,
       };
       await expect(repository.claim(scanJob)).resolves.toBe("claimed");
-      await expect(
-        repository.upsertCheck(scanJob.scan_id, 1, scanCheck, new Date()),
-      ).resolves.toBe(true);
-      await expect(
-        repository.claim({ ...scanJob, attempt_no: 2 }),
-      ).resolves.toBe("claimed");
-      await expect(
-        repository.upsertCheck(scanJob.scan_id, 1, scanCheck, new Date()),
-      ).resolves.toBe(false);
+      await expect(repository.upsertCheck(scanJob.scan_id, 1, scanCheck, new Date())).resolves.toBe(
+        true,
+      );
+      await expect(repository.claim({ ...scanJob, attempt_no: 2 })).resolves.toBe("claimed");
+      await expect(repository.upsertCheck(scanJob.scan_id, 1, scanCheck, new Date())).resolves.toBe(
+        false,
+      );
       await expect(
         repository.upsertCheck(
           scanJob.scan_id,
@@ -1355,13 +1290,11 @@ describe("initial database migration", () => {
           });
         }),
       );
-      expect(concurrentResults.filter(({ inserted }) => inserted)).toHaveLength(
-        1,
-      );
-      expect(new Set(concurrentResults.map(({ eventId: id }) => id)).size).toBe(
-        1,
-      );
-      const concurrentEventId = concurrentResults[0]!.eventId;
+      expect(concurrentResults.filter(({ inserted }) => inserted)).toHaveLength(1);
+      expect(new Set(concurrentResults.map(({ eventId: id }) => id)).size).toBe(1);
+      const [firstConcurrent] = concurrentResults;
+      if (!firstConcurrent) throw new Error("the concurrent inserts answered with nothing");
+      const concurrentEventId = firstConcurrent.eventId;
       const concurrentStored = await pool.query<{
         events: string;
         outbox: string;
@@ -1406,9 +1339,7 @@ describe("initial database migration", () => {
         [runtimeAllowed.eventId],
       );
       expect(runtimeAllowedOutbox.rows[0]?.count).toBe("2");
-      expect(runtimeAllowedOutbox.rows[0]?.payload).not.toMatch(
-        /example\.com|token=nope/i,
-      );
+      expect(runtimeAllowedOutbox.rows[0]?.payload).not.toMatch(/example\.com|token=nope/i);
 
       const deniedConsentId = createUuidV7();
       await pool.query(

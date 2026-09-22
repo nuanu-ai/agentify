@@ -1,4 +1,4 @@
-import { type NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 
 import { REPORT_SESSION_COOKIE } from "../../../../../../../lib/server/auth";
 import { getServerConfig } from "../../../../../../../lib/server/config";
@@ -13,26 +13,13 @@ export async function GET(
   { params }: { params: Promise<{ scanId: string }> },
 ) {
   if (!getServerConfig().REMEDIATION_PROMPT_ENABLED)
-    return errorResponse(
-      request,
-      404,
-      "not_found",
-      "Prompt export is disabled.",
-    );
+    return errorResponse(request, 404, "not_found", "Prompt export is disabled.");
   const { scanId } = await params;
   const result = await getFullRemediationPrompt(
     scanId,
     request.cookies.get(REPORT_SESSION_COOKIE)?.value,
   );
   if (!result)
-    return errorResponse(
-      request,
-      404,
-      "prompt_not_found",
-      "No authorized prompt is available.",
-    );
-  return markdownDownloadResponse(
-    result.content,
-    "agentify-complete-implementation-prompt.md",
-  );
+    return errorResponse(request, 404, "prompt_not_found", "No authorized prompt is available.");
+  return markdownDownloadResponse(result.content, "agentify-complete-implementation-prompt.md");
 }

@@ -1,39 +1,35 @@
 import {
+  createLogger,
+  type StructuredLogger,
+  safeErrorCode,
+  safeErrorType,
+} from "@agentify/observability";
+import {
   createBrowserObservationRepository,
   createDatabase,
   createScanJobRepository,
   normalizeNodePostgresConnectionString,
   recordWorkerHeartbeat,
 } from "@agentify/scanner-database";
-import {
-  createLogger,
-  safeErrorCode,
-  safeErrorType,
-  type StructuredLogger,
-} from "@agentify/observability";
 import { PgBoss } from "pg-boss";
-
-import type { WorkerEnv } from "./env.js";
-import type { WorkerHealth } from "./health.js";
-import { ApifyBrowserProviderClient } from "./apify-browser-client.js";
-import { startBrowserObservationJanitor } from "./browser-observation-janitor.js";
 import {
+  type AdvisoryLockPool,
   AnalyticsOutboxRepository,
   createDestinationDeliverer,
   createPartnerRateLimitedDeliverer,
-  startAnalyticsOutboxConsumer,
-  type AdvisoryLockPool,
   type SqlPool,
+  startAnalyticsOutboxConsumer,
 } from "./analytics-outbox.js";
-import { NodePinnedTransport, systemDnsResolver } from "./safe-fetch.js";
+import { ApifyBrowserProviderClient } from "./apify-browser-client.js";
+import { startBrowserObservationJanitor } from "./browser-observation-janitor.js";
 import { registerBrowserObservationWorker } from "./browser-observation-job.js";
 import { startBrowserObservationReconciler } from "./browser-observation-reconciler.js";
+import type { WorkerEnv } from "./env.js";
+import type { WorkerHealth } from "./health.js";
+import { refreshWorkerReadiness, type WorkerReadinessSnapshot } from "./readiness.js";
+import { NodePinnedTransport, systemDnsResolver } from "./safe-fetch.js";
 import { registerScanWorker, type ScanBoss } from "./scan-job.js";
 import { ScanRunner } from "./scan-runner.js";
-import {
-  refreshWorkerReadiness,
-  type WorkerReadinessSnapshot,
-} from "./readiness.js";
 
 type WorkerMetric = {
   name: string;
@@ -45,10 +41,7 @@ type WorkerMetric = {
   attemptNo?: number;
 };
 
-const emitWorkerMetric = (
-  logger: StructuredLogger,
-  metric: WorkerMetric,
-): void => {
+const emitWorkerMetric = (logger: StructuredLogger, metric: WorkerMetric): void => {
   const attributes = {
     metric: metric.name,
     value: metric.value,
@@ -94,9 +87,7 @@ export async function startWorkerInfrastructure(
     logger.error("worker_queue_error", {
       error_type: safeErrorType(error),
       error_code: safeErrorCode(error),
-      ...(suppressedQueueErrors
-        ? { suppressed_count: suppressedQueueErrors }
-        : {}),
+      ...(suppressedQueueErrors ? { suppressed_count: suppressedQueueErrors } : {}),
     });
     lastQueueErrorAt = now;
     suppressedQueueErrors = 0;
@@ -115,9 +106,7 @@ export async function startWorkerInfrastructure(
     logger.error("worker_database_error", {
       error_type: safeErrorType(error),
       error_code: safeErrorCode(error),
-      ...(suppressedDatabaseErrors
-        ? { suppressed_count: suppressedDatabaseErrors }
-        : {}),
+      ...(suppressedDatabaseErrors ? { suppressed_count: suppressedDatabaseErrors } : {}),
     });
     lastDatabaseErrorAt = now;
     suppressedDatabaseErrors = 0;
@@ -143,8 +132,7 @@ export async function startWorkerInfrastructure(
     expireInSeconds: 60,
   });
   const repository = createScanJobRepository(db);
-  const browserActive =
-    env.APIFY_BROWSER_ENABLED && env.APIFY_BROWSER_MODE !== "off";
+  const browserActive = env.APIFY_BROWSER_ENABLED && env.APIFY_BROWSER_MODE !== "off";
   const browserRepository = createBrowserObservationRepository(db);
   const enqueueBrowserObservation = async (job: {
     observation_id: string;
@@ -197,13 +185,10 @@ export async function startWorkerInfrastructure(
         });
       },
       onBudgetExceeded: (observationId, dayTotalUsd) => {
-        logger.error(
-          "browser_observation_budget_exceeded_after_reconciliation",
-          {
-            observation_id: observationId,
-            usage_usd: dayTotalUsd,
-          },
-        );
+        logger.error("browser_observation_budget_exceeded_after_reconciliation", {
+          observation_id: observationId,
+          usage_usd: dayTotalUsd,
+        });
       },
       onCleanupError: (observationId) => {
         logger.error("browser_observation_cleanup_failed", {
@@ -244,13 +229,10 @@ export async function startWorkerInfrastructure(
   const stopAnalyticsConsumer =
     env.POSTHOG_ENABLED || env.META_CAPI_ENABLED
       ? startAnalyticsOutboxConsumer({
-          repository: new AnalyticsOutboxRepository(
-            pool as unknown as SqlPool,
-            [
-              ...(env.POSTHOG_ENABLED ? (["posthog"] as const) : []),
-              ...(env.META_CAPI_ENABLED ? (["meta"] as const) : []),
-            ],
-          ),
+          repository: new AnalyticsOutboxRepository(pool as unknown as SqlPool, [
+            ...(env.POSTHOG_ENABLED ? (["posthog"] as const) : []),
+            ...(env.META_CAPI_ENABLED ? (["meta"] as const) : []),
+          ]),
           deliver: createDestinationDeliverer({
             runtimeEnvironment: env.ANALYTICS_ENV,
             posthog: {
@@ -272,9 +254,7 @@ export async function startWorkerInfrastructure(
       : () => {};
   const stopPartnerConsumer = env.PARTNER_POSTBACK_ENABLED
     ? startAnalyticsOutboxConsumer({
-        repository: new AnalyticsOutboxRepository(pool as unknown as SqlPool, [
-          "partner_tracker",
-        ]),
+        repository: new AnalyticsOutboxRepository(pool as unknown as SqlPool, ["partner_tracker"]),
         deliver: createPartnerRateLimitedDeliverer(
           pool as unknown as AdvisoryLockPool,
           createDestinationDeliverer({
@@ -327,9 +307,7 @@ export async function startWorkerInfrastructure(
             queue_connected: readiness.queueConnected,
             database_connected: readiness.databaseConnected,
             configured_concurrency: env.SCANNER_CONCURRENCY,
-            browser_observation_mode: browserActive
-              ? env.APIFY_BROWSER_MODE
-              : "off",
+            browser_observation_mode: browserActive ? env.APIFY_BROWSER_MODE : "off",
           },
         });
       },

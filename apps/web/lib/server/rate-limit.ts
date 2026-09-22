@@ -1,8 +1,5 @@
+import { createUuidV7, type DatabaseTransaction } from "@agentify/scanner-database";
 import { sql } from "drizzle-orm";
-import {
-  createUuidV7,
-  type DatabaseTransaction,
-} from "@agentify/scanner-database";
 
 import { getDatabase } from "./database";
 
@@ -120,13 +117,15 @@ async function recordRateConsumption(
     `);
     return;
   }
+  if (!locked.windowStart)
+    throw new Error(`a ${locked.entry.kind} window was locked without a window start`);
   await tx.execute(sql`
     update rate_windows
     set count = count + 1,
         challenge_passed_count = challenge_passed_count + ${challengePassed ? 1 : 0},
         expires_at = ${locked.expiresAt}
     where key_hash = ${locked.entry.keyHash}
-      and window_start = ${locked.windowStart!}
+      and window_start = ${locked.windowStart}
       and kind = ${locked.entry.kind}
   `);
 }
@@ -181,16 +180,12 @@ export async function consumeRateLimitsAtomically(
   );
   const consume = async (tx: DatabaseTransaction) => {
     const locked: LockedRateEntry[] = [];
-    for (const entry of ordered)
-      locked.push(await lockRateEntry(tx, entry, now));
-    if (locked.some(({ count, entry }) => count >= entry.limit))
-      return { allowed: false };
+    for (const entry of ordered) locked.push(await lockRateEntry(tx, entry, now));
+    if (locked.some(({ count, entry }) => count >= entry.limit)) return { allowed: false };
     for (const entry of locked) await recordRateConsumption(tx, entry, now);
     return { allowed: true };
   };
-  return transaction
-    ? await consume(transaction)
-    : await getDatabase().db.transaction(consume);
+  return transaction ? await consume(transaction) : await getDatabase().db.transaction(consume);
 }
 
 export async function consumeScanRateLimits(input: {
@@ -210,23 +205,16 @@ export async function consumeScanRateLimits(input: {
   const { db } = getDatabase();
   return await db.transaction(async (tx) => {
     const locked: LockedRateEntry[] = [];
-    for (const entry of ordered)
-      locked.push(await lockRateEntry(tx, entry, now));
-    const ip = locked.find(({ entry }) => entry.kind === "scan_ip_hour")!;
-    const target = locked.find(
-      ({ entry }) => entry.kind === "scan_target_day",
-    )!;
+    for (const entry of ordered) locked.push(await lockRateEntry(tx, entry, now));
+    const ip = locked.find(({ entry }) => entry.kind === "scan_ip_hour");
+    const target = locked.find(({ entry }) => entry.kind === "scan_target_day");
+    if (!ip || !target)
+      throw new Error("a scan was rate-checked without both its ip window and its target window");
 
-    if (ip.count >= ip.entry.limit || target.count >= target.entry.limit)
-      return "hard_rate_limit";
+    if (ip.count >= ip.entry.limit || target.count >= target.entry.limit) return "hard_rate_limit";
     if (ip.count >= 3 && !input.challengePassed) return "challenge_required";
 
-    await recordRateConsumption(
-      tx,
-      ip,
-      now,
-      input.challengePassed && ip.count >= 3,
-    );
+    await recordRateConsumption(tx, ip, now, input.challengePassed && ip.count >= 3);
     await recordRateConsumption(tx, target, now);
     return "allowed";
   });

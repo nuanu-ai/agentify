@@ -70,11 +70,7 @@ const makeArtifacts = (segment: Segment): ScanArtifacts => ({
       '{"name":"MCP","endpoint":"https://example.com/mcp"}',
       { headers: { "content-type": "application/json" } },
     ),
-    artifact(
-      "https://example.com/.well-known/mcp/server-card.json",
-      "not found",
-      { status: 404 },
-    ),
+    artifact("https://example.com/.well-known/mcp/server-card.json", "not found", { status: 404 }),
   ],
   ...(segment === "store"
     ? {
@@ -99,9 +95,7 @@ describe("18-check engine", () => {
     expect(evaluation.checks.map((check) => check.id)).toEqual(
       Array.from({ length: 18 }, (_, index) => index + 1),
     );
-    expect(
-      evaluation.checks.reduce((sum, check) => sum + check.nominalWeight, 0),
-    ).toBe(100);
+    expect(evaluation.checks.reduce((sum, check) => sum + check.nominalWeight, 0)).toBe(100);
     expect(evaluation.score.nominalWeight).toBe(100);
     expect(evaluation.fingerprint.platform).toMatchObject({ value: "Shopify" });
   });
@@ -111,34 +105,20 @@ describe("18-check engine", () => {
     input.llms = artifact("https://example.com/llms.txt", "not found", {
       status: 404,
     });
-    input.a2a = artifact(
-      "https://example.com/.well-known/agent-card.json",
-      "not found",
-      { status: 404 },
-    );
+    input.a2a = artifact("https://example.com/.well-known/agent-card.json", "not found", {
+      status: 404,
+    });
     input.base = artifact(
       "https://example.com/",
       html.replace(/<link rel="alternate" hreflang="de"[^>]+>/, ""),
     );
     const checks = evaluateScan(input).checks;
-    expect(checks.find((check) => check.id === 10)?.status).toBe(
-      "not_applicable",
-    );
-    expect(checks.find((check) => check.id === 11)?.status).toBe(
-      "not_applicable",
-    );
-    expect(checks.find((check) => check.id === 15)?.status).toBe(
-      "not_applicable",
-    );
-    expect(checks.find((check) => check.id === 8)?.status).toBe(
-      "not_applicable",
-    );
-    expect(checks.find((check) => check.id === 17)?.status).toBe(
-      "not_applicable",
-    );
-    expect(checks.find((check) => check.id === 18)?.status).toBe(
-      "not_applicable",
-    );
+    expect(checks.find((check) => check.id === 10)?.status).toBe("not_applicable");
+    expect(checks.find((check) => check.id === 11)?.status).toBe("not_applicable");
+    expect(checks.find((check) => check.id === 15)?.status).toBe("not_applicable");
+    expect(checks.find((check) => check.id === 8)?.status).toBe("not_applicable");
+    expect(checks.find((check) => check.id === 17)?.status).toBe("not_applicable");
+    expect(checks.find((check) => check.id === 18)?.status).toBe("not_applicable");
   });
 
   it("turns unavailable checks into coverage loss, not score loss", () => {
@@ -153,9 +133,7 @@ describe("18-check engine", () => {
     });
     input.agentProbes = {};
     const evaluation = evaluateScan(input);
-    expect(evaluation.checks.find((check) => check.id === 12)?.status).toBe(
-      "unavailable",
-    );
+    expect(evaluation.checks.find((check) => check.id === 12)?.status).toBe("unavailable");
     expect(evaluation.score.coverage).toBeLessThan(1);
     expect(evaluation.score.terminalStatus).toBe("partial");
   });
@@ -172,9 +150,7 @@ describe("18-check engine", () => {
       headers: { "content-type": "text/html" },
     });
 
-    expect(
-      evaluateScan(input).checks.find((check) => check.id === 7),
-    ).toMatchObject({
+    expect(evaluateScan(input).checks.find((check) => check.id === 7)).toMatchObject({
       status: "fail",
       earnedWeight: 0,
       summaryCode: "markdown_negotiation_absent",
@@ -192,9 +168,7 @@ describe("18-check engine", () => {
       },
     );
 
-    expect(
-      evaluateScan(input).checks.find((check) => check.id === 7),
-    ).toMatchObject({
+    expect(evaluateScan(input).checks.find((check) => check.id === 7)).toMatchObject({
       status: "fail",
       earnedWeight: 0,
       summaryCode: "markdown_negotiation_absent",
@@ -211,9 +185,7 @@ describe("18-check engine", () => {
       },
     );
 
-    expect(
-      evaluateScan(input).checks.find((check) => check.id === 7),
-    ).toMatchObject({
+    expect(evaluateScan(input).checks.find((check) => check.id === 7)).toMatchObject({
       status: "pass",
       earnedWeight: 8,
       summaryCode: "markdown_negotiation_valid",
@@ -224,9 +196,7 @@ describe("18-check engine", () => {
   it("keeps unrelated Markdown partial even when its headers are valid", () => {
     const input = makeArtifacts("owner");
 
-    expect(
-      evaluateScan(input).checks.find((check) => check.id === 7),
-    ).toMatchObject({
+    expect(evaluateScan(input).checks.find((check) => check.id === 7)).toMatchObject({
       status: "partial",
       earnedWeight: 6,
       evidence: { differentiated: true, semantic_parity: false },
@@ -239,10 +209,7 @@ describe("18-check engine", () => {
       "https://example.com/",
       "<html><head><title>Store</title></head><body><h1>Store</h1><main>Short catalog shell.</main></body></html>",
     );
-    input.representative = artifact(
-      "https://example.com/products/widget",
-      html,
-    );
+    input.representative = artifact("https://example.com/products/widget", html);
     const checks = evaluateScan(input).checks;
     expect(checks.find((check) => check.id === 5)?.status).toBe("pass");
     expect(checks.find((check) => check.id === 6)?.status).toBe("pass");
@@ -257,9 +224,7 @@ describe("18-check engine", () => {
     [50, "callable_ready"],
     [69, "callable_ready"],
     [70, "ahead_of_market"],
-  ])("maps score %s to %s", (score, level) =>
-    expect(levelForScore(score, 1)).toBe(level),
-  );
+  ])("maps score %s to %s", (score, level) => expect(levelForScore(score, 1)).toBe(level));
 
   it("keeps the published level available at exactly seventy percent coverage", () => {
     expect(levelForScore(70, 0.7)).toBe("ahead_of_market");
@@ -284,9 +249,7 @@ describe("18-check engine", () => {
       durationMs: 0,
     });
 
-    expect(
-      scoreChecks([check(1, "pass", 70, 70), check(2, "fail", 30, 0)]),
-    ).toMatchObject({
+    expect(scoreChecks([check(1, "pass", 70, 70), check(2, "fail", 30, 0)])).toMatchObject({
       score: 70,
       coverage: 1,
       level: "ahead_of_market",
@@ -296,18 +259,14 @@ describe("18-check engine", () => {
       earnedWeight: 70,
     });
 
-    expect(
-      scoreChecks([check(1, "pass", 30, 30), check(2, "unavailable", 70, 0)]),
-    ).toMatchObject({
+    expect(scoreChecks([check(1, "pass", 30, 30), check(2, "unavailable", 70, 0)])).toMatchObject({
       score: 100,
       coverage: 0.3,
       level: "incomplete",
       terminalStatus: "partial",
     });
 
-    expect(
-      scoreChecks([check(1, "pass", 29, 29), check(2, "unavailable", 71, 0)]),
-    ).toMatchObject({
+    expect(scoreChecks([check(1, "pass", 29, 29), check(2, "unavailable", 71, 0)])).toMatchObject({
       score: null,
       coverage: 0.29,
       level: "incomplete",
@@ -315,10 +274,7 @@ describe("18-check engine", () => {
     });
 
     expect(
-      scoreChecks([
-        check(1, "unavailable", 0, 0),
-        check(2, "unavailable", 0, 0),
-      ]),
+      scoreChecks([check(1, "unavailable", 0, 0), check(2, "unavailable", 0, 0)]),
     ).toMatchObject({
       score: null,
       coverage: 0,

@@ -13,9 +13,7 @@ export default function AuthCallbackPage() {
   const config = getServerConfig();
   return (
     <AuthCallback
-      turnstileSiteKey={
-        config.TURNSTILE_ENFORCED ? (config.TURNSTILE_SITE_KEY ?? null) : null
-      }
+      turnstileSiteKey={config.TURNSTILE_ENFORCED ? (config.TURNSTILE_SITE_KEY ?? null) : null}
     />
   );
 }

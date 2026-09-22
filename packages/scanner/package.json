@@ -12,9 +12,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist coverage",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run --config ../../vitest.scanner.config.ts",
-    "test:unit": "vitest run --config ../../vitest.scanner.config.ts"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@agentify/scanner-contracts": "workspace:*"

@@ -28,18 +28,17 @@ describe("local Stripe card-signal provider", () => {
     });
 
     const delivery = await provider.confirmLocalSetup(first.id);
-    expect(
-      provider.verifyWebhook(delivery.rawBody, delivery.signature),
-    ).toEqual({
+    expect(provider.verifyWebhook(delivery.rawBody, delivery.signature)).toEqual({
       id: expect.stringMatching(/^evt_local_/),
       type: "setup_intent.succeeded",
       setupIntentId: first.id,
     });
     const confirmed = await provider.retrieveSetup(first.id);
     expect(confirmed.status).toBe("succeeded");
+    if (!confirmed.paymentMethodId) throw new Error("a succeeded setup carries no payment method");
     const attached = await provider.retrieveCustomerPaymentMethod(
       customerId,
-      confirmed.paymentMethodId!,
+      confirmed.paymentMethodId,
     );
     expect(attached.customerId).toBe(customerId);
     await provider.detachPaymentMethod(attached.id);

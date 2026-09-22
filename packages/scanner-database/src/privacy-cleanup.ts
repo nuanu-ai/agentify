@@ -7,9 +7,9 @@ import {
   browserObservationFindings,
   browserObservations,
   deliveryOutbox,
+  leadScans,
   leads,
   merchantApplications,
-  leadScans,
   paymentSignals,
   rateLimitEvents,
   rateWindows,
@@ -26,10 +26,7 @@ import {
 export const REGISTRATION_INTENT_RETENTION_MS = 7 * 86_400_000;
 export const UNVERIFIED_LEAD_RETENTION_MS = 30 * 86_400_000;
 
-export async function deleteExpiredMerchantApplications(
-  db: Database,
-  now = new Date(),
-) {
+export async function deleteExpiredMerchantApplications(db: Database, now = new Date()) {
   const deleted = await db
     .delete(merchantApplications)
     .where(lt(merchantApplications.expiresAt, now))
@@ -41,27 +38,16 @@ export async function listUnverifiedLeadRetentionCandidates(
   db: Database,
   input: { now?: Date; limit?: number } = {},
 ) {
-  const cutoff = new Date(
-    (input.now ?? new Date()).getTime() - UNVERIFIED_LEAD_RETENTION_MS,
-  );
+  const cutoff = new Date((input.now ?? new Date()).getTime() - UNVERIFIED_LEAD_RETENTION_MS);
   return await db
     .select({ id: leads.id, createdAt: leads.createdAt })
     .from(leads)
-    .where(
-      and(
-        isNull(leads.verifiedAt),
-        isNull(leads.anonymizedAt),
-        lt(leads.createdAt, cutoff),
-      ),
-    )
+    .where(and(isNull(leads.verifiedAt), isNull(leads.anonymizedAt), lt(leads.createdAt, cutoff)))
     .orderBy(asc(leads.createdAt))
     .limit(Math.min(1_000, Math.max(1, input.limit ?? 100)));
 }
 
-export async function deleteRetainedRegistrationIntents(
-  db: Database,
-  now = new Date(),
-) {
+export async function deleteRetainedRegistrationIntents(db: Database, now = new Date()) {
   const cutoff = new Date(now.getTime() - REGISTRATION_INTENT_RETENTION_MS);
   const removed = await db
     .delete(registrationIntents)
@@ -72,10 +58,7 @@ export async function deleteRetainedRegistrationIntents(
   return removed.length;
 }
 
-export async function deleteExpiredRateLimitState(
-  db: Database,
-  now = new Date(),
-) {
+export async function deleteExpiredRateLimitState(db: Database, now = new Date()) {
   const [events, windows] = await Promise.all([
     db
       .delete(rateLimitEvents)
@@ -93,10 +76,7 @@ export async function anonymizeLeadData(
   db: Database,
   leadId: string,
   now = new Date(),
-  beforeAnonymizeInTransaction?: (
-    tx: DatabaseTransaction,
-    leadId: string,
-  ) => Promise<void>,
+  beforeAnonymizeInTransaction?: (tx: DatabaseTransaction, leadId: string) => Promise<void>,
   retentionCutoff?: Date,
 ) {
   return await db.transaction(async (tx) => {
@@ -122,15 +102,10 @@ export async function anonymizeLeadData(
     );
     const lead = locked.rows[0];
     if (!lead) return { status: "not_found" as const, scanCount: 0 };
-    if (lead.anonymized_at)
-      return { status: "already_anonymized" as const, scanCount: 0 };
-    if (
-      retentionCutoff &&
-      (lead.verified_at || lead.created_at >= retentionCutoff)
-    )
+    if (lead.anonymized_at) return { status: "already_anonymized" as const, scanCount: 0 };
+    if (retentionCutoff && (lead.verified_at || lead.created_at >= retentionCutoff))
       return { status: "no_longer_eligible" as const, scanCount: 0 };
-    if (beforeAnonymizeInTransaction)
-      await beforeAnonymizeInTransaction(tx, leadId);
+    if (beforeAnonymizeInTransaction) await beforeAnonymizeInTransaction(tx, leadId);
 
     const linkedRows = await tx
       .select({ scanId: leadScans.scanId })
@@ -140,9 +115,7 @@ export async function anonymizeLeadData(
       .select({ scanId: scans.id })
       .from(scans)
       .where(eq(scans.leadId, leadId));
-    const scanIds = [
-      ...new Set([...linkedRows, ...directRows].map(({ scanId }) => scanId)),
-    ];
+    const scanIds = [...new Set([...linkedRows, ...directRows].map(({ scanId }) => scanId))];
     const ownedScans = scanIds.length
       ? await tx
           .select({
@@ -153,9 +126,7 @@ export async function anonymizeLeadData(
           .where(inArray(scans.id, scanIds))
       : [];
     const ownedTargetUrls = [
-      ...new Set(
-        ownedScans.map(({ canonicalTargetUrl }) => canonicalTargetUrl),
-      ),
+      ...new Set(ownedScans.map(({ canonicalTargetUrl }) => canonicalTargetUrl)),
     ];
     const anonymizedSessionId = createUuidV7();
     await tx.insert(sessions).values({
@@ -166,12 +137,7 @@ export async function anonymizeLeadData(
     await tx
       .update(reportSessions)
       .set({ revokedAt: now })
-      .where(
-        and(
-          eq(reportSessions.leadId, leadId),
-          isNull(reportSessions.revokedAt),
-        ),
-      );
+      .where(and(eq(reportSessions.leadId, leadId), isNull(reportSessions.revokedAt)));
     await tx
       .delete(registrationIntents)
       .where(eq(registrationIntents.emailLookupHash, lead.email_lookup_hash));
@@ -182,24 +148,16 @@ export async function anonymizeLeadData(
       .from(analyticsEvents)
       .where(
         scanIds.length
-          ? or(
-              eq(analyticsEvents.leadId, leadId),
-              inArray(analyticsEvents.scanId, scanIds),
-            )
+          ? or(eq(analyticsEvents.leadId, leadId), inArray(analyticsEvents.scanId, scanIds))
           : eq(analyticsEvents.leadId, leadId),
       );
-    await tx
-      .delete(deliveryOutbox)
-      .where(inArray(deliveryOutbox.eventId, leadEventIds));
+    await tx.delete(deliveryOutbox).where(inArray(deliveryOutbox.eventId, leadEventIds));
     await tx
       .update(analyticsEvents)
       .set({ leadId: null, sessionId: anonymizedSessionId })
       .where(
         scanIds.length
-          ? or(
-              eq(analyticsEvents.leadId, leadId),
-              inArray(analyticsEvents.scanId, scanIds),
-            )
+          ? or(eq(analyticsEvents.leadId, leadId), inArray(analyticsEvents.scanId, scanIds))
           : eq(analyticsEvents.leadId, leadId),
       );
 
@@ -213,9 +171,7 @@ export async function anonymizeLeadData(
       await tx
         .update(browserObservationFindings)
         .set({ evidence: { anonymized: true } })
-        .where(
-          inArray(browserObservationFindings.observationId, observationIds),
-        );
+        .where(inArray(browserObservationFindings.observationId, observationIds));
       await tx
         .update(browserObservations)
         .set({ signals: null, failureCode: "data_anonymized", updatedAt: now })
@@ -290,23 +246,14 @@ export async function runRetentionCleanup(
   db: Database,
   input: {
     beforeLeadAnonymize: (leadId: string) => Promise<void>;
-    beforeLeadAnonymizeInTransaction?: (
-      tx: DatabaseTransaction,
-      leadId: string,
-    ) => Promise<void>;
+    beforeLeadAnonymizeInTransaction?: (tx: DatabaseTransaction, leadId: string) => Promise<void>;
     now?: Date;
     batchSize?: number;
   },
 ) {
   const now = input.now ?? new Date();
-  const merchantApplicationsDeleted = await deleteExpiredMerchantApplications(
-    db,
-    now,
-  );
-  const registrationIntentsDeleted = await deleteRetainedRegistrationIntents(
-    db,
-    now,
-  );
+  const merchantApplicationsDeleted = await deleteExpiredMerchantApplications(db, now);
+  const registrationIntentsDeleted = await deleteRetainedRegistrationIntents(db, now);
   const rateLimitRowsDeleted = await deleteExpiredRateLimitState(db, now);
   const candidates = await listUnverifiedLeadRetentionCandidates(db, {
     now,

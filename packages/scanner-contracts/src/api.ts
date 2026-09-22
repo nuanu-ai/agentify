@@ -8,9 +8,7 @@ import {
   segmentSchema,
 } from "./enums.js";
 
-export const uuidV7Schema = z
-  .uuid()
-  .refine((value) => value[14] === "7", "Expected UUIDv7");
+export const uuidV7Schema = z.uuid().refine((value) => value[14] === "7", "Expected UUIDv7");
 
 export const apiErrorSchema = z
   .object({
@@ -22,13 +20,10 @@ export const apiErrorSchema = z
   })
   .strict();
 
-export const apiErrorEnvelopeSchema = z
-  .object({ error: apiErrorSchema })
-  .strict();
+export const apiErrorEnvelopeSchema = z.object({ error: apiErrorSchema }).strict();
 export type ApiErrorEnvelope = z.infer<typeof apiErrorEnvelopeSchema>;
 
-export const CREATE_SCAN_REQUEST_CONTRACT_VERSION =
-  "create-scan-request-v1.1.0" as const;
+export const CREATE_SCAN_REQUEST_CONTRACT_VERSION = "create-scan-request-v1.1.0" as const;
 
 const EXPLICIT_URL_SCHEME = /^[a-z][a-z\d+.-]*:/i;
 
@@ -44,9 +39,7 @@ const submittedScanUrlSchema = z
   .transform((input, context) => {
     let parsed: URL;
     try {
-      parsed = new URL(
-        scanUrlWasSubmittedWithoutScheme(input) ? `https://${input}` : input,
-      );
+      parsed = new URL(scanUrlWasSubmittedWithoutScheme(input) ? `https://${input}` : input);
     } catch {
       context.addIssue({ code: "custom", message: "Invalid URL" });
       return z.NEVER;
@@ -98,9 +91,7 @@ const scanProgressCheckSchema = z
 export const scanStatusResponseSchema = z
   .object({
     status: scanStatusSchema,
-    progress: z
-      .object({ completed: z.number().int().min(0), total: z.literal(18) })
-      .strict(),
+    progress: z.object({ completed: z.number().int().min(0), total: z.literal(18) }).strict(),
     checks: z.array(scanProgressCheckSchema).max(18),
     updated_at: z.iso.datetime({ offset: true }),
     target_host: z.string().min(1).optional(),
@@ -119,8 +110,7 @@ export const scanStatusResponseSchema = z
   .strict();
 export type ScanStatusResponse = z.infer<typeof scanStatusResponseSchema>;
 
-export const REGISTRATION_REQUEST_CONTRACT_VERSION =
-  "registration-request-v2.0.0" as const;
+export const REGISTRATION_REQUEST_CONTRACT_VERSION = "registration-request-v2.0.0" as const;
 
 export const phoneE164Schema = z
   .string()
@@ -147,9 +137,7 @@ export const registrationResponseSchema = z
   .strict();
 export type RegistrationResponse = z.infer<typeof registrationResponseSchema>;
 
-export const authFinalizeRequestSchema = z
-  .object({ state: z.string().min(32).max(512) })
-  .strict();
+export const authFinalizeRequestSchema = z.object({ state: z.string().min(32).max(512) }).strict();
 export type AuthFinalizeRequest = z.infer<typeof authFinalizeRequestSchema>;
 
 export const authFinalizeResponseSchema = z
@@ -160,9 +148,7 @@ export const authFinalizeResponseSchema = z
   .strict();
 export type AuthFinalizeResponse = z.infer<typeof authFinalizeResponseSchema>;
 
-export const contactAccessResponseSchema = z
-  .object({ status: z.literal("verified") })
-  .strict();
+export const contactAccessResponseSchema = z.object({ status: z.literal("verified") }).strict();
 
 const publicEvidenceValueSchema = z.union([
   z.string(),
@@ -212,9 +198,7 @@ export const remediationPromptResponseSchema = z
     generated_at: z.iso.datetime({ offset: true }),
   })
   .strict();
-export type RemediationPromptResponse = z.infer<
-  typeof remediationPromptResponseSchema
->;
+export type RemediationPromptResponse = z.infer<typeof remediationPromptResponseSchema>;
 
 export const createShareRequestSchema = z
   .object({ allow_indexing: z.boolean().default(false) })
@@ -252,9 +236,7 @@ export const sharePreviewResponseSchema = publicShareSnapshotSchema
   .strict();
 export type SharePreviewResponse = z.infer<typeof sharePreviewResponseSchema>;
 
-export const accountDataRequestSchema = z
-  .object({ type: z.enum(["access", "deletion"]) })
-  .strict();
+export const accountDataRequestSchema = z.object({ type: z.enum(["access", "deletion"]) }).strict();
 
 export const clientAnalyticsEventRequestSchema = z
   .object({
@@ -263,11 +245,7 @@ export const clientAnalyticsEventRequestSchema = z
     segment: segmentSchema.optional(),
     landing_variant: z.string().min(1).max(100).optional(),
     scan_id: uuidV7Schema.optional(),
-    properties: z
-      .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
-      .default({}),
+    properties: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).default({}),
   })
   .strict();
-export type ClientAnalyticsEventRequest = z.infer<
-  typeof clientAnalyticsEventRequestSchema
->;
+export type ClientAnalyticsEventRequest = z.infer<typeof clientAnalyticsEventRequestSchema>;

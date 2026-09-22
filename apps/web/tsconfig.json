@@ -1,8 +1,16 @@
 {
-  "extends": "../../tsconfig.scanner.json",
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    // Next compiles this app itself: it keeps the JSX, resolves modules the way
+    // a bundler does and reads the browser's names.
     "jsx": "preserve",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2024", "dom", "dom.iterable"],
+    "types": ["node"],
+    "resolveJsonModule": true,
     "incremental": true,
+    "noEmit": true,
     "plugins": [{ "name": "next" }]
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],

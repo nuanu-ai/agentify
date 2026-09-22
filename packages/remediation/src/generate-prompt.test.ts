@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { generateRemediationPrompt } from "./generate-prompt";
+import { generateRemediationPrompt } from "./generate-prompt.js";
 
 describe("generateRemediationPrompt", () => {
   it("is deterministic and excludes private evidence", () => {

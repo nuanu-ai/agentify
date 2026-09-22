@@ -9,10 +9,7 @@ import {
   type PublicEditorialPath,
   type RichText,
 } from "../content/public-editorial";
-import {
-  PUBLIC_PAGE_PATHS,
-  type PublicPagePath,
-} from "../content/public-page-metadata";
+import { PUBLIC_PAGE_PATHS, type PublicPagePath } from "../content/public-page-metadata";
 import { getPublicAppConfig } from "./app-config";
 
 export const PUBLIC_MARKDOWN_PATHS = PUBLIC_PAGE_PATHS;
@@ -21,22 +18,22 @@ function absoluteHref(href: string, baseUrl: string): string {
   return href.startsWith("/") ? new URL(href, baseUrl).toString() : href;
 }
 
+function nodeToMarkdown(node: Exclude<RichText, string>[number], baseUrl: string): string {
+  switch (node.kind) {
+    case "code":
+      return `\`${node.value.replaceAll("`", "\\`")}\``;
+    case "strong":
+      return `**${node.value}**`;
+    case "link":
+      return `[${node.value}](${absoluteHref(node.href ?? "", baseUrl)})`;
+    case "text":
+      return node.value;
+  }
+}
+
 function richTextToMarkdown(content: RichText, baseUrl: string): string {
   if (typeof content === "string") return content;
-  return content
-    .map((node) => {
-      switch (node.kind) {
-        case "code":
-          return `\`${node.value.replaceAll("`", "\\`")}\``;
-        case "strong":
-          return `**${node.value}**`;
-        case "link":
-          return `[${node.value}](${absoluteHref(node.href ?? "", baseUrl)})`;
-        case "text":
-          return node.value;
-      }
-    })
-    .join("");
+  return content.map((node) => nodeToMarkdown(node, baseUrl)).join("");
 }
 
 function renderEditorial(path: PublicEditorialPath): string {
@@ -89,8 +86,7 @@ function renderLanding(config: LandingConfig): string {
     `[${LANDING_SHARED_CONTENT.reportMethodologyLink}](${new URL("/methodology", app.baseUrl).toString()})`,
     "",
   );
-  for (const check of LANDING_EXAMPLE_CHECKS)
-    output.push(`- ${check.name} — ${check.status}`);
+  for (const check of LANDING_EXAMPLE_CHECKS) output.push(`- ${check.name} — ${check.status}`);
 
   output.push("", `## ${LANDING_SHARED_CONTENT.finalCta}`, "");
   return output.join("\n");

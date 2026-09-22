@@ -8,8 +8,7 @@ import {
 
 /** The tag beside the brand inside the image; exported so a test can read the image's own words. */
 export const tag = "SELL TO AGENTS";
-export const alt =
-  "Agentify — Sell to agents: your next customer sends an agent";
+export const alt = "Agentify — Sell to agents: your next customer sends an agent";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -30,11 +29,7 @@ export default function AgenticShopImage() {
     >
       <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
         <BrandMark size={52} />
-        <span
-          style={{ fontSize: 34, fontWeight: 600, letterSpacing: "-0.02em" }}
-        >
-          Agentify
-        </span>
+        <span style={{ fontSize: 34, fontWeight: 600, letterSpacing: "-0.02em" }}>Agentify</span>
         <span
           style={{
             marginLeft: 20,

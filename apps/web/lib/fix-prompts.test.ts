@@ -1,20 +1,11 @@
+import type { BrowserObservationStatusResponse, ReportResponse } from "@agentify/scanner-contracts";
 import { describe, expect, it } from "vitest";
-import type {
-  BrowserObservationStatusResponse,
-  ReportResponse,
-} from "@agentify/scanner-contracts";
 
-import {
-  buildBrowserFixPrompt,
-  buildCanonicalFixPrompt,
-  buildFixPrompts,
-} from "./fix-prompts";
+import { buildBrowserFixPrompt, buildCanonicalFixPrompt, buildFixPrompts } from "./fix-prompts";
 
 type Check = ReportResponse["checks"][number];
 
-function check(
-  overrides: Partial<Check> & Pick<Check, "id" | "status">,
-): Check {
+function check(overrides: Partial<Check> & Pick<Check, "id" | "status">): Check {
   return {
     label_code: `check_${overrides.id}`,
     summary_code: null,
@@ -86,9 +77,7 @@ describe("buildFixPrompts", () => {
   });
 
   it("adds an executable safety, workflow and acceptance envelope", () => {
-    const { aiPrompt } = buildFixPrompts(
-      report({ checks: [check({ id: 1, status: "fail" })] }),
-    );
+    const { aiPrompt } = buildFixPrompts(report({ checks: [check({ id: 1, status: "fail" })] }));
     expect(aiPrompt).toContain("bloomandco.com");
     expect(aiPrompt).toContain("Readable");
     expect(aiPrompt).toContain("46/100");
@@ -122,11 +111,7 @@ describe("buildFixPrompts", () => {
   });
 
   it("includes browser findings as explicitly non-scoring and skips unavailable", () => {
-    const { aiPrompt } = buildFixPrompts(
-      report(),
-      "Agentify",
-      browserObservation(),
-    );
+    const { aiPrompt } = buildFixPrompts(report(), "Agentify", browserObservation());
     expect(aiPrompt).toContain("Accessibility structure");
     expect(aiPrompt).toContain("non-scoring");
     expect(aiPrompt).toContain("Name Interactive Controls");
@@ -165,10 +150,7 @@ describe("buildFixPrompts", () => {
   it("returns a no-speculation prompt when there are no actionable findings", () => {
     const { aiPrompt, devBrief } = buildFixPrompts(
       report({
-        checks: [
-          check({ id: 1, status: "pass" }),
-          check({ id: 2, status: "unavailable" }),
-        ],
+        checks: [check({ id: 1, status: "pass" }), check({ id: 2, status: "unavailable" })],
       }),
     );
     expect(aiPrompt).toContain("Do not make speculative changes");
@@ -183,10 +165,9 @@ describe("single-finding prompts", () => {
       report(),
       check({ id: 12, status: "fail", label_code: "raw_html_ssr" }),
     );
-    const browser = buildBrowserFixPrompt(
-      "bloomandco.com",
-      browserObservation().findings[0]!,
-    );
+    const [finding] = browserObservation().findings;
+    if (!finding) throw new Error("the observation fixture has no findings");
+    const browser = buildBrowserFixPrompt("bloomandco.com", finding);
     expect(canonical).toContain("Canonical check 12");
     expect(browser).toContain("non-scoring");
     expect(browser).toContain("Accessibility structure");

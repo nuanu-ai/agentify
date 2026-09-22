@@ -55,9 +55,9 @@ const decodeEntities = (value: string): string =>
 export const rawTextCharacterCount = (html: string): number =>
   decodeEntities(
     html
-      .replace(/<!--[^]*?-->/g, " ")
+      .replace(/<!--[\s\S]*?-->/g, " ")
       .replace(
-        /<(?:script|style|noscript|template)\b[^>]*>[^]*?<\/(?:script|style|noscript|template)>/gi,
+        /<(?:script|style|noscript|template)\b[^>]*>[\s\S]*?<\/(?:script|style|noscript|template)>/gi,
         " ",
       )
       .replace(/<[^>]+>/g, " "),
@@ -66,9 +66,7 @@ export const rawTextCharacterCount = (html: string): number =>
     .trim().length;
 
 const attribute = (tag: string, name: string): string | null => {
-  const match = tag.match(
-    new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i"),
-  );
+  const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i"));
   return match ? (match[1] ?? match[2] ?? match[3] ?? null) : null;
 };
 
@@ -149,10 +147,7 @@ const metadataFromJsonLd = (
   };
 };
 
-export const extractRawMetadata = (
-  html: string,
-  baseUrl: string,
-): MetadataSnapshot => {
+export const extractRawMetadata = (html: string, baseUrl: string): MetadataSnapshot => {
   const linkTags = html.match(/<link\b[^>]*>/gi) ?? [];
   let canonical: string | null = null;
   let hreflangCount = 0;
@@ -175,10 +170,11 @@ export const extractRawMetadata = (
   }
   const jsonLdValues: string[] = [];
   const pattern =
-    /<script\b[^>]*type\s*=\s*(?:"application\/ld\+json"|'application\/ld\+json'|application\/ld\+json)[^>]*>([^]*?)<\/script>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(html)) && jsonLdValues.length < 50) {
+    /<script\b[^>]*type\s*=\s*(?:"application\/ld\+json"|'application\/ld\+json'|application\/ld\+json)[^>]*>([\s\S]*?)<\/script>/gi;
+  let match = pattern.exec(html);
+  while (match && jsonLdValues.length < 50) {
     jsonLdValues.push(match[1] ?? "");
+    match = pattern.exec(html);
   }
   return {
     canonical,
@@ -188,10 +184,18 @@ export const extractRawMetadata = (
   };
 };
 
+// The pattern captures one mandatory group, so a match without it is a broken
+// pattern rather than a snapshot we could not read.
+const captured = (match: RegExpMatchArray): string => {
+  const value = match[1];
+  if (value === undefined) throw new Error("the pattern matched without filling its capture group");
+  return value;
+};
+
 const countAriaRoles = (snapshot: string): Record<string, number> => {
   const counts: Record<string, number> = {};
   for (const match of snapshot.matchAll(/^\s*-\s+([a-z][a-z0-9_-]*)\b/gim)) {
-    const role = match[1]!.toLowerCase();
+    const role = captured(match).toLowerCase();
     counts[role] = (counts[role] ?? 0) + 1;
   }
   return Object.fromEntries(
@@ -238,10 +242,7 @@ export const collectPageSignals = async (options: {
           return normalizedText(element.value);
         }
       }
-      if (
-        element instanceof HTMLSelectElement ||
-        element instanceof HTMLTextAreaElement
-      ) {
+      if (element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement) {
         const labelText = [...(element.labels ?? [])]
           .map((label) => label.textContent ?? "")
           .join(" ");
@@ -250,23 +251,18 @@ export const collectPageSignals = async (options: {
       return normalizedText(element.textContent);
     };
 
-    const count = (selector: string): number =>
-      document.querySelectorAll(selector).length;
+    const count = (selector: string): number => document.querySelectorAll(selector).length;
     const landmarkCounts: Record<string, number> = {
       banner: count("header,[role=banner]"),
       complementary: count("aside,[role=complementary]"),
       contentinfo: count("footer,[role=contentinfo]"),
       main: count("main,[role=main]"),
       navigation: count("nav,[role=navigation]"),
-      region: count(
-        "section[aria-label],section[aria-labelledby],[role=region]",
-      ),
+      region: count("section[aria-label],section[aria-labelledby],[role=region]"),
     };
     const headingLevelCounts: Record<string, number> = {};
     for (let level = 1; level <= 6; level += 1) {
-      headingLevelCounts[`h${level}`] = count(
-        `h${level},[role=heading][aria-level="${level}"]`,
-      );
+      headingLevelCounts[`h${level}`] = count(`h${level},[role=heading][aria-level="${level}"]`);
     }
 
     const interactive = [
@@ -274,9 +270,10 @@ export const collectPageSignals = async (options: {
         "a[href],button,input,select,textarea,summary,[role=button],[role=link],[role=checkbox],[role=radio],[role=switch],[tabindex]",
       ),
     ].slice(0, 100_000);
-    const formControls = [
-      ...document.querySelectorAll("input,select,textarea,button"),
-    ].slice(0, 100_000);
+    const formControls = [...document.querySelectorAll("input,select,textarea,button")].slice(
+      0,
+      100_000,
+    );
     const formSemanticIssue = (element: Element): boolean => {
       if (!accessibleName(element)) return true;
       if (
@@ -297,8 +294,7 @@ export const collectPageSignals = async (options: {
       return false;
     };
 
-    const modelContext = (document as Document & { modelContext?: unknown })
-      .modelContext;
+    const modelContext = (document as Document & { modelContext?: unknown }).modelContext;
     let webmcpToolCount = 0;
     if (modelContext && typeof modelContext === "object") {
       const tools = (modelContext as { tools?: unknown }).tools;
@@ -313,9 +309,7 @@ export const collectPageSignals = async (options: {
     }
 
     const jsonLdValues = [
-      ...document.querySelectorAll<HTMLScriptElement>(
-        'script[type="application/ld+json"]',
-      ),
+      ...document.querySelectorAll<HTMLScriptElement>('script[type="application/ld+json"]'),
     ]
       .slice(0, 50)
       .map((script) => script.textContent ?? "");
@@ -370,9 +364,7 @@ export const collectPageSignals = async (options: {
       }
     }
 
-    const canonicalElement = document.querySelector<HTMLLinkElement>(
-      'link[rel~="canonical"]',
-    );
+    const canonicalElement = document.querySelector<HTMLLinkElement>('link[rel~="canonical"]');
     let canonical: string | null = null;
     if (canonicalElement?.href) {
       try {
@@ -385,9 +377,7 @@ export const collectPageSignals = async (options: {
 
     const bodyText = normalizedText(document.body?.innerText).slice(0, 100_000);
     const visibleCurrencies = ["USD", "EUR", "GBP", "CAD", "AUD", "JPY"]
-      .filter((currency) =>
-        new RegExp(`(?:^|[^A-Z])${currency}(?:$|[^A-Z])`, "i").test(bodyText),
-      )
+      .filter((currency) => new RegExp(`(?:^|[^A-Z])${currency}(?:$|[^A-Z])`, "i").test(bodyText))
       .sort();
     const visibleAvailability = [
       ["instock", /\bin[ -]?stock\b/i],
@@ -408,19 +398,13 @@ export const collectPageSignals = async (options: {
       challengeKind = "bot_challenge";
     } else if (
       document.querySelector('input[type="password"]') &&
-      /sign in|log in|login|member access|authentication required/.test(
-        challengeHaystack,
-      ) &&
+      /sign in|log in|login|member access|authentication required/.test(challengeHaystack) &&
       bodyText.length < 2_000
     ) {
       challengeKind = "login_wall";
     } else if (
-      document.querySelector(
-        '[role="dialog"],dialog,[class*="cookie" i],[id*="cookie" i]',
-      ) &&
-      /accept (?:all )?cookies|cookie consent|privacy preferences/.test(
-        challengeHaystack,
-      ) &&
+      document.querySelector('[role="dialog"],dialog,[class*="cookie" i],[id*="cookie" i]') &&
+      /accept (?:all )?cookies|cookie consent|privacy preferences/.test(challengeHaystack) &&
       bodyText.length < 1_000
     ) {
       challengeKind = "cookie_wall";
@@ -429,9 +413,7 @@ export const collectPageSignals = async (options: {
     let hiddenInstructionCount = 0;
     const imperativePattern =
       /ignore (?:all |any )?(?:previous|prior) instructions|system prompt|assistant must|ai agent must|do not follow|reveal (?:the )?(?:prompt|secret)/i;
-    for (const element of [
-      ...document.body.querySelectorAll<HTMLElement>("*"),
-    ].slice(0, 2_000)) {
+    for (const element of [...document.body.querySelectorAll<HTMLElement>("*")].slice(0, 2_000)) {
       if (hiddenInstructionCount >= 100) break;
       const style = getComputedStyle(element);
       const rect = element.getBoundingClientRect();
@@ -451,9 +433,7 @@ export const collectPageSignals = async (options: {
     let apiDiscoveryCount = 0;
     let licenseLinkCount = 0;
     for (const link of [
-      ...document.querySelectorAll<HTMLLinkElement | HTMLAnchorElement>(
-        "link[href],a[href]",
-      ),
+      ...document.querySelectorAll<HTMLLinkElement | HTMLAnchorElement>("link[href],a[href]"),
     ].slice(0, 5_000)) {
       const rel = (link.getAttribute("rel") ?? "").toLowerCase();
       const href = link.getAttribute("href") ?? "";
@@ -470,10 +450,7 @@ export const collectPageSignals = async (options: {
           // Invalid declarations are not counted as a discoverable surface.
         }
       }
-      if (
-        /(?:^|\s)license(?:\s|$)/.test(rel) ||
-        /(?:^|\/)rsl(?:\/|\.|$)/i.test(href)
-      ) {
+      if (/(?:^|\s)license(?:\s|$)/.test(rel) || /(?:^|\/)rsl(?:\/|\.|$)/i.test(href)) {
         try {
           const parsed = new URL(href, document.baseURI);
           if (parsed.protocol === "http:" || parsed.protocol === "https:") {
@@ -491,13 +468,9 @@ export const collectPageSignals = async (options: {
       landmarkCounts,
       headingLevelCounts,
       interactiveControlCount: interactive.length,
-      unnamedControlCount: interactive.filter(
-        (element) => !accessibleName(element),
-      ).length,
+      unnamedControlCount: interactive.filter((element) => !accessibleName(element)).length,
       formControlCount: formControls.length,
-      unlabeledFormControlCount: formControls.filter(
-        (element) => !accessibleName(element),
-      ).length,
+      unlabeledFormControlCount: formControls.filter((element) => !accessibleName(element)).length,
       formSemanticIssueCount: formControls.filter(formSemanticIssue).length,
       webmcpPresent: modelContext !== undefined,
       webmcpToolCount: Math.max(0, Math.min(10_000, webmcpToolCount)),
@@ -539,8 +512,6 @@ export const collectPageSignals = async (options: {
     rawTextChars: rawTextCharacterCount(options.rawHtml),
     rawMetadata: extractRawMetadata(options.rawHtml, options.rawUrl),
     ariaRoleCounts: countAriaRoles(ariaSnapshot),
-    titleSignature: createHash("sha256")
-      .update(title.toLowerCase())
-      .digest("hex"),
+    titleSignature: createHash("sha256").update(title.toLowerCase()).digest("hex"),
   };
 };

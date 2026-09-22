@@ -25,9 +25,7 @@ function loadBrandImageFonts(): ImageFont[] {
       },
       ...([400, 500, 600] as const).map((weight) => ({
         name: "IBM Plex Mono",
-        data: readFileSync(
-          join(mono, `ibm-plex-mono-latin-${weight}-normal.woff`),
-        ),
+        data: readFileSync(join(mono, `ibm-plex-mono-latin-${weight}-normal.woff`)),
         style: "normal" as const,
         weight,
       })),
@@ -38,9 +36,5 @@ function loadBrandImageFonts(): ImageFont[] {
 }
 
 export const BRAND_IMAGE_FONTS = loadBrandImageFonts();
-export const BRAND_IMAGE_HUMAN_FONT = BRAND_IMAGE_FONTS.length
-  ? "Schibsted Grotesk"
-  : "sans-serif";
-export const BRAND_IMAGE_MONO_FONT = BRAND_IMAGE_FONTS.length
-  ? "IBM Plex Mono"
-  : "monospace";
+export const BRAND_IMAGE_HUMAN_FONT = BRAND_IMAGE_FONTS.length ? "Schibsted Grotesk" : "sans-serif";
+export const BRAND_IMAGE_MONO_FONT = BRAND_IMAGE_FONTS.length ? "IBM Plex Mono" : "monospace";

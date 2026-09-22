@@ -10,10 +10,7 @@ export function serializeResumeIntent(intent: ResumeIntent, now: number) {
   return JSON.stringify({ intent, expires_at: now + RESUME_INTENT_TTL_MS });
 }
 
-export function parseResumeIntent(
-  raw: string | null,
-  now: number,
-): ResumeIntent | null {
+export function parseResumeIntent(raw: string | null, now: number): ResumeIntent | null {
   if (!raw) return null;
   try {
     const value = JSON.parse(raw) as {
@@ -34,10 +31,7 @@ export function parseResumeIntent(
 
 export function rememberResumeIntent(scanId: string, intent: ResumeIntent) {
   try {
-    window.localStorage.setItem(
-      resumeIntentKey(scanId),
-      serializeResumeIntent(intent, Date.now()),
-    );
+    window.localStorage.setItem(resumeIntentKey(scanId), serializeResumeIntent(intent, Date.now()));
   } catch {
     return;
   }
@@ -46,10 +40,7 @@ export function rememberResumeIntent(scanId: string, intent: ResumeIntent) {
 export function takeResumeIntent(scanId: string): ResumeIntent | null {
   try {
     const key = resumeIntentKey(scanId);
-    const intent = parseResumeIntent(
-      window.localStorage.getItem(key),
-      Date.now(),
-    );
+    const intent = parseResumeIntent(window.localStorage.getItem(key), Date.now());
     window.localStorage.removeItem(key);
     return intent;
   } catch {

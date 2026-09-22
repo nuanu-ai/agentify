@@ -4,21 +4,14 @@ import { describe, expect, it } from "vitest";
 
 import { MarketingHeader } from "../../components/site-chrome";
 import { buildLlmsText } from "../../lib/llms";
-import {
-  alt as socialImageAlt,
-  tag as socialImageTag,
-} from "./opengraph-image";
+import { alt as socialImageAlt, tag as socialImageTag } from "./opengraph-image";
 import AgenticShopPage, { generateMetadata } from "./page";
-import MerchantPrivacyPage, {
-  metadata as privacyMetadata,
-} from "./privacy/page";
+import MerchantPrivacyPage, { metadata as privacyMetadata } from "./privacy/page";
 
 const rendered = (): { html: string; links: string[] } => {
   Object.assign(globalThis, { React });
   const html = renderToStaticMarkup(<AgenticShopPage />);
-  const links = [...html.matchAll(/<a\b[^>]*\bhref="([^"]+)"/g)].map(
-    (match) => match[1] ?? "",
-  );
+  const links = [...html.matchAll(/<a\b[^>]*\bhref="([^"]+)"/g)].map((match) => match[1] ?? "");
   return { html, links };
 };
 

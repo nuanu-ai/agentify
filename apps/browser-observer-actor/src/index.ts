@@ -3,8 +3,7 @@ import { Actor, log } from "apify";
 import { resolveActorBuild, runBrowserObservation } from "./runner.js";
 
 const actorBuild = resolveActorBuild(process.env);
-let stage: "initialization" | "input" | "observation" | "output" =
-  "initialization";
+let stage: "initialization" | "input" | "observation" | "output" = "initialization";
 
 const safeErrorMetadata = (
   error: unknown,
@@ -12,9 +11,7 @@ const safeErrorMetadata = (
   if (!error || typeof error !== "object") return {};
   const source = error as Record<string, unknown>;
   const safeIdentifier = (value: unknown): string | undefined =>
-    typeof value === "string" && /^[a-z][a-z0-9_.:-]{0,99}$/i.test(value)
-      ? value
-      : undefined;
+    typeof value === "string" && /^[a-z][a-z0-9_.:-]{0,99}$/i.test(value) ? value : undefined;
   const errorName = safeIdentifier(source.name);
   const errorType = safeIdentifier(source.type);
   const statusCode = source.statusCode;
@@ -36,8 +33,7 @@ try {
   const output = await runBrowserObservation({
     input,
     actorBuild,
-    onRuntimeFailure: (code) =>
-      log.warning("browser_observation_runtime_failure", { code }),
+    onRuntimeFailure: (code) => log.warning("browser_observation_runtime_failure", { code }),
   });
   stage = "output";
   await Actor.setValue("OUTPUT", output);

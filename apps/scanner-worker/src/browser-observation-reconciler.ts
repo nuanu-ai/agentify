@@ -8,10 +8,7 @@ export async function reconcileBrowserObservationJobs(input: {
   now?: Date;
   limit?: number;
 }): Promise<number> {
-  const jobs = await input.repository.listReconciliationCandidates(
-    input.now,
-    input.limit,
-  );
+  const jobs = await input.repository.listReconciliationCandidates(input.now, input.limit);
   for (const job of jobs) await input.enqueue(job);
   return jobs.length;
 }

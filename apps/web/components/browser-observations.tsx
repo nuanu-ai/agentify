@@ -1,12 +1,11 @@
 "use client";
 
-import React, { useEffect, useId, useState } from "react";
-
 import {
-  browserObservationStatusResponseSchema,
   type BrowserObservationFinding,
   type BrowserObservationStatusResponse,
+  browserObservationStatusResponseSchema,
 } from "@agentify/scanner-contracts";
+import { useEffect, useId, useState } from "react";
 
 import { DISPLAY_BRAND } from "../lib/brand";
 import {
@@ -19,9 +18,9 @@ import {
   safeEvidenceEntries,
 } from "../lib/browser-observation-ui";
 import { buildBrowserFixPrompt } from "../lib/fix-prompts";
+import styles from "./browser-observations.module.css";
 import { CopyRemediationPrompt } from "./copy-remediation-prompt";
 import { StatusBadge } from "./status-badge";
-import styles from "./browser-observations.module.css";
 
 type ViewState = "hidden" | "ready" | "error";
 
@@ -39,12 +38,8 @@ export function BrowserObservations({
   surface: "scan" | "report";
 }>) {
   const titleId = useId();
-  const [data, setData] = useState<BrowserObservationStatusResponse | null>(
-    initialData ?? null,
-  );
-  const [viewState, setViewState] = useState<ViewState>(
-    initialData ? "ready" : "hidden",
-  );
+  const [data, setData] = useState<BrowserObservationStatusResponse | null>(initialData ?? null);
+  const [viewState, setViewState] = useState<ViewState>(initialData ? "ready" : "hidden");
 
   useEffect(() => {
     if (surface !== "scan" || initialData) return;
@@ -88,8 +83,7 @@ export function BrowserObservations({
           return;
         }
         const payload: unknown = await response.json();
-        const parsed =
-          browserObservationStatusResponseSchema.safeParse(payload);
+        const parsed = browserObservationStatusResponseSchema.safeParse(payload);
         if (!parsed.success) {
           setViewState("error");
           return;
@@ -100,10 +94,7 @@ export function BrowserObservations({
           timer = window.setTimeout(() => void load(), 2500);
         }
       } catch (error) {
-        if (
-          !cancelled &&
-          !(error instanceof DOMException && error.name === "AbortError")
-        )
+        if (!cancelled && !(error instanceof DOMException && error.name === "AbortError"))
           setViewState("error");
       }
     }
@@ -136,11 +127,7 @@ export function BrowserObservations({
   const visibleFindings = selectVisibleFindings(data.findings, surface);
   return (
     <section aria-labelledby={titleId} className={styles.panel}>
-      <PanelHeader
-        status={data.status}
-        titleId={titleId}
-        title={browserObservationSummary(data)}
-      />
+      <PanelHeader status={data.status} titleId={titleId} title={browserObservationSummary(data)} />
       <div className={styles.meta}>
         <span>Does not change the score</span>
         <span>{data.version}</span>
@@ -156,15 +143,12 @@ export function BrowserObservations({
       ) : null}
       {data.status === "blocked" ? (
         <p className={styles.notice}>
-          A robots, WAF, login, or challenge boundary stopped public rendering.
-          No bypass was attempted. This is shown as unavailable context, not a
-          site failure.
+          A robots, WAF, login, or challenge boundary stopped public rendering. No bypass was
+          attempted. This is shown as unavailable context, not a site failure.
         </p>
       ) : null}
       {data.status === "unavailable" ? (
-        <p className={styles.notice}>
-          The browser step could not finish. The report is unchanged.
-        </p>
+        <p className={styles.notice}>The browser step could not finish. The report is unchanged.</p>
       ) : null}
 
       {visibleFindings.length > 0 ? (
@@ -180,9 +164,7 @@ export function BrowserObservations({
           ))}
         </div>
       ) : ["completed", "partial"].includes(data.status) ? (
-        <p className={styles.notice}>
-          No actionable browser finding was included in this view.
-        </p>
+        <p className={styles.notice}>No actionable browser finding was included in this view.</p>
       ) : null}
     </section>
   );
@@ -247,10 +229,7 @@ function BrowserFinding({
           ))}
         </dl>
       ) : null}
-      {surface === "report" &&
-      actionable &&
-      host &&
-      remediationPromptEnabled ? (
+      {surface === "report" && actionable && host && remediationPromptEnabled ? (
         <CopyRemediationPrompt
           label="Copy this fix"
           prompt={buildBrowserFixPrompt(host, finding, DISPLAY_BRAND)}

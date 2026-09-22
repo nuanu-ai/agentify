@@ -1,5 +1,4 @@
 import type { ReportResponse } from "@agentify/scanner-contracts";
-import React from "react";
 
 /**
  * The segment average beside the score. It renders only once the sample
@@ -15,8 +14,7 @@ export function ReportBenchmark({
   if (!benchmark) return null;
   return (
     <p>
-      Segment average {Math.round(benchmark.average_score)} from{" "}
-      {benchmark.sample_size} scans
+      Segment average {Math.round(benchmark.average_score)} from {benchmark.sample_size} scans
     </p>
   );
 }

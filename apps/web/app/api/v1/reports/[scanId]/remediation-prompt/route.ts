@@ -12,12 +12,7 @@ export async function GET(
   { params }: { params: Promise<{ scanId: string }> },
 ) {
   if (!getServerConfig().REMEDIATION_PROMPT_ENABLED)
-    return errorResponse(
-      request,
-      404,
-      "not_found",
-      "Prompt export is disabled.",
-    );
+    return errorResponse(request, 404, "not_found", "Prompt export is disabled.");
   if (request.nextUrl.searchParams.get("scope") !== "full")
     return errorResponse(request, 400, "invalid_scope", "Expected scope=full.");
   const { scanId } = await params;
@@ -26,12 +21,7 @@ export async function GET(
     request.cookies.get(REPORT_SESSION_COOKIE)?.value,
   );
   if (!result)
-    return errorResponse(
-      request,
-      404,
-      "prompt_not_found",
-      "No authorized prompt is available.",
-    );
+    return errorResponse(request, 404, "prompt_not_found", "No authorized prompt is available.");
   return NextResponse.json(result, {
     headers: { "Cache-Control": "private, no-store" },
   });

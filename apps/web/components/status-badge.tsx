@@ -1,5 +1,4 @@
 import type { CheckStatus } from "@agentify/scanner-contracts";
-import React from "react";
 
 import styles from "./status-badge.module.css";
 

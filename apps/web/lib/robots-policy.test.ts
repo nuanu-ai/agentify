@@ -1,8 +1,4 @@
-import {
-  explicitAiPolicies,
-  isPathAllowed,
-  parseRobots,
-} from "@agentify/scanner";
+import { explicitAiPolicies, isPathAllowed, parseRobots } from "@agentify/scanner";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { buildRobotsPolicy, PRIVATE_ROBOTS_PATHS } from "./robots-policy";

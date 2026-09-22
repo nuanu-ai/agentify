@@ -72,9 +72,7 @@ describe("private report identity contract", () => {
     for (const { schema, value } of requests) {
       expect(schema.safeParse(value).success).toBe(true);
       expect(reportIdentityRequestSchema.safeParse(value).success).toBe(true);
-      expect(schema.safeParse({ ...value, unexpected: true }).success).toBe(
-        false,
-      );
+      expect(schema.safeParse({ ...value, unexpected: true }).success).toBe(false);
     }
   });
 
@@ -83,10 +81,7 @@ describe("private report identity contract", () => {
       for (const field of Object.keys(value)) {
         const incomplete = { ...value } as Record<string, unknown>;
         delete incomplete[field];
-        expect(
-          schema.safeParse(incomplete).success,
-          `${value.operation}.${field}`,
-        ).toBe(false);
+        expect(schema.safeParse(incomplete).success, `${value.operation}.${field}`).toBe(false);
       }
     }
   });
@@ -122,15 +117,10 @@ describe("private report identity contract", () => {
   });
 
   it("accepts only scanner-normalized email claims", () => {
-    for (const email of [
-      " OWNER@example.com",
-      "OWNER@example.com",
-      "ｏwner@example.com",
-    ])
-      expect(
-        sendReportLinkRequestSchema.safeParse({ ...requests[0].value, email })
-          .success,
-      ).toBe(false);
+    for (const email of [" OWNER@example.com", "OWNER@example.com", "ｏwner@example.com"])
+      expect(sendReportLinkRequestSchema.safeParse({ ...requests[0].value, email }).success).toBe(
+        false,
+      );
     expect(
       sendReportLinkRequestSchema.safeParse({
         ...requests[0].value,
@@ -154,26 +144,16 @@ describe("private report identity contract", () => {
         completion_deadline: timestamp,
       }).success,
     ).toBe(true);
-    expect(
-      consumeReportLinkResponseSchema.safeParse({ status: "refused" }).success,
-    ).toBe(true);
-    expect(
-      consumeReportLinkResponseSchema.safeParse({ status: "completed" })
-        .success,
-    ).toBe(false);
+    expect(consumeReportLinkResponseSchema.safeParse({ status: "refused" }).success).toBe(true);
+    expect(consumeReportLinkResponseSchema.safeParse({ status: "completed" }).success).toBe(false);
 
-    expect(
-      acknowledgeReportLinkResponseSchema.safeParse({ status: "completed" })
-        .success,
-    ).toBe(true);
-    expect(
-      acknowledgeReportLinkResponseSchema.safeParse({ status: "refused" })
-        .success,
-    ).toBe(true);
-    expect(
-      acknowledgeReportLinkResponseSchema.safeParse({ status: "pending" })
-        .success,
-    ).toBe(false);
+    expect(acknowledgeReportLinkResponseSchema.safeParse({ status: "completed" }).success).toBe(
+      true,
+    );
+    expect(acknowledgeReportLinkResponseSchema.safeParse({ status: "refused" }).success).toBe(true);
+    expect(acknowledgeReportLinkResponseSchema.safeParse({ status: "pending" }).success).toBe(
+      false,
+    );
 
     for (const value of [
       {
@@ -183,14 +163,10 @@ describe("private report identity contract", () => {
       { status: "already_attempted" },
       { status: "refused" },
     ])
-      expect(issueCabinetLinkResponseSchema.safeParse(value).success).toBe(
-        true,
-      );
+      expect(issueCabinetLinkResponseSchema.safeParse(value).success).toBe(true);
 
     for (const status of ["deleted", "already_absent", "retained", "refused"])
-      expect(
-        deleteUnattachedPersonResponseSchema.safeParse({ status }).success,
-      ).toBe(true);
+      expect(deleteUnattachedPersonResponseSchema.safeParse({ status }).success).toBe(true);
   });
 
   it("refuses missing or extra response fields and unsafe action URLs", () => {
@@ -219,14 +195,9 @@ describe("private report identity contract", () => {
       for (const field of Object.keys(value)) {
         const incomplete = { ...value } as Record<string, unknown>;
         delete incomplete[field];
-        expect(
-          schema.safeParse(incomplete).success,
-          `${value.status}.${field}`,
-        ).toBe(false);
+        expect(schema.safeParse(incomplete).success, `${value.status}.${field}`).toBe(false);
       }
-      expect(schema.safeParse({ ...value, unexpected: true }).success).toBe(
-        false,
-      );
+      expect(schema.safeParse({ ...value, unexpected: true }).success).toBe(false);
     }
     for (const action_url of [
       "file:///tmp/secret",

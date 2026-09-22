@@ -5,18 +5,10 @@ import { getBrowserObservationForScan } from "../../../../../../lib/server/scans
 
 export const runtime = "nodejs";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const token = bearerToken(request);
   if (!token)
-    return errorResponse(
-      request,
-      401,
-      "unauthorized",
-      "A private scan token is required.",
-    );
+    return errorResponse(request, 401, "unauthorized", "A private scan token is required.");
   const { id } = await params;
   const result = await getBrowserObservationForScan(id, token);
   if (!result)

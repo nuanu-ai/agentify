@@ -6,10 +6,7 @@ import { getDatabase } from "./database";
 
 export const REPORT_SESSION_COOKIE = "agentify_report_session";
 
-export async function getVerifiedSession(
-  sessionToken: string | undefined,
-  scanId?: string,
-) {
+export async function getVerifiedSession(sessionToken: string | undefined, scanId?: string) {
   if (!sessionToken) return undefined;
   const { db } = getDatabase();
   const session = (
@@ -31,12 +28,7 @@ export async function getVerifiedSession(
       await db
         .select({ leadId: leadScans.leadId })
         .from(leadScans)
-        .where(
-          and(
-            eq(leadScans.leadId, session.leadId),
-            eq(leadScans.scanId, scanId),
-          ),
-        )
+        .where(and(eq(leadScans.leadId, session.leadId), eq(leadScans.scanId, scanId)))
         .limit(1)
     )[0];
     if (!linked) return undefined;

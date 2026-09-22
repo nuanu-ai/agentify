@@ -1,14 +1,13 @@
 import type { BrowserObservationId } from "@agentify/scanner-contracts";
-
-import { BROWSER_REMEDIATION_CATALOG } from "./catalog/browser-observations.js";
-import { HTTP_CHECK_CATALOG } from "./catalog/http-checks.js";
 import {
   canonicalCheckLabel,
   canonicalFixCopy,
   canonicalImpactCopy,
   canonicalSummaryCopy,
 } from "./canonical-copy.js";
-import { safeCode, sanitizeEvidence, type SafeEvidence } from "./sanitize.js";
+import { BROWSER_REMEDIATION_CATALOG } from "./catalog/browser-observations.js";
+import { HTTP_CHECK_CATALOG } from "./catalog/http-checks.js";
+import { type SafeEvidence, safeCode, sanitizeEvidence } from "./sanitize.js";
 
 export type RemediationFindingInput = {
   id: string;
@@ -27,9 +26,7 @@ export type GeneratedRemediationPrompt = {
 };
 
 const titleCase = (value: string): string =>
-  value
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
+  value.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 
 const evidenceLine = (evidence: SafeEvidence): string | undefined => {
   const values = Object.entries(evidence).map(
@@ -50,9 +47,7 @@ export function generateRemediationPrompt(input: {
     .replace(/[^a-z0-9.-]/g, "")
     .slice(0, 253);
   const findings = input.findings
-    .filter(
-      (finding) => finding.status === "fail" || finding.status === "partial",
-    )
+    .filter((finding) => finding.status === "fail" || finding.status === "partial")
     .flatMap((finding) => {
       const id = safeCode(finding.id);
       const labelCode = safeCode(finding.labelCode);
@@ -75,10 +70,7 @@ export function generateRemediationPrompt(input: {
       finding.source === "browser-observation"
         ? BROWSER_REMEDIATION_CATALOG[finding.id as BrowserObservationId]
         : undefined;
-    const http =
-      finding.source === "canonical-http"
-        ? HTTP_CHECK_CATALOG[finding.id]
-        : undefined;
+    const http = finding.source === "canonical-http" ? HTTP_CHECK_CATALOG[finding.id] : undefined;
     const desired = browser?.desiredState ?? http?.desiredState;
     const verification = browser?.verification ?? http?.verification;
     const evidence = evidenceLine(finding.evidence);

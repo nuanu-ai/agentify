@@ -9,11 +9,7 @@ import { getDatabase } from "../lib/server/database";
 // Explicit local export only: no API route, analytics, stdout PII or automatic messaging.
 async function main() {
   const destination = process.env.MERCHANT_EXPORT_PATH;
-  if (
-    process.env.MERCHANT_EXPORT_ACK !== "yes" ||
-    !destination ||
-    !isAbsolute(destination)
-  )
+  if (process.env.MERCHANT_EXPORT_ACK !== "yes" || !destination || !isAbsolute(destination))
     throw new Error("explicit_private_export_required");
   const { db, pool } = getDatabase();
   try {
@@ -29,10 +25,7 @@ async function main() {
       expiresAt: row.expiresAt,
       policyVersion: row.policyVersion,
       application: JSON.parse(
-        decryptSensitiveValue(
-          row.payloadCiphertext,
-          getServerConfig().encryptionKey,
-        ),
+        decryptSensitiveValue(row.payloadCiphertext, getServerConfig().encryptionKey),
       ),
     }));
     await writeFile(destination, JSON.stringify(records, null, 2), {

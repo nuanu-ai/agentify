@@ -111,7 +111,7 @@ If port 8080 is taken, `AGENTIFY_HOST_PORT=8090 docker compose up` moves the
 stack and nothing else — the buy command runs on the host and needs
 `GATEWAY_URL=http://localhost:8090 pnpm buy`.
 
-The scanner runs separately, on its own PostgreSQL 16.9 at `127.0.0.1:55432`,
+The scanner runs separately, on its own PostgreSQL 17 at `127.0.0.1:55432`,
 and reads `.env.scanner` rather than the `.env` the stack above takes its
 settings from:
 
@@ -121,6 +121,12 @@ pnpm scanner:db:up
 pnpm scanner:db:migrate
 pnpm scanner:dev
 ```
+
+`pnpm scanner:db:down` keeps the volume, and PostgreSQL refuses to start on a
+data directory written by another major version — so a machine that ran the
+scanner before this one moved to 17 gets a clear message on the next
+`scanner:db:up` and needs
+`docker volume rm agentify-scanner_agentify-scanner-postgres` once.
 
 The web application listens on port 3000 and the worker's health endpoint on
 8081; `pnpm scanner:db:down` stops the database without deleting its volume.
@@ -180,19 +186,13 @@ SDK, in `packages/slice/src/stand-merchant.ts`, and
 
 ## Repository layout
 
-One pnpm workspace holds all of it, on one toolchain and one lockfile. The
-packages do not yet share one policy for the compiler, the lint and the tests.
-Which files a linter reads is decided in two places. The exclusions in
-`biome.json` keep Biome out of the scanner's nine directories, the
-`*.scanner.*` configuration files at the root, the portal under `apps/docs`,
-`ops/` and `fixtures/`. The globs of the `scanner:lint` and
-`scanner:format:check` commands cover the TypeScript and JSON inside those
-nine directories and a few named files besides. Whatever falls outside both is
-read by no linter today — the scanner's stylesheets, the portal's sources, the
-operational scripts, the test inputs and `vitest.scanner.config.ts` among
-them. That is why the commands in the root `package.json` are scoped:
-`check`, `typecheck`, `build` and `test` run each set in turn, and `build`
-finishes with the portal.
+One pnpm workspace holds all of it, on one toolchain and one lockfile. Biome
+reads the JavaScript, TypeScript, JSON and CSS of every package — the Markdown,
+the YAML, the shell scripts and the Python are read by no linter — every
+package extends one compiler base and overrides it only where its runtime
+differs, and one command runs every test that costs nothing. What needs a
+database, a browser or the network is not in `pnpm test` and has a command of
+its own.
 
 | Path | What it is |
 | --- | --- |
@@ -254,10 +254,13 @@ kept apart for that reason:
   everything it needs.
 - `pnpm mutate <package>` runs Stryker over one workspace package and prints
   the survivors. It is a triage tool for the hand-over ritual, not a gate.
-- The scanner's own gates are `pnpm scanner:check` for lint, types and unit
-  tests, `pnpm scanner:test:integration` and `pnpm scanner:test:db` against
-  its database, `pnpm scanner:test:actor` for the browser observer, and
-  `pnpm scanner:build`.
+- The scanner's own gates are `pnpm scanner:test:integration` and the migration
+  half of `pnpm scanner:test:db`, which take their connection from
+  `.env.scanner` and reach the Postgres that `pnpm scanner:db:up` starts on
+  port 55432. The other half of `scanner:test:db` is `drizzle-kit check`, which
+  reads the migration files and no database at all. `pnpm scanner:test:actor`
+  needs neither: it drives a Chromium, put there once with
+  `pnpm --filter @agentify/browser-observer-actor exec playwright install chromium`.
 
 ## Releasing
 

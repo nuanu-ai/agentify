@@ -31,11 +31,7 @@ const routes = new Map([
   ],
   [
     "/llms.txt",
-    [
-      200,
-      "text/markdown",
-      "# Fixture Store\n\n- [Products](https://fixture.invalid/products)\n",
-    ],
+    [200, "text/markdown", "# Fixture Store\n\n- [Products](https://fixture.invalid/products)\n"],
   ],
   [
     "/.well-known/mcp.json",
@@ -81,9 +77,7 @@ const routes = new Map([
 const server = createServer((request, response) => {
   const url = new URL(request.url ?? "/", "http://fixture.invalid");
   if (url.pathname === "/redirect/private") {
-    response
-      .writeHead(302, { location: "http://169.254.169.254/latest/meta-data" })
-      .end();
+    response.writeHead(302, { location: "http://169.254.169.254/latest/meta-data" }).end();
     return;
   }
   if (url.pathname === "/redirect/loop") {
@@ -91,11 +85,7 @@ const server = createServer((request, response) => {
     return;
   }
   if (url.pathname === "/slow") {
-    setTimeout(
-      () =>
-        response.writeHead(200, { "content-type": "text/plain" }).end("slow"),
-      9_000,
-    );
+    setTimeout(() => response.writeHead(200, { "content-type": "text/plain" }).end("slow"), 9_000);
     return;
   }
   if (url.pathname === "/reset") {
@@ -103,9 +93,7 @@ const server = createServer((request, response) => {
     return;
   }
   if (url.pathname === "/huge") {
-    response
-      .writeHead(200, { "content-type": "text/html" })
-      .end("x".repeat(3 * 1024 * 1024));
+    response.writeHead(200, { "content-type": "text/html" }).end("x".repeat(3 * 1024 * 1024));
     return;
   }
   if (url.pathname === "/compressed-bomb") {
@@ -131,9 +119,7 @@ const server = createServer((request, response) => {
   if (url.pathname === "/" && request.headers.accept === "text/markdown") {
     response
       .writeHead(200, { "content-type": "text/markdown", vary: "Accept" })
-      .end(
-        `# Fixture Store\n\n${"Machine-readable catalog information. ".repeat(20)}`,
-      );
+      .end(`# Fixture Store\n\n${"Machine-readable catalog information. ".repeat(20)}`);
     return;
   }
   if (url.pathname === "/") {
@@ -147,14 +133,11 @@ const server = createServer((request, response) => {
     return;
   }
   const route = routes.get(url.pathname);
-  if (!route)
-    response.writeHead(404, { "content-type": "text/plain" }).end("not found");
+  if (!route) response.writeHead(404, { "content-type": "text/plain" }).end("not found");
   else response.writeHead(route[0], { "content-type": route[1] }).end(route[2]);
 });
 
 const port = Number(process.env.FIXTURE_PORT ?? 4179);
 server.listen(port, "127.0.0.1", () => {
-  process.stdout.write(
-    `scanner fixture listening on http://127.0.0.1:${port}\n`,
-  );
+  process.stdout.write(`scanner fixture listening on http://127.0.0.1:${port}\n`);
 });

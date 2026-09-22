@@ -3,7 +3,7 @@
   align-items: center;
   gap: 7px;
   color: var(--muted);
-  font: 500 0.75rem/1.4 var(--font-mono);
+  font: 500 0.75rem / 1.4 var(--font-mono);
 }
 
 .dot {

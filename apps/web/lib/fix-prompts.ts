@@ -1,14 +1,14 @@
-import type {
-  BrowserObservationFinding,
-  BrowserObservationStatusResponse,
-  ReportResponse,
-} from "@agentify/scanner-contracts";
 import {
   canonicalCheckLabel,
   canonicalFixCopy,
   canonicalImpactCopy,
   canonicalSummaryCopy,
 } from "@agentify/remediation";
+import type {
+  BrowserObservationFinding,
+  BrowserObservationStatusResponse,
+  ReportResponse,
+} from "@agentify/scanner-contracts";
 
 import {
   browserObservationImpact,
@@ -39,9 +39,7 @@ const SAFE_CODE = /^[a-z0-9][a-z0-9_:-]{0,199}$/i;
 
 /** Fail + partial are the actionable findings; unavailable is never a defect. */
 function openIssues(report: ReportResponse): Check[] {
-  return report.checks.filter(
-    (check) => check.status === "fail" || check.status === "partial",
-  );
+  return report.checks.filter((check) => check.status === "fail" || check.status === "partial");
 }
 
 function safeHost(host: string): string {
@@ -58,12 +56,9 @@ function formatCanonicalEvidence(evidence: Check["evidence"]): string[] {
   return Object.entries(evidence).flatMap(([key, value]) => {
     if (!SAFE_CODE.test(key) || PRIVATE_EVIDENCE_KEY.test(key)) return [];
     const label = formatRegistryCode(key);
-    if (typeof value === "number" && Number.isFinite(value))
-      return [`${label}: ${value}`];
-    if (typeof value === "boolean")
-      return [`${label}: ${value ? "Yes" : "No"}`];
-    if (typeof value === "string" && isSafeEvidenceString(value))
-      return [`${label}: ${value}`];
+    if (typeof value === "number" && Number.isFinite(value)) return [`${label}: ${value}`];
+    if (typeof value === "boolean") return [`${label}: ${value ? "Yes" : "No"}`];
+    if (typeof value === "string" && isSafeEvidenceString(value)) return [`${label}: ${value}`];
     if (Array.isArray(value)) {
       const safe = value
         .filter((item): item is string =>
@@ -96,16 +91,11 @@ function hasControlCharacters(value: string): boolean {
 function browserIssues(
   observation: BrowserObservationStatusResponse | null | undefined,
 ): BrowserObservationFinding[] {
-  if (!observation || !["completed", "partial"].includes(observation.status))
-    return [];
+  if (!observation || !["completed", "partial"].includes(observation.status)) return [];
   return observation.findings.filter(isActionableBrowserFinding);
 }
 
-function promptPreamble(
-  report: ReportResponse,
-  brand: string,
-  includeBrowser: boolean,
-): string {
+function promptPreamble(report: ReportResponse, brand: string, includeBrowser: boolean): string {
   const score = report.score ?? "not published";
   const coverage = Math.round(report.coverage * 100);
   const browserLine = includeBrowser
@@ -138,26 +128,18 @@ function canonicalIssueBlock(check: Check, index?: number): string {
   const lines = [
     `${index === undefined ? "##" : `${index}.`} Canonical check ${String(check.id).padStart(2, "0")}: ${title} (${check.status})`,
   ];
-  const summary = check.summary_code
-    ? canonicalSummaryCopy(check.summary_code)
-    : undefined;
-  const impact = check.user_impact_code
-    ? canonicalImpactCopy(check.user_impact_code)
-    : undefined;
+  const summary = check.summary_code ? canonicalSummaryCopy(check.summary_code) : undefined;
+  const impact = check.user_impact_code ? canonicalImpactCopy(check.user_impact_code) : undefined;
   const fix = check.fix_code ? canonicalFixCopy(check.fix_code) : undefined;
   if (summary) lines.push(`   Observed: ${summary}`);
   if (impact) lines.push(`   Why it matters: ${impact}`);
   if (fix) lines.push(`   Desired improvement: ${fix}`);
   const evidence = formatCanonicalEvidence(check.evidence);
-  if (evidence.length > 0)
-    lines.push(`   Sanitized evidence: ${evidence.join("; ")}`);
+  if (evidence.length > 0) lines.push(`   Sanitized evidence: ${evidence.join("; ")}`);
   return lines.join("\n");
 }
 
-function browserIssueBlock(
-  finding: BrowserObservationFinding,
-  index?: number,
-): string {
+function browserIssueBlock(finding: BrowserObservationFinding, index?: number): string {
   const lines = [
     `${index === undefined ? "##" : `${index}.`} Browser observation: ${browserObservationLabel(finding.id)} (${finding.status}, non-scoring)`,
     `   Observed: ${formatRegistryCode(finding.summary_code)}`,
@@ -166,14 +148,11 @@ function browserIssueBlock(
     `   Why it matters: ${finding.user_impact_code ? formatRegistryCode(finding.user_impact_code) : browserObservationImpact(finding.id)}`,
   );
   if (finding.remediation_code)
-    lines.push(
-      `   Desired improvement: ${formatRegistryCode(finding.remediation_code)}`,
-    );
+    lines.push(`   Desired improvement: ${formatRegistryCode(finding.remediation_code)}`);
   const evidence = safeEvidenceEntries(finding.evidence).map(
     ({ label, value }) => `${label}: ${value}`,
   );
-  if (evidence.length > 0)
-    lines.push(`   Sanitized evidence: ${evidence.join("; ")}`);
+  if (evidence.length > 0) lines.push(`   Sanitized evidence: ${evidence.join("; ")}`);
   return lines.join("\n");
 }
 
@@ -211,9 +190,7 @@ export function buildFixPrompts(
   const preamble = promptPreamble(report, brand, browser.length > 0);
   const issueBlocks = [
     ...canonical.map((check, index) => canonicalIssueBlock(check, index + 1)),
-    ...browser.map((finding, index) =>
-      browserIssueBlock(finding, canonical.length + index + 1),
-    ),
+    ...browser.map((finding, index) => browserIssueBlock(finding, canonical.length + index + 1)),
   ];
 
   const aiPrompt =
@@ -226,15 +203,10 @@ export function buildFixPrompts(
     `${brand} · ${formatLevel(report.level)} · ${report.score ?? "—"}/100 · coverage ${Math.round(report.coverage * 100)}%`,
     "Canonical score and passive browser observations remain separate.",
     "",
-    ...canonical.map(
-      (check) => `[ ] ${canonicalIssueBlock(check).replace(/^## /, "")}`,
-    ),
-    ...browser.map(
-      (finding) => `[ ] ${browserIssueBlock(finding).replace(/^## /, "")}`,
-    ),
+    ...canonical.map((check) => `[ ] ${canonicalIssueBlock(check).replace(/^## /, "")}`),
+    ...browser.map((finding) => `[ ] ${browserIssueBlock(finding).replace(/^## /, "")}`),
   ];
-  if (issueBlocks.length === 0)
-    briefLines.push("No open fail or partial findings.");
+  if (issueBlocks.length === 0) briefLines.push("No open fail or partial findings.");
 
   return { aiPrompt, devBrief: briefLines.join("\n") };
 }

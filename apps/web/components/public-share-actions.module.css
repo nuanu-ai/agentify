@@ -16,7 +16,7 @@
   flex-wrap: wrap;
   padding-left: 6px;
   color: var(--muted);
-  font: 0.75rem/1.5 var(--font-mono);
+  font: 0.75rem / 1.5 var(--font-mono);
 }
 
 .live {
@@ -59,7 +59,7 @@
   display: block;
   margin-top: 8px;
   color: var(--muted);
-  font: 0.75rem/1.5 var(--font-mono);
+  font: 0.75rem / 1.5 var(--font-mono);
 }
 
 .status:empty {
@@ -86,7 +86,7 @@
   padding: 12px;
   background: var(--bg);
   color: var(--fg);
-  font: 0.75rem/1.5 var(--font-mono);
+  font: 0.75rem / 1.5 var(--font-mono);
 }
 
 @media (max-width: 560px) {

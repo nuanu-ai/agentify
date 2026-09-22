@@ -1,32 +1,16 @@
-import {
-  partnerClickIdSchema,
-  registrationRequestSchema,
-} from "@agentify/scanner-contracts";
+import { partnerClickIdSchema, registrationRequestSchema } from "@agentify/scanner-contracts";
 import { type NextRequest, NextResponse } from "next/server";
-
-import { getServerConfig } from "../../../../../../lib/server/config";
-import {
-  bearerToken,
-  errorResponse,
-  hasSameOrigin,
-} from "../../../../../../lib/server/http";
-import { authorizeScan } from "../../../../../../lib/server/scans";
-import { createScannerRegistrationIntent } from "../../../../../../lib/server/scanner-registration";
 import { PARTNER_CLICK_ID_COOKIE } from "../../../../../../lib/server/attribution";
+import { getServerConfig } from "../../../../../../lib/server/config";
+import { bearerToken, errorResponse, hasSameOrigin } from "../../../../../../lib/server/http";
+import { createScannerRegistrationIntent } from "../../../../../../lib/server/scanner-registration";
+import { authorizeScan } from "../../../../../../lib/server/scans";
 
 export const runtime = "nodejs";
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!hasSameOrigin(request))
-    return errorResponse(
-      request,
-      403,
-      "invalid_origin",
-      "The request origin is not allowed.",
-    );
+    return errorResponse(request, 403, "invalid_origin", "The request origin is not allowed.");
   if (!getServerConfig().REGISTRATION_ENABLED)
     return errorResponse(
       request,
@@ -39,20 +23,9 @@ export async function POST(
   const token = bearerToken(request);
   const { id } = await params;
   if (!token)
-    return errorResponse(
-      request,
-      401,
-      "unauthorized",
-      "A private scan token is required.",
-    );
+    return errorResponse(request, 401, "unauthorized", "A private scan token is required.");
   const scan = await authorizeScan(id, token);
-  if (!scan)
-    return errorResponse(
-      request,
-      404,
-      "scan_not_found",
-      "The scan was not found.",
-    );
+  if (!scan) return errorResponse(request, 404, "scan_not_found", "The scan was not found.");
   if (scan.status !== "completed" && scan.status !== "partial")
     return errorResponse(
       request,
@@ -62,9 +35,7 @@ export async function POST(
       true,
       5,
     );
-  const parsed = registrationRequestSchema.safeParse(
-    await request.json().catch(() => null),
-  );
+  const parsed = registrationRequestSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success)
     return errorResponse(
       request,
@@ -77,9 +48,7 @@ export async function POST(
       request.cookies.get(PARTNER_CLICK_ID_COOKIE)?.value,
     );
     const result = await createScannerRegistrationIntent(scan, parsed.data, {
-      ...(partnerClickId.success
-        ? { partnerClickId: partnerClickId.data }
-        : {}),
+      ...(partnerClickId.success ? { partnerClickId: partnerClickId.data } : {}),
     });
     if (!result.sent)
       return errorResponse(

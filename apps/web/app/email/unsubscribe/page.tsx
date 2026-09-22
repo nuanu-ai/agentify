@@ -21,9 +21,8 @@ export default function UnsubscribePage() {
           content: (
             <>
               <p>
-                Use a verified report session to unsubscribe. Transactional
-                security or data-request messages may still be sent when
-                necessary.
+                Use a verified report session to unsubscribe. Transactional security or data-request
+                messages may still be sent when necessary.
               </p>
               <AccountActions mode="unsubscribe" />
             </>

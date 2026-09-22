@@ -20,13 +20,18 @@ concurrency:
 # Public pull requests run only on GitHub-hosted infrastructure. No job in this
 # repository receives a route or credential that can deliver to test or live.
 jobs:
-  # These checks share one checkout and one install. Four matrix jobs used to
-  # spend almost nine minutes doing setup while the checks themselves took
-  # seconds. One gate has one answer: this exact commit is fit to release, or it
-  # is not.
+  # Every check that needs the source, the dependencies or a database shares
+  # one checkout, one install and one database server. Matrix jobs used to
+  # spend almost nine minutes on setup while the checks themselves took
+  # seconds, and a second job for half the workspace spent that again and
+  # answered on a different version of Postgres than production runs. The jobs
+  # beside this one are split by what they need — a browser, the portal build,
+  # only files — never by which half of the product they check. One gate has
+  # one answer: this exact commit is fit to release, or it is not.
   gate:
     name: gate
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       postgres:
         # PostgreSQL 17.11 Alpine: the same immutable image the commerce stack deploys.
@@ -58,17 +63,88 @@ jobs:
       # in the root package.json — the same one the developer has on the machine.
       - run: corepack enable
 
+      # One server, two schemas' worth of tests. The image makes the database it
+      # is given and the user that owns it; this makes the scanner's beside it.
+      #
+      # The role is a superuser because less does not carry these suites, which
+      # was measured against this same image rather than assumed. With LOGIN
+      # alone the migration suite stops at "permission denied to create role":
+      # it makes the five service roles itself so that the migration's grants
+      # are exercised rather than asserted as prose. With CREATEROLE it reaches
+      # the row-level security assertions and stops there, because the
+      # migrations FORCE row level security and an owner is subject to its own
+      # policies. With BYPASSRLS as well that suite passes and the P5
+      # integration test stops at "permission denied to set role", where it
+      # steps into four of those roles to check the boundary around merchant
+      # applications: a CREATEROLE role in PostgreSQL 16 and later is admin of
+      # the roles it creates but is not granted SET on them. The alternative is
+      # for this step to create those five roles and grant each one back, which
+      # would put the suites' own fixtures in the workflow file.
+      - name: give the scanner its role and database on the same server
+        env:
+          PGPASSWORD: ci-only
+        run: |
+          psql -v ON_ERROR_STOP=1 -h 127.0.0.1 \
+            -p ${{ job.services.postgres.ports[5432] }} \
+            -U agentify_commerce -d agentify_commerce_test \
+            -c "create role agentify_scanner login superuser password 'ci-only'" \
+            -c "create database agentify_scanner_migration_test owner agentify_scanner"
+
       - run: pnpm install --frozen-lockfile
-      - run: pnpm check:commerce
-      - run: pnpm typecheck:commerce
-      - run: pnpm test:commerce
+      - run: pnpm check
+      - run: pnpm typecheck
+      - run: pnpm test
       - run: pnpm test:db
         env:
           AGENTIFY_TEST_DATABASE_URL: postgresql://agentify_commerce:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_commerce_test
+      - run: pnpm scanner:test:integration
+        env:
+          DATABASE_URL: postgresql://agentify_scanner:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
+          MIGRATION_TEST_DATABASE_URL: postgresql://agentify_scanner:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
+      - run: pnpm scanner:test:db
+        env:
+          DATABASE_URL: postgresql://agentify_scanner:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
+          MIGRATION_TEST_DATABASE_URL: postgresql://agentify_scanner:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
       # `build` and `typecheck` compile different sets of files. The former uses
       # the package tsconfig that decides what ships; the latter reads the whole
       # source tree including tests and emits nothing.
-      - run: pnpm build:commerce
+      - run: pnpm build
+      # This one runs the site it has just built, so it comes after the build.
+      # It reads APP_BASE_URL to know which absolute URLs that site should be
+      # publishing in its robots and its sitemap — the built server reads the
+      # variable when it answers, not when it was built, so this step is the
+      # only one that needs it. It starts that server on loopback and asks it;
+      # it reaches nothing outside.
+      - run: pnpm scanner:self-readiness
+        env:
+          APP_BASE_URL: https://agentify.ad
+          DATABASE_URL: postgresql://agentify_scanner:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
+          MIGRATION_TEST_DATABASE_URL: postgresql://agentify_scanner:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
+
+  # The browser observer's test drives a real Chromium, and installing one with
+  # its system packages is the slowest step in this file by a wide margin:
+  # nineteen seconds on a good day and three minutes on a bad one. It runs
+  # beside the gate instead of in front of every other check, and it needs no
+  # database.
+  browser:
+    name: browser
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - run: corepack enable
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter @agentify/browser-observer-actor exec playwright install --with-deps chromium
+
+      - run: pnpm scanner:test:actor
 
   # The portal keeps a separate gate because its rendered examples are a
   # distinct release promise. It installs from the same workspace lockfile.
@@ -97,51 +173,3 @@ jobs:
       - uses: actions/checkout@v5
       - run: ./scripts/check-decisions.sh
       - run: python3 -m unittest discover -s deploy/ansible -p 'test_*.py'
-
-  # The scanner's packages keep their own job, with a database service and a
-  # browser of their own, while sharing the repository's toolchain and lockfile
-  # with the gate and the portal.
-  scanner:
-    name: scanner
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    services:
-      postgres:
-        image: postgres:16.9-alpine
-        env:
-          POSTGRES_USER: agentify_scanner
-          POSTGRES_PASSWORD: ci-only
-          POSTGRES_DB: agentify_scanner_migration_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U agentify_scanner -d agentify_scanner_migration_test"
-          --health-interval 2s
-          --health-timeout 3s
-          --health-retries 15
-
-    env:
-      DATABASE_URL: postgresql://agentify_scanner:ci-only@127.0.0.1:5432/agentify_scanner_migration_test
-      MIGRATION_TEST_DATABASE_URL: postgresql://agentify_scanner:ci-only@127.0.0.1:5432/agentify_scanner_migration_test
-      APP_BASE_URL: https://agentify.ad
-
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version-file: .nvmrc
-          package-manager-cache: false
-
-      - run: corepack enable
-
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @agentify/browser-observer-actor exec playwright install --with-deps chromium
-      - run: pnpm check:scanner
-      - run: pnpm typecheck:scanner
-      - run: pnpm test:scanner
-      - run: pnpm scanner:test:actor
-      - run: pnpm scanner:test:integration
-      - run: pnpm scanner:test:db
-      - run: pnpm build:scanner
-      - run: pnpm scanner:self-readiness

@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  analyzeAcceptedResponses,
-  percentile,
-  pollAcceptedScans,
-} from "./scan-evidence-lib.mjs";
+import { analyzeAcceptedResponses, percentile, pollAcceptedScans } from "./scan-evidence-lib.mjs";
 
 test("percentile uses the nearest-rank definition", () => {
   assert.equal(percentile([10, 20, 30, 40, 50], 0.95), 50);
@@ -62,30 +58,25 @@ test("poller records first running and terminal timing for every capability", as
 
   assert.equal(polled.results.length, 2);
   assert.ok(polled.results.every((result) => result.outcome === "terminal"));
-  assert.deepEqual(
-    polled.results.map((result) => result.terminalStatus).sort(),
-    ["completed", "partial"],
-  );
+  assert.deepEqual(polled.results.map((result) => result.terminalStatus).sort(), [
+    "completed",
+    "partial",
+  ]);
   assert.ok(polled.observedMaxRunning <= 2);
-  assert.ok(
-    polled.results.every((result) => result.terminalMs >= result.queueMs),
-  );
+  assert.ok(polled.results.every((result) => result.terminalMs >= result.queueMs));
 });
 
 test("poller marks a capability lost after the bounded timeout", async () => {
   let currentTime = 0;
-  const polled = await pollAcceptedScans(
-    [{ scanId: "scan-lost", acceptedAtMs: 0 }],
-    {
-      intervalMs: 100,
-      timeoutMs: 250,
-      now: () => currentTime,
-      sleep: async (milliseconds) => {
-        currentTime += milliseconds;
-      },
-      fetchStatus: async () => ({ status: "queued" }),
+  const polled = await pollAcceptedScans([{ scanId: "scan-lost", acceptedAtMs: 0 }], {
+    intervalMs: 100,
+    timeoutMs: 250,
+    now: () => currentTime,
+    sleep: async (milliseconds) => {
+      currentTime += milliseconds;
     },
-  );
+    fetchStatus: async () => ({ status: "queued" }),
+  });
   assert.equal(polled.results[0].outcome, "timeout");
   assert.equal(polled.results[0].lastStatus, "queued");
 });

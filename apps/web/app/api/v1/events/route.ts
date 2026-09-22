@@ -1,47 +1,26 @@
 import { clientAnalyticsEventRequestSchema } from "@agentify/scanner-contracts";
-import {
-  emitStoredBusinessEvent,
-  scans,
-  sessions,
-} from "@agentify/scanner-database";
+import { emitStoredBusinessEvent, scans, sessions } from "@agentify/scanner-database";
 import { eq } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 
-import {
-  getVerifiedSession,
-  REPORT_SESSION_COOKIE,
-} from "../../../../lib/server/auth";
+import { getVerifiedSession, REPORT_SESSION_COOKIE } from "../../../../lib/server/auth";
 import { getServerConfig } from "../../../../lib/server/config";
 import { hmacHex } from "../../../../lib/server/crypto";
 import { getDatabase } from "../../../../lib/server/database";
-import {
-  bearerToken,
-  errorResponse,
-  hasSameOrigin,
-} from "../../../../lib/server/http";
+import { bearerToken, errorResponse, hasSameOrigin } from "../../../../lib/server/http";
 import { ANONYMOUS_COOKIE, authorizeScan } from "../../../../lib/server/scans";
 
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
   if (!hasSameOrigin(request)) {
-    return errorResponse(
-      request,
-      403,
-      "invalid_origin",
-      "The request origin is not allowed.",
-    );
+    return errorResponse(request, 403, "invalid_origin", "The request origin is not allowed.");
   }
   const parsed = clientAnalyticsEventRequestSchema.safeParse(
     await request.json().catch(() => null),
   );
   if (!parsed.success) {
-    return errorResponse(
-      request,
-      400,
-      "invalid_event",
-      "The analytics event is invalid.",
-    );
+    return errorResponse(request, 400, "invalid_event", "The analytics event is invalid.");
   }
 
   const { db } = getDatabase();
@@ -69,17 +48,9 @@ export async function POST(request: NextRequest) {
         "Analytics context was not found.",
       );
     }
-    const anonymousHash = hmacHex(
-      getServerConfig().hmacSecret,
-      "anonymous",
-      anonymousToken,
-    );
+    const anonymousHash = hmacHex(getServerConfig().hmacSecret, "anonymous", anonymousToken);
     const session = (
-      await db
-        .select()
-        .from(sessions)
-        .where(eq(sessions.anonymousIdHash, anonymousHash))
-        .limit(1)
+      await db.select().from(sessions).where(eq(sessions.anonymousIdHash, anonymousHash)).limit(1)
     )[0];
     if (!session?.consentSnapshotId) {
       return errorResponse(
@@ -113,11 +84,7 @@ export async function POST(request: NextRequest) {
       );
     }
     const session = (
-      await db
-        .select()
-        .from(sessions)
-        .where(eq(sessions.id, scan.sessionId))
-        .limit(1)
+      await db.select().from(sessions).where(eq(sessions.id, scan.sessionId)).limit(1)
     )[0];
     if (!session?.consentSnapshotId) {
       return errorResponse(
@@ -141,33 +108,15 @@ export async function POST(request: NextRequest) {
       body.scan_id,
     );
     const bearer = bearerToken(request);
-    const capabilityScan = bearer
-      ? await authorizeScan(body.scan_id, bearer)
-      : undefined;
+    const capabilityScan = bearer ? await authorizeScan(body.scan_id, bearer) : undefined;
     const scan =
       verified || capabilityScan
-        ? (
-            await db
-              .select()
-              .from(scans)
-              .where(eq(scans.id, body.scan_id))
-              .limit(1)
-          )[0]
+        ? (await db.select().from(scans).where(eq(scans.id, body.scan_id)).limit(1))[0]
         : undefined;
     const session = scan
-      ? (
-          await db
-            .select()
-            .from(sessions)
-            .where(eq(sessions.id, scan.sessionId))
-            .limit(1)
-        )[0]
+      ? (await db.select().from(sessions).where(eq(sessions.id, scan.sessionId)).limit(1))[0]
       : undefined;
-    if (
-      (!verified && !capabilityScan) ||
-      !scan ||
-      !session?.consentSnapshotId
-    ) {
+    if ((!verified && !capabilityScan) || !scan || !session?.consentSnapshotId) {
       return errorResponse(
         request,
         404,
@@ -186,18 +135,12 @@ export async function POST(request: NextRequest) {
     };
     const coverage = Number(scan.coverage ?? 0);
     eventProperties = {
-      coverage_band:
-        coverage >= 0.9 ? "high" : coverage >= 0.7 ? "medium" : "low",
+      coverage_band: coverage >= 0.9 ? "high" : coverage >= 0.7 ? "medium" : "low",
     };
   }
 
   if (!context) {
-    return errorResponse(
-      request,
-      400,
-      "invalid_event_context",
-      "The event context is invalid.",
-    );
+    return errorResponse(request, 400, "invalid_event_context", "The event context is invalid.");
   }
 
   let stored: { inserted: boolean; eventId: string };
