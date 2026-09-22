@@ -161,12 +161,6 @@ beforeAll(async () => {
   await admin.pool.query(
     "drop schema if exists public cascade; drop schema if exists drizzle cascade; create schema public",
   );
-  await admin.pool.query(`DO $roles$ BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agentify_web') THEN CREATE ROLE agentify_web NOLOGIN; END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agentify_privacy') THEN CREATE ROLE agentify_privacy NOLOGIN; END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agentify_worker') THEN CREATE ROLE agentify_worker NOLOGIN; END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agentify_dashboard') THEN CREATE ROLE agentify_dashboard NOLOGIN; END IF;
-  END $roles$; GRANT USAGE ON SCHEMA public TO agentify_web, agentify_privacy, agentify_worker, agentify_dashboard`);
   await migrateDatabase(admin.db, migrationsFolder);
   const server = createServer(async (request, response) => {
     if (
@@ -700,28 +694,5 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
       expiredScannerRecoveryIntents: 0,
       expiredScannerIdentityCompletions: 0,
     });
-  });
-
-  it("keeps merchant applications behind their existing RLS boundary", async () => {
-    for (const role of ["agentify_web", "agentify_privacy"]) {
-      await expect(
-        admin.db.transaction(async (tx) => {
-          await tx.execute(sql.raw(`set local role ${role}`));
-          return tx.execute(sql`select id from public.merchant_applications limit 1`);
-        }),
-      ).resolves.toMatchObject({ rows: [expect.any(Object)] });
-    }
-    for (const role of ["agentify_worker", "agentify_dashboard"]) {
-      try {
-        await admin.db.transaction(async (tx) => {
-          await tx.execute(sql.raw(`set local role ${role}`));
-          return tx.execute(sql`select id from public.merchant_applications limit 1`);
-        });
-        throw new Error("expected_merchant_application_permission_denied");
-      } catch (error) {
-        const cause = (error as { cause?: unknown }).cause;
-        expect(cause instanceof Error ? cause.message : String(error)).toMatch(/permission denied/);
-      }
-    }
   });
 });

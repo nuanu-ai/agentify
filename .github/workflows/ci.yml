@@ -66,21 +66,13 @@ jobs:
       # One server, two schemas' worth of tests. The image makes the database it
       # is given and the user that owns it; this makes the scanner's beside it.
       #
-      # The role is a superuser because less does not carry these suites, which
-      # was measured against this same image rather than assumed. With LOGIN
-      # alone the migration suite stops at "permission denied to create role":
-      # it makes the five service roles itself so that the migration's grants
-      # are exercised rather than asserted as prose. With CREATEROLE it reaches
-      # the row-level security assertions and stops there, because the
-      # migrations FORCE row level security and an owner is subject to its own
-      # policies. With BYPASSRLS as well that suite passes and the P5
-      # integration test stops at "permission denied to set role", where it
-      # steps into four of those roles to check the boundary around merchant
-      # applications: a CREATEROLE role in PostgreSQL 16 and later is admin of
-      # the roles it creates but is not granted SET on them. The alternative is
-      # for this step to create those five roles and grant each one back, which
-      # would put the suites' own fixtures in the workflow file.
-      - name: give the scanner its role and database on the same server
+      # The role is a superuser, and three of the migrations are the reason:
+      # they put the browser-observation tables under FORCE row level security
+      # and write no policy for them, so an owner is subject to a policy set
+      # that admits nobody. This is the same account the deployed stack uses —
+      # there, too, the scanner connects as the cluster's own role — so the
+      # suites run against the privileges the product actually has.
+      - name: give the scanner its database on the same server
         env:
           PGPASSWORD: ci-only
         run: |

@@ -371,9 +371,13 @@ credential file is removed whether activation succeeds or fails.
 The cabinet serves report identity on its private port 3002; this port is not
 published. Staging creates one host-owned credential for the cabinet and the
 scanner, reuses it on subsequent releases, and keeps test and production
-credentials separate. Workers and privacy jobs receive no identity credential or
-cabinet database access, and the release refuses a rendered graph in which any
-other service holds either half of that route.
+credentials separate. No other service in the rendered graph is given the
+route or the secret, and the release refuses a graph in which one is. That is
+the whole of the separation: every service holds the same database account,
+which is the instance's superuser, so the worker and the privacy job could
+read the cabinet's tables by changing one word in a connection string. What
+stops them reading a person's identity is that they are not the cabinet and
+cannot ask it.
 
 ### First live-approval cutover
 

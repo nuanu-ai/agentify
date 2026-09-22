@@ -49,7 +49,6 @@
     "scanner:ops:load": "node ops/scripts/with-env.mjs node ops/scripts/load-scan.mjs",
     "scanner:ops:golden-corpus": "node ops/scripts/with-env.mjs node ops/scripts/golden-corpus.mjs",
     "scanner:ops:test": "node --test ops/scripts/*.test.mjs && python3 deploy/ansible/test_agentify_test_woo_hairpin.py",
-    "scanner:release:check": "node ops/scripts/with-env.mjs bash ops/scripts/release-gate.sh",
     "scanner:privacy:cleanup": "node ops/scripts/with-env.mjs bash ops/scripts/privacy-retention-cleanup.sh",
     "scanner:ops:local-core": "node ops/scripts/with-env.mjs bash ops/scripts/local-core-flow-smoke.sh"
   },

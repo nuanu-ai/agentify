@@ -14,16 +14,19 @@ existing reports and accounts without granting scanner visitors merchant access.
 
 ## Decision
 
-The scanner uses a separate database in the existing production PostgreSQL
-instance, and reaches it with the same database account the gateway and the
-cabinet use. It had four service roles of its own — web, worker, privacy and
-dashboard — reconciled, finalized and verified by jobs of their own, and the
-Metabase views those roles fed. Both are gone (Dmitry's word, 2026-09-22): one
-account for one product, and a separation that costs four sets of credentials,
-three activation jobs and a verification pass buys nothing while the processes
-sharing it are ours and run on one host. The database that holds the scanner's
-data is owned by that account, so nothing it stored becomes unreadable.
-Commerce data is never a restore target. Database relocation and identity
+The scanner uses a separate database in the existing PostgreSQL instance and
+reaches it with the same account the gateway and the cabinet use. Its four
+service roles — web, worker, privacy and dashboard — their reconcile, finalize
+and verify jobs and the Metabase views the fourth read are deleted (Dmitry's
+word, 2026-09-22): they cost three activation steps and four sets of
+credentials to separate processes that are all ours on one host. That account
+is the instance's bootstrap superuser, so it owns the scanner's tables,
+reaches the commerce database by changing one word in a connection string, and
+leaves the schema's row-level security inert — twenty-six tables declare it,
+three force it on their owner, and no policy exists. What keeps scanner data
+and cabinet data apart is therefore the identity route and the secret only
+those two processes hold, not the database. Commerce data is never a restore
+target. Database relocation and identity
 replacement are separate cutover steps, with verification between them. The
 separate database is the present state and not the destination: one database
 is the goal, but not immediate (Dmitry's word, 2026-09-22), and the merge is a
@@ -82,11 +85,10 @@ Supabase retirement follows database, queue, mail and report-access acceptance.
 
 Running the complete Supabase platform ourselves adds services without advancing
 the shared stack. Reusing legacy hand-written verification avoids a dependency
-but abandons the component boundary established by ADR-0009. The internal route the scanner asks over is the cabinet's second listener,
-which publishes no port and is reached by service name on the stack's own
-network; the credential both sides hold is what separates it, not a network of
-its own, and the release proves that no other service in the rendered graph is
-given either half of it. Cross-domain SSO and
+but abandons the component boundary established by ADR-0009. The route above is
+the cabinet's second listener, publishing no port and reached by service name;
+the release proves no other service in the rendered graph holds either half of
+its credential. Cross-domain SSO and
 automatic merging of scanner and merchant identities are not built; what does cross
 the boundary is decided in ADR-0026: at the moment the scanner confirms an address,
 it asks the cabinet over an internal route for the cabinet's own sign-in link, and

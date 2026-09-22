@@ -7,7 +7,6 @@ cd "$ROOT"
 command -v rg >/dev/null 2>&1 || { echo "rg is required" >&2; exit 1; }
 command -v node >/dev/null 2>&1 || { echo "node is required" >&2; exit 1; }
 
-node ops/scripts/validate-ops.mjs
 
 if rg -n 'fonts\.googleapis\.com|fonts\.gstatic\.com' apps/web; then
   echo "External Google font loading is forbidden." >&2
