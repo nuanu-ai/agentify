@@ -123,13 +123,13 @@
       dockerfile: deploy/Dockerfile.web
       extra: []
     - image: "{{ release_identity.firstParty['scanner-web'] }}"
-      dockerfile: ops/deploy/droplet/web.Dockerfile
+      dockerfile: deploy/Dockerfile.scanner
       extra: [--target, runner]
     - image: "{{ release_identity.firstParty['scanner-worker'] }}"
-      dockerfile: ops/deploy/scanner-worker.Dockerfile
+      dockerfile: deploy/Dockerfile.scanner-worker
       extra: []
     - image: "{{ release_identity.firstParty['scanner-privacy'] }}"
-      dockerfile: ops/deploy/droplet/web.Dockerfile
+      dockerfile: deploy/Dockerfile.scanner
       extra: [--target, privacy-jobs]
   loop_control:
     label: "{{ item.image }}"

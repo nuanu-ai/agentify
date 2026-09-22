@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-const entrypoint = new URL("../deploy/droplet/web-entrypoint.sh", import.meta.url).pathname;
+const entrypoint = new URL("../../deploy/scanner-entrypoint.sh", import.meta.url).pathname;
 
 function runEntrypoint(overrides = {}) {
   const directory = mkdtempSync(join(tmpdir(), "agentify-web-entrypoint-"));

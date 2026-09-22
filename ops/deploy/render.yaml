@@ -2,7 +2,7 @@ services:
   - type: worker
     name: agentify-scanner-worker
     runtime: docker
-    dockerfilePath: ./ops/deploy/scanner-worker.Dockerfile
+    dockerfilePath: ./deploy/Dockerfile.scanner-worker
     dockerContext: .
     autoDeployTrigger: checksPass
     numInstances: 1

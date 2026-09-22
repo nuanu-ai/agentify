@@ -37,7 +37,7 @@ services:
   migrate:
     build:
       context: ../../..
-      dockerfile: ops/deploy/scanner-worker.Dockerfile
+      dockerfile: deploy/Dockerfile.scanner-worker
     environment:
       DATABASE_URL: ${ADMIN_DATABASE_URL:-postgresql://agentify_admin:${POSTGRES_ADMIN_PASSWORD}@postgres:5432/agentify}
     command: ["node", "packages/scanner-database/dist/migrate-cli.js"]
@@ -79,7 +79,7 @@ services:
   queue-init:
     build:
       context: ../../..
-      dockerfile: ops/deploy/scanner-worker.Dockerfile
+      dockerfile: deploy/Dockerfile.scanner-worker
     environment:
       DATABASE_URL: ${ADMIN_DATABASE_URL:-postgresql://agentify_admin:${POSTGRES_ADMIN_PASSWORD}@postgres:5432/agentify}
     command: ["node", "apps/scanner-worker/dist/queue-init-cli.js"]
@@ -165,7 +165,7 @@ services:
   web:
     build:
       context: ../../..
-      dockerfile: ops/deploy/droplet/web.Dockerfile
+      dockerfile: deploy/Dockerfile.scanner
     restart: unless-stopped
     environment:
       APP_BASE_URL: ${APP_BASE_URL:?set this channel public origin}
@@ -208,7 +208,7 @@ services:
     image: agentify-privacy-cleanup:latest
     build:
       context: ../../..
-      dockerfile: ops/deploy/droplet/web.Dockerfile
+      dockerfile: deploy/Dockerfile.scanner
       target: privacy-jobs
     environment:
       APP_BASE_URL: ${APP_BASE_URL:?set this channel public origin}
@@ -228,7 +228,7 @@ services:
   worker:
     build:
       context: ../../..
-      dockerfile: ops/deploy/scanner-worker.Dockerfile
+      dockerfile: deploy/Dockerfile.scanner-worker
     restart: unless-stopped
     environment:
       DATABASE_URL: ${WORKER_DATABASE_URL:-postgresql://agentify_worker:${POSTGRES_WORKER_PASSWORD}@postgres:5432/agentify}
