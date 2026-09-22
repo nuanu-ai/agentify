@@ -1,4 +1,4 @@
-import type { Order } from "@agentify/commerce-core";
+import type { Order } from "@agentify/core";
 import { afterEach, describe, expect, it } from "vitest";
 import type { StoredOrder } from "../ports/store.js";
 import { type Harness, harness } from "../testing/harness.js";

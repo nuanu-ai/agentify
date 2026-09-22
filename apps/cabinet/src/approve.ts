@@ -7,14 +7,14 @@
  * no merchant credential involved.
  */
 
-import { environmentOf } from "@agentify/commerce-core";
+import { environmentOf } from "@agentify/core";
 import {
   connect,
   grantLiveApproval,
   PostgresStore,
   randomIds,
   systemClock,
-} from "@agentify/commerce-gateway";
+} from "@agentify/gateway";
 import { runApproval } from "./approval-command.js";
 import { PostgresApprovalDirectory } from "./approval-directory.js";
 

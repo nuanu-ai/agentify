@@ -3,11 +3,7 @@
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  noDatabaseHere,
-  readyDatabase,
-  testDatabaseUrl,
-} from "@agentify/commerce-gateway/testing/database";
+import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "@agentify/gateway/testing/database";
 import { Pool } from "pg";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "./config.js";

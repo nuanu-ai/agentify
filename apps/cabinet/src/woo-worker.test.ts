@@ -23,7 +23,7 @@ import {
   type Served,
   serve,
   theMerchantKey,
-} from "@agentify/commerce-gateway/testing";
+} from "@agentify/gateway/testing";
 import type { AgentOrderStatus, Order } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { gatewayFor } from "./gateway.js";

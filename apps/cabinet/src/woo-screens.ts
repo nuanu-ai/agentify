@@ -18,7 +18,7 @@
  * is here it says that, rather than "it failed" — which it does not know.
  */
 
-import type { SurfaceMode } from "@agentify/commerce-core";
+import type { SurfaceMode } from "@agentify/core";
 import { bare, brandLockup, escaped, page } from "./html.js";
 import type { Viewer } from "./screens.js";
 import type { SkippedProduct } from "./woo-catalog.js";

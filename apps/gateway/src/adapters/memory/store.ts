@@ -26,7 +26,7 @@
  * somebody else's cabinet.
  */
 
-import { isOpen, type MerchantSelling } from "@agentify/commerce-core";
+import { isOpen, type MerchantSelling } from "@agentify/core";
 import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import type { Clock, Ids } from "../../ports/clock.js";
 import type {

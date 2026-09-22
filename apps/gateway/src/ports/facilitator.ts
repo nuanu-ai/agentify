@@ -18,7 +18,7 @@
  * to the nearest verdict.
  */
 
-import type { PaymentVerificationFailure } from "@agentify/commerce-core";
+import type { PaymentVerificationFailure } from "@agentify/core";
 
 /**
  * One charge, as the payment layer needs to see it. The payment is the thing

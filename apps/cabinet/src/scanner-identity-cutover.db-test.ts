@@ -5,7 +5,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promi
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { readyDatabase, testDatabaseUrl } from "@agentify/commerce-gateway/testing/database";
+import { readyDatabase, testDatabaseUrl } from "@agentify/gateway/testing/database";
 import { Pool } from "pg";
 import { expect, it } from "vitest";
 import { migrateAccounts } from "./database.js";

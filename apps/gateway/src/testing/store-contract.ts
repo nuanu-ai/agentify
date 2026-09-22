@@ -55,7 +55,7 @@
  * both files check theirs where the failure lives.
  */
 
-import type { Order } from "@agentify/commerce-core";
+import type { Order } from "@agentify/core";
 import type { Card, Receipt } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import type { Store, StoredOrder } from "../ports/store.js";

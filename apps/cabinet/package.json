@@ -1,9 +1,9 @@
 {
-  "name": "@agentify/commerce-cabinet",
+  "name": "@agentify/cabinet",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Agentify commerce merchant cabinet — cards, orders and receipts, server-rendered",
+  "description": "Agentify merchant cabinet — cards, orders and receipts, server-rendered",
   "exports": {
     ".": "./src/index.ts"
   },
@@ -17,8 +17,8 @@
     "db:migrate": "tsx src/migrate.ts"
   },
   "dependencies": {
-    "@agentify/commerce-core": "workspace:*",
-    "@agentify/commerce-gateway": "workspace:*",
+    "@agentify/core": "workspace:*",
+    "@agentify/gateway": "workspace:*",
     "@agentify/scanner-contracts": "workspace:*",
     "@nuanu-ai/agentify-contracts": "workspace:*",
     "better-auth": "1.7.2",

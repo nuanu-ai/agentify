@@ -19,7 +19,7 @@
  * answer from where the caller stands.
  */
 
-import { isOpen, MERCHANT_SELLING, type MerchantSelling } from "@agentify/commerce-core";
+import { isOpen, MERCHANT_SELLING, type MerchantSelling } from "@agentify/core";
 import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import { and, eq, exists, isNull, lt, not, or, sql } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";

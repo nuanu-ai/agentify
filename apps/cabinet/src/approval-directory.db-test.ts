@@ -9,12 +9,8 @@
 import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { connect, grantLiveApproval, PostgresStore, randomIds } from "@agentify/commerce-gateway";
-import {
-  noDatabaseHere,
-  readyDatabase,
-  testDatabaseUrl,
-} from "@agentify/commerce-gateway/testing/database";
+import { connect, grantLiveApproval, PostgresStore, randomIds } from "@agentify/gateway";
+import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "@agentify/gateway/testing/database";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";

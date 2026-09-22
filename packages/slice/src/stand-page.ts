@@ -14,7 +14,7 @@
  * thing here that names an environment.
  */
 
-import { type Environment, SITES } from "@agentify/commerce-core";
+import { type Environment, SITES } from "@agentify/core";
 import {
   API_ROUTES,
   type Card,

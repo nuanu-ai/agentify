@@ -21,7 +21,7 @@
  * product does not yet produce, which is what the totality loop is for.
  */
 
-import { MERCHANT_SELLING } from "@agentify/commerce-core";
+import { MERCHANT_SELLING } from "@agentify/core";
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import { SANDBOX_FACILITATOR } from "../config.js";

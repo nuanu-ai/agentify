@@ -14,7 +14,7 @@
  * can carry. Nothing is stubbed — there is nothing here to stub.
  */
 
-import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/commerce-core";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/core";
 import type { OrderList, ReceiptList } from "@nuanu-ai/agentify-contracts";
 import {
   MerchantCardListSchema,

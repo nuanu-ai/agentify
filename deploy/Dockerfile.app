@@ -7,7 +7,7 @@
 # would be the same layers four times and one more thing to keep in step.
 #
 # There is no compile step. Node runs the TypeScript through tsx, the way
-# `pnpm --filter @agentify/commerce-gateway start` does on a laptop (ADR-0003 §1), so
+# `pnpm --filter @agentify/gateway start` does on a laptop (ADR-0003 §1), so
 # what runs in the container is the same source a developer edits and there is
 # no build output to be stale.
 
@@ -44,4 +44,4 @@ RUN pnpm install --frozen-lockfile --offline
 USER node
 
 # Overridden by compose; named here so the image is runnable on its own.
-CMD ["pnpm", "--filter", "@agentify/commerce-gateway", "start"]
+CMD ["pnpm", "--filter", "@agentify/gateway", "start"]

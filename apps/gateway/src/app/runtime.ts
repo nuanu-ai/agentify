@@ -10,8 +10,8 @@
  * money.
  */
 
-import type { MerchantSelling, OrderMode, OrderPolicy } from "@agentify/commerce-core";
-import { modeOf } from "@agentify/commerce-core";
+import type { MerchantSelling, OrderMode, OrderPolicy } from "@agentify/core";
+import { modeOf } from "@agentify/core";
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { type GatewayConfig, isSandboxFacilitator } from "../config.js";
 import type { Clock, Ids } from "../ports/clock.js";

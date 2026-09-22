@@ -147,7 +147,7 @@ printf '%s\n' "$APPROVAL_EMAIL" | ssh -o BatchMode=yes -o ConnectTimeout=10 \
      -f deploy/compose.hetzner-commerce.yaml \
      -f deploy/compose.scanner-database.yaml -f deploy/compose.release.yaml \
      run --rm --no-deps -T cabinet \
-     pnpm --filter @agentify/commerce-cabinet approve"
+     pnpm --filter @agentify/cabinet --fail-if-no-match approve"
 unset APPROVAL_EMAIL
 ```
 

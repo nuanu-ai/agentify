@@ -5,7 +5,7 @@ import { defineConfig } from "drizzle-kit";
  *
  * The generated SQL is checked in, so what a deployment applies is a file
  * somebody read rather than whatever a tool works out at the time. Applying it
- * is `pnpm --filter @agentify/commerce-cabinet db:migrate`, which needs DATABASE_URL and
+ * is `pnpm --filter @agentify/cabinet db:migrate`, which needs DATABASE_URL and
  * nothing else.
  *
  * The history is kept in a table of its own rather than in the default one,

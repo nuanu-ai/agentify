@@ -20,7 +20,7 @@
       "command": [
         "pnpm",
         "--filter",
-        "@agentify/commerce-cabinet",
+        "@agentify/cabinet",
         "start"
       ],
       "depends_on": {
@@ -78,7 +78,7 @@
       "command": [
         "pnpm",
         "--filter",
-        "@agentify/commerce-gateway",
+        "@agentify/gateway",
         "start"
       ],
       "depends_on": {

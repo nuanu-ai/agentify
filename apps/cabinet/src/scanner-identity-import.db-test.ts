@@ -4,11 +4,7 @@ import { createCipheriv, createHash, createHmac } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import {
-  noDatabaseHere,
-  readyDatabase,
-  testDatabaseUrl,
-} from "@agentify/commerce-gateway/testing/database";
+import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "@agentify/gateway/testing/database";
 import { Pool } from "pg";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 

@@ -22,7 +22,7 @@ import {
   type Served,
   serve,
   theMerchantKey,
-} from "@agentify/commerce-gateway/testing";
+} from "@agentify/gateway/testing";
 import type { Express } from "express";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";

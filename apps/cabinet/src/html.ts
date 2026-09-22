@@ -10,7 +10,7 @@
  * it appears on.
  */
 
-import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/commerce-core";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
 
 /** Text on its way into a page, with the five characters that are not text. */
 export const escaped = (value: string): string =>

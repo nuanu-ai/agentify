@@ -1,7 +1,7 @@
 /**
  * The two things the domain refuses to produce for itself.
  *
- * `@agentify/commerce-core` reads no clock and invents no identifier: every event
+ * `@agentify/core` reads no clock and invents no identifier: every event
  * carries the instant it happened at, so the same inputs always produce the
  * same order. That discipline only holds if the instant comes from somewhere,
  * and this is where. Both are parameters rather than imports so a test can

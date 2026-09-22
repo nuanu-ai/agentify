@@ -6,7 +6,7 @@
  * explicit POST from that form, so a mail preview cannot sign anybody in.
  */
 
-import type { SurfaceMode } from "@agentify/commerce-core";
+import type { SurfaceMode } from "@agentify/core";
 import type { CabinetDestination } from "./cabinet-entry.js";
 import { bare, brandLockup, escaped } from "./html.js";
 

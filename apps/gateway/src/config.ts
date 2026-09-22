@@ -8,7 +8,7 @@ import {
   SANDBOX_FACILITATOR,
   type SurfaceMode,
   surfaceModeOf,
-} from "@agentify/commerce-core";
+} from "@agentify/core";
 import { z } from "zod";
 
 /**

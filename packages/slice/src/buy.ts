@@ -13,8 +13,8 @@
  * which gateway it is talking to before it does anything, and why the smoke
  * command, not this one, is the thing with a spending cap and a dry run.
  *
- *   GATEWAY_URL=http://localhost:8080 pnpm --filter @agentify/commerce-slice buy
- *   GATEWAY_URL=http://localhost:8080 pnpm --filter @agentify/commerce-slice buy esim
+ *   GATEWAY_URL=http://localhost:8080 pnpm --filter @agentify/slice buy
+ *   GATEWAY_URL=http://localhost:8080 pnpm --filter @agentify/slice buy esim
  *
  * With no argument it buys the first card in the catalogue. With one, it takes
  * the card whose catalogue identifier matches it exactly, or failing that the

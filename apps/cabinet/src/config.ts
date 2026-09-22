@@ -23,7 +23,7 @@
  * failure goes to a log and a log goes places the environment does not.
  */
 
-import { type SurfaceMode, surfaceModeOf } from "@agentify/commerce-core";
+import { type SurfaceMode, surfaceModeOf } from "@agentify/core";
 import { z } from "zod";
 import { isSandboxMail, SANDBOX_MAIL } from "./mail.js";
 

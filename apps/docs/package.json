@@ -1,9 +1,9 @@
 {
-  "name": "@agentify/commerce-docs",
+  "name": "@agentify/docs",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Agentify commerce seller documentation",
+  "description": "Agentify seller documentation",
   "scripts": {
     "docs:dev": "vitepress dev",
     "docs:build": "vitepress build",
