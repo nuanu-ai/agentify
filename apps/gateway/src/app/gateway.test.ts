@@ -391,6 +391,49 @@ describe("a synchronous purchase", () => {
     // And no second charge went out on top of the one nobody has heard from.
     expect(harnessed.facilitator.settles).toHaveLength(1);
   });
+
+  it("still writes the receipt when the facilitator answers after the silence was declared", async () => {
+    // The facilitator's client waits far longer than the settle deadline does,
+    // so the ordinary shape of a silence is one declared while the call is
+    // still out — and the answer that lands afterwards is the payment layer's
+    // own, naming a transaction it executed. That is a charge this gateway
+    // observed, however late, and the receipt is what a merchant reconciles a
+    // wallet against. Only a fact somebody read elsewhere and recorded by hand
+    // has no execution time to stamp a proof with, and that one arrives with
+    // no settlement on it.
+    const harnessed = await started({
+      SYNC_RESPONSE_MS: "200",
+      SETTLE_RESPONSE_MS: "50",
+      SYNC_BUDGET_MS: "2000",
+    });
+    const itemId = await published(harnessed, syncCard);
+    const release = harnessed.facilitator.holdSettle();
+    harnessed.facilitator.willSettle({ settled: true, transaction: "0xreal" });
+    const offered = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    const orderId = offered.order.order.id;
+    const worker = workUntilStopped(harnessed, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    const buying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "fp_late");
+    await vi.waitFor(
+      async () => {
+        expect((await harnessed.store.orderById(orderId))?.order.payment).toBe("outcome_unknown");
+      },
+      { timeout: 2_000 },
+    );
+
+    release();
+    await buying;
+    await worker.stop();
+
+    const closed = await harnessed.store.orderById(orderId);
+    expect(closed?.order.state).toBe("delivered");
+    expect(closed?.order.payment).toBe("settled");
+    expect(closed?.settlement).toStrictEqual({ transaction: "0xreal" });
+    expect(await harnessed.store.receiptForOrder(orderId)).not.toBeNull();
+    expect((await harnessed.store.receiptForOrder(orderId))?.outcome).toBe("delivered");
+  });
 });
 
 describe("an asynchronous purchase", () => {
