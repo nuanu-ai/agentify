@@ -7,7 +7,7 @@ const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.
   dependencies?: Record<string, string>;
 };
 
-describe("@agentify/commerce-core", () => {
+describe("@agentify/core", () => {
   it("stops the work on an unhandled variant and names it", () => {
     // We fool the types exactly the way life does: the value arrived from the
     // database, and the case analysis knows nothing about it. The core's

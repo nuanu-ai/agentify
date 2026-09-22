@@ -5,7 +5,7 @@
  * The Store API is the half of WooCommerce that needs no key at all: a shop
  * serves `/wp-json/wc/store/v1/products` to anybody, out of the box, and that
  * is where the products a merchant is asking us to sell come from
- * (`docs/research/27-woo-connect-probe.md`). Nothing here talks to a shop —
+ * (`docs/research/33-woo-connect-probe.md`). Nothing here talks to a shop —
  * `woo-shop.ts` does the fetching — so every decision in this file is a
  * function of a document and can be read back off a test.
  *

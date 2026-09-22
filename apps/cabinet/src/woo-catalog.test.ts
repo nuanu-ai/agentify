@@ -6,7 +6,7 @@
  * scale beside it — `"12000"` at `currency_minor_unit: 2` is a hundred and
  * twenty dollars — and a converter that reads the number without the scale is
  * wrong by a factor of a hundred, quietly, on every ordinary currency
- * (`docs/research/27-woo-connect-probe.md`). Wrong in the direction that sells
+ * (`docs/research/33-woo-connect-probe.md`). Wrong in the direction that sells
  * a hundred-and-twenty-dollar product for one dollar twenty, or asks for twelve
  * thousand.
  */

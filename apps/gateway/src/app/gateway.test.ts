@@ -1,4 +1,4 @@
-import { outcomeFor } from "@agentify/commerce-core";
+import { outcomeFor } from "@agentify/core";
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import {
   CARD_REJECTED,

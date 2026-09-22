@@ -4,7 +4,7 @@
  * Run on the gateway that is already up, the same way the merchant command is:
  *
  *   docker compose exec gateway \
- *     pnpm --filter @agentify/commerce-gateway report-payment <order>
+ *     pnpm --filter @agentify/gateway report-payment <order>
  *
  * It writes through the order machine. It does not start the reminder worker:
  * a second consumer on that queue would take deadlines away from the gateway
@@ -73,7 +73,7 @@ try {
   ) {
     console.error(
       "The gateway's tables are not in this database yet." +
-        " Run: pnpm --filter @agentify/commerce-gateway db:migrate",
+        " Run: pnpm --filter @agentify/gateway db:migrate",
     );
   } else {
     console.error(

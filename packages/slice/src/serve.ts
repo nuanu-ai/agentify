@@ -23,7 +23,7 @@
  * profile, which is what the card says happens, and the wait is the only part
  * of this merchant's behaviour that is a stand-in rather than the real shape.
  *
- *   GATEWAY_URL=http://localhost:8080 MERCHANT_API_KEY=… pnpm --filter @agentify/commerce-slice serve
+ *   GATEWAY_URL=http://localhost:8080 MERCHANT_API_KEY=… pnpm --filter @agentify/slice serve
  */
 
 import { renameSync, writeFileSync } from "node:fs";

@@ -6,7 +6,7 @@
  * on the gateway that is already up:
  *
  *   docker compose exec gateway \
- *     pnpm --filter @agentify/commerce-gateway merchant add "Someone's shop"
+ *     pnpm --filter @agentify/gateway merchant add "Someone's shop"
  *
  * Outside Docker it needs the same DATABASE_URL and the same PAYMENT_NETWORK
  * the gateway itself is given, and nothing else — no key of any kind, because
@@ -14,7 +14,7 @@
  *
  *   DATABASE_URL=postgres://agentify_commerce:agentify_commerce@localhost:5432/agentify_commerce \
  *     PAYMENT_NETWORK=eip155:84532 \
- *     pnpm --filter @agentify/commerce-gateway merchant list
+ *     pnpm --filter @agentify/gateway merchant list
  *
  * Outside Docker the chain is explicit because a key carries the environment
  * it was issued in, and a database address says nothing about which chain the
@@ -25,7 +25,7 @@
  * `merchant-command.ts`, where they are tested without a database.
  */
 
-import { environmentOf } from "@agentify/commerce-core";
+import { environmentOf } from "@agentify/core";
 import { connect, PostgresStore } from "./adapters/postgres/store.js";
 import { runMerchant } from "./merchant-command.js";
 import { randomIds, systemClock } from "./ports/clock.js";
@@ -89,7 +89,7 @@ try {
   ) {
     console.error(
       "The gateway's tables are not in this database yet." +
-        " Run: pnpm --filter @agentify/commerce-gateway db:migrate",
+        " Run: pnpm --filter @agentify/gateway db:migrate",
     );
   } else {
     console.error(thrown);

@@ -49,7 +49,7 @@ const LOOKS_LIKE_AN_ADDRESS = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
 const SHORTEST_KEY = 16;
 
 const USAGE = [
-  "Usage: pnpm --filter @agentify/commerce-cabinet account <command>",
+  "Usage: pnpm --filter @agentify/cabinet account <command>",
   "",
   "  add <address> <merchant>  make an account for that merchant and print a",
   "                            sign-in address; the merchant's key is read",
@@ -158,7 +158,7 @@ export async function runAccount(
       throw thrown;
     }
     say("The cabinet's tables are not in this database yet.");
-    say("Run: pnpm --filter @agentify/commerce-cabinet db:migrate");
+    say("Run: pnpm --filter @agentify/cabinet db:migrate");
     return 1;
   }
 }
@@ -264,7 +264,7 @@ async function merchantKey(
   if (key === "") {
     say("The add command reads the merchant's key from standard input, and nothing arrived.");
     say("Pipe it in from wherever you are holding it rather than typing it on the line:");
-    say("    ... | pnpm --filter @agentify/commerce-cabinet account add someone@example.com mer_x");
+    say("    ... | pnpm --filter @agentify/cabinet account add someone@example.com mer_x");
     return null;
   }
   if (key.length < SHORTEST_KEY) {
@@ -341,7 +341,7 @@ async function listAccounts(
   if (listed.length === 0) {
     say("There are no accounts. Nobody can sign into this cabinet yet.");
     say("A merchant can register for one from the cabinet, or make one here:");
-    say("    ... | pnpm --filter @agentify/commerce-cabinet account add someone@example.com mer_x");
+    say("    ... | pnpm --filter @agentify/cabinet account add someone@example.com mer_x");
     return 0;
   }
 

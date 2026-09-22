@@ -20,8 +20,8 @@
  * refusing it.
  */
 
-import { isTestnetChain, LIVE_CHAINS, TESTNET_CHAINS } from "@agentify/commerce-core";
-import { loadConfig, ScriptedFacilitator } from "@agentify/commerce-gateway";
+import { isTestnetChain, LIVE_CHAINS, TESTNET_CHAINS } from "@agentify/core";
+import { loadConfig, ScriptedFacilitator } from "@agentify/gateway";
 import { describe, expect, it } from "vitest";
 import {
   type CatalogCard,

@@ -1,9 +1,9 @@
 {
-  "name": "@agentify/commerce-slice",
+  "name": "@agentify/slice",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Agentify commerce vertical slice \u2014 a sandbox buyer walks a full purchase through the real gateway against a mock merchant on the real SDK, offline and deterministic",
+  "description": "Agentify vertical slice \u2014 a sandbox buyer walks a full purchase through the real gateway against a mock merchant on the real SDK, offline and deterministic",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "smoke": "tsx src/smoke.ts",
@@ -14,8 +14,8 @@
   },
   "devDependencies": {
     "@nuanu-ai/agentify-contracts": "workspace:*",
-    "@agentify/commerce-core": "workspace:*",
-    "@agentify/commerce-gateway": "workspace:*",
+    "@agentify/core": "workspace:*",
+    "@agentify/gateway": "workspace:*",
     "@nuanu-ai/agentify": "workspace:*",
     "@x402/core": "2.23.0",
     "@x402/evm": "2.23.0",

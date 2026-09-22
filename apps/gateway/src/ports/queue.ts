@@ -36,7 +36,7 @@
  * thing whose unavailability had just thrown.
  */
 
-import type { DeadlineKind } from "@agentify/commerce-core";
+import type { DeadlineKind } from "@agentify/core";
 import type { WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 
 /** One delivery of one envelope, with the handle that finishes it. */

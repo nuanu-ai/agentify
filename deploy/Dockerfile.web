@@ -18,10 +18,10 @@ WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/docs/package.json apps/docs/package.json
-RUN pnpm install --frozen-lockfile --filter @agentify/commerce-docs...
+RUN pnpm install --frozen-lockfile --filter @agentify/docs...
 
 COPY apps/docs apps/docs
-RUN pnpm --filter @agentify/commerce-docs exec vitepress build --base /docs/
+RUN pnpm --filter @agentify/docs exec vitepress build --base /docs/
 
 FROM caddy:2.10.0-alpine@sha256:ae4458638da8e1a91aafffb231c5f8778e964bca650c8a8cb23a7e8ac557aa3c
 

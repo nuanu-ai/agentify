@@ -21,14 +21,14 @@
  * payment layer's own.
  */
 
-import { isOpen, type OrderEvent } from "@agentify/commerce-core";
+import { isOpen, type OrderEvent } from "@agentify/core";
 import { type Applied, type OrderFacts, UNOBSERVED_SETTLE } from "./app/runner.js";
 import type { StoredOrder } from "./ports/store.js";
 
 const USAGE = [
-  "Usage: pnpm --filter @agentify/commerce-gateway report-payment <order>",
-  "       pnpm --filter @agentify/commerce-gateway report-payment <order> settled <transaction>",
-  "       pnpm --filter @agentify/commerce-gateway report-payment <order> failed <reason>",
+  "Usage: pnpm --filter @agentify/gateway report-payment <order>",
+  "       pnpm --filter @agentify/gateway report-payment <order> settled <transaction>",
+  "       pnpm --filter @agentify/gateway report-payment <order> failed <reason>",
   "",
   "The first form prints what is known and writes nothing.",
   "A write records a fact the facilitator was not asked for and the chain was not read.",

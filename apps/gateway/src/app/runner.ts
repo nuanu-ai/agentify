@@ -6,7 +6,7 @@
  * effects it asked for. It decides nothing. Every branch that looks like a
  * decision — whether a silence sells, whether an order is charged, whether
  * there is another delivery and how long the wait before it is — was taken in
- * `@agentify/commerce-core`, and the reason it was taken there is that it is the
+ * `@agentify/core`, and the reason it was taken there is that it is the
  * product. A gateway that answered any of those questions itself would be a
  * second machine disagreeing with the first, and the two would disagree about
  * somebody's money.
@@ -50,14 +50,14 @@ import type {
   StateEvent,
   TransitionRejection,
   TransitionResult,
-} from "@agentify/commerce-core";
+} from "@agentify/core";
 import {
   assertNever,
   deadlines,
   moneyInvariantViolations,
   outcomeFor,
   transition,
-} from "@agentify/commerce-core";
+} from "@agentify/core";
 import type {
   AgentOrderStatus,
   Delivery,

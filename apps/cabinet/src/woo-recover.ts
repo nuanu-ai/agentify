@@ -8,7 +8,7 @@ import { recoverWooOrder } from "./woo-recovery.js";
 import { postgresWooShops } from "./woo-shops.js";
 
 const usage =
-  "Usage: pnpm --filter @agentify/commerce-cabinet woo:recover --order ord_... [--woo-order 123]";
+  "Usage: pnpm --filter @agentify/cabinet woo:recover --order ord_... [--woo-order 123]";
 
 const argumentsOf = (argv: readonly string[]): { orderId: string; wooOrderId?: string } | null => {
   if (argv.length !== 2 && argv.length !== 4) return null;

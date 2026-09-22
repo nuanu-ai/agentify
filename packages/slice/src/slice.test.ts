@@ -18,7 +18,7 @@
  * work does not.
  */
 
-import { ScriptedFacilitator } from "@agentify/commerce-gateway";
+import { ScriptedFacilitator } from "@agentify/gateway";
 import { WORKER_PROBLEM_KINDS } from "@nuanu-ai/agentify";
 import {
   AgentOrderStatusSchema,

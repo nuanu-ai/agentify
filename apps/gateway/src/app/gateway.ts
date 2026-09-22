@@ -11,14 +11,14 @@
  * mode, exactly as ADR-0002 §3 says.
  */
 
-import type { Environment, MerchantSelling, TransitionRejection } from "@agentify/commerce-core";
+import type { Environment, MerchantSelling, TransitionRejection } from "@agentify/core";
 import {
   createOrder,
   fulfillmentDeadline,
   isOpen,
   onTheMerchantsOpenList,
   outcomeFor,
-} from "@agentify/commerce-core";
+} from "@agentify/core";
 import {
   type Acceptance,
   CARD_REJECTED,

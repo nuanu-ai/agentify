@@ -10,7 +10,7 @@
  * command line:
  *
  *   docker compose exec -T cabinet \
- *     pnpm --filter @agentify/commerce-cabinet account add you@example.com mer_x
+ *     pnpm --filter @agentify/cabinet account add you@example.com mer_x
  *
  * Outside Docker it needs the same configuration the cabinet itself is given —
  * the key comes in on standard input, and `add` asks the gateway whether that
@@ -19,7 +19,7 @@
  *
  *   DATABASE_URL=postgres://agentify_commerce:agentify_commerce@localhost:5432/agentify_commerce \
  *   GATEWAY_URL=http://localhost:8080 \
- *     pnpm --filter @agentify/commerce-cabinet account list
+ *     pnpm --filter @agentify/cabinet account list
  *
  * What the file itself does is only the wiring. The commands are in
  * `account-command.ts`, where they are tested without a database.

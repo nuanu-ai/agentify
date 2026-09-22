@@ -22,7 +22,7 @@ import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type Environment, environmentOfKeyPrefix } from "@agentify/commerce-core";
+import { type Environment, environmentOfKeyPrefix } from "@agentify/core";
 import {
   type CardInput,
   type Delivery,

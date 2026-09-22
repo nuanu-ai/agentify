@@ -7,16 +7,16 @@ draft by an agent with a clean context.
 
 ## What this note settles
 
-Agentify is two things on one origin. The scanner is a public site where the
-owner of an ordinary online business enters an address and reads what their
-site exposes to AI agents, as a report of named checks. The channel is the
-rest: the cabinet where a merchant holds the cards they sell, the orders and
-the key their code calls with; the documentation a merchant's engineer reads;
-and the gateway that agents buy from. The scanner came into the repository
-from a separate product, and since the merge a visitor sees two brands and
-two navigations on one address. The question this raised was how people
-should be routed: everyone into the cabinet, or a softer entry where each
-product shows the other and the documentation is always in view.
+Agentify is one product with several surfaces on one origin. The scanner is
+the public front, where the owner of an ordinary online business enters an
+address and reads what their site exposes to AI agents, as a report of named
+checks. Beside it stand the cabinet, where a merchant holds the cards they
+sell, the orders and the key their code calls with; the documentation a
+merchant's engineer reads; and the gateway that agents buy from. They do not
+look like one product yet: a visitor meets two brands and two navigations on
+one address. The question this raised was how people should be routed:
+everyone into the cabinet, or a softer entry where each surface shows the
+other and the documentation is always in view.
 
 The answer is that two questions were being asked as one. The first is where
 a stranger lands and how they reach the cabinet. The second is how a person
@@ -96,7 +96,7 @@ render a header of their own with three links and no door either
 among the segments and links the same page. The brand mark on every scanner
 page leads to `/owner`.
 
-The commerce product lives at `/agentic-shop` as a subbrand, "Agentify
+Selling to agents lives at `/agentic-shop` as a subbrand, "Agentify
 Agentic Shop", with a lockup, a title, a social image and a navigation of
 its own (`apps/web/app/agentic-shop/page.tsx`). Its header and its last
 section open the cabinet's door. Its footer's "Explore Agentify" leads back
@@ -159,14 +159,14 @@ the fourth, where it names a page by its old name.
 
 The header of the landing pages and the header of the trust pages both
 render one shared element with the two doors: Docs, leading to `/docs/`, and
-Cabinet, leading to `/cabinet/sign-in`. The commerce page's own header gains
-Docs beside the cabinet control it already has. The words are the ones the
-destinations use of themselves: the portal says Docs in its corner and the
-cabinet already links it under that word; the sign-in page opens with "Enter
-your email address. We will send one link that signs you in or makes your
-cabinet when you open it", which is the whole of what a curious owner needs
-to know before pressing. The footer keeps its groups. The report page is not
-public and keeps its own section as its door.
+Cabinet, leading to `/cabinet/sign-in`. The header of the `/agentic-shop`
+page gains Docs beside the cabinet control it already has. The words are the
+ones the destinations use of themselves: the portal says Docs in its corner
+and the cabinet already links it under that word; the sign-in page opens
+with "Enter your email address. We will send one link that signs you in or
+makes your cabinet when you open it", which is the whole of what a curious
+owner needs to know before pressing. The footer keeps its groups. The report
+page is not public and keeps its own section as its door.
 
 A person who already holds a cabinet session and presses Cabinet is sent
 straight to their cards: the sign-in route answers a live session with a
@@ -279,7 +279,7 @@ and shares it, and counts the events that remain.
 
 ### 4. One name
 
-The commerce page keeps its address, `/agentic-shop`, and loses its second
+The page at `/agentic-shop` keeps its address and loses its second
 name. The header's link to it and the footer's say what it does, "Sell to
 agents", and so does the page's title; the page's own lockup, its footer and
 the historical privacy notice under the same prefix carry the plain brand
@@ -314,8 +314,8 @@ the diagnostic, and the cabinet holds no knowledge of scans; adding a route
 for it would widen the boundary ADR-0024 keeps for the sake of one link.
 
 No page is written for the developer of a buying agent, the address of the
-commerce page is not changed, and the waitlist table is not renamed, for
-the reasons given above.
+`/agentic-shop` page is not changed, and the waitlist table is not renamed,
+for the reasons given above.
 
 ## What we do not know
 

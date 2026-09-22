@@ -8,7 +8,7 @@
  * an error — it redirects once and serves its ordinary front page with a 200,
  * so a merchant presses Connect, lands on their own shop, and has nothing to
  * report except that it did not work
- * (`docs/research/27-woo-connect-probe.md`). The only way to tell that apart
+ * (`docs/research/33-woo-connect-probe.md`). The only way to tell that apart
  * from a working shop is to ask before redirecting anybody.
  */
 

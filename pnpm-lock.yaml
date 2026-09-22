@@ -84,10 +84,10 @@ importers:
 
   apps/cabinet:
     dependencies:
-      '@agentify/commerce-core':
+      '@agentify/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@agentify/commerce-gateway':
+      '@agentify/gateway':
         specifier: workspace:*
         version: link:../gateway
       '@agentify/scanner-contracts':
@@ -142,7 +142,7 @@ importers:
 
   apps/gateway:
     dependencies:
-      '@agentify/commerce-core':
+      '@agentify/core':
         specifier: workspace:*
         version: link:../../packages/core
       '@coinbase/cdp-sdk':
@@ -499,7 +499,7 @@ importers:
         specifier: workspace:*
         version: link:../contracts
     devDependencies:
-      '@agentify/commerce-core':
+      '@agentify/core':
         specifier: workspace:*
         version: link:../core
       vitest:
@@ -508,10 +508,10 @@ importers:
 
   packages/slice:
     devDependencies:
-      '@agentify/commerce-core':
+      '@agentify/core':
         specifier: workspace:*
         version: link:../core
-      '@agentify/commerce-gateway':
+      '@agentify/gateway':
         specifier: workspace:*
         version: link:../../apps/gateway
       '@nuanu-ai/agentify':

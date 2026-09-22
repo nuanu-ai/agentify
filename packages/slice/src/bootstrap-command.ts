@@ -69,7 +69,7 @@
  * facilitator's own words.
  */
 
-import { isTestnetChain } from "@agentify/commerce-core";
+import { isTestnetChain } from "@agentify/core";
 import { x402Client } from "@x402/core/client";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { findDefaultAsset } from "@x402/evm";

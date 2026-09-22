@@ -21,7 +21,7 @@
  * apologising for it, and `accepted` is now a word in both.
  */
 
-import type { MerchantAnswer, MerchantAnswerError } from "@agentify/commerce-core";
+import type { MerchantAnswer, MerchantAnswerError } from "@agentify/core";
 import type { OrderCallResponse } from "@nuanu-ai/agentify-contracts";
 
 const WHY: Record<MerchantAnswerError, string> = {

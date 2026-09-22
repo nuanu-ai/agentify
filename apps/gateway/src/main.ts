@@ -4,8 +4,7 @@
  * It is resident rather than serverless because of what it holds open: workers
  * parked on a poll, an agent parked on a synchronous purchase, a consumer of
  * the queue, and a sequence around a payment that has to survive between two
- * HTTP calls (`docs/research/21-pilot-plan.md`, hosting). A function that runs
- * and exits could hold none of them.
+ * HTTP calls. A function that runs and exits could hold none of them.
  *
  * Everything below is wiring. The configuration is read once and refused whole,
  * the three ports are given their real implementations, and the surface is

@@ -32,7 +32,7 @@ import {
   type Served,
   serve,
   theMerchantKey,
-} from "@agentify/commerce-gateway/testing";
+} from "@agentify/gateway/testing";
 import {
   REPORT_CABINET_HANDOFF_COOKIE,
   sealReportCabinetHandoff,

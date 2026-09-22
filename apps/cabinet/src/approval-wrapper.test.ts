@@ -127,10 +127,20 @@ describe("pnpm approve's local production wrapper", () => {
         "agentify-commerce-cabinet-1",
         "pnpm",
         "--filter",
-        "@agentify/commerce-cabinet",
+        "./apps/cabinet",
+        "--fail-if-no-match",
         "approve",
       ].join("\n")}\n`,
     );
+  });
+
+  it("forwards a refusal from the remote command as its own exit code", async () => {
+    const result = await invoked([EMAIL], 1);
+    const output = `${result.stdout}\n${result.stderr}`;
+
+    expect(result.code).toBe(1);
+    expect(output).not.toMatch(/unknown|uncertain/i);
+    expect(output).not.toMatch(/retry/i);
   });
 
   it("describes an interrupted ssh result as unknown and safe to inspect by retrying", async () => {

@@ -98,10 +98,11 @@ jobs:
       - run: ./scripts/check-decisions.sh
       - run: python3 -m unittest discover -s deploy/ansible -p 'test_*.py'
 
-  # Scanner checks keep their own job and database service while sharing the
-  # repository toolchain and lockfile with commerce and the portal.
-  agentify:
-    name: agentify
+  # The scanner's packages keep their own job, with a database service and a
+  # browser of their own, while sharing the repository's toolchain and lockfile
+  # with the gate and the portal.
+  scanner:
+    name: scanner
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:

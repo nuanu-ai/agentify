@@ -1,14 +1,14 @@
 # Agentify — working discipline
 
 ## Stage
-Stage 4 of the pilot plan (`docs/research/21-pilot-plan.md`): an external
-merchant integrates through the SDK, publishes their own products, and fulfills
-an agent's purchase through Agentify. The SDK is the primary product path.
-WooCommerce is an experimental, unproven connector; it is not the product's
-acceptance gate or a prerequisite for SDK delivery. The Freeland pilot passed
-on Dmitry's word, 2026-09-14. The first merchant we do not control is this
-charter's compatibility boundary. Product code is being written, so the "Code"
-section is in force. Decisions live in `docs/decisions/`.
+Stage 4 of the pilot plan, whose stages are the tracker's initiatives: an
+external merchant integrates through the SDK, publishes their own products,
+and fulfills an agent's purchase through Agentify. The SDK is the primary
+product path. WooCommerce is an experimental, unproven connector; it is not
+the product's acceptance gate or a prerequisite for SDK delivery. The Freeland
+pilot passed on Dmitry's word, 2026-09-14. The first merchant we do not control
+is this charter's compatibility boundary. Product code is being written, so the
+"Code" section is in force. Decisions live in `docs/decisions/`.
 
 A stage opens on Dmitry's word. The architect then changes this paragraph and
 the status of the stage's initiative in the tracker in one commit, so the two
