@@ -90,7 +90,18 @@ export async function runPaymentReport(
   // in flight — the client waits longer than that deadline. A settle word is
   // written only when that call has returned. Without one, a fact written now
   // races the answer, and whichever lands second is dropped.
-  if (!found.paymentWords.some((word) => word.about === "settle")) {
+  //
+  // It has to be this charge's word and not any word. A first charge that came
+  // back failed leaves one behind; the buyer then repeats the purchase and a
+  // second charge goes out, and that one can go quiet with the first one's
+  // sentence still sitting on the order. The order says when the payment was
+  // last handed over for execution, and a word written before that instant
+  // belongs to the charge before this one.
+  const sentAt = found.order.timestamps.settleStartedAt;
+  const answered =
+    sentAt !== null &&
+    found.paymentWords.some((word) => word.about === "settle" && word.at >= sentAt);
+  if (!answered) {
     say(
       `${found.order.id} is waiting on a settle call that has not returned; a fact written now would race it`,
     );

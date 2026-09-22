@@ -23,9 +23,11 @@ existed, and it no longer claims the order is closed.
 
 A later fact enters through an operator command, `report-payment`, not
 through a merchant route and not through another call to the facilitator.
-It writes only after the original settle call has returned — a settle word
-is already on the order — because the deadline can declare a silence while
-that call is still in flight, and the second writer is dropped. It does not
+It writes only after the charge now out has returned — a settle word is on
+the order, written no earlier than the moment the payment was last handed
+over for execution — because the deadline can declare a silence while that
+call is still in flight, and the second writer is dropped. A repeat of the
+purchase sends a second charge, so any settle word is not enough. It does not
 record a failure on an open order: that would allow a second charge on a
 guess about the first. It does not check the chain. The word stored beside
 the order says the facilitator was not asked and the chain was not read.
