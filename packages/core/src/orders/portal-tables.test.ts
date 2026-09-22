@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { createOrder } from "./create.js";
+import { deadlines } from "./deadlines.js";
 import { createInput, must, newOrder, reach, T0, walk } from "./fixtures.js";
 import { transition } from "./machine.js";
 import type { Order } from "./model.js";
@@ -269,16 +270,11 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
 
     expect(outcomeFor(paid.order)).toBe("delivered");
 
-    // "If it says the money did not move, the order becomes one a repeat
-    // purchase can close."
-    const unpaid = walk(order, [
-      { kind: "payment_settle_failed", at: T0 + 2_000_000 },
-      { kind: "purchase_repeated", at: T0 + 2_000_001 },
-      { kind: "payment_verified", at: T0 + 2_000_002 },
-      { kind: "payment_settled", at: T0 + 2_000_003 },
-    ]);
-
-    expect(outcomeFor(unpaid)).toBe("delivered");
+    // "Until an answer that the money moved is recorded, the order can sit
+    // there": no clock is left running on it. The page promises the merchant
+    // nothing on our side will close this order on a guess about the charge,
+    // and a deadline that expired here would be exactly that guess.
+    expect(deadlines(order)).toStrictEqual([]);
   });
 });
 
