@@ -10,11 +10,13 @@ authorized enabling that workflow on 2026-09-16, as recorded in ADR-0016.
 Test and production host delivery are outside this release, and the namespace
 cutover remains paused.
 
-The tag `sdk-v<version>` publishes two public npm packages from one immutable
-commit:
+The application tag `app-v<release>` (ADR-0016) publishes two public npm
+packages from the commit it accepts for production, whenever their manifest
+versions are not yet on the registry:
 
 - `@nuanu-ai/agentify-contracts`, because every SDK install resolves it at runtime;
-- `@nuanu-ai/agentify`, whose version must be the version written in the tag.
+- `@nuanu-ai/agentify`, at the version its manifest carries; the number in
+  the tag is the application's and says nothing about the SDK.
 
 The workflow is `.github/workflows/publish-sdk.yml`. It runs on a GitHub-hosted
 runner, accepts GitHub's OIDC token through `id-token: write`, and publishes
@@ -48,24 +50,25 @@ alias schemas are published. See [ADR-0025](../decisions/0025-agentify-namespace
 
 Commit and push the prepared version, then wait for the `CI` workflow to pass
 on that exact commit. Before making the tag, run the publish workflow manually
-on `main` with `release_tag=sdk-v0.2.4` and `dry_run=true`. For SDK `0.2.4`,
-the normal release after the package names have been bootstrapped starts with:
+on `main` with the intended `release_tag` and `dry_run=true`. The release is
+then the application tag, and the same push starts the production deployment:
 
 ```sh
-git tag sdk-v0.2.4
-git push origin sdk-v0.2.4
+git tag app-v<release>
+git push origin app-v<release>
 ```
 
 For the first registry release, use the bootstrap sequence below instead; it
 keeps the tag local until both package names and their trusted publishers
 exist.
 
-The workflow refuses a tag whose version differs from the SDK manifest, a tag
-whose commit is not the commit being built, and a tagged commit that is not
-reachable from `origin/main`. It also waits for the `CI` workflow to succeed
-for that exact commit. Stage 0 publishes stable versions only and assigns them
-npm dist-tag `latest`; prereleases are refused instead of deriving another
-public channel from an unchecked name.
+The workflow refuses a tag that is not `app-v*`, a manifest still at `0.0.0`,
+a tag whose commit is not the commit being built, and a tagged commit that is
+not reachable from `origin/main`. A tag whose SDK and contracts versions are
+already on the registry publishes nothing. It also waits for the `CI`
+workflow to succeed for that exact commit. Stage 0 publishes stable versions
+only and assigns them npm dist-tag `latest`; prereleases are refused instead
+of deriving another public channel from an unchecked name.
 
 ## Bootstrap the two package names once
 
@@ -136,8 +139,9 @@ The equivalent npm website settings are:
 - allowed action: `npm publish`.
 
 Then set package publishing access to require 2FA and disallow ordinary tokens.
-Every later `sdk-v*` tag publishes through OIDC on a GitHub-hosted runner
-without an npm secret.
+Every later `app-v*` tag publishes through OIDC on a GitHub-hosted runner
+without an npm secret. The `sdk-v0.1.0` to `sdk-v0.2.5` tags are the record of
+the releases made before the application tag carried publication.
 
 ## Acceptance
 

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: sdk-v* tag name to validate
+        description: app-v* tag name to validate
         required: true
         type: string
       dry_run:
@@ -14,7 +14,7 @@ on:
         type: boolean
   push:
     tags:
-      - 'sdk-v*'
+      - 'app-v*'
 
 permissions:
   actions: read
@@ -109,7 +109,7 @@ jobs:
       - name: Install the exact workspace
         run: pnpm install --frozen-lockfile
 
-      - name: Resolve the release named by the tag
+      - name: Resolve the versions the tag would publish
         id: release
         run: ./scripts/check-sdk-release-tag.sh "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
 
