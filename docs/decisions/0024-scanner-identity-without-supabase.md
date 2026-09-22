@@ -17,7 +17,10 @@ existing reports and accounts without granting scanner visitors merchant access.
 The scanner uses a separate database in the existing production PostgreSQL
 instance. Its application, queue and dashboard schemas retain their permissions;
 commerce data is never a restore target. Database relocation and identity
-replacement are separate cutover steps, with verification between them.
+replacement are separate cutover steps, with verification between them. The
+separate database is the present state and not the destination: one database
+is the goal, but not immediate (Dmitry's word, 2026-09-22), and the merge is a
+decision of its own when he names the day.
 
 Scanner email verification uses Better Auth's expiring, hashed, single-use magic
 links. The cabinet owns identity (ADR-0026): the
