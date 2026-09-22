@@ -556,9 +556,12 @@ export class OrderRunner {
     for (const record of await this.#runtime.store.deliveredWithoutReceipt()) {
       // An operator-recorded settlement has no observed execution time, so
       // the apply path wrote no receipt. Repairing that absence would date
-      // a proof from the moment this sweep happened to run. The phrase is the
-      // one the command writes; a delivered order from an older defect has
-      // no such word and is still receipted below.
+      // a proof from the moment this sweep happened to run. The phrase in the
+      // word is what says which settlement this was: the command writes it
+      // where the payment layer said nothing, and a late answer from the
+      // facilitator carries its own transaction instead and is receipted on
+      // the spot. A delivered order from an older defect has no such word and
+      // is still receipted below.
       const asserted = record.paymentWords.some(
         (word) => word.about === "settle" && word.said.includes(UNOBSERVED_SETTLE),
       );
@@ -760,13 +763,19 @@ export class OrderRunner {
           break;
 
         case "issue_receipt":
-          // A receipt's paid_at is when the payment executed. A transition out
-          // of a silence was an operator's assertion, not a time the payment
-          // layer named. Writing the receipt would be proof of a payment this
-          // gateway did not observe. The order still moves; the word beside it
-          // is the record of who asserted it. The sweep must not repair this
-          // absence — see the settlement check there.
-          if (before.payment === "outcome_unknown") {
+          // A receipt's paid_at is when the payment executed, and there is one
+          // way out of a silence with no such instant behind it: an operator
+          // recording a fact he read somewhere else. What tells the two apart
+          // is the settlement. The facilitator's own answer carries the
+          // transaction it executed, however late it arrives — the settle
+          // deadline is shorter than the client's patience, so an answer after
+          // the silence is ordinary — and that is a charge this gateway
+          // observed and owes a receipt for. The operator's assertion
+          // deliberately writes no settlement, because the payment layer said
+          // nothing, and a receipt for it would be proof of a payment nobody
+          // here saw. The sweep must not repair that absence — see the
+          // settlement check there.
+          if (before.payment === "outcome_unknown" && record.settlement === null) {
             break;
           }
           writes.push({
