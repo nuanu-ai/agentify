@@ -14,7 +14,10 @@ import type { Card } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runPaymentReport } from "./payment-report-command.js";
 import type { Harness } from "./testing/harness.js";
-import { harness, workUntilStopped } from "./testing/harness.js";
+import { authorisation, harness, workUntilStopped } from "./testing/harness.js";
+
+/** One buyer's wallet, so a repeat of a purchase is recognised as his own. */
+const BUYER = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 const syncCard: Card = {
   merchant_item_id: "room-101",
@@ -204,6 +207,71 @@ describe("recording what a silent charge came to", () => {
         (word) => word.about === "settle",
       ),
     ).toBe(true);
+  });
+
+  it("does not take a settle word an earlier charge left behind as this one's", async () => {
+    // The first charge failed, the buyer repeated the purchase with a fresh
+    // authorisation, and the second charge is the one out there now. A word
+    // about the first is already on the order, so a guard that asks only
+    // whether some settle word exists sees the wrong call's answer and writes
+    // against a charge still in flight — and of that fact and the one the
+    // facilitator is about to return, whichever lands second is dropped.
+    const harnessed = await harness({
+      QUOTE_RESPONSE_MS: "50",
+      SYNC_RESPONSE_MS: "200",
+      SETTLE_RESPONSE_MS: "50",
+      SYNC_BUDGET_MS: "2000",
+    });
+    open = harnessed;
+    const published = await harnessed.gateway.publishCard(harnessed.merchant.id, syncCard);
+    if (!published.ok) throw new Error("the card was not published");
+    harnessed.facilitator.willSettle(
+      { settled: false, reason: "the transfer reverted" },
+      { settled: "unknown", reason: "still out" },
+    );
+    const offered = await harnessed.gateway.beginPurchase(published.id, { nights: 1 });
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    const orderId = offered.order.order.id;
+    const first = authorisation(harnessed, BUYER, "nonce-1");
+    const worker = workUntilStopped(harnessed, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    await harnessed.gateway.payPurchase(orderId, first.payment, first.fingerprint);
+    await worker.stop();
+    const failed = await harnessed.store.orderById(orderId);
+    expect(failed?.order.state).toBe("delivered_unpaid");
+    expect(failed?.order.payment).toBe("settle_failed");
+    expect(failed?.paymentWords.filter((word) => word.about === "settle")).toHaveLength(1);
+
+    // The buyer comes back an hour later, and this charge is the one nobody
+    // has heard from.
+    harnessed.advance(60 * 60 * 1_000);
+    const release = harnessed.facilitator.holdSettle();
+    const second = authorisation(harnessed, BUYER, "nonce-2");
+    const repeating = harnessed.gateway.payPurchase(orderId, second.payment, second.fingerprint);
+    await vi.waitFor(
+      async () => {
+        expect((await harnessed.store.orderById(orderId))?.order.payment).toBe("outcome_unknown");
+      },
+      { timeout: 2_000 },
+    );
+
+    const refused = await report(harnessed, orderId, "settled", "0xguess");
+
+    expect(refused.exit).not.toBe(0);
+    expect((await harnessed.store.orderById(orderId))?.order.payment).toBe("outcome_unknown");
+
+    // And once that call has returned, the word beside the order is its own
+    // and a fact read elsewhere can be written against it.
+    release();
+    await repeating;
+    const returned = await harnessed.store.orderById(orderId);
+    const startedAt = returned?.order.timestamps.settleStartedAt ?? 0;
+    expect(
+      returned?.paymentWords.some((word) => word.about === "settle" && word.at >= startedAt),
+    ).toBe(true);
+    expect((await report(harnessed, orderId, "settled", "0xread-elsewhere")).exit).toBe(0);
+    expect((await harnessed.store.orderById(orderId))?.order.payment).toBe("settled");
   });
 
   it("does not record a failure on an open order, which would allow a second charge", async () => {
