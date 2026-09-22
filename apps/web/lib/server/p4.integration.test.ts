@@ -46,7 +46,7 @@ import { getServerConfig } from "./config";
 import { decryptEmail, encryptEmail, hmacHex, sha256 } from "./crypto";
 import { getDatabase } from "./database";
 import { enqueueScanInTransaction, stopScanQueue } from "./queue";
-import { consumeScanRateLimits, readRateCount } from "./rate-limit";
+import { consumeRateLimitsAtomically, consumeScanRateLimits, readRateCount } from "./rate-limit";
 import { createPublicShare, getFullReport, getPublicShare, revokePublicShare } from "./reporting";
 import { requestScannerIdentityDeletion } from "./scanner-identity-deletion";
 import { verifyAndFinalizeScannerIdentity } from "./scanner-identity-finalize";
@@ -92,6 +92,7 @@ type LinkRecord = {
 
 const links: LinkRecord[] = [];
 let tokenSequence = 0;
+let sendCooldownUntil: Date | undefined;
 let cabinetServer: Server;
 let scanId = "";
 let scanAccessToken = "";
@@ -305,6 +306,13 @@ beforeAll(async () => {
     }
     const body = await readJson(request);
     if (body.operation === "send") {
+      if (sendCooldownUntil) {
+        respondJson(response, 200, {
+          status: "cooldown",
+          retry_at: sendCooldownUntil.toISOString(),
+        });
+        return;
+      }
       tokenSequence += 1;
       const token = tokenSequence.toString().padStart(32, "A");
       const record: LinkRecord = {
@@ -734,7 +742,7 @@ describe("P4 cabinet-owned scanner identity", () => {
     await expect(
       createScannerRegistrationIntent(scan, registrationBody(email), {
         partnerClickId,
-        sendReportLink: async () => "unavailable",
+        sendReportLink: async () => ({ status: "unavailable" }) as const,
       }),
     ).rejects.toThrow("cabinet_identity_unavailable");
     expect(
@@ -1135,8 +1143,8 @@ describe("P4 cabinet-owned scanner identity", () => {
         consumeScanRateLimits({ ipKey, targetKey, challengePassed: false }),
       ),
     );
-    expect(initial.filter((result) => result === "allowed")).toHaveLength(3);
-    expect(initial.filter((result) => result === "challenge_required")).toHaveLength(2);
+    expect(initial.filter((result) => result.verdict === "allowed")).toHaveLength(3);
+    expect(initial.filter((result) => result.verdict === "challenge_required")).toHaveLength(2);
     expect(await readRateCount(ipKey, "scan_ip_hour")).toBe(3);
     expect(await readRateCount(targetKey, "scan_target_day")).toBe(3);
 
@@ -1145,7 +1153,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         consumeScanRateLimits({ ipKey, targetKey, challengePassed: true }),
       ),
     );
-    expect(challenged.every((result) => result === "allowed")).toBe(true);
+    expect(challenged.every((result) => result.verdict === "allowed")).toBe(true);
     const untouchedTarget = `rate-untouched-${suffix}`;
     expect(
       await consumeScanRateLimits({
@@ -1153,7 +1161,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         targetKey: untouchedTarget,
         challengePassed: true,
       }),
-    ).toBe("hard_rate_limit");
+    ).toMatchObject({ verdict: "hard_rate_limit" });
     expect(await readRateCount(untouchedTarget, "scan_target_day")).toBe(0);
   });
 
@@ -1170,7 +1178,7 @@ describe("P4 cabinet-owned scanner identity", () => {
           challengePassed: false,
           now: beforeBoundary,
         }),
-      ).resolves.toBe("allowed");
+      ).resolves.toEqual({ verdict: "allowed" });
     }
     const afterBoundary = new Date("2026-07-12T01:00:01.000Z");
     await expect(
@@ -1180,7 +1188,7 @@ describe("P4 cabinet-owned scanner identity", () => {
         challengePassed: false,
         now: afterBoundary,
       }),
-    ).resolves.toBe("challenge_required");
+    ).resolves.toEqual({ verdict: "challenge_required" });
     expect(await readRateCount(ipKey, "scan_ip_hour", afterBoundary)).toBe(3);
 
     const afterRollingExpiry = new Date("2026-07-12T02:00:00.001Z");
@@ -1191,8 +1199,179 @@ describe("P4 cabinet-owned scanner identity", () => {
         challengePassed: false,
         now: afterRollingExpiry,
       }),
-    ).resolves.toBe("allowed");
+    ).resolves.toEqual({ verdict: "allowed" });
     expect(await readRateCount(ipKey, "scan_ip_hour", afterRollingExpiry)).toBe(1);
+  });
+
+  it("names the moment a full rolling hour frees up rather than a flat hour", async () => {
+    const entry = {
+      keyHash: `rolling-wait-${createUuidV7()}`,
+      kind: "registration_email_hour" as const,
+      limit: 3,
+    };
+    const now = new Date("2026-07-12T12:00:00.000Z");
+    for (const minutesAgo of [50, 40, 30]) {
+      await expect(
+        consumeRateLimitsAtomically([entry], new Date(now.getTime() - minutesAgo * 60_000)),
+      ).resolves.toMatchObject({ allowed: true });
+    }
+
+    const refused = await consumeRateLimitsAtomically([entry], now);
+
+    expect(refused.allowed).toBe(false);
+    // The oldest of the three leaves the hour ten minutes from now.
+    expect(refused.allowed === false && refused.retryAt.toISOString()).toBe(
+      new Date(now.getTime() + 10 * 60_000).toISOString(),
+    );
+  });
+
+  it("reads an over-full window off the event that keeps it full", async () => {
+    const keyHash = `over-full-${createUuidV7()}`;
+    const now = new Date("2026-07-12T12:00:00.000Z");
+    for (const minutesAgo of [55, 50, 45, 40, 35]) {
+      await expect(
+        consumeRateLimitsAtomically(
+          [{ keyHash, kind: "registration_email_hour" as const, limit: 99 }],
+          new Date(now.getTime() - minutesAgo * 60_000),
+        ),
+      ).resolves.toMatchObject({ allowed: true });
+    }
+
+    const refused = await consumeRateLimitsAtomically(
+      [{ keyHash, kind: "registration_email_hour" as const, limit: 3 }],
+      now,
+    );
+
+    // Five events, three allowed: the window frees when the third-newest goes,
+    // which is fifteen minutes out — not when the oldest of the five does.
+    expect(refused.allowed).toBe(false);
+    expect(refused.allowed === false && refused.retryAt.toISOString()).toBe(
+      new Date(now.getTime() + 15 * 60_000).toISOString(),
+    );
+  });
+
+  it("names the wall still standing when the nearer one has gone", async () => {
+    const suffix = createUuidV7();
+    const now = new Date("2026-07-12T12:00:00.000Z");
+    const email = {
+      keyHash: `near-wall-${suffix}`,
+      kind: "registration_email_hour" as const,
+      limit: 1,
+    };
+    const session = {
+      keyHash: `far-wall-${suffix}`,
+      kind: "registration_session_hour" as const,
+      limit: 1,
+    };
+    await consumeRateLimitsAtomically([email], new Date(now.getTime() - 50 * 60_000));
+    await consumeRateLimitsAtomically([session], new Date(now.getTime() - 20 * 60_000));
+
+    const refused = await consumeRateLimitsAtomically([email, session], now);
+
+    expect(refused.allowed).toBe(false);
+    expect(refused.allowed === false && refused.retryAt.toISOString()).toBe(
+      new Date(now.getTime() + 40 * 60_000).toISOString(),
+    );
+  });
+
+  it("names when the scan wall frees instead of a flat hour", async () => {
+    const suffix = createUuidV7();
+    const ipKey = `hard-wait-ip-${suffix}`;
+    const now = new Date("2026-07-12T12:00:00.000Z");
+    const filled = new Date(now.getTime() - 50 * 60_000);
+    for (let scan = 0; scan < 10; scan += 1) {
+      await expect(
+        consumeScanRateLimits({
+          ipKey,
+          targetKey: `hard-wait-target-${suffix}-${scan}`,
+          challengePassed: true,
+          now: filled,
+        }),
+      ).resolves.toEqual({ verdict: "allowed" });
+    }
+
+    await expect(
+      consumeScanRateLimits({
+        ipKey,
+        targetKey: `hard-wait-target-${suffix}-fresh`,
+        challengePassed: true,
+        now,
+      }),
+    ).resolves.toEqual({
+      verdict: "hard_rate_limit",
+      retryAt: new Date(now.getTime() + 10 * 60_000),
+    });
+  });
+
+  it("names the day a target's own wall rolls over", async () => {
+    const suffix = createUuidV7();
+    const targetKey = `day-wall-target-${suffix}`;
+    const now = new Date("2026-07-12T09:30:00.000Z");
+    for (let scan = 0; scan < 10; scan += 1) {
+      await expect(
+        consumeScanRateLimits({
+          ipKey: `day-wall-ip-${suffix}-${scan}`,
+          targetKey,
+          challengePassed: true,
+          now,
+        }),
+      ).resolves.toEqual({ verdict: "allowed" });
+    }
+
+    await expect(
+      consumeScanRateLimits({
+        ipKey: `day-wall-ip-${suffix}-fresh`,
+        targetKey,
+        challengePassed: true,
+        now,
+      }),
+    ).resolves.toEqual({
+      verdict: "hard_rate_limit",
+      retryAt: new Date("2026-07-13T00:00:00.000Z"),
+    });
+  });
+
+  it("tells a refused scan when its own wall frees, not a flat hour", async () => {
+    const ip = "203.0.113.99";
+    const ipKey = hmacHex(tokenHmacSecret, "rate-ip", ip);
+    const filled = new Date(Date.now() - 50 * 60_000);
+    for (let scan = 0; scan < 10; scan += 1) {
+      await expect(
+        consumeRateLimitsAtomically(
+          [{ keyHash: ipKey, kind: "scan_ip_hour" as const, limit: 99 }],
+          filled,
+        ),
+      ).resolves.toMatchObject({ allowed: true });
+    }
+
+    const response = await acceptScan(
+      new NextRequest("http://localhost:3000/api/v1/scans", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost:3000",
+          "content-type": "application/json",
+          "idempotency-key": `hard-wall-${createUuidV7()}`,
+          "x-forwarded-for": ip,
+        },
+        body: JSON.stringify({
+          url: "https://hard-wall.example/",
+          segment: "owner",
+          landing_variant: "owner-v1",
+          turnstile_token: null,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(429);
+    const refusal = (await response.json()) as {
+      error: { code: string; retry_after_seconds?: number };
+    };
+    const seconds = refusal.error.retry_after_seconds;
+    expect(refusal.error.code).toBe("hard_rate_limit");
+    // The wall was filled fifty minutes ago, so it frees in ten.
+    expect(seconds).toBeGreaterThan(9 * 60);
+    expect(seconds).toBeLessThanOrEqual(10 * 60);
+    expect(response.headers.get("Retry-After")).toBe(String(seconds));
   });
 
   it("spends a cabinet mail link once and refuses mismatched or cross-site confirmation", async () => {
@@ -1309,13 +1488,11 @@ describe("P4 cabinet-owned scanner identity", () => {
       sendReportLink: async (address, state) => {
         markSending();
         await continueSending;
-        return (
-          await getCabinetReportIdentityClient().sendReportLink({
-            email: address,
-            intentKind: "registration",
-            state,
-          })
-        ).status;
+        return await getCabinetReportIdentityClient().sendReportLink({
+          email: address,
+          intentKind: "registration",
+          state,
+        });
       },
     });
     await sending;
@@ -1349,7 +1526,7 @@ describe("P4 cabinet-owned scanner identity", () => {
           .update(scans)
           .set({ accessTokenExpiresAt: new Date(Date.now() - 1_000) })
           .where(eq(scans.id, scan.id));
-        return sent.status;
+        return sent;
       },
     });
     expect(result.sent).toBe(true);
@@ -1541,9 +1718,168 @@ describe("P4 cabinet-owned scanner identity", () => {
         { params: Promise.resolve({ id: scan.id }) },
       );
       expect(response.status).toBe(429);
-      expect(await response.text()).not.toContain("verification_sent");
+      expect(await response.clone().text()).not.toContain("verification_sent");
+      const refusal = (await response.json()) as {
+        error: { message: string; retry_after_seconds?: number };
+      };
+      expect(refusal.error.retry_after_seconds).toBeGreaterThan(0);
+      expect(refusal.error.retry_after_seconds).toBeLessThanOrEqual(3600);
+      expect(response.headers.get("Retry-After")).toBe(String(refusal.error.retry_after_seconds));
     } finally {
       process.env.REGISTRATION_ENABLED = "false";
+    }
+  });
+
+  it("keeps the address's hour for the letters that actually went out", async () => {
+    const { scan } = await createFreshCompletedScan("cooldown-refund");
+    const email = "scanner-cooldown-refund@example.com";
+    const body = registrationBody(email);
+    const addressWall = hmacHex(
+      tokenHmacSecret,
+      "registration-email",
+      hmacHex(tokenHmacSecret, "email", email),
+    );
+    const sessionWall = hmacHex(tokenHmacSecret, "registration-session", scan.sessionId);
+    await expect(createScannerRegistrationIntent(scan, body)).resolves.toMatchObject({
+      sent: true,
+    });
+
+    sendCooldownUntil = new Date(Date.now() + 40_000);
+    try {
+      for (let ask = 0; ask < 2; ask += 1) {
+        await expect(createScannerRegistrationIntent(scan, body)).resolves.toMatchObject({
+          sent: false,
+        });
+      }
+    } finally {
+      sendCooldownUntil = undefined;
+    }
+
+    // Nothing reached the mailbox on those two, so the address keeps its hour.
+    expect(await readRateCount(addressWall, "registration_email_hour")).toBe(1);
+    // The requests reached us, and the session wall counts requests.
+    expect(await readRateCount(sessionWall, "registration_session_hour")).toBe(3);
+    // Somebody who waits out the wait they were told still has their links.
+    await expect(createScannerRegistrationIntent(scan, body)).resolves.toMatchObject({
+      sent: true,
+    });
+    expect(await readRateCount(addressWall, "registration_email_hour")).toBe(2);
+  });
+
+  it("keeps the hour spent when it cannot prove no letter went out", async () => {
+    const { scan } = await createFreshCompletedScan("unconfirmed-send");
+    const email = "scanner-unconfirmed-send@example.com";
+    const addressWall = hmacHex(
+      tokenHmacSecret,
+      "registration-email",
+      hmacHex(tokenHmacSecret, "email", email),
+    );
+
+    await expect(
+      createScannerRegistrationIntent(scan, registrationBody(email), {
+        sendReportLink: async () => ({ status: "unavailable" }) as const,
+      }),
+    ).rejects.toThrow("cabinet_identity_unavailable");
+
+    // Refused and timed out look the same from here, and a timed-out message
+    // may well have been delivered: nothing is given back on a guess.
+    expect(await readRateCount(addressWall, "registration_email_hour")).toBe(1);
+  });
+
+  it("keeps the address's recovery hour for the letters that went out", async () => {
+    const email = "recovery-cooldown-refund@example.com";
+    const ip = "198.51.100.90";
+    const addressWall = hmacHex(
+      tokenHmacSecret,
+      "recovery-email",
+      hmacHex(tokenHmacSecret, "email", email),
+    );
+    const ipWall = hmacHex(tokenHmacSecret, "recovery-ip", ip);
+
+    sendCooldownUntil = new Date(Date.now() + 40_000);
+    try {
+      for (let ask = 0; ask < 3; ask += 1) {
+        await expect(requestScannerReportRecovery({ email, ip })).resolves.toMatchObject({
+          sent: false,
+        });
+      }
+    } finally {
+      sendCooldownUntil = undefined;
+    }
+
+    expect(await readRateCount(addressWall, "recovery_email_hour")).toBe(0);
+    expect(await readRateCount(ipWall, "recovery_ip_hour")).toBe(3);
+    await expect(requestScannerReportRecovery({ email, ip })).resolves.toMatchObject({
+      sent: true,
+    });
+  });
+
+  it("passes the cabinet's own wait through the registration door untouched", async () => {
+    const { scan, accessToken } = await createFreshCompletedScan("cabinet-cooldown");
+    const body = registrationBody("scanner-cabinet-cooldown@example.com");
+    process.env.REGISTRATION_ENABLED = "true";
+    sendCooldownUntil = new Date(Date.now() + 40_000);
+    try {
+      const response = await requestScannerRegistration(
+        new NextRequest(`http://localhost:3000/api/v2/scans/${scan.id}/registrations`, {
+          method: "POST",
+          headers: {
+            origin: "http://localhost:3000",
+            "content-type": "application/json",
+            authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify(body),
+        }),
+        { params: Promise.resolve({ id: scan.id }) },
+      );
+
+      expect(response.status).toBe(429);
+      const refusal = (await response.json()) as {
+        error: { message: string; retry_after_seconds?: number };
+      };
+      const seconds = refusal.error.retry_after_seconds;
+      expect(seconds).toBeGreaterThan(30);
+      expect(seconds).toBeLessThanOrEqual(40);
+      expect(response.headers.get("Retry-After")).toBe(String(seconds));
+      expect(refusal.error.message).toContain(`${seconds} seconds`);
+      expect(refusal.error.message).not.toMatch(/hour|too many/i);
+    } finally {
+      sendCooldownUntil = undefined;
+      process.env.REGISTRATION_ENABLED = "false";
+    }
+  });
+
+  it("answers the recovery door with the same wait instead of claiming a link went out", async () => {
+    sendCooldownUntil = new Date(Date.now() + 40_000);
+    try {
+      const response = await handleScannerRecoveryRequest(
+        new NextRequest("http://localhost:3000/api/v2/auth/recover", {
+          method: "POST",
+          headers: {
+            origin: "http://localhost:3000",
+            "content-type": "application/json",
+            "x-forwarded-for": "198.51.100.77",
+          },
+          body: JSON.stringify({
+            action: "email",
+            email: "recovery-cooldown@example.com",
+            turnstile_token: null,
+          }),
+        }),
+      );
+
+      expect(response.status).toBe(429);
+      expect(await response.clone().text()).not.toContain("recovery_requested");
+      const refusal = (await response.json()) as {
+        error: { code: string; message: string; retry_after_seconds?: number };
+      };
+      const seconds = refusal.error.retry_after_seconds;
+      expect(seconds).toBeGreaterThan(30);
+      expect(seconds).toBeLessThanOrEqual(40);
+      expect(response.headers.get("Retry-After")).toBe(String(seconds));
+      expect(refusal.error.message).not.toMatch(/hour|too many/i);
+    } finally {
+      sendCooldownUntil = undefined;
     }
   });
 
@@ -1770,7 +2106,7 @@ describe("P4 cabinet-owned scanner identity", () => {
     const unknown = "unknown-recovery@example.com";
     await expect(
       requestScannerReportRecovery({ email: unknown, ip: "203.0.113.81" }),
-    ).resolves.toBe("accepted");
+    ).resolves.toEqual({ sent: true });
     expect(latestLink(unknown, "recovery")).toBeDefined();
 
     const email = "deleting-recovery@example.com";
@@ -1787,9 +2123,9 @@ describe("P4 cabinet-owned scanner identity", () => {
         firstSegment: "owner",
         firstSessionId: scan.sessionId,
       });
-    await expect(requestScannerReportRecovery({ email, ip: "203.0.113.82" })).resolves.toBe(
-      "accepted",
-    );
+    await expect(requestScannerReportRecovery({ email, ip: "203.0.113.82" })).resolves.toEqual({
+      sent: true,
+    });
     expect(latestLink(email, "recovery")).toBeDefined();
     expect(
       await getDatabase()
