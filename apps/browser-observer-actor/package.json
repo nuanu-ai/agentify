@@ -7,11 +7,6 @@
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist coverage",
     "start": "node dist/index.js",
-    "pretest": "pnpm --filter @agentify/scanner-contracts --filter @agentify/scanner build",
-    "test": "vitest run --config ../../vitest.scanner.config.ts --exclude src/actor.integration.test.ts",
-    "pretest:unit": "pnpm --filter @agentify/scanner-contracts --filter @agentify/scanner build",
-    "test:unit": "vitest run --config ../../vitest.scanner.config.ts --exclude src/actor.integration.test.ts",
-    "test:integration": "vitest run --config ../../vitest.scanner.config.ts src/actor.integration.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -186,10 +186,10 @@ wrote — the two drizzle migration directories and the lockfile — so `pnpm
 check` is the whole of the lint. Every package compiles under
 `tsconfig.base.json` and overrides it only where the runtime differs — Next
 keeps the JSX and resolves like a bundler, and the two packages whose callbacks
-run inside a page read the browser's names. The test runner is still configured
-twice, which is why `build` and `test` in the root `package.json` run the
-commerce set and the scanner set in turn, and `build` finishes with the
-portal.
+run inside a page read the browser's names. One vitest config runs every unit
+test in `apps/*` and `packages/*`, and `pnpm test` is that run plus the
+operational scripts' own tests. `build` still runs the commerce set and the
+scanner set in turn and finishes with the portal.
 
 | Path | What it is |
 | --- | --- |

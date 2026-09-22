@@ -38,7 +38,6 @@ apps/docs/.vitepress/cache
 /packages/remediation
 /ops
 /fixtures
-/vitest.scanner.config.ts
 /.env.scanner.example
 /.actor
 /.actorignore

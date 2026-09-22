@@ -12,8 +12,6 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist coverage",
-    "test": "vitest run --config ../../vitest.scanner.config.ts",
-    "test:unit": "vitest run --config ../../vitest.scanner.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

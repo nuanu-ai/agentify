@@ -9,10 +9,6 @@
     "predev": "pnpm --filter @agentify/scanner-contracts --filter @agentify/analytics --filter @agentify/scanner-database --filter @agentify/observability --filter @agentify/scanner --filter @agentify/remediation build",
     "dev": "next dev",
     "start": "next start",
-    "pretest:unit": "pnpm --filter @agentify/scanner-contracts --filter @agentify/analytics --filter @agentify/scanner-database --filter @agentify/observability --filter @agentify/scanner --filter @agentify/remediation build",
-    "test:unit": "vitest run --config ../../vitest.scanner.config.ts --exclude lib/server/p4.integration.test.ts --exclude lib/server/p5.integration.test.ts",
-    "test:integration": "vitest run --config ../../vitest.scanner.config.ts lib/server/p4.integration.test.ts",
-    "test:p5-integration": "vitest run --config ../../vitest.scanner.config.ts lib/server/p5.integration.test.ts",
     "typecheck": "tsc --noEmit",
     "privacy:cleanup": "tsx scripts/privacy-cleanup.ts",
     "e2e:seed": "tsx scripts/seed-local-browser-evidence.ts"

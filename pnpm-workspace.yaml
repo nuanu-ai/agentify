@@ -1,6 +1,7 @@
 # One product, one reproducible install: every package of it is installed from
 # this workspace and its lockfile, code and documentation alike; one linter
-# reads all of it and every package compiles from one base.
+# reads all of it, every package compiles from one base and one runner runs
+# every test.
 packages:
   - packages/*
   - apps/*

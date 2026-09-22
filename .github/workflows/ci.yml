@@ -61,7 +61,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm typecheck
-      - run: pnpm test:commerce
+      - run: pnpm test
       - run: pnpm test:db
         env:
           AGENTIFY_TEST_DATABASE_URL: postgresql://agentify_commerce:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_commerce_test
@@ -137,7 +137,6 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @agentify/browser-observer-actor exec playwright install --with-deps chromium
-      - run: pnpm test:scanner
       - run: pnpm scanner:test:actor
       - run: pnpm scanner:test:integration
       - run: pnpm scanner:test:db
