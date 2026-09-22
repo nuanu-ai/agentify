@@ -852,7 +852,8 @@ describe("what an agent is told when the money is not settled", () => {
     await worker.stop();
 
     expect(answered.status).toBe(409);
-    expect(answered.body).toMatchObject({ status: "in_progress" });
+    expect(answered.body).toMatchObject({ status: "payment_unresolved" });
+    expect(answered.body).not.toMatchObject({ status: "in_progress" });
   });
 
   it("says an order closed before it was priced is closed, not still waiting", async () => {

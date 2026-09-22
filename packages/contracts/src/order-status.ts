@@ -70,8 +70,10 @@ export const ORDER_STATUSES = Object.freeze([
    */
   "rejected",
   /**
-   * Closed, and nobody can say whether the buyer was charged: the payment
-   * network was asked and never answered.
+   * Nobody can say whether the buyer was charged: the payment network was
+   * asked and never answered. The order may still be open — the goods may
+   * already be made — and a later read can still move. Closed is not what
+   * this word says.
    *
    * Deliberately not `rejected`, and this is the fifth gate in one value. An
    * agent told its purchase did not happen goes and buys the same thing

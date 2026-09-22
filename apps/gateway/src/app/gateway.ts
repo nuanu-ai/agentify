@@ -12,7 +12,13 @@
  */
 
 import type { Environment, MerchantSelling, TransitionRejection } from "@agentify/commerce-core";
-import { createOrder, fulfillmentDeadline, isOpen, outcomeFor } from "@agentify/commerce-core";
+import {
+  createOrder,
+  fulfillmentDeadline,
+  isOpen,
+  onTheMerchantsOpenList,
+  outcomeFor,
+} from "@agentify/commerce-core";
 import {
   type Acceptance,
   CARD_REJECTED,
@@ -1565,9 +1571,24 @@ export class Gateway {
     return this.#answerFor(applied, "accepted");
   }
 
-  /** This merchant's orders, or with `open` only the ones still owed work or money. */
+  /**
+   * This merchant's orders, or with `open` only the ones a restarted worker
+   * should walk.
+   *
+   * The store's own open flag is the machine's, and the sweep reads that. The
+   * list a merchant walks is narrower: an unpaid quote that never reached him
+   * is not work he owes, and putting it here is how a restart delivers goods
+   * for a purchase that never happened.
+   */
   async orders(merchantId: string, open: boolean | undefined): Promise<readonly StoredOrder[]> {
-    return this.runtime.store.orders(merchantId, open === undefined ? undefined : { open });
+    const records = await this.runtime.store.orders(
+      merchantId,
+      open === undefined ? undefined : { open },
+    );
+    if (open !== true) {
+      return records;
+    }
+    return records.filter((record) => onTheMerchantsOpenList(record.order));
   }
 
   // --- the parts the flows above lean on ------------------------------------

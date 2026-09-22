@@ -151,9 +151,11 @@ export const ReceiptListSchema = z
 /**
  * The question a merchant puts in the query string when listing orders.
  *
- * `open=true` narrows the list to the orders that are still owed something —
- * which includes the two that stay open after the purchase itself is over, an
- * order owing a refund and one delivered but never paid for. Leaving it out
+ * `open=true` narrows the list to the orders a restarted worker should walk:
+ * ones the merchant was handed and has not finished, and the two that stay
+ * open after the purchase itself is over, an order owing a refund and one
+ * delivered but never paid for. An order that was priced and never paid, and
+ * never reached the handler, is not in that narrowing. Leaving the field out
  * asks for everything.
  *
  * The value is text and not a boolean, because that is what a query string
@@ -169,7 +171,7 @@ export const OrderListQuerySchema = z
   })
   .meta({
     description:
-      'Which orders to list. Written as text because a query string carries text. "true" narrows the list to the orders that are still owed something, which includes the two that stay open after the purchase itself is over: an order owing a refund, and one delivered but never paid for. Leaving the field out asks for everything.',
+      'Which orders to list. Written as text because a query string carries text. "true" narrows the list to the orders a restarted worker should walk: ones the merchant was handed and has not finished, an order owing a refund, and one delivered but never paid for. An order that was priced and never paid, and never reached the handler, is not in that narrowing. Leaving the field out asks for everything.',
   });
 
 /**
@@ -948,7 +950,7 @@ export const API_ROUTES = Object.freeze({
     path: "/v0/orders",
     auth: "merchant_key",
     description:
-      "Orders and the states they are in. With open=true, only the ones still owed something — which includes the two that stay open after the purchase itself is over, an order owing a refund and one delivered but never paid for. One kind of order is not in this list at all, with or without the flag: one that closed before anybody named a price for it, because the product was gone or a price question went unanswered. Every row here is written in a document that carries a sale price and those orders have none, so they are readable one at a time by their identifier, where the refusal says what became of them. A merchant reconciling against this list is reconciling against the orders that were priced.",
+      "Orders and the states they are in. With open=true, only the ones a restarted worker should walk — ones the merchant was handed and has not finished, which includes the two that stay open after the purchase itself is over, an order owing a refund and one delivered but never paid for. An order that was priced and never paid, and never reached the handler, is not in that narrowing; it is readable by its identifier, where its status is the buyer's word for a purchase that has not finished. One kind of order is not in this list at all, with or without the flag: one that closed before anybody named a price for it, because the product was gone or a price question went unanswered. Every row here is written in a document that carries a sale price and those orders have none, so they are readable one at a time by their identifier, where the refusal says what became of them. A merchant reconciling against this list is reconciling against the orders that were priced.",
     query: OrderListQuerySchema,
     response: { document: OrderListSchema },
   },

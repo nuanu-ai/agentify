@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "start": "tsx src/main.ts",
     "merchant": "tsx src/merchant.ts",
+    "report-payment": "tsx src/payment-report.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/migrate.ts",
     "listing": "tsx src/listing.ts"

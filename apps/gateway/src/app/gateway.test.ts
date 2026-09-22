@@ -379,7 +379,8 @@ describe("a synchronous purchase", () => {
     // The clock on the charge ran out and declared the silence — in the word
     // that keeps "nobody knows" apart from "it did not go through". The goods
     // exist, so the order is the one the portal calls unclosed rather than a
-    // refusal, and the agent is told the answer is not in yet.
+    // refusal, and the agent is told the outcome is unknown, not that the
+    // purchase is still being worked on.
     const parked = await harnessed.store.orderById(offered.order.order.id);
     expect(parked?.order.state).toBe("delivered_unpaid");
     expect(parked?.order.payment).toBe("outcome_unknown");
@@ -2187,7 +2188,9 @@ describe("the merchant's list of orders", () => {
     await harnessed.gateway.deliverOrder(harnessed.merchant.id, first.order.order.id, {
       activation_code: "A",
     });
-    await harnessed.gateway.payPurchase(second.order.order.id, "PAYMENT", "PAYMENT");
+    // A second authorisation. Reusing the first would leave this order unpaid,
+    // and an unpaid quote is not what this list is for.
+    await harnessed.gateway.payPurchase(second.order.order.id, "PAYMENT-2", "PAYMENT-2");
 
     expect(await harnessed.gateway.orders(harnessed.merchant.id, undefined)).toHaveLength(2);
     expect(

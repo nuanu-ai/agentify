@@ -30,11 +30,12 @@ export const ORDER_OUTCOMES = [
    */
   "rejected",
   /**
-   * The purchase is closed and nobody can say whether the buyer was charged:
-   * the payment network was asked and never answered. It is deliberately not
-   * `rejected`. An agent told his purchase did not happen goes and buys the
-   * same thing elsewhere without looking at his wallet, and that is a claim
-   * this machine has no evidence for.
+   * Nobody can say whether the buyer was charged: the payment network was
+   * asked and never answered. It is deliberately not `rejected`, and it does
+   * not say the order is closed. An agent told his purchase did not happen
+   * goes and buys the same thing elsewhere without looking at his wallet, and
+   * that is a claim this machine has no evidence for. A later read can still
+   * move, where a fact about the charge arrives after this one.
    */
   "payment_unresolved",
   /** The merchant answered a confirmation request with "I will not". */
@@ -60,10 +61,12 @@ export type OrderOutcome = (typeof ORDER_OUTCOMES)[number];
 export function outcomeFor(order: Order): OrderOutcome {
   // A charge the payment network never answered about outranks whatever the
   // state would otherwise say, because it is the one thing the agent most
-  // needs to hear and the one thing the machine most easily overstates. Closed
-  // on that silence, the answer is that nobody knows; still open on it, the
-  // answer is the one for a question that has not come back yet — and that is
-  // the truth of it, because we are still asking.
+  // needs to hear and the one thing the machine most easily overstates. Open
+  // or closed, the word is the same: nobody knows. The interpreter asks once;
+  // a silence is not a question still in flight, and `in_progress` is what a
+  // merchant's restart treats as an order waiting on him. A later fact can
+  // still move the order — the state stays open where the goods are already
+  // made — and a later read says which way it moved.
   //
   // The test is the payment stage and not the closure. An order closed on the
   // silence keeps that closure after the charge finally reports in and the
@@ -71,7 +74,7 @@ export function outcomeFor(order: Order): OrderOutcome {
   // where it stopped; reading it here would go on claiming nobody knows about
   // an order the machine has just written a refund against.
   if (order.payment === "outcome_unknown") {
-    return isOpen(order.state) ? "in_progress" : "payment_unresolved";
+    return "payment_unresolved";
   }
 
   switch (order.state) {
@@ -104,6 +107,52 @@ export function outcomeFor(order: Order): OrderOutcome {
       return "expired";
     case "cancelled":
       return "cancelled";
+    default:
+      return assertNever(order.state, "order state");
+  }
+}
+
+/**
+ * Whether a restarted merchant's open list should carry this order.
+ *
+ * Machine-open is wider. A price the buyer has not paid, which never reached
+ * the handler, is open in the machine and is not this merchant's to finish.
+ * Putting it on the list they walk after a restart is how goods get made for
+ * a purchase that never happened. The buyer's own status of that order stays
+ * `in_progress`; this predicate is only the list.
+ *
+ * A charge nobody heard back from is on the list even so. Hiding it is how it
+ * gets read as an order still waiting on the merchant. Its status says the
+ * outcome is unknown, which is the word the list is for.
+ *
+ * Confirmation is not a fulfillment the merchant was handed an order for, and
+ * that mode is not on the wire. An order waiting on the buyer's payment after
+ * a confirmation is not on this list either: nothing there is his to deliver.
+ */
+export function onTheMerchantsOpenList(order: Order): boolean {
+  if (order.payment === "outcome_unknown" && isOpen(order.state)) {
+    return true;
+  }
+
+  switch (order.state) {
+    case "paid":
+    case "dispatched":
+    case "fulfilled":
+    case "refund_due":
+    case "delivered_unpaid":
+      return true;
+    case "created":
+    case "quoted":
+    case "awaiting_confirmation":
+    case "confirmed":
+    case "delivered":
+    case "refunded":
+    case "failed":
+    case "rejected":
+    case "declined":
+    case "expired":
+    case "cancelled":
+      return false;
     default:
       return assertNever(order.state, "order state");
   }

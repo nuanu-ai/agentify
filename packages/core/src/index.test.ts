@@ -44,6 +44,8 @@ describe("@agentify/commerce-core", () => {
       "fulfillmentDeadline",
       "nextRedelivery",
       "outcomeFor",
+      // The merchant's open list is narrower than the machine's open states.
+      "onTheMerchantsOpenList",
       "moneyInvariantViolations",
       "modeOf",
       "isOpen",

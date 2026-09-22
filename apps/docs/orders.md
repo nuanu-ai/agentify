@@ -343,8 +343,10 @@ const order = await agentify.orders.get(orderId)
 const open = await agentify.orders.list({ open: true })
 
 for (const waiting of open) {
-  // This one has its goods already; it is waiting on money rather than on you.
-  if (waiting.status === 'delivered_unpaid') {
+  // Goods already made, waiting on money rather than on you. A silence is
+  // the same shape of skip: delivering answers success and nothing you send
+  // is kept.
+  if (waiting.status === 'delivered_unpaid' || waiting.status === 'payment_unresolved') {
     continue
   }
 
@@ -376,10 +378,13 @@ ready for each order, and closes what is ready — without collecting identifier
 of ours into a variable of its own. What is ready is yours to know and not
 ours.
 
-Open here means the order is still owed something, by you or by the buyer or by
-us, and that is a wider set than the orders you have been handed. It holds an
-order the agent has been given a price for and has not paid, which has never
-reached your handler. It holds an order marked as needing a refund, where
+Open here means the order is still owed something you can finish or have to
+step around. An order the agent has been given a price for and has not paid,
+which has never reached your handler, is not on it: walking this list after a
+restart and delivering against that order would make goods for a purchase that
+never happened. It is still readable by its identifier, and there its status
+is the buyer's word for a purchase that has not finished, which is not an
+instruction to you. It holds an order marked as needing a refund, where
 delivering closes the debt with the goods instead of paying the money back, and
 that may be what you want.
 
@@ -390,9 +395,13 @@ and nothing of what it carried is written down or reaches the agent.
 
 One of them you can see coming: an order you delivered synchronously whose
 payment did not execute reads `delivered_unpaid`, which is why the loop above
-skips it. The other you cannot. An order whose goods are made and whose charge
-is still running, or was never answered for, reads `in_progress` — the same
-word as an order that is still waiting for you.
+skips it. An order whose goods are made and whose charge is still running
+reads `in_progress`, for as long as that charge is actually in flight. An
+order whose charge was asked for and never answered reads `payment_unresolved`,
+not `in_progress`: nothing is still asking, and that word is not an order
+waiting for you. The loop skips it for the same reason it skips
+`delivered_unpaid`. Delivering against it answers success and keeps nothing
+of what you sent.
 
 So a loop over this list rests on your own record of what you have already
 sent. One that makes the goods afresh for every order it finds will issue a new
@@ -484,11 +493,12 @@ Where the payment network was asked and never answered, nobody can say whether
 the buyer was charged, and we do not pretend to. A repeat is refused there,
 because a second charge on top of a first one nobody has heard from would be
 spending the buyer's money on a guess about the first. The order reads
-`in_progress`, the same word as an order still waiting for you, and nothing on
-our side asks the payment network again — so it can sit there indefinitely. If
-a late answer does arrive and it says the money moved, the order closes as
-delivered and the agent gets its goods; if it says the money did not move, the
-order becomes one the same buyer can retry with a fresh authorization.
+`payment_unresolved`, and nothing on our side asks the payment network again.
+If a late answer is recorded and it says the money moved, the order closes as
+delivered and the agent gets its goods. A failure is not recorded while the
+order is still open: that would allow a second charge on a guess about the
+first. Until an answer that the money moved is recorded, the order can sit
+there, and a repeat purchase is refused.
 
 In both cases the goods are already recorded on our side, so there is nothing
 to deliver again: a second delivery is answered as a success and nothing it

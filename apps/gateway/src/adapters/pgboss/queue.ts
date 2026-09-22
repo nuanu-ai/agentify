@@ -325,6 +325,20 @@ export class PgBossQueue implements Queue {
     await this.#boss.schedule(name, "17 3 * * *");
   }
 
+  /**
+   * Starts the library so this process can send, and does not consume.
+   *
+   * A second process that called {@link start} would register a worker on the
+   * reminders queue and take deadlines away from the gateway that is supposed
+   * to apply them. Sending a job does not require that worker. The operator
+   * command that records a payment fact uses this and must not grow a second
+   * consumer beside it.
+   */
+  async startWriter(): Promise<void> {
+    await this.#boss.start();
+    await this.#boss.createQueue(REMINDERS);
+  }
+
   async start(): Promise<void> {
     const fire = this.#fire;
     if (fire === null) {

@@ -71,6 +71,7 @@ export class ScriptedFacilitator implements Facilitator {
   #settleOutcomes: SettleOutcome[] = [];
   #settlements = 0;
   #verifyGate: Promise<void> | null = null;
+  #settleGate: Promise<void> | null = null;
 
   /** The next verification answers this, and the ones after it the last one. */
   willVerify(...outcomes: VerifyOutcome[]): this {
@@ -106,6 +107,21 @@ export class ScriptedFacilitator implements Facilitator {
     return release;
   }
 
+  /**
+   * Holds every settlement until the returned function is called.
+   *
+   * The call is recorded before the wait, so a test can see that the charge
+   * went out and still has not come back. That is the window in which a
+   * deadline can declare a silence while the original call is in flight.
+   */
+  holdSettle(): () => void {
+    let release: () => void = () => undefined;
+    this.#settleGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return release;
+  }
+
   async verify(charge: Charge): Promise<VerifyOutcome> {
     this.verifies.push(charge);
     if (this.#verifyGate !== null) {
@@ -120,6 +136,9 @@ export class ScriptedFacilitator implements Facilitator {
   async settle(charge: Charge): Promise<SettleOutcome> {
     this.settles.push(charge);
     this.#settlements += 1;
+    if (this.#settleGate !== null) {
+      await this.#settleGate;
+    }
     return next(this.#settleOutcomes, this.#settlements, {
       settled: true,
       transaction: `0xtx${this.#settlements}`,

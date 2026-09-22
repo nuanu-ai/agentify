@@ -82,6 +82,15 @@ import { purchaseOf, Waiting } from "./waiting.js";
 export const SWEEP_EFFECTS = "agentify_sweep_effects";
 
 /**
+ * The mark on a settle word that means this gateway did not observe the
+ * charge. The operator command writes it; the sweep reads it and does not
+ * invent a receipt for it. A phrase rather than a flag, because the word is
+ * already the record and a second field would be a second place for the two
+ * to disagree.
+ */
+export const UNOBSERVED_SETTLE = "the facilitator was not asked";
+
+/**
  * What is written down about the purchase alongside the machine's own order.
  * Every one of these lands in the same write as the order the event moved, so
  * a fact and the event it is about are never stored one without the other.
@@ -545,6 +554,17 @@ export class OrderRunner {
     }
 
     for (const record of await this.#runtime.store.deliveredWithoutReceipt()) {
+      // An operator-recorded settlement has no observed execution time, so
+      // the apply path wrote no receipt. Repairing that absence would date
+      // a proof from the moment this sweep happened to run. The phrase is the
+      // one the command writes; a delivered order from an older defect has
+      // no such word and is still receipted below.
+      const asserted = record.paymentWords.some(
+        (word) => word.about === "settle" && word.said.includes(UNOBSERVED_SETTLE),
+      );
+      if (asserted) {
+        continue;
+      }
       try {
         await this.#runtime.store.putReceipt(
           record.merchantId,
@@ -740,6 +760,15 @@ export class OrderRunner {
           break;
 
         case "issue_receipt":
+          // A receipt's paid_at is when the payment executed. A transition out
+          // of a silence was an operator's assertion, not a time the payment
+          // layer named. Writing the receipt would be proof of a payment this
+          // gateway did not observe. The order still moves; the word beside it
+          // is the record of who asserted it. The sweep must not repair this
+          // absence — see the settlement check there.
+          if (before.payment === "outcome_unknown") {
+            break;
+          }
           writes.push({
             kind: "receipt",
             merchantId: record.merchantId,
@@ -914,8 +943,9 @@ export class OrderRunner {
     // oversight. The facilitator offers verifying a payment, executing one, and
     // a list of what it supports — and no way at all to ask what became of a
     // charge already sent. Asking by sending it again is the one thing the
-    // machine forbids. So the words below are the whole of what a person has to
-    // go on, and they are written down for that person.
+    // machine forbids. A later fact, read elsewhere and recorded by the
+    // operator command, is a different speaker and does not come through here.
+    // The words below are what that person has to go on.
     await this.#writeDown(record.order.id, { at, about: "settle", said: outcome.reason });
   }
 

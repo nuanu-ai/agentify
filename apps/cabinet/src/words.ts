@@ -17,12 +17,13 @@
  *
  * Two of the words are deliberately weaker than the design they came from, and
  * both are the fifth gate. The design's orders table says "accepted, awaiting
- * delivery"; nothing an agent or a merchant reads over this API can tell an
- * order the merchant has taken on from one that a request opened moments ago
- * and never paid for, because `in_progress` folds them on purpose
- * (`order-status.ts` argues it), so the cabinet says the weaker thing it can
- * stand behind. "Awaiting fulfilment" stood here first and was not weak
- * enough: it names a duty, and the order it named one for was a purchase
+ * delivery"; a single order read by its identifier cannot tell an order the
+ * merchant has taken on from one that was priced and never paid, because
+ * `in_progress` folds them on purpose (`order-status.ts` argues it), so the
+ * cabinet says the weaker thing it can stand behind. The open list does not
+ * mix those two: an unpaid quote that never reached the handler is not on it.
+ * "Awaiting fulfilment" stood here first and was not weak enough: it names a
+ * duty, and the order it named one for was a purchase
  * nobody had paid for, which read on the orders screen as goods the merchant
  * owed and then closed on its own deadline without ever having reached them.
  * "In progress" is true of both. And `payment_unresolved` is rendered as a
