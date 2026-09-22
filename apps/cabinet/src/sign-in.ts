@@ -127,7 +127,8 @@ export const refusedLinkScreen = (
   mode: SurfaceMode,
   signedIn?: { readonly email: string; readonly destination: "cards" | "merchant" },
 ): string => {
-  const heading = signedIn === undefined ? "That link no longer works" : "You are already signed in";
+  const heading =
+    signedIn === undefined ? "That link no longer works" : "You are already signed in";
   const recovery =
     signedIn === undefined
       ? `<p>A sign-in link opens once and expires an hour after it is sent. This one no longer opens anything.</p>

@@ -647,7 +647,7 @@ describe("the payment challenge", () => {
           payload: {
             signature: "0xsigned",
             authorization: {
-              from: "0x" + "a".repeat(40),
+              from: `0x${"a".repeat(40)}`,
               to: PAY_TO,
               value: "80000000",
               nonce: "0x01",

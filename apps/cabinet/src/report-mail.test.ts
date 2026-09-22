@@ -46,7 +46,9 @@ describe("report link mail", () => {
     expect(message.html).toContain(one.action);
     expect(message.html).toContain(link.replaceAll("&", "&amp;"));
     expect(message.html).toContain("opens once and expires an hour after it was sent");
-    expect(message.html).toContain("This message was sent because this address was entered at Agentify.");
+    expect(message.html).toContain(
+      "This message was sent because this address was entered at Agentify.",
+    );
     expect(message.html).not.toContain("commerce account");
   });
 
