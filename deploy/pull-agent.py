@@ -59,7 +59,7 @@ def read_config(path):
         "controllerBranch",
         "stateDirectory",
         "inventoryFile",
-        "ansiblePlaybook",
+        "ansiblePython",
     }
     if set(config) != required:
         raise AgentError("Pull-agent configuration has unknown or missing fields")
@@ -72,14 +72,14 @@ def read_config(path):
         raise AgentError("The release controller must come from main")
     if not isinstance(config["repository"], str) or not config["repository"]:
         raise AgentError("The repository must be explicit")
-    for field in ["stateDirectory", "inventoryFile", "ansiblePlaybook"]:
+    for field in ["stateDirectory", "inventoryFile", "ansiblePython"]:
         value = Path(config[field])
         if not value.is_absolute():
             raise AgentError(f"{field} must be an absolute path")
     if not Path(config["inventoryFile"]).is_file():
         raise AgentError(f"The local {channel.upper()} inventory is missing")
-    if not Path(config["ansiblePlaybook"]).is_file():
-        raise AgentError("The pinned ansible-playbook executable is missing")
+    if not Path(config["ansiblePython"]).is_file():
+        raise AgentError("The pinned Ansible Python interpreter is missing")
     return config
 
 
@@ -278,7 +278,9 @@ def ensure_controller(mirror, controllers, revision):
 
 def phase_command(config, controller_path, revision, controller_revision, evidence, phase):
     return [
-        config["ansiblePlaybook"],
+        config["ansiblePython"],
+        "-m",
+        "ansible.cli.playbook",
         "-i",
         "deploy/ansible/inventory.yml",
         "deploy/ansible/release.yml",

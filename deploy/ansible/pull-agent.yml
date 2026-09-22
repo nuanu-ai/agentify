@@ -166,7 +166,7 @@
       loop:
         - "{{ pull_agent_release_directory }}/pull-agent.py"
         - "{{ pull_agent_release_directory }}/requirements.txt"
-        - "{{ pull_agent_release_directory }}/venv/bin/ansible-playbook"
+        - "{{ pull_agent_release_directory }}/venv/bin/python3"
         - "{{ pull_agent_release_directory }}/installation.json"
       register: pull_agent_installed_files
 
@@ -185,6 +185,15 @@
           - (pull_agent_installation.content | b64decode | from_json).pullAgentSha256 == pull_agent_installed_files.results[0].stat.checksum
           - (pull_agent_installation.content | b64decode | from_json).requirementsSha256 == pull_agent_installed_files.results[1].stat.checksum
         fail_msg: The controller-SHA pull-agent installation is incomplete or changed; preserve it and inspect before proceeding.
+
+    - name: Prove the relocated environment can invoke pinned Ansible
+      ansible.builtin.command:
+        argv:
+          - "{{ pull_agent_release_directory }}/venv/bin/python3"
+          - -m
+          - ansible.cli.playbook
+          - --version
+      changed_when: false
 
     - name: Inspect an existing pull-agent timer installation
       ansible.builtin.stat:
@@ -265,7 +274,7 @@
             'controllerBranch': 'main',
             'stateDirectory': pull_agent_state_directory,
             'inventoryFile': pull_agent_inventory_file,
-            'ansiblePlaybook': pull_agent_root + '/current/venv/bin/ansible-playbook'
+            'ansiblePython': pull_agent_root + '/current/venv/bin/python3'
           } | to_nice_json }}
         dest: "{{ pull_agent_configuration_file }}"
         owner: root

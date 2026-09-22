@@ -28,7 +28,7 @@ class PullAgentTest(unittest.TestCase):
         self.state = self.root / "state"
         self.log = self.root / "ansible.jsonl"
         self.inventory = self.root / "inventory.json"
-        self.fake_ansible = self.root / "ansible-playbook"
+        self.fake_python = self.root / "python"
 
         subprocess.run(["git", "init", "--bare", str(self.remote)], check=True, capture_output=True)
         subprocess.run(["git", "init", "-b", "main", str(self.source)], check=True, capture_output=True)
@@ -46,7 +46,7 @@ class PullAgentTest(unittest.TestCase):
         self.move_tag(self.first)
 
         self.inventory.write_text("{}\n")
-        self.fake_ansible.write_text(
+        self.fake_python.write_text(
             textwrap.dedent(
                 """\
                 #!/usr/bin/env python3
@@ -55,6 +55,8 @@ class PullAgentTest(unittest.TestCase):
                 import pathlib
                 import sys
 
+                if sys.argv[1:3] != ["-m", "ansible.cli.playbook"]:
+                    raise SystemExit(97)
                 phase = next(value.split("=", 1)[1] for value in sys.argv if value.startswith("release_phase="))
                 with pathlib.Path(os.environ["FAKE_ANSIBLE_LOG"]).open("a") as output:
                     output.write(json.dumps({"cwd": os.getcwd(), "argv": sys.argv[1:]}) + "\\n")
@@ -63,7 +65,7 @@ class PullAgentTest(unittest.TestCase):
                 """
             )
         )
-        self.fake_ansible.chmod(0o755)
+        self.fake_python.chmod(0o755)
         self.config = self.root / "config.json"
         self.config.write_text(
             json.dumps(
@@ -74,7 +76,7 @@ class PullAgentTest(unittest.TestCase):
                     "controllerBranch": "main",
                     "stateDirectory": str(self.state),
                     "inventoryFile": str(self.inventory),
-                    "ansiblePlaybook": str(self.fake_ansible),
+                    "ansiblePython": str(self.fake_python),
                 }
             )
             + "\n"
@@ -122,6 +124,7 @@ class PullAgentTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = self.calls()
         self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0]["argv"][:2], ["-m", "ansible.cli.playbook"])
         self.assertIn("release_phase=stage", calls[0]["argv"])
         self.assertIn("release_phase=activate", calls[1]["argv"])
         for call in calls:
