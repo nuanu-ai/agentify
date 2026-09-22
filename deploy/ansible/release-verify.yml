@@ -96,7 +96,7 @@
       - (installed_schedule.results[1].content | b64decode) == expected_cron
     fail_msg: Scheduled jobs do not match the assigned source revision.
   vars:
-    expected_cron: "{{ 'SHELL=/bin/bash\n' + ('17 3 * * * root ' + configuration_directory + '/scanner-jobs.sh backup\n' if channel_name == 'production' else '') + '23 4 * * * root ' + configuration_directory + '/scanner-jobs.sh privacy\n' }}"
+    expected_cron: "{{ 'SHELL=/bin/bash\n23 4 * * * root ' + configuration_directory + '/scanner-jobs.sh privacy\n' }}"
 
 - name: Verify the retained production edge image and persistent route file
   ansible.builtin.shell: |

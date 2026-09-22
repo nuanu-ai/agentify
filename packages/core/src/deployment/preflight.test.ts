@@ -111,7 +111,7 @@ describe("a channel that is what it claims to be", () => {
   ] as const)(
     "refuses a static deployed root or unprotected scanner administration in %s",
     (channel, config) => {
-      for (const value of [null, "local_front_page"]) {
+      for (const value of [null, "some_other_front_page"]) {
         expect(
           problemsWith(channel, withEnv(config, "web", "AGENTIFY_FRONT_PAGE", value)).join("\n"),
         ).toMatch(/AGENTIFY_FRONT_PAGE/);
@@ -395,6 +395,40 @@ describe("no laptop default survived", () => {
       expect.stringMatching(/REGISTRATION_INVITATION/),
     );
   });
+
+  it("refuses the scanner's report-link signing secret written in this repository", () => {
+    // The laptop is allowed to inherit this one, so it is printed in
+    // compose.yaml, which is to say printed on the internet. A channel that
+    // deployed it would be signing every report link with a key any reader of
+    // this repository can forge.
+    const wrong = withEnv(
+      AGENTIFY_TEST_CHANNEL,
+      "scanner",
+      "TOKEN_HMAC_SECRET",
+      "a-sandbox-token-hmac-secret-nobody-should-reuse",
+    );
+    expect(problemsWith("agentify-test", wrong)).toContainEqual(
+      expect.stringMatching(/scanner: TOKEN_HMAC_SECRET/),
+    );
+  });
+
+  it.each(["cabinet", "scanner"] as const)(
+    "refuses the private identity credential written in this repository, on %s",
+    (service) => {
+      // Both halves of that route are compared, because a channel that
+      // deployed the published value on either end has a private route anybody
+      // can call.
+      const wrong = withEnv(
+        AGENTIFY_TEST_CHANNEL,
+        service,
+        "REPORT_IDENTITY_SECRET",
+        "a-sandbox-report-identity-secret-nobody-should-reuse",
+      );
+      expect(problemsWith("agentify-test", wrong)).toContainEqual(
+        expect.stringMatching(new RegExp(`${service}: REPORT_IDENTITY_SECRET`)),
+      );
+    },
+  );
 
   it("takes an invitation set to nothing, which is a stack that takes no registrations", () => {
     const closed = withEnv(COMMERCE_CHANNEL, "gateway", "REGISTRATION_INVITATION", "");

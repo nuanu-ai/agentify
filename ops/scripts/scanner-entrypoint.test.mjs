@@ -18,10 +18,9 @@ function runEntrypoint(overrides = {}) {
       PATH: process.env.PATH,
       REGISTRATION_ENABLED: "true",
       APP_BASE_URL: "https://agentify.ad",
-      DATABASE_URL:
-        "postgresql://agentify_web:synthetic@agentify-scanner-postgres:5432/agentify_scanner",
+      DATABASE_URL: "postgresql://agentify_commerce:synthetic@postgres:5432/agentify_scanner",
       TOKEN_HMAC_SECRET: "synthetic-hmac-key-000000000000000000000000",
-      CABINET_IDENTITY_URL: "http://agentify-cabinet-identity:3002",
+      CABINET_IDENTITY_URL: "http://cabinet:3002",
       REPORT_IDENTITY_SECRET: "synthetic-report-identity-secret-32-bytes",
       ...overrides,
     },
@@ -42,6 +41,32 @@ test("web entrypoint requires the public runtime origin", () => {
   const result = runEntrypoint({ APP_BASE_URL: "" });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /APP_BASE_URL/);
+});
+
+test("web entrypoint refuses to start without the secret every report link is signed with", () => {
+  // Not conditional on registration: a closed site still signs the links it
+  // has already sent and checks the ones that come back, and a default here
+  // would be a signing key anybody can read in this repository.
+  for (const registration of ["true", "false"]) {
+    const result = runEntrypoint({ REGISTRATION_ENABLED: registration, TOKEN_HMAC_SECRET: "" });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /TOKEN_HMAC_SECRET/);
+  }
+});
+
+test("web entrypoint refuses a short signing secret without printing its value", () => {
+  const result = runEntrypoint({ TOKEN_HMAC_SECRET: "secret-marker" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /TOKEN_HMAC_SECRET/);
+  assert.ok(!result.stderr.includes("secret-marker"));
+});
+
+test("web entrypoint refuses to start without a database, open or closed", () => {
+  for (const registration of ["true", "false"]) {
+    const result = runEntrypoint({ REGISTRATION_ENABLED: registration, DATABASE_URL: "" });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /DATABASE_URL/);
+  }
 });
 
 test("web entrypoint refuses enabled registration without its cabinet identity route", () => {

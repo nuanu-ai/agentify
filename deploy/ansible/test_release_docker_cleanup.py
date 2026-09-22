@@ -114,7 +114,7 @@ class ReleaseDockerCleanupTests(unittest.TestCase):
             path.write_text(
                 "cd '/home/dmitry/agentify-releases/"
                 + self.running
-                + "/source/ops/deploy/droplet'\n"
+                + "/source'\n"
             )
 
             self.assertEqual(MODULE.installed_job_revision(path), self.running)

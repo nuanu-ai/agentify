@@ -5,6 +5,12 @@ independently. Each server checks out one full Git SHA and builds the five
 first-party images locally and sequentially. Infrastructure images remain pinned
 in `release.yml`; no image registry or release service sits between the channels.
 
+A channel is one Compose project with one environment file. It was two — the
+commerce project and a scanner project beside it, joined by an external
+network — and a host that has not yet been through the one-time reconciliation
+below still carries the second one. Read that section before the first release
+of this shape reaches a server.
+
 The server baseline remains in `nuanu-ai/infra`. Release playbooks do not
 provision servers, change DNS, publish packages, or make paid requests. The
 one-time agent bootstrap installs the distribution's `python3-venv` package for
@@ -104,6 +110,206 @@ The first shared-identity or live-approval cutover remains an explicit recovery
 boundary. Prepare it with the procedures below before creating a production tag;
 the pull agent must stop rather than improvise missing private inputs.
 
+## Reconcile a host that still runs two projects
+
+Each channel ran two Compose projects on one host: the commerce project —
+`agentify-commerce` on PRODUCTION, `agentify-test` on TEST — and a scanner
+project beside it, `agentify` and `agentify-test-scanner`, joined by an
+external network that carried the scanner's database and its identity route.
+The merged graph is one project, and it is the commerce one: a project name is
+the prefix on every container and the label every volume is found by, so
+keeping it means the first release replaces the containers that are there
+rather than building a second stack beside the running one (ADR-0025 says when
+the names move).
+
+The old scanner project is not replaced by that, because nothing in the merged
+graph is named after it. It has to be stopped by hand, and it has to be stopped
+*before* staging rather than after: its worker writes to the database this
+release fingerprints, migrates and then fingerprints again, and a comparison
+taken around a process that is still writing proves nothing.
+
+Staging refuses while any of it is running, before it builds anything, and it
+stops nothing itself — but a refusal is not free, and nothing retries. The pull
+agent records that revision as `failed` and refuses it on every later poll,
+printing `<CHANNEL> revision <sha> remains failed; move <tag> to make another
+selection`. Getting past it means a new selection: on TEST, force-push
+`deploy-test` to a different commit; on PRODUCTION, an `app-v*` tag on another
+commit of `main` with green CI, because the server checks for that tag itself
+and `deploy-production` is not moved by hand. That is expensive enough to be
+worth avoiding, which is what the order below is for — the guard catches the
+time somebody forgets, not the ordinary path.
+
+There is one honest way to make the same revision selectable again, and it is
+narrow. Read `state.json` for the channel first: if it says `"status":
+"failed"` with `"phase": "stage"`, nothing was built, migrated or started, the
+evidence directory says exactly which check refused, and removing that one file
+lets the next poll select the same revision. `history.jsonl` keeps the record
+either way. This does not contradict "do not clear state merely to make the
+timer try the same uncertain operation again" further down: a refusal at stage
+is not uncertain — it is a host that had not been prepared yet, and it is the
+one state where what happens next is known in advance.
+
+Do it in this order, once per channel.
+
+**One. Merge the two environment files.** This is the only step that cannot be
+undone by running it again, and it is why the refusal above is worth having:
+everything after it is recoverable, this is not. In
+`<agentify_home>/agentify-configuration` there are `commerce.env` and
+`scanner.env`; the merged release reads `agentify.env`. Start from
+`commerce.env`, append every line of `scanner.env` that the merged
+`compose.yaml` still reads, and leave out the ones that named machinery that is
+gone:
+
+- drop `DATABASE_MODE`, `ADMIN_DATABASE_URL`, `WEB_DATABASE_URL`,
+  `WORKER_DATABASE_URL`, `PRIVACY_DATABASE_URL`, `DASHBOARD_DATABASE_URL` and
+  every `POSTGRES_*_PASSWORD` other than the commerce one — the scanner reaches
+  its database with the commerce account now;
+- drop `RECONCILE_RUNTIME_ROLE_PASSWORDS`,
+  `ROLE_PASSWORD_ROTATION_MAINTENANCE_ACK`, `AGENTIFY_BACKUP_DIRECTORY`,
+  `AGENTIFY_SCANNER_DB_NETWORK` and `AGENTIFY_ALPINE_IMAGE` — the jobs and the
+  network they configured are gone;
+- drop `AGENTIFY_SCANNER_WEB_IMAGE` and the other image tags; staging writes
+  the current ones every time;
+- keep everything else, and in particular `TOKEN_HMAC_SECRET`,
+  `EMAIL_ENCRYPTION_KEY`, `REPORT_IDENTITY_SECRET`, `ADMIN_BASIC_AUTH_USER`,
+  `ADMIN_BASIC_AUTH_HASH`, the `TURNSTILE_*`, `POSTHOG_*`, `META_*` and
+  `STRIPE_*` settings, `PRIVACY_EMAIL`, `ABUSE_EMAIL`, the `LEGAL_*` pair,
+  `REGISTRATION_ENABLED`, `SCAN_ACCEPTANCE_ENABLED`, `SCANNER_CONCURRENCY`,
+  the `APIFY_*` settings and `ANALYTICS_RUNTIME_ENV`.
+
+The keys keep the names the processes read, so this is a concatenation and a
+deletion, never a rename. Write the result with mode `0600` and keep the two
+originals until the channel has been verified.
+
+The first two keys in that list are the ones to be careful with.
+`deploy/compose.public.yaml` requires both of every public deployment, so a
+channel without them does not render, and staging does that render before it
+builds anything: the refusal names the variable and costs no image. That
+refusal is the whole of the protection. `compose.yaml` gives both a sandbox
+answer so a laptop needs no file at all, and those answers are printed in a
+public repository. One signs every report link this site hands out and the
+other is what the address behind a report is encrypted with, so a channel that
+deployed them would be verifying forged links, and a channel that lost them
+would find every link already sent and every address already stored unreadable.
+
+A channel that has never existed has no file to merge, and the release will not
+invent one for it: `prepare-release-environments.py` generates the scanner's
+two secrets on the test branch only, for a first TEST channel whose scanner
+database does not exist yet. A new PRODUCTION channel gets both written by
+hand, into `<agentify_home>/agentify-configuration/agentify.env`, before its
+first staging.
+
+Several of the scanner's settings were never in `scanner.env` at all: they were
+written into the scanner's own Compose file, which this change deletes. Do not
+go looking for them in the file you are merging. Most are in `compose.yaml` and
+the channel overlays now as variables with the value the deleted file gave
+them, and an environment file that names one still wins: `SCANNER_CONCURRENCY`
+(four on PRODUCTION), `POSTHOG_DESTINATION_ENV` and `META_DESTINATION_ENV`
+(`production` on PRODUCTION), `POSTHOG_ENABLED`, `META_CAPI_ENABLED`, the
+feature switches — including `REGISTRATION_ENABLED`, which the laptop has on so
+its one command walks the whole reader's path and which
+`deploy/compose.public.yaml` turns off again for every deployment — and the
+`APIFY_BROWSER_*` budget knobs.
+
+Two exceptions. `WORKER_ID` is not the value the deleted file gave: it was
+`agentify-droplet-1` on both channels, which is a name two hosts answered to,
+and heartbeats are keyed on it — two workers under one name read as one worker
+restarting. It is `agentify-production-1` and `agentify-test-1` now. And a
+handful of settings are written as literals rather than variables, exactly as
+the deleted file wrote them: `ANALYTICS_SERVER_DELIVERY_ENABLED`,
+`CARD_SIGNAL_ENABLED`, and `STRIPE_ADAPTER` with `PRIVACY_CLEANUP_ACK`,
+`PRIVACY_CLEANUP_DRY_RUN` and `PRIVACY_CLEANUP_BATCH_SIZE` on the scheduled
+job. These are fixed by the packaging. A line about any of them in the
+environment file is read by nobody, and deleting such a line changes nothing.
+
+**Two. Stop the old scanner project.** Do this immediately before moving the
+channel's tag — or, if staging has already refused, do it and then make the new
+selection the paragraphs above describe:
+
+```sh
+docker ps --filter label=com.docker.compose.project=agentify -q | xargs -r docker stop
+```
+
+Use `agentify-test-scanner` on TEST. The `-r` matters: without it `xargs` runs
+`docker stop` with no arguments when the filter matches nothing, and a channel
+that has already been reconciled would be told it used the command wrong.
+
+From this moment the front page answers 502. The Caddy that is running is
+still the old one, and it proxies `/` to a container that has stopped; it goes
+on doing that until activation recreates it. So the window closes at `up
+gateway cabinet web`, not when the scanner starts — stop to `up web` is the
+real outage of this release, which is the staging time plus most of the
+activation time. `/cabinet`, `/docs`, `/v0` and `/x402` are unaffected until
+activation stops their own processes.
+
+**Three. Release.** An ordinary activation: it stops the commerce writers,
+fingerprints both databases, migrates them, compares, starts `scanner` and
+`scanner-worker`, and then starts `gateway`, `cabinet` and `web`. The front
+page comes back with that last step, because it is the new Caddy — inside the
+same project, reaching `scanner:3000` by service name — that knows where the
+scanner is. One extra second of 502 across the whole origin belongs to this
+release and not to later ones: the alias the edge routes to changes name here,
+so the origin answers nothing between `up web` and the edge reload that
+follows it (ADR-0025).
+
+**Four. Verify, and expect `/api/health` to need a look.** Verification checks
+that route, and two things the stopped scanner can leave behind will hold it at
+503 on every run until somebody clears them, not just the first:
+
+- a scan the old worker was running when it lost its database stays `running`
+  with a stale heartbeat, and the health query counts it;
+- a scan the old web had accepted stays `accepted` or `queued` once its pg-boss
+  job has expired past its single retry, and the health query measures the age
+  of the oldest such scan against ten seconds.
+
+Nothing reaps either. Find them in the scanner database and give them the
+terminal status they never reached:
+
+```sql
+select id, status, accepted_at, worker_heartbeat_at from public.scans
+ where status in ('accepted', 'queued', 'running')
+ order by accepted_at;
+```
+
+Anything from before the stop is stranded; a scan submitted after activation is
+not, and will move on its own. Update the stranded ones to `'failed'` — one of
+the three terminal statuses, with `completed` and `partial` — and check the
+route again. Do not leave the check red: it is reporting something true.
+
+**Five. Remove the old scanner project's containers.** They are stopped by now.
+`docker compose down` is not available for them — the Compose file that
+described that project is gone from the release source — so remove exactly its
+containers by the label Compose wrote on them, and nothing else:
+
+```sh
+docker ps -a --filter label=com.docker.compose.project=agentify --format '{{.Names}}'
+docker rm -f <the names that command printed>
+```
+
+Use `agentify-test-scanner` for the TEST channel. Read the list before you
+remove anything: on PRODUCTION the merged project is `agentify-commerce`, so
+that filter names only the old scanner's containers, but a mistyped project
+name would name the ones serving the site. No volume is touched, and none of
+the scanner's data lives in one — it is in the commerce PostgreSQL volume,
+which the activation you just verified is using.
+
+**Six. Remove the private database network.** Activation recreated `cabinet`
+and `postgres` without it and the old scanner's containers are gone, so by now
+it has no members:
+
+```sh
+docker network rm agentify-scanner-db        # PRODUCTION
+docker network rm agentify-test-scanner-db   # TEST
+```
+
+If Docker refuses because the network still has an endpoint, something is still
+attached: find it with `docker network inspect`, and do not force it.
+
+Once both channels have been through this, the staging refusal and the
+`retired_scanner_project` variable it reads have no subject left and are
+deleted, together with the identity-cutover machinery
+(`docs/research/00-open-questions.md` keeps that list).
+
 ## Observe a selection
 
 The GitHub workflow proves only that it moved a tag. Runtime truth stays on the
@@ -118,7 +324,16 @@ sudo cat /var/lib/agentify-pull-agent/test/state.json
 Use `production` in those paths and unit names for the live channel. A verified
 state names the exact source and controller SHA. A failed state names the phase
 and exit code; preserve the evidence directory and do not clear state merely to
-make the timer try the same uncertain operation again.
+make the timer try the same uncertain operation again. The agent itself never
+retries: it prints `<CHANNEL> revision <sha> remains <status>; move <tag> to
+make another selection` and exits, on that poll and every poll after it.
+
+`"phase": "stage"` is the one state where the operation is not uncertain —
+staging builds and starts nothing on the running channel, and the evidence says
+which check refused — so clearing it deliberately to select the same revision
+again is a decision an operator can defend. The transition release has a
+refusal of exactly that kind; "Reconcile a host that still runs two projects"
+above says when.
 
 ### First shared-identity cutover
 
@@ -143,6 +358,9 @@ checks the retained rows again before starting the new applications. Do not run
 a full scanner migration against a populated old identity database separately
 from this stopped sequence.
 
+The one-off importer joins this project's own network and reaches the database
+by the name the rest of the stack calls it by.
+
 The private recovery directory holds an `identity-cutover.json` checkpoint with
 the original account IDs, frozen eligibility time and hashes, without customer
 row copies. Do not replace it after an interrupted import. A reviewed forward
@@ -151,10 +369,11 @@ changed source or target rows refuse continuation. The temporary importer
 credential file is removed whether activation succeeds or fails.
 
 The cabinet serves report identity on its private port 3002; this port is not
-published. Staging creates one host-owned credential for the cabinet and scanner
-web, reuses it on subsequent releases, and keeps test and production credentials
-separate. Workers, privacy jobs and dashboards receive no identity credential or
-cabinet database access.
+published. Staging creates one host-owned credential for the cabinet and the
+scanner, reuses it on subsequent releases, and keeps test and production
+credentials separate. Workers and privacy jobs receive no identity credential or
+cabinet database access, and the release refuses a rendered graph in which any
+other service holds either half of that route.
 
 ### First live-approval cutover
 
@@ -195,10 +414,9 @@ printf '%s\n' "$APPROVAL_EMAIL" | ssh -o BatchMode=yes -o ConnectTimeout=10 \
   -o ControlMaster=auto -o ControlPersist=60 \
   -o ControlPath=~/.ssh/agentify-approve-%C agentify \
   "cd $AGENTIFY_HOME/agentify-releases/$SHA/source && \
-   sudo -n docker compose --project-name agentify-commerce --env-file ../commerce.env \
+   sudo -n docker compose --project-name agentify-commerce --env-file ../agentify.env \
      -f compose.yaml -f deploy/compose.public.yaml \
-     -f deploy/compose.hetzner-commerce.yaml \
-     -f deploy/compose.scanner-database.yaml -f deploy/compose.release.yaml \
+     -f deploy/compose.hetzner-commerce.yaml -f deploy/compose.release.yaml \
      run --rm --no-deps -T cabinet \
      pnpm --filter @agentify/cabinet --fail-if-no-match approve"
 unset APPROVAL_EMAIL
@@ -281,8 +499,8 @@ ansible-playbook -i deploy/ansible/inventory.yml \
 ```
 
 Verification checks the running image identities and source labels, configured
-environments, public routes, unpaid challenges, scheduled jobs, and production
-edge configuration. Under the pull agent, public HTTP checks leave the assigned
+environments, public routes, unpaid challenges, the scheduled privacy cleanup,
+and production edge configuration. Under the pull agent, public HTTP checks leave the assigned
 server through public DNS and TLS; they do not prove reachability from an
 independent internet client. Local image evidence proves the selected revision,
 and an operator's outside-in probe remains separate evidence. Verification sends

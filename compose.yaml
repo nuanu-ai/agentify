@@ -1,13 +1,15 @@
 # The whole thing, on one command.
 #
 # ADR-0005 §7: `docker compose up` brings up everything a merchant's engineer
-# would look at — the landing, the documentation, the cabinet and the
-# gateway, all on http://localhost:8080, with one Postgres behind them (ADR-0003 §6).
+# would look at — the scanner at the front page, the documentation, the
+# cabinet and the gateway, all on http://localhost:8080, with one Postgres
+# behind them (ADR-0003 §6) holding two databases.
 # Nothing here needs a build on the host first: the documentation is built
 # inside its image, and the four services that share one image — the
 # migration, the gateway, the cabinet and the mock merchant — run their
 # TypeScript through tsx, the same way `pnpm --filter @agentify/gateway start`
-# does on a laptop.
+# does on a laptop. The scanner is a Next.js build and its worker is compiled,
+# so those two come out of images of their own.
 #
 #   docker compose up --build
 #   open http://localhost:8080
@@ -15,7 +17,11 @@
 # The database volume outlives `docker compose down`; `down -v` starts from
 # nothing. Migrations run as their own service before the gateway, so an
 # existing database is brought up to date rather than found to be a version
-# behind on the first query.
+# behind on the first query. There are two of those services because there are
+# two databases: `agentify_commerce`, which the gateway and the cabinet share,
+# and `agentify_scanner`. deploy/postgres-init/ makes the second one, and it
+# does that only on a volume that is new — a machine that ran this stack before
+# the scanner joined it needs `docker compose down -v` once.
 #
 # The suite that needs a real database runs against a database of its own,
 # `agentify_commerce_test`, on this same server. It needs the server and nothing else
@@ -25,10 +31,10 @@
 #   pnpm test:db
 #
 # `--wait` holds the command until the healthcheck below has passed, and naming
-# the service matters: `docker compose up -d` with nothing after it starts all
-# six of these. Nothing needs to be set for the suite to find its database — it
-# makes it if it is not there — as long as the server is on the 5432 this file
-# publishes it on. A host that publishes it somewhere else names it in
+# the service matters: `docker compose up -d` with nothing after it starts
+# every service in this file. Nothing needs to be set for the suite to find its
+# database — it makes it if it is not there — as long as the server is on the
+# 5432 this file publishes it on. A host that publishes it somewhere else names it in
 # AGENTIFY_TEST_DATABASE_URL, which the suite reads from the command rather than
 # from the `.env` below. Pointing either that or DATABASE_URL at
 # `agentify_commerce` is
@@ -38,6 +44,13 @@
 # Two runs of the suite at once still interfere: they share the names of the
 # tables they empty and the schemas they drop, so each pulls the ground out from
 # under the other. One run at a time, per database.
+#
+# The front page is the scanner, the same way it is on both deployed channels.
+# Submit an address there and the worker behind it runs the scan; the report it
+# writes asks for an email before it opens in full, and that link is answered by
+# the cabinet's private identity route rather than by a second account system
+# (ADR-0026). The message goes to the cabinet's log here, like every other one,
+# and the door the reader walks through afterwards is the cabinet's own.
 #
 # Open http://localhost:8080/cabinet/sign-in and request a link for your email.
 # This local sandbox writes the message to the cabinet log. Open the link and
@@ -86,6 +99,18 @@
 #                           registration secret
 #   AGENTIFY_POSTGRES_PUBLISH  the published port of the     5432:5432
 #                           database, or a narrower bind
+#   ADMIN_BASIC_AUTH_USER   who reaches the scanner's        agentify
+#   ADMIN_BASIC_AUTH_HASH   operator screens, and the        a hash of
+#                           bcrypt hash of their password    local-sandbox-admin
+#   TOKEN_HMAC_SECRET       what signs a report link         a sandbox value
+#   REPORT_IDENTITY_SECRET  what the scanner shows the       a sandbox value
+#                           cabinet's private route
+#
+# The scanner's remaining settings — who the operator is, which analytics
+# datasets may be named, the bot check, the paid surfaces — are the names its
+# own processes read, unprefixed, each with a laptop's answer as its default.
+# They are written out in that service below rather than listed here, because
+# the list would be a second copy of the same thing.
 #
 # The first three move together and there is no arithmetic between them: an
 # origin behind an edge that terminates TLS elsewhere is not derivable from a
@@ -142,6 +167,16 @@ x-app: &app
     context: .
     dockerfile: deploy/Dockerfile.app
   image: "${AGENTIFY_APP_IMAGE:-agentify-commerce-app}"
+  restart: unless-stopped
+
+# The same arrangement on the scanner's side: its worker and its migration are
+# two entry points into one build, so they share one image and decide which one
+# they are at `command`.
+x-scanner-app: &scanner-app
+  build:
+    context: .
+    dockerfile: deploy/Dockerfile.scanner-worker
+  image: "${AGENTIFY_SCANNER_WORKER_IMAGE:-agentify-scanner-worker}"
   restart: unless-stopped
 
 services:
@@ -306,6 +341,14 @@ services:
       # nothing about a merchant's data — every card, order and receipt on every
       # screen still comes from the API.
       DATABASE_URL: postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_commerce
+      # What the scanner presents on the private identity route, and the reason
+      # the cabinet opens a second listener on 3002 at all (ADR-0026). The two
+      # processes are the only ones that hold it, and it is theirs alone: a
+      # cabinet handed the session secret or the registration invitation here
+      # refuses to start rather than sharing one credential between two doors.
+      # Nothing publishes 3002, so the route is reachable from this stack's own
+      # network and from nowhere else.
+      REPORT_IDENTITY_SECRET: "${REPORT_IDENTITY_SECRET:-a-sandbox-report-identity-secret-nobody-should-reuse}"
       # What signs a merchant's session cookie. The component behind the sign-in
       # ships a fallback of its own, and a deployment that leans on it signs
       # sessions with a value out of somebody else's public source — so the
@@ -486,6 +529,184 @@ services:
       # writes the file at all.
       start_period: 15s
 
+  # The scanner's schema, on its own database on the server above. Its own
+  # service for the reason the commerce migration is one: a migration that runs
+  # inside the process it is migrating for runs once per replica and races
+  # itself. The two migrations are separate services rather than one because
+  # they carry separate ledgers over separate databases, and the second of them
+  # is written in another package's dialect.
+  #
+  # There is no service after it that prepares the queue. The queue lives in
+  # this database through pg-boss, and both the process that writes to it and
+  # the process that reads it ask for it by name at start — an insert into
+  # pg-boss's own table that says nothing the second time. A third service
+  # whose whole job was to do that first existed to carry a list of grants to
+  # four database roles that no longer exist.
+  scanner-migrate:
+    <<: *scanner-app
+    command: ["node", "packages/scanner-database/dist/migrate-cli.js"]
+    environment:
+      DATABASE_URL: postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_scanner
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # What runs a scan: it takes the job off the queue, fetches the site and
+  # writes the findings. Everything that costs money or leaves this machine for
+  # anywhere but the site being scanned is off, and a deployment turns on only
+  # what it has paid for.
+  scanner-worker:
+    <<: *scanner-app
+    environment:
+      DATABASE_URL: postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_scanner
+      # The address a report is linked at, which is the door Caddy answers
+      # rather than the port any of these processes listens on.
+      APP_BASE_URL: "${AGENTIFY_PUBLIC_ORIGIN:-http://localhost:${AGENTIFY_HOST_PORT:-8080}}"
+      # One name per running worker, because heartbeats are keyed on it and two
+      # workers answering to one name look like one worker restarting. Each
+      # deployment names its own; this is the laptop's.
+      WORKER_ID: "${WORKER_ID:-agentify-local-1}"
+      # Two rather than the four a server runs: a laptop running this beside
+      # six other containers has better uses for its cores, and a scan is
+      # mostly waiting on somebody else's site.
+      SCANNER_CONCURRENCY: "${SCANNER_CONCURRENCY:-2}"
+      SCANNER_CACHE_ENABLED: "${SCANNER_CACHE_ENABLED:-false}"
+      # Which datasets the analytics may name. The release holds the test
+      # channel to this exact set of answers, so a test stack cannot write into
+      # a production dataset by inheriting a variable somebody forgot.
+      ANALYTICS_ENV: "${ANALYTICS_RUNTIME_ENV:-local}"
+      ANALYTICS_RUNTIME_ENV: "${ANALYTICS_RUNTIME_ENV:-local}"
+      ANALYTICS_SERVER_DELIVERY_ENABLED: "false"
+      POSTHOG_ENABLED: "${POSTHOG_ENABLED:-false}"
+      POSTHOG_DESTINATION_ENV: "${POSTHOG_DESTINATION_ENV:-local}"
+      META_CAPI_ENABLED: "${META_CAPI_ENABLED:-false}"
+      META_DESTINATION_ENV: "${META_DESTINATION_ENV:-local}"
+      PARTNER_POSTBACK_ENABLED: "${PARTNER_POSTBACK_ENABLED:-false}"
+      PARTNER_POSTBACK_SECRET: "${PARTNER_POSTBACK_SECRET:-}"
+      # Passive browser observation through an Apify actor, which is a paid
+      # service and a deployment target of its own. Off, and every knob it
+      # would need is named here so that turning it on is a line in a `.env`
+      # rather than an edit to this file.
+      APIFY_BROWSER_ENABLED: "${APIFY_BROWSER_ENABLED:-false}"
+      APIFY_BROWSER_MODE: "${APIFY_BROWSER_MODE:-off}"
+      APIFY_API_TOKEN: "${APIFY_API_TOKEN:-}"
+      APIFY_BROWSER_ACTOR_ID: "${APIFY_BROWSER_ACTOR_ID:-}"
+      APIFY_BROWSER_ACTOR_BUILD: "${APIFY_BROWSER_ACTOR_BUILD:-}"
+      APIFY_BROWSER_SAMPLE_RATE: "${APIFY_BROWSER_SAMPLE_RATE:-0.10}"
+      APIFY_BROWSER_CONCURRENCY: "${APIFY_BROWSER_CONCURRENCY:-1}"
+      APIFY_BROWSER_TIMEOUT_SECONDS: "${APIFY_BROWSER_TIMEOUT_SECONDS:-60}"
+      APIFY_BROWSER_MAX_RUN_USD: "${APIFY_BROWSER_MAX_RUN_USD:-0.05}"
+      APIFY_BROWSER_DAILY_BUDGET_USD: "${APIFY_BROWSER_DAILY_BUDGET_USD:-25}"
+      APIFY_BROWSER_MAX_PAGES: "${APIFY_BROWSER_MAX_PAGES:-3}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      scanner-migrate:
+        condition: service_completed_successfully
+
+  # The page a visitor lands on. Deployed, the scanner answers `/` and its own
+  # paths while /cabinet, /docs, /v0, /x402 and /healthz go to the commerce
+  # services by path (ADR-0005 §1) — so it answers `/` here too, and the route
+  # table in front of it is the one both channels run.
+  scanner:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.scanner
+      target: runner
+    image: "${AGENTIFY_SCANNER_IMAGE:-agentify-scanner}"
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_scanner
+      APP_BASE_URL: "${AGENTIFY_PUBLIC_ORIGIN:-http://localhost:${AGENTIFY_HOST_PORT:-8080}}"
+      # What signs the tokens in a report link, and what encrypts the address a
+      # report was asked for. The scanner derives the second from the first
+      # when it is given no key of its own, which is what keeps a laptop down
+      # to one line here; a deployment sets both.
+      TOKEN_HMAC_SECRET: "${TOKEN_HMAC_SECRET:-a-sandbox-token-hmac-secret-nobody-should-reuse}"
+      EMAIL_ENCRYPTION_KEY: "${EMAIL_ENCRYPTION_KEY:-}"
+      # On, so that the whole path a reader walks works from this one command:
+      # a scan, a report, an address confirmed through the cabinet's private
+      # route, and the cabinet door opening for the person who confirmed it.
+      # Both halves of that route are below and neither is a port anybody
+      # outside this network can reach.
+      #
+      # A deployment is the other way round. What a public site accepts is the
+      # operator's line in a file rather than something inherited from how the
+      # stack is packaged, so deploy/compose.public.yaml turns this off again
+      # and a channel whose environment file says nothing stays closed.
+      REGISTRATION_ENABLED: "${REGISTRATION_ENABLED:-true}"
+      CABINET_IDENTITY_URL: http://cabinet:3002
+      REPORT_IDENTITY_SECRET: "${REPORT_IDENTITY_SECRET:-a-sandbox-report-identity-secret-nobody-should-reuse}"
+      SCAN_ACCEPTANCE_ENABLED: "${SCAN_ACCEPTANCE_ENABLED:-true}"
+      REMEDIATION_PROMPT_ENABLED: "${REMEDIATION_PROMPT_ENABLED:-true}"
+      # Who the operator of this site is, in the words its trust pages print.
+      # A deployment answers for itself; a laptop is nobody's operator.
+      PRIVACY_EMAIL: "${PRIVACY_EMAIL:-privacy@agentify.ad}"
+      ABUSE_EMAIL: "${ABUSE_EMAIL:-abuse@agentify.ad}"
+      LEGAL_OPERATOR: "${LEGAL_OPERATOR:-Operator identity pending confirmation}"
+      LEGAL_IDENTITY_CONFIRMED: "${LEGAL_IDENTITY_CONFIRMED:-false}"
+      # The bot check in front of submission. Enforced needs both halves, and
+      # the process refuses to start with one of them, so a laptop has neither.
+      TURNSTILE_ENFORCED: "${TURNSTILE_ENFORCED:-false}"
+      TURNSTILE_SITE_KEY: "${TURNSTILE_SITE_KEY:-}"
+      TURNSTILE_SECRET_KEY: "${TURNSTILE_SECRET_KEY:-}"
+      # Surfaces that cost money, reach another company or are not finished.
+      # Off here and off unless a deployment names them.
+      SCANNER_CACHE_ENABLED: "${SCANNER_CACHE_ENABLED:-false}"
+      BENCHMARK_ENABLED: "${BENCHMARK_ENABLED:-false}"
+      PUBLIC_SHARE_ENABLED: "${PUBLIC_SHARE_ENABLED:-false}"
+      PARTNER_POSTBACK_ENABLED: "${PARTNER_POSTBACK_ENABLED:-false}"
+      CARD_SIGNAL_ENABLED: "false"
+      APIFY_BROWSER_MODE: "${APIFY_BROWSER_MODE:-off}"
+      ANALYTICS_RUNTIME_ENV: "${ANALYTICS_RUNTIME_ENV:-local}"
+      ANALYTICS_SERVER_DELIVERY_ENABLED: "false"
+      POSTHOG_BROWSER_KEY: "${POSTHOG_BROWSER_KEY:-}"
+      POSTHOG_BROWSER_HOST: "${POSTHOG_BROWSER_HOST:-}"
+      POSTHOG_DESTINATION_ENV: "${POSTHOG_DESTINATION_ENV:-local}"
+      META_PIXEL_ID: "${META_PIXEL_ID:-}"
+      META_DESTINATION_ENV: "${META_DESTINATION_ENV:-local}"
+      STRIPE_PUBLISHABLE_KEY: "${STRIPE_PUBLISHABLE_KEY:-}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      scanner-migrate:
+        condition: service_completed_successfully
+      cabinet:
+        condition: service_started
+
+  # What deletes what the retention policy says is over. It runs on a schedule
+  # on a server and never by itself, so it is given a profile nothing enables:
+  # it is here rather than in a deployment file because the schedule runs the
+  # image this file names, and a job described somewhere else is a job that
+  # drifts from the stack it empties.
+  #
+  #   docker compose --profile jobs run --rm scanner-privacy
+  scanner-privacy:
+    profiles: ["jobs"]
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.scanner
+      target: privacy-jobs
+    image: "${AGENTIFY_SCANNER_PRIVACY_IMAGE:-agentify-scanner-privacy}"
+    restart: "no"
+    environment:
+      DATABASE_URL: postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_scanner
+      APP_BASE_URL: "${AGENTIFY_PUBLIC_ORIGIN:-http://localhost:${AGENTIFY_HOST_PORT:-8080}}"
+      TOKEN_HMAC_SECRET: "${TOKEN_HMAC_SECRET:-a-sandbox-token-hmac-secret-nobody-should-reuse}"
+      EMAIL_ENCRYPTION_KEY: "${EMAIL_ENCRYPTION_KEY:-}"
+      # This job renders no page and takes no registration; the two names below
+      # are off so that it cannot, whatever the rest of the stack is set to.
+      REGISTRATION_ENABLED: "false"
+      CARD_SIGNAL_ENABLED: "false"
+      STRIPE_ADAPTER: local
+      PRIVACY_CLEANUP_ACK: "yes"
+      PRIVACY_CLEANUP_DRY_RUN: "false"
+      PRIVACY_CLEANUP_BATCH_SIZE: "100"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   web:
     build:
       context: .
@@ -516,37 +737,31 @@ services:
       # hostname on a server, which is what turns it on. deploy/Caddyfile says
       # why TLS-ALPN is the only challenge that can reach it here.
       AGENTIFY_SITE_ADDRESS: "${AGENTIFY_SITE_ADDRESS:-:8080}"
-      # The selector is mandatory in Caddy so a deployed stack cannot silently
-      # fall back to the static local landing. This compose file is the one
-      # intentional local fixture.
-      AGENTIFY_FRONT_PAGE: local_front_page
-      # What the landing and the portal say about this stack. It is a variable
+      # The selector is mandatory in Caddy so that no stack can fall back to a
+      # front page nobody chose. There is one product and one front page, and
+      # it is the scanner's, here and on both deployed channels.
+      AGENTIFY_FRONT_PAGE: scanner_front_page
+      # What stands in front of the scanner's operator screens. Caddy cannot
+      # load a `basic_auth` block with nothing in it, so a laptop needs an
+      # answer here as much as a server does — and a laptop's answer is in this
+      # file, for the reason every other secret here is. The password is
+      # `local-sandbox-admin`. The dollars are doubled because compose
+      # substitutes this value before Caddy sees it, and a bcrypt hash is three
+      # fields separated by the character it substitutes on.
+      ADMIN_BASIC_AUTH_USER: "${ADMIN_BASIC_AUTH_USER:-agentify}"
+      ADMIN_BASIC_AUTH_HASH: "${ADMIN_BASIC_AUTH_HASH:-$$2a$$14$$DxglsPhcmQsW3rTfSLUm1Od3CSJm/Ch4q9z..anerRuVT8AOQ31kG}"
+      # What the portal says about this stack. It is a variable
       # rather than a derivation because Caddy cannot read a CAIP-2 identifier
       # and cannot hold the list of chains (deploy/Caddyfile). Two fields can
       # disagree, so the release checks this one against the channel before
       # anything starts and against the rendered pages afterwards.
       AGENTIFY_SURFACE_MODE: "${AGENTIFY_SURFACE_MODE:-sandbox}"
     volumes:
-      # The landing and the routing are mounted over the copies baked into the
-      # image so that editing either shows up on reload. The documentation is
-      # not: it is a build, and it comes from the image.
-      #
-      # The landing is mounted a file at a time rather than as one directory,
-      # and that is the shared stylesheet's doing. It lives in packages/visual
-      # and the static landing links it at /styles/tokens.css, so the image
-      # copies it there (deploy/Dockerfile.web). A directory mount over
-      # /srv/landing would hide that copy, and a file mounted inside a
-      # read-only directory mount cannot make its own mountpoint — Docker
-      # refuses to start the container. Mounting each of the landing's files
-      # onto the image's own leaves /srv/landing/styles/tokens.css to the one
-      # mount that wants it. A file added to the landing needs a line here.
+      # The routing and the shared assets are mounted over the copies baked
+      # into the image so that editing either shows up on reload. The
+      # documentation is not: it is a build, and it comes from the image.
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./apps/landing/public/index.html:/srv/landing/index.html:ro
-      - ./apps/landing/public/assets:/srv/landing/assets:ro
-      - ./apps/landing/public/styles/landing.css:/srv/landing/styles/landing.css:ro
-      - ./apps/landing/public/styles/fonts.css:/srv/landing/styles/fonts.css:ro
-      - ./apps/landing/public/styles/fonts:/srv/landing/styles/fonts:ro
-      - ./packages/visual/tokens.css:/srv/landing/styles/tokens.css:ro
+      - ./packages/visual/public:/srv/assets:ro
       # Where Caddy keeps the certificate and the ACME account key. A named
       # volume rather than the container's own layer because recreating the
       # container is a thing that happens, and a certificate authority counts
@@ -559,18 +774,23 @@ services:
     # for a health check rather than for a container is right — and a service
     # that never becomes healthy must not take this one down with it. Without
     # `required: false`, `docker compose up` aborts the whole command with
-    # "dependency failed to start", and the landing and the documentation, which
-    # need nothing from either of these, do not come up at all. They are the two
-    # pages somebody reads while working out why the third is broken.
+    # "dependency failed to start", and the door does not open at all: nothing
+    # answers, not even to say which service is the broken one.
     #
-    # What that costs when a dependency really is down: /cabinet, /v0 and /x402
-    # answer 502 until it is up, and then they work, because Caddy resolves the
-    # service name per request rather than at startup.
+    # What that costs is larger than it used to be, and worth saying plainly.
+    # A dead scanner takes the front page with it, because the front page is
+    # the scanner; /cabinet, /v0 and /x402 go with their own processes. What
+    # survives any of them is /docs, which this server reads off its own disk.
+    # Each comes back by itself when its process does, because Caddy resolves
+    # the service name per request rather than at startup.
     depends_on:
       gateway:
         condition: service_healthy
         required: false
       cabinet:
+        condition: service_healthy
+        required: false
+      scanner:
         condition: service_healthy
         required: false
 

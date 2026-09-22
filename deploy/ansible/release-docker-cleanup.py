@@ -15,7 +15,7 @@ COMMIT = re.compile(r"^[0-9a-f]{40}$")
 FIRST_PARTY_REPOSITORIES = (
     "agentify-commerce-app",
     "agentify-commerce-web",
-    "agentify-scanner-web",
+    "agentify-scanner",
     "agentify-scanner-worker",
     "agentify-scanner-privacy",
 )

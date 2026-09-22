@@ -31,10 +31,7 @@ if rg -n '(BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|sk_live_[A-Za-z0-9]{12,}|whsec_
   exit 1
 fi
 
-for script in ops/scripts/*.sh; do bash -n "$script"; done
-for script in deploy/*.sh ops/deploy/droplet/*.sh ops/deploy/droplet/postgres-init/*.sh; do
-  bash -n "$script"
-done
+for script in ops/scripts/*.sh deploy/*.sh; do bash -n "$script"; done
 for script in ops/scripts/*.mjs; do node --check "$script"; done
 node --test ops/scripts/*.test.mjs
 

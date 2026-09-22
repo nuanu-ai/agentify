@@ -20,6 +20,35 @@ services:
     environment:
       DATABASE_URL: "postgres://agentify_commerce:${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}@postgres:5432/agentify_commerce"
 
+  # The scanner's database is a second one on the same server, reached with the
+  # same credentials. One database is where this is going (ADR-0003 §2); until
+  # then the separation is a database name and not an account.
+  scanner-migrate:
+    environment:
+      DATABASE_URL: "postgres://agentify_commerce:${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}@postgres:5432/agentify_scanner"
+
+  scanner-worker:
+    environment:
+      DATABASE_URL: "postgres://agentify_commerce:${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}@postgres:5432/agentify_scanner"
+      # This channel's answers to three settings the laptop keeps small or
+      # local: one worker, named for the channel it runs in; four scans at a
+      # time; and the analytics datasets a live site is allowed to name. Each
+      # stays a variable, so the host's own file still governs.
+      WORKER_ID: "${WORKER_ID:-agentify-production-1}"
+      SCANNER_CONCURRENCY: "${SCANNER_CONCURRENCY:-4}"
+      POSTHOG_DESTINATION_ENV: "${POSTHOG_DESTINATION_ENV:-production}"
+      META_DESTINATION_ENV: "${META_DESTINATION_ENV:-production}"
+
+  scanner:
+    environment:
+      DATABASE_URL: "postgres://agentify_commerce:${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}@postgres:5432/agentify_scanner"
+      POSTHOG_DESTINATION_ENV: "${POSTHOG_DESTINATION_ENV:-production}"
+      META_DESTINATION_ENV: "${META_DESTINATION_ENV:-production}"
+
+  scanner-privacy:
+    environment:
+      DATABASE_URL: "postgres://agentify_commerce:${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}@postgres:5432/agentify_scanner"
+
   web:
     # The independently managed edge is the only public 80/443 listener.
     # This Caddy still assembles the commerce routes, over private HTTP.
@@ -27,7 +56,6 @@ services:
     environment:
       AGENTIFY_SITE_ADDRESS: ":8080"
       AGENTIFY_TRUSTED_EDGE_CIDR: "172.30.80.2/32"
-      AGENTIFY_FRONT_PAGE: scanner_front_page
       ADMIN_BASIC_AUTH_USER: "${ADMIN_BASIC_AUTH_USER:?set the scanner admin user}"
       ADMIN_BASIC_AUTH_HASH: "${ADMIN_BASIC_AUTH_HASH:?set the scanner admin bcrypt hash}"
     networks:
@@ -43,6 +71,7 @@ networks:
 # A missing namespace cutover must stop Compose before it starts an empty
 # production database. Ansible creates and restores these exact targets during
 # the separately reviewed cutover; ordinary releases only consume them.
+#
 volumes:
   agentify-postgres:
     external: true

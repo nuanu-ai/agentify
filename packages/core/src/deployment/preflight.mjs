@@ -39,12 +39,23 @@ const CHANNELS = {
   },
 };
 
-/** The strings this repository publishes to the world. None may be deployed. */
-const WRITTEN_IN_THIS_REPOSITORY = {
-  SANDBOX_MERCHANT_KEY: "csk_test_local-sandbox-merchant-key",
-  AUTH_SECRET: "a-sandbox-secret-nobody-should-reuse-anywhere",
-  REGISTRATION_INVITATION: "register-on-this-laptop",
-};
+/**
+ * The strings this repository publishes to the world. None may be deployed.
+ *
+ * Each names the service whose environment carries it, because the same name
+ * means different things on different services and a sandbox answer on any of
+ * them is a credential anybody can read. The compose files refuse most of
+ * these before a render; this is what catches a deployment that supplied the
+ * variable and supplied the published value.
+ */
+const WRITTEN_IN_THIS_REPOSITORY = [
+  ["gateway", "SANDBOX_MERCHANT_KEY", "csk_test_local-sandbox-merchant-key"],
+  ["cabinet", "AUTH_SECRET", "a-sandbox-secret-nobody-should-reuse-anywhere"],
+  ["gateway", "REGISTRATION_INVITATION", "register-on-this-laptop"],
+  ["scanner", "TOKEN_HMAC_SECRET", "a-sandbox-token-hmac-secret-nobody-should-reuse"],
+  ["cabinet", "REPORT_IDENTITY_SECRET", "a-sandbox-report-identity-secret-nobody-should-reuse"],
+  ["scanner", "REPORT_IDENTITY_SECRET", "a-sandbox-report-identity-secret-nobody-should-reuse"],
+];
 
 const envOf = (resolved, service) => resolved.services?.[service]?.environment ?? {};
 
@@ -219,12 +230,10 @@ export function problemsWith(channel, resolved, testListenAddress) {
     );
   }
 
-  for (const [name, published] of Object.entries(WRITTEN_IN_THIS_REPOSITORY)) {
-    const where = name === "AUTH_SECRET" ? cabinet : gateway;
-    const label = name === "AUTH_SECRET" ? "cabinet" : "gateway";
-    if (where[name] === published) {
+  for (const [service, name, published] of WRITTEN_IN_THIS_REPOSITORY) {
+    if (envOf(resolved, service)[name] === published) {
       problems.push(
-        `${label}: ${name} is the value written in this repository, which anybody can read`,
+        `${service}: ${name} is the value written in this repository, which anybody can read`,
       );
     }
   }

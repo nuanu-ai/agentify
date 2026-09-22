@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd '{{ release_source_directory }}/ops/deploy/droplet'
+cd '{{ release_source_directory }}'
 case "${1:-}" in
-  backup) service=database-backup ;;
-  privacy) service=privacy-cleanup ;;
-  *) echo 'Usage: scanner-jobs.sh backup|privacy' >&2; exit 2 ;;
+  privacy) service=scanner-privacy ;;
+  *) echo 'Usage: scanner-jobs.sh privacy' >&2; exit 2 ;;
 esac
 exec flock -n /run/lock/agentify-scanner-jobs \
-  docker compose --project-name '{{ channel.scanner_project }}' \
-    --env-file '{{ release_directory }}/scanner.env' \
-    -f compose.production.yaml -f compose.hetzner.yaml \
-    -f compose.scanner-database.yaml -f '{{ release_controller_directory }}/scanner-release.yaml' \
+  docker compose --project-name '{{ channel.project }}' \
+    --env-file '{{ release_directory }}/agentify.env' \
+    -f compose.yaml -f deploy/compose.public.yaml -f '{{ channel.overlay }}' \
+    -f '{{ release_controller_directory }}/release.yaml' \
     --profile jobs run --rm --no-deps -T "$service"

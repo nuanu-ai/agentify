@@ -15,9 +15,6 @@ agentify_production_user: REPLACE_WITH_PRODUCTION_LOGIN
 agentify_test_host: REPLACE_WITH_TEST_ADDRESS_OR_NAME
 agentify_test_user: REPLACE_WITH_TEST_LOGIN
 
-agentify_scanner_donor_host: REPLACE_WITH_SCANNER_DONOR_ADDRESS_OR_NAME
-agentify_scanner_donor_user: REPLACE_WITH_SCANNER_DONOR_LOGIN
-
 # The short name the fixture host reports for `hostname -s`. The Woo hairpin
 # refuses to run anywhere else.
 woo_hairpin_expected_hostname: REPLACE_WITH_FIXTURE_SHORT_HOSTNAME
@@ -36,5 +33,5 @@ woo_hairpin_ingress_ip: REPLACE_WITH_INGRESS_ADDRESS
 agentify_test_listen_address: REPLACE_WITH_TEST_LISTEN_ADDRESS
 
 # The home directory the deployment runs under on the server. release-vars.yml
-# builds every environment, edge-configuration and backup path from it.
+# builds every release, environment and edge-configuration path from it.
 agentify_home: REPLACE_WITH_DEPLOYMENT_HOME_DIRECTORY
