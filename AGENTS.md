@@ -54,9 +54,14 @@ that can silently take a deployment down is a defect in the knob, not in the
 operator.
 
 ## Git
-- Main branch: `main`. Small steps go straight into it; experiments go into
-  `spike/<topic>` branches, the branch is deleted once the conclusions are in,
-  and the conclusions move into an ADR or into research.
+- Main branch: `main`. Every change is made on a branch and reaches `main`
+  through a pull request with a review; nobody pushes to `main` directly.
+  Experiments go into `spike/<topic>` branches, the branch is deleted once the
+  conclusions are in, and the conclusions move into an ADR or into research.
+- Review is mutual and split by what each reader holds: one reads for the
+  logic, the security, the tests and the reliability, the other for the UX.
+  The pull request template names both halves, and a request is merged once
+  each reader has said theirs holds.
 - Commits: Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`,
   `spike:`), small and atomic, with the message written in English. We commit
   when a step is finished, not "at the end of the day".
@@ -64,7 +69,12 @@ operator.
   commit leaves the repository in a valid state (docs read, builds build). The
   single declared exception is the red `test(...)` commit of a red→green pair,
   from the code stage onward.
-- Remote: `github.com/nuanu-ai/agentify` (public). We push when we commit.
+- Remote: `github.com/nuanu-ai/agentify` (public). We push the branch when we
+  commit.
+- Delivery (ADR-0016): a branch is tried on the test channel by moving the
+  `deploy-test` tag to it, and there is one test channel, so ask the other
+  person before moving it. `main` reaches production, and the SDK reaches npm,
+  by one `app-v<release>` tag on a commit with green CI.
 - Agent worktrees live under `.claude/worktrees/<topic>` on branches named
   `agent/<topic>` — the name says what the work is, not which process did it.
   Acceptance of an agent branch ends with the worktree removed and the branch

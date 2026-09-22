@@ -25,8 +25,7 @@ merchant reads is at [agentify.ad/docs](https://agentify.ad/docs/), built from
 - [What happens in a sale](#what-happens-in-a-sale)
 - [Repository layout](#repository-layout)
 - [Checks](#checks)
-- [Releasing the SDK](#releasing-the-sdk)
-- [Deploying](#deploying)
+- [Releasing](#releasing)
 - [Where to read more](#where-to-read-more)
 - [License](#license)
 
@@ -260,29 +259,53 @@ kept apart for that reason:
   its database, `pnpm scanner:test:actor` for the browser observer, and
   `pnpm scanner:build`.
 
-## Releasing the SDK
+## Releasing
 
-Two packages are public, `@nuanu-ai/agentify-contracts` and
-`@nuanu-ai/agentify`, and they are released together from one commit. Every
-change to either carries a Changeset (`pnpm changeset`). A release is prepared
-on `main` with `pnpm changeset version`, and pushing a tag `sdk-v<version>` runs
-`.github/workflows/publish-sdk.yml`: it waits for CI to pass on that exact
-commit, refuses a tag whose version differs from the SDK manifest, publishes
-through npm Trusted Publishing with no stored token, and then installs the
-exact versions back from the registry and imports them. The full procedure,
-including the one-time bootstrap of the package names, is in
-[`docs/research/22-sdk-release.md`](docs/research/22-sdk-release.md).
+Two channels and one tag family, and the servers pull rather than being pushed
+to (ADR-0016). Each server runs an agent that polls one mutable tag in this
+public repository, checks out the commit it names and runs the Ansible stage,
+activation and verification locally. GitHub holds no server credential, and
+nothing in this repository connects to a server.
 
-## Deploying
+| Channel | Address | What runs there | How a revision gets there |
+| --- | --- | --- | --- |
+| test | `test.agentify.ad` | any branch or commit | Move `deploy-test` to it: run **Deploy TEST** from `main` with a branch, tag or SHA, or push the pointer directly. The server picks it up within a couple of minutes. |
+| production | `agentify.ad` | the stable release | Push an `app-v<release>` tag on a commit of `main` with green CI. The tag is the acceptance; there is no second approval. |
 
-Production is served at `agentify.ad` and the test channel at
-`test.agentify.ad`, on separate hosts with isolated data, and both run the same
-source revision and the same service graph (ADR-0016). Nothing deploys
-automatically — not a tag, not a green CI run. An operator stages a full commit
-SHA on test with the Ansible playbook, activates and accepts it there, and only
-then stages and activates the same SHA on production. The procedure is the
-[release operations guide](deploy/ansible/README.md); the Compose overlays it
-applies live under `deploy/`.
+```mermaid
+flowchart LR
+    B[branch] -- pull request and review --> M[main]
+    B -. move deploy-test .-> T[test.agentify.ad]
+    M -- tag app-v* --> P[agentify.ad]
+    M -- tag app-v* --> N[npm: the SDK and the contracts]
+```
+
+```sh
+git push --force origin my-branch:refs/tags/deploy-test    # test
+git tag app-v<release> && git push origin app-v<release>   # production
+```
+
+There is one test channel and it is shared. Before moving `deploy-test`, ask
+the other person whether they are on it; most work is done locally and a test
+redeploy is rare, so this is a sentence rather than a queue. What the server
+did with a selection — deploying, activating, failed, verified — is recorded on
+that server and not in GitHub: the workflow moves the pointer and ends. A
+failed revision is not retried by itself; inspect its evidence and move the
+pointer again.
+
+The same `app-v*` tag publishes the SDK. `@nuanu-ai/agentify-contracts` and
+`@nuanu-ai/agentify` are released together: every change to either carries a
+Changeset (`pnpm changeset`), a release is prepared on `main` with
+`pnpm changeset version`, and the publish workflow on the tag waits for CI on
+that exact commit, publishes whatever versions the manifests carry and the
+registry does not yet hold through npm Trusted Publishing with no stored token,
+and installs them back from the registry to prove it. The number in the tag is
+the application's and says nothing about the SDK version, so a tag whose SDK
+version is already public deploys production and publishes nothing. The
+procedure, including the one-time bootstrap of the package names, is
+[`docs/research/22-sdk-release.md`](docs/research/22-sdk-release.md); the
+operator's side of both channels is the
+[release operations guide](deploy/ansible/README.md).
 
 Switching a merchant on for live sales is an application command rather than a
 deployment: `pnpm approve <email>` from the operator's checkout reaches the
