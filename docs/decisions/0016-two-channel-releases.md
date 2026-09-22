@@ -50,8 +50,13 @@ the repository Dockerfiles and frozen lockfile. Each host records image IDs and
 verifies source-revision labels. Separate builds are not claimed to have
 identical bytes. Production credentials and data never cross into TEST.
 
-The public npm packages continue to use npm Trusted Publishing through GitHub
-Actions OIDC. SDK publication grants no host-delivery authority.
+The same `app-v*` tag publishes the public npm packages. The publish workflow,
+behind the same main-ancestry and CI checks, releases whatever SDK and
+contracts versions the tagged manifests carry and the registry does not hold,
+through npm Trusted Publishing over GitHub Actions OIDC; a tag whose versions
+are already public publishes nothing. There is no separate SDK tag, so every
+SDK release is a release of the application it was tested with. SDK publication
+grants no host-delivery authority.
 
 ## Alternatives rejected
 
@@ -60,4 +65,6 @@ credential and a route solely for deployment. A webhook listener creates a new
 public authenticated surface. Building once and promoting registry digests gives
 stronger artifact identity, but its publication and manifest machinery is not
 needed for this pilot. Running public pull-request code on internal runners
-would cross the release boundary.
+would cross the release boundary. A separate `sdk-v*` tag let the SDK be
+published from a revision never accepted for production and gave a reader two
+tag rows to tell apart.

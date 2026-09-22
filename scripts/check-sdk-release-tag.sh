@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 #
-# Resolve the immutable npm release named by one SDK tag.
+# Resolve the npm versions one application release tag would publish.
+#
+# The tag is `app-v<release>`, the acceptance that puts a revision on
+# production (ADR-0016). The SDK and contracts versions are the ones the
+# manifests carry — the number in the tag is the application's and says
+# nothing about them — and Changesets publishes only what the registry does
+# not hold yet, so a tag whose versions are already public publishes nothing.
 #
 # The workflow appends this command's stdout to GITHUB_OUTPUT, so stdout is a
 # deliberately tiny machine contract. Explanations and refusals go to stderr.
@@ -11,8 +17,13 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 tag="${1:-}"
 
 if [ -z "$tag" ]; then
-  echo "usage: check-sdk-release-tag.sh sdk-v<version>" >&2
+  echo "usage: check-sdk-release-tag.sh app-v<release>" >&2
   exit 2
+fi
+
+if [[ ! "$tag" =~ ^app-v[0-9A-Za-z._-]+$ ]]; then
+  echo "release tag $tag must be an app-v<release> acceptance tag; the SDK version comes from its manifest, not from the tag" >&2
+  exit 1
 fi
 
 sdk_version="$(node -e 'process.stdout.write(require(process.argv[1]).version)' "$repo/packages/sdk/package.json")"
@@ -51,12 +62,6 @@ if [[ ! "$contracts_version" =~ $valid_version ]]; then
 fi
 if [ "$sdk_version" = "0.0.0" ] || [ "$contracts_version" = "0.0.0" ]; then
   echo "0.0.0 is not publishable; prepare the Changesets release before tagging" >&2
-  exit 1
-fi
-
-expected="sdk-v${sdk_version}"
-if [ "$tag" != "$expected" ]; then
-  echo "release tag $tag must be $expected for the SDK manifest it would publish" >&2
   exit 1
 fi
 
