@@ -68,4 +68,4 @@ Set an existing TEST acceptance marker only when its exact contract is fulfilled
 
 ## Source anchors
 
-`AGENTS.md:3-10`; `docs/research/19-portal-requirements.md:95-103`; `docs/research/21-pilot-plan.md:55-65`; `docs/decisions/0026-one-way-in.md:25-93,166-205`; `apps/docs/quickstart.md:44-64,103-200,201-477,499-521`; `apps/cabinet/src/server.test.ts:630-660,704-732,2543-2559`; `apps/cabinet/src/identity.test.ts:42-82`; `apps/cabinet/src/screens.ts:240-270`; `packages/sdk/src/verify.ts:37-47`; `packages/sdk/src/worker.test.ts:177-203`; `packages/sdk/src/outside-fixtures.test.ts:212-286`.
+`AGENTS.md:3-10`; `docs/research/19-portal-requirements.md:95-103`; `docs/research/21-pilot-plan.md:55-65` (retired 2026-09-22; the text is in git history before that day); `docs/decisions/0026-one-way-in.md:25-93,166-205`; `apps/docs/quickstart.md:44-64,103-200,201-477,499-521`; `apps/cabinet/src/server.test.ts:630-660,704-732,2543-2559`; `apps/cabinet/src/identity.test.ts:42-82`; `apps/cabinet/src/screens.ts:240-270`; `packages/sdk/src/verify.ts:37-47`; `packages/sdk/src/worker.test.ts:177-203`; `packages/sdk/src/outside-fixtures.test.ts:212-286`.
