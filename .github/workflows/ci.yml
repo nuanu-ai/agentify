@@ -20,12 +20,14 @@ concurrency:
 # Public pull requests run only on GitHub-hosted infrastructure. No job in this
 # repository receives a route or credential that can deliver to test or live.
 jobs:
-  # Every check shares one checkout, one install, one database server and one
-  # browser. Matrix jobs used to spend almost nine minutes on setup while the
-  # checks themselves took seconds, and a second job for half the workspace
-  # spent that again and answered on a different version of Postgres than
-  # production runs. One gate has one answer: this exact commit is fit to
-  # release, or it is not.
+  # Every check that needs the source, the dependencies or a database shares
+  # one checkout, one install and one database server. Matrix jobs used to
+  # spend almost nine minutes on setup while the checks themselves took
+  # seconds, and a second job for half the workspace spent that again and
+  # answered on a different version of Postgres than production runs. The jobs
+  # beside this one are split by what they need — a browser, the portal build,
+  # only files — never by which half of the product they check. One gate has
+  # one answer: this exact commit is fit to release, or it is not.
   gate:
     name: gate
     runs-on: ubuntu-latest
@@ -89,14 +91,12 @@ jobs:
             -c "create database agentify_scanner_migration_test owner agentify_scanner"
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @agentify/browser-observer-actor exec playwright install --with-deps chromium
       - run: pnpm check
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm test:db
         env:
           AGENTIFY_TEST_DATABASE_URL: postgresql://agentify_commerce:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_commerce_test
-      - run: pnpm scanner:test:actor
       - run: pnpm scanner:test:integration
         env:
           DATABASE_URL: postgresql://agentify_scanner:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
@@ -120,6 +120,31 @@ jobs:
           APP_BASE_URL: https://agentify.ad
           DATABASE_URL: postgresql://agentify_scanner:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
           MIGRATION_TEST_DATABASE_URL: postgresql://agentify_scanner:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
+
+  # The browser observer's test drives a real Chromium, and installing one with
+  # its system packages is the slowest step in this file by a wide margin:
+  # nineteen seconds on a good day and three minutes on a bad one. It runs
+  # beside the gate instead of in front of every other check, and it needs no
+  # database.
+  browser:
+    name: browser
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - run: corepack enable
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter @agentify/browser-observer-actor exec playwright install --with-deps chromium
+
+      - run: pnpm scanner:test:actor
 
   # The portal keeps a separate gate because its rendered examples are a
   # distinct release promise. It installs from the same workspace lockfile.
