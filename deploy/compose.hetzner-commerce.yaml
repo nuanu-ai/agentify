@@ -61,7 +61,7 @@ services:
     networks:
       default:
       agentify-ingress:
-        aliases: [agentify-commerce-web]
+        aliases: [agentify-web]
 
 networks:
   agentify-ingress:
@@ -72,6 +72,10 @@ networks:
 # production database. Ansible creates and restores these exact targets during
 # the separately reviewed cutover; ordinary releases only consume them.
 #
+# These names, like the project's own, are what a running host answers to
+# rather than what this repository calls things. Renaming them here would name
+# volumes that do not exist and start production on nothing; they move with
+# the database, under one reviewed cutover (ADR-0025).
 volumes:
   agentify-postgres:
     external: true

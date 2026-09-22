@@ -166,7 +166,7 @@ x-app: &app
   build:
     context: .
     dockerfile: deploy/Dockerfile.app
-  image: "${AGENTIFY_APP_IMAGE:-agentify-commerce-app}"
+  image: "${AGENTIFY_APP_IMAGE:-agentify-app}"
   restart: unless-stopped
 
 # The same arrangement on the scanner's side: its worker and its migration are
@@ -711,7 +711,7 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile.web
-    image: "${AGENTIFY_WEB_IMAGE:-agentify-commerce-web}"
+    image: "${AGENTIFY_WEB_IMAGE:-agentify-web}"
     restart: unless-stopped
     ports:
       # The host side is a variable because a laptop is not ours alone: an ssh

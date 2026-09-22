@@ -14,8 +14,8 @@
     recovery_directory: "{{ release_directory }}/recovery"
     release_identity:
       firstParty:
-        app: "agentify-commerce-app:{{ release_revision }}"
-        web: "agentify-commerce-web:{{ release_revision }}"
+        app: "agentify-app:{{ release_revision }}"
+        web: "agentify-web:{{ release_revision }}"
         scanner: "agentify-scanner:{{ release_revision }}"
         scanner-worker: "agentify-scanner-worker:{{ release_revision }}"
         scanner-privacy: "agentify-scanner-privacy:{{ release_revision }}"

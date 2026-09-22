@@ -270,8 +270,8 @@ export function problemsWith(channel, resolved, testListenAddress) {
       );
     }
     const aliases = resolved.services?.web?.networks?.["agentify-ingress"]?.aliases ?? [];
-    if (!aliases.includes("agentify-commerce-web")) {
-      problems.push("web: agentify-ingress must expose alias agentify-commerce-web to the edge");
+    if (!aliases.includes("agentify-web")) {
+      problems.push("web: agentify-ingress must expose alias agentify-web to the edge");
     }
   } else {
     const wantedBinding = `${testListenAddress}:${wanted.publishedPort}:443`;

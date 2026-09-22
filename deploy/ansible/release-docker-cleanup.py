@@ -13,8 +13,8 @@ from pathlib import Path
 GIBIBYTE = 1024**3
 COMMIT = re.compile(r"^[0-9a-f]{40}$")
 FIRST_PARTY_REPOSITORIES = (
-    "agentify-commerce-app",
-    "agentify-commerce-web",
+    "agentify-app",
+    "agentify-web",
     "agentify-scanner",
     "agentify-scanner-worker",
     "agentify-scanner-privacy",

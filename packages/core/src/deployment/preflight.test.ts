@@ -146,7 +146,7 @@ describe("a channel that is what it claims to be", () => {
 
     const wrongAlias = structuredClone(COMMERCE_CHANNEL);
     wrongAlias.services.web.networks = { "agentify-ingress": { aliases: ["web"] } };
-    expect(problemsWith("commerce", wrongAlias).join("\n")).toMatch(/agentify-commerce-web/);
+    expect(problemsWith("commerce", wrongAlias).join("\n")).toMatch(/agentify-web/);
   });
 
   it("trusts only the exact edge peer to carry browser scheme and client address", () => {

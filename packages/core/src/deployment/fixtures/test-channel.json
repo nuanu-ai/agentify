@@ -66,7 +66,7 @@
         "retries": 15,
         "start_period": "15s"
       },
-      "image": "agentify-commerce-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "image": "agentify-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "networks": {
         "default": null
       },
@@ -118,7 +118,7 @@
         "retries": 15,
         "start_period": "15s"
       },
-      "image": "agentify-commerce-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "image": "agentify-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "networks": {
         "default": null
       },
@@ -143,7 +143,7 @@
       "environment": {
         "DATABASE_URL": "postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_commerce"
       },
-      "image": "agentify-commerce-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "image": "agentify-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "networks": {
         "default": null
       },
@@ -385,7 +385,7 @@
         "AGENTIFY_SITE_ADDRESS": "test.agentify.ad",
         "AGENTIFY_SURFACE_MODE": "test"
       },
-      "image": "agentify-commerce-web:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "image": "agentify-web:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "networks": {
         "agentify-ingress": null,
         "default": null
@@ -425,7 +425,7 @@
       "context": ".",
       "dockerfile": "deploy/Dockerfile.app"
     },
-    "image": "agentify-commerce-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "image": "agentify-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "restart": "unless-stopped"
   },
   "x-scanner-app": {
