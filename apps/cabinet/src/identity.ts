@@ -39,6 +39,7 @@ import type {
   CabinetIdentity,
   CabinetLinkResult,
   LinkRequestResult,
+  LinkWall,
   MerchantPerson,
   Person,
   UnattachedPerson,
@@ -105,6 +106,7 @@ export const SESSION_HOURS = 12;
 export const LINK_TTL_SECONDS = 60 * 60;
 export const LINK_RATE_WINDOW_MS = 60 * 60 * 1000;
 export const LINK_RATE_LIMIT = 3;
+export const LINK_MIN_INTERVAL_MS = 60 * 1000;
 export const LINK_SEND_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 export const REPORT_COMPLETION_MS = 5 * 60 * 1000;
 export const REPORT_EVIDENCE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -302,6 +304,7 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
     bound: typeof auth,
     email: string,
     destination: CabinetDestination,
+    retryAt: Date,
   ): Promise<LinkRequestResult> => {
     const active: LinkSend = {
       claim: { email, purpose: "cabinet", destination },
@@ -314,7 +317,7 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
       });
     });
     if (active.handed !== "accepted") throw new DeliveryRefused();
-    return { status: "accepted" };
+    return { status: "accepted", retryAt };
   };
 
   const requestReportWith = async (
@@ -478,9 +481,10 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
       try {
         if (parts.pool === undefined) {
           return await inMemoryTransaction(async (bound, rows) => {
-            const limited = memoryRate(rows, rateKey(config.authSecret, email), "cabinet");
-            if (limited !== null) return { status: "cooldown", retryAt: limited };
-            return await requestWith(bound, email, destination);
+            const rated = memoryRate(rows, rateKey(config.authSecret, email), "cabinet");
+            if (!rated.sent)
+              return { status: "cooldown", wall: rated.wall, retryAt: rated.retryAt };
+            return await requestWith(bound, email, destination, rated.retryAt);
           });
         }
         const db = drizzle(parts.pool, {
@@ -488,12 +492,13 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
         });
         return await db.transaction(async (tx) => {
           await lockEmail(tx, email);
-          const limited = await postgresRate(tx, rateKey(config.authSecret, email), "cabinet");
-          if (limited !== null) return { status: "cooldown", retryAt: limited };
+          const rated = await postgresRate(tx, rateKey(config.authSecret, email), "cabinet");
+          if (!rated.sent) return { status: "cooldown", wall: rated.wall, retryAt: rated.retryAt };
           return await requestWith(
             authFor(drizzleAdapter(tx, { provider: "pg", schema })),
             email,
             destination,
+            rated.retryAt,
           );
         });
       } catch (thrown) {
@@ -509,9 +514,9 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
             const now = new Date();
             cleanupReportEvidenceInMemory(rows, now);
             const digestKey = reportDigestKeyInMemory(rows, now);
-            const limited = memoryRate(rows, rateKey(digestKey, request.email), "report");
-            if (limited !== null) {
-              return { status: "cooldown", retry_at: limited.toISOString() };
+            const rated = memoryRate(rows, rateKey(digestKey, request.email), "report");
+            if (!rated.sent) {
+              return { status: "cooldown", retry_at: rated.retryAt.toISOString() };
             }
             return await requestReportWith(bound, request);
           });
@@ -532,9 +537,9 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
           const digestKey = await reportDigestKeyInPostgres(tx, now);
           await cleanupReportEvidenceInPostgres(tx, now);
           await lockEmail(tx, request.email);
-          const limited = await postgresRate(tx, rateKey(digestKey, request.email), "report");
-          if (limited !== null) {
-            return { status: "cooldown", retry_at: limited.toISOString() };
+          const rated = await postgresRate(tx, rateKey(digestKey, request.email), "report");
+          if (!rated.sent) {
+            return { status: "cooldown", retry_at: rated.retryAt.toISOString() };
           }
           return await requestReportWith(
             authFor(drizzleAdapter(tx, { provider: "pg", schema })),
@@ -1176,11 +1181,90 @@ const tokenHash = reportIdentityTokenHash;
 const rateKey = (secret: string, email: string): string =>
   createHmac("sha256", secret).update(`cabinet-link:${email}`).digest("hex");
 
-function memoryRate(
-  rows: MemoryRows,
-  emailHash: string,
-  purpose: "cabinet" | "report",
-): Date | null {
+type LinkRefusal = Readonly<{ wall: LinkWall; retryAt: Date }>;
+
+/**
+ * What the rate rows say about a request: refused, or written down.
+ *
+ * Both arms carry the moment this address may ask again. For a refusal it is
+ * the wall that refused; for a send it is the wall in front of the next link,
+ * read off the rows the send has just joined. They are the same computation
+ * over the same rows, one moment apart, which is why a screen can be told the
+ * wait after an accepted link without the door guessing at it.
+ */
+type LinkRate =
+  | Readonly<{ sent: true; retryAt: Date }>
+  | Readonly<{ sent: false; wall: LinkWall; retryAt: Date }>;
+
+/**
+ * The two walls in front of a link, read off the sends this address already
+ * has, oldest first.
+ *
+ * The hour is the outer wall: three links to one address, and the fourth waits
+ * for the oldest of the three to fall out of the window. The minute is the
+ * inner one, and it is what keeps the hour from being spent in five seconds by
+ * somebody who has simply not looked in their mailbox yet. A request the
+ * minute refuses is not a send and costs nothing — the caller writes no row
+ * for it — so the three an hour are three messages that actually went out.
+ *
+ * Both walls can stand at once, and then the one the answer names is the one
+ * that is still there when the other has gone: the later of the two. A page
+ * that named the nearer wall would send somebody back to press a button that
+ * is still refused, which is the kind of claim ADR-0026's door exists to keep
+ * off the screen.
+ *
+ * Both doors stand on this, the cabinet's and the report's, because both count
+ * the same rows. They do not say the same thing about it. The cabinet's own
+ * pages are ours to write, so its answer names the wall and the screen has a
+ * sentence for each. The report answer crosses a contract the scanner reads,
+ * and that contract carries the moment and no wall — so the scanner cannot
+ * tell the minute from the hour and must say one sentence that is true of
+ * both: come back at this time. Widening the contract to carry the wall is a
+ * change to somebody else's reader and is not worth it for a difference in
+ * wording; what must not happen is the scanner guessing which wall it was from
+ * how far away the moment is.
+ */
+function refusalIn(sentAt: readonly Date[], now: Date): LinkRefusal | null {
+  const newest = sentAt.at(-1);
+  const interval =
+    newest !== undefined && newest.getTime() > now.getTime() - LINK_MIN_INTERVAL_MS
+      ? ({
+          wall: "interval",
+          retryAt: new Date(newest.getTime() + LINK_MIN_INTERVAL_MS),
+        } as const)
+      : null;
+  let hourly: LinkRefusal | null = null;
+  if (sentAt.length >= LINK_RATE_LIMIT) {
+    const firstCounted = sentAt[sentAt.length - LINK_RATE_LIMIT];
+    // A list long enough to have spent the allowance and no send at the index
+    // that proves it is a list this function cannot read. Nothing reaches this
+    // today, and the direction is what the line is for: a wall that meets
+    // something it cannot explain refuses loudly rather than standing aside
+    // quietly, which is how a rate limit becomes no rate limit for one caller.
+    if (firstCounted === undefined) throw new Error("cabinet_link_rate_count_inconsistent");
+    hourly = { wall: "hourly", retryAt: new Date(firstCounted.getTime() + LINK_RATE_WINDOW_MS) };
+  }
+  if (interval === null) return hourly;
+  if (hourly === null) return interval;
+  return hourly.retryAt.getTime() >= interval.retryAt.getTime() ? hourly : interval;
+}
+
+/**
+ * The wait a send just written leaves in front of the next link.
+ *
+ * It is the same reading of the same rows, with this send among them: the
+ * minute the door keeps between two links, or the rest of the hour when this
+ * was the third. There is always a wall — a send a moment old raises the
+ * interval by itself — so nothing here can answer "no wait", and if it does
+ * the rows disagree with the send that was just written.
+ */
+function waitAfter(sentAt: readonly Date[], now: Date): Date {
+  const next = refusalIn(sentAt, now);
+  if (next === null) throw new Error("cabinet_link_rate_interval_missing");
+  return next.retryAt;
+}
+
+function memoryRate(rows: MemoryRows, emailHash: string, purpose: "cabinet" | "report"): LinkRate {
   const now = new Date();
   const all = (rows.cabinet_link_sends ?? []).filter(
     (row) => new Date(row.expiresAt as Date).getTime() > now.getTime(),
@@ -1193,16 +1277,10 @@ function memoryRate(
         row.purpose === purpose &&
         new Date(row.sentAt as Date).getTime() > now.getTime() - LINK_RATE_WINDOW_MS,
     )
-    .sort(
-      (one, other) =>
-        new Date(one.sentAt as Date).getTime() - new Date(other.sentAt as Date).getTime(),
-    );
-  if (recent.length >= LINK_RATE_LIMIT) {
-    return new Date(
-      new Date(recent[recent.length - LINK_RATE_LIMIT]?.sentAt as Date).getTime() +
-        LINK_RATE_WINDOW_MS,
-    );
-  }
+    .map((row) => new Date(row.sentAt as Date))
+    .sort((one, other) => one.getTime() - other.getTime());
+  const refused = refusalIn(recent, now);
+  if (refused !== null) return { sent: false, ...refused };
   rows.cabinet_link_sends.push({
     id: randomUUID(),
     emailHash,
@@ -1210,14 +1288,14 @@ function memoryRate(
     sentAt: now,
     expiresAt: new Date(now.getTime() + LINK_SEND_RETENTION_MS),
   });
-  return null;
+  return { sent: true, retryAt: waitAfter([...recent, now], now) };
 }
 
 async function postgresRate(
   tx: Parameters<Parameters<ReturnType<typeof drizzle>["transaction"]>[0]>[0],
   emailHash: string,
   purpose: "cabinet" | "report",
-): Promise<Date | null> {
+): Promise<LinkRate> {
   const now = new Date();
   await tx.execute(
     sql`select pg_advisory_xact_lock(hashtextextended(${`cabinet-link-rate:${purpose}:${emailHash}`}, 0))`,
@@ -1234,13 +1312,9 @@ async function postgresRate(
       ),
     )
     .orderBy(asc(linkSends.sentAt));
-  if (recent.length >= LINK_RATE_LIMIT) {
-    const firstCounted = recent[recent.length - LINK_RATE_LIMIT];
-    if (firstCounted === undefined) {
-      throw new Error("cabinet_link_rate_count_inconsistent");
-    }
-    return new Date(firstCounted.sentAt.getTime() + LINK_RATE_WINDOW_MS);
-  }
+  const sentAt = recent.map((row) => row.sentAt);
+  const refused = refusalIn(sentAt, now);
+  if (refused !== null) return { sent: false, ...refused };
   await tx.insert(linkSends).values({
     id: randomUUID(),
     emailHash,
@@ -1248,7 +1322,7 @@ async function postgresRate(
     sentAt: now,
     expiresAt: new Date(now.getTime() + LINK_SEND_RETENTION_MS),
   });
-  return null;
+  return { sent: true, retryAt: waitAfter([...sentAt, now], now) };
 }
 
 type CabinetTransaction = Parameters<Parameters<ReturnType<typeof drizzle>["transaction"]>[0]>[0];

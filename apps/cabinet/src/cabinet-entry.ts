@@ -24,9 +24,29 @@ export interface Person {
 /** The only places a cabinet mail link may return to after it is opened. */
 export type CabinetDestination = "default" | "settings" | "woocommerce";
 
+/**
+ * Which of the two walls in front of a link refused this request.
+ *
+ * They are waits of different orders — under a minute against the better part
+ * of an hour — and a screen that cannot tell them apart has to guess, which on
+ * a page that says how long to wait means saying something untrue. So the
+ * answer names the wall it hit.
+ */
+export type LinkWall = "interval" | "hourly";
+
+/**
+ * What became of a request for a link, and when this address may ask again.
+ *
+ * Both answers carry that moment, because both leave a wait behind them. A
+ * refusal's wait is the wall it hit. An accepted request's is the wall in
+ * front of the next link, which is usually the minute the door keeps between
+ * two of them and is the rest of the hour when the link that just went out was
+ * this address's third. A caller told "accepted" and left to assume the minute
+ * draws a page that invites a press it knows will be refused.
+ */
 export type LinkRequestResult =
-  | Readonly<{ status: "accepted" }>
-  | Readonly<{ status: "cooldown"; retryAt: Date }>
+  | Readonly<{ status: "accepted"; retryAt: Date }>
+  | Readonly<{ status: "cooldown"; wall: LinkWall; retryAt: Date }>
   | Readonly<{ status: "unavailable" }>;
 
 export type CabinetLinkResult =

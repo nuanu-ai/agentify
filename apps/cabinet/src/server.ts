@@ -60,6 +60,7 @@ import {
   whatIsWrongWithTheName,
 } from "./seller-name.js";
 import {
+  type LinkAnswer,
   linkRequestedScreen,
   mailUnavailableScreen,
   merchantSetupScreen,
@@ -732,17 +733,21 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       response.status(503).type("html").send(mailUnavailableScreen(base, config.surfaceMode));
       return;
     }
-    const retryAfterSeconds =
-      requested.status === "cooldown"
-        ? Math.max(1, Math.ceil((requested.retryAt.getTime() - Date.now()) / 1_000))
-        : undefined;
-    if (retryAfterSeconds !== undefined) {
-      response.setHeader("retry-after", String(retryAfterSeconds));
+    // Every answer leaves a wait behind it and the page draws it on the
+    // resend. Both waits come from the door, which read them off the same
+    // rows: this page never works one out for itself, because the only wait it
+    // could guess is the minute, and the minute is wrong on exactly the answer
+    // it would be guessing for — the link that spent this address's hour.
+    const seconds = Math.max(1, Math.ceil((requested.retryAt.getTime() - Date.now()) / 1_000));
+    const answer: LinkAnswer =
+      requested.status === "cooldown" ? { wall: requested.wall, seconds } : { sent: true, seconds };
+    if ("wall" in answer) {
+      response.setHeader("retry-after", String(answer.seconds));
     }
     response
       .status(202)
       .type("html")
-      .send(linkRequestedScreen(base, config.surfaceMode, email, destination, retryAfterSeconds));
+      .send(linkRequestedScreen(base, config.surfaceMode, email, destination, answer));
   });
 
   const registerMerchant = async (): Promise<{ id: string; key: string } | null> => {
