@@ -33,7 +33,7 @@
  */
 
 import type { MerchantKey, MerchantKeyList } from "@nuanu-ai/agentify-contracts";
-import { escaped, page, type Row, table } from "./html.js";
+import { type Cell, escaped, momentCell, page, type Row, table, when } from "./html.js";
 import type { Viewer } from "./screens.js";
 import { moment } from "./words.js";
 
@@ -45,11 +45,11 @@ const keyRow = (base: string, entry: MerchantKey): Row => {
       {
         html: `<div class="title">${escaped(entry.label)}</div><div class="under mono">${escaped(entry.id)}</div>`,
       },
-      { kind: "quiet", html: escaped(moment(entry.created_at)) },
-      { kind: "quiet", html: escaped(lastCall(entry)) },
+      momentCell(moment(entry.created_at)),
+      lastCall(entry),
       {
         kind: "quiet",
-        html: revoked ? escaped(`Revoked ${moment(entry.disabled_at ?? "")}`) : "Works",
+        html: revoked ? `Revoked ${when(moment(entry.disabled_at ?? ""))}` : "Works",
       },
       { kind: "control", html: keyControl(base, entry) },
     ],
@@ -77,8 +77,10 @@ const keyRow = (base: string, entry: MerchantKey): Row => {
  * A second way of writing a time would put two formats on one page and a
  * merchant comparing them.
  */
-const lastCall = (entry: MerchantKey): string =>
-  entry.last_used_at === null ? NO_CALLS_RECORDED : moment(entry.last_used_at);
+const lastCall = (entry: MerchantKey): Cell =>
+  entry.last_used_at === null
+    ? { kind: "quiet", html: escaped(NO_CALLS_RECORDED) }
+    : momentCell(moment(entry.last_used_at));
 
 /**
  * The empty answer, named once because the note under the table quotes it.
