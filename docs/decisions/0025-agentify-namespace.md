@@ -44,7 +44,7 @@ change payload validation or vocabulary, so the handshake remains version
 `2` under ADR-0006. No alias schema is provided. A comparison excluding `$id`
 must establish that the schema bodies are unchanged.
 
-Existing hosts require a separately authorized Ansible maintenance cutover
+Existing hosts require a separately authorized maintenance cutover
 before these definitions can be deployed. It must identify source and target,
 stop all writers, preserve and restore-check data, resolve pending queue work,
 map volumes explicitly, replace environment and service names, and retain a
