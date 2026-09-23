@@ -138,7 +138,7 @@ class Activation(unittest.TestCase):
         for path, body in ((self.root / "tree/deploy/stack.sh", STACK), (self.root / "bin/docker", DOCKER), (self.root / "bin/curl", CURL)):
             path.write_text(body)
             path.chmod(0o755)
-        for name, body in (("git", 'case "$*" in *rev-parse*) echo "$NEW" ;; esac'), ("df", 'printf "Avail\\n999999999999\\n"')):
+        for name, body in (("git", 'case "$*" in *rev-parse*) echo "$NEW" ;; esac'), ("df", 'printf "Avail\\n%s\\n" "${DF_AVAIL:-999999999999}"')):
             (self.root / "bin" / name).write_text(f"#!/bin/sh\n{body}\n")
             (self.root / "bin" / name).chmod(0o755)
         (self.root / "etc/release.json").write_text(json.dumps({"channel": "test", "repository": "unused"}))
@@ -291,6 +291,15 @@ class Activation(unittest.TestCase):
         said = self.run_script("activate", POSTGRES_IMAGE="sha256:postgres-16")
         self.assertIn("exit 1", said)
         self.assertIn("postgres", said)
+        self.assert_old_release_runs_on_old_data(said)
+
+    def test_a_restore_point_that_would_not_fit_stops_nothing(self):
+        # The databases measure 1000 bytes, and a restore point needs them
+        # and a GiB more.
+        said = self.run_script("activate", DF_AVAIL=str((1 << 30) + 500))
+        self.assertIn("exit 1", said)
+        self.assertIn("MiB free", said)
+        self.assertEqual(self.restore_points(), [])
         self.assert_old_release_runs_on_old_data(said)
 
     def test_a_card_on_sale_before_the_release_must_still_be_on_sale_after_it(self):
