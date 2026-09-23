@@ -3,18 +3,16 @@
 #
 #   sudo deploy/activate.sh test|production <full revision>
 #
-# The pull agent runs it as root from the checkout of the revision it names,
-# and a person can do the same. Running it again is always safe: each step
+# agentify-release runs it as root from the checkout of the revision it
+# releases. Running it again is always safe: each step
 # finds its work done or does it again, and nothing a later step or a person
 # needs is overwritten. Every refusal is one sentence on stderr. Exit 75 means
 # the release lock, or a one-off container of an earlier run, was in the way
 # and nothing was changed.
 #
-# PRODUCTION runs only the digests main's own build published for the
-# revision: the pull agent reads them by the rule in the header of
-# .github/workflows/images.yml and passes them as the five AGENTIFY_*_IMAGE
-# variables. TEST runs ghcr.io/nuanu-ai/agentify-<name>:<revision>, which
-# exists for every commit that was once the head of a pushed branch.
+# It runs only images pinned by digest: the five AGENTIFY_*_IMAGE variables,
+# which agentify-release reads from the notice the revision's image build
+# published (the rule is in the header of .github/workflows/images.yml).
 #
 # The applications stop for about a minute, for a restore point and the
 # migrations. Drizzle applies each migration runner's pending set in one
@@ -53,22 +51,24 @@ if ! flock -n 9; then
 fi
 
 at "pulling the images of $revision"
+pinned=""
 for name in app web scanner scanner-worker scanner-privacy; do
-  variable="AGENTIFY_$(tr a-z- A-Z_ <<<"$name")_IMAGE" reference="ghcr.io/nuanu-ai/agentify-$name:$revision"
-  if [[ $channel == production ]]; then
-    reference="${!variable:-}"
-    [[ $reference =~ ^ghcr\.io/nuanu-ai/agentify-$name@sha256:[0-9a-f]{64}$ ]] \
-      || refuse "production runs only the digests main's build published, and $variable is not one."
-  fi
-  echo "$variable=$reference"
-done > "$images"
+  variable="AGENTIFY_$(tr a-z- A-Z_ <<<"$name")_IMAGE" reference="${!variable:-}"
+  [[ $reference =~ ^ghcr\.io/nuanu-ai/agentify-$name@sha256:[0-9a-f]{64}$ ]] \
+    || refuse "activation runs only images pinned by digest, and $variable is not one; agentify-release passes them."
+  pinned+="$variable=$reference"$'\n'
+done
+# Written whole, and only once all five check out: this file is what the
+# checkout's stack.sh and its nightly job read.
+printf '%s' "$pinned" > "$images.new"
+mv "$images.new" "$images"
 unset AGENTIFY_APP_IMAGE AGENTIFY_WEB_IMAGE AGENTIFY_SCANNER_IMAGE AGENTIFY_SCANNER_WORKER_IMAGE AGENTIFY_SCANNER_PRIVACY_IMAGE
 project="$(stack config --no-interpolate | sed -n '1s/^name: //p')"
 if [[ -n $(docker ps -q --filter "label=com.docker.compose.project=$project" --filter label=com.docker.compose.oneoff=True) ]]; then
   echo "activate: a one-off container of $project from an earlier run is still working; nothing was changed." >&2; exit 75
 fi
 stack --profile jobs pull --policy missing --quiet \
-  || refuse "the images in $images could not be pulled; a commit has images only if it was once the head of a pushed branch."
+  || refuse "the images in $images could not be pulled, for the reasons above; nothing was stopped."
 while IFS='=' read -r _ reference; do
   [[ $(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$reference") == "$revision" ]] \
     || refuse "$reference does not carry the revision label $revision."
