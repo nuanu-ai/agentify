@@ -95,9 +95,47 @@
   line-height: 1.55;
 }
 
+/*
+ * The band sits under the bar at every width and scrolls away with the page.
+ *
+ * It is written above the application root (config.mjs), so it comes before
+ * the bar in the document, and the theme places the bar two ways: fixed at the
+ * top from 960 px up, in the flow below that. Left alone, the band was under
+ * the bar on a laptop and above it on a phone, and the laptop's version paid
+ * for the bar twice — once in the band's own margin and once in the content's
+ * padding — which left an empty strip under the band.
+ *
+ * So the bar's height is kept free once, at the top of the page, and the bar
+ * sits in it at every width: fixed as the theme has it on a wide screen, taken
+ * out of the flow on a narrow one, where it still scrolls away as the theme
+ * means it to. With no band — a live page, or `vitepress dev`, which writes no
+ * marker — the page starts under the bar exactly as the theme lays it out.
+ *
+ * The theme's layout is at least a window tall and the bar used to be inside
+ * that height; the space kept for it is now outside, so the layout gives it
+ * back. Otherwise a page shorter than the window, such as the one for an
+ * address that does not exist, scrolls by the bar's height into nothing.
+ */
+body {
+  padding-top: var(--vp-nav-height);
+}
+
+#app .Layout {
+  min-height: calc(100vh - var(--vp-nav-height));
+}
+
+@media (max-width: 959px) {
+  #app .VPNav {
+    position: absolute;
+  }
+}
+
 @media (min-width: 960px) {
+  #app .VPContent {
+    padding-top: 0;
+  }
+
   .surface-words {
-    margin-top: var(--vp-nav-height, 64px);
     padding-left: calc(var(--vp-sidebar-width) + 24px);
   }
 }
@@ -108,6 +146,37 @@
   }
 }
 
+/*
+ * The outline beside the page, "On this page".
+ *
+ * The theme fixes it to the window at the bar's height plus 48 px, which is
+ * where the page's first line is when nothing stands between the bar and the
+ * page. The band does, so the outline started inside it. Sticky in its own
+ * column instead, it starts level with the page's first line whatever stands
+ * above it, and stays in view at the same place as the page scrolls.
+ *
+ * Its entries wrap rather than end in an ellipsis: they are the headings a
+ * reader picks from, and the column has the width. Where it lacks the height,
+ * its foot fades while entries are out of sight (see the fades below). A line
+ * of 20 px with 6 px above and below keeps a one-line entry at the theme's
+ * 32 px, so the marker the theme draws beside the active entry still lands on
+ * its first line.
+ */
+@media (min-width: 1280px) {
+  .VPDoc .aside .aside-container {
+    position: sticky;
+    top: calc(var(--vp-nav-height) + 48px);
+    padding-top: 0;
+    height: calc(100vh - var(--vp-nav-height) - 48px);
+  }
+}
+
+.VPDocAsideOutline .VPDocOutlineItem .outline-link {
+  padding: 6px 0;
+  line-height: 20px;
+  white-space: normal;
+}
+
 /* Three corners the theme rounds to its own measure. The rest of the origin
    draws a control at 12 (packages/visual/tokens.css, --radius-control); the
    portal declares no tokens of its own, so it is written out. */
@@ -115,6 +184,73 @@
 .vp-doc div[class*="language-"],
 .custom-block {
   border-radius: 12px;
+}
+
+/*
+ * A table or a block of code wider than its column scrolls sideways, and on a
+ * phone nothing said so: the scrollbar shows only while a finger moves it, and
+ * the cut often fell cleanly between two columns. The right edge now fades out
+ * over as much as is still hidden beyond it, up to 40 px, and stops fading at
+ * the end, so a block that hides nothing but its own padding dims no words.
+ *
+ * The fade follows the element's own scroll position: it runs over the last
+ * 40 px of the scroll range and holds its full width before them. A browser
+ * that cannot tie an animation to scrolling shows the element as before; one
+ * that can, but finds nothing to scroll, draws no fade either.
+ *
+ * A code block keeps no gap after its longest line. The gap was part of what
+ * scrolled, so a line that ended short of the edge still made the block
+ * scroll by the rest of the gap, and faded, with nothing hidden at all.
+ */
+@property --hidden-beyond {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@keyframes hidden-beyond {
+  from {
+    --hidden-beyond: 40px;
+  }
+  to {
+    --hidden-beyond: 0px;
+  }
+}
+
+.vp-doc div[class*="language-"] code {
+  padding-right: 0;
+}
+
+@supports (animation-timeline: scroll()) {
+  .vp-doc table,
+  .vp-doc div[class*="language-"] pre {
+    scroll-timeline: --sideways inline;
+    animation: hidden-beyond linear both;
+    animation-timeline: --sideways;
+    animation-range: calc(100% - 40px) 100%;
+    mask-image: linear-gradient(to left, transparent, #000 var(--hidden-beyond));
+  }
+
+  /* A table's last cell ends in 16 px of padding and a 1 px border after its
+     words, so the last 17 px of its range hide no words and fade nothing. */
+  .vp-doc table {
+    animation-range: calc(100% - 57px) calc(100% - 17px);
+  }
+
+  /* The outline's column is one window tall, and a long outline in a short
+     window runs past its foot: on the orders page in a 1366 x 768 window the
+     last entry sits under the theme's curtain, and in shorter windows more
+     are below it. The column scrolls, but the theme hides its scrollbar, so
+     its foot fades the same way while any entry is out of sight. The theme's
+     32 px of padding under the last entry is what lifts it clear of the
+     curtain at the end, so every pixel of the range counts here. */
+  .VPDoc .aside .aside-container {
+    scroll-timeline: --downwards block;
+    animation: hidden-beyond linear both;
+    animation-timeline: --downwards;
+    animation-range: calc(100% - 40px) 100%;
+    mask-image: linear-gradient(to top, transparent, #000 var(--hidden-beyond));
+  }
 }
 
 /*
@@ -149,16 +285,34 @@
   color: var(--vp-c-text-1);
 }
 
-/* Below the theme's own breakpoint the bar collapses to the title and a
-   hamburger, and the navigation this link rides with is not rendered at all.
-   The link is put back by hand there, because "no way out" is the whole defect
-   and a phone is where somebody is most likely to have arrived from a search. */
+/* "Docs" and the way out are two things. Where the sidebar's column holds
+   them apart they are apart; where there is no such column — below 960 px,
+   and on the page for an address that does not exist — the link began where
+   the title ended, and the bar read "Docs▣ Agentify". The theme gives the
+   title its own padding in the sidebar's column, which outranks this. */
+.VPNavBar .container > .title {
+  padding-right: 24px;
+}
+
+/* Below the theme's own breakpoint the bar collapses to the title, this link
+   and the search, and the link keeps its place there, because "no way out" is
+   the whole defect and a phone is where somebody is most likely to have
+   arrived from a search. */
 @media (max-width: 767px) {
   .way-out {
     display: inline-flex;
     margin-right: 12px;
     font-size: 13px;
   }
+}
+
+/* The theme's own menu button on a phone opens a sheet made of the top
+   navigation, the appearance switch and the social links, and this site has
+   none of the three: the button opened an empty page. The sections are behind
+   "Menu" in the row below the bar. The day themeConfig gets a `nav`, this rule
+   goes, or its links become unreachable on a phone. */
+.VPNavBar .content-body .VPNavBarHamburger {
+  display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

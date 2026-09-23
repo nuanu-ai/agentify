@@ -99,7 +99,7 @@ dispute — are collected in the [common questions](/faq).
 
 ## How to start
 
-<a href="/cabinet/sign-in">Open the cabinet</a>, enter your email address and
+<a href="/cabinet/sign-in" target="_self">Open the cabinet</a>, enter your email address and
 follow the one-time link in the message. Pressing its confirmation button
 opens your cabinet. On your first visit, it asks for the seller name that the
 buyer's payment request will show. You can then issue an API key and integrate
