@@ -16,7 +16,7 @@
  * future, so no test here waits on wall time to reach its assertion.
  */
 
-import type { Server } from "node:http";
+import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { type Environment, keyPrefixFor } from "@agentify/core";
 import {
@@ -125,12 +125,30 @@ export function sliceEnv(overrides: Record<string, string> = {}): Record<string,
  * the scripted one ignores them. The end-to-end test passes a factory that
  * returns its scripted facilitator; the smoke passes one that builds the real
  * x402 client around the same config.
+ *
+ * The port is taken before the configuration is read, and the order matters. A
+ * gateway tells an agent where to come back for an order, and it names that
+ * address from its configured public base, never from the request. A
+ * deployment knows its public address before it starts; this harness learns
+ * its own only when the kernel hands out a port. So the server listens first
+ * with nothing behind it, the address it listens on becomes `PUBLIC_BASE_URL`,
+ * and the gateway is mounted onto it afterwards. Booted the other way round,
+ * every address the gateway names points at the default, and a buyer that
+ * follows one is sent somewhere nothing listens.
  */
 export async function bootGateway(
   makeFacilitator: (config: GatewayConfig) => Facilitator,
   env: Record<string, string> = sliceEnv(),
 ): Promise<Booted> {
-  const config = loadConfig(env);
+  // On the address `baseUrl` below names, not on the wildcard: `serve` in the
+  // gateway's own harness says what the difference costs.
+  const server: Server = createServer();
+  server.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const { port } = server.address() as AddressInfo;
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  const config = loadConfig({ ...env, PUBLIC_BASE_URL: baseUrl });
   const queue = new MemoryQueue({
     attempts: config.reminderAttempts,
     retryDelayMs: config.reminderRetryDelayMs,
@@ -186,14 +204,10 @@ export async function bootGateway(
     await setPayoutWallet(store, SEEDED_MERCHANT.id, config.payment.payTo, systemClock());
   }
 
-  // On the address `baseUrl` below names, not on the wildcard: `serve` in the
-  // gateway's own harness says what the difference costs.
-  const server: Server = buildApp(gateway).listen(0, "127.0.0.1");
-  await new Promise<void>((resolve) => server.once("listening", resolve));
-  const { port } = server.address() as AddressInfo;
+  server.on("request", buildApp(gateway));
 
   return {
-    baseUrl: `http://127.0.0.1:${port}`,
+    baseUrl,
     gateway,
     config,
     merchantKey,

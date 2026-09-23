@@ -125,6 +125,8 @@ interface Exchange {
   challenge: PaymentRequired | null;
   challengeView: ChallengeView | null;
   orderId: string | null;
+  /** Where the last answer about this order said it is read again. */
+  statusUrl: string | null;
   waiting: boolean;
   closed: boolean;
 }
@@ -367,6 +369,7 @@ const openExchange = (itemId: string): Exchange => {
     challenge: null,
     challengeView: null,
     orderId: null,
+    statusUrl: null,
     waiting: false,
     closed: false,
   };
@@ -399,6 +402,13 @@ const statusIn = (body: unknown): string | null => {
   return typeof word === "string" ? word : null;
 };
 
+/** Reads the address an answer says its order is read again at. */
+const statusUrlIn = (body: unknown): string | null => {
+  if (typeof body !== "object" || body === null) return null;
+  const named = (body as Record<string, unknown>).status_url;
+  return typeof named === "string" ? named : null;
+};
+
 /** Puts what an answer turned out to be onto the exchange, in one place. */
 const recordAnswer = (on: Exchange, answer: Answered): void => {
   const order = orderIn(answer.body);
@@ -406,6 +416,8 @@ const recordAnswer = (on: Exchange, answer: Answered): void => {
     on.orderId = order;
     feed.about(order);
   }
+  const named = statusUrlIn(answer.body);
+  if (named !== null) on.statusUrl = named;
   if (answer.challenge !== null) {
     const view = readChallenge(answer.challenge);
     on.challenge = answer.challenge;
@@ -820,13 +832,17 @@ const doAction = async (form: URLSearchParams): Promise<void> => {
     }
 
     case "order_status": {
-      const orderId = form.get("order_id") ?? "";
-      if (orderId === "") throw new Error("An order identifier is required.");
+      // The address and not an identifier, because an agent holds no way to
+      // turn one into the other: what it has is the address the purchase
+      // answer named, and that is what the page fills this field with.
+      const statusUrl = form.get("status_url") ?? "";
+      if (statusUrl === "")
+        throw new Error("The address an answer named in status_url is required.");
       const buyer = buyerFor();
-      const on = exchange ?? openExchange(chosen ?? orderId);
-      beat(on, "agent", `Asked what became of ${orderId}.`, "GET");
+      const on = exchange ?? openExchange(chosen ?? statusUrl);
+      beat(on, "agent", `Asked what became of the order, at ${statusUrl}.`, "GET");
       agentCall(on, async () => {
-        recordAnswer(on, await buyer.status(orderId));
+        recordAnswer(on, await buyer.status(statusUrl));
       });
       return;
     }
@@ -999,6 +1015,7 @@ const viewOf = (on: Exchange | null): ExchangeView | null =>
         challenge: on.challengeView,
         holdingChallenge: on.challenge !== null,
         orderId: on.orderId,
+        statusUrl: on.statusUrl,
         waiting: on.waiting,
         closed: on.closed,
       };

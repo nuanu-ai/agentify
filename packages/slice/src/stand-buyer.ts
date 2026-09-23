@@ -81,8 +81,12 @@ export interface StandBuyer {
   ): Promise<Answered>;
   /** Sends a payment header nothing can decode, to see the door refuse it. */
   payBadly(itemId: string, params: Readonly<Record<string, unknown>>): Promise<Answered>;
-  /** What became of an order, asked with the order's identifier and nothing else. */
-  status(orderId: string): Promise<Answered>;
+  /**
+   * What became of an order, asked at the address an answer named for it in
+   * `status_url` and with nothing else. This console writes no such address of
+   * its own, for the reason `buyer.ts` gives: an agent cannot spell it either.
+   */
+  status(statusUrl: string): Promise<Answered>;
   /** The address a card is bought at, for copying and for showing. */
   purchasePath(itemId: string): string;
 }
@@ -217,12 +221,8 @@ export function makeStandBuyer(options: StandBuyerOptions): StandBuyer {
       );
     },
 
-    async status(orderId) {
-      return answerOf(
-        await request(`${base}/x402/orders/${encodeURIComponent(orderId)}/status`, {
-          headers: { accept: "application/json" },
-        }),
-      );
+    async status(statusUrl) {
+      return answerOf(await request(statusUrl, { headers: { accept: "application/json" } }));
     },
   };
 }
