@@ -761,39 +761,25 @@ ADR-0016, in the form the branch that introduces `activate.sh` gives it,
 changes wherever it describes a restore point of two databases. ADR-0026,
 paragraph 3, and ADR-0024 change further only with Option 4.
 
-## Choices that are Dmitry's
+## Dmitry's decisions
 
-Whether the scanner's tables join `public` (Option 1) or live in a schema
-`scanner` of their own (Option 2). The first is smaller and leaves no trace of
-the seam in the catalog; the second makes ownership visible at the cost of
-about forty query edits or a connection setting on four services.
+Dmitry decided on 2026-09-23, choice by choice as this note put them.
 
-Whether the host rename rides with the move, as ADR-0025 says, and what the
-names become. The proposal is the project `agentify` on both hosts, the same
-name the laptop uses, with the volumes `agentify-postgres` and
-`agentify-caddy`. The alternative is to keep `agentify-test` and
-`agentify-commerce` for good, which makes the move a guarded step of an
-ordinary activation and keeps a name that says "commerce" on a project that
-holds the whole product.
+The scanner's tables join `public` (Option 1). The host rename rides with the
+move, and the project becomes `agentify` on both hosts, with the volumes
+`agentify-postgres` and `agentify-caddy`. The one database becomes `agentify`;
+the account follows it to the same name if a second superuser for the moment
+makes that work, which the implementation settles and records. The gateway
+and the scanner share one `pgboss` schema on one pg-boss version. The scanner
+database is dropped at the cutover once the move is verified, with the restore
+point and the old volume holding it. Option 4 is not wanted now.
 
-Whether the one database keeps the name `agentify_commerce` or becomes
-`agentify`. Renaming the database is one statement during the stop plus every
-connection string, test guard and script that names it. The account keeps its
-name either way: PostgreSQL does not let the session user rename itself, and
-the bootstrap account is the only superuser, so renaming it needs a second
-superuser for the moment. Keeping both names costs nothing and leaves a name
-that no longer describes the contents.
-
-Whether the gateway and the scanner share one `pgboss` schema on one pg-boss
-version, as proposed, or the scanner keeps a pg-boss installation of its own
-under another schema name in the same database.
-
-Whether the scanner database is dropped at the cutover, once verified, as
-proposed, with the restore point and the old volume holding it, or kept under
-another name until the next release.
-
-Whether Option 4, direct access in place of the identity route, is wanted at
-all; this note proposes not now.
+Nothing outside the repository reads the `metabase` views, and they go. Their
+definitions stay reachable in git: `ops/dashboards/install-aggregate-views.sql`
+and the dashboard queries beside it, as they were before commit `ad5a772`
+deleted them. The cutover compares the hosts' view definitions with that file
+before it drops them and records any difference in its report, and the
+restore point taken before the move holds the views as the hosts had them.
 
 ## What I don't know
 
@@ -804,11 +790,6 @@ scan's job would settle it.
 
 The real downtime on each host. The parts are measured or bounded above, the
 sum is a guess, and TEST's cutover measures it.
-
-Whether anything outside the repository reads the `metabase` views. No
-session of `agentify_dashboard` was open during the survey [PRODUCTION], and
-the repository has no Metabase service [code]; a day of `log_connections` on
-PRODUCTION, or Dmitry's word, would settle it before the views go.
 
 Whether PRODUCTION's nightly backup job works now that root's cron runs
 again; tonight's journal shows it.
