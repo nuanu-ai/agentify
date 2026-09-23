@@ -207,6 +207,15 @@ body {
   color: var(--vp-c-text-1);
 }
 
+/* "Docs" and the way out are two things. Where the sidebar's column holds
+   them apart they are apart; where there is no such column — below 960 px,
+   and on the page for an address that does not exist — the link began where
+   the title ended, and the bar read "Docs▣ Agentify". The theme gives the
+   title its own padding in the sidebar's column, which outranks this. */
+.VPNavBar .container > .title {
+  padding-right: 24px;
+}
+
 /* Below the theme's own breakpoint the bar collapses to the title, this link
    and the search, and the link keeps its place there, because "no way out" is
    the whole defect and a phone is where somebody is most likely to have
