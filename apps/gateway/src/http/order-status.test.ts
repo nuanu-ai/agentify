@@ -455,6 +455,7 @@ describe("what the answer carries", () => {
       "order_id",
       "price",
       "status",
+      "status_url",
       "test",
     ]);
     const written = JSON.stringify(answered.body);
@@ -522,7 +523,7 @@ describe("the goods as the merchant wrote them", () => {
     // What the merchant handed over is what the buyer collects. A delivery
     // reshaped on the way out is the one thing an agent cannot check against
     // anything, because it holds nothing else about the order.
-    const { served, harnessed } = await started();
+    const { served, harnessed } = await started({ PUBLIC_BASE_URL: PUBLIC_BASE });
     const itemId = await publish(served, {
       ...laterCard,
       result: {
@@ -543,6 +544,7 @@ describe("the goods as the merchant wrote them", () => {
 
     expect((await statusOf(served, orderId)).body).toStrictEqual({
       order_id: orderId,
+      status_url: collectedAt(orderId),
       status: "delivered",
       price: {
         amount: "80.00",

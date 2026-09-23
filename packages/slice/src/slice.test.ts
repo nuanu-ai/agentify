@@ -277,7 +277,7 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     expect(() => deliveryCheckFor(EUROPE_ESIM).parse(collected.delivered)).not.toThrow();
     expect(fields(collected.delivered).activation_code).toMatch(/^LPA:/);
 
-    // The answer is the buyer's own and not the merchant's: the five fields an
+    // The answer is the buyer's own and not the merchant's: the fields an
     // agent is owed and nothing beside them. A door that handed over more
     // would be a way of reading somebody else's business off an identifier.
     expect(Object.keys(fields(collected.body)).sort()).toStrictEqual([
@@ -285,6 +285,7 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
       "order_id",
       "price",
       "status",
+      "status_url",
       "test",
     ]);
     expect(fields(fields(collected.body).price).amount).toBe("8.00");
@@ -368,10 +369,10 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     if (typeof orderId !== "string") throw new Error("the purchase named no order");
 
     const collected = await buyer.status(orderId);
-    const five = ["delivered", "order_id", "price", "status", "test"];
+    const owed = ["delivered", "order_id", "price", "status", "status_url", "test"];
 
-    expect(Object.keys(purchased).sort()).toStrictEqual(five);
-    expect(Object.keys(fields(collected.body)).sort()).toStrictEqual(five);
+    expect(Object.keys(purchased).sort()).toStrictEqual(owed);
+    expect(Object.keys(fields(collected.body)).sort()).toStrictEqual(owed);
 
     // Read off the whole body rather than off a field name, because the cost
     // is the value escaping and not the name it escaped under.

@@ -506,7 +506,7 @@ async function orderStatus(
     return written(response, NOT_FOUND, refusal("no_such_order", "there is no such order"));
   }
 
-  return { status: OK, document: agentOrderStatusOf(record) };
+  return { status: OK, document: agentOrderStatusOf(record, gateway.runtime.config) };
 }
 
 /**
@@ -921,11 +921,13 @@ async function answerPurchase(
       //
       // Where the money moved at the purchase and the goods come later, the
       // same document under a 200 is the honest answer: the order exists, it
-      // is paid for, and the door that hands the goods over is the one named
-      // in the address the agent already holds.
+      // is paid for, and the document names in `status_url` the address the
+      // goods are collected at. It has to name it. The agent bought at an
+      // address that names the product and not the order, so nothing it
+      // already holds spells the door that hands the goods over.
       return {
         status: attempt.order.order.mode.settle === "after_fulfillment" ? CONFLICT : OK,
-        document: agentOrderStatusOf(attempt.order),
+        document: agentOrderStatusOf(attempt.order, gateway.runtime.config),
       };
 
     case "settled": {
@@ -947,7 +949,7 @@ async function answerPurchase(
 
       return {
         status: outcomeFor(attempt.order.order) === "delivered" ? OK : CONFLICT,
-        document: agentOrderStatusOf(attempt.order),
+        document: agentOrderStatusOf(attempt.order, gateway.runtime.config),
       };
     }
   }

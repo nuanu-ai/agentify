@@ -58,14 +58,17 @@ import {
   outcomeFor,
   transition,
 } from "@agentify/core";
-import type {
-  AgentOrderStatus,
-  Delivery,
-  Order as OrderDocument,
-  Receipt,
-  SalePrice,
-  WorkerEnvelope,
+import {
+  type AgentOrderStatus,
+  API_ROUTES,
+  type Delivery,
+  expandPath,
+  type Order as OrderDocument,
+  type Receipt,
+  type SalePrice,
+  type WorkerEnvelope,
 } from "@nuanu-ai/agentify-contracts";
+import type { GatewayConfig } from "../config.js";
 import { asTimestamp } from "../ports/clock.js";
 import type { Reminder } from "../ports/queue.js";
 import type {
@@ -1134,13 +1137,33 @@ export function salePriceOf(record: StoredOrder): SalePrice | null {
  * read it, so assembled by subtraction a field added to the merchant's record
  * later would arrive here too and nobody would be told; assembled by addition,
  * the same field arrives nowhere until somebody writes it down.
+ *
+ * The configuration is asked for because one field is an address, and the
+ * address has to be the one this gateway is published at. It takes the
+ * configuration itself rather than a string so that the base cannot quietly
+ * become one read off a request somewhere up the call.
  */
-export function agentOrderStatusOf(record: StoredOrder): AgentOrderStatus {
+export function agentOrderStatusOf(
+  record: StoredOrder,
+  config: Pick<GatewayConfig, "publicBaseUrl">,
+): AgentOrderStatus {
   const status = outcomeFor(record.order);
   const closure = record.order.closure;
 
   return {
     order_id: record.order.id,
+    // Where the agent comes back for this order, and the one place that
+    // address is written. It is the configured base and not the request's
+    // own, for the reason `PaymentEdge.resourceUrlFor` gives about the
+    // product's address: behind the proxy that ends an agent's TLS connection
+    // the request says plain http, and its host and its forwarding headers are
+    // whatever the proxy or the caller wrote — an address built from them
+    // would send a paid order's identifier wherever they pointed. The
+    // identifier goes through the route table's substitution rather than being
+    // pasted in, because one may hold a character that would split the path.
+    status_url: `${config.publicBaseUrl}${expandPath(API_ROUTES.get_order_status.path, {
+      order_id: record.order.id,
+    })}`,
     status,
     // Null where nobody named a price rather than the card's own number: an
     // order that closed before it was priced was never sold at anything, and

@@ -347,9 +347,9 @@ export const PurchaseRequestSchema = z
 /**
  * What became of a purchase, told to the agent that made it.
  *
- * Four fields, and the shape of the list is the decision rather than its
- * length. This document is what the buyer is owed — where their order stands,
- * what it cost them, and the goods once those exist — and it is deliberately
+ * The shape of the list is the decision rather than its length. This document
+ * is what the buyer is owed — where their order stands, what it cost them, the
+ * goods once those exist, and where to ask again — and it is deliberately
  * smaller than the merchant's own view of the same order. It carries no
  * merchant, no merchant's key for the product, none of the parameters the
  * buyer sent and nothing about any other order, because whoever holds an
@@ -383,6 +383,40 @@ export const PurchaseRequestSchema = z
 export const AgentOrderStatusSchema = z
   .strictObject({
     order_id: IdentifierSchema,
+
+    /**
+     * Where this order is read again: the whole address of its status route,
+     * scheme and host included.
+     *
+     * It exists for the agent that bought goods that come later. That agent
+     * holds this document and nothing else, it has already paid, and the
+     * goods are collected at this address. The path is not something it could
+     * work out from what it holds — the purchase was made at an address that
+     * names the product rather than the order — and a guess that misses is
+     * answered `no_such_route`, which says nothing about the order at all.
+     *
+     * Absolute, so that it is called as it stands: a bare path would have to
+     * be joined onto a host the agent was never told was the right one. It is
+     * built from the address the gateway is configured to answer as and never
+     * from the request that asked, because behind the proxy that ends an
+     * agent's TLS connection the request says plain http and names whatever
+     * host the proxy or the caller wrote. Plain http is allowed by the pattern
+     * all the same, because a gateway on a developer's own machine answers on
+     * it; a deployment's address is https because its configuration is.
+     *
+     * The scheme is a pattern rather than zod's own protocol option for the
+     * reason the price hook's is (`PriceCheckSchema` in `card.ts`): a pattern
+     * is what survives into the JSON Schema export, so a client generated from
+     * that document refuses a bare path as well. It reads the scheme without
+     * regard to case, as a URL scheme is read.
+     */
+    status_url: z
+      .url()
+      .regex(
+        /^https?:\/\//i,
+        "an order's status address is a whole http or https address, not a path",
+      ),
+
     status: OrderStatusSchema,
 
     /**
@@ -455,7 +489,7 @@ export const AgentOrderStatusSchema = z
   })
   .meta({
     description:
-      'What became of one purchase, in the words an agent and a merchant both read: where the order stands, what it was priced at, the goods once they are the buyer\'s, and why the merchant would not sell where that is what ended it. It is smaller than the merchant\'s own view of the same order on purpose — no merchant, no merchant\'s own key for the product, none of the purchase parameters and nothing about any other order. The price is what the buyer was asked for and not proof that anything was charged: an order that was priced and then ended without a sale still carries it, and the status is what says which happened. A null price means nobody ever named one for this order, and a null delivery means there are no goods here to hand over; both fields are always present, because an absent field is a silence a reader cannot tell from an oversight. "refusal" is the exception and is present only where a merchant refused: their own short code to branch on and their own sentence to show, carried across unchanged. The code is an open set — "out_of_stock", "invalid_params" and "cannot_fulfill" are read the same way by everybody, and a merchant whose reason fits none of them sends their own word, so an unfamiliar code has to fall through to the sentence rather than break a reader. An absent "refusal" means there is no refusal to quote and never that one was dropped, which leaves two endings still coarse: "rejected" also covers a product that was gone and a payment that failed its check, and neither of those was worded by anybody — the first because a price answer of "not available" carries no words, the second because it is refused at the door in an error envelope instead. A null delivery is likewise not a promise that no goods were ever made: a purchase whose charge failed or went unanswered can leave goods the buyer has not paid for, and this document withholds them rather than describing them. Every answer says whether the money behind the purchase was real: a gateway settling against nothing produces every other field here exactly as a real charge would, so a reader taking this for proof of a payment has to read that word first.',
+      'What became of one purchase, in the words an agent and a merchant both read: where the order stands, what it was priced at, the goods once they are the buyer\'s, and why the merchant would not sell where that is what ended it. "status_url" is where this document is read again — the whole address of the order\'s status route, and the place an agent that bought goods that come later collects them. It is absolute and called as it stands, and it is the address the gateway is configured to answer as, never one taken from the request that asked. It is smaller than the merchant\'s own view of the same order on purpose — no merchant, no merchant\'s own key for the product, none of the purchase parameters and nothing about any other order. The price is what the buyer was asked for and not proof that anything was charged: an order that was priced and then ended without a sale still carries it, and the status is what says which happened. A null price means nobody ever named one for this order, and a null delivery means there are no goods here to hand over; both fields are always present, because an absent field is a silence a reader cannot tell from an oversight. "refusal" is the exception and is present only where a merchant refused: their own short code to branch on and their own sentence to show, carried across unchanged. The code is an open set — "out_of_stock", "invalid_params" and "cannot_fulfill" are read the same way by everybody, and a merchant whose reason fits none of them sends their own word, so an unfamiliar code has to fall through to the sentence rather than break a reader. An absent "refusal" means there is no refusal to quote and never that one was dropped, which leaves two endings still coarse: "rejected" also covers a product that was gone and a payment that failed its check, and neither of those was worded by anybody — the first because a price answer of "not available" carries no words, the second because it is refused at the door in an error envelope instead. A null delivery is likewise not a promise that no goods were ever made: a purchase whose charge failed or went unanswered can leave goods the buyer has not paid for, and this document withholds them rather than describing them. Every answer says whether the money behind the purchase was real: a gateway settling against nothing produces every other field here exactly as a real charge would, so a reader taking this for proof of a payment has to read that word first.',
   });
 
 /**
@@ -1038,7 +1072,7 @@ export const API_ROUTES = Object.freeze({
     path: "/x402/:item_id/purchase",
     auth: "none",
     description:
-      "Buying one product. The payment is what stands in for authorisation, so there is no key on this call. It begins with the payment exchange of the x402 protocol: a call with no payment on it is answered with a challenge, which travels in a header and carries no document. What a paid purchase is answered with is the state of the order it made — the same document the status route answers with, whatever the card's mode and whether the purchase ended in the goods or in something else, so an agent that bought and an agent that came back later read one shape. No receipt of ours is in it: a receipt is the merchant's record of the sale and is read behind the merchant's key. What an agent is told about its own money is the price and the word for whether that money was real, and, where the payment executed as the last step of this exchange, the settlement the payment layer signs into a header on this answer — a card whose money moves as the order is opened has already spent that step, so no settlement comes back here and the two fields are the whole of it. The address answers on GET as well as on POST, because that is how the validators and crawlers that list a paid resource ask for it. An unpaid call that carries no document — a GET, or a POST with nothing or with an empty document — is answered with the challenge and never a purchase, and a GET is never read for payment; the challenge describes the purchase, which is a POST with a JSON body. An unpaid POST that carries that document is answered with the price of the very order it opened, and a document of some other shape is refused with the fields that are wrong. A product that is not on sale answers neither method with a challenge: it is refused, so that a catalog built from these challenges never carries a product nobody can buy.",
+      "Buying one product. The payment is what stands in for authorisation, so there is no key on this call. It begins with the payment exchange of the x402 protocol: a call with no payment on it is answered with a challenge, which travels in a header and carries no document. What a paid purchase is answered with is the state of the order it made — the same document the status route answers with, whatever the card's mode and whether the purchase ended in the goods or in something else, so an agent that bought and an agent that came back later read one shape. That document names, in status_url, the whole address where the order is read again, which is where goods that come later are collected. No receipt of ours is in it: a receipt is the merchant's record of the sale and is read behind the merchant's key. What an agent is told about its own money is the price and the word for whether that money was real, and, where the payment executed as the last step of this exchange, the settlement the payment layer signs into a header on this answer — a card whose money moves as the order is opened has already spent that step, so no settlement comes back here and the two fields are the whole of it. The address answers on GET as well as on POST, because that is how the validators and crawlers that list a paid resource ask for it. An unpaid call that carries no document — a GET, or a POST with nothing or with an empty document — is answered with the challenge and never a purchase, and a GET is never read for payment; the challenge describes the purchase, which is a POST with a JSON body. An unpaid POST that carries that document is answered with the price of the very order it opened, and a document of some other shape is refused with the fields that are wrong. A product that is not on sale answers neither method with a challenge: it is refused, so that a catalog built from these challenges never carries a product nobody can buy.",
     request: PurchaseRequestSchema,
     also_answers_on: ["GET"],
     response: { document: AgentOrderStatusSchema },
@@ -1049,7 +1083,7 @@ export const API_ROUTES = Object.freeze({
     path: "/x402/orders/:order_id/status",
     auth: "order_id",
     description:
-      "What became of a purchase, for the agent that made it: where the order stands, what it sold for, and the goods once they are the buyer's. It is the route an agent that bought a product whose goods come later collects them on, and without it half a catalogue takes money and hands back an order nobody can act on. Knowing the order's identifier is the proof (ADR-0011), so this call takes no key: an agent has no account and no registration, and the identifier is handed to exactly one party. No answer of ours hands the agent this address either — it is built from the order's identifier and the address the agent already bought at, which is why it is written the way a stranger would write it and carries no version to guess at. Two things follow for whoever mounts it. Which door a call is behind is read off auth and never off the address, whatever the prefixes happen to agree on today. And an identifier that names no order must be answered exactly as any other unknown one is, or the refusal becomes a way of counting the orders behind it.",
+      "What became of a purchase, for the agent that made it: where the order stands, what it sold for, and the goods once they are the buyer's. It is the route an agent that bought a product whose goods come later collects them on, and without it half a catalogue takes money and hands back an order nobody can act on. Every answer that carries the order document names this address in status_url, whole and ready to call — the purchase's own answer included — so an agent is never left to build it. An order whose goods come later ends by the card's delivery deadline: fulfill_deadline_seconds in the catalog where the card names one, and a day where it names none. Knowing the order's identifier is the proof (ADR-0011), so this call takes no key: an agent has no account and no registration, and the identifier is handed to exactly one party. Two things follow for whoever mounts it. Which door a call is behind is read off auth and never off the address, whatever the prefixes happen to agree on today. And an identifier that names no order must be answered exactly as any other unknown one is, or the refusal becomes a way of counting the orders behind it.",
     response: { document: AgentOrderStatusSchema },
   },
 }) satisfies Readonly<Record<string, RouteDefinition>>;
