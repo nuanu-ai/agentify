@@ -116,7 +116,9 @@ export function PendingScanExperience({
       <section className={styles.card}>
         <header className={styles.header}>
           <span>Private website diagnostic</span>
-          <span className={styles.status}>{starting ? "starting" : state.replace("-", " ")}</span>
+          <span className={styles.status} data-state={state}>
+            {starting ? "starting" : state.replace("-", " ")}
+          </span>
         </header>
         <div className={styles.body}>
           <h1>{starting ? "Your report is getting ready" : "Scan needs attention"}</h1>

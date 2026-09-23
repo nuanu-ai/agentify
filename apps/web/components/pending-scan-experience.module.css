@@ -49,6 +49,26 @@
   animation: pulse 1.4s ease-in-out infinite;
 }
 
+/* Only a scan that is being started pulses in the accent. Every other state
+   has stopped and takes one of the report's verdict colours. "error" and
+   "hard limit" mean the scanner answered this request with a failure or a
+   refusal, and they are a fail. "busy", "challenge" and "missing" mean the
+   request has had no such answer: the scanner is full or out of reach, it
+   asks for a challenge first, or this tab holds no request to send. They are
+   a partial. Whether a retry button is offered does not decide the colour. */
+.status:not([data-state="starting"]) {
+  color: var(--partial);
+}
+
+.status:not([data-state="starting"])::before {
+  animation: none;
+}
+
+.status[data-state="error"],
+.status[data-state="hard-limit"] {
+  color: var(--fail);
+}
+
 .body {
   padding: 36px 28px 30px;
 }

@@ -1,7 +1,10 @@
-.wrap {
-  min-width: 0;
-}
-
+/*
+ * The component draws no box of its own: its row of buttons, its message and
+ * its fallback field join the layout of whatever holds them. In a row of
+ * several actions a message or a field therefore opens on a line of its own
+ * under all the buttons, instead of widening one button's column and pushing
+ * its neighbours about.
+ */
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -18,13 +21,6 @@
   gap: 8px;
   font: 600 0.875rem / 1.2 var(--font-sans);
   cursor: pointer;
-}
-
-.small {
-  min-height: 34px;
-  padding: 0 12px;
-  font-size: 0.8125rem;
-  font-weight: 500;
 }
 
 .button:disabled {
@@ -66,7 +62,8 @@
 
 .status {
   display: block;
-  min-height: 1.2em;
+  order: 1;
+  width: 100%;
   margin-top: 8px;
   color: var(--muted);
   font: 0.75rem / 1.5 var(--font-mono);
@@ -74,6 +71,8 @@
 
 .fallback {
   display: grid;
+  order: 1;
+  width: 100%;
   gap: 8px;
   margin-top: 8px;
 }

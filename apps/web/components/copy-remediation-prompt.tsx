@@ -57,7 +57,6 @@ export function CopyRemediationPrompt({
   promptUrl,
   tokenStorageKey,
   secondary = false,
-  small = false,
 }: Readonly<{
   allowDownload?: boolean;
   contactGateScanId?: string;
@@ -67,7 +66,6 @@ export function CopyRemediationPrompt({
   prompt?: string;
   promptUrl?: string;
   secondary?: boolean;
-  small?: boolean;
   tokenStorageKey?: string;
 }>) {
   const [state, setState] = useState<CopyState>("idle");
@@ -159,13 +157,15 @@ export function CopyRemediationPrompt({
     }
   }
 
-  const buttonClass = `${styles.button} ${small ? styles.small : ""}`;
+  // Only a message the visitor has to act on is drawn. "Copied" is already on
+  // the button, so the success line is announced but takes no room.
+  const messageShown = state === "gated" || state === "fallback" || state === "error";
 
   return (
-    <div className={styles.wrap}>
+    <>
       <div className={styles.actions}>
         <button
-          className={`${buttonClass} ${secondary ? styles.secondary : styles.primary}`}
+          className={`${styles.button} ${secondary ? styles.secondary : styles.primary}`}
           disabled={state === "loading"}
           onClick={() => void copy()}
           type="button"
@@ -182,7 +182,7 @@ export function CopyRemediationPrompt({
         </button>
         {allowDownload ? (
           <button
-            className={`${buttonClass} ${styles.download}`}
+            className={`${styles.button} ${styles.download}`}
             disabled={state === "loading"}
             onClick={() => void download()}
             type="button"
@@ -191,7 +191,7 @@ export function CopyRemediationPrompt({
           </button>
         ) : null}
       </div>
-      <span aria-live="polite" className={styles.status}>
+      <span aria-live="polite" className={messageShown ? styles.status : "sr-only"}>
         {state === "copied"
           ? "Prompt copied to your clipboard."
           : state === "gated"
@@ -215,6 +215,6 @@ export function CopyRemediationPrompt({
           />
         </div>
       ) : null}
-    </div>
+    </>
   );
 }

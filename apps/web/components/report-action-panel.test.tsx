@@ -31,6 +31,16 @@ describe("ReportActionPanel", () => {
     expect(markup.match(/Copy AI fix prompt/g)).toHaveLength(1);
   });
 
+  it.each([
+    ["sharing and prompts are both off", { shareEnabled: false, promptEnabled: false }],
+    [
+      "sharing is on but the scan has no score to share",
+      { promptEnabled: false, preview: { ...baseProps.preview, score: null } },
+    ],
+  ])("draws no panel when %s", (_case, overrides) => {
+    expect(renderToStaticMarkup(<ReportActionPanel {...baseProps} {...overrides} />)).toBe("");
+  });
+
   it("drops prompt actions when the export flag is off", () => {
     const markup = renderToStaticMarkup(<ReportActionPanel {...baseProps} promptEnabled={false} />);
     expect(markup).toContain("Copy share link");
