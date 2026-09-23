@@ -20,13 +20,6 @@
   cursor: pointer;
 }
 
-.small {
-  min-height: 34px;
-  padding: 0 12px;
-  font-size: 0.8125rem;
-  font-weight: 500;
-}
-
 .button:disabled {
   border-color: var(--line-strong);
   background: var(--surface-sunken);

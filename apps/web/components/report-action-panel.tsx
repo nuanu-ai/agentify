@@ -84,12 +84,10 @@ export function ReportActionPanel({
             secondary
           />
         ) : null}
+        {promptEnabled ? (
+          <CopyRemediationPrompt label="Copy developer brief" prompt={devBrief} secondary />
+        ) : null}
       </div>
-      {promptEnabled ? (
-        <div className={styles.secondaryRow}>
-          <CopyRemediationPrompt label="Copy developer brief" prompt={devBrief} secondary small />
-        </div>
-      ) : null}
       {shareShown ? (
         <p className={styles.caption}>
           The public link shows only the domain, level, score, and scan date. Prompts stay private.
