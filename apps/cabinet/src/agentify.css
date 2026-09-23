@@ -361,9 +361,10 @@ td.ident {
  * Its column has a width of its own, because a column that is allowed to wrap
  * is the one a table takes room from first. An order's or a receipt's
  * identifier is thirty-six characters, and at eighteen to a line it takes two
- * lines rather than a third of the table; a merchant's own key is set wide
- * enough for the twenty characters such keys run to, so it stays on one line
- * rather than breaking at every hyphen.
+ * lines rather than a third of the table. A merchant's own key gets twenty
+ * characters, which hold a key like `rented-number-us-30d` on one line rather
+ * than breaking it at every hyphen; a longer key, such as the ones the
+ * WooCommerce connector writes, wraps inside that width.
  */
 td.key,
 td.ident,
