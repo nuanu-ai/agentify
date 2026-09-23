@@ -1,17 +1,13 @@
 -- Counts and order-independent row fingerprints of retained customer records.
 -- Queue runtime, worker heartbeat and expiry bookkeeping are intentionally
 -- excluded. The output contains no row values, credentials or customer IDs.
--- Live approval is new operator metadata. Exclude only that key so adding its
--- nullable column preserves the fingerprint of every pre-existing merchant
--- field. Woo revision is likewise absent before migration 0009 and exactly
--- "legacy" afterwards; only that migration-produced value is normalized.
--- A real grant revision remains part of the protected row. The reviewed
--- approval set is reconciled separately before activation.
+-- Woo revision is absent before the cabinet's migration 0009 and exactly
+-- "legacy" afterwards; only that migration-produced value is normalized. A
+-- real grant revision remains part of the protected row.
 SELECT format(
   'SELECT %L, count(*), coalesce(sum((''x'' || substr(md5((%s)::text), 1, 16))::bit(64)::bigint::numeric), 0) FROM public.%I t;',
   c.relname,
-  CASE WHEN c.relname = 'merchants' THEN 'to_jsonb(t) - ''live_approved_at'''
-       WHEN c.relname = 'cabinet_woo_shops' THEN 'CASE WHEN to_jsonb(t)->>''revision'' = ''legacy'' THEN to_jsonb(t) - ''revision'' ELSE to_jsonb(t) END'
+  CASE WHEN c.relname = 'cabinet_woo_shops' THEN 'CASE WHEN to_jsonb(t)->>''revision'' = ''legacy'' THEN to_jsonb(t) - ''revision'' ELSE to_jsonb(t) END'
        ELSE 'to_jsonb(t)' END,
   c.relname
 )
@@ -23,17 +19,4 @@ AND c.relname IN (
   'leads','lead_scans','registration_intents','report_sessions','scan_shares'
 )
 ORDER BY c.relname
-\gexec
-
--- Preserve approval metadata independently on ordinary releases. A missing
--- pre-migration column and its new NULL default have the same JSON value.
--- The first reviewed grant happens after this migration comparison, while
--- writers remain stopped, and its complete ID set is then checked separately.
-SELECT format(
-  'SELECT ''merchant_live_approvals'', count(*), coalesce(sum((''x'' || substr(md5(jsonb_build_array(t.id, to_jsonb(t)->''live_approved_at'')::text), 1, 16))::bit(64)::bigint::numeric), 0) FROM public.%I t;',
-  c.relname
-)
-FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-WHERE n.nspname = 'public' AND c.relname = 'merchants'
-AND c.relkind IN ('r','p') AND NOT c.relispartition
 \gexec

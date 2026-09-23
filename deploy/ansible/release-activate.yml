@@ -119,22 +119,6 @@
       changed_when: false
       register: current_public_catalog
 
-    - name: Identify the first live-approval schema activation
-      ansible.builtin.command:
-        argv: [docker, exec, "{{ channel.postgres_container }}", psql, -U, agentify_commerce, -d, agentify_commerce, -At, -v, ON_ERROR_STOP=1, -c, "select count(*) from information_schema.columns where table_schema='public' and table_name='merchants' and column_name='live_approved_at'"]
-      changed_when: false
-      register: live_approval_column
-      when: channel_name == 'production'
-
-    - name: Require the reviewed approval inventory before stopping production
-      ansible.builtin.assert:
-        that:
-          - release_initial_live_merchant_ids is defined
-          - release_initial_live_merchant_ids is sequence and release_initial_live_merchant_ids is not string and release_initial_live_merchant_ids is not mapping
-          - release_initial_live_merchant_ids | unique | length == release_initial_live_merchant_ids | length
-        fail_msg: The first live-approval migration needs the privately reviewed exact merchant ID inventory. This does not grant approval.
-      when: channel_name == 'production' and live_approval_column.stdout == '0'
-
     - name: Mark the start of the non-automatic recovery boundary
       ansible.builtin.copy:
         content: "{{ {'revision': release_revision, 'channel': channel_name, 'state': 'activating'} | to_nice_json }}\n"
@@ -280,29 +264,6 @@
           fi
         done
       changed_when: false
-
-    - name: Hold the first live cutover for the separate private operator command
-      ansible.builtin.pause:
-        prompt: >-
-          Commerce writers remain stopped and this release lock is held.
-          In a separate SSH session, run the private approval command from this
-          exact staged image and environment for the reviewed existing accounts.
-          Press Enter only when those commands have completed. The next check
-          refuses activation unless the complete approved set matches inventory.
-      when: channel_name == 'production' and live_approval_column.stdout == '0' and release_initial_live_merchant_ids | length > 0
-
-    - name: Read the complete approval set before first enforcement
-      ansible.builtin.command:
-        argv: [docker, exec, "{{ channel.postgres_container }}", psql, -U, agentify_commerce, -d, agentify_commerce, -At, -v, ON_ERROR_STOP=1, -c, "select coalesce(json_agg(id order by id),'[]'::json) from merchants where live_approved_at is not null"]
-      changed_when: false
-      register: first_live_approval_set
-      when: channel_name == 'production' and live_approval_column.stdout == '0'
-
-    - name: Refuse unreviewed grants or missing approvals before reopening writers
-      ansible.builtin.assert:
-        that: (first_live_approval_set.stdout | from_json | sort) == (release_initial_live_merchant_ids | sort)
-        fail_msg: The approved merchant set differs from the reviewed inventory. Keep writers stopped and reconcile through the private operator.
-      when: channel_name == 'production' and live_approval_column.stdout == '0'
 
     - name: Start scanner runtime from the same source revision accepted for commerce
       ansible.builtin.command:
