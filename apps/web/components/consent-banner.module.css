@@ -27,30 +27,27 @@
   min-width: 240px;
 }
 
+/* The title stands on its own line above the sentence. Run into it, the two
+   read as one: "…measures this visitOptional analytics…". Beside the buttons
+   the two lines take about the buttons' own height, so the bar does not grow. */
 .bannerCopy strong {
+  display: block;
   font-size: 0.9375rem;
 }
 
-/* The banner's two sentences run as one line of text beside the buttons. The
-   words are unchanged; what changes is how much of the page underneath the bar
-   covers — with the compact buttons it is about a third shorter, which matters
-   most on the report, where it sat over the bottom of the result. */
 .copy {
-  display: inline;
   margin: 0;
   color: var(--fg-2);
   font-size: 0.875rem;
   line-height: 1.5;
 }
 
-.dialog .copy {
-  display: block;
-}
-
 .copy a {
   color: var(--accent);
 }
 
+/* The buttons keep their own width and wrap, on a phone as well: stacked
+   full-width, the three of them made the bar a third of the screen. */
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -149,15 +146,6 @@
 @media (max-width: 600px) {
   .banner {
     padding: 14px 16px;
-  }
-
-  .actions {
-    display: grid;
-    width: 100%;
-  }
-
-  .actions button {
-    width: 100%;
   }
 
   .backdrop {
