@@ -1,0 +1,297 @@
+#!/usr/bin/env python3
+"""Releases one revision on this host's channel.
+
+    sudo agentify-release app-v1.2.3        a tag, a branch, or on TEST a full SHA
+    agentify-release --timer deploy-test    what TEST's timer runs once a minute
+
+It resolves the name with `git ls-remote` against the public repository, finds
+the revision's five images by the digests its image build published, fetches
+the revision, and runs that revision's deploy/activate.sh with the images
+pinned by those digests. It needs no GitHub credential and holds no host
+credential for GitHub (ADR-0016). The channel, the repository and the state
+directory come from /etc/agentify/release.json, which deploy/install.sh writes.
+
+The images are read by the rule in the header of .github/workflows/images.yml:
+exactly one successful push run of the image build for the commit, that run's
+`digests` job's check run, every page of its annotations counted against the
+check run's count, and exactly one annotation titled `images`. A build still
+running is a wait. PRODUCTION adds its conditions to that one path: the name
+is an app-v* tag, the run is on main, main's CI run for the commit succeeded,
+and the commit moves forward from the revision this host runs.
+
+State is two files in the state directory: `current`, the revision the last
+successful activation verified, and `failed`, the last revision that was
+refused or failed. A manual run never skips anything and is how a release is
+retried. Timer mode (TEST only) exits 0 without a word when the tag names
+`current` or `failed`, and exits 0 to try again at the next tick while the
+images are being built or another release holds the lock.
+
+Exit codes: 0 done, or in timer mode nothing to do yet; 75 a manual run that
+has to wait, nothing changed; 1 a refusal; anything else is activate.sh's own.
+"""
+
+import argparse
+import fcntl
+import http.client
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import urllib.request
+
+
+API = "https://api.github.com/repos/nuanu-ai/agentify"
+IMAGES = ("app", "web", "scanner", "scanner-worker", "scanner-privacy")
+FULL_SHA = re.compile(r"[0-9a-f]{40}")
+NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")
+APP_TAG = re.compile(r"app-v[0-9A-Za-z._-]+")
+
+
+class Refusal(Exception):
+    """This revision must not run here."""
+
+
+class Wait(Exception):
+    """Not decidable yet, and nothing changed."""
+
+
+def say(message):
+    print(f"agentify-release: {message}", flush=True)
+
+
+def fetch_json(url):
+    request = urllib.request.Request(
+        url, headers={"Accept": "application/vnd.github+json", "User-Agent": "agentify-release"}
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            return json.load(response)
+    except (OSError, ValueError, http.client.HTTPException) as error:
+        raise Wait(f"GitHub did not answer {url} ({error})") from error
+
+
+def field(document, name, kind):
+    """document[name] when it is a `kind`; an empty list or dict, or None, when it is not."""
+    value = document.get(name) if isinstance(document, dict) else None
+    if isinstance(value, kind) and not isinstance(value, bool):
+        return value
+    return kind() if kind in (list, dict) else None
+
+
+def git(*args, fails=Refusal, **options):
+    """A git command's output. What reaches the network fails as a Wait; what is local, as a Refusal."""
+    result = subprocess.run(["git", *map(str, args)], text=True, capture_output=True, **options)
+    if result.returncode != 0:
+        raise fails(f"git {' '.join(map(str, args[:3]))} failed: {(result.stderr or result.stdout).strip()}")
+    return result.stdout.strip()
+
+
+def resolve(repository, name, production):
+    """The commit a name stands for, as the public repository says now; None if it names nothing."""
+    if not NAME.fullmatch(name):
+        raise Refusal(f"{name!r} is not a tag, branch or commit name")
+    if production and not APP_TAG.fullmatch(name):
+        raise Refusal(f"production releases an app-v* tag, and {name} is not one")
+    refs = {}
+    for line in git("ls-remote", repository, f"refs/tags/{name}", f"refs/tags/{name}^{{}}", f"refs/heads/{name}", fails=Wait).splitlines():
+        sha, _, ref = line.partition("\t")
+        refs[ref] = sha
+    found = refs.get(f"refs/tags/{name}^{{}}") or refs.get(f"refs/tags/{name}")
+    if found is None and not production:
+        found = refs.get(f"refs/heads/{name}") or (name if FULL_SHA.fullmatch(name) else None)
+    return found
+
+
+def runs(revision, production, status=None):
+    query = f"event=push&head_sha={revision}&per_page=100"
+    query += "&branch=main" if production else ""
+    query += f"&status={status}" if status else ""
+    answer = fetch_json(f"{API}/actions/workflows/images.yml/runs?{query}")
+    return [
+        run
+        for run in field(answer, "workflow_runs", list)
+        if isinstance(run, dict)
+        and run.get("head_sha") == revision
+        and run.get("event") == "push"
+        and (run.get("head_branch") == "main" or not production)
+    ]
+
+
+def image_digests(revision, production):
+    """The five digests the commit's image build published, by the rule in images.yml's header."""
+    built = runs(revision, production, status="success")
+    if len(built) != 1:
+        if not built and any(run.get("status") != "completed" for run in runs(revision, production)):
+            raise Wait(f"the images of {revision} are still being built")
+        where = "the head of a push to main" if production else "the head of a pushed branch"
+        raise Refusal(
+            f"GitHub lists {len(built)} successful image builds of {revision} where the rule wants exactly one; "
+            f"a build starts when a commit is pushed as {where}, so if that happened moments ago, "
+            "run this again once its build has started"
+        )
+    jobs = fetch_json(f"{API}/actions/runs/{built[0].get('id')}/jobs?per_page=100")
+    named = [job for job in field(jobs, "jobs", list) if isinstance(job, dict) and job.get("name") == "digests"]
+    check_run = str(named[0].get("check_run_url")) if len(named) == 1 else ""
+    if not check_run.startswith(f"{API}/check-runs/"):
+        raise Refusal(f"the image build of {revision} has no single digests job to read its images notice from")
+    count = field(field(fetch_json(check_run), "output", dict), "annotations_count", int)
+    if count is None:
+        raise Refusal(f"the digests check run of {revision} does not say how many annotations it has")
+    annotations, page = [], 1
+    while True:
+        batch = fetch_json(f"{check_run}/annotations?per_page=100&page={page}")
+        if not isinstance(batch, list):
+            raise Refusal(f"page {page} of the annotations of {revision}'s digests check run is not a list")
+        annotations += batch
+        if len(batch) < 100 or len(annotations) > count:
+            break
+        page += 1
+    if len(annotations) != count:
+        raise Refusal(
+            f"the digests check run of {revision} holds {len(annotations)} annotations where its count "
+            f"says {count}, so the images notice cannot be read whole"
+        )
+    notices = [note for note in annotations if isinstance(note, dict) and note.get("title") == "images"]
+    if len(notices) != 1:
+        raise Refusal(f"the digests check run of {revision} has {len(notices)} images notices where the rule wants exactly one")
+    try:
+        document = json.loads(notices[0].get("message") or "")
+    except ValueError:
+        document = None
+    if not isinstance(document, dict) or sorted(document) != sorted(IMAGES) or not all(
+        re.fullmatch(rf"ghcr\.io/nuanu-ai/agentify-{re.escape(name)}@sha256:[0-9a-f]{{64}}", str(document[name]))
+        for name in IMAGES
+    ):
+        raise Refusal(f"the images notice of {revision} is not the five image digests")
+    return {f"AGENTIFY_{name.upper().replace('-', '_')}_IMAGE": document[name] for name in IMAGES}
+
+
+def require_ci(revision):
+    answer = fetch_json(f"{API}/actions/workflows/ci.yml/runs?event=push&branch=main&head_sha={revision}&per_page=100")
+    ci = [run for run in field(answer, "workflow_runs", list) if isinstance(run, dict) and run.get("head_sha") == revision]
+    if not ci:
+        raise Refusal(
+            f"GitHub lists no CI run on main for {revision}, so nothing says it is fit to release; "
+            "if it reached main moments ago, run this again once CI has started"
+        )
+    if ci[0].get("status") != "completed":
+        raise Wait(f"main's CI run for {revision} has not finished")
+    if ci[0].get("conclusion") != "success":
+        raise Refusal(f"main's CI run for {revision} concluded {ci[0].get('conclusion')}")
+
+
+def read(path):
+    return path.read_text().strip() if path.exists() else None
+
+
+def write(path, revision):
+    temporary = path.with_name(f".{path.name}")
+    temporary.write_text(revision + "\n")
+    os.replace(temporary, path)
+
+
+def activate(config, state, name, revision, mirror):
+    production = config["channel"] == "production"
+    images = image_digests(revision, production)
+    git("-C", mirror, "fetch", "-q", "--no-tags", config["repository"], revision, "+refs/heads/main:refs/remotes/origin/main", fails=Wait)
+    if production:
+        require_ci(revision)
+        running = read(state / "current")
+        if running and subprocess.run(["git", "-C", str(mirror), "merge-base", "--is-ancestor", running, revision]).returncode:
+            raise Refusal(f"{revision} does not move forward from {running}, which this host runs")
+    path = state / "checkouts" / revision
+    if not path.exists():
+        path.parent.mkdir(exist_ok=True)
+        git("-C", mirror, "worktree", "prune")
+        # The postgres image reads its init scripts from this tree as its own
+        # user, so the files are readable by everyone, whatever the umask.
+        git("-C", mirror, "worktree", "add", "--detach", path, revision, preexec_fn=lambda: os.umask(0o022))
+    if git("-C", path, "rev-parse", "HEAD") != revision or git("-C", path, "status", "--porcelain"):
+        raise Refusal(f"{path} is not a clean checkout of {revision}")
+    if not (path / "deploy" / "activate.sh").is_file():
+        raise Refusal(f"{revision} has no deploy/activate.sh, so it predates this way of releasing")
+    say(f"activating {name} ({revision}) on {config['channel']}")
+    return subprocess.run(
+        [str(path / "deploy" / "activate.sh"), config["channel"], revision], cwd=path, env={**os.environ, **images}
+    ).returncode
+
+
+def release(config, name, timer):
+    state = Path(config["stateDirectory"])
+    if timer and config["channel"] != "test":
+        raise Refusal("only TEST releases by timer; a person releases production")
+    # Nothing here is secret (revision names, checkouts of the public
+    # repository, public digests), so a person on the host can read it.
+    state.mkdir(mode=0o755, parents=True, exist_ok=True)
+    with (state / "release.lock").open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise Wait("another agentify-release holds this host's lock")
+        revision = resolve(config["repository"], name, config["channel"] == "production")
+        if revision is None:
+            if timer:
+                return 0
+            raise Refusal(f"{name} names nothing in the repository")
+        if timer and revision in (read(state / "current"), read(state / "failed")):
+            return 0
+        mirror = state / "repository.git"
+        if not mirror.exists():
+            git("init", "-q", "--bare", mirror)
+        try:
+            code = activate(config, state, name, revision, mirror)
+        except Refusal:
+            write(state / "failed", revision)
+            raise
+        if code == 75:
+            raise Wait("activation found its lock held and changed nothing")
+        if code != 0:
+            write(state / "failed", revision)
+            say(f"{revision} failed; fix the cause and run agentify-release {name} again")
+            return code
+        write(state / "current", revision)
+        if read(state / "failed") == revision:
+            (state / "failed").unlink()
+        for other in (state / "checkouts").iterdir():
+            if other.name != revision:
+                subprocess.run(["git", "-C", str(mirror), "worktree", "remove", "--force", str(other)], capture_output=True)
+        subprocess.run(["git", "-C", str(mirror), "worktree", "prune"], capture_output=True)
+        say(f"{config['channel']} runs {revision}, verified")
+        return 0
+
+
+def read_config(path):
+    config = json.loads(Path(path).read_text())
+    if not isinstance(config, dict) or set(config) != {"channel", "repository", "stateDirectory"}:
+        raise ValueError(f"{path} names exactly channel, repository and stateDirectory")
+    if config["channel"] not in ("test", "production") or not Path(config["stateDirectory"]).is_absolute():
+        raise ValueError(f"in {path} the channel is test or production, and the state directory an absolute path")
+    return config
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Release one revision on this host's channel")
+    parser.add_argument("name", help="an app-v* tag on production; a tag, branch or full SHA on test")
+    parser.add_argument("--timer", action="store_true", help="skip what is current or failed, and wait quietly")
+    parser.add_argument("--config", type=Path, default=Path("/etc/agentify/release.json"))
+    arguments = parser.parse_args(argv)
+    try:
+        return release(read_config(arguments.config), arguments.name, arguments.timer)
+    except Wait as wait:
+        say(f"{wait}; nothing changed" + ("; the next tick asks again" if arguments.timer else ", run this again later"))
+        return 0 if arguments.timer else 75
+    except Refusal as refusal:
+        say(f"refused: {refusal}")
+        return 1
+    except PermissionError as error:
+        say(f"agentify-release runs as root: sudo agentify-release {arguments.name} ({error})")
+        return 1
+    except (OSError, ValueError) as error:
+        say(f"refused its own configuration or state: {error}")
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -177,4 +177,5 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: ./scripts/check-decisions.sh
+      - run: python3 -m unittest discover -s deploy -p 'test_*.py'
       - run: python3 -m unittest discover -s deploy/ansible -p 'test_*.py'
