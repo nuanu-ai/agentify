@@ -57,14 +57,48 @@
 - [ ] Какие языки/технологии предпочтительны или исключены?
 - [ ] Что важнее на старте: скорость итераций или задел на масштаб?
 - [ ] Какие интеграции обязательны с первого дня?
-- [ ] Одноразовая машинерия перехода, которую нужно удалить, когда оба канала
-      активируют слитый граф: защита в `release-stage.yml` вместе с
-      `retired_scanner_project` в `release-vars.yml`, и переход идентичности
+- [ ] Одноразовая машинерия перехода: защита в `release-stage.yml` вместе с
+      `retired_scanner_project` в `release-vars.yml` и переход идентичности
       (`prepare-identity-cutover.py`, `--identity-preflight`,
       `release-identity-target-fingerprint.sql`,
-      `apps/cabinet/src/scanner-identity-cutover.ts`). Удаляем после того, как
-      на обоих хостах `select to_regclass('public.scanner_auth_users')` вернёт
-      null, а старого проекта сканера не останется.
+      `apps/cabinet/src/scanner-identity-cutover.ts`). TEST активировал слитый
+      граф 2026-09-23. У перехода идентичности предмета больше нет: в тот же
+      день таблицы `public.scanner_auth_users` в `agentify_scanner` не
+      оказалось ни на одном из двух хостов. PRODUCTION перейдёт на слитый граф
+      уже на развёртывании, которое заменяет Ansible-релиз (следующий пункт),
+      поэтому всё перечисленное удаляется вместе с этой машинерией.
+- [ ] PRODUCTION не может перейти на слитый граф этой машинерией. Стейджинг
+      запускает `release-runtime.py topology`, и её ветка для PRODUCTION
+      читает действующую политику сканера из `agentify-commerce-scanner-1` и
+      `agentify-commerce-scanner-worker-1`. Эти контейнеры появляются только
+      после первой активации слитого графа, поэтому до неё проверка падает
+      внутри `docker container inspect` с «No such container», не дойдя до
+      своего «is not running for policy custody», и от того, убраны ли старые
+      контейнеры сканера, это не зависит. PRODUCTION переходит на
+      развёртывании, которое заменяет эту машинерию; первый абзац раздела
+      «Reconcile a host that still runs two projects» в
+      `deploy/ansible/README.md` говорит это.
+- [x] PRODUCTION с 2026-09-21 оставался на b096f83, и app-v0.3.0 туда не
+      доехал. PRODUCTION выполняет механику релиза из
+      самого выбранного тега, а в app-v0.3.0 задача «Check out the exact public
+      source revision» переключалась с root на учётную запись развёртывания; у
+      root на хосте стояло требование сменить пароль, и sudo на этом
+      переключении отказывал («Account or password is expired»). Требование
+      снято 2026-09-23. Релизы из `main` учётную запись не переключают
+      (47c34f1), а `become` к тому же root под агентом sudo не вызывает вовсе:
+      `become_allow_same_user` по умолчанию выключен. Это проверено на
+      ansible-core 2.21.2; агент закреплён на 2.19.13, и то, что на PRODUCTION
+      падение приходилось именно на checkout, говорит о том же: задачи от root
+      к root перед ним проходили.
+- [ ] Замок релиза — каталог `/run/lock/agentify-release`: его создаёт `mkdir`
+      в начале активации, а снимает задача в `always`. Процесс, убитый
+      сигналом, до этой задачи не доходит, и замок его переживает: на TEST,
+      после того как needrestart перезапустил агента посреди активации,
+      следующая попытка отказала, пока оператор не убрал каталог руками. Это
+      одна из причин запланированного упрощения развёртывания — образы,
+      собранные один раз в CI, идемпотентный `compose up` и `flock`, который
+      снимается вместе с процессом. До него порядок снятия чужого замка описан
+      в `deploy/ansible/README.md`, «Recover a failed activation».
 - [ ] Фикстуры релизного preflight (`packages/core/src/deployment/fixtures/`)
       — это снимки вывода `docker compose config`, снятые руками. Ничто не
       держит их в соответствии с `compose.yaml`: правка compose, которая не
