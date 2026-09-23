@@ -110,9 +110,18 @@
  * out of the flow on a narrow one, where it still scrolls away as the theme
  * means it to. With no band — a live page, or `vitepress dev`, which writes no
  * marker — the page starts under the bar exactly as the theme lays it out.
+ *
+ * The theme's layout is at least a window tall and the bar used to be inside
+ * that height; the space kept for it is now outside, so the layout gives it
+ * back. Otherwise a page shorter than the window, such as the one for an
+ * address that does not exist, scrolls by the bar's height into nothing.
  */
 body {
   padding-top: var(--vp-nav-height);
+}
+
+#app .Layout {
+  min-height: calc(100vh - var(--vp-nav-height));
 }
 
 @media (max-width: 959px) {
