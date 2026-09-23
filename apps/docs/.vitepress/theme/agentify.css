@@ -95,9 +95,38 @@
   line-height: 1.55;
 }
 
+/*
+ * The band sits under the bar at every width and scrolls away with the page.
+ *
+ * It is written above the application root (config.mjs), so it comes before
+ * the bar in the document, and the theme places the bar two ways: fixed at the
+ * top from 960 px up, in the flow below that. Left alone, the band was under
+ * the bar on a laptop and above it on a phone, and the laptop's version paid
+ * for the bar twice — once in the band's own margin and once in the content's
+ * padding — which left an empty strip under the band.
+ *
+ * So the bar's height is kept free once, at the top of the page, and the bar
+ * sits in it at every width: fixed as the theme has it on a wide screen, taken
+ * out of the flow on a narrow one, where it still scrolls away as the theme
+ * means it to. With no band — a live page, or `vitepress dev`, which writes no
+ * marker — the page starts under the bar exactly as the theme lays it out.
+ */
+body {
+  padding-top: var(--vp-nav-height);
+}
+
+@media (max-width: 959px) {
+  #app .VPNav {
+    position: absolute;
+  }
+}
+
 @media (min-width: 960px) {
+  #app .VPContent {
+    padding-top: 0;
+  }
+
   .surface-words {
-    margin-top: var(--vp-nav-height, 64px);
     padding-left: calc(var(--vp-sidebar-width) + 24px);
   }
 }
