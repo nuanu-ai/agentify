@@ -98,10 +98,11 @@ export const ORDER_STATUSES = Object.freeze([
    * its own. Goods the merchant delivers after it still reach the buyer, settle
    * the debt and make the order `delivered`.
    *
-   * What it cannot say is whether the money has already gone back. How a
-   * refund is paid and how the gateway would learn of it are not decided, and
-   * until they are nothing moves an order on to `refunded` — so a buyer the
-   * merchant has already paid back still reads this word.
+   * What it cannot say is whether the money has already gone back. The
+   * merchant pays a refund from their own wallet and the gateway has no way yet
+   * to record that they did, so until it has one nothing moves an order on to
+   * `refunded`, and a buyer the merchant has already paid back still reads
+   * this word.
    */
   "refund_due",
   /** That debt has since been paid back to the buyer. */
