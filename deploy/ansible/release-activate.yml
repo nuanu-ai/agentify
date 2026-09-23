@@ -119,22 +119,6 @@
       changed_when: false
       register: current_public_catalog
 
-    - name: Identify the first live-approval schema activation
-      ansible.builtin.command:
-        argv: [docker, exec, "{{ channel.postgres_container }}", psql, -U, agentify_commerce, -d, agentify_commerce, -At, -v, ON_ERROR_STOP=1, -c, "select count(*) from information_schema.columns where table_schema='public' and table_name='merchants' and column_name='live_approved_at'"]
-      changed_when: false
-      register: live_approval_column
-      when: channel_name == 'production'
-
-    - name: Require the reviewed approval inventory before stopping production
-      ansible.builtin.assert:
-        that:
-          - release_initial_live_merchant_ids is defined
-          - release_initial_live_merchant_ids is sequence and release_initial_live_merchant_ids is not string and release_initial_live_merchant_ids is not mapping
-          - release_initial_live_merchant_ids | unique | length == release_initial_live_merchant_ids | length
-        fail_msg: The first live-approval migration needs the privately reviewed exact merchant ID inventory. This does not grant approval.
-      when: channel_name == 'production' and live_approval_column.stdout == '0'
-
     - name: Mark the start of the non-automatic recovery boundary
       ansible.builtin.copy:
         content: "{{ {'revision': release_revision, 'channel': channel_name, 'state': 'activating'} | to_nice_json }}\n"
@@ -152,19 +136,6 @@
         content: "{{ (current_public_catalog.stdout | from_json)['items'] | map(attribute='id') | sort | list | to_json }}\n"
         dest: "{{ recovery_directory }}/published-resource-ids.json"
         mode: '0600'
-
-    - name: Disable legacy automatic test delivery
-      ansible.builtin.shell: |
-        set -eu
-        for unit in agentify-test-pull.timer agentify-test-pull.service; do
-          if systemctl cat "$unit" >/dev/null 2>&1; then
-            systemctl disable --now "$unit"
-          fi
-          rm -f "/etc/systemd/system/$unit"
-          ln -s /dev/null "/etc/systemd/system/$unit"
-        done
-        systemctl daemon-reload
-      when: channel_name == 'test'
 
     - name: Hold only the existing Agentify scheduled jobs
       ansible.builtin.shell: |
@@ -213,27 +184,13 @@
         running_jobs="$(docker ps -q --filter label=com.docker.compose.project={{ channel.project }} --filter label=com.docker.compose.oneoff=True)"
         test -z "$running_jobs"
 
-    - name: Identify the first shared-identity activation before any schema mutation
-      ansible.builtin.shell: |
-        set -eu
-        if [ "$(docker exec '{{ channel.postgres_container }}' psql -U agentify_commerce -d agentify_commerce -Atc "select count(*) from pg_database where datname='agentify_scanner'")" = 0 ]; then
-          echo 1
-        else
-          docker exec '{{ channel.postgres_container }}' psql -U agentify_commerce -d agentify_scanner -At -v ON_ERROR_STOP=1 -c "select count(*) from information_schema.tables where table_schema='public' and table_name='scanner_auth_users'"
-        fi
-      changed_when: false
-      register: legacy_scanner_identity
-
-    - ansible.builtin.set_fact:
-        identity_cutover_required: "{{ legacy_scanner_identity.stdout == '1' }}"
-
     - name: Record non-recoverable aggregate row fingerprints before migrations
       ansible.builtin.shell: |
         set -eu
         umask 077
         for db in agentify_commerce agentify_scanner; do
           if [ "$(docker exec '{{ channel.postgres_container }}' psql -U agentify_commerce -d agentify_commerce -Atc "select count(*) from pg_database where datname='$db'")" = 1 ]; then
-            docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 -v identity_cutover={{ identity_cutover_required | ternary('true', 'false') }} < '{{ release_controller_directory }}/release-data-fingerprint.sql' > '{{ recovery_directory }}/'"$db".fingerprint
+            docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 < '{{ release_controller_directory }}/release-data-fingerprint.sql' > '{{ recovery_directory }}/'"$db".fingerprint
           fi
         done
       no_log: true
@@ -270,35 +227,17 @@
         argv: [docker, exec, "{{ channel.postgres_container }}", createdb, -U, agentify_commerce, --owner, agentify_commerce, agentify_scanner]
       when: channel_name == 'test' and scanner_database.stdout == '0'
 
-    - name: Apply only scanner migrations preceding the destructive identity cleanup
+    - name: Apply scanner migrations with the locally built scanner worker image
       ansible.builtin.command:
-        argv: "{{ compose + ['run', '--rm', '--no-deps', '-T', 'scanner-migrate', 'node', 'packages/scanner-database/dist/migrate-cli.js', '--identity-preflight'] }}"
+        argv: "{{ compose + ['run', '--rm', '--no-deps', '-T', 'scanner-migrate'] }}"
         chdir: "{{ release_source_directory }}"
       no_log: true
-
-    - name: Prepare credentials for the stopped one-off identity importer
-      ansible.builtin.command:
-        argv: [python3, "{{ release_controller_directory }}/prepare-identity-cutover.py", "{{ release_directory }}"]
-      no_log: true
-      when: identity_cutover_required
-
-    - name: Validate and fingerprint source identities before cabinet proof invalidation
-      ansible.builtin.command:
-        argv: "{{ identity_cutover_command + ['preflight', '/cutover/identity-cutover.json'] }}"
-      no_log: true
-      when: identity_cutover_required
 
     - name: Apply commerce migrations with the locally built application image
       ansible.builtin.command:
         argv: "{{ compose + ['run', '--rm', '--no-deps', '-T', 'migrate'] }}"
         chdir: "{{ release_source_directory }}"
       no_log: true
-
-    - name: Import and verify exact identities and still-pending report links
-      ansible.builtin.command:
-        argv: "{{ identity_cutover_command + ['apply', '/cutover/identity-cutover.json'] }}"
-      no_log: true
-      when: identity_cutover_required
 
     - name: Verify retained customer rows against their pre-migration fingerprints
       ansible.builtin.shell: |
@@ -307,84 +246,11 @@
           before='{{ recovery_directory }}/'"$db".fingerprint
           if [ -f "$before" ]; then
             after='{{ recovery_directory }}/'"$db".after
-            docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 -v identity_cutover={{ identity_cutover_required | ternary('true', 'false') }} < '{{ release_controller_directory }}/release-data-fingerprint.sql' > "$after"
+            docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 < '{{ release_controller_directory }}/release-data-fingerprint.sql' > "$after"
             cmp "$before" "$after"
           fi
         done
       changed_when: false
-
-    - name: Record the verified post-import commerce projection before scanner cleanup
-      ansible.builtin.shell: |
-        set -eu
-        umask 077
-        docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d agentify_commerce -At -v ON_ERROR_STOP=1 < '{{ release_controller_directory }}/release-data-fingerprint.sql' > '{{ recovery_directory }}/commerce-post-import.fingerprint'
-      no_log: true
-      when: identity_cutover_required
-
-    - name: Record the exact accepted target identity projection before cleanup
-      ansible.builtin.shell: |
-        set -eu
-        umask 077
-        for db in agentify_commerce agentify_scanner; do
-          docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 < '{{ release_controller_directory }}/release-identity-target-fingerprint.sql' > '{{ recovery_directory }}/'"$db".identity-target
-        done
-      no_log: true
-      when: identity_cutover_required
-
-    - name: Authorize old scanner identity removal only after both projection checks
-      ansible.builtin.command:
-        argv: "{{ identity_cutover_command + ['authorize-cleanup', '/cutover/identity-cutover.json'] }}"
-      no_log: true
-      when: identity_cutover_required
-
-    - name: Apply the guarded scanner cleanup through its ordinary migration ledger
-      ansible.builtin.command:
-        argv: "{{ compose + ['run', '--rm', '--no-deps', '-T', 'scanner-migrate'] }}"
-        chdir: "{{ release_source_directory }}"
-      no_log: true
-
-    - name: Prove cleanup retained commerce rows and scanner report capabilities
-      ansible.builtin.shell: |
-        set -eu
-        for db in agentify_commerce agentify_scanner; do
-          before='{{ recovery_directory }}/'"$db".fingerprint
-          if [ -f "$before" ]; then
-            after='{{ recovery_directory }}/'"$db".after-cleanup
-            docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 -v identity_cutover={{ identity_cutover_required | ternary('true', 'false') }} < '{{ release_controller_directory }}/release-data-fingerprint.sql' > "$after"
-            cmp "$before" "$after"
-          fi
-        done
-        docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d agentify_commerce -At -v ON_ERROR_STOP=1 < '{{ release_controller_directory }}/release-data-fingerprint.sql' > '{{ recovery_directory }}/commerce-after-cleanup.fingerprint'
-        cmp '{{ recovery_directory }}/commerce-post-import.fingerprint' '{{ recovery_directory }}/commerce-after-cleanup.fingerprint'
-        for db in agentify_commerce agentify_scanner; do
-          docker exec -i '{{ channel.postgres_container }}' psql -U agentify_commerce -d "$db" -At -v ON_ERROR_STOP=1 < '{{ release_controller_directory }}/release-identity-target-fingerprint.sql' > '{{ recovery_directory }}/'"$db".identity-target-after-cleanup
-          cmp '{{ recovery_directory }}/'"$db".identity-target '{{ recovery_directory }}/'"$db".identity-target-after-cleanup
-        done
-      changed_when: false
-      when: identity_cutover_required
-
-    - name: Hold the first live cutover for the separate private operator command
-      ansible.builtin.pause:
-        prompt: >-
-          Commerce writers remain stopped and this release lock is held.
-          In a separate SSH session, run the private approval command from this
-          exact staged image and environment for the reviewed existing accounts.
-          Press Enter only when those commands have completed. The next check
-          refuses activation unless the complete approved set matches inventory.
-      when: channel_name == 'production' and live_approval_column.stdout == '0' and release_initial_live_merchant_ids | length > 0
-
-    - name: Read the complete approval set before first enforcement
-      ansible.builtin.command:
-        argv: [docker, exec, "{{ channel.postgres_container }}", psql, -U, agentify_commerce, -d, agentify_commerce, -At, -v, ON_ERROR_STOP=1, -c, "select coalesce(json_agg(id order by id),'[]'::json) from merchants where live_approved_at is not null"]
-      changed_when: false
-      register: first_live_approval_set
-      when: channel_name == 'production' and live_approval_column.stdout == '0'
-
-    - name: Refuse unreviewed grants or missing approvals before reopening writers
-      ansible.builtin.assert:
-        that: (first_live_approval_set.stdout | from_json | sort) == (release_initial_live_merchant_ids | sort)
-        fail_msg: The approved merchant set differs from the reviewed inventory. Keep writers stopped and reconcile through the private operator.
-      when: channel_name == 'production' and live_approval_column.stdout == '0'
 
     - name: Start scanner runtime from the same source revision accepted for commerce
       ansible.builtin.command:
@@ -457,11 +323,6 @@
           keeps the evidence, checks the data, and says when the previous
           writers may be started again.
   always:
-    - name: Remove the one-off importer credential file on success or failure
-      ansible.builtin.file:
-        path: "{{ recovery_directory }}/identity-cutover.env"
-        state: absent
-      no_log: true
     - name: Release only this operation's lock
       ansible.builtin.file:
         path: /run/lock/agentify-release

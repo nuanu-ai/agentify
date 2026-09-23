@@ -182,10 +182,10 @@ if (databaseUrl === null) {
       await expect(directory.resolve("partial@example.com")).resolves.toStrictEqual([]);
     });
 
-    it("distinguishes absent and pre-cutover partial bindings without returning a merchant key", async () => {
-      // Approval remains safe against historical data before the stopped
-      // identity cutover. Its preflight refuses these rows rather than fixing
-      // them by guessing the missing half of a merchant binding.
+    it("distinguishes absent and unconstrained partial bindings without returning a merchant key", async () => {
+      // The schema refuses half a merchant binding, and approval does not lean
+      // on that: a row that got past the constraint is reported as it is
+      // rather than fixed by guessing the missing half.
       await connected.pool.query(
         "alter table cabinet_accounts drop constraint cabinet_accounts_complete_merchant",
       );

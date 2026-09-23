@@ -58,15 +58,16 @@
 - [ ] Что важнее на старте: скорость итераций или задел на масштаб?
 - [ ] Какие интеграции обязательны с первого дня?
 - [ ] Одноразовая машинерия перехода: защита в `release-stage.yml` вместе с
-      `retired_scanner_project` в `release-vars.yml` и переход идентичности
-      (`prepare-identity-cutover.py`, `--identity-preflight`,
-      `release-identity-target-fingerprint.sql`,
-      `apps/cabinet/src/scanner-identity-cutover.ts`). TEST активировал слитый
-      граф 2026-09-23. У перехода идентичности предмета больше нет: в тот же
-      день таблицы `public.scanner_auth_users` в `agentify_scanner` не
-      оказалось ни на одном из двух хостов. PRODUCTION перейдёт на слитый граф
-      уже на развёртывании, которое заменяет Ansible-релиз (следующий пункт),
-      поэтому всё перечисленное удаляется вместе с этой машинерией.
+      `retired_scanner_project` в `release-vars.yml`. TEST активировал слитый
+      граф 2026-09-23; PRODUCTION перейдёт на него уже на развёртывании,
+      которое заменяет Ansible-релиз (следующий пункт), и защита удаляется
+      вместе с этой машинерией.
+- [x] Переход идентичности сканера в кабинет завершён на обоих каналах:
+      2026-09-23 таблицы `public.scanner_auth_users` в `agentify_scanner` не
+      оказалось ни на TEST, ни на PRODUCTION. Его машинерия удалена — импортёр
+      в `apps/cabinet`, `prepare-identity-cutover.py`, `--identity-preflight`,
+      `release-identity-target-fingerprint.sql` и шаги активации, — и миграции
+      сканера при активации идут одним обычным прогоном.
 - [ ] PRODUCTION не может перейти на слитый граф этой машинерией. Стейджинг
       запускает `release-runtime.py topology`, и её ветка для PRODUCTION
       читает действующую политику сканера из `agentify-commerce-scanner-1` и

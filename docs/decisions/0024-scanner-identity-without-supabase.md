@@ -5,12 +5,13 @@ Status: accepted
 
 ## Context
 
-The scanner uses a managed Supabase database and email authentication while
-the commercial cabinet already runs Better Auth and has a verified Resend sender
-credential on our infrastructure.
-The repository and production host are shared, but report ownership and merchant
-tenancy are separate security boundaries. Moving infrastructure must preserve
-existing reports and accounts without granting scanner visitors merchant access.
+The scanner began on a managed Supabase database and Supabase email
+authentication, while the cabinet already ran Better Auth with a verified
+Resend sender on our infrastructure. Report ownership and merchant tenancy are
+separate security boundaries on a shared repository and host, so the move had
+to keep existing reports and accounts without granting scanner visitors
+merchant access. It is complete: on both channels the scanner's data is in
+our PostgreSQL, and the people it confirmed are in the cabinet.
 
 ## Decision
 
@@ -25,73 +26,34 @@ reaches the commerce database by changing one word in a connection string, and
 leaves the schema's row-level security inert — twenty-six tables declare it,
 three force it on their owner, and no policy exists. What keeps scanner data
 and cabinet data apart is therefore the identity route and the secret only
-those two processes hold, not the database. Commerce data is never a restore
-target. Database relocation and identity
-replacement are separate cutover steps, with verification between them. The
-separate database is the present state and not the destination: one database
-is the goal, but not immediate (Dmitry's word, 2026-09-22), and the merge is a
-decision of its own when he names the day.
+those two processes hold, not the database. The separate database is the
+present state and not the destination: one database is the goal, but not
+immediate (Dmitry's word, 2026-09-22), and the merge is a decision of its own
+when he names the day.
 
-Scanner email verification uses Better Auth's expiring, hashed, single-use magic
-links. The cabinet owns identity (ADR-0026): the
-scanner-prefixed identity tables that carried it through the Supabase exit retire,
-the worker and dashboard reach no identity data because the scanner database holds
-none, and still no new identity service is deployed — the cabinet's component
-answers the scanner over an internal route.
-
-Registration retains its existing intent, email, scan and consent checks. Opening
-a mailed link presents confirmation; verification requires an explicit same-origin
-submission so mail previews cannot consume it. A verified identity can finish
-only the intent for that same email. Existing report sessions and lead IDs remain
-valid; scanner permissions continue to be checked against report ownership.
-Better Auth's internal session is not a shared browser login for commerce.
-
-Existing leads link to the new identity only after fresh email verification.
-An export and reconciliation of old linked identities is required before retiring
-Supabase. The old Supabase user ID is retained as migration provenance, not as an
-active authentication credential. The Supabase relocation preserves commerce
-data. Cabinet authentication and the removal of passwords, old cabinet sessions
-and the human invitation follow ADR-0026; merchant IDs and bindings survive.
-
-An old Supabase callback state is only a report-routing hint. A valid report
-session may follow it only to a report owned by that session. Otherwise the owner
-requests a fresh, purpose-bound Better Auth link; the request has one generic
-answer whether a report exists or a rate limit applies. An explicit same-origin
-submission asks the cabinet to consume the hashed proof and record a pending
-verification receipt atomically. The scanner commits its report session and
-completion record in its own transaction, then acknowledges the receipt. A
-bounded retry completes that same operation without sharing a database or
-reusing completed proof. An absent or cleaned hint falls back only to the
-authenticated owner's latest report. Supabase access and refresh tokens are never
-accepted.
+The cabinet owns identity (ADR-0026). Scanner email verification uses Better
+Auth's expiring, hashed, single-use magic links, issued and verified by the
+cabinet's component over an internal route and consumed only by an explicit
+same-origin submission; no separate identity service is deployed, and the
+scanner database holds no identity data. Registration keeps its intent, email,
+scan and consent checks, a verified identity finishes only the intent for that
+same email, and scanner permissions are checked against report ownership. A
+callback state is only a report-routing hint: a valid report session may follow
+it only to a report that session owns, and otherwise the owner requests a
+fresh, purpose-bound link, with one generic answer whether a report exists or a
+rate limit applies. Privacy deletion revokes report access, removes the lead
+and, for a person who owns no merchant, the identity row in the cabinet. The
+Supabase user ID on older leads is migration provenance, never a credential,
+and no Supabase access or refresh token is accepted.
 
 ## Consequences
-
-Database handoff freezes the scanner's writers and scheduled jobs, preserves a
-protected source dump off the VM, restores into an empty scanner destination and
-verifies data and permissions before activation. After new writes, recovery must
-reconcile those writes; restarting the old worker is not a safe rollback.
-
-Pending Supabase email links for an existing verified lead require a replacement
-link after identity cutover. A pending signup that never created a lead still
-returns to registration; recovery does not invent ownership or replay consent.
-Current Better Auth scanner links retain their hashed proof, report-only
-authority, registration or recovery intent, and expiry when identity moves into
-the cabinet. Their metadata is converted to the same shape as new report links;
-moving them grants no new proof and extends no lifetime. Existing report sessions remain valid.
-Privacy deletion revokes report access, removes the lead and, for a person who
-owns no merchant, the identity row in the cabinet (ADR-0026).
-Supabase retirement follows database, queue, mail and report-access acceptance.
 
 Running the complete Supabase platform ourselves adds services without advancing
 the shared stack. Reusing legacy hand-written verification avoids a dependency
 but abandons the component boundary established by ADR-0009. The route above is
 the cabinet's second listener, publishing no port and reached by service name;
 the release proves no other service in the rendered graph holds either half of
-its credential. Cross-domain SSO and
-automatic merging of scanner and merchant identities are not built; what does cross
-the boundary is decided in ADR-0026: at the moment the scanner confirms an address,
-it asks the cabinet over an internal route for the cabinet's own sign-in link, and
-the person carries that link as a navigation. No session or cookie is shared; the
-identity row is the cabinet's, and the separation above stands for scans, reports
-and leads.
+its credential. Cross-domain SSO, a shared session and automatic merging of
+scanner and merchant identities are not built; what crosses the boundary is
+ADR-0026's decision, and the separation above stands for scans, reports and
+leads.
