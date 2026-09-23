@@ -285,6 +285,14 @@ export function problemsWith(channel, resolved) {
     );
   }
 
+  // The scanner itself refuses to start below this length, which activation
+  // would meet only after the migrations.
+  if ((scanner.TOKEN_HMAC_SECRET ?? "").length < 32) {
+    problems.push(
+      "scanner: TOKEN_HMAC_SECRET is missing or shorter than the 32 characters the scanner starts with",
+    );
+  }
+
   if (cabinet.COOKIE_SECURE !== "true") {
     problems.push(
       `cabinet: COOKIE_SECURE is ${JSON.stringify(cabinet.COOKIE_SECURE ?? null)} and this stack ` +
