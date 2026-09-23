@@ -17,7 +17,12 @@ describe("card signal cryptography", () => {
     expect(first).not.toBe(second);
     expect(first).not.toContain("pm_local_secret");
     expect(decryptPaymentMethodId(first, key)).toBe("pm_local_secret");
-    expect(() => decryptPaymentMethodId(`${first.slice(0, -1)}x`, key)).toThrow();
+    const tampered = first.replace(/[^.]+$/, (ciphertext) => {
+      const bytes = Buffer.from(ciphertext, "base64url");
+      bytes.writeUInt8(bytes.readUInt8(0) ^ 0x01, 0);
+      return bytes.toString("base64url");
+    });
+    expect(() => decryptPaymentMethodId(tampered, key)).toThrow();
   });
 
   it("verifies timestamped local webhook signatures and rejects tampering", () => {
