@@ -62,7 +62,10 @@
     that:
       - (existing_state.content | b64decode | from_json).revision == release_revision
       - (existing_state.content | b64decode | from_json).state == 'staged'
-    fail_msg: This candidate has begun activation; staging cannot overwrite its state or configuration. Inspect and recover explicitly.
+    fail_msg: >-
+      This candidate has begun activation; staging cannot overwrite its state or
+      configuration. Recover it explicitly: deploy/ansible/README.md, "Recover a
+      failed activation".
   when: existing_state_file.stat.exists
 
 - name: Create the private candidate directory outside the build context
