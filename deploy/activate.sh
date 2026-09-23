@@ -145,9 +145,11 @@ case $verdict in
   silent) refuse "the scanner did not answer its health route within a minute of its own start; nothing was stopped." ;;
   *) refuse "the scanner's health route answered $verdict at its own start, so it finds its configuration invalid; nothing was stopped." ;;
 esac
-running="$(docker inspect -f '{{.Image}}' "$project-postgres-1" 2>/dev/null || true)"
+# Containers are found the way Compose finds them, by label: a recreate cut
+# short leaves one running under a temporary name.
+running="$(stack ps -aq postgres | xargs -r docker inspect -f '{{.Image}}' | sort -u)"
 [[ -z $running || $running == "$(docker image inspect -f '{{.Id}}' "$(stack config --images postgres)")" ]] \
-  || refuse "$project-postgres-1 runs another image than deploy/compose.images.yaml pins, and a database upgrade is a change of its own; nothing was stopped."
+  || refuse "the postgres service runs another image than deploy/compose.images.yaml pins, and a database upgrade is a change of its own; nothing was stopped."
 if [[ $channel == production ]]; then
   address=127.0.0.1:443
   edge=agentify-edge-caddy-1 caddy=docker.io/library/caddy@sha256:ae4458638da8e1a91aafffb231c5f8778e964bca650c8a8cb23a7e8ac557aa3c
@@ -166,11 +168,11 @@ on_sale="$(curl -sS --max-time 20 --connect-to "$origin:443:$address" "https://$
   || on_sale=unknown
 
 if [[ $reverify == false && -z $backup ]]; then
-  from="$(docker inspect -f '{{.Image}}' "$project-gateway-1" 2>/dev/null \
+  from="$(stack ps -aq gateway | head -n 1 | xargs -r docker inspect -f '{{.Image}}' \
     | xargs -r docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' 2>/dev/null)" || true
   from="${from:-none}" backup="$backups/$(date -u +%Y%m%dT%H%M%SZ)-${from:-none}-before-$revision"
   mkdir -p "$backups"
-  size="$(docker exec "$project-postgres-1" psql -U agentify_commerce -d postgres -Atc \
+  size="$(stack exec -T postgres psql -U agentify_commerce -d postgres -Atc \
     'select coalesce(sum(pg_database_size(datname)), 0) from pg_database' 2>/dev/null || echo 0)"
   free="$(df -B1 --output=avail "$backups" | tail -n 1)"
   ((free > size + (1 << 30))) \
