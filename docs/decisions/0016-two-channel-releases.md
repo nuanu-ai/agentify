@@ -11,41 +11,38 @@ GitHub-hosted runner has no stable private route to either server.
 
 ## Decision
 
-A release is one command on the host, `agentify-release <name>`, the same
-program on both channels, which takes its channel from the host's root-owned
-configuration. It resolves the name with `git ls-remote` against the public
-repository, reads the five image digests the commit's image build published,
-fetches the commit and runs that commit's `deploy/activate.sh` with the images
-pinned by digest. It needs no GitHub credential, and GitHub holds no server
-SSH key, host inventory, mesh credential or runtime secret. A channel is one
-Compose project with one environment file.
+A release is one command on the host, `agentify-release <name>`, the same on
+both channels, which takes its channel from the host's root-owned
+configuration. It resolves the name against the public repository, reads the
+five image digests the commit's image build published, and runs that
+commit's `deploy/activate.sh` with the images pinned by digest. It needs no
+GitHub credential, and GitHub holds no host credential or secret. A channel is
+one Compose project, whose configuration and secrets are one environment file.
 
-GitHub Actions builds the five first-party images once per pushed branch head
-and pushes them to the GitHub Container Registry as public packages; its
-`digests` job publishes their digests as one notice, which the public API
-serves without a token (`.github/workflows/images.yml`, whose header states
-the rule a reader follows: exactly one successful push run for the commit,
-every page of its annotations counted against their count, exactly one
-notice). A host builds nothing and pulls nothing by tag, because any later
-push can move a registry tag.
+GitHub Actions builds the five images once per pushed branch head, pushes them
+to the GitHub Container Registry as public packages, and publishes their
+digests as one notice the public API serves without a token, read by the rule
+in the header of `.github/workflows/images.yml`. A host builds nothing and
+pulls nothing by tag, because any later push can move a registry tag.
 
 A PRODUCTION release is an `app-v*` tag, which only repository administrators
 can create, and then `agentify-release app-v<release>` run on the host by a
 person with access to the nuanu mesh. The command adds its conditions to the
-one path: the name is an `app-v*` tag, the image build is a push to `main`,
-`main`'s CI run for the commit succeeded, and the commit moves forward from
-the revision the host runs. That rule trusts `main`, which the repository's
-rules protect. The same tag publishes the public npm packages through npm
-Trusted Publishing behind the same main-ancestry and CI checks, so every SDK
-release is a release of the application it was tested with.
+one path: the build was a push to `main`, `main`'s CI run for the commit
+succeeded, and the commit moves forward from the revision the host runs. That
+rule trusts `main`, which the repository's rules protect. The same tag
+publishes the SDK and the contracts to npm through Trusted Publishing, behind
+the same main-ancestry and CI checks, as soon as it is pushed; production
+gets the same revision when a person runs the command, which the runbook puts
+right after the tag.
 
 A TEST release is the `deploy-test` tag, moved directly or through the manual
-workflow that resolves a branch, tag or SHA; a timer on the test host runs
-`agentify-release --timer deploy-test` once a minute. It takes any commit
-whose image build succeeded, skips what already runs or already failed, and
-waits while the images are being built. Activation comes from the candidate
-itself, so whoever can push a branch here can run that commit's activation as
-root on the test host.
+workflow; a timer on the test host runs `agentify-release --timer deploy-test`
+once a minute. It takes any commit with exactly one successful image build,
+skips what already runs or already failed, and waits while a build is not yet
+listed or still running. Activation comes from the candidate itself, so
+whoever can push a branch here can run that commit's activation as root on
+the test host.
 
 The GitHub workflows check the candidate's reachable Git history for secrets
 before CI tests, image publication, workflow-driven channel selection or SDK
@@ -55,23 +52,15 @@ a new finding at the same path is still reported.
 
 ## Alternatives rejected
 
-- Ansible on each host, building from source and activating with mechanics
-  taken from `main`: about 2,500 lines; seven minutes a release on TEST, 4 min
-  40 s of it building images (`docs/research/00-open-questions.md`), each
-  channel with its own bytes; recovery by hand edits of state files; a lock
-  that outlived a killed run; five attempts at the first merged TEST release.
-- A timer on PRODUCTION as on TEST, polling a production pointer tag:
-  Dmitry chose on 2026-09-23 that a person starts a production release, which
-  stops the applications and migrates the live database.
-- Commit statuses: a newer one, from any branch's workflow, replaces main's.
-- A workflow artifact: downloading one needs a token.
-- A registry tag holding the digests: any later push can move it.
-- A release asset: it needs a release for every commit.
-- Signed build provenance checked against `images.yml@refs/heads/main`: every
-  host would need a verifier that reaches the transparency log, where the
-  notice needs a few plain HTTP reads.
-- Inbound SSH for GitHub-hosted runners adds an expiring mesh credential.
-- A webhook listener creates a new public authenticated surface.
-- Public pull-request code on internal runners would cross the release boundary.
+- Ansible on each host, building from source: slower, other bytes on each
+  channel, recovery by hand (measured in `docs/research/00-open-questions.md`).
+- A timer on PRODUCTION as on TEST: a production release stops the
+  applications and migrates the live database, so a person starts it.
+- Other carriers for the digests — commit statuses, an artifact, a registry
+  tag, a release asset, signed provenance — each fail for a reason recorded in
+  the same note.
+- Pushing to hosts from GitHub: inbound SSH adds an expiring mesh credential,
+  a webhook listener a public authenticated surface, and pull-request code on
+  internal runners would cross the release boundary.
 - A separate `sdk-v*` tag let the SDK ship from a revision production never
   accepted.
