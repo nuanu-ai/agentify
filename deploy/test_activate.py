@@ -9,7 +9,9 @@ with the release each runs and whether it runs; and the catalog. Each test
 asserts on that world after the run, as a person would inspect the host.
 The fake docker knows a container only by the ID `stack.sh ps` lists, never
 by its name: Compose finds its containers by label, and a recreate cut short
-leaves one running under a temporary name.
+leaves one running under a temporary name. When the database starts, the fake
+records what its init-script mount holds, and creates the directory empty when
+it is missing, as Docker does with a bind mount's source.
 
 It needs Docker, which pulls python:3.12-slim-bookworm the first time, and it
 fails with that sentence when there is none.
@@ -28,6 +30,7 @@ HERE = Path(__file__).parent
 IMAGE = "python:3.12-slim-bookworm"
 NEW, OLD = "a" * 40, "b" * 40
 APPLICATIONS = ("cabinet", "gateway", "scanner", "scanner-worker")
+INIT = {"01-test-database.sql": "CREATE DATABASE agentify_commerce_test;\n", "02-scanner-database.sql": "CREATE DATABASE agentify_scanner;\n"}
 ORIGINAL = {"agentify_commerce": "agentify_commerce: the old release's data", "agentify_scanner": "agentify_scanner: the old release's data"}
 
 STACK = r"""#!/usr/bin/env bash
@@ -57,6 +60,9 @@ case "$args" in
     echo "the gateway's migration" >> $W/db/agentify_commerce
     hook
     echo "the cabinet's migration" >> $W/db/agentify_commerce ;;
+  "up -d --wait --no-deps postgres")
+    init=/var/lib/agentify/test/postgres-init
+    mkdir -p $init; ls $init > $W/postgres-init-at-start ;;
   "up -d --wait --no-deps scanner scanner-worker"|"up -d --wait --no-deps gateway cabinet web")
     for c in ${args#up -d --wait --no-deps }; do echo "new running" > $W/containers/$c; done
     if [[ -n ${CARDS_AFTER+set} && $args == *gateway* ]]; then printf '%s' "$CARDS_AFTER" > $W/cards; fi ;;
@@ -131,8 +137,10 @@ class Activation(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.world = self.root / "world"
-        for directory in ("tree/deploy", "bin", "world/db", "world/containers", "state/test", "backups", "etc"):
+        for directory in ("tree/deploy/postgres-init", "bin", "world/db", "world/containers", "state/test", "backups", "etc"):
             (self.root / directory).mkdir(parents=True)
+        for name, body in INIT.items():
+            (self.root / "tree/deploy/postgres-init" / name).write_text(body)
         for name in ("activate.sh", "restore.sh"):
             shutil.copy(HERE / name, self.root / "tree/deploy" / name)
         for path, body in ((self.root / "tree/deploy/stack.sh", STACK), (self.root / "bin/docker", DOCKER), (self.root / "bin/curl", CURL)):
@@ -249,6 +257,39 @@ class Activation(unittest.TestCase):
         self.assertIn("restore exit 0", said)
         self.assertIsNone(self.pending(), said)
         self.assertEqual(self.databases(), ORIGINAL)
+
+    def init_scripts(self):
+        init = self.root / "state/test/postgres-init"
+        return {path.name: path.read_text() for path in sorted(init.iterdir())} if init.exists() else None
+
+    def test_the_database_starts_with_the_revisions_init_scripts_at_a_path_that_does_not_change(self):
+        said = self.run_script("activate")
+        self.assertIn("exit 0", said)
+        self.assertEqual((self.world / "postgres-init-at-start").read_text().split(), sorted(INIT), said)
+        self.assertEqual(self.init_scripts(), INIT)
+        # The database's server reads them as its own user.
+        init = self.root / "state/test/postgres-init"
+        self.assertEqual(init.stat().st_mode & 0o777, 0o755)
+        self.assertEqual({(init / name).stat().st_mode & 0o777 for name in INIT}, {0o644})
+
+    def test_unchanged_init_scripts_are_left_as_they_are(self):
+        self.run_script("activate")
+        init = self.root / "state/test/postgres-init"
+        before = [(path.name, path.stat().st_ino) for path in (init, *sorted(init.iterdir()))]
+        (self.root / "state/test/current").write_text(OLD + "\n")
+        said = self.run_script("activate")
+        self.assertIn("exit 0", said)
+        self.assertEqual([(path.name, path.stat().st_ino) for path in (init, *sorted(init.iterdir()))], before)
+
+    def test_changed_init_scripts_replace_the_old_ones_whole(self):
+        init = self.root / "state/test/postgres-init"
+        init.mkdir()
+        (init / "01-test-database.sql").write_text("an older script\n")
+        (init / "00-removed-since.sql").write_text("a script the revision no longer has\n")
+        said = self.run_script("activate")
+        self.assertIn("exit 0", said)
+        self.assertEqual(self.init_scripts(), INIT)
+        self.assertEqual(sorted(path.name for path in (self.root / "state/test").iterdir() if path.name.startswith("postgres-init")), ["postgres-init"])
 
     def test_a_channel_that_already_runs_the_revision_is_checked_without_stopping_anything(self):
         (self.root / "state/test/current").write_text(NEW + "\n")
