@@ -55,16 +55,16 @@ class ReleaseDockerCleanupTests(unittest.TestCase):
 
     def test_removes_only_unreferenced_old_release_tags(self):
         images = [
-            image("sha256:running", [f"agentify-commerce-app:{self.running}"], self.running),
+            image("sha256:running", [f"agentify-app:{self.running}"], self.running),
             image("sha256:privacy", [f"agentify-scanner-privacy:{self.running}"], self.running),
-            image("sha256:candidate", [f"agentify-commerce-web:{self.candidate}"], self.candidate),
+            image("sha256:candidate", [f"agentify-web:{self.candidate}"], self.candidate),
             image("sha256:old", [f"agentify-scanner-worker:{self.old}"], self.old),
             image("sha256:infra", ["postgres:17-alpine"]),
         ]
         containers = [
             container(
                 "sha256:running",
-                f"agentify-commerce-app:{self.running}",
+                f"agentify-app:{self.running}",
                 True,
             )
         ]
@@ -80,7 +80,7 @@ class ReleaseDockerCleanupTests(unittest.TestCase):
         )
 
     def test_keeps_old_image_referenced_by_an_exited_container(self):
-        old_tag = f"agentify-commerce-app:{self.old}"
+        old_tag = f"agentify-app:{self.old}"
         docker = FakeDocker(
             [image("sha256:old", [old_tag], self.old)],
             [container("sha256:old", old_tag, False)],
@@ -114,7 +114,7 @@ class ReleaseDockerCleanupTests(unittest.TestCase):
             path.write_text(
                 "cd '/home/dmitry/agentify-releases/"
                 + self.running
-                + "/source/ops/deploy/droplet'\n"
+                + "/source'\n"
             )
 
             self.assertEqual(MODULE.installed_job_revision(path), self.running)

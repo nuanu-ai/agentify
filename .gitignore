@@ -37,5 +37,5 @@ output/
 # repository rather than into the user store. It is a cache, not a source.
 .pnpm-store/
 
-# Python bytecode caches (ops/deploy scripts and their tests)
+# Python bytecode caches (the release scripts under deploy/ansible and their tests)
 __pycache__/

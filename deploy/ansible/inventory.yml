@@ -26,9 +26,3 @@ all:
           ansible_host: "{{ agentify_test_host }}"
           ansible_user: "{{ agentify_test_user }}"
           ansible_python_interpreter: /usr/bin/python3
-    scanner_source:
-      hosts:
-        scanner-donor:
-          ansible_host: "{{ agentify_scanner_donor_host }}"
-          ansible_user: "{{ agentify_scanner_donor_user }}"
-          ansible_python_interpreter: /usr/bin/python3

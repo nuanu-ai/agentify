@@ -132,8 +132,8 @@ const FOOT = `  <footer class="foot">
  * language ADR-0005 §6 asks for is one file rather than four copies.
  *
  * The faces are linked separately, from the shared origin, because they are
- * woff2 files the landing already serves and their addresses are relative to
- * that directory. Behind Caddy this resolves and the pages are set in Schibsted Grotesk;
+ * woff2 files Caddy serves out of the visual package and their addresses are
+ * relative to that directory. Behind Caddy this resolves and the pages are set in Schibsted Grotesk;
  * run on its own the cabinet has no /styles, the link 404s and the fallback
  * stack in the tokens carries the page — which is what a fallback stack is for,
  * and why every family here names a full one.

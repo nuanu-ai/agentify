@@ -23,14 +23,13 @@ check-mode limits; staging files is not evidence of a working application.
 
 The production edge in `deploy/edge` is the only public HTTP/HTTPS listener.
 It preserves the scanner admin authentication and privacy-filtered access log,
-redirects www to the apex, and proxies app to the private commerce Caddy.
-The ingress network has a fixed edge address; the inner commerce Caddy trusts
-forwarded headers only from that address. Both applications retain their own
-private database/project and independent images.
+redirects www to the apex, and proxies to the private Caddy inside the stack.
+The ingress network has a fixed edge address; that inner Caddy trusts
+forwarded headers only from that address. The scanner and the commerce
+services are one Compose project with one environment file, and they share a
+PostgreSQL instance with a database each.
 
-Use the commerce base Compose file, public override and Hetzner override.
-The scanner uses its existing production Compose file with
-`ops/deploy/droplet/compose.hetzner.yaml`; its old Caddy service stays disabled.
+Use the base Compose file, the public override and the Hetzner override.
 Build each shared image once rather than building its consumers concurrently.
 The test candidate uses `deploy/compose.agentify-test.yaml` and its own secrets,
 with the existing `10.20.10.20:8443:443` listener. The shared ingress's SNI map,
@@ -39,8 +38,8 @@ public switch. This is an owner-run Ansible change in the infra repository.
 
 Preserve source production keys and configuration through protected transfer:
 commerce merchant seed, session-signing material, mail and facilitator keys;
-scanner signing/encryption keys, database roles, auth/provider settings and
-worker configuration. Scanner browser auth values must match its server values
+scanner signing and encryption keys, auth and provider settings, and worker
+configuration. Scanner browser auth values must match its server values
 at image build time. A missing source configuration is a preparation blocker,
 not a reason to invent production secrets or disable authentication.
 

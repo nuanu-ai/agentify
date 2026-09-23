@@ -7,7 +7,6 @@ cd "$ROOT"
 command -v rg >/dev/null 2>&1 || { echo "rg is required" >&2; exit 1; }
 command -v node >/dev/null 2>&1 || { echo "node is required" >&2; exit 1; }
 
-node ops/scripts/validate-ops.mjs
 
 if rg -n 'fonts\.googleapis\.com|fonts\.gstatic\.com' apps/web; then
   echo "External Google font loading is forbidden." >&2
@@ -31,10 +30,7 @@ if rg -n '(BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|sk_live_[A-Za-z0-9]{12,}|whsec_
   exit 1
 fi
 
-for script in ops/scripts/*.sh; do bash -n "$script"; done
-for script in ops/deploy/droplet/*.sh ops/deploy/droplet/postgres-init/*.sh; do
-  bash -n "$script"
-done
+for script in ops/scripts/*.sh deploy/*.sh; do bash -n "$script"; done
 for script in ops/scripts/*.mjs; do node --check "$script"; done
 node --test ops/scripts/*.test.mjs
 

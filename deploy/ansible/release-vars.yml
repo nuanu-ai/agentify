@@ -3,40 +3,52 @@
 # path below hangs off `agentify_home`, which the operator supplies alongside
 # the inventory (see inventory.local.yml.example). It has no default here — a
 # guessed home directory is a release written into somebody else's account.
+#
+# One Compose project per channel. The scanner used to be a second project on
+# the same host, glued to this one by an external network; it is a set of
+# services in this project now, so there is one project name, one environment
+# file and one rendered graph per channel.
+#
+# The names below are what a running host answers to, not what this repository
+# calls things. A project name is the prefix on every container and the label
+# every volume is found by, so changing one is a teardown and a restore rather
+# than a rename: the released images and source say `agentify`, and the
+# project and its containers keep the name they were created under until the
+# one-database step moves them with the database, under one reviewed cutover
+# (ADR-0025).
 release_channels:
   production:
     origin: https://agentify.ad
     probe_connect_address: 127.0.0.1
     probe_connect_port: 443
-    commerce_project: agentify-commerce
-    scanner_project: agentify
-    commerce_environment: "{{ agentify_home }}/agentify-namespace-57eaca4/.env"
-    scanner_environment: "{{ agentify_home }}/agentify-scanner/.env.namespace-57eaca4"
-    commerce_overlay: deploy/compose.hetzner-commerce.yaml
+    project: agentify-commerce
+    environment: "{{ agentify_home }}/agentify-namespace-57eaca4/.env"
+    overlay: deploy/compose.hetzner-commerce.yaml
     ingress_network: agentify-ingress
-    database_network: agentify-scanner-db
     postgres_volume: agentify-commerce-postgres
     caddy_volume: agentify-commerce-caddy
     postgres_container: agentify-commerce-postgres-1
     cabinet_container: agentify-commerce-cabinet-1
+    # The project the scanner ran in before it became a service of this one.
+    # Staging refuses while anything of it is still running, because those
+    # containers hold the database this release is about to fingerprint and
+    # migrate. Delete this line, and the guard in release-stage.yml, once both
+    # channels have activated the merged graph.
+    retired_scanner_project: agentify
     edge_container: agentify-edge-caddy-1
     edge_configuration: "{{ agentify_home }}/agentify-commerce/deploy/edge/Caddyfile"
-    backup_directory: "{{ agentify_home }}/agentify-backups/scanner"
   test:
     origin: https://test.agentify.ad
     listen_address: "{{ agentify_test_listen_address }}"
     probe_connect_address: "{{ agentify_test_listen_address }}"
     probe_connect_port: 8443
-    commerce_project: agentify-test
-    scanner_project: agentify-test-scanner
-    commerce_environment: "{{ agentify_home }}/agentify-test/.env"
-    scanner_environment: ''
-    commerce_overlay: deploy/compose.agentify-test.yaml
+    project: agentify-test
+    environment: "{{ agentify_home }}/agentify-test/.env"
+    overlay: deploy/compose.agentify-test.yaml
     ingress_network: agentify-test-ingress
-    database_network: agentify-test-scanner-db
     postgres_volume: agentify-test-postgres
     caddy_volume: agentify-test-caddy
     postgres_container: agentify-test-postgres-1
     cabinet_container: agentify-test-cabinet-1
+    retired_scanner_project: agentify-test-scanner
     edge_container: ''
-    backup_directory: "{{ agentify_home }}/agentify-test-backups/scanner"

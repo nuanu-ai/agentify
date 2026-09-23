@@ -3,12 +3,17 @@
 # The listen address is that host's, not this repository's: supply it, and the
 # stack refuses to start rather than binding somewhere unintended.
 services:
+  scanner-worker:
+    # One worker, named for the channel it runs in: heartbeats are keyed on
+    # this, and two workers answering to one name read as one restarting.
+    environment:
+      WORKER_ID: "${WORKER_ID:-agentify-test-1}"
+
   web:
     ports: !override
       - "${AGENTIFY_TEST_LISTEN_ADDRESS:?set the address the test edge binds on}:8443:443"
     environment:
       AGENTIFY_SITE_ADDRESS: "test.agentify.ad"
-      AGENTIFY_FRONT_PAGE: scanner_front_page
       ADMIN_BASIC_AUTH_USER: "${ADMIN_BASIC_AUTH_USER:?set the scanner admin user}"
       ADMIN_BASIC_AUTH_HASH: "${ADMIN_BASIC_AUTH_HASH:?set the scanner admin bcrypt hash}"
     networks:

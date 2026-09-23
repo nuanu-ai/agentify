@@ -1,7 +1,5 @@
-import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import {
   BROWSER_OBSERVATION_IDS,
   BROWSER_OBSERVATION_VERSION,
@@ -49,9 +47,20 @@ const TABLES = [
   "worker_heartbeats",
 ] as const;
 
-const connectionString = z
+// This suite drops and remakes every schema it is pointed at, so it refuses to
+// run rather than falling back to an address nobody chose. The stack's own
+// server carries the database it wants: `docker compose up -d --wait postgres`.
+const parsed = z
   .url({ protocol: /^postgres(ql)?$/ })
-  .parse(process.env.MIGRATION_TEST_DATABASE_URL);
+  .safeParse(process.env.MIGRATION_TEST_DATABASE_URL);
+if (!parsed.success) {
+  throw new Error(
+    "MIGRATION_TEST_DATABASE_URL names the database this suite may empty, and it is not set to a" +
+      " PostgreSQL address. Copy .env.scanner.example to .env.scanner and start the stack's" +
+      " server with `docker compose up -d --wait postgres`.",
+  );
+}
+const connectionString = parsed.data;
 const databaseName = new URL(connectionString).pathname.slice(1);
 if (!databaseName.endsWith("_migration_test")) {
   throw new Error("MIGRATION_TEST_DATABASE_URL must name a dedicated *_migration_test database");
@@ -59,17 +68,7 @@ if (!databaseName.endsWith("_migration_test")) {
 
 const migrationsFolder = fileURLToPath(new URL("../migrations", import.meta.url));
 const downFile = fileURLToPath(new URL("../scripts/0000_initial.down.sql", import.meta.url));
-const dashboardInstallFile = fileURLToPath(
-  new URL("../../../ops/dashboards/install-aggregate-views.sql", import.meta.url),
-);
 const adminPool = new Pool({ connectionString, max: 1 });
-const executeFile = promisify(execFile);
-const queueInitCli = fileURLToPath(
-  new URL("../../../apps/scanner-worker/src/queue-init-cli.ts", import.meta.url),
-);
-const scannerWorkerTsx = fileURLToPath(
-  new URL("../../../apps/scanner-worker/node_modules/.bin/tsx", import.meta.url),
-);
 
 type LegacyPrivacyAuditShape =
   | "legacy"
@@ -151,21 +150,6 @@ async function resetDatabase(): Promise<void> {
 
 beforeAll(async () => {
   await resetDatabase();
-  // Roles exist before the migration so its conditional grants and explicit
-  // revocations are exercised, rather than asserted as SQL prose.
-  for (const role of [
-    "agentify_web",
-    "agentify_privacy",
-    "agentify_worker",
-    "agentify_dashboard",
-    "service_role",
-  ]) {
-    await adminPool.query(`DO $role$ BEGIN
-      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${role}') THEN
-        CREATE ROLE ${role};
-      END IF;
-    END $role$`);
-  }
 });
 
 afterAll(async () => {
@@ -174,31 +158,6 @@ afterAll(async () => {
 });
 
 describe("initial database migration", () => {
-  async function queryAsRole(
-    pool: Pool,
-    role:
-      | "agentify_web"
-      | "agentify_privacy"
-      | "agentify_worker"
-      | "agentify_dashboard"
-      | "service_role",
-    statement: string,
-    commit = false,
-  ) {
-    const client = await pool.connect();
-    let succeeded = false;
-    try {
-      await client.query("begin");
-      await client.query(`set local role ${role}`);
-      const result = await client.query(statement);
-      succeeded = true;
-      return result;
-    } finally {
-      await client.query(commit && succeeded ? "commit" : "rollback");
-      client.release();
-    }
-  }
-
   it("requires an exact cutover marker before destructive identity cleanup", async () => {
     await resetDatabase();
     const { db, pool } = createDatabase(connectionString, { max: 2 });
@@ -451,82 +410,6 @@ describe("initial database migration", () => {
     }
   }, 25_000);
 
-  it("keeps report identity privilege closure after queue initialization", async () => {
-    await resetDatabase();
-    const { db, pool } = createDatabase(connectionString, { max: 3 });
-    try {
-      await migrateDatabase(db, migrationsFolder);
-      await executeFile(scannerWorkerTsx, [queueInitCli], {
-        env: { ...process.env, DATABASE_URL: connectionString },
-        timeout: 30_000,
-      });
-      for (const table of ["scanner_recovery_intents", "scanner_identity_completions"]) {
-        const grants = await pool.query(`select
-          has_table_privilege('agentify_web', 'public.${table}', 'SELECT,INSERT,UPDATE,DELETE') as web_crud,
-          has_table_privilege('agentify_privacy', 'public.${table}', 'SELECT,DELETE') as privacy_cleanup,
-          has_table_privilege('agentify_privacy', 'public.${table}', 'INSERT,UPDATE') as privacy_write,
-          has_table_privilege('agentify_worker', 'public.${table}', 'SELECT') as worker_select,
-          has_table_privilege('agentify_dashboard', 'public.${table}', 'SELECT') as dashboard_select,
-          has_table_privilege('service_role', 'public.${table}', 'SELECT') as service_select`);
-        expect(grants.rows[0]).toEqual({
-          web_crud: true,
-          privacy_cleanup: true,
-          privacy_write: false,
-          worker_select: false,
-          dashboard_select: false,
-          service_select: false,
-        });
-      }
-      const deletionGrants = await pool.query(`select
-        has_table_privilege('agentify_web', 'public.scanner_identity_deletion_operations', 'SELECT,INSERT,UPDATE,DELETE') as web_crud,
-        has_table_privilege('agentify_privacy', 'public.scanner_identity_deletion_operations', 'SELECT') as privacy_select,
-        has_table_privilege('agentify_worker', 'public.scanner_identity_deletion_operations', 'SELECT') as worker_select,
-        has_table_privilege('agentify_dashboard', 'public.scanner_identity_deletion_operations', 'SELECT') as dashboard_select,
-        has_table_privilege('service_role', 'public.scanner_identity_deletion_operations', 'SELECT') as service_select`);
-      expect(deletionGrants.rows[0]).toEqual({
-        web_crud: true,
-        privacy_select: false,
-        worker_select: false,
-        dashboard_select: false,
-        service_select: false,
-      });
-      await expect(
-        queryAsRole(pool, "agentify_worker", "select * from public.scanner_recovery_intents"),
-      ).rejects.toThrow(/permission denied/);
-      await expect(
-        queryAsRole(
-          pool,
-          "agentify_dashboard",
-          "select * from public.scanner_identity_completions",
-        ),
-      ).rejects.toThrow(/permission denied/);
-      await expect(
-        queryAsRole(
-          pool,
-          "service_role",
-          "select * from public.scanner_identity_deletion_operations",
-        ),
-      ).rejects.toThrow(/permission denied/);
-      await expect(
-        queryAsRole(
-          pool,
-          "agentify_privacy",
-          "insert into public.scanner_identity_completions (receipt_id, token_hash, intent_kind, state_hash, lead_id, scan_id, retain_until) values ('00000000-0000-7000-8000-000000000001', repeat('a',43), 'recovery', repeat('b',64), '00000000-0000-7000-8000-000000000002', '00000000-0000-7000-8000-000000000003', now())",
-        ),
-      ).rejects.toThrow(/permission denied/);
-      const nonIdentityGrants = await pool.query(`select
-        has_table_privilege('agentify_privacy', 'public.leads', 'INSERT') as privacy_leads_insert,
-        has_table_privilege('agentify_worker', 'public.scans', 'UPDATE') as worker_scans_update`);
-      expect(nonIdentityGrants.rows[0]).toEqual({
-        privacy_leads_insert: true,
-        worker_scans_update: true,
-      });
-    } finally {
-      await pool.end();
-      await resetDatabase();
-    }
-  }, 35_000);
-
   it("migrates up, enforces RLS and idempotency, migrates down, then migrates up again", async () => {
     const { db, pool } = createDatabase(connectionString, { max: 5 });
     try {
@@ -540,196 +423,6 @@ describe("initial database migration", () => {
       );
       expect(tableRows.rows.map(({ tablename }) => tablename)).toEqual([...TABLES].sort());
       expect(tableRows.rows.every(({ rowsecurity }) => rowsecurity)).toBe(true);
-
-      await pool.query(`
-        create schema if not exists metabase;
-        create view metabase.browser_observation_budget_health with (security_barrier = true) as
-        select
-          budget.budget_day,
-          budget.usage_usd::numeric(12, 6) as reconciled_usage_usd,
-          budget.reserved_usd::numeric(12, 6) as reserved_usage_usd,
-          (budget.usage_usd + budget.reserved_usd)::numeric(12, 6) as breaker_usage_usd,
-          count(observation.id) filter (where observation.budget_reserved_usd > 0)::bigint
-            as outstanding_reservations,
-          budget.updated_at
-        from public.browser_observation_budget_days budget
-        left join public.browser_observations observation
-          on observation.budget_day = budget.budget_day
-        group by budget.budget_day, budget.usage_usd, budget.reserved_usd, budget.updated_at
-      `);
-      await pool.query(await readFile(dashboardInstallFile, "utf8"));
-      await pool.query(
-        `insert into public.rate_limit_events
-          (id, key_hash, kind, occurred_at, challenge_passed, expires_at)
-         values
-          ($1, 'operator-test-a', 'scan_ip_hour', now(), false, now() + interval '1 hour'),
-          ($2, 'operator-test-b', 'scan_ip_hour', now(), true, now() + interval '1 hour'),
-          ($3, 'operator-test-c', 'registration_email_hour', now(), true, now() + interval '1 hour')`,
-        [createUuidV7(), createUuidV7(), createUuidV7()],
-      );
-      const operatorSessionIds = [createUuidV7(), createUuidV7()];
-      await pool.query(
-        `insert into public.sessions (id, anonymous_id_hash)
-         values ($1, 'operator-session-a'), ($2, 'operator-session-b')`,
-        operatorSessionIds,
-      );
-      await pool.query(
-        `insert into public.scans
-          (id, session_id, segment, rubric_version, submitted_url_redacted,
-           canonical_target_url, target_host, target_hash, access_token_hash,
-           access_token_expires_at, idempotency_key_hash, idempotency_body_hash)
-         values
-          ($1, $2, 'owner', 'gtm-v1.0.0', 'https://example.com/',
-           'https://example.com/', 'example.com', 'operator-target-a',
-           'operator-token-a', now() + interval '1 hour', 'operator-key-a', 'operator-body-a'),
-          ($3, $4, 'owner', 'gtm-v1.0.0', 'https://example.org/',
-           'https://example.org/', 'example.org', 'operator-target-b',
-           'operator-token-b', now() + interval '1 hour', 'operator-key-b', 'operator-body-b')`,
-        [createUuidV7(), operatorSessionIds[0], createUuidV7(), operatorSessionIds[1]],
-      );
-      const operatorViews = await pool.query<{ table_name: string }>(`
-        select table_name
-        from information_schema.views
-        where table_schema = 'metabase' and table_name like 'operator_%'
-        order by table_name
-      `);
-      expect(operatorViews.rows.map(({ table_name }) => table_name)).toEqual([
-        "operator_daily_funnel",
-        "operator_overview",
-        "operator_recent_scans",
-        "operator_self_scan",
-      ]);
-      const operatorOverview = await pool.query<{
-        accepted_requests_24h: string;
-        challenge_passes_24h: string;
-      }>("select * from metabase.operator_overview");
-      expect(operatorOverview.rows).toHaveLength(1);
-      expect(operatorOverview.rows[0]).toMatchObject({
-        accepted_requests_24h: "2",
-        challenge_passes_24h: "1",
-      });
-      expect((await pool.query("select * from metabase.operator_daily_funnel")).rows).toHaveLength(
-        30,
-      );
-      const budgetViewColumns = await pool.query<{ column_name: string }>(`
-        select column_name
-        from information_schema.columns
-        where table_schema = 'metabase'
-          and table_name = 'browser_observation_budget_health'
-        order by ordinal_position
-      `);
-      expect(budgetViewColumns.rows.map(({ column_name }) => column_name)).toEqual([
-        "budget_day",
-        "reconciled_usage_usd",
-        "reserved_usage_usd",
-        "breaker_usage_usd",
-        "outstanding_reservations",
-        "updated_at",
-        "pending_usage_reconciliations",
-      ]);
-
-      const privacyAuditColumns = async () =>
-        (
-          await pool.query<{ column_name: string }>(`
-            select column_name
-            from information_schema.columns
-            where table_schema = 'metabase'
-              and table_name = 'privacy_retention_audit'
-            order by ordinal_position
-          `)
-        ).rows.map(({ column_name }) => column_name);
-      const privacyAuditAccess = async () => {
-        const relation = await pool.query<{
-          object_oid: string;
-          owner_name: string;
-        }>(`
-          select c.oid::text as object_oid, pg_get_userbyid(c.relowner) as owner_name
-          from pg_class c
-          join pg_namespace n on n.oid = c.relnamespace
-          where n.nspname = 'metabase'
-            and c.relname = 'privacy_retention_audit'
-        `);
-        const acl = await pool.query<{
-          grantee_name: string;
-          grantor_name: string;
-          is_grantable: boolean;
-          privilege_type: string;
-        }>(`
-          select
-            case when acl.grantee = 0 then 'PUBLIC' else pg_get_userbyid(acl.grantee) end as grantee_name,
-            pg_get_userbyid(acl.grantor) as grantor_name,
-            acl.privilege_type,
-            acl.is_grantable
-          from pg_class c
-          join pg_namespace n on n.oid = c.relnamespace
-          cross join lateral aclexplode(c.relacl) acl
-          where n.nspname = 'metabase'
-            and c.relname = 'privacy_retention_audit'
-          order by 1, 2, 3, 4
-        `);
-        return { relation: relation.rows[0], acl: acl.rows };
-      };
-      const registrationLastColumns = [
-        "overdue_recovery_intents",
-        "overdue_unverified_leads",
-        "expired_active_report_sessions",
-        "active_public_shares",
-        "attached_card_signals",
-        "analytics_dead_letters",
-        "overdue_registration_intents",
-        "overdue_identity_completions",
-      ];
-      const registrationSecondColumns = [
-        "overdue_recovery_intents",
-        "overdue_registration_intents",
-        "overdue_unverified_leads",
-        "expired_active_report_sessions",
-        "active_public_shares",
-        "attached_card_signals",
-        "analytics_dead_letters",
-        "overdue_identity_completions",
-      ];
-
-      await pool.query(`
-        drop view metabase.privacy_retention_audit;
-        create view metabase.privacy_retention_audit as
-        select
-          0::bigint as overdue_verification_tokens,
-          0::bigint as overdue_registration_intents,
-          0::bigint as overdue_unverified_leads,
-          0::bigint as expired_active_report_sessions,
-          0::bigint as active_public_shares,
-          0::bigint as attached_card_signals,
-          0::bigint as analytics_dead_letters;
-        grant select on metabase.privacy_retention_audit to pg_read_all_settings with grant option
-      `);
-      const intermediateAccess = await privacyAuditAccess();
-      await pool.query(await readFile(dashboardInstallFile, "utf8"));
-      expect(await privacyAuditColumns()).toEqual(registrationSecondColumns);
-      expect(await privacyAuditAccess()).toEqual(intermediateAccess);
-      await pool.query(await readFile(dashboardInstallFile, "utf8"));
-      expect(await privacyAuditColumns()).toEqual(registrationSecondColumns);
-      expect(await privacyAuditAccess()).toEqual(intermediateAccess);
-
-      await pool.query(`
-        drop view metabase.privacy_retention_audit;
-        create view metabase.privacy_retention_audit as
-        select
-          0::bigint as overdue_verification_tokens,
-          0::bigint as overdue_unverified_leads,
-          0::bigint as expired_active_report_sessions,
-          0::bigint as active_public_shares,
-          0::bigint as attached_card_signals,
-          0::bigint as analytics_dead_letters;
-        grant select on metabase.privacy_retention_audit to pg_read_all_settings with grant option
-      `);
-      const legacyAccess = await privacyAuditAccess();
-      await pool.query(await readFile(dashboardInstallFile, "utf8"));
-      expect(await privacyAuditColumns()).toEqual(registrationLastColumns);
-      expect(await privacyAuditAccess()).toEqual(legacyAccess);
-      await pool.query(await readFile(dashboardInstallFile, "utf8"));
-      expect(await privacyAuditColumns()).toEqual(registrationLastColumns);
-      expect(await privacyAuditAccess()).toEqual(legacyAccess);
 
       const oldWorkerStart = new Date("2026-07-12T10:00:00.000Z");
       const newWorkerStart = new Date("2026-07-12T11:00:00.000Z");

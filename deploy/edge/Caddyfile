@@ -70,9 +70,9 @@ agentify.ad {
 		-Server
 	}
 
-	# The commerce web image contains the shared scanner/commerce route table,
-	# including scanner administration protection. Test runs that same image.
-	reverse_proxy agentify-commerce-web:8080
+	# That image carries the whole route table, the scanner's front page and
+	# its administration protection included. Test runs the same one.
+	reverse_proxy agentify-web:8080
 }
 
 www.agentify.ad {

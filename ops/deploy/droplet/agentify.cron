@@ -1,5 +1,0 @@
-SHELL=/bin/bash
-PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-
-17 3 * * * root /opt/agentify/current/ops/deploy/droplet/backup.sh >>/var/log/agentify-backup.log 2>&1
-23 4 * * * root cd /opt/agentify/current/ops/deploy/droplet && /usr/bin/docker compose --profile jobs --env-file /opt/agentify/shared/.env.production -f compose.production.yaml run --rm --no-deps privacy-cleanup >>/var/log/agentify-privacy-cleanup.log 2>&1

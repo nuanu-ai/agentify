@@ -35,8 +35,6 @@
     "scanner:test:actor": "vitest run --project integration apps/browser-observer-actor/src/actor.integration.test.ts",
     "scanner:test:db": "pnpm scanner:build && pnpm scanner:db:check && pnpm scanner:db:test:migrations",
     "scanner:self-readiness": "node ops/scripts/self-readiness-candidate.mjs",
-    "scanner:db:up": "docker compose --env-file .env.scanner -f ops/compose.scanner.yaml up -d --wait postgres",
-    "scanner:db:down": "docker compose --env-file .env.scanner -f ops/compose.scanner.yaml down",
     "scanner:db:migrate": "node ops/scripts/with-env.mjs pnpm --filter @agentify/scanner-database db:migrate",
     "scanner:dev": "node ops/scripts/with-env.mjs pnpm --parallel --filter @agentify/web --filter @agentify/scanner-worker dev",
     "scanner:test:integration:inner": "pnpm scanner:build && vitest run --project integration apps/scanner-worker/src/analytics-outbox.integration.test.ts && vitest run --project integration apps/web/lib/server/p4.integration.test.ts && vitest run --project integration apps/web/lib/server/p5.integration.test.ts",
@@ -50,8 +48,7 @@
     "scanner:ops:browser": "node ops/scripts/with-env.mjs bash ops/scripts/browser-smoke.sh",
     "scanner:ops:load": "node ops/scripts/with-env.mjs node ops/scripts/load-scan.mjs",
     "scanner:ops:golden-corpus": "node ops/scripts/with-env.mjs node ops/scripts/golden-corpus.mjs",
-    "scanner:ops:test": "node --test ops/scripts/*.test.mjs && python3 ops/deploy/test_agentify_test_woo_hairpin.py",
-    "scanner:release:check": "node ops/scripts/with-env.mjs bash ops/scripts/release-gate.sh",
+    "scanner:ops:test": "node --test ops/scripts/*.test.mjs && python3 deploy/ansible/test_agentify_test_woo_hairpin.py",
     "scanner:privacy:cleanup": "node ops/scripts/with-env.mjs bash ops/scripts/privacy-retention-cleanup.sh",
     "scanner:ops:local-core": "node ops/scripts/with-env.mjs bash ops/scripts/local-core-flow-smoke.sh"
   },

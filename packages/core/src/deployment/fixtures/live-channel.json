@@ -50,7 +50,9 @@
         "MAIL_URL": "https://api.resend.com",
         "PAYMENT_NETWORK": "eip155:8453",
         "PORT": "3001",
-        "PUBLIC_BASE_URL": "https://agentify.ad"
+        "PUBLIC_BASE_URL": "https://agentify.ad",
+        "REGISTRATION_INVITATION": "fixture-invitation",
+        "REPORT_IDENTITY_SECRET": "fixture-report-identity-secret-of-64-hexish-characters-0000000000"
       },
       "healthcheck": {
         "test": [
@@ -64,7 +66,7 @@
         "retries": 15,
         "start_period": "15s"
       },
-      "image": "agentify-commerce-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "image": "agentify-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "networks": {
         "default": null
       },
@@ -116,7 +118,7 @@
         "retries": 15,
         "start_period": "15s"
       },
-      "image": "agentify-commerce-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "image": "agentify-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "networks": {
         "default": null
       },
@@ -141,7 +143,7 @@
       "environment": {
         "DATABASE_URL": "postgres://agentify_commerce:synthetic-new-database-password@postgres:5432/agentify_commerce"
       },
-      "image": "agentify-commerce-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "image": "agentify-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "networks": {
         "default": null
       },
@@ -185,6 +187,176 @@
         }
       ]
     },
+    "scanner": {
+      "build": {
+        "context": "/workspace/agentify",
+        "dockerfile": "deploy/Dockerfile.scanner",
+        "target": "runner"
+      },
+      "command": null,
+      "depends_on": {
+        "cabinet": {
+          "condition": "service_started",
+          "required": true
+        },
+        "postgres": {
+          "condition": "service_healthy",
+          "required": true
+        },
+        "scanner-migrate": {
+          "condition": "service_completed_successfully",
+          "required": true
+        }
+      },
+      "entrypoint": null,
+      "environment": {
+        "ABUSE_EMAIL": "abuse@agentify.ad",
+        "ANALYTICS_RUNTIME_ENV": "production",
+        "ANALYTICS_SERVER_DELIVERY_ENABLED": "false",
+        "APIFY_BROWSER_MODE": "off",
+        "APP_BASE_URL": "https://agentify.ad",
+        "BENCHMARK_ENABLED": "false",
+        "CABINET_IDENTITY_URL": "http://cabinet:3002",
+        "CARD_SIGNAL_ENABLED": "false",
+        "DATABASE_URL": "postgres://agentify_commerce:synthetic-new-database-password@postgres:5432/agentify_scanner",
+        "EMAIL_ENCRYPTION_KEY": "ZmluZS1zeW50aGV0aWMtZml4dHVyZS1lbmNyeXB0aW9u",
+        "LEGAL_IDENTITY_CONFIRMED": "false",
+        "LEGAL_OPERATOR": "Operator identity pending confirmation",
+        "META_DESTINATION_ENV": "production",
+        "META_PIXEL_ID": "",
+        "PARTNER_POSTBACK_ENABLED": "false",
+        "POSTHOG_BROWSER_HOST": "",
+        "POSTHOG_BROWSER_KEY": "",
+        "POSTHOG_DESTINATION_ENV": "production",
+        "PRIVACY_EMAIL": "privacy@agentify.ad",
+        "PUBLIC_SHARE_ENABLED": "false",
+        "REGISTRATION_ENABLED": "false",
+        "REMEDIATION_PROMPT_ENABLED": "true",
+        "REPORT_IDENTITY_SECRET": "fixture-report-identity-secret-of-64-hexish-characters-0000000000",
+        "SCANNER_CACHE_ENABLED": "false",
+        "SCAN_ACCEPTANCE_ENABLED": "true",
+        "STRIPE_PUBLISHABLE_KEY": "",
+        "TOKEN_HMAC_SECRET": "fixture-token-hmac-secret-with-enough-characters",
+        "TURNSTILE_ENFORCED": "false",
+        "TURNSTILE_SECRET_KEY": "",
+        "TURNSTILE_SITE_KEY": ""
+      },
+      "image": "agentify-scanner:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "networks": {
+        "default": null
+      },
+      "restart": "unless-stopped"
+    },
+    "scanner-migrate": {
+      "build": {
+        "context": "/workspace/agentify",
+        "dockerfile": "deploy/Dockerfile.scanner-worker"
+      },
+      "command": [
+        "node",
+        "packages/scanner-database/dist/migrate-cli.js"
+      ],
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy",
+          "required": true
+        }
+      },
+      "entrypoint": null,
+      "environment": {
+        "DATABASE_URL": "postgres://agentify_commerce:synthetic-new-database-password@postgres:5432/agentify_scanner"
+      },
+      "image": "agentify-scanner-worker:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "networks": {
+        "default": null
+      },
+      "restart": "no"
+    },
+    "scanner-privacy": {
+      "profiles": [
+        "jobs"
+      ],
+      "build": {
+        "context": "/workspace/agentify",
+        "dockerfile": "deploy/Dockerfile.scanner",
+        "target": "privacy-jobs"
+      },
+      "command": null,
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy",
+          "required": true
+        }
+      },
+      "entrypoint": null,
+      "environment": {
+        "APP_BASE_URL": "https://agentify.ad",
+        "CARD_SIGNAL_ENABLED": "false",
+        "DATABASE_URL": "postgres://agentify_commerce:synthetic-new-database-password@postgres:5432/agentify_scanner",
+        "EMAIL_ENCRYPTION_KEY": "ZmluZS1zeW50aGV0aWMtZml4dHVyZS1lbmNyeXB0aW9u",
+        "PRIVACY_CLEANUP_ACK": "yes",
+        "PRIVACY_CLEANUP_BATCH_SIZE": "100",
+        "PRIVACY_CLEANUP_DRY_RUN": "false",
+        "REGISTRATION_ENABLED": "false",
+        "STRIPE_ADAPTER": "local",
+        "TOKEN_HMAC_SECRET": "fixture-token-hmac-secret-with-enough-characters"
+      },
+      "image": "agentify-scanner-privacy:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "networks": {
+        "default": null
+      },
+      "restart": "no"
+    },
+    "scanner-worker": {
+      "build": {
+        "context": "/workspace/agentify",
+        "dockerfile": "deploy/Dockerfile.scanner-worker"
+      },
+      "command": null,
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy",
+          "required": true
+        },
+        "scanner-migrate": {
+          "condition": "service_completed_successfully",
+          "required": true
+        }
+      },
+      "entrypoint": null,
+      "environment": {
+        "ANALYTICS_ENV": "production",
+        "ANALYTICS_RUNTIME_ENV": "production",
+        "ANALYTICS_SERVER_DELIVERY_ENABLED": "false",
+        "APIFY_API_TOKEN": "",
+        "APIFY_BROWSER_ACTOR_BUILD": "",
+        "APIFY_BROWSER_ACTOR_ID": "",
+        "APIFY_BROWSER_CONCURRENCY": "1",
+        "APIFY_BROWSER_DAILY_BUDGET_USD": "25",
+        "APIFY_BROWSER_ENABLED": "false",
+        "APIFY_BROWSER_MAX_PAGES": "3",
+        "APIFY_BROWSER_MAX_RUN_USD": "0.05",
+        "APIFY_BROWSER_MODE": "off",
+        "APIFY_BROWSER_SAMPLE_RATE": "0.10",
+        "APIFY_BROWSER_TIMEOUT_SECONDS": "60",
+        "APP_BASE_URL": "https://agentify.ad",
+        "DATABASE_URL": "postgres://agentify_commerce:synthetic-new-database-password@postgres:5432/agentify_scanner",
+        "META_CAPI_ENABLED": "false",
+        "META_DESTINATION_ENV": "production",
+        "PARTNER_POSTBACK_ENABLED": "false",
+        "PARTNER_POSTBACK_SECRET": "",
+        "POSTHOG_DESTINATION_ENV": "production",
+        "POSTHOG_ENABLED": "false",
+        "SCANNER_CACHE_ENABLED": "false",
+        "SCANNER_CONCURRENCY": "4",
+        "WORKER_ID": "agentify-production-1"
+      },
+      "image": "agentify-scanner-worker:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "networks": {
+        "default": null
+      },
+      "restart": "unless-stopped"
+    },
     "web": {
       "build": {
         "context": "/workspace/agentify",
@@ -199,22 +371,26 @@
         "gateway": {
           "condition": "service_healthy",
           "required": false
+        },
+        "scanner": {
+          "condition": "service_healthy",
+          "required": false
         }
       },
       "entrypoint": null,
       "environment": {
+        "ADMIN_BASIC_AUTH_HASH": "$2a$14$offline-fixture-bcrypt-hash",
+        "ADMIN_BASIC_AUTH_USER": "test-admin",
+        "AGENTIFY_FRONT_PAGE": "scanner_front_page",
         "AGENTIFY_SITE_ADDRESS": ":8080",
         "AGENTIFY_SURFACE_MODE": "live",
-        "AGENTIFY_TRUSTED_EDGE_CIDR": "172.30.80.2/32",
-        "AGENTIFY_FRONT_PAGE": "scanner_front_page",
-        "ADMIN_BASIC_AUTH_USER": "test-admin",
-        "ADMIN_BASIC_AUTH_HASH": "$2a$14$offline-fixture-bcrypt-hash"
+        "AGENTIFY_TRUSTED_EDGE_CIDR": "172.30.80.2/32"
       },
-      "image": "agentify-commerce-web:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "image": "agentify-web:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "networks": {
         "agentify-ingress": {
           "aliases": [
-            "agentify-commerce-web"
+            "agentify-web"
           ]
         },
         "default": null
@@ -245,7 +421,15 @@
       "context": ".",
       "dockerfile": "deploy/Dockerfile.app"
     },
-    "image": "agentify-commerce-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "image": "agentify-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "restart": "unless-stopped"
+  },
+  "x-scanner-app": {
+    "build": {
+      "context": ".",
+      "dockerfile": "deploy/Dockerfile.scanner-worker"
+    },
+    "image": "agentify-scanner-worker:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "restart": "unless-stopped"
   }
 }

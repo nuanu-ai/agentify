@@ -2,10 +2,10 @@
  * The worked examples the console offers to publish.
  *
  * Three of them are files rather than copies: the portal prints the same JSON
- * on its own pages and `packages/contracts/src/landing-fixtures.test.ts` holds
- * the landing's code block to the shortest of them. Read from disk here, a
- * template that stops publishing is a documented example that stopped working,
- * which is the whole reason to have the button.
+ * on its own pages and `packages/contracts/src/portal-fixtures.test.ts` holds
+ * every one of them to its schema. Read from disk here, a template that stops
+ * publishing is a documented example that stopped working, which is the whole
+ * reason to have the button.
  *
  * The two after them are the pilot's own products, and the last is the shape
  * the public x402 catalogue is actually full of. That one is drawn from a

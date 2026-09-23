@@ -50,6 +50,15 @@ the repository Dockerfiles and frozen lockfile. Each host records image IDs and
 verifies source-revision labels. Separate builds are not claimed to have
 identical bytes. Production credentials and data never cross into TEST.
 
+A channel is one Compose project, rendered from one file list into one
+document, with one environment file beside it. It was two projects on one host
+for as long as the scanner was a separate product, joined by an external
+network that carried its database and its identity route; those two facts are
+now services and service names inside the project, so staging renders once,
+preflight reads that one document, and activation has one command to say. A
+host that still carries the second project's containers and environment file
+is reconciled once, by the operator, before the first release of this shape.
+
 The same `app-v*` tag publishes the public npm packages. The publish workflow,
 behind the same main-ancestry and CI checks, releases whatever SDK and
 contracts versions the tagged manifests carry and the registry does not hold,

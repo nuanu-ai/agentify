@@ -16,3 +16,15 @@ services:
   web:
     build: !reset null
     image: "${AGENTIFY_WEB_IMAGE:?set the locally built release image}"
+  scanner-migrate:
+    build: !reset null
+    image: "${AGENTIFY_SCANNER_WORKER_IMAGE:?set the locally built release image}"
+  scanner-worker:
+    build: !reset null
+    image: "${AGENTIFY_SCANNER_WORKER_IMAGE:?set the locally built release image}"
+  scanner:
+    build: !reset null
+    image: "${AGENTIFY_SCANNER_IMAGE:?set the locally built release image}"
+  scanner-privacy:
+    build: !reset null
+    image: "${AGENTIFY_SCANNER_PRIVACY_IMAGE:?set the locally built release image}"

@@ -68,21 +68,20 @@ if len(identity_secret) != 64 or any(c not in '0123456789abcdef' for c in identi
 
 common = {
     'AGENTIFY_POSTGRES_IMAGE': infra['postgres'],
-    'AGENTIFY_ALPINE_IMAGE': infra['alpine'],
     'AGENTIFY_EDGE_IMAGE': infra['caddy'],
     'AGENTIFY_INGRESS_NETWORK': channel['ingress_network'],
-    'AGENTIFY_SCANNER_DB_NETWORK': channel['database_network'],
 }
-stable_commerce = stable / 'commerce.env'
-if not stable_commerce.exists():
-    write_environment('commerce.env', Path(channel['commerce_environment']).read_text(), {}, stable)
+# One environment file for one project. The scanner used to have a second one
+# beside it; its keys are the same keys, so a host that still holds both merges
+# them once before the first release of the merged graph (deploy/ansible/README.md).
+stable_environment = stable / 'agentify.env'
+if not stable_environment.exists():
+    write_environment('agentify.env', Path(channel['environment']).read_text(), {}, stable)
+source = stable_environment.read_text()
 
 if channel_name == 'production':
     edge = environment(channel['edge_container'])
     admin = {key: edge[key] for key in ['ADMIN_BASIC_AUTH_USER', 'ADMIN_BASIC_AUTH_HASH']}
-    if not (stable / 'scanner.env').exists():
-        write_environment('scanner.env', Path(channel['scanner_environment']).read_text(), {}, stable)
-    scanner_source = (stable / 'scanner.env').read_text()
     # Ask Compose to parse its own dotenv syntax, including quoted values.
     # Project only the explicitly public settings, never a server API key.
     public_names = {
@@ -100,11 +99,11 @@ if channel_name == 'production':
         'META_DESTINATION_ENV': 'NEXT_PUBLIC_META_DESTINATION_ENV',
     }
     projection = directory / '.public-env-projection.json'
-    projection.write_text(json.dumps({'services': {'projection': {'image': infra['alpine'], 'environment': {
+    projection.write_text(json.dumps({'services': {'projection': {'image': infra['postgres'], 'environment': {
         key: '${' + key + ':-${' + legacy + ':-}}' for key, legacy in public_names.items()
     }}}}))
     try:
-        parsed = json.loads(subprocess.check_output(['docker', 'compose', '--env-file', str(stable / 'scanner.env'), '-f', str(projection), 'config', '--format', 'json']))
+        parsed = json.loads(subprocess.check_output(['docker', 'compose', '--env-file', str(stable_environment), '-f', str(projection), 'config', '--format', 'json']))
         scanner_overrides = {key: value for key, value in parsed['services']['projection']['environment'].items() if value != ''}
     finally:
         projection.unlink()
@@ -122,22 +121,21 @@ else:
         fd = os.open(stable / 'scanner-admin-password', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, 'w') as out:
             out.write(password + '\n')
-    scanner_source = ''
     scanner_overrides = {}
-    if not (stable / 'scanner.env').exists():
+    # The test channel generates its own scanner secrets once and then keeps
+    # them. A stable file that already carries one of them has been through
+    # this and is never regenerated, because new keys would orphan every report
+    # link and every encrypted address the existing database holds.
+    if 'TOKEN_HMAC_SECRET' not in source:
         exists = subprocess.check_output(['docker', 'exec', channel['postgres_container'], 'psql', '-U', 'agentify_commerce', '-d', 'agentify_commerce', '-At', '-v', 'ON_ERROR_STOP=1', '-c', "select count(*) from pg_database where datname='agentify_scanner'"], text=True).strip()
         if exists != '0':
             raise RuntimeError('Scanner database exists without stable secrets; restore its configuration, never generate replacement identity keys')
-        postgres = environment(channel['postgres_container'])
         cabinet = environment(channel['cabinet_container'])
         # Confirm that this channel cabinet can deliver links. Its mail
         # credential stays in the cabinet and is never copied to scanner.
         if not cabinet.get('MAIL_API_KEY') or cabinet.get('MAIL_URL') != 'https://api.resend.com':
             raise RuntimeError('The test cabinet needs its own configured Resend provider before scanner registration can be accepted')
         scanner_overrides = {
-            'DATABASE_MODE': 'private',
-            'POSTGRES_ADMIN_PASSWORD': postgres['POSTGRES_PASSWORD'],
-            'ADMIN_DATABASE_URL': 'postgresql://agentify_commerce:' + postgres['POSTGRES_PASSWORD'] + '@agentify-scanner-postgres:5432/agentify_scanner',
             'TOKEN_HMAC_SECRET': secrets.token_hex(32),
             'EMAIL_ENCRYPTION_KEY': base64.b64encode(secrets.token_bytes(32)).decode(),
             'REGISTRATION_ENABLED': 'true',
@@ -149,32 +147,18 @@ else:
             'SCANNER_CONCURRENCY': '2',
             'ANALYTICS_RUNTIME_ENV': 'test',
         }
-        for role in ['WEB', 'WORKER', 'PRIVACY', 'DASHBOARD']:
-            password = secrets.token_hex(24)
-            scanner_overrides['POSTGRES_' + role + '_PASSWORD'] = password
-            scanner_overrides[role + '_DATABASE_URL'] = 'postgresql://agentify_' + role.lower() + ':' + password + '@agentify-scanner-postgres:5432/agentify_scanner'
-        write_environment('scanner.env', '', scanner_overrides, stable)
-    scanner_source = (stable / 'scanner.env').read_text()
-    scanner_overrides = {}
 
-commerce_overrides = {}
+channel_overrides = {}
 if channel_name == 'test':
-    commerce_overrides['AGENTIFY_TEST_LISTEN_ADDRESS'] = channel['listen_address']
+    channel_overrides['AGENTIFY_TEST_LISTEN_ADDRESS'] = channel['listen_address']
 
-write_environment('commerce.env', stable_commerce.read_text(), {
-    **common, **admin, **commerce_overrides,
+write_environment('agentify.env', source, {
+    **common, **admin, **scanner_overrides, **channel_overrides,
     'REPORT_IDENTITY_SECRET': identity_secret,
-    'AGENTIFY_APP_IMAGE': fp['commerce-app'], 'AGENTIFY_WEB_IMAGE': fp['commerce-web'],
     'AGENTIFY_PUBLIC_ORIGIN': channel['origin'],
-})
-write_environment('scanner.env', scanner_source, {
-    **common, **admin, **scanner_overrides,
-    'REPORT_IDENTITY_SECRET': identity_secret,
-    'APP_BASE_URL': channel['origin'],
-    'AGENTIFY_SCANNER_WEB_IMAGE': fp['scanner-web'],
+    'AGENTIFY_APP_IMAGE': fp['app'],
+    'AGENTIFY_WEB_IMAGE': fp['web'],
+    'AGENTIFY_SCANNER_IMAGE': fp['scanner'],
     'AGENTIFY_SCANNER_WORKER_IMAGE': fp['scanner-worker'],
     'AGENTIFY_SCANNER_PRIVACY_IMAGE': fp['scanner-privacy'],
-    'AGENTIFY_BACKUP_DIRECTORY': channel['backup_directory'],
-    'RECONCILE_RUNTIME_ROLE_PASSWORDS': 'false',
-    'ROLE_PASSWORD_ROTATION_MAINTENANCE_ACK': 'false',
 })

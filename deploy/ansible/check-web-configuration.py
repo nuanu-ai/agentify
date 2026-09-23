@@ -8,7 +8,7 @@ import sys
 import time
 
 root = Path(sys.argv[1])
-config = json.loads((root / 'scanner-resolved.json').read_text())['services']['web']
+config = json.loads((root / 'resolved.json').read_text())['services']['scanner']
 revision = sys.argv[2]
 name = 'agentify-configuration-check-' + revision[:12]
 file = root / '.web-configuration-check.env'

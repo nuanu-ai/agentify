@@ -3,11 +3,13 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "The visual language: one stylesheet of tokens, base element rules and shared primitives, read by every surface on the origin",
+  "description": "The visual language: one stylesheet of tokens, base element rules and shared primitives, and the marks and faces every surface on the origin is drawn with",
   "exports": {
-    "./tokens.css": "./tokens.css"
+    "./tokens.css": "./tokens.css",
+    "./public/*": "./public/*"
   },
   "files": [
-    "tokens.css"
+    "tokens.css",
+    "public"
   ]
 }

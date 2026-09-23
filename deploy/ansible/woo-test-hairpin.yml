@@ -76,7 +76,7 @@
 
         - name: Install the strict TEST Woo hairpin helper
           ansible.builtin.copy:
-            src: "{{ playbook_dir }}/../../ops/deploy/agentify-test-woo-hairpin.py"
+            src: "{{ playbook_dir }}/agentify-test-woo-hairpin.py"
             dest: "{{ hairpin_helper }}"
             owner: root
             group: root
@@ -104,7 +104,7 @@
 
         - name: Install the persistent TEST Woo hairpin unit
           ansible.builtin.copy:
-            src: "{{ playbook_dir }}/../../ops/deploy/agentify-test-woo-hairpin.service"
+            src: "{{ playbook_dir }}/agentify-test-woo-hairpin.service"
             dest: "{{ hairpin_unit }}"
             owner: root
             group: root

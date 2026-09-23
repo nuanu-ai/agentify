@@ -1,1 +1,0 @@
-CREATE DATABASE agentify_scanner_migration_test;

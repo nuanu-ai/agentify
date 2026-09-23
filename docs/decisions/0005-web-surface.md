@@ -80,20 +80,25 @@ page for a person, so the shape of that is a decision rather than a detail.
    scripts; anything more is a decision to be recorded, not a habit to drift
    into.
 
-5. **The landing is static locally** — HTML and CSS, served by Caddy from a
-   built directory, no runtime behind it. Deployed, the scanner's front page is
-   the landing: one page for one product, and the static one is not served in either deployed channel. It remains
-   only the local commerce fixture. The scanner is a Next.js application by inheritance (ADR-0024)
+5. **There is one front page and it is the scanner's** — on a laptop and in
+   both deployed channels, selected by the same name in the same route table.
+   A second static page stood in for it locally while the scanner was a
+   separate stack to bring up; it is deleted, because a fixture that renders
+   what the product does not is a page nobody keeps true. The scanner is a
+   Next.js application by inheritance (ADR-0024)
    and is not the cabinet, so §4 stands for the cabinet as written.
 
-6. **One visual language, held in `packages/visual/tokens.css`.** One file
-   carries the colour, the type, the radius and the border weight, the base
-   element rules that follow from them, and the few primitives every surface
-   draws — the page width, the button, the focus ring, the lockup. It
-   covers the scanner, the cabinet, the documentation portal and the static
-   landing that is the local fixture. Nothing serves it over HTTP on the
-   deployed origin, because the shared-asset route names each path and this is
-   not one of them; every reader takes it at build time or off disk instead.
+6. **One visual language, held in `packages/visual`.** One file carries the
+   colour, the type, the radius and the border weight, the base element rules
+   that follow from them, and the few primitives every surface draws — the
+   page width, the button, the focus ring, the lockup. It covers the scanner,
+   the cabinet and the documentation portal. Nothing serves it over HTTP on
+   the deployed origin, because the shared-asset route names each path and
+   this is not one of them; every reader takes it at build time or off disk
+   instead. The mark and the font files are a different matter — a browser
+   asks for them by address — so they sit beside the stylesheet in the same
+   package, under the directory shape the route table serves them at, and
+   Caddy is what puts them on the origin.
    The portal is the one exception and copies its eight colours, because it is
    a separate project with its own lockfile; a test reads both files and fails
    the suite when a value stops matching.

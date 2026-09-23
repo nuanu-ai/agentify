@@ -1,7 +1,7 @@
 # The one door.
 #
-# ADR-0005 §1: locally, Caddy is the only address anybody types. `/` is the
-# landing, `/docs` the portal, `/cabinet` the cabinet, and `/v0/*` and `/x402/*`
+# ADR-0005 §1: Caddy is the only address anybody types. `/` is the scanner,
+# `/docs` the portal, `/cabinet` the cabinet, and `/v0/*` and `/x402/*`
 # are both the gateway — the merchant's API and the storefront an agent buys at
 # — so a merchant's engineer sees one origin and never reasons about ports. The
 # same file describes the server later, which is why nothing below is written
@@ -11,11 +11,11 @@
 #
 #   AGENTIFY_SITE_ADDRESS      what Caddy listens on              :8080
 #   AGENTIFY_FRONT_PAGE        required front-page route          no default
-#   AGENTIFY_LANDING_ROOT      the landing's static directory     /srv/landing
+#   AGENTIFY_ASSET_ROOT        the shared browser assets          /srv/assets
 #   AGENTIFY_PORTAL_ROOT       the portal's built output          /srv/docs
 #   AGENTIFY_CABINET_UPSTREAM  host:port of the cabinet process   cabinet:3001
 #   AGENTIFY_GATEWAY_UPSTREAM  host:port of the gateway process   gateway:3000
-#   AGENTIFY_SCANNER_UPSTREAM  host:port of the scanner process   agentify-site:3000
+#   AGENTIFY_SCANNER_UPSTREAM  host:port of the scanner process   scanner:3000
 #   AGENTIFY_SURFACE_MODE      what the static pages say           sandbox
 #
 # The defaults are the container's view of the world, because ADR-0005 §7 wants
@@ -24,11 +24,12 @@
 # name are the service names on its network. Running this file from a checkout
 # outside Docker still works, with the roots pointed at the repository:
 #
-#   AGENTIFY_FRONT_PAGE=local_front_page \
-#   AGENTIFY_LANDING_ROOT=apps/landing/public \
+#   AGENTIFY_FRONT_PAGE=scanner_front_page \
+#   AGENTIFY_ASSET_ROOT=packages/visual/public \
 #   AGENTIFY_PORTAL_ROOT=apps/docs/.vitepress/dist \
 #   AGENTIFY_CABINET_UPSTREAM=127.0.0.1:3001 \
 #   AGENTIFY_GATEWAY_UPSTREAM=127.0.0.1:3000 \
+#   AGENTIFY_SCANNER_UPSTREAM=127.0.0.1:3000 \
 #     caddy run --config deploy/Caddyfile
 #
 # The listen address defaults to a high port rather than :80 so that the same
@@ -67,19 +68,6 @@
 	}
 }
 
-# Local commerce remains usable without a scanner. Both deployed channels
-# select scanner_front_page; release preflight rejects a static deployed root.
-(local_front_page) {
-	handle {
-		root * {$AGENTIFY_LANDING_ROOT:/srv/landing}
-		templates {
-			mime text/html
-			between <!--{{ }}-->
-		}
-		file_server
-	}
-}
-
 (scanner_front_page) {
 	@admin path /admin /admin/*
 	handle @admin {
@@ -91,7 +79,7 @@
 			X-Robots-Tag "noindex, nofollow"
 			Referrer-Policy same-origin
 		}
-		reverse_proxy {$AGENTIFY_SCANNER_UPSTREAM:agentify-site:3000} {
+		reverse_proxy {$AGENTIFY_SCANNER_UPSTREAM:scanner:3000} {
 			# Scanner consumers historically disagreed about whether the first or
 			# last forwarded address was the browser. Give them one address. The
 			# global trusted-proxy boundary above decides it; incoming values from
@@ -100,20 +88,21 @@
 		}
 	}
 	handle {
-		reverse_proxy {$AGENTIFY_SCANNER_UPSTREAM:agentify-site:3000} {
+		reverse_proxy {$AGENTIFY_SCANNER_UPSTREAM:scanner:3000} {
 			header_up X-Forwarded-For {client_ip}
 		}
 	}
 }
 
-# The cabinet's HTML shares only these browser assets with the landing. They
-# remain Caddy-owned when the scanner owns the front page. Naming the two marks
-# and the font subtree is deliberate: a broad /assets or /styles route would
-# silently reserve scanner namespaces that the cabinet does not use.
-(commerce_shared_assets) {
-	@commerce_shared_assets path /assets/agentify-mark.svg /assets/agentify-mark-heavy.svg /styles/fonts.css /styles/fonts/*.woff2
-	handle @commerce_shared_assets {
-		root * {$AGENTIFY_LANDING_ROOT:/srv/landing}
+# The mark and the faces the cabinet's HTML asks for. The scanner owns the
+# front page and bundles its own copies, so these are Caddy's to serve from the
+# visual package. Naming the two marks and the font subtree is deliberate: a
+# broad /assets or /styles route would silently reserve scanner namespaces that
+# the cabinet does not use.
+(shared_assets) {
+	@shared_assets path /assets/agentify-mark.svg /assets/agentify-mark-heavy.svg /styles/fonts.css /styles/fonts/*.woff2
+	handle @shared_assets {
+		root * {$AGENTIFY_ASSET_ROOT:/srv/assets}
 		file_server
 	}
 }
@@ -122,10 +111,10 @@
 	encode zstd gzip
 
 	# The web surface decision puts four things on one origin, and same-origin is
-	# then the whole of the boundary between them: a static landing, a static
-	# portal build, a cabinet that holds a merchant's session, and the money path
-	# at /v0. These three headers are the part of the hardening that costs
-	# nothing.
+	# then the whole of the boundary between them: the scanner and the reports it
+	# writes, a static portal build, a cabinet that holds a merchant's session,
+	# and the money path at /v0. These three headers are the part of the
+	# hardening that costs nothing.
 	#
 	# It said "and cannot break a page", and one of them broke every form in the
 	# cabinet. `Referrer-Policy: no-referrer` does more than hide the referrer:
@@ -158,7 +147,7 @@
 	# native form POST, so the cabinet can keep rejecting cross-origin submits.
 	@cabinet_link path /cabinet/sign-in/open
 
-	import commerce_shared_assets
+	import shared_assets
 
 	# The gateway, at both of the prefixes the contract's own route table is
 	# written under (packages/contracts/src/api.ts): /v0 is the merchant's API
@@ -167,7 +156,7 @@
 	# gateway's, not mount points invented here: the path is passed through
 	# untouched and the process behind it sees exactly the URL the agent asked
 	# for. A matcher that carried only /v0 would leave every storefront address
-	# falling through to the landing below, which answers a bare 404 — so a
+	# falling through to the scanner below, which answers its own 404 — so a
 	# product listed in a discovery catalog would be unbuyable from outside
 	# while every test in this repository stayed green.
 	#
@@ -178,14 +167,14 @@
 	#
 	# /healthz is in the same matcher, and it is deliberately not under /v0.
 	# Whether this stack is up has to be answerable from outside the door, and
-	# from outside there was nothing to ask: the path fell through to the landing,
-	# which answers Caddy's bare 404 to a name it does not have, and /v0/healthz
+	# from outside there was nothing to ask: the path fell through to the front
+	# page, which answers a 404 to a name it does not have, and /v0/healthz
 	# arrived at the gateway as a route the contract does not carry and was
-	# refused as one. Two of the four things on this origin are processes and the
-	# other two are files this server reads itself, so the health of the door is
-	# the gateway's — it is what the money path runs through, and Caddy answering
-	# at all is the whole of what the landing and the portal have to say for
-	# themselves. The path stays outside /v0 because that table is the contract a
+	# refused as one. Three of the four things on this origin are processes and
+	# the fourth is a directory this server reads itself, so the health of the
+	# door is the gateway's — it is what the money path runs through, and each
+	# of the others answers for itself or is answered for by Caddy being up at
+	# all. The path stays outside /v0 because that table is the contract a
 	# merchant's engineer integrates against, and an operational probe is not
 	# part of it.
 	#
@@ -223,7 +212,7 @@
 	# routes on /cabinet, /cabinet/orders, /cabinet/receipts as written.
 	#
 	# The prefix is spelled as two exact paths rather than one /cabinet* glob so
-	# that it claims the cabinet and its pages and nothing else: a landing page
+	# that it claims the cabinet and its pages and nothing else: a scanner page
 	# at /cabinets-we-have-known would otherwise disappear into the proxy.
 	@cabinet path /cabinet /cabinet/*
 	handle @cabinet {
@@ -242,7 +231,7 @@
 	#   pnpm --dir apps/docs exec vitepress build --base /docs/
 	#
 	# Built without that flag, every page comes out asking for /assets/... at
-	# the root of the origin, where the landing answers and has nothing by that
+	# the root of the origin, where the scanner answers and has nothing by that
 	# name, and every link in the sidebar points outside /docs. The flag is a
 	# build argument rather than an edit to the portal's config on purpose: the
 	# mount point is this file's business, and the portal should not have to
@@ -289,7 +278,8 @@
 		}
 	}
 
-	# The same route table serves test and production. Only the isolated local
-	# fixture selects the static fallback.
+	# One route table, three stacks. The selector has no default, so a stack
+	# that names no front page is refused at load rather than answering a bare
+	# 404 at its own address.
 	import {$AGENTIFY_FRONT_PAGE}
 }

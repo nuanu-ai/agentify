@@ -14,8 +14,7 @@ output
 .env.*
 **/.env
 **/.env.*
-commerce.env
-scanner.env
+agentify.env
 *-resolved.json
 topology.json
 release-state.json

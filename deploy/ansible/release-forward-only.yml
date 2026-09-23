@@ -7,7 +7,7 @@
     import subprocess
 
     container = json.loads(subprocess.check_output([
-        'docker', 'container', 'inspect', '{{ channel.commerce_project }}-cabinet-1'
+        'docker', 'container', 'inspect', '{{ channel.project }}-cabinet-1'
     ]))[0]
     if not container['State']['Running']:
         raise RuntimeError('The production cabinet is not running; manual recovery is required')

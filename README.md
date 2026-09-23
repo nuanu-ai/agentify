@@ -48,11 +48,10 @@ approval of that merchant; publication lists whatever is still missing. The
 whole integration, from an empty project to a test sale, is the portal's
 [quickstart](apps/docs/quickstart.md).
 
-Deployed, one origin serves all of it: the scanner at `/`, the merchant
-documentation at `/docs`, the cabinet at `/cabinet`, the merchant's own calls
-at `/v0` and the storefront an agent buys from under `/x402`. The static
-landing in `apps/landing` is not part of a deployment; it stands in for the
-scanner in the local stack below and is a fixture of that stack, nothing more.
+One origin serves all of it, on a laptop and on a server alike: the scanner at
+`/`, the merchant documentation at `/docs`, the cabinet at `/cabinet`, the
+merchant's own calls at `/v0` and the storefront an agent buys from under
+`/x402`.
 
 ## Prerequisites
 
@@ -79,9 +78,10 @@ docker compose up --build
 open http://localhost:8080
 ```
 
-One origin, one port: the landing at `/`, the merchant documentation at
+One origin, one port: the scanner at `/`, the merchant documentation at
 `/docs`, the cabinet at `/cabinet`, the merchant's own calls at `/v0`, the
-storefront an agent buys from under `/x402`, Postgres behind them. A merchant
+storefront an agent buys from under `/x402`, one Postgres behind them holding
+a database for the commerce side and a database for the scanner. A merchant
 process comes up beside it and publishes two cards — a rented phone number
 sold synchronously, an eSIM sold asynchronously.
 
@@ -111,33 +111,38 @@ If port 8080 is taken, `AGENTIFY_HOST_PORT=8090 docker compose up` moves the
 stack and nothing else — the buy command runs on the host and needs
 `GATEWAY_URL=http://localhost:8090 pnpm buy`.
 
-The scanner runs separately, on its own PostgreSQL 17 at `127.0.0.1:55432`,
-and reads `.env.scanner` rather than the `.env` the stack above takes its
-settings from:
+The scanner is in that stack and answers the front page. Submit an address and
+the worker behind it runs the scan; the report asks for an email before it
+opens in full, and the link is sent and verified by the cabinet's private
+identity route rather than by a second account system. That route is the
+cabinet's second listener on port 3002, which nothing publishes, and the two
+processes that hold its shared secret are the only ones that can use it. The
+message arrives in the cabinet's log like every other one here, and the door
+the reader walks through afterwards is the cabinet's own. Report sessions stay
+separate from cabinet sessions, and a person becomes a merchant only when they
+enter the cabinet; ADR-0026 draws that boundary and ADR-0024 says what the
+scanner keeps of its own.
+
+The scanner's own data is a second database on the same server,
+`agentify_scanner`, made by `deploy/postgres-init/` on a volume that is new. A
+machine that ran this stack before the scanner joined it has a volume that is
+not new, so it needs `docker compose down -v` once.
+
+Editing the scanner is faster outside a container, and `pnpm scanner:dev` runs
+its two processes on the host against the same database the stack uses — the
+web application on port 3000, the worker's health endpoint on 8081. It reads
+`.env.scanner` rather than the `.env` the stack above takes its settings from:
 
 ```sh
 cp .env.scanner.example .env.scanner
-pnpm scanner:db:up
+docker compose up -d --wait postgres
 pnpm scanner:db:migrate
 pnpm scanner:dev
 ```
 
-`pnpm scanner:db:down` keeps the volume, and PostgreSQL refuses to start on a
-data directory written by another major version — so a machine that ran the
-scanner before this one moved to 17 gets a clear message on the next
-`scanner:db:up` and needs
-`docker volume rm agentify-scanner_agentify-scanner-postgres` once.
-
-The web application listens on port 3000 and the worker's health endpoint on
-8081; `pnpm scanner:db:down` stops the database without deleting its volume.
-Scanning needs nothing else. Unlocking a report does: the scanner asks the
-cabinet's private identity route to send and verify the link, so a cabinet
-started with `REPORT_IDENTITY_SECRET` and a scanner configured with the same
-secret and `CABINET_IDENTITY_URL` pointing at the cabinet's private listener
-on port 3002 are the two halves of that path. Report sessions stay separate
-from cabinet sessions, and a person becomes a merchant only when they enter
-the cabinet; ADR-0026 draws the boundary and ADR-0024 says what the scanner
-keeps of its own.
+Nothing published on the host reaches the cabinet's identity listener, so a
+scanner started this way scans and reports but cannot unlock one; that path is
+walked in the stack.
 
 ## What happens in a sale
 
@@ -201,23 +206,24 @@ its own.
 | `apps/gateway` | The payment edge, the order runner and the queue. Ports in `src/ports`, their implementations in `src/adapters`. |
 | `apps/cabinet` | The merchant's screens: sign-in, cards, orders, receipts, keys, and the identity route the scanner calls. Server-rendered, no client build (ADR-0005). |
 | `apps/docs` | The merchant documentation, a VitePress site served at `/docs`. Its JSON examples are test fixtures (see below). |
-| `apps/landing` | The static page the local stack serves at `/`; not deployed. |
 | `packages/contracts` | `@nuanu-ai/agentify-contracts`: every shape that crosses a boundary, as zod schemas, and the route table both sides import instead of transcribing. |
 | `packages/core` | The order state machine: pure logic, zero IO, zero runtime dependencies. |
 | `packages/sdk` | `@nuanu-ai/agentify`: what a merchant integrates against. Its runtime tree is the contracts package and zod, and nothing else. |
 | `packages/slice` | A mock merchant and a buyer, driving the offline gate, the `buy` and `smoke` commands, and the stand. |
-| `packages/visual` | `@agentify/visual`: one stylesheet — the tokens, the base element rules and the shared primitives every surface on the origin is drawn with (ADR-0005 §6). No build step and no JavaScript. |
+| `packages/visual` | `@agentify/visual`: one stylesheet — the tokens, the base element rules and the shared primitives every surface on the origin is drawn with (ADR-0005 §6) — and under `public/`, the mark and the faces Caddy serves at `/assets` and `/styles`. No build step and no JavaScript. |
 | `packages/scanner-contracts`, `packages/scanner-database`, `packages/scanner` | The scanner's private contracts, storage and evaluation engine. |
 | `packages/analytics`, `packages/observability`, `packages/remediation` | The scanner's remaining packages, kept separate from the engine. |
-| `deploy/` | Dockerfiles, the Compose overlays for test and production, the Caddy route table and the Ansible release playbooks. |
-| `ops/`, `fixtures/` | The scanner's local database definition, operational checks and runtime test inputs. The health monitor under `ops/deploy/workflows/` is retained configuration, not an active GitHub workflow. |
+| `deploy/` | Every Dockerfile, the Compose overlays for test and production, the Caddy route table and the Ansible release playbooks. |
+| `ops/`, `fixtures/` | The scanner's operational checks and runtime test inputs. |
 | `scripts/` | The commands the root `package.json` calls: the decision-log check, the outside install, the mutation run, worktree hygiene. |
 | `docs/decisions/` | The numbered decisions — what is expensive to reverse, and why it was decided that way. |
 | `docs/research/` | The working material behind them: research, runbooks, acceptance protocols. |
 
-Gateway and cabinet share one Postgres and each owns its migrations under
+Gateway and cabinet share one database and each owns its migrations under
 `drizzle/`; `pnpm db:migrate` runs both. The scanner's schema and migrations
-live in `packages/scanner-database`.
+live in `packages/scanner-database` and go to a second database on the same
+server. One PostgreSQL, two databases, one account to reach them with: one
+database is where this is going, and is a decision of its own (ADR-0003 §2).
 
 ## Checks
 
@@ -255,11 +261,13 @@ kept apart for that reason:
 - `pnpm mutate <package>` runs Stryker over one workspace package and prints
   the survivors. It is a triage tool for the hand-over ritual, not a gate.
 - The scanner's own gates are `pnpm scanner:test:integration` and the migration
-  half of `pnpm scanner:test:db`, which take their connection from
-  `.env.scanner` and reach the Postgres that `pnpm scanner:db:up` starts on
-  port 55432. The other half of `scanner:test:db` is `drizzle-kit check`, which
-  reads the migration files and no database at all. `pnpm scanner:test:actor`
-  needs neither: it drives a Chromium, put there once with
+  half of `pnpm scanner:test:db`. Both need the same Postgres the database
+  suite does (`docker compose up -d --wait postgres`) and take their connection
+  from `.env.scanner`; like that suite they fail with words rather than
+  skipping when there is no server. The other half of `scanner:test:db` is
+  `drizzle-kit check`, which reads the migration files and no database at all.
+  `pnpm scanner:test:actor` needs neither: it drives a Chromium, put there once
+  with
   `pnpm --filter @agentify/browser-observer-actor exec playwright install chromium`.
 
 ## Releasing

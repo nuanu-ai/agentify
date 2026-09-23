@@ -8,7 +8,7 @@ import json
 import os
 from pathlib import Path
 import sys
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
 
 def private_database_url(value, database):
@@ -17,22 +17,23 @@ def private_database_url(value, database):
         raise ValueError('Unexpected import database')
     if not parsed.username or not parsed.password or parsed.fragment:
         raise ValueError('Incomplete import database configuration')
-    # The stopped migration container joins only this channel private bridge.
-    # Preserve escaped credentials and options; never forward a public host.
-    credentials = parsed.netloc.rsplit('@', 1)[0]
-    return urlunsplit((parsed.scheme, credentials + '@agentify-scanner-postgres:5432', parsed.path, parsed.query, ''))
+    # The stopped importer joins this project's own network, where the database
+    # answers to the name the rest of the stack calls it by. Anything else is a
+    # host this container has no business reaching.
+    if parsed.hostname != 'postgres' or (parsed.port or 5432) != 5432:
+        raise ValueError('Import database is not this project private PostgreSQL')
+    return value
 
 
 def main():
     directory = Path(sys.argv[1])
-    commerce = json.loads((directory / 'commerce-resolved.json').read_text())['services']
-    scanner = json.loads((directory / 'scanner-resolved.json').read_text())['services']
-    web = scanner['web']['environment']
+    services = json.loads((directory / 'resolved.json').read_text())['services']
+    scanner = services['scanner']['environment']
     values = {
-        'CABINET_DATABASE_URL': private_database_url(commerce['migrate']['environment']['DATABASE_URL'], 'agentify_commerce'),
-        'SCANNER_DATABASE_URL': private_database_url(scanner['migrate']['environment']['DATABASE_URL'], 'agentify_scanner'),
-        'EMAIL_ENCRYPTION_KEY': web['EMAIL_ENCRYPTION_KEY'],
-        'TOKEN_HMAC_SECRET': web['TOKEN_HMAC_SECRET'],
+        'CABINET_DATABASE_URL': private_database_url(services['migrate']['environment']['DATABASE_URL'], 'agentify_commerce'),
+        'SCANNER_DATABASE_URL': private_database_url(services['scanner-migrate']['environment']['DATABASE_URL'], 'agentify_scanner'),
+        'EMAIL_ENCRYPTION_KEY': scanner['EMAIL_ENCRYPTION_KEY'],
+        'TOKEN_HMAC_SECRET': scanner['TOKEN_HMAC_SECRET'],
     }
     if any(not isinstance(v, str) or not v or '\n' in v or '\r' in v or '\0' in v for v in values.values()):
         raise ValueError('Invalid private import configuration')

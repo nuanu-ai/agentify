@@ -85,7 +85,7 @@
       ansible.builtin.shell: |
         python3 - <<'PYCODE'
         import json,subprocess
-        c=json.loads(subprocess.check_output(['docker','inspect','{{ channel.commerce_project }}-gateway-1']))[0]
+        c=json.loads(subprocess.check_output(['docker','inspect','{{ channel.project }}-gateway-1']))[0]
         env=dict(v.split('=',1) for v in c['Config']['Env'] if '=' in v)
         origin=env['PUBLIC_BASE_URL']
         allowed=['https://agentify.ad','https://app.agentify.ad'] if '{{ channel_name }}'=='production' else ['https://test.agentify.ad']
@@ -144,13 +144,6 @@
         state: directory
         mode: '0700'
 
-    - name: Preserve the existing production scheduled-backup directory
-      ansible.builtin.file:
-        path: "{{ channel.backup_directory }}"
-        state: directory
-        mode: '0700'
-      when: channel_name == 'production'
-
     - name: Preserve only the pre-activation public resource inventory
       ansible.builtin.copy:
         content: "{{ (current_public_catalog.stdout | from_json)['items'] | map(attribute='id') | sort | list | to_json }}\n"
@@ -184,13 +177,13 @@
 
     - name: Stop the old commerce writers before the origin-sensitive gate
       ansible.builtin.command:
-        argv: [docker, stop, --time, '60', "{{ channel.commerce_project }}-gateway-1", "{{ channel.commerce_project }}-cabinet-1"]
+        argv: [docker, stop, --time, '60', "{{ channel.project }}-gateway-1", "{{ channel.project }}-cabinet-1"]
 
     - name: Record the old challenge deadline after stopping its issuer
       ansible.builtin.shell: |
         python3 - <<'PYCODE'
         import json,subprocess,time
-        c=json.loads(subprocess.check_output(['docker','inspect','{{ channel.commerce_project }}-gateway-1']))[0]
+        c=json.loads(subprocess.check_output(['docker','inspect','{{ channel.project }}-gateway-1']))[0]
         e=dict(v.split('=',1) for v in c['Config']['Env'] if '=' in v)
         timeout=int(e.get('PAYMENT_TIMEOUT_SECONDS','300'))
         assert 0 < timeout <= 3600, 'Unexpected challenge TTL needs a reviewed drain window'
@@ -211,10 +204,10 @@
     - name: Stop existing scanner writers without inventing a source on test
       ansible.builtin.shell: |
         set -eu
-        for name in '{{ channel.scanner_project }}-web-1' '{{ channel.scanner_project }}-worker-1'; do
+        for name in '{{ channel.project }}-scanner-1' '{{ channel.project }}-scanner-worker-1'; do
           if docker container inspect "$name" >/dev/null 2>&1; then docker stop --time 60 "$name"; fi
         done
-        running_jobs="$(docker ps -q --filter label=com.docker.compose.project={{ channel.scanner_project }} --filter label=com.docker.compose.oneoff=True)"
+        running_jobs="$(docker ps -q --filter label=com.docker.compose.project={{ channel.project }} --filter label=com.docker.compose.oneoff=True)"
         test -z "$running_jobs"
 
     - name: Identify the first shared-identity activation before any schema mutation
@@ -242,25 +235,23 @@
         done
       no_log: true
 
-    - name: Ensure only this channel's ingress and private database networks exist
+    - name: Ensure this channel's ingress network exists and is the reviewed kind
       ansible.builtin.shell: |
         python3 - <<'PY'
         import json,subprocess
-        for name,internal in [('{{ channel.ingress_network }}',False),('{{ channel.database_network }}',True)]:
-            p=subprocess.run(['docker','network','inspect',name],capture_output=True,text=True)
-            if p.returncode:
-                assert '{{ channel_name }}' == 'test', 'Existing production network is missing'
-                args=['docker','network','create','--driver','bridge']
-                if internal: args += ['--internal']
-                subprocess.run(args+[name],check=True)
-            else:
-                n=json.loads(p.stdout)[0]
-                assert n['Driver']=='bridge' and n['Internal']==internal, 'Network boundary differs'
+        name='{{ channel.ingress_network }}'
+        p=subprocess.run(['docker','network','inspect',name],capture_output=True,text=True)
+        if p.returncode:
+            assert '{{ channel_name }}' == 'test', 'Existing production network is missing'
+            subprocess.run(['docker','network','create','--driver','bridge',name],check=True)
+        else:
+            n=json.loads(p.stdout)[0]
+            assert n['Driver']=='bridge' and not n['Internal'], 'Network boundary differs'
         PY
 
     - name: Start the retained PostgreSQL volume with the pinned image and channel networks
       ansible.builtin.command:
-        argv: "{{ commerce_compose + ['up', '-d', '--no-build', '--no-deps', '--wait', 'postgres'] }}"
+        argv: "{{ compose + ['up', '-d', '--no-build', '--no-deps', '--wait', 'postgres'] }}"
         chdir: "{{ release_source_directory }}"
       no_log: true
 
@@ -276,23 +267,10 @@
         argv: [docker, exec, "{{ channel.postgres_container }}", createdb, -U, agentify_commerce, --owner, agentify_commerce, agentify_scanner]
       when: channel_name == 'test' and scanner_database.stdout == '0'
 
-    - name: Initialize fresh test runtime roles with stable channel-owned credentials
-      ansible.builtin.command:
-        argv: "{{ scanner_compose + ['run', '--rm', '--no-deps', '-T', '-e', 'RECONCILE_RUNTIME_ROLE_PASSWORDS=true', '-e', 'ROLE_PASSWORD_ROTATION_MAINTENANCE_ACK=true', 'roles-reconcile'] }}"
-        chdir: "{{ release_source_directory }}/ops/deploy/droplet"
-      when: channel_name == 'test' and scanner_database.stdout == '0'
-      no_log: true
-
-    - name: Reconcile scanner roles before its additive schema activation
-      ansible.builtin.command:
-        argv: "{{ scanner_compose + ['run', '--rm', '--no-deps', '-T', 'roles-reconcile'] }}"
-        chdir: "{{ release_source_directory }}/ops/deploy/droplet"
-      no_log: true
-
     - name: Apply only scanner migrations preceding the destructive identity cleanup
       ansible.builtin.command:
-        argv: "{{ scanner_compose + ['run', '--rm', '--no-deps', '-T', 'migrate', 'node', 'packages/scanner-database/dist/migrate-cli.js', '--identity-preflight'] }}"
-        chdir: "{{ release_source_directory }}/ops/deploy/droplet"
+        argv: "{{ compose + ['run', '--rm', '--no-deps', '-T', 'scanner-migrate', 'node', 'packages/scanner-database/dist/migrate-cli.js', '--identity-preflight'] }}"
+        chdir: "{{ release_source_directory }}"
       no_log: true
 
     - name: Prepare credentials for the stopped one-off identity importer
@@ -309,7 +287,7 @@
 
     - name: Apply commerce migrations with the locally built application image
       ansible.builtin.command:
-        argv: "{{ commerce_compose + ['run', '--rm', '--no-deps', '-T', 'migrate'] }}"
+        argv: "{{ compose + ['run', '--rm', '--no-deps', '-T', 'migrate'] }}"
         chdir: "{{ release_source_directory }}"
       no_log: true
 
@@ -358,8 +336,8 @@
 
     - name: Apply the guarded scanner cleanup through its ordinary migration ledger
       ansible.builtin.command:
-        argv: "{{ scanner_compose + ['run', '--rm', '--no-deps', '-T', 'migrate'] }}"
-        chdir: "{{ release_source_directory }}/ops/deploy/droplet"
+        argv: "{{ compose + ['run', '--rm', '--no-deps', '-T', 'scanner-migrate'] }}"
+        chdir: "{{ release_source_directory }}"
       no_log: true
 
     - name: Prove cleanup retained commerce rows and scanner report capabilities
@@ -381,13 +359,6 @@
         done
       changed_when: false
       when: identity_cutover_required
-
-    - name: Apply remaining scanner activation steps once in dependency order
-      ansible.builtin.command:
-        argv: "{{ scanner_compose + ['run', '--rm', '--no-deps', '-T', item] }}"
-        chdir: "{{ release_source_directory }}/ops/deploy/droplet"
-      loop: [queue-init, database-dashboards-install, database-access-finalize, database-access-verify]
-      no_log: true
 
     - name: Hold the first live cutover for the separate private operator command
       ansible.builtin.pause:
@@ -414,8 +385,8 @@
 
     - name: Start scanner runtime from the same source revision accepted for commerce
       ansible.builtin.command:
-        argv: "{{ scanner_compose + ['up', '-d', '--no-build', '--no-deps', '--wait', 'web', 'worker'] }}"
-        chdir: "{{ release_source_directory }}/ops/deploy/droplet"
+        argv: "{{ compose + ['up', '-d', '--no-build', '--no-deps', '--wait', 'scanner', 'scanner-worker'] }}"
+        chdir: "{{ release_source_directory }}"
       no_log: true
 
     - name: Let every old-origin unpaid challenge expire before reopening commerce
@@ -431,7 +402,7 @@
 
     - name: Start commerce and the common route table without building
       ansible.builtin.command:
-        argv: "{{ commerce_compose + ['up', '-d', '--no-build', '--no-deps', '--wait', 'gateway', 'cabinet', 'web'] }}"
+        argv: "{{ compose + ['up', '-d', '--no-build', '--no-deps', '--wait', 'gateway', 'cabinet', 'web'] }}"
         chdir: "{{ release_source_directory }}"
       no_log: true
 
@@ -468,9 +439,6 @@
     - ansible.builtin.copy:
         content: |
           SHELL=/bin/bash
-          {% if channel_name == 'production' %}
-          17 3 * * * root {{ configuration_directory }}/scanner-jobs.sh backup
-          {% endif %}
           23 4 * * * root {{ configuration_directory }}/scanner-jobs.sh privacy
         dest: /etc/cron.d/agentify-release
         mode: '0644'

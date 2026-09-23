@@ -3,7 +3,7 @@
 # Everything that differs between the two channels is a variable in the host's
 # `.env` — the chain, the facilitator, the surface mode, the origin, the Caddy
 # address, the published port, the seeded key, the invitation — so there is one
-# file here rather than one per channel. What is in it is the three things that
+# file here rather than one per channel. What is in it is the four things that
 # are true of any stack this repository does not run on somebody's laptop.
 
 services:
@@ -30,6 +30,41 @@ services:
     # process by hand against a stack for the length of a test, which is exactly
     # what the live site's first sale does.
     profiles: ["fixtures"]
+
+  scanner:
+    # Closed unless the channel's own file says otherwise. The laptop has this
+    # on, because the whole path a reader walks — a scan, a mailed link, the
+    # cabinet door — has to work from one command there. What a public site
+    # accepts from strangers is a different question with a different answer,
+    # and it is the operator's to write down rather than the packaging's to
+    # decide: a channel that names nothing here takes no registrations.
+    environment:
+      REGISTRATION_ENABLED: "${REGISTRATION_ENABLED:-false}"
+      # The two secrets a laptop is allowed to inherit and a deployment is not.
+      # `compose.yaml` gives them sandbox answers so `docker compose up` needs
+      # no file, and those answers are printed in a public repository: one
+      # signs every report link this site hands out, the other is what the
+      # address behind a report is encrypted with. A channel that has not put
+      # its own in place does not render. Staging does that render before it
+      # builds anything, so this refuses with the name of the variable and the
+      # sentence above it, and no image, no preflight and no container follow.
+      #
+      # An existing host keeps both in the file it already had; a host being
+      # moved onto this shape carries them across in the environment merge, and
+      # a channel that has never existed has them written by hand — the release
+      # generates them only for a new test channel (deploy/ansible/README.md,
+      # "Reconcile a host that still runs two projects"). Losing them is not a
+      # configuration error that can be corrected later: every link already
+      # sent stops verifying and every stored address stops decrypting.
+      TOKEN_HMAC_SECRET: "${TOKEN_HMAC_SECRET:?set this channel own report-link signing secret; see deploy/ansible/README.md, Reconcile a host that still runs two projects}"
+      EMAIL_ENCRYPTION_KEY: "${EMAIL_ENCRYPTION_KEY:?set this channel own address encryption key; see deploy/ansible/README.md, Reconcile a host that still runs two projects}"
+
+  scanner-privacy:
+    # The scheduled job reads the same two, because deleting what retention
+    # says is over means reading the addresses it is deleting.
+    environment:
+      TOKEN_HMAC_SECRET: "${TOKEN_HMAC_SECRET:?set this channel own report-link signing secret; see deploy/ansible/README.md, Reconcile a host that still runs two projects}"
+      EMAIL_ENCRYPTION_KEY: "${EMAIL_ENCRYPTION_KEY:?set this channel own address encryption key; see deploy/ansible/README.md, Reconcile a host that still runs two projects}"
 
   web:
     # The preview serves the files baked into the SHA-tagged image. The base

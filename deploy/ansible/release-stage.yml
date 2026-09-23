@@ -5,6 +5,39 @@
   changed_when: false
   no_log: true
 
+# The scanner used to be a second Compose project on this host. Activation
+# fingerprints the database, migrates it and compares the fingerprint again,
+# and none of that means anything while a process from the old project is
+# still writing to it.
+#
+# First, because refusing here costs a `docker ps` and nothing else. The pull
+# agent records a refused selection as failed and will not try that revision
+# again, so a refusal is not free — the release guide has the operator stop
+# the old project before moving the channel's tag, and this is what catches
+# the time somebody did not. Staging stops nothing itself.
+#
+# It runs at stage and nowhere else: activation of a candidate that was staged
+# before the old project came back up would not see it. That is acceptable
+# because the old project is stopped once and never started again.
+#
+# This task and the channel variable it reads are deleted once both channels
+# have activated the merged graph. Until then a channel that has already
+# activated passes it without noticing, because the project has nothing left
+# to run.
+- name: Refuse a candidate while the retired scanner project is still running
+  ansible.builtin.command:
+    argv: [docker, ps, --filter, "label=com.docker.compose.project={{ channel.retired_scanner_project }}", --format, '{{ "{{.Names}}" }}']
+  changed_when: false
+  register: retired_scanner_containers
+- ansible.builtin.assert:
+    that: retired_scanner_containers.stdout == ''
+    fail_msg: >-
+      The retired scanner project {{ channel.retired_scanner_project }} is still
+      running ({{ retired_scanner_containers.stdout_lines | join(', ') }}). It
+      writes to the database this release migrates. Stop it, then make a new
+      selection — see deploy/ansible/README.md, "Reconcile a host that still
+      runs two projects".
+
 - name: Inspect an existing candidate's delivery state
   ansible.builtin.stat:
     path: "{{ release_directory }}/release-state.json"
@@ -50,8 +83,7 @@
     - {src: "{{ playbook_dir }}/check-forward-revision.sh", dest: check-forward-revision.sh}
     - {src: "{{ playbook_dir }}/release-data-fingerprint.sql", dest: release-data-fingerprint.sql}
     - {src: "{{ playbook_dir }}/release-identity-target-fingerprint.sql", dest: release-identity-target-fingerprint.sql}
-    - {src: "{{ playbook_dir }}/../compose.release.yaml", dest: commerce-release.yaml}
-    - {src: "{{ playbook_dir }}/../../ops/deploy/droplet/compose.release.yaml", dest: scanner-release.yaml}
+    - {src: "{{ playbook_dir }}/../compose.release.yaml", dest: release.yaml}
 
 - name: Check out the exact public source revision
   ansible.builtin.git:
@@ -92,6 +124,27 @@
   ansible.builtin.include_tasks: release-forward-only.yml
   when: channel_name == 'production'
 
+- name: Preserve channel secrets and prepare runtime environment files
+  ansible.builtin.command:
+    argv: [python3, "{{ release_controller_directory }}/prepare-release-environments.py", "{{ channel | to_json }}", "{{ channel_name }}", "{{ release_directory }}", "{{ release_revision }}", "{{ release_identity | to_json }}", "{{ configuration_directory }}"]
+  no_log: true
+
+# What a channel has to supply before anything is worth building. Compose
+# interpolates the whole file list against that environment here, so every
+# `${VAR:?...}` in it is answered or this task fails with the name of the
+# variable and the sentence the file wrote for it — the scanner's two secrets
+# among them (deploy/compose.public.yaml).
+#
+# It is the same render the preflight reads further down, done twice on
+# purpose: the document that goes to the preflight has to be produced by the
+# application image, which does not exist yet, and a channel that is missing a
+# secret should not pay for five image builds to be told so.
+- name: Require every channel secret before building anything
+  ansible.builtin.command:
+    argv: "{{ compose + ['--profile', 'jobs', 'config', '--quiet'] }}"
+    chdir: "{{ release_source_directory }}"
+  changed_when: false
+
 - name: Bound old release images and build cache before building
   ansible.builtin.command:
     argv:
@@ -116,20 +169,20 @@
     argv: "{{ ['docker', 'build', '--pull', '--label', 'org.opencontainers.image.revision=' + release_revision, '--label', 'org.opencontainers.image.source=https://github.com/nuanu-ai/agentify', '-f', item.dockerfile, '-t', item.image] + item.extra + ['.'] }}"
     chdir: "{{ release_source_directory }}"
   loop:
-    - image: "{{ release_identity.firstParty['commerce-app'] }}"
+    - image: "{{ release_identity.firstParty['app'] }}"
       dockerfile: deploy/Dockerfile.app
       extra: []
-    - image: "{{ release_identity.firstParty['commerce-web'] }}"
+    - image: "{{ release_identity.firstParty['web'] }}"
       dockerfile: deploy/Dockerfile.web
       extra: []
-    - image: "{{ release_identity.firstParty['scanner-web'] }}"
-      dockerfile: ops/deploy/droplet/web.Dockerfile
+    - image: "{{ release_identity.firstParty['scanner'] }}"
+      dockerfile: deploy/Dockerfile.scanner
       extra: [--target, runner]
     - image: "{{ release_identity.firstParty['scanner-worker'] }}"
-      dockerfile: ops/deploy/scanner-worker.Dockerfile
+      dockerfile: deploy/Dockerfile.scanner-worker
       extra: []
     - image: "{{ release_identity.firstParty['scanner-privacy'] }}"
-      dockerfile: ops/deploy/droplet/web.Dockerfile
+      dockerfile: deploy/Dockerfile.scanner
       extra: [--target, privacy-jobs]
   loop_control:
     label: "{{ item.image }}"
@@ -164,42 +217,26 @@
       - "{{ configuration_directory }}/scanner-jobs.sh"
   changed_when: false
 
-- name: Preserve channel secrets and prepare runtime environment files
+- name: Render the whole stack, scheduled job included, with no build definitions
   ansible.builtin.command:
-    argv: [python3, "{{ release_controller_directory }}/prepare-release-environments.py", "{{ channel | to_json }}", "{{ channel_name }}", "{{ release_directory }}", "{{ release_revision }}", "{{ release_identity | to_json }}", "{{ configuration_directory }}"]
-  no_log: true
-
-- name: Render commerce with no image build definitions
-  ansible.builtin.command:
-    argv: "{{ commerce_compose + ['config', '--format', 'json'] }}"
+    argv: "{{ compose + ['--profile', 'jobs', 'config', '--format', 'json'] }}"
     chdir: "{{ release_source_directory }}"
   changed_when: false
-  register: commerce_configuration
-  no_log: true
-
-- name: Render scanner runtime, activation and scheduled services
-  ansible.builtin.command:
-    argv: "{{ scanner_compose + ['--profile', 'jobs', '--profile', 'tools', 'config', '--format', 'json'] }}"
-    chdir: "{{ release_source_directory }}/ops/deploy/droplet"
-  changed_when: false
-  register: scanner_configuration
+  register: rendered_configuration
   no_log: true
 
 - name: Validate the actual channel before any application activation
   ansible.builtin.command:
-    argv: [docker, run, --rm, -i, --network, none, "{{ release_identity.firstParty['commerce-app'] }}", node, packages/core/src/deployment/preflight.mjs, "{{ 'commerce' if channel_name == 'production' else 'agentify-test' }}", "{{ channel.listen_address | default('') }}"]
-    stdin: "{{ commerce_configuration.stdout }}"
+    argv: [docker, run, --rm, -i, --network, none, "{{ release_identity.firstParty['app'] }}", node, packages/core/src/deployment/preflight.mjs, "{{ 'commerce' if channel_name == 'production' else 'agentify-test' }}", "{{ channel.listen_address | default('') }}"]
+    stdin: "{{ rendered_configuration.stdout }}"
   changed_when: false
   no_log: true
 
-- name: Save private rendered configurations for reviewed activation
+- name: Save the private rendered configuration for reviewed activation
   ansible.builtin.copy:
-    content: "{{ item.content }}"
-    dest: "{{ release_directory }}/{{ item.name }}.json"
+    content: "{{ rendered_configuration.stdout }}"
+    dest: "{{ release_directory }}/resolved.json"
     mode: '0600'
-  loop:
-    - {name: commerce-resolved, content: "{{ commerce_configuration.stdout }}"}
-    - {name: scanner-resolved, content: "{{ scanner_configuration.stdout }}"}
   no_log: true
 
 - name: Validate private runtime boundaries and capture a secret-free topology
