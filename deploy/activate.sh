@@ -30,10 +30,11 @@ umask 077
 
 channel="${1:-}" revision="${2:-}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-images="$root/deploy/images.env" backup="/var/backups/agentify/${1:-}/${2:-}" step=""
+images="$root/deploy/images.env" backups="/var/backups/agentify/${1:-}" backup="" step=""
 refuse() { echo "activate: $*" >&2; exit 1; }
 at() { step="$1"; echo "activate: $step" >&2; }
 stack() { "$root/deploy/stack.sh" "$channel" "$@"; }
+newest() { find "$backups" -mindepth 1 -maxdepth 1 -type d -name "*-$revision" 2>/dev/null | sort | tail -n 1 | grep . || echo none; }
 
 case "$channel" in
   test) origin=test.agentify.ad ;;
@@ -92,17 +93,32 @@ if [[ $channel == production ]]; then
     || refuse "$edge is not the reviewed edge, the pinned Caddy running at 172.30.80.2 with its Caddyfile bound from the host; nothing was stopped."
 fi
 
+# A restore point is taken whenever this run switches releases, and only
+# then: a run over a gateway already on this revision (a second run, or one
+# after a failure past the start) changes no data it would need to undo.
+# Each is its own directory, named by time, so a retry never overwrites the
+# copy an earlier attempt took. It needs room before anything stops.
+if [[ $(docker inspect -f '{{.Image}}' "$project-gateway-1" 2>/dev/null || true) != \
+  "$(docker image inspect -f '{{.Id}}' "$(sed -n 's/^AGENTIFY_APP_IMAGE=//p' "$images")")" ]]; then
+  backup="$backups/$(date -u +%Y%m%dT%H%M%SZ)-$revision"
+  mkdir -p "$backups"
+  size="$(docker exec "$project-postgres-1" psql -U agentify_commerce -d postgres -Atc \
+    'select coalesce(sum(pg_database_size(datname)), 0) from pg_database' 2>/dev/null || echo 0)"
+  free="$(df -B1 --output=avail "$backups" | tail -n 1)"
+  ((free > size + (1 << 30))) \
+    || refuse "$backups has $((free >> 20)) MiB free, and a restore point of $((size >> 20)) MiB of databases needs that and a GiB more; nothing was stopped."
+fi
+
 at "stopping gateway, cabinet, scanner and scanner-worker"
 previous="$(docker ps -aq --filter "label=com.docker.compose.project=$project" | xargs -r docker inspect -f '{{.Image}}')"
 restart() { mapfile -t old < <(stack ps -aq gateway cabinet scanner scanner-worker); ((${#old[@]} == 0)) || docker start "${old[@]}" >/dev/null; }
-trap 'restart || true; echo "activate: $step failed, so the services it stopped run the previous release again, over any migration that committed before the failure; $backup is the restore point." >&2' ERR
-stack stop gateway cabinet scanner scanner-worker
+trap 'restart || true; rm -rf "${backup:-/nonexistent}.partial"; echo "activate: $step failed, so the services it stopped run the previous release again, over any migration that committed before the failure; the newest restore point of $revision is $(newest)." >&2' ERR
+stack stop --timeout 60 gateway cabinet scanner scanner-worker
 
 at "taking the restore point"
 stack up -d --wait --no-deps postgres
-if [[ ! -d $backup ]]; then
-  rm -rf "$backup.partial"
-  mkdir -p "$backup.partial"
+if [[ -n $backup ]]; then
+  mkdir "$backup.partial"
   for database in agentify_commerce agentify_scanner; do
     stack exec -T postgres pg_dump -U agentify_commerce -Fc "$database" > "$backup.partial/$database.dump"
   done
@@ -115,7 +131,7 @@ stack run --rm --no-deps -T scanner-migrate
 at "migrating the gateway and cabinet database"
 stack run --rm --no-deps -T migrate
 
-trap 'echo "activate: $step failed after the migrations, so the previous release cannot simply start again on this database; fix the cause and run the activation again, or restore $backup." >&2' ERR
+trap 'echo "activate: $step failed after the migrations, so the previous release cannot simply start again on this database; fix the cause and activate again; the newest restore point of $revision is $(newest)." >&2' ERR
 at "starting the scanner"
 # A scanner that will not start must not keep commerce down as well, so the
 # gateway, the cabinet and the route table start whatever it did.
@@ -150,6 +166,8 @@ printf 'SHELL=/bin/bash\n23 4 * * * root flock -n /run/lock/agentify-release.loc
 chmod 644 /etc/cron.d/agentify-release
 
 trap - ERR
+# The five newest restore points are kept; older ones go.
+find "$backups" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | head -n -5 | xargs -r rm -rf
 current="$(while IFS='=' read -r _ reference; do docker image inspect -f '{{.Id}}' "$reference"; done < "$images")"
 if [[ $previous != *"$(head -n 1 <<<"$current")"* ]]; then
   at "removing first-party images older than the previous release"
