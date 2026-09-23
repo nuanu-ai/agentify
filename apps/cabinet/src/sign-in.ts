@@ -32,9 +32,9 @@ ${brandLockup("/")}
   <p>Enter your email address and we will send you a sign-in link.</p>
   <label for="email">Email address</label>
   <input id="email" name="email" type="email" value="${escaped(email)}" autocomplete="email" autocapitalize="off" spellcheck="false" autofocus required>
+  ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
   ${destinationInput(destination)}
   <button class="button button-primary" type="submit">Send me a sign-in link</button>
-  ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
   <p class="quiet">Every sign-in gets its own link. It opens once and expires an hour after it is sent, so there is nothing to keep and no password to remember.</p>
 </form>
 </div>`,

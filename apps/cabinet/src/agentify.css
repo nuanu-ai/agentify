@@ -711,7 +711,13 @@ td.control {
   width: 100%;
 }
 
-.problem {
+/* What went wrong, in the fail colour, wherever it is drawn. Written against
+   the paragraph rather than the class alone: a gate card's paragraphs and a
+   heading block's are muted by rules of that same weight, and a bare class lost
+   to both — so on the sign-in and name pages a refusal came out grey at the size
+   of the small print beside it, while the settings form drew the same kind of
+   sentence red. */
+p.problem {
   margin-top: 16px;
   color: var(--fail);
   font-size: 0.875rem;
