@@ -176,6 +176,42 @@ body {
 }
 
 /*
+ * A table or a block of code wider than its column scrolls sideways, and on a
+ * phone nothing said so: the scrollbar shows only while a finger moves it, and
+ * the cut often fell cleanly between two columns. The right edge now fades out
+ * while there is more to the right, and stops fading at the end.
+ *
+ * The fade follows the element's own scroll position. A browser that cannot
+ * tie an animation to scrolling shows the element as before; one that can,
+ * but finds nothing to scroll, draws no fade either.
+ */
+@property --more-to-the-right {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@keyframes more-to-the-right {
+  from,
+  85% {
+    --more-to-the-right: 40px;
+  }
+  to {
+    --more-to-the-right: 0px;
+  }
+}
+
+@supports (animation-timeline: scroll()) {
+  .vp-doc table,
+  .vp-doc div[class*="language-"] pre {
+    scroll-timeline: --sideways inline;
+    animation: more-to-the-right linear both;
+    animation-timeline: --sideways;
+    mask-image: linear-gradient(to left, transparent, #000 var(--more-to-the-right));
+  }
+}
+
+/*
  * The way out of the documentation.
  *
  * It rides with the theme's own navigation rather than in the corner, because
