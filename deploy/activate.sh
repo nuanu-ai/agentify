@@ -71,8 +71,8 @@ trap fail ERR
 trap 'step="$step (interrupted)"; fail' INT TERM HUP
 
 case "$channel" in
-  test) origin=test.agentify.ad ;;
-  production) origin=agentify.ad ;;
+  test) origin=test.agentify.ad network=eip155:84532 ;;
+  production) origin=agentify.ad network=eip155:8453 ;;
   *) refuse "usage: deploy/activate.sh test|production <full revision>" ;;
 esac
 [[ $revision =~ ^[0-9a-f]{40}$ ]] || refuse "the revision must be one full commit SHA."
@@ -159,6 +159,11 @@ if [[ $channel == production ]]; then
 else
   address="$(stack port web 443 2>/dev/null)" || address=unknown
 fi
+# The cards on sale now, to hold the release to them afterwards; unknown when
+# nothing answers yet.
+on_sale="$(curl -sS --max-time 20 --connect-to "$origin:443:$address" "https://$origin/x402/catalog" 2>/dev/null \
+  | python3 -c 'import json, sys; print(" ".join(sorted(item["id"] for item in json.load(sys.stdin)["items"])))' 2>/dev/null)" \
+  || on_sale=unknown
 
 if [[ $reverify == false && -z $backup ]]; then
   from="$(docker inspect -f '{{.Image}}' "$project-gateway-1" 2>/dev/null \
@@ -229,6 +234,32 @@ for route in /=200 /owner=308 /api/health/live=200 /api/health=200 /cabinet/sign
   [[ $status == "${route#*=}" ]] \
     || refuse "https://$origin${route%=*} answered ${status:-nothing} where ${route#*=} was expected, so $revision runs unverified."
 done
+at "checking the cards on sale"
+# Read-only: a GET on a purchase address is always answered with its payment
+# challenge and never read for payment. The catalog is one unpaged document.
+python3 - "$origin" "$address" "$network" "$on_sale" <<'PY' \
+  || refuse "the cards on sale do not answer as they did before the release, for the reason above, so $revision runs unverified."
+import base64, json, subprocess, sys, urllib.parse
+origin, address, network, before = sys.argv[1:5]
+def get(url, *flags):
+    return subprocess.run(["curl", "-sS", "--max-time", "20", "--connect-to", f"{origin}:443:{address}", *flags, url],
+                          capture_output=True, text=True, check=True).stdout
+cards = sorted(item["id"] for item in json.loads(get(f"https://{origin}/x402/catalog"))["items"])
+gone = sorted(set(before.split()) - set(cards)) if before != "unknown" else []
+if gone:
+    sys.exit(f"activate: {len(gone)} card(s) on sale before the release are gone from the catalog: {' '.join(gone)}")
+for card in cards:
+    url = f"https://{origin}/x402/{urllib.parse.quote(card, safe='')}/purchase"
+    head = get(url, "-o", "/dev/null", "-D", "-").splitlines()
+    status = head[0].split()[1] if head else "nothing"
+    header = next((line.split(":", 1)[1].strip() for line in head if line.lower().startswith("payment-required:")), "")
+    challenge = json.loads(base64.b64decode(header)) if status == "402" and header else {}
+    accepts = challenge.get("accepts") or [{}]
+    if challenge.get("resource", {}).get("url") != url or any(a.get("network") != network for a in accepts):
+        sys.exit(f"activate: card {card} answered {status} without a payment challenge for {url} on {network}")
+compared = "none compared, since nothing answered before" if before == "unknown" else f"{len(before.split())} compared"
+print(f"activate: {len(cards)} card(s) on sale ({compared}), each answering its payment challenge on {network}", file=sys.stderr)
+PY
 
 at "scheduling the privacy job"
 printf 'SHELL=/bin/bash\n23 4 * * * root flock -n /run/lock/agentify-release.lock %q %s --profile jobs run --rm --no-deps -T scanner-privacy\n' \
@@ -246,4 +277,4 @@ if [[ $previous != *"$(head -n 1 <<<"$current")"* ]]; then
     [[ "$previous $current" == *"$id"* ]] || docker image rm "$id" >/dev/null 2>&1 || true
   done
 fi
-echo "activate: $channel runs $revision and answers on every route checked." >&2
+echo "activate: $channel runs $revision and answers on every route and card checked." >&2
