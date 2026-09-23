@@ -923,7 +923,13 @@ h2 {
   color: var(--muted);
 }
 
+/* A group is one unit on a line: the line may break between two groups and
+   never inside one. With the groups as plain spans a narrow screen broke
+   wherever the width ran out, "9f" at the end of one line and "33" at the
+   start of the next, which is the one split a person reading against their
+   wallet cannot read past. */
 .address .quad {
+  display: inline-block;
   margin-right: 0.5em;
 }
 
