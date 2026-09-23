@@ -267,11 +267,20 @@
 	# Caddy's bare, empty 404. VitePress builds its own 404 page under the same
 	# base, and this serves it with the status kept. The scanner and the
 	# cabinet answer their own missing pages, so nothing here touches theirs.
+	#
+	# The 404 page is a portal page like any other, so it is templated the same
+	# way. Served without it, the page carries every mode's notice at once, and
+	# a live deployment tells whoever mistyped an address that its payments are
+	# pretend.
 	handle_errors {
 		@portal_missing `{err.status_code} == 404 && {http.request.orig_uri.path}.startsWith('/docs/')`
 		handle @portal_missing {
 			root * {$AGENTIFY_PORTAL_ROOT:/srv/docs}
 			rewrite * /404.html
+			templates {
+				mime text/html
+				between <!--{{ }}-->
+			}
 			file_server {
 				status {err.status_code}
 			}
