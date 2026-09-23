@@ -40,4 +40,4 @@ printf '[extend]\nuseDefault = true\n' > "$temp_dir/default.toml"
 "$temp_dir/gitleaks" git --no-banner --redact \
   --config "$temp_dir/default.toml" \
   --gitleaks-ignore-path "$repo_dir/.gitleaksignore" \
-  --log-opts="$revision" "$source_dir"
+  --log-opts="--full-history --diff-merges=first-parent $revision" "$source_dir"
