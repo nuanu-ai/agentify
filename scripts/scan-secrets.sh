@@ -37,7 +37,7 @@ tar -xzf "$temp_dir/$asset" -C "$temp_dir" gitleaks
 
 # The candidate's own config must not be able to turn off the standard rules.
 printf '[extend]\nuseDefault = true\n' > "$temp_dir/default.toml"
-"$temp_dir/gitleaks" git --no-banner --redact \
+"$temp_dir/gitleaks" git --no-banner --no-color --verbose --redact \
   --config "$temp_dir/default.toml" \
   --gitleaks-ignore-path "$repo_dir/.gitleaksignore" \
   --log-opts="--full-history --diff-merges=first-parent $revision" "$source_dir"
