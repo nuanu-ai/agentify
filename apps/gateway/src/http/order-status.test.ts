@@ -19,7 +19,14 @@
  * merchant's key for the product and the buyer's own parameters back.
  */
 
-import type { AgentOrderStatus, Card, Delivery } from "@nuanu-ai/agentify-contracts";
+import { request as httpRequest } from "node:http";
+import {
+  type AgentOrderStatus,
+  API_ROUTES,
+  type Card,
+  type Delivery,
+  expandPath,
+} from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buyOverHttp,
@@ -103,6 +110,173 @@ const orderTakenOn = async (
 
 const statusOf = async (served: Served, orderId: string, headers?: Record<string, string>) =>
   served.call("GET", `/x402/orders/${orderId}/status`, headers === undefined ? {} : { headers });
+
+/**
+ * The address a deployment answering as `https://agentify.ad` tells an agent to
+ * come back to, which is the production shape: TLS ends at the proxy in front,
+ * and the process behind it is reached over plain http on an address nobody
+ * outside ever sees.
+ */
+const PUBLIC_BASE = "https://agentify.ad";
+
+/** Where one order is collected, as the route table spells it under that base. */
+const collectedAt = (orderId: string): string =>
+  `${PUBLIC_BASE}${expandPath(API_ROUTES.get_order_status.path, { order_id: orderId })}`;
+
+/**
+ * The part of an absolute address this served gateway can be asked at.
+ *
+ * The gateway under test listens on the loopback interface and not at the
+ * public address it names, exactly as a deployment behind its proxy does, so
+ * what a test can call is the path and the query of what the answer said.
+ */
+const onThisGateway = (address: unknown): string => {
+  const parsed = new URL(String(address));
+  return `${parsed.pathname}${parsed.search}`;
+};
+
+/**
+ * The same gateway, reached by calls that say they arrived somewhere else.
+ *
+ * `fetch` will not send a Host it did not take from the URL — the header is one
+ * the specification forbids a client to set — so these calls go out through
+ * `node:http`, which sends what it is given. Everything else about a call is
+ * what `Served.call` does: a JSON body where there is one, and the answer read
+ * back as JSON where it parses.
+ */
+const arrivingWith = (served: Served, claimed: Readonly<Record<string, string>>): Served => ({
+  ...served,
+  call: (method, path, options = {}) =>
+    new Promise((resolve, reject) => {
+      const body = options.body === undefined ? undefined : JSON.stringify(options.body);
+      const outgoing = httpRequest(
+        new URL(path, served.url),
+        {
+          method,
+          headers: {
+            ...(body === undefined ? {} : { "content-type": "application/json" }),
+            ...options.headers,
+            ...claimed,
+          },
+        },
+        (incoming) => {
+          const chunks: Buffer[] = [];
+          incoming.on("data", (chunk: Buffer) => chunks.push(chunk));
+          incoming.on("error", reject);
+          incoming.on("end", () => {
+            const headers = new Headers();
+            for (const [name, value] of Object.entries(incoming.headers)) {
+              for (const one of [value ?? []].flat()) headers.append(name, one);
+            }
+            const text = Buffer.concat(chunks).toString("utf8");
+            let parsed: unknown = text;
+            try {
+              parsed = text === "" ? null : JSON.parse(text);
+            } catch {
+              // Left as text, as `Served.call` leaves it.
+            }
+            resolve({ status: incoming.statusCode ?? 0, headers, body: parsed });
+          });
+        },
+      );
+      outgoing.on("error", reject);
+      outgoing.end(body);
+    }),
+});
+
+describe("where an agent that paid comes back to", () => {
+  it("names the address in the purchase answer, and the goods are collected there", async () => {
+    // An agent that paid for goods that come later holds the answer to its
+    // purchase and nothing else, and the obvious guesses at an address from an
+    // order identifier answer `no_such_route`. So the answer names the address
+    // itself, and the promise is that the address is enough: the same order
+    // answers there, and the goods arrive there.
+    const { served, harnessed } = await started({ PUBLIC_BASE_URL: PUBLIC_BASE });
+    const itemId = await publish(served, laterCard);
+
+    const bought = await buyOverHttp(harnessed, served, itemId, {
+      onOrder: () => ({ accepted: {} }),
+    });
+
+    expect(bought.status, JSON.stringify(bought.body)).toBe(200);
+    const answered = bought.body as Record<string, unknown>;
+    const orderId = String(answered.order_id);
+    expect(answered.status_url).toBe(collectedAt(orderId));
+
+    const waiting = await served.call("GET", onThisGateway(answered.status_url));
+    expect(waiting.status).toBe(200);
+    expect(waiting.body).toStrictEqual(bought.body);
+
+    const delivered = await served.call("POST", `/v0/orders/${orderId}/deliver`, {
+      body: { activation_code: "LPA:1$example.com$ACTIVATE" },
+      headers: keyOf(harnessed.merchant),
+    });
+    expect(delivered.status, JSON.stringify(delivered.body)).toBe(200);
+
+    const collected = await served.call("GET", onThisGateway(answered.status_url));
+    expect(collected.status).toBe(200);
+    expect((collected.body as AgentOrderStatus).status).toBe("delivered");
+    expect((collected.body as AgentOrderStatus).delivered).toStrictEqual({
+      activation_code: "LPA:1$example.com$ACTIVATE",
+    });
+  });
+
+  it("names the same address from both doors, for goods handed over on the call", async () => {
+    // The other way a paid purchase answers: a synchronous sale, finished by
+    // the time the answer is written. The purchase and the status route answer
+    // in one document (ADR-0018), so the address has to come out of both, and
+    // the same — an agent that bought and an agent that came back later are
+    // told where the order lives in one spelling.
+    const { served, harnessed } = await started({ PUBLIC_BASE_URL: PUBLIC_BASE });
+    const itemId = await publish(served, nowCard);
+
+    const bought = await buyOverHttp(harnessed, served, itemId, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+
+    expect(bought.status, JSON.stringify(bought.body)).toBe(200);
+    const orderId = String((bought.body as Record<string, unknown>).order_id);
+    expect((bought.body as Record<string, unknown>).status_url).toBe(collectedAt(orderId));
+
+    const later = await statusOf(served, orderId);
+
+    expect(later.status).toBe(200);
+    expect((later.body as Record<string, unknown>).status_url).toBe(collectedAt(orderId));
+  });
+
+  it("builds the address from its own configuration, whatever a call says about where it arrived", async () => {
+    // Behind the proxy that ends an agent's TLS connection, the request this
+    // process sees says http and names whichever host the proxy forwarded to,
+    // and the forwarding headers are whatever the caller or the proxy wrote.
+    // An address assembled from any of them sends the agent to plain http, or
+    // to a host of the caller's choosing, with a paid order's identifier in
+    // the path. So both doors are called here as though they were reached at
+    // a host that is not ours, and both must still name the configured one.
+    const { served, harnessed } = await started({ PUBLIC_BASE_URL: PUBLIC_BASE });
+    const itemId = await publish(served, laterCard);
+    const elsewhere = arrivingWith(served, {
+      host: "elsewhere.example",
+      "x-forwarded-proto": "http",
+      "x-forwarded-host": "elsewhere.example:8443",
+    });
+
+    const bought = await buyOverHttp(harnessed, elsewhere, itemId, {
+      onOrder: () => ({ accepted: {} }),
+    });
+
+    expect(bought.status, JSON.stringify(bought.body)).toBe(200);
+    const orderId = String((bought.body as Record<string, unknown>).order_id);
+    expect((bought.body as Record<string, unknown>).status_url).toBe(collectedAt(orderId));
+
+    const later = await elsewhere.call(
+      "GET",
+      expandPath(API_ROUTES.get_order_status.path, { order_id: orderId }),
+    );
+
+    expect(later.status).toBe(200);
+    expect((later.body as Record<string, unknown>).status_url).toBe(collectedAt(orderId));
+  });
+});
 
 describe("coming back for goods that were not ready", () => {
   it("tells the buyer where an order stands before the merchant has issued anything", async () => {
