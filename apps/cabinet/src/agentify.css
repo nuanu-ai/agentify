@@ -257,8 +257,20 @@ textarea {
 
 /*
  * A real table, so a merchant's browser can read the columns out and their
- * find-in-page still works. The scroller around it is what keeps a wide row
- * from pushing the whole page sideways on a narrow screen.
+ * find-in-page still works.
+ *
+ * Every column and every row's control is on the screen at every width. Where
+ * the frame is wide enough for the columns this is a table; where it is not, a
+ * row is drawn as a block — the first cell as its heading, and every other cell
+ * as its column's head beside its value. The tables used to keep a minimum
+ * width and scroll sideways inside this frame instead, and nothing showed that
+ * they did: the receipts ran twice as wide as a laptop's frame, and on a phone
+ * the controls that pause a card or revoke a key were out of sight. The
+ * scroller stays as the last resort for a value nothing here can break, not as
+ * the layout.
+ *
+ * The width that decides is the frame's rather than the window's, so the rule
+ * holds wherever a table is put.
  */
 .scroller {
   margin: 24px 0 32px;
@@ -266,11 +278,11 @@ textarea {
   border-radius: var(--radius-panel);
   background: var(--surface);
   overflow-x: auto;
+  container-type: inline-size;
 }
 
 table {
   width: 100%;
-  min-width: 720px;
   border-collapse: collapse;
   text-align: left;
   font-size: 0.875rem;
@@ -284,40 +296,45 @@ thead th {
   font: 600 0.75rem / 1.5 var(--font-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  padding: 12px 24px;
+  padding: 12px 16px;
   border-bottom: var(--hairline) solid var(--line);
   white-space: nowrap;
 }
 
 /* A row is the height of a row on the scanner's report, and the rule between
    two of them is the quiet one: a hairline strong enough to edge a card is too
-   strong repeated down a list of twenty. */
+   strong repeated down a list of twenty. The frame's own inset is at the two
+   outer edges; between columns the gap is narrower, because eight columns at
+   the outer inset spend a third of a laptop's frame on padding. */
 tbody td {
   height: 56px;
-  padding: 12px 24px;
-  border-bottom: var(--hairline) solid var(--divider);
+  padding: 12px 16px;
   vertical-align: middle;
 }
 
-/*
- * The first column carries the name of the thing and needs room for it. Left to
- * share the table's minimum evenly it collapses on a narrow screen and a title
- * wraps one word per line, which is unreadable long before the row is.
- */
-tbody td:first-child,
-thead th:first-child {
-  min-width: 220px;
+:is(th, td):first-child {
+  padding-left: 24px;
 }
 
-tbody tr:last-child td {
-  border-bottom: none;
+:is(th, td):last-child {
+  padding-right: 24px;
 }
 
-tbody tr.off td {
+/* The inset of a row drawn as a block. While the row is a table row, padding
+   does nothing to it. */
+tbody tr {
+  padding: 14px 16px;
+}
+
+tbody tr + tr {
+  border-top: var(--hairline) solid var(--divider);
+}
+
+tbody tr.off {
   background: var(--raised);
 }
 
-tbody tr.needs-you td {
+tbody tr.needs-you {
   background: color-mix(in oklab, var(--fail) 7%, transparent);
 }
 
@@ -325,6 +342,9 @@ td.amount,
 td.key,
 td.ident {
   font-family: var(--font-mono);
+}
+
+td.amount {
   white-space: nowrap;
 }
 
@@ -332,6 +352,33 @@ td.key,
 td.ident {
   font-size: 0.8125rem;
   color: var(--muted);
+}
+
+/*
+ * An identifier is copied whole, so it breaks only where the column ends and
+ * nothing is inserted where it does: a double-click still selects all of it.
+ *
+ * Its column has a width of its own, because a column that is allowed to wrap
+ * is the one a table takes room from first. An order's or a receipt's
+ * identifier is thirty-six characters, and at eighteen to a line it takes two
+ * lines rather than a third of the table; a merchant's own key is set wide
+ * enough for the twenty characters such keys run to, so it stays on one line
+ * rather than breaking at every hyphen.
+ */
+td.key,
+td.ident,
+.under.mono {
+  overflow-wrap: anywhere;
+}
+
+td.key,
+td.ident {
+  box-sizing: content-box;
+  width: 18ch;
+}
+
+td.key {
+  width: 20ch;
 }
 
 .title {
@@ -350,7 +397,50 @@ td.ident {
 
 td.quiet {
   color: var(--muted);
-  white-space: nowrap;
+}
+
+/*
+ * The block a row becomes where its columns do not fit. The label and the value
+ * are two cells of a table of their own, so a value that wraps stays in its
+ * column rather than running back under the label. The label is drawn only
+ * where a rule below gives it its words.
+ */
+
+/* Wide enough for "Price true as of" on one line and narrow enough to leave a
+   whole moment beside it on a phone. */
+tbody td::before {
+  display: table-cell;
+  width: 8.75rem;
+  padding-right: 12px;
+  color: var(--muted);
+  font: 500 0.75rem / 1.5 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+@container (max-width: 860px) {
+  .scroller :is(table, tbody, tr) {
+    display: block;
+  }
+
+  .scroller thead {
+    display: none;
+  }
+
+  .scroller tbody td {
+    display: table;
+    width: 100%;
+    height: auto;
+    padding: 3px 0;
+  }
+
+  .scroller tbody td:first-child {
+    padding-bottom: 6px;
+  }
+
+  .scroller tbody td:not(:first-child)::before {
+    content: attr(data-label);
+  }
 }
 
 /* --- the state badge ---------------------------------------------------- */
