@@ -309,6 +309,7 @@
 
 .attentionBadge {
   display: inline-flex;
+  justify-self: start;
   align-items: center;
   gap: 7px;
   border: 1px solid var(--line-strong);
