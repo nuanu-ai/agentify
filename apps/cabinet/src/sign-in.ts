@@ -15,12 +15,23 @@ const destinationInput = (destination: CabinetDestination): string =>
     ? ""
     : `<input type="hidden" name="destination" value="${escaped(destination)}">`;
 
+/**
+ * The sign-in form, with what went wrong and why the person is here kept apart.
+ *
+ * A problem is a refusal of something they did — an address of the wrong
+ * shape, a change that was lost — and is drawn as one, under the box. A reason
+ * is why they are looking at this page at all, such as a session that ran its
+ * course, and is the card's first line in the ordinary voice: drawn red under
+ * an empty box it reads as a fault in a box nobody has typed in yet, which is
+ * the opposite of what that sentence is for.
+ */
 export const signInScreen = (
   base: string,
   mode: SurfaceMode,
   destination: CabinetDestination = "default",
   problem?: string,
   email = "",
+  reason?: string,
 ): string =>
   bare(
     base,
@@ -29,6 +40,7 @@ export const signInScreen = (
 ${brandLockup("/")}
 <form class="gate-card" method="post" action="${escaped(base)}/sign-in">
   <h1>Sign in</h1>
+  ${reason === undefined ? "" : `<p>${escaped(reason)}</p>`}
   <p>Enter your email address and we will send you a sign-in link.</p>
   <label for="email">Email address</label>
   <input id="email" name="email" type="email" value="${escaped(email)}" autocomplete="email" autocapitalize="off" spellcheck="false" autofocus required>
