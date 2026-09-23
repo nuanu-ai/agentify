@@ -6,8 +6,8 @@
 #   deploy/activate.sh test|production <full revision>
 #
 # Every refusal is one sentence on stderr. Exit 75 means something was in the
-# way (the lock, an earlier run's migration) and nothing was stopped. Running
-# it again is always safe.
+# way (the lock, an earlier run's migration, images that did not arrive) and
+# nothing was stopped. Running it again is always safe.
 #
 # Everything that can refuse runs before anything stops. Then the four
 # applications stop for about a minute: a restore point of both databases,
@@ -37,8 +37,9 @@ umask 077
 channel="${1:-}" revision="${2:-}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 images="$root/deploy/images.env" state="/var/lib/agentify/${1:-}" backups="/var/backups/agentify/${1:-}"
-phase=checking step=activation backup=""
+phase=checking step=activation backup="" checker=""
 refuse() { echo "activate: $*" >&2; exit 1; }
+later() { echo "activate: $*; nothing was stopped, and running this again later may go through." >&2; exit 75; }
 at() { step="$1"; echo "activate: $step" >&2; }
 stack() { "$root/deploy/stack.sh" "$channel" "$@"; }
 restart() { mapfile -t old < <(stack ps -aq gateway cabinet scanner scanner-worker); ((${#old[@]} == 0)) || docker start "${old[@]}" >/dev/null; }
@@ -48,6 +49,7 @@ fail() {
   # A second signal must not cut a restore short.
   trap - ERR
   trap '' INT TERM HUP
+  [[ -z $checker ]] || docker rm -f "$checker" >/dev/null 2>&1 || true
   case $phase in
     checking) echo "activate: $step failed; nothing was stopped." >&2 ;;
     stopped)
@@ -95,17 +97,16 @@ printf '%s' "$pinned" > "$images.new"
 mv "$images.new" "$images"
 unset AGENTIFY_APP_IMAGE AGENTIFY_WEB_IMAGE AGENTIFY_SCANNER_IMAGE AGENTIFY_SCANNER_WORKER_IMAGE AGENTIFY_SCANNER_PRIVACY_IMAGE
 project="$(stack config --no-interpolate | sed -n '1s/^name: //p')"
-if [[ -n $(docker ps -q --filter "label=com.docker.compose.project=$project" --filter label=com.docker.compose.oneoff=True) ]]; then
-  echo "activate: a one-off container of $project from an earlier run is still working; nothing was changed." >&2; exit 75
-fi
+[[ -z $(docker ps -q --filter "label=com.docker.compose.project=$project" --filter label=com.docker.compose.oneoff=True) ]] \
+  || later "a one-off container of $project from an earlier run is still working"
 read -r from to backup < <(cat "$state/pending" 2>/dev/null) || true
 [[ -z ${to:-} || $to == "$revision" ]] \
   || refuse "a release of $to did not finish and its migrations may have run; release $to again, or restore ${backup:-its restore point}, before releasing $revision."
 [[ -z ${to:-} || -d $backup ]] || refuse "the restore point $backup of the unfinished release of $revision is gone; a person has to decide what the databases hold before anything is released."
 reverify=false
 if [[ -z ${to:-} && $(cat "$state/current" 2>/dev/null) == "$revision" ]]; then reverify=true; fi
-stack --profile jobs pull --policy missing --quiet \
-  || refuse "the images in $images could not be pulled, for the reasons above; nothing was stopped."
+timeout 30m "$root/deploy/stack.sh" "$channel" --profile jobs pull --policy missing --quiet \
+  || later "the images in $images did not arrive, for the reasons above or within 30 minutes"
 while IFS='=' read -r _ reference; do
   [[ $(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$reference") == "$revision" ]] \
     || refuse "$reference does not carry the revision label $revision."
@@ -117,6 +118,33 @@ rendered="$(stack --profile jobs config --format json)" \
 docker run --rm -i --network none "$(sed -n 's/^AGENTIFY_APP_IMAGE=//p' "$images")" \
   node packages/core/src/deployment/preflight.mjs "$channel" <<<"$rendered" \
   || refuse "the preflight refused this configuration for the reasons above; nothing was stopped."
+# The scanner's own start, alone and with no network: its entrypoint's checks,
+# then its /api/health/live, which validates its whole configuration without a
+# database or a provider.
+# Its environment reaches docker through a pipe, never a file.
+checker=agentify-scanner-check
+docker rm -f "$checker" >/dev/null 2>&1 || true
+docker run -d --name "$checker" --network none --env-file <(python3 -c 'import json, sys
+for key, value in json.load(sys.stdin)["services"]["scanner"]["environment"].items():
+    print(f"{key}={str(value).replace(chr(36) * 2, chr(36))}")' <<<"$rendered") \
+  "$(sed -n 's/^AGENTIFY_SCANNER_IMAGE=//p' "$images")" >/dev/null
+verdict=silent
+for _ in {1..60}; do
+  [[ $(docker inspect -f '{{.State.Running}}' "$checker") == true ]] || { verdict=stopped; break; }
+  verdict="$(docker exec "$checker" node -e "fetch('http://127.0.0.1:3000/api/health/live').then(r => console.log(r.status)).catch(() => console.log('silent'))")" \
+    || verdict=silent
+  [[ $verdict == silent ]] || break
+  sleep 1
+done
+if [[ $verdict == stopped ]]; then docker logs --tail 3 "$checker" >&2; fi
+docker rm -f "$checker" >/dev/null
+checker=""
+case $verdict in
+  200) ;;
+  stopped) refuse "the scanner stopped at its own start, for the reason above; nothing was stopped." ;;
+  silent) refuse "the scanner did not answer its health route within a minute of its own start; nothing was stopped." ;;
+  *) refuse "the scanner's health route answered $verdict at its own start, so it finds its configuration invalid; nothing was stopped." ;;
+esac
 running="$(docker inspect -f '{{.Image}}' "$project-postgres-1" 2>/dev/null || true)"
 [[ -z $running || $running == "$(docker image inspect -f '{{.Id}}' "$(stack config --images postgres)")" ]] \
   || refuse "$project-postgres-1 runs another image than deploy/compose.images.yaml pins, and a database upgrade is a change of its own; nothing was stopped."

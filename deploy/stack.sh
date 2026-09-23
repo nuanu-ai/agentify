@@ -32,6 +32,19 @@ if [[ ! -r $environment ]]; then
   echo "stack: $environment is missing or not readable by this user; deploy/README.md, \"Setting up a host\", says what it holds." >&2
   exit 78
 fi
+# Compose reads a $ outside single quotes as the start of a variable: the value
+# is cut short there, and every command prints the rest in a warning. A bcrypt
+# hash is the usual victim, so the file is refused, naming the key only.
+unquoted=""
+while IFS= read -r line || [[ -n $line ]]; do
+  [[ $line =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue
+  key="${BASH_REMATCH[1]}" value="${BASH_REMATCH[2]}"
+  [[ $value != *'$'* || $value =~ ^\'[^\']*\'[[:space:]]*$ ]] || unquoted+="$key "
+done < "$environment"
+if [[ -n $unquoted ]]; then
+  echo "stack: $environment holds a \$ outside single quotes in ${unquoted}- Compose would read what follows it as a variable, so write each such value inside single quotes." >&2
+  exit 78
+fi
 if [[ ! -r $images ]]; then
   echo "stack: $images is missing, so this checkout names no images: deploy/activate.sh writes it when it activates the revision." >&2
   exit 78
