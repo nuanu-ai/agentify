@@ -240,7 +240,7 @@
 
 - name: Validate the actual channel before any application activation
   ansible.builtin.command:
-    argv: [docker, run, --rm, -i, --network, none, "{{ release_identity.firstParty['app'] }}", node, packages/core/src/deployment/preflight.mjs, "{{ 'commerce' if channel_name == 'production' else 'agentify-test' }}", "{{ channel.listen_address | default('') }}"]
+    argv: [docker, run, --rm, -i, --network, none, "{{ release_identity.firstParty['app'] }}", node, packages/core/src/deployment/preflight.mjs, "{{ channel_name }}"]
     stdin: "{{ rendered_configuration.stdout }}"
   changed_when: false
   no_log: true
