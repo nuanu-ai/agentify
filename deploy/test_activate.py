@@ -271,6 +271,53 @@ class Activation(unittest.TestCase):
         self.assertEqual(self.databases(), ORIGINAL)
         self.assertEqual(self.applications(), dict.fromkeys(APPLICATIONS, "old exited"))
 
+    def test_images_that_do_not_arrive_are_a_wait_that_stops_nothing(self):
+        said = self.run_script("activate", FAIL_AT="--profile jobs pull --policy missing --quiet")
+        self.assertIn("exit 75", said)
+        self.assert_old_release_runs_on_old_data(said)
+
+    def test_a_scanner_that_refuses_its_own_configuration_stops_nothing(self):
+        said = self.run_script("activate", SCANNER_HEALTH="503")
+        self.assertIn("exit 1", said)
+        self.assertIn("scanner", said)
+        self.assert_old_release_runs_on_old_data(said)
+
+
+class TheEnvironmentFile(unittest.TestCase):
+    """stack.sh refuses a $ that Compose would read as a variable, naming only the key."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not container_available():
+            raise RuntimeError(f"these tests run stack.sh in a {IMAGE} container, and Docker is not available here")
+
+    def check(self, content):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "deploy").mkdir()
+            shutil.copy(HERE / "stack.sh", root / "deploy/stack.sh")
+            (root / "deploy/images.env").write_text("")
+            (root / "test.env").write_text(content)
+            (root / "docker").write_text("#!/bin/sh\necho compose would run\n")
+            (root / "docker").chmod(0o755)
+            result = subprocess.run(
+                ["docker", "run", "--rm", "--network", "none", "-v", f"{root}:/h", IMAGE, "bash", "-c",
+                 "mkdir -p /etc/agentify && cp /h/test.env /etc/agentify/ && PATH=/h:$PATH /h/deploy/stack.sh test ps; echo \"exit $?\""],
+                capture_output=True, text=True, timeout=60,
+            )
+        return result.stdout + result.stderr
+
+    def test_refuses_an_unquoted_or_double_quoted_dollar_and_names_only_the_key(self):
+        said = self.check("A=plain\nADMIN_BASIC_AUTH_HASH=$2a$14$saltandhash\nB=\"x$y\"\n")
+        self.assertIn("exit 78", said)
+        self.assertIn("ADMIN_BASIC_AUTH_HASH", said)
+        self.assertIn("B ", said)
+        self.assertNotIn("saltandhash", said)
+
+    def test_takes_a_dollar_inside_single_quotes_and_a_comment(self):
+        said = self.check("ADMIN_BASIC_AUTH_HASH='$2a$14$saltandhash'\n# NOTE=$x\n")
+        self.assertIn("compose would run", said)
+        self.assertIn("exit 0", said)
 
 
 if __name__ == "__main__":
