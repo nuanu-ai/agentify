@@ -32,11 +32,14 @@ in a field of its own. It is marked as a report, not a reading of the chain,
 and it records who paid: the merchant, or Agentify where Agentify paid the buyer
 back and then settles with the merchant outside the system.
 
-On a `refund_due` order the merchant sees four things: the payer's address,
-checksummed, wherever the payment layer named one; the amount and the network;
-two ways out, deliver or report the refund to the operator; and a warning. A
-refund that is paid but not reported does not stop a late delivery, including
-one the merchant's own worker makes. Where no payer was named, only goods close
+On a `refund_due` order the merchant sees five things. The first is the
+payer's address, checksummed, wherever the payment layer named one. The second
+is the amount and the network. The third is the two ways out: deliver, or
+report the refund to the operator. The fourth is a warning that a refund paid
+but not reported does not stop a late delivery, including one the merchant's
+own worker makes. The fifth is what follows if neither happens: within three
+business days of the deadline, the operator contacts them and pauses their
+selling until the debt is settled. Where no payer was named, only goods close
 the debt, so the fourteen days below cannot be kept for that order. Until the
 cabinet names a way to reach the operator, a merchant who signed themselves up
 can report a refund only after the operator has contacted them.
