@@ -29,7 +29,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 environment="/etc/agentify/$channel.env"
 images="$root/deploy/images.env"
 if [[ ! -r $environment ]]; then
-  echo "stack: $environment is missing or not readable by this user; deploy/README.md, \"The environment file\", says what it holds." >&2
+  echo "stack: $environment is missing or not readable by this user; deploy/README.md, \"Setting up a host\", says what it holds." >&2
   exit 78
 fi
 if [[ ! -r $images ]]; then

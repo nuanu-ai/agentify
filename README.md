@@ -213,7 +213,7 @@ its own.
 | `packages/visual` | `@agentify/visual`: one stylesheet — the tokens, the base element rules and the shared primitives every surface on the origin is drawn with (ADR-0005 §6) — and under `public/`, the mark and the faces Caddy serves at `/assets` and `/styles`. No build step and no JavaScript. |
 | `packages/scanner-contracts`, `packages/scanner-database`, `packages/scanner` | The scanner's private contracts, storage and evaluation engine. |
 | `packages/analytics`, `packages/observability`, `packages/remediation` | The scanner's remaining packages, kept separate from the engine. |
-| `deploy/` | Every Dockerfile, the Compose overlays for test and production, the Caddy route table and the Ansible release playbooks. |
+| `deploy/` | Every Dockerfile, the Compose overlays for test and production, the Caddy route table, and the release: `agentify-release`, the activation script and the one Compose command line per channel. `deploy/README.md` is the release runbook. |
 | `ops/`, `fixtures/` | The scanner's operational checks and runtime test inputs. |
 | `scripts/` | The commands the root `package.json` calls: the decision-log check, the outside install, the mutation run, worktree hygiene. |
 | `docs/decisions/` | The numbered decisions — what is expensive to reverse, and why it was decided that way. |
@@ -272,37 +272,38 @@ kept apart for that reason:
 
 ## Releasing
 
-Two channels and one tag family, and the servers pull rather than being pushed
-to (ADR-0016). Each server runs an agent that polls one mutable tag in this
-public repository, checks out the commit it names and runs the Ansible stage,
-activation and verification locally. GitHub holds no server credential, and
-nothing in this repository connects to a server.
+Two channels, and the servers pull rather than being pushed to (ADR-0016). A
+release is one command on the host, `agentify-release`, which reads the
+commit's image digests from its image build, fetches the commit and runs its
+`deploy/activate.sh`: a restore point, the migrations, the services, the
+public routes checked. GitHub holds no server credential, and nothing in this
+repository connects to a server.
 
 | Channel | Address | What runs there | How a revision gets there |
 | --- | --- | --- | --- |
-| test | `test.agentify.ad` | any branch or commit | Move `deploy-test` to it: run **Deploy TEST** from `main` with a branch, tag or SHA, or push the pointer directly. The server picks it up within a couple of minutes. |
-| production | `agentify.ad` | the stable release | Push an `app-v<release>` tag on a commit of `main` with green CI. The tag is the acceptance; there is no second approval. |
+| test | `test.agentify.ad` | any commit that was the head of a pushed branch | Move `deploy-test` to it: run **Deploy TEST** from `main` with a branch, tag or SHA, or push the pointer directly. A timer on the server picks it up within a minute of its images being built. |
+| production | `agentify.ad` | the stable release | An administrator tags a commit of `main` whose CI and image build succeeded `app-v<release>`, and a person with mesh access runs `agentify-release app-v<release>` on the server. |
 
 ```mermaid
 flowchart LR
     B[branch] -- pull request and review --> M[main]
     B -. move deploy-test .-> T[test.agentify.ad]
-    M -- tag app-v* --> P[agentify.ad]
+    M -- tag app-v*, then agentify-release --> P[agentify.ad]
     M -- tag app-v* --> N[npm: the SDK and the contracts]
 ```
 
 ```sh
-git push --force origin my-branch:refs/tags/deploy-test    # test
-git tag app-v<release> && git push origin app-v<release>   # production
+git push --force origin my-branch:refs/tags/deploy-test          # test
+git tag app-v<release> && git push origin app-v<release>         # production: the tag,
+ssh -t agentify sudo agentify-release app-v<release>             # then the release
 ```
 
 There is one test channel and it is shared. Before moving `deploy-test`, ask
 the other person whether they are on it; most work is done locally and a test
-redeploy is rare, so this is a sentence rather than a queue. What the server
-did with a selection — deploying, activating, failed, verified — is recorded on
-that server and not in GitHub: the workflow moves the pointer and ends. A
-failed revision is not retried by itself; inspect its evidence and move the
-pointer again.
+redeploy is rare, so this is a sentence rather than a queue. What a server
+runs, and what failed there, is recorded on that server and not in GitHub. A
+failed test revision is not retried by the timer; a person runs
+`agentify-release` again on the server once the cause is fixed.
 
 The same `app-v*` tag publishes the SDK. `@nuanu-ai/agentify-contracts` and
 `@nuanu-ai/agentify` are released together: every change to either carries a
@@ -312,11 +313,11 @@ that exact commit, publishes whatever versions the manifests carry and the
 registry does not yet hold through npm Trusted Publishing with no stored token,
 and installs them back from the registry to prove it. The number in the tag is
 the application's and says nothing about the SDK version, so a tag whose SDK
-version is already public deploys production and publishes nothing. The
+version is already public publishes nothing. The
 procedure, including the one-time bootstrap of the package names, is
 [`docs/research/22-sdk-release.md`](docs/research/22-sdk-release.md); the
 operator's side of both channels is the
-[release operations guide](deploy/ansible/README.md).
+[release runbook](deploy/README.md).
 
 Switching a merchant on for live sales is an application command rather than a
 deployment: `pnpm approve <email>` from the operator's checkout reaches the

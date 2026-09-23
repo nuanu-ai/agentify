@@ -1,25 +1,19 @@
 ---
-# The group structure is the repository's; the addresses and login names are
-# the operator's and are not kept here. Each host reads two variables that this
-# file does not define. Supply them from an untracked file beside this one:
+# The inventory of the Woo acceptance route on TEST (woo-test-hairpin.yml),
+# which is the only playbook left here. The group structure is the
+# repository's; the address and the login name are the operator's and are not
+# kept here. Supply them from an untracked file beside this one:
 #
 #   cp deploy/ansible/inventory.local.yml.example deploy/ansible/inventory.local.yml
 #   ansible-playbook -i deploy/ansible/inventory.yml \
-#     -e @deploy/ansible/inventory.local.yml deploy/ansible/release.yml
+#     -e @deploy/ansible/inventory.local.yml deploy/ansible/woo-test-hairpin.yml ...
 #
-# or export them into the environment your wrapper passes through. There is no
-# default for any of them on purpose: an inventory that guesses an address is
-# an inventory that can point a release at somebody else's machine. A missing
-# variable stops the play before the first task with the name of what is
-# missing, which is the intended behaviour, not a failure to configure.
+# There is no default for either on purpose: an inventory that guesses an
+# address is an inventory that can point a playbook at somebody else's
+# machine. A missing variable stops the play before the first task with the
+# name of what is missing.
 all:
   children:
-    production:
-      hosts:
-        agentify:
-          ansible_host: "{{ agentify_production_host }}"
-          ansible_user: "{{ agentify_production_user }}"
-          ansible_python_interpreter: /usr/bin/python3
     test:
       hosts:
         agentify-test:

@@ -38,6 +38,11 @@ name: Images
 # digests. A run that failed, or a commit that never reached main, has no
 # notice to find, and that refuses too.
 #
+# TEST reads the notice of any branch head's build the same way, without the
+# `branch=main` in step 1: agentify-release takes a production release only
+# from main's run, and a test release from the one successful run of the
+# commit, whichever branch pushed it.
+#
 # It deploys nothing. No job here holds a route or a credential to a server,
 # and a pushed image selects no channel. It runs no tests either: ci.yml is the
 # gate, and an image existing for a commit says nothing about whether that

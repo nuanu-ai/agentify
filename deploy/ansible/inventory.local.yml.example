@@ -1,17 +1,15 @@
 ---
 # Copy to deploy/ansible/inventory.local.yml and fill in with the real values.
-# The copy is ignored by git and must stay that way: it names the machines this
-# repository is allowed to deploy to, and that is an operator fact, not source.
+# The copy is ignored by git and must stay that way: it names the machine the
+# Woo acceptance route may be installed on, and that is an operator fact, not
+# source.
 #
 #   ansible-playbook -i deploy/ansible/inventory.yml \
-#     -e @deploy/ansible/inventory.local.yml deploy/ansible/release.yml
+#     -e @deploy/ansible/inventory.local.yml deploy/ansible/woo-test-hairpin.yml ...
 #
-# Each value is either an address or a resolvable name; ansible_user is the
-# login on that machine. Leave nothing blank — a blank is not a default, it is
-# a host you did not mean to touch.
-agentify_production_host: REPLACE_WITH_PRODUCTION_ADDRESS_OR_NAME
-agentify_production_user: REPLACE_WITH_PRODUCTION_LOGIN
-
+# Each value is either an address or a resolvable name; the user is the login
+# on that machine. Leave nothing blank — a blank is not a default, it is a host
+# you did not mean to touch.
 agentify_test_host: REPLACE_WITH_TEST_ADDRESS_OR_NAME
 agentify_test_user: REPLACE_WITH_TEST_LOGIN
 
@@ -27,11 +25,3 @@ woo_hairpin_public_hosts:
   - REPLACE_WITH_SECOND_PUBLIC_HOSTNAME
 woo_hairpin_public_ip: REPLACE_WITH_SHARED_PUBLIC_ADDRESS
 woo_hairpin_ingress_ip: REPLACE_WITH_INGRESS_ADDRESS
-
-# The address on the fixture host where the ordinary TEST release publishes
-# its TLS listener for the shared ingress.
-agentify_test_listen_address: REPLACE_WITH_TEST_LISTEN_ADDRESS
-
-# The home directory the deployment runs under on the server. release-vars.yml
-# builds every release, environment and edge-configuration path from it.
-agentify_home: REPLACE_WITH_DEPLOYMENT_HOME_DIRECTORY

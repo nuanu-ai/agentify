@@ -69,8 +69,8 @@ networks:
     name: agentify-ingress
 
 # A missing namespace cutover must stop Compose before it starts an empty
-# production database. Ansible creates and restores these exact targets during
-# the separately reviewed cutover; ordinary releases only consume them.
+# production database. The separately reviewed cutover creates and restores
+# these exact targets; ordinary releases only consume them.
 #
 # These names, like the project's own, are what a running host answers to
 # rather than what this repository calls things. Renaming them here would name
