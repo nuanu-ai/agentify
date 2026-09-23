@@ -149,16 +149,25 @@
   color: var(--vp-c-text-1);
 }
 
-/* Below the theme's own breakpoint the bar collapses to the title and a
-   hamburger, and the navigation this link rides with is not rendered at all.
-   The link is put back by hand there, because "no way out" is the whole defect
-   and a phone is where somebody is most likely to have arrived from a search. */
+/* Below the theme's own breakpoint the bar collapses to the title, this link
+   and the search, and the link keeps its place there, because "no way out" is
+   the whole defect and a phone is where somebody is most likely to have
+   arrived from a search. */
 @media (max-width: 767px) {
   .way-out {
     display: inline-flex;
     margin-right: 12px;
     font-size: 13px;
   }
+}
+
+/* The theme's own menu button on a phone opens a sheet made of the top
+   navigation, the appearance switch and the social links, and this site has
+   none of the three: the button opened an empty page. The sections are behind
+   "Menu" in the row below the bar. The day themeConfig gets a `nav`, this rule
+   goes, or its links become unreachable on a phone. */
+.VPNavBar .content-body .VPNavBarHamburger {
+  display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
