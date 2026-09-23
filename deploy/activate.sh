@@ -115,7 +115,7 @@ restart() { mapfile -t old < <(stack ps -aq gateway cabinet scanner scanner-work
 trap 'restart || true; rm -rf "${backup:-/nonexistent}.partial"; echo "activate: $step failed, so the services it stopped run the previous release again, over any migration that committed before the failure; the newest restore point of $revision is $(newest)." >&2' ERR
 stack stop --timeout 60 gateway cabinet scanner scanner-worker
 
-at "taking the restore point"
+if [[ -n $backup ]]; then at "taking the restore point"; else at "taking no restore point: the gateway already runs $revision"; fi
 stack up -d --wait --no-deps postgres
 if [[ -n $backup ]]; then
   mkdir "$backup.partial"
