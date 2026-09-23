@@ -1,0 +1,17 @@
+[Unit]
+Description=Release on TEST what deploy-test names
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+ConditionPathExists=/etc/agentify/release.json
+
+[Service]
+Type=oneshot
+ExecStartPre=/usr/bin/systemctl is-active --quiet docker.service
+# Exits 0 with nothing to do when deploy-test names what runs or what failed,
+# and while the images are being built; a refusal or a failed activation
+# fails the unit once and is not tried again until the tag moves or a person
+# runs agentify-release by hand.
+ExecStart=/usr/local/sbin/agentify-release --timer deploy-test
+TimeoutStartSec=90min
+UMask=0077
