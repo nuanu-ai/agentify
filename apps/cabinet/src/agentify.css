@@ -400,6 +400,19 @@ td.quiet {
 }
 
 /*
+ * A moment's column is as narrow as the moment on two lines, the date over the
+ * time, so the room goes to the product's name. Its two halves do not break
+ * inside themselves.
+ */
+td.moment {
+  width: 1px;
+}
+
+td.moment > span {
+  white-space: nowrap;
+}
+
+/*
  * The block a row becomes where its columns do not fit. The label and the value
  * are two cells of a table of their own, so a value that wraps stays in its
  * column rather than running back under the label, and that table's layout is

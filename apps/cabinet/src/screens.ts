@@ -20,7 +20,7 @@ import {
   type OrderList,
   type ReceiptList,
 } from "@nuanu-ai/agentify-contracts";
-import { escaped, page, type Row, state, type Tab, table } from "./html.js";
+import { escaped, momentCell, page, type Row, state, type Tab, table } from "./html.js";
 import type { PayoutWallet } from "./payout-wallet.js";
 // A type and nothing else, so this leaves no import behind once it is compiled
 // and the two files are not a cycle at run time. The shape belongs beside the
@@ -362,7 +362,7 @@ export const ordersScreen = (
         },
         { kind: "amount", html: `${escaped(money(order.price))}${sum(order.test)}` },
         { html: state(ORDER_WORDS[order.status]) },
-        { kind: "quiet", html: escaped(moment(order.price.at)) },
+        momentCell(moment(order.price.at)),
       ],
     }),
   );
@@ -488,9 +488,9 @@ export const receiptsScreen = (
         { html: escaped(titles.get(receipt.item_id) ?? receipt.item_id) },
         { kind: "amount", html: `${escaped(money(receipt.price))}${sum(receipt.test)}` },
         { html: state(ORDER_WORDS[receipt.outcome]) },
-        { kind: "quiet", html: escaped(moment(receipt.paid_at)) },
-        { kind: "quiet", html: escaped(moment(receipt.price.at)) },
-        { kind: "quiet", html: escaped(moment(receipt.price.as_of)) },
+        momentCell(moment(receipt.paid_at)),
+        momentCell(moment(receipt.price.at)),
+        momentCell(moment(receipt.price.as_of)),
       ],
     }),
   );

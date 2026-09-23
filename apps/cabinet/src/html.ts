@@ -240,6 +240,22 @@ ${body}
 </html>
 `;
 
+/**
+ * A cell holding a moment. It may wrap between the date and the time and
+ * nowhere else — left to itself a browser breaks "2026-09-23" after a hyphen —
+ * and nothing is added to the text, so a copied moment is the moment.
+ */
+export const momentCell = (moment: string): Cell => {
+  const [date, ...time] = moment.split(" ");
+  return {
+    kind: "quiet moment",
+    html:
+      time.length === 0
+        ? escaped(moment)
+        : `<span>${escaped(date ?? "")}</span> <span>${escaped(time.join(" "))}</span>`,
+  };
+};
+
 /** A state with its dot, the way every one of the three screens draws one. */
 export const state = (word: { readonly text: string; readonly tone: string }): string =>
   `<span class="state ${word.tone}"><span class="dot"></span>${escaped(word.text)}</span>`;
