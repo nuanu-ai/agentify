@@ -1,0 +1,179 @@
+name: Images
+
+# Builds the five first-party images a release runs — app, web, scanner,
+# scanner-worker and scanner-privacy — once for each commit pushed as the head
+# of a branch of this repository, for linux/amd64, and pushes each to the
+# GitHub Container Registry as ghcr.io/nuanu-ai/agentify-<name>:<full commit
+# SHA>. Every image carries the two labels a host checks: the source revision
+# and the source repository.
+#
+# The images are built here and not on the servers because a server building
+# its own spent most of a release on it, and gave each channel different bytes
+# for the same commit (ADR-0016).
+#
+# Production does not trust a registry tag: any later push can move one,
+# including a push from a branch whose copy of this file says something else.
+# It releases only by the digests main's own push run published. The `digests`
+# job writes the five as one JSON object, each image name mapped to
+# ghcr.io/nuanu-ai/agentify-<name>@sha256:…, in the message of a notice titled
+# `images` on its own check run, and the public API serves that without a
+# token. A reader finds and checks it for a commit in four steps:
+#
+#   1. GET https://api.github.com/repos/nuanu-ai/agentify/actions/workflows/images.yml/runs?head_sha=<sha>&branch=main&event=push&status=success
+#      and require exactly one run with that `head_sha`, `head_branch` main
+#      and `event` push.
+#   2. GET that run's `jobs_url` and take the `check_run_url` of the job named
+#      `digests`.
+#   3. GET that `check_run_url` and keep its `output.annotations_count`.
+#   4. GET `<check_run_url>/annotations?per_page=100&page=N` for every page,
+#      require the number of annotations read to equal that count, and
+#      require exactly one annotation titled `images`. Its message is the
+#      document.
+#
+# The count and the "exactly one" are there because the GitHub Actions app
+# owns both main's check runs and the token of every workflow run here, so a
+# branch whose workflow asks for `checks: write` can probably append
+# annotations to main's `digests` check run. It cannot remove the real one, so
+# an extra `images` annotation refuses the release instead of replacing its
+# digests. A run that failed, or a commit that never reached main, has no
+# notice to find, and that refuses too.
+#
+# It deploys nothing. No job here holds a route or a credential to a server,
+# and a pushed image selects no channel. It runs no tests either: ci.yml is the
+# gate, and an image existing for a commit says nothing about whether that
+# commit is fit to release.
+
+on:
+  # Branch pushes only, and never tags: step 1's `branch=main` matches a run's
+  # `head_branch`, which for a tag push is the tag's name, so a tag named
+  # `main` would pass every filter a reader applies. Pull requests are left
+  # out too, so a fork's code never runs with the right to push.
+  push:
+    branches: ["**"]
+  # By hand, to build a branch head again. A failed build of main is re-run
+  # from its own run instead, because a reader takes main's push runs only.
+  workflow_dispatch:
+
+# Nothing by default; the build job alone is given what pushing needs.
+permissions: {}
+
+jobs:
+  # One leg per image, in parallel. The build context is the repository root.
+  # app, scanner and scanner-worker read the .dockerignore beside their
+  # Dockerfile; web has none of its own and reads the root one.
+  build:
+    name: build ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - image: app
+            dockerfile: deploy/Dockerfile.app
+          - image: web
+            dockerfile: deploy/Dockerfile.web
+          - image: scanner
+            dockerfile: deploy/Dockerfile.scanner
+            target: runner
+          - image: scanner-worker
+            dockerfile: deploy/Dockerfile.scanner-worker
+          - image: scanner-privacy
+            dockerfile: deploy/Dockerfile.scanner
+            target: privacy-jobs
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # Without a provenance attestation the pushed object is one image
+      # manifest, so its digest names the linux/amd64 image and nothing beside
+      # it. The cache is scoped per image, and `mode=max` keeps the
+      # intermediate stages too. A commit that changes neither the lockfile nor
+      # a package manifest reuses `pnpm install` in web, scanner and
+      # scanner-worker; in app it reuses only the download, `pnpm fetch`,
+      # because the install there follows `COPY . .`. A cache that cannot be
+      # written slows the next build and does not fail this one.
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
+          platforms: linux/amd64
+          pull: true
+          provenance: false
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/nuanu-ai/agentify
+          tags: ghcr.io/nuanu-ai/agentify-${{ matrix.image }}:${{ github.sha }}
+          push: true
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max,ignore-error=true
+
+      # The legs of a matrix do not each hand a later job an output of their
+      # own, so each leaves its digest in a one-line artifact instead. "Re-run
+      # failed jobs" keeps the artifacts of the legs that passed, and GitHub
+      # allows a re-run for thirty days after the run, so the artifacts are
+      # kept exactly that long; a re-run replaces the one it rebuilds.
+      - name: Record the pushed digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE: ${{ matrix.image }}
+        run: |
+          mkdir digests
+          printf '%s\n' "$DIGEST" > "digests/$IMAGE"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: digest-${{ matrix.image }}
+          path: digests/${{ matrix.image }}
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 30
+
+  # Publishes the `images` notice the header describes, or fails without one.
+  digests:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+
+      # The five names are the build matrix's. Four digests are not a release,
+      # and neither are six, so anything but exactly those five publishes
+      # nothing.
+      - name: Publish the five digests as one notice
+        run: |
+          set -euo pipefail
+          document='{}'
+          for path in digests/*; do
+            [ -f "$path" ] || continue
+            image="$(basename "$path")"
+            digest="$(cat "$path")"
+            if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::the $image build reported no image digest"
+              exit 1
+            fi
+            document="$(jq -c --arg image "$image" \
+              --arg reference "ghcr.io/nuanu-ai/agentify-$image@$digest" \
+              '. + {($image): $reference}' <<<"$document")"
+          done
+          expected='["app","scanner","scanner-privacy","scanner-worker","web"]'
+          if ! jq -e --argjson expected "$expected" 'keys == $expected' <<<"$document" >/dev/null; then
+            echo "::error::expected digests for $(jq -r 'join(", ")' <<<"$expected"); found: $(jq -r 'keys | if length == 0 then "none" else join(", ") end' <<<"$document")"
+            exit 1
+          fi
+          echo "::notice title=images::$document"
