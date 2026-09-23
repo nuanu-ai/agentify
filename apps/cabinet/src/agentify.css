@@ -78,10 +78,12 @@ textarea {
  * location is exactly what a tab row is for. The inset rule under the current
  * tab stays: it is the only active marker available and it is quiet.
  *
- * Nothing in this bar wraps. The tabs are a row and a row that becomes two rows
- * moves everything under it by a line, which on a sticky bar means the page
- * changes height as you navigate it. Under 760 the tab row scrolls sideways
- * instead, and the lockup takes the smaller size the scanner's does.
+ * Every tab is always on the screen. The five of them beside the lockup and the
+ * selling light need about 750 pixels, so under 860 the tabs take a row of
+ * their own under the other two, on every page alike — the bar is one height
+ * per width rather than a height that changes as you move between tabs. The
+ * tabs used to scroll sideways instead, inside a strip with no scrollbar, and
+ * on a phone that hid three of the five, often the one you were on.
  */
 .top {
   position: sticky;
@@ -97,25 +99,17 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
-}
-
-.bar-left {
-  display: flex;
-  align-items: center;
   gap: 36px;
-  min-width: 0;
-  align-self: stretch;
 }
 
+/* The tabs take the room between the lockup and the light, and wrap onto a
+   second line where even their own row is too narrow for them. */
 .tabs {
+  flex: 1;
   display: flex;
-  gap: 4px;
-  min-width: 0;
+  flex-wrap: wrap;
+  gap: 0 4px;
   align-self: stretch;
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  scrollbar-width: none;
 }
 
 .tabs a,
@@ -137,6 +131,43 @@ textarea {
   color: var(--fg);
   font-weight: 500;
   box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* The lockup and the light on the first row, the tabs under them with the first
+   one's word in line with the lockup. */
+@media (max-width: 860px) {
+  .top-inner {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    padding-top: 14px;
+  }
+
+  .tabs {
+    order: 1;
+    flex-basis: 100%;
+    margin-left: -8px;
+  }
+
+  .tabs a,
+  .tabs span {
+    min-height: 44px;
+    padding: 0 8px;
+    font-size: 0.8125rem;
+  }
+}
+
+/* The narrowest phones: the five still fit one row, each still a target of 44
+   pixels by more than 44, rather than leaving the last on a row of its own. */
+@media (max-width: 359px) {
+  .tabs {
+    gap: 0;
+    margin-left: -5px;
+  }
+
+  .tabs a,
+  .tabs span {
+    padding: 0 5px;
+  }
 }
 
 /*
@@ -240,8 +271,21 @@ textarea {
 
 /*
  * A real table, so a merchant's browser can read the columns out and their
- * find-in-page still works. The scroller around it is what keeps a wide row
- * from pushing the whole page sideways on a narrow screen.
+ * find-in-page still works.
+ *
+ * Every column and every row's control is on the screen at every width. Where
+ * the frame is wide enough for the columns this is a table; where it is not, a
+ * row is drawn as a block with every value beside the head of its column, the
+ * first one included, so an order's or a receipt's identifier is never read out
+ * without its name. The tables used to keep a minimum
+ * width and scroll sideways inside this frame instead, and nothing showed that
+ * they did: the receipts ran twice as wide as a laptop's frame, and on a phone
+ * the controls that pause a card or revoke a key were out of sight. The
+ * scroller stays as the last resort for a value nothing here can break, not as
+ * the layout.
+ *
+ * The width that decides is the frame's rather than the window's, so the rule
+ * holds wherever a table is put.
  */
 .scroller {
   margin: 24px 0 32px;
@@ -249,58 +293,63 @@ textarea {
   border-radius: var(--radius-panel);
   background: var(--surface);
   overflow-x: auto;
+  container-type: inline-size;
 }
 
 table {
   width: 100%;
-  min-width: 720px;
   border-collapse: collapse;
   text-align: left;
   font-size: 0.875rem;
 }
 
 /* The column head, in the treatment the scanner gives the heading over a group
-   of checks: the monospaced face, uppercase, letterspaced, muted. */
+   of checks: the monospaced face, uppercase, letterspaced, muted. A long head
+   wraps rather than holding its column wider than the values under it. */
 thead th {
   background: var(--raised);
   color: var(--muted);
   font: 600 0.75rem / 1.5 var(--font-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  padding: 12px 24px;
+  padding: 12px 16px;
   border-bottom: var(--hairline) solid var(--line);
-  white-space: nowrap;
 }
 
 /* A row is the height of a row on the scanner's report, and the rule between
    two of them is the quiet one: a hairline strong enough to edge a card is too
-   strong repeated down a list of twenty. */
+   strong repeated down a list of twenty. The frame's own inset is at the two
+   outer edges; between columns the gap is narrower, because eight columns at
+   the outer inset spend a third of a laptop's frame on padding. */
 tbody td {
   height: 56px;
-  padding: 12px 24px;
-  border-bottom: var(--hairline) solid var(--divider);
+  padding: 12px 16px;
   vertical-align: middle;
 }
 
-/*
- * The first column carries the name of the thing and needs room for it. Left to
- * share the table's minimum evenly it collapses on a narrow screen and a title
- * wraps one word per line, which is unreadable long before the row is.
- */
-tbody td:first-child,
-thead th:first-child {
-  min-width: 220px;
+:is(th, td):first-child {
+  padding-left: 24px;
 }
 
-tbody tr:last-child td {
-  border-bottom: none;
+:is(th, td):last-child {
+  padding-right: 24px;
 }
 
-tbody tr.off td {
+/* The inset of a row drawn as a block. While the row is a table row, padding
+   does nothing to it. */
+tbody tr {
+  padding: 14px 16px;
+}
+
+tbody tr + tr {
+  border-top: var(--hairline) solid var(--divider);
+}
+
+tbody tr.off {
   background: var(--raised);
 }
 
-tbody tr.needs-you td {
+tbody tr.needs-you {
   background: color-mix(in oklab, var(--fail) 7%, transparent);
 }
 
@@ -308,6 +357,9 @@ td.amount,
 td.key,
 td.ident {
   font-family: var(--font-mono);
+}
+
+td.amount {
   white-space: nowrap;
 }
 
@@ -315,6 +367,34 @@ td.key,
 td.ident {
   font-size: 0.8125rem;
   color: var(--muted);
+}
+
+/*
+ * An identifier is copied whole, so it breaks only where the column ends and
+ * nothing is inserted where it does: a double-click still selects all of it.
+ *
+ * Its column has a width of its own, because a column that is allowed to wrap
+ * is the one a table takes room from first. An order's or a receipt's
+ * identifier is thirty-six characters, and at eighteen to a line it takes two
+ * lines rather than a third of the table. A merchant's own key gets twenty
+ * characters, which hold a key like `rented-number-us-30d` on one line rather
+ * than breaking it at every hyphen; a longer key, such as the ones the
+ * WooCommerce connector writes, wraps inside that width.
+ */
+td.key,
+td.ident,
+.under.mono {
+  overflow-wrap: anywhere;
+}
+
+td.key,
+td.ident {
+  box-sizing: content-box;
+  width: 18ch;
+}
+
+td.key {
+  width: 20ch;
 }
 
 .title {
@@ -333,7 +413,99 @@ td.ident {
 
 td.quiet {
   color: var(--muted);
+}
+
+/*
+ * A moment's column is as narrow as the moment on two lines, the date over the
+ * time, so the room goes to the product's name. The two halves of a moment do
+ * not break inside themselves, wherever it is written.
+ */
+td.moment {
+  width: 1px;
+}
+
+.when > span {
   white-space: nowrap;
+}
+
+/*
+ * The block a row becomes where its columns do not fit. The label and the value
+ * are two cells of a table of their own, so a value that wraps stays in its
+ * column rather than running back under the label, and that table's layout is
+ * fixed, so the labels keep one width down the block whatever stands beside
+ * them. In a block the value column is all the room there is, so anything in it
+ * may wrap: an identifier with no card to name it, a long state, or an amount
+ * beside its test mark. The label is drawn only where a rule below gives it
+ * its words.
+ */
+
+/* Wide enough for "Price true as of" on one line and narrow enough to leave a
+   whole moment beside it on a phone. */
+tbody td::before {
+  display: table-cell;
+  width: 8.75rem;
+  padding-right: 12px;
+  color: var(--muted);
+  font: 500 0.75rem / 1.5 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+@container (max-width: 860px) {
+  .scroller :is(table, tbody, tr) {
+    display: block;
+  }
+
+  .scroller thead {
+    display: none;
+  }
+
+  .scroller tbody td {
+    display: table;
+    table-layout: fixed;
+    width: 100%;
+    overflow-wrap: anywhere;
+    height: auto;
+    padding: 3px 0;
+  }
+
+  .scroller tbody td::before {
+    content: attr(data-label);
+  }
+
+  .scroller tbody :is(.state, .amount) {
+    white-space: normal;
+  }
+}
+
+/* The receipts' eight columns need the whole of a laptop's frame: a little
+   under it the product name goes to three lines and then to one word a line,
+   so a table with a seventh column becomes blocks sooner. */
+@container (max-width: 1140px) {
+  .scroller:has(th:nth-child(7)) :is(table, tbody, tr) {
+    display: block;
+  }
+
+  .scroller:has(th:nth-child(7)) thead {
+    display: none;
+  }
+
+  .scroller:has(th:nth-child(7)) tbody td {
+    display: table;
+    table-layout: fixed;
+    width: 100%;
+    overflow-wrap: anywhere;
+    height: auto;
+    padding: 3px 0;
+  }
+
+  .scroller:has(th:nth-child(7)) tbody td::before {
+    content: attr(data-label);
+  }
+
+  .scroller:has(th:nth-child(7)) tbody :is(.state, .amount) {
+    white-space: normal;
+  }
 }
 
 /* --- the state badge ---------------------------------------------------- */
@@ -698,21 +870,6 @@ td.control {
 }
 
 @media (max-width: 760px) {
-  .top-inner {
-    min-height: 60px;
-    gap: 14px;
-  }
-
-  .bar-left {
-    gap: 16px;
-  }
-
-  .tabs a,
-  .tabs span {
-    padding: 0 10px;
-    font-size: 0.8125rem;
-  }
-
   .gate-card {
     padding: 28px 22px;
   }

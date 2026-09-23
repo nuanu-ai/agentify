@@ -33,19 +33,26 @@
  */
 
 import type { MerchantKey, MerchantKeyList } from "@nuanu-ai/agentify-contracts";
-import { escaped, page } from "./html.js";
+import { type Cell, escaped, momentCell, page, type Row, table, when } from "./html.js";
 import type { Viewer } from "./screens.js";
-import { moment } from "./words.js";
 
-const keyRow = (base: string, entry: MerchantKey): string => {
+const keyRow = (base: string, entry: MerchantKey): Row => {
   const revoked = entry.disabled_at !== null;
-  return `<tr class="${revoked ? "off" : ""}">
-<td><div class="title">${escaped(entry.label)}</div><div class="under mono">${escaped(entry.id)}</div></td>
-<td class="quiet">${escaped(moment(entry.created_at))}</td>
-<td class="quiet">${escaped(lastCall(entry))}</td>
-<td class="quiet">${revoked ? escaped(`Revoked ${moment(entry.disabled_at ?? "")}`) : "Works"}</td>
-<td class="control">${keyControl(base, entry)}</td>
-</tr>`;
+  return {
+    ...(revoked ? { mark: "off" } : {}),
+    cells: [
+      {
+        html: `<div class="title">${escaped(entry.label)}</div><div class="under mono">${escaped(entry.id)}</div>`,
+      },
+      momentCell(entry.created_at),
+      lastCall(entry),
+      {
+        kind: "quiet",
+        html: revoked ? `Revoked ${when(entry.disabled_at ?? "")}` : "Works",
+      },
+      { kind: "control", html: keyControl(base, entry) },
+    ],
+  };
 };
 
 /**
@@ -69,8 +76,10 @@ const keyRow = (base: string, entry: MerchantKey): string => {
  * A second way of writing a time would put two formats on one page and a
  * merchant comparing them.
  */
-const lastCall = (entry: MerchantKey): string =>
-  entry.last_used_at === null ? NO_CALLS_RECORDED : moment(entry.last_used_at);
+const lastCall = (entry: MerchantKey): Cell =>
+  entry.last_used_at === null
+    ? { kind: "quiet", html: escaped(NO_CALLS_RECORDED) }
+    : momentCell(entry.last_used_at);
 
 /**
  * The empty answer, named once because the note under the table quotes it.
@@ -152,14 +161,15 @@ export const keysScreen = (viewer: Viewer, keys: MerchantKeyList, problem?: stri
       )}${WHICH_KEY_THE_CABINET_USES}</p>
     </div>
   </div>
+${table(
+  ["Name", "Made", "Last call", "State", ""],
+  keys.keys.map((entry) => keyRow(base, entry)),
+  "No keys yet.",
+)}
 ${
   none
-    ? '<div class="scroller"><p class="empty">No keys yet.</p></div>'
-    : `<div class="scroller"><table>
-<thead><tr><th>Name</th><th>Made</th><th>Last call</th><th>State</th><th></th></tr></thead>
-<tbody>${keys.keys.map((entry) => keyRow(base, entry)).join("")}</tbody>
-</table></div>
-  <p class="note">${escaped(WHAT_REVOKING_DOES)}</p>
+    ? ""
+    : `  <p class="note">${escaped(WHAT_REVOKING_DOES)}</p>
   <p class="note">${escaped(
     "This is what the gateway answered with, and its answer does not say whether it is all of" +
       " them. Nothing pages this list yet and nothing here counts your keys for you — the number" +

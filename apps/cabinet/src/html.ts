@@ -11,6 +11,7 @@
  */
 
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
+import { moment } from "./words.js";
 
 /** Text on its way into a page, with the five characters that are not text. */
 export const escaped = (value: string): string =>
@@ -153,14 +154,12 @@ export const page = (chrome: Chrome): string => `<!doctype html>
 ${surface(chrome.mode)}
   <header class="top">
     <div class="top-inner container">
-      <div class="bar-left">
-        ${brandLockup("/")}
-        <nav class="tabs" aria-label="Your cabinet">${TABS.map(([tab, label]) =>
-          tab === chrome.tab
-            ? `<span class="here" aria-current="page">${label}</span>`
-            : `<a href="${escaped(chrome.base)}/${tab}">${label}</a>`,
-        ).join("")}</nav>
-      </div>
+      ${brandLockup("/")}
+      <nav class="tabs" aria-label="Your cabinet">${TABS.map(([tab, label]) =>
+        tab === chrome.tab
+          ? `<span class="here" aria-current="page">${label}</span>`
+          : `<a href="${escaped(chrome.base)}/${tab}">${label}</a>`,
+      ).join("")}</nav>
       ${chrome.selling === undefined ? "" : state(chrome.selling)}
     </div>
   </header>
@@ -242,19 +241,71 @@ ${body}
 </html>
 `;
 
+/**
+ * An instant as a page prints it, and the only way a page prints one.
+ *
+ * The words are `moment`'s, in UTC to the second. The markup lets the moment
+ * wrap between its date and its time and nowhere else — left to itself a
+ * browser breaks "2026-09-23" after a hyphen — and adds nothing to the text,
+ * so a copied moment is the moment. The two halves sit inside one span of
+ * their own: where a table row is drawn as a block its cells are drawn as
+ * small tables, and Chrome and WebKit drop a space standing between two spans
+ * directly inside one, so the date and the time ran together.
+ *
+ * Three screens printed a moment as plain text beside this and each of them
+ * broke that way on a phone, which is why no screen imports `moment` itself.
+ */
+export const when = (iso: string): string => {
+  const text = moment(iso);
+  const [date, ...time] = text.split(" ");
+  return time.length === 0
+    ? escaped(text)
+    : `<span class="when"><span>${escaped(date ?? "")}</span> <span>${escaped(time.join(" "))}</span></span>`;
+};
+
+/** A cell holding an instant, in a column as narrow as the moment on two lines. */
+export const momentCell = (iso: string): Cell => ({ kind: "quiet moment", html: when(iso) });
+
 /** A state with its dot, the way every one of the three screens draws one. */
 export const state = (word: { readonly text: string; readonly tone: string }): string =>
   `<span class="state ${word.tone}"><span class="dot"></span>${escaped(word.text)}</span>`;
 
-/** A table with a row for every entry, or one line saying there are none. */
+/** One cell of a table: what it shows, and the class that says what kind of value it is. */
+export interface Cell {
+  readonly html: string;
+  readonly kind?: string;
+}
+
+/** One row: its cells in the order of the columns, and the class the row is marked with. */
+export interface Row {
+  readonly mark?: string;
+  readonly cells: readonly Cell[];
+}
+
+/**
+ * A table with a row for every entry, or one line saying there are none.
+ *
+ * Every cell carries the head of its column. Where the frame is too narrow for
+ * the columns, a row is drawn as a block of labelled values rather than a line
+ * the page has to be scrolled sideways to read, and the labels are these — the
+ * same words as the heads, so the two cannot say different things.
+ */
 export const table = (
   columns: readonly string[],
-  rows: readonly string[],
+  rows: readonly Row[],
   nothing: string,
-): string =>
-  rows.length === 0
-    ? `<div class="scroller"><p class="empty">${escaped(nothing)}</p></div>`
-    : `<div class="scroller"><table>
+): string => {
+  if (rows.length === 0) {
+    return `<div class="scroller"><p class="empty">${escaped(nothing)}</p></div>`;
+  }
+  const cell = (one: Cell, head = ""): string =>
+    `<td${one.kind === undefined ? "" : ` class="${one.kind}"`}${head === "" ? "" : ` data-label="${escaped(head)}"`}>${one.html}</td>`;
+  const row = (one: Row): string =>
+    `<tr${one.mark === undefined ? "" : ` class="${one.mark}"`}>
+${one.cells.map((each, at) => cell(each, columns[at])).join("\n")}
+</tr>`;
+  return `<div class="scroller"><table>
 <thead><tr>${columns.map((column) => `<th>${escaped(column)}</th>`).join("")}</tr></thead>
-<tbody>${rows.join("")}</tbody>
+<tbody>${rows.map(row).join("")}</tbody>
 </table></div>`;
+};

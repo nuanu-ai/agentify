@@ -19,12 +19,11 @@
  */
 
 import type { SurfaceMode } from "@agentify/core";
-import { bare, brandLockup, escaped, page } from "./html.js";
+import { bare, brandLockup, escaped, page, when } from "./html.js";
 import type { Viewer } from "./screens.js";
 import type { SkippedProduct } from "./woo-catalog.js";
 import { GRANT_MINUTES } from "./woo-connect.js";
 import { PRODUCTS_AT_MOST } from "./woo-shop.js";
-import { moment } from "./words.js";
 
 /**
  * A connected shop as a screen may know it.
@@ -310,7 +309,7 @@ const theConnection = (
 ): string => `  <div class="lede">
     <div>
       <h2>Your shop</h2>
-      <p>${escaped(connection.shopUrl)}, connected ${escaped(moment(connection.connectedAt.toISOString()))}.</p>
+      <p>${escaped(connection.shopUrl)}, connected ${when(connection.connectedAt.toISOString())}.</p>
       ${view.problem === undefined ? "" : `<p class="problem">${escaped(view.problem)}</p>`}
       ${
         connection.permissions === "read_write"
@@ -585,7 +584,7 @@ export const wooSettingsBlock = (base: string, state: ShopTile): string => {
       ? `<p>Whether a shop is connected to this account could not be read just now.</p>
       <p class="quiet">The fault is on our side, not in your shop, and nothing was disconnected by it. Reload this page in a moment.</p>`
       : state.kind === "connected"
-        ? `<p>${escaped(state.shop.shopUrl)}, connected ${escaped(moment(state.shop.connectedAt.toISOString()))}.</p>
+        ? `<p>${escaped(state.shop.shopUrl)}, connected ${when(state.shop.connectedAt.toISOString())}.</p>
       ${
         state.shop.permissions === "read_write"
           ? ""
