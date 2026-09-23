@@ -34,8 +34,12 @@ when he names the day.
 The cabinet owns identity (ADR-0026). Scanner email verification uses Better
 Auth's expiring, hashed, single-use magic links, issued and verified by the
 cabinet's component over an internal route and consumed only by an explicit
-same-origin submission; no separate identity service is deployed, and the
-scanner database holds no identity data. Registration keeps its intent, email,
+same-origin submission. That submission completes in two phases: the cabinet
+consumes the hashed proof and records a pending receipt in one step, then the
+scanner commits its report session in its own transaction and acknowledges the
+receipt, and a bounded retry finishes that same operation without reusing a
+completed proof, because the two databases share no transaction. No separate
+identity service is deployed, and the scanner database holds no identity data. Registration keeps its intent, email,
 scan and consent checks, a verified identity finishes only the intent for that
 same email, and scanner permissions are checked against report ownership. A
 callback state is only a report-routing hint: a valid report session may follow
