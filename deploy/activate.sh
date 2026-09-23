@@ -6,43 +6,52 @@
 #   deploy/activate.sh test|production <full revision>
 #
 # Every refusal is one sentence on stderr. Exit 75 means something was in the
-# way (the lock, an earlier run's migration, images that did not arrive) and
-# nothing was stopped. Running it again is always safe.
+# way (the lock, another unfinished transition, images that did not arrive)
+# and nothing was stopped.
 #
 # Everything that can refuse runs before anything stops. Then the four
 # applications stop for about a minute: a restore point of both databases,
-# the migrations, the start of the new release. What a failure, or a signal,
-# does depends on how far the run got:
+# the migrations, the start of the new release. Before the stop, the channel's
+# transition record (deploy/transition) is written, and it follows the run:
+# stopped, dumped, migrating, and started, which is on disk before the new
+# release starts and may take writes. It names the previous revision, the new
+# one, the restore point and the cards on sale before, and it goes only when
+# the release is verified or a restore finishes. A failure or a signal:
 #
-#   before the stop      nothing changed.
-#   before the first     the databases are untouched; the stopped services
-#   migration            start again on the previous release.
-#   from the first       both databases are restored from the restore point
-#   migration until the  taken after the stop, which loses nothing because
-#   new release starts   nothing wrote in between, and the previous release
-#                        starts again. If the restore fails, all four stay
-#                        stopped and the message says what to run.
-#   once it has started  the new release may have taken writes, so nothing is
-#                        restored and the message says so.
+#   before the stop      changes nothing.
+#   stopped, dumped      leaves the databases untouched: the stopped services
+#                        start again, and the transition ends.
+#   migrating            restores both databases from the restore point, which
+#                        loses nothing, since no application ran after it was
+#                        taken, and starts the stopped services again. A
+#                        failed restore changes nothing, and all four stay
+#                        stopped.
+#   started              restores nothing, ever.
 #
-# A run that stops before it finishes leaves `pending` in the channel's state
-# directory, naming the restore point of the unfinished release. Running the
-# same revision again reuses that restore point rather than dumping data its
-# migrations already changed, and any other revision is refused until the
-# unfinished one is finished or its restore point restored. When the channel
-# already runs the revision, a run checks it again without stopping anything.
+# A run that finds a record another run left (deploy/README.md, "When a
+# release fails"): for the same revision, it carries on, with the record's
+# restore point and cards, and after `started` only forward, never stopping or
+# restoring; for another revision after `started`, it goes ahead if that
+# revision moves forward from the record's, with a fresh restore point, and is
+# refused if not; before `started`, another revision waits until a person
+# releases the record's revision again or restores its restore point; and
+# while a restore is unfinished, everything waits. With no record, a run of
+# the revision the channel runs checks it again without stopping anything.
 set -Eeuo pipefail
 umask 077
 
 channel="${1:-}" revision="${2:-}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 images="$root/deploy/images.env" state="/var/lib/agentify/${1:-}" backups="/var/backups/agentify/${1:-}"
-phase=checking step=activation backup="" checker=""
+record="$state/transition" mode=release from="" cards="" backup="" move=""
+phase=checking step=activation checker=""
 refuse() { echo "activate: $*" >&2; exit 1; }
 later() { echo "activate: $*; nothing was stopped, and running this again later may go through." >&2; exit 75; }
 at() { step="$1"; echo "activate: $step" >&2; }
 stack() { "$root/deploy/stack.sh" "$channel" "$@"; }
+transition() { "$root/deploy/transition" "$record" "$@"; }
 restart() { mapfile -t old < <(stack ps -aq gateway cabinet scanner scanner-worker); ((${#old[@]} == 0)) || docker start "${old[@]}" >/dev/null; }
+running() { stack ps --status running --format '{{.Service}}' gateway cabinet scanner scanner-worker | sort | paste -sd ' ' -; }
 fail() {
   local code=$?
   ((BASH_SUBSHELL == 0)) || exit "$code"
@@ -50,20 +59,26 @@ fail() {
   trap - ERR
   trap '' INT TERM HUP
   [[ -z $checker ]] || docker rm -f "$checker" >/dev/null 2>&1 || true
+  [[ $from != none ]] || move="; this channel had no release by this command before, and deploy/README.md, \"Production's one-time move\", says how the old scanner starts again"
   case $phase in
     checking) echo "activate: $step failed; nothing was stopped." >&2 ;;
     stopped)
       [[ -z $backup ]] || rm -rf "$backup.partial"
-      restart || true
-      echo "activate: $step failed before any migration, so the databases are as they were and the services it stopped run the previous release again." >&2 ;;
+      if restart; then transition clear; fi
+      echo "activate: $step failed before any migration, so the databases are as they were; running now: $(running)$move." >&2 ;;
     migrating)
-      if "$root/deploy/restore.sh" "$backup" && restart; then
-        echo "activate: $step failed, so both databases were restored from $backup, taken after the stop and before the first migration, and the previous release runs again; nothing written was lost, because nothing wrote in between." >&2
+      if "$root/deploy/restore.sh" "$backup"; then
+        restart || true
+        echo "activate: $step failed, so both databases were restored from $backup, taken before the first migration, which loses nothing, since no application ran after it was taken; running now: $(running)$move." >&2
       else
-        echo "activate: $step failed, and so did restoring $backup: the databases may hold part of $revision's migrations and part of the restore, and gateway, cabinet, scanner and scanner-worker stay stopped. Run  sudo $root/deploy/restore.sh $backup  until it succeeds, then release again the revision that ran before." >&2
+        echo "activate: $step failed, and so did restoring $backup, which changed nothing: the databases hold what the migrations did, and gateway, cabinet, scanner and scanner-worker stay stopped. Run  sudo $root/deploy/restore.sh $backup  until it succeeds." >&2
       fi ;;
     started)
-      echo "activate: $step failed after the new release started and could take writes, so nothing was restored: $revision runs unverified. Fix the cause and release $revision again${backup:+; $backup holds the data from before its migrations, and restoring it would lose everything written since}." >&2 ;;
+      if [[ $mode == reverify ]]; then
+        echo "activate: $step failed while checking $revision again; nothing was stopped or restored, and running now: $(running)." >&2
+      else
+        echo "activate: $step failed after $revision started and could take writes, so nothing was restored, and nothing will be: it runs unverified. Release it again once the cause is fixed, or a revision that moves forward from it; $backup holds the data from before its migrations, and restoring it by hand would lose everything written since${edge_file:+, and $backup/Caddyfile the route table the edge had before}." >&2
+      fi ;;
   esac
   exit 1
 }
@@ -99,12 +114,27 @@ unset AGENTIFY_APP_IMAGE AGENTIFY_WEB_IMAGE AGENTIFY_SCANNER_IMAGE AGENTIFY_SCAN
 project="$(stack config --no-interpolate | sed -n '1s/^name: //p')"
 [[ -z $(docker ps -q --filter "label=com.docker.compose.project=$project" --filter label=com.docker.compose.oneoff=True) ]] \
   || later "a one-off container of $project from an earlier run is still working"
-read -r from to backup < <(cat "$state/pending" 2>/dev/null) || true
-[[ -z ${to:-} || $to == "$revision" ]] \
-  || refuse "a release of $to did not finish and its migrations may have run; release $to again, or restore ${backup:-its restore point}, before releasing $revision."
-[[ -z ${to:-} || -d $backup ]] || refuse "the restore point $backup of the unfinished release of $revision is gone; a person has to decide what the databases hold before anything is released."
-reverify=false
-if [[ -z ${to:-} && $(cat "$state/current" 2>/dev/null) == "$revision" ]]; then reverify=true; fi
+# The transition another run left, if any, and what it allows.
+open="$(transition show)" || refuse "$record cannot be read, so what the databases hold is unknown; a person has to look before anything is released."
+IFS='|' read -r was to point reached kept restoring <<<"$open"
+if [[ -n $restoring ]]; then
+  later "a restore of $point began and did not finish; run  sudo $restoring $point  until it succeeds"
+elif [[ -n $to && $to == "$revision" ]]; then
+  [[ $reached == stopped || -d $point ]] \
+    || refuse "the restore point $point of the unfinished release of $revision is gone; a person has to decide what the databases hold before anything is released."
+  mode=resume from=$was backup=$point cards=$kept
+  [[ $reached != started ]] || mode=forward
+elif [[ -n $to && $reached == started ]]; then
+  git -C "$root" merge-base --is-ancestor "$to" "$revision" 2>/dev/null \
+    || refuse "$to started without being verified, and $revision does not move forward from it; release $to again, or a revision that moves forward from it."
+  from=$to cards=$kept
+elif [[ -n $to ]]; then
+  later "the release of $to stopped at $reached and did not finish; release $to again, or put the databases back with  sudo ${root%/*}/$to/deploy/restore.sh $point  before releasing $revision"
+else
+  from="$(cat "$state/current" 2>/dev/null)" || true
+  from="${from:-none}"
+  [[ $from != "$revision" ]] || mode=reverify
+fi
 timeout 30m "$root/deploy/stack.sh" "$channel" --profile jobs pull --policy missing --quiet \
   || later "the images in $images did not arrive, for the reasons above or within 30 minutes"
 while IFS='=' read -r _ reference; do
@@ -161,16 +191,18 @@ if [[ $channel == production ]]; then
 else
   address="$(stack port web 443 2>/dev/null)" || address=unknown
 fi
-# The cards on sale now, to hold the release to them afterwards; unknown when
-# nothing answers yet.
-on_sale="$(curl -sS --max-time 20 --connect-to "$origin:443:$address" "https://$origin/x402/catalog" 2>/dev/null \
-  | python3 -c 'import json, sys; print(" ".join(sorted(item["id"] for item in json.load(sys.stdin)["items"])))' 2>/dev/null)" \
-  || on_sale=unknown
+# The cards on sale now, which the release is held to afterwards, one per line
+# in a file; none compared when nothing answers yet. A transition keeps the
+# file it started with.
+if [[ -z $to ]]; then
+  cards="$state/cards-before"
+  curl -sS --max-time 20 --connect-to "$origin:443:$address" "https://$origin/x402/catalog" 2>/dev/null \
+    | python3 -c 'import json, sys; print("\n".join(sorted(item["id"] for item in json.load(sys.stdin)["items"])))' > "$cards" 2>/dev/null \
+    || cards=""
+fi
 
-if [[ $reverify == false && -z $backup ]]; then
-  from="$(stack ps -aq gateway | head -n 1 | xargs -r docker inspect -f '{{.Image}}' \
-    | xargs -r docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' 2>/dev/null)" || true
-  from="${from:-none}" backup="$backups/$(date -u +%Y%m%dT%H%M%SZ)-${from:-none}-before-$revision"
+if [[ $mode == release ]]; then
+  backup="$backups/$(date -u +%Y%m%dT%H%M%SZ)-$from-before-$revision"
   mkdir -p "$backups"
   size="$(stack exec -T postgres psql -U agentify_commerce -d postgres -Atc \
     'select coalesce(sum(pg_database_size(datname)), 0) from pg_database' 2>/dev/null || echo 0)"
@@ -197,9 +229,14 @@ if ! diff -r "$root/deploy/postgres-init" "$init" >/dev/null 2>&1; then
 fi
 
 previous="$(docker ps -aq --filter "label=com.docker.compose.project=$project" | xargs -r docker inspect -f '{{.Image}}')"
-if [[ $reverify == false ]]; then
+if [[ $mode == release || $mode == resume ]]; then
   at "stopping gateway, cabinet, scanner and scanner-worker"
+  if [[ $mode == release ]]; then
+    [[ -z $cards ]] || sync "$cards"
+    transition set from="$from" to="$revision" restore="$backup" phase=stopped cards="$cards"
+  fi
   phase=stopped
+  [[ $reached != migrating ]] || phase=migrating
   stack stop --timeout 60 gateway cabinet scanner scanner-worker
   stack up -d --wait --no-deps postgres
   if [[ -d $backup ]]; then
@@ -212,18 +249,27 @@ if [[ $reverify == false ]]; then
       stack exec -T postgres pg_dump -U agentify_commerce -Fc "$database" > "$backup.partial/$database.dump"
     done
     [[ $channel == test ]] || cp "$edge_file" "$backup.partial/Caddyfile"
+    # On disk before any migration relies on them.
+    sync "$backup.partial"/*
     mv "$backup.partial" "$backup"
-    (umask 022 && install -d -m 755 /var/lib/agentify "$state" && echo "$from $revision $backup" > "$state/pending")
+    sync "$backup" "$backups"
+    transition set phase=dumped
   fi
+  transition set phase=migrating
   phase=migrating
+elif [[ $mode == forward ]]; then
+  at "carrying $revision forward: it started without being verified, so nothing stops and nothing is restored"
+  phase=started
+fi
+if [[ $mode == reverify ]]; then
+  at "checking $revision again: the channel already runs it, so nothing stops"
+else
   at "migrating the scanner database"
   stack run --rm --no-deps -T scanner-migrate
   at "migrating the gateway and cabinet database"
   stack run --rm --no-deps -T migrate
-else
-  at "checking $revision again: the channel already runs it, so nothing stops"
+  transition set phase=started
 fi
-
 phase=started
 at "starting the scanner"
 # A scanner that will not start must not keep commerce down as well, so the
@@ -256,7 +302,7 @@ done
 at "checking the cards on sale"
 # Read-only: a GET on a purchase address is always answered with its payment
 # challenge and never read for payment. The catalog is one unpaged document.
-python3 - "$origin" "$address" "$network" "$on_sale" <<'PY' \
+python3 - "$origin" "$address" "$network" "$cards" <<'PY' \
   || refuse "the cards on sale do not answer as they did before the release, for the reason above, so $revision runs unverified."
 import base64, json, subprocess, sys, urllib.parse
 origin, address, network, before = sys.argv[1:5]
@@ -264,7 +310,8 @@ def get(url, *flags):
     return subprocess.run(["curl", "-sS", "--max-time", "20", "--connect-to", f"{origin}:443:{address}", *flags, url],
                           capture_output=True, text=True, check=True).stdout
 cards = sorted(item["id"] for item in json.loads(get(f"https://{origin}/x402/catalog"))["items"])
-gone = sorted(set(before.split()) - set(cards)) if before != "unknown" else []
+known = set(open(before).read().split()) if before else None
+gone = sorted(known - set(cards)) if known is not None else []
 if gone:
     sys.exit(f"activate: {len(gone)} card(s) on sale before the release are gone from the catalog: {' '.join(gone)}")
 for card in cards:
@@ -276,7 +323,7 @@ for card in cards:
     accepts = challenge.get("accepts") or [{}]
     if challenge.get("resource", {}).get("url") != url or any(a.get("network") != network for a in accepts):
         sys.exit(f"activate: card {card} answered {status} without a payment challenge for {url} on {network}")
-compared = "none compared, since nothing answered before" if before == "unknown" else f"{len(before.split())} compared"
+compared = "none compared, since nothing answered before" if known is None else f"{len(known)} compared"
 print(f"activate: {len(cards)} card(s) on sale ({compared}), each answering its payment challenge on {network}", file=sys.stderr)
 PY
 
@@ -286,7 +333,8 @@ printf 'SHELL=/bin/bash\n23 4 * * * root flock -n /run/lock/agentify-release.loc
 chmod 644 /etc/cron.d/agentify-release
 
 trap - ERR INT TERM HUP
-rm -f "$state/pending"
+transition clear
+rm -f "$state/cards-before"
 # The five newest restore points are kept; older ones go.
 [[ ! -d $backups ]] || find "$backups" -mindepth 1 -maxdepth 1 -type d -name '*-before-*' ! -name '*.partial' | sort | head -n -5 | xargs -r rm -rf
 current="$(while IFS='=' read -r _ reference; do docker image inspect -f '{{.Id}}' "$reference"; done < "$images")"
