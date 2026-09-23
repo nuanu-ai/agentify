@@ -189,7 +189,7 @@ export const payoutWalletBlock = (viewer: Viewer): string => {
       <input id="payout_wallet" name="payout_wallet" type="text" autocomplete="off" spellcheck="false" maxlength="42" size="42" value="${escaped(typed ?? "")}" required>
       ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
     </div>
-    <button class="button button-compact button-primary" type="submit">${wallet === null ? "Save it" : "Change the address"}</button>
+    <button class="button button-primary" type="submit">${wallet === null ? "Save it" : "Change the address"}</button>
   </form>
 `;
 };

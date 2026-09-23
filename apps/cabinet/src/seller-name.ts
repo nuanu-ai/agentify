@@ -189,7 +189,7 @@ export const settingsScreen = (viewer: Viewer, problem?: string, typedName?: str
       <input id="seller_name" name="seller_name" type="text" autocomplete="organization" maxlength="32" value="${escaped(typedName ?? name ?? "")}" required>
       ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
     </div>
-    <button class="button button-compact button-primary" type="submit">Save it</button>
+    <button class="button button-primary" type="submit">Save it</button>
   </form>
   </section>
   <section class="settings-panel">${payoutWalletBlock(viewer)}</section>

@@ -768,7 +768,11 @@ h2 {
 }
 
 /* The form that issues a key: one box and one button, side by side, sitting
-   where a table would. */
+   where a table would. The same row carries every form in the cabinet, and its
+   button is the full-height one: the box is 48 pixels and so is the button, so
+   the two stand on one line the way the scanner's address box and its button
+   do. The compact button is a table row's, and beside a box it hung a third
+   lower than the box it belonged to. */
 .issue {
   display: flex;
   align-items: flex-end;
@@ -783,9 +787,11 @@ h2 {
 }
 
 /* The box takes the room its row has and the button sits beside it; under about
-   320 pixels of box the two stack instead. */
+   240 pixels of box the two stack instead. That is low enough for a settings
+   panel, half the frame wide, to keep its box and its full-height button on one
+   line, and high enough that a phone stacks them. */
 .issue > div {
-  flex: 1 1 320px;
+  flex: 1 1 240px;
   min-width: 0;
 }
 
