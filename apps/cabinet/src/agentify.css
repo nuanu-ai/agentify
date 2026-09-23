@@ -795,6 +795,15 @@ h2 {
   min-width: 0;
 }
 
+/* A refusal is a line of its own under the box and its button, never inside
+   the box's cell: the row lines its items up at the bottom, so a sentence in
+   that cell made the cell taller and carried the button down beside the last
+   line of red instead of beside the box it saves. */
+.issue > p {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 /*
  * The key itself, on the one page it is ever shown.
  *
