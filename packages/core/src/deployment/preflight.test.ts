@@ -460,6 +460,111 @@ describe("no laptop default survived", () => {
   });
 });
 
+describe("the private identity route belongs to the cabinet and the scanner alone", () => {
+  // Every service of a channel shares one network and one database account,
+  // so what keeps a person's identity with the cabinet is that only the
+  // scanner holds the credential its private route asks for (ADR-0026).
+  const CHANNELS = [
+    ["test", TEST_CHANNEL],
+    ["production", PRODUCTION_CHANNEL],
+  ] as const;
+  const secretOf = (resolved: ResolvedCompose): string => {
+    const secret = envFor(resolved, "cabinet").REPORT_IDENTITY_SECRET;
+    if (secret === undefined) {
+      throw new Error("the fixture's cabinet holds no identity credential");
+    }
+    return secret;
+  };
+
+  it.each(CHANNELS)(
+    "refuses the credential or the route on any other service in %s",
+    (channel, config) => {
+      const secret = secretOf(config);
+      for (const service of ["gateway", "migrate", "web", "scanner-worker", "scanner-privacy"]) {
+        const credential = problemsWith(
+          channel,
+          withEnv(config, service, "REPORT_IDENTITY_SECRET", secret),
+        );
+        expect(credential).toContainEqual(
+          expect.stringMatching(`${service}: REPORT_IDENTITY_SECRET`),
+        );
+        expect(credential.join("\n")).not.toContain(secret);
+
+        const route = problemsWith(
+          channel,
+          withEnv(config, service, "CABINET_IDENTITY_URL", "http://cabinet:3002"),
+        );
+        expect(route).toContainEqual(expect.stringMatching(`${service}: CABINET_IDENTITY_URL`));
+      }
+    },
+  );
+
+  it.each(CHANNELS)(
+    "refuses two halves that hold different credentials in %s",
+    (channel, config) => {
+      const other = "another-report-identity-secret-of-enough-characters-1111";
+      const problems = problemsWith(
+        channel,
+        withEnv(config, "scanner", "REPORT_IDENTITY_SECRET", other),
+      );
+      expect(problems).toContainEqual(expect.stringMatching(/scanner: REPORT_IDENTITY_SECRET/));
+      expect(problems.join("\n")).not.toContain(other);
+      expect(problems.join("\n")).not.toContain(secretOf(config));
+    },
+  );
+
+  it("refuses a cabinet with no credential, or one too short to be a secret", () => {
+    for (const value of [null, "", "x".repeat(31)]) {
+      const withBoth = withEnv(
+        withEnv(TEST_CHANNEL, "cabinet", "REPORT_IDENTITY_SECRET", value),
+        "scanner",
+        "REPORT_IDENTITY_SECRET",
+        value,
+      );
+      expect(problemsWith("test", withBoth)).toContainEqual(
+        expect.stringMatching(/cabinet: REPORT_IDENTITY_SECRET/),
+      );
+    }
+  });
+
+  it("refuses the credential reused as a secret that opens another door", () => {
+    const secret = secretOf(PRODUCTION_CHANNEL);
+    for (const [service, name] of [
+      ["cabinet", "AUTH_SECRET"],
+      ["cabinet", "REGISTRATION_INVITATION"],
+      ["scanner", "TOKEN_HMAC_SECRET"],
+    ] as const) {
+      const problems = problemsWith(
+        "production",
+        withEnv(PRODUCTION_CHANNEL, service, name, secret),
+      );
+      expect(problems).toContainEqual(expect.stringMatching(new RegExp(`${service}: .*${name}`)));
+      expect(problems.join("\n")).not.toContain(secret);
+    }
+  });
+
+  it("refuses a scanner that asks anybody but the cabinet on its own network", () => {
+    for (const url of [null, "https://agentify.ad/cabinet", "http://cabinet:3001"]) {
+      expect(
+        problemsWith(
+          "production",
+          withEnv(PRODUCTION_CHANNEL, "scanner", "CABINET_IDENTITY_URL", url),
+        ),
+      ).toContainEqual(expect.stringMatching(/scanner: CABINET_IDENTITY_URL/));
+    }
+  });
+
+  it("refuses a cabinet that publishes a port on the host", () => {
+    const exposed = structuredClone(PRODUCTION_CHANNEL);
+    exposed.services.cabinet.ports = [
+      { mode: "ingress", host_ip: "127.0.0.1", target: 3002, published: "3002", protocol: "tcp" },
+    ];
+    expect(problemsWith("production", exposed)).toContainEqual(
+      expect.stringMatching(/cabinet: .*port/),
+    );
+  });
+});
+
 describe("the release entry point", () => {
   it("refuses an unknown channel without starting a release", () => {
     // Prevents a typo from being treated as a valid channel with a guessed policy.
