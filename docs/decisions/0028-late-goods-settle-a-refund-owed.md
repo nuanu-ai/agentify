@@ -28,23 +28,24 @@ be seen, so both texts change with the implementation.
 The operator is whoever runs this deployment and its terminal commands. The
 operator records a refund with a command, as ADR-0027 records a silent charge.
 The command writes `refund_settled` and keeps the transaction beside the order,
-in a field of its own. It is marked as a report, not a reading of the chain. It
-is the merchant's reported transaction, or Agentify's own where Agentify paid
-the buyer back.
+in a field of its own. It is marked as a report, not a reading of the chain,
+and it records who paid: the merchant, or Agentify where Agentify paid the buyer
+back and then settles with the merchant outside the system.
 
 On a `refund_due` order the merchant sees four things: the payer's address,
 checksummed, wherever the payment layer named one; the amount and the network;
 two ways out, deliver or report the refund to the operator; and a warning. A
 refund that is paid but not reported does not stop a late delivery, including
 one the merchant's own worker makes. Where no payer was named, only goods close
-the debt. A merchant who signed themselves up has only that way out until the
-cabinet names a way to reach the operator.
+the debt, so the fourteen days below cannot be kept for that order. Until the
+cabinet names a way to reach the operator, a merchant who signed themselves up
+can report a refund only after the operator has contacted them.
 
-The operator keeps the time, in business days, counted from the delivery
-deadline. After three business days with neither goods nor a recorded refund,
-the operator contacts the merchant and pauses their selling. By fourteen days
-the buyer holds the goods or the money. If the merchant has still done neither,
-the operator settles it by hand, and at pilot prices Agentify may pay the buyer
+The operator keeps the time, counted from the delivery deadline. After three
+business days with neither goods nor a recorded refund, the operator contacts
+the merchant and pauses their selling. By fourteen calendar days the buyer
+holds the goods or the money. If the merchant has still done neither, the
+operator settles it by hand, and at pilot prices Agentify may pay the buyer
 back itself. These numbers are our own adaptation of practice. The sources,
 each of which starts its clock at a different moment, are in
 `docs/research/34-refund-due.md`. For an undelivered order this ends the
@@ -52,22 +53,23 @@ portal's line that Agentify does not stand between merchant and buyer.
 
 The agent reads that `refund_due` is not an end: goods may still arrive at the
 order's `status_url` until a refund is recorded. `refunded` is final, and
-`refund_due` has no deadline of its own. Business days are the operator's
-measure alone. Anything an agent is told about time is stated in hours from the
-deadline, or not at all.
+`refund_due` has no deadline of its own. Agents are told nothing about the three
+or the fourteen days. If that ever changes, the time is given as an absolute
+time the agent can read, never in business days, which an agent has no time
+zone to count.
 
 ## Consequences
 
 A buyer can still get the goods after the deadline, and a merchant has a way
-out of the debt. A recorded refund cannot be undone. The cost has several
-parts: the payer's address is shown, and each order gains a field. There are
-two operator commands. The agent's status description, the cabinet's debt screen
-and the portal's Orders, Money and FAQ pages are rewritten. The operator gives
-attention and, at worst, Agentify's money. This does not protect against a
-refund that is paid but not reported and then followed by a late delivery: the
-buyer ends up with both, which costs at most one purchase. Practice lets the
-buyer choose between money and late goods; here the buyer cannot. The timeline
-moves into the machine the first time an operator misses it.
+out of the debt. A recorded refund cannot be undone. The cost is showing
+the payer's address, a field on each order, two operator commands, the
+operator's attention and, at worst, Agentify's money. The contract's words for
+the agent and the merchant change with it, and so does the portal. This does not
+protect against a refund that is paid but not reported and then followed by a
+late delivery: the buyer ends up with both, which costs at most one purchase.
+Practice lets the buyer choose between money and late goods; here the buyer
+cannot. The timeline moves into the machine the first time an operator misses
+it.
 
 Rejected:
 - Refusing late goods. With no refund payable or recordable, the buyer would be

@@ -120,20 +120,23 @@ reported races a late delivery, and the buyer may end up with both.
 ## The numbers
 
 The operator steps in after three business days, and the buyer holds the goods
-or the money within fourteen days of the deadline. The first number follows
-eBay; the second follows the EU directive and agrees with Cryptorefills. The
-operator applies them by hand, with no timer, because there are few merchants
-and the charter moves a rule into a machine only after it has slipped past
-people. Business days are the operator's measure. An agent has no time zone
-to count them in, so anything an agent is told is stated in hours from the
-deadline, or not at all. At pilot prices of a few dollars, paying the buyer
-back from Agentify's own funds as a last resort costs less than a buyer left
-with neither goods nor money.
+or the money within fourteen calendar days of the deadline. The first number
+follows eBay; the second follows the EU directive and agrees with
+Cryptorefills. The operator applies them by hand, with no timer, because there
+are few merchants and the charter moves a rule into a machine only after it has
+slipped past people. Business days are the operator's measure alone. Agents are
+told nothing about either number today. The agent's order carries neither the
+deadline nor the time of payment. If agents are ever told, it is an absolute
+time they can read. An agent has no time zone to count business days in. At
+pilot prices of a few dollars, paying the buyer back from Agentify's own funds
+as a last resort costs less than a buyer left with neither goods nor money.
 
 ## Still open
 
-A merchant who signed themselves up has no way to reach the operator today. Until
-the cabinet names one, such a merchant can close a debt only with goods.
+A merchant who signed themselves up has no way to reach the operator today.
+Until the cabinet names one, such a merchant can report a refund only after the
+operator has contacted them. An order whose payer was never named can be closed
+only with goods, and the fourteen days cannot be kept for it.
 Whether and when agents are told the fourteen days depends on the system
 keeping them. When the timeline moves into the machine, a mail to the merchant
 about the debt comes with it.
