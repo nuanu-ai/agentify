@@ -239,6 +239,17 @@ class Activation(unittest.TestCase):
         self.assertEqual(self.applications(), dict.fromkeys(APPLICATIONS, "old exited"))
         self.assertEqual(self.pending()[1], NEW)
 
+    def test_a_restore_by_hand_after_a_failed_one_ends_the_unfinished_release_however_its_path_is_spelled(self):
+        said = self.run_script("activate", FAIL_AT="run --rm --no-deps -T migrate", RESTORE_FAILS="1")
+        self.assertEqual(self.pending()[1], NEW, said)
+        [point] = self.restore_points()
+        # /var/backups/agentify is a symlink on this host, and the person types
+        # the directory it points to, with a trailing slash.
+        said = self.run_script(f'/h/tree/deploy/restore.sh /h/backups/test/{point}/; echo "restore exit $?"')
+        self.assertIn("restore exit 0", said)
+        self.assertIsNone(self.pending(), said)
+        self.assertEqual(self.databases(), ORIGINAL)
+
     def test_a_channel_that_already_runs_the_revision_is_checked_without_stopping_anything(self):
         (self.root / "state/test/current").write_text(NEW + "\n")
         for container in ("gateway", "cabinet", "scanner", "scanner-worker", "web"):
