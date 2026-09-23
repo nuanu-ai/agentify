@@ -4,6 +4,7 @@ import { z } from "zod";
 import { REPORT_SESSION_COOKIE } from "../../../../../lib/server/auth";
 import { getServerConfig } from "../../../../../lib/server/config";
 import { errorResponse, hasSameOrigin, logServerError } from "../../../../../lib/server/http";
+import { linkCooldownResponse } from "../../../../../lib/server/link-wait";
 import {
   recoverScannerReportSession,
   requestScannerReportRecovery,
@@ -86,7 +87,11 @@ export async function handleScannerRecoveryRequest(request: NextRequest) {
   }
   const { email, state } = body.data;
   try {
-    await requestScannerReportRecovery({ email, ip, state });
+    // A refusal is the same answer for an address with a report and one
+    // without, so saying it enumerates nobody — and saying a link went out
+    // when none did would be a lie to the person who asked for it.
+    const outcome = await requestScannerReportRecovery({ email, ip, state });
+    if (!outcome.sent) return linkCooldownResponse(request, outcome);
     return accepted();
   } catch (error) {
     logServerError(request, "scanner_recovery_request_failed", error);

@@ -272,6 +272,12 @@ is removed by the merchant's own rules, which are not built (ADR-0014).
 
 What it costs, said on the door: the mailbox is the whole key. A person who
 loses the mailbox loses the cabinet, and no second route is pretended here.
+A refused request now says when the next link can be asked for, on the
+scanner's unauthenticated doors as well as the cabinet's own, so somebody who
+knows an address and asks for a link learns to the second when the last one
+went out to it — including one its owner asked for at the other door. That is
+the price of not sending a person away for an invented hour, and what it
+reveals is timing, never whether the address has an account or a report.
 Delivery becomes the single point of failure of the way in — measured, with
 the resend on the same screen. Somebody reading a merchant's mail is that
 merchant, and a shared mailbox is a shared cabinet. This decision sets the

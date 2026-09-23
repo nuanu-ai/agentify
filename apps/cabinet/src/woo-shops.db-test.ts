@@ -48,16 +48,34 @@ if (databaseUrl === null) {
 } else {
   const pool = new Pool({ connectionString: databaseUrl });
 
-  // The schema the migrator keeps its own bookkeeping in goes with the tables,
-  // and that is the half that is easy to miss: `cabinet_migrations` is not in
-  // the public schema, so a drop naming it by that name alone drops nothing and
-  // the next migration run concludes there is nothing to apply. The tables are
-  // then gone, the journal says they are there, and the suite fails on a table
-  // that does not exist — which is what happened the first time this ran twice.
-  await pool.query(
-    "drop table if exists cabinet_woo_quotes, cabinet_woo_orders, cabinet_woo_shops, cabinet_woo_grants," +
-      " cabinet_link_sends, cabinet_verifications, cabinet_credentials, cabinet_sessions, cabinet_accounts cascade",
-  );
+  // Both halves of the reset are lessons this file learned by failing.
+  //
+  // It takes whatever tables are there rather than a list of their names,
+  // because everything in this database is built by the migrations about to
+  // run again, and a list is written once and then falls behind the next
+  // migration. That is not hypothetical: the list here was missing the report
+  // tombstones for two migrations, so every run after the first died on a
+  // table it had never been told to drop.
+  //
+  // And the schema the migrator journals in goes with the tables, which is the
+  // half that is easy to miss: it is not in `public`, so dropping the tables
+  // alone leaves a journal saying they are all still there, the next migration
+  // run concludes there is nothing to apply, and the suite fails on a table
+  // that does not exist.
+  await pool.query(`
+    do $$
+    declare
+      present text;
+    begin
+      select string_agg(format('%I.%I', schemaname, tablename), ', ')
+        into present
+        from pg_tables
+       where schemaname = 'public';
+      if present is not null then
+        execute 'drop table ' || present || ' cascade';
+      end if;
+    end $$;
+  `);
   await pool.query("drop schema if exists drizzle cascade");
   await migrateAccounts(pool, migrationsIn);
 

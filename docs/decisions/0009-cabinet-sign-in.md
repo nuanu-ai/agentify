@@ -53,7 +53,14 @@ owner.
 
 **3. The screens stay server-rendered forms.** Our handlers call the component's
 server API and pass on the cookie it makes, so the cabinet keeps working without
-JavaScript and nothing pulls in a client framework.
+JavaScript and nothing pulls in a client framework. One screen carries one
+inline script (Dmitry, 2026-09-22): the page a merchant lands on after asking
+for a link draws the resend with the wait in front of it counting down on the
+button, the way the rest of the web does it. What a script may do here is take a
+control away and give it back — the HTML is always the working page, never a
+disabled one waiting to be enabled, because a browser that ran nothing must be
+left with the button it would have had, and the door refuses the early press in
+words either way.
 
 **4. Mail is a function we supply; with no provider it writes to the log.** Resend
 on a server, from a subdomain of its own so this product's reputation and the

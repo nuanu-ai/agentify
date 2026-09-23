@@ -3,6 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { PARTNER_CLICK_ID_COOKIE } from "../../../../../../lib/server/attribution";
 import { getServerConfig } from "../../../../../../lib/server/config";
 import { bearerToken, errorResponse, hasSameOrigin } from "../../../../../../lib/server/http";
+import { linkCooldownResponse } from "../../../../../../lib/server/link-wait";
 import { createScannerRegistrationIntent } from "../../../../../../lib/server/scanner-registration";
 import { authorizeScan } from "../../../../../../lib/server/scans";
 
@@ -50,15 +51,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const result = await createScannerRegistrationIntent(scan, parsed.data, {
       ...(partnerClickId.success ? { partnerClickId: partnerClickId.data } : {}),
     });
-    if (!result.sent)
-      return errorResponse(
-        request,
-        429,
-        "registration_rate_limited",
-        "Too many verification requests. Please try again later.",
-        true,
-        3600,
-      );
+    if (!result.sent) return linkCooldownResponse(request, result);
     return NextResponse.json(
       { status: "verification_sent" },
       { status: 202, headers: { "Cache-Control": "no-store" } },

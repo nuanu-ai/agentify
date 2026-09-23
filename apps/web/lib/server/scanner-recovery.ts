@@ -16,7 +16,8 @@ import { getCabinetReportIdentityClient } from "./cabinet-report-identity";
 import { getServerConfig } from "./config";
 import { decryptEmail, hmacHex, normalizeEmail, randomCapability, sha256 } from "./crypto";
 import { getDatabase } from "./database";
-import { consumeRateLimitsAtomically } from "./rate-limit";
+import type { LinkSendOutcome } from "./link-wait";
+import { consumeRateLimitsAtomically, refundRateLimitEvent } from "./rate-limit";
 
 const REPORT_SESSION_TTL_MS = 30 * 86_400_000;
 const RECOVERY_INTENT_TTL_MS = 60 * 60 * 1000;
@@ -159,7 +160,7 @@ export async function requestScannerReportRecovery(input: {
   email: string;
   ip: string;
   state?: string;
-}): Promise<"accepted" | "cooldown"> {
+}): Promise<LinkSendOutcome> {
   const config = getServerConfig();
   const normalizedEmail = normalizeEmail(input.email);
   const emailLookupHash = hmacHex(config.hmacSecret, "email", normalizedEmail);
@@ -175,7 +176,15 @@ export async function requestScannerReportRecovery(input: {
       limit: 10,
     },
   ]);
-  if (!limits.allowed) return "cooldown";
+  if (!limits.allowed)
+    return {
+      sent: false as const,
+      retryAt: limits.retryAt,
+      wall:
+        limits.wall === "recovery_email_hour"
+          ? ("address_hour" as const)
+          : ("unspecified" as const),
+    };
 
   const state = randomCapability();
   const now = new Date();
@@ -224,7 +233,17 @@ export async function requestScannerReportRecovery(input: {
         .db.delete(scannerRecoveryIntents)
         .where(eq(scannerRecoveryIntents.id, intentId));
     }
-    if (result.status === "cooldown") return "cooldown";
+    if (result.status === "cooldown") {
+      // Nothing reached the mailbox, so the address keeps its hour; the IP's
+      // hour counts requests that reached us and stays spent.
+      const letter = limits.spent.find(({ kind }) => kind === "recovery_email_hour");
+      if (letter) await refundRateLimitEvent(letter.eventId);
+      return {
+        sent: false as const,
+        retryAt: new Date(result.retry_at),
+        wall: "unspecified" as const,
+      };
+    }
     throw new Error("cabinet_identity_unavailable");
   }
 
@@ -251,7 +270,7 @@ export async function requestScannerReportRecovery(input: {
       if (!activated.length) throw new Error("recovery_intent_activation_failed");
     });
   }
-  return "accepted";
+  return { sent: true as const };
 }
 
 export type ActiveRecoveryAuthority = Readonly<{

@@ -3,6 +3,7 @@ import { type CabinetKeyCheck, runAccount } from "./account-command.js";
 import { loadConfig } from "./config.js";
 import { type Identity, identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
+import { rewindLinkSends } from "./testing/link-sends.js";
 
 const KEY = "the-merchants-own-key-long-enough";
 const MERCHANT = "mer_the_merchant";
@@ -192,9 +193,12 @@ describe("the passwordless account command", () => {
   });
 
   it("revokes every session while retaining the person and merchant", async () => {
-    const { identity, messages } = store();
+    const { identity, messages, rows } = store();
     await identity.make("person@example.com", { id: MERCHANT, key: KEY });
     for (let index = 0; index < 2; index += 1) {
+      // Two sessions means two links, and the door keeps a minute between
+      // them; this test is about what revoking does, not about that minute.
+      rewindLinkSends(rows);
       await identity.requestLink("person@example.com", "default");
       const token = new URL(
         messages[index]?.body.match(/https?:\/\/\S+/)?.[0] ?? "wrong:",
