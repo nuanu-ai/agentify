@@ -14,8 +14,8 @@ It resolves the name with `git ls-remote` against the public repository, finds
 the revision's five images by the digests its image build published, fetches
 the revision, and runs that revision's deploy/activate.sh with the images
 pinned by those digests. It needs no GitHub credential and holds no host
-credential for GitHub (ADR-0016). The channel, the repository and the state
-directory come from /etc/agentify/release.json, which deploy/install.sh writes.
+credential for GitHub (ADR-0016). The channel and the repository come from
+/etc/agentify/release.json, which deploy/install.sh writes.
 
 The images are read by the rule in the header of .github/workflows/images.yml:
 exactly one successful push run of the image build for the commit, that run's
@@ -25,8 +25,9 @@ running is a wait. PRODUCTION adds its conditions to that one path: the name
 is an app-v* tag, the run is on main, main's CI run for the commit succeeded,
 and the commit moves forward from the revision this host runs.
 
-The state directory holds nothing secret, so it and its files can be read by
-anyone on the host: `current`, the revision the last successful activation
+The state directory is /var/lib/agentify/<channel>, which activate.sh and
+restore.sh read as well. It holds nothing secret, so it and its files can be
+read by anyone on the host: `current`, the revision the last successful activation
 verified; `failed`, the last revision that was refused or failed; `seen`, the
 revision the timer last began waiting for and when; and activate.sh's
 `pending`. A person's run never skips anything and is how a release is retried.
@@ -60,6 +61,7 @@ FULL_SHA = re.compile(r"[0-9a-f]{40}")
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")
 APP_TAG = re.compile(r"app-v[0-9A-Za-z._-]+")
 PATIENCE = 30 * 60
+STATES = Path("/var/lib/agentify")
 
 
 class Refusal(Exception):
@@ -247,7 +249,7 @@ def activate(config, state, name, revision, mirror):
 
 
 def release(config, name, timer):
-    state = Path(config["stateDirectory"])
+    state = STATES / config["channel"]
     if timer and config["channel"] != "test":
         raise Refusal("only TEST releases by timer; a person releases production")
     # Nothing here is secret (revision names, checkouts of the public
@@ -300,10 +302,10 @@ def release(config, name, timer):
 
 def read_config(path):
     config = json.loads(Path(path).read_text())
-    if not isinstance(config, dict) or set(config) != {"channel", "repository", "stateDirectory"}:
-        raise ValueError(f"{path} names exactly channel, repository and stateDirectory")
-    if config["channel"] not in ("test", "production") or not Path(config["stateDirectory"]).is_absolute():
-        raise ValueError(f"in {path} the channel is test or production, and the state directory an absolute path")
+    if not isinstance(config, dict) or set(config) != {"channel", "repository"}:
+        raise ValueError(f"{path} names exactly channel and repository")
+    if config["channel"] not in ("test", "production"):
+        raise ValueError(f"in {path} the channel is test or production")
     return config
 
 

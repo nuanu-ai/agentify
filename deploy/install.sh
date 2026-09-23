@@ -42,7 +42,7 @@ done
 install -m 755 "$root/deploy/agentify-release" /usr/local/sbin/agentify-release
 install -d -m 755 /etc/agentify
 install -m 644 /dev/stdin /etc/agentify/release.json <<JSON
-{"channel": "$channel", "repository": "https://github.com/nuanu-ai/agentify.git", "stateDirectory": "/var/lib/agentify/$channel"}
+{"channel": "$channel", "repository": "https://github.com/nuanu-ai/agentify.git"}
 JSON
 
 # The Ansible release's pull agent. Its records in /var/lib/agentify-pull-agent stay.
