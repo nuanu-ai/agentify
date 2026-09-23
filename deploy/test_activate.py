@@ -282,6 +282,17 @@ class Activation(unittest.TestCase):
         self.assertIn("scanner", said)
         self.assert_old_release_runs_on_old_data(said)
 
+    def test_a_card_on_sale_before_the_release_must_still_be_on_sale_after_it(self):
+        said = self.run_script("activate", CARDS_AFTER="card_one")
+        self.assertIn("exit 1", said)
+        self.assertIn("card_two", said)
+
+    def test_every_card_must_answer_its_challenge_on_the_channels_network(self):
+        (self.world / "network").write_text("eip155:8453")
+        said = self.run_script("activate")
+        self.assertIn("exit 1", said)
+        self.assertIn("card_one", said)
+
 
 class TheEnvironmentFile(unittest.TestCase):
     """stack.sh refuses a $ that Compose would read as a variable, naming only the key."""
