@@ -386,6 +386,24 @@ describe("no laptop default survived", () => {
     );
   });
 
+  it("refuses a report-link signing secret the scanner would refuse to start with", () => {
+    // The scanner's entrypoint stops at start-up below 32 characters, which is
+    // after the migrations; refusing it here is before anything stops.
+    for (const value of [null, "", "x".repeat(31)]) {
+      const problems = problemsWith(
+        "test",
+        withEnv(TEST_CHANNEL, "scanner", "TOKEN_HMAC_SECRET", value),
+      );
+      expect(problems).toContainEqual(expect.stringMatching(/scanner: TOKEN_HMAC_SECRET/));
+      if (value) {
+        expect(problems.join("\n")).not.toContain(value);
+      }
+    }
+    expect(
+      problemsWith("test", withEnv(TEST_CHANNEL, "scanner", "TOKEN_HMAC_SECRET", "x".repeat(32))),
+    ).toEqual([]);
+  });
+
   it.each(["cabinet", "scanner"] as const)(
     "refuses the private identity credential written in this repository, on %s",
     (service) => {
