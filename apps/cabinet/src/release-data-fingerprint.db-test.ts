@@ -24,9 +24,7 @@ if (databaseUrl === null) {
     join(here, "../../../deploy/ansible/release-data-fingerprint.sql"),
     "utf8",
   );
-  const generator = source
-    .slice(source.indexOf("SELECT format("), source.indexOf("\\gexec"))
-    .replaceAll(":'identity_cutover'::boolean", "false");
+  const generator = source.slice(source.indexOf("SELECT format("), source.indexOf("\\gexec"));
 
   const fingerprint = async (): Promise<unknown> => {
     const generated = await pool.query<{ format: string }>(generator);

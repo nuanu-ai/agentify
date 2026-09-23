@@ -23,7 +23,6 @@
         postgres: docker.io/library/postgres@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
         caddy: docker.io/library/caddy@sha256:ae4458638da8e1a91aafffb231c5f8778e964bca650c8a8cb23a7e8ac557aa3c
     compose: [docker, compose, --project-name, "{{ channel.project }}", --env-file, "{{ release_directory }}/agentify.env", -f, compose.yaml, -f, deploy/compose.public.yaml, -f, "{{ channel.overlay }}", -f, "{{ release_controller_directory }}/release.yaml"]
-    identity_cutover_command: [docker, run, --rm, --user, '0:0', --read-only, --tmpfs, /tmp, --network, "{{ channel.project }}_default", --env-file, "{{ recovery_directory }}/identity-cutover.env", --mount, "type=bind,src={{ recovery_directory }},dst=/cutover", "{{ release_identity.firstParty['app'] }}", pnpm, --filter, '@agentify/cabinet', --fail-if-no-match, exec, tsx, src/scanner-identity-cutover.ts]
   tasks:
     - name: Require an explicit phase and exact channel inventory
       ansible.builtin.assert:
