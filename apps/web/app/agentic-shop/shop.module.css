@@ -565,7 +565,7 @@
   font-size: clamp(2.75rem, 4.2vw, 4.5rem);
   margin: 30px 0;
 }
-.entryGrid > div > p:not(.eyebrow) {
+.entryGrid > div:first-child > p {
   font-size: 1.125rem;
   color: var(--shop-muted);
   max-width: 440px;
@@ -811,7 +811,7 @@
   .entry {
     padding: 55px 0;
   }
-  .entryGrid > div > p:not(.eyebrow) {
+  .entryGrid > div:first-child > p {
     max-width: 620px;
   }
   .entry ul {
@@ -996,7 +996,7 @@
     font-size: 3.125rem;
     margin: 22px 0;
   }
-  .entryGrid > div > p:not(.eyebrow) {
+  .entryGrid > div:first-child > p {
     font-size: 1rem;
   }
   .entry li {
