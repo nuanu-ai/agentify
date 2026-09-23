@@ -84,6 +84,7 @@ export function problemsWith(channel, resolved) {
   const gateway = envOf(resolved, "gateway");
   const cabinet = envOf(resolved, "cabinet");
   const web = envOf(resolved, "web");
+  const scanner = envOf(resolved, "scanner");
 
   const equal = (where, name, given, expected) => {
     if (given !== expected) {
@@ -230,6 +231,58 @@ export function problemsWith(channel, resolved) {
         `${service}: ${name} is the value written in this repository, which anybody can read`,
       );
     }
+  }
+
+  // The scanner's private identity route (ADR-0026). Every service of a
+  // channel shares one network and one database account, so what keeps a
+  // person's identity with the cabinet is the credential that route asks for:
+  // the scanner holds it and nothing else does, and it opens no other door.
+  const identity = cabinet.REPORT_IDENTITY_SECRET ?? "";
+  if (identity.length < 32) {
+    problems.push(
+      "cabinet: REPORT_IDENTITY_SECRET is missing or shorter than 32 characters, so the " +
+        "identity route has no secret to ask for",
+    );
+  }
+  if (scanner.REPORT_IDENTITY_SECRET !== cabinet.REPORT_IDENTITY_SECRET) {
+    problems.push(
+      "scanner: REPORT_IDENTITY_SECRET is not the cabinet's, so the cabinet turns the scanner away",
+    );
+  }
+  if (scanner.CABINET_IDENTITY_URL !== "http://cabinet:3002") {
+    problems.push(
+      `scanner: CABINET_IDENTITY_URL is ${JSON.stringify(scanner.CABINET_IDENTITY_URL ?? null)} ` +
+        "and the route is http://cabinet:3002, on this stack's own network",
+    );
+  }
+  for (const [service, name] of [
+    ["cabinet", "AUTH_SECRET"],
+    ["cabinet", "REGISTRATION_INVITATION"],
+    ["scanner", "TOKEN_HMAC_SECRET"],
+  ]) {
+    if (identity !== "" && envOf(resolved, service)[name] === identity) {
+      problems.push(
+        `${service}: REPORT_IDENTITY_SECRET is also its ${name}, and one credential opens one door`,
+      );
+    }
+  }
+  for (const [service, definition] of Object.entries(resolved.services ?? {})) {
+    const environment = definition?.environment ?? {};
+    if (service !== "cabinet" && service !== "scanner" && "REPORT_IDENTITY_SECRET" in environment) {
+      problems.push(
+        `${service}: REPORT_IDENTITY_SECRET is handed to a service that is neither the cabinet nor the scanner`,
+      );
+    }
+    if (service !== "scanner" && "CABINET_IDENTITY_URL" in environment) {
+      problems.push(
+        `${service}: CABINET_IDENTITY_URL is handed to a service that is not the scanner`,
+      );
+    }
+  }
+  if ((resolved.services?.cabinet?.ports ?? []).length > 0) {
+    problems.push(
+      "cabinet: it publishes a port on the host, and its identity listener answers only inside the stack",
+    );
   }
 
   if (cabinet.COOKIE_SECURE !== "true") {
