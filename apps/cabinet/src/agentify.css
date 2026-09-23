@@ -289,7 +289,8 @@ table {
 }
 
 /* The column head, in the treatment the scanner gives the heading over a group
-   of checks: the monospaced face, uppercase, letterspaced, muted. */
+   of checks: the monospaced face, uppercase, letterspaced, muted. A long head
+   wraps rather than holding its column wider than the values under it. */
 thead th {
   background: var(--raised);
   color: var(--muted);
@@ -298,7 +299,6 @@ thead th {
   text-transform: uppercase;
   padding: 12px 16px;
   border-bottom: var(--hairline) solid var(--line);
-  white-space: nowrap;
 }
 
 /* A row is the height of a row on the scanner's report, and the rule between
@@ -439,6 +439,34 @@ tbody td::before {
   }
 
   .scroller tbody td:not(:first-child)::before {
+    content: attr(data-label);
+  }
+}
+
+/* The receipts' eight columns need the whole of a laptop's frame: a little
+   under it the product name goes to three lines and then to one word a line,
+   so a table with a seventh column becomes blocks sooner. */
+@container (max-width: 1140px) {
+  .scroller:has(th:nth-child(7)) :is(table, tbody, tr) {
+    display: block;
+  }
+
+  .scroller:has(th:nth-child(7)) thead {
+    display: none;
+  }
+
+  .scroller:has(th:nth-child(7)) tbody td {
+    display: table;
+    width: 100%;
+    height: auto;
+    padding: 3px 0;
+  }
+
+  .scroller:has(th:nth-child(7)) tbody td:first-child {
+    padding-bottom: 6px;
+  }
+
+  .scroller:has(th:nth-child(7)) tbody td:not(:first-child)::before {
     content: attr(data-label);
   }
 }
