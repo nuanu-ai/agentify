@@ -84,13 +84,6 @@
   text-wrap: balance;
 }
 
-.intro {
-  margin: 0 0 44px;
-  color: var(--fg-2);
-  font-size: 1.125rem;
-  line-height: 1.65;
-}
-
 .article section {
   scroll-margin-top: 28px;
   margin-top: 42px;
@@ -171,7 +164,7 @@
 
   .mobileToc {
     display: block;
-    margin: -20px 0 36px;
+    margin: 0 0 36px;
     border: 1px solid var(--line);
     border-radius: var(--radius-control);
     background: var(--surface);

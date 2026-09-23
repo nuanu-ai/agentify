@@ -56,7 +56,7 @@ export function EditorialPage({
         <article className={styles.article}>
           <div className="eyebrow">{eyebrow}</div>
           <h1>{title}</h1>
-          <p className={styles.intro}>{intro}</p>
+          <p>{intro}</p>
           <details className={styles.mobileToc}>
             <summary>On this page</summary>
             <nav aria-label="On this page">
