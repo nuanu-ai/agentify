@@ -737,12 +737,17 @@ td.control {
   width: 100%;
 }
 
-/* What went wrong, in the fail colour, wherever it is drawn. Written against
-   the paragraph rather than the class alone: a gate card's paragraphs and a
-   heading block's are muted by rules of that same weight, and a bare class lost
-   to both — so on the sign-in and name pages a refusal came out grey at the size
-   of the small print beside it, while the settings form drew the same kind of
-   sentence red. */
+/* The fail colour on a sentence, for two things a merchant must not read past:
+   something they asked for that did not happen — a refusal, a change that was
+   not kept, a wait before the next link — and money that did not move, the
+   line over the orders and receipts that says the rows are test purchases, in
+   the colour of the test tag beside each amount. Why somebody is on a page is
+   neither, and is not drawn in it.
+
+   Written against the paragraph rather than the class alone: a gate card's
+   paragraphs and a heading block's are muted by rules of that same weight, and
+   a bare class lost to both, so these sentences came out grey at the size of
+   the small print beside them. */
 p.problem {
   margin-top: 16px;
   color: var(--fail);
