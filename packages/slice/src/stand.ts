@@ -202,6 +202,21 @@ const asParams = (text: string): Record<string, unknown> => {
   return document as Record<string, unknown>;
 };
 
+/**
+ * The status field's input, held to what it can call: a whole http or https
+ * address. Anything else — an order id pasted by habit, a bare path — is
+ * answered in words before any call is made, because the fetch error it would
+ * otherwise meet names the parser and not the mistake.
+ */
+const asStatusAddress = (text: string): string => {
+  const protocol = URL.canParse(text) ? new URL(text).protocol : null;
+  if (protocol !== "http:" && protocol !== "https:")
+    throw new Error(
+      "This field wants the status_url an answer named: the whole address, starting with http:// or https://. An order id on its own is not an address, and nothing here builds one from it.",
+    );
+  return text;
+};
+
 const requireConnection = (): { readonly address: string; readonly key: string } => {
   const address = merchant.connected();
   if (address === null || apiKey === null)
@@ -835,9 +850,9 @@ const doAction = async (form: URLSearchParams): Promise<void> => {
       // The address and not an identifier, because an agent holds no way to
       // turn one into the other: what it has is the address the purchase
       // answer named, and that is what the page fills this field with.
-      const statusUrl = form.get("status_url") ?? "";
-      if (statusUrl === "")
-        throw new Error("The address an answer named in status_url is required.");
+      const typed = form.get("status_url") ?? "";
+      if (typed === "") throw new Error("The address an answer named in status_url is required.");
+      const statusUrl = asStatusAddress(typed);
       const buyer = buyerFor();
       const on = exchange ?? openExchange(chosen ?? statusUrl);
       beat(on, "agent", `Asked what became of the order, at ${statusUrl}.`, "GET");

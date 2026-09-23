@@ -152,15 +152,13 @@ const dot = (tone: string, text: string): string =>
  * first time a route is renamed — and drifting silently, because a wrong
  * address printed beside a working button looks exactly like a right one.
  *
- * With values it prints the address that will be called; with none it prints
- * the route as the table writes it, `:order_id` and all. That is the honest
- * label for a panel whose address is not decided until somebody types into it,
- * and it avoids the alternative of feeding a stand-in through `expandPath`,
- * which would percent-encode it into noise.
+ * Only routes whose address is fixed are labelled this way. A route with a
+ * parameter in its path would print as a template, and a template beside a
+ * field teaches the reader to build the address themselves.
  */
-const route = (name: keyof typeof API_ROUTES, values?: Record<string, string>): string => {
+const route = (name: keyof typeof API_ROUTES): string => {
   const { method, path } = API_ROUTES[name];
-  return `<code class="addr">${escaped(method)} ${escaped(values === undefined ? path : expandPath(path, values))}</code>`;
+  return `<code class="addr">${escaped(method)} ${escaped(path)}</code>`;
 };
 
 /* --- words -------------------------------------------------------------- */
@@ -409,14 +407,14 @@ const agentTab = (state: PageState): string => {
 ${chosen}
 ${state.exchange === null ? "" : exchangePanel(state.exchange)}
 <section class="panel">
-  <header><h2>Ask what became of an order</h2><div class="side">${route("get_order_status")}</div></header>
+  <header><h2>Ask what became of an order</h2></header>
   <div class="body">
     <form method="post" class="row">
       ${hidden("action", "order_status")}
-      ${field("Status address", `<input required name="status_url" value="${escaped(state.exchange?.statusUrl ?? "")}" placeholder="the status_url an answer named">`)}
+      ${field("Status address", `<input required name="status_url" value="${escaped(state.exchange?.statusUrl ?? "")}" placeholder="the whole status_url an answer named">`)}
       <div><button type="submit">Ask</button></div>
     </form>
-    <p>Where an agent collects goods that came later, at the address the purchase answer named in status_url; it is filled in here once an answer has named one, and any answer in the log carries it when this page has forgotten an exchange. It takes no key: an agent has no account here, so the identifier it was handed at the purchase is what stands in for one. Whoever holds that string can read the order — which is why the gateway hands it to exactly one party, and answers an identifier it has never seen exactly as it answers somebody else's.</p>
+    <p>This field wants the status_url an answer named: the whole address, starting with http:// or https://. An order id on its own is not an address, and nothing here builds one from it: the address is the gateway's to name. The field fills itself once an answer names an address, and the answers in the log carry it as well. This is where an agent collects goods that come later, and it takes no key: whoever holds the address can read the order.</p>
   </div>
 </section>`;
 };
