@@ -45,11 +45,16 @@
   font: 0.75rem / 1.5 var(--font-mono);
 }
 
-/* One group, one shape: on a phone every action is a full-width button, as the
-   copy buttons already are inside their own row. */
-@media (max-width: 560px) {
+/* One group, one shape. Below the width at which the three actions fit on one
+   line, every action is a full-width button in a column: a row that wrapped
+   instead would rewrap whenever "Copied" replaces a longer label. */
+@media (max-width: 600px) {
   .rows {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .rows button {
+    width: 100%;
   }
 }
