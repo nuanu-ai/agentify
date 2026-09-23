@@ -20,20 +20,13 @@ import {
   type OrderList,
   type ReceiptList,
 } from "@nuanu-ai/agentify-contracts";
-import { escaped, momentCell, page, type Row, state, type Tab, table } from "./html.js";
+import { escaped, momentCell, page, type Row, state, type Tab, table, when } from "./html.js";
 import type { PayoutWallet } from "./payout-wallet.js";
 // A type and nothing else, so this leaves no import behind once it is compiled
 // and the two files are not a cycle at run time. The shape belongs beside the
 // screen that draws a shop, and the viewer that carries it belongs here.
 import type { ShopTile } from "./woo-screens.js";
-import {
-  FULFILLMENT_WORDS,
-  moment,
-  money,
-  needsAttention,
-  ORDER_WORDS,
-  SELLING_WORDS,
-} from "./words.js";
+import { FULFILLMENT_WORDS, money, needsAttention, ORDER_WORDS, SELLING_WORDS } from "./words.js";
 
 /**
  * Who is looking at a page, and where the cabinet is mounted.
@@ -162,11 +155,11 @@ const cardAside = (entry: MerchantCard): string => {
     // the price on the card started being the price. It is `as_of`, and this is
     // the only screen that shows it — a merchant working out why a sale went
     // through at an old number has nowhere else to look.
-    return `Price on the card since ${moment(entry.as_of)}`;
+    return `Price on the card since ${when(entry.as_of)}`;
   }
 
   const line = facts.join(", ");
-  return `${line.charAt(0).toUpperCase()}${line.slice(1)}`;
+  return escaped(`${line.charAt(0).toUpperCase()}${line.slice(1)}`);
 };
 
 /**
@@ -247,7 +240,7 @@ export const cardsScreen = (
       ...(entry.selling === "open" ? {} : { mark: "off" }),
       cells: [
         {
-          html: `<div class="title">${escaped(entry.card.title)}</div><div class="under">${escaped(cardAside(entry))}</div><div class="buy">${wrappable(buyingAddress(origin, entry))}</div>`,
+          html: `<div class="title">${escaped(entry.card.title)}</div><div class="under">${cardAside(entry)}</div><div class="buy">${wrappable(buyingAddress(origin, entry))}</div>`,
         },
         { kind: "key", html: escaped(entry.card.merchant_item_id) },
         { kind: "amount", html: escaped(money(entry.card.price)) },
@@ -362,7 +355,7 @@ export const ordersScreen = (
         },
         { kind: "amount", html: `${escaped(money(order.price))}${sum(order.test)}` },
         { html: state(ORDER_WORDS[order.status]) },
-        momentCell(moment(order.price.at)),
+        momentCell(order.price.at),
       ],
     }),
   );
@@ -488,9 +481,9 @@ export const receiptsScreen = (
         { html: escaped(titles.get(receipt.item_id) ?? receipt.item_id) },
         { kind: "amount", html: `${escaped(money(receipt.price))}${sum(receipt.test)}` },
         { html: state(ORDER_WORDS[receipt.outcome]) },
-        momentCell(moment(receipt.paid_at)),
-        momentCell(moment(receipt.price.at)),
-        momentCell(moment(receipt.price.as_of)),
+        momentCell(receipt.paid_at),
+        momentCell(receipt.price.at),
+        momentCell(receipt.price.as_of),
       ],
     }),
   );

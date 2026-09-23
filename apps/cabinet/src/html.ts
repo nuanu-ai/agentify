@@ -11,6 +11,7 @@
  */
 
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
+import { moment } from "./words.js";
 
 /** Text on its way into a page, with the five characters that are not text. */
 export const escaped = (value: string): string =>
@@ -241,24 +242,29 @@ ${body}
 `;
 
 /**
- * A moment as it is written into a cell. It may wrap between the date and the
- * time and nowhere else — left to itself a browser breaks "2026-09-23" after a
- * hyphen — and nothing is added to the text, so a copied moment is the moment.
+ * An instant as a page prints it, and the only way a page prints one.
  *
- * The two halves sit inside one span of their own. Where a row is drawn as a
- * block, its cells are drawn as small tables, and Chrome and WebKit drop a
- * space that stands between two spans directly inside one: the date and the
- * time ran together as "2026-09-2307:42:03 UTC".
+ * The words are `moment`'s, in UTC to the second. The markup lets the moment
+ * wrap between its date and its time and nowhere else — left to itself a
+ * browser breaks "2026-09-23" after a hyphen — and adds nothing to the text,
+ * so a copied moment is the moment. The two halves sit inside one span of
+ * their own: where a table row is drawn as a block its cells are drawn as
+ * small tables, and Chrome and WebKit drop a space standing between two spans
+ * directly inside one, so the date and the time ran together.
+ *
+ * Three screens printed a moment as plain text beside this and each of them
+ * broke that way on a phone, which is why no screen imports `moment` itself.
  */
-export const when = (moment: string): string => {
-  const [date, ...time] = moment.split(" ");
+export const when = (iso: string): string => {
+  const text = moment(iso);
+  const [date, ...time] = text.split(" ");
   return time.length === 0
-    ? escaped(moment)
+    ? escaped(text)
     : `<span class="when"><span>${escaped(date ?? "")}</span> <span>${escaped(time.join(" "))}</span></span>`;
 };
 
-/** A cell holding a moment, in a column as narrow as the moment on two lines. */
-export const momentCell = (moment: string): Cell => ({ kind: "quiet moment", html: when(moment) });
+/** A cell holding an instant, in a column as narrow as the moment on two lines. */
+export const momentCell = (iso: string): Cell => ({ kind: "quiet moment", html: when(iso) });
 
 /** A state with its dot, the way every one of the three screens draws one. */
 export const state = (word: { readonly text: string; readonly tone: string }): string =>
