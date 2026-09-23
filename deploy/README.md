@@ -29,46 +29,69 @@ host are these, with `<channel>` standing for `test` or `production`:
 /usr/local/sbin/agentify-release         the release command
 /var/lib/agentify/<channel>/current      the revision the last successful release verified
 /var/lib/agentify/<channel>/failed       the last revision that was refused or failed
+/var/lib/agentify/<channel>/pending      a release that stopped before it finished, and its restore point
+/var/lib/agentify/<channel>/seen         the revision TEST's timer is waiting for, and since when
 /var/lib/agentify/<channel>/checkouts/   one checkout per revision; the current one stays
 /var/lib/agentify/<channel>/release.lock the command's lock: one release at a time
-/run/lock/agentify-release.lock          activation's lock, which the nightly privacy job shares
+/run/lock/agentify-release.lock          activation's lock, shared by restores and the nightly privacy job
 /var/backups/agentify/<channel>/         the restore points, one directory per release
 /etc/cron.d/agentify-release             the nightly privacy job, written by each release
 ```
 
-Everything about a running channel goes through one command line,
-`deploy/stack.sh <channel> <compose arguments>`, run from the checkout of the
-revision it runs. That checkout is named by `current`:
+Everything under `/var/lib/agentify` holds nothing secret — revision names,
+checkouts of this public repository — so it is readable by anyone on the host,
+and the status commands below need no `sudo`. The environment file and the
+restore points are root's alone. Everything about a running channel goes
+through one command line, `deploy/stack.sh <channel> <compose arguments>`, run
+as root from the checkout of the revision the channel runs, which `current`
+names:
 
 ```sh
 ssh -t agentify-test 'sudo /var/lib/agentify/test/checkouts/$(cat /var/lib/agentify/test/current)/deploy/stack.sh test ps'
 ```
 
-The state directory holds nothing secret — revision names and checkouts of
-this public repository — so anyone on the host can read it; the environment
-file, which the stack needs, is root's alone, hence `sudo`.
-
 ## How a release works
 
-A release is one command on the host, `agentify-release <name>`. It asks the
-public repository which commit the name stands for, then asks GitHub's public
-API for the five images that commit's image build published
-(`.github/workflows/images.yml` builds them for every commit pushed as the
-head of a branch and publishes their digests in a notice; the header of that
-file states how the notice is read). It fetches the commit into its own
-checkout and runs that checkout's `deploy/activate.sh`, which pulls the images
-by digest, has the release's own preflight check the channel's configuration,
+A release is one command on the host, `agentify-release <name>`. Started by a
+person, it does not release from the terminal: it hands the release to a
+transient systemd unit, `agentify-release-<channel>.service`, and follows that
+unit's journal until it ends, so a dropped connection or Ctrl-C stops only the
+following and the release goes on.
+
+The release asks the public repository which commit the name stands for, then
+asks GitHub's public API for the five images that commit's image build
+published (`.github/workflows/images.yml` builds them for every commit pushed
+as the head of a branch and publishes their digests in a notice; the header of
+that file states how the notice is read). It fetches the commit into its own
+checkout and runs that checkout's `deploy/activate.sh`. Activation pulls the
+images by digest and, before anything stops, checks everything it can: the
+release's own preflight over the channel's rendered configuration, then the
+scanner image started alone with that configuration and no network, which has
+to pass its own start-up checks and its configuration check at
+`/api/health/live` — the very code the scanner runs when it starts. Then it
 stops the gateway, the cabinet, the scanner and its worker, takes a restore
 point of both databases, runs the migrations, starts everything again, on
-PRODUCTION installs the edge's route table, checks ten public routes and
-schedules the nightly privacy job. Nothing before the stop touches the running
-release. The command needs no GitHub credential, and nothing in GitHub can
-reach a host.
+PRODUCTION installs the edge's route table, checks ten public routes, checks
+that every card on sale before the stop is still on sale and answers its
+payment challenge on the channel's network, and schedules the nightly privacy
+job. The command needs no GitHub credential, and nothing in GitHub can reach a
+host.
+
+The card check spends nothing: a GET on a purchase address is always answered
+with the challenge and never read for payment. It reads the catalog as the one
+document the catalog is, since paging is not designed yet. The earlier
+verification also compared the sitemap's origin, probed the retired
+`app.agentify.ad`, compared each running container's image and environment
+with the rendered configuration, held PRODUCTION's scanner registration,
+Turnstile, postback and analytics settings to the values already running, and
+fingerprinted retained rows before and after the migrations; none of these
+runs now.
 
 On PRODUCTION the name has to be an `app-v*` tag, the image build has to be a
 push to `main`, `main`'s CI run for the commit has to have succeeded, and the
 commit has to move forward from the one the host runs. TEST takes a tag, a
-branch or a full commit SHA, as long as its images were built.
+branch or a full commit SHA, as long as exactly one image build of it
+succeeded.
 
 ## Releasing to production
 
@@ -98,41 +121,54 @@ git tag app-v<X.Y.Z> origin/main
 git push origin app-v<X.Y.Z>
 ```
 
-Pushing the tag publishes the npm packages (`publish-sdk.yml`) and nothing
-else. The release itself is one command, run by a person with mesh access:
+Pushing the tag publishes the SDK and the contracts to npm (`publish-sdk.yml`)
+and nothing else, so production gets the same revision only when a person runs
+the release, which belongs right after the tag:
 
 ```sh
-ssh -t agentify sudo agentify-release app-v<X.Y.Z> 2>&1 | tee release-app-v<X.Y.Z>.log
+ssh -t agentify sudo agentify-release app-v<X.Y.Z>
 ```
 
-`-t` gives `sudo` a terminal to ask for a password on, and `tee` keeps the
-output on your machine, because on PRODUCTION the terminal is the only place
-it goes. The output reads top to bottom as the release goes. The command
-prints `agentify-release: activating app-v<X.Y.Z> (<sha>) on production`, and
-then activation prints one line per step, each beginning `activate:` —
-pulling the images, checking the channel's configuration (followed by the
-preflight's own `preflight: the production channel is what it claims to be`),
-stopping the four applications, taking the restore point, the two migrations,
-starting the scanner, starting commerce and the route table, installing the
-edge's route table, checking the public routes, scheduling the privacy job
-and, when the previous release's images are no longer needed, removing them.
-Compose's own lines about containers stopping, starting and becoming healthy
-come in between. A finished and verified release ends with these two lines and
-exit status 0:
+`-t` gives `sudo` a terminal to ask for a password on. The first line says the
+release runs as `agentify-release-production.service`; after that the journal
+of that unit scrolls by. The command prints
+`agentify-release: activating app-v<X.Y.Z> (<sha>) on production`, and then
+activation prints one line per step, each beginning `activate:` — pulling the
+images; checking the channel's configuration, followed by the preflight's own
+`preflight: the production channel is what it claims to be` (the scanner's own
+check runs inside this step); stopping the four applications; taking the
+restore point, with its directory; the two migrations; starting the scanner;
+starting commerce and the route table; installing the edge's route table;
+checking the public routes; checking the cards on sale, followed by how many
+are on sale and how many were compared; scheduling the privacy job; and, when
+the previous release's images are no longer needed, removing them. Compose's
+own lines about containers stopping, starting and becoming healthy come in
+between. A finished and verified release ends with these two lines and exit
+status 0:
 
 ```text
-activate: production runs <sha> and answers on every route checked.
+activate: production runs <sha> and answers on every route and card checked.
 agentify-release: production runs <sha>, verified
 ```
 
-How long that takes has been measured only in the rehearsal on a laptop,
-with empty databases and the images already present: a first release took 25
-seconds from the command to its last line, the same revision again 24
-seconds, and a release whose migration sleeps for forty seconds 94. Pulling
-the five images of one revision of `main` from the registry, measured
-separately over the same laptop's connection, took 1 minute 26 seconds, and
-that happens before anything stops. On a host the dump grows with the data,
-and the applications are down from the stop to the end of the route check.
+If the connection drops, the release goes on; follow it again, or read it
+afterwards, with:
+
+```sh
+ssh agentify sudo journalctl -u agentify-release-production.service -f
+```
+
+The only release timed on a host so far is the first TEST release through this
+command, on 2026-09-23: pulling the five images took 12 minutes 53 seconds, and
+from the preflight to the verified line took 35 seconds, of which about 25 were
+downtime; the restore point took 4 seconds, for dumps of 115 KB and 207 KB.
+The pull is most of it and happens before anything stops. Over that pull the
+2.4 GB app image arrived in 1 minute 55 seconds, while the 1.8 GB
+scanner-privacy and 1.1 GB scanner-worker images came at about 0.7 MB/s, for
+a reason nobody has found yet. That release predates the scanner's own check
+and the card check, which add a few seconds before the stop and a request per
+card after the start. On PRODUCTION the dumps grow with the data, and so does
+the downtime.
 
 ## Releasing to test
 
@@ -147,18 +183,20 @@ git push --force origin my-branch:refs/tags/deploy-test
 
 A timer on the TEST host runs `agentify-release --timer deploy-test` once a
 minute. It does nothing while the tag names what already runs or what already
-failed; it waits, quietly, while the commit's images are still being built,
-which takes a few minutes after a push; otherwise it releases. So a revision
-reaches TEST within a minute of its images being ready. Watch it happen, and
-see what TEST runs afterwards:
+failed. It waits while GitHub lists no build of the commit yet, or the build
+is still running, or the images did not arrive, and asks again at the next
+tick; after 30 minutes of waiting for one revision it records the wait as a
+failure. Otherwise it releases, so a revision reaches TEST within a minute of
+its images being ready. Watch it happen, and see what TEST runs afterwards:
 
 ```sh
-ssh agentify-test journalctl -u agentify-release.service -f
+ssh agentify-test "sudo journalctl -u 'agentify-release*' -f"
 ssh agentify-test cat /var/lib/agentify/test/current
 ```
 
 A person can also release on TEST directly, with any tag, branch or SHA that
-has images; this is also how a failed TEST revision is tried again:
+has images; this is also how a failed TEST revision is tried again, since a
+person's run never skips one:
 
 ```sh
 ssh -t agentify-test sudo agentify-release my-branch
@@ -167,69 +205,85 @@ ssh -t agentify-test sudo agentify-release my-branch
 ## When a release fails
 
 A refusal is one sentence that begins `agentify-release: refused:` or
-`activate:` and says what was wrong. What it leaves behind depends on where it
-stopped.
+`activate:`, says what was wrong and ends with exit status 1. A wait ends with
+exit status 75 and says that nothing changed and that running again later may
+go through. Both are in the journal: a person's runs under
+`agentify-release-<channel>.service`, TEST's timer under
+`agentify-release.service`. What a failure leaves behind depends on how far
+the release got, and its last line says which of these it was.
 
 A refusal before the four applications stop changes nothing: the previous
-release keeps running as it was. This covers a name that is not what the
-channel accepts, images still being built or never built, a failed CI run, a
-move backwards, images that cannot be pulled or do not carry the revision's
-label, a configuration that does not render or that the preflight refuses, a
-PostgreSQL image different from the pinned one, a PRODUCTION edge that is not
-the reviewed one, and too little room for the restore point. Fix the cause
-and run the same command again.
+release keeps running as it was. This covers a name the channel does not take;
+a build that failed or was not listed, CI that failed or has not finished, a
+move backwards; images that did not arrive within 30 minutes or do not carry
+the revision's label; an environment file with a `$` outside single quotes, a
+configuration that does not render, that the preflight refuses or that the
+scanner refuses at its own start; a PostgreSQL image other than the pinned
+one; a PRODUCTION edge other than the reviewed one; too little room for the
+restore point; and another release that did not finish. Fix the cause and run
+the same command again.
 
-A failure between the stop and the end of the migrations — the restore point,
-the scanner's migration, the gateway's and the cabinet's — starts the four
-applications again on the previous release and names the step and the newest
-restore point. The migrations run one set after another, each set in one
-transaction: the scanner's, then the gateway's, then the cabinet's. The set
-that failed changed nothing, but the sets before it stay applied, and the
-previous release now runs on top of them. That is safe while migrations only
-add, which is how they are written; when one did more, restore.
+A failure after the stop and before the first migration — while the restore
+point is being taken — starts the four applications again on the previous
+release, over databases nothing has touched.
 
-If the scanner does not start after the migrations, commerce is started anyway
-and runs the new revision; the scanner stays down until the cause is fixed and
-the command is run again. A failure after that — commerce not becoming
-healthy, the edge, the routes — leaves the new revision partly running on the
-migrated databases, where the previous release cannot simply start again. Fix
-the cause and run the command again; it takes no second restore point while
-the gateway already runs the new revision.
+A failure from the first migration until the new release starts restores both
+databases from the restore point the release had just taken, and starts the
+previous release again. Nothing is lost by that, because between the stop and
+this moment nothing wrote to the databases; the message says the databases
+were restored and names the restore point. If the restore itself fails, the
+four applications stay stopped, and the message names the one command to run
+until it succeeds, `restore.sh` with that restore point; then release again
+the revision that ran before.
 
-A release killed in the middle, by a lost SSH session or a reboot, records
-nothing. On TEST the next tick runs it again; on PRODUCTION run the command
-again. Activation can always be run again, so trying again is the same
-command: on TEST, `sudo agentify-release deploy-test` (a person's run never
-skips a revision that failed), and on PRODUCTION the same `app-v*` tag.
+Once the new release has started, a failure — commerce not becoming healthy,
+the edge, a route, a card — restores nothing, because the new release may
+already have taken orders. The new revision runs, unverified, on the migrated
+databases, and the message says so. If the scanner does not start, commerce is
+started anyway and the scanner stays down. Fix the cause and run the same
+command again: it reuses the restore point of the unfinished release rather
+than dumping data its migrations already changed.
 
-The log is the terminal on PRODUCTION (hence the `tee` above) and the journal
-on TEST, `journalctl -u agentify-release.service`.
+A release killed outright — `kill -9`, a crash, the power — leaves `pending`
+behind, naming its restore point. Running the same revision again carries it
+on, reusing that restore point. Any other revision is refused until that one
+is finished, or its restore point restored. A stop request from systemd, and
+an interrupt, take the same way back as a failure at the same point.
 
-Restore from a restore point only when the databases have to go back: a
-migration that did more than add, or data a release damaged. Each release that
-switches revisions dumps both databases with `pg_dump -Fc` into
-`/var/backups/agentify/<channel>/<time>-<revision>/`, with the PRODUCTION edge's
-previous `Caddyfile` beside them, before its first migration. A retry never
-overwrites an earlier one, and the five newest are kept. To restore, stop the
-applications and recreate both databases from their dumps, as root:
+Trying again is always the same command: on TEST,
+`sudo agentify-release deploy-test`, and on PRODUCTION the same `app-v*` tag.
+When the channel already runs the revision, running it again stops nothing:
+it pulls, checks the configuration, starts whatever is not running and checks
+the routes and the cards again.
+
+A restore point is `/var/backups/agentify/<channel>/<time>-<previous>-before-<new>/`:
+the data of the revision `<previous>`, as it was just before `<new>` began to
+migrate it, with the PRODUCTION edge's previous `Caddyfile` beside it. Every
+release that switches revisions takes one, a retry never takes a second, and
+the five newest are kept. Restoring one loses everything written to the
+databases after it was taken. Restore by hand when activation says its own
+restore failed, or when a person has decided the data has to go back:
 
 ```sh
-channel=<test or production>
-stack=/var/lib/agentify/$channel/checkouts/$(cat /var/lib/agentify/$channel/current)/deploy/stack.sh
-backup=/var/backups/agentify/$channel/<time>-<revision>
-$stack $channel stop gateway cabinet scanner scanner-worker
-for database in agentify_commerce agentify_scanner; do
-  $stack $channel exec -T postgres pg_restore -U agentify_commerce -d postgres --clean --create < $backup/$database.dump
-done
+ssh -t agentify-test 'sudo /var/lib/agentify/test/checkouts/$(cat /var/lib/agentify/test/current)/deploy/restore.sh /var/backups/agentify/test/<time>-<previous>-before-<new>'
 ```
 
-`--create` drops each database and makes it again from the dump, so tables a
-migration added go too. Then release the revision the dumps belong to: on
-TEST, `sudo agentify-release <that revision>`; on PRODUCTION, that revision's
-`app-v*` tag, which the command accepts as long as it is the one `current`
-names — a release that failed never became `current`. Going back past a
-verified release is a move backwards, which the command refuses; that is a
-decision to make with the team, not a command.
+On PRODUCTION the same command runs over `ssh -t agentify`, with `production`
+in the three paths. `restore.sh` takes the release lock, so no release, no timer tick and no
+privacy job runs meanwhile; stops the four applications; and for each
+database drops it, closing every connection, and creates it again from its
+dump, stopping at the first error. It leaves the applications stopped. Then
+release `<previous>` again: on TEST, `sudo agentify-release <previous>`; on
+PRODUCTION, its `app-v*` tag, which the command takes because it is still the
+one `current` names — a release that failed never becomes `current`. The edge's
+previous `Caddyfile` is for a person to copy back if the route table was the
+problem; `restore.sh` does not touch the edge.
+
+A release that passed its checks and turns out bad later is fixed forward, not
+restored: revert or fix it on a branch, merge to `main`, tag the new commit and
+release that tag. Restoring its restore point would lose every order and
+receipt written since, and the command refuses to move production backwards
+in any case.
 
 ## Setting up a host
 
@@ -247,7 +301,10 @@ needrestart is installed, the rule that keeps needrestart from restarting the
 timer's service in the middle of an activation. PRODUCTION gets no timer. On
 either channel it removes the pull agent the earlier Ansible release had
 installed (`agentify-pull@<channel>`), keeping its old records in
-`/var/lib/agentify-pull-agent`. Running it again updates the command.
+`/var/lib/agentify-pull-agent`. The command on a host is whatever this last
+installed, and a release does not update it: when a change reaches `main`
+that touches `deploy/agentify-release`, `deploy/install.sh` or the timer's
+units, run `install.sh` again from a checkout of that `main`.
 
 It refuses while root is in the "password must be changed" state, because in
 that state `sudo` refuses to switch accounts, and it stopped every production
@@ -273,8 +330,14 @@ private address its door binds on. PRODUCTION adds `AGENTIFY_DB_PASSWORD`,
 `SCAN_ACCEPTANCE_ENABLED`, `SCANNER_CONCURRENCY`, `ANALYTICS_RUNTIME_ENV` —
 keep the defaults `compose.yaml` gives them unless the file names them, and on
 TEST the scanner's policy is fixed by `deploy/compose.agentify-test.yaml`
-whatever the file says. The first release renders the file and refuses, before
-it stops anything, if a variable is missing or the preflight disagrees.
+whatever the file says.
+
+A value holding a `$` goes inside single quotes, as a bcrypt hash always does:
+`ADMIN_BASIC_AUTH_HASH='$2a$14$…'`. Compose reads a `$` anywhere else as the
+start of a variable, cuts the value there and prints the rest in a warning, so
+`stack.sh` refuses such a file and names the key. The first release renders
+the file and refuses, before it stops anything, if a variable is missing, the
+preflight disagrees or the scanner refuses the configuration at its own start.
 
 A host released by the Ansible release already has this file, rendered by its
 last release, so writing it is a copy that leaves out the lines the new shape
@@ -320,13 +383,14 @@ and leave out what named machinery that is gone: every `*_DATABASE_URL` and
 `EMAIL_ENCRYPTION_KEY` above all: a changed one breaks every report link and
 every stored address already out there. `REPORT_IDENTITY_SECRET` comes from the
 old configuration directory's `report-identity-secret`, and the admin user and
-hash from the running edge's environment. The public browser settings the old
-scanner read under `NEXT_PUBLIC_` names are read under their plain names now:
-`TURNSTILE_SITE_KEY`, `PRIVACY_EMAIL`, `ABUSE_EMAIL`, `LEGAL_OPERATOR`,
-`LEGAL_IDENTITY_CONFIRMED`, `STRIPE_PUBLISHABLE_KEY`, `POSTHOG_BROWSER_KEY`,
-`POSTHOG_BROWSER_HOST`, `POSTHOG_DESTINATION_ENV`, `META_PIXEL_ID`,
-`META_DESTINATION_ENV`, and `ANALYTICS_RUNTIME_ENV` for `NEXT_PUBLIC_ANALYTICS_ENV`.
-Write it with mode 600, owned by root, and keep the originals.
+hash from the running edge's environment; the hash goes inside single quotes.
+The public browser settings the old scanner read under `NEXT_PUBLIC_` names are
+read under their plain names now: `TURNSTILE_SITE_KEY`, `PRIVACY_EMAIL`,
+`ABUSE_EMAIL`, `LEGAL_OPERATOR`, `LEGAL_IDENTITY_CONFIRMED`,
+`STRIPE_PUBLISHABLE_KEY`, `POSTHOG_BROWSER_KEY`, `POSTHOG_BROWSER_HOST`,
+`POSTHOG_DESTINATION_ENV`, `META_PIXEL_ID`, `META_DESTINATION_ENV`, and
+`ANALYTICS_RUNTIME_ENV` for `NEXT_PUBLIC_ANALYTICS_ENV`. Write it with mode 600,
+owned by root, and keep the originals.
 
 Then install the command, which also disables and removes the old
 `agentify-pull@production` timer and service:
@@ -335,10 +399,14 @@ Then install the command, which also disables and removes the old
 sudo deploy/install.sh production
 ```
 
-Take a backup of both databases as they are, before anything else changes:
+Take a backup of both databases as they are, before anything else changes. It
+goes into `/var/backups/agentify/production-before-move/`, outside the
+channel's own directory, so the rotation of restore points never deletes it,
+and it is written with umask 077, since the commerce dump holds merchants' keys
+and WooCommerce credentials. `restore.sh` restores it like any restore point.
 
 ```sh
-sudo sh -c 'd=/var/backups/agentify/production/$(date -u +%Y%m%dT%H%M%SZ)-before-move; mkdir -p "$d"; for db in agentify_commerce agentify_scanner; do docker exec agentify-commerce-postgres-1 pg_dump -U agentify_commerce -Fc "$db" > "$d/$db.dump"; done; ls -l "$d"'
+sudo sh -c 'umask 077; d=/var/backups/agentify/production-before-move; mkdir -p "$d"; for db in agentify_commerce agentify_scanner; do docker exec agentify-commerce-postgres-1 pg_dump -U agentify_commerce -Fc "$db" > "$d/$db.dump"; done; ls -l "$d"'
 ```
 
 Retire the old scanner project. List its containers by the label Compose
