@@ -419,8 +419,9 @@ td.moment > span {
  * column rather than running back under the label, and that table's layout is
  * fixed, so the labels keep one width down the block whatever stands beside
  * them. In a block the value column is all the room there is, so anything in it
- * may wrap: an identifier with no card to name it, or a long state. The label
- * is drawn only where a rule below gives it its words.
+ * may wrap: an identifier with no card to name it, a long state, or an amount
+ * beside its test mark. The label is drawn only where a rule below gives it
+ * its words.
  */
 
 /* Wide enough for "Price true as of" on one line and narrow enough to leave a
@@ -461,7 +462,7 @@ tbody td::before {
     content: attr(data-label);
   }
 
-  .scroller tbody .state {
+  .scroller tbody :is(.state, .amount) {
     white-space: normal;
   }
 }
@@ -495,7 +496,7 @@ tbody td::before {
     content: attr(data-label);
   }
 
-  .scroller:has(th:nth-child(7)) tbody .state {
+  .scroller:has(th:nth-child(7)) tbody :is(.state, .amount) {
     white-space: normal;
   }
 }
