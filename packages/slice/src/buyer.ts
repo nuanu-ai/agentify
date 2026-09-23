@@ -28,11 +28,20 @@
  * The catalog page is the exception and is read against the real schema, so
  * that what an agent is handed to choose from is held to its published shape.
  *
+ * The address an order is collected at is not written here at all, and that is
+ * the same argument taken one step further. A stranger's agent holds the
+ * answer to its purchase and cannot spell the status route from an order
+ * identifier, so this buyer does not either: it asks where that answer's
+ * `status_url` says. A run that collects goods is then a run in which the
+ * gateway told an agent where to find them, rather than one in which our own
+ * buyer knew the way.
+ *
  * The risk that buys is silent drift: an address renamed in the contract leaves
  * these strings pointing at nothing, and a 404 inside a poll reads as an order
  * that never arrived. `buyer.test.ts` is what stops that — it drives this buyer
  * against a server that records the request line, and holds every address that
- * went out against the contract's own table. The staple is in the test, where
+ * went out against the contract's own table, or, for the status, against the
+ * address the purchase answer named. The staple is in the test, where
  * importing the contracts costs nothing, and not here.
  */
 
@@ -60,6 +69,17 @@ export interface Bought {
    * the purchase and answers with an order rather than a settlement header.
    */
   readonly settlement: SettleResponse | null;
+  /**
+   * Where this order is collected, exactly as the answer named it in
+   * `status_url`, and null where it named nowhere — a refusal, a challenge
+   * that was never paid, an error page.
+   *
+   * A null is never filled in from the order identifier, however tempting
+   * that is with the identifier sitting in the same answer. An address made
+   * up here would look exactly like one the gateway gave, and the whole reason
+   * this field exists is that a stranger's agent has no other way to learn it.
+   */
+  readonly statusUrl: string | null;
 }
 
 /**
@@ -114,10 +134,11 @@ export interface Buyer {
   /** Buys one product by its catalog identifier, walking the x402 exchange. */
   buy(itemId: string, params: Readonly<Record<string, unknown>>): Promise<Bought>;
   /**
-   * What became of an order, asked with the order's identifier and nothing
-   * else. It is how an agent that bought a product whose goods come later
-   * collects them, and knowing the identifier is the whole of the proof
-   * (ADR-0011) — this buyer holds no key and sends none.
+   * What became of an order, asked at the address its purchase answer named
+   * ({@link Bought.statusUrl}) and with nothing else. It is how an agent that
+   * bought a product whose goods come later collects them, and knowing the
+   * address — the order's identifier is in it — is the whole of the proof
+   * (ADR-0011): this buyer holds no key and sends none.
    *
    * Anything that arrives is data, and that is the whole of the split. An
    * identifier the gateway does not know comes back as the refusal it is; a
@@ -126,18 +147,7 @@ export interface Buyer {
    * I could not read" and "the door is gone" are different situations and want
    * different next moves.
    */
-  status(orderId: string): Promise<OrderStatus>;
-  /**
-   * The address this order's status is read at, without reading it.
-   *
-   * It exists because the address has to be printable when nothing landed —
-   * that is exactly when a caller has to tell somebody where to collect an
-   * order it has stopped watching, and it is exactly when there is no answer to
-   * take the address off. `status` builds its own request through this, so the
-   * address a caller prints is the address that was asked at, and there is one
-   * place in this file where that string is written.
-   */
-  statusUrl(orderId: string): string;
+  status(statusUrl: string): Promise<OrderStatus>;
 }
 
 export interface BuyerOptions {
@@ -163,12 +173,8 @@ export function makeBuyer(options: BuyerOptions): Buyer {
   const payFetch = wrapFetchWithPayment((input, init) => request(input, init), client);
   const base = options.baseUrl.replace(/\/+$/, "");
 
-  const statusUrl = (orderId: string): string =>
-    `${base}/x402/orders/${encodeURIComponent(orderId)}/status`;
-
   return {
     address: account.address,
-    statusUrl,
 
     async catalog() {
       const response = await request(`${base}/x402/catalog`, {
@@ -207,11 +213,23 @@ export function makeBuyer(options: BuyerOptions): Buyer {
       const settleHeader = response.headers.get("payment-response");
       const settlement = settleHeader === null ? null : decodePaymentResponseHeader(settleHeader);
 
-      return { status: response.status, body, settlement };
+      // Read by hand, the way the status below is: a body that is not an
+      // object, or one whose address is not a string, named nowhere.
+      const named =
+        typeof body === "object" && body !== null
+          ? (body as Record<string, unknown>).status_url
+          : undefined;
+
+      return {
+        status: response.status,
+        body,
+        settlement,
+        statusUrl: typeof named === "string" ? named : null,
+      };
     },
 
-    async status(orderId) {
-      const response = await request(statusUrl(orderId), {
+    async status(statusUrl) {
+      const response = await request(statusUrl, {
         headers: { accept: "application/json" },
       });
 
