@@ -156,6 +156,12 @@ const savedAddress = (address: string): string => `
  * is actually stored — is not something a box you can type over can show them.
  * So the stored address is text, the box is for a different one, and the label
  * on it says which of the two acts this is.
+ *
+ * A refused address is handed back the same way, whole and in fours under the
+ * sentence that refused it. The box keeps it too, so it can be corrected rather
+ * than retyped, but a box shows only as much of an address as it is wide — on
+ * a phone about two thirds — and the refusal for capitals that disagree asks
+ * the merchant to find one wrong character in the whole of it.
  */
 export const payoutWalletBlock = (viewer: Viewer): string => {
   const { base, payout } = viewer;
@@ -183,13 +189,14 @@ export const payoutWalletBlock = (viewer: Viewer): string => {
       <p class="quiet">${escaped(WALLET_RULE)}</p>
     </div>
   </div>
-  <form class="issue payout" method="post" action="${escaped(base)}/settings/payout-wallet">
+  <form class="issue" method="post" action="${escaped(base)}/settings/payout-wallet">
     <div>
       <label for="payout_wallet">${wallet === null ? "The address your money arrives at" : "Change it to a different address"}</label>
       <input id="payout_wallet" name="payout_wallet" type="text" autocomplete="off" spellcheck="false" maxlength="42" size="42" value="${escaped(typed ?? "")}" required>
     </div>
     <button class="button button-primary" type="submit">${wallet === null ? "Save it" : "Change the address"}</button>
     ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
+    ${problem === undefined || typed === undefined || typed === "" ? "" : `<p class="address">${inFours(typed)}</p>`}
   </form>
 `;
 };
