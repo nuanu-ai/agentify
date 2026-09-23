@@ -124,6 +124,10 @@ class ReleaseTest(unittest.TestCase):
         self.git("init", "-q", "-b", "main", str(self.source), cwd=root)
         self.git("config", "user.name", "Release Test")
         self.git("config", "user.email", "release@example.invalid")
+        # A throwaway repository: its commits and tags are never signed,
+        # whatever the machine's own git signs with.
+        self.git("config", "commit.gpgsign", "false")
+        self.git("config", "tag.gpgsign", "false")
         self.git("remote", "add", "origin", str(self.remote))
         activate = self.source / "deploy" / "activate.sh"
         activate.parent.mkdir(parents=True)
@@ -431,6 +435,37 @@ class TheTimer(ReleaseTest):
             self.assertEqual(self.tick(), 75, self.said)
         self.assertIsNone(self.recorded("failed"))
 
+    def test_counts_its_thirty_minutes_from_this_boot(self):
+        # First seen an hour ago, before an outage; the host has been up for
+        # a minute, and the revision gets its patience from then.
+        self.tag("deploy-test", self.first)
+        self.state.mkdir(parents=True)
+        (self.state / "seen").write_text(f"{self.first} {int(RELEASE.time.time()) - 3600}\n")
+        with mock.patch.object(RELEASE, "booted", return_value=int(RELEASE.time.time()) - 60):
+            self.assertEqual(self.tick(exit_code=75), 75, self.said)
+        self.assertIsNone(self.recorded("failed"))
+
+    def test_leaves_another_revision_alone_while_a_transition_waits_for_a_person(self):
+        second = self.commit("second")
+        self.push("main")
+        self.github.built(second)
+        self.tag("deploy-test", second)
+        self.state.mkdir(parents=True)
+        for record in ({"to": self.first, "phase": "migrating"}, {"to": self.first, "phase": "started", "restoring": "/restore.sh"}):
+            (self.state / "transition").write_text(json.dumps(record))
+            self.assertEqual(self.tick(), 0, self.said)
+            self.assertEqual((self.activations(), self.recorded("failed")), ([], None))
+
+    def test_hands_a_revision_to_activation_once_the_open_transition_started(self):
+        second = self.commit("second")
+        self.push("main")
+        self.github.built(second)
+        self.tag("deploy-test", second)
+        self.state.mkdir(parents=True)
+        (self.state / "transition").write_text(json.dumps({"to": self.first, "phase": "started"}))
+        self.assertEqual(self.tick(), 0, self.said)
+        self.assertEqual([a["argv"][1] for a in self.activations()], [second])
+
     def test_images_that_did_not_arrive_are_a_wait_and_not_a_failure(self):
         self.tag("deploy-test", self.first)
         self.assertEqual(self.tick(exit_code=75), 75, self.said)
@@ -525,11 +560,11 @@ class APersonsRun(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def run_by_hand(self, **environment):
+    def run_by_hand(self, user=0, **environment):
         path = f"{self.bin}{os.pathsep}{os.environ['PATH']}"
         with mock.patch.dict(os.environ, {"PATH": path, "FAKE_CALLS": str(self.calls), **environment}):
             os.environ.pop("INVOCATION_ID", None)
-            with contextlib.redirect_stdout(io.StringIO()) as output:
+            with contextlib.redirect_stdout(io.StringIO()) as output, mock.patch.object(RELEASE.os, "geteuid", return_value=user):
                 code = RELEASE.main(["--config", str(self.config), "my-branch"])
         return code, output.getvalue()
 
@@ -540,6 +575,20 @@ class APersonsRun(unittest.TestCase):
         self.assertIn("--unit=agentify-release-test.service", asked)
         self.assertEqual(asked[-3:], ["--config", str(self.config), "my-branch"])
         self.assertIn("journalctl -u agentify-release-test.service", said)
+
+    def test_the_unit_is_ordered_after_docker_as_the_timers_unit_is(self):
+        # So a shutdown stops the release, and its restore, before Docker.
+        self.run_by_hand()
+        asked = self.calls.read_text().splitlines()
+        self.assertIn("--property=Requires=docker.service", asked)
+        self.assertIn("--property=After=network-online.target docker.service", asked)
+
+    def test_a_person_without_root_is_told_to_use_sudo_and_nothing_starts(self):
+        code, said = self.run_by_hand(user=1000)
+        self.assertEqual(code, 1)
+        self.assertIn("sudo agentify-release", said)
+        self.assertIn("my-branch", said)
+        self.assertFalse(self.calls.exists())
 
     def test_a_release_already_running_is_a_wait_that_starts_nothing(self):
         code, said = self.run_by_hand(FAKE_ACTIVE="0")
