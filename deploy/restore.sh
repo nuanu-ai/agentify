@@ -41,7 +41,8 @@ for database in agentify_commerce agentify_scanner; do
 done
 
 # The release this restore point was taken for is undone, so it no longer
-# waits to be finished.
+# waits to be finished. The two paths are compared as one directory, however
+# each is spelled.
 pending="/var/lib/agentify/$channel/pending"
-[[ $(cut -d' ' -f3 "$pending" 2>/dev/null) != "$dir" ]] || rm -f "$pending"
+[[ ! $dir -ef $(cut -d' ' -f3 "$pending" 2>/dev/null) ]] || rm -f "$pending"
 echo "restore: agentify_commerce and agentify_scanner hold what $dir holds; gateway, cabinet, scanner and scanner-worker are stopped." >&2
