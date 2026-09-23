@@ -137,19 +137,6 @@
         dest: "{{ recovery_directory }}/published-resource-ids.json"
         mode: '0600'
 
-    - name: Disable legacy automatic test delivery
-      ansible.builtin.shell: |
-        set -eu
-        for unit in agentify-test-pull.timer agentify-test-pull.service; do
-          if systemctl cat "$unit" >/dev/null 2>&1; then
-            systemctl disable --now "$unit"
-          fi
-          rm -f "/etc/systemd/system/$unit"
-          ln -s /dev/null "/etc/systemd/system/$unit"
-        done
-        systemctl daemon-reload
-      when: channel_name == 'test'
-
     - name: Hold only the existing Agentify scheduled jobs
       ansible.builtin.shell: |
         set -eu
