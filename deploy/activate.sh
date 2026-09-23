@@ -179,6 +179,23 @@ if [[ $reverify == false && -z $backup ]]; then
     || refuse "$backups has $((free >> 20)) MiB free, and a restore point of $((size >> 20)) MiB of databases needs that and a GiB more; nothing was stopped."
 fi
 
+# The database mounts its init scripts from here rather than from the
+# checkout, so a release whose scripts and database image are unchanged leaves
+# the database's container alone. Unchanged scripts are not touched; changed
+# ones are copied beside the old set and renamed into place, readable by the
+# database's own user. A run stopped between the two renames leaves the path
+# missing until the next release: the database reads it only on an empty
+# volume.
+init="$state/postgres-init"
+if ! diff -r "$root/deploy/postgres-init" "$init" >/dev/null 2>&1; then
+  at "installing the database's init scripts in $init"
+  rm -rf "$init.new" "$init.old"
+  (umask 022 && install -d -m 755 /var/lib/agentify "$state" && cp -R "$root/deploy/postgres-init" "$init.new")
+  if [[ -e $init ]]; then mv "$init" "$init.old"; fi
+  mv "$init.new" "$init"
+  rm -rf "$init.old"
+fi
+
 previous="$(docker ps -aq --filter "label=com.docker.compose.project=$project" | xargs -r docker inspect -f '{{.Image}}')"
 if [[ $reverify == false ]]; then
   at "stopping gateway, cabinet, scanner and scanner-worker"

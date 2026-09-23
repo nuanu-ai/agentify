@@ -50,6 +50,9 @@ if [[ ! -r $images ]]; then
   exit 78
 fi
 
+# The channel overlays mount the database's init scripts from here, a path no
+# release changes; deploy/activate.sh keeps it equal to the checkout's copy.
+export AGENTIFY_POSTGRES_INIT="/var/lib/agentify/$channel/postgres-init"
 exec docker compose --project-directory "$root" --project-name "$project" \
   --env-file "$environment" --env-file "$images" \
   -f "$root/compose.yaml" -f "$root/deploy/compose.public.yaml" \

@@ -32,11 +32,17 @@ host are these, with `<channel>` standing for `test` or `production`:
 /var/lib/agentify/<channel>/pending      a release that stopped before it finished, and its restore point
 /var/lib/agentify/<channel>/seen         the revision TEST's timer is waiting for, and since when
 /var/lib/agentify/<channel>/checkouts/   one checkout per revision; the current one stays
+/var/lib/agentify/<channel>/postgres-init/ the database's init scripts, copied from the release's checkout
 /var/lib/agentify/<channel>/release.lock the command's lock: one release at a time
 /run/lock/agentify-release.lock          activation's lock, shared by restores and the nightly privacy job
 /var/backups/agentify/<channel>/         the restore points, one directory per release
 /etc/cron.d/agentify-release             the nightly privacy job, written by each release
 ```
+
+The database mounts its init scripts from `postgres-init/` rather than from a
+checkout, so a release whose scripts and PostgreSQL image are unchanged leaves
+the database's container as it is: same container, no restart. The first
+release that mounts them from there recreates the container once.
 
 Everything under `/var/lib/agentify` holds nothing secret — revision names,
 checkouts of this public repository — so it is readable by anyone on the host,

@@ -3,6 +3,14 @@
 # The listen address is that host's, not this repository's: supply it, and the
 # stack refuses to start rather than binding somewhere unintended.
 services:
+  # The init scripts from a path no release changes, which deploy/stack.sh
+  # names and deploy/activate.sh keeps equal to the checkout's copy. Mounted
+  # from the checkout, they changed path with every revision, and Compose
+  # recreated the database on every release.
+  postgres:
+    volumes:
+      - "${AGENTIFY_POSTGRES_INIT:?deploy/stack.sh names the database's init scripts}:/docker-entrypoint-initdb.d:ro"
+
   # What the test channel's scanner does is fixed here rather than read from
   # the host's environment file, so no line in that file can change it. It takes
   # registrations and scans from anybody, because the whole path a reader walks

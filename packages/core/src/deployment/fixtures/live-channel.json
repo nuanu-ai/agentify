@@ -168,7 +168,7 @@
         },
         {
           "type": "bind",
-          "source": "/workspace/agentify/deploy/postgres-init",
+          "source": "/var/lib/agentify/production/postgres-init",
           "target": "/docker-entrypoint-initdb.d",
           "read_only": true,
           "bind": {}
