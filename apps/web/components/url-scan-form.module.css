@@ -9,8 +9,11 @@
   width: 100%;
 }
 
+/* A minimum rather than a height: when the form stacks under 600px, `flex: 1`
+   sizes the field from its content along the column and a plain height is
+   ignored, which drew a 28px field over a 56px button. */
 .inputWrap {
-  height: 56px;
+  min-height: 56px;
   min-width: 0;
   flex: 1;
   display: flex;

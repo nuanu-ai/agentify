@@ -88,12 +88,7 @@ export function LandingPage({ config }: Readonly<{ config: LandingConfig }>) {
 
         <section className={`${styles.finalCta} container`}>
           <h2>{LANDING_SHARED_CONTENT.finalCta}</h2>
-          <UrlScanForm
-            compact
-            cta={config.hero.cta}
-            segment={config.segment}
-            variant={config.variant}
-          />
+          <UrlScanForm cta={config.hero.cta} segment={config.segment} variant={config.variant} />
         </section>
       </main>
       <SiteFooter />

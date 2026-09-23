@@ -27,6 +27,18 @@ a {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* The consent banner is fixed over the bottom of the window and, while it is
+   up, sets its height on the root element (components/consent-banner.tsx).
+   Without the padding a page that fits the window has nothing to scroll, and
+   the bar sits over its last control until the visitor answers it. */
+:root {
+  --consent-banner-height: 0px;
+}
+
+body {
+  padding-bottom: var(--consent-banner-height);
+}
+
 /*
  * The scanner's links are chrome and editorial text rather than links in prose:
  * the header nav, the footer groups and the report rows all take their colour

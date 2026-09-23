@@ -59,7 +59,7 @@ export default function AgenticShopPage() {
     <>
       <MarketingHeader />
       <main className={styles.page} id="main">
-        <section className={`${styles.container} ${styles.hero}`}>
+        <section className={`container ${styles.hero}`}>
           <div className={styles.heroCopy}>
             <p className={styles.eyebrow}>
               <span className={styles.dot} /> Meet your next sales channel
@@ -101,7 +101,7 @@ export default function AgenticShopPage() {
           </div>
         </section>
 
-        <div className={`${styles.container} ${styles.promiseStrip}`}>
+        <div className={`container ${styles.promiseStrip}`}>
           <p>
             You run your business.
             <br />
@@ -114,7 +114,7 @@ export default function AgenticShopPage() {
         </div>
 
         <section className={styles.opportunity} id="opportunity">
-          <div className={styles.container}>
+          <div className="container">
             <div className={styles.marketGrid}>
               <div className={styles.marketCopy}>
                 <h2>
@@ -199,7 +199,7 @@ export default function AgenticShopPage() {
           </div>
         </section>
 
-        <section id="how-it-works" className={`${styles.container} ${styles.section}`}>
+        <section id="how-it-works" className={`container ${styles.section}`}>
           <div className={styles.sectionHeading}>
             <h2>
               A new channel.
@@ -248,7 +248,7 @@ export default function AgenticShopPage() {
         </section>
 
         <section className={styles.settlement}>
-          <div className={`${styles.container} ${styles.settlementGrid}`}>
+          <div className={`container ${styles.settlementGrid}`}>
             <div>
               <h2>
                 Set your payout wallet.
@@ -313,7 +313,7 @@ export default function AgenticShopPage() {
         </section>
 
         <section
-          className={`${styles.container} ${styles.section}`}
+          className={`container ${styles.section}`}
           id="loyalty"
           aria-labelledby="loyalty-title"
         >
@@ -368,7 +368,7 @@ export default function AgenticShopPage() {
           </div>
         </section>
 
-        <section className={`${styles.container} ${styles.section}`} id="businesses">
+        <section className={`container ${styles.section}`} id="businesses">
           <div className={styles.sectionHeading}>
             <h2>
               If people can buy it,
@@ -393,7 +393,7 @@ export default function AgenticShopPage() {
         </section>
 
         <section className={styles.entry} id="start">
-          <div className={`${styles.container} ${styles.entryGrid}`}>
+          <div className={`container ${styles.entryGrid}`}>
             <div>
               <h2>
                 Start with
@@ -431,7 +431,7 @@ export default function AgenticShopPage() {
           </div>
         </section>
 
-        <section className={`${styles.container} ${styles.section}`} id="questions">
+        <section className={`container ${styles.section}`} id="questions">
           <div className={styles.sectionHeading}>
             <h2>Questions about selling to agents</h2>
             <p>

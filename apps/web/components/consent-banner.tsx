@@ -124,6 +124,25 @@ function ConsentBannerContent() {
   const [error, setError] = useState<string>();
   const preferencesButton = useRef<HTMLButtonElement>(null);
   const preferencesOpener = useRef<HTMLElement | null>(null);
+  const banner = useRef<HTMLElement>(null);
+
+  // The bar is fixed over the bottom of the window, so while it is up the page
+  // is padded by its height (app/globals.css): a page no taller than the window
+  // can still scroll its last control out from under the bar. The height is
+  // measured because it depends on the width the words wrap at.
+  useEffect(() => {
+    const bar = banner.current;
+    if (!visible || !bar || typeof ResizeObserver === "undefined") return;
+    const root = document.documentElement;
+    const observer = new ResizeObserver(() =>
+      root.style.setProperty("--consent-banner-height", `${bar.offsetHeight}px`),
+    );
+    observer.observe(bar, { box: "border-box" });
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--consent-banner-height");
+    };
+  }, [visible]);
 
   const closePreferences = useCallback(() => {
     setPreferencesOpen(false);
@@ -203,7 +222,7 @@ function ConsentBannerContent() {
   return (
     <>
       {visible ? (
-        <aside aria-label="Privacy choices" className={styles.banner}>
+        <aside aria-label="Privacy choices" className={styles.banner} ref={banner}>
           <div className={styles.bannerCopy}>
             <strong>Choose how {DISPLAY_BRAND} measures this visit</strong>
             <p className={styles.copy}>
