@@ -553,6 +553,18 @@ td.control {
   font-size: 0.875rem;
 }
 
+/* The ways on from an empty cards screen. Each link is a whole item that moves
+   to the next line when it does not fit beside the one before, rather than two
+   links run together in one sentence with a dot between them that a narrow
+   screen broke anywhere — the dot starting a line, the second link split in
+   two. The margin under them is the one every note takes. */
+.onward {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin: 0 0 32px;
+}
+
 .surface-words {
   margin: 0;
   font-size: 0.875rem;
