@@ -516,6 +516,17 @@ td.control {
 }
 
 /*
+ * The notice at the top of a working screen — the one about a seller name not
+ * chosen yet — stands clear of the bar above it and no further from the heading
+ * under it. With the margin every notice takes it was flush against the bar's
+ * rule, where it read as a piece of the bar, and 64 pixels over the heading,
+ * because the heading's own block brings its 32 with it.
+ */
+.container > .callout:first-child {
+  margin: 32px 0 0;
+}
+
+/*
  * The same panel for something that went right. Only the bar changes colour: an
  * amber bar beside "Your shop is connected" reads as a problem, which is the
  * opposite of what the sentence says.
