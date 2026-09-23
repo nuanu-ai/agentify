@@ -117,9 +117,14 @@ stack run --rm --no-deps -T migrate
 
 trap 'echo "activate: $step failed after the migrations, so the previous release cannot simply start again on this database; fix the cause and run the activation again, or restore $backup." >&2' ERR
 at "starting the scanner"
-stack up -d --wait --no-deps scanner scanner-worker
+# A scanner that will not start must not keep commerce down as well, so the
+# gateway, the cabinet and the route table start whatever it did.
+scanner=started
+stack up -d --wait --no-deps scanner scanner-worker || scanner=failed
 at "starting commerce and the route table"
 stack up -d --wait --no-deps gateway cabinet web
+[[ $scanner == started ]] \
+  || refuse "the scanner did not start, for the reasons above; commerce runs $revision on the migrated database, and activating again after the fix finishes the release."
 if [[ $channel == production ]]; then
   at "installing the edge's route table"
   # In place: the edge's bind mount holds this inode, and a new file renamed
