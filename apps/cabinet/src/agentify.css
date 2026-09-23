@@ -261,8 +261,9 @@ textarea {
  *
  * Every column and every row's control is on the screen at every width. Where
  * the frame is wide enough for the columns this is a table; where it is not, a
- * row is drawn as a block — the first cell as its heading, and every other cell
- * as its column's head beside its value. The tables used to keep a minimum
+ * row is drawn as a block with every value beside the head of its column, the
+ * first one included, so an order's or a receipt's identifier is never read out
+ * without its name. The tables used to keep a minimum
  * width and scroll sideways inside this frame instead, and nothing showed that
  * they did: the receipts ran twice as wide as a laptop's frame, and on a phone
  * the controls that pause a card or revoke a key were out of sight. The
@@ -454,11 +455,7 @@ tbody td::before {
     padding: 3px 0;
   }
 
-  .scroller tbody td:first-child {
-    padding-bottom: 6px;
-  }
-
-  .scroller tbody td:not(:first-child)::before {
+  .scroller tbody td::before {
     content: attr(data-label);
   }
 
@@ -488,11 +485,7 @@ tbody td::before {
     padding: 3px 0;
   }
 
-  .scroller:has(th:nth-child(7)) tbody td:first-child {
-    padding-bottom: 6px;
-  }
-
-  .scroller:has(th:nth-child(7)) tbody td:not(:first-child)::before {
+  .scroller:has(th:nth-child(7)) tbody td::before {
     content: attr(data-label);
   }
 
