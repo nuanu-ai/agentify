@@ -246,7 +246,7 @@ def release(config, name, timer):
             write(state / "failed", revision)
             raise
         if code == 75:
-            raise Wait("activation found its lock held and changed nothing")
+            raise Wait("activation had to wait, for the reason in its line above")
         if code != 0:
             write(state / "failed", revision)
             say(f"{revision} failed; fix the cause and run agentify-release {name} again")
