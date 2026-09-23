@@ -402,14 +402,14 @@ td.quiet {
 
 /*
  * A moment's column is as narrow as the moment on two lines, the date over the
- * time, so the room goes to the product's name. Its two halves do not break
- * inside themselves.
+ * time, so the room goes to the product's name. The two halves of a moment do
+ * not break inside themselves, wherever it is written.
  */
 td.moment {
   width: 1px;
 }
 
-td.moment > span {
+.when > span {
   white-space: nowrap;
 }
 

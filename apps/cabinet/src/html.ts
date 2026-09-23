@@ -241,20 +241,24 @@ ${body}
 `;
 
 /**
- * A cell holding a moment. It may wrap between the date and the time and
- * nowhere else — left to itself a browser breaks "2026-09-23" after a hyphen —
- * and nothing is added to the text, so a copied moment is the moment.
+ * A moment as it is written into a cell. It may wrap between the date and the
+ * time and nowhere else — left to itself a browser breaks "2026-09-23" after a
+ * hyphen — and nothing is added to the text, so a copied moment is the moment.
+ *
+ * The two halves sit inside one span of their own. Where a row is drawn as a
+ * block, its cells are drawn as small tables, and Chrome and WebKit drop a
+ * space that stands between two spans directly inside one: the date and the
+ * time ran together as "2026-09-2307:42:03 UTC".
  */
-export const momentCell = (moment: string): Cell => {
+export const when = (moment: string): string => {
   const [date, ...time] = moment.split(" ");
-  return {
-    kind: "quiet moment",
-    html:
-      time.length === 0
-        ? escaped(moment)
-        : `<span>${escaped(date ?? "")}</span> <span>${escaped(time.join(" "))}</span>`,
-  };
+  return time.length === 0
+    ? escaped(moment)
+    : `<span class="when"><span>${escaped(date ?? "")}</span> <span>${escaped(time.join(" "))}</span></span>`;
 };
+
+/** A cell holding a moment, in a column as narrow as the moment on two lines. */
+export const momentCell = (moment: string): Cell => ({ kind: "quiet moment", html: when(moment) });
 
 /** A state with its dot, the way every one of the three screens draws one. */
 export const state = (word: { readonly text: string; readonly tone: string }): string =>
