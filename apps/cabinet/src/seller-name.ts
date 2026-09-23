@@ -41,10 +41,11 @@ export const NAME_RULE =
 /**
  * What somebody is told whose name the catalogue would not carry.
  *
- * The rule is already printed beside the box, so this does not repeat it: a
- * refusal that answers with the same paragraph a second time reads as the page
- * failing to notice anything happened. What the person cannot see for
- * themselves is that nothing was written, which is the half this carries.
+ * The rule, whole, and then the half the person cannot see for themselves:
+ * that nothing was written. Because it carries the rule, the first screen does
+ * not print its own copy of the rule under a refusal of this kind — the same
+ * paragraph twice in a row reads as the page failing to notice anything
+ * happened.
  *
  * The name is checked here as well as at the gateway so that this is what comes
  * back rather than the gateway's own refusal, which is written for whoever is
@@ -116,7 +117,7 @@ ${brandLockup("/")}
   <label for="seller_name">The name your products are sold under</label>
   <input id="seller_name" name="seller_name" type="text" autocomplete="organization" maxlength="32" value="${escaped(typed)}" autofocus required>
   ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
-  <p class="quiet">${escaped(NAME_RULE)}</p>
+  ${problem === NAME_REFUSED ? "" : `<p class="quiet">${escaped(NAME_RULE)}</p>`}
   <button class="button button-primary" type="submit">Use this name</button>
   ${WHAT_IT_IS_FOR}
   <p class="quiet">You can change it in <a href="${escaped(base)}/settings">Settings</a>; until it is set, nothing you publish goes on sale.</p>
