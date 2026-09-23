@@ -139,6 +139,20 @@ describe("the block on the settings screen", () => {
     expect(text).toMatch(/settle/i);
   });
 
+  it("shows a refused address whole, so the merchant can read it against their wallet", () => {
+    // A refusal for capitals that disagree asks the merchant to find the one
+    // character that is wrong, and the box it was pasted into is narrower than
+    // an address on a phone. So what was refused is on the page as text, every
+    // character in order, and not only inside the box — the box's value is an
+    // attribute, which is why the clipboard's view of the page does not see it.
+    const shouted = `0x${SHAPED.slice(2).toUpperCase()}`;
+    const block = payoutWalletBlock(
+      looking({ wallet: SHAPED, problem: "It was not saved.", typed: shouted }),
+    );
+
+    expect(asCopied(block)).toContain(shouted);
+  });
+
   it("shows what was wrong with an address just refused", () => {
     const block = payoutWalletBlock(looking({ wallet: SHAPED, problem: "that was not saved" }));
 

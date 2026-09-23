@@ -490,10 +490,10 @@ td.control {
  * made a sentence about the last-call column look like an alert, and there are
  * two of them under one table.
  *
- * A notice is the second: something the merchant has to act on, or a claim the
- * page is making about the stack it belongs to. That one is a tinted panel on
- * the notice pair, and `.callout` and the banner are now literally the same
- * rule rather than two copies of it that happened to agree.
+ * A notice is the second: something the merchant has to act on. That one is a
+ * tinted panel on the notice pair. The claim a page makes about the stack it
+ * belongs to is drawn in the same pair but not in this panel — it is a band
+ * across the window, below.
  */
 .note {
   margin: 0 0 32px;
@@ -504,8 +504,7 @@ td.control {
   line-height: 1.55;
 }
 
-.callout,
-.stack-note {
+.callout {
   margin: 0 0 32px;
   border-left: 3px solid var(--notice-ink);
   border-radius: var(--radius-card);
@@ -513,6 +512,17 @@ td.control {
   background: var(--notice-bg);
   color: var(--notice-ink);
   line-height: 1.55;
+}
+
+/*
+ * The notice at the top of a working screen — the one about a seller name not
+ * chosen yet — stands clear of the bar above it and no further from the heading
+ * under it. With the margin every notice takes it was flush against the bar's
+ * rule, where it read as a piece of the bar, and 64 pixels over the heading,
+ * because the heading's own block brings its 32 with it.
+ */
+.container > .callout:first-child {
+  margin: 32px 0 0;
 }
 
 /*
@@ -542,9 +552,48 @@ td.control {
   font-size: 0.875rem;
 }
 
+/* The ways on from an empty cards screen. Each link is a whole item that moves
+   to the next line when it does not fit beside the one before, rather than two
+   links run together in one sentence with a dot between them that a narrow
+   screen broke anywhere — the dot starting a line, the second link split in
+   two. The margin under them is the one every note takes. */
+.onward {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin: 0 0 32px;
+}
+
+/*
+ * The sentence that says which stack this is, on every page but a live one:
+ * a band across the whole window above the bar, in the notice pair, with its
+ * words lined up over the content under it.
+ *
+ * It was the notice panel, rounded and ruled down its left edge, inside the
+ * frame and with nothing above it — so it sat on the top edge of the window
+ * with its rounded corners cut off by that edge, and on a phone its four lines
+ * at the panel's padding took 120 pixels before the lockup. A band has no
+ * corners for the edge to cut, and at the small print's size and a band's
+ * padding it is three lines on a phone.
+ */
+.stack-note {
+  border-bottom: var(--hairline) solid var(--line);
+  background: var(--notice-bg);
+  color: var(--notice-ink);
+}
+
 .surface-words {
   margin: 0;
-  font-size: 0.875rem;
+  padding-block: 10px;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .surface-words {
+    padding-block: 8px;
+    font-size: 0.75rem;
+  }
 }
 
 .summary {
@@ -688,7 +737,18 @@ td.control {
   width: 100%;
 }
 
-.problem {
+/* The fail colour on a sentence, for two things a merchant must not read past:
+   something they asked for that did not happen — a refusal, a change that was
+   not kept, a wait before the next link — and money that did not move, the
+   line over the orders and receipts that says the rows are test purchases, in
+   the colour of the test tag beside each amount. Why somebody is on a page is
+   neither, and is not drawn in it.
+
+   Written against the paragraph rather than the class alone: a gate card's
+   paragraphs and a heading block's are muted by rules of that same weight, and
+   a bare class lost to both, so these sentences came out grey at the size of
+   the small print beside them. */
+p.problem {
   margin-top: 16px;
   color: var(--fail);
   font-size: 0.875rem;
@@ -768,7 +828,11 @@ h2 {
 }
 
 /* The form that issues a key: one box and one button, side by side, sitting
-   where a table would. */
+   where a table would. The same row carries every form in the cabinet, and its
+   button is the full-height one: the box is 48 pixels and so is the button, so
+   the two stand on one line the way the scanner's address box and its button
+   do. The compact button is a table row's, and beside a box it hung a third
+   lower than the box it belonged to. */
 .issue {
   display: flex;
   align-items: flex-end;
@@ -783,10 +847,21 @@ h2 {
 }
 
 /* The box takes the room its row has and the button sits beside it; under about
-   320 pixels of box the two stack instead. */
+   240 pixels of box the two stack instead. That is low enough for a settings
+   panel, half the frame wide, to keep its box and its full-height button on one
+   line, and high enough that a phone stacks them. */
 .issue > div {
-  flex: 1 1 320px;
+  flex: 1 1 240px;
   min-width: 0;
+}
+
+/* A refusal is a line of its own under the box and its button, never inside
+   the box's cell: the row lines its items up at the bottom, so a sentence in
+   that cell made the cell taller and carried the button down beside the last
+   line of red instead of beside the box it saves. */
+.issue > p {
+  flex-basis: 100%;
+  margin: 0;
 }
 
 /*
@@ -838,18 +913,28 @@ h2 {
   text-transform: uppercase;
 }
 
-.saved .address {
+/* The address itself, whole and in fours: the saved one in the box above, and
+   the one a refusal hands back under the form, so that it too can be read
+   against a wallet at any width rather than only as far as the box it was
+   pasted into shows it. */
+.address {
   margin-top: 10px;
   font-family: var(--font-mono);
   font-size: 0.9375rem;
   overflow-wrap: anywhere;
 }
 
-.saved .address .lead {
+.address .lead {
   color: var(--muted);
 }
 
-.saved .address .quad {
+/* A group is one unit on a line: the line may break between two groups and
+   never inside one. With the groups as plain spans a narrow screen broke
+   wherever the width ran out, "9f" at the end of one line and "33" at the
+   start of the next, which is the one split a person reading against their
+   wallet cannot read past. */
+.address .quad {
+  display: inline-block;
   margin-right: 0.5em;
 }
 
@@ -890,7 +975,37 @@ h2 {
 }
 
 .settings-panel > .saved {
-  margin: 18px 24px 0;
+  margin: 16px 24px 8px;
+}
+
+/*
+ * One size and one step for the words in a panel. The four panels were written
+ * apart and printed their sentences at three sizes — plain paragraphs at the
+ * page's 16 pixels, the quiet ones at 14, some panels all of one and some a mix
+ * — with 6 pixels between two sentences in one panel and 16 in the next. A
+ * panel is a heading, a few sentences and a control, so every sentence in it is
+ * the quiet size, a sentence apart from the one before it.
+ *
+ * The payout panel draws its rule as a second lede after the first, or after
+ * the saved address; that lede continues the one above rather than opening a
+ * section, so it takes no inset of its own.
+ */
+.settings-panel .lede p {
+  margin-top: 8px;
+  font-size: 0.875rem;
+}
+
+.settings-panel > .lede + .lede,
+.settings-panel > .saved + .lede {
+  padding-top: 0;
+}
+
+/* A panel that ends in words rather than a form ends the same distance from its
+   edge a form does. Without this the last line of the shop panel sat on the
+   panel's bottom border, since it is the form below a lede that carries the
+   bottom inset and that panel has none. */
+.settings-panel > .lede:last-child {
+  padding-bottom: 24px;
 }
 
 .integration-shell {
