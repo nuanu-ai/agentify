@@ -153,14 +153,12 @@ export const page = (chrome: Chrome): string => `<!doctype html>
 ${surface(chrome.mode)}
   <header class="top">
     <div class="top-inner container">
-      <div class="bar-left">
-        ${brandLockup("/")}
-        <nav class="tabs" aria-label="Your cabinet">${TABS.map(([tab, label]) =>
-          tab === chrome.tab
-            ? `<span class="here" aria-current="page">${label}</span>`
-            : `<a href="${escaped(chrome.base)}/${tab}">${label}</a>`,
-        ).join("")}</nav>
-      </div>
+      ${brandLockup("/")}
+      <nav class="tabs" aria-label="Your cabinet">${TABS.map(([tab, label]) =>
+        tab === chrome.tab
+          ? `<span class="here" aria-current="page">${label}</span>`
+          : `<a href="${escaped(chrome.base)}/${tab}">${label}</a>`,
+      ).join("")}</nav>
       ${chrome.selling === undefined ? "" : state(chrome.selling)}
     </div>
   </header>

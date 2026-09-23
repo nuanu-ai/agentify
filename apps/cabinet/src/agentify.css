@@ -78,10 +78,12 @@ textarea {
  * location is exactly what a tab row is for. The inset rule under the current
  * tab stays: it is the only active marker available and it is quiet.
  *
- * Nothing in this bar wraps. The tabs are a row and a row that becomes two rows
- * moves everything under it by a line, which on a sticky bar means the page
- * changes height as you navigate it. Under 760 the tab row scrolls sideways
- * instead, and the lockup takes the smaller size the scanner's does.
+ * Every tab is always on the screen. The five of them beside the lockup and the
+ * selling light need about 750 pixels, so under 860 the tabs take a row of
+ * their own under the other two, on every page alike — the bar is one height
+ * per width rather than a height that changes as you move between tabs. The
+ * tabs used to scroll sideways instead, inside a strip with no scrollbar, and
+ * on a phone that hid three of the five, often the one you were on.
  */
 .top {
   position: sticky;
@@ -97,25 +99,17 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
-}
-
-.bar-left {
-  display: flex;
-  align-items: center;
   gap: 36px;
-  min-width: 0;
-  align-self: stretch;
 }
 
+/* The tabs take the room between the lockup and the light, and wrap onto a
+   second line where even their own row is too narrow for them. */
 .tabs {
+  flex: 1;
   display: flex;
-  gap: 4px;
-  min-width: 0;
+  flex-wrap: wrap;
+  gap: 0 4px;
   align-self: stretch;
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  scrollbar-width: none;
 }
 
 .tabs a,
@@ -137,6 +131,29 @@ textarea {
   color: var(--fg);
   font-weight: 500;
   box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* The lockup and the light on the first row, the tabs under them with the first
+   one's word in line with the lockup. */
+@media (max-width: 860px) {
+  .top-inner {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    padding-top: 14px;
+  }
+
+  .tabs {
+    order: 1;
+    flex-basis: 100%;
+    margin-left: -8px;
+  }
+
+  .tabs a,
+  .tabs span {
+    min-height: 44px;
+    padding: 0 8px;
+    font-size: 0.8125rem;
+  }
 }
 
 /*
@@ -649,21 +666,6 @@ td.control {
 }
 
 @media (max-width: 760px) {
-  .top-inner {
-    min-height: 60px;
-    gap: 14px;
-  }
-
-  .bar-left {
-    gap: 16px;
-  }
-
-  .tabs a,
-  .tabs span {
-    padding: 0 10px;
-    font-size: 0.8125rem;
-  }
-
   .gate-card {
     padding: 28px 22px;
   }
