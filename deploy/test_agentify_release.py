@@ -152,7 +152,10 @@ class ReleaseTest(unittest.TestCase):
     def release(self, name, *flags, exit_code=0):
         output = io.StringIO()
         with contextlib.ExitStack() as stack:
-            stack.enter_context(mock.patch.dict(os.environ, {"FAKE_ACTIVATE_LOG": str(self.log), "FAKE_ACTIVATE_EXIT": str(exit_code)}))
+            # INVOCATION_ID is how a process knows systemd started it: these
+            # runs are the release inside its unit, not a person's launcher.
+            environment = {"FAKE_ACTIVATE_LOG": str(self.log), "FAKE_ACTIVATE_EXIT": str(exit_code), "INVOCATION_ID": "test"}
+            stack.enter_context(mock.patch.dict(os.environ, environment))
             stack.enter_context(contextlib.redirect_stdout(output))
             stack.enter_context(mock.patch.object(RELEASE, "fetch_json", self.github))
             code = RELEASE.main(["--config", str(self.config), *flags, name])
@@ -172,6 +175,12 @@ class ReleaseTest(unittest.TestCase):
         self.assertEqual(len(self.activations()), before)
         self.assertIn(word, self.said)
 
+    def waited(self, name, word, *flags):
+        self.assertEqual(self.release(name, *flags), 75, self.said)
+        self.assertEqual(self.activations(), [])
+        self.assertIsNone(self.recorded("failed"))
+        self.assertIn(word, self.said)
+
 
 class TheDigestRule(ReleaseTest):
     """How the five images of a commit are found, on either channel."""
@@ -183,6 +192,12 @@ class TheDigestRule(ReleaseTest):
         self.assertEqual(Path(activation["cwd"]).resolve(), (self.state / "checkouts" / self.first).resolve())
         self.assertEqual(activation["images"], environment(digests(self.first_run)))
         self.assertEqual(self.recorded("current"), self.first)
+
+    def test_takes_an_annotated_tag_at_the_commit_it_points_to(self):
+        self.git("tag", "-a", "-m", "annotated", "an-annotated-tag", self.first)
+        self.push("refs/tags/an-annotated-tag")
+        self.assertEqual(self.release("an-annotated-tag"), 0, self.said)
+        self.assertEqual(self.activations()[-1]["argv"], ["test", self.first])
 
     def test_takes_a_tag_or_a_full_sha_on_test(self):
         self.tag("some-tag", self.first)
@@ -243,18 +258,20 @@ class TheDigestRule(ReleaseTest):
 
     def test_refuses_two_successful_builds_of_one_commit(self):
         self.github.built(self.first, branch="another")
-        self.refused("main", "exactly one")
+        self.refused("main", "choose")
 
     def test_refuses_a_failed_build(self):
         self.github.image_runs.clear()
         self.github.built(self.first, conclusion="failure")
-        self.refused("main", "exactly one")
+        self.refused("main", "did not succeed")
 
-    def test_refuses_a_commit_that_was_never_a_pushed_branch_head(self):
+    def test_a_commit_with_no_build_listed_is_a_wait_that_says_it_may_never_come(self):
+        # GitHub lists a build a few seconds after the push, and never for a
+        # commit that was not the head of one: from here the two look the same.
         inner = self.commit("inner")
         self.commit("head")
         self.push("main")
-        self.refused(inner, "head of a pushed branch")
+        self.waited(inner, "head of a pushed branch")
 
     def test_a_manual_run_waits_while_the_build_is_running_and_changes_nothing(self):
         second = self.commit("second")
@@ -296,7 +313,7 @@ class Production(ReleaseTest):
         self.github.built(side, branch="side")
         self.github.ci(side)
         self.tag("app-v2", side)
-        self.refused("app-v2", "head of a push to main")
+        self.waited("app-v2", "head of a push to main")
 
     def test_ignores_a_build_of_another_branch_that_github_returns_anyway(self):
         self.git("checkout", "-q", "-b", "side")
@@ -306,7 +323,7 @@ class Production(ReleaseTest):
         self.tag("app-v2", side)
         run = self.github.built(side, branch="side")
         self.github.noise = [self.github.image_runs[run - 1]]
-        self.refused("app-v2", "head of a push to main")
+        self.waited("app-v2", "head of a push to main")
 
     def test_waits_for_ci_and_refuses_a_failed_one(self):
         self.github.ci_runs[:] = []
@@ -355,7 +372,7 @@ class TheTimer(ReleaseTest):
         run = self.github.built(second, status="in_progress", conclusion=None)
         self.tag("deploy-test", second)
 
-        self.assertEqual(self.tick(), 0, self.said)
+        self.assertEqual(self.tick(), 75, self.said)
         self.assertEqual(self.activations(), [])
         self.assertIsNone(self.recorded("failed"))
 
@@ -372,19 +389,46 @@ class TheTimer(ReleaseTest):
         self.assertEqual((len(self.activations()), self.said), (1, ""))
 
     def test_records_a_refusal_and_does_not_ask_again_every_minute(self):
-        inner = self.commit("inner")
-        self.commit("head")
+        second = self.commit("second")
         self.push("main")
-        self.tag("deploy-test", inner)
+        self.github.built(second, conclusion="failure")
+        self.tag("deploy-test", second)
         self.assertEqual(self.tick(), 1, self.said)
         calls = len(self.github.calls)
 
         self.assertEqual(self.tick(), 0)
         self.assertEqual((len(self.github.calls), self.said), (calls, ""))
 
-    def test_tries_again_at_the_next_tick_when_activation_found_its_lock_held(self):
+    def test_waits_thirty_minutes_for_a_build_to_be_listed_and_then_records_a_failure(self):
+        inner = self.commit("inner")
+        self.commit("head")
+        self.push("main")
+        self.tag("deploy-test", inner)
+        start = RELEASE.time.time()
+        for minutes, expected in ((0, 75), (29, 75), (30, 1)):
+            with mock.patch.object(RELEASE.time, "time", return_value=start + minutes * 60):
+                self.assertEqual(self.tick(), expected, self.said)
+        self.assertEqual(self.recorded("failed"), inner)
+        self.assertIn("30 minutes", self.said)
+        self.assertEqual(self.tick(), 0)
+
+    def test_a_new_revision_gets_its_own_thirty_minutes(self):
+        inner = self.commit("inner")
+        other = self.commit("other")
+        self.commit("head")
+        self.push("main")
+        start = RELEASE.time.time()
+        self.tag("deploy-test", inner)
+        with mock.patch.object(RELEASE.time, "time", return_value=start):
+            self.assertEqual(self.tick(), 75, self.said)
+        self.tag("deploy-test", other)
+        with mock.patch.object(RELEASE.time, "time", return_value=start + 40 * 60):
+            self.assertEqual(self.tick(), 75, self.said)
+        self.assertIsNone(self.recorded("failed"))
+
+    def test_images_that_did_not_arrive_are_a_wait_and_not_a_failure(self):
         self.tag("deploy-test", self.first)
-        self.assertEqual(self.tick(exit_code=75), 0, self.said)
+        self.assertEqual(self.tick(exit_code=75), 75, self.said)
         self.assertIsNone(self.recorded("failed"))
         self.assertEqual(self.tick(), 0, self.said)
         self.assertEqual(len(self.activations()), 2)
@@ -395,7 +439,7 @@ class TheTimer(ReleaseTest):
         self.state.mkdir()
         with (self.state / "release.lock").open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            self.assertEqual(self.tick(), 0)
+            self.assertEqual(self.tick(), 75)
             self.assertEqual(self.release("deploy-test"), 75)
         self.assertEqual(self.activations(), [])
 
@@ -434,6 +478,15 @@ class AManualRun(ReleaseTest):
         self.refused("main", "predates")
         self.assertEqual(self.recorded("failed"), older)
 
+    def test_leaves_its_state_readable_by_anyone_on_the_host(self):
+        previous = os.umask(0o077)
+        try:
+            self.assertEqual(self.release("main"), 0, self.said)
+        finally:
+            os.umask(previous)
+        self.assertEqual(self.state.stat().st_mode & 0o777, 0o755)
+        self.assertEqual((self.state / "current").stat().st_mode & 0o777, 0o644)
+
     def test_refuses_a_name_the_repository_does_not_have(self):
         self.refused("no-such-branch", "names nothing")
         self.refused("../etc/passwd", "not a tag")
@@ -444,6 +497,50 @@ class AManualRun(ReleaseTest):
         self.config.write_text(json.dumps(config))
         self.assertEqual(self.release("main"), 1)
         self.assertEqual(self.activations(), [])
+
+
+class APersonsRun(unittest.TestCase):
+    """Outside a systemd unit the command hands the release to one and follows it."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        root = Path(self.temp.name)
+        self.bin, self.calls = root / "bin", root / "calls"
+        self.bin.mkdir()
+        self.config = root / "release.json"
+        self.config.write_text(json.dumps({"channel": "test", "repository": "unused", "stateDirectory": str(root / "state")}))
+        for name, body in {
+            "systemctl": 'exit "${FAKE_ACTIVE:-3}"',
+            "systemd-run": 'printf "%s\\n" "$@" > "$FAKE_CALLS"; exit "${FAKE_UNIT_EXIT:-0}"',
+            "journalctl": "exit 0",
+        }.items():
+            (self.bin / name).write_text(f"#!/bin/sh\n{body}\n")
+            (self.bin / name).chmod(0o755)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def run_by_hand(self, **environment):
+        path = f"{self.bin}{os.pathsep}{os.environ['PATH']}"
+        with mock.patch.dict(os.environ, {"PATH": path, "FAKE_CALLS": str(self.calls), **environment}):
+            os.environ.pop("INVOCATION_ID", None)
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                code = RELEASE.main(["--config", str(self.config), "my-branch"])
+        return code, output.getvalue()
+
+    def test_the_release_runs_in_its_own_unit_with_the_same_arguments_and_its_exit_status(self):
+        code, said = self.run_by_hand(FAKE_UNIT_EXIT="3")
+        self.assertEqual(code, 3)
+        asked = self.calls.read_text().splitlines()
+        self.assertIn("--unit=agentify-release-test.service", asked)
+        self.assertEqual(asked[-3:], ["--config", str(self.config), "my-branch"])
+        self.assertIn("journalctl -u agentify-release-test.service", said)
+
+    def test_a_release_already_running_is_a_wait_that_starts_nothing(self):
+        code, said = self.run_by_hand(FAKE_ACTIVE="0")
+        self.assertEqual(code, 75)
+        self.assertFalse(self.calls.exists())
+        self.assertIn("already running", said)
 
 
 class GitHubUnreachable(unittest.TestCase):
