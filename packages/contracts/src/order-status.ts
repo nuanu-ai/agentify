@@ -92,7 +92,14 @@ export const ORDER_STATUSES = Object.freeze([
   "expired",
   /** The merchant left, and orders still open closed with them. */
   "cancelled",
-  /** The money moved and the delivery did not happen. */
+  /**
+   * The money moved and the goods have not come: the merchant owes the buyer
+   * the goods or the money back. Not an ending, and it carries no deadline of
+   * its own. Goods the merchant delivers after it still reach the buyer, settle
+   * the debt and make the order `delivered`; how a refund is paid back and
+   * reported is not decided, and until it is nothing moves an order on to
+   * `refunded`.
+   */
   "refund_due",
   /** That debt has since been paid back to the buyer. */
   "refunded",

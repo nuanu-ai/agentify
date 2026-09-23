@@ -266,8 +266,8 @@ const PINS: readonly Pin[] = [
   },
   {
     // The agent's side of the same number: how long an order whose goods come
-    // later can run before it ends, said where the agent reads about the route
-    // it collects them on.
+    // later can run before the merchant owes a refund, said where the agent
+    // reads about the route it collects them on.
     what: "the same, told to the agent where it comes back for goods that come later",
     page: "API_ROUTES.get_order_status.description",
     text: API_ROUTES.get_order_status.description,
