@@ -32,7 +32,9 @@ aging="$(chage -l root)" || refuse "chage -l root did not say whether root's pas
 # The timers are held while the files change, and whatever is still installed
 # is started again however this ends.
 systemctl stop agentify-release.timer "agentify-pull@$channel.timer" 2>/dev/null || true
-trap 'systemctl start "agentify-pull@$channel.timer" 2>/dev/null; [[ $channel != test ]] || systemctl start agentify-release.timer 2>/dev/null; true' EXIT
+# errexit reaches into the trap, so a unit that is gone must not decide how the
+# script ends: every start in it is allowed to fail.
+trap 'systemctl start "agentify-pull@$channel.timer" 2>/dev/null || true; [[ $channel != test ]] || systemctl start agentify-release.timer 2>/dev/null || true' EXIT
 for unit in agentify-release.service "agentify-pull@$channel.service"; do
   case "$(systemctl show -p ActiveState --value "$unit" 2>/dev/null || true)" in
     activating | deactivating | reloading) refuse "$unit is releasing right now; run this again when it has finished." ;;
