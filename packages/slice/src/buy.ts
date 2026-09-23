@@ -28,10 +28,10 @@
  * prints the goods when they arrive. What it will not do is pretend the wait
  * is the purchase: when the ceiling below runs out, or the reader interrupts
  * it, the order is still the merchant's to finish and the command says where
- * to collect it rather than reporting a sale that ended. An order that runs past
- * its delivery deadline without goods is not a sale that ended either: it owes
- * a refund, the merchant can still deliver against it, and the goods then
- * arrive at the same address, so the watching goes on through it.
+ * to collect it rather than reporting a sale that ended. An order that owes a
+ * refund is not a sale that ended either: the merchant can still deliver
+ * against it, and the goods then arrive at the same address, so the watching
+ * goes on through it.
  *
  * Both answers it reads are one document — where your order stands — so the
  * purchase and the wait are read the same way here, and the only thing the
@@ -76,17 +76,17 @@ const WATCH_MS = 60_000;
 /** How often the agent's door is asked while an order is still running. */
 const ASK_EVERY_MS = 1_000;
 
-/** The word for an order past its delivery deadline without goods. */
+/** The word for a paid order whose goods have not come. */
 const OWES_A_REFUND = "refund_due";
 
 /**
  * The words under which goods can still arrive at the status address.
  *
- * `in_progress` is a purchase that has not finished. `refund_due` is one that
- * ran past its delivery deadline without goods, and it is here because it is
- * not an ending: the merchant owes the buyer the goods or the money back, a
- * late delivery is accepted and settles that debt, and the goods then appear at
- * the same address. Every other word is an ending of some kind, so watching
+ * `in_progress` is a purchase that has not finished. `refund_due` is a paid
+ * order whose goods have not come — its deadline passed, or the merchant
+ * refused or left — and it is here because it is not an ending: the merchant
+ * owes the buyer the goods or the money back, a late delivery is accepted and
+ * settles that debt, and the goods then appear at the same address. Every other word is an ending of some kind, so watching
  * stops on it and the command prints whatever it was told rather than deciding
  * what it meant.
  */
@@ -342,7 +342,7 @@ const look = async (): Promise<OrderStatus> => {
     if (seen.state === OWES_A_REFUND && !toldOfTheDebt) {
       toldOfTheDebt = true;
       console.log(
-        `[buyer] ${orderId} is past its delivery deadline without goods: the merchant now owes the buyer the goods or the money back. Goods the merchant delivers late still arrive at ${where}, so this goes on watching`,
+        `[buyer] ${orderId} owes a refund: the merchant owes the buyer the goods or the money back, and the word does not say whether the money has already gone back. Goods the merchant delivers late still arrive at ${where}, so this goes on watching`,
       );
     }
     return seen;

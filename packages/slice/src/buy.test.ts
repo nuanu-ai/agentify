@@ -17,9 +17,10 @@
  * printed "closed" at the debt and left had told its operator the purchase was
  * over while it was still going.
  *
- * Every document this server hands out is held to the contract's schema, so a
- * run that goes wrong here goes wrong for the buyer's reasons and not because
- * this file wrote an answer no gateway would write.
+ * The catalog page and every order document this server hands out are held to
+ * the contract's schema, so a run that goes wrong here goes wrong for the
+ * buyer's reasons and not because this file wrote an answer no gateway would
+ * write.
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
