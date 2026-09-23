@@ -220,6 +220,8 @@ h2 {
   border-bottom: var(--hairline) solid var(--line);
 }
 
+/* The exchange a status was asked about outside any purchase is titled by the
+   address it was asked at, so this has to wrap an address as well. */
 .panel > header .side {
   display: flex;
   align-items: center;
@@ -227,6 +229,7 @@ h2 {
   flex-wrap: wrap;
   color: var(--muted);
   font-size: 12.5px;
+  overflow-wrap: anywhere;
 }
 
 .panel .body {
@@ -601,8 +604,12 @@ details > summary:hover {
   min-width: 0;
 }
 
+/* A line here can carry a whole address, and an address has no space to break
+   at: left to itself it runs past a phone's width and the page scrolls
+   sideways. */
 .beat .head {
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 .beat .head .mono {

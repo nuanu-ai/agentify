@@ -731,6 +731,13 @@ services:
       # is a hostname, and the host side is one interface rather than every one
       # — `192.0.2.10:443:443` is a door open to the edge that passes SNI to it
       # and to nothing else on the machine.
+      #
+      # The mapping moves the door and not the address the stack names itself
+      # by, which follows AGENTIFY_PUBLIC_ORIGIN or AGENTIFY_HOST_PORT and cannot
+      # be read out of a mapping. Set AGENTIFY_PUBLIC_ORIGIN beside it, or every
+      # status_url, payment challenge and cabinet link keeps naming localhost on
+      # AGENTIFY_HOST_PORT, 8080 by default — on a laptop, possibly a stack that
+      # is not this one.
       - "${AGENTIFY_WEB_PUBLISH:-${AGENTIFY_HOST_PORT:-8080}:8080}"
     environment:
       # A bare port locally, which is what keeps Caddy's automatic HTTPS off; a

@@ -92,7 +92,18 @@ export const ORDER_STATUSES = Object.freeze([
   "expired",
   /** The merchant left, and orders still open closed with them. */
   "cancelled",
-  /** The money moved and the delivery did not happen. */
+  /**
+   * The money moved and the goods have not come: the merchant owes the buyer
+   * the goods or the money back. Not an ending, and it carries no deadline of
+   * its own. Goods the merchant delivers after it still reach the buyer, settle
+   * the debt and make the order `delivered`.
+   *
+   * What it cannot say is whether the money has already gone back. The
+   * merchant pays a refund from their own wallet and the gateway has no way yet
+   * to record that they did, so until it has one nothing moves an order on to
+   * `refunded`, and a buyer the merchant has already paid back still reads
+   * this word.
+   */
   "refund_due",
   /** That debt has since been paid back to the buyer. */
   "refunded",
