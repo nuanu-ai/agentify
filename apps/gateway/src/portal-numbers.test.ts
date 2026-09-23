@@ -27,9 +27,15 @@
  * a merchant's own supplier and "at most five" about tags, and neither is ours.
  * Where a page says the same thing twice, every occurrence is checked, so two
  * paragraphs cannot come to disagree with each other either.
+ *
+ * One reader is not the merchant and reads no page. An agent learns what a
+ * route does from the contract's route table, and where a description there
+ * names one of these numbers it is held here the same way, read from the
+ * description itself rather than from a copy of its sentence.
  */
 
 import { readFileSync } from "node:fs";
+import { API_ROUTES } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
 
@@ -96,9 +102,15 @@ function capturedBy(page: string, anchor: RegExp): string[] {
 }
 
 interface Pin {
-  /** The promise this sentence makes to the merchant. */
+  /** The promise this sentence makes to its reader. */
   readonly what: string;
+  /** Where the sentence is published, and the file it is read from when `text` is absent. */
   readonly page: string;
+  /**
+   * The published text itself, for a sentence that lives somewhere other than a
+   * page of the portal — a description in the contract's route table.
+   */
+  readonly text?: string;
   /** The sentence, with the number as its one capture group. */
   readonly anchor: RegExp;
   readonly reads: Reads;
@@ -253,6 +265,17 @@ const PINS: readonly Pin[] = [
     is: deadlines.defaultAsyncFulfillmentMs,
   },
   {
+    // The agent's side of the same number: how long an order whose goods come
+    // later can run before it ends, said where the agent reads about the route
+    // it collects them on.
+    what: "the same, told to the agent where it comes back for goods that come later",
+    page: "API_ROUTES.get_order_status.description",
+    text: API_ROUTES.get_order_status.description,
+    anchor: /fulfill_deadline_seconds where the card names one, and a (\w+) where it names none/,
+    reads: "period",
+    is: deadlines.defaultAsyncFulfillmentMs,
+  },
+  {
     what: "the confirmation deadline a card leaves out, in the deadline reference",
     page: "apps/docs/orders.md",
     anchor: /a deadline of its own — an (\w+), where the card names none/,
@@ -294,7 +317,7 @@ const PINS: readonly Pin[] = [
 describe("every number the portal names is the number this gateway ships", () => {
   for (const pin of PINS) {
     it(`${pin.what} (${pin.page})`, () => {
-      const captured = capturedBy(pageText(pin.page), pin.anchor);
+      const captured = capturedBy(pin.text ?? pageText(pin.page), pin.anchor);
 
       // A dead anchor is the failure this file exists to make loud. Without
       // this the pin would pass on a page that had stopped saying anything at
@@ -307,7 +330,7 @@ describe("every number the portal names is the number this gateway ships", () =>
       for (const word of captured) {
         expect(
           quantityOf(word, pin.reads),
-          `${pin.page} tells the merchant "${word}" where the configuration says ${pin.is}`,
+          `${pin.page} tells its reader "${word}" where the configuration says ${pin.is}`,
         ).toBe(pin.is);
       }
     });
