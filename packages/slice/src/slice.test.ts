@@ -22,8 +22,10 @@ import { ScriptedFacilitator } from "@agentify/gateway";
 import { WORKER_PROBLEM_KINDS } from "@nuanu-ai/agentify";
 import {
   AgentOrderStatusSchema,
+  API_ROUTES,
   type Card,
   deliveryCheckFor,
+  expandPath,
   ReceiptSchema,
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -231,11 +233,18 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     expect(merchant.problems).toStrictEqual([]);
   }, 20_000);
 
-  it("hands the goods to the agent through its own door, on the order identifier alone", async () => {
+  it("hands the goods to the agent at the address its purchase answer named, and nowhere it had to guess", async () => {
     // ADR-0011's door, walked by the kind of code it exists for. The test
     // above collects the same sale through the merchant's own routes, which is
     // the merchant's view of it; this one is the buyer's, and it is the only
     // view an agent has.
+    //
+    // What the agent holds after paying is the purchase answer and nothing
+    // else, so the address it comes back to is the one that answer names —
+    // this buyer writes no address for an order's status of its own, and a
+    // gateway that named the wrong one would leave it holding a paid order it
+    // cannot collect. That is the promise here, walked against a gateway that
+    // is really listening at the address it names.
     //
     // The merchant still has to deliver, and that call below is this test
     // driving the world rather than the agent reading it — an agent cannot
@@ -248,11 +257,17 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
 
     const bought = await buyer.buy(esim.id, { email: "buyer@example.com" });
     expect(bought.status).toBe(200);
-    const orderId = AgentOrderStatusSchema.parse(bought.body).order_id;
+    const answered = AgentOrderStatusSchema.parse(bought.body);
+    const orderId = answered.order_id;
+
+    // The buyer hands its caller the address exactly as the answer spelled it.
+    expect(bought.statusUrl).toBe(answered.status_url);
+    const where = bought.statusUrl;
+    if (where === null) throw new Error("the purchase answer named nowhere to come back to");
 
     // Paid for and not delivered. The word for a purchase still running exists
     // so that an agent does not read a running sale as a refused one.
-    const waiting = await buyer.status(orderId);
+    const waiting = await buyer.status(where);
     expect(waiting.status).toBe(200);
     expect(waiting.state).toBe("in_progress");
     expect(waiting.delivered).toBeNull();
@@ -266,18 +281,18 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     });
 
     // The agent comes back the only way it can, and the goods are there.
-    let collected = await buyer.status(orderId);
+    let collected = await buyer.status(where);
     const deadline = Date.now() + 10_000;
     while (collected.state === "in_progress" && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 20));
-      collected = await buyer.status(orderId);
+      collected = await buyer.status(where);
     }
 
     expect(collected.state).toBe("delivered");
     expect(() => deliveryCheckFor(EUROPE_ESIM).parse(collected.delivered)).not.toThrow();
     expect(fields(collected.delivered).activation_code).toMatch(/^LPA:/);
 
-    // The answer is the buyer's own and not the merchant's: the five fields an
+    // The answer is the buyer's own and not the merchant's: the fields an
     // agent is owed and nothing beside them. A door that handed over more
     // would be a way of reading somebody else's business off an identifier.
     expect(Object.keys(fields(collected.body)).sort()).toStrictEqual([
@@ -285,6 +300,7 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
       "order_id",
       "price",
       "status",
+      "status_url",
       "test",
     ]);
     expect(fields(fields(collected.body).price).amount).toBe("8.00");
@@ -323,14 +339,15 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
       expect(bought.status, `${what}: ${JSON.stringify(bought.body)}`).toBe(200);
 
       const purchased = fields(bought.body);
-      const orderId = purchased.order_id;
-      if (typeof orderId !== "string") throw new Error(`${what}: the purchase named no order`);
+      if (bought.statusUrl === null) {
+        throw new Error(`${what}: the purchase named nowhere to read the order again`);
+      }
 
       // Nothing moves either order between its two reads. The rented number is
       // finished by the time the purchase answers, and the eSIM is delivered by
       // an explicit call this test has not made — so both doors are describing
       // the same standing order and every field may be compared.
-      const collected = await buyer.status(orderId);
+      const collected = await buyer.status(bought.statusUrl);
 
       expect(() => AgentOrderStatusSchema.parse(bought.body), what).not.toThrow();
       expect(() => AgentOrderStatusSchema.parse(collected.body), what).not.toThrow();
@@ -364,14 +381,13 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     const email = "buyer@example.com";
     const bought = await buyer.buy(esim.id, { email });
     const purchased = fields(bought.body);
-    const orderId = purchased.order_id;
-    if (typeof orderId !== "string") throw new Error("the purchase named no order");
+    if (bought.statusUrl === null) throw new Error("the purchase named nowhere to read it again");
 
-    const collected = await buyer.status(orderId);
-    const five = ["delivered", "order_id", "price", "status", "test"];
+    const collected = await buyer.status(bought.statusUrl);
+    const owed = ["delivered", "order_id", "price", "status", "status_url", "test"];
 
-    expect(Object.keys(purchased).sort()).toStrictEqual(five);
-    expect(Object.keys(fields(collected.body)).sort()).toStrictEqual(five);
+    expect(Object.keys(purchased).sort()).toStrictEqual(owed);
+    expect(Object.keys(fields(collected.body)).sort()).toStrictEqual(owed);
 
     // Read off the whole body rather than off a field name, because the cost
     // is the value escaping and not the name it escaped under.
@@ -387,7 +403,12 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     // guess is answered identically, so nobody counts the orders behind it by
     // asking. If this ever answered two different ways, the door would be a
     // way of telling a real order from an invented one.
-    const invented = await buyer.status("ord_never_issued");
+    //
+    // No purchase names these two, so their addresses are spelled from the
+    // contract's route table: what is probed is the door, not an answer.
+    const statusAt = (orderId: string): string =>
+      `${booted.baseUrl}${expandPath(API_ROUTES.get_order_status.path, { order_id: orderId })}`;
+    const invented = await buyer.status(statusAt("ord_never_issued"));
 
     expect(invented.status).toBe(404);
     expect(invented.state).toBeNull();
@@ -396,7 +417,7 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
       error: { code: "no_such_order", message: "there is no such order", retryable: false },
     });
 
-    const another = await buyer.status("ord_nor_this_one");
+    const another = await buyer.status(statusAt("ord_nor_this_one"));
     expect(another.status).toBe(invented.status);
     expect(another.body).toStrictEqual(invented.body);
   }, 20_000);

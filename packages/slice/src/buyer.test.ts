@@ -13,7 +13,9 @@
  * nothing — and the buyer is driven against a real server on the loopback
  * interface that records the request line rather than answering it properly.
  * What is compared is what went on the wire against what the table says, so
- * this catches a rename whichever side made it.
+ * this catches a rename whichever side made it. The status address is the one
+ * the buyer does not write, and what it is compared against instead is the
+ * address the purchase answer named.
  *
  * It holds the addresses, and the one distinction this buyer draws that no
  * gateway can be made to demonstrate: an answer that arrived and made no sense
@@ -37,6 +39,32 @@ const TEST_BUYER_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d
  */
 const ORDER_BEHIND_A_BAD_PROXY = "ord_a_proxy_ate_it";
 
+/**
+ * Where this server's purchase answer says the order is collected.
+ *
+ * An address on this same server and deliberately not the contract's status
+ * route, so a buyer that went to the route anyway — or built any address of its
+ * own from the order identifier — is caught asking somewhere it was never told.
+ */
+const NAMED_BY_THE_ANSWER = "/where/the/purchase/answer/said/ord_7c1e05";
+
+/** The product whose purchase answer names an order and no address for it. */
+const ITEM_WITH_NO_ADDRESS = "itm_answered_without_an_address";
+
+/**
+ * The product whose purchase answer names an address on another origin — a
+ * second server, on a port of its own, that is not where this buyer buys.
+ */
+const ITEM_COLLECTED_ELSEWHERE = "itm_collected_on_another_origin";
+
+/**
+ * The address of an order's status on the server `base` names, spelled by the
+ * contract's route table: for the tests below that are about what the buyer
+ * does with an answer, not about where the address came from.
+ */
+const statusAt = (base: string, orderId: string): string =>
+  `${base}${expandPath(API_ROUTES.get_order_status.path, { order_id: orderId })}`;
+
 /** One request as it arrived, which is the only thing this file looks at. */
 interface Asked {
   readonly method: string;
@@ -46,9 +74,14 @@ interface Asked {
 
 const asked: Asked[] = [];
 
+/** What arrived at the second origin, kept apart from what arrived at the first. */
+const askedElsewhere: Asked[] = [];
+
 let server: Server;
+let elsewhere: Server;
 let buyer: ReturnType<typeof makeBuyer>;
 let baseUrl: string;
+let elsewhereUrl: string;
 
 beforeAll(async () => {
   server = createServer((request, response) => {
@@ -68,10 +101,33 @@ beforeAll(async () => {
     // An empty catalog page is the one answer that has to be well formed: the
     // buyer holds that one to the real schema, and a body it will not parse
     // would fail this file for a reason that has nothing to do with addresses.
+    //
+    // A purchase is answered with an order and, for every product but one, the
+    // address it is collected at. That address is the input the collection
+    // test hands the buyer, and it is the one answer here whose content an
+    // assertion leans on: the promise is that the buyer asks where it was
+    // told. The one product answered with no address is the other half — an
+    // answer that named nowhere has to come back as naming nowhere.
+    //
     // Everything else is answered with an empty object on purpose — no payment
-    // challenge, no order status — so that no assertion here can be satisfied
-    // by an answer this file wrote.
+    // challenge, no order status — so that no other assertion here can be
+    // satisfied by an answer this file wrote.
     response.setHeader("content-type", "application/json");
+    if (request.method === "POST" && request.url?.endsWith("/purchase") === true) {
+      response.end(
+        JSON.stringify(
+          request.url.includes(ITEM_WITH_NO_ADDRESS)
+            ? { order_id: "ord_7c1e05" }
+            : {
+                order_id: "ord_7c1e05",
+                status_url: `${
+                  request.url.includes(ITEM_COLLECTED_ELSEWHERE) ? elsewhereUrl : baseUrl
+                }${NAMED_BY_THE_ANSWER}`,
+              },
+        ),
+      );
+      return;
+    }
     response.end(JSON.stringify(request.url === "/x402/catalog" ? { items: [] } : {}));
   });
   server.listen(0);
@@ -79,6 +135,23 @@ beforeAll(async () => {
 
   const { port } = server.address() as AddressInfo;
   baseUrl = `http://127.0.0.1:${port}`;
+
+  // The second origin records what reaches it and answers nothing in
+  // particular, for the same reason the first answers most calls with an
+  // empty object: the one thing asserted about it is who knocked.
+  elsewhere = createServer((request, response) => {
+    askedElsewhere.push({
+      method: request.method ?? "",
+      path: request.url ?? "",
+      headers: request.headers,
+    });
+    response.setHeader("content-type", "application/json");
+    response.end("{}");
+  });
+  elsewhere.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => elsewhere.once("listening", resolve));
+  elsewhereUrl = `http://127.0.0.1:${(elsewhere.address() as AddressInfo).port}`;
+
   buyer = makeBuyer({
     baseUrl,
     privateKey: TEST_BUYER_KEY,
@@ -87,13 +160,16 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await new Promise<void>((resolve, reject) => {
-    server.close((error) => (error === undefined ? resolve() : reject(error)));
-  });
+  for (const one of [server, elsewhere]) {
+    await new Promise<void>((resolve, reject) => {
+      one.close((error) => (error === undefined ? resolve() : reject(error)));
+    });
+  }
 });
 
 beforeEach(() => {
   asked.length = 0;
+  askedElsewhere.length = 0;
 });
 
 /** The one request a call made, or a failure naming how many there were. */
@@ -133,20 +209,52 @@ describe("the addresses this buyer writes by hand", () => {
     expect(priced.path).toBe(bought.path);
   });
 
-  it("collects an order at the door ADR-0011 mounted for the agent", async () => {
-    const orderId = "ord_7c1e05";
+  it("collects an order at the address its purchase answer named, and at no address of its own", async () => {
+    // The status address is the one this buyer does not write. An agent that
+    // was given the portal and no package of ours cannot spell the route from
+    // an order identifier, and neither does this one: it asks where the answer
+    // to its own purchase said to ask, and a gateway that named the wrong place
+    // is a gateway whose orders this buyer cannot collect.
+    const bought = await buyer.buy("itm_9f2c4a", { email: "buyer@example.com" });
 
-    await buyer.status(orderId);
+    expect(bought.statusUrl).toBe(`${baseUrl}${NAMED_BY_THE_ANSWER}`);
+
+    asked.length = 0;
+    await buyer.status(bought.statusUrl ?? "");
 
     const one = theOne();
     expect(one.method).toBe(API_ROUTES.get_order_status.method);
-    expect(one.path).toBe(expandPath(API_ROUTES.get_order_status.path, { order_id: orderId }));
+    expect(one.path).toBe(NAMED_BY_THE_ANSWER);
+  });
 
-    // The same address, offered without asking for it. It is what the buy
-    // command prints when it stops watching, so a reader who pastes that line
-    // is pasting the address that was being polled and not a second guess at
-    // it.
-    expect(buyer.statusUrl(orderId)).toContain(one.path);
+  it("calls the address exactly as the answer gave it, on whatever origin the answer named", async () => {
+    // The address is the answer's whole, host and port included, and not a
+    // path to be joined onto wherever this buyer happens to buy. A gateway
+    // behind a proxy, or one that serves its agents' door from another host,
+    // names an origin the buyer was never pointed at; a buyer that kept its
+    // own origin and borrowed only the path would knock on the wrong server
+    // and read its refusal as news about a paid order.
+    const bought = await buyer.buy(ITEM_COLLECTED_ELSEWHERE, {});
+
+    expect(bought.statusUrl).toBe(`${elsewhereUrl}${NAMED_BY_THE_ANSWER}`);
+
+    asked.length = 0;
+    await buyer.status(bought.statusUrl ?? "");
+
+    expect(asked).toStrictEqual([]);
+    expect(askedElsewhere.map((one) => [one.method, one.path])).toStrictEqual([
+      [API_ROUTES.get_order_status.method, NAMED_BY_THE_ANSWER],
+    ]);
+  });
+
+  it("reports an answer that named no address as naming none, rather than making one up", async () => {
+    // The negative control for the test above. An order identifier is in this
+    // answer and an address is not, and the only honest thing to hand the
+    // caller is that there is no address — an address built here from the
+    // identifier would be a guess, and it would look exactly like being told.
+    const bought = await buyer.buy(ITEM_WITH_NO_ADDRESS, {});
+
+    expect(bought.statusUrl).toBeNull();
   });
 
   it("writes an identifier into an address the way the contract writes it", async () => {
@@ -170,7 +278,7 @@ describe("an answer that arrived against a call that never landed", () => {
     // money has already moved by then, so the answer nobody can read must come
     // back as one — an answer this buyer could not read is a different thing
     // from an answer that says the purchase is over.
-    const seen = await buyer.status(ORDER_BEHIND_A_BAD_PROXY);
+    const seen = await buyer.status(statusAt(baseUrl, ORDER_BEHIND_A_BAD_PROXY));
 
     expect(seen.status).toBe(502);
     // Nothing is invented out of it: no state, no goods.
@@ -192,7 +300,7 @@ describe("an answer that arrived against a call that never landed", () => {
       maxUsd: 50,
     });
 
-    await expect(nowhere.status("ord_7c1e05")).rejects.toThrow();
+    await expect(nowhere.status(statusAt("http://127.0.0.1:1", "ord_7c1e05"))).rejects.toThrow();
   });
 });
 
@@ -205,7 +313,7 @@ describe("what this buyer never sends", () => {
     // route ends up behind the merchant's door nothing else here would notice.
     await buyer.catalog();
     await buyer.buy("itm_9f2c4a", {});
-    await buyer.status("ord_7c1e05");
+    await buyer.status(statusAt(baseUrl, "ord_7c1e05"));
 
     expect(asked).toHaveLength(3);
     for (const one of asked) {
@@ -233,13 +341,13 @@ describe("the fetch this buyer was given", () => {
     // No challenge is answered by this server, so the buyer refuses — the
     // request it made on the way is what this is about.
     await expect(watched.challenge("itm_1")).rejects.toThrow(/PAYMENT-REQUIRED/i);
-    await watched.status("ord_1");
+    await watched.status(statusAt(baseUrl, "ord_1"));
     await watched.buy("itm_1", {});
 
     expect(went).toEqual([
       "/x402/catalog",
       "/x402/itm_1/purchase",
-      "/x402/orders/ord_1/status",
+      expandPath(API_ROUTES.get_order_status.path, { order_id: "ord_1" }),
       "/x402/itm_1/purchase",
     ]);
   });

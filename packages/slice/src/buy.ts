@@ -24,11 +24,11 @@
  *
  * A card whose goods come later does not answer with them, and this command
  * does not stop there. It waits, asking the door that is the agent's own
- * (ADR-0011) with the identifier the purchase handed back, and prints the goods
- * when they arrive. What it will not do is pretend the wait is the purchase:
- * when the ceiling below runs out, or the reader interrupts it, the order is
- * still the merchant's to finish and the command says where to collect it
- * rather than reporting a sale that ended.
+ * (ADR-0011) at the address the purchase answer named in `status_url`, and
+ * prints the goods when they arrive. What it will not do is pretend the wait
+ * is the purchase: when the ceiling below runs out, or the reader interrupts
+ * it, the order is still the merchant's to finish and the command says where
+ * to collect it rather than reporting a sale that ended.
  *
  * Both answers it reads are one document — where your order stands — so the
  * purchase and the wait are read the same way here, and the only thing the
@@ -258,7 +258,7 @@ if (bought.status >= 400) {
 // the agent's own door answers with — so what the card's mode changes is which
 // of its fields is filled in, not which shape came back. The goods are there
 // where delivery happened on the call, and null where they come later; either
-// way the identifier is how this command comes back for them.
+// way the address the answer names is how this command comes back for them.
 const answered = bought.body as {
   readonly delivered?: unknown;
   readonly order_id?: unknown;
@@ -281,14 +281,24 @@ if (typeof orderId !== "string") {
   process.exit(1);
 }
 
+// Where this order is collected, as the purchase answer named it, settled
+// before anything is asked. It has to be printable when nothing comes back at
+// all — that is exactly the moment somebody needs it — and the purchase answer
+// is the one answer this command is sure to be holding by then. An answer that
+// named an order and no address is a gateway that has not said where its goods
+// are handed over, and this command will not guess on its behalf.
+const where = bought.statusUrl;
+
+if (where === null) {
+  console.error(
+    `[buyer] the purchase was accepted as ${orderId} but named no address to collect it at, so there is nowhere to wait`,
+  );
+  process.exit(1);
+}
+
 console.log(
   `[buyer] accepted as ${orderId}; the goods come later, so this waits up to ${WATCH_MS / 1_000}s for them`,
 );
-
-// Where this order is collected, settled before anything is asked. It has to be
-// printable when nothing came back at all — that is exactly the moment somebody
-// needs it — so it is taken from the buyer rather than off an answer.
-const where = buyer.statusUrl(orderId);
 
 process.on("SIGINT", () => {
   console.log("");
@@ -308,7 +318,7 @@ process.on("SIGINT", () => {
  */
 const look = async (): Promise<OrderStatus> => {
   try {
-    return await buyer.status(orderId);
+    return await buyer.status(where);
   } catch (thrown) {
     const why = thrown instanceof Error ? thrown.message : String(thrown);
     comeBackLater(orderId, where, `stopped watching: the door could not be reached (${why})`);

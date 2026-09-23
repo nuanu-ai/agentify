@@ -194,7 +194,7 @@ ${
       <label for="label">What this key is for</label>
       <input id="label" name="label" type="text" autocomplete="off" required>
     </div>
-    <button class="button button-compact button-primary" type="submit">Issue a key</button>
+    <button class="button button-primary" type="submit">Issue a key</button>
     ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
   </form>
 `;

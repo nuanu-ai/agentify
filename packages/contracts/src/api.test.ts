@@ -29,7 +29,7 @@ import {
   WorkerPollResponseSchema,
 } from "./api.js";
 import { CardSchema, publicCardOf } from "./card.js";
-import { CONTRACT_VERSION, type SchemaName, schemas } from "./index.js";
+import { CONTRACT_VERSION, type SchemaName, schemas, toJsonSchemas } from "./index.js";
 import { ORDER_CALL_ERROR_CODES, ORDER_CALL_RESULTS } from "./results.js";
 import { errorOf, expectMissingFieldRejected } from "./testing/expect-schema.js";
 
@@ -560,6 +560,7 @@ describe("the status an agent reads", () => {
     price,
     delivered: null,
     test: true,
+    status_url: "https://agentify.ad/x402/orders/ord_7c1e05/status",
   };
 
   it("names the order it is about", () => {
@@ -584,11 +585,67 @@ describe("the status an agent reads", () => {
     expect(AgentOrderStatusSchema.parse({ ...status, price: null }).price).toBeNull();
   });
 
-  for (const field of ["order_id", "status", "price", "delivered"]) {
+  for (const field of ["order_id", "status", "price", "delivered", "status_url"]) {
     it(`refuses a status without ${field} and names it`, () => {
       expectMissingFieldRejected(AgentOrderStatusSchema, status, field);
     });
   }
+
+  it("names where the order is collected as an address an agent can call as it stands", () => {
+    // The agent that paid for goods that come later holds this document and
+    // nothing else, and the address in it is the only way back to them. A
+    // path with no host in it has to be joined onto something the agent was
+    // never told, and an address in a scheme no HTTP client speaks is not one
+    // it can call at all.
+    for (const status_url of [
+      "/x402/orders/ord_7c1e05/status",
+      "agentify.ad/x402/orders/ord_7c1e05/status",
+      "ftp://agentify.ad/x402/orders/ord_7c1e05/status",
+    ]) {
+      expect(errorOf(AgentOrderStatusSchema, { ...status, status_url }), status_url).toContain(
+        "status_url",
+      );
+    }
+    expect(
+      AgentOrderStatusSchema.safeParse({
+        ...status,
+        status_url: "http://localhost:8080/x402/orders/ord_7c1e05/status",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("carries the rule about that address into the exported document", () => {
+    // An engineer generating a client in another language reads the JSON
+    // Schema and not this package, and a rule zod keeps to itself is dropped
+    // from it without a word. The exported pattern has to refuse a bare path
+    // too, or a generated client accepts what this schema refuses — and it has
+    // to give the schema's verdict on every address the scheme rule decides,
+    // including one whose scheme is written in capitals: a flag on a pattern
+    // is one of the things the export drops, and then the two disagree.
+    const exported = toJsonSchemas().agent_order_status;
+
+    expect(exported.required).toContain("status_url");
+    const property = exported.properties?.status_url;
+    const written = typeof property === "object" ? property.pattern : undefined;
+    if (written === undefined) {
+      throw new Error("the exported document says nothing about what status_url has to look like");
+    }
+    const pattern = new RegExp(written);
+    expect(pattern.test("/x402/orders/ord_7c1e05/status")).toBe(false);
+    expect(pattern.test(status.status_url)).toBe(true);
+
+    for (const status_url of [
+      status.status_url,
+      "http://localhost:8080/x402/orders/ord_7c1e05/status",
+      "HTTPS://agentify.ad/x402/orders/ord_7c1e05/status",
+      "ftp://agentify.ad/x402/orders/ord_7c1e05/status",
+      "/x402/orders/ord_7c1e05/status",
+    ]) {
+      expect(pattern.test(status_url), status_url).toBe(
+        AgentOrderStatusSchema.safeParse({ ...status, status_url }).success,
+      );
+    }
+  });
 
   it("carries nothing about the sale that is the merchant's rather than the buyer's", () => {
     // The buyer is owed where their order stands, what it cost and what came

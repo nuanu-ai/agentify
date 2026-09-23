@@ -574,13 +574,17 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       return;
     }
     const destination = cabinetDestinationIn(request.query.destination);
+    // A session that ran its course is why the person is here, not something
+    // they got wrong, so it is the page's first line rather than a refusal.
+    // A change lost with it is a refusal: something they did was not kept.
     const problem =
       request.query.reason === "session-ended-unsaved"
         ? `${SESSION_ENDED} The change you submitted was not saved.`
-        : request.query.reason === "session-ended"
-          ? SESSION_ENDED
-          : undefined;
-    response.type("html").send(signInScreen(base, config.surfaceMode, destination, problem));
+        : undefined;
+    const reason = request.query.reason === "session-ended" ? SESSION_ENDED : undefined;
+    response
+      .type("html")
+      .send(signInScreen(base, config.surfaceMode, destination, problem, "", reason));
   });
 
   /**

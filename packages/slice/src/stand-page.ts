@@ -53,6 +53,8 @@ export interface ExchangeView {
   /** Whether a challenge is in hand, waiting for a signature that is yours to give. */
   readonly holdingChallenge: boolean;
   readonly orderId: string | null;
+  /** Where the last answer about this order said it is read again, if one has. */
+  readonly statusUrl: string | null;
   readonly waiting: boolean;
   readonly closed: boolean;
 }
@@ -411,10 +413,10 @@ ${state.exchange === null ? "" : exchangePanel(state.exchange)}
   <div class="body">
     <form method="post" class="row">
       ${hidden("action", "order_status")}
-      ${field("Order identifier", '<input required name="order_id" placeholder="ord_…">')}
+      ${field("Status address", `<input required name="status_url" value="${escaped(state.exchange?.statusUrl ?? "")}" placeholder="the status_url an answer named">`)}
       <div><button type="submit">Ask</button></div>
     </form>
-    <p>Where an agent collects goods that came later, and where you look when this page has forgotten an exchange. It takes no key: an agent has no account here, so the identifier it was handed at the purchase is what stands in for one. Whoever holds that string can read the order — which is why the gateway hands it to exactly one party, and answers an identifier it has never seen exactly as it answers somebody else's.</p>
+    <p>Where an agent collects goods that came later, at the address the purchase answer named in status_url; it is filled in here once an answer has named one, and any answer in the log carries it when this page has forgotten an exchange. It takes no key: an agent has no account here, so the identifier it was handed at the purchase is what stands in for one. Whoever holds that string can read the order — which is why the gateway hands it to exactly one party, and answers an identifier it has never seen exactly as it answers somebody else's.</p>
   </div>
 </section>`;
 };

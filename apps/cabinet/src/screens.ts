@@ -291,9 +291,9 @@ ${table(
 )}
 ${
   cards.cards.length === 0
-    ? `<p><a href="/docs/quickstart">Publish your first card with the test-sale guide →</a>${
+    ? `<p class="onward"><a href="/docs/quickstart">Publish your first card with the test-sale guide →</a>${
         wooAvailable
-          ? ` · <a href="${escaped(base)}/woocommerce">Or try the experimental WooCommerce download path →</a>`
+          ? ` <a href="${escaped(base)}/woocommerce">Or try the experimental WooCommerce download path →</a>`
           : ""
       }</p>`
     : ""

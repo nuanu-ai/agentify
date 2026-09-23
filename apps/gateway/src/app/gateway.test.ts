@@ -387,7 +387,7 @@ describe("a synchronous purchase", () => {
     if (parked === null) throw new Error("the order went missing");
     // Not `in_progress`: nothing is asking the payment network again, and that
     // word is what a restarted worker treats as an order still waiting on him.
-    expect(agentOrderStatusOf(parked).status).toBe("payment_unresolved");
+    expect(agentOrderStatusOf(parked, harnessed.runtime.config).status).toBe("payment_unresolved");
     // And no second charge went out on top of the one nobody has heard from.
     expect(harnessed.facilitator.settles).toHaveLength(1);
   });
