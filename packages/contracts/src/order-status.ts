@@ -96,9 +96,12 @@ export const ORDER_STATUSES = Object.freeze([
    * The money moved and the goods have not come: the merchant owes the buyer
    * the goods or the money back. Not an ending, and it carries no deadline of
    * its own. Goods the merchant delivers after it still reach the buyer, settle
-   * the debt and make the order `delivered`; how a refund is paid back and
-   * reported is not decided, and until it is nothing moves an order on to
-   * `refunded`.
+   * the debt and make the order `delivered`.
+   *
+   * What it cannot say is whether the money has already gone back. How a
+   * refund is paid and how the gateway would learn of it are not decided, and
+   * until they are nothing moves an order on to `refunded` — so a buyer the
+   * merchant has already paid back still reads this word.
    */
   "refund_due",
   /** That debt has since been paid back to the buyer. */
