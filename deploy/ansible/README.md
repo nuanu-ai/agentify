@@ -9,7 +9,8 @@ A channel is one Compose project with one environment file. It was two — the
 commerce project and a scanner project beside it, joined by an external
 network — and a host that has not yet been through the one-time reconciliation
 below still carries the second one. Read that section before the first release
-of this shape reaches a server.
+of this shape reaches TEST; PRODUCTION does not go through it, and the section
+says why.
 
 The server baseline remains in `nuanu-ai/infra`. Release playbooks do not
 provision servers, change DNS, publish packages, or make paid requests. The
@@ -122,6 +123,18 @@ the pull agent must stop rather than improvise missing private inputs.
 
 ## Reconcile a host that still runs two projects
 
+This is the procedure TEST went through to move from two projects to one, and
+it is what TEST needs again if it is ever rebuilt with two. PRODUCTION does not
+use it. Its staging runs `release-runtime.py topology`, whose production branch
+reads the scanner policy in force from `agentify-commerce-scanner-1` and
+`agentify-commerce-scanner-worker-1`. Those containers exist only after the
+first activation of the merged graph, so before it the check fails inside
+`docker container inspect` with "No such container", before it reaches its own
+"is not running for policy custody" test, whatever has happened to the old
+scanner's containers. PRODUCTION moves to the merged graph on the deployment
+that replaces this release machinery, and the staging guard and
+`retired_scanner_project` leave with this machinery.
+
 Each channel ran two Compose projects on one host: the commerce project —
 `agentify-commerce` on PRODUCTION, `agentify-test` on TEST — and a scanner
 project beside it, `agentify` and `agentify-test-scanner`, joined by an
@@ -132,22 +145,33 @@ keeping it means the first release replaces the containers that are there
 rather than building a second stack beside the running one (ADR-0025 says when
 the names move).
 
-The old scanner project is not replaced by that, because nothing in the merged
-graph is named after it. It has to be stopped by hand, and it has to be stopped
-*before* staging rather than after: its worker writes to the database this
-release fingerprints, migrates and then fingerprints again, and a comparison
-taken around a process that is still writing proves nothing.
+TEST needs this section while `docker compose ls --all` lists the retired
+scanner project, `agentify-test-scanner`. Without `--all` a project whose
+containers are all stopped is left out of the list, and such a project still
+blocks the release.
 
-Staging refuses while any of it is running, before it builds anything, and it
-stops nothing itself — but a refusal is not free, and nothing retries. The pull
-agent records that revision as `failed` and refuses it on every later poll,
-printing `<CHANNEL> revision <sha> remains failed; move <tag> to make another
-selection`. Getting past it means a new selection: on TEST, force-push
-`deploy-test` to a different commit; on PRODUCTION, an `app-v*` tag on another
-commit of `main` with green CI, because the server checks for that tag itself
-and `deploy-production` is not moved by hand. That is expensive enough to be
-worth avoiding, which is what the order below is for — the guard catches the
-time somebody forgets, not the ordinary path.
+The old scanner project is not replaced by the merged one, because it is a
+different project: Compose recreates only the containers that carry its own
+project's label, and nothing in the merged graph carries the old one. Its
+containers have to be stopped and removed by hand, and before staging rather
+than after, for two reasons. Its worker writes to the database this release
+fingerprints, migrates and then fingerprints again, and a comparison taken
+around a process that is still writing proves nothing. And a stopped container
+keeps its name: on TEST the merged project creates
+`agentify-test-scanner-worker-1` for its `scanner-worker` service, which is
+the name of the old project's `worker` container, and Docker refuses to create
+a container under a name that already exists. Activation meets that refusal
+when it starts the scanner, after it has stopped the writers and migrated the
+database.
+
+Staging refuses while any container of the old project exists, running or
+stopped, before it builds anything, and it stops and removes nothing itself —
+but a refusal is not free, and nothing retries. The pull agent records that
+revision as `failed` and refuses it on every later poll, printing `TEST
+revision <sha> remains failed; move deploy-test to make another selection`, so
+getting past it means selecting again, by force-pushing `deploy-test` to a
+different commit or by the narrower way below. The order below is there to
+avoid that; the guard catches the time somebody forgets, not the ordinary path.
 
 There is one honest way to make the same revision selectable again, and it is
 narrow. Read `state.json` for the channel first: if it says `"status":
@@ -232,24 +256,33 @@ the deleted file wrote them: `ANALYTICS_SERVER_DELIVERY_ENABLED`,
 job. These are fixed by the packaging. A line about any of them in the
 environment file is read by nobody, and deleting such a line changes nothing.
 
-**Two. Stop the old scanner project.** Do this immediately before moving the
-channel's tag — or, if staging has already refused, do it and then make the new
-selection the paragraphs above describe:
+**Two. Stop and remove the old scanner project's containers.** Do this
+immediately before moving the channel's tag — or, if staging has already
+refused, do it and then make the new selection the paragraphs above describe.
+List exactly the old project's containers by the label Compose wrote on them,
+read the list, and remove those names and nothing else:
 
 ```sh
-docker ps --filter label=com.docker.compose.project=agentify -q | xargs -r docker stop
+docker ps -a --filter label=com.docker.compose.project=agentify-test-scanner --format '{{.Names}}'
+docker rm -f <the names that command printed>
 ```
 
-Use `agentify-test-scanner` on TEST. The `-r` matters: without it `xargs` runs
-`docker stop` with no arguments when the filter matches nothing, and a channel
-that has already been reconciled would be told it used the command wrong.
+The `-a` matters: without it the list leaves out stopped containers, and a
+stopped container is the one that blocks activation. Read the list before you
+remove anything: the merged project is `agentify-test`, one word shorter than
+the old one, and a filter on that name would list the containers serving the
+site. `docker rm -f` kills a container that is still running rather than
+asking it to stop, so a scan the old worker was in the middle of is left
+stranded; step four clears it. An empty list means there is nothing left to
+remove. Without `-v` the command removes no volume, and the scanner's data
+lives in the commerce PostgreSQL volume, which the release keeps.
 
 From this moment the front page answers 502. The Caddy that is running is
-still the old one, and it proxies `/` to a container that has stopped; it goes
-on doing that until activation recreates it. So the window closes at `up
-gateway cabinet web`, not when the scanner starts — stop to `up web` is the
-real outage of this release, which is the staging time plus most of the
-activation time. `/cabinet`, `/docs`, `/v0` and `/x402` are unaffected until
+still the old one, and it proxies `/` to a container that is gone; it goes on
+doing that until activation recreates it. So the window closes at `up gateway
+cabinet web`, not when the scanner starts — removal to `up web` is the real
+outage of this release, which is the staging time plus most of the activation
+time. `/cabinet`, `/docs`, `/v0` and `/x402` are unaffected until
 activation stops their own processes.
 
 **Three. Release.** An ordinary activation: it stops the commerce writers,
@@ -263,10 +296,10 @@ so the origin answers nothing between `up web` and the edge reload that
 follows it (ADR-0025).
 
 **Four. Verify, and expect `/api/health` to need a look.** Verification checks
-that route, and two things the stopped scanner can leave behind will hold it at
+that route, and two things the removed scanner can leave behind will hold it at
 503 on every run until somebody clears them, not just the first:
 
-- a scan the old worker was running when it lost its database stays `running`
+- a scan the old worker was running when step two removed it stays `running`
   with a stale heartbeat, and the health query counts it;
 - a scan the old web had accepted stays `accepted` or `queued` once its pg-boss
   job has expired past its single retry, and the health query measures the age
@@ -281,43 +314,28 @@ select id, status, accepted_at, worker_heartbeat_at from public.scans
  order by accepted_at;
 ```
 
-Anything from before the stop is stranded; a scan submitted after activation is
+Anything from before step two is stranded; a scan submitted after activation is
 not, and will move on its own. Update the stranded ones to `'failed'` — one of
 the three terminal statuses, with `completed` and `partial` — and check the
 route again. Do not leave the check red: it is reporting something true.
 
-**Five. Remove the old scanner project's containers.** They are stopped by now.
-`docker compose down` is not available for them — the Compose file that
-described that project is gone from the release source — so remove exactly its
-containers by the label Compose wrote on them, and nothing else:
+**Five. Remove the private database network.** This waits until after
+activation, because the commerce `cabinet` and `postgres` stay attached to the
+network until activation recreates them without it. The old scanner's
+containers left it in step two, so by now it has no members:
 
 ```sh
-docker ps -a --filter label=com.docker.compose.project=agentify --format '{{.Names}}'
-docker rm -f <the names that command printed>
-```
-
-Use `agentify-test-scanner` for the TEST channel. Read the list before you
-remove anything: on PRODUCTION the merged project is `agentify-commerce`, so
-that filter names only the old scanner's containers, but a mistyped project
-name would name the ones serving the site. No volume is touched, and none of
-the scanner's data lives in one — it is in the commerce PostgreSQL volume,
-which the activation you just verified is using.
-
-**Six. Remove the private database network.** Activation recreated `cabinet`
-and `postgres` without it and the old scanner's containers are gone, so by now
-it has no members:
-
-```sh
-docker network rm agentify-scanner-db        # PRODUCTION
-docker network rm agentify-test-scanner-db   # TEST
+docker network rm agentify-test-scanner-db
 ```
 
 If Docker refuses because the network still has an endpoint, something is still
-attached: find it with `docker network inspect`, and do not force it.
+attached: find it with `docker network inspect`, and do not force it. A host
+whose `docker compose ls --all` no longer lists the old project may still have
+this network left; `docker network ls` shows whether it does.
 
-Once both channels have been through this, the staging refusal and the
-`retired_scanner_project` variable it reads have no subject left and are
-deleted, together with the identity-cutover machinery
+The staging refusal and the `retired_scanner_project` variable it reads are
+deleted with this machinery, together with the identity-cutover machinery,
+when the deployment that replaces it arrives
 (`docs/research/00-open-questions.md` keeps that list).
 
 ## Observe a selection

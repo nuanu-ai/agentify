@@ -30,10 +30,11 @@ release_channels:
     postgres_container: agentify-commerce-postgres-1
     cabinet_container: agentify-commerce-cabinet-1
     # The project the scanner ran in before it became a service of this one.
-    # Staging refuses while anything of it is still running, because those
-    # containers hold the database this release is about to fingerprint and
-    # migrate. Delete this line, and the guard in release-stage.yml, once both
-    # channels have activated the merged graph.
+    # Staging refuses while any container of it exists: a running one writes to
+    # the database this release fingerprints and migrates, and a stopped one
+    # keeps a name the merged project creates. PRODUCTION does not make that
+    # transition on this machinery, and this line leaves with the guard in
+    # release-stage.yml when the deployment that replaces it arrives.
     retired_scanner_project: agentify
     edge_container: agentify-edge-caddy-1
     edge_configuration: "{{ agentify_home }}/agentify-commerce/deploy/edge/Caddyfile"
