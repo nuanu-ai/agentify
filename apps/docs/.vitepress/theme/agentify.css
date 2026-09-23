@@ -137,6 +137,35 @@ body {
   }
 }
 
+/*
+ * The outline beside the page, "On this page".
+ *
+ * The theme fixes it to the window at the bar's height plus 48 px, which is
+ * where the page's first line is when nothing stands between the bar and the
+ * page. The band does, so the outline started inside it. Sticky in its own
+ * column instead, it starts level with the page's first line whatever stands
+ * above it, and stays in view at the same place as the page scrolls.
+ *
+ * Its entries wrap rather than end in an ellipsis: they are the headings a
+ * reader picks from, and the column has the room. A line of 20 px with 6 px
+ * above and below keeps a one-line entry at the theme's 32 px, so the marker
+ * the theme draws beside the active entry still lands on its first line.
+ */
+@media (min-width: 1280px) {
+  .VPDoc .aside .aside-container {
+    position: sticky;
+    top: calc(var(--vp-nav-height) + 48px);
+    padding-top: 0;
+    height: calc(100vh - var(--vp-nav-height) - 48px);
+  }
+}
+
+.VPDocAsideOutline .VPDocOutlineItem .outline-link {
+  padding: 6px 0;
+  line-height: 20px;
+  white-space: normal;
+}
+
 /* Three corners the theme rounds to its own measure. The rest of the origin
    draws a control at 12 (packages/visual/tokens.css, --radius-control); the
    portal declares no tokens of its own, so it is written out. */
