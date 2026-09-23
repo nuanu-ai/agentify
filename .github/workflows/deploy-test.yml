@@ -74,6 +74,6 @@ jobs:
           {
             echo "### TEST selection published"
             echo
-            echo "\`deploy-test\` now names \`$CANDIDATE\`. The server pull agent continues the deployment."
+            echo "\`deploy-test\` now names \`$CANDIDATE\`. The test host's timer releases it within a minute once its images are built."
             echo "This workflow does not claim that activation or runtime verification has completed."
           } >> "$GITHUB_STEP_SUMMARY"
