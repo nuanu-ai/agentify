@@ -40,11 +40,9 @@
 }
 
 .scanId {
-  overflow: hidden;
   color: var(--fg);
   font-size: 0.9375rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .fixtureBanner,
@@ -417,18 +415,6 @@
   align-items: flex-start;
   gap: 14px;
   padding: 36px 28px;
-}
-
-.failed > span {
-  width: 38px;
-  height: 38px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-control);
-  background: var(--raised);
-  color: var(--muted);
-  font: 1rem var(--font-mono);
 }
 
 .failed h1 {

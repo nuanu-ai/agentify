@@ -483,7 +483,6 @@ function ScoreScale({ score }: Readonly<{ score: number }>) {
 function FailedState({ blocked, onRetry }: Readonly<{ blocked: boolean; onRetry: () => void }>) {
   return (
     <div className={styles.failed}>
-      <span aria-hidden="true">◔</span>
       <h1>{blocked ? "The site blocked our reader" : "No reliable diagnostic was produced"}</h1>
       <p>
         {blocked
@@ -500,7 +499,6 @@ function FailedState({ blocked, onRetry }: Readonly<{ blocked: boolean; onRetry:
 function AccessError({ invalid }: Readonly<{ invalid: boolean }>) {
   return (
     <div className={styles.failed}>
-      <span aria-hidden="true">↗</span>
       <h1>
         {invalid ? "This scan link is no longer valid" : "Open the original private scan link"}
       </h1>
