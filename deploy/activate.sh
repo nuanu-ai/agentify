@@ -101,7 +101,8 @@ stack stop gateway cabinet scanner scanner-worker
 at "taking the restore point"
 stack up -d --wait --no-deps postgres
 if [[ ! -d $backup ]]; then
-  rm -rf "$backup.partial" && mkdir -p "$backup.partial"
+  rm -rf "$backup.partial"
+  mkdir -p "$backup.partial"
   for database in agentify_commerce agentify_scanner; do
     stack exec -T postgres pg_dump -U agentify_commerce -Fc "$database" > "$backup.partial/$database.dump"
   done
@@ -123,7 +124,8 @@ if [[ $channel == production ]]; then
   at "installing the edge's route table"
   # In place: the edge's bind mount holds this inode, and a new file renamed
   # over it would leave the running Caddy reading the old one.
-  cat "$root/deploy/edge/Caddyfile" > "$edge_file" && sync "$edge_file"
+  cat "$root/deploy/edge/Caddyfile" > "$edge_file"
+  sync "$edge_file"
   docker exec "$edge" caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
   docker exec "$edge" cat /etc/caddy/Caddyfile | cmp -s - "$root/deploy/edge/Caddyfile"
 fi
