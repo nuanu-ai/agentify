@@ -108,8 +108,10 @@ Staging checks out a clean source under
 `<agentify_home>/agentify-releases/<SHA>/source`, builds first-party images, pulls
 pinned infrastructure images, preserves host configuration and records sanitized
 topology. Activation fingerprints retained data, verifies it after migration,
-starts the selected revision and records runtime evidence. Separate server builds
-are not claimed to have identical bytes.
+starts the selected revision and records runtime evidence. On PRODUCTION, the
+check for obligations that depend on the old origin and the wait for the old
+unpaid challenges to expire run only when the canonical origin actually
+changes. Separate server builds are not claimed to have identical bytes.
 
 Each server performs its TLS route checks against its own listener while keeping
 the public hostname as the HTTP Host and TLS SNI name. This proves the selected
@@ -117,9 +119,16 @@ edge without depending on public DNS hairpin routing. It is not an independent
 Internet vantage point, so release acceptance also includes the outside probes
 listed below.
 
-The first shared-identity or live-approval cutover remains an explicit recovery
-boundary. Prepare it with the procedures below before creating a production tag;
-the pull agent must stop rather than improvise missing private inputs.
+The cabinet serves report identity on its private port 3002; this port is not
+published. Staging creates one host-owned credential for the cabinet and the
+scanner, reuses it on subsequent releases, and keeps test and production
+credentials separate. No other service in the rendered graph is given the
+route or the secret, and the release refuses a graph in which one is. That is
+the whole of the separation: every service holds the same database account,
+which is the instance's superuser, so the worker and the privacy job could
+read the cabinet's tables by changing one word in a connection string. What
+stops them reading a person's identity is that they are not the cabinet and
+cannot ask it.
 
 ## Reconcile a host that still runs two projects
 
@@ -334,9 +343,8 @@ whose `docker compose ls --all` no longer lists the old project may still have
 this network left; `docker network ls` shows whether it does.
 
 The staging refusal and the `retired_scanner_project` variable it reads are
-deleted with this machinery, together with the identity-cutover machinery,
-when the deployment that replaces it arrives
-(`docs/research/00-open-questions.md` keeps that list).
+deleted with this machinery when the deployment that replaces it arrives
+(`docs/research/00-open-questions.md` keeps that item).
 
 ## Observe a selection
 
@@ -368,118 +376,6 @@ is recovered with the activate phase. At `"phase": "activate"`, the attempt may
 have stopped writers and migrated data, and "Recover a failed activation"
 below is the procedure. In neither case is the file moved merely to make the
 timer try the same uncertain operation again.
-
-### First shared-identity cutover
-
-Activation detects the existing scanner identity tables and stops both
-applications and their scheduled jobs before inspecting customer rows. Scanner
-migration `--identity-preflight` applies the additive schema through `0016`
-without removing the source identity. The one-off importer validates email
-normalization, verified scanner people, decrypted lead ownership and pending
-links before the cabinet migration ends old passwords and sessions.
-
-The importer preserves every existing cabinet account, including its current
-confirmation status and merchant binding. It adds verified scanner-only people
-without a merchant and transfers current hashed report links with their original
-state, intent and expiry. Report cookies, Supabase provenance and commerce data
-remain subject to retained-row comparisons. The scanner and cabinet databases
-stay separate; only the one-off importer receives both database credentials.
-
-After the exact target projections and retained-row comparisons pass, the
-importer authorizes scanner cleanup. The ordinary migration ledger then applies
-`0017`; a populated source without this authorization is refused. Activation
-checks the retained rows again before starting the new applications. Do not run
-a full scanner migration against a populated old identity database separately
-from this stopped sequence.
-
-The one-off importer joins this project's own network and reaches the database
-by the name the rest of the stack calls it by.
-
-The private recovery directory holds an `identity-cutover.json` checkpoint with
-the original account IDs, frozen eligibility time and hashes, without customer
-row copies. Do not replace it after an interrupted import. A reviewed forward
-retry uses that same checkpoint: an exact repeated import is accepted, while
-changed source or target rows refuse continuation. The temporary importer
-credential file is removed whether activation succeeds or fails.
-
-The cabinet serves report identity on its private port 3002; this port is not
-published. Staging creates one host-owned credential for the cabinet and the
-scanner, reuses it on subsequent releases, and keeps test and production
-credentials separate. No other service in the rendered graph is given the
-route or the secret, and the release refuses a graph in which one is. That is
-the whole of the separation: every service holds the same database account,
-which is the instance's superuser, so the worker and the privacy job could
-read the cabinet's tables by changing one word in a connection string. What
-stops them reading a person's identity is that they are not the cabinet and
-cannot ask it.
-
-### First live-approval cutover
-
-Before activation, review existing production accounts, merchant bindings and
-selling cards. Save the deliberately selected merchant IDs in the ignored file
-`$EVIDENCE/initial-live-approvals.json` as an object whose
-`release_initial_live_merchant_ids` value is the exact JSON array of those IDs.
-Use an empty array only when no existing merchant is intended to sell live.
-This file selects the set to verify; Ansible grants nothing from it. The
-preflight refuses a missing or malformed inventory before stopping writers.
-
-Run this activation in an interactive terminal, retaining the same production
-`SHA` and `EVIDENCE` values used for staging. The controller checkout must be
-clean at that SHA:
-
-```sh
-ansible-playbook -i deploy/ansible/inventory.yml deploy/ansible/release.yml \
-  -e @deploy/ansible/inventory.local.yml \
-  --limit production -e release_phase=activate \
-  -e release_channel_ack=production \
-  -e "release_revision=$SHA" \
-  -e "release_controller_revision=$SHA" \
-  -e "release_evidence_directory=$EVIDENCE" \
-  -e "@$EVIDENCE/initial-live-approvals.json"
-```
-
-After migration and retained-data comparison, the playbook pauses with its
-release lock held and writers stopped. In a second local terminal, set `SHA`
-to that same full staged revision, then run the following for each reviewed
-account. Type its email at the `read` prompt. The email travels on stdin,
-never inside the remote shell command:
-
-```sh
-printf 'Reviewed production account email: '
-read -r APPROVAL_EMAIL
-printf '%s\n' "$APPROVAL_EMAIL" | ssh -o BatchMode=yes -o ConnectTimeout=10 \
-  -o ServerAliveInterval=10 -o ServerAliveCountMax=2 \
-  -o ControlMaster=auto -o ControlPersist=60 \
-  -o ControlPath=~/.ssh/agentify-approve-%C agentify \
-  "cd $AGENTIFY_HOME/agentify-releases/$SHA/source && \
-   sudo -n docker compose --project-name agentify-commerce --env-file ../agentify.env \
-     -f compose.yaml -f deploy/compose.public.yaml \
-     -f deploy/compose.hetzner-commerce.yaml -f deploy/compose.release.yaml \
-     run --rm --no-deps -T cabinet \
-     pnpm --filter @agentify/cabinet --fail-if-no-match approve"
-unset APPROVAL_EMAIL
-```
-
-The command runs from the staged commerce image and environment already checked
-by activation. Noninteractive sudo reads the root-owned private environment file;
-its permissions stay restricted. It neither exposes a listener nor starts the gateway. The usual
-local `pnpm approve <email>` uses the running cabinet after installation; the
-stopped old cabinet cannot execute the new command during this initial cutover.
-
-If this staged command has not returned within 60 seconds, interrupt it with
-Ctrl-C. Its approval outcome is unknown: keep activation paused and repeat the
-same idempotent command to reconcile the result. SSH liveness checks cannot
-detect a blocked database operation on a responsive server. Do not resume
-activation until the command reports the exact expected merchant and approval.
-
-Resume the first terminal after those separate operator commands finish.
-Ansible compares the complete approved merchant set with the reviewed inventory
-before reopening any writer. A skipped non-interactive pause cannot bypass that
-check. An uncertain operator result calls for a safe repeat and inspection,
-never an assumption that approval failed. Later releases need neither this
-inventory nor this pause; they fingerprint approval timestamps separately from
-all previous merchant fields. Origin-obligation checks and the old challenge
-expiry wait run only when the canonical origin actually changes.
 
 Activation performs runtime verification before it succeeds. To collect fresh
 evidence later without another activation, run the read-only verify phase for
@@ -572,12 +468,10 @@ mv <release>/release-state.json <release>/release-state.json.$SUFFIX
 ```
 
 `recovery` exists once an attempt has passed the boundary. It is copied rather
-than moved because the next attempt reuses two files in it and has to find
-them where the first one left them: on PRODUCTION, `edge-Caddyfile.before`, the
-edge configuration from before the release, which a later attempt keeps
-instead of recording the configuration an earlier attempt may already have
-replaced; and, on the first shared-identity cutover, the importer's checkpoint
-`identity-cutover.json`, which a repeated import must find unchanged. The
+than moved because the next attempt reuses a file in it and has to find it
+where the first one left it: on PRODUCTION, `edge-Caddyfile.before`, the edge
+configuration from before the release, which a later attempt keeps instead of
+recording the configuration an earlier attempt may already have replaced. The
 scheduled jobs the attempt held are kept there too, as `cron.held` and
 `release-cron.held`, but nothing reads them back. The candidate's state file is
 moved because activation refuses a candidate that is not `staged` and staging
@@ -601,9 +495,9 @@ cmp <release>/recovery.$SUFFIX/agentify_scanner.fingerprint <release>/recovery.$
 the retained rows changed across the migration, and a new attempt would take
 the changed rows as its own starting fingerprint and pass. If a `.fingerprint`
 has no `.after` beside it, the attempt stopped between the two. When the
-journal shows that neither "Apply only scanner migrations preceding the
-destructive identity cleanup" nor "Apply commerce migrations with the locally
-built application image" ran, nothing migrated the data and the next attempt's
+journal shows that neither "Apply scanner migrations with the locally built
+scanner worker image" nor "Apply commerce migrations with the locally built
+application image" ran, nothing migrated the data and the next attempt's
 own pair is a sound comparison; when one of them ran, stop, because nothing has
 shown that the data survived it. This step protects the customer rows the
 release promises to keep.

@@ -250,10 +250,9 @@ merchants and data; their sessions end at the switch, and an address that was
 never confirmed is confirmed by its first sign-in through a link, not declared
 confirmed by the migration.
 
-Out, one step later: the scanner's own instance of the component and its
-identity tables, retired once the route carries the scanner's links — later
-rather than at once, so that at no point does the scanner depend on a cabinet
-that still holds passwords.
+Out: the scanner's own instance of the component and its identity tables. The
+people it had confirmed are in the cabinet on both channels, and the scanner
+database has no identity tables left.
 
 In: the magic-link plugin in the cabinet, inside the Better Auth already
 pinned in the tree, so the dependency tree gains nothing; one internal route
