@@ -49,6 +49,22 @@
   animation: pulse 1.4s ease-in-out infinite;
 }
 
+/* Only a scan that is being started pulses in the accent. Every other state
+   has stopped, and it takes the report's verdict colours: a refusal is a fail,
+   and a state the visitor can still act on is a partial. */
+.status:not([data-state="starting"]) {
+  color: var(--partial);
+}
+
+.status:not([data-state="starting"])::before {
+  animation: none;
+}
+
+.status[data-state="error"],
+.status[data-state="hard-limit"] {
+  color: var(--fail);
+}
+
 .body {
   padding: 36px 28px 30px;
 }
