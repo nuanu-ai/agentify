@@ -7,6 +7,9 @@ fakes that act on a small world of files in the test's directory: the two
 databases, one line per migration applied; the containers of the channel,
 with the release each runs and whether it runs; and the catalog. Each test
 asserts on that world after the run, as a person would inspect the host.
+The fake docker knows a container only by the ID `stack.sh ps` lists, never
+by its name: Compose finds its containers by label, and a recreate cut short
+leaves one running under a temporary name.
 
 It needs Docker, which pulls python:3.12-slim-bookworm the first time, and it
 fails with that sentence when there is none.
@@ -57,7 +60,8 @@ case "$args" in
   "up -d --wait --no-deps scanner scanner-worker"|"up -d --wait --no-deps gateway cabinet web")
     for c in ${args#up -d --wait --no-deps }; do echo "new running" > $W/containers/$c; done
     if [[ -n ${CARDS_AFTER+set} && $args == *gateway* ]]; then printf '%s' "$CARDS_AFTER" > $W/cards; fi ;;
-  "ps -aq gateway cabinet scanner scanner-worker") for c in gateway cabinet scanner scanner-worker; do [[ ! -f $W/containers/$c ]] || echo $c; done ;;
+  "ps -aq "*) for c in ${args#ps -aq }; do [[ ! -f $W/containers/$c ]] || echo $c; done ;;
+  "exec -T postgres psql -U agentify_commerce -d postgres -Atc "*) echo 1000 ;;
   "port web 443") echo "127.0.0.1:8443" ;;
 esac
 """
@@ -69,9 +73,11 @@ echo "docker $args" >> $W/calls
 case "$args" in
   "ps -q --filter"*) ;;
   "ps -aq --filter"*) ls $W/containers ;;
-  "inspect -f {{.Image}} agentify-test-postgres-1") echo "sha256:pinned" ;;
-  "inspect -f {{.Image}} agentify-test-gateway-1") [[ -f $W/containers/gateway ]] || exit 1; echo "sha256:$(cut -d' ' -f1 $W/containers/gateway)-app" ;;
-  "inspect -f {{.Image}} "*) for c in ${args#inspect -f \{\{.Image\}\} }; do echo "sha256:$(cut -d' ' -f1 $W/containers/$c)-$c"; done ;;
+  "inspect -f {{.Image}} "*)
+    for c in ${args#inspect -f \{\{.Image\}\} }; do
+      [[ -f $W/containers/$c ]] || { echo "Error: No such object: $c" >&2; exit 1; }
+      if [[ $c == postgres ]]; then echo "${POSTGRES_IMAGE:-sha256:pinned}"; else echo "sha256:$(cut -d' ' -f1 $W/containers/$c)-$c"; fi
+    done ;;
   "image inspect -f {{index .Config.Labels \"org.opencontainers.image.revision\"}} sha256:old"*) echo "$OLD" ;;
   "image inspect -f {{index .Config.Labels \"org.opencontainers.image.revision\"}} "*) echo "$NEW" ;;
   "image inspect -f {{.Id}} postgres@sha256:pinned") echo "sha256:pinned" ;;
@@ -81,7 +87,6 @@ case "$args" in
   "run -d --name agentify-scanner-check --network none --env-file "*) file="${args#*--env-file }"; cat "${file%% *}" > /dev/null ;;
   "inspect -f {{.State.Running}} agentify-scanner-check") echo true ;;
   "exec agentify-scanner-check "*) echo "${SCANNER_HEALTH:-200}" ;;
-  "exec agentify-test-postgres-1 psql "*) echo 1000 ;;
   "start "*) for c in ${args#start }; do sed -i 's/exited/running/' $W/containers/$c; done ;;
 esac
 exit 0
@@ -136,7 +141,7 @@ class Activation(unittest.TestCase):
         for name, body in (("git", 'case "$*" in *rev-parse*) echo "$NEW" ;; esac'), ("df", 'printf "Avail\\n999999999999\\n"')):
             (self.root / "bin" / name).write_text(f"#!/bin/sh\n{body}\n")
             (self.root / "bin" / name).chmod(0o755)
-        (self.root / "etc/release.json").write_text(json.dumps({"channel": "test", "repository": "unused", "stateDirectory": "/var/lib/agentify/test"}))
+        (self.root / "etc/release.json").write_text(json.dumps({"channel": "test", "repository": "unused"}))
         for database, content in ORIGINAL.items():
             (self.world / "db" / database).write_text(content + "\n")
         for container in ("gateway", "cabinet", "scanner", "scanner-worker", "web", "postgres"):
@@ -280,6 +285,12 @@ class Activation(unittest.TestCase):
         said = self.run_script("activate", SCANNER_HEALTH="503")
         self.assertIn("exit 1", said)
         self.assertIn("scanner", said)
+        self.assert_old_release_runs_on_old_data(said)
+
+    def test_a_database_running_another_image_than_the_pinned_one_stops_nothing(self):
+        said = self.run_script("activate", POSTGRES_IMAGE="sha256:postgres-16")
+        self.assertIn("exit 1", said)
+        self.assertIn("postgres", said)
         self.assert_old_release_runs_on_old_data(said)
 
     def test_a_card_on_sale_before_the_release_must_still_be_on_sale_after_it(self):
