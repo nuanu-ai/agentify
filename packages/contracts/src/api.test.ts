@@ -618,7 +618,10 @@ describe("the status an agent reads", () => {
     // An engineer generating a client in another language reads the JSON
     // Schema and not this package, and a rule zod keeps to itself is dropped
     // from it without a word. The exported pattern has to refuse a bare path
-    // too, or a generated client accepts what this schema refuses.
+    // too, or a generated client accepts what this schema refuses — and it has
+    // to give the schema's verdict on every address the scheme rule decides,
+    // including one whose scheme is written in capitals: a flag on a pattern
+    // is one of the things the export drops, and then the two disagree.
     const exported = toJsonSchemas().agent_order_status;
 
     expect(exported.required).toContain("status_url");
@@ -630,6 +633,18 @@ describe("the status an agent reads", () => {
     const pattern = new RegExp(written);
     expect(pattern.test("/x402/orders/ord_7c1e05/status")).toBe(false);
     expect(pattern.test(status.status_url)).toBe(true);
+
+    for (const status_url of [
+      status.status_url,
+      "http://localhost:8080/x402/orders/ord_7c1e05/status",
+      "HTTPS://agentify.ad/x402/orders/ord_7c1e05/status",
+      "ftp://agentify.ad/x402/orders/ord_7c1e05/status",
+      "/x402/orders/ord_7c1e05/status",
+    ]) {
+      expect(pattern.test(status_url), status_url).toBe(
+        AgentOrderStatusSchema.safeParse({ ...status, status_url }).success,
+      );
+    }
   });
 
   it("carries nothing about the sale that is the merchant's rather than the buyer's", () => {
