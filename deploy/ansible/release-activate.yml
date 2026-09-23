@@ -8,7 +8,10 @@
     that:
       - (staged_state.content | b64decode | from_json).revision == release_revision
       - (staged_state.content | b64decode | from_json).state == 'staged'
-    fail_msg: An activating/verified release needs explicit recovery or verification, never an implicit retry.
+    fail_msg: >-
+      This candidate is not staged: an activation of it has begun or finished,
+      and activation never retries on its own. Verify it, or follow
+      deploy/ansible/README.md, "Recover a failed activation".
 
 - name: Prove staged source is unchanged before stopping writers
   ansible.builtin.shell: |
@@ -445,7 +448,14 @@
 
   rescue:
     - ansible.builtin.fail:
-        msg: Activation stopped. Inspect the recorded state. A read-only gate before the recovery boundary leaves it staged; if it is activating, do not blindly retry, roll back after migrations or restart old writers. Use the recorded evidence and a reviewed forward recovery.
+        msg: >-
+          Activation stopped at the task that failed above. Before the recovery
+          boundary the candidate stays staged and nothing was stopped; past it
+          the candidate stays activating, and writers and scheduled jobs may be
+          stopped and databases migrated. Do not retry or roll back by hand:
+          follow deploy/ansible/README.md, "Recover a failed activation", which
+          keeps the evidence, checks the data, and says when the previous
+          writers may be started again.
   always:
     - name: Remove the one-off importer credential file on success or failure
       ansible.builtin.file:

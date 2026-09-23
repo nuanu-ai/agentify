@@ -10,33 +10,45 @@
 # and none of that means anything while a process from the old project is
 # still writing to it.
 #
+# A stopped container of that project is refused too, because it keeps its
+# name. Compose names a container after the project and the service, and on
+# TEST the merged project `agentify-test` with its service `scanner-worker`
+# creates `agentify-test-scanner-worker-1` — the name of the retired project's
+# `worker` container. Docker refuses to create a second container under a name
+# that exists, and it does so at "Start scanner runtime", after activation has
+# stopped the writers and migrated the database. PRODUCTION does not make this
+# transition on this machinery; there the guard refuses every candidate for as
+# long as its old scanner project exists.
+#
 # First, because refusing here costs a `docker ps` and nothing else. The pull
 # agent records a refused selection as failed and will not try that revision
-# again, so a refusal is not free — the release guide has the operator stop
-# the old project before moving the channel's tag, and this is what catches
-# the time somebody did not. Staging stops nothing itself.
+# again, so a refusal is not free — the release guide has the operator stop and
+# remove the old project before moving the channel's tag, and this is what
+# catches the time somebody did not. Staging stops and removes nothing itself.
 #
 # It runs at stage and nowhere else: activation of a candidate that was staged
-# before the old project came back up would not see it. That is acceptable
-# because the old project is stopped once and never started again.
+# before the old project came back would not see it. That is acceptable because
+# the old project is removed once and never created again.
 #
-# This task and the channel variable it reads are deleted once both channels
-# have activated the merged graph. Until then a channel that has already
-# activated passes it without noticing, because the project has nothing left
-# to run.
-- name: Refuse a candidate while the retired scanner project is still running
+# This task and the channel variable it reads leave with this release
+# machinery, when the deployment that replaces it arrives. A channel that has
+# already activated the merged graph passes it without noticing, because the
+# old project has no containers left.
+- name: Refuse a candidate while the retired scanner project has any container
   ansible.builtin.command:
-    argv: [docker, ps, --filter, "label=com.docker.compose.project={{ channel.retired_scanner_project }}", --format, '{{ "{{.Names}}" }}']
+    argv: [docker, ps, --all, --filter, "label=com.docker.compose.project={{ channel.retired_scanner_project }}", --format, '{{ "{{.Names}}" }}']
   changed_when: false
   register: retired_scanner_containers
 - ansible.builtin.assert:
     that: retired_scanner_containers.stdout == ''
     fail_msg: >-
-      The retired scanner project {{ channel.retired_scanner_project }} is still
-      running ({{ retired_scanner_containers.stdout_lines | join(', ') }}). It
-      writes to the database this release migrates. Stop it, then make a new
-      selection — see deploy/ansible/README.md, "Reconcile a host that still
-      runs two projects".
+      The retired scanner project {{ channel.retired_scanner_project }} still
+      has containers on this host ({{ retired_scanner_containers.stdout_lines | join(', ') }}).
+      A running one writes to the database this release migrates, and a
+      stopped one keeps a name the merged project creates. Stop and remove
+      them as deploy/ansible/README.md, "Reconcile a host that still runs two
+      projects", describes. This refusal is recorded at the stage phase; select
+      again as "Observe a selection" in the same guide describes for that phase.
 
 - name: Inspect an existing candidate's delivery state
   ansible.builtin.stat:
@@ -50,7 +62,10 @@
     that:
       - (existing_state.content | b64decode | from_json).revision == release_revision
       - (existing_state.content | b64decode | from_json).state == 'staged'
-    fail_msg: This candidate has begun activation; staging cannot overwrite its state or configuration. Inspect and recover explicitly.
+    fail_msg: >-
+      This candidate has begun activation; staging cannot overwrite its state or
+      configuration. Recover it explicitly: deploy/ansible/README.md, "Recover a
+      failed activation".
   when: existing_state_file.stat.exists
 
 - name: Create the private candidate directory outside the build context
