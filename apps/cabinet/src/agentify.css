@@ -935,6 +935,14 @@ h2 {
   margin: 18px 24px 0;
 }
 
+/* A panel that ends in words rather than a form ends the same distance from its
+   edge a form does. Without this the last line of the shop panel sat on the
+   panel's bottom border, since it is the form below a lede that carries the
+   bottom inset and that panel has none. */
+.settings-panel > .lede:last-child {
+  padding-bottom: 24px;
+}
+
 .integration-shell {
   margin-top: 32px;
   margin-bottom: 40px;
