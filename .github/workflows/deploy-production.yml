@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   validate:
-    name: Validate the accepted tag and CI
+    name: Validate the accepted tag, CI and images
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -39,33 +39,45 @@ jobs:
           git merge-base --is-ancestor "$revision" refs/remotes/origin/main
           echo "revision=$revision" >> "$GITHUB_OUTPUT"
 
-      - name: Require successful CI for the exact tagged commit
+      # Production releases only by the digests main's own images run
+      # published, so that run is waited for here, beside CI and under the
+      # same deadline: a build still running is a wait, and a failed one stops
+      # the tag here instead of on the server.
+      - name: Require successful CI and images for the exact tagged commit
         uses: actions/github-script@v8
         env:
           REVISION: ${{ steps.source.outputs.revision }}
         with:
           script: |
+            const workflows = { "ci.yml": "CI", "images.yml": "images" };
+            const pending = new Set(Object.keys(workflows));
             const deadline = Date.now() + 25 * 60 * 1000;
             while (Date.now() < deadline) {
-              const { data } = await github.rest.actions.listWorkflowRuns({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                workflow_id: "ci.yml",
-                event: "push",
-                head_sha: process.env.REVISION,
-                per_page: 100,
-              });
-              const run = data.workflow_runs.find(
-                (candidate) => candidate.head_sha === process.env.REVISION && candidate.head_branch === "main",
-              );
-              if (run?.status === "completed") {
-                if (run.conclusion === "success") return;
-                core.setFailed(`Latest main CI run ${run.id} concluded ${run.conclusion}`);
-                return;
+              for (const workflow of [...pending]) {
+                const { data } = await github.rest.actions.listWorkflowRuns({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  workflow_id: workflow,
+                  event: "push",
+                  head_sha: process.env.REVISION,
+                  per_page: 100,
+                });
+                const run = data.workflow_runs.find(
+                  (candidate) => candidate.head_sha === process.env.REVISION && candidate.head_branch === "main",
+                );
+                if (run?.status === "completed") {
+                  if (run.conclusion !== "success") {
+                    core.setFailed(`Latest main ${workflows[workflow]} run ${run.id} concluded ${run.conclusion}`);
+                    return;
+                  }
+                  pending.delete(workflow);
+                }
               }
+              if (pending.size === 0) return;
               await new Promise((resolve) => setTimeout(resolve, 15_000));
             }
-            core.setFailed(`CI did not succeed for ${process.env.REVISION} within 25 minutes`);
+            const missing = [...pending].map((workflow) => workflows[workflow]).join(" and ");
+            core.setFailed(`${missing} did not succeed for ${process.env.REVISION} within 25 minutes`);
 
   publish:
     name: Move the accepted PRODUCTION intent
