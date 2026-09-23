@@ -57,6 +57,9 @@ jobs:
             test "$GITHUB_SHA" = "$(git rev-parse origin/main)"
           fi
 
+      - name: Scan the release source for secrets
+        run: ./scripts/scan-secrets.sh . HEAD
+
       - name: Require the tagged commit to pass CI
         if: env.DRY_RUN != 'true'
         uses: actions/github-script@v8

@@ -1,0 +1,32 @@
+# Exact historical findings from Gitleaks 8.30.1 before this gate was added.
+# These are fixture and test values. A new commit gets a new fingerprint and fails.
+05ebbbaed59a06dc58dda8d63feac19b99dd7540:packages/slice/src/buyer.test.ts:generic-api-key:31
+1e00109d8c5fbc3346302ad6f61e6db7bcfc31a9:packages/slice/src/buy.ts:generic-api-key:33
+1e22798e7698dc01c5ee236e05cb9c7eff147762:packages/core/src/deployment/fixtures/live-channel.json:generic-api-key:222
+1e22798e7698dc01c5ee236e05cb9c7eff147762:packages/core/src/deployment/fixtures/live-channel.json:generic-api-key:296
+1e22798e7698dc01c5ee236e05cb9c7eff147762:packages/core/src/deployment/fixtures/test-channel.json:generic-api-key:222
+1e22798e7698dc01c5ee236e05cb9c7eff147762:packages/core/src/deployment/fixtures/test-channel.json:generic-api-key:296
+2c0e6a81a53a19bf3bae5e5e3d0243307a754ca1:apps/cabinet/src/woo-server.test.ts:generic-api-key:95
+3d144e1a99365cf7f158d62fd54ec06d592f2a46:agentify/apps/scanner-worker/src/browser-observation-job.test.ts:generic-api-key:24
+3d144e1a99365cf7f158d62fd54ec06d592f2a46:agentify/apps/web/lib/pending-scan.test.ts:generic-api-key:31
+3d144e1a99365cf7f158d62fd54ec06d592f2a46:agentify/ops/scripts/web-entrypoint.test.mjs:generic-api-key:20
+3d144e1a99365cf7f158d62fd54ec06d592f2a46:agentify/ops/scripts/web-entrypoint.test.mjs:generic-api-key:37
+3d7e19bbd54540af2669af4d03b95d552e223d5e:apps/cabinet/src/identity.test.ts:generic-api-key:10
+448b94ce58f474571392c879b24ab97a0e400e03:packages/slice/src/slice.test.ts:generic-api-key:34
+65f83ab20175ef1c55893c7c7271f85dd83d66f2:packages/slice/src/stand.ts:generic-api-key:33
+68c1c5344c0ab4406c96a58af0e38f6b41553d95:apps/cabinet/src/account-command.test.ts:generic-api-key:56
+68c1c5344c0ab4406c96a58af0e38f6b41553d95:apps/cabinet/src/config.test.ts:generic-api-key:16
+68c1c5344c0ab4406c96a58af0e38f6b41553d95:apps/cabinet/src/identity.db-test.ts:generic-api-key:106
+68c1c5344c0ab4406c96a58af0e38f6b41553d95:apps/cabinet/src/server.test.ts:generic-api-key:2111
+68c1c5344c0ab4406c96a58af0e38f6b41553d95:apps/cabinet/src/server.test.ts:generic-api-key:328
+7557f17f6f97995d8ab45cb1c2f12a7cf38fa2cd:packages/contracts/src/merchant.test.ts:generic-api-key:22
+a007e05f23c00ee8dc6d2672a2327d9e4ca46106:apps/cabinet/src/config.test.ts:generic-api-key:39
+a007e05f23c00ee8dc6d2672a2327d9e4ca46106:apps/cabinet/src/report-identity-server.test.ts:generic-api-key:17
+a007e05f23c00ee8dc6d2672a2327d9e4ca46106:apps/cabinet/src/report-identity-server.test.ts:generic-api-key:25
+a007e05f23c00ee8dc6d2672a2327d9e4ca46106:apps/cabinet/src/report-identity.db-test.ts:generic-api-key:87
+a007e05f23c00ee8dc6d2672a2327d9e4ca46106:apps/cabinet/src/report-identity.test.ts:generic-api-key:15
+d11f4d98f3cdadc75bc90d1c692e444907deb26a:packages/slice/src/spending-gate.test.ts:generic-api-key:52
+e762f2d110e977a38257ba1339b2f119a00cea3a:apps/cabinet/src/account-command.test.ts:generic-api-key:13
+e762f2d110e977a38257ba1339b2f119a00cea3a:apps/cabinet/src/identity.db-test.ts:generic-api-key:84
+e762f2d110e977a38257ba1339b2f119a00cea3a:apps/cabinet/src/identity.test.ts:generic-api-key:10
+fbdfc4092e6f6abf584307d60a0b413b75b2b529:packages/slice/src/bootstrap-command.test.ts:generic-api-key:58

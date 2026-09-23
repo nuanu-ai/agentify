@@ -58,11 +58,23 @@ on:
 permissions: {}
 
 jobs:
+  secret_scan:
+    name: Images secret scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - run: ./scripts/scan-secrets.sh . "$GITHUB_SHA"
+
   # One leg per image, in parallel. The build context is the repository root.
   # app, scanner and scanner-worker read the .dockerignore beside their
   # Dockerfile; web has none of its own and reads the root one.
   build:
     name: build ${{ matrix.image }}
+    needs: secret_scan
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

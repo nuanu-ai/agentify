@@ -20,6 +20,15 @@ concurrency:
 # Public pull requests run only on GitHub-hosted infrastructure. No job in this
 # repository receives a route or credential that can deliver to test or live.
 jobs:
+  secret_scan:
+    name: CI secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - run: ./scripts/scan-secrets.sh . "$GITHUB_SHA"
+
   # Every check that needs the source, the dependencies or a database shares
   # one checkout, one install and one database server. Matrix jobs used to
   # spend almost nine minutes on setup while the checks themselves took
@@ -30,6 +39,7 @@ jobs:
   # one answer: this exact commit is fit to release, or it is not.
   gate:
     name: gate
+    needs: secret_scan
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
@@ -120,6 +130,7 @@ jobs:
   # database.
   browser:
     name: browser
+    needs: secret_scan
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -142,6 +153,7 @@ jobs:
   # distinct release promise. It installs from the same workspace lockfile.
   portal:
     name: portal
+    needs: secret_scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -160,6 +172,7 @@ jobs:
   # The decision log needs neither Node nor dependencies — only bash and files.
   decisions:
     name: decisions
+    needs: secret_scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
