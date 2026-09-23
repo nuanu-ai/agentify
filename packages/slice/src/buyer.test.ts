@@ -52,6 +52,12 @@ const NAMED_BY_THE_ANSWER = "/where/the/purchase/answer/said/ord_7c1e05";
 const ITEM_WITH_NO_ADDRESS = "itm_answered_without_an_address";
 
 /**
+ * The product whose purchase answer names an address on another origin — a
+ * second server, on a port of its own, that is not where this buyer buys.
+ */
+const ITEM_COLLECTED_ELSEWHERE = "itm_collected_on_another_origin";
+
+/**
  * The address of an order's status on the server `base` names, spelled by the
  * contract's route table: for the tests below that are about what the buyer
  * does with an answer, not about where the address came from.
@@ -68,9 +74,14 @@ interface Asked {
 
 const asked: Asked[] = [];
 
+/** What arrived at the second origin, kept apart from what arrived at the first. */
+const askedElsewhere: Asked[] = [];
+
 let server: Server;
+let elsewhere: Server;
 let buyer: ReturnType<typeof makeBuyer>;
 let baseUrl: string;
+let elsewhereUrl: string;
 
 beforeAll(async () => {
   server = createServer((request, response) => {
@@ -107,7 +118,12 @@ beforeAll(async () => {
         JSON.stringify(
           request.url.includes(ITEM_WITH_NO_ADDRESS)
             ? { order_id: "ord_7c1e05" }
-            : { order_id: "ord_7c1e05", status_url: `${baseUrl}${NAMED_BY_THE_ANSWER}` },
+            : {
+                order_id: "ord_7c1e05",
+                status_url: `${
+                  request.url.includes(ITEM_COLLECTED_ELSEWHERE) ? elsewhereUrl : baseUrl
+                }${NAMED_BY_THE_ANSWER}`,
+              },
         ),
       );
       return;
@@ -119,6 +135,23 @@ beforeAll(async () => {
 
   const { port } = server.address() as AddressInfo;
   baseUrl = `http://127.0.0.1:${port}`;
+
+  // The second origin records what reaches it and answers nothing in
+  // particular, for the same reason the first answers most calls with an
+  // empty object: the one thing asserted about it is who knocked.
+  elsewhere = createServer((request, response) => {
+    askedElsewhere.push({
+      method: request.method ?? "",
+      path: request.url ?? "",
+      headers: request.headers,
+    });
+    response.setHeader("content-type", "application/json");
+    response.end("{}");
+  });
+  elsewhere.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => elsewhere.once("listening", resolve));
+  elsewhereUrl = `http://127.0.0.1:${(elsewhere.address() as AddressInfo).port}`;
+
   buyer = makeBuyer({
     baseUrl,
     privateKey: TEST_BUYER_KEY,
@@ -127,13 +160,16 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await new Promise<void>((resolve, reject) => {
-    server.close((error) => (error === undefined ? resolve() : reject(error)));
-  });
+  for (const one of [server, elsewhere]) {
+    await new Promise<void>((resolve, reject) => {
+      one.close((error) => (error === undefined ? resolve() : reject(error)));
+    });
+  }
 });
 
 beforeEach(() => {
   asked.length = 0;
+  askedElsewhere.length = 0;
 });
 
 /** The one request a call made, or a failure naming how many there were. */
@@ -189,6 +225,26 @@ describe("the addresses this buyer writes by hand", () => {
     const one = theOne();
     expect(one.method).toBe(API_ROUTES.get_order_status.method);
     expect(one.path).toBe(NAMED_BY_THE_ANSWER);
+  });
+
+  it("calls the address exactly as the answer gave it, on whatever origin the answer named", async () => {
+    // The address is the answer's whole, host and port included, and not a
+    // path to be joined onto wherever this buyer happens to buy. A gateway
+    // behind a proxy, or one that serves its agents' door from another host,
+    // names an origin the buyer was never pointed at; a buyer that kept its
+    // own origin and borrowed only the path would knock on the wrong server
+    // and read its refusal as news about a paid order.
+    const bought = await buyer.buy(ITEM_COLLECTED_ELSEWHERE, {});
+
+    expect(bought.statusUrl).toBe(`${elsewhereUrl}${NAMED_BY_THE_ANSWER}`);
+
+    asked.length = 0;
+    await buyer.status(bought.statusUrl ?? "");
+
+    expect(asked).toStrictEqual([]);
+    expect(askedElsewhere.map((one) => [one.method, one.path])).toStrictEqual([
+      [API_ROUTES.get_order_status.method, NAMED_BY_THE_ANSWER],
+    ]);
   });
 
   it("reports an answer that named no address as naming none, rather than making one up", async () => {
