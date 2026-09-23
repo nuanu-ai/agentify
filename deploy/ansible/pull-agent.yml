@@ -83,6 +83,30 @@
         - {path: "{{ pull_agent_configuration_directory }}", mode: '0700'}
         - {path: "{{ pull_agent_state_directory }}", mode: '0700'}
 
+    - name: Find needrestart on the host
+      ansible.builtin.stat:
+        path: /etc/needrestart
+      register: pull_agent_needrestart
+
+    # needrestart reads /etc/needrestart/conf.d when the directory exists, and
+    # a host can carry the program without it. Creating it here leaves an
+    # existing directory as it is.
+    - name: Give needrestart a directory for local rules where it has none
+      ansible.builtin.file:
+        path: /etc/needrestart/conf.d
+        state: directory
+      when: pull_agent_needrestart.stat.exists
+
+    - name: Keep needrestart from restarting a pull agent in the middle of a release
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/needrestart-agentify-pull.conf"
+        dest: /etc/needrestart/conf.d/agentify-pull.conf
+        owner: root
+        group: root
+        mode: '0644'
+        validate: perl -c %s
+      when: pull_agent_needrestart.stat.exists
+
     - name: Inspect the immutable installed version
       ansible.builtin.stat:
         path: "{{ pull_agent_release_directory }}"

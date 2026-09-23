@@ -50,6 +50,16 @@ timer. It changes no channel secret or application data. Bootstrap also removes
 only the retired channel-specific GitHub runner key block; operator SSH access
 is left intact.
 
+On a host with needrestart, the bootstrap also installs
+`/etc/needrestart/conf.d/agentify-pull.conf` from
+`needrestart-agentify-pull.conf`, creating the directory where the host has
+none, and the rule in it tells needrestart never to restart
+`agentify-pull@<channel>.service`. Unattended upgrades run needrestart after
+they replace a shared library, and a restart of that service kills a release in
+the middle of activation, with writers stopped and the release lock held. The
+agent is a one-shot service started by its timer, so the next poll runs on the
+upgraded libraries without any restart.
+
 ## Deploy TEST by moving `deploy-test`
 
 Run **Deploy TEST** from `main` and enter a branch, tag or full SHA from this
