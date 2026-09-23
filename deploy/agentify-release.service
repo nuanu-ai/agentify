@@ -8,10 +8,18 @@ ConditionPathExists=/etc/agentify/release.json
 [Service]
 Type=oneshot
 ExecStartPre=/usr/bin/systemctl is-active --quiet docker.service
-# Exits 0 with nothing to do when deploy-test names what runs or what failed,
-# and while the images are being built; a refusal or a failed activation
+# Silent with exit 0 when deploy-test names what runs or what failed. Exit 75
+# is a wait (a build not listed yet or still running, images that did not
+# arrive, a lock) and the next tick asks again; after 30 minutes of waiting
+# for one revision it becomes a failure. A refusal or a failed activation
 # fails the unit once and is not tried again until the tag moves or a person
 # runs agentify-release by hand.
 ExecStart=/usr/local/sbin/agentify-release --timer deploy-test
-TimeoutStartSec=90min
-UMask=0077
+SuccessExitStatus=75
+# The last resort for a release that hangs; the pull alone gives up after
+# 30 minutes. A stop request gives activation time to restore the databases.
+TimeoutStartSec=2h
+TimeoutStopSec=30min
+# The state it writes holds nothing secret and is readable by anyone on the
+# host; activation keeps its restore points private itself.
+UMask=0022

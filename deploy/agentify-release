@@ -4,6 +4,12 @@
     sudo agentify-release app-v1.2.3        a tag, a branch, or on TEST a full SHA
     agentify-release --timer deploy-test    what TEST's timer runs once a minute
 
+A person's run does not release from the terminal. It hands the release to a
+transient systemd unit, agentify-release-<channel>, and follows the unit's
+journal until it ends, returning its exit status; a dropped connection or
+Ctrl-C stops only the following. Inside a unit (that one, or the timer's) it
+releases itself.
+
 It resolves the name with `git ls-remote` against the public repository, finds
 the revision's five images by the digests its image build published, fetches
 the revision, and runs that revision's deploy/activate.sh with the images
@@ -19,15 +25,18 @@ running is a wait. PRODUCTION adds its conditions to that one path: the name
 is an app-v* tag, the run is on main, main's CI run for the commit succeeded,
 and the commit moves forward from the revision this host runs.
 
-State is two files in the state directory: `current`, the revision the last
-successful activation verified, and `failed`, the last revision that was
-refused or failed. A manual run never skips anything and is how a release is
-retried. Timer mode (TEST only) exits 0 without a word when the tag names
-`current` or `failed`, and exits 0 to try again at the next tick while the
-images are being built or another release holds the lock.
+The state directory holds nothing secret, so it and its files can be read by
+anyone on the host: `current`, the revision the last successful activation
+verified; `failed`, the last revision that was refused or failed; `seen`, the
+revision the timer last began waiting for and when; and activate.sh's
+`pending`. A person's run never skips anything and is how a release is retried.
+Timer mode (TEST only) exits 0 without a word when the tag names `current` or
+`failed`. A wait (no build listed yet, a build still running, images that did
+not arrive, a lock) exits 75, and the next tick asks again, until the timer has
+waited 30 minutes for that revision; then the wait is recorded as a failure.
 
-Exit codes: 0 done, or in timer mode nothing to do yet; 75 a manual run that
-has to wait, nothing changed; 1 a refusal; anything else is activate.sh's own.
+Exit codes: 0 done, or in timer mode nothing to do; 75 a wait, nothing
+changed; 1 a refusal; anything else is activate.sh's own.
 """
 
 import argparse
@@ -37,8 +46,11 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import sys
+import tempfile
+import time
 import urllib.request
 
 
@@ -47,6 +59,7 @@ IMAGES = ("app", "web", "scanner", "scanner-worker", "scanner-privacy")
 FULL_SHA = re.compile(r"[0-9a-f]{40}")
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")
 APP_TAG = re.compile(r"app-v[0-9A-Za-z._-]+")
+PATIENCE = 30 * 60
 
 
 class Refusal(Exception):
@@ -122,14 +135,18 @@ def runs(revision, production, status=None):
 def image_digests(revision, production):
     """The five digests the commit's image build published, by the rule in images.yml's header."""
     built = runs(revision, production, status="success")
-    if len(built) != 1:
-        if not built and any(run.get("status") != "completed" for run in runs(revision, production)):
+    if len(built) > 1:
+        raise Refusal(f"GitHub lists {len(built)} successful image builds of {revision}, and the rule refuses rather than choose")
+    if not built:
+        listed = runs(revision, production)
+        if any(run.get("status") != "completed" for run in listed):
             raise Wait(f"the images of {revision} are still being built")
+        if listed:
+            raise Refusal(f"the image build of {revision} did not succeed, so there are no images to pull")
         where = "the head of a push to main" if production else "the head of a pushed branch"
-        raise Refusal(
-            f"GitHub lists {len(built)} successful image builds of {revision} where the rule wants exactly one; "
-            f"a build starts when a commit is pushed as {where}, so if that happened moments ago, "
-            "run this again once its build has started"
+        raise Wait(
+            f"GitHub lists no image build of {revision} yet; one starts when a commit is pushed as {where}, "
+            "and a commit that never was one never gets one"
         )
     jobs = fetch_json(f"{API}/actions/runs/{built[0].get('id')}/jobs?per_page=100")
     named = [job for job in field(jobs, "jobs", list) if isinstance(job, dict) and job.get("name") == "digests"]
@@ -186,19 +203,30 @@ def read(path):
     return path.read_text().strip() if path.exists() else None
 
 
-def write(path, revision):
+def write(path, text):
     temporary = path.with_name(f".{path.name}")
-    temporary.write_text(revision + "\n")
+    temporary.write_text(text + "\n")
+    temporary.chmod(0o644)
     os.replace(temporary, path)
+
+
+def first_seen(state, revision):
+    """When the timer began waiting for this revision."""
+    seen = (read(state / "seen") or "").split()
+    if len(seen) == 2 and seen[0] == revision and seen[1].isdigit():
+        return int(seen[1])
+    now = int(time.time())
+    write(state / "seen", f"{revision} {now}")
+    return now
 
 
 def activate(config, state, name, revision, mirror):
     production = config["channel"] == "production"
     images = image_digests(revision, production)
-    git("-C", mirror, "fetch", "-q", "--no-tags", config["repository"], revision, "+refs/heads/main:refs/remotes/origin/main", fails=Wait)
+    running = read(state / "current") if production else None
+    git("-C", mirror, "fetch", "-q", "--no-tags", config["repository"], revision, *filter(None, [running]), fails=Wait)
     if production:
         require_ci(revision)
-        running = read(state / "current")
         if running and subprocess.run(["git", "-C", str(mirror), "merge-base", "--is-ancestor", running, revision]).returncode:
             raise Refusal(f"{revision} does not move forward from {running}, which this host runs")
     path = state / "checkouts" / revision
@@ -224,7 +252,9 @@ def release(config, name, timer):
         raise Refusal("only TEST releases by timer; a person releases production")
     # Nothing here is secret (revision names, checkouts of the public
     # repository, public digests), so a person on the host can read it.
-    state.mkdir(mode=0o755, parents=True, exist_ok=True)
+    state.mkdir(parents=True, exist_ok=True)
+    for directory in (state.parent, state):
+        directory.chmod(0o755)
     with (state / "release.lock").open("a") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -237,16 +267,22 @@ def release(config, name, timer):
             raise Refusal(f"{name} names nothing in the repository")
         if timer and revision in (read(state / "current"), read(state / "failed")):
             return 0
+        since = first_seen(state, revision) if timer else None
         mirror = state / "repository.git"
         if not mirror.exists():
             git("init", "-q", "--bare", mirror)
         try:
             code = activate(config, state, name, revision, mirror)
+            if code == 75:
+                raise Wait("activation had to wait, for the reason in its line above")
+        except Wait as wait:
+            if since is None or time.time() - since < PATIENCE:
+                raise
+            write(state / "failed", revision)
+            raise Refusal(f"{revision} has waited {PATIENCE // 60} minutes: {wait}") from wait
         except Refusal:
             write(state / "failed", revision)
             raise
-        if code == 75:
-            raise Wait("activation had to wait, for the reason in its line above")
         if code != 0:
             write(state / "failed", revision)
             say(f"{revision} failed; fix the cause and run agentify-release {name} again")
@@ -271,6 +307,35 @@ def read_config(path):
     return config
 
 
+def launch(config, argv):
+    """Hands a person's release to a transient unit and follows its journal until it ends."""
+    unit = f"agentify-release-{config['channel']}.service"
+    if subprocess.run(["systemctl", "is-active", "--quiet", unit]).returncode == 0:
+        raise Wait(f"a release is already running as {unit}; journalctl -u {unit} -f follows it")
+    since = f"@{int(time.time())}"
+    say(f"the release runs as {unit}: a lost connection does not stop it, and journalctl -u {unit} holds its whole log")
+    unit_run = subprocess.Popen(
+        ["systemd-run", f"--unit={unit}", "--wait", "--collect", "--quiet",
+         "--property=RuntimeMaxSec=2h", "--property=TimeoutStopSec=30min",
+         sys.executable, str(Path(__file__).resolve()), *argv],
+        start_new_session=True,
+    )
+    with tempfile.NamedTemporaryFile() as cursor:
+        def follow():
+            subprocess.run(["journalctl", f"_SYSTEMD_UNIT={unit}", f"--since={since}", "--output=cat",
+                            "--no-pager", f"--cursor-file={cursor.name}"])
+        try:
+            while unit_run.poll() is None:
+                follow()
+                time.sleep(1)
+            time.sleep(1)
+            follow()
+        except KeyboardInterrupt:
+            say(f"stopped following; the release goes on as {unit}, and journalctl -u {unit} -f follows it")
+            return 130
+    return unit_run.returncode
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Release one revision on this host's channel")
     parser.add_argument("name", help="an app-v* tag on production; a tag, branch or full SHA on test")
@@ -278,10 +343,16 @@ def main(argv=None):
     parser.add_argument("--config", type=Path, default=Path("/etc/agentify/release.json"))
     arguments = parser.parse_args(argv)
     try:
-        return release(read_config(arguments.config), arguments.name, arguments.timer)
+        config = read_config(arguments.config)
+        if not arguments.timer and "INVOCATION_ID" not in os.environ:
+            return launch(config, sys.argv[1:] if argv is None else argv)
+        # Inside a unit a stop request reaches activate.sh, which undoes what
+        # it must; this process waits for it to finish and records the result.
+        signal.signal(signal.SIGTERM, lambda signum, frame: None)
+        return release(config, arguments.name, arguments.timer)
     except Wait as wait:
         say(f"{wait}; nothing changed" + ("; the next tick asks again" if arguments.timer else ", run this again later"))
-        return 0 if arguments.timer else 75
+        return 75
     except Refusal as refusal:
         say(f"refused: {refusal}")
         return 1
