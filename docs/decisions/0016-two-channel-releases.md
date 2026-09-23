@@ -45,6 +45,12 @@ Publishing, behind the same main-ancestry and CI checks. There is no separate
 SDK tag, so every SDK release is a release of the application it was tested
 with, and SDK publication grants no host-delivery authority.
 
+The GitHub workflows check the candidate's reachable Git history for secrets
+before CI tests, image publication, workflow-driven channel selection or SDK
+publication. A detected secret or an unavailable scanner stops that workflow.
+Existing fixture findings are suppressed by exact historical fingerprints, so
+a new finding at the same path is still reported.
+
 ## Alternatives rejected
 
 - Each server building from source spent most of a release on it (4 min 40 s

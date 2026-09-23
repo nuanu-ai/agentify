@@ -46,6 +46,16 @@ jobs:
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
+      - name: Check out the candidate history
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.candidate.outputs.sha }}
+          fetch-depth: 0
+          path: candidate-source
+
+      - name: Scan the candidate for secrets
+        run: ./scripts/scan-secrets.sh candidate-source "${{ steps.candidate.outputs.sha }}"
+
       - name: Publish the exact TEST intent
         env:
           GH_TOKEN: ${{ github.token }}

@@ -39,6 +39,9 @@ jobs:
           git merge-base --is-ancestor "$revision" refs/remotes/origin/main
           echo "revision=$revision" >> "$GITHUB_OUTPUT"
 
+      - name: Scan the tagged source for secrets
+        run: ./scripts/scan-secrets.sh . "${{ steps.source.outputs.revision }}"
+
       # Production releases only by the digests main's own images run
       # published, so that run is waited for here, beside CI and under the
       # same deadline: a build still running is a wait, and a failed one stops
