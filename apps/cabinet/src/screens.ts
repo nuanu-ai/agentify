@@ -20,7 +20,7 @@ import {
   type OrderList,
   type ReceiptList,
 } from "@nuanu-ai/agentify-contracts";
-import { escaped, page, state, type Tab, table } from "./html.js";
+import { escaped, page, type Row, state, type Tab, table } from "./html.js";
 import type { PayoutWallet } from "./payout-wallet.js";
 // A type and nothing else, so this leaves no import behind once it is compiled
 // and the two files are not a cycle at run time. The shape belongs beside the
@@ -243,14 +243,19 @@ export const cardsScreen = (
   const stopped = cards.selling === "paused";
 
   const rows = cards.cards.map(
-    (entry) => `<tr class="${entry.selling === "open" ? "" : "off"}">
-<td><div class="title">${escaped(entry.card.title)}</div><div class="under">${escaped(cardAside(entry))}</div><div class="buy">${wrappable(buyingAddress(origin, entry))}</div></td>
-<td class="key">${escaped(entry.card.merchant_item_id)}</td>
-<td class="amount">${escaped(money(entry.card.price))}</td>
-<td class="quiet">${escaped(FULFILLMENT_WORDS[entry.card.fulfillment])}</td>
-<td>${state(SELLING_WORDS[entry.selling])}</td>
-<td class="control">${cardControl(base, entry)}</td>
-</tr>`,
+    (entry): Row => ({
+      ...(entry.selling === "open" ? {} : { mark: "off" }),
+      cells: [
+        {
+          html: `<div class="title">${escaped(entry.card.title)}</div><div class="under">${escaped(cardAside(entry))}</div><div class="buy">${wrappable(buyingAddress(origin, entry))}</div>`,
+        },
+        { kind: "key", html: escaped(entry.card.merchant_item_id) },
+        { kind: "amount", html: escaped(money(entry.card.price)) },
+        { kind: "quiet", html: escaped(FULFILLMENT_WORDS[entry.card.fulfillment]) },
+        { html: state(SELLING_WORDS[entry.selling]) },
+        { kind: "control", html: cardControl(base, entry) },
+      ],
+    }),
   );
 
   const body = `
@@ -347,16 +352,20 @@ export const ordersScreen = (
   );
   const wanting = orders.orders.filter((order) => needsAttention(order.status));
 
-  const rows = orders.orders.map((order) => {
-    const word = ORDER_WORDS[order.status];
-    return `<tr class="${needsAttention(order.status) ? "needs-you" : ""}">
-<td class="ident">${escaped(order.id)}</td>
-<td><div>${escaped(titles.get(order.merchant_item_id) ?? order.merchant_item_id)}</div><div class="under mono">${escaped(order.merchant_item_id)}</div></td>
-<td class="amount">${escaped(money(order.price))}${sum(order.test)}</td>
-<td>${state(word)}</td>
-<td class="quiet">${escaped(moment(order.price.at))}</td>
-</tr>`;
-  });
+  const rows = orders.orders.map(
+    (order): Row => ({
+      ...(needsAttention(order.status) ? { mark: "needs-you" } : {}),
+      cells: [
+        { kind: "ident", html: escaped(order.id) },
+        {
+          html: `<div>${escaped(titles.get(order.merchant_item_id) ?? order.merchant_item_id)}</div><div class="under mono">${escaped(order.merchant_item_id)}</div>`,
+        },
+        { kind: "amount", html: `${escaped(money(order.price))}${sum(order.test)}` },
+        { html: state(ORDER_WORDS[order.status]) },
+        { kind: "quiet", html: escaped(moment(order.price.at)) },
+      ],
+    }),
+  );
 
   const body = `
   <div class="lede">
@@ -470,19 +479,21 @@ export const receiptsScreen = (
   const titles = new Map(cards.cards.map((entry) => [entry.id, entry.card.title]));
   const delivered = receipts.receipts.filter((receipt) => receipt.outcome === "delivered").length;
 
-  const rows = receipts.receipts.map((receipt) => {
-    const word = ORDER_WORDS[receipt.outcome];
-    return `<tr class="${receipt.outcome === "refund_due" ? "needs-you" : ""}">
-<td class="ident">${escaped(receipt.id)}</td>
-<td class="ident">${escaped(receipt.order_id)}</td>
-<td>${escaped(titles.get(receipt.item_id) ?? receipt.item_id)}</td>
-<td class="amount">${escaped(money(receipt.price))}${sum(receipt.test)}</td>
-<td>${state(word)}</td>
-<td class="quiet">${escaped(moment(receipt.paid_at))}</td>
-<td class="quiet">${escaped(moment(receipt.price.at))}</td>
-<td class="quiet">${escaped(moment(receipt.price.as_of))}</td>
-</tr>`;
-  });
+  const rows = receipts.receipts.map(
+    (receipt): Row => ({
+      ...(receipt.outcome === "refund_due" ? { mark: "needs-you" } : {}),
+      cells: [
+        { kind: "ident", html: escaped(receipt.id) },
+        { kind: "ident", html: escaped(receipt.order_id) },
+        { html: escaped(titles.get(receipt.item_id) ?? receipt.item_id) },
+        { kind: "amount", html: `${escaped(money(receipt.price))}${sum(receipt.test)}` },
+        { html: state(ORDER_WORDS[receipt.outcome]) },
+        { kind: "quiet", html: escaped(moment(receipt.paid_at)) },
+        { kind: "quiet", html: escaped(moment(receipt.price.at)) },
+        { kind: "quiet", html: escaped(moment(receipt.price.as_of)) },
+      ],
+    }),
+  );
 
   const body = `
   <div class="lede">

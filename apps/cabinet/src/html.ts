@@ -244,15 +244,42 @@ ${body}
 export const state = (word: { readonly text: string; readonly tone: string }): string =>
   `<span class="state ${word.tone}"><span class="dot"></span>${escaped(word.text)}</span>`;
 
-/** A table with a row for every entry, or one line saying there are none. */
+/** One cell of a table: what it shows, and the class that says what kind of value it is. */
+export interface Cell {
+  readonly html: string;
+  readonly kind?: string;
+}
+
+/** One row: its cells in the order of the columns, and the class the row is marked with. */
+export interface Row {
+  readonly mark?: string;
+  readonly cells: readonly Cell[];
+}
+
+/**
+ * A table with a row for every entry, or one line saying there are none.
+ *
+ * Every cell carries the head of its column. Where the frame is too narrow for
+ * the columns, a row is drawn as a block of labelled values rather than a line
+ * the page has to be scrolled sideways to read, and the labels are these — the
+ * same words as the heads, so the two cannot say different things.
+ */
 export const table = (
   columns: readonly string[],
-  rows: readonly string[],
+  rows: readonly Row[],
   nothing: string,
-): string =>
-  rows.length === 0
-    ? `<div class="scroller"><p class="empty">${escaped(nothing)}</p></div>`
-    : `<div class="scroller"><table>
+): string => {
+  if (rows.length === 0) {
+    return `<div class="scroller"><p class="empty">${escaped(nothing)}</p></div>`;
+  }
+  const cell = (one: Cell, head = ""): string =>
+    `<td${one.kind === undefined ? "" : ` class="${one.kind}"`}${head === "" ? "" : ` data-label="${escaped(head)}"`}>${one.html}</td>`;
+  const row = (one: Row): string =>
+    `<tr${one.mark === undefined ? "" : ` class="${one.mark}"`}>
+${one.cells.map((each, at) => cell(each, columns[at])).join("\n")}
+</tr>`;
+  return `<div class="scroller"><table>
 <thead><tr>${columns.map((column) => `<th>${escaped(column)}</th>`).join("")}</tr></thead>
-<tbody>${rows.join("")}</tbody>
+<tbody>${rows.map(row).join("")}</tbody>
 </table></div>`;
+};
