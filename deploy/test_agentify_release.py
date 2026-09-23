@@ -113,9 +113,13 @@ class ReleaseTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         root = Path(self.temp.name)
-        self.remote, self.source, self.state = root / "remote.git", root / "source", root / "state"
+        self.remote, self.source = root / "remote.git", root / "source"
+        # The state lives in /var/lib/agentify/<channel>, where activate.sh and
+        # restore.sh read it too; these tests move that root into the temp dir.
+        self.states = root / "var-lib-agentify"
+        self.state = self.states / self.channel
         self.log, self.config = root / "activations.jsonl", root / "release.json"
-        self.config.write_text(json.dumps({"channel": self.channel, "repository": str(self.remote), "stateDirectory": str(self.state)}))
+        self.config.write_text(json.dumps({"channel": self.channel, "repository": str(self.remote)}))
         self.git("init", "-q", "--bare", str(self.remote), cwd=root)
         self.git("init", "-q", "-b", "main", str(self.source), cwd=root)
         self.git("config", "user.name", "Release Test")
@@ -158,6 +162,7 @@ class ReleaseTest(unittest.TestCase):
             stack.enter_context(mock.patch.dict(os.environ, environment))
             stack.enter_context(contextlib.redirect_stdout(output))
             stack.enter_context(mock.patch.object(RELEASE, "fetch_json", self.github))
+            stack.enter_context(mock.patch.object(RELEASE, "STATES", self.states))
             code = RELEASE.main(["--config", str(self.config), *flags, name])
         self.said = output.getvalue()
         return code
@@ -436,7 +441,7 @@ class TheTimer(ReleaseTest):
 
     def test_tries_again_at_the_next_tick_when_another_release_holds_the_lock(self):
         self.tag("deploy-test", self.first)
-        self.state.mkdir()
+        self.state.mkdir(parents=True)
         with (self.state / "release.lock").open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             self.assertEqual(self.tick(), 75)
@@ -508,7 +513,7 @@ class APersonsRun(unittest.TestCase):
         self.bin, self.calls = root / "bin", root / "calls"
         self.bin.mkdir()
         self.config = root / "release.json"
-        self.config.write_text(json.dumps({"channel": "test", "repository": "unused", "stateDirectory": str(root / "state")}))
+        self.config.write_text(json.dumps({"channel": "test", "repository": "unused"}))
         for name, body in {
             "systemctl": 'exit "${FAKE_ACTIVE:-3}"',
             "systemd-run": 'printf "%s\\n" "$@" > "$FAKE_CALLS"; exit "${FAKE_UNIT_EXIT:-0}"',
