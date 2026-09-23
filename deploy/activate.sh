@@ -29,7 +29,7 @@ set -Eeuo pipefail
 umask 077
 
 channel="${1:-}" revision="${2:-}"
-root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 images="$root/deploy/images.env" backups="/var/backups/agentify/${1:-}" backup="" step=""
 refuse() { echo "activate: $*" >&2; exit 1; }
 at() { step="$1"; echo "activate: $step" >&2; }

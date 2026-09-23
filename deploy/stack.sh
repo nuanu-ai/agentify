@@ -25,7 +25,7 @@ case "$channel" in
 esac
 shift
 
-root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 environment="/etc/agentify/$channel.env"
 images="$root/deploy/images.env"
 if [[ ! -r $environment ]]; then
