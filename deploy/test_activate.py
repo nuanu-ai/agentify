@@ -2,16 +2,23 @@
 
 The scripts run as they ship, as root, in a throwaway Debian container, since
 they own host paths (/var/lib/agentify, /var/backups/agentify, /run/lock).
-Around them, `docker`, the checkout's `stack.sh`, `curl`, `git` and `df` are
-fakes that act on a small world of files in the test's directory: the two
-databases, one line per migration applied; the containers of the channel,
-with the release each runs and whether it runs; and the catalog. Each test
-asserts on that world after the run, as a person would inspect the host.
-The fake docker knows a container only by the ID `stack.sh ps` lists, never
-by its name: Compose finds its containers by label, and a recreate cut short
-leaves one running under a temporary name. When the database starts, the fake
-records what its init-script mount holds, and creates the directory empty when
-it is missing, as Docker does with a bind mount's source.
+Around them, `docker`, the checkout's `stack.sh`, `curl`, `git`, `df` and
+`systemctl` are fakes that act on a small world of files in the test's
+directory: the databases, one file each with one line per migration applied;
+the containers of the channel, with the release each runs and whether it runs;
+and the catalog. Each test asserts on that world after the run, as a person
+would inspect the host.
+
+The fake docker knows a container only by the ID `stack.sh ps` lists, never by
+its name: Compose finds its containers by label, and a recreate cut short
+leaves one running under a temporary name. The fake database server creates,
+drops and renames databases as files, and runs a script's renames all
+together, as one transaction does. When the database starts, the fake records
+what its init-script mount holds, and creates the directory empty when it is
+missing, as Docker does with a bind mount's source. It also records the
+transition record as it stands when the first dump is taken and when the new
+release starts. The fake curl is a shell script, so that a catalog of
+thousands of cards is checked in seconds.
 
 It needs Docker, which pulls python:3.12-slim-bookworm the first time, and it
 fails with that sentence when there is none.
@@ -28,33 +35,67 @@ import unittest
 
 HERE = Path(__file__).parent
 IMAGE = "python:3.12-slim-bookworm"
-NEW, OLD = "a" * 40, "b" * 40
+NEW, OLD, OTHER = "a" * 40, "b" * 40, "c" * 40
 APPLICATIONS = ("cabinet", "gateway", "scanner", "scanner-worker")
 INIT = {"01-test-database.sql": "CREATE DATABASE agentify_commerce_test;\n", "02-scanner-database.sql": "CREATE DATABASE agentify_scanner;\n"}
 ORIGINAL = {"agentify_commerce": "agentify_commerce: the old release's data", "agentify_scanner": "agentify_scanner: the old release's data"}
+MIGRATED = {
+    "agentify_commerce": ORIGINAL["agentify_commerce"] + "\nthe gateway's migration\nthe cabinet's migration",
+    "agentify_scanner": ORIGINAL["agentify_scanner"] + "\na scanner migration",
+}
+ORDER = "an order written while the new release ran"
+FAILED_MIGRATION = "run --rm --no-deps -T migrate"
+FAILED_START = "up -d --wait --no-deps gateway cabinet web"
 
 STACK = r"""#!/usr/bin/env bash
 # Fake stack.sh: the channel's Compose command line, acting on /h/world.
 shift
 W=/h/world args="$*"
 echo "stack $args" >> $W/calls
+record=/var/lib/agentify/test/transition
 hook() {
   if [[ -n ${TERM_AT:-} && $args == "$TERM_AT" ]]; then kill -TERM $PPID; fi
+  if [[ -n ${TERM_ALL_AT:-} && $args == "$TERM_ALL_AT" ]]; then
+    for p in /proc/[0-9]*; do
+      case "$(tr '\0' ' ' < $p/cmdline 2>/dev/null)" in
+        *"bash /h/tree/deploy/activate.sh "*|*"bash /h/tree/deploy/restore.sh "*) kill -TERM ${p#/proc/} 2>/dev/null ;;
+      esac
+    done
+  fi
   if [[ -n ${KILL_AT:-} && $args == "$KILL_AT" ]]; then kill -KILL $PPID; exit 0; fi
   if [[ -n ${FAIL_AT:-} && $args == "$FAIL_AT" ]]; then echo "stack: $args failed" >&2; exit 1; fi
 }
 [[ $args == "run --rm --no-deps -T migrate" ]] || hook
+statement() {
+  case $1 in
+    "DROP DATABASE "*) db="${1#DROP DATABASE }"; db="${db#IF EXISTS }"; rm -f "$W/db/${db%% *}" ;;
+    "CREATE DATABASE "*) : > "$W/db/${1#CREATE DATABASE }" ;;
+    "ALTER DATABASE "*) names="${1#ALTER DATABASE }"; mv "$W/db/${names%% *}" "$W/db/${names##* }" ;;
+    select*) echo 1000 ;;
+  esac
+}
 case "$args" in
   "config --no-interpolate") echo "name: agentify-test" ;;
   "--profile jobs config --format json") echo '{"services": {"scanner": {"environment": {"A": "1"}}}}' ;;
   "config --images postgres") echo "postgres@sha256:pinned" ;;
   "stop --timeout 60 gateway cabinet scanner scanner-worker")
     for c in gateway cabinet scanner scanner-worker; do [[ ! -f $W/containers/$c ]] || sed -i 's/running/exited/' $W/containers/$c; done ;;
-  "exec -T postgres pg_dump -U agentify_commerce -Fc "*) cat "$W/db/${args##* }" ;;
-  "exec -T postgres psql"*"DROP DATABASE IF EXISTS "*) db="${args#*EXISTS }"; rm -f "$W/db/${db%% *}" ;;
+  "exec -T postgres pg_dump -U agentify_commerce -Fc "*)
+    [[ -f $W/record-at-dump ]] || cat $record > $W/record-at-dump 2>/dev/null
+    cat "$W/db/${args##* }" ;;
+  "exec -T postgres psql"*)
+    if [[ $args == *" -c "* || $args == *" -Atc "* ]]; then
+      while (($#)); do [[ $1 != -c && $1 != -Atc ]] || statement "$2"; shift; done
+    else
+      mapfile -t renames < <(grep -o 'ALTER DATABASE [a-z_]* RENAME TO [a-z_]*')
+      for rename in "${renames[@]}"; do statement "$rename"; done
+    fi ;;
   "exec -T postgres pg_restore"*)
-    content="$(cat)"; printf '%s\n' "$content" > "$W/db/${content%%:*}"
-    if [[ -n ${RESTORE_FAILS:-} ]]; then echo "pg_restore: error" >&2; exit 1; fi ;;
+    target="${args#* -d }"; target="${target%% *}"
+    if [[ -n ${RESTORE_FAILS:-} ]]; then
+      head -c 12 > "$W/db/$target"; echo "pg_restore: error: could not read from input file: end of file" >&2; exit 1
+    fi
+    cat > "$W/db/$target" ;;
   "run --rm --no-deps -T scanner-migrate") echo "a scanner migration" >> $W/db/agentify_scanner ;;
   "run --rm --no-deps -T migrate")
     echo "the gateway's migration" >> $W/db/agentify_commerce
@@ -64,10 +105,12 @@ case "$args" in
     init=/var/lib/agentify/test/postgres-init
     mkdir -p $init; ls $init > $W/postgres-init-at-start ;;
   "up -d --wait --no-deps scanner scanner-worker"|"up -d --wait --no-deps gateway cabinet web")
+    [[ -f $W/record-at-start || ! -f $record ]] || cat $record > $W/record-at-start
     for c in ${args#up -d --wait --no-deps }; do echo "new running" > $W/containers/$c; done
     if [[ -n ${CARDS_AFTER+set} && $args == *gateway* ]]; then printf '%s' "$CARDS_AFTER" > $W/cards; fi ;;
   "ps -aq "*) for c in ${args#ps -aq }; do [[ ! -f $W/containers/$c ]] || echo $c; done ;;
-  "exec -T postgres psql -U agentify_commerce -d postgres -Atc "*) echo 1000 ;;
+  "ps --status running --format {{.Service}} "*)
+    for c in ${args##*\}\} }; do ! grep -qs running $W/containers/$c || echo $c; done ;;
   "port web 443") echo "127.0.0.1:8443" ;;
 esac
 """
@@ -84,7 +127,6 @@ case "$args" in
       [[ -f $W/containers/$c ]] || { echo "Error: No such object: $c" >&2; exit 1; }
       if [[ $c == postgres ]]; then echo "${POSTGRES_IMAGE:-sha256:pinned}"; else echo "sha256:$(cut -d' ' -f1 $W/containers/$c)-$c"; fi
     done ;;
-  "image inspect -f {{index .Config.Labels \"org.opencontainers.image.revision\"}} sha256:old"*) echo "$OLD" ;;
   "image inspect -f {{index .Config.Labels \"org.opencontainers.image.revision\"}} "*) echo "$NEW" ;;
   "image inspect -f {{.Id}} postgres@sha256:pinned") echo "sha256:pinned" ;;
   "image inspect -f {{.Id}} ghcr.io/nuanu-ai/agentify-app@"*) echo "sha256:new-app" ;;
@@ -98,23 +140,22 @@ esac
 exit 0
 """
 
-CURL = r"""#!/usr/bin/env python3
+CURL = r"""#!/usr/bin/env bash
 # Fake curl: the channel's public door, answering from /h/world.
-import base64, json, sys
-args = sys.argv[1:]
-url = next(a for a in args if a.startswith("https://"))
-path = url.split("test.agentify.ad", 1)[1]
-cards = open("/h/world/cards").read().split()
-routes = {"/": 200, "/owner": 308, "/api/health/live": 200, "/api/health": 200, "/cabinet/sign-in": 200,
-          "/cabinet/healthz": 200, "/docs/": 200, "/healthz": 200, "/x402/catalog": 200, "/admin": 401}
-if path.endswith("/purchase"):
-    network = open("/h/world/network").read().strip()
-    challenge = {"resource": {"url": url}, "accepts": [{"network": network}]}
-    print("HTTP/2 402\r\npayment-required: " + base64.b64encode(json.dumps(challenge).encode()).decode() + "\r\n\r")
-elif "-w" in args:
-    print(routes.get(path, 404), end="")
-else:
-    print(json.dumps({"items": [{"id": card} for card in cards]}))
+url="" code=""
+for argument in "$@"; do case $argument in https://*) url=$argument ;; -w) code=yes ;; esac; done
+path="${url#https://test.agentify.ad}"
+case $path in
+  */purchase)
+    challenge="{\"resource\": {\"url\": \"$url\"}, \"accepts\": [{\"network\": \"$(< /h/world/network)\"}]}"
+    printf 'HTTP/2 402\r\npayment-required: %s\r\n\r\n' "$(printf '%s' "$challenge" | base64 -w0)" ;;
+  *)
+    if [[ -n $code ]]; then
+      case $path in /owner) printf 308 ;; /admin) printf 401 ;; *) printf 200 ;; esac
+    else
+      printf '{"items": [%s]}' "$(tr ' ' '\n' < /h/world/cards | sed '/^$/d; s/.*/{"id": "&"}/' | paste -sd, -)"
+    fi ;;
+esac
 """
 
 
@@ -141,12 +182,16 @@ class Activation(unittest.TestCase):
             (self.root / directory).mkdir(parents=True)
         for name, body in INIT.items():
             (self.root / "tree/deploy/postgres-init" / name).write_text(body)
-        for name in ("activate.sh", "restore.sh"):
+        for name in ("activate.sh", "restore.sh", "transition"):
             shutil.copy(HERE / name, self.root / "tree/deploy" / name)
         for path, body in ((self.root / "tree/deploy/stack.sh", STACK), (self.root / "bin/docker", DOCKER), (self.root / "bin/curl", CURL)):
             path.write_text(body)
             path.chmod(0o755)
-        for name, body in (("git", 'case "$*" in *rev-parse*) echo "$NEW" ;; esac'), ("df", 'printf "Avail\\n%s\\n" "${DF_AVAIL:-999999999999}"')):
+        for name, body in (
+            ("git", 'case "$*" in *rev-parse*) echo "$NEW" ;; *merge-base*) exit "${NOT_FORWARD:-0}" ;; esac'),
+            ("df", 'printf "Avail\\n%s\\n" "${DF_AVAIL:-999999999999}"'),
+            ("systemctl", 'exit "${UNIT_ACTIVE:-3}"'),
+        ):
             (self.root / "bin" / name).write_text(f"#!/bin/sh\n{body}\n")
             (self.root / "bin" / name).chmod(0o755)
         (self.root / "etc/release.json").write_text(json.dumps({"channel": "test", "repository": "unused"}))
@@ -173,16 +218,17 @@ class Activation(unittest.TestCase):
             ln -s /h/state /var/lib/agentify; ln -s /h/backups /var/backups/agentify; cp /h/etc/release.json /etc/agentify/
             export PATH=/h/bin:$PATH
             activate() { /h/tree/deploy/activate.sh test "$NEW"; echo "exit $?"; }
+            restore() { /h/tree/deploy/restore.sh "$1"; echo "restore exit $?"; }
             """)
         options = [f"--env={key}={value}" for key, value in {"NEW": NEW, "OLD": OLD, **digests, **environment}.items()]
         result = subprocess.run(
             ["docker", "run", "--rm", "--network", "none", "-v", f"{self.root}:/h", *options, IMAGE, "bash", "-c", prelude + script],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, timeout=240,
         )
         return result.stdout + result.stderr
 
     def databases(self):
-        return {path.name: path.read_text().strip() for path in sorted((self.world / "db").iterdir())}
+        return {name: (self.world / "db" / name).read_text().strip() for name in ORIGINAL}
 
     def containers(self):
         return {path.name: path.read_text().strip() for path in sorted((self.world / "containers").iterdir())}
@@ -190,73 +236,244 @@ class Activation(unittest.TestCase):
     def restore_points(self):
         return sorted(path.name for path in (self.root / "backups" / "test").iterdir()) if (self.root / "backups/test").exists() else []
 
-    def pending(self):
-        path = self.root / "state/test/pending"
-        return path.read_text().split() if path.exists() else None
+    def record(self):
+        path = self.root / "state/test/transition"
+        return json.loads(path.read_text()) if path.exists() else None
+
+    def current(self):
+        path = self.root / "state/test/current"
+        return path.read_text().strip() if path.exists() else None
 
     def applications(self):
         return {name: self.containers()[name] for name in APPLICATIONS}
+
+    def calls(self):
+        return (self.world / "calls").read_text().splitlines()
+
+    def open_transition(self, to, phase, cards="card_one card_two"):
+        """A transition record another run left, with its restore point and its cards before."""
+        point = self.root / "backups/test" / f"20260101T000000Z-{OLD}-before-{to}"
+        point.mkdir(parents=True)
+        for database, content in ORIGINAL.items():
+            (point / f"{database}.dump").write_text(content + "\n")
+        (self.root / "state/test/cards-before").write_text(cards.replace(" ", "\n") + "\n")
+        record = {"from": OLD, "to": to, "restore": f"/var/backups/agentify/test/{point.name}", "phase": phase,
+                  "cards": "/var/lib/agentify/test/cards-before"}
+        (self.root / "state/test/transition").write_text(json.dumps(record))
+        return record
 
     def assert_old_release_runs_on_old_data(self, said):
         self.assertEqual(self.databases(), ORIGINAL, said)
         self.assertEqual(self.applications(), dict.fromkeys(APPLICATIONS, "old running"), said)
 
+    # A release without an open transition.
+
     def test_a_release_takes_a_restore_point_then_migrates_and_starts_the_new_release(self):
         said = self.run_script("activate")
         self.assertIn("exit 0", said)
         self.assertEqual(self.containers()["gateway"], "new running")
-        self.assertIn("the cabinet's migration", self.databases()["agentify_commerce"])
+        self.assertEqual(self.databases(), MIGRATED)
         [point] = self.restore_points()
         self.assertTrue(point.endswith(f"-{OLD}-before-{NEW}"), point)
         self.assertEqual((self.root / "backups/test" / point / "agentify_commerce.dump").read_text().strip(), ORIGINAL["agentify_commerce"])
-        self.assertIsNone(self.pending())
+        self.assertIsNone(self.record())
+
+    def test_the_record_is_written_before_the_dump_and_says_started_before_the_new_release_starts(self):
+        said = self.run_script("activate")
+        self.assertIn("exit 0", said)
+        at_dump = json.loads((self.world / "record-at-dump").read_text())
+        self.assertEqual((at_dump["from"], at_dump["to"], at_dump["phase"]), (OLD, NEW, "stopped"))
+        self.assertEqual(json.loads((self.world / "record-at-start").read_text())["phase"], "started")
+
+    def test_a_channel_that_already_runs_the_revision_is_checked_without_stopping_anything(self):
+        (self.root / "state/test/current").write_text(NEW + "\n")
+        for container in ("gateway", "cabinet", "scanner", "scanner-worker", "web"):
+            (self.world / "containers" / container).write_text("new running\n")
+        said = self.run_script("activate")
+        self.assertIn("exit 0", said)
+        self.assertNotIn("stack stop --timeout 60 gateway cabinet scanner scanner-worker", self.calls())
+        self.assertEqual((self.restore_points(), self.databases(), self.record()), ([], ORIGINAL, None))
+
+    # Failures of a first run, by how far it got.
+
+    def test_a_failure_before_any_migration_ends_the_transition_and_the_previous_release_runs(self):
+        said = self.run_script("activate", FAIL_AT="exec -T postgres pg_dump -U agentify_commerce -Fc agentify_scanner")
+        self.assertIn("exit 1", said)
+        self.assert_old_release_runs_on_old_data(said)
+        self.assertEqual((self.restore_points(), self.record()), ([], None))
 
     def test_a_failed_second_migration_restores_both_databases_and_starts_the_previous_release(self):
-        said = self.run_script("activate", FAIL_AT="run --rm --no-deps -T migrate")
+        said = self.run_script("activate", FAIL_AT=FAILED_MIGRATION)
         self.assertIn("exit 1", said)
         self.assertIn("both databases were restored", said)
         self.assert_old_release_runs_on_old_data(said)
-        self.assertIsNone(self.pending())
+        self.assertEqual((self.record(), self.current()), (None, OLD))
 
     def test_a_signal_during_a_migration_takes_the_same_way_back(self):
         said = self.run_script("activate", TERM_AT="run --rm --no-deps -T scanner-migrate")
         self.assertIn("exit 1", said)
         self.assert_old_release_runs_on_old_data(said)
 
-    def test_a_rerun_after_a_kill_restores_from_the_point_taken_before_the_first_migration(self):
+    def test_a_second_signal_during_the_restore_does_not_cut_it_short(self):
         said = self.run_script(
-            'KILL_AT="up -d --wait --no-deps scanner scanner-worker" activate\n'
-            'FAIL_AT="run --rm --no-deps -T migrate" activate'
+            "activate", TERM_AT=FAILED_MIGRATION,
+            TERM_ALL_AT="exec -T postgres pg_restore -U agentify_commerce -d agentify_commerce_restoring --exit-on-error",
         )
+        self.assertIn("exit 1", said)
+        self.assert_old_release_runs_on_old_data(said)
+        self.assertIsNone(self.record())
+
+    def test_a_failure_after_the_new_release_started_restores_nothing_and_says_so(self):
+        said = self.run_script("activate", FAIL_AT=FAILED_START)
+        self.assertIn("exit 1", said)
+        self.assertIn("nothing was restored", said)
+        self.assertEqual(self.databases(), MIGRATED)
+        self.assertEqual((self.record()["to"], self.record()["phase"]), (NEW, "started"))
+
+    def test_a_restore_that_fails_leaves_the_databases_as_they_were_and_the_applications_stopped(self):
+        said = self.run_script("activate", FAIL_AT=FAILED_MIGRATION, RESTORE_FAILS="1")
+        self.assertIn("exit 1", said)
+        self.assertIn("restore.sh", said)
+        # What the migrations had done when the restore began, untouched by it.
+        self.assertEqual(self.databases()["agentify_commerce"], ORIGINAL["agentify_commerce"] + "\nthe gateway's migration")
+        self.assertEqual(self.applications(), dict.fromkeys(APPLICATIONS, "old exited"))
+        self.assertTrue(self.record()["restoring"], self.record())
+        # No release starts while a restore is unfinished.
+        said = self.run_script("activate")
+        self.assertIn("exit 75", said)
+        self.assertEqual(self.applications(), dict.fromkeys(APPLICATIONS, "old exited"))
+
+    def test_without_a_previous_release_the_message_says_what_does_not_run(self):
+        # PRODUCTION's move: no release by this command before, and the old
+        # scanner project's containers stopped by hand.
+        (self.root / "state/test/current").unlink()
+        for container in ("scanner", "scanner-worker"):
+            (self.world / "containers" / container).unlink()
+        said = self.run_script("activate", FAIL_AT=FAILED_MIGRATION)
+        self.assertIn("exit 1", said)
+        self.assertIn("running now: cabinet gateway", said)
+        self.assertIn("Production's one-time move", said)
+
+    # A rerun of the same revision.
+
+    def test_a_rerun_after_a_kill_during_the_migrations_restores_from_the_point_taken_before_them(self):
+        said = self.run_script(f'KILL_AT="{FAILED_MIGRATION}" activate\nFAIL_AT="{FAILED_MIGRATION}" activate')
         [point] = self.restore_points()
         taken = sorted(path.name for path in (self.root / "backups/test" / point).iterdir())
         self.assertEqual(taken, ["agentify_commerce.dump", "agentify_scanner.dump"], said)
         self.assert_old_release_runs_on_old_data(said)
 
-    def test_a_failure_after_the_new_release_started_restores_nothing_and_says_so(self):
-        said = self.run_script("activate", FAIL_AT="up -d --wait --no-deps gateway cabinet web")
+    def test_a_rerun_after_the_new_release_started_never_restores_and_carries_it_forward(self):
+        said = self.run_script("activate", FAIL_AT=FAILED_START)
+        self.assertIn("exit 1", said)
+        with (self.world / "db/agentify_commerce").open("a") as database:
+            database.write(ORDER + "\n")
+        said = self.run_script("activate", FAIL_AT=FAILED_MIGRATION)
         self.assertIn("exit 1", said)
         self.assertIn("nothing was restored", said)
-        self.assertIn("the cabinet's migration", self.databases()["agentify_commerce"])
-        self.assertEqual(self.pending()[1], NEW)
+        self.assertIn(ORDER, self.databases()["agentify_commerce"])
+        self.assertEqual(self.record()["phase"], "started")
+        stopped = len(self.calls())
+        said = self.run_script("activate")
+        self.assertIn("exit 0", said)
+        self.assertIn(ORDER, self.databases()["agentify_commerce"])
+        self.assertNotIn("stack stop --timeout 60 gateway cabinet scanner scanner-worker", self.calls()[stopped:])
+        self.assertIsNone(self.record())
 
-    def test_a_restore_that_fails_leaves_the_applications_stopped_and_says_what_to_run(self):
-        said = self.run_script("activate", FAIL_AT="run --rm --no-deps -T migrate", RESTORE_FAILS="1")
+    def test_a_rerun_holds_the_release_to_the_cards_on_sale_before_its_first_run(self):
+        said = self.run_script("activate", CARDS_AFTER="card_one")
+        self.assertIn("card_two", said)
+        said = self.run_script("activate")
         self.assertIn("exit 1", said)
-        self.assertIn("restore.sh", said)
-        self.assertEqual(self.applications(), dict.fromkeys(APPLICATIONS, "old exited"))
-        self.assertEqual(self.pending()[1], NEW)
+        self.assertIn("card_two", said)
+        self.assertEqual(self.record()["phase"], "started")
 
-    def test_a_restore_by_hand_after_a_failed_one_ends_the_unfinished_release_however_its_path_is_spelled(self):
-        said = self.run_script("activate", FAIL_AT="run --rm --no-deps -T migrate", RESTORE_FAILS="1")
-        self.assertEqual(self.pending()[1], NEW, said)
+    # Another revision against an open transition.
+
+    def test_a_revision_that_moves_forward_from_a_release_that_started_unverified_goes_ahead(self):
+        self.open_transition(OTHER, "started")
+        said = self.run_script("activate")
+        self.assertIn("exit 0", said)
+        self.assertIn("2 compared", said)
+        fresh = [point for point in self.restore_points() if point.endswith(f"-{OTHER}-before-{NEW}")]
+        self.assertEqual(len(fresh), 1, self.restore_points())
+        self.assertIsNone(self.record())
+
+    def test_a_revision_that_does_not_move_forward_from_it_is_refused(self):
+        record = self.open_transition(OTHER, "started")
+        said = self.run_script("activate", NOT_FORWARD="1")
+        self.assertIn("exit 1", said)
+        self.assertIn(OTHER, said)
+        self.assert_old_release_runs_on_old_data(said)
+        self.assertEqual(self.record(), record)
+
+    def test_another_revision_waits_for_a_transition_that_had_not_started(self):
+        record = self.open_transition(OTHER, "migrating")
+        said = self.run_script("activate")
+        self.assertIn("exit 75", said)
+        self.assertIn(OTHER, said)
+        self.assertIn(f"restore.sh {record['restore']}", said)
+        self.assert_old_release_runs_on_old_data(said)
+        self.assertEqual(self.record(), record)
+
+    # Restores by hand.
+
+    def test_a_restore_writes_current_as_the_revision_whose_data_it_holds_so_the_next_release_migrates(self):
+        self.assertIn("exit 0", self.run_script("activate"))
+        (self.root / "state/test/current").write_text(NEW + "\n")
+        [point] = self.restore_points()
+        said = self.run_script(f"restore /var/backups/agentify/test/{point}")
+        self.assertIn("restore exit 0", said)
+        self.assertEqual((self.databases(), self.current()), (ORIGINAL, OLD))
+        stopped = len(self.calls())
+        said = self.run_script("activate")
+        self.assertIn("exit 0", said)
+        self.assertIn(f"stack {FAILED_MIGRATION}", self.calls()[stopped:])
+
+    def test_a_restore_of_a_truncated_dump_leaves_the_databases_as_they_were(self):
+        self.assertIn("exit 0", self.run_script("activate"))
+        [point] = self.restore_points()
+        said = self.run_script(f"restore /var/backups/agentify/test/{point}", RESTORE_FAILS="1")
+        self.assertIn("restore exit 1", said)
+        self.assertEqual(self.databases(), MIGRATED)
+
+    def test_a_restore_by_hand_after_a_failed_one_ends_the_transition_however_its_path_is_spelled(self):
+        said = self.run_script("activate", FAIL_AT=FAILED_MIGRATION, RESTORE_FAILS="1")
         [point] = self.restore_points()
         # /var/backups/agentify is a symlink on this host, and the person types
         # the directory it points to, with a trailing slash.
-        said = self.run_script(f'/h/tree/deploy/restore.sh /h/backups/test/{point}/; echo "restore exit $?"')
+        said = self.run_script(f"restore /h/backups/test/{point}/")
         self.assertIn("restore exit 0", said)
-        self.assertIsNone(self.pending(), said)
+        self.assertIsNone(self.record(), said)
         self.assertEqual(self.databases(), ORIGINAL)
+
+    def test_a_restore_by_hand_waits_while_a_release_unit_runs(self):
+        self.assertIn("exit 0", self.run_script("activate"))
+        [point] = self.restore_points()
+        said = self.run_script(f"restore /var/backups/agentify/test/{point}", UNIT_ACTIVE="0")
+        self.assertIn("restore exit 75", said)
+        self.assertEqual(self.databases(), MIGRATED)
+
+    def test_a_restore_by_hand_waits_for_a_release_holding_the_lock(self):
+        (self.root / "backups/test/point").mkdir(parents=True)
+        for database, content in ORIGINAL.items():
+            (self.root / "backups/test/point" / f"{database}.dump").write_text(content + "\n")
+        (self.world / "db/agentify_commerce").write_text("agentify_commerce: written after the dump\n")
+        said = self.run_script(
+            "flock /run/lock/agentify-release.lock sleep 5 &\nsleep 1\n"
+            "restore /var/backups/agentify/test/point\nwait\nrestore /var/backups/agentify/test/point"
+        )
+        self.assertIn("restore exit 75", said)
+        self.assertIn("restore exit 0", said)
+        self.assertEqual(self.databases(), ORIGINAL)
+        self.assertEqual(self.applications(), dict.fromkeys(APPLICATIONS, "old exited"))
+
+    def test_a_release_waits_while_a_restore_or_the_privacy_job_holds_the_release_lock(self):
+        said = self.run_script("flock /run/lock/agentify-release.lock sleep 5 &\nsleep 1\nactivate")
+        self.assertIn("exit 75", said)
+        self.assert_old_release_runs_on_old_data(said)
+
+    # The database's init scripts.
 
     def init_scripts(self):
         init = self.root / "state/test/postgres-init"
@@ -291,42 +508,7 @@ class Activation(unittest.TestCase):
         self.assertEqual(self.init_scripts(), INIT)
         self.assertEqual(sorted(path.name for path in (self.root / "state/test").iterdir() if path.name.startswith("postgres-init")), ["postgres-init"])
 
-    def test_a_channel_that_already_runs_the_revision_is_checked_without_stopping_anything(self):
-        (self.root / "state/test/current").write_text(NEW + "\n")
-        for container in ("gateway", "cabinet", "scanner", "scanner-worker", "web"):
-            (self.world / "containers" / container).write_text("new running\n")
-        said = self.run_script("activate")
-        self.assertIn("exit 0", said)
-        self.assertNotIn("stack stop", (self.world / "calls").read_text())
-        self.assertEqual((self.restore_points(), self.databases()), ([], ORIGINAL))
-
-    def test_another_unfinished_release_is_refused_before_anything_stops(self):
-        (self.root / "backups/test/somewhen").mkdir(parents=True)
-        (self.root / "state/test/pending").write_text(f"{OLD} {'c' * 40} /var/backups/agentify/test/somewhen\n")
-        said = self.run_script("activate")
-        self.assertIn("exit 1", said)
-        self.assertIn("c" * 40, said)
-        self.assert_old_release_runs_on_old_data(said)
-
-    def test_a_release_waits_while_a_restore_or_the_privacy_job_holds_the_release_lock(self):
-        said = self.run_script("flock /run/lock/agentify-release.lock sleep 5 &\nsleep 1\nactivate")
-        self.assertIn("exit 75", said)
-        self.assert_old_release_runs_on_old_data(said)
-
-    def test_a_restore_by_hand_waits_for_a_release_holding_the_lock(self):
-        (self.root / "backups/test/point").mkdir(parents=True)
-        for database, content in ORIGINAL.items():
-            (self.root / "backups/test/point" / f"{database}.dump").write_text(content + "\n")
-        (self.world / "db/agentify_commerce").write_text("agentify_commerce: written after the dump\n")
-        said = self.run_script(
-            "flock /run/lock/agentify-release.lock sleep 5 &\nsleep 1\n"
-            "/h/tree/deploy/restore.sh /var/backups/agentify/test/point; echo \"restore exit $?\"\n"
-            "wait\n/h/tree/deploy/restore.sh /var/backups/agentify/test/point; echo \"restore exit $?\""
-        )
-        self.assertIn("restore exit 75", said)
-        self.assertIn("restore exit 0", said)
-        self.assertEqual(self.databases(), ORIGINAL)
-        self.assertEqual(self.applications(), dict.fromkeys(APPLICATIONS, "old exited"))
+    # What is refused before anything stops.
 
     def test_images_that_do_not_arrive_are_a_wait_that_stops_nothing(self):
         said = self.run_script("activate", FAIL_AT="--profile jobs pull --policy missing --quiet")
@@ -354,6 +536,8 @@ class Activation(unittest.TestCase):
         self.assertEqual(self.restore_points(), [])
         self.assert_old_release_runs_on_old_data(said)
 
+    # The cards on sale.
+
     def test_a_card_on_sale_before_the_release_must_still_be_on_sale_after_it(self):
         said = self.run_script("activate", CARDS_AFTER="card_one")
         self.assertIn("exit 1", said)
@@ -364,6 +548,14 @@ class Activation(unittest.TestCase):
         said = self.run_script("activate")
         self.assertIn("exit 1", said)
         self.assertIn("card_one", said)
+
+    def test_a_catalog_longer_than_one_argument_can_hold_is_checked_whole(self):
+        # A card ID is `item_` and 32 hex characters; 3,600 of them are more
+        # than the 128 KiB Linux allows a single argument.
+        (self.world / "cards").write_text(" ".join(f"item_{index:032x}" for index in range(3600)))
+        said = self.run_script("activate")
+        self.assertIn("exit 0", said)
+        self.assertIn("3600 card(s) on sale (3600 compared)", said)
 
 
 class TheEnvironmentFile(unittest.TestCase):
