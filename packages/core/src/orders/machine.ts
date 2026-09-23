@@ -1069,9 +1069,9 @@ function fromRefundDue(order: Order, event: StateEvent): TransitionResult {
       // record of how it ended.
       //
       // Known and open: a refund that is already on its way but has not
-      // reported back is invisible here, and this delivery races it. Closing
-      // that race needs the refund mechanism itself, which is an open question
-      // of `docs/research/16-order-state-machine.md`.
+      // reported back is invisible here, and this delivery races it. ADR-0028
+      // takes that race as the price of the pilot: a refund ends the debt only
+      // once it is recorded, and one paid but not reported loses to goods.
       return ok({ ...order, state: "delivered", closure: null }, [
         { kind: "release_goods_to_agent" },
         { kind: "issue_receipt" },
