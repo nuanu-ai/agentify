@@ -28,7 +28,10 @@
  * prints the goods when they arrive. What it will not do is pretend the wait
  * is the purchase: when the ceiling below runs out, or the reader interrupts
  * it, the order is still the merchant's to finish and the command says where
- * to collect it rather than reporting a sale that ended.
+ * to collect it rather than reporting a sale that ended. An order that runs past
+ * its delivery deadline without goods is not a sale that ended either: it owes
+ * a refund, the merchant can still deliver against it, and the goods then
+ * arrive at the same address, so the watching goes on through it.
  *
  * Both answers it reads are one document — where your order stands — so the
  * purchase and the wait are read the same way here, and the only thing the
@@ -73,12 +76,21 @@ const WATCH_MS = 60_000;
 /** How often the agent's door is asked while an order is still running. */
 const ASK_EVERY_MS = 1_000;
 
+/** The word for an order past its delivery deadline without goods. */
+const OWES_A_REFUND = "refund_due";
+
 /**
- * The one word that means a purchase has not finished. Every other word in the
- * status vocabulary is an ending of some kind, so watching stops on it and the
- * command prints whatever it was told rather than deciding what it meant.
+ * The words under which goods can still arrive at the status address.
+ *
+ * `in_progress` is a purchase that has not finished. `refund_due` is one that
+ * ran past its delivery deadline without goods, and it is here because it is
+ * not an ending: the merchant owes the buyer the goods or the money back, a
+ * late delivery is accepted and settles that debt, and the goods then appear at
+ * the same address. Every other word is an ending of some kind, so watching
+ * stops on it and the command prints whatever it was told rather than deciding
+ * what it meant.
  */
-const STILL_RUNNING = "in_progress";
+const GOODS_CAN_STILL_ARRIVE: readonly string[] = ["in_progress", OWES_A_REFUND];
 
 /** What the door calls an identifier it has no order for. */
 const NO_SUCH_ORDER = "no_such_order";
@@ -160,15 +172,16 @@ const refusedAs = (body: unknown): string | null => {
  * Whether the door has said where this order stands and there is nothing more
  * to wait for.
  *
- * Two answers end the watching: a word from the status vocabulary that is not
- * the running one, and the gateway's own refusal, which no amount of asking
- * again will turn into an order. Everything else — an error page, a body with
+ * Two answers end the watching: a word from the status vocabulary under which
+ * no goods can arrive any more, and the gateway's own refusal, which no amount
+ * of asking again will turn into an order. Everything else — an error page, a body with
  * no state in it, a 502 from something in the middle — is not an answer about
  * the order at all, so the watching goes on. A door that answered badly once
  * has not told us the purchase is over.
  */
 const isAnEnding = (seen: OrderStatus): boolean =>
-  (seen.state !== null && seen.state !== STILL_RUNNING) || refusedAs(seen.body) === NO_SUCH_ORDER;
+  (seen.state !== null && !GOODS_CAN_STILL_ARRIVE.includes(seen.state)) ||
+  refusedAs(seen.body) === NO_SUCH_ORDER;
 
 /** An answer written out for a reader, cut where it is too long to be read. */
 const asFarAsItReads = (body: unknown): string => {
@@ -306,6 +319,9 @@ process.on("SIGINT", () => {
   process.exit(INTERRUPTED);
 });
 
+/** Whether the operator has been told that this order owes a refund. */
+let toldOfTheDebt = false;
+
 /**
  * One look at the door, or an end to the watching.
  *
@@ -315,10 +331,21 @@ process.on("SIGINT", () => {
  * second is not obviously right, and it is the case where the address below
  * matters most: the money has already moved, so a stack trace here would end
  * the wait without telling anybody where the order went.
+ *
+ * The first answer that says the order owes a refund is said out loud as it
+ * arrives, while the watching goes on, because it changes what the reader is
+ * waiting for: not only the goods now, but the goods or the money back.
  */
 const look = async (): Promise<OrderStatus> => {
   try {
-    return await buyer.status(where);
+    const seen = await buyer.status(where);
+    if (seen.state === OWES_A_REFUND && !toldOfTheDebt) {
+      toldOfTheDebt = true;
+      console.log(
+        `[buyer] ${orderId} is past its delivery deadline without goods: the merchant now owes the buyer the goods or the money back. Goods the merchant delivers late still arrive at ${where}, so this goes on watching`,
+      );
+    }
+    return seen;
   } catch (thrown) {
     const why = thrown instanceof Error ? thrown.message : String(thrown);
     comeBackLater(orderId, where, `stopped watching: the door could not be reached (${why})`);
@@ -353,12 +380,14 @@ if (seen.state === null) {
   process.exit(1);
 }
 
-if (seen.state === STILL_RUNNING) {
+if (GOODS_CAN_STILL_ARRIVE.includes(seen.state)) {
   comeBackLater(orderId, where, `stopped watching after ${WATCH_MS / 1_000}s`);
   // Not a success: this run has no goods to show for itself. Not a failure of
   // the purchase either, and the lines above are where that is said — an exit
   // code has no room for the difference, and the one thing a script must not
   // read from this command is that a sale completed when nobody has seen it.
+  // An order that owes a refund lands here too: its goods can still come, and
+  // the line said when the debt was first seen is where the difference is.
   process.exit(1);
 }
 
