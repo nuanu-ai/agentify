@@ -41,5 +41,6 @@ output/
 __pycache__/
 
 # The images a checkout on a host runs, which deploy/activate.sh writes when it
-# activates that revision. A fact about one host, never source.
-deploy/images.env
+# activates that revision, with the file it writes them through. A fact about
+# one host, never source.
+deploy/images.env*
