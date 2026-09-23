@@ -135,11 +135,26 @@ export function sliceEnv(overrides: Record<string, string> = {}): Record<string,
  * and the gateway is mounted onto it afterwards. Booted the other way round,
  * every address the gateway names points at the default, and a buyer that
  * follows one is sent somewhere nothing listens.
+ *
+ * Two things follow from that order. An environment that brings a
+ * `PUBLIC_BASE_URL` of its own is refused rather than quietly overwritten:
+ * the caller asked for an address and would be handed another. And because
+ * the socket is open before anything else can fail, every failure after it
+ * closes the socket and stops the gateway if it had started — a boot that
+ * threw hands the caller no `stop()`, so nothing else would.
  */
 export async function bootGateway(
   makeFacilitator: (config: GatewayConfig) => Facilitator,
   env: Record<string, string> = sliceEnv(),
 ): Promise<Booted> {
+  if (Object.hasOwn(env, "PUBLIC_BASE_URL")) {
+    throw new Error(
+      "this harness decides its own PUBLIC_BASE_URL — the address it is listening on, which is known " +
+        "only once a port is taken — so the one in the environment it was given would be overwritten; " +
+        "leave it out",
+    );
+  }
+
   // On the address `baseUrl` below names, not on the wildcard: `serve` in the
   // gateway's own harness says what the difference costs.
   const server: Server = createServer();
@@ -148,74 +163,88 @@ export async function bootGateway(
   const { port } = server.address() as AddressInfo;
   const baseUrl = `http://127.0.0.1:${port}`;
 
-  const config = loadConfig({ ...env, PUBLIC_BASE_URL: baseUrl });
-  const queue = new MemoryQueue({
-    attempts: config.reminderAttempts,
-    retryDelayMs: config.reminderRetryDelayMs,
-  });
-  // The queue is made first because the store writes through it: an envelope
-  // that must not be lost is written where the order is (ADR-0013). It is
-  // `stage` rather than `publish` because the store needs the two halves apart
-  // — take it before the order is written, make it visible after.
-  const store = new MemoryStore(randomIds, systemClock, (merchantId, envelope, afterMs) =>
-    queue.stage(merchantId, envelope, afterMs),
-  );
-
-  const runtime: Runtime = {
-    config,
-    store,
-    queue,
-    facilitator: makeFacilitator(config),
-    clock: systemClock,
-    ids: randomIds,
-  };
-
-  const gateway = new Gateway(runtime);
-  await gateway.start();
-
-  // The merchant and its key, seeded exactly as `main.ts` seeds the sandbox's:
-  // one function, so a key that works here is a key that works there.
-  //
-  // A boot with nothing to seed is refused rather than allowed to come up
-  // quiet. Everything this harness exists for — the end-to-end gate, the smoke
-  // — needs a merchant to sell as, and a gateway with no key at all would fail
-  // later, at the first merchant call, as a 401 that looks like a wrong key.
-  const merchantKey = config.sandboxMerchantKey;
-  if (merchantKey === null) {
-    throw new Error(
-      "this harness boots a gateway with a merchant to sell as, and the environment it was " +
-        "given seeds no key: SANDBOX_MERCHANT_KEY is empty, so there would be nothing to call as",
+  let started: Gateway | null = null;
+  try {
+    const config = loadConfig({ ...env, PUBLIC_BASE_URL: baseUrl });
+    const queue = new MemoryQueue({
+      attempts: config.reminderAttempts,
+      retryDelayMs: config.reminderRetryDelayMs,
+    });
+    // The queue is made first because the store writes through it: an envelope
+    // that must not be lost is written where the order is (ADR-0013). It is
+    // `stage` rather than `publish` because the store needs the two halves apart
+    // — take it before the order is written, make it visible after.
+    const store = new MemoryStore(randomIds, systemClock, (merchantId, envelope, afterMs) =>
+      queue.stage(merchantId, envelope, afterMs),
     );
+
+    const runtime: Runtime = {
+      config,
+      store,
+      queue,
+      facilitator: makeFacilitator(config),
+      clock: systemClock,
+      ids: randomIds,
+    };
+
+    const gateway = new Gateway(runtime);
+    await gateway.start();
+    started = gateway;
+
+    // The merchant and its key, seeded exactly as `main.ts` seeds the sandbox's:
+    // one function, so a key that works here is a key that works there.
+    //
+    // A boot with nothing to seed is refused rather than allowed to come up
+    // quiet. Everything this harness exists for — the end-to-end gate, the smoke
+    // — needs a merchant to sell as, and a gateway with no key at all would fail
+    // later, at the first merchant call, as a 401 that looks like a wrong key.
+    const merchantKey = config.sandboxMerchantKey;
+    if (merchantKey === null) {
+      throw new Error(
+        "this harness boots a gateway with a merchant to sell as, and the environment it was " +
+          "given seeds no key: SANDBOX_MERCHANT_KEY is empty, so there would be nothing to call as",
+      );
+    }
+    await seedSandboxKey(store, randomIds, merchantKey, systemClock(), config.surfaceMode);
+
+    // And where that merchant is paid, which is the address this slice was
+    // configured with. The two are one thing here and only here: this harness
+    // runs one merchant and the operator is that merchant, so the address in the
+    // environment is theirs — under the scripted facilitator a placeholder no
+    // money moves to, and under the smoke's real one the testnet address the sale
+    // actually lands at.
+    //
+    // The seed above deliberately does not do this. It is what a deployment runs,
+    // and a deployment's configured address belongs to whoever runs the gateway
+    // rather than to the merchants selling on it; writing it onto a merchant
+    // there would pay their sales to the operator (ADR-0019).
+    if (config.payment.payTo !== null) {
+      await setPayoutWallet(store, SEEDED_MERCHANT.id, config.payment.payTo, systemClock());
+    }
+
+    server.on("request", buildApp(gateway));
+
+    return {
+      baseUrl,
+      gateway,
+      config,
+      merchantKey,
+      stop: async () => {
+        await gateway.stop();
+        await closed(server);
+      },
+    };
+  } catch (failure) {
+    // What the boot failed on is what the caller needs to read, so a teardown
+    // that fails as well is not allowed to replace it.
+    await started?.stop().catch(() => undefined);
+    await closed(server).catch(() => undefined);
+    throw failure;
   }
-  await seedSandboxKey(store, randomIds, merchantKey, systemClock(), config.surfaceMode);
-
-  // And where that merchant is paid, which is the address this slice was
-  // configured with. The two are one thing here and only here: this harness
-  // runs one merchant and the operator is that merchant, so the address in the
-  // environment is theirs — under the scripted facilitator a placeholder no
-  // money moves to, and under the smoke's real one the testnet address the sale
-  // actually lands at.
-  //
-  // The seed above deliberately does not do this. It is what a deployment runs,
-  // and a deployment's configured address belongs to whoever runs the gateway
-  // rather than to the merchants selling on it; writing it onto a merchant
-  // there would pay their sales to the operator (ADR-0019).
-  if (config.payment.payTo !== null) {
-    await setPayoutWallet(store, SEEDED_MERCHANT.id, config.payment.payTo, systemClock());
-  }
-
-  server.on("request", buildApp(gateway));
-
-  return {
-    baseUrl,
-    gateway,
-    config,
-    merchantKey,
-    stop: async () => {
-      await gateway.stop();
-      await new Promise<void>((resolve, reject) => {
-        server.close((error) => (error === undefined ? resolve() : reject(error)));
-      });
-    },
-  };
 }
+
+/** Lets go of a listening server, once every connection on it has ended. */
+const closed = (server: Server): Promise<void> =>
+  new Promise<void>((resolve, reject) => {
+    server.close((error) => (error === undefined ? resolve() : reject(error)));
+  });
