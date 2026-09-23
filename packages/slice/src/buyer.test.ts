@@ -37,6 +37,18 @@ const TEST_BUYER_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d
  */
 const ORDER_BEHIND_A_BAD_PROXY = "ord_a_proxy_ate_it";
 
+/**
+ * Where this server's purchase answer says the order is collected.
+ *
+ * An address on this same server and deliberately not the contract's status
+ * route, so a buyer that went to the route anyway — or built any address of its
+ * own from the order identifier — is caught asking somewhere it was never told.
+ */
+const NAMED_BY_THE_ANSWER = "/where/the/purchase/answer/said/ord_7c1e05";
+
+/** The product whose purchase answer names an order and no address for it. */
+const ITEM_WITH_NO_ADDRESS = "itm_answered_without_an_address";
+
 /** One request as it arrived, which is the only thing this file looks at. */
 interface Asked {
   readonly method: string;
@@ -68,10 +80,28 @@ beforeAll(async () => {
     // An empty catalog page is the one answer that has to be well formed: the
     // buyer holds that one to the real schema, and a body it will not parse
     // would fail this file for a reason that has nothing to do with addresses.
+    //
+    // A purchase is answered with an order and, for every product but one, the
+    // address it is collected at. That address is the input the collection
+    // test hands the buyer, and it is the one answer here whose content an
+    // assertion leans on: the promise is that the buyer asks where it was
+    // told. The one product answered with no address is the other half — an
+    // answer that named nowhere has to come back as naming nowhere.
+    //
     // Everything else is answered with an empty object on purpose — no payment
-    // challenge, no order status — so that no assertion here can be satisfied
-    // by an answer this file wrote.
+    // challenge, no order status — so that no other assertion here can be
+    // satisfied by an answer this file wrote.
     response.setHeader("content-type", "application/json");
+    if (request.method === "POST" && request.url?.endsWith("/purchase") === true) {
+      response.end(
+        JSON.stringify(
+          request.url.includes(ITEM_WITH_NO_ADDRESS)
+            ? { order_id: "ord_7c1e05" }
+            : { order_id: "ord_7c1e05", status_url: `${baseUrl}${NAMED_BY_THE_ANSWER}` },
+        ),
+      );
+      return;
+    }
     response.end(JSON.stringify(request.url === "/x402/catalog" ? { items: [] } : {}));
   });
   server.listen(0);
@@ -147,6 +177,34 @@ describe("the addresses this buyer writes by hand", () => {
     // is pasting the address that was being polled and not a second guess at
     // it.
     expect(buyer.statusUrl(orderId)).toContain(one.path);
+  });
+
+  it("collects an order at the address its purchase answer named, and at no address of its own", async () => {
+    // The status address is the one this buyer does not write. An agent that
+    // was given the portal and no package of ours cannot spell the route from
+    // an order identifier, and neither does this one: it asks where the answer
+    // to its own purchase said to ask, and a gateway that named the wrong place
+    // is a gateway whose orders this buyer cannot collect.
+    const bought = await buyer.buy("itm_9f2c4a", { email: "buyer@example.com" });
+
+    expect(bought.statusUrl).toBe(`${baseUrl}${NAMED_BY_THE_ANSWER}`);
+
+    asked.length = 0;
+    await buyer.status(bought.statusUrl ?? "");
+
+    const one = theOne();
+    expect(one.method).toBe(API_ROUTES.get_order_status.method);
+    expect(one.path).toBe(NAMED_BY_THE_ANSWER);
+  });
+
+  it("reports an answer that named no address as naming none, rather than making one up", async () => {
+    // The negative control for the test above. An order identifier is in this
+    // answer and an address is not, and the only honest thing to hand the
+    // caller is that there is no address — an address built here from the
+    // identifier would be a guess, and it would look exactly like being told.
+    const bought = await buyer.buy(ITEM_WITH_NO_ADDRESS, {});
+
+    expect(bought.statusUrl).toBeNull();
   });
 
   it("writes an identifier into an address the way the contract writes it", async () => {

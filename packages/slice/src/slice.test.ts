@@ -231,11 +231,18 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     expect(merchant.problems).toStrictEqual([]);
   }, 20_000);
 
-  it("hands the goods to the agent through its own door, on the order identifier alone", async () => {
+  it("hands the goods to the agent at the address its purchase answer named, and nowhere it had to guess", async () => {
     // ADR-0011's door, walked by the kind of code it exists for. The test
     // above collects the same sale through the merchant's own routes, which is
     // the merchant's view of it; this one is the buyer's, and it is the only
     // view an agent has.
+    //
+    // What the agent holds after paying is the purchase answer and nothing
+    // else, so the address it comes back to is the one that answer names —
+    // this buyer writes no address for an order's status of its own, and a
+    // gateway that named the wrong one would leave it holding a paid order it
+    // cannot collect. That is the promise here, walked against a gateway that
+    // is really listening at the address it names.
     //
     // The merchant still has to deliver, and that call below is this test
     // driving the world rather than the agent reading it — an agent cannot
@@ -248,11 +255,17 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
 
     const bought = await buyer.buy(esim.id, { email: "buyer@example.com" });
     expect(bought.status).toBe(200);
-    const orderId = AgentOrderStatusSchema.parse(bought.body).order_id;
+    const answered = AgentOrderStatusSchema.parse(bought.body);
+    const orderId = answered.order_id;
+
+    // The buyer hands its caller the address exactly as the answer spelled it.
+    expect(bought.statusUrl).toBe(answered.status_url);
+    const where = bought.statusUrl;
+    if (where === null) throw new Error("the purchase answer named nowhere to come back to");
 
     // Paid for and not delivered. The word for a purchase still running exists
     // so that an agent does not read a running sale as a refused one.
-    const waiting = await buyer.status(orderId);
+    const waiting = await buyer.status(where);
     expect(waiting.status).toBe(200);
     expect(waiting.state).toBe("in_progress");
     expect(waiting.delivered).toBeNull();
@@ -266,11 +279,11 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     });
 
     // The agent comes back the only way it can, and the goods are there.
-    let collected = await buyer.status(orderId);
+    let collected = await buyer.status(where);
     const deadline = Date.now() + 10_000;
     while (collected.state === "in_progress" && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 20));
-      collected = await buyer.status(orderId);
+      collected = await buyer.status(where);
     }
 
     expect(collected.state).toBe("delivered");
