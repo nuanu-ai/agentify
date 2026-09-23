@@ -932,7 +932,29 @@ h2 {
 }
 
 .settings-panel > .saved {
-  margin: 18px 24px 0;
+  margin: 16px 24px 8px;
+}
+
+/*
+ * One size and one step for the words in a panel. The four panels were written
+ * apart and printed their sentences at three sizes — plain paragraphs at the
+ * page's 16 pixels, the quiet ones at 14, some panels all of one and some a mix
+ * — with 6 pixels between two sentences in one panel and 16 in the next. A
+ * panel is a heading, a few sentences and a control, so every sentence in it is
+ * the quiet size, a sentence apart from the one before it.
+ *
+ * The payout panel draws its rule as a second lede after the first, or after
+ * the saved address; that lede continues the one above rather than opening a
+ * section, so it takes no inset of its own.
+ */
+.settings-panel .lede p {
+  margin-top: 8px;
+  font-size: 0.875rem;
+}
+
+.settings-panel > .lede + .lede,
+.settings-panel > .saved + .lede {
+  padding-top: 0;
 }
 
 /* A panel that ends in words rather than a form ends the same distance from its
