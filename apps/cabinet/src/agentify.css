@@ -875,6 +875,33 @@ h2 {
   max-width: 70ch;
 }
 
+/*
+ * The box a payout address is pasted into, which has to show all of it.
+ *
+ * A refusal on this box asks the merchant to read what they pasted against
+ * their wallet, and a box narrower than the address shows its first thirty
+ * characters and hides the rest. So the box is set in the monospaced face the
+ * address is read in everywhere else, and its size is worked out from the room
+ * it has: forty-two characters of that face are 25.2 of its em, and the box
+ * takes 32 pixels of padding and border around them. On a wide panel that is
+ * the same 0.9375rem as the saved address above it; on a phone it is smaller,
+ * and whole.
+ *
+ * The basis is the width of a whole address at that size. Where the row cannot
+ * hold that and the button beside it, the button goes under the box rather
+ * than squeezing it — a button whose words are "Change the address" is wider
+ * than the part of the address it would otherwise hide.
+ */
+.payout > div {
+  flex-basis: 26rem;
+  container-type: inline-size;
+}
+
+.payout input {
+  font-family: var(--font-mono);
+  font-size: min(0.9375rem, (100cqi - 32px) / 25.2);
+}
+
 /* Settings are four distinct subjects. Panels keep their explanations and
    controls together and use the width of the frame instead of leaving half of
    it blank; on a narrow screen they return to the document order. */
