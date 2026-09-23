@@ -156,6 +156,20 @@ textarea {
   }
 }
 
+/* The narrowest phones: the five still fit one row, each still a target of 44
+   pixels by more than 44, rather than leaving the last on a row of its own. */
+@media (max-width: 359px) {
+  .tabs {
+    gap: 0;
+    margin-left: -5px;
+  }
+
+  .tabs a,
+  .tabs span {
+    padding: 0 5px;
+  }
+}
+
 /*
  * The one band on these screens that is ink rather than paper, in the colours
  * the shared file names for the scanner's footer. One row: the lockup with the
