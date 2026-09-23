@@ -332,6 +332,9 @@ function TeaserState({
   const teaser = data.teaser;
   if (!teaser) return null;
   const provisional = teaser.coverage < 0.7 || teaser.level === "incomplete";
+  const shareShown = publicShareEnabled && teaser.score !== null;
+  const promptShown =
+    remediationPromptEnabled && registrationEnabled && teaser.top_findings.length > 0;
 
   return (
     <div className={styles.teaser}>
@@ -360,33 +363,37 @@ function TeaserState({
         <span>Diagnostic level, not a certification</span>
         <span>Coverage {Math.round(teaser.coverage * 100)}%</span>
       </div>
-      <div className={styles.teaserActions}>
-        <div className={styles.teaserActionRows}>
-          <PublicShareActions
-            enabled={publicShareEnabled}
-            preview={{
-              hostLabel: null,
-              level: teaser.level,
-              score: teaser.score,
-            }}
-            scanId={scanId}
-            tokenStorageKey={`agentify:scan-token:${scanId}`}
-          />
-          {remediationPromptEnabled && registrationEnabled && teaser.top_findings.length > 0 ? (
-            <CopyRemediationPrompt
-              allowDownload
-              contactGateScanId={scanId}
-              downloadUrl={`/api/v1/scans/${encodeURIComponent(scanId)}/remediation-prompt/download`}
-              label="Copy AI fix prompt"
-              promptUrl={`/api/v1/scans/${encodeURIComponent(scanId)}/remediation-prompt?scope=teaser`}
-              secondary
+      {shareShown || promptShown ? (
+        <div className={styles.teaserActions}>
+          <div className={styles.teaserActionRows}>
+            <PublicShareActions
+              enabled={publicShareEnabled}
+              preview={{
+                hostLabel: null,
+                level: teaser.level,
+                score: teaser.score,
+              }}
+              scanId={scanId}
+              tokenStorageKey={`agentify:scan-token:${scanId}`}
             />
+            {promptShown ? (
+              <CopyRemediationPrompt
+                allowDownload
+                contactGateScanId={scanId}
+                downloadUrl={`/api/v1/scans/${encodeURIComponent(scanId)}/remediation-prompt/download`}
+                label="Copy AI fix prompt"
+                promptUrl={`/api/v1/scans/${encodeURIComponent(scanId)}/remediation-prompt?scope=teaser`}
+                secondary
+              />
+            ) : null}
+          </div>
+          {shareShown ? (
+            <p className={styles.teaserCaption}>
+              The public link shows only the domain, level, score, and scan date.
+            </p>
           ) : null}
         </div>
-        <p className={styles.teaserCaption}>
-          The public link shows only the domain, level, score, and scan date.
-        </p>
-      </div>
+      ) : null}
       <div className={styles.findings}>
         <h2 className="eyebrow">Top findings</h2>
         {teaser.top_findings.map((finding, index) => (

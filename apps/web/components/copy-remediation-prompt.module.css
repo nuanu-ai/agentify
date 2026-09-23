@@ -66,10 +66,14 @@
 
 .status {
   display: block;
-  min-height: 1.2em;
-  margin-top: 8px;
   color: var(--muted);
   font: 0.75rem / 1.5 var(--font-mono);
+}
+
+/* The live region stays in the page so that a message is announced, but it
+   takes no room until it has something to say. */
+.status:not(:empty) {
+  margin-top: 8px;
 }
 
 .fallback {
