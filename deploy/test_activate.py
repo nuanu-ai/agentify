@@ -74,6 +74,7 @@ statement() {
     "CREATE DATABASE "*) : > "$W/db/${1#CREATE DATABASE }" ;;
     "ALTER DATABASE "*) names="${1#ALTER DATABASE }"; mv "$W/db/${names%% *}" "$W/db/${names##* }" ;;
     *"datname like"*) ls "$W/db" | grep _replaced_ || true ;;
+    *"not datistemplate"*) ls "$W/db" ;;
     select*) echo "${DB_SIZE:-1000}" ;;
   esac
 }
@@ -620,7 +621,9 @@ class Activation(unittest.TestCase):
         self.assertEqual(self.databases(), {"agentify_commerce": MIGRATED["agentify_commerce"], "agentify_scanner": ORIGINAL["agentify_scanner"]})
         [replaced] = self.replaced()
         self.assertTrue(replaced.startswith("agentify_scanner_replaced_"), replaced)
-        self.assertIn("agentify_scanner", said)
+        # The two databases now hold the data of different revisions, so no
+        # revision is current, and the next release migrates whatever it runs.
+        self.assertIsNone(self.current())
 
     def test_a_directory_holding_no_dump_is_refused_and_changes_nothing(self):
         (self.root / "backups/test/empty").mkdir(parents=True)
