@@ -36,12 +36,13 @@ expiring, hashed, single-use magic links. The scanner asks the cabinet over an
 internal route to send one; every link lands on the cabinet's page and is
 consumed only by an explicit same-origin submission there, which opens the
 session and sends the browser on. The scanner never handles a token. A request
-for a full report is finished when a session whose address made it arrives at
-that report from this origin, and the lead is linked to the scan in the
-scanner's own transaction, so the two databases never need to share one. No
-separate identity service is deployed, and the scanner database holds no
-identity data. Registration keeps its intent, email, scan and consent checks, a
-session finishes only the intent for its own address, and scanner permissions
+for a full report is finished at the first visit of the session its own link
+opened, which the cabinet names when asked whose session a cookie is, and the
+lead is linked to the scan in the scanner's own transaction, so the two
+databases never need to share one. No separate identity service is deployed,
+and the scanner database holds no identity data. Registration keeps its intent,
+email, scan and consent checks, a session finishes only the intent its own link
+was asked for or its own signed-in ask made, and scanner permissions
 are checked against report ownership. Where a link leads is recorded with its
 token, the full report of a named scan or a named cabinet screen, and nothing in
 the link is read as a destination; a session is shown a report only when its

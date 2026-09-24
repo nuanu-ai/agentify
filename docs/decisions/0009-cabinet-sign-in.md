@@ -96,9 +96,7 @@ chat or from mail, arrive signed in. A cross-site POST carries no `Lax` cookie,
 exactly as it carries no `Strict` one, so every form keeps its protection. That
 holds only while nothing a page on another site can start changes a person's
 data or selling: every such change is a POST, or another method no link can
-send, and the one GET that finishes something, a person's arrival at the report
-they asked for, finishes it only when the arrival comes from this origin
-(ADR-0026 §2). The check that a form came from this host stays, because
+send. The check that a form came from this host stays, because
 `SameSite` is judged per registrable domain and that other host is the same
 site.
 

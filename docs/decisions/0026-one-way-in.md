@@ -29,8 +29,14 @@ only that same-origin submission consumes the token, so a mail preview cannot
 spend it; the cabinet then opens the session, sets the cookie and sends the
 browser to the recorded destination. The token is hashed at rest, single-use and
 short-lived. A used, expired or unknown link is refused the same way, and no
-answer says whether the address has an account or a report. Signing in and
-recovering access are one act.
+answer says whether the address has an account or a report. A link with no
+destination of its own starts a person who owns a merchant in the cabinet, a
+person who owns reports and no merchant at their latest report, never at a
+screen offering to make a merchant, and anybody else in the cabinet; that is the
+person's start. A used, expired or unknown link opened in a browser with a live
+session goes to the start of that session's person instead of an empty form,
+which reveals nothing about the link's address, because the session's own
+address decides it. Signing in and recovering access are one act.
 
 **2. One identity and one session, held by the cabinet.** The person of an
 address is one row in the cabinet's Better Auth, and the session a link opens
@@ -47,15 +53,17 @@ visiting right now, because not knowing who somebody is must not look like
 knowing they are nobody.
 
 A report opens for a session whose address owns it, meaning the lead with that
-address is linked to the scan. A signed-in person who asks for the full report
-of a scan gets it for the session's address with no message, and arriving at
-that report through its link is the same act: the scanner links the lead then,
-and the cabinet has nothing to tell it. It does so only for an arrival from this
-origin, because a waiting request carries what its form said, a marketing choice
-included, and anybody can make one with somebody else's address; a navigation
-begun on another site opens what the address already owns and finishes nothing.
-The lead holds what the scanner learned about a person, their role, volume and
-unsubscription, and is not a way in.
+address is linked to the scan. A request made in the full-report form waits for
+its own link: the cabinet records, with the session that link opens, which
+request the link was asked for, the answer to whose session a cookie is names
+that request, and the scanner finishes it at the session's first visit,
+wherever the navigation began. A signed-in person's own ask, a same-origin POST
+carrying their own form choices, makes and finishes their request at once with
+no message. It never finishes a waiting request somebody else made with that
+person's address, which is left to expire, because a waiting request carries
+what its form said, a marketing choice included. The lead holds what the
+scanner learned about a person, their role, volume and unsubscription, and is
+not a way in.
 
 **3. The header and signing out.** When a person is signed in, the header of the
 scanner's and the cabinet's pages carries their address and a sign-out control;
@@ -96,12 +104,13 @@ ordinary answer of a page that does not exist. The dashboard stays read-only.
 
 | Where the person is | What they hold | What happens | Ends at |
 |---|---|---|---|
-| a report their address does not own | a session | asking gives the full report for the session's address, no message | the report |
-| a link to a report or the cabinet from another site | a session | the cookie rides the navigation; nothing is made or finished | that page |
+| a sign-in link with no destination | reports and no merchant | the link leads to their latest report, never to the screen that makes a merchant | the latest report |
+| a link to a report or the cabinet from another site | a session | the cookie rides the navigation; nothing is made, and no request but the session's own is finished | that page |
 | the cabinet, the first time | a session, no merchant | one control; its press makes the merchant and key | the seller-name screen |
 | `/admin` | anything but a flagged session | the answer of a page that does not exist | nowhere |
 | a scanner page, the cabinet unreachable | anything | the page says it cannot tell who is visiting | that page |
-| a link pressed twice, expired or unknown | anything | refused the same way | the sign-in page |
+| a link pressed twice, expired or unknown | no session | refused the same way | the sign-in page |
+| the same link | a live session | nothing is said about the link's address | that person's start |
 
 ## Consequences
 
