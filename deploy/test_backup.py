@@ -413,14 +413,14 @@ class Backups(unittest.TestCase):
 
     def test_a_backup_env_others_can_read_is_refused_and_nothing_is_dumped(self):
         said = self.run_script("backup", BACKUP_ENV_MODE="644")
-        self.assertIn("backup exit 1", said)
+        self.assertRegex(said, r"(?m)^backup exit 1$")
         self.assertIn("/etc/agentify/backup.env", said)
         self.assertFalse((self.world / "dumped").exists())
 
     def test_a_missing_backup_env_is_refused_in_words(self):
         (self.root / "etc/backup.env").unlink()
         said = self.run_script("backup")
-        self.assertIn("backup exit 1", said)
+        self.assertRegex(said, r"(?m)^backup exit 1$")
         self.assertIn("/etc/agentify/backup.env", said)
         self.assertFalse((self.world / "dumped").exists())
 
@@ -500,6 +500,86 @@ class Backups(unittest.TestCase):
         said = self.run_script("backup\ncheck")
         self.assertIn("check exit 0", said)
         self.assertEqual(self.databases(), ["agentify", "postgres"])
+
+    # Putting the S3 key on the host.
+
+    def credentials(self, lines, **environment):
+        """Pipes the lines into the credentials command, then reads backup.env the way the backup does."""
+        said = self.run_script(
+            f"printf '%s' {lines!r} | /h/tree/deploy/backup-credentials.sh --stdin; echo \"credentials exit $?\"\n"
+            "stat -c '%U %a' /etc/agentify/backup.env > /h/world/mode\n"
+            "(set -a; . /etc/agentify/backup.env; env) | grep -E '^(RESTIC|AWS)_' | sort > /h/world/values",
+            **environment,
+        )
+        values = dict(line.split("=", 1) for line in (self.world / "values").read_text().splitlines())
+        return said, values, (self.world / "mode").read_text().strip()
+
+    def test_a_new_key_replaces_the_old_one_and_the_rest_of_backup_env_stays(self):
+        said, values, mode = self.credentials("  NEWKEYID0123 \nnew-secret/with+signs=\n")
+        self.assertIn("credentials exit 0", said)
+        self.assertEqual(values["AWS_ACCESS_KEY_ID"], "NEWKEYID0123")
+        self.assertEqual(values["AWS_SECRET_ACCESS_KEY"], "new-secret/with+signs=")
+        self.assertEqual(values["RESTIC_PASSWORD"], RESTIC_PASSWORD)
+        self.assertEqual(values["RESTIC_REPOSITORY"], "s3:https://fsn1.your-objectstorage.com/nuanu-agentify-backups")
+        self.assertEqual(mode, "root 600")
+        self.assertNotIn("new-secret", said)
+        self.assertNotIn(RESTIC_PASSWORD, said)
+
+    def test_a_key_the_repository_does_not_open_with_leaves_backup_env_as_it_was(self):
+        said, values, mode = self.credentials("NEWKEYID0123\nnew-secret\n", REPOSITORY_REFUSES="1")
+        self.assertRegex(said, r"(?m)^credentials exit 1$")
+        self.assertEqual((values["AWS_ACCESS_KEY_ID"], values["AWS_SECRET_ACCESS_KEY"]), ("V0VVEXAMPLEKEY", S3_SECRET))
+
+    def test_a_new_host_is_asked_for_the_repository_password_too(self):
+        (self.root / "etc/backup.env").unlink()
+        said, values, mode = self.credentials("NEWKEYID0123\nnew-secret\nthe password from 1Password\n")
+        self.assertIn("credentials exit 0", said)
+        self.assertEqual(values["RESTIC_PASSWORD"], "the password from 1Password")
+        self.assertEqual(values["RESTIC_REPOSITORY"], "s3:https://fsn1.your-objectstorage.com/nuanu-agentify-backups")
+        self.assertEqual(values["AWS_DEFAULT_REGION"], "fsn1")
+        self.assertEqual(mode, "root 600")
+
+    def test_a_value_copied_twice_or_not_at_all_is_refused_and_nothing_changes(self):
+        for lines in ("SAMEVALUE\nSAMEVALUE\n", "\nnew-secret\n", "NEWKEYID0123\nnew secret\n"):
+            said, values, _ = self.credentials(lines)
+            self.assertRegex(said, r"(?m)^credentials exit 1$", lines)
+            self.assertEqual(values["AWS_SECRET_ACCESS_KEY"], S3_SECRET, lines)
+
+    def test_nothing_typed_or_pasted_at_its_prompts_reaches_the_screen(self):
+        # Run on a terminal, as `ssh -t agentify sudo agentify-backup-credentials`
+        # runs it, with each value answered once its prompt has appeared.
+        (self.root / "pty.py").write_text(textwrap.dedent("""\
+            import os, pty, select, time
+            pid, fd = pty.fork()
+            if pid == 0:
+                os.execv("/h/tree/deploy/backup-credentials.sh", ["backup-credentials.sh"])
+            screen = b""
+            def more(wait):
+                global screen
+                while select.select([fd], [], [], wait)[0]:
+                    try:
+                        chunk = os.read(fd, 1024)
+                    except OSError:
+                        return
+                    if not chunk:
+                        return
+                    screen += chunk
+                    wait = 0.3
+            for answer in (b"PTYKEYID0123\\n", b"pty-secret-value\\n"):
+                more(10)
+                os.write(fd, answer)
+            more(10)
+            _, status = os.waitpid(pid, 0)
+            print(screen.decode(errors="replace"))
+            print("pty exit", os.waitstatus_to_exitcode(status))
+            """))
+        said = self.run_script(
+            "python3 /h/pty.py\n(set -a; . /etc/agentify/backup.env; env) | grep -E '^AWS_' | sort > /h/world/values"
+        )
+        self.assertIn("pty exit 0", said)
+        self.assertNotIn("pty-secret-value", said)
+        self.assertNotIn("PTYKEYID0123", said)
+        self.assertIn("AWS_SECRET_ACCESS_KEY=pty-secret-value", (self.world / "values").read_text())
 
 
 if __name__ == "__main__":
