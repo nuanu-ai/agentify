@@ -90,4 +90,6 @@ trap - ERR
 
 transition finish "$previous"
 rm -f "$state/cards-before"
-echo "restore: agentify_commerce and agentify_scanner hold what $dir holds, and ${previous:+$(named "$previous") is current}${previous:-no revision is current}. The databases they replaced stay as agentify_commerce_replaced_$stamp and agentify_scanner_replaced_$stamp until a release is verified. gateway, cabinet, scanner and scanner-worker are stopped, and the channel is down until a release starts them." >&2
+now="no revision"
+[[ -z $previous ]] || now="$(named "$previous")"
+echo "restore: agentify_commerce and agentify_scanner hold what $dir holds, and $now is current. The databases they replaced stay as agentify_commerce_replaced_$stamp and agentify_scanner_replaced_$stamp until a release is verified. gateway, cabinet, scanner and scanner-worker are stopped, and the channel is down until a release starts them." >&2
