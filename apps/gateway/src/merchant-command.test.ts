@@ -375,6 +375,6 @@ describe("the address a merchant is paid at", () => {
     );
 
     expect(code).toBe(2);
-    expect((await terminal.store.merchantById(made?.id ?? ""))?.payoutWallet).toBeNull();
+    expect((await terminal.store.merchantById(made?.id ?? ""))?.payoutWallet.address).toBeNull();
   });
 });

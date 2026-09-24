@@ -17,7 +17,7 @@ import { type GatewayConfig, isSandboxFacilitator } from "../config.js";
 import type { Clock, Ids } from "../ports/clock.js";
 import type { Facilitator } from "../ports/facilitator.js";
 import type { Queue } from "../ports/queue.js";
-import type { Store, StoredCard } from "../ports/store.js";
+import type { Store, StoredCard, StoredPayoutWallet } from "../ports/store.js";
 
 export interface Runtime {
   readonly config: GatewayConfig;
@@ -111,6 +111,26 @@ export function sellingFor(
 }
 
 /**
+ * A merchant's wallet as it stands at one instant: the address a payment
+ * request written then names, and the change still waiting beside it.
+ *
+ * The row is not enough on its own, and this is the whole reason the function
+ * exists. A replacement on the live deployment waits forty-eight hours after it
+ * is announced (ADR-0019), and nothing writes the row at the moment the wait
+ * ends — no job is armed for it, because a job can be late or lost, and a sale
+ * paid to the old address after the merchant was told it would move is a
+ * promise broken with nothing on the row to say so. So the instant decides
+ * instead: a waiting change whose moment has come is the address, and the row
+ * catches up the next time it is written. Every reader of where a sale goes asks
+ * this with the gateway's own clock, and nothing reads `address` off the row.
+ */
+export function payoutWalletAt(wallet: StoredPayoutWallet, at: number): StoredPayoutWallet {
+  return wallet.pending !== null && wallet.pending.takesEffectAt <= at
+    ? { address: wallet.pending.address, pending: null }
+    : wallet;
+}
+
+/**
  * Whether a sale of this merchant's card could be paid for at all.
  *
  * It is the publish door's own rule, read at every later moment as well: an
@@ -167,14 +187,17 @@ export function approvedForLive(liveApprovedAt: number | null, config: GatewayCo
  */
 export function sellableBy(
   merchant: {
-    readonly payoutWallet: string | null;
+    readonly payoutWallet: StoredPayoutWallet;
     readonly serviceName: string | null;
     readonly liveApprovedAt: number | null;
   },
   config: GatewayConfig,
 ): boolean {
+  // Whether there is an address does not turn on the instant — a waiting
+  // change replaces an address and never gives one where there was none — so
+  // this asks the row rather than the clock.
   return (
-    payableTo(merchant.payoutWallet, config) &&
+    payableTo(merchant.payoutWallet.address, config) &&
     listedUnder(merchant.serviceName) &&
     approvedForLive(merchant.liveApprovedAt, config)
   );

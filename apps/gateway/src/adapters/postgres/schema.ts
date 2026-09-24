@@ -25,7 +25,17 @@
  */
 
 import type { Card, Receipt } from "@nuanu-ai/agentify-contracts";
-import { boolean, index, jsonb, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  boolean,
+  check,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+} from "drizzle-orm/pg-core";
 import type { StoredOrder } from "../../ports/store.js";
 
 /**
@@ -43,47 +53,74 @@ import type { StoredOrder } from "../../ports/store.js";
  * terminal; nothing on the wire carries it. What does go out is the separate
  * listing name beside it, and only where somebody set one.
  */
-export const merchants = pgTable("merchants", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  /**
-   * The name this seller is listed under in a discovery catalog, where anybody
-   * has named one. Null is the ordinary state and it is never filled in from
-   * the name above: that one is for a person at a terminal and may be written
-   * in any alphabet, and this one goes out to strangers through a catalog that
-   * carries printable ASCII and cuts anything else without a word.
-   */
-  serviceName: text("service_name"),
-  /**
-   * The address on the chain this merchant's sales are paid into, where
-   * somebody has set one. Null is the ordinary state.
-   *
-   * A column and not a setting in the environment, because the money is the
-   * merchant's and never ours: it goes straight from a buyer's agent to this
-   * address, and one address per deployment would mean one address for every
-   * merchant on it — which is the custodial arrangement this whole design
-   * refuses. It is never filled in from the operator's own configured address
-   * for the same reason.
-   *
-   * Always in the mixed-case spelling a wallet displays. An address has two
-   * spellings, and holding both would make one address two strings to every
-   * comparison and to every read back; of the two, this is the one a merchant
-   * can check against their own wallet at a glance.
-   */
-  payoutWallet: text("payout_wallet"),
-  /**
-   * The first and only operator grant for live publication.
-   *
-   * Null is the denied default for every new and migrated merchant. Repeated
-   * grants preserve the first instant, so this column is the audit fact as well
-   * as the eligibility switch.
-   */
-  liveApprovedAt: timestamp("live_approved_at", { withTimezone: true, mode: "date" }),
-  /** The order machine's own word: open, paused or departed. */
-  selling: text("selling").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
-});
+export const merchants = pgTable(
+  "merchants",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    /**
+     * The name this seller is listed under in a discovery catalog, where anybody
+     * has named one. Null is the ordinary state and it is never filled in from
+     * the name above: that one is for a person at a terminal and may be written
+     * in any alphabet, and this one goes out to strangers through a catalog that
+     * carries printable ASCII and cuts anything else without a word.
+     */
+    serviceName: text("service_name"),
+    /**
+     * The address on the chain this merchant's sales are paid into, where
+     * somebody has set one. Null is the ordinary state.
+     *
+     * A column and not a setting in the environment, because the money is the
+     * merchant's and never ours: it goes straight from a buyer's agent to this
+     * address, and one address per deployment would mean one address for every
+     * merchant on it — which is the custodial arrangement this whole design
+     * refuses. It is never filled in from the operator's own configured address
+     * for the same reason.
+     *
+     * Always in the mixed-case spelling a wallet displays. An address has two
+     * spellings, and holding both would make one address two strings to every
+     * comparison and to every read back; of the two, this is the one a merchant
+     * can check against their own wallet at a glance.
+     */
+    payoutWallet: text("payout_wallet"),
+    /**
+     * A replacement for that address which has been announced and is waiting,
+     * and the instant it takes effect (ADR-0019). Both null where nothing is
+     * waiting, which is every merchant on a test deployment and every merchant
+     * the day this column arrived.
+     *
+     * Two columns rather than a document, because the write that records a change
+     * is conditional on the row still holding what was read before the change was
+     * announced, and a comparison is cleaner over two columns than inside a
+     * document. They are both or neither, which the check below holds for
+     * anybody writing by hand: half a change is a sale paid somewhere at no stated
+     * time, or at a stated time to nowhere.
+     */
+    pendingPayoutWallet: text("pending_payout_wallet"),
+    pendingPayoutWalletFrom: timestamp("pending_payout_wallet_from", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    /**
+     * The first and only operator grant for live publication.
+     *
+     * Null is the denied default for every new and migrated merchant. Repeated
+     * grants preserve the first instant, so this column is the audit fact as well
+     * as the eligibility switch.
+     */
+    liveApprovedAt: timestamp("live_approved_at", { withTimezone: true, mode: "date" }),
+    /** The order machine's own word: open, paused or departed. */
+    selling: text("selling").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (table) => [
+    check(
+      "merchants_pending_payout_wallet_whole",
+      sql`(${table.pendingPayoutWallet} is null) = (${table.pendingPayoutWalletFrom} is null)`,
+    ),
+  ],
+);
 
 /**
  * One key a merchant opens the door with.

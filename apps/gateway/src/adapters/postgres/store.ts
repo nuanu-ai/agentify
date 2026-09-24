@@ -39,6 +39,7 @@ import type {
   StoredKey,
   StoredMerchant,
   StoredOrder,
+  StoredPayoutWallet,
 } from "../../ports/store.js";
 import { cards, merchantKeys, merchants, orders, paymentClaims, receipts } from "./schema.js";
 
@@ -228,15 +229,40 @@ export class PostgresStore implements Store {
 
   async setPayoutWallet(
     id: string,
-    payoutWallet: string,
+    expected: StoredPayoutWallet,
+    next: StoredPayoutWallet & { readonly address: string },
     at: number,
-  ): Promise<StoredMerchant | null> {
+  ): Promise<StoredMerchant | "moved" | null> {
+    // One statement: the comparison and the write are the database's single
+    // act, so two changes read from one row cannot both be recorded. Compared
+    // with `is not distinct from` because "none" is one of the values being
+    // compared, and `=` against a null answers nothing.
     const [row] = await this.#db
       .update(merchants)
-      .set({ payoutWallet, updatedAt: new Date(at) })
-      .where(eq(merchants.id, id))
+      .set({
+        payoutWallet: next.address,
+        pendingPayoutWallet: next.pending?.address ?? null,
+        pendingPayoutWalletFrom:
+          next.pending === null ? null : new Date(next.pending.takesEffectAt),
+        updatedAt: new Date(at),
+      })
+      .where(
+        and(
+          eq(merchants.id, id),
+          sql`${merchants.payoutWallet} is not distinct from ${expected.address}`,
+          sql`${merchants.pendingPayoutWallet} is not distinct from ${expected.pending?.address ?? null}`,
+          sql`${merchants.pendingPayoutWalletFrom} is not distinct from ${
+            expected.pending === null ? null : new Date(expected.pending.takesEffectAt)
+          }`,
+        ),
+      )
       .returning();
-    return row === undefined ? null : storedMerchantOf(row);
+    if (row !== undefined) {
+      return storedMerchantOf(row);
+    }
+    // Nothing matched: either the row holds something else by now, or there is
+    // no such merchant. The caller answers the two differently.
+    return (await this.merchantById(id)) === null ? null : "moved";
   }
 
   async addKey(
@@ -513,6 +539,8 @@ export class PostgresStore implements Store {
         card: cards,
         selling: merchants.selling,
         payoutWallet: merchants.payoutWallet,
+        pendingPayoutWallet: merchants.pendingPayoutWallet,
+        pendingPayoutWalletFrom: merchants.pendingPayoutWalletFrom,
         serviceName: merchants.serviceName,
         liveApprovedAt: merchants.liveApprovedAt,
       })
@@ -522,7 +550,7 @@ export class PostgresStore implements Store {
     return rows.map((row) => ({
       card: storedCardOf(row.card),
       merchant: sellingWordOf(row.selling),
-      payoutWallet: row.payoutWallet,
+      payoutWallet: payoutWalletOf(row),
       serviceName: row.serviceName,
       liveApprovedAt: row.liveApprovedAt?.getTime() ?? null,
     }));
@@ -1041,21 +1069,50 @@ function storedCardOf(row: {
   };
 }
 
-/** One merchant row as the rest of the gateway reads it. */
-function storedMerchantOf(row: {
-  id: string;
-  name: string;
-  serviceName: string | null;
+/** The three wallet columns of a merchant row, as one value. */
+interface WalletColumns {
   payoutWallet: string | null;
-  liveApprovedAt: Date | null;
-  selling: string;
-  createdAt: Date;
-}): StoredMerchant {
+  pendingPayoutWallet: string | null;
+  pendingPayoutWalletFrom: Date | null;
+}
+
+/**
+ * The wallet columns as the rest of the gateway reads them.
+ *
+ * Half a waiting change is refused by the table's own check, so the one case
+ * left here — an address with no instant or the reverse — is a database this
+ * gateway did not migrate, and it is read as nothing waiting rather than as a
+ * change taking effect at an instant nobody wrote.
+ */
+function payoutWalletOf(row: WalletColumns): StoredPayoutWallet {
+  return {
+    address: row.payoutWallet,
+    pending:
+      row.pendingPayoutWallet === null || row.pendingPayoutWalletFrom === null
+        ? null
+        : {
+            address: row.pendingPayoutWallet,
+            takesEffectAt: row.pendingPayoutWalletFrom.getTime(),
+          },
+  };
+}
+
+/** One merchant row as the rest of the gateway reads it. */
+function storedMerchantOf(
+  row: WalletColumns & {
+    id: string;
+    name: string;
+    serviceName: string | null;
+    liveApprovedAt: Date | null;
+    selling: string;
+    createdAt: Date;
+  },
+): StoredMerchant {
   return {
     id: row.id,
     name: row.name,
     serviceName: row.serviceName,
-    payoutWallet: row.payoutWallet,
+    payoutWallet: payoutWalletOf(row),
     liveApprovedAt: row.liveApprovedAt?.getTime() ?? null,
     selling: sellingWordOf(row.selling),
     createdAt: row.createdAt.getTime(),

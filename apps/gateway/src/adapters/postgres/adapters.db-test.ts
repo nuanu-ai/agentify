@@ -43,6 +43,7 @@ import { Pool } from "pg";
 import { PgBoss } from "pg-boss";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Gateway } from "../../app/gateway.js";
+import { setPayoutWallet } from "../../app/merchants.js";
 import type { Runtime } from "../../app/runtime.js";
 import type { OrderChange } from "../../ports/store.js";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "../../testing/database.js";
@@ -310,8 +311,8 @@ if (databaseUrl === null) {
       // A card whose merchant has nowhere to be paid is not on sale outside the
       // sandbox, and this suite's config names a real facilitator — so the
       // merchants get wallets, the same way testing/harness.ts seeds its own.
-      await store.setPayoutWallet(A, "0x0000000000000000000000000000000000000001", now);
-      await store.setPayoutWallet(B, "0x0000000000000000000000000000000000000002", now);
+      await setPayoutWallet(store, A, "0x0000000000000000000000000000000000000001", now);
+      await setPayoutWallet(store, B, "0x0000000000000000000000000000000000000002", now);
       // And a name, for the same shape of reason one step earlier: a payment
       // request names its seller, so a merchant listed under nobody has nothing
       // on sale either. Without these every purchase below would be refused for

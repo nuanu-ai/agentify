@@ -621,7 +621,8 @@ const listedAs = async (running: Running): Promise<string | null> =>
 
 /** Where the gateway would pay this merchant, read out of the same row. */
 const paidInto = async (running: Running): Promise<string | null> =>
-  (await running.harnessed.store.merchantById(running.harnessed.merchant.id))?.payoutWallet ?? null;
+  (await running.harnessed.store.merchantById(running.harnessed.merchant.id))?.payoutWallet
+    .address ?? null;
 
 const actionIn = (message: Message | undefined): URL => {
   const found = /(https?:\/\/\S+)/.exec(message?.body ?? "")?.[1];

@@ -42,6 +42,7 @@ import type {
   StoredKey,
   StoredMerchant,
   StoredOrder,
+  StoredPayoutWallet,
   WithTheOrder,
 } from "../../ports/store.js";
 
@@ -90,8 +91,8 @@ interface MerchantRow {
   selling: MerchantSelling;
   /** The name this seller is listed under in a catalog, where one is named. */
   serviceName: string | null;
-  /** Where this merchant's sales are paid, as a wallet writes it, where one is set. */
-  payoutWallet: string | null;
+  /** Where this merchant's sales are paid, and any change waiting beside it. */
+  payoutWallet: StoredPayoutWallet;
   /** The first operator grant for live publication, where one was made. */
   liveApprovedAt: number | null;
 }
@@ -142,7 +143,7 @@ export class MemoryStore implements Store {
       createdAt: at,
       selling: "open",
       serviceName: null,
-      payoutWallet: null,
+      payoutWallet: NO_WALLET,
       liveApprovedAt: null,
     };
     this.#merchants.set(merchant.id, row);
@@ -166,7 +167,7 @@ export class MemoryStore implements Store {
       createdAt: at,
       selling: "open",
       serviceName: null,
-      payoutWallet: null,
+      payoutWallet: NO_WALLET,
       liveApprovedAt: null,
     };
     this.#merchants.set(merchant.id, row);
@@ -223,14 +224,21 @@ export class MemoryStore implements Store {
 
   async setPayoutWallet(
     id: string,
-    payoutWallet: string,
+    expected: StoredPayoutWallet,
+    next: StoredPayoutWallet & { readonly address: string },
     _at: number,
-  ): Promise<StoredMerchant | null> {
+  ): Promise<StoredMerchant | "moved" | null> {
     const row = this.#merchants.get(id);
     if (row === undefined) {
       return null;
     }
-    row.payoutWallet = payoutWallet;
+    // Nothing is awaited between the comparison and the write, so in one
+    // process this is the conditional update the database makes in one
+    // statement.
+    if (!sameWallet(row.payoutWallet, expected)) {
+      return "moved";
+    }
+    row.payoutWallet = { address: next.address, pending: next.pending };
     return storedMerchantOf(row);
   }
 
@@ -422,7 +430,7 @@ export class MemoryStore implements Store {
     return [...this.#cards.values()].map((card) => ({
       card,
       merchant: this.#sellingOf(card.merchantId),
-      payoutWallet: this.#merchants.get(card.merchantId)?.payoutWallet ?? null,
+      payoutWallet: this.#merchants.get(card.merchantId)?.payoutWallet ?? NO_WALLET,
       serviceName: this.#merchants.get(card.merchantId)?.serviceName ?? null,
       liveApprovedAt: this.#merchants.get(card.merchantId)?.liveApprovedAt ?? null,
     }));
@@ -698,6 +706,18 @@ function catalogKey(merchantId: string, merchantItemId: string): string {
   // own examples — so joining on anything printable is a way for two different
   // pairs to come out as the one string.
   return `${merchantId}\u0000${merchantItemId}`;
+}
+
+/** Paid nowhere, with nothing waiting: where every merchant starts. */
+const NO_WALLET: StoredPayoutWallet = { address: null, pending: null };
+
+/** Whether two readings of a wallet are the same row: both halves, and the instant. */
+function sameWallet(one: StoredPayoutWallet, other: StoredPayoutWallet): boolean {
+  return (
+    one.address === other.address &&
+    one.pending?.address === other.pending?.address &&
+    one.pending?.takesEffectAt === other.pending?.takesEffectAt
+  );
 }
 
 function storedMerchantOf(row: MerchantRow): StoredMerchant {

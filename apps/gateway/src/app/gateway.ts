@@ -55,7 +55,13 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import { asTimestamp } from "../ports/clock.js";
 import type { Reminder } from "../ports/queue.js";
-import type { KeyPurpose, StoredCard, StoredKey, StoredOrder } from "../ports/store.js";
+import type {
+  KeyPurpose,
+  StoredCard,
+  StoredKey,
+  StoredOrder,
+  StoredPayoutWallet,
+} from "../ports/store.js";
 import { orderCallResponseOf } from "./answers.js";
 import {
   invitationAccepted,
@@ -72,6 +78,7 @@ import {
   listedUnder,
   modeForCard,
   payableTo,
+  payoutWalletAt,
   policyFor,
   priceCheckOf,
   quoteReachesTheMerchant,
@@ -376,7 +383,7 @@ export class Gateway {
     // nowhere for this product's money to go. The sandbox asks for no address,
     // and that is not leniency — it settles against nothing, so there is no
     // money to send anywhere and no chain to send it on (ADR-0008).
-    if (!payableTo(merchant.payoutWallet, this.runtime.config)) {
+    if (!payableTo(merchant.payoutWallet.address, this.runtime.config)) {
       missing.push(NO_PAYOUT_WALLET);
     }
     if (!approvedForLive(merchant.liveApprovedAt, this.runtime.config)) {
@@ -465,7 +472,12 @@ export class Gateway {
           ? "paused"
           : sellingFor(merchant.selling, stored, sellableBy(merchant, this.runtime.config)),
       serviceName: merchant?.serviceName ?? null,
-      payoutWallet: merchant?.payoutWallet ?? null,
+      // The address a payment request written now names, which is a waiting
+      // change once its moment has come and not before (ADR-0019).
+      payoutWallet:
+        merchant === null
+          ? null
+          : payoutWalletAt(merchant.payoutWallet, this.runtime.clock()).address,
     };
   }
 
@@ -684,7 +696,7 @@ export class Gateway {
         `the key on this call resolved to ${merchantId}, and there is no such merchant`,
       );
     }
-    return { payout_wallet: merchant.payoutWallet, pending: null };
+    return payoutWalletAnswer(payoutWalletAt(merchant.payoutWallet, this.runtime.clock()));
   }
 
   /**
@@ -723,7 +735,7 @@ export class Gateway {
         `the key on this call resolved to ${merchantId}, and there is no such merchant`,
       );
     }
-    return { payout_wallet: paid.payoutWallet, pending: null };
+    return payoutWalletAnswer(payoutWalletAt(paid.payoutWallet, this.runtime.clock()));
   }
 
   /**
@@ -1010,7 +1022,14 @@ export class Gateway {
     // sale, whatever else is right about it — and the same string is then kept
     // on the order for the charge, so the money goes where the payer signed for
     // it to go rather than wherever the merchant's wallet has got to by then.
-    const payTo = (await this.runtime.store.merchantById(before.merchantId))?.payoutWallet ?? null;
+    //
+    // Read at the instant of the verification, like the challenge before it:
+    // a waiting change whose moment has passed is the address from then on.
+    const payingMerchant = await this.runtime.store.merchantById(before.merchantId);
+    const payTo =
+      payingMerchant === null
+        ? null
+        : payoutWalletAt(payingMerchant.payoutWallet, this.runtime.clock()).address;
 
     const verified = await this.runtime.facilitator.verify({
       orderId,
@@ -2088,6 +2107,26 @@ const NO_SELLER_NAME: Problem = {
  * address, it is the operator's, and a card published against it would send a
  * merchant's takings to somebody else with nobody the wiser.
  */
+/**
+ * A merchant's wallet, already read at an instant, as the route answers with it.
+ *
+ * The waiting change travels with the address rather than being left for a
+ * second call, because a caller that reads its own old address back must be
+ * able to see in the same answer that its change is waiting rather than lost.
+ */
+function payoutWalletAnswer(wallet: StoredPayoutWallet): PayoutWallet {
+  return {
+    payout_wallet: wallet.address,
+    pending:
+      wallet.pending === null
+        ? null
+        : {
+            payout_wallet: wallet.pending.address,
+            takes_effect_at: asTimestamp(wallet.pending.takesEffectAt),
+          },
+  };
+}
+
 const NO_PAYOUT_WALLET: Problem = {
   path: [],
   code: "no_payout_wallet",

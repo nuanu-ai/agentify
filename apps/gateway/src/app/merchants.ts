@@ -98,11 +98,10 @@ export async function setServiceName(
 }
 
 /**
- * Sets the address one merchant's sales are paid into, and hands back the
- * merchant as they now stand. Null where there is no such merchant.
+ * An address a merchant may be paid at, in the one spelling anything here holds.
  *
  * Two things happen here and both are the reason this is a function rather than
- * a call on the store.
+ * a parse at each caller.
  *
  * The address is checked, and it throws rather than answering, for the reason
  * the listing name beside it does and with more on it: the one wrong answer
@@ -115,11 +114,35 @@ export async function setServiceName(
  *
  * And the address is written out in one spelling before it is stored. An
  * address has two and the store holds one, so that a comparison somewhere else
- * cannot come out false for two spellings of one address, and so that what a
- * merchant reads back does not depend on which spelling they last sent. The one
- * it holds is the wallet's own — the mixed-case checksummed form — because that
- * is the string the merchant copied and the string they will compare against
- * when they look at the settings screen a month from now.
+ * cannot come out false for two spellings of one address — which is what a
+ * retry of a waiting change is recognised by — and so that what a merchant reads
+ * back does not depend on which spelling they last sent. The one it holds is the
+ * wallet's own — the mixed-case checksummed form — because that is the string
+ * the merchant copied and the string they will compare against when they look
+ * at the settings screen a month from now.
+ */
+export function payoutWalletFrom(payoutWallet: string): string {
+  // Throws with the schema's own words, which say what is wrong with the
+  // address and what the two spellings of one are.
+  return checksummedAddressOf(EvmAddressSchema.parse(payoutWallet));
+}
+
+/**
+ * Sets the address one merchant's sales are paid into at once, with nothing
+ * waiting, and hands back the merchant as they now stand. Null where there is
+ * no such merchant.
+ *
+ * This is the write with no wait and no message, and its callers are the
+ * harnesses that seed a merchant ready to sell — the gateway's own test harness
+ * and the slice's, which stands one merchant up with the address it was
+ * configured with. Nothing a merchant or an operator reaches calls it: a
+ * merchant's change goes through `Gateway#setPayoutWallet`, which waits and
+ * announces where the money is real (ADR-0019), and no terminal command writes
+ * a wallet at all.
+ *
+ * A row that moved between the read and the write is read again and written
+ * over rather than refused, because a seed has nobody to tell and nothing to
+ * race but itself.
  */
 export async function setPayoutWallet(
   store: Store,
@@ -127,10 +150,22 @@ export async function setPayoutWallet(
   payoutWallet: string,
   at: number,
 ): Promise<StoredMerchant | null> {
-  // Throws with the schema's own words, which say what is wrong with the
-  // address and what the two spellings of one are.
-  const address = EvmAddressSchema.parse(payoutWallet);
-  return store.setPayoutWallet(merchantId, checksummedAddressOf(address), at);
+  const address = payoutWalletFrom(payoutWallet);
+  for (;;) {
+    const merchant = await store.merchantById(merchantId);
+    if (merchant === null) {
+      return null;
+    }
+    const written = await store.setPayoutWallet(
+      merchantId,
+      merchant.payoutWallet,
+      { address, pending: null },
+      at,
+    );
+    if (written !== "moved") {
+      return written;
+    }
+  }
 }
 
 /** What the protected operator grant found and whether this call wrote it. */
