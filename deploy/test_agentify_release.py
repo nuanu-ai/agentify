@@ -607,6 +607,16 @@ class ARestore(ReleaseTest):
         [run] = self.restores_run()
         self.assertEqual(Path(run["script"]).parent.parent, (self.state / "checkouts" / second).resolve())
 
+    def test_after_a_restore_to_a_revision_whose_checkout_is_gone_it_runs_another_checkouts_script(self):
+        # A restore makes `current` the revision before the verified one,
+        # whose checkout that release removed; any checkout's restore.sh
+        # restores the same channel.
+        self.assertEqual(self.release("main"), 0, self.said)
+        (self.state / "current").write_text("c" * 40 + "\n")
+        self.assertEqual(self.restore_by_the_unit("/var/backups/agentify/test/a-point"), 0, self.said)
+        [run] = self.restores_run()
+        self.assertEqual(Path(run["script"]).parent.parent, (self.state / "checkouts" / self.first).resolve())
+
     def test_a_restore_that_has_to_wait_is_a_wait(self):
         self.assertEqual(self.release("main"), 0, self.said)
         self.assertEqual(self.restore_by_the_unit("/var/backups/agentify/test/a-point", exit_code=75), 75, self.said)
