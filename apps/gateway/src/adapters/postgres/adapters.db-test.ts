@@ -45,6 +45,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { Gateway } from "../../app/gateway.js";
 import { setPayoutWallet } from "../../app/merchants.js";
 import type { Runtime } from "../../app/runtime.js";
+import { nobodyAnnounces } from "../../ports/announcer.js";
 import type { OrderChange } from "../../ports/store.js";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "../../testing/database.js";
 import { countedIds, testConfig, workUntilStopped } from "../../testing/harness.js";
@@ -296,6 +297,7 @@ if (databaseUrl === null) {
         facilitator,
         clock: () => now,
         ids: countedIds(),
+        announcer: nobodyAnnounces,
       };
       gateway = new Gateway(runtime);
       await gateway.start();

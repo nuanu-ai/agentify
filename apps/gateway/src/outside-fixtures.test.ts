@@ -31,6 +31,7 @@ import { Gateway } from "./app/gateway.js";
 import { keyDigest, setPayoutWallet, setServiceName } from "./app/merchants.js";
 import { loadConfig } from "./config.js";
 import { buildApp } from "./http/server.js";
+import { nobodyAnnounces } from "./ports/announcer.js";
 
 /**
  * The key this walk carries. It is prefixed because the door reads the prefix
@@ -98,6 +99,8 @@ async function aGatewayOnAPort() {
     facilitator,
     clock: () => Date.now(),
     ids,
+    // A test channel, where nothing is announced.
+    announcer: nobodyAnnounces,
   });
   await gateway.start();
 

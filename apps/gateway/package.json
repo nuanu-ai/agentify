@@ -6,6 +6,7 @@
   "description": "Agentify gateway — the 402 edge, the order queue, receipts",
   "exports": {
     ".": "./src/index.ts",
+    "./announcements": "./src/announcements.ts",
     "./testing": "./src/testing/harness.ts",
     "./testing/database": "./src/testing/database.ts"
   },

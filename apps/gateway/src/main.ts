@@ -31,6 +31,7 @@ import type { Runtime } from "./app/runtime.js";
 import { isSandboxFacilitator, loadConfig } from "./config.js";
 import { buildApp } from "./http/server.js";
 import { PaymentEdge } from "./http/x402.js";
+import { nobodyAnnounces } from "./ports/announcer.js";
 import { randomIds, systemClock } from "./ports/clock.js";
 import type { Facilitator } from "./ports/facilitator.js";
 
@@ -140,6 +141,9 @@ const runtime: Runtime = {
   facilitator: await paymentLayer(),
   clock: systemClock,
   ids: randomIds,
+  // Nothing asks it yet: the wallet flow announces nothing until the wait is
+  // built (ADR-0019).
+  announcer: nobodyAnnounces,
 };
 
 const gateway = new Gateway(runtime);

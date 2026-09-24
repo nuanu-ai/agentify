@@ -22,6 +22,7 @@
 
 import { isTestnetChain, LIVE_CHAINS, TESTNET_CHAINS } from "@agentify/core";
 import { loadConfig, ScriptedFacilitator } from "@agentify/gateway";
+import { ANNOUNCING } from "@agentify/gateway/testing";
 import { describe, expect, it } from "vitest";
 import {
   type CatalogCard,
@@ -92,6 +93,7 @@ describe("the shared list", () => {
           FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
           CDP_API_KEY_ID: "key-id",
           CDP_API_KEY_SECRET: "secret",
+          ...ANNOUNCING,
         }).environment,
       ).toBe("live");
       expect(whyNotThisNetwork(chain, false)).toMatch(/SMOKE_ALLOW_MAINNET/);

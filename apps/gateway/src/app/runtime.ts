@@ -14,6 +14,7 @@ import type { MerchantSelling, OrderMode, OrderPolicy } from "@agentify/core";
 import { modeOf } from "@agentify/core";
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { type GatewayConfig, isSandboxFacilitator } from "../config.js";
+import type { Announcer } from "../ports/announcer.js";
 import type { Clock, Ids } from "../ports/clock.js";
 import type { Facilitator } from "../ports/facilitator.js";
 import type { Queue } from "../ports/queue.js";
@@ -26,6 +27,11 @@ export interface Runtime {
   readonly facilitator: Facilitator;
   readonly clock: Clock;
   readonly ids: Ids;
+  /**
+   * How a merchant is told of a change to their payout wallet or their keys.
+   * Asked on the live deployment and nowhere else (ADR-0019).
+   */
+  readonly announcer: Announcer;
 }
 
 export function policyFor(card: Card, config: GatewayConfig): OrderPolicy {
