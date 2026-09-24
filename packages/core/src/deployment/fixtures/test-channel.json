@@ -13,10 +13,6 @@
   },
   "services": {
     "cabinet": {
-      "build": {
-        "context": "/workspace/agentify",
-        "dockerfile": "deploy/Dockerfile.app"
-      },
       "command": [
         "pnpm",
         "--filter",
@@ -66,17 +62,13 @@
         "retries": 15,
         "start_period": "15s"
       },
-      "image": "agentify-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "image": "ghcr.io/nuanu-ai/agentify-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "networks": {
         "default": null
       },
       "restart": "unless-stopped"
     },
     "gateway": {
-      "build": {
-        "context": "/workspace/agentify",
-        "dockerfile": "deploy/Dockerfile.app"
-      },
       "command": [
         "pnpm",
         "--filter",
@@ -118,17 +110,13 @@
         "retries": 15,
         "start_period": "15s"
       },
-      "image": "agentify-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "image": "ghcr.io/nuanu-ai/agentify-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "networks": {
         "default": null
       },
       "restart": "unless-stopped"
     },
     "migrate": {
-      "build": {
-        "context": "/workspace/agentify",
-        "dockerfile": "deploy/Dockerfile.app"
-      },
       "command": [
         "pnpm",
         "db:migrate"
@@ -143,7 +131,7 @@
       "environment": {
         "DATABASE_URL": "postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_commerce"
       },
-      "image": "agentify-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "image": "ghcr.io/nuanu-ai/agentify-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "networks": {
         "default": null
       },
@@ -166,7 +154,7 @@
         "interval": "2s",
         "retries": 15
       },
-      "image": "postgres:17-alpine",
+      "image": "docker.io/library/postgres@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73",
       "networks": {
         "default": null
       },
@@ -180,7 +168,7 @@
         },
         {
           "type": "bind",
-          "source": "/workspace/agentify/deploy/postgres-init",
+          "source": "/var/lib/agentify/test/postgres-init",
           "target": "/docker-entrypoint-initdb.d",
           "read_only": true,
           "bind": {}
@@ -188,11 +176,6 @@
       ]
     },
     "scanner": {
-      "build": {
-        "context": "/workspace/agentify",
-        "dockerfile": "deploy/Dockerfile.scanner",
-        "target": "runner"
-      },
       "command": null,
       "depends_on": {
         "cabinet": {
@@ -241,17 +224,13 @@
         "TURNSTILE_SECRET_KEY": "",
         "TURNSTILE_SITE_KEY": ""
       },
-      "image": "agentify-scanner:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "image": "ghcr.io/nuanu-ai/agentify-scanner:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "networks": {
         "default": null
       },
       "restart": "unless-stopped"
     },
     "scanner-migrate": {
-      "build": {
-        "context": "/workspace/agentify",
-        "dockerfile": "deploy/Dockerfile.scanner-worker"
-      },
       "command": [
         "node",
         "packages/scanner-database/dist/migrate-cli.js"
@@ -266,7 +245,7 @@
       "environment": {
         "DATABASE_URL": "postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_scanner"
       },
-      "image": "agentify-scanner-worker:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "image": "ghcr.io/nuanu-ai/agentify-scanner-worker:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "networks": {
         "default": null
       },
@@ -276,11 +255,6 @@
       "profiles": [
         "jobs"
       ],
-      "build": {
-        "context": "/workspace/agentify",
-        "dockerfile": "deploy/Dockerfile.scanner",
-        "target": "privacy-jobs"
-      },
       "command": null,
       "depends_on": {
         "postgres": {
@@ -301,17 +275,13 @@
         "STRIPE_ADAPTER": "local",
         "TOKEN_HMAC_SECRET": "fixture-token-hmac-secret-with-enough-characters"
       },
-      "image": "agentify-scanner-privacy:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "image": "ghcr.io/nuanu-ai/agentify-scanner-privacy:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "networks": {
         "default": null
       },
       "restart": "no"
     },
     "scanner-worker": {
-      "build": {
-        "context": "/workspace/agentify",
-        "dockerfile": "deploy/Dockerfile.scanner-worker"
-      },
       "command": null,
       "depends_on": {
         "postgres": {
@@ -351,17 +321,13 @@
         "SCANNER_CONCURRENCY": "2",
         "WORKER_ID": "agentify-test-1"
       },
-      "image": "agentify-scanner-worker:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "image": "ghcr.io/nuanu-ai/agentify-scanner-worker:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "networks": {
         "default": null
       },
       "restart": "unless-stopped"
     },
     "web": {
-      "build": {
-        "context": "/workspace/agentify",
-        "dockerfile": "deploy/Dockerfile.web"
-      },
       "command": null,
       "depends_on": {
         "cabinet": {
@@ -379,13 +345,13 @@
       },
       "entrypoint": null,
       "environment": {
-        "ADMIN_BASIC_AUTH_HASH": "$2a$14$offline-fixture-bcrypt-hash",
+        "ADMIN_BASIC_AUTH_HASH": "$$2a$$14$$offline-fixture-bcrypt-hash",
         "ADMIN_BASIC_AUTH_USER": "test-admin",
         "AGENTIFY_FRONT_PAGE": "scanner_front_page",
         "AGENTIFY_SITE_ADDRESS": "test.agentify.ad",
         "AGENTIFY_SURFACE_MODE": "test"
       },
-      "image": "agentify-web:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "image": "ghcr.io/nuanu-ai/agentify-web:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "networks": {
         "agentify-ingress": null,
         "default": null
@@ -425,7 +391,7 @@
       "context": ".",
       "dockerfile": "deploy/Dockerfile.app"
     },
-    "image": "agentify-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "image": "ghcr.io/nuanu-ai/agentify-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "restart": "unless-stopped"
   },
   "x-scanner-app": {
@@ -433,7 +399,7 @@
       "context": ".",
       "dockerfile": "deploy/Dockerfile.scanner-worker"
     },
-    "image": "agentify-scanner-worker:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "image": "ghcr.io/nuanu-ai/agentify-scanner-worker:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "restart": "unless-stopped"
   }
 }

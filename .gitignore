@@ -37,5 +37,10 @@ output/
 # repository rather than into the user store. It is a cache, not a source.
 .pnpm-store/
 
-# Python bytecode caches (the release scripts under deploy/ansible and their tests)
+# Python bytecode caches (the deployment scripts and their tests)
 __pycache__/
+
+# The images a checkout on a host runs, which deploy/activate.sh writes when it
+# activates that revision, with the file it writes them through. A fact about
+# one host, never source.
+deploy/images.env*

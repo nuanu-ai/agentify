@@ -1,0 +1,38 @@
+# The images a released channel runs, and nothing that builds one.
+# deploy/stack.sh adds this file last, so no build definition survives into a
+# release and every image the channel starts is one deploy/activate.sh pulled
+# and checked: the five first-party images from the variables it records in
+# deploy/images.env, and PostgreSQL by the digest pinned below.
+#
+# PostgreSQL is pinned here rather than taken from the host's environment
+# because changing it is a database upgrade: a reviewed change to this line,
+# with a release plan of its own. Activation refuses to recreate a running
+# database under a different image.
+services:
+  postgres:
+    # PostgreSQL 17.11 Alpine, the image CI's database suite runs against.
+    image: docker.io/library/postgres@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+  migrate:
+    build: !reset null
+    image: "${AGENTIFY_APP_IMAGE:?deploy/images.env names the app image}"
+  gateway:
+    build: !reset null
+    image: "${AGENTIFY_APP_IMAGE:?deploy/images.env names the app image}"
+  cabinet:
+    build: !reset null
+    image: "${AGENTIFY_APP_IMAGE:?deploy/images.env names the app image}"
+  web:
+    build: !reset null
+    image: "${AGENTIFY_WEB_IMAGE:?deploy/images.env names the web image}"
+  scanner-migrate:
+    build: !reset null
+    image: "${AGENTIFY_SCANNER_WORKER_IMAGE:?deploy/images.env names the scanner-worker image}"
+  scanner-worker:
+    build: !reset null
+    image: "${AGENTIFY_SCANNER_WORKER_IMAGE:?deploy/images.env names the scanner-worker image}"
+  scanner:
+    build: !reset null
+    image: "${AGENTIFY_SCANNER_IMAGE:?deploy/images.env names the scanner image}"
+  scanner-privacy:
+    build: !reset null
+    image: "${AGENTIFY_SCANNER_PRIVACY_IMAGE:?deploy/images.env names the scanner-privacy image}"

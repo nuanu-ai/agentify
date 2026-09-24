@@ -3,11 +3,46 @@
 # The listen address is that host's, not this repository's: supply it, and the
 # stack refuses to start rather than binding somewhere unintended.
 services:
-  scanner-worker:
-    # One worker, named for the channel it runs in: heartbeats are keyed on
-    # this, and two workers answering to one name read as one restarting.
+  # The init scripts from a path no release changes, which deploy/stack.sh
+  # names and deploy/activate.sh keeps equal to the checkout's copy. Mounted
+  # from the checkout, they changed path with every revision, and Compose
+  # recreated the database on every release.
+  postgres:
+    volumes:
+      - "${AGENTIFY_POSTGRES_INIT:?deploy/stack.sh names the database's init scripts}:/docker-entrypoint-initdb.d:ro"
+
+  # What the test channel's scanner does is fixed here rather than read from
+  # the host's environment file, so no line in that file can change it. It takes
+  # registrations and scans from anybody, because the whole path a reader walks
+  # has to work on this channel; and it sends no partner postback, starts no
+  # paid browser run and delivers no analytics, because nothing it sees is
+  # anybody's real traffic. The rest of the scanner's settings stay the host's.
+  scanner:
     environment:
+      REGISTRATION_ENABLED: "true"
+      SCAN_ACCEPTANCE_ENABLED: "true"
+      TURNSTILE_ENFORCED: "false"
+      SCANNER_CACHE_ENABLED: "false"
+      BENCHMARK_ENABLED: "false"
+      PUBLIC_SHARE_ENABLED: "false"
+      PARTNER_POSTBACK_ENABLED: "false"
+      APIFY_BROWSER_MODE: "off"
+      REMEDIATION_PROMPT_ENABLED: "true"
+      ANALYTICS_RUNTIME_ENV: "test"
+
+  scanner-worker:
+    environment:
+      # One worker, named for the channel it runs in: heartbeats are keyed on
+      # this, and two workers answering to one name read as one restarting.
       WORKER_ID: "${WORKER_ID:-agentify-test-1}"
+      SCANNER_CACHE_ENABLED: "false"
+      ANALYTICS_ENV: "test"
+      ANALYTICS_RUNTIME_ENV: "test"
+      POSTHOG_ENABLED: "false"
+      META_CAPI_ENABLED: "false"
+      PARTNER_POSTBACK_ENABLED: "false"
+      APIFY_BROWSER_ENABLED: "false"
+      APIFY_BROWSER_MODE: "off"
 
   web:
     ports: !override

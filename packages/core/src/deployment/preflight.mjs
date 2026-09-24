@@ -18,7 +18,7 @@
 
 /** What each channel declares itself to be. */
 const CHANNELS = {
-  "agentify-test": {
+  test: {
     network: "eip155:84532",
     facilitator: "https://x402.org/facilitator",
     surfaceMode: "test",
@@ -27,7 +27,7 @@ const CHANNELS = {
     publishedPort: "8443",
     credentials: false,
   },
-  commerce: {
+  production: {
     network: "eip155:8453",
     facilitator: "https://api.cdp.coinbase.com/platform/v2/x402",
     surfaceMode: "live",
@@ -74,22 +74,17 @@ const isPrivateIpv4 = (value) => {
   );
 };
 
-export function problemsWith(channel, resolved, testListenAddress) {
+export function problemsWith(channel, resolved) {
   const wanted = CHANNELS[channel];
   if (wanted === undefined) {
-    return [`${channel} is not a release channel; the channels are agentify-test and commerce`];
+    return [`${channel} is not a release channel; the channels are test and production`];
   }
 
   const problems = [];
   const gateway = envOf(resolved, "gateway");
   const cabinet = envOf(resolved, "cabinet");
   const web = envOf(resolved, "web");
-
-  if (channel === "agentify-test" && !isPrivateIpv4(testListenAddress)) {
-    problems.push(
-      "the operator-supplied TEST listen address is not one private IPv4 address; refusing a public or guessed binding",
-    );
-  }
+  const scanner = envOf(resolved, "scanner");
 
   const equal = (where, name, given, expected) => {
     if (given !== expected) {
@@ -170,7 +165,7 @@ export function problemsWith(channel, resolved, testListenAddress) {
     );
   }
 
-  if (channel === "commerce") {
+  if (channel === "production") {
     const postgres = envOf(resolved, "postgres");
     const password = postgres.POSTGRES_PASSWORD;
     if (
@@ -182,7 +177,7 @@ export function problemsWith(channel, resolved, testListenAddress) {
       password === "agentify_commerce"
     ) {
       problems.push(
-        "postgres: commerce needs a distinct URL-safe password of at least 24 characters",
+        "postgres: production needs a distinct URL-safe password of at least 24 characters",
       );
     } else {
       const databaseUrl = `postgres://agentify_commerce:${password}@postgres:5432/agentify_commerce`;
@@ -238,6 +233,66 @@ export function problemsWith(channel, resolved, testListenAddress) {
     }
   }
 
+  // The scanner's private identity route (ADR-0026). Every service of a
+  // channel shares one network and one database account, so what keeps a
+  // person's identity with the cabinet is the credential that route asks for:
+  // the scanner holds it and nothing else does, and it opens no other door.
+  const identity = cabinet.REPORT_IDENTITY_SECRET ?? "";
+  if (identity.length < 32) {
+    problems.push(
+      "cabinet: REPORT_IDENTITY_SECRET is missing or shorter than 32 characters, so the " +
+        "identity route has no secret to ask for",
+    );
+  }
+  if (scanner.REPORT_IDENTITY_SECRET !== cabinet.REPORT_IDENTITY_SECRET) {
+    problems.push(
+      "scanner: REPORT_IDENTITY_SECRET is not the cabinet's, so the cabinet turns the scanner away",
+    );
+  }
+  if (scanner.CABINET_IDENTITY_URL !== "http://cabinet:3002") {
+    problems.push(
+      `scanner: CABINET_IDENTITY_URL is ${JSON.stringify(scanner.CABINET_IDENTITY_URL ?? null)} ` +
+        "and the route is http://cabinet:3002, on this stack's own network",
+    );
+  }
+  for (const [service, name] of [
+    ["cabinet", "AUTH_SECRET"],
+    ["cabinet", "REGISTRATION_INVITATION"],
+    ["scanner", "TOKEN_HMAC_SECRET"],
+  ]) {
+    if (identity !== "" && envOf(resolved, service)[name] === identity) {
+      problems.push(
+        `${service}: REPORT_IDENTITY_SECRET is also its ${name}, and one credential opens one door`,
+      );
+    }
+  }
+  for (const [service, definition] of Object.entries(resolved.services ?? {})) {
+    const environment = definition?.environment ?? {};
+    if (service !== "cabinet" && service !== "scanner" && "REPORT_IDENTITY_SECRET" in environment) {
+      problems.push(
+        `${service}: REPORT_IDENTITY_SECRET is handed to a service that is neither the cabinet nor the scanner`,
+      );
+    }
+    if (service !== "scanner" && "CABINET_IDENTITY_URL" in environment) {
+      problems.push(
+        `${service}: CABINET_IDENTITY_URL is handed to a service that is not the scanner`,
+      );
+    }
+  }
+  if ((resolved.services?.cabinet?.ports ?? []).length > 0) {
+    problems.push(
+      "cabinet: it publishes a port on the host, and its identity listener answers only inside the stack",
+    );
+  }
+
+  // The scanner itself refuses to start below this length, which activation
+  // would meet only after the migrations.
+  if ((scanner.TOKEN_HMAC_SECRET ?? "").length < 32) {
+    problems.push(
+      "scanner: TOKEN_HMAC_SECRET is missing or shorter than the 32 characters the scanner starts with",
+    );
+  }
+
   if (cabinet.COOKIE_SECURE !== "true") {
     problems.push(
       `cabinet: COOKIE_SECURE is ${JSON.stringify(cabinet.COOKIE_SECURE ?? null)} and this stack ` +
@@ -257,16 +312,18 @@ export function problemsWith(channel, resolved, testListenAddress) {
     );
   }
 
-  // The public edge owns TLS for commerce. Its private Caddy has no host port
-  // and must be discoverable by the name the edge routes to. The other channels
-  // keep their direct SNI ingress bindings on the test host.
+  // The public edge owns TLS for production. Its private Caddy has no host port
+  // and must be discoverable by the name the edge routes to. The test channel
+  // keeps its direct binding on the test host, behind the shared SNI ingress:
+  // one private address, which the host's environment file names, and never
+  // every interface of the machine.
   const bindings = (resolved.services?.web?.ports ?? []).map(
     (port) => `${port.host_ip ?? ""}:${port.published ?? ""}:${port.target ?? ""}`,
   );
   if (wanted.privateIngress) {
     if (bindings.length !== 0) {
       problems.push(
-        `web: the published bindings are ${JSON.stringify(bindings)}; commerce publishes none`,
+        `web: the published bindings are ${JSON.stringify(bindings)}; production publishes none`,
       );
     }
     const aliases = resolved.services?.web?.networks?.["agentify-ingress"]?.aliases ?? [];
@@ -274,14 +331,17 @@ export function problemsWith(channel, resolved, testListenAddress) {
       problems.push("web: agentify-ingress must expose alias agentify-web to the edge");
     }
   } else {
-    const wantedBinding = `${testListenAddress}:${wanted.publishedPort}:443`;
+    const [binding, ...others] = resolved.services?.web?.ports ?? [];
     if (
-      isPrivateIpv4(testListenAddress) &&
-      (bindings.length !== 1 || bindings[0] !== wantedBinding)
+      binding === undefined ||
+      others.length > 0 ||
+      !isPrivateIpv4(binding.host_ip) ||
+      String(binding.published) !== wanted.publishedPort ||
+      binding.target !== 443
     ) {
       problems.push(
         `web: the published bindings are ${JSON.stringify(bindings)} and the ${channel} channel is ` +
-          `${JSON.stringify(wantedBinding)}`,
+          `one binding from one private IPv4 address, port ${wanted.publishedPort} to 443`,
       );
     }
   }
@@ -289,11 +349,11 @@ export function problemsWith(channel, resolved, testListenAddress) {
   return problems;
 }
 
-// The CLI used by Ansible staging. It reads the resolved configuration on
-// stdin so no secret-bearing rendered file enters a build context.
+// The command deploy/activate.sh runs inside the candidate's own app image,
+// with no network. It reads the rendered configuration on stdin, so the
+// secrets in it are never written to a file.
 if (process.argv[1]?.endsWith("preflight.mjs")) {
   const channel = process.argv[2];
-  const testListenAddress = process.argv[3];
   const chunks = [];
   for await (const chunk of process.stdin) {
     chunks.push(chunk);
@@ -307,7 +367,7 @@ if (process.argv[1]?.endsWith("preflight.mjs")) {
     process.exit(65);
   }
 
-  const problems = problemsWith(channel, resolved, testListenAddress);
+  const problems = problemsWith(channel, resolved);
   if (problems.length > 0) {
     console.error(`preflight: the ${channel} channel is not what it claims to be:`);
     for (const problem of problems) {

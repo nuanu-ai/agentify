@@ -51,7 +51,8 @@ alias schemas are published. See [ADR-0025](../decisions/0025-agentify-namespace
 Commit and push the prepared version, then wait for the `CI` workflow to pass
 on that exact commit. Before making the tag, run the publish workflow manually
 on `main` with the intended `release_tag` and `dry_run=true`. The release is
-then the application tag, and the same push starts the production deployment:
+then the application tag; production itself is released afterwards with
+`agentify-release` on its host (`deploy/README.md`):
 
 ```sh
 git tag app-v<release>

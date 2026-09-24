@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+"""The transition record of one channel: a release or a restore under way.
+
+    deploy/transition <record> show               one line: from|to|restore|phase|cards|restoring|from_tags|to_tags
+    deploy/transition <record> set key=value...   merges the pairs into the record, or starts it; an empty value removes the key
+    deploy/transition <record> finish [revision]  writes `current` beside the record, or removes it, and then removes the record
+    deploy/transition <record> clear              removes the record
+    deploy/transition <record> tags <revision>    the app-v* tags agentify-release found pointing at it
+
+deploy/activate.sh writes the record before it stops anything and advances its
+phase: stopped, dumped (the restore point is whole and on disk), migrating,
+started (written before the new release starts, which may then take writes).
+It names the previous revision, the new one and their tags, the restore point
+and the file of the cards on sale before the release. deploy/restore.sh sets
+`restoring` before it changes anything. The record goes when the release is
+verified or a restore finishes, and always after `current` is on disk, so the
+two never disagree; deploy/README.md, "When a release fails", says what each
+state means to a person.
+
+`show` prints an empty line when there is no record and fails in words on one
+it cannot read, which is not the same as none. Every change is on disk before
+the command returns: written beside the file, flushed, renamed over it, and the
+directory flushed, so a power loss leaves the old file or the new one.
+"""
+
+import json
+import os
+import sys
+
+FIELDS = ("from", "to", "restore", "phase", "cards", "restoring", "from_tags", "to_tags")
+
+
+def durable(target, text):
+    with open(f"{target}.new", "w") as new:
+        new.write(text)
+        new.flush()
+        os.fsync(new.fileno())
+    os.chmod(f"{target}.new", 0o644)
+    os.replace(f"{target}.new", target)
+    settle()
+
+
+def settle():
+    handle = os.open(directory, os.O_RDONLY)
+    os.fsync(handle)
+    os.close(handle)
+
+
+path, action, *arguments = sys.argv[1:]
+directory = os.path.dirname(path)
+record = None
+if os.path.exists(path):
+    try:
+        with open(path) as existing:
+            record = json.load(existing)
+    except ValueError:
+        sys.exit(f"transition: {path} cannot be read")
+if action == "show":
+    print("|".join(str((record or {}).get(field, "")) for field in FIELDS))
+    sys.exit(0)
+if action == "tags":
+    listed = os.path.join(directory, "tags")
+    lines = open(listed).read().splitlines() if os.path.exists(listed) else []
+    print(", ".join(tag for revision, _, tag in (line.partition(" ") for line in lines) if revision == arguments[0]))
+    sys.exit(0)
+if action == "set":
+    changes = dict(pair.split("=", 1) for pair in arguments)
+    if not set(changes) <= set(FIELDS):
+        sys.exit(f"transition: a record holds only {', '.join(FIELDS)}")
+    merged = {key: value for key, value in {**(record or {}), **changes}.items() if value != ""}
+    durable(path, json.dumps(merged))
+elif action == "finish":
+    current = os.path.join(directory, "current")
+    if arguments and arguments[0]:
+        durable(current, arguments[0] + "\n")
+    elif os.path.exists(current):
+        os.remove(current)
+        settle()
+    if record is not None:
+        os.remove(path)
+elif action == "clear":
+    if record is not None:
+        os.remove(path)
+else:
+    sys.exit(f"transition: {action} is not show, set, finish, clear or tags")
+settle()

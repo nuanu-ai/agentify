@@ -1,0 +1,26 @@
+[Unit]
+Description=Release on TEST what deploy-test names
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+ConditionPathExists=/etc/agentify/release.json
+
+[Service]
+Type=oneshot
+ExecStartPre=/usr/bin/systemctl is-active --quiet docker.service
+# Silent with exit 0 when deploy-test names what runs or what failed. Exit 75
+# is a wait (a build not listed yet or still running, images that did not
+# arrive, a lock) and the next tick asks again; after 30 minutes of waiting
+# for one revision it becomes a failure. A refusal or a failed activation
+# fails the unit once and is not tried again until the tag moves or a person
+# runs agentify-release by hand.
+ExecStart=/usr/local/sbin/agentify-release --timer deploy-test
+SuccessExitStatus=75
+# The last resort for a release that hangs; the pull alone gives up after
+# 30 minutes. A stop request gives activation time to end in its own words,
+# restarting what it stopped when no migration had run.
+TimeoutStartSec=2h
+TimeoutStopSec=30min
+# The state it writes holds nothing secret and is readable by anyone on the
+# host; activation keeps its restore points private itself.
+UMask=0022

@@ -12,7 +12,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { ResolvedCompose } from "./preflight.d.mts";
-import { problemsWith as inspectProblemsWith } from "./preflight.mjs";
+import { problemsWith } from "./preflight.mjs";
 
 const fixture = (name: string): ResolvedCompose =>
   JSON.parse(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
@@ -25,23 +25,15 @@ const envFor = (resolved: ResolvedCompose, service: string): Record<string, stri
   return environment;
 };
 
-const AGENTIFY_TEST_CHANNEL = fixture("test-channel");
-const COMMERCE_CHANNEL = fixture("live-channel");
-const TEST_LISTEN_ADDRESS = "10.20.10.20";
-
-const problemsWith = (channel: string, resolved: ResolvedCompose): string[] =>
-  inspectProblemsWith(channel, resolved, TEST_LISTEN_ADDRESS);
+const TEST_CHANNEL = fixture("test-channel");
+const PRODUCTION_CHANNEL = fixture("live-channel");
 
 /** The release entry point, run in a separate Node process with controlled stdin. */
 const runCli = (channel: string, input: string) =>
-  spawnSync(
-    process.execPath,
-    [new URL("./preflight.mjs", import.meta.url).pathname, channel, TEST_LISTEN_ADDRESS],
-    {
-      encoding: "utf8",
-      input,
-    },
-  );
+  spawnSync(process.execPath, [new URL("./preflight.mjs", import.meta.url).pathname, channel], {
+    encoding: "utf8",
+    input,
+  });
 
 /** Values a public preflight diagnostic must never repeat from a fixture. */
 const expectNoFixtureSecrets = (stderr: string, resolved: ResolvedCompose): void => {
@@ -80,34 +72,34 @@ const withEnv = (
 };
 
 describe("a channel that is what it claims to be", () => {
-  it("accepts commerce only with a private, consistently credentialed database", () => {
-    expect(problemsWith("commerce", COMMERCE_CHANNEL)).toEqual([]);
+  it("accepts production only with a private, consistently credentialed database", () => {
+    expect(problemsWith("production", PRODUCTION_CHANNEL)).toEqual([]);
   });
 
   it("accepts test only on the existing test ingress binding", () => {
-    expect(problemsWith("agentify-test", AGENTIFY_TEST_CHANNEL)).toEqual([]);
+    expect(problemsWith("test", TEST_CHANNEL)).toEqual([]);
   });
 
-  it("accepts a changed private TEST binding only when it matches the operator input", () => {
-    const moved = structuredClone(AGENTIFY_TEST_CHANNEL);
-    moved.services.web.ports = [
-      { mode: "ingress", host_ip: "10.77.0.9", target: 443, published: "8443", protocol: "tcp" },
-    ];
+  it("accepts the test door on another private address, and on no public or guessed one", () => {
+    const binding = (host_ip: string | undefined) => {
+      const moved = structuredClone(TEST_CHANNEL);
+      moved.services.web.ports = [
+        { mode: "ingress", host_ip, target: 443, published: "8443", protocol: "tcp" },
+      ];
+      return moved;
+    };
 
-    expect(inspectProblemsWith("agentify-test", moved, "10.77.0.9")).toEqual([]);
-    expect(inspectProblemsWith("agentify-test", moved, TEST_LISTEN_ADDRESS)).toContainEqual(
-      expect.stringMatching(/published bindings/),
-    );
-    for (const unsafe of ["", "0.0.0.0", "203.0.113.9"]) {
-      expect(inspectProblemsWith("agentify-test", moved, unsafe)).toContainEqual(
+    expect(problemsWith("test", binding("10.77.0.9"))).toEqual([]);
+    for (const unsafe of [undefined, "", "0.0.0.0", "203.0.113.9", "10.20.10.256"]) {
+      expect(problemsWith("test", binding(unsafe))).toContainEqual(
         expect.stringMatching(/private IPv4/),
       );
     }
   });
 
   it.each([
-    ["commerce", COMMERCE_CHANNEL],
-    ["agentify-test", AGENTIFY_TEST_CHANNEL],
+    ["production", PRODUCTION_CHANNEL],
+    ["test", TEST_CHANNEL],
   ] as const)(
     "refuses a static deployed root or unprotected scanner administration in %s",
     (channel, config) => {
@@ -125,51 +117,51 @@ describe("a channel that is what it claims to be", () => {
   );
 
   it("refuses retired channel names", () => {
-    expect(problemsWith("retired-test", AGENTIFY_TEST_CHANNEL)).toContainEqual(
+    expect(problemsWith("retired-test", TEST_CHANNEL)).toContainEqual(
       expect.stringMatching(/not a release channel/),
     );
-    expect(problemsWith("retired-live", COMMERCE_CHANNEL)).toContainEqual(
+    expect(problemsWith("retired-live", PRODUCTION_CHANNEL)).toContainEqual(
       expect.stringMatching(/not a release channel/),
     );
   });
 
-  it("refuses commerce when its Caddy publishes a host port or leaves the ingress network", () => {
-    const exposed = structuredClone(COMMERCE_CHANNEL);
+  it("refuses production when its Caddy publishes a host port or leaves the ingress network", () => {
+    const exposed = structuredClone(PRODUCTION_CHANNEL);
     exposed.services.web.ports = [
       { mode: "ingress", host_ip: "0.0.0.0", target: 8080, published: "8080", protocol: "tcp" },
     ];
-    expect(problemsWith("commerce", exposed).join("\n")).toMatch(/published bindings/);
+    expect(problemsWith("production", exposed).join("\n")).toMatch(/published bindings/);
 
-    const disconnected = structuredClone(COMMERCE_CHANNEL);
+    const disconnected = structuredClone(PRODUCTION_CHANNEL);
     disconnected.services.web.networks = { default: {} };
-    expect(problemsWith("commerce", disconnected).join("\n")).toMatch(/agentify-ingress/);
+    expect(problemsWith("production", disconnected).join("\n")).toMatch(/agentify-ingress/);
 
-    const wrongAlias = structuredClone(COMMERCE_CHANNEL);
+    const wrongAlias = structuredClone(PRODUCTION_CHANNEL);
     wrongAlias.services.web.networks = { "agentify-ingress": { aliases: ["web"] } };
-    expect(problemsWith("commerce", wrongAlias).join("\n")).toMatch(/agentify-web/);
+    expect(problemsWith("production", wrongAlias).join("\n")).toMatch(/agentify-web/);
   });
 
   it("trusts only the exact edge peer to carry browser scheme and client address", () => {
     for (const cidr of ["private_ranges", "172.30.80.0/24", "0.0.0.0/0", ""]) {
       expect(
         problemsWith(
-          "commerce",
-          withEnv(COMMERCE_CHANNEL, "web", "AGENTIFY_TRUSTED_EDGE_CIDR", cidr),
+          "production",
+          withEnv(PRODUCTION_CHANNEL, "web", "AGENTIFY_TRUSTED_EDGE_CIDR", cidr),
         ).join("\n"),
       ).toMatch(/AGENTIFY_TRUSTED_EDGE_CIDR/);
     }
   });
 
-  it("refuses Agentify test on a public listener or an old public origin", () => {
-    const exposed = structuredClone(AGENTIFY_TEST_CHANNEL);
+  it("refuses test on a public listener or an old public origin", () => {
+    const exposed = structuredClone(TEST_CHANNEL);
     exposed.services.web.ports = [
       { mode: "ingress", host_ip: "0.0.0.0", target: 443, published: "8443", protocol: "tcp" },
     ];
-    expect(problemsWith("agentify-test", exposed).join("\n")).toMatch(/10\.20\.10\.20/);
+    expect(problemsWith("test", exposed).join("\n")).toMatch(/private IPv4/);
     expect(
       problemsWith(
-        "agentify-test",
-        withEnv(AGENTIFY_TEST_CHANNEL, "cabinet", "PUBLIC_BASE_URL", "https://wrong.example"),
+        "test",
+        withEnv(TEST_CHANNEL, "cabinet", "PUBLIC_BASE_URL", "https://wrong.example"),
       ).join("\n"),
     ).toMatch(/PUBLIC_BASE_URL/);
   });
@@ -192,9 +184,9 @@ describe("a channel that is what it claims to be", () => {
           "postgres://agentify_commerce:other-secret@postgres:5432/agentify_commerce";
       },
     ]) {
-      const wrong = structuredClone(COMMERCE_CHANNEL);
+      const wrong = structuredClone(PRODUCTION_CHANNEL);
       change(wrong);
-      const problems = problemsWith("commerce", wrong).join("\n");
+      const problems = problemsWith("production", wrong).join("\n");
       expect(problems).toMatch(/postgres|DATABASE_URL/);
       expect(problems).not.toContain("synthetic-new-database-password");
       expect(problems).not.toContain("other-secret");
@@ -203,24 +195,24 @@ describe("a channel that is what it claims to be", () => {
 
   it("refuses unresolved production environment placeholders", () => {
     const wrong = withEnv(
-      COMMERCE_CHANNEL,
+      PRODUCTION_CHANNEL,
       "cabinet",
       "AUTH_SECRET",
       "REPLACE_FROM_EXISTING_LIVE_CONFIG",
     );
-    expect(problemsWith("commerce", wrong)).toContainEqual(
+    expect(problemsWith("production", wrong)).toContainEqual(
       expect.stringMatching(/AUTH_SECRET.*placeholder/),
     );
   });
 
-  it("refuses a live commerce cabinet that logs reset links or names a local mail sender", () => {
+  it("refuses a live production cabinet that logs reset links or names a local mail sender", () => {
     for (const [name, value] of [
       ["MAIL_URL", "sandbox:log"],
       ["MAIL_FROM", "Agentify <no-reply@localhost>"],
       ["MAIL_FROM", "no-reply@127.0.0.1"],
     ] as const) {
-      const wrong = withEnv(COMMERCE_CHANNEL, "cabinet", name, value);
-      const problems = problemsWith("commerce", wrong).join("\n");
+      const wrong = withEnv(PRODUCTION_CHANNEL, "cabinet", name, value);
+      const problems = problemsWith("production", wrong).join("\n");
       expect(problems).toMatch(new RegExp(name));
       expect(problems).not.toContain(value);
     }
@@ -229,8 +221,8 @@ describe("a channel that is what it claims to be", () => {
   it("refuses an absent or empty live mail provider, key or sender", () => {
     for (const name of ["MAIL_URL", "MAIL_API_KEY", "MAIL_FROM"]) {
       for (const value of [null, "", " "]) {
-        const wrong = withEnv(COMMERCE_CHANNEL, "cabinet", name, value);
-        expect(problemsWith("commerce", wrong)).toContainEqual(expect.stringMatching(name));
+        const wrong = withEnv(PRODUCTION_CHANNEL, "cabinet", name, value);
+        expect(problemsWith("production", wrong)).toContainEqual(expect.stringMatching(name));
       }
     }
   });
@@ -238,71 +230,62 @@ describe("a channel that is what it claims to be", () => {
   it("refuses each channel's configuration presented as the other", () => {
     // The negative control for the whole file: if this passed, every check
     // below would be reading something that is not the channel.
-    expect(problemsWith("commerce", AGENTIFY_TEST_CHANNEL).length).toBeGreaterThan(0);
-    expect(problemsWith("agentify-test", COMMERCE_CHANNEL).length).toBeGreaterThan(0);
+    expect(problemsWith("production", TEST_CHANNEL).length).toBeGreaterThan(0);
+    expect(problemsWith("test", PRODUCTION_CHANNEL).length).toBeGreaterThan(0);
   });
 });
 
 describe("the chain and the facilitator together", () => {
   // Prevents a public channel claiming settlement while its chain/facilitator pair cannot settle.
   it("refuses the test channel on the scripted facilitator", () => {
-    const wrong = withEnv(AGENTIFY_TEST_CHANNEL, "gateway", "FACILITATOR_URL", "sandbox:scripted");
-    expect(problemsWith("agentify-test", wrong)).toContainEqual(
-      expect.stringMatching(/FACILITATOR_URL/),
-    );
+    const wrong = withEnv(TEST_CHANNEL, "gateway", "FACILITATOR_URL", "sandbox:scripted");
+    expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(/FACILITATOR_URL/));
   });
 
   it("refuses the live channel on the public facilitator", () => {
     const wrong = withEnv(
-      COMMERCE_CHANNEL,
+      PRODUCTION_CHANNEL,
       "gateway",
       "FACILITATOR_URL",
       "https://x402.org/facilitator",
     );
-    expect(problemsWith("commerce", wrong)).toContainEqual(
+    expect(problemsWith("production", wrong)).toContainEqual(
       expect.stringMatching(/FACILITATOR_URL/),
     );
   });
 
   it("refuses the live channel with either credential missing", () => {
     for (const name of ["CDP_API_KEY_ID", "CDP_API_KEY_SECRET"]) {
-      const wrong = withEnv(COMMERCE_CHANNEL, "gateway", name, null);
-      expect(problemsWith("commerce", wrong)).toContainEqual(expect.stringMatching(name));
+      const wrong = withEnv(PRODUCTION_CHANNEL, "gateway", name, null);
+      expect(problemsWith("production", wrong)).toContainEqual(expect.stringMatching(name));
     }
   });
 
   it("refuses the test channel with either live credential set", () => {
     for (const name of ["CDP_API_KEY_ID", "CDP_API_KEY_SECRET"]) {
-      const wrong = withEnv(
-        AGENTIFY_TEST_CHANNEL,
-        "gateway",
-        name,
-        `synthetic-${name.toLowerCase()}`,
-      );
-      expect(problemsWith("agentify-test", wrong)).toContainEqual(expect.stringMatching(name));
+      const wrong = withEnv(TEST_CHANNEL, "gateway", name, `synthetic-${name.toLowerCase()}`);
+      expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(name));
     }
   });
 
   it("refuses a chain neither channel declared", () => {
-    const wrong = withEnv(AGENTIFY_TEST_CHANNEL, "gateway", "PAYMENT_NETWORK", "eip155:11155111");
-    expect(problemsWith("agentify-test", wrong)).toContainEqual(
-      expect.stringMatching(/PAYMENT_NETWORK/),
-    );
+    const wrong = withEnv(TEST_CHANNEL, "gateway", "PAYMENT_NETWORK", "eip155:11155111");
+    expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(/PAYMENT_NETWORK/));
   });
 });
 
 describe("the surface mode agrees with the channel", () => {
   // Prevents payment pages asserting the opposite of the settlement environment.
   it("refuses a test stack telling readers it is live", () => {
-    const wrong = withEnv(AGENTIFY_TEST_CHANNEL, "web", "AGENTIFY_SURFACE_MODE", "live");
-    expect(problemsWith("agentify-test", wrong)).toContainEqual(
+    const wrong = withEnv(TEST_CHANNEL, "web", "AGENTIFY_SURFACE_MODE", "live");
+    expect(problemsWith("test", wrong)).toContainEqual(
       expect.stringMatching(/AGENTIFY_SURFACE_MODE/),
     );
   });
 
   it("refuses a live stack telling readers it is a sandbox", () => {
-    const wrong = withEnv(COMMERCE_CHANNEL, "web", "AGENTIFY_SURFACE_MODE", "sandbox");
-    expect(problemsWith("commerce", wrong)).toContainEqual(
+    const wrong = withEnv(PRODUCTION_CHANNEL, "web", "AGENTIFY_SURFACE_MODE", "sandbox");
+    expect(problemsWith("production", wrong)).toContainEqual(
       expect.stringMatching(/AGENTIFY_SURFACE_MODE/),
     );
   });
@@ -311,87 +294,78 @@ describe("the surface mode agrees with the channel", () => {
 describe("the cabinet was handed the gateway's pair", () => {
   // Prevents a cabinet describing another settlement path than the gateway executes.
   it("refuses a cabinet on a different facilitator from its gateway", () => {
-    const wrong = withEnv(AGENTIFY_TEST_CHANNEL, "cabinet", "FACILITATOR_URL", "sandbox:scripted");
-    expect(problemsWith("agentify-test", wrong)).toContainEqual(expect.stringMatching(/cabinet/));
+    const wrong = withEnv(TEST_CHANNEL, "cabinet", "FACILITATOR_URL", "sandbox:scripted");
+    expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(/cabinet/));
   });
 
   it("refuses a cabinet on a different chain from its gateway", () => {
-    const wrong = withEnv(AGENTIFY_TEST_CHANNEL, "cabinet", "PAYMENT_NETWORK", "eip155:8453");
-    expect(problemsWith("agentify-test", wrong)).toContainEqual(expect.stringMatching(/cabinet/));
+    const wrong = withEnv(TEST_CHANNEL, "cabinet", "PAYMENT_NETWORK", "eip155:8453");
+    expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(/cabinet/));
   });
 
   it("refuses a cabinet whose public origin does not name the gateway's door", () => {
     // Prevents a merchant who signed into the cabinet being sent to a different public site.
-    const wrong = withEnv(
-      AGENTIFY_TEST_CHANNEL,
-      "cabinet",
-      "PUBLIC_BASE_URL",
-      "http://localhost:8080",
-    );
-    expect(problemsWith("agentify-test", wrong)).toContainEqual(
-      expect.stringMatching(/PUBLIC_BASE_URL/),
-    );
+    const wrong = withEnv(TEST_CHANNEL, "cabinet", "PUBLIC_BASE_URL", "http://localhost:8080");
+    expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(/PUBLIC_BASE_URL/));
   });
 });
 
 describe("the mock merchant is not among the services", () => {
   // Prevents the laptop fixture catalog from blocking or contaminating a public deployment.
   it("refuses a configuration where the profile was edited away", () => {
-    const wrong = structuredClone(AGENTIFY_TEST_CHANNEL);
+    const wrong = structuredClone(TEST_CHANNEL);
     wrong.services.merchant = { image: "agentify-app" };
-    expect(problemsWith("agentify-test", wrong)).toContainEqual(expect.stringMatching(/merchant/));
+    expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(/merchant/));
   });
 });
 
 describe("no laptop default survived", () => {
   // Prevents public exposure of a database, published defaults, and a dead public door.
   it("refuses PostgreSQL published to the host", () => {
-    const wrong = structuredClone(AGENTIFY_TEST_CHANNEL);
+    const wrong = structuredClone(TEST_CHANNEL);
     wrong.services.postgres.ports = [
       { mode: "ingress", target: 5432, published: "5432", protocol: "tcp" },
     ];
-    expect(problemsWith("agentify-test", wrong)).toContainEqual(expect.stringMatching(/postgres/));
+    expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(/postgres/));
   });
 
   it("refuses the seeded key written in this repository", () => {
     const wrong = withEnv(
-      AGENTIFY_TEST_CHANNEL,
+      TEST_CHANNEL,
       "gateway",
       "SANDBOX_MERCHANT_KEY",
       "csk_test_local-sandbox-merchant-key",
     );
-    expect(problemsWith("agentify-test", wrong)).toContainEqual(
+    expect(problemsWith("test", wrong)).toContainEqual(
       expect.stringMatching(/SANDBOX_MERCHANT_KEY/),
     );
   });
 
   it("refuses a stack with no seeded key at all", () => {
-    const wrong = withEnv(AGENTIFY_TEST_CHANNEL, "gateway", "SANDBOX_MERCHANT_KEY", "");
-    expect(problemsWith("agentify-test", wrong)).toContainEqual(
+    const wrong = withEnv(TEST_CHANNEL, "gateway", "SANDBOX_MERCHANT_KEY", "");
+    expect(problemsWith("test", wrong)).toContainEqual(
       expect.stringMatching(/SANDBOX_MERCHANT_KEY/),
     );
   });
 
   it("refuses the cabinet's signing secret written in this repository", () => {
     const wrong = withEnv(
-      AGENTIFY_TEST_CHANNEL,
+      TEST_CHANNEL,
       "cabinet",
       "AUTH_SECRET",
       "a-sandbox-secret-nobody-should-reuse-anywhere",
     );
-    expect(problemsWith("agentify-test", wrong)).toContainEqual(
-      expect.stringMatching(/AUTH_SECRET/),
-    );
+    expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(/AUTH_SECRET/));
   });
 
   it("refuses the registration invitation written in this repository", () => {
     const wrong = withEnv(
-      AGENTIFY_TEST_CHANNEL,
+      TEST_CHANNEL,
       "gateway",
       "REGISTRATION_INVITATION",
       "register-on-this-laptop",
     );
-    expect(problemsWith("agentify-test", wrong)).toContainEqual(
+    expect(problemsWith("test", wrong)).toContainEqual(
       expect.stringMatching(/REGISTRATION_INVITATION/),
     );
   });
@@ -402,14 +376,32 @@ describe("no laptop default survived", () => {
     // deployed it would be signing every report link with a key any reader of
     // this repository can forge.
     const wrong = withEnv(
-      AGENTIFY_TEST_CHANNEL,
+      TEST_CHANNEL,
       "scanner",
       "TOKEN_HMAC_SECRET",
       "a-sandbox-token-hmac-secret-nobody-should-reuse",
     );
-    expect(problemsWith("agentify-test", wrong)).toContainEqual(
+    expect(problemsWith("test", wrong)).toContainEqual(
       expect.stringMatching(/scanner: TOKEN_HMAC_SECRET/),
     );
+  });
+
+  it("refuses a report-link signing secret the scanner would refuse to start with", () => {
+    // The scanner's entrypoint stops at start-up below 32 characters, which is
+    // after the migrations; refusing it here is before anything stops.
+    for (const value of [null, "", "x".repeat(31)]) {
+      const problems = problemsWith(
+        "test",
+        withEnv(TEST_CHANNEL, "scanner", "TOKEN_HMAC_SECRET", value),
+      );
+      expect(problems).toContainEqual(expect.stringMatching(/scanner: TOKEN_HMAC_SECRET/));
+      if (value) {
+        expect(problems.join("\n")).not.toContain(value);
+      }
+    }
+    expect(
+      problemsWith("test", withEnv(TEST_CHANNEL, "scanner", "TOKEN_HMAC_SECRET", "x".repeat(32))),
+    ).toEqual([]);
   });
 
   it.each(["cabinet", "scanner"] as const)(
@@ -419,84 +411,182 @@ describe("no laptop default survived", () => {
       // deployed the published value on either end has a private route anybody
       // can call.
       const wrong = withEnv(
-        AGENTIFY_TEST_CHANNEL,
+        TEST_CHANNEL,
         service,
         "REPORT_IDENTITY_SECRET",
         "a-sandbox-report-identity-secret-nobody-should-reuse",
       );
-      expect(problemsWith("agentify-test", wrong)).toContainEqual(
+      expect(problemsWith("test", wrong)).toContainEqual(
         expect.stringMatching(new RegExp(`${service}: REPORT_IDENTITY_SECRET`)),
       );
     },
   );
 
   it("takes an invitation set to nothing, which is a stack that takes no registrations", () => {
-    const closed = withEnv(COMMERCE_CHANNEL, "gateway", "REGISTRATION_INVITATION", "");
-    expect(problemsWith("commerce", closed)).toEqual([]);
+    const closed = withEnv(PRODUCTION_CHANNEL, "gateway", "REGISTRATION_INVITATION", "");
+    expect(problemsWith("production", closed)).toEqual([]);
   });
 
   it("refuses a cookie that is not marked Secure", () => {
-    const wrong = withEnv(AGENTIFY_TEST_CHANNEL, "cabinet", "COOKIE_SECURE", "false");
-    expect(problemsWith("agentify-test", wrong)).toContainEqual(
-      expect.stringMatching(/COOKIE_SECURE/),
-    );
+    const wrong = withEnv(TEST_CHANNEL, "cabinet", "COOKIE_SECURE", "false");
+    expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(/COOKIE_SECURE/));
   });
 
   it("refuses the wrong public origin, Caddy address or published port", () => {
     expect(
       problemsWith(
-        "agentify-test",
-        withEnv(AGENTIFY_TEST_CHANNEL, "gateway", "PUBLIC_BASE_URL", "http://localhost:8080"),
+        "test",
+        withEnv(TEST_CHANNEL, "gateway", "PUBLIC_BASE_URL", "http://localhost:8080"),
       ),
     ).toContainEqual(expect.stringMatching(/PUBLIC_BASE_URL/));
 
     expect(
-      problemsWith(
-        "agentify-test",
-        withEnv(AGENTIFY_TEST_CHANNEL, "web", "AGENTIFY_SITE_ADDRESS", ":8080"),
-      ),
+      problemsWith("test", withEnv(TEST_CHANNEL, "web", "AGENTIFY_SITE_ADDRESS", ":8080")),
     ).toContainEqual(expect.stringMatching(/AGENTIFY_SITE_ADDRESS/));
 
-    const wrongPort = structuredClone(AGENTIFY_TEST_CHANNEL);
+    const wrongPort = structuredClone(TEST_CHANNEL);
     wrongPort.services.web.ports = [
       { mode: "ingress", host_ip: "10.20.10.20", target: 443, published: "443", protocol: "tcp" },
     ];
-    expect(problemsWith("agentify-test", wrongPort)).toContainEqual(expect.stringMatching(/8443/));
+    expect(problemsWith("test", wrongPort)).toContainEqual(expect.stringMatching(/8443/));
   });
 
   it("refuses a published port that forwards to a container port with nothing on it", () => {
-    const wrongTarget = structuredClone(AGENTIFY_TEST_CHANNEL);
+    const wrongTarget = structuredClone(TEST_CHANNEL);
     wrongTarget.services.web.ports = [
       { mode: "ingress", host_ip: "10.20.10.20", target: 8080, published: "8443", protocol: "tcp" },
     ];
-    expect(problemsWith("agentify-test", wrongTarget)).toContainEqual(
-      expect.stringMatching(/8443/),
-    );
+    expect(problemsWith("test", wrongTarget)).toContainEqual(expect.stringMatching(/8443/));
   });
 
   it("refuses a door open on every interface of the host", () => {
-    const everywhere = structuredClone(AGENTIFY_TEST_CHANNEL);
+    const everywhere = structuredClone(TEST_CHANNEL);
     everywhere.services.web.ports = [
       { mode: "ingress", target: 443, published: "8443", protocol: "tcp" },
     ];
-    expect(problemsWith("agentify-test", everywhere)).toContainEqual(expect.stringMatching(/8443/));
+    expect(problemsWith("test", everywhere)).toContainEqual(expect.stringMatching(/8443/));
   });
 
   it("refuses two otherwise correct public bindings", () => {
     // Prevents a release from publishing a second public door that the edge never owns.
-    const wrong = structuredClone(AGENTIFY_TEST_CHANNEL);
+    const wrong = structuredClone(TEST_CHANNEL);
     wrong.services.web.ports = [
       { mode: "ingress", host_ip: "10.20.10.20", target: 443, published: "8443", protocol: "tcp" },
       { mode: "ingress", host_ip: "10.20.10.20", target: 443, published: "8443", protocol: "tcp" },
     ];
-    expect(problemsWith("agentify-test", wrong)).toContainEqual(expect.stringMatching(/8443/));
+    expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(/8443/));
+  });
+});
+
+describe("the private identity route belongs to the cabinet and the scanner alone", () => {
+  // Every service of a channel shares one network and one database account,
+  // so what keeps a person's identity with the cabinet is that only the
+  // scanner holds the credential its private route asks for (ADR-0026).
+  const CHANNELS = [
+    ["test", TEST_CHANNEL],
+    ["production", PRODUCTION_CHANNEL],
+  ] as const;
+  const secretOf = (resolved: ResolvedCompose): string => {
+    const secret = envFor(resolved, "cabinet").REPORT_IDENTITY_SECRET;
+    if (secret === undefined) {
+      throw new Error("the fixture's cabinet holds no identity credential");
+    }
+    return secret;
+  };
+
+  it.each(CHANNELS)(
+    "refuses the credential or the route on any other service in %s",
+    (channel, config) => {
+      const secret = secretOf(config);
+      for (const service of ["gateway", "migrate", "web", "scanner-worker", "scanner-privacy"]) {
+        const credential = problemsWith(
+          channel,
+          withEnv(config, service, "REPORT_IDENTITY_SECRET", secret),
+        );
+        expect(credential).toContainEqual(
+          expect.stringMatching(`${service}: REPORT_IDENTITY_SECRET`),
+        );
+        expect(credential.join("\n")).not.toContain(secret);
+
+        const route = problemsWith(
+          channel,
+          withEnv(config, service, "CABINET_IDENTITY_URL", "http://cabinet:3002"),
+        );
+        expect(route).toContainEqual(expect.stringMatching(`${service}: CABINET_IDENTITY_URL`));
+      }
+    },
+  );
+
+  it.each(CHANNELS)(
+    "refuses two halves that hold different credentials in %s",
+    (channel, config) => {
+      const other = "another-report-identity-secret-of-enough-characters-1111";
+      const problems = problemsWith(
+        channel,
+        withEnv(config, "scanner", "REPORT_IDENTITY_SECRET", other),
+      );
+      expect(problems).toContainEqual(expect.stringMatching(/scanner: REPORT_IDENTITY_SECRET/));
+      expect(problems.join("\n")).not.toContain(other);
+      expect(problems.join("\n")).not.toContain(secretOf(config));
+    },
+  );
+
+  it("refuses a cabinet with no credential, or one too short to be a secret", () => {
+    for (const value of [null, "", "x".repeat(31)]) {
+      const withBoth = withEnv(
+        withEnv(TEST_CHANNEL, "cabinet", "REPORT_IDENTITY_SECRET", value),
+        "scanner",
+        "REPORT_IDENTITY_SECRET",
+        value,
+      );
+      expect(problemsWith("test", withBoth)).toContainEqual(
+        expect.stringMatching(/cabinet: REPORT_IDENTITY_SECRET/),
+      );
+    }
+  });
+
+  it("refuses the credential reused as a secret that opens another door", () => {
+    const secret = secretOf(PRODUCTION_CHANNEL);
+    for (const [service, name] of [
+      ["cabinet", "AUTH_SECRET"],
+      ["cabinet", "REGISTRATION_INVITATION"],
+      ["scanner", "TOKEN_HMAC_SECRET"],
+    ] as const) {
+      const problems = problemsWith(
+        "production",
+        withEnv(PRODUCTION_CHANNEL, service, name, secret),
+      );
+      expect(problems).toContainEqual(expect.stringMatching(new RegExp(`${service}: .*${name}`)));
+      expect(problems.join("\n")).not.toContain(secret);
+    }
+  });
+
+  it("refuses a scanner that asks anybody but the cabinet on its own network", () => {
+    for (const url of [null, "https://agentify.ad/cabinet", "http://cabinet:3001"]) {
+      expect(
+        problemsWith(
+          "production",
+          withEnv(PRODUCTION_CHANNEL, "scanner", "CABINET_IDENTITY_URL", url),
+        ),
+      ).toContainEqual(expect.stringMatching(/scanner: CABINET_IDENTITY_URL/));
+    }
+  });
+
+  it("refuses a cabinet that publishes a port on the host", () => {
+    const exposed = structuredClone(PRODUCTION_CHANNEL);
+    exposed.services.cabinet.ports = [
+      { mode: "ingress", host_ip: "127.0.0.1", target: 3002, published: "3002", protocol: "tcp" },
+    ];
+    expect(problemsWith("production", exposed)).toContainEqual(
+      expect.stringMatching(/cabinet: .*port/),
+    );
   });
 });
 
 describe("the release entry point", () => {
   it("refuses an unknown channel without starting a release", () => {
     // Prevents a typo from being treated as a valid channel with a guessed policy.
-    const result = runCli("preview", JSON.stringify(AGENTIFY_TEST_CHANNEL));
+    const result = runCli("preview", JSON.stringify(TEST_CHANNEL));
     expect(result.status).toBe(65);
     expect(result.stdout).toBe("");
     expect(result.stderr).toContain("preview is not a release channel");
@@ -504,49 +594,39 @@ describe("the release entry point", () => {
 
   it("refuses a cabinet public origin that diverges from the gateway", () => {
     // Deleting the cabinet origin check would send a signed-in merchant to the wrong public door.
-    const wrong = withEnv(
-      AGENTIFY_TEST_CHANNEL,
-      "cabinet",
-      "PUBLIC_BASE_URL",
-      "http://localhost:8080",
-    );
-    const result = runCli("agentify-test", JSON.stringify(wrong));
+    const wrong = withEnv(TEST_CHANNEL, "cabinet", "PUBLIC_BASE_URL", "http://localhost:8080");
+    const result = runCli("test", JSON.stringify(wrong));
     const stderr = result.stderr ?? "";
     expect(result.status).toBe(65);
     expect(result.stdout ?? "").toBe("");
     expect(stderr).toContain("cabinet: PUBLIC_BASE_URL");
-    expectNoFixtureSecrets(stderr, AGENTIFY_TEST_CHANNEL);
+    expectNoFixtureSecrets(stderr, TEST_CHANNEL);
   });
 
   it("refuses two otherwise valid public bindings", () => {
     // Deleting the one-binding rule would publish a second public door outside the edge contract.
-    const wrong = structuredClone(AGENTIFY_TEST_CHANNEL);
+    const wrong = structuredClone(TEST_CHANNEL);
     wrong.services.web.ports = [
       { mode: "ingress", host_ip: "10.20.10.20", target: 443, published: "8443", protocol: "tcp" },
       { mode: "ingress", host_ip: "10.20.10.20", target: 443, published: "8443", protocol: "tcp" },
     ];
-    const result = runCli("agentify-test", JSON.stringify(wrong));
+    const result = runCli("test", JSON.stringify(wrong));
     const stderr = result.stderr ?? "";
     expect(result.status).toBe(65);
     expect(result.stdout ?? "").toBe("");
     expect(stderr).toContain("web: the published bindings");
-    expectNoFixtureSecrets(stderr, AGENTIFY_TEST_CHANNEL);
+    expectNoFixtureSecrets(stderr, TEST_CHANNEL);
   });
 
   it("reports every test-channel live credential without printing either value", () => {
-    const withId = withEnv(
-      AGENTIFY_TEST_CHANNEL,
-      "gateway",
-      "CDP_API_KEY_ID",
-      "synthetic-live-key-id",
-    );
+    const withId = withEnv(TEST_CHANNEL, "gateway", "CDP_API_KEY_ID", "synthetic-live-key-id");
     const wrong = withEnv(
       withEnv(withId, "gateway", "CDP_API_KEY_SECRET", "synthetic-live-key-secret"),
       "cabinet",
       "COOKIE_SECURE",
       "false",
     );
-    const result = runCli("agentify-test", JSON.stringify(wrong));
+    const result = runCli("test", JSON.stringify(wrong));
     const stderr = result.stderr ?? "";
     expect(result.status).toBe(65);
     expect(result.stdout ?? "").toBe("");
@@ -559,7 +639,7 @@ describe("the release entry point", () => {
   it("refuses malformed JSON without printing input", () => {
     // Prevents a parser diagnostic from copying a credential fragment into the release log.
     const sentinel = "synthetic-credential-fragment";
-    const result = runCli("commerce", `{"credential":"${sentinel}"`);
+    const result = runCli("production", `{"credential":"${sentinel}"`);
     expect(result.status).toBe(65);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe("preflight: the resolved configuration did not read as JSON\n");

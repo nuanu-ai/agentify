@@ -14,10 +14,6 @@ output
 .env.*
 **/.env
 **/.env.*
-agentify.env
-*-resolved.json
-topology.json
-release-state.json
 **/*.log
 *.tsbuildinfo
 /06-design/reference

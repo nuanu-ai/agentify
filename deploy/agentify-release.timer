@@ -1,12 +1,11 @@
 [Unit]
-Description=Poll Agentify %i deployment intent
+Description=Release on TEST what deploy-test names, once a minute
 
 [Timer]
 OnBootSec=30s
 OnUnitInactiveSec=60s
 RandomizedDelaySec=10s
 Persistent=true
-Unit=agentify-pull@%i.service
 
 [Install]
 WantedBy=timers.target

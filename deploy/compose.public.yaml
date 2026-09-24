@@ -45,26 +45,24 @@ services:
       # no file, and those answers are printed in a public repository: one
       # signs every report link this site hands out, the other is what the
       # address behind a report is encrypted with. A channel that has not put
-      # its own in place does not render. Staging does that render before it
-      # builds anything, so this refuses with the name of the variable and the
-      # sentence above it, and no image, no preflight and no container follow.
+      # its own in place does not render. Activation does that render before
+      # it stops anything, so this refuses with the name of the variable and
+      # the sentence above it, and nothing is stopped.
       #
-      # An existing host keeps both in the file it already had; a host being
-      # moved onto this shape carries them across in the environment merge, and
-      # a channel that has never existed has them written by hand — the release
-      # generates them only for a new test channel (deploy/ansible/README.md,
-      # "Reconcile a host that still runs two projects"). Losing them is not a
-      # configuration error that can be corrected later: every link already
-      # sent stops verifying and every stored address stops decrypting.
-      TOKEN_HMAC_SECRET: "${TOKEN_HMAC_SECRET:?set this channel own report-link signing secret; see deploy/ansible/README.md, Reconcile a host that still runs two projects}"
-      EMAIL_ENCRYPTION_KEY: "${EMAIL_ENCRYPTION_KEY:?set this channel own address encryption key; see deploy/ansible/README.md, Reconcile a host that still runs two projects}"
+      # Both live in the channel's one environment file, and a channel that
+      # has never existed has them written by hand (deploy/README.md, "Setting
+      # up a host"). Losing them is not a configuration error that can be
+      # corrected later: every link already sent stops verifying and every
+      # stored address stops decrypting.
+      TOKEN_HMAC_SECRET: "${TOKEN_HMAC_SECRET:?set this channel own report-link signing secret; see deploy/README.md, Setting up a host}"
+      EMAIL_ENCRYPTION_KEY: "${EMAIL_ENCRYPTION_KEY:?set this channel own address encryption key; see deploy/README.md, Setting up a host}"
 
   scanner-privacy:
     # The scheduled job reads the same two, because deleting what retention
     # says is over means reading the addresses it is deleting.
     environment:
-      TOKEN_HMAC_SECRET: "${TOKEN_HMAC_SECRET:?set this channel own report-link signing secret; see deploy/ansible/README.md, Reconcile a host that still runs two projects}"
-      EMAIL_ENCRYPTION_KEY: "${EMAIL_ENCRYPTION_KEY:?set this channel own address encryption key; see deploy/ansible/README.md, Reconcile a host that still runs two projects}"
+      TOKEN_HMAC_SECRET: "${TOKEN_HMAC_SECRET:?set this channel own report-link signing secret; see deploy/README.md, Setting up a host}"
+      EMAIL_ENCRYPTION_KEY: "${EMAIL_ENCRYPTION_KEY:?set this channel own address encryption key; see deploy/README.md, Setting up a host}"
 
   web:
     # The preview serves the files baked into the SHA-tagged image. The base

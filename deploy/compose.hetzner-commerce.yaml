@@ -2,7 +2,13 @@
 # boundaries. Its project name is supplied by the operator, never by this file.
 # Use with compose.yaml and deploy/compose.public.yaml, in that order.
 services:
+  # The init scripts from a path no release changes, which deploy/stack.sh
+  # names and deploy/activate.sh keeps equal to the checkout's copy. Mounted
+  # from the checkout, they changed path with every revision, and Compose
+  # recreated the database on every release.
   postgres:
+    volumes:
+      - "${AGENTIFY_POSTGRES_INIT:?deploy/stack.sh names the database's init scripts}:/docker-entrypoint-initdb.d:ro"
     environment:
       POSTGRES_USER: agentify_commerce
       POSTGRES_DB: agentify_commerce
@@ -69,8 +75,8 @@ networks:
     name: agentify-ingress
 
 # A missing namespace cutover must stop Compose before it starts an empty
-# production database. Ansible creates and restores these exact targets during
-# the separately reviewed cutover; ordinary releases only consume them.
+# production database. The separately reviewed cutover creates and restores
+# these exact targets; ordinary releases only consume them.
 #
 # These names, like the project's own, are what a running host answers to
 # rather than what this repository calls things. Renaming them here would name

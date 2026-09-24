@@ -44,7 +44,7 @@ change payload validation or vocabulary, so the handshake remains version
 `2` under ADR-0006. No alias schema is provided. A comparison excluding `$id`
 must establish that the schema bodies are unchanged.
 
-Existing hosts require a separately authorized Ansible maintenance cutover
+Existing hosts require a separately authorized maintenance cutover
 before these definitions can be deployed. It must identify source and target,
 stop all writers, preserve and restore-check data, resolve pending queue work,
 map volumes explicitly, replace environment and service names, and retain a
@@ -52,11 +52,11 @@ rollback that includes configuration and data. A Compose project name is the
 prefix on every container and the label every volume is found by, so each
 host keeps the project and container names it was created under and moves
 them with the database in the one-database step, inside that one cutover;
-images, source and the edge's route table take the new names now. Automatic delivery and npm
-publication are separate gates under ADR-0016. The exact npm release recorded
-there is authorized; automatic host delivery and the production namespace
-cutover remain paused. Branch acceptance proves the new source and isolated
-checks; it does not prove migration of a live host.
+images, source and the edge's route table take the new names now. Host
+delivery and npm publication are separate gates under ADR-0016: TEST's timer
+delivers automatically, a person delivers PRODUCTION, and the production
+namespace cutover remains paused. Branch acceptance proves the new source and
+isolated checks; it does not prove migration of a live host.
 
 ## Alternatives rejected
 

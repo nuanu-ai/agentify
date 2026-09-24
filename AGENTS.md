@@ -73,8 +73,10 @@ operator.
   commit.
 - Delivery (ADR-0016): a branch is tried on the test channel by moving the
   `deploy-test` tag to it, and there is one test channel, so ask the other
-  person before moving it. `main` reaches production, and the SDK reaches npm,
-  by one `app-v<release>` tag on a commit with green CI.
+  person before moving it; the test host's timer picks the tag up. The SDK
+  reaches npm by one `app-v<release>` tag on a commit of `main` with green CI,
+  and production takes that same tag when a person runs `agentify-release` on
+  the production host (`deploy/README.md`).
 - Agent worktrees live under `.claude/worktrees/<topic>` on branches named
   `agent/<topic>` — the name says what the work is, not which process did it.
   Acceptance of an agent branch ends with the worktree removed and the branch

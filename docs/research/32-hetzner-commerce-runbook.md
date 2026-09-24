@@ -6,11 +6,11 @@ existing Comino ingress and test cabinet on `dmitry-dev`. Production has no
 route to the test application. Moving the data does not combine the commerce
 and scanner databases or authentication systems.
 
-All server changes use [the Ansible playbooks](../../deploy/ansible/README.md).
-Provider VM and shared ingress configuration remain owned by `nuanu-ai/infra`.
-The application repository owns the application checkout, images and Compose
-configuration. The earlier manual bootstrap is existing state for Ansible to
-adopt; it is not a second deployment procedure.
+Releases follow [the release runbook](../../deploy/README.md). Provider VM and
+shared ingress configuration remain owned by `nuanu-ai/infra`. The application
+repository owns the application checkout, images and Compose configuration.
+The earlier manual bootstrap is existing state for a release to adopt; it is
+not a second deployment procedure.
 
 ## Prepare before changing DNS
 
