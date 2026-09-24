@@ -41,6 +41,34 @@ describe("what the cabinet will not start without", () => {
     ).toBe("a-dedicated-private-secret-at-least-32-characters");
   });
 
+  it("opens the announcement listener only with its own secret, apart from every other", () => {
+    // The gateway presents this secret to ask the cabinet to mail a merchant
+    // about their money (ADR-0019). Shared with any other door, the holder of
+    // that door could send such mail, or the gateway could reach that door.
+    const dedicated = "a-dedicated-announcement-secret-of-32-characters";
+    const report = "a-dedicated-private-secret-at-least-32-characters";
+
+    expect(loadConfig(given()).announcementSecret).toBeNull();
+    expect(loadConfig(given({ ANNOUNCEMENT_SECRET: "" })).announcementSecret).toBeNull();
+    expect(loadConfig(given({ ANNOUNCEMENT_SECRET: dedicated })).announcementSecret).toBe(
+      dedicated,
+    );
+    expect(() => loadConfig(given({ ANNOUNCEMENT_SECRET: "x".repeat(31) }))).toThrow(
+      /ANNOUNCEMENT_SECRET/,
+    );
+    // Reused as the session secret, the registration invitation or the
+    // scanner's report identity secret.
+    expect(() => loadConfig(given({ ANNOUNCEMENT_SECRET: REQUIRED.AUTH_SECRET }))).toThrow(
+      /ANNOUNCEMENT_SECRET/,
+    );
+    expect(() =>
+      loadConfig(given({ ANNOUNCEMENT_SECRET: dedicated, REGISTRATION_INVITATION: dedicated })),
+    ).toThrow(/ANNOUNCEMENT_SECRET/);
+    expect(() =>
+      loadConfig(given({ ANNOUNCEMENT_SECRET: report, REPORT_IDENTITY_SECRET: report })),
+    ).toThrow(/ANNOUNCEMENT_SECRET/);
+  });
+
   it("requires the existing gateway invitation as a process secret", () => {
     const { REGISTRATION_INVITATION: _absent, ...withoutInvitation } = given();
 

@@ -26,6 +26,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { connect } from "node:net";
 import {
+  ANNOUNCING,
   buyOverHttp,
   type Harness,
   harness,
@@ -3601,4 +3602,178 @@ describe("the key the cabinet signs in with", () => {
     expect(posted.status).toBe(303);
     expect(took).toBeLessThan(9_000);
   }, 30_000);
+});
+
+describe("a wallet change waiting on the live deployment", () => {
+  // On the live deployment a replacement wallet is announced to every account
+  // naming the merchant and waits forty-eight hours (ADR-0019). The message
+  // says the change takes effect only if the wallet screen shows it, so the
+  // screen has to show it — the address that waits and the moment — and has
+  // to be where the change is cancelled, by a person signed in, with one
+  // press.
+  const LIVE_CABINET = {
+    PAYMENT_NETWORK: "eip155:8453",
+    FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+  };
+  const LIVE_GATEWAY = {
+    ...LIVE_CABINET,
+    CDP_API_KEY_ID: "key-id",
+    CDP_API_KEY_SECRET: "key-secret",
+    ...ANNOUNCING,
+  };
+  const WAITING = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
+
+  /**
+   * A cabinet in front of a live gateway, with every account at the merchant
+   * holding the key that gateway's door takes: a live door refuses a key
+   * carrying the test prefix, which is what the rest of this file's accounts
+   * hold.
+   */
+  const live = async (options: Starting = {}): Promise<Running> =>
+    await started({ ...options, gateway: LIVE_GATEWAY, cabinet: LIVE_CABINET });
+  const onTheLiveKey = (running: Running): void => {
+    for (const row of running.rows.cabinet_accounts ?? []) {
+      if (row.merchantId === THE_MERCHANT.id) row.merchantKey = theMerchantKey("live");
+    }
+  };
+
+  /** A replacement asked for with the merchant's own key, as their code would. */
+  const aChangeWaits = async (running: Running): Promise<void> => {
+    const asked = await running.gateway.call("POST", "/v0/payout-wallet", {
+      body: { payout_wallet: WAITING },
+      headers: { authorization: `Bearer ${running.harnessed.merchant.key}` },
+    });
+    expect(asked.status, JSON.stringify(asked.body)).toBe(200);
+  };
+
+  const waitingNow = async (running: Running): Promise<unknown> =>
+    (
+      (
+        await running.gateway.call("GET", "/v0/payout-wallet", {
+          headers: { authorization: `Bearer ${running.harnessed.merchant.key}` },
+        })
+      ).body as { pending: unknown }
+    ).pending;
+
+  it("shows the address waiting, the moment it takes effect, and a control to cancel it", async () => {
+    const running = await live();
+    onTheLiveKey(running);
+    await running.browser.signIn();
+    await aChangeWaits(running);
+
+    const screen = await running.browser.get("/settings");
+
+    expect(screen.status).toBe(200);
+    const text = screen.html.replaceAll(/<[^>]*>/g, "");
+    expect(text).toContain(WAITING);
+    expect(text).toContain(running.harnessed.merchant.wallet);
+    // Forty-eight hours after the harness's clock, which starts at noon on
+    // 2026-08-26.
+    expect(readable(screen.html)).toContain("2026-08-28 12:00:00 UTC");
+    expect(screen.html).toContain('action="/settings/payout-wallet/cancel"');
+  });
+
+  it("shows no cancel control where nothing is waiting", async () => {
+    const running = await live();
+    onTheLiveKey(running);
+    await running.browser.signIn();
+
+    const screen = await running.browser.get("/settings");
+
+    expect(screen.html).not.toContain('action="/settings/payout-wallet/cancel"');
+  });
+
+  it("cancels with one press, keeps the session that pressed, and signs every other session of the merchant out", async () => {
+    const running = await live();
+    await running.identity.make(OTHER, THE_MERCHANT);
+    onTheLiveKey(running);
+    await running.browser.signIn();
+    const otherDevice = await running.another();
+    await otherDevice.signIn();
+    const partner = await running.another();
+    await partner.signIn(OTHER);
+    await aChangeWaits(running);
+
+    const pressed = await running.browser.post("/settings/payout-wallet/cancel");
+
+    expect(pressed.status).toBe(303);
+    expect(pressed.to).toBe("/settings");
+    expect(await waitingNow(running)).toBeNull();
+    expect((await running.browser.get("/settings")).status).toBe(200);
+    // A session the person did not press from may be the one that asked for
+    // the change, so it ends — theirs on another device, and every other
+    // account's at the merchant.
+    expect((await otherDevice.get("/settings")).to).toMatch(/^\/sign-in/);
+    expect((await partner.get("/cards")).to).toMatch(/^\/sign-in/);
+  });
+
+  it("signs nobody out when the gateway would not cancel", async () => {
+    const running = await live({
+      client: (real) => ({
+        ...real,
+        setPayoutWallet: async () => ({ ok: false, status: 503, why: "the gateway said no" }),
+      }),
+    });
+    onTheLiveKey(running);
+    await running.browser.signIn();
+    const otherDevice = await running.another();
+    await otherDevice.signIn();
+    await aChangeWaits(running);
+
+    const pressed = await running.browser.post("/settings/payout-wallet/cancel");
+
+    expect(pressed.status).not.toBe(303);
+    expect(await waitingNow(running)).not.toBeNull();
+    expect((await otherDevice.get("/settings")).status).toBe(200);
+  });
+
+  it("is refused from a page on another site", async () => {
+    const running = await live();
+    onTheLiveKey(running);
+    await running.browser.signIn();
+    await aChangeWaits(running);
+
+    const pressed = await running.browser
+      .from("https://elsewhere.example")
+      .post("/settings/payout-wallet/cancel");
+
+    expect(pressed.status).toBe(403);
+    expect(await waitingNow(running)).not.toBeNull();
+  });
+
+  it("signs nobody out when there was nothing to cancel", async () => {
+    const running = await live();
+    onTheLiveKey(running);
+    await running.browser.signIn();
+    const otherDevice = await running.another();
+    await otherDevice.signIn();
+
+    const pressed = await running.browser.post("/settings/payout-wallet/cancel");
+
+    expect(pressed.to).toBe("/settings");
+    expect((await otherDevice.get("/settings")).status).toBe(200);
+  });
+});
+
+describe("the wallet screen a message links to", () => {
+  it("is where an ordinary sign-in lands a person who arrived signed out", async () => {
+    // The message links plainly to the wallet screen and carries no token, so
+    // a person reading it on a device with no session signs in the ordinary
+    // way — and has to land on the screen the message sent them to.
+    const running = await started();
+
+    const arrived = await running.browser.get("/settings");
+    expect(arrived.to).toBe("/sign-in?destination=settings");
+
+    const requested = await running.browser.post("/sign-in", {
+      email: PERSON,
+      destination: "settings",
+    });
+    expect(requested.status).toBe(202);
+    const found = /(https?:\/\/\S+)/.exec(running.mails.at(-1)?.body ?? "")?.[1] ?? "";
+    const opened = await running.browser.post(new URL(found).pathname, {
+      token: new URL(found).searchParams.get("token") ?? "",
+    });
+    expect(opened.to).toBe("/settings");
+  });
 });
