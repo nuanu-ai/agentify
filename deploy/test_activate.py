@@ -408,6 +408,16 @@ class Activation(unittest.TestCase):
         self.assertIn("exit 1", said)
         self.assertIn("none of gateway, cabinet, scanner and scanner-worker runs, so the channel is down", said)
 
+    def test_a_rerun_that_takes_its_first_dump_checks_the_room_for_it(self):
+        # Killed before its restore point was taken: the rerun takes it, and
+        # needs the room a first run would.
+        record = self.open_transition(NEW, "stopped")
+        shutil.rmtree(self.root / "backups/test" / record["restore"].rsplit("/", 1)[1])
+        said = self.run_script("activate", DF_AVAIL=str((1 << 30) + 500))
+        self.assertIn("exit 1", said)
+        self.assertIn("MiB free", said)
+        self.assertEqual(self.record(), record)
+
     def test_a_missing_restore_point_of_a_migrating_release_is_refused(self):
         record = self.open_transition(NEW, "migrating")
         shutil.rmtree(self.root / "backups/test" / record["restore"].rsplit("/", 1)[1])
