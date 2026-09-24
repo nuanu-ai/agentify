@@ -188,6 +188,10 @@ if [[ $channel == production ]]; then
     "$edge" 2>/dev/null) || true
   [[ $edge_running == true && $edge_image == "$(docker image inspect -f '{{.Id}}' "$caddy" 2>/dev/null)" && $edge_address == 172.30.80.2 && $edge_mount == bind && -f $edge_file ]] \
     || refuse "$edge is not the reviewed edge, the pinned Caddy running at 172.30.80.2 with its Caddyfile bound from the host; nothing was stopped."
+  # The route table is written over the edge's own after the start, so the
+  # edge's Caddy reads it first.
+  docker exec -i "$edge" caddy adapt --adapter caddyfile --config /dev/stdin < "$root/deploy/edge/Caddyfile" >/dev/null \
+    || refuse "the edge's Caddy does not accept deploy/edge/Caddyfile, for the reason above; nothing was stopped."
 else
   address="$(stack port web 443 2>/dev/null)" || address=unknown
 fi

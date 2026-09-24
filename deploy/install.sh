@@ -5,12 +5,13 @@
 #
 # Run it on the host from a checkout of main. On both channels it installs the
 # command as /usr/local/sbin/agentify-release and writes its configuration,
-# /etc/agentify/release.json. On TEST it also installs and starts the timer that
-# releases whatever deploy-test names, with the rule that keeps needrestart from
-# restarting it in the middle of an activation; PRODUCTION has no timer, because
-# a person releases it. On either channel it removes the pull agent the Ansible
-# release installed. It touches no channel data and no secret, and running it
-# again installs the same files again.
+# /etc/agentify/release.json, and the rule that keeps needrestart from
+# restarting a release in the middle of an activation. On TEST it also installs
+# and starts the timer that releases whatever deploy-test names; PRODUCTION has
+# no timer, because a person releases it. On either channel it removes the pull
+# agent and the nightly job line the Ansible release installed. It touches no
+# channel data and no secret, and running it again installs the same files
+# again.
 set -euo pipefail
 
 channel="${1:-}"
@@ -52,13 +53,17 @@ systemctl disable "agentify-pull@$channel.timer" 2>/dev/null || true
 rm -f /etc/systemd/system/agentify-pull@.service /etc/systemd/system/agentify-pull@.timer /etc/needrestart/conf.d/agentify-pull.conf
 rm -rf /opt/agentify-pull-agent /etc/agentify-pull-agent
 
+# The Ansible release's nightly privacy job ran without the release lock; the
+# first release by the command writes its own line in the same file.
+if grep -qs 'scanner-jobs.sh' /etc/cron.d/agentify-release; then rm -f /etc/cron.d/agentify-release; fi
+
 if [[ $channel == test ]]; then
   install -m 644 "$root/deploy/agentify-release.service" "$root/deploy/agentify-release.timer" /etc/systemd/system/
-  if [[ -d /etc/needrestart ]]; then
-    perl -c "$root/deploy/needrestart-agentify-release.conf" 2>/dev/null
-    install -d /etc/needrestart/conf.d
-    install -m 644 "$root/deploy/needrestart-agentify-release.conf" /etc/needrestart/conf.d/agentify-release.conf
-  fi
+fi
+if [[ -d /etc/needrestart ]]; then
+  perl -c "$root/deploy/needrestart-agentify-release.conf" 2>/dev/null
+  install -d /etc/needrestart/conf.d
+  install -m 644 "$root/deploy/needrestart-agentify-release.conf" /etc/needrestart/conf.d/agentify-release.conf
 fi
 systemctl daemon-reload
 if [[ $channel == test ]]; then
