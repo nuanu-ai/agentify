@@ -1112,14 +1112,16 @@ describe("one session for the whole site", () => {
   it("sets the same cookie without the prefix or Secure on the plain-http local origin", async () => {
     // The prefix requires Secure, and a Secure cookie is never sent back over
     // plain http, so the laptop's origin gets neither rather than a session
-    // nobody can use.
-    const running = await started();
-    await running.browser.post("/sign-in", { email: PERSON });
+    // nobody can use. Mounted where the stack mounts it, under /cabinet, so a
+    // cookie scoped to the mount point would show here: on https the prefix
+    // forces the root path whatever the cabinet asks for.
+    const running = await started({ base: "/cabinet" });
+    await running.browser.post("/cabinet/sign-in", { email: PERSON });
     const action = actionIn(running.mails.at(-1));
 
     const opened = await running.browser
       .from(running.url)
-      .post("/sign-in/open", { token: action.searchParams.get("token") ?? "" });
+      .post("/cabinet/sign-in/open", { token: action.searchParams.get("token") ?? "" });
 
     const line = sessionCookieIn(opened, COOKIE);
     expect(line).toBeDefined();
