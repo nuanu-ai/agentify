@@ -15,11 +15,8 @@ import {
   rateLimitEvents,
   rateWindows,
   registrationIntents,
-  reportSessions,
   runRetentionCleanup,
-  scannerIdentityCompletions,
   scannerIdentityDeletionOperations,
-  scannerRecoveryIntents,
   scanShares,
   scans,
   sessions,
@@ -29,7 +26,8 @@ import {
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { encryptEmail, hmacHex, sha256 } from "./crypto";
+import { visitorOf } from "./auth";
+import { encryptEmail, hmacHex } from "./crypto";
 import { getDatabase } from "./database";
 import { executeRetentionCleanup } from "./privacy";
 import {
@@ -76,6 +74,20 @@ let cabinetServer: Server | undefined;
 let cabinetMode: "unavailable" | "retained" | "deleted" = "retained";
 let cabinetDelayMs = 0;
 let cabinetDeleteRequests = 0;
+
+/**
+ * The sessions the stand-in cabinet answers for, by cookie value. A privacy
+ * deletion of a person who owns no merchant takes theirs with them.
+ */
+const SESSION_COOKIE = "__Host-agentify.session_token";
+const cabinetSessions = new Map<string, string>();
+
+/** A browser signed in as this address, as the cabinet would answer for it. */
+function signedInAs(email: string): string {
+  const value = `p5-session-${cabinetSessions.size + 1}`;
+  cabinetSessions.set(value, email);
+  return `${SESSION_COOKIE}=${value}`;
+}
 
 function respondJson(response: ServerResponse, status: number, body: object) {
   response.writeHead(status, { "content-type": "application/json" });
@@ -175,7 +187,20 @@ beforeAll(async () => {
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
       operation?: string;
+      cookie?: string;
     };
+    if (body.operation === "session") {
+      const value = (body.cookie ?? "").split(`${SESSION_COOKIE}=`)[1]?.split(";")[0] ?? "";
+      const email = cabinetSessions.get(value);
+      respondJson(
+        response,
+        200,
+        email === undefined
+          ? { status: "signed_out" }
+          : { status: "signed_in", email, request: null, set_cookie: [] },
+      );
+      return;
+    }
     if (body.operation !== "delete") {
       respondJson(response, 200, { status: "refused" });
       return;
@@ -214,17 +239,9 @@ afterAll(async () => {
 describe("P5 privacy and terminal scanner identity deletion", () => {
   it("attaches once, hydrates current state, rejects replay drift, and detaches", async () => {
     const fixture = await createLeadFixture("card-lifecycle");
-    const sessionToken = "p5-card-lifecycle-report-session";
-    await getDatabase()
-      .db.insert(reportSessions)
-      .values({
-        id: createUuidV7(),
-        leadId: fixture.leadId,
-        sessionTokenHash: sha256(sessionToken),
-        expiresAt: new Date(Date.now() + 86_400_000),
-      });
+    const cookieHeader = signedInAs(fixture.email);
     const setup = await setupCardSignal({
-      sessionToken,
+      cookieHeader,
       scanId: fixture.scanId,
       idempotencyKey: "p5-browser-idempotency-key",
       provider,
@@ -235,7 +252,7 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
       clientSecret: expect.any(String),
     });
     if (!("signalId" in setup)) throw new Error("setup_failed");
-    await expect(getOwnedCardSignalForReport(fixture.scanId, sessionToken)).resolves.toMatchObject({
+    await expect(getOwnedCardSignalForReport(fixture.scanId, cookieHeader)).resolves.toMatchObject({
       signalId: setup.signalId,
       status: "setup_pending",
       clientSecret: expect.any(String),
@@ -258,7 +275,7 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
     expect(stored.status).toBe("attached");
     expect(stored.paymentMethodIdCiphertext).toMatch(/^v1\./);
     expect(stored.paymentMethodIdCiphertext).not.toContain("pm_local");
-    await expect(getOwnedCardSignalForReport(fixture.scanId, sessionToken)).resolves.toMatchObject({
+    await expect(getOwnedCardSignalForReport(fixture.scanId, cookieHeader)).resolves.toMatchObject({
       signalId: signal.id,
       status: "attached",
       clientSecret: null,
@@ -290,9 +307,9 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
       }),
     ).rejects.toThrow("stripe_event_replay_mismatch");
     await expect(
-      detachCardSignal({ signalId: signal.id, sessionToken, provider }),
+      detachCardSignal({ signalId: signal.id, cookieHeader, provider }),
     ).resolves.toEqual({ status: "detached" });
-    await expect(getOwnedCardSignalForReport(fixture.scanId, sessionToken)).resolves.toMatchObject({
+    await expect(getOwnedCardSignalForReport(fixture.scanId, cookieHeader)).resolves.toMatchObject({
       signalId: signal.id,
       status: "detached",
       clientSecret: null,
@@ -333,38 +350,8 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
       status: "setup_pending",
       consentSnapshotId: fixture.consentId,
     });
-    await getDatabase()
-      .db.insert(reportSessions)
-      .values({
-        id: createUuidV7(),
-        leadId: fixture.leadId,
-        sessionTokenHash: `session-${fixture.leadId}`,
-        expiresAt: new Date(Date.now() + 86_400_000),
-      });
-    await getDatabase()
-      .db.insert(scannerRecoveryIntents)
-      .values({
-        id: createUuidV7(),
-        tokenHash: "R".repeat(43),
-        stateHash: "a".repeat(64),
-        emailLookupHash: hmacHex(tokenHmacSecret, "email", fixture.email),
-        leadId: fixture.leadId,
-        scanId: fixture.scanId,
-        expiresAt: new Date(Date.now() + 60_000),
-        activatedAt: new Date(),
-      });
-    await getDatabase()
-      .db.insert(scannerIdentityCompletions)
-      .values({
-        receiptId: createUuidV7(),
-        tokenHash: "S".repeat(43),
-        intentKind: "recovery",
-        stateHash: "b".repeat(64),
-        leadId: fixture.leadId,
-        scanId: fixture.scanId,
-        completedAt: new Date(),
-        retainUntil: new Date(Date.now() + 7 * 86_400_000),
-      });
+    const cookieHeader = signedInAs(fixture.email);
+    await expect(visitorOf(cookieHeader)).resolves.toMatchObject({ leadId: fixture.leadId });
 
     cabinetMode = "unavailable";
     await expect(
@@ -375,20 +362,13 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
     );
     expect(blockedLead.deletionRequestedAt).toBeInstanceOf(Date);
     expect(blockedLead.anonymizedAt).toBeNull();
-    expect(
-      (
-        await getDatabase()
-          .db.select()
-          .from(reportSessions)
-          .where(eq(reportSessions.leadId, fixture.leadId))
-      )[0]?.revokedAt,
-    ).toBeInstanceOf(Date);
-    expect(
-      await getDatabase()
-        .db.select()
-        .from(scannerRecoveryIntents)
-        .where(eq(scannerRecoveryIntents.leadId, fixture.leadId)),
-    ).toEqual([]);
+    // The reports close the moment the deletion is asked for, whether or not
+    // the cabinet has answered yet: the session still reads, and it owns
+    // nothing any more.
+    await expect(visitorOf(cookieHeader)).resolves.toMatchObject({
+      kind: "person",
+      leadId: null,
+    });
     expect((await provider.retrieveCustomer(customerId)).deleted).toBe(false);
 
     const operation = onlyRow(
@@ -450,12 +430,6 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
       allowIndexing: false,
       publicSnapshot: { anonymized: true },
     });
-    expect(
-      await getDatabase()
-        .db.select()
-        .from(scannerIdentityCompletions)
-        .where(eq(scannerIdentityCompletions.leadId, fixture.leadId)),
-    ).toEqual([]);
     expect(
       (
         await getDatabase()
@@ -559,60 +533,15 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
     ).toBeNull();
   });
 
-  it("expires recovery and completion evidence at seven days idempotently", async () => {
+  it("expires registration and rate evidence at its retention idempotently", async () => {
     const fixture = await createLeadFixture("retention-evidence");
     const now = new Date("2026-09-17T12:00:00.000Z");
-    await getDatabase()
-      .db.insert(scannerRecoveryIntents)
-      .values([
-        {
-          id: createUuidV7(),
-          stateHash: "c".repeat(64),
-          emailLookupHash: hmacHex(tokenHmacSecret, "email", fixture.email),
-          leadId: fixture.leadId,
-          scanId: fixture.scanId,
-          expiresAt: new Date(now.getTime() - 8 * 86_400_000),
-        },
-        {
-          id: createUuidV7(),
-          stateHash: "d".repeat(64),
-          emailLookupHash: hmacHex(tokenHmacSecret, "email", fixture.email),
-          leadId: fixture.leadId,
-          scanId: fixture.scanId,
-          expiresAt: new Date(now.getTime() + 86_400_000),
-        },
-      ]);
-    await getDatabase()
-      .db.insert(scannerIdentityCompletions)
-      .values([
-        {
-          receiptId: createUuidV7(),
-          tokenHash: "T".repeat(43),
-          intentKind: "registration",
-          stateHash: "e".repeat(64),
-          leadId: fixture.leadId,
-          scanId: fixture.scanId,
-          completedAt: new Date(now.getTime() - 8 * 86_400_000),
-          retainUntil: new Date(now.getTime() - 1),
-        },
-        {
-          receiptId: createUuidV7(),
-          tokenHash: "U".repeat(43),
-          intentKind: "recovery",
-          stateHash: "f".repeat(64),
-          leadId: fixture.leadId,
-          scanId: fixture.scanId,
-          completedAt: now,
-          retainUntil: new Date(now.getTime() + 7 * 86_400_000),
-        },
-      ]);
     await getDatabase()
       .db.insert(registrationIntents)
       .values({
         id: createUuidV7(),
         scanId: fixture.scanId,
         sessionId: fixture.sessionId,
-        callbackStateHash: "1".repeat(64),
         emailNormalizedCiphertext: "expired-registration-email",
         emailLookupHash: "expired-registration-email-hash",
         phoneE164Ciphertext: "expired-registration-phone",
@@ -666,11 +595,7 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
       merchantApplicationsDeleted: 1,
       registrationIntentsDeleted: 1,
       rateLimitRowsDeleted: 2,
-      expiredScannerRecoveryIntents: 1,
-      expiredScannerIdentityCompletions: 1,
     });
-    expect(await getDatabase().db.select().from(scannerRecoveryIntents)).toHaveLength(1);
-    expect(await getDatabase().db.select().from(scannerIdentityCompletions)).toHaveLength(1);
     expect(
       await getDatabase()
         .db.select()
@@ -691,8 +616,6 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
       merchantApplicationsDeleted: 0,
       registrationIntentsDeleted: 0,
       rateLimitRowsDeleted: 0,
-      expiredScannerRecoveryIntents: 0,
-      expiredScannerIdentityCompletions: 0,
     });
   });
 });

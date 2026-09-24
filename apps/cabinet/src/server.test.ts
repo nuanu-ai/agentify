@@ -40,6 +40,7 @@ import {
   type MerchantKeyList,
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { keyRenewal } from "./cabinet-key.js";
 import { type CabinetConfig, loadConfig } from "./config.js";
 import { type Answer, type GatewayClient, gatewayFor, type Registrar } from "./gateway.js";
 import {
@@ -49,6 +50,7 @@ import {
   LINK_RATE_WINDOW_MS,
 } from "./identity.js";
 import type { Handover, Message, Postman } from "./mail.js";
+import { buildReportIdentityApp, REPORT_IDENTITY_PATH } from "./report-identity-server.js";
 import { buildApp } from "./server.js";
 import { readable, waitingButton } from "./testing/html.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
@@ -1037,6 +1039,33 @@ describe("the passwordless cabinet door", () => {
     expect(readable(landedSpent.html)).toBe(readable(unknown.html));
     expect(readable(spent.html)).not.toContain(PERSON);
     expect(spent.headers.getSetCookie()).toStrictEqual([]);
+  });
+
+  it("sends the press on a report link to that report, whatever the browser posts beside it", async () => {
+    // The destination was recorded with the token when the scanner asked for
+    // the link, and nothing the browser sends is read as one (ADR-0026 §1).
+    const running = await started();
+    const scan = "019b41a0-7c51-7d63-84bd-a5a20faef497";
+    await running.identity.sendReportLink({
+      operation: "send",
+      email: FRESH.email,
+      destination: { report: scan },
+      request: "019b41a0-7c51-7d63-84bd-a5a20faef498",
+    });
+    const action = actionIn(running.mails.at(-1));
+    const token = action.searchParams.get("token") ?? "";
+
+    const landing = await running.browser.get(`${action.pathname}${action.search}`);
+    expect(readable(landing.html)).toContain(FRESH.email);
+
+    const opened = await running.browser.from(running.url).post(action.pathname, {
+      token,
+      destination: "https://evil.example",
+    });
+
+    expect(opened.status).toBe(303);
+    expect(opened.to).toBe(`/report/${scan}`);
+    expect((await running.identity.byEmail(FRESH.email))?.merchant).toBeNull();
   });
 
   it("does not retain the retired password, registration, or confirmation routes", async () => {
@@ -3198,6 +3227,50 @@ describe("the key the cabinet signs in with", () => {
     expect(now).not.toBe(before);
     expect(await theGatewayTakes(now)).toBe(true);
     expect(await theGatewayTakes(before)).toBe(false);
+  });
+
+  it("renews the key when the first reading of a day is the scanner's question about a cookie", async () => {
+    // A person who spends the day on reports is on a live session too, and the
+    // scanner's question is where that session is read (ADR-0026 §2). A day's
+    // first reading that did not renew the key would leave it to live as long
+    // as the person kept visiting only reports.
+    const running = await aRegisteredMerchant();
+    const before = keyOnTheRowOf(FRESH.email);
+    const secret = "d".repeat(49);
+    const internal = buildReportIdentityApp(
+      secret,
+      running.identity,
+      keyRenewal(running.identity, (key, within) => gatewayFor(running.gateway.url, key, within)),
+    ).listen(0, "127.0.0.1");
+    await new Promise<void>((ready) => internal.once("listening", ready));
+    const { port } = internal.address() as AddressInfo;
+    const ask = async (renew: boolean) =>
+      await fetch(`http://127.0.0.1:${port}${REPORT_IDENTITY_PATH}`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          operation: "session",
+          cookie: `${COOKIE}=${running.browser.sessionToken() ?? ""}`,
+          renew,
+        }),
+      });
+    try {
+      const aDayAndAnHourAgo = Date.now() - 25 * 60 * 60 * 1_000;
+      for (const session of sessionRows()) {
+        session.expiresAt = new Date(aDayAndAnHourAgo + THIRTY_DAYS_SECONDS * 1_000);
+      }
+
+      expect((await ask(false)).status).toBe(200);
+      expect(keyOnTheRowOf(FRESH.email)).toBe(before);
+
+      expect((await ask(true)).status).toBe(200);
+      const now = keyOnTheRowOf(FRESH.email);
+      expect(now).not.toBe(before);
+      expect(await theGatewayTakes(now)).toBe(true);
+      expect(await theGatewayTakes(before)).toBe(false);
+    } finally {
+      await new Promise<void>((done) => internal.close(() => done()));
+    }
   });
 
   it("leaves the key alone on a second request inside the same day", async () => {

@@ -1,21 +1,18 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { ReportCabinetAction } from "./report-cabinet-control";
+import { ReportCabinetControl } from "./report-cabinet-control";
 
-describe("fresh report cabinet action", () => {
-  it("uses one stable native POST without exposing the handoff token", () => {
-    const reportPath = "/report/018f5e6f-7a5d-7c0b-8f58-a6b2fe16ca01";
-    const markup = renderToStaticMarkup(
-      <ReportCabinetAction email="owner@example.com" reportPath={reportPath} />,
-    );
+describe("the report's way into the cabinet", () => {
+  it("is an ordinary link that makes nothing on its own", () => {
+    // Under Lax a link from another site arrives signed in, so opening the
+    // cabinet from a report must not be able to make a merchant: the cabinet
+    // offers the one control that does (ADR-0026 §4). A form here would be a
+    // cross-surface POST that a page could forge.
+    const markup = renderToStaticMarkup(<ReportCabinetControl />);
 
-    expect(markup).toContain('<form action="/cabinet/report-handoff" method="post">');
-    expect(markup).toContain('type="hidden" name="email" value="owner@example.com"');
-    expect(markup).toContain(`type="hidden" name="report_path" value="${reportPath}"`);
-    expect(markup).toContain('type="submit">Open your cabinet</button>');
-    expect(markup).not.toContain("token");
-    expect(markup).not.toContain("<a");
-    expect(markup).not.toContain("script");
+    expect(markup).toContain('href="/cabinet/"');
+    expect(markup).not.toContain("<form");
+    expect(markup).not.toContain("method=");
   });
 });
