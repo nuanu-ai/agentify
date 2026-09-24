@@ -47,7 +47,7 @@ import {
   registrarFor,
 } from "./gateway.js";
 import { bare, brandLockup, escaped } from "./html.js";
-import { SESSION_HOURS } from "./identity.js";
+import { SESSION_DAYS } from "./identity.js";
 import { keysScreen, newKeyScreen } from "./keys.js";
 import { WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
 import { printable } from "./printable.js";
@@ -160,13 +160,14 @@ const normalizedEmail = (value: string): string => value.trim().normalize("NFKC"
 /**
  * What a person is told when the gate found no session behind their click.
  *
- * The gate cannot tell them why — the session may have run out, been signed
- * out in another tab or been revoked — so what it gives is the general rule.
- * Naming the lifetime is what makes being asked for an address again read as
- * the ordinary end of a session rather than as a fault.
+ * The gate cannot tell them why — the session may have gone thirty days
+ * without a visit, been signed out in another tab or been revoked — so what it
+ * gives is the general rule. Naming the lifetime is what makes being asked for
+ * an address again read as the ordinary end of a session rather than as a
+ * fault.
  */
 const SESSION_ENDED =
-  `Your session ended; a session lasts at most ${SESSION_HOURS} hours. ` +
+  `Your session ended; a session lasts ${SESSION_DAYS} days from your last visit. ` +
   `Send yourself a new link to carry on.`;
 
 const cabinetDestinationIn = (value: unknown): CabinetDestination =>
@@ -342,7 +343,6 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     parts.gatewayFor ??
     ((key: string, answerWithinMs?: number) => gatewayFor(config.gatewayUrl, key, answerWithinMs));
   const registrar = parts.registrar ?? registrarFor(config.gatewayUrl);
-  const cookiePath = base === "" ? "/" : base;
 
   /**
    * The gateway as this request's merchant, built from the key on their row.
@@ -369,18 +369,26 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    *
    * Every name it sets, not the session alone: beside the session itself the
    * component keeps two cookies of its own, and clearing only the first would
-   * leave the others in a browser for good.
+   * leave the others in a browser for good. The clearing line carries the
+   * attributes the session was set with, because a browser replaces a cookie
+   * only with a line for the same path, and replaces a `__Host-` one only with
+   * a line that is Secure and for the whole origin (ADR-0009 §6).
    */
   const forget = (response: Response): void => {
     for (const name of identity.cookieNames) {
-      response.clearCookie(name, { path: cookiePath });
+      response.clearCookie(name, {
+        path: "/",
+        httpOnly: true,
+        sameSite: "lax",
+        secure: config.cookieSecure,
+      });
     }
   };
 
   /** Removes the short-lived report handoff on every outcome that reads it. */
   const forgetReportHandoff = (response: Response): void => {
     response.clearCookie(REPORT_CABINET_HANDOFF_COOKIE, {
-      path: cookiePath,
+      path: base === "" ? "/" : base,
       httpOnly: true,
       sameSite: "strict",
       secure: config.cookieSecure,
@@ -525,12 +533,15 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    * The address a merchant's own shop sends their browser back to.
    *
    * Above the gate, and that is the whole of this route's reason for being
-   * written out here rather than beside the shop screens. The session cookie is
-   * `SameSite=Strict` (ADR-0009): a navigation begun on the merchant's own
-   * shop is cross-site, so the request that lands here carries nothing — for a
-   * merchant signed in on that very browser, every time. Behind the gate it
-   * ended a flow that had worked on a sign-in form, and what a merchant read
-   * there was that the connect had failed.
+   * written out here rather than beside the shop screens. A browser can come
+   * back from the shop without a live session — the session ended while the
+   * merchant was in their shop, or the shop was opened in another browser than
+   * the one signed in here — and behind the gate a connection that worked would
+   * then end on a sign-in form, which a merchant reads as the connect having
+   * failed. It did, twice, when this flow was walked by hand, back when the
+   * cookie was `Strict` and no return carried it (ADR-0009 §2). A browser that
+   * does carry a session, which under `Lax` is the ordinary case, is sent on
+   * into the cabinet.
    *
    * Taking the address out from behind the gate costs nothing because there is
    * nothing behind it to take: with no session this route reads no row, asks the
@@ -547,15 +558,17 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    * in a `Referer`. What it does not buy is the request that already happened —
    * the token was in the address line of that one, so it is in this process's
    * own log and in the log of anything between the merchant and us, and only
-   * spending or expiry ends that. Now that a real return arrives with no
-   * session every time, this is the path that has to do the stripping, so it is
-   * a redirect to this same address with the query gone rather than the
-   * redirect into the cabinet that a signed-in visitor still gets.
+   * spending or expiry ends that. A return that arrives with no session is
+   * the one this page is drawn for, so it is the path that has to do the
+   * stripping: a redirect to this same address with the query gone, rather
+   * than the redirect into the cabinet that a signed-in visitor gets.
    */
   if (parts.wooShops !== undefined) {
     const returnPath = `${base}/woocommerce/return`;
     app.get(returnPath, async (request, response) => {
-      if ((await identity.whoIs(request.headers.cookie)) !== null) {
+      const signedIn = await identity.whoIs(request.headers.cookie);
+      if (signedIn !== null) {
+        carryCookies(response, signedIn.setCookies);
         response.redirect(303, `${base}/woocommerce?from=shop`);
         return;
       }
@@ -568,9 +581,13 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   }
 
   app.get(`${base}/sign-in`, async (request, response) => {
-    const person = await identity.whoIs(request.headers.cookie);
-    if (person !== null) {
-      response.redirect(303, person.merchant === null ? `${base}/merchant` : `${base}/cards`);
+    const signedIn = await identity.whoIs(request.headers.cookie);
+    if (signedIn !== null) {
+      carryCookies(response, signedIn.setCookies);
+      response.redirect(
+        303,
+        signedIn.person.merchant === null ? `${base}/merchant` : `${base}/cards`,
+      );
       return;
     }
     const destination = cabinetDestinationIn(request.query.destination);
@@ -808,7 +825,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     forgetReportHandoff(response);
     response.setHeader("cache-control", "private, no-store");
 
-    const signedIn = await identity.whoIs(request.headers.cookie);
+    const signedIn = (await identity.whoIs(request.headers.cookie))?.person ?? null;
     if (signedIn !== null && normalizedEmail(signedIn.email) === normalizedEmail(email)) {
       response.redirect(303, signedIn.merchant === null ? `${base}/merchant` : `${base}/cards`);
       return;
@@ -862,7 +879,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     }
     const opened = await identity.openLink(token);
     if (opened.status === "refused") {
-      const signedIn = await identity.whoIs(request.headers.cookie);
+      const signedIn = (await identity.whoIs(request.headers.cookie))?.person ?? null;
       response
         .status(401)
         .type("html")
@@ -914,8 +931,8 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   app.use((request, response, next) => {
     void (async () => {
       try {
-        const person = await identity.whoIs(request.headers.cookie);
-        if (person === null) {
+        const session = await identity.whoIs(request.headers.cookie);
+        if (session === null) {
           // The cookies are cleared on the way out, so somebody whose session
           // was ended lands on a sign-in they can use rather than being bounced
           // through this gate again on every click.
@@ -939,7 +956,11 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
           );
           return;
         }
-        people.set(request, person);
+        // Once a day the reading moves the session's end, and the browser has
+        // to be told or its cookie runs out thirty days after sign-in however
+        // often its person came back.
+        carryCookies(response, session.setCookies);
+        people.set(request, session.person);
         next();
       } catch (thrown) {
         next(thrown);
@@ -1683,10 +1704,12 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
  * the switches, because that is a merchant's selling, and not the sign-in,
  * because signing somebody into an account of the attacker's choosing is a way
  * of getting them to do their work in a session somebody else can read.
- * SameSite=Strict on the cookie is the first answer and the main one; this is
- * the second, and it exists because SameSite is scoped to the registrable
- * domain rather than to the origin — the day anything at all is served from a
- * sibling subdomain, that page is "same site" and can forge every switch here.
+ * SameSite=Lax on the cookie is the first answer and the main one: a cross-site
+ * POST carries no Lax cookie, exactly as it carried no Strict one (ADR-0009
+ * §6). This is the second, and it exists because SameSite is scoped to the
+ * registrable domain rather than to the origin — `test.agentify.ad` beside
+ * `agentify.ad` is "same site", and a page there could otherwise forge every
+ * switch here.
  *
  * The component that signs people in brings a check of its own, and it does not
  * replace this one. What it brings is the same idea — compare the `Origin`

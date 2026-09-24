@@ -66,6 +66,7 @@ export type {
   CabinetIdentity,
   CabinetLinkResult,
   LinkRequestResult,
+  LiveSession,
   MerchantKeyReplacement,
   MerchantPerson,
   Person,
@@ -101,8 +102,31 @@ export interface Identity extends CabinetIdentity {
 
 export const emailAs = (raw: string): string => raw.trim().toLowerCase();
 
-/** How long a session lasts from the moment it opens; it is never extended. */
-export const SESSION_HOURS = 12;
+/**
+ * The name the session cookie travels under.
+ *
+ * With the `__Host-` prefix wherever the site is served over https, and without
+ * it on the plain-http local origin, because the prefix requires `Secure` and a
+ * Secure cookie is never sent back over http (ADR-0009 §6).
+ */
+export const sessionCookieName = (secure: boolean): string =>
+  `${secure ? "__Host-" : ""}agentify.session_token`;
+
+/**
+ * How long a session lasts from the last visit (ADR-0009 §6).
+ *
+ * Thirty days, and sliding: a person who keeps coming back does not meet the
+ * sign-in form again. A short session is not what protects the money; the wait
+ * on a wallet change is (ADR-0019).
+ */
+export const SESSION_DAYS = 30;
+/**
+ * How often a visit moves a session's end, at most.
+ *
+ * Once a day rather than on every request, so a click is not a write to the
+ * sessions table, and the cookie handed back on that visit carries the new end.
+ */
+const SESSION_RENEWAL_SECONDS = 24 * 60 * 60;
 export const LINK_TTL_SECONDS = 60 * 60;
 export const LINK_RATE_WINDOW_MS = 60 * 60 * 1000;
 export const LINK_RATE_LIMIT = 3;
@@ -213,16 +237,23 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
       },
       session: {
         modelName: "cabinet_sessions",
-        expiresIn: SESSION_HOURS * 60 * 60,
-        disableSessionRefresh: true,
+        expiresIn: SESSION_DAYS * 24 * 60 * 60,
+        updateAge: SESSION_RENEWAL_SECONDS,
       },
       account: { modelName: "cabinet_credentials" },
       verification: { modelName: "cabinet_verifications" },
       advanced: {
         cookiePrefix: "agentify",
+        // The prefix is chosen here and not by the component. Left to itself it
+        // puts `__Secure-` in front of every name on an https base, and what
+        // ADR-0009 §6 asks for is `__Host-`: the one a browser refuses unless
+        // the cookie is Secure, for the whole origin and names no Domain, which
+        // is what keeps a sibling host from planting or replacing a session.
+        useSecureCookies: false,
+        cookies: { session_token: { name: sessionCookieName(config.cookieSecure) } },
         defaultCookieAttributes: {
-          path: config.basePath === "" ? "/" : config.basePath,
-          sameSite: "strict",
+          path: "/",
+          sameSite: "lax",
           httpOnly: true,
           secure: config.cookieSecure,
         },
@@ -455,13 +486,30 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
   const asHeaders = (value: string): Headers =>
     new Headers({ cookie: `${sessionCookie}=${value}` });
   const contextOf = async () => await auth.$context;
+  /**
+   * Every live session among the values a request carries, each with the lines
+   * that renew its cookie when this reading moved its end.
+   *
+   * The component moves a session's end at most once a day and says so with a
+   * cookie of its own; a reader that dropped that line would extend the row and
+   * leave the browser holding a cookie that still expires thirty days after
+   * sign-in. A value whose session is dead answers with a line clearing the
+   * cookie, and that line is dropped here: it names the same cookie the live
+   * value sits under, so passing it on would sign the person out.
+   */
   const liveOnesIn = async (
     cookieHeader: string | undefined,
-  ): Promise<readonly { token: string; person: Person }[]> => {
-    const live: { token: string; person: Person }[] = [];
+  ): Promise<readonly { token: string; person: Person; setCookies: readonly string[] }[]> => {
+    const live: { token: string; person: Person; setCookies: readonly string[] }[] = [];
     for (const value of valuesIn(cookieHeader)) {
-      const found = await auth.api.getSession({ headers: asHeaders(value) });
-      if (found !== null) live.push({ token: found.session.token, person: personFrom(found.user) });
+      const found = await auth.api.getSession({ headers: asHeaders(value), returnHeaders: true });
+      if (found.response !== null) {
+        live.push({
+          token: found.response.session.token,
+          person: personFrom(found.response.user),
+          setCookies: found.headers.getSetCookie(),
+        });
+      }
     }
     return live;
   };
@@ -906,9 +954,10 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
 
     async whoIs(cookieHeader) {
       const live = await liveOnesIn(cookieHeader);
-      if (live.length === 0) return null;
+      const first = live[0];
+      if (first === undefined) return null;
       const owners = new Set(live.map((one) => one.person.id));
-      if (owners.size === 1) return live[0]?.person ?? null;
+      if (owners.size === 1) return { person: first.person, setCookies: first.setCookies };
       for (const one of live) await endSession(one.token);
       console.log(
         `[cabinet] a request carried live sessions of ${owners.size} different people;` +

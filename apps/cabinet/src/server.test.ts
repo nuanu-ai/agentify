@@ -722,7 +722,8 @@ describe("the report-to-cabinet handoff", () => {
     expectHandoffCleared(opened, true);
     expect(running.mails).toHaveLength(beforeMails);
     expect(
-      (await running.identity.whoIs(`${COOKIE}=${running.browser.sessionToken()}`))?.email,
+      (await running.identity.whoIs(`${SECURE_COOKIE}=${running.browser.sessionToken()}`))?.person
+        .email,
     ).toBe(PERSON);
     expect(await running.identity.openLink(token)).toStrictEqual({ status: "refused" });
   });
@@ -754,7 +755,7 @@ describe("the report-to-cabinet handoff", () => {
     const openLink = vi.spyOn(running.identity, "openLink");
 
     const answer = await running.browser
-      .withRawCookie(`${COOKIE}=${sessionToken}; ${handoffCookie(sealedHandoff(action))}`)
+      .withRawCookie(`${SECURE_COOKIE}=${sessionToken}; ${handoffCookie(sealedHandoff(action))}`)
       .post("/cabinet/report-handoff", {
         email: "  ＤＭＩＴＲＹ＠ＥＸＡＭＰＬＥ．ＣＯＭ  ",
         report_path: REPORT_PATH,
@@ -901,7 +902,8 @@ describe("the report-to-cabinet handoff", () => {
     expect(switched.to).toBe("/cabinet/cards");
     expect(running.browser.sessionToken()).not.toBe(otherSession);
     expect(
-      (await running.identity.whoIs(`${COOKIE}=${running.browser.sessionToken()}`))?.email,
+      (await running.identity.whoIs(`${SECURE_COOKIE}=${running.browser.sessionToken()}`))?.person
+        .email,
     ).toBe(PERSON);
     expect(running.mails).toHaveLength(beforeMails);
   });
@@ -950,7 +952,7 @@ describe("the report-to-cabinet handoff", () => {
     await running.identity.signOut(`${COOKIE}=${sessionToken}`);
 
     const signedOut = await running.browser
-      .withRawCookie(`${COOKIE}=${sessionToken}; ${handoffCookie(sealedHandoff(action))}`)
+      .withRawCookie(`${SECURE_COOKIE}=${sessionToken}; ${handoffCookie(sealedHandoff(action))}`)
       .post("/cabinet/sign-out");
 
     expect(signedOut.status).toBe(303);

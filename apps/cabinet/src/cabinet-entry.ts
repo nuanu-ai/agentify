@@ -72,13 +72,25 @@ export type AttachMerchantResult =
 /** What is known after the conditional merchant-key write returns. */
 export type MerchantKeyReplacement = "replaced" | "not-matched" | "unknown";
 
+/**
+ * A live session: whose it is, and what reading it asked of the browser.
+ *
+ * The lines renew the session's cookie when the reading moved the session's
+ * end, which happens at most once a day, and are empty otherwise. Whoever
+ * answers the browser passes them on as they are.
+ */
+export type LiveSession = Readonly<{
+  person: Person;
+  setCookies: readonly string[];
+}>;
+
 export interface CabinetIdentity {
   readonly cookieNames: readonly string[];
 
   requestLink(email: string, destination: CabinetDestination): Promise<LinkRequestResult>;
   openLink(token: string): Promise<CabinetLinkResult>;
 
-  whoIs(cookieHeader: string | undefined): Promise<Person | null>;
+  whoIs(cookieHeader: string | undefined): Promise<LiveSession | null>;
   signOut(cookieHeader: string | undefined): Promise<number>;
 
   attachMerchant(

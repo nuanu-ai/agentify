@@ -435,8 +435,7 @@ if (databaseUrl === null) {
         person: { merchant: null },
       });
       expect(await identity.whoIs(cookieHeader(opened.setCookies))).toMatchObject({
-        id: opened.person.id,
-        merchant: null,
+        person: { id: opened.person.id, merchant: null },
       });
     });
 
