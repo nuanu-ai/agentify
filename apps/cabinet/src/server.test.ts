@@ -3178,6 +3178,39 @@ describe("the key the cabinet signs in with", () => {
     expect(written).not.toContain(now);
   });
 
+  it("renews the key at the first request of a day on a live session, and forgets the old one", async () => {
+    // ADR-0014 §2. A session lasts thirty days from the last visit, and without
+    // a daily renewal a key copied out of this database would last as long as
+    // its person kept coming back. The first request of a day is the one that
+    // moves the session's end, and it is the one that replaces the key.
+    const { browser } = await aRegisteredMerchant();
+    const before = keyOnTheRowOf(FRESH.email);
+    const aDayAndAnHourAgo = Date.now() - 25 * 60 * 60 * 1_000;
+    for (const session of sessionRows()) {
+      session.expiresAt = new Date(aDayAndAnHourAgo + THIRTY_DAYS_SECONDS * 1_000);
+    }
+
+    const visited = await browser.get("/cards");
+
+    // The page is drawn, which means it was drawn with the key that works.
+    expect(visited.status).toBe(200);
+    const now = keyOnTheRowOf(FRESH.email);
+    expect(now).not.toBe(before);
+    expect(await theGatewayTakes(now)).toBe(true);
+    expect(await theGatewayTakes(before)).toBe(false);
+  });
+
+  it("leaves the key alone on a second request inside the same day", async () => {
+    const { browser } = await aRegisteredMerchant();
+    const before = keyOnTheRowOf(FRESH.email);
+
+    expect((await browser.get("/cards")).status).toBe(200);
+    expect((await browser.get("/orders")).status).toBe(200);
+
+    expect(keyOnTheRowOf(FRESH.email)).toBe(before);
+    expect(await theGatewayTakes(before)).toBe(true);
+  });
+
   it("takes the key that was on the row away, and spares the one that replaced it", async () => {
     // Forgetting the old key is the half that makes the replacement worth
     // anything: a key left behind at every sign-in is a pile of live
