@@ -581,6 +581,79 @@ class Backups(unittest.TestCase):
         self.assertNotIn("PTYKEYID0123", said)
         self.assertIn("AWS_SECRET_ACCESS_KEY=pty-secret-value", (self.world / "values").read_text())
 
+    # Installing it on a host.
+
+    UNITS = (
+        "agentify-backup.service", "agentify-backup.timer", "agentify-backup-check.service",
+        "agentify-backup-check.timer", "agentify-backup-failed.service",
+    )
+    COMMANDS = ("agentify-backup", "agentify-backup-check", "agentify-backup-credentials")
+
+    def install(self, channel, **environment):
+        """Runs install.sh for a channel on a host that runs the interim backup job, and lists what it left."""
+        for name in ("install.sh", "agentify-release", "agentify-release.service", "agentify-release.timer",
+                     "needrestart-agentify-release.conf", *self.UNITS):
+            if (HERE / name).exists():
+                shutil.copy(HERE / name, self.root / "tree/deploy" / name)
+        for name, body in (
+            ("systemctl", 'echo "systemctl $*" >> /h/world/calls\n[[ $1 != show ]] || echo inactive'),
+            ("chage", "echo 'Password expires : never'"),
+            ("apt-get", 'echo "apt-get $*" >> /h/world/calls\n[[ "$*" != *" restic"* ]] || cp /h/restic-package /usr/local/bin/restic'),
+            ("curl", "exit 0"), ("git", "exit 0"),
+        ):
+            (self.root / "bin" / name).write_text(f"#!/usr/bin/env bash\n{body}\n")
+            (self.root / "bin" / name).chmod(0o755)
+        said = self.run_script(
+            f"channel={channel}\n"
+            "mkdir -p /usr/local/sbin /etc/systemd/system /etc/cron.d\n"
+            "echo '*/10 * * * * root /usr/local/sbin/agentify-backup-interim' > /etc/cron.d/agentify-backup-interim\n"
+            "printf '#!/bin/sh\\n' > /usr/local/sbin/agentify-backup-interim\n"
+            "[[ $channel != test ]] || install -m 600 /h/etc/production.env /etc/agentify/test.env\n"
+            "/h/tree/deploy/install.sh $channel; echo \"install exit $?\"\n"
+            "find /usr/local/sbin /etc/systemd/system /etc/cron.d -type f -printf '%f\\n' | sort > /h/world/installed\n"
+            "command -v restic > /h/world/restic || true",
+            **environment,
+        )
+        return said, (self.world / "installed").read_text().split()
+
+    def test_production_installs_the_backup_and_its_check_starts_both_timers_and_removes_the_interim_job(self):
+        said, installed = self.install("production")
+        self.assertRegex(said, r"(?m)^install exit 0$")
+        self.assertTrue(set(self.UNITS + self.COMMANDS) <= set(installed), installed)
+        self.assertNotIn("agentify-backup-interim", installed)
+        self.assertIn("systemctl enable --now agentify-backup.timer agentify-backup-check.timer", self.calls("systemctl"))
+
+    def test_production_without_backup_env_is_refused_and_nothing_is_installed(self):
+        (self.root / "etc/backup.env").unlink()
+        said, installed = self.install("production")
+        self.assertRegex(said, r"(?m)^install exit 1$")
+        self.assertIn("/etc/agentify/backup.env", said)
+        self.assertEqual(sorted(installed), ["agentify-backup-interim", "agentify-backup-interim"])
+
+    def test_production_with_a_backup_env_others_can_read_is_refused_and_nothing_is_installed(self):
+        said, installed = self.install("production", BACKUP_ENV_MODE="644")
+        self.assertRegex(said, r"(?m)^install exit 1$")
+        self.assertIn("/etc/agentify/backup.env", said)
+        self.assertEqual(sorted(installed), ["agentify-backup-interim", "agentify-backup-interim"])
+
+    def test_a_restic_without_the_lock_wait_the_backup_uses_is_refused_and_nothing_is_installed(self):
+        said, installed = self.install("production", RESTIC_VERSION="0.12.1")
+        self.assertRegex(said, r"(?m)^install exit 1$")
+        self.assertIn("0.12.1", said)
+        self.assertEqual(sorted(installed), ["agentify-backup-interim", "agentify-backup-interim"])
+
+    def test_a_host_without_restic_gets_it_from_its_packages(self):
+        (self.root / "bin/restic").rename(self.root / "restic-package")
+        said, installed = self.install("production")
+        self.assertRegex(said, r"(?m)^install exit 0$")
+        self.assertEqual((self.world / "restic").read_text().strip(), "/usr/local/bin/restic")
+
+    def test_test_takes_no_backups(self):
+        said, installed = self.install("test")
+        self.assertRegex(said, r"(?m)^install exit 0$")
+        self.assertFalse(set(self.UNITS + self.COMMANDS) & set(installed), installed)
+        self.assertFalse([call for call in self.calls("systemctl") if "agentify-backup" in call])
+
 
 if __name__ == "__main__":
     unittest.main()
