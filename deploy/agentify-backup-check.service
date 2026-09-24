@@ -1,0 +1,10 @@
+[Unit]
+Description=Restore this channel's latest backup into scratch databases and compare its row counts
+After=network-online.target docker.service
+Wants=network-online.target
+OnFailure=agentify-backup-failed.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/agentify-backup-check
+TimeoutStartSec=2h

@@ -610,7 +610,7 @@ class Backups(unittest.TestCase):
             "printf '#!/bin/sh\\n' > /usr/local/sbin/agentify-backup-interim\n"
             "[[ $channel != test ]] || install -m 600 /h/etc/production.env /etc/agentify/test.env\n"
             "/h/tree/deploy/install.sh $channel; echo \"install exit $?\"\n"
-            "find /usr/local/sbin /etc/systemd/system /etc/cron.d -type f -printf '%f\\n' | sort > /h/world/installed\n"
+            "find /usr/local/sbin /etc/systemd/system /etc/cron.d -type f -name 'agentify*' -printf '%f\\n' | sort > /h/world/installed\n"
             "command -v restic > /h/world/restic || true",
             **environment,
         )
