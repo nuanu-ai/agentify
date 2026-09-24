@@ -311,16 +311,8 @@ try {
   assert.equal(response.status, 404);
   assert.match(await response.text(), /documentation missing fixture/);
 
-  // The landing is reachable under /sell/ whichever front page a stack names.
-  response = await fetch(`${innerBase}/sell`, { redirect: "manual" });
-  assert.equal(response.status, 302);
-  assert.equal(response.headers.get("location"), "/sell/");
-  response = await fetch(`${innerBase}/sell/`);
-  assert.equal(response.status, 200);
-  assert.match(await response.text(), /landing fixture/);
-  response = await fetch(`${innerBase}/sell/landing.css`);
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/css(?:;|$)/);
+  // Without commerce_front_page the landing is not served at all.
+  await expectProxy(innerBase, "/sell/", "scanner");
 
   for (const [requestPath, role] of [
     ["/missing", "scanner"],
@@ -411,6 +403,12 @@ try {
   response = await fetch(`${commerceBase}/`);
   assert.equal(response.status, 200);
   assert.match(await response.text(), /landing fixture/);
+  response = await fetch(`${commerceBase}/sell`, { redirect: "manual" });
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get("location"), "/sell/");
+  response = await fetch(`${commerceBase}/sell/landing.css`);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") ?? "", /^text\/css(?:;|$)/);
   for (const [requestPath, role] of [
     ["/owner", "scanner"],
     ["/api/health", "scanner"],

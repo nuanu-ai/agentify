@@ -95,11 +95,19 @@
 	}
 }
 
-# The commerce landing as the front page: the exact root is the landing, and
-# every other path the scanner serves stays the scanner's. A stack opts in by
-# naming this snippet in AGENTIFY_FRONT_PAGE; the landing itself is reachable
-# at /sell/ on every stack either way.
+# The commerce landing as the front page: the exact root is the landing, its
+# stylesheet and script are under /sell/, and every other path the scanner
+# serves stays the scanner's. A stack opts in by naming this snippet in
+# AGENTIFY_FRONT_PAGE; on a stack that does not, /sell/ is the scanner's as
+# before, so nothing about the landing is public there. no-cache makes a
+# browser check for a changed file instead of showing yesterday's page.
 (commerce_front_page) {
+	redir /sell /sell/
+	handle_path /sell/* {
+		header Cache-Control "no-cache"
+		root * {$AGENTIFY_SELL_ROOT:/srv/sell}
+		file_server
+	}
 	@home path /
 	handle @home {
 		header Cache-Control "no-cache"
@@ -276,18 +284,6 @@
 			mime text/html
 			between <!--{{ }}-->
 		}
-		file_server
-	}
-
-	# The commerce landing: static files, like the portal, so the prefix is
-	# stripped. Its pages ask for their stylesheet and script under /sell/, so
-	# they work both here and when commerce_front_page puts the page at /.
-	# no-cache makes a browser check for a changed file instead of showing
-	# yesterday's copy of the page.
-	redir /sell /sell/
-	handle_path /sell/* {
-		header Cache-Control "no-cache"
-		root * {$AGENTIFY_SELL_ROOT:/srv/sell}
 		file_server
 	}
 
