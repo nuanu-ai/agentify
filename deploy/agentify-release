@@ -403,8 +403,8 @@ def launch(config, argv):
     unit_run = subprocess.Popen(
         ["systemd-run", f"--unit={unit}", "--wait", "--collect", "--quiet",
          # What agentify-release.service holds for the timer: after Docker,
-         # so a shutdown stops the release and its restore before Docker;
-         # the same last resort and time to restore; readable state.
+         # so a shutdown stops a release or a restore before Docker; the same
+         # last resort and time to end in its own words; readable state.
          "--property=After=network-online.target docker.service", "--property=Wants=network-online.target",
          "--property=Requires=docker.service", "--property=UMask=0022",
          "--property=RuntimeMaxSec=2h", "--property=TimeoutStopSec=30min",

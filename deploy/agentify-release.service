@@ -17,7 +17,8 @@ ExecStartPre=/usr/bin/systemctl is-active --quiet docker.service
 ExecStart=/usr/local/sbin/agentify-release --timer deploy-test
 SuccessExitStatus=75
 # The last resort for a release that hangs; the pull alone gives up after
-# 30 minutes. A stop request gives activation time to restore the databases.
+# 30 minutes. A stop request gives activation time to end in its own words,
+# restarting what it stopped when no migration had run.
 TimeoutStartSec=2h
 TimeoutStopSec=30min
 # The state it writes holds nothing secret and is readable by anyone on the
