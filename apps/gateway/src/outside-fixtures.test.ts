@@ -518,7 +518,7 @@ describe("a purchase from the outside", () => {
         body: { payout_wallet: theirWallet.toLowerCase() },
       });
       expect(paidAt.status, JSON.stringify(paidAt.body)).toBe(200);
-      expect(paidAt.body).toStrictEqual({ payout_wallet: theirWallet });
+      expect(paidAt.body).toStrictEqual({ payout_wallet: theirWallet, pending: null });
 
       const published = await gateway.call("POST", "/v0/catalog/publish", {
         headers: { authorization: `Bearer ${theirKey}` },

@@ -294,7 +294,7 @@ describe("the calls behind the address a merchant's money arrives at", () => {
   const SHAPED = "0x0123456789abcdef0123456789abcdef01234567";
 
   it("reads the address as the merchant whose key it holds, and hands back the address", async () => {
-    const { url, arrived } = await recordingServer(200, { payout_wallet: SHAPED });
+    const { url, arrived } = await recordingServer(200, { payout_wallet: SHAPED, pending: null });
 
     const read = await gatewayFor(url, KEY).payoutWallet();
 
@@ -313,7 +313,7 @@ describe("the calls behind the address a merchant's money arrives at", () => {
     // another for "here is where it goes". A client that folded the absent
     // field into null would draw the first for a merchant whose answer simply
     // did not arrive.
-    const { url } = await recordingServer(200, { payout_wallet: null });
+    const { url } = await recordingServer(200, { payout_wallet: null, pending: null });
 
     const read = await gatewayFor(url, KEY).payoutWallet();
 
@@ -325,7 +325,7 @@ describe("the calls behind the address a merchant's money arrives at", () => {
   });
 
   it("sends the address a merchant pasted and hands back what was written", async () => {
-    const { url, arrived } = await recordingServer(200, { payout_wallet: SHAPED });
+    const { url, arrived } = await recordingServer(200, { payout_wallet: SHAPED, pending: null });
 
     const set = await gatewayFor(url, KEY).setPayoutWallet(SHAPED);
 
@@ -351,7 +351,7 @@ describe("the calls behind the address a merchant's money arrives at", () => {
     // money goes. An answer carrying something that is not an address is a
     // gateway we cannot draw that page from, and stopping here is how that is
     // found rather than as forty characters a merchant checks against nothing.
-    const { url } = await recordingServer(200, { payout_wallet: "not-an-address" });
+    const { url } = await recordingServer(200, { payout_wallet: "not-an-address", pending: null });
 
     await expect(gatewayFor(url, KEY).payoutWallet()).rejects.toThrow();
   });

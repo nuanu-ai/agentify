@@ -336,6 +336,33 @@ export const SellerNameRequestSchema = z
   });
 
 /**
+ * A change of the wallet that has been asked for, announced, and has not taken
+ * effect yet.
+ *
+ * It exists because a replacement does not apply at once where the money is
+ * real (ADR-0019). The address a merchant is paid at is the one setting whose
+ * change redirects money, and any key of theirs reaches it — the cabinet's, or
+ * one sitting in their own server's environment — so on the live deployment a
+ * replacement is told to every account of the merchant first and takes effect
+ * forty-eight hours after that. What this document says is the two facts a
+ * merchant needs in that window: what replaces the address, and from when.
+ *
+ * Both are required. An address with no moment says nothing about when the
+ * money moves, and a moment with no address says it moves without saying where.
+ */
+export const PendingPayoutWalletSchema = z
+  .strictObject({
+    /** The address the merchant will be paid at once the wait is over. */
+    payout_wallet: EvmAddressSchema,
+    /** The moment it replaces the address paid now. */
+    takes_effect_at: TimestampSchema,
+  })
+  .meta({
+    description:
+      "A replacement wallet that has been asked for and announced and has not taken effect yet. payout_wallet is the address sales will be paid into from takes_effect_at on, in the mixed-case spelling a wallet shows; until that moment every payment request still names the address paid now. The change takes effect then only if it is still the one waiting: asking for the address paid now cancels it, and asking for a different address replaces it and starts the wait again.",
+  });
+
+/**
  * The wallet a merchant's sales are paid into, as the merchant reads it back.
  *
  * Payments here are not held by anybody on the way: a buyer's agent pays the
@@ -358,15 +385,31 @@ export const SellerNameRequestSchema = z
  * address in lower case they cannot tell it from a different address without
  * comparing character by character. On the one field money is sent to, that
  * glance is the whole of the checking anybody does.
+ *
+ * `pending` is the change waiting beside it, and it is always present for the
+ * same reason `payout_wallet` is: null says nothing is waiting, and an absent
+ * field would be a silence. It is the field that keeps a caller from taking its
+ * own write for a failure — a merchant who asked for a new address on the live
+ * deployment reads the old one back, correctly, for forty-eight hours, and
+ * without this they would ask again, or conclude the change was lost.
+ *
+ * It is carried without moving `CONTRACT_VERSION`, which is the one known
+ * exception to the rule that a new required field moves it (ADR-0006 §2): no
+ * worker of the SDK reads this route, so the version would stop every
+ * installed worker for a field none of them sees. What that costs is that a
+ * merchant's own code holding this schema from an older release of this
+ * package refuses the answer until the package is upgraded.
  */
 export const PayoutWalletSchema = z
   .strictObject({
-    /** Where this merchant's sales are paid, or nothing at all. */
+    /** Where this merchant's sales are paid now, or nothing at all. */
     payout_wallet: EvmAddressSchema.nullable(),
+    /** A replacement that has been announced and is waiting, or nothing. */
+    pending: PendingPayoutWalletSchema.nullable(),
   })
   .meta({
     description:
-      "The address a merchant's sales are paid into. Payments are not held by anybody on the way: a buyer's agent pays this address directly, and it is the payTo of every payment request made for this merchant's products. Null means nobody has set one, which is where every merchant starts; the field is always present rather than left out, because an absent field is indistinguishable from a client that dropped it. The address comes back in the mixed-case spelling a wallet shows, whichever of the two accepted spellings was sent — so what a merchant reads back on a screen is character for character what they copied out of their wallet. On a deployment that settles on a real chain a merchant with no wallet here cannot publish a card, because the money from that card's sales would have nowhere to go.",
+      "The address a merchant's sales are paid into, and any change of it that is waiting. Payments are not held by anybody on the way: a buyer's agent pays payout_wallet directly, and it is the payTo of every payment request made for this merchant's products now. Null means nobody has set one, which is where every merchant starts; the field is always present rather than left out, because an absent field is indistinguishable from a client that dropped it. The address comes back in the mixed-case spelling a wallet shows, whichever of the two accepted spellings was sent — so what a merchant reads back on a screen is character for character what they copied out of their wallet. On a deployment that settles on a real chain a merchant with no wallet here cannot publish a card, because the money from that card's sales would have nowhere to go. pending is a replacement that has been asked for and has not taken effect: on the live deployment a merchant who already has a wallet and asks for a different one is told of it by message, and the new address takes effect forty-eight hours later, so until takes_effect_at this answer names the address still paid and the waiting one beside it. A caller reading its old address back beside a pending change has not failed to write; the change is waiting. Null means nothing is waiting, which is every answer on the test channel and in a sandbox, where a change applies at once.",
   });
 
 /**
@@ -474,6 +517,7 @@ export type SellerName = z.infer<typeof SellerNameSchema>;
 export type SellerNameRequest = z.infer<typeof SellerNameRequestSchema>;
 export type PayoutWallet = z.infer<typeof PayoutWalletSchema>;
 export type PayoutWalletRequest = z.infer<typeof PayoutWalletRequestSchema>;
+export type PendingPayoutWallet = z.infer<typeof PendingPayoutWalletSchema>;
 export type MerchantKey = z.infer<typeof MerchantKeySchema>;
 export type MerchantKeyList = z.infer<typeof MerchantKeyListSchema>;
 export type IssueKeyRequest = z.infer<typeof IssueKeyRequestSchema>;

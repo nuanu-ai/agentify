@@ -684,7 +684,7 @@ export class Gateway {
         `the key on this call resolved to ${merchantId}, and there is no such merchant`,
       );
     }
-    return { payout_wallet: merchant.payoutWallet };
+    return { payout_wallet: merchant.payoutWallet, pending: null };
   }
 
   /**
@@ -723,7 +723,7 @@ export class Gateway {
         `the key on this call resolved to ${merchantId}, and there is no such merchant`,
       );
     }
-    return { payout_wallet: paid.payoutWallet };
+    return { payout_wallet: paid.payoutWallet, pending: null };
   }
 
   /**
