@@ -31,3 +31,5 @@ COPY deploy/Caddyfile /etc/caddy/Caddyfile
 # the addresses the route table names.
 COPY packages/visual/public /srv/assets
 COPY --from=portal /app/apps/docs/.vitepress/dist /srv/docs
+COPY apps/commerce-landing /srv/sell
+COPY packages/visual/tokens.css /srv/sell/tokens.css
