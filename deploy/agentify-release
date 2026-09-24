@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """Releases one revision on this host's channel.
 
-    sudo agentify-release app-v1.2.3        a tag, a branch, or on TEST a full SHA
-    agentify-release --timer deploy-test    what TEST's timer runs once a minute
+    sudo agentify-release app-v1.2.3                 a tag, a branch, or on TEST a full SHA
+    sudo agentify-release --restore <restore point>  puts both databases back as it holds them
+    agentify-release --timer deploy-test             what TEST's timer runs once a minute
 
-A person's run does not release from the terminal. It hands the release to a
-transient systemd unit, agentify-release-<channel>, and follows the unit's
-journal until it ends, returning its exit status; a dropped connection or
-Ctrl-C stops only the following. Inside a unit (that one, or the timer's) it
-releases itself.
+A person's run does not release or restore from the terminal. It hands the
+work to a transient systemd unit, agentify-release-<channel>, and follows the
+unit's journal until it ends, returning its exit status; a dropped connection
+or Ctrl-C stops only the following. Inside a unit (that one, or the timer's) it
+does the work itself. A restore runs deploy/restore.sh from the checkout of the
+revision the transition record names, or else of `current`; nothing but a
+person's `--restore` ever restores.
 
 It resolves the name with `git ls-remote` against the public repository, finds
 the revision's five images by the digests its image build published, fetches
@@ -28,22 +31,26 @@ and the commit moves forward from the revision this host runs.
 The state directory is /var/lib/agentify/<channel>, which activate.sh and
 restore.sh read as well. It holds nothing secret, so it and its files can be
 read by anyone on the host: `current`, the revision whose data the channel
-holds, written after a verified activation and by a restore; `failed`, the
-last revision that was refused or failed; `seen`, the revision the timer last
-began waiting for and when; and the transition record deploy/transition keeps.
+holds, written by activate.sh before a verified release removes its record and
+by a restore; `failed`, the last revision that was refused or failed; `seen`,
+the revision the timer last began waiting for and when; `tags`, which app-v*
+tag points at which revision, for messages; and the transition record
+deploy/transition keeps.
 A checkout is removed only after another revision is verified, when no record
 names it. A person's run never skips anything and is how a release is retried.
 Timer mode (TEST only) exits 0 without a word when the tag names `current` or
-`failed`, or while the transition record waits for a person. A wait (no build
-listed yet, a build still running, images that did not arrive, a lock) exits
-75, and the next tick asks again, until the timer has waited 30 minutes for
-that revision in this boot; then the wait is recorded as a failure.
+`failed`, or while the transition record waits for a person or cannot be
+read. A wait (no build listed yet, a build still running, images that did not
+arrive, a lock) exits 75, and the next tick asks again, until the timer has
+waited 30 minutes for that revision in this boot; then the wait is recorded as
+a failure.
 
 Exit codes: 0 done, or in timer mode nothing to do; 75 a wait, nothing
-changed; 1 a refusal; anything else is activate.sh's own.
+changed; 1 a refusal; anything else is activate.sh's or restore.sh's own.
 """
 
 import argparse
+import contextlib
 import fcntl
 import http.client
 import json
@@ -210,9 +217,57 @@ def read(path):
 
 def write(path, text):
     temporary = path.with_name(f".{path.name}")
-    temporary.write_text(text + "\n")
+    with temporary.open("w") as new:
+        new.write(text + "\n")
+        new.flush()
+        os.fsync(new.fileno())
     temporary.chmod(0o644)
     os.replace(temporary, path)
+
+
+def open_transition(state):
+    """The transition record activate.sh and restore.sh keep, {} when there is none.
+    One that cannot be read waits for a person, like an unfinished restore."""
+    text = read(state / "transition")
+    try:
+        record = json.loads(text) if text is not None else {}
+    except ValueError:
+        record = None
+    return record if isinstance(record, dict) else {"restoring": "the record cannot be read"}
+
+
+def write_tags(config, state):
+    """Which app-v* tag points at which revision, one `<revision> <tag>` a line,
+    for the messages and the record activate.sh and restore.sh write."""
+    tags = {}
+    for line in git("ls-remote", "--tags", config["repository"], "refs/tags/app-v*", fails=Wait).splitlines():
+        revision, _, ref = line.partition("\t")
+        name = ref.removeprefix("refs/tags/")
+        if name.endswith("^{}"):
+            tags[name[:-3]] = revision
+        else:
+            tags.setdefault(name, revision)
+    write(state / "tags", "\n".join(f"{revision} {name}" for name, revision in sorted(tags.items())))
+
+
+def channel_state(config):
+    state = STATES / config["channel"]
+    # Nothing here is secret (revision names, checkouts of the public
+    # repository, public digests), so a person on the host can read it.
+    state.mkdir(parents=True, exist_ok=True)
+    for directory in (state.parent, state):
+        directory.chmod(0o755)
+    return state
+
+
+@contextlib.contextmanager
+def command_lock(state):
+    with (state / "release.lock").open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise Wait("another agentify-release holds this host's lock")
+        yield
 
 
 def booted():
@@ -251,6 +306,7 @@ def activate(config, state, name, revision, mirror):
         raise Refusal(f"{path} is not a clean checkout of {revision}")
     if not (path / "deploy" / "activate.sh").is_file():
         raise Refusal(f"{revision} has no deploy/activate.sh, so it predates this way of releasing")
+    write_tags(config, state)
     say(f"activating {name} ({revision}) on {config['channel']}")
     return subprocess.run(
         [str(path / "deploy" / "activate.sh"), config["channel"], revision], cwd=path, env={**os.environ, **images}
@@ -258,19 +314,10 @@ def activate(config, state, name, revision, mirror):
 
 
 def release(config, name, timer):
-    state = STATES / config["channel"]
     if timer and config["channel"] != "test":
         raise Refusal("only TEST releases by timer; a person releases production")
-    # Nothing here is secret (revision names, checkouts of the public
-    # repository, public digests), so a person on the host can read it.
-    state.mkdir(parents=True, exist_ok=True)
-    for directory in (state.parent, state):
-        directory.chmod(0o755)
-    with (state / "release.lock").open("a") as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise Wait("another agentify-release holds this host's lock")
+    state = channel_state(config)
+    with command_lock(state):
         revision = resolve(config["repository"], name, config["channel"] == "production")
         if revision is None:
             if timer:
@@ -278,13 +325,12 @@ def release(config, name, timer):
             raise Refusal(f"{name} names nothing in the repository")
         if timer and revision in (read(state / "current"), read(state / "failed")):
             return 0
-        # Another revision's transition that had not started, or an unfinished
-        # restore, waits for a person (activate.sh), so the timer leaves this
-        # revision alone rather than recording it as failed.
-        open_transition = json.loads(read(state / "transition") or "{}")
-        if timer and open_transition.get("to") != revision and (
-            open_transition.get("restoring") or open_transition.get("phase") not in (None, "started")
-        ):
+        # Another revision's transition that had not started, an unfinished
+        # restore or a record that cannot be read waits for a person
+        # (activate.sh), so the timer leaves this revision alone rather than
+        # recording it as failed.
+        record = open_transition(state)
+        if timer and (record.get("restoring") or (record.get("to") != revision and record.get("phase") not in (None, "started"))):
             return 0
         since = first_seen(state, revision) if timer else None
         mirror = state / "repository.git"
@@ -317,6 +363,22 @@ def release(config, name, timer):
         return 0
 
 
+def restore(config, directory):
+    """Runs restore.sh for a person, inside the unit, from the checkout of the
+    revision the transition record names, or else of `current`."""
+    state = channel_state(config)
+    with command_lock(state):
+        revision = open_transition(state).get("to") or read(state / "current") or ""
+        script = state / "checkouts" / revision / "deploy" / "restore.sh"
+        if not revision or not script.is_file():
+            raise Refusal(f"no checkout on this host names a restore.sh for {revision or 'a channel no release has verified'}")
+        write_tags(config, state)
+        code = subprocess.run([str(script), directory]).returncode
+        if code == 75:
+            raise Wait("the restore had to wait, for the reason in its line above")
+        return code
+
+
 def read_config(path):
     config = json.loads(Path(path).read_text())
     if not isinstance(config, dict) or set(config) != {"channel", "repository"}:
@@ -327,14 +389,14 @@ def read_config(path):
 
 
 def launch(config, argv):
-    """Hands a person's release to a transient unit and follows its journal until it ends."""
+    """Hands a person's release or restore to a transient unit and follows its journal until it ends."""
     unit = f"agentify-release-{config['channel']}.service"
     if os.geteuid() != 0:
         raise Refusal(f"agentify-release runs as root: sudo agentify-release {' '.join(argv)}")
     if subprocess.run(["systemctl", "is-active", "--quiet", unit]).returncode == 0:
-        raise Wait(f"a release is already running as {unit}; journalctl -u {unit} -f follows it")
+        raise Wait(f"a release or restore is already running as {unit}; journalctl -u {unit} -f follows it")
     since = f"@{int(time.time())}"
-    say(f"the release runs as {unit}: a lost connection does not stop it, and journalctl -u {unit} holds its whole log")
+    say(f"it runs as {unit}: a lost connection does not stop it, and journalctl -u {unit} holds its whole log")
     unit_run = subprocess.Popen(
         ["systemd-run", f"--unit={unit}", "--wait", "--collect", "--quiet",
          # What agentify-release.service holds for the timer: after Docker,
@@ -357,24 +419,29 @@ def launch(config, argv):
             time.sleep(1)
             follow()
         except KeyboardInterrupt:
-            say(f"stopped following; the release goes on as {unit}, and journalctl -u {unit} -f follows it")
+            say(f"stopped following; it goes on as {unit}, and journalctl -u {unit} -f follows it")
             return 130
     return unit_run.returncode
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Release one revision on this host's channel")
-    parser.add_argument("name", help="an app-v* tag on production; a tag, branch or full SHA on test")
+    parser = argparse.ArgumentParser(description="Release one revision on this host's channel, or restore a restore point")
+    parser.add_argument("name", nargs="?", help="an app-v* tag on production; a tag, branch or full SHA on test")
     parser.add_argument("--timer", action="store_true", help="skip what is current or failed, and wait quietly")
+    parser.add_argument("--restore", metavar="DIRECTORY", help="restore both databases from this restore point")
     parser.add_argument("--config", type=Path, default=Path("/etc/agentify/release.json"))
     arguments = parser.parse_args(argv)
+    if (arguments.name is None) == (arguments.restore is None) or (arguments.timer and arguments.restore):
+        parser.error("name one revision to release, or --restore one restore point")
     try:
         config = read_config(arguments.config)
         if not arguments.timer and "INVOCATION_ID" not in os.environ:
             return launch(config, sys.argv[1:] if argv is None else argv)
-        # Inside a unit a stop request reaches activate.sh, which undoes what
-        # it must; this process waits for it to finish and records the result.
+        # Inside a unit a stop request reaches activate.sh or restore.sh, which
+        # end as they must; this process waits for that and records the result.
         signal.signal(signal.SIGTERM, lambda signum, frame: None)
+        if arguments.restore:
+            return restore(config, arguments.restore)
         return release(config, arguments.name, arguments.timer)
     except Wait as wait:
         say(f"{wait}; nothing changed" + ("; the next tick asks again" if arguments.timer else ", run this again later"))
@@ -383,7 +450,7 @@ def main(argv=None):
         say(f"refused: {refusal}")
         return 1
     except PermissionError as error:
-        say(f"agentify-release runs as root: sudo agentify-release {arguments.name} ({error})")
+        say(f"agentify-release runs as root: sudo agentify-release {arguments.name or '--restore ' + arguments.restore} ({error})")
         return 1
     except (OSError, ValueError) as error:
         say(f"refused its own configuration or state: {error}")
