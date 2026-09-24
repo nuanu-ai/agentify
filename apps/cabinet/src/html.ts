@@ -199,7 +199,6 @@ export const page = (chrome: Chrome): string => {
 </head>
 <body>
 <div class="page">
-${surface(chrome.mode)}
   <div class="app-shell">
     <aside class="app-sidebar">
       <div class="app-sidebar-brand">${brandLockup(chrome.home ?? "/")}<span>SELLER DASHBOARD</span></div>
@@ -209,6 +208,12 @@ ${surface(chrome.mode)}
       ${narrowMenu(chrome)}
     </aside>
     <div class="app-workspace">
+      ${
+        // The stack notice heads the workspace rather than the window: the
+        // sidebar is a full-height sticky column, and a band above it would
+        // push its foot below the first screen.
+        surface(chrome.mode)
+      }
       <header class="top"><div class="top-inner">
         <h1 class="top-title">${title}</h1>
         ${chrome.selling === undefined ? "" : state(chrome.selling)}
