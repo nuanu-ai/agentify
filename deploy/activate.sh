@@ -63,7 +63,7 @@ fail() {
   trap - ERR
   trap '' INT TERM HUP
   [[ -z $checker ]] || docker rm -f "$checker" >/dev/null 2>&1 || true
-  [[ $from != none ]] || move="; this channel had no release by this command before, and deploy/README.md, \"Production's one-time move\", says how the old scanner starts again"
+  [[ $from != none ]] || move="; this channel had no release by this command before, so nothing older than that was started"
   case $phase in
     checking) echo "activate: $step failed; nothing was stopped.$down" >&2 ;;
     stopped)

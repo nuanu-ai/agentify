@@ -376,15 +376,14 @@ class Activation(unittest.TestCase):
         self.assertEqual((self.record()["to"], self.record()["phase"]), (NEW, "started"))
 
     def test_without_a_previous_release_the_message_says_what_does_not_run(self):
-        # PRODUCTION's move: no release by this command before, and the old
-        # scanner project's containers stopped by hand.
+        # A host this command never released: no `current`, and no scanner
+        # containers for a failed release to start again.
         (self.root / "state/test/current").unlink()
         for container in ("scanner", "scanner-worker"):
             (self.world / "containers" / container).unlink()
         said = self.run_script("activate", FAIL_AT="exec -T postgres pg_dump -U agentify_commerce -Fc agentify_scanner")
         self.assertIn("exit 1", said)
         self.assertIn("running now: cabinet gateway", said)
-        self.assertIn("Production's one-time move", said)
 
     # A rerun of the same revision.
 
