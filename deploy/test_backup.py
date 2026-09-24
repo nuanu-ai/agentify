@@ -232,7 +232,7 @@ class Backups(unittest.TestCase):
         return said, (self.world / "installed").read_text().split()
 
     BACKUP = ["agentify-backup", "agentify-backup-check", "agentify-backup-check.service", "agentify-backup-check.timer",
-              "agentify-backup-credentials", "agentify-backup-failed.service", "agentify-backup.service", "agentify-backup.timer"]
+              "agentify-backup-credentials", "agentify-backup-failed@.service", "agentify-backup.service", "agentify-backup.timer"]
 
     def test_production_installs_the_backup_starts_its_timers_and_removes_the_interim_job(self):
         said, installed = self.install("production")

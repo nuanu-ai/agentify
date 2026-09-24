@@ -19,7 +19,7 @@ exec 9> /run/lock/agentify-release.lock
 flock -w 300 9 || { echo "backup: the release lock stayed busy for five minutes; nothing was dumped." >&2; exit 75; }
 # Found by Compose's labels, as a release finds it; deploy/stack.sh names the project.
 postgres="$(docker ps -q --filter label=com.docker.compose.project=agentify-commerce --filter label=com.docker.compose.service=postgres)"
-[[ -n $postgres && $postgres != *$'\n'* ]]
+(($(wc -w <<< "$postgres") == 1)) || { echo "backup: PRODUCTION's postgres container is not running, so nothing was dumped." >&2; exit 1; }
 databases=()
 for database in $(docker exec "$postgres" psql -U agentify_commerce -d postgres -XAtc "SELECT datname FROM pg_database WHERE NOT datistemplate"); do
   [[ $database =~ ^(postgres$|check_)|_replaced_|_restoring$|_test$ ]] || databases+=("$database")

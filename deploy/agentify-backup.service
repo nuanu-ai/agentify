@@ -5,10 +5,13 @@ Description=Back up this channel's databases and configuration to its restic rep
 # OnFailure= would miss it; without Docker the backup fails in its own words.
 After=network-online.target docker.service
 Wants=network-online.target
-OnFailure=agentify-backup-failed.service
+OnFailure=agentify-backup-failed@%n.service
 
 [Service]
 Type=oneshot
+# restic's cache; a system service has no HOME to keep it under.
+CacheDirectory=restic
+Environment=RESTIC_CACHE_DIR=/var/cache/restic
 ExecStart=/usr/local/sbin/agentify-backup
 # A oneshot unit is not started again while it runs, so a run that outlasts
 # ten minutes delays the next one rather than overlapping it. One that hangs,

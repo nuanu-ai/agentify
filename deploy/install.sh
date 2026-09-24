@@ -61,7 +61,7 @@ else
   install -m 755 "$root/deploy/backup.sh" /usr/local/sbin/agentify-backup
   install -m 755 "$root/deploy/backup-check.sh" /usr/local/sbin/agentify-backup-check
   install -m 755 "$root/deploy/backup-credentials.sh" /usr/local/sbin/agentify-backup-credentials
-  install -m 644 "$root"/deploy/agentify-backup{,-check}.{service,timer} "$root/deploy/agentify-backup-failed.service" /etc/systemd/system/
+  install -m 644 "$root"/deploy/agentify-backup{,-check}.{service,timer} "$root/deploy/agentify-backup-failed@.service" /etc/systemd/system/
   rm -f /etc/cron.d/agentify-backup-interim /usr/local/sbin/agentify-backup-interim
 fi
 if [[ -d /etc/needrestart ]]; then

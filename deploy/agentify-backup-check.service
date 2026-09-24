@@ -2,9 +2,12 @@
 Description=Restore this channel's latest backup into scratch databases and compare its row counts
 After=network-online.target docker.service
 Wants=network-online.target
-OnFailure=agentify-backup-failed.service
+OnFailure=agentify-backup-failed@%n.service
 
 [Service]
 Type=oneshot
+# restic's cache; a system service has no HOME to keep it under.
+CacheDirectory=restic
+Environment=RESTIC_CACHE_DIR=/var/cache/restic
 ExecStart=/usr/local/sbin/agentify-backup-check
 TimeoutStartSec=2h
