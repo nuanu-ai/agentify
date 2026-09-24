@@ -365,13 +365,16 @@ def release(config, name, timer):
 
 def restore(config, directory):
     """Runs restore.sh for a person, inside the unit, from the checkout of the
-    revision the transition record names, or else of `current`."""
+    revision the transition record names, or else of `current`, or else any
+    checkout here: each describes the same channel."""
     state = channel_state(config)
     with command_lock(state):
-        revision = open_transition(state).get("to") or read(state / "current") or ""
-        script = state / "checkouts" / revision / "deploy" / "restore.sh"
-        if not revision or not script.is_file():
-            raise Refusal(f"no checkout on this host names a restore.sh for {revision or 'a channel no release has verified'}")
+        named = [open_transition(state).get("to"), read(state / "current")]
+        others = sorted((state / "checkouts").glob("*/deploy/restore.sh")) if (state / "checkouts").exists() else []
+        scripts = [state / "checkouts" / name / "deploy" / "restore.sh" for name in named if name] + others
+        script = next((script for script in scripts if script.is_file()), None)
+        if script is None:
+            raise Refusal("no checkout on this host has deploy/restore.sh; a release puts one here")
         write_tags(config, state)
         code = subprocess.run([str(script), directory]).returncode
         if code == 75:
