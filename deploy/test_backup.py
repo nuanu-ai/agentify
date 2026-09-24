@@ -424,6 +424,83 @@ class Backups(unittest.TestCase):
         self.assertIn("/etc/agentify/backup.env", said)
         self.assertFalse((self.world / "dumped").exists())
 
+    # The weekly check.
+
+    def scratch_databases(self):
+        return [name for name in self.databases() if name.startswith("check_")]
+
+    def live(self):
+        return {database: {path.name: path.read_text() for path in sorted((self.world / "db" / database).iterdir())} for database in LIVE}
+
+    def check_line(self):
+        return next((line for line in self.status().splitlines() if line.startswith("check ")), "")
+
+    def test_a_check_restores_the_latest_snapshot_whole_and_leaves_no_scratch_database(self):
+        before = self.live()
+        said = self.run_script("backup\ncheck")
+        self.assertIn("check exit 0", said)
+        [snapshot] = self.snapshots()
+        self.assertIn(snapshot[:8], self.check_line())
+        self.assertIn("passed", self.check_line())
+        restored = [call for call in self.calls("docker exec -i postgres-1 pg_restore") if " -d " in call]
+        self.assertEqual(len(restored), 2, restored)
+        # The scratch database a killed check left is gone with its own.
+        self.assertEqual(self.scratch_databases(), [])
+        self.assertEqual(self.live(), before)
+        self.assertEqual((self.root / "state/backup-status").stat().st_mode & 0o777, 0o644)
+
+    def test_a_restore_that_loses_a_row_fails_the_check_and_names_the_table(self):
+        said = self.run_script("backup\nLOSE_ROW=public.orders check")
+        self.assertRegex(said, r"check exit [1-9]")
+        self.assertIn("public.orders", said)
+        self.assertIn("failed", self.check_line())
+        self.assertEqual(self.scratch_databases(), [])
+
+    def test_a_failed_restore_fails_the_check_names_the_step_and_drops_the_scratch_databases(self):
+        said = self.run_script("backup\nFAIL_RESTORE=check_agentify_scanner check")
+        self.assertRegex(said, r"check exit [1-9]")
+        self.assertIn("agentify_scanner", said)
+        self.assertIn("failed", self.check_line())
+        self.assertEqual(self.scratch_databases(), [])
+
+    def test_a_check_stopped_by_a_signal_drops_the_scratch_databases(self):
+        said = self.run_script("backup\nTERM_AT='-d check_agentify_scanner' check")
+        self.assertRegex(said, r"check exit [1-9]")
+        self.assertEqual(self.scratch_databases(), [])
+
+    def test_a_repository_that_fails_restics_check_fails_before_anything_is_restored(self):
+        said = self.run_script("backup\nCHECK_FAILS=1 check")
+        self.assertRegex(said, r"check exit [1-9]")
+        self.assertFalse([call for call in self.calls("docker exec -i postgres-1 pg_restore") if " -d " in call])
+        self.assertIn("failed", self.check_line())
+
+    def test_a_check_without_room_for_a_second_copy_restores_nothing(self):
+        said = self.run_script("backup\nDB_FREE_KB=1000 check")
+        self.assertRegex(said, r"check exit [1-9]")
+        self.assertIn("MiB free", said)
+        self.assertFalse([call for call in self.calls("docker exec -i postgres-1 pg_restore") if " -d " in call])
+        self.assertIn("failed", self.check_line())
+
+    def test_a_snapshot_that_recorded_no_row_counts_fails_the_check_in_words(self):
+        self.assertIn("backup exit 0", self.run_script("backup"))
+        [snapshot] = self.snapshots()
+        (self.world / "repo/snapshots" / snapshot / "counts").unlink()
+        said = self.run_script("check")
+        self.assertRegex(said, r"check exit [1-9]")
+        self.assertIn("counts", said)
+        self.assertIn("failed", self.check_line())
+
+    def test_a_repository_without_a_snapshot_fails_the_check_in_words(self):
+        said = self.run_script("check")
+        self.assertRegex(said, r"check exit [1-9]")
+        self.assertIn("no snapshot", said)
+
+    def test_the_check_restores_the_one_database_the_merge_leaves(self):
+        self.server({"agentify": {"public.orders": ["ord_1\tpaid"], "public.scans": ["scan_1", "scan_2"]}, "postgres": {}})
+        said = self.run_script("backup\ncheck")
+        self.assertIn("check exit 0", said)
+        self.assertEqual(self.databases(), ["agentify", "postgres"])
+
 
 if __name__ == "__main__":
     unittest.main()
