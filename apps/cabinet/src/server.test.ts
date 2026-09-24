@@ -2596,6 +2596,21 @@ describe("the keys screen", () => {
 });
 
 describe("what every screen says about the address", () => {
+  it("carries the signed-in address and a sign-out in the header bar of every working screen", async () => {
+    // ADR-0026 §3: when a person is signed in, the header of the cabinet's
+    // pages carries their address and a sign-out, as the scanner's header
+    // does, so the site reads as one product with one session.
+    const { browser } = await started();
+    await browser.signIn();
+
+    for (const path of ["/cards", "/orders", "/receipts", "/keys", "/settings"]) {
+      const answered = await browser.get(path);
+      const bar = /<header class="top">([\s\S]*?)<\/header>/.exec(answered.html)?.[1] ?? "";
+      expect(readable(bar), path).toContain(PERSON);
+      expect(bar, path).toContain('method="post" action="/sign-out"');
+    }
+  });
+
   it("links the signed-in address to settings without a confirmation control", async () => {
     const { browser } = await started();
     await browser.signIn();
