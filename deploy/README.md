@@ -321,7 +321,9 @@ database, and only when both are whole swaps them in, in one transaction,
 dropping the replaced databases afterwards. A bad dump, a failure or a crash
 before the swap leaves the databases as they were, and running it again
 starts over. When it succeeds, `current` names `<previous>`, the revision whose
-data the databases now hold, the record is gone, and the applications are
+data the databases now hold, or no revision at all when the directory is not
+named after one, as with a restore point taken before the first release or the
+backup of PRODUCTION's move; the record is gone, and the applications are
 stopped. Then release `<previous>` again, on TEST with
 `sudo agentify-release <previous>` and on PRODUCTION with its `app-v*` tag:
 since `current` names it, that release stops nothing and starts it, while a
