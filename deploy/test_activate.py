@@ -74,7 +74,8 @@ statement() {
     "CREATE DATABASE "*) : > "$W/db/${1#CREATE DATABASE }" ;;
     "ALTER DATABASE "*) names="${1#ALTER DATABASE }"; mv "$W/db/${names%% *}" "$W/db/${names##* }" ;;
     *"datname like"*) ls "$W/db" | grep _replaced_ || true ;;
-    select*) echo 1000 ;;
+    *"not datistemplate"*) ls "$W/db" ;;
+    select*) echo "${DB_SIZE:-1000}" ;;
   esac
 }
 case "$args" in
@@ -599,6 +600,38 @@ class Activation(unittest.TestCase):
         self.assertIn("MiB free", said)
         self.assertEqual(self.applications(), dict.fromkeys(APPLICATIONS, "new running"))
         self.assertEqual((self.databases(), self.record()), (MIGRATED, None))
+
+    def test_a_restore_that_would_not_fit_on_a_large_volume_changes_nothing(self):
+        # 3 GiB free for databases of 5 GB: the free room is larger than a
+        # 32-bit number, which an awk may print as 3.2e+09.
+        self.assertIn("exit 0", self.run_script("activate"))
+        [point] = self.restore_points()
+        said = self.run_script(f"restore /var/backups/agentify/test/{point}", DB_FREE_KB=str(3 << 20), DB_SIZE="5000000000")
+        self.assertIn("restore exit 1", said)
+        self.assertIn("MiB free", said)
+        self.assertEqual((self.databases(), self.record()), (MIGRATED, None))
+
+    def test_a_restore_point_holding_one_databases_dump_restores_that_one_and_leaves_the_other(self):
+        # How one database is restored from a snapshot of the off-host backup.
+        self.assertIn("exit 0", self.run_script("activate"))
+        [point] = self.restore_points()
+        (self.root / "backups/test" / point / "agentify_commerce.dump").unlink()
+        said = self.run_script(f"restore /var/backups/agentify/test/{point}")
+        self.assertIn("restore exit 0", said)
+        self.assertEqual(self.databases(), {"agentify_commerce": MIGRATED["agentify_commerce"], "agentify_scanner": ORIGINAL["agentify_scanner"]})
+        [replaced] = self.replaced()
+        self.assertTrue(replaced.startswith("agentify_scanner_replaced_"), replaced)
+        # The two databases now hold the data of different revisions, so no
+        # revision is current, and the next release migrates whatever it runs.
+        self.assertIsNone(self.current())
+
+    def test_a_directory_holding_no_dump_is_refused_and_changes_nothing(self):
+        (self.root / "backups/test/empty").mkdir(parents=True)
+        said = self.run_script("restore /var/backups/agentify/test/empty")
+        self.assertIn("restore exit 1", said)
+        self.assertIn("dump", said)
+        self.assertEqual((self.databases(), self.record()), (ORIGINAL, None))
+        self.assertEqual(self.applications(), dict.fromkeys(APPLICATIONS, "old running"))
 
     def test_a_restore_refuses_a_record_it_cannot_read_in_words(self):
         self.assertIn("exit 0", self.run_script("activate"))

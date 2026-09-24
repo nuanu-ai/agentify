@@ -1,0 +1,12 @@
+[Unit]
+Description=Back up this channel every ten minutes
+
+[Timer]
+OnCalendar=*:0/10
+AccuracySec=1s
+# A backup missed while the host was down is not made up at boot; the next one
+# is at most ten minutes away.
+Persistent=false
+
+[Install]
+WantedBy=timers.target

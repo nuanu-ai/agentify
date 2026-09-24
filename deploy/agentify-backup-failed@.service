@@ -1,0 +1,11 @@
+[Unit]
+Description=Record in the journal that %i failed
+
+# The one place a failed backup or check is reported from: one line at
+# priority err under the tag agentify-backup, naming the unit. There is no
+# alert yet (deploy/README.md, "Backups"); when there is one, it is sent from
+# here. A template, since systemd names the failed unit to an OnFailure= unit
+# only when a single unit points at it.
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/logger -t agentify-backup -p user.err "%i failed; journalctl -u %i says why, and deploy/README.md, Backups, says what to do."
