@@ -83,13 +83,13 @@ interface Running {
   readonly asked: string[];
   get(path: string): Promise<Visit>;
   /**
-   * A GET carrying no cookie, which is what the browser sends on the way back
-   * from a merchant's own shop.
+   * A GET carrying no cookie: a browser coming back from a merchant's own shop
+   * without a session, because the session ended while they were there or the
+   * shop was opened in another browser.
    *
-   * The session cookie is `SameSite=Strict` (ADR-0009), so a navigation that
-   * starts on somebody else's site arrives here with nothing on it — even for a
-   * merchant who is signed in on that very browser. Sent with a cookie, a test
-   * of the return page would be testing the one case that never happens.
+   * The session cookie is `SameSite=Lax` (ADR-0009 §6), so a browser that is
+   * signed in carries it back and is sent on into the cabinet; the page the
+   * return address draws is for the browser that does not.
    */
   getWithoutCookie(path: string): Promise<Visit>;
   post(path: string, form?: Record<string, string>): Promise<Visit>;
@@ -556,12 +556,10 @@ describe("the keys arriving from the shop", () => {
 });
 
 describe("the page the shop sends the browser back to, with a session on the request", () => {
-  // One test, and one is right. A real return carries no session — the cookie
-  // is SameSite=Strict and the navigation begins on the merchant's own shop —
-  // so this describe covers the branch a merchant reaches only by typing the
-  // address into a cabinet they are already signed into. What that branch owes
-  // is the redirect, and what it redirects to is covered where a merchant
-  // actually lands: on the settings screen and on the shop screen.
+  // One test, and one is right. Under SameSite=Lax a signed-in browser carries
+  // its cookie back from the merchant's own shop, and what that branch owes is
+  // the redirect; what it redirects to is covered where a merchant actually
+  // lands: on the settings screen and on the shop screen.
   it("takes the state token out of the address bar", async () => {
     // WooCommerce hands user_id back on this redirect, and in the case this
     // page exists for — the keys never arrived — that token is unspent and good
@@ -1013,13 +1011,13 @@ describe("what the settings screen says about a shop", () => {
 
 describe("coming back from the shop with no session on the request", () => {
   /**
-   * The shape of the real return, and the reason this describe exists.
+   * The return that arrives without a session, and the reason this describe
+   * exists.
    *
-   * The cabinet's session cookie is `SameSite=Strict` (ADR-0009), so the
-   * navigation a merchant's own shop starts arrives here carrying nothing —
-   * whether or not they are signed in on that browser. Behind the gate, that
-   * lands the merchant on a sign-in at the end of a flow that worked, and what
-   * they read is "it broke".
+   * The session may have ended while the merchant was in their shop, or the
+   * shop may have been opened in another browser. Behind the gate, that lands
+   * the merchant on a sign-in at the end of a flow that worked, and what they
+   * read is "it broke" (ADR-0009 §2).
    */
   const cameBack = (running: Running, query = "?success=1&user_id=whatever"): Promise<Visit> =>
     running.getWithoutCookie(`/woocommerce/return${query}`);
@@ -1095,7 +1093,7 @@ describe("coming back from the shop with no session on the request", () => {
   });
 
   it("continues into the cabinet with the session the browser already holds", async () => {
-    // The cross-site return omits a Strict cookie, but the next same-site click
+    // A return that arrived without the cookie is followed by a click that
     // carries it. Asking for another email in between turned a successful
     // Connect into a loop even though the browser was still signed in.
     const running = await started();

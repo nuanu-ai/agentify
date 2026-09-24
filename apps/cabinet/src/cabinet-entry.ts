@@ -88,6 +88,11 @@ export interface CabinetIdentity {
   readonly cookieNames: readonly string[];
 
   requestLink(email: string, destination: CabinetDestination): Promise<LinkRequestResult>;
+  /**
+   * The address a live link would sign in, read without spending it, or null
+   * for a link that no longer opens anything.
+   */
+  addressOfLink(token: string): Promise<string | null>;
   openLink(token: string): Promise<CabinetLinkResult>;
 
   whoIs(cookieHeader: string | undefined): Promise<LiveSession | null>;

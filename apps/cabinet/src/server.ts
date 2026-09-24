@@ -24,7 +24,7 @@
  * something a stranger can read off it.
  *
  * What stands above the gate is written out in that decision and is short: the
- * sign-in, the page a mailed link lands on, the report handoff, the stylesheet,
+ * sign-in and the sign-out, the page a mailed link lands on, the stylesheet,
  * the health probe, the shop's own callback and the address a shop sends a
  * browser back to. Each is there because a session cannot reach it, and each
  * answers the same thing to everybody — which is the property that makes the
@@ -32,10 +32,6 @@
  */
 
 import { readFileSync } from "node:fs";
-import {
-  openReportCabinetHandoff,
-  REPORT_CABINET_HANDOFF_COOKIE,
-} from "@agentify/scanner-contracts/report-cabinet-handoff";
 import express, { type Express, type Request, type Response } from "express";
 import type { CabinetDestination, CabinetIdentity, Person } from "./cabinet-entry.js";
 import type { CabinetConfig } from "./config.js";
@@ -155,8 +151,6 @@ const KEY_AT_SIGN_IN_MS = 2_000;
  */
 const LOOKS_LIKE_AN_ADDRESS = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
 
-const normalizedEmail = (value: string): string => value.trim().normalize("NFKC").toLowerCase();
-
 /**
  * What a person is told when the gate found no session behind their click.
  *
@@ -172,6 +166,17 @@ const SESSION_ENDED =
 
 const cabinetDestinationIn = (value: unknown): CabinetDestination =>
   value === "settings" || value === "woocommerce" ? value : "default";
+
+/**
+ * Where a person who owns no merchant starts (ADR-0026 §1).
+ *
+ * The scanner's page, because the scanner is what knows whether this person
+ * owns a report: it answers with the latest of them, and sends somebody who
+ * owns none back to the cabinet, whose first screen offers the one control
+ * that makes a merchant. Never that screen for a person with reports, and
+ * never the merchant itself, which only the explicit press makes (§4).
+ */
+export const LATEST_REPORT = "/report/latest";
 
 const cabinetPathFor = (base: string, destination: CabinetDestination): string =>
   destination === "settings"
@@ -385,26 +390,13 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     }
   };
 
-  /** Removes the short-lived report handoff on every outcome that reads it. */
-  const forgetReportHandoff = (response: Response): void => {
-    response.clearCookie(REPORT_CABINET_HANDOFF_COOKIE, {
-      path: base === "" ? "/" : base,
-      httpOnly: true,
-      sameSite: "strict",
-      secure: config.cookieSecure,
-    });
-  };
-
-  const reportHandoffIn = (header: string | undefined): string | null => {
-    const values: string[] = [];
-    for (const pair of (header ?? "").split(";")) {
-      const at = pair.indexOf("=");
-      if (at === -1 || pair.slice(0, at).trim() !== REPORT_CABINET_HANDOFF_COOKIE) continue;
-      const value = pair.slice(at + 1).trim();
-      if (value !== "") values.push(value);
-    }
-    return values.length === 1 ? (values[0] ?? null) : null;
-  };
+  /**
+   * Where this person starts when nothing else says where to go: the cabinet
+   * for somebody who owns a merchant, and the scanner's latest-report page
+   * for anybody else (ADR-0026 §1).
+   */
+  const startOf = (person: Person): string =>
+    person.merchant !== null ? `${base}/cards` : LATEST_REPORT;
 
   const carriesIdentityCookie = (header: string | undefined): boolean => {
     const pairs = (header ?? "").split(";");
@@ -783,6 +775,17 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   const attachMerchant = async (person: Person) =>
     await identity.attachMerchant(person.id, registerMerchant);
 
+  /**
+   * Sends a person whose link has just opened on to where it was asked for.
+   *
+   * Opening a link makes nothing (ADR-0026 §4): under Lax a link from another
+   * site arrives signed in, so a navigation that could make a merchant is one
+   * anybody could start. What a sign-in does do is renew the cabinet's key
+   * for somebody who owns a merchant (ADR-0014 §2), before the cookie is
+   * handed over. A link with no destination of its own goes to the person's
+   * start; one asked for from a cabinet screen goes to that screen, or, for
+   * somebody with no merchant yet, to the one control that makes it.
+   */
   const sendOpenedPerson = async (
     response: Response,
     person: Person,
@@ -790,68 +793,35 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   ): Promise<void> => {
     if (person.merchant !== null) {
       await replaceTheKeyOf(person);
-      response.redirect(303, cabinetPathFor(base, destination));
-      return;
     }
-
-    const attached = await attachMerchant(person);
-    if (attached.status === "attached") {
-      response.redirect(303, `${base}/choose-name`);
-      return;
-    }
-    if (attached.status === "already-attached") {
-      response.redirect(303, cabinetPathFor(base, destination));
-      return;
-    }
-    if (attached.status === "person-missing") {
-      response.status(401).type("html").send(refusedLinkScreen(base, config.surfaceMode));
-      return;
-    }
-    response
-      .status(503)
-      .type("html")
-      .send(merchantSetupScreen(base, config.surfaceMode, true));
+    response.redirect(
+      303,
+      destination === "default"
+        ? startOf(person)
+        : person.merchant === null
+          ? `${base}/merchant`
+          : cabinetPathFor(base, destination),
+    );
   };
 
   /**
-   * Exchanges the scanner's short-lived browser handoff for the cabinet link
-   * it already issued. The posted address and report path are untrusted: the
-   * signed cookie has to bind both before its one-use token is opened.
+   * The one answer to a link that no longer opens anything.
+   *
+   * A browser with a live session goes to that session's person's start, so
+   * what decides the answer is who the browser is and never whose the link
+   * was: it says nothing about the link's address (ADR-0026 §1). Anybody else
+   * gets the same refusal for a link pressed twice, one that ran out and one
+   * nobody issued.
    */
-  app.post(`${base}/report-handoff`, async (request, response) => {
-    const form = (request.body ?? {}) as { email?: unknown; report_path?: unknown };
-    const email = typeof form.email === "string" ? form.email : "";
-    const reportPath = typeof form.report_path === "string" ? form.report_path : "";
-    forgetReportHandoff(response);
-    response.setHeader("cache-control", "private, no-store");
-
-    const signedIn = (await identity.whoIs(request.headers.cookie))?.person ?? null;
-    if (signedIn !== null && normalizedEmail(signedIn.email) === normalizedEmail(email)) {
-      response.redirect(303, signedIn.merchant === null ? `${base}/merchant` : `${base}/cards`);
+  const refuseLink = async (request: Request, response: Response): Promise<void> => {
+    const signedIn = await identity.whoIs(request.headers.cookie);
+    if (signedIn !== null) {
+      carryCookies(response, signedIn.setCookies);
+      response.redirect(303, startOf(signedIn.person));
       return;
     }
-
-    const sealed = reportHandoffIn(request.headers.cookie);
-    const handoff =
-      sealed === null || config.reportIdentitySecret === null
-        ? null
-        : openReportCabinetHandoff(sealed, {
-            email,
-            reportPath,
-            secret: config.reportIdentitySecret,
-            now: new Date(),
-          });
-    if (handoff !== null) {
-      const opened = await identity.openLink(handoff.token);
-      if (opened.status === "opened" && normalizedEmail(opened.person.email) === handoff.email) {
-        carryCookies(response, opened.setCookies);
-        await sendOpenedPerson(response, opened.person, opened.destination);
-        return;
-      }
-    }
-
-    response.type("html").send(signInScreen(base, config.surfaceMode, "default", undefined, email));
-  });
+    response.status(401).type("html").send(refusedLinkScreen(base, config.surfaceMode));
+  };
 
   const linkResponseHeaders = (_request: Request, response: Response, next: () => void): void => {
     response.setHeader("cache-control", "private, no-store");
@@ -862,39 +832,32 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     next();
   };
 
-  app.get(`${base}/sign-in/open`, linkResponseHeaders, (request, response) => {
+  /**
+   * The page every mailed link lands on: one control, and the address it signs
+   * in.
+   *
+   * Opening it spends nothing, so a mail client that previews the link signs
+   * nobody in; only the same-origin press below does. It reads the link to
+   * name the address, which is what stops a link for somebody else's address,
+   * sent to a victim, from signing them in as that somebody unnoticed
+   * (ADR-0026 §1). A link that no longer opens anything is answered here the
+   * way the press would answer it.
+   */
+  app.get(`${base}/sign-in/open`, linkResponseHeaders, async (request, response) => {
     const token = typeof request.query.token === "string" ? request.query.token : "";
-    if (token === "") {
-      response.status(400).type("html").send(refusedLinkScreen(base, config.surfaceMode));
+    const email = token === "" ? null : await identity.addressOfLink(token);
+    if (email === null) {
+      await refuseLink(request, response);
       return;
     }
-    response.type("html").send(openLinkScreen(base, token, config.surfaceMode));
+    response.type("html").send(openLinkScreen(base, token, email, config.surfaceMode));
   });
   app.post(`${base}/sign-in/open`, linkResponseHeaders, async (request, response) => {
     const form = (request.body ?? {}) as { token?: unknown };
     const token = typeof form.token === "string" ? form.token : "";
-    if (token === "") {
-      response.status(400).type("html").send(refusedLinkScreen(base, config.surfaceMode));
-      return;
-    }
-    const opened = await identity.openLink(token);
+    const opened = token === "" ? { status: "refused" as const } : await identity.openLink(token);
     if (opened.status === "refused") {
-      const signedIn = (await identity.whoIs(request.headers.cookie))?.person ?? null;
-      response
-        .status(401)
-        .type("html")
-        .send(
-          refusedLinkScreen(
-            base,
-            config.surfaceMode,
-            signedIn === null
-              ? undefined
-              : {
-                  email: signedIn.email,
-                  destination: signedIn.merchant === null ? "merchant" : "cards",
-                },
-          ),
-        );
+      await refuseLink(request, response);
       return;
     }
     carryCookies(response, opened.setCookies);
@@ -905,23 +868,23 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   // forget something; anybody who copied the value still holds a session.
   // Every identifier the request carried, not one of them: a browser sends
   // cookies of one name longest-path first and then oldest first, so the one
-  // this person is signed in on is not necessarily the first. Sign-out also
-  // clears a pending report handoff when the cabinet session has already
-  // expired or been revoked. It stays above the session gate so a stale tab
-  // cannot leave that fresh re-entry proof in the browser.
+  // this person is signed in on is not necessarily the first. It signs this
+  // browser out of the whole site and leaves other devices alone, and it ends
+  // on the sign-in page with an empty field, because people mostly sign out to
+  // come back as another address (ADR-0026 §3). It stands above the gate so a
+  // tab whose session has already gone can still clear its cookie.
   app.post(`${base}/sign-out`, async (request, response) => {
     await identity.signOut(request.headers.cookie);
     console.log("[cabinet] a session was signed out");
     forget(response);
-    forgetReportHandoff(response);
     response.redirect(303, `${base}/sign-in`);
   });
 
   /**
    * The gate. Everything below this line needs a session; everything above it
-   * is the sign-in, the page a link lands on, the report handoff, the stylesheet,
-   * the health probe, the shop's callback and the address a shop sends a browser
-   * back to.
+   * is the sign-in and the sign-out, the page a link lands on, the stylesheet,
+   * the health probe, the shop's callback and the address a shop sends a
+   * browser back to — ADR-0009 §2's list, which a test holds.
    *
    * A visitor without one is answered the same way at every address, which is
    * why this is a middleware and not a check inside each handler: a page added
@@ -972,12 +935,18 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     response.redirect(303, whoIs(request).merchant === null ? `${base}/merchant` : `${base}/cards`);
   });
 
+  /**
+   * The screen a signed-in person without a merchant is offered, with the one
+   * control that makes it (ADR-0026 §4). Drawing it makes nothing: only the
+   * same-origin press below asks the gateway for the merchant and its key.
+   */
   app.get(`${base}/merchant`, (request, response) => {
-    if (whoIs(request).merchant !== null) {
+    const person = whoIs(request);
+    if (person.merchant !== null) {
       response.redirect(303, `${base}/cards`);
       return;
     }
-    response.type("html").send(merchantSetupScreen(base, config.surfaceMode));
+    response.type("html").send(merchantSetupScreen(base, config.surfaceMode, person.email));
   });
 
   app.post(`${base}/merchant`, async (request, response) => {
@@ -1000,16 +969,19 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       response.redirect(303, `${base}/sign-in`);
       return;
     }
+    // A gateway that did not answer leaves the person signed in to press
+    // again, rather than spending another link.
     response
       .status(503)
       .type("html")
-      .send(merchantSetupScreen(base, config.surfaceMode, true));
+      .send(merchantSetupScreen(base, config.surfaceMode, person.email, true));
   });
-  // P1 may reach only the retry and sign-out routes above. Every commerce
-  // route below requires the complete merchant pair.
+  // A person without a merchant reaches only the screen above, its press and
+  // the sign-out. Every commerce route below requires the complete merchant
+  // pair, and sends anybody else to the one control that makes it.
   app.use((request, response, next) => {
     if (whoIs(request).merchant === null) {
-      response.status(503).type("html").send(merchantSetupScreen(base, config.surfaceMode));
+      response.redirect(303, `${base}/merchant`);
       return;
     }
     next();

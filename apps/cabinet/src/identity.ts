@@ -600,6 +600,16 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
       }
     },
 
+    async addressOfLink(token) {
+      if (!RAW_TOKEN.test(token)) return null;
+      const stored = await (await contextOf()).adapter.findOne<StoredVerification>({
+        model: "verification",
+        where: [{ field: "identifier", value: tokenHash(token) }],
+      });
+      if (stored === null || new Date(stored.expiresAt).getTime() <= Date.now()) return null;
+      return cabinetClaimFrom(stored.value)?.email ?? null;
+    },
+
     async openLink(token) {
       try {
         if (parts.pool === undefined) {
