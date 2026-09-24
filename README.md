@@ -113,15 +113,17 @@ stack and nothing else — the buy command runs on the host and needs
 
 The scanner is in that stack and answers the front page. Submit an address and
 the worker behind it runs the scan; the report asks for an email before it
-opens in full, and the link is sent and verified by the cabinet's private
-identity route rather than by a second account system. That route is the
-cabinet's second listener on port 3002, which nothing publishes, and the two
-processes that hold its shared secret are the only ones that can use it. The
-message arrives in the cabinet's log like every other one here, and the door
-the reader walks through afterwards is the cabinet's own. Report sessions stay
-separate from cabinet sessions, and a person becomes a merchant only when they
-enter the cabinet; ADR-0026 draws that boundary and ADR-0024 says what the
-scanner keeps of its own.
+opens in full, and the scanner asks the cabinet to send the link over the
+cabinet's private identity route rather than keeping a second account system.
+That route is the cabinet's second listener on port 3002, which nothing
+publishes, and the two processes that hold its shared secret are the only ones
+that can use it. The message arrives in the cabinet's log like every other one
+here, and it lands on the cabinet's page with one button. Pressing it opens the
+one session the whole site has, the report and the cabinet alike, for thirty
+days from the last visit; the scanner keeps no session of its own and asks the
+cabinet whose a cookie is. A person becomes a merchant only by pressing the one
+control the cabinet offers for it. ADR-0026 draws that boundary and ADR-0024
+says what the scanner keeps of its own.
 
 The scanner's own data is a second database on the same server,
 `agentify_scanner`, made by `deploy/postgres-init/` on a volume that is new. A
