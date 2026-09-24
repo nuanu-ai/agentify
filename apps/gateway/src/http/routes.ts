@@ -28,7 +28,7 @@ import type {
   WorkerPollRequest,
 } from "@nuanu-ai/agentify-contracts";
 import { PurchaseRequestSchema } from "@nuanu-ai/agentify-contracts";
-import type { Gateway, PurchaseAttempt } from "../app/gateway.js";
+import type { Gateway, PurchaseAttempt, WalletChangeRefusal } from "../app/gateway.js";
 import { agentOrderStatusOf, orderDocumentOf } from "../app/runner.js";
 import type { KeyPurpose } from "../ports/store.js";
 import type { MountedRoute, RouteAnswer, RouteCall } from "./server.js";
@@ -59,6 +59,11 @@ const FORBIDDEN = 403;
 const NOT_FOUND = 404;
 const CONFLICT = 409;
 const UNPROCESSABLE = 422;
+/**
+ * A dependency of this call did not do its part — the cabinet or the mail
+ * provider behind a wallet change — and nothing was recorded.
+ */
+const UNAVAILABLE = 503;
 
 /**
  * The merchant whose key opened this call.
@@ -130,6 +135,70 @@ const notTheCabinets = (response: RouteCall["response"]): RouteAnswer =>
       "this call is one a cabinet makes with a key of its own, and the key it was made with is one of the merchant's own code",
     ),
   );
+
+/**
+ * What a wallet change the gateway would not record is answered with.
+ *
+ * Four refusals, and in every one nothing was written: the address paid now
+ * and whatever change was already waiting are as they were (ADR-0019). They
+ * are four codes rather than one because each asks something different of
+ * whoever reads it, and the two that turn on a message say what may have
+ * reached a mailbox — a merchant who has read a message about a change must
+ * not be told nothing was sent.
+ *
+ * The codes are this route's alone and no worker of the SDK meets them, which
+ * is why they joined the published list without moving the contract version
+ * (ADR-0006 §2). None is retryable under the gateway's rule: each ends in a
+ * call that works only once something else has changed — an account made,
+ * mail back, a cabinet up, a merchant who has read what is waiting.
+ */
+function walletChangeRefused(
+  response: RouteCall["response"],
+  why: WalletChangeRefusal,
+): RouteAnswer {
+  switch (why) {
+    case "nobody_to_tell":
+      return written(
+        response,
+        CONFLICT,
+        refusal(
+          "wallet_change_nobody_to_tell",
+          "a change of the payout wallet is told to every cabinet account that names this merchant before it is recorded, and no account names this merchant, so there is nobody to tell; nothing was changed and sales are paid where they were",
+        ),
+      );
+    case "not_announced":
+      return written(
+        response,
+        UNAVAILABLE,
+        refusal(
+          "wallet_change_not_announced",
+          "the message about this change could not be handed to the mail provider for every account that names this merchant, so nothing was recorded and sales are paid where they were; an account may still have received it, and it says the change takes effect only if the cabinet's wallet screen shows it, which it does not",
+        ),
+      );
+    case "unconfirmed":
+      return written(
+        response,
+        UNAVAILABLE,
+        refusal(
+          "wallet_change_unconfirmed",
+          "the cabinet that sends the message about this change did not answer, so a message may have gone out although nothing was recorded; sales are paid where they were, and a message that did go out says the change takes effect only if the cabinet's wallet screen shows it, which it does not",
+        ),
+      );
+    case "raced":
+      return written(
+        response,
+        CONFLICT,
+        refusal(
+          "wallet_change_raced",
+          "another change of this merchant's payout wallet was recorded while this one was being announced, so this one was not recorded; its message may have gone out and says the change takes effect only if the cabinet's wallet screen shows it. Read the wallet and ask again if this is still the address wanted",
+        ),
+      );
+    default: {
+      const unanswered: never = why;
+      throw new Error(`there are no words for the wallet refusal ${String(unanswered)}`);
+    }
+  }
+}
 
 export function handlersFor(gateway: Gateway): Partial<Record<RouteName, MountedRoute>> {
   const { config } = gateway.runtime;
@@ -227,13 +296,16 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
       // the two spellings of one are. That is the same rule the flow below
       // applies before it writes, and the two are one schema rather than two
       // copies of a regular expression and a hash.
-      serve: async (call) => ({
-        status: OK,
-        document: await gateway.setPayoutWallet(
+      serve: async (call) => {
+        const set = await gateway.setPayoutWallet(
           merchantOf(call),
           (call.body as PayoutWalletRequest).payout_wallet,
-        ),
-      }),
+          { keyId: callersKey(call), purpose: callersPurpose(call) },
+        );
+        return typeof set === "string"
+          ? walletChangeRefused(call.response, set)
+          : { status: OK, document: set };
+      },
     },
 
     list_keys: {
@@ -249,6 +321,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
         document: await gateway.issueMerchantKey(
           merchantOf(call),
           (call.body as IssueKeyRequest).label,
+          { keyId: callersKey(call), purpose: callersPurpose(call) },
         ),
       }),
     },
