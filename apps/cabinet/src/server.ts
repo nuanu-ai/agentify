@@ -37,7 +37,12 @@ import {
   REPORT_CABINET_HANDOFF_COOKIE,
 } from "@agentify/scanner-contracts/report-cabinet-handoff";
 import express, { type Express, type Request, type Response } from "express";
-import type { CabinetDestination, CabinetIdentity, Person } from "./cabinet-entry.js";
+import {
+  type CabinetDestination,
+  type CabinetIdentity,
+  cabinetDestinationIn,
+  type Person,
+} from "./cabinet-entry.js";
 import type { CabinetConfig } from "./config.js";
 import {
   type Answer,
@@ -49,11 +54,25 @@ import {
 import { bare, brandLockup, escaped } from "./html.js";
 import { SESSION_HOURS } from "./identity.js";
 import { keysScreen, newKeyScreen } from "./keys.js";
+import {
+  addCardByHand,
+  cardFromForm,
+  newCardScreen,
+  problemsFor,
+  typedFrom,
+} from "./manual-card.js";
 import { WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
 import { printable } from "./printable.js";
-import { cardsScreen, ordersScreen, receiptsScreen, type Viewer } from "./screens.js";
+import {
+  cardsScreen,
+  notFoundScreen,
+  ordersScreen,
+  receiptsScreen,
+  type Viewer,
+} from "./screens.js";
 import {
   chooseNameScreen,
+  integrationsScreen,
   NAME_CANNOT_BE_TAKEN_AWAY,
   NAME_NEEDED,
   settingsScreen,
@@ -66,8 +85,10 @@ import {
   merchantSetupScreen,
   openLinkScreen,
   refusedLinkScreen,
+  registerScreen,
   signInScreen,
 } from "./sign-in.js";
+import { stateScreen, statesScreen } from "./states.js";
 import { cardsFromTheShop, decimalOfMinorUnits, merchantItemIdFor } from "./woo-catalog.js";
 import {
   APP_NAME,
@@ -95,6 +116,7 @@ import {
   type ProductInspection,
 } from "./woo-shop.js";
 import type { WooConnection, WooShops } from "./woo-shops.js";
+import { SELLING_WORDS, type Word } from "./words.js";
 
 /** Preserves input order while bounding calls into one merchant's shop. */
 const mapAtMost = async <Input, Output>(
@@ -169,15 +191,12 @@ const SESSION_ENDED =
   `Your session ended; a session lasts at most ${SESSION_HOURS} hours. ` +
   `Send yourself a new link to carry on.`;
 
-const cabinetDestinationIn = (value: unknown): CabinetDestination =>
-  value === "settings" || value === "woocommerce" ? value : "default";
-
 const cabinetPathFor = (base: string, destination: CabinetDestination): string =>
-  destination === "settings"
-    ? `${base}/settings`
-    : destination === "woocommerce"
-      ? `${base}/woocommerce`
-      : `${base}/cards`;
+  `${base}/${destination === "default" ? "cards" : destination}`;
+
+/** The query that carries a destination to a page, empty for the card list. */
+const destinationQuery = (destination: CabinetDestination): string =>
+  destination === "default" ? "" : `destination=${destination}`;
 
 /**
  * The stylesheet the cabinet serves: the shared visual language, then the
@@ -303,6 +322,14 @@ export interface CabinetParts {
  * cabinet's word for who is signed in.
  */
 const people = new WeakMap<Request, Person>();
+
+/**
+ * The selling word for the screens that do not fetch the card list themselves
+ * (keys, settings, WooCommerce), so the light in the corner is on every
+ * working screen. Absent when the gateway did not answer; the screen still
+ * draws, without the light.
+ */
+const sellingSeen = new WeakMap<Request, Word>();
 
 /**
  * The three answers the settings screen is drawn from.
@@ -569,22 +596,36 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
 
   app.get(`${base}/sign-in`, async (request, response) => {
     const person = await identity.whoIs(request.headers.cookie);
+    const destination = cabinetDestinationIn(request.query.destination);
     if (person !== null) {
-      response.redirect(303, person.merchant === null ? `${base}/merchant` : `${base}/cards`);
+      response.redirect(
+        303,
+        person.merchant === null ? `${base}/merchant` : cabinetPathFor(base, destination),
+      );
       return;
     }
-    const destination = cabinetDestinationIn(request.query.destination);
     // A session that ran its course is why the person is here, not something
     // they got wrong, so it is the page's first line rather than a refusal.
     // A change lost with it is a refusal: something they did was not kept.
     const problem =
       request.query.reason === "session-ended-unsaved"
         ? `${SESSION_ENDED} The change you submitted was not saved.`
-        : undefined;
+        : request.query.reason === "session-ended-key"
+          ? `You were signed out, in another tab or because a session lasts at most ${SESSION_HOURS} hours. The key was not created: send yourself a new link and issue it again.`
+          : undefined;
     const reason = request.query.reason === "session-ended" ? SESSION_ENDED : undefined;
     response
       .type("html")
       .send(signInScreen(base, config.surfaceMode, destination, problem, "", reason));
+  });
+
+  app.get(`${base}/create-account`, async (request, response) => {
+    const person = await identity.whoIs(request.headers.cookie);
+    if (person !== null) {
+      response.redirect(303, person.merchant === null ? `${base}/merchant` : `${base}/cards`);
+      return;
+    }
+    response.type("html").send(registerScreen(base, config.surfaceMode));
   });
 
   /**
@@ -714,7 +755,11 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   };
 
   app.post(`${base}/sign-in`, async (request, response) => {
-    const form = (request.body ?? {}) as { email?: unknown; destination?: unknown };
+    const form = (request.body ?? {}) as {
+      email?: unknown;
+      destination?: unknown;
+      flow?: unknown;
+    };
     const email = typeof form.email === "string" ? form.email.trim() : "";
     const destination = cabinetDestinationIn(form.destination);
     if (!LOOKS_LIKE_AN_ADDRESS.test(email)) {
@@ -722,12 +767,20 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
         .status(400)
         .type("html")
         .send(
-          signInScreen(
-            base,
-            config.surfaceMode,
-            destination,
-            "Enter an address of the shape someone@example.com.",
-          ),
+          form.flow === "register"
+            ? registerScreen(
+                base,
+                config.surfaceMode,
+                "Enter an email address like name@example.com.",
+                email,
+              )
+            : signInScreen(
+                base,
+                config.surfaceMode,
+                destination,
+                "Enter an address of the shape someone@example.com.",
+                email,
+              ),
         );
       return;
     }
@@ -779,7 +832,8 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
 
     const attached = await attachMerchant(person);
     if (attached.status === "attached") {
-      response.redirect(303, `${base}/choose-name`);
+      const query = destinationQuery(destination);
+      response.redirect(303, `${base}/choose-name${query === "" ? "" : `?${query}`}`);
       return;
     }
     if (attached.status === "already-attached") {
@@ -921,22 +975,29 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
           // through this gate again on every click.
           const hadIdentityCookie = carriesIdentityCookie(request.headers.cookie);
           forget(response);
-          const reason =
-            request.method === "GET" || request.method === "HEAD"
-              ? "session-ended"
+          // The key form names itself. Signing out in another tab takes the
+          // cookie with it, so without this the person pressing "Issue a key"
+          // would land on a plain sign-in with no word that the key was never
+          // made. Only a form of this cabinet carries the field, and a
+          // visitor who never had a session is told nothing they did not send.
+          const reading = request.method === "GET" || request.method === "HEAD";
+          const reason = reading
+            ? "session-ended"
+            : (request.body as { lost?: unknown } | undefined)?.lost === "key"
+              ? "session-ended-key"
               : "session-ended-unsaved";
-          const destination =
-            hadIdentityCookie &&
-            (request.method === "GET" || request.method === "HEAD") &&
-            request.path === `${base}/woocommerce`
-              ? "&destination=woocommerce"
-              : "";
-          response.redirect(
-            303,
-            hadIdentityCookie
-              ? `${base}/sign-in?reason=${reason}${destination}`
-              : `${base}/sign-in${destination === "" ? "" : "?destination=woocommerce"}`,
+          // A screen opened by address is where the person is going, so the
+          // sign-in carries it; only the cabinet's own screens are named.
+          const destination = destinationQuery(
+            request.method === "GET" || request.method === "HEAD"
+              ? cabinetDestinationIn(request.path.slice(`${base}/`.length))
+              : "default",
           );
+          const told = hadIdentityCookie || reason === "session-ended-key";
+          const query = [told ? `reason=${reason}` : "", destination]
+            .filter((part) => part !== "")
+            .join("&");
+          response.redirect(303, `${base}/sign-in${query === "" ? "" : `?${query}`}`);
           return;
         }
         people.set(request, person);
@@ -993,6 +1054,37 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     }
     next();
   });
+  const withoutOwnCardList = [
+    `${base}/keys`,
+    `${base}/settings`,
+    `${base}/integrations`,
+    `${base}/woocommerce`,
+  ];
+  // Only for a page being drawn, and never at the cost of the request: a POST
+  // that issues a key or saves a wallet must not wait on, or fail with, a
+  // card list it does not need. Without the list the bar simply says nothing.
+  app.use((request, _response, next) => {
+    if (
+      (request.method !== "GET" && request.method !== "HEAD") ||
+      !withoutOwnCardList.some(
+        (path) => request.path === path || request.path.startsWith(`${path}/`),
+      )
+    ) {
+      next();
+      return;
+    }
+    gatewayAs(request)
+      .cards()
+      .then(
+        (cards) => {
+          if (cards.ok) {
+            sellingSeen.set(request, SELLING_WORDS[cards.document.selling]);
+          }
+          next();
+        },
+        () => next(),
+      );
+  });
 
   /**
    * The screen a newly attached merchant lands on.
@@ -1004,12 +1096,25 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    * gets the same form, and using it sets the name the same way the settings
    * page does.
    */
-  app.get(`${base}/choose-name`, (_request, response) => {
-    response.type("html").send(chooseNameScreen(base, config.surfaceMode));
+  app.get(`${base}/choose-name`, (request, response) => {
+    response
+      .type("html")
+      .send(
+        chooseNameScreen(
+          base,
+          config.surfaceMode,
+          undefined,
+          "",
+          cabinetDestinationIn(request.query.destination),
+        ),
+      );
   });
 
   app.post(`${base}/choose-name`, async (request, response) => {
     const typed = nameIn(request);
+    const destination = cabinetDestinationIn(
+      ((request.body ?? {}) as { destination?: unknown }).destination,
+    );
     // Empty is somebody who pressed the button with nothing in the box, and
     // they are told so rather than sent to read the catalogue's rule — the
     // rule is not what they broke, and the way past this screen is on it.
@@ -1018,7 +1123,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       response
         .status(400)
         .type("html")
-        .send(chooseNameScreen(base, config.surfaceMode, wrong, typed));
+        .send(chooseNameScreen(base, config.surfaceMode, wrong, typed, destination));
       return;
     }
 
@@ -1027,7 +1132,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       return trouble(response, base, set);
     }
     noted(whoIs(request), "chose the name their products are sold under");
-    response.redirect(303, `${base}/cards`);
+    response.redirect(303, cabinetPathFor(base, destination));
   });
 
   /**
@@ -1148,6 +1253,16 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     response.type("html").send(settingsScreen(viewingSettings(request, base, settings.document)));
   });
 
+  app.get(`${base}/integrations`, async (request, response) => {
+    const settings = await settingsOf(request);
+    if (!settings.ok) {
+      return trouble(response, base, settings);
+    }
+    response
+      .type("html")
+      .send(integrationsScreen(viewingSettings(request, base, settings.document)));
+  });
+
   app.post(`${base}/settings`, async (request, response) => {
     const typed = nameIn(request);
     // Empty is a merchant trying to stop being listed, and the sentence names
@@ -1193,6 +1308,13 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    * reads as a page rather than as an API answer, and so that an address of the
    * wrong shape never leaves this process at all.
    */
+  // The address the wallet form posts to, opened again from the history or the
+  // address bar after a refusal. There is nothing to show at it on its own, so
+  // it leads to the page the form lives on.
+  app.get(`${base}/settings/payout-wallet`, (_request, response) => {
+    response.redirect(303, `${base}/settings`);
+  });
+
   app.post(`${base}/settings/payout-wallet`, async (request, response) => {
     const typed = walletIn(request);
     const wrong = typed === "" ? WALLET_NEEDED : whatIsWrongWithTheWallet(typed);
@@ -1380,7 +1502,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
           return {
             ...product,
             qualification_problem:
-              "The public catalogue price does not match the protected WooCommerce product price.",
+              "The public catalog price does not match the protected WooCommerce product price.",
           };
         }
         return {
@@ -1480,6 +1602,43 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       );
   });
 
+  if (addCardByHand(config.surfaceMode)) {
+    app.get(`${base}/cards/new`, (request, response) => {
+      response.type("html").send(newCardScreen(viewing(request, base)));
+    });
+
+    app.post(`${base}/cards`, async (request, response) => {
+      const typed = typedFrom(request.body);
+      const read = cardFromForm(typed);
+      if ("problems" in read) {
+        response
+          .status(400)
+          .type("html")
+          .send(newCardScreen(viewing(request, base), typed, read.problems));
+        return;
+      }
+      const published = await gatewayAs(request).publishCard(read.card);
+      if (!published.ok) {
+        return trouble(response, base, published);
+      }
+      if (!published.document.ok) {
+        response
+          .status(400)
+          .type("html")
+          .send(
+            newCardScreen(
+              viewing(request, base),
+              typed,
+              problemsFor(published.document.error.problems),
+            ),
+          );
+        return;
+      }
+      noted(whoIs(request), `published a card by hand, ${published.document.id}`);
+      response.redirect(303, `${base}/cards`);
+    });
+  }
+
   app.get(`${base}/orders`, async (request, response) => {
     // Only the exact word narrows the list, which is what the contract says
     // and what a merchant reconciling their books relies on.
@@ -1560,7 +1719,11 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     if (!keys.ok) {
       return trouble(response, base, keys);
     }
-    response.type("html").send(keysScreen(viewing(request, base), keys.document));
+    response
+      .type("html")
+      .send(
+        keysScreen(viewing(request, base), keys.document, undefined, request.query.new === "key"),
+      );
   });
 
   // The key page rewrites its POST history entry to this target. Reloading can
@@ -1625,8 +1788,28 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     response.redirect(303, `${base}/keys`);
   });
 
-  app.use((_request, response) => {
-    response.status(404).type("html").send(problemPage(base, "There is no such page."));
+  // The showcase of rare states is for the laptop stand only; on test and
+  // live these addresses fall through to the page that says there is nothing.
+  if (config.surfaceMode === "sandbox") {
+    app.get(`${base}/states`, (request, response) => {
+      response.type("html").send(statesScreen(viewing(request, base)));
+    });
+    app.get(`${base}/states/:id`, (request, response) => {
+      const viewer = viewing(request, base);
+      const shown = stateScreen(viewer, request.params.id ?? "", { sessionEnded: SESSION_ENDED });
+      if (shown === null) {
+        response.status(404).type("html").send(notFoundScreen(viewer));
+        return;
+      }
+      response.type("html").send(shown);
+    });
+  }
+
+  app.use((request, response) => {
+    response
+      .status(404)
+      .type("html")
+      .send(notFoundScreen(viewing(request, base)));
   });
 
   app.use(
@@ -1820,7 +2003,15 @@ const viewingAt = (
   sellerName?: string | null,
 ): Viewer => {
   const person = whoIs(request);
-  return { base, mode, who: person.email, confirmed: person.confirmed, sellerName };
+  const selling = sellingSeen.get(request);
+  return {
+    base,
+    mode,
+    who: person.email,
+    confirmed: person.confirmed,
+    sellerName,
+    ...(selling === undefined ? {} : { selling }),
+  };
 };
 
 /**

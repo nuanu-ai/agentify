@@ -109,8 +109,13 @@ const keyControl = (base: string, entry: MerchantKey): string => {
   // word people already use for a credential that does not come back is this
   // one. The page says so in words above the table as well; a control with no
   // confirmation behind it should not be the only place that is said.
-  return `<form class="inline" method="post" action="${escaped(base)}/keys/${encodeURIComponent(entry.id)}/disable">
-<button class="button button-compact button-secondary" type="submit">Revoke</button></form>`;
+  //
+  // Two presses, and the first one only opens the second. A details element
+  // does that without a script, so a stray tap on a phone or a page whose
+  // script did not load cannot revoke anything on its own.
+  return `<details class="confirm-revoke"><summary class="confirm-open button button-compact button-secondary">Revoke</summary>
+<div class="confirm-pop"><p>This key will stop working for good.</p><form class="inline" method="post" action="${escaped(base)}/keys/${encodeURIComponent(entry.id)}/disable">
+<button class="button button-compact button-primary" type="submit">Yes, revoke</button></form></div></details>`;
 };
 
 /**
@@ -124,12 +129,11 @@ const keyControl = (base: string, entry: MerchantKey): string => {
  * this list and cannot be, and the portal's first step says so where somebody
  * setting up is reading anyway.
  */
-const WHAT_A_KEY_IS =
-  "A key is what your own code opens the door with, and this list is the keys you have asked for.";
+const WHAT_A_KEY_IS = "Your code uses these keys to connect to Agentify.";
 
 const WHICH_KEY_THE_CABINET_USES =
-  ' <a href="/docs/quickstart#_1-make-the-merchant-account-ready">Which key the cabinet itself' +
-  " signs in with</a>.";
+  ' <a href="/docs/quickstart#_1-make-the-merchant-account-ready">Which key the dashboard itself uses' +
+  "</a>.";
 
 /**
  * What revoking does, beside the controls that do it rather than in the lede.
@@ -140,10 +144,17 @@ const WHICH_KEY_THE_CABINET_USES =
  * Revoke buttons are in.
  */
 const WHAT_REVOKING_DOES =
-  "Revoking a key stops it from that moment and is not undone: your other keys go on working," +
-  " nobody is signed out of this cabinet, and what replaces a revoked key is a new one.";
+  "A revoked key stops working at once and for good. Your other keys keep working, and your" +
+  " dashboard sign-in does not change. You can create a new key to replace it.";
 
-export const keysScreen = (viewer: Viewer, keys: MerchantKeyList, problem?: string): string => {
+export const keysScreen = (
+  viewer: Viewer,
+  keys: MerchantKeyList,
+  problem?: string,
+  // Arrived from "Create an API key" elsewhere: the page opens on the form.
+  // Autofocus scrolls to it; a #fragment in the address would switch it off.
+  startNew = false,
+): string => {
   const { base } = viewer;
   const working = keys.keys.filter((entry) => entry.disabled_at === null).length;
   const none = keys.keys.length === 0;
@@ -151,18 +162,17 @@ export const keysScreen = (viewer: Viewer, keys: MerchantKeyList, problem?: stri
   const body = `
   <div class="lede">
     <div>
-      <h1>API Keys</h1>
+      <h1>API keys</h1>
       <p>${escaped(
         none
-          ? `You have issued no keys yet. ${WHAT_A_KEY_IS}` +
-              " The first one you ask for below becomes the first row here."
+          ? `You haven't created any API keys yet. ${WHAT_A_KEY_IS}`
           : `${working} of the ${keys.keys.length} ${keys.keys.length === 1 ? "key" : "keys"} below` +
               `${working === 1 ? " works" : " work"}. ${WHAT_A_KEY_IS}`,
       )}${WHICH_KEY_THE_CABINET_USES}</p>
     </div>
   </div>
 ${table(
-  ["Name", "Made", "Last call", "State", ""],
+  ["Name", "Created", "Last call", "State", ""],
   keys.keys.map((entry) => keyRow(base, entry)),
   "No keys yet.",
 )}
@@ -171,29 +181,26 @@ ${
     ? ""
     : `  <p class="note">${escaped(WHAT_REVOKING_DOES)}</p>
   <p class="note">${escaped(
-    "This is what the gateway answered with, and its answer does not say whether it is all of" +
-      " them. Nothing pages this list yet and nothing here counts your keys for you — the number" +
-      " above counts the rows below and nothing more.",
+    "This list is what the gateway returned, and it does not say whether that is every key." +
+      " The number above counts the rows below, nothing more.",
   )}</p>
   <p class="note">${escaped(
-    "The last call is written down every few minutes rather than on every one, so a key" +
-      ` something is using right now shows a time that far behind. "${NO_CALLS_RECORDED}" is` +
-      ' what it says rather than "never used", and the difference matters for the keys you' +
-      " have had the longest: we began recording this recently, so a key older than that shows" +
-      " the same thing whether or not anything has been calling with it, and this page cannot" +
-      " tell you which. Any key shows a time as soon as it is used again.",
+    "The last call time updates every few minutes, so it can lag a little behind." +
+      ` "${NO_CALLS_RECORDED}" does not mean the key was never used: we started recording calls` +
+      " recently, so for an older key this page cannot tell which it is until the key is used again.",
   )}</p>`
 }
-  <div class="lede">
+  <div class="lede" id="new-key">
     <div>
       <h2>A new key</h2>
-      <p>The name is how you tell keys apart here. The key itself is shown once, on the page that makes it.</p>
+      <p>The name helps you tell keys apart. The key itself is shown only once, right after you create it.</p>
     </div>
   </div>
-  <form class="issue" method="post" action="${escaped(base)}/keys">
+  <form class="issue key-name" method="post" action="${escaped(base)}/keys">
+    <input type="hidden" name="lost" value="key">
     <div>
       <label for="label">What this key is for</label>
-      <input id="label" name="label" type="text" autocomplete="off" required>
+      <input id="label" name="label" type="text" autocomplete="off"${startNew ? " autofocus" : ""} required>
     </div>
     <button class="button button-primary" type="submit">Issue a key</button>
     ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
@@ -206,7 +213,8 @@ ${
     who: viewer.who,
     confirmed: viewer.confirmed,
     tab: "keys",
-    title: "API Keys",
+    title: "API keys",
+    ...(viewer.selling === undefined ? {} : { selling: viewer.selling }),
     body,
   });
 };
@@ -230,14 +238,14 @@ export const newKeyScreen = (viewer: Viewer, label: string, secret: string): str
   <div class="lede">
     <div>
       <h1>Your new key</h1>
-      <p>${escaped(`This is the key for "${label}". It is shown here and nowhere else, now and never again — nothing on our side keeps a readable copy of it, so a key you do not copy is a key you have to replace.`)}</p>
+      <p>${escaped(`This is the key for "${label}". It is shown only here and only once: we do not keep a readable copy. If you do not copy it now, you will have to create a new one.`)}</p>
     </div>
   </div>
   <div class="scroller"><p class="secret" id="new-key-secret">${escaped(secret)}</p></div>
   <p><button class="button button-primary" id="copy-new-key" type="button">Copy key</button> <span id="copy-new-key-result" role="status"></span></p>
   <p class="note">${escaped(
-    "Put it where your code reads its key from before you leave this page. If your browser ever" +
-      " asks to resend the form, cancel: resending asks for another key.",
+    "Save the key where your code reads it from before you leave this page. If your browser asks" +
+      " to resend the form, cancel: resending creates another key.",
   )}</p>
   <p class="quiet"><a href="${escaped(base)}/keys">Back to your API keys</a></p>
   <script>
@@ -262,6 +270,7 @@ export const newKeyScreen = (viewer: Viewer, label: string, secret: string): str
     confirmed: viewer.confirmed,
     tab: "keys",
     title: "Your new key",
+    ...(viewer.selling === undefined ? {} : { selling: viewer.selling }),
     body,
   });
 };

@@ -142,14 +142,21 @@ const minutesAgo = (minutes: number): string =>
  * error says is not promised: on a post our door refused, WooCommerce's
  * message names nothing.
  */
-const noKeysYet = (state: ShopState): string => {
+const noKeysYet = (state: ShopState, action = ""): string => {
   if (state.kind === "waiting") {
-    return `<p>You started connecting ${escaped(state.shopUrl)} ${escaped(minutesAgo(state.startedMinutesAgo))}, and no keys have reached us yet.</p>
-      <p class="quiet">If you approved, your shop sends the keys in a separate request; reload in a moment to see whether they arrived. If you declined or closed the approval screen, you can start again now.</p>`;
+    return `  <div class="callout">
+    <div class="what">Waiting for the keys from your shop</div>
+    <div class="why">You started connecting ${escaped(state.shopUrl)} ${escaped(minutesAgo(state.startedMinutesAgo))}, and no keys have reached us yet. If you approved, your shop sends the keys in a separate request; reload in a moment to see whether they arrived. If you declined or closed the approval screen, you can start again now.</div>
+${action}
+  </div>
+`;
   }
   if (state.kind === "unanswered") {
-    return `<p>You started connecting ${escaped(state.shopUrl)}, and no keys arrived from it in the ${GRANT_MINUTES} minutes we wait for them.</p>
-      <p class="quiet">This page cannot tell whether approval was declined, closed or rejected before it was saved. No access from that attempt is active here. Press Connect again; if WooCommerce showed an error, it already removed the key from that attempt.</p>`;
+    return `  <div class="callout">
+    <div class="what">The keys from your shop did not arrive</div>
+    <div class="why">You started connecting ${escaped(state.shopUrl)}, and no keys arrived from it in the ${GRANT_MINUTES} minutes we wait for them. This page cannot tell whether approval was declined, closed or rejected before it was saved. No access from that attempt is active here. Press Connect again; if WooCommerce showed an error, it already removed the key from that attempt.</div>
+  </div>
+`;
   }
   return "";
 };
@@ -160,12 +167,12 @@ const noKeysYet = (state: ShopState): string => {
  * It was said three times — here, in the import form beside it, and again in
  * the settings block on another screen — which is three copies of one rule and
  * two of them free to go stale. This is the copy that stays, because this is
- * the page the Connect and the Import are on; the settings block links here.
+ * the page the Connect and the Import are on; the integrations block links here.
  * There is no WooCommerce page in the portal and this pass does not make one:
  * the connector is experimental and is not the acceptance gate for anything.
  */
-const WHAT_CONNECTING_DOES = `<p>This experimental connector sells one narrow kind of WooCommerce product in TEST: a published USD virtual download with one protected file, unlimited access, no managed stock and shop tax calculation disabled.</p>
-  <p class="quiet">Connect grants access to the shop; Import publishes supported products as cards. Your shop asks for approval on its own screen; Agentify never asks for your WooCommerce password.</p>`;
+const WHAT_CONNECTING_DOES = `<p>The experimental connector works in test mode only and supports one kind of WooCommerce product: a published virtual download priced in USD, with one protected file, unlimited downloads, no stock management, and shop tax calculation turned off.</p>
+  <p class="quiet">Connecting gives Agentify access to your shop, and importing publishes supported products as cards. You approve access in WooCommerce; Agentify never asks for your shop password.</p>`;
 
 /** The page a merchant connects from, and comes back to. */
 export const wooScreen = (viewer: Viewer, view: WooView): string => {
@@ -181,7 +188,14 @@ export const wooScreen = (viewer: Viewer, view: WooView): string => {
 ${view.cameBack === true && view.state.kind === "connected" ? KEYS_ARRIVED : ""}${
   view.state.kind === "connected"
     ? theConnection(base, view.state.shop, view)
-    : `${waitingBlock(view.state)}${theForm(base, view)}`
+    : `${noKeysYet(
+        view.state,
+        // Only the wait has a next step of its own; a Connect that ran out is
+        // answered by the form right under it.
+        view.state.kind === "waiting"
+          ? `    <div class="connect-actions"><a class="button button-secondary" href="${escaped(base)}/woocommerce">Check again</a></div>`
+          : "",
+      )}${theForm(base, view)}`
 }
   </div>`;
 
@@ -190,12 +204,49 @@ ${view.cameBack === true && view.state.kind === "connected" ? KEYS_ARRIVED : ""}
     base,
     who: viewer.who,
     confirmed: viewer.confirmed,
-    tab: "settings",
+    tab: "integrations",
     title: "WooCommerce",
+    ...(viewer.selling === undefined ? {} : { selling: viewer.selling }),
     ...(viewer.sellerName === undefined ? {} : { unnamed: viewer.sellerName === null }),
     body,
   });
 };
+
+/**
+ * The page for a merchant who declined on their shop's approval screen.
+ *
+ * It is drawn only in the showcase of rare states and is not mounted on the
+ * shop page. WooCommerce marks a decline with `success=0` on its redirect,
+ * but the return route does not trust the redirect (see `KEYS_ARRIVED`), and
+ * until the server has a signal of a decline it can rely on, this page is the
+ * design waiting for that signal rather than a claim the cabinet makes.
+ */
+export const wooDeclinedScreen = (viewer: Viewer, shopUrl: string): string =>
+  page({
+    mode: viewer.mode,
+    base: viewer.base,
+    who: viewer.who,
+    confirmed: viewer.confirmed,
+    tab: "integrations",
+    title: "WooCommerce",
+    body: `
+  <div class="integration-shell">
+  <div class="lede">
+    <div>
+      <h1>WooCommerce</h1>
+      ${WHAT_CONNECTING_DOES}
+    </div>
+  </div>
+  <div class="callout">
+    <div class="what">You declined to connect your shop</div>
+    <div class="why">You declined access to ${escaped(shopUrl)} on its approval screen, so no keys were issued and nothing is connected. You can connect again whenever you are ready.</div>
+    <form class="connect-actions" method="post" action="${escaped(viewer.base)}/woocommerce/connect">
+      <input type="hidden" name="shop_url" value="${escaped(shopUrl)}">
+      <button class="button button-primary" type="submit">Connect again</button>
+    </form>
+  </div>
+  </div>`,
+  });
 
 /**
  * What the page adds when the browser came through the return address and the
@@ -215,23 +266,9 @@ ${view.cameBack === true && view.state.kind === "connected" ? KEYS_ARRIVED : ""}
  * what a merchant reads on coming back is what they read tomorrow.
  */
 const KEYS_ARRIVED = `  <div class="callout done">
-    <div class="what">Your shop is connected. The keys arrived from your shop's own server, which is what settles it.</div>
+    <div class="what">Your shop is connected: the keys came directly from its server.</div>
   </div>
 `;
-
-/** The Connect that produced no keys, drawn above the form that starts another. */
-const waitingBlock = (state: ShopState): string => {
-  const said = noKeysYet(state);
-  return said === ""
-    ? ""
-    : `  <div class="lede">
-    <div>
-      <h2>The connection you started</h2>
-      ${said}
-    </div>
-  </div>
-`;
-};
 
 /**
  * What the return address answers a browser that arrives carrying no session.
@@ -320,16 +357,16 @@ const theConnection = (
   </div>
   <form class="issue" method="post" action="${escaped(base)}/woocommerce/import">
     <div>
-      <label>Import the catalogue</label>
+      <label>Import the catalog</label>
       <p class="quiet">Reads up to ${PRODUCTS_AT_MOST} products and publishes only the supported single-file downloads described above. If the shop has more, the whole import is refused. Running it again updates the same cards.</p>
-      <p class="quiet">A card remains listed if its shop product is later deleted, out of stock or unsupported, but a fresh price check refuses it before payment. Pause cards you no longer want agents to see.</p>
+      <p class="quiet">If a product is later deleted from the shop, runs out, or stops being supported, its card stays listed, but the price check refuses the purchase before payment. Pause cards you no longer want agents to see.</p>
     </div>
-    <button class="button button-primary" type="submit">Import the catalogue</button>
+    <button class="button button-primary" type="submit">Import the catalog</button>
   </form>
   <form class="issue" method="post" action="${escaped(base)}/woocommerce/disconnect">
     <div>
       <label>Disconnect</label>
-      <p class="quiet">Forgets the keys your shop gave us. Cards remain listed, but without a connected worker a fresh purchase cannot get a price and is refused before payment. Orders already paid remain obligations. Pause the cards first if you no longer want agents to see them; revoke the keys in WooCommerce → Settings → Advanced → REST API.</p>
+      <p class="quiet">Deletes the keys your shop gave us. Cards stay listed, but without a connection a new purchase cannot get a price and is refused before payment. You still have to fulfill orders that are already paid. If agents should no longer see the cards, pause them first. To revoke the keys, open WooCommerce → Settings → Advanced → REST API.</p>
     </div>
     <button class="button button-secondary" type="submit">Forget this shop</button>
   </form>
@@ -414,8 +451,9 @@ ${went.length === 0 ? "" : publishedBlock(went)}${refused.length === 0 ? "" : re
     base: viewer.base,
     who: viewer.who,
     confirmed: viewer.confirmed,
-    tab: "settings",
+    tab: "integrations",
     title: "WooCommerce import",
+    ...(viewer.selling === undefined ? {} : { selling: viewer.selling }),
     body,
   });
 };
@@ -590,18 +628,15 @@ export const wooSettingsBlock = (base: string, state: ShopTile): string => {
           ? ""
           : `<p class="problem">Your shop granted ${escaped(state.shop.permissions)} access rather than read and write, so a fresh purchase is unavailable before payment. Connect again and approve read and write access.</p>`
       }
-      <p><a href="${escaped(base)}/woocommerce">Your shop</a></p>`
+      <div class="connect-actions"><a class="button button-secondary" href="${escaped(base)}/woocommerce">Your shop</a></div>`
         : state.kind === "none"
           ? `<p>This experimental connector publishes only one narrow kind of WooCommerce product as a card, and the shop screen says which. Connect a shop first, then import its supported products.</p>
-      <p><a href="${escaped(base)}/woocommerce">Connect a WooCommerce shop</a></p>`
+      <div class="connect-actions"><a class="button button-primary" href="${escaped(base)}/woocommerce">Connect a WooCommerce shop</a></div>`
           : `${noKeysYet(state)}
-      <p><a href="${escaped(base)}/woocommerce">${state.kind === "waiting" ? "Check the connection" : "Connect again"}</a></p>`;
+      <div class="connect-actions"><a class="button button-primary" href="${escaped(base)}/woocommerce">${state.kind === "waiting" ? "Check the connection" : "Connect again"}</a></div>`;
 
-  return `  <div class="lede">
-    <div>
-      <h2>WooCommerce</h2>
+  return `
+      <h3>WooCommerce — for WordPress shops</h3>
       ${said}
-    </div>
-  </div>
 `;
 };

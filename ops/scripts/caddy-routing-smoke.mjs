@@ -23,6 +23,7 @@ const networkName = `agentify-routing-${suffix}`;
 const innerName = `agentify-routing-inner-${suffix}`;
 const edgeName = `agentify-routing-edge-${suffix}`;
 const mutatedName = `agentify-routing-mutated-${suffix}`;
+const commerceName = `agentify-routing-commerce-${suffix}`;
 const temporary = mkdtempSync(path.join(os.tmpdir(), "agentify-routing-"));
 const upstreams = [];
 
@@ -155,7 +156,14 @@ async function expectSingleForwardedClient(baseUrl, spoofed) {
   assert.equal(body.forwardedFor.includes(","), false, body.forwardedFor);
 }
 
-function runInner({ configPath, containerName, trustedEdge, ports, adminHash }) {
+function runInner({
+  configPath,
+  containerName,
+  trustedEdge,
+  ports,
+  adminHash,
+  frontPage = "scanner_front_page",
+}) {
   docker(
     "run",
     "-d",
@@ -173,8 +181,10 @@ function runInner({ configPath, containerName, trustedEdge, ports, adminHash }) 
     `${path.join(projectRoot, "packages/visual/public")}:/srv/assets:ro`,
     "-v",
     `${path.join(temporary, "docs")}:/srv/docs:ro`,
+    "-v",
+    `${path.join(temporary, "sell")}:/srv/sell:ro`,
     "-e",
-    "AGENTIFY_FRONT_PAGE=scanner_front_page",
+    `AGENTIFY_FRONT_PAGE=${frontPage}`,
     "-e",
     `AGENTIFY_TRUSTED_EDGE_CIDR=${trustedEdge}/32`,
     "-e",
@@ -198,6 +208,10 @@ try {
   writeFileSync(path.join(docsRoot, "guide.html"), "<p>documentation guide</p>");
   writeFileSync(path.join(docsRoot, "404.html"), "<p>documentation missing fixture</p>");
   writeFileSync(path.join(docsRoot, "assets/doc.css"), "body { color: black; }\n");
+  const sellRoot = path.join(temporary, "sell");
+  mkdirSync(sellRoot, { recursive: true });
+  writeFileSync(path.join(sellRoot, "index.html"), "<p>landing fixture</p>");
+  writeFileSync(path.join(sellRoot, "landing.css"), "body { color: black; }\n");
 
   const ports = {
     scanner: await listen("scanner"),
@@ -297,6 +311,9 @@ try {
   assert.equal(response.status, 404);
   assert.match(await response.text(), /documentation missing fixture/);
 
+  // Without commerce_front_page the landing is not served at all.
+  await expectProxy(innerBase, "/sell/", "scanner");
+
   for (const [requestPath, role] of [
     ["/missing", "scanner"],
     ["/cabinet/missing", "cabinet"],
@@ -371,11 +388,43 @@ try {
     "the old scanner fallback unexpectedly passed the shared browser-asset check",
   );
 
+  // commerce_front_page takes the exact root and leaves every other path where
+  // scanner_front_page puts it.
+  runInner({
+    configPath: sourceCaddyfile,
+    containerName: commerceName,
+    trustedEdge: edgeAddress,
+    ports,
+    adminHash,
+    frontPage: "commerce_front_page",
+  });
+  const commerceBase = publishedBase(commerceName);
+  await waitFor(commerceBase);
+  response = await fetch(`${commerceBase}/`);
+  assert.equal(response.status, 200);
+  assert.match(await response.text(), /landing fixture/);
+  response = await fetch(`${commerceBase}/sell`, { redirect: "manual" });
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get("location"), "/sell/");
+  response = await fetch(`${commerceBase}/sell/landing.css`);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") ?? "", /^text\/css(?:;|$)/);
+  for (const [requestPath, role] of [
+    ["/owner", "scanner"],
+    ["/api/health", "scanner"],
+    ["/cabinet/sign-in", "cabinet"],
+    ["/v0/cards", "gateway"],
+  ]) {
+    await expectProxy(commerceBase, requestPath, role);
+  }
+  const commerceAdmin = await fetch(`${commerceBase}/admin`);
+  assert.equal(commerceAdmin.status, 401);
+
   console.log(
     "PASS: actual Caddy preserves exact commerce/docs/assets/admin routes and one trusted scanner client IP",
   );
 } finally {
-  for (const container of [mutatedName, innerName, edgeName]) {
+  for (const container of [commerceName, mutatedName, innerName, edgeName]) {
     dockerResult("rm", "-f", container);
   }
   dockerResult("network", "rm", networkName);

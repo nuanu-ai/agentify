@@ -16,9 +16,11 @@
 
 import { ServiceNameSchema } from "@nuanu-ai/agentify-contracts";
 import { accountSettings } from "./account-settings.js";
+import type { CabinetDestination } from "./cabinet-entry.js";
 import { bare, brandLockup, escaped, page } from "./html.js";
 import { payoutWalletBlock } from "./payout-wallet.js";
 import type { Viewer } from "./screens.js";
+import { tariffBlock } from "./tariff.js";
 import { wooSettingsBlock } from "./woo-screens.js";
 
 /**
@@ -36,7 +38,7 @@ import { wooSettingsBlock } from "./woo-screens.js";
  */
 export const NAME_RULE =
   "Use 1 to 32 characters of printable ASCII: Latin letters, numbers, spaces or common punctuation," +
-  " with no space at either end.";
+  " except < and >. Spaces at either end are removed.";
 
 /**
  * What somebody is told whose name the catalogue would not carry.
@@ -53,7 +55,7 @@ export const NAME_RULE =
  */
 export const NAME_REFUSED =
   "Use 1 to 32 characters of printable ASCII (Latin letters, numbers, spaces or common punctuation)" +
-  " with no space at either end. Your name was not saved.";
+  " except < and >. Your name was not saved.";
 
 /** What somebody who pressed the button with an empty box is told, first time. */
 export const NAME_NEEDED =
@@ -71,12 +73,19 @@ export const NAME_NEEDED =
  * it leaves the cards where they are, so a merchant can put them back.
  */
 export const NAME_CANNOT_BE_TAKEN_AWAY =
-  "This name cannot be empty while you have a merchant. To come off sale, stop your selling on the" +
+  "The seller name cannot be empty once you have an account. To stop selling, use Pause all sales on the" +
   " Cards screen; your cards stay there until you resume.";
 
-/** What is wrong with a name somebody typed, in a sentence, or null. */
+/**
+ * What is wrong with a name somebody typed, in a sentence, or null.
+ *
+ * The catalogue's rule lets `<` and `>` through, and a name printed beside
+ * products on pages this cabinet does not draw is where a tag would run. A
+ * seller name has no use for either, so the cabinet refuses them on top of
+ * the contract. The name reaches this already trimmed.
+ */
 export const whatIsWrongWithTheName = (name: string): string | null =>
-  ServiceNameSchema.safeParse(name).success ? null : NAME_REFUSED;
+  ServiceNameSchema.safeParse(name).success && !/[<>]/.test(name) ? null : NAME_REFUSED;
 
 /**
  * What the name is for, and what one looks like.
@@ -105,6 +114,7 @@ export const chooseNameScreen = (
   mode: Viewer["mode"],
   problem?: string,
   typed = "",
+  destination: CabinetDestination = "default",
 ): string =>
   bare(
     base,
@@ -118,10 +128,11 @@ ${brandLockup("/")}
   <input id="seller_name" name="seller_name" type="text" autocomplete="organization" maxlength="32" value="${escaped(typed)}" autofocus required>
   ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
   ${problem === NAME_REFUSED ? "" : `<p class="quiet">${escaped(NAME_RULE)}</p>`}
+  ${destination === "default" ? "" : `<input type="hidden" name="destination" value="${escaped(destination)}">`}
   <button class="button button-primary" type="submit">Use this name</button>
   ${WHAT_IT_IS_FOR}
   <p class="quiet">You can change it in <a href="${escaped(base)}/settings">Settings</a>; until it is set, nothing you publish goes on sale.</p>
-  <p class="quiet">Not decided yet? <a href="${escaped(base)}/cards">Leave it for now</a>.</p>
+  <p class="quiet gate-skip">Not decided yet? <a href="${escaped(base)}/${destination === "default" ? "cards" : destination}">Leave it for now</a>.</p>
 </form>
 </div>`,
     mode,
@@ -170,36 +181,34 @@ export const settingsScreen = (viewer: Viewer, problem?: string, typedName?: str
         // section is added, and one more line between somebody and the box
         // they came to fill in.
         name === null
-          ? "You have not chosen the name your products are sold under. Until you do, publishing a card is refused."
+          ? "You have not set a seller name yet. Until you do, cards cannot be published."
           : `Your products are sold under ${name}.`,
       )}</p>
     </div>
   </div>
   <div class="settings-grid">
-  <section class="settings-panel">
+  <section class="settings-panel settings-pair">
+  <div class="panel-top">
   <div class="lede">
     <div>
-      <h2>The name your products are sold under</h2>
+      <h2>Seller name</h2>
       <p class="quiet">${escaped(NAME_RULE)}</p>
-      <p class="quiet">${escaped(NAME_CANNOT_BE_TAKEN_AWAY)}</p>
+      ${problem === NAME_CANNOT_BE_TAKEN_AWAY ? "" : `<p class="quiet">${escaped(NAME_CANNOT_BE_TAKEN_AWAY)}</p>`}
     </div>
   </div>
-  <form class="issue" method="post" action="${escaped(base)}/settings">
+  </div>
+  <form class="issue" id="seller-name-form" method="post" action="${escaped(base)}/settings">
     <div>
-      <label for="seller_name">The name buyers read</label>
+      <label for="seller_name">Your seller name</label>
       <input id="seller_name" name="seller_name" type="text" autocomplete="organization" maxlength="32" value="${escaped(typedName ?? name ?? "")}" required>
     </div>
-    <button class="button button-primary" type="submit">Save it</button>
-    ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
+    <button class="button button-primary" type="submit">Save</button>
   </form>
+  <div class="panel-messages">${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}</div>
   </section>
-  <section class="settings-panel">${payoutWalletBlock(viewer)}</section>
-  ${
-    viewer.shop === undefined
-      ? ""
-      : `<section class="settings-panel">${wooSettingsBlock(base, viewer.shop)}</section>`
-  }
-  <section class="settings-panel">${accountSettings(viewer)}</section>
+  <section class="settings-panel settings-pair">${payoutWalletBlock(viewer)}</section>
+  ${tariffBlock() === "" ? "" : `<section class="settings-panel settings-wide settings-tariff">${tariffBlock()}</section>`}
+  <section class="settings-panel settings-wide settings-account">${accountSettings(viewer)}</section>
   </div>`;
 
   return page({
@@ -209,6 +218,54 @@ export const settingsScreen = (viewer: Viewer, problem?: string, typedName?: str
     confirmed: viewer.confirmed,
     tab: "settings",
     title: "Settings",
+    ...(viewer.selling === undefined ? {} : { selling: viewer.selling }),
+    body,
+  });
+};
+
+/**
+ * The ways a catalogue reaches Agentify: a WooCommerce shop, or the merchant's
+ * own code through the SDK. A tab of its own since 24.09 (П2): they are
+ * integrations, and halfway down the settings, under the name and the wallet,
+ * is not where anybody looks for one.
+ */
+export const integrationsScreen = (viewer: Viewer): string => {
+  const { base } = viewer;
+  const body = `
+  <div class="lede">
+    <div>
+      <h1>Integrations</h1>
+      <p>Choose how your products reach Agentify: from a WooCommerce shop or from your own code through the SDK.</p>
+    </div>
+  </div>
+  <div class="settings-grid">
+  <section class="settings-panel settings-wide settings-connect">
+    <div class="connect-ways">
+      ${
+        viewer.shop === undefined
+          ? ""
+          : `<div class="connect-way">${wooSettingsBlock(base, viewer.shop)}</div>`
+      }
+      <div class="connect-way">
+        <h3>SDK — for any site or service</h3>
+        <p class="quiet">The main way to connect. Your developer installs the <code>@nuanu-ai/agentify</code> package, publishes cards with an API key, and handles paid orders in your own code. Works on any platform, not just WordPress.</p>
+        <div class="connect-actions">
+          <a class="button button-primary" href="/docs/quickstart">Open the connection guide</a>
+          <a class="button button-secondary" href="${escaped(base)}/keys?new=key">Create an API key</a>
+        </div>
+      </div>
+    </div>
+  </section>
+  </div>`;
+
+  return page({
+    mode: viewer.mode,
+    base,
+    who: viewer.who,
+    confirmed: viewer.confirmed,
+    tab: "integrations",
+    title: "Integrations",
+    ...(viewer.selling === undefined ? {} : { selling: viewer.selling }),
     body,
   });
 };

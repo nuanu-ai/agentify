@@ -13,6 +13,7 @@
 #   AGENTIFY_FRONT_PAGE        required front-page route          no default
 #   AGENTIFY_ASSET_ROOT        the shared browser assets          /srv/assets
 #   AGENTIFY_PORTAL_ROOT       the portal's built output          /srv/docs
+#   AGENTIFY_SELL_ROOT         the commerce landing's files       /srv/sell
 #   AGENTIFY_CABINET_UPSTREAM  host:port of the cabinet process   cabinet:3001
 #   AGENTIFY_GATEWAY_UPSTREAM  host:port of the gateway process   gateway:3000
 #   AGENTIFY_SCANNER_UPSTREAM  host:port of the scanner process   scanner:3000
@@ -92,6 +93,29 @@
 			header_up X-Forwarded-For {client_ip}
 		}
 	}
+}
+
+# The commerce landing as the front page: the exact root is the landing, its
+# stylesheet and script are under /sell/, and every other path the scanner
+# serves stays the scanner's. A stack opts in by naming this snippet in
+# AGENTIFY_FRONT_PAGE; on a stack that does not, /sell/ is the scanner's as
+# before, so nothing about the landing is public there. no-cache makes a
+# browser check for a changed file instead of showing yesterday's page.
+(commerce_front_page) {
+	redir /sell /sell/
+	handle_path /sell/* {
+		header Cache-Control "no-cache"
+		root * {$AGENTIFY_SELL_ROOT:/srv/sell}
+		file_server
+	}
+	@home path /
+	handle @home {
+		header Cache-Control "no-cache"
+		root * {$AGENTIFY_SELL_ROOT:/srv/sell}
+		rewrite * /index.html
+		file_server
+	}
+	import scanner_front_page
 }
 
 # The mark and the faces the cabinet's HTML asks for. The scanner owns the
