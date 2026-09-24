@@ -1,4 +1,4 @@
-# 0014. Registration makes a merchant, a key and an account in one act
+# 0014. Registration makes a merchant and its cabinet's key in one act
 
 Date: 2026-08-28
 Status: accepted (Dmitry, 2026-08-28: "разрабатывай экраны, реализуй регистрацию")
@@ -14,26 +14,30 @@ wait for perfection: the road's order is ADR-0010's.
 
 ## Decision
 
-**1. Registering makes a merchant, the key its cabinet calls with and an
-account — or none of them.** The act begins when a one-time link is consumed
-for an address that has no account (ADR-0026); no form asks for a password or
-an invitation, and the person is signed in where they stand. Each side of the
-boundary writes in one transaction and the boundary is
-crossed once: the gateway makes the merchant and the key, the cabinet writes
-the merchant on the person. A cabinet that fails after the gateway answered
-leaves a merchant nobody names — litter, not damage; the next attempt makes a
-new one. The order is the reverse of the one first written here, because the
-component writes the person at the moment the link is verified (ADR-0026 §4):
-the person exists before the gateway is asked, and a gateway that does not
-answer leaves them signed in without a merchant, trying again from inside the
-session rather than spending another link.
+**1. The account is written at sign-in, the merchant and its key on the
+cabinet's explicit request.** The account appears when a one-time link is
+consumed for an address that has none (ADR-0026 §1), and no form asks for a
+password or an invitation. The merchant and the key its cabinet calls with are
+made later, when the signed-in person presses the one control the cabinet
+offers (ADR-0026 §4). That act crosses the boundary once and each side writes
+in one transaction: the gateway makes the merchant and the key, the cabinet
+writes the merchant on the person. A gateway that does not answer leaves the
+person signed in without a merchant, pressing again from inside the session
+rather than spending another link; a cabinet that fails after the gateway
+answered leaves a merchant nobody names — litter, not damage, and the next
+attempt makes a new one.
 
 **2. An account names its merchant and holds a key made for the cabinet.** The
 cabinet builds its gateway client per request from the signed-in account's
 row; `MERCHANT_API_KEY` leaves the configuration. The key is stored as issued,
-and it is made afresh at every sign-in and the one it replaces forgotten — so a
-copy of the database is a set of keys that stops working at the next sign-in
-rather than one that works for good. It is still not a secret store; the
+and it is made afresh at every sign-in and at the first request of each day on
+a live session, and the one it replaces forgotten — so the keys in a copy of
+the database taken today stop working at each account's first visit on a later
+day, while an account that never returns keeps its key working. A session
+lasts thirty days from the last visit (ADR-0009 §6), and without the daily
+renewal that bound would stretch with it. Each renewal is also one more chance
+to leave behind a key of the kind an interrupted sign-in leaves (§5), and
+nothing clears those yet. It is still not a secret store; the
 database is a boundary against the network, not against a host, and the day
 that stops being enough the fix is one, not a cleverer column.
 
@@ -80,8 +84,8 @@ the way back in is a key of the other kind.
 ## Consequences
 
 The cabinet is multi-tenant; the process-wide client and its variable are
-gone. A person who has only confirmed an address at the scanner owns no
-merchant yet (ADR-0026); one who has entered the cabinet owns exactly one, and
+gone. A person who has only signed in owns no merchant yet (ADR-0026 §4); one
+who has asked the cabinet for one owns exactly one, and
 a merchant who has only ever signed in has no keys of their own. Not built and not pretended: a second
 person at a merchant, roles, deleting a merchant.
 
