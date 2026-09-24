@@ -1005,8 +1005,14 @@ describe("P4 cabinet-owned scanner identity", () => {
     expect(report?.checks).toHaveLength(18);
     expect(JSON.stringify(report)).not.toContain("private.example");
     expect(report?.benchmark).toBeNull();
-    // Somebody else, signed in, does not own it.
+    // Somebody else, signed in, does not own it: neither an address with no
+    // reports nor one whose reports are other scans'.
     expect(await getFullReport(scanId, signedInAs("not-the-owner@example.com"))).toBeUndefined();
+    expect(await getFullReport(scanId, signedInAs("first-visit@example.com"))).toBeUndefined();
+    await expect(visitorOf(signedInAs("first-visit@example.com"))).resolves.toMatchObject({
+      kind: "person",
+      leadId: expect.any(String),
+    });
     expect(scan.id).toBe(scanId);
     const fullDownload = await downloadFullPrompt(
       new NextRequest(
