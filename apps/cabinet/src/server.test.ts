@@ -56,6 +56,7 @@ import type { Handover, Message, Postman } from "./mail.js";
 import { buildApp } from "./server.js";
 import { readable, waitingButton } from "./testing/html.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
+import { memoryWooShops, type WooShops } from "./woo-shops.js";
 
 /**
  * The key the gateway harness's own merchant holds, named rather than spelled
@@ -85,6 +86,13 @@ const REPORT_IDENTITY_SECRET = "a-dedicated-report-secret-at-least-32-characters
 const REPORT_SCAN_ID = "0199a2fd-4f2a-7ccd-90ba-d7266c7b5133";
 const REPORT_PATH = `/report/${REPORT_SCAN_ID}`;
 const SESSION_ENDED = "/sign-in?reason=session-ended";
+/**
+ * Where a person who owns no merchant starts: the scanner's answer for their
+ * latest report, which sends somebody with no report back to the cabinet
+ * (ADR-0026 §1). It is not the cabinet's page, so these tests read the
+ * redirect and do not follow it.
+ */
+const LATEST_REPORT = "/report/latest";
 const SESSION_ENDED_UNSAVED = "/sign-in?reason=session-ended-unsaved";
 
 /** The person whose account every test in this file signs in as. */
@@ -206,6 +214,11 @@ interface Browser {
    * tests about the cooldown itself ask for their links directly.
    */
   signIn(email?: string): Promise<Visit>;
+  /**
+   * Presses the one control a signed-in person without a merchant is offered,
+   * and follows where it leads (ADR-0026 §4).
+   */
+  makeMerchant(): Promise<Visit>;
   /** The identifier in this browser's session cookie, or null. */
   sessionToken(): string | null;
   /** The same browser sending one exact cookie header instead of its jar. */
@@ -307,6 +320,8 @@ interface Starting {
    * the case a screen must not call a link sent.
    */
   readonly mailTakes?: Handover;
+  /** A store for WooCommerce connections, for the tests that need its routes. */
+  readonly wooShops?: WooShops;
 }
 
 const started = async (options: Starting = {}): Promise<Running> => {
@@ -416,6 +431,7 @@ async function visiting(
   const app = buildApp(config, {
     identity: options.identity === undefined ? identity : options.identity(identity),
     ...(options.registrar === undefined ? {} : { registrar: options.registrar }),
+    ...(options.wooShops === undefined ? {} : { wooShops: options.wooShops }),
     // Built from the configured address and given the deadline it was asked
     // for, so that a test which points the cabinet somewhere else — at nothing
     // at all, or at a server that never answers — is answered the way a
@@ -536,7 +552,11 @@ async function attachedTo(
       const action = new URL(found);
       const token = action.searchParams.get("token") ?? "";
       const opened = await call("POST", action.pathname, { token });
-      return opened.to === null ? opened : call("GET", opened.to);
+      return opened.to === null || opened.to === LATEST_REPORT ? opened : call("GET", opened.to);
+    },
+    async makeMerchant() {
+      const made = await call("POST", `${basePath}/merchant`, {});
+      return made.to === null ? made : call("GET", made.to);
     },
     sessionToken: () => jar.get(COOKIE) ?? jar.get(SECURE_COOKIE) ?? null,
     withRawCookie: (raw) => ({
@@ -1104,6 +1124,10 @@ describe("the passwordless cabinet door", () => {
     expect(landing.headers.getSetCookie()).toStrictEqual([]);
     expect(landing.html).not.toContain("<script");
     expect(landing.html).toContain(`value="${token}"`);
+    // The page names the address the press would sign in, which is what stops
+    // a link for somebody else's address, sent to a victim, from signing them
+    // in as that somebody without their noticing (ADR-0026 §1).
+    expect(readable(landing.html)).toContain(PERSON);
     expect(running.rows.cabinet_sessions).toStrictEqual([]);
 
     const opened = await running.browser.from(running.url).post("/cabinet/sign-in/open", { token });
@@ -1113,18 +1137,11 @@ describe("the passwordless cabinet door", () => {
     expect(opened.headers.get("referrer-policy")).toBe("strict-origin");
     expect(sessionCookieIn(opened, SECURE_COOKIE)).toBeDefined();
 
+    // Pressed twice in a browser that is now signed in: the person's start,
+    // not a page about the link (ADR-0026 §1).
     const replay = await running.browser.from(running.url).post("/cabinet/sign-in/open", { token });
-    expect(replay.status).toBe(401);
-    expect(replay.headers.getSetCookie()).toStrictEqual([]);
-    expect(readable(replay.html)).toContain(`signed in as ${PERSON}`);
-    expect(replay.html).toContain('href="/cabinet/cards"');
-    expect(readable(replay.html)).toContain("Open your cabinet");
-    // The second control is for somebody who wants another account, and the
-    // only thing that can give them one is sign-out: a browser that already
-    // carries a session is sent back into the cabinet by GET /sign-in, so a
-    // form pointing there would do nothing at all.
-    expect(replay.html).toContain('method="post" action="/cabinet/sign-out"');
-    expect(replay.html).not.toContain('action="/cabinet/sign-in"');
+    expect(replay.status).toBe(303);
+    expect(replay.to).toBe("/cabinet/cards");
 
     const switching = await running.browser.from(running.url).post("/cabinet/sign-out");
     expect(switching.status).toBe(303);
@@ -1167,16 +1184,50 @@ describe("the passwordless cabinet door", () => {
     expect(rows.cabinet_link_sends).toStrictEqual([]);
   });
 
-  it("makes a merchant only after a new person's link is consumed", async () => {
-    const running = await started({ gateway: { REGISTRATION_INVITATION: INVITATION } });
+  it("never makes a merchant by opening a link: a person without one starts at their latest report", async () => {
+    // Under Lax a link from another site arrives signed in, so opening a link
+    // must not be able to make anything (ADR-0026 §4). A person who owns
+    // reports and no merchant starts at the latest of them, and the scanner
+    // sends somebody who owns none back to the cabinet (§1).
+    const registered: string[] = [];
+    const registrar: Registrar = {
+      register: async () => {
+        registered.push("asked");
+        return { ok: true, document: { merchant_id: "mer_never", secret: "never-made" } };
+      },
+    };
+    const running = await started({ registrar });
 
-    const inside = await running.browser.signIn(FRESH.email);
+    const opened = await running.browser.signIn(FRESH.email);
+
+    expect(opened.status).toBe(303);
+    expect(opened.to).toBe(LATEST_REPORT);
+    expect(registered).toStrictEqual([]);
+    const person = await running.identity.byEmail(FRESH.email);
+    expect(person?.confirmed).toBe(true);
+    expect(person?.merchant).toBeNull();
+    // Opening the cabinet by a plain navigation makes nothing either: it draws
+    // the one control and names who is signed in.
+    const screen = await running.browser.get("/merchant");
+    expect(screen.status).toBe(200);
+    expect(readable(screen.html)).toContain(FRESH.email);
+    expect(screen.html).toContain('method="post" action="/merchant"');
+    expect(registered).toStrictEqual([]);
+  });
+
+  it("makes the merchant and its key on the explicit press, and only a same-origin one", async () => {
+    const running = await started({ gateway: { REGISTRATION_INVITATION: INVITATION } });
+    await running.browser.signIn(FRESH.email);
+
+    const forged = await running.browser.from("https://evil.example").post("/merchant");
+    expect(forged.status).toBe(403);
+    expect((await running.identity.byEmail(FRESH.email))?.merchant).toBeNull();
+
+    const inside = await running.browser.makeMerchant();
 
     expect(inside.status).toBe(200);
     expect(inside.html).toContain('name="seller_name"');
-    const person = await running.identity.byEmail(FRESH.email);
-    expect(person?.confirmed).toBe(true);
-    expect(person?.merchant).not.toBeNull();
+    expect((await running.identity.byEmail(FRESH.email))?.merchant).not.toBeNull();
   });
 
   it("keeps the P1 session when registration fails and retries without another link", async () => {
@@ -1194,8 +1245,10 @@ describe("the passwordless cabinet door", () => {
     await running.browser.post("/sign-in", { email: FRESH.email });
     const action = actionIn(running.mails.at(-1));
     const token = action.searchParams.get("token") ?? "";
+    const opened = await running.browser.from(running.url).post("/sign-in/open", { token });
+    expect(opened.to).toBe(LATEST_REPORT);
 
-    const first = await running.browser.from(running.url).post("/sign-in/open", { token });
+    const first = await running.browser.from(running.url).post("/merchant");
     expect(first.status).toBe(503);
     expect(running.rows.cabinet_sessions).toHaveLength(1);
     expect((await running.identity.byEmail(FRESH.email))?.merchant).toBeNull();
@@ -1236,6 +1289,66 @@ describe("the passwordless cabinet door", () => {
     });
 
     expect(opened.to).toBe("/cards");
+  });
+
+  it("sends a signed-in browser that opens a spent, expired or unknown link to its own start", async () => {
+    // What the browser holds decides, never the link: the answer is the same
+    // whoever the link was for, so it says nothing about that address
+    // (ADR-0026 §1).
+    const running = await started();
+    await running.identity.make(OTHER, THE_MERCHANT);
+    await running.browser.post("/sign-in", { email: OTHER });
+    const theirs = actionIn(running.mails.at(-1)).searchParams.get("token") ?? "";
+    const stranger = await running.another();
+    await stranger.from(running.url).post("/sign-in/open", { token: theirs });
+    await running.browser.signIn();
+    const expired = (): string => {
+      for (const row of running.rows.cabinet_verifications ?? []) {
+        row.expiresAt = new Date(Date.now() - 1_000);
+      }
+      return "";
+    };
+    rewindLinkSends(running.rows);
+    await running.browser.post("/sign-in", { email: PERSON });
+    const soonExpired = actionIn(running.mails.at(-1)).searchParams.get("token") ?? "";
+    expired();
+
+    for (const token of [theirs, soonExpired, "A".repeat(32)]) {
+      const pressed = await running.browser.from(running.url).post("/sign-in/open", { token });
+      expect(pressed.status, token).toBe(303);
+      expect(pressed.to, token).toBe("/cards");
+      const landed = await running.browser.get(`/sign-in/open?token=${token}`);
+      expect(landed.status, token).toBe(303);
+      expect(landed.to, token).toBe("/cards");
+    }
+
+    running.forgetMerchant(PERSON);
+    const withoutMerchant = await running.browser
+      .from(running.url)
+      .post("/sign-in/open", { token: theirs });
+    expect(withoutMerchant.to).toBe(LATEST_REPORT);
+  });
+
+  it("refuses a spent and an unknown link the same way when nobody is signed in", async () => {
+    const running = await started();
+    await running.browser.post("/sign-in", { email: PERSON });
+    const token = actionIn(running.mails.at(-1)).searchParams.get("token") ?? "";
+    const first = await running.another();
+    await first.from(running.url).post("/sign-in/open", { token });
+
+    const spent = await running.browser.from(running.url).post("/sign-in/open", { token });
+    const unknown = await running.browser
+      .from(running.url)
+      .post("/sign-in/open", { token: "B".repeat(32) });
+    const landedSpent = await running.browser.get(`/sign-in/open?token=${token}`);
+
+    expect(spent.status).toBe(401);
+    expect(unknown.status).toBe(401);
+    expect(landedSpent.status).toBe(401);
+    expect(readable(spent.html)).toBe(readable(unknown.html));
+    expect(readable(landedSpent.html)).toBe(readable(unknown.html));
+    expect(readable(spent.html)).not.toContain(PERSON);
+    expect(spent.headers.getSetCookie()).toStrictEqual([]);
   });
 
   it("does not retain the retired password, registration, or confirmation routes", async () => {
@@ -1358,6 +1471,52 @@ describe("one session for the whole site", () => {
     expect(attributes.has("secure")).toBe(true);
     expect(new Date(attributes.get("expires") ?? "").getTime()).toBeLessThan(Date.now());
     expect(running.rows.cabinet_sessions).toStrictEqual([]);
+  });
+});
+
+describe("the gate", () => {
+  it("lets a visitor with no session reach exactly the routes ADR-0009 §2 lists above it", async () => {
+    // The list is written in the decision rather than discovered by reading
+    // the routing, and this is where it is held: every route on it answers a
+    // stranger without the sign-in redirect, and a route that is not on it —
+    // including the report handoff that is gone — is behind the gate.
+    const running = await started({ base: "/cabinet", wooShops: memoryWooShops() });
+    // A browser carrying a session cookie that no longer opens anything, so
+    // that the gate's answer is its own: the sign-in with the reason the
+    // session ended, which no route above the gate ever answers with.
+    const stranger = running.browser.withRawCookie(`${COOKIE}=made-up-identifier`);
+    const gate = (answer: Visit): boolean =>
+      answer.status === 303 && (answer.to ?? "").includes("reason=session-ended");
+
+    const above: readonly [string, () => Promise<Visit>][] = [
+      ["the sign-in", () => stranger.get("/cabinet/sign-in")],
+      ["asking for a link", () => stranger.post("/cabinet/sign-in", { email: "" })],
+      ["the sign-out", () => stranger.post("/cabinet/sign-out")],
+      [
+        "the page a link lands on",
+        () => stranger.get(`/cabinet/sign-in/open?token=${"C".repeat(32)}`),
+      ],
+      ["pressing it", () => stranger.post("/cabinet/sign-in/open", { token: "C".repeat(32) })],
+      ["the stylesheet", () => stranger.get("/cabinet/agentify.css")],
+      ["the health probe", () => stranger.get("/cabinet/healthz")],
+      [
+        "the shop's callback",
+        () => running.browser.postRaw("/cabinet/woocommerce/callback", "application/json", "{}"),
+      ],
+      ["the shop's return", () => stranger.get("/cabinet/woocommerce/return")],
+    ];
+    for (const [name, visit] of above) {
+      const answer = await visit();
+      expect(gate(answer), name).toBe(false);
+      expect(answer.status, name).toBeLessThan(500);
+    }
+
+    for (const path of ["/cabinet/", "/cabinet/cards", "/cabinet/merchant", "/cabinet/settings"]) {
+      expect(gate(await stranger.get(path)), path).toBe(true);
+    }
+    for (const path of ["/cabinet/merchant", "/cabinet/report-handoff", "/cabinet/keys"]) {
+      expect(gate(await stranger.post(path)), path).toBe(true);
+    }
   });
 });
 
@@ -2703,6 +2862,7 @@ describe("the keys screen", () => {
     // gateway's answer and not this test's.
     const { browser } = await started({ gateway: { REGISTRATION_INVITATION: INVITATION } });
     await browser.signIn(FRESH.email);
+    await browser.makeMerchant();
 
     const seen = await browser.get("/keys");
     const text = readable(seen.html);
@@ -3262,7 +3422,8 @@ describe("the key the cabinet signs in with", () => {
       ...over,
       gateway: { REGISTRATION_INVITATION: INVITATION, ...over.gateway },
     });
-    const made = await running.browser.signIn(FRESH.email);
+    await running.browser.signIn(FRESH.email);
+    const made = await running.browser.makeMerchant();
     if (made.status !== 200) {
       throw new Error(`the passwordless entry did not go through: ${made.status}`);
     }
@@ -3484,7 +3645,8 @@ describe("the key the cabinet signs in with", () => {
     });
 
     const written = await said(async () => {
-      expect((await browser.signIn(FRESH.email)).status).toBe(500);
+      await browser.signIn(FRESH.email);
+      expect((await browser.makeMerchant()).status).toBe(500);
     });
 
     expect(written).toMatch(/request failed/i);
