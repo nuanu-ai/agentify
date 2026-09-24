@@ -42,6 +42,14 @@ exit "${FAKE_ACTIVATE_EXIT:-0}"
 """
 
 
+FAKE_RESTORE = """#!/usr/bin/env bash
+python3 -c 'import json, os, sys
+with open(os.environ["FAKE_RESTORE_LOG"], "a") as log:
+    log.write(json.dumps({"argv": sys.argv[2:], "script": os.path.realpath(sys.argv[1])}) + "\\n")' "$0" "$@"
+exit "${FAKE_RESTORE_EXIT:-0}"
+"""
+
+
 def digests(seed=0, **changes):
     document = {name: f"ghcr.io/nuanu-ai/agentify-{name}@sha256:{seed * 16 + index:064x}" for index, name in enumerate(NAMES)}
     document.update(changes)
@@ -129,10 +137,11 @@ class ReleaseTest(unittest.TestCase):
         self.git("config", "commit.gpgsign", "false")
         self.git("config", "tag.gpgsign", "false")
         self.git("remote", "add", "origin", str(self.remote))
-        activate = self.source / "deploy" / "activate.sh"
-        activate.parent.mkdir(parents=True)
-        activate.write_text(FAKE_ACTIVATE)
-        activate.chmod(0o755)
+        (self.source / "deploy").mkdir(parents=True)
+        for name, body in (("activate.sh", FAKE_ACTIVATE), ("restore.sh", FAKE_RESTORE)):
+            (self.source / "deploy" / name).write_text(body)
+            (self.source / "deploy" / name).chmod(0o755)
+        self.restores = root / "restores.jsonl"
         self.github = FakeGitHub()
         self.first = self.commit("first")
         self.push("main")
@@ -156,6 +165,19 @@ class ReleaseTest(unittest.TestCase):
     def tag(self, name, revision):
         self.git("tag", "-f", name, revision)
         self.push(f"refs/tags/{name}")
+
+    def restore_by_the_unit(self, directory, exit_code=0):
+        """What a person's `agentify-release --restore` runs inside its unit."""
+        output = io.StringIO()
+        environment = {"FAKE_RESTORE_LOG": str(self.restores), "FAKE_RESTORE_EXIT": str(exit_code), "INVOCATION_ID": "test"}
+        with mock.patch.dict(os.environ, environment), contextlib.redirect_stdout(output), \
+                mock.patch.object(RELEASE, "STATES", self.states), mock.patch.object(RELEASE, "fetch_json", self.github):
+            code = RELEASE.main(["--config", str(self.config), "--restore", directory])
+        self.said = output.getvalue()
+        return code
+
+    def restores_run(self):
+        return [json.loads(line) for line in self.restores.read_text().splitlines()] if self.restores.exists() else []
 
     def release(self, name, *flags, exit_code=0):
         output = io.StringIO()
@@ -201,6 +223,14 @@ class TheDigestRule(ReleaseTest):
         self.assertEqual(Path(activation["cwd"]).resolve(), (self.state / "checkouts" / self.first).resolve())
         self.assertEqual(activation["images"], environment(digests(self.first_run)))
         self.assertEqual(self.recorded("current"), self.first)
+
+    def test_records_which_app_tags_point_at_which_revision(self):
+        self.git("tag", "-a", "-m", "annotated", "app-v1.0.0", self.first)
+        self.git("tag", "app-v1.0.1", self.first)
+        self.git("tag", "not-a-release", self.first)
+        self.push("--tags")
+        self.assertEqual(self.release("main"), 0, self.said)
+        self.assertEqual(self.recorded("tags").splitlines(), [f"{self.first} app-v1.0.0", f"{self.first} app-v1.0.1"])
 
     def test_takes_an_annotated_tag_at_the_commit_it_points_to(self):
         self.git("tag", "-a", "-m", "annotated", "an-annotated-tag", self.first)
@@ -456,6 +486,23 @@ class TheTimer(ReleaseTest):
             self.assertEqual(self.tick(), 0, self.said)
             self.assertEqual((self.activations(), self.recorded("failed")), ([], None))
 
+    def test_carries_its_own_unfinished_release_on(self):
+        # Killed while migrating: the tag still names that revision, and the
+        # next tick hands it to activation, which carries it on.
+        self.tag("deploy-test", self.first)
+        self.state.mkdir(parents=True)
+        (self.state / "transition").write_text(json.dumps({"to": self.first, "phase": "migrating"}))
+        self.assertEqual(self.tick(), 0, self.said)
+        self.assertEqual([a["argv"][1] for a in self.activations()], [self.first])
+
+    def test_leaves_the_tag_alone_while_the_record_cannot_be_read(self):
+        self.tag("deploy-test", self.first)
+        self.state.mkdir(parents=True)
+        for unreadable in ("", "{"):
+            (self.state / "transition").write_text(unreadable)
+            self.assertEqual(self.tick(), 0, self.said)
+            self.assertEqual((self.activations(), self.recorded("failed")), ([], None))
+
     def test_hands_a_revision_to_activation_once_the_open_transition_started(self):
         second = self.commit("second")
         self.push("main")
@@ -539,6 +586,39 @@ class AManualRun(ReleaseTest):
         self.assertEqual(self.activations(), [])
 
 
+class ARestore(ReleaseTest):
+    """A person's restore runs restore.sh of the checkout the record names, or of `current`'s."""
+
+    def test_runs_the_restore_script_of_the_revision_the_channel_runs(self):
+        self.assertEqual(self.release("main"), 0, self.said)
+        self.assertEqual(self.restore_by_the_unit("/var/backups/agentify/test/a-point"), 0, self.said)
+        [run] = self.restores_run()
+        self.assertEqual(run["argv"], ["/var/backups/agentify/test/a-point"])
+        self.assertEqual(Path(run["script"]).parent.parent, (self.state / "checkouts" / self.first).resolve())
+
+    def test_runs_the_restore_script_of_the_revision_an_open_record_names(self):
+        self.assertEqual(self.release("main"), 0, self.said)
+        second = self.commit("second")
+        self.push("main")
+        self.github.built(second)
+        self.assertEqual(self.release("main", exit_code=1), 1, self.said)
+        (self.state / "transition").write_text(json.dumps({"to": second, "phase": "migrating"}))
+        self.assertEqual(self.restore_by_the_unit("/var/backups/agentify/test/a-point"), 0, self.said)
+        [run] = self.restores_run()
+        self.assertEqual(Path(run["script"]).parent.parent, (self.state / "checkouts" / second).resolve())
+
+    def test_a_restore_that_has_to_wait_is_a_wait(self):
+        self.assertEqual(self.release("main"), 0, self.said)
+        self.assertEqual(self.restore_by_the_unit("/var/backups/agentify/test/a-point", exit_code=75), 75, self.said)
+
+    def test_waits_while_another_agentify_release_holds_the_lock(self):
+        self.assertEqual(self.release("main"), 0, self.said)
+        with (self.state / "release.lock").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self.assertEqual(self.restore_by_the_unit("/var/backups/agentify/test/a-point"), 75, self.said)
+        self.assertEqual(self.restores_run(), [])
+
+
 class APersonsRun(unittest.TestCase):
     """Outside a systemd unit the command hands the release to one and follows it."""
 
@@ -560,12 +640,12 @@ class APersonsRun(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def run_by_hand(self, user=0, **environment):
+    def run_by_hand(self, user=0, arguments=("my-branch",), **environment):
         path = f"{self.bin}{os.pathsep}{os.environ['PATH']}"
         with mock.patch.dict(os.environ, {"PATH": path, "FAKE_CALLS": str(self.calls), **environment}):
             os.environ.pop("INVOCATION_ID", None)
             with contextlib.redirect_stdout(io.StringIO()) as output, mock.patch.object(RELEASE.os, "geteuid", return_value=user):
-                code = RELEASE.main(["--config", str(self.config), "my-branch"])
+                code = RELEASE.main(["--config", str(self.config), *arguments])
         return code, output.getvalue()
 
     def test_the_release_runs_in_its_own_unit_with_the_same_arguments_and_its_exit_status(self):
@@ -589,6 +669,15 @@ class APersonsRun(unittest.TestCase):
         self.assertIn("sudo agentify-release", said)
         self.assertIn("my-branch", said)
         self.assertFalse(self.calls.exists())
+
+    def test_a_restore_runs_in_the_same_unit_a_release_runs_in(self):
+        # So a dropped connection does not stop it halfway, and it cannot run
+        # beside a person's release.
+        code, said = self.run_by_hand(arguments=("--restore", "/var/backups/agentify/test/a-point"), FAKE_UNIT_EXIT="0")
+        self.assertEqual(code, 0)
+        asked = self.calls.read_text().splitlines()
+        self.assertIn("--unit=agentify-release-test.service", asked)
+        self.assertEqual(asked[-2:], ["--restore", "/var/backups/agentify/test/a-point"])
 
     def test_a_release_already_running_is_a_wait_that_starts_nothing(self):
         code, said = self.run_by_hand(FAKE_ACTIVE="0")
