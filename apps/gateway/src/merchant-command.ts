@@ -22,9 +22,12 @@
  * cards off sale as it goes, because a card sells only under a name, and the
  * command says so at the terminal.
  *
- * The address a merchant is paid at is the same shape of verb and has no such
- * escape, for the reason written beside it: there is no caller for whom taking
- * one away is the right act.
+ * The address a merchant is paid at has no verb here at all, and that is the
+ * decision rather than a gap (ADR-0019). A change of it waits and is announced
+ * to the merchant before anything is written, and the gateway can hold to that
+ * only if every change reaches it as the one call it announces — so the wallet
+ * is set through `/v0/payout-wallet` and nowhere else, and a person at a
+ * terminal who could write it would be the one change nobody was told about.
  *
  * It is a tested module with the terminal handed to it rather than a script
  * that prints as it goes, for the reason the cabinet's account command is.
@@ -39,7 +42,7 @@
 
 import type { Environment } from "@agentify/core";
 import { ZodError } from "zod";
-import { issueKey, makeMerchant, setPayoutWallet, setServiceName } from "./app/merchants.js";
+import { issueKey, makeMerchant, setServiceName } from "./app/merchants.js";
 import type { Ids } from "./ports/clock.js";
 import type { Store, StoredKey, StoredMerchant } from "./ports/store.js";
 
@@ -52,7 +55,6 @@ const USAGE = [
   "                             the name this seller is shown under in a",
   "                             discovery catalog, or --none to take it away",
   "                             and their cards off sale with it",
-  "  pays-to <merchant> <0x…>   the address this merchant's sales are paid into",
   "  key <merchant> <label>     issue a key to a merchant and print it, once",
   "  keys <merchant>            that merchant's keys, working and revoked",
   "  disable <key>              stop one key working, touching no other",
@@ -105,15 +107,6 @@ export async function runMerchant(
     return named === ""
       ? needs(say, "listed-as", "a name", 'listed-as the_merchant "The pilot merchant"')
       : await setListingName(store, now, say, first, named === NO_NAME ? null : named);
-  }
-  if (verb === "pays-to") {
-    if (first === undefined) {
-      return needs(say, "pays-to", "a merchant", "pays-to the_merchant 0x…");
-    }
-    const address = rest.join(" ").trim();
-    return address === ""
-      ? needs(say, "pays-to", "an address", "pays-to the_merchant 0x…")
-      : await setPaidAt(store, now, say, first, address);
   }
   if (verb === "keys") {
     return first === undefined
@@ -207,47 +200,6 @@ async function setListingName(
   say("");
   say("Every card they have published is off sale until they are listed again:");
   say("a payment request has to name the seller, and there is nobody to name.");
-  return 0;
-}
-
-/**
- * Where one merchant's sales are paid into, set from a terminal.
- *
- * There is no `--none` here and the omission is deliberate. Taking a listing
- * name away is a thing somebody at a terminal has a reason to do — a name that
- * should never have been listed is pulled, and the merchant's cards come off
- * sale with it. Taking an address away has no such use: nobody needs a
- * merchant's money to stop arriving somewhere, and the acts that stop their
- * selling are the pause and, from here, the name. What this verb is for is the
- * merchant who cannot reach their own cabinet, and for them the useful act is
- * setting an address rather than removing one.
- */
-async function setPaidAt(
-  store: Store,
-  now: () => number,
-  say: (line: string) => void,
-  merchantId: string,
-  address: string,
-): Promise<number> {
-  let paid: StoredMerchant | null;
-  try {
-    paid = await setPayoutWallet(store, merchantId, address, now());
-  } catch (thrown) {
-    // The one wrong answer available is writing down an address that is not
-    // theirs, and nothing downstream would ever notice. What is printed is the
-    // rule and the address that broke it; nothing is written, so the merchant
-    // keeps whatever they were paid at before.
-    say(`That is not an address this merchant can be paid at: ${reasonOf(thrown)}`);
-    say("Nothing was written.");
-    return 1;
-  }
-
-  if (paid === null) {
-    say(`There is no merchant ${merchantId}, so there is nobody to pay.`);
-    return 1;
-  }
-
-  say(`${paid.id} is paid at ${paid.payoutWallet}.`);
   return 0;
 }
 
