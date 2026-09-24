@@ -13,10 +13,10 @@
 #
 # On PRODUCTION it also installs the off-host backup (deploy/README.md,
 # "Backups"): restic where the host has none, agentify-backup every ten
-# minutes, agentify-backup-check every week, agentify-backup-credentials, and
-# their units, and it removes the interim cron job the backup replaced. It
-# refuses until /etc/agentify/backup.env, which opens the backups, is root's
-# with mode 600. TEST takes no backups, since its data is test data.
+# minutes, agentify-backup-check every week, agentify-backup-credentials and
+# their units, and it removes the interim cron job. It refuses until
+# /etc/agentify/backup.env is root's with mode 600. TEST takes no backups,
+# since its data is test data.
 set -euo pipefail
 
 channel="${1:-}"
@@ -38,11 +38,6 @@ if [[ $channel == production ]]; then
   secrets=/etc/agentify/backup.env
   [[ -f $secrets ]] || refuse "$secrets does not exist; deploy/README.md, \"Backups\", says how deploy/backup-credentials.sh writes it."
   [[ $(stat -c '%U %a' "$secrets") == "root 600" ]] || refuse "$secrets opens every backup, so it belongs to root with mode 600."
-  command -v restic > /dev/null || { apt-get update -qq && apt-get install -y -qq restic; }
-  version="$(restic version)"
-  if ! [[ $version =~ ^restic\ ([0-9]+)\.([0-9]+) ]] || ((BASH_REMATCH[1] == 0 && BASH_REMATCH[2] < 16)); then
-    refuse "the backup waits for the repository's lock with --retry-lock, which came with restic 0.16, and this host has ${version%% compiled*}."
-  fi
 fi
 
 # TEST's timer is held while the files change and started again however this
@@ -62,6 +57,7 @@ JSON
 if [[ $channel == test ]]; then
   install -m 644 "$root/deploy/agentify-release.service" "$root/deploy/agentify-release.timer" /etc/systemd/system/
 else
+  command -v restic > /dev/null || { apt-get update -qq && apt-get install -y -qq restic; }
   install -m 755 "$root/deploy/backup.sh" /usr/local/sbin/agentify-backup
   install -m 755 "$root/deploy/backup-check.sh" /usr/local/sbin/agentify-backup-check
   install -m 755 "$root/deploy/backup-credentials.sh" /usr/local/sbin/agentify-backup-credentials
