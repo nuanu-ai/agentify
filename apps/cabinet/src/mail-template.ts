@@ -15,6 +15,8 @@ export interface TransactionalEmail {
   readonly action: string;
   readonly link: string;
   readonly paragraphs: readonly string[];
+  /** Why this address was sent the message; the sign-in's reason where absent. */
+  readonly reason?: string;
 }
 
 /** Escape untrusted text before placing it in HTML text or an attribute. */
@@ -38,6 +40,9 @@ export function transactionalEmailHtml(message: TransactionalEmail): string {
   const lead = escapeHtml(message.lead);
   const action = escapeHtml(message.action);
   const link = escapeHtml(message.link);
+  const reason = escapeHtml(
+    message.reason ?? "This message was sent because this address was entered at Agentify.",
+  );
   const paragraphs = message.paragraphs
     .map(
       (paragraph) =>
@@ -79,7 +84,7 @@ export function transactionalEmailHtml(message: TransactionalEmail): string {
             </td>
           </tr>
           <tr>
-            <td style="padding:20px 4px 0;color:#6B6862;font-size:12px;line-height:1.5;">This message was sent because this address was entered at Agentify.</td>
+            <td style="padding:20px 4px 0;color:#6B6862;font-size:12px;line-height:1.5;">${reason}</td>
           </tr>
         </table>
       </td>

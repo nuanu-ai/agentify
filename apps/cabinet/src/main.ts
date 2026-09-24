@@ -20,11 +20,12 @@
  * on boot migrates once per replica and races itself.
  */
 
+import { startAnnouncementServer, tellerFor } from "./announcement-server.js";
 import { loadConfig } from "./config.js";
 import { connect } from "./database.js";
 import { gatewayFor } from "./gateway.js";
 import { identityFor } from "./identity.js";
-import { isSandboxMail } from "./mail.js";
+import { isSandboxMail, postmanFor } from "./mail.js";
 import { startReportIdentityServer } from "./report-identity-server.js";
 import { buildApp } from "./server.js";
 import { postgresWooShops } from "./woo-shops.js";
@@ -35,6 +36,12 @@ const pool = connect(config.databaseUrl);
 const identity = identityFor(config, { pool });
 const wooShops = postgresWooShops(pool);
 const reportIdentityServer = startReportIdentityServer(config.reportIdentitySecret, identity);
+// The gateway's route for telling a merchant of a change to their wallet or
+// their keys (ADR-0019), on a port of its own behind a secret of its own.
+const announcementServer = startAnnouncementServer(
+  config.announcementSecret,
+  tellerFor(config, identity, postmanFor(config)),
+);
 
 const server = buildApp(config, { identity, wooShops }).listen(config.port, () => {
   console.log(`[cabinet] listening on ${config.port}, reading ${config.gatewayUrl}`);
@@ -57,11 +64,12 @@ const worker = startWooWorker({
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
     const publicClosed = new Promise<void>((resolve) => server.close(() => resolve()));
-    const privateClosed =
-      reportIdentityServer === null
+    const privateClosed = [reportIdentityServer, announcementServer].map((listener) =>
+      listener === null
         ? Promise.resolve()
-        : new Promise<void>((resolve) => reportIdentityServer.close(() => resolve()));
-    void Promise.all([publicClosed, privateClosed])
+        : new Promise<void>((resolve) => listener.close(() => resolve())),
+    );
+    void Promise.all([publicClosed, ...privateClosed])
       .then(() => worker.stop())
       .finally(() => identity.close())
       .finally(() => process.exit(0));

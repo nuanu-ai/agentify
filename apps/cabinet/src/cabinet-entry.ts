@@ -91,4 +91,14 @@ export interface CabinetIdentity {
     expectedKey: string,
     replacementKey: string,
   ): Promise<MerchantKeyReplacement>;
+
+  /**
+   * Ends every session of every account naming this merchant except the ones
+   * this cookie header carries, and says how many ended.
+   *
+   * What a cancelled wallet change does (ADR-0019): the change may have been
+   * asked for from a session somebody else holds, and the person who pressed
+   * cancel is the one known to be the owner, so theirs is the one left.
+   */
+  endOtherSessionsOfMerchant(merchantId: string, keep: string | undefined): Promise<number>;
 }

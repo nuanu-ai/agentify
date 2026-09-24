@@ -305,7 +305,7 @@ describe("the calls behind the address a merchant's money arrives at", () => {
     if (!read.ok) {
       throw new Error(`reading the address failed: ${read.why}`);
     }
-    expect(read.document).toBe(SHAPED);
+    expect(read.document).toStrictEqual({ payout_wallet: SHAPED, pending: null });
   });
 
   it("reads a merchant who has set no address as null rather than as an absence", async () => {
@@ -321,7 +321,7 @@ describe("the calls behind the address a merchant's money arrives at", () => {
     if (!read.ok) {
       throw new Error(`reading the address failed: ${read.why}`);
     }
-    expect(read.document).toBeNull();
+    expect(read.document).toStrictEqual({ payout_wallet: null, pending: null });
   });
 
   it("sends the address a merchant pasted and hands back what was written", async () => {
@@ -337,7 +337,7 @@ describe("the calls behind the address a merchant's money arrives at", () => {
     if (!set.ok) {
       throw new Error(`setting the address failed: ${set.why}`);
     }
-    expect(set.document).toBe(SHAPED);
+    expect(set.document).toStrictEqual({ payout_wallet: SHAPED, pending: null });
   });
 
   it("refuses an answer with no address field in it rather than reading one as null", async () => {

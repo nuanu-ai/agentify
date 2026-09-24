@@ -42,7 +42,7 @@
 
 import { EvmAddressSchema } from "@nuanu-ai/agentify-contracts";
 
-import { escaped } from "./html.js";
+import { escaped, when } from "./html.js";
 import type { Viewer } from "./screens.js";
 
 /**
@@ -64,6 +64,14 @@ export const WALLET_RULE =
   "Paste an EVM address: 0x followed by 40 hexadecimal characters. Use the mixed-case spelling" +
   " from your wallet or all lower case. This checks its shape and checksum, not the network or" +
   " who owns it, so copy it from your wallet rather than typing it.";
+
+/**
+ * What a merchant on the live deployment is told before replacing an address,
+ * so a change that does not apply at once is not read as one that failed.
+ */
+export const LIVE_CHANGE_WAITS =
+  "A different address takes effect forty-eight hours after every account of your merchant" +
+  " is sent a message about it. Until then your sales are paid into the address above.";
 
 /** What somebody who pressed the button with an empty box is told. */
 export const WALLET_NEEDED =
@@ -111,6 +119,12 @@ export const whatIsWrongWithTheWallet = (address: string): string | null => {
 export interface PayoutWallet {
   /** What the gateway answered: the address, or null where none is set. */
   readonly wallet: string | null;
+  /**
+   * A replacement announced and waiting on the live deployment, and when it
+   * takes effect, as the gateway answered them (ADR-0019). Absent or null
+   * where nothing waits.
+   */
+  readonly pending?: { readonly wallet: string; readonly takesEffectAt: string } | null;
   /** What was wrong with the address just typed, where one was refused. */
   readonly problem?: string;
   /** What was refused, so the merchant can correct it rather than retype it. */
@@ -143,6 +157,27 @@ const savedAddress = (address: string): string => `
   </div>`;
 
 /**
+ * A replacement that waits, whole and in fours like the address it replaces,
+ * with the moment it takes effect and the one control that stops it.
+ *
+ * It is on this screen because the message about it says the change takes
+ * effect only if this screen shows it (ADR-0019), and that sentence is only
+ * true if the screen always does. The cancel is a form post from this page and
+ * nothing else — a link could be sent from anywhere — and it says what else it
+ * does, because ending every other session is not something a person expects
+ * from a button about an address.
+ */
+const pendingAddress = (base: string, pending: NonNullable<PayoutWallet["pending"]>): string => `
+  <div class="saved">
+    <div class="label">Waiting to replace it</div>
+    <div class="address">${inFours(pending.wallet)}</div>
+    <p class="under">From ${when(pending.takesEffectAt)} your sales are paid into this address instead. Every account of your merchant was sent a message about it. If nobody at your business asked for it, cancel it; cancelling also signs out every session of your merchant but this one.</p>
+    <form class="inline" method="post" action="${escaped(base)}/settings/payout-wallet/cancel">
+      <button class="button button-secondary" type="submit">Cancel this change</button>
+    </form>
+  </div>`;
+
+/**
  * The block itself.
  *
  * It draws nothing at all where the screen did not ask the gateway for the
@@ -168,7 +203,7 @@ export const payoutWalletBlock = (viewer: Viewer): string => {
   if (payout === undefined) {
     return "";
   }
-  const { wallet, problem, typed } = payout;
+  const { wallet, pending, problem, typed } = payout;
   const purpose =
     viewer.mode === "test"
       ? "TEST settles test USDC on Base Sepolia to this address."
@@ -183,10 +218,15 @@ export const payoutWalletBlock = (viewer: Viewer): string => {
       <p>${purpose} <a href="/docs/money#where-the-money-arrives">Where the money arrives, and when</a>.</p>
       <p class="quiet">Enter only the public address. Never enter a private key or recovery phrase; Agentify will never ask for either.</p>
     </div>
-  </div>${wallet === null ? "" : savedAddress(wallet)}
+  </div>${wallet === null ? "" : savedAddress(wallet)}${pending === undefined || pending === null ? "" : pendingAddress(base, pending)}
   <div class="lede">
     <div>
-      <p class="quiet">${escaped(WALLET_RULE)}</p>
+      <p class="quiet">${escaped(WALLET_RULE)}</p>${
+        wallet !== null && viewer.mode === "live"
+          ? `
+      <p class="quiet">${escaped(LIVE_CHANGE_WAITS)}</p>`
+          : ""
+      }
     </div>
   </div>
   <form class="issue" method="post" action="${escaped(base)}/settings/payout-wallet">

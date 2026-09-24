@@ -1189,7 +1189,12 @@ describe("coming back from the shop with no session on the request", () => {
     ]) {
       const seen = await running.getWithoutCookie(path);
       expect(seen.status, path).toBe(303);
-      expect(seen.to, path).toBe("/sign-in");
+      // The wallet screen alone keeps where the person was going, because a
+      // message about a payout wallet change links there (ADR-0019); it is as
+      // shut as the rest.
+      expect(seen.to, path).toBe(
+        path === "/settings" ? "/sign-in?destination=settings" : "/sign-in",
+      );
     }
   });
 });

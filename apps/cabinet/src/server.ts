@@ -36,6 +36,7 @@ import {
   openReportCabinetHandoff,
   REPORT_CABINET_HANDOFF_COOKIE,
 } from "@agentify/scanner-contracts/report-cabinet-handoff";
+import type { PayoutWallet as PayoutWalletDocument } from "@nuanu-ai/agentify-contracts";
 import express, { type Express, type Request, type Response } from "express";
 import type { CabinetDestination, CabinetIdentity, Person } from "./cabinet-entry.js";
 import type { CabinetConfig } from "./config.js";
@@ -130,6 +131,17 @@ const mapAtMost = async <Input, Output>(
  * replaced this time, which is a thing that can wait until the next sign-in.
  */
 const KEY_AT_SIGN_IN_MS = 2_000;
+
+/**
+ * How long the cabinet waits on the gateway for a payout wallet change.
+ *
+ * Longer than a screen's ten seconds, because on the live deployment the
+ * gateway does not answer until this cabinet's own announcement listener has
+ * handed every message to the mail provider, and it gives that twenty seconds
+ * (ADR-0019). A cabinet that stopped waiting first would tell a person the
+ * gateway did not answer while their change was being recorded.
+ */
+const WALLET_CHANGE_MS = 30_000;
 
 /**
  * What an account with no merchant on it is told, wherever it turns up.
@@ -315,7 +327,7 @@ const people = new WeakMap<Request, Person>();
  */
 interface Settings {
   readonly sellerName: string | null;
-  readonly payoutWallet: string | null;
+  readonly payoutWallet: PayoutWalletDocument;
   readonly shop?: ShopTile;
 }
 
@@ -352,7 +364,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    * key on it, with a sentence saying what to do, precisely so that no handler
    * below has to hold an opinion about a cabinet with nothing to draw.
    */
-  const gatewayAs = (request: Request): GatewayClient => {
+  const gatewayAs = (request: Request, answerWithinMs?: number): GatewayClient => {
     const merchant = whoIs(request).merchant;
     if (merchant === null) {
       throw new Error(
@@ -361,7 +373,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
           " visitor's problem",
       );
     }
-    return clientFor(merchant.key);
+    return clientFor(merchant.key, answerWithinMs);
   };
 
   /**
@@ -931,11 +943,24 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
             request.path === `${base}/woocommerce`
               ? "&destination=woocommerce"
               : "";
+          // The wallet screen is where a message about a payout wallet change
+          // sends a person, with no token in it (ADR-0019), so a signed-out
+          // visit there comes back there after an ordinary sign-in, cookie or
+          // none.
+          const toTheWallet =
+            (request.method === "GET" || request.method === "HEAD") &&
+            request.path === `${base}/settings`;
           response.redirect(
             303,
             hadIdentityCookie
-              ? `${base}/sign-in?reason=${reason}${destination}`
-              : `${base}/sign-in${destination === "" ? "" : "?destination=woocommerce"}`,
+              ? `${base}/sign-in?reason=${reason}${destination}${toTheWallet ? "&destination=settings" : ""}`
+              : `${base}/sign-in${
+                  toTheWallet
+                    ? "?destination=settings"
+                    : destination === ""
+                      ? ""
+                      : "?destination=woocommerce"
+                }`,
           );
           return;
         }
@@ -1211,13 +1236,68 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       return;
     }
 
-    const set = await gatewayAs(request).setPayoutWallet(typed);
+    const set = await gatewayAs(request, WALLET_CHANGE_MS).setPayoutWallet(typed);
     if (!set.ok) {
       return trouble(response, base, set);
     }
     // The address itself stays out of the line. It is not a secret, but this
     // log is a process log and the record of who changed it is what it is for.
-    noted(whoIs(request), "changed the address their money arrives at");
+    noted(
+      whoIs(request),
+      set.document.pending === null
+        ? "changed the address their money arrives at"
+        : "asked for a change of the address their money arrives at, which now waits",
+    );
+    response.redirect(303, `${base}/settings`);
+  });
+
+  /**
+   * Cancels a replacement wallet that waits, and signs out every session of
+   * the merchant but the one that pressed (ADR-0019).
+   *
+   * Cancelling is asking the gateway for the address that applies now, which
+   * is what the gateway reads as a cancel — so the cabinet holds no power over
+   * the wallet that a merchant's own code does not. It reads the wallet first
+   * rather than trusting a page that may be a day old, and does nothing at all
+   * where nothing waits: a press on a stale page is not a reason to sign
+   * anybody out.
+   *
+   * The sessions go because the change may have been asked for from one of
+   * them — a device left signed in, somebody else at the merchant — and the
+   * person pressing here is the one known to be looking. Only on success: a
+   * cancel the gateway refused leaves the change waiting, and signing people
+   * out over it would take away the sessions that might press again.
+   *
+   * A change whose moment passed between the read and the press is not undone
+   * here: what is sent is then a different address from the one that applies,
+   * which the gateway announces and waits on like any other, and the screen
+   * this redirects to shows that change waiting.
+   */
+  app.post(`${base}/settings/payout-wallet/cancel`, async (request, response) => {
+    const gateway = gatewayAs(request, WALLET_CHANGE_MS);
+    const read = await gateway.payoutWallet();
+    if (!read.ok) {
+      return trouble(response, base, read);
+    }
+    const { payout_wallet: applies, pending } = read.document;
+    if (pending === null || applies === null) {
+      response.redirect(303, `${base}/settings`);
+      return;
+    }
+    const cancelled = await gateway.setPayoutWallet(applies);
+    if (!cancelled.ok) {
+      return trouble(response, base, cancelled);
+    }
+    const person = whoIs(request);
+    const merchant = person.merchant;
+    const ended =
+      merchant === null
+        ? 0
+        : await identity.endOtherSessionsOfMerchant(merchant.id, request.headers.cookie);
+    noted(
+      person,
+      `cancelled a waiting change of the address their money arrives at, and ${ended} other sessions of the merchant were ended`,
+    );
     response.redirect(303, `${base}/settings`);
   });
 
@@ -1841,7 +1921,14 @@ const viewingSettingsAt = (
 ): Viewer => ({
   ...viewingAt(request, base, mode, settings.sellerName),
   payout: {
-    wallet: settings.payoutWallet,
+    wallet: settings.payoutWallet.payout_wallet,
+    pending:
+      settings.payoutWallet.pending === null
+        ? null
+        : {
+            wallet: settings.payoutWallet.pending.payout_wallet,
+            takesEffectAt: settings.payoutWallet.pending.takes_effect_at,
+          },
     ...(walletProblem === undefined ? {} : { problem: walletProblem }),
     ...(walletTyped === undefined ? {} : { typed: walletTyped }),
   },
