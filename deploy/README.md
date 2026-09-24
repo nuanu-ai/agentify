@@ -39,6 +39,8 @@ host are these, with `<channel>` standing for `test` or `production`:
 /run/lock/agentify-release.lock          activation's lock, shared by restores and the nightly privacy job
 /var/backups/agentify/<channel>/         the restore points, one directory per release
 /etc/cron.d/agentify-release             the nightly privacy job, written by each verified release
+/etc/agentify/backup.env                 PRODUCTION only: the backup repository's password and S3 key, root, mode 600
+/var/lib/agentify/production/backup-status  the last backup and the last weekly check ("Backups")
 ```
 
 The database mounts its init scripts from `postgres-init/` rather than from a
@@ -359,13 +361,14 @@ ssh -t agentify-test sudo agentify-release --restore /var/backups/agentify/test/
 On PRODUCTION the same command runs over `ssh -t agentify`, with `production`
 in the path. Like a release, it runs as `agentify-release-<channel>.service`,
 so a dropped connection does not stop it halfway, and it waits while a release
-runs. It checks that the database volume has room for a second copy of both
-databases, marks the record as restoring, which holds every release back,
-stops the four applications, restores each dump into a scratch database, and
-only when both are whole swaps them in, in one transaction. The databases it
-replaced stay beside them as `agentify_commerce_replaced_<time>` and
-`agentify_scanner_replaced_<time>` until the next verified release drops them,
-so a restore made by mistake can still be undone by hand until then.
+runs. It restores every database the directory holds a dump of,
+`<database>.dump`; a release's restore point holds both. It checks that the
+database volume has room for a second copy of them, marks the record as
+restoring, which holds every release back, stops the four applications,
+restores each dump into a scratch database, and only when all are whole swaps
+them in, in one transaction. The databases it replaced stay beside them as
+`<database>_replaced_<time>` until the next verified release drops them, so a
+restore made by mistake can still be undone by hand until then.
 
 A bad dump or a failure before the swap leaves the databases as they were and
 the record as the restore found it, so it holds no release back, and the
@@ -390,6 +393,123 @@ release that tag. Restoring its restore point would lose every order and
 receipt written since, and the command refuses to move production backwards
 from the revision `current` names.
 
+## Backups
+
+PRODUCTION is backed up off the host every ten minutes into the restic
+repository in the bucket `nuanu-agentify-backups` (Hetzner Object Storage,
+fsn1, project "Nuanu AI prod backups"); ADR-0029 says why this way. The
+recovery point is ten minutes: whatever was written in the ten minutes before a
+loss is gone, and nothing sooner can be recovered. A snapshot holds a dump of
+each of the channel's databases, the server's roles, the row count of every
+table, `production.env` and `release.json`. It never holds
+`/etc/agentify/backup.env`, which holds the repository's password and the S3
+key; the password is also in Dmitry's 1Password, and the key can be issued
+again in the Hetzner console. Snapshots are kept for the last day, one an hour
+for two days and one a day for thirty days, and once a week one is restored
+into scratch databases and its row counts compared.
+
+There is no alert yet. A failed backup or check writes one line at priority
+err to the journal, and the status file says when each last succeeded, so look
+at both:
+
+```sh
+ssh agentify cat /var/lib/agentify/production/backup-status
+ssh -t agentify sudo journalctl -t agentify-backup -p err --since -2d
+ssh agentify systemctl list-timers 'agentify-backup*'
+```
+
+A backup waits up to five minutes for a release to let go of the release lock
+and then gives up until the next run, which the journal also records as a
+failure. Everything else below runs in a root shell on the host that has read
+`backup.env`, which lists the snapshots, newest last:
+
+```sh
+ssh -t agentify sudo -i
+set -a; . /etc/agentify/backup.env; set +a
+restic snapshots --compact
+```
+
+To put one database back as a snapshot holds it, restore its dump into a
+directory and restore that directory, which stops the applications, swaps the
+database in and keeps the one it replaced, as under "Restoring" above. Leave
+out `--include` to restore every database. No revision is current afterwards,
+so release the tag PRODUCTION ran, which migrates the data forward if the
+snapshot is older and starts the applications:
+
+```sh
+point=/var/backups/agentify/production/$(date -u +%Y%m%dT%H%M%SZ)-snapshot-<id>
+restic restore <id> --target "$point" --include /agentify_scanner.dump
+agentify-release --restore "$point"
+agentify-release app-v<X.Y.Z>
+```
+
+A new S3 key goes from the Hetzner console to the host through the Mac's
+clipboard, so it never shows on a screen: run this on the Mac, copy each value
+in the console when it asks, and press Enter. Nothing typed or pasted at these
+prompts is shown. Then run a backup to see that the key works:
+
+```sh
+/bin/bash -c 'for value in "the access key" "the secret key"; do
+  read -rs -p "Copy $value in the Hetzner console, then press Enter. " _ </dev/tty; echo >&2
+  printf "%s\n" "$(pbpaste)"; done' | ssh agentify sudo agentify-backup-credentials --stdin
+ssh agentify sudo systemctl start agentify-backup.service
+```
+
+The bucket keeps an object's older versions, and a lifecycle rule deletes a
+version 30 days after it stopped being current, so a snapshot restic prunes can
+still be fetched from the bucket for a month. Object Lock retention is not
+set, so whoever holds the S3 key can delete every version. The rule was set
+once, with nothing but curl, and the second call shows it:
+
+```sh
+ssh agentify sudo bash -s <<'SH'
+set -a; . /etc/agentify/backup.env; set +a
+rule='<LifecycleConfiguration><Rule><ID>noncurrent-30-days</ID><Filter><Prefix></Prefix></Filter><Status>Enabled</Status><NoncurrentVersionExpiration><NoncurrentDays>30</NoncurrentDays></NoncurrentVersionExpiration></Rule></LifecycleConfiguration>'
+s3() { printf 'user = "%s:%s"\n' "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" | curl -fsS -K - --aws-sigv4 "aws:amz:$AWS_DEFAULT_REGION:s3" "$@" "${RESTIC_REPOSITORY#s3:}?lifecycle"; }
+s3 -X PUT -H "Content-MD5: $(printf %s "$rule" | openssl dgst -md5 -binary | base64)" --data-binary "$rule"
+s3; echo
+SH
+```
+
+To rebuild PRODUCTION on a new host, start from Ubuntu 24.04 with Docker and
+Compose on the nuanu mesh and a checkout of `main`, and give the host
+`backup.env`: the bucket and the password first, the password copied from
+1Password, then a new S3 key issued in the console, as above but with
+`sudo deploy/backup-credentials.sh --stdin` from the checkout:
+
+```sh
+ssh <new host> "sudo sh -c 'umask 077; printf \"RESTIC_REPOSITORY=s3:https://fsn1.your-objectstorage.com/nuanu-agentify-backups\nAWS_DEFAULT_REGION=fsn1\n\" > /etc/agentify/backup.env'"
+/bin/bash -c 'read -rs -p "Copy the repository password in 1Password, then press Enter. " _ </dev/tty; echo >&2
+  printf "RESTIC_PASSWORD=%q\n" "$(pbpaste)"' | ssh <new host> "sudo sh -c 'cat >> /etc/agentify/backup.env'"
+```
+
+Then, in a root shell on the new host that has read `backup.env`, take
+`production.env` out of the snapshot to rebuild from, install, and hold the
+backup timer until the data is back, so no snapshot of empty databases becomes
+the latest. The edge Caddy, with the network `agentify-ingress` it needs, is set
+up from `deploy/edge/` and the name `agentify.ad` pointed at the new host as on
+the old one; neither is in this runbook. The production overlay refuses to
+start on volumes it did not find, so the two are created empty. The first
+release creates empty databases, the snapshot's roles go in before its dumps,
+whose grants name them, and the second release starts the applications on the
+restored data:
+
+```sh
+restic restore <id> --target /root/from-backup
+install -m 600 /root/from-backup/production.env /etc/agentify/production.env
+deploy/install.sh production && systemctl stop agentify-backup.timer
+docker volume create agentify-commerce-postgres && docker volume create agentify-commerce-caddy
+agentify-release app-v<X.Y.Z>
+"$(ls -d /var/lib/agentify/production/checkouts/*/ | head -n 1)deploy/stack.sh" production exec -T postgres psql -U agentify_commerce -d postgres < /root/from-backup/roles.sql
+point=/var/backups/agentify/production/$(date -u +%Y%m%dT%H%M%SZ)-snapshot-<id>
+mkdir -m 700 "$point" && cp /root/from-backup/*.dump "$point/"
+agentify-release --restore "$point" && agentify-release app-v<X.Y.Z>
+systemctl start agentify-backup.timer && rm -rf /root/from-backup
+```
+
+The roles' replay reports that `agentify_commerce` already exists, which is
+expected.
+
 ## Setting up a host
 
 A host needs Docker with Compose, `flock`, `curl`, `git` and `python3`, and
@@ -407,8 +527,11 @@ On TEST it also installs and starts the timer (`agentify-release.timer`);
 PRODUCTION gets no timer. The first release writes the nightly privacy job's
 line; until then a new host has none. The command on a host is whatever this
 last installed, and a release does not update it: when a change reaches
-`main` that touches `deploy/agentify-release`, `deploy/install.sh` or the
-timer's units, run `install.sh` again from a checkout of that `main`.
+`main` that touches `deploy/agentify-release`, `deploy/install.sh`, the backup
+scripts or any of the units, run `install.sh` again from a checkout of that
+`main`. On PRODUCTION it also installs the backup ("Backups" below) and refuses
+until `/etc/agentify/backup.env` exists, root's with mode 600. TEST takes no
+backups, since its data is test data.
 
 It refuses while root is in the "password must be changed" state, because in
 that state `sudo` refuses to switch accounts, and it stopped every production
