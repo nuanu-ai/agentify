@@ -59,6 +59,20 @@ merchant's products cannot start new live purchases. Operator approval is not
 required on the test channel. A local scripted sandbox moves no funds, so it
 does not require a merchant wallet either.
 
+On the live channel a wallet already saved is not replaced at once, whether
+the change comes from the cabinet or from your code calling
+`POST /v0/payout-wallet`. Every cabinet account of your merchant is sent a
+message first, and the answer keeps the address still paid in
+`payout_wallet` and puts the new one under `pending`, with `takes_effect_at`
+forty-eight hours after the message went out; every payment request names the
+address still paid until that moment. Sending the address under `pending`
+again changes nothing and sends no second message, a different address
+replaces the waiting one and starts the forty-eight hours again, and sending
+the address still paid cancels the change. If the message cannot be sent the
+call is refused with a code beginning `wallet_change_` and nothing changes. On
+the test channel every change applies at once and `pending` is always null,
+so the first time your code meets a waiting change is on the live channel.
+
 Once the seller name and wallet are set, open API Keys, press "Issue a key",
 name it so you can distinguish it from the next one, and copy it. The secret is
 shown once. Keep it with your other secrets; do not put it in source control.
