@@ -30,7 +30,7 @@ done
 docker exec "$postgres" pg_dumpall -U agentify_commerce --roles-only > "$work/roles.sql"
 exec 9>&-
 install -m 600 /etc/agentify/production.env /etc/agentify/release.json "$work/"
-for database in "${databases[@]}"; do # the lines of each COPY block, which the weekly check compares with
+for database in "${databases[@]}"; do # the lines of each COPY block, which the restore rehearsal compares with
   docker exec -i "$postgres" pg_restore -f - < "$work/$database.dump" | awk -v db="$database" '
     copying && $0 == "\\." { print db "|" table "|" rows; copying = 0 } copying { rows++ }
     /^COPY / { table = substr($0, 6); sub(/ (\(.*\) )?FROM stdin;$/, "", table); rows = 0; copying = 1 }' >> "$work/counts"
