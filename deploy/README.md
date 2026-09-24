@@ -404,15 +404,11 @@ It installs `agentify-release`, `/etc/agentify/release.json` and, where
 needrestart is installed, the rule that keeps needrestart from restarting a
 release in the middle of an activation, the timer's unit and a person's alike.
 On TEST it also installs and starts the timer (`agentify-release.timer`);
-PRODUCTION gets no timer. On either channel it removes the pull agent the
-earlier Ansible release had installed (`agentify-pull@<channel>`), keeping its
-old records in `/var/lib/agentify-pull-agent`, and that release's nightly line
-in `/etc/cron.d/agentify-release`, which ran the privacy job without the
-release lock; until the first release writes its own line, there is no nightly
-privacy job. The command on a host is whatever this last
-installed, and a release does not update it: when a change reaches `main`
-that touches `deploy/agentify-release`, `deploy/install.sh` or the timer's
-units, run `install.sh` again from a checkout of that `main`.
+PRODUCTION gets no timer. The first release writes the nightly privacy job's
+line; until then a new host has none. The command on a host is whatever this
+last installed, and a release does not update it: when a change reaches
+`main` that touches `deploy/agentify-release`, `deploy/install.sh` or the
+timer's units, run `install.sh` again from a checkout of that `main`.
 
 It refuses while root is in the "password must be changed" state, because in
 that state `sudo` refuses to switch accounts, and it stopped every production
@@ -446,130 +442,6 @@ start of a variable, cuts the value there and prints the rest in a warning, so
 `stack.sh` refuses such a file and names the key. The first release renders
 the file and refuses, before it stops anything, if a variable is missing, the
 preflight disagrees or the scanner refuses the configuration at its own start.
-
-A host released by the Ansible release already has this file, rendered by its
-last release, so writing it is a copy that leaves out the lines the new shape
-does not read. On TEST, with `<revision>` the last one the old agent verified
-(the last `"status": "verified"` line of
-`/var/lib/agentify-pull-agent/test/history.jsonl`) and `<home>` the deployment
-account's home directory:
-
-```sh
-sudo sh -c 'umask 077; mkdir -p /etc/agentify; grep -vE "^(AGENTIFY_(APP|WEB|SCANNER|SCANNER_WORKER|SCANNER_PRIVACY|POSTGRES|EDGE)_IMAGE|AGENTIFY_INGRESS_NETWORK)=" <home>/agentify-releases/<revision>/agentify.env > /etc/agentify/test.env'
-```
-
-The command prints no value. The files the old release kept beside it,
-`report-identity-secret` and `scanner-admin.json`, are already inside what it
-copies; `scanner-admin-password` is the only copy of TEST's admin password and
-belongs wherever the operator keeps credentials.
-
-## Production's one-time move to this release
-
-**Not yet rehearsed.** PRODUCTION still runs the last revision its Ansible
-release activated, as two Compose projects: the commerce project
-`agentify-commerce` and the old scanner project `agentify`. Until the steps
-below are done, an `app-v*` tag publishes the npm packages and deploys nothing.
-The change that carries out this move proves these steps on the host and then
-deletes this section.
-
-First make sure nothing will fight the move: root's password state as above,
-and no release running (`systemctl is-active agentify-pull@production.service`
-must not print `activating`). Do it away from 04:23, when the old scheduled
-privacy job runs.
-
-Write `/etc/agentify/production.env` by hand. PRODUCTION's last Ansible release
-predates the merged stack, so its rendered file
-(`<home>/agentify-releases/<revision>/agentify.env`) holds the commerce
-settings only, and the scanner's live in the old scanner project's own
-environment file, beside the compose file `docker compose ls` names for the
-project `agentify`. Start from the commerce file, append the scanner's lines,
-and leave out what named machinery that is gone: every `*_DATABASE_URL` and
-`DATABASE_MODE`, every `POSTGRES_*_PASSWORD` but the commerce one,
-`RECONCILE_RUNTIME_ROLE_PASSWORDS`, `ROLE_PASSWORD_ROTATION_MAINTENANCE_ACK`,
-`AGENTIFY_BACKUP_DIRECTORY`, `AGENTIFY_SCANNER_DB_NETWORK`,
-`AGENTIFY_ALPINE_IMAGE`, and every `*_IMAGE` line. Keep `TOKEN_HMAC_SECRET` and
-`EMAIL_ENCRYPTION_KEY` above all: a changed one breaks every report link and
-every stored address already out there. `REPORT_IDENTITY_SECRET` comes from the
-old configuration directory's `report-identity-secret`, and the admin user and
-hash from the running edge's environment; the hash goes inside single quotes.
-The public browser settings the old scanner read under `NEXT_PUBLIC_` names are
-read under their plain names now: `TURNSTILE_SITE_KEY`, `PRIVACY_EMAIL`,
-`ABUSE_EMAIL`, `LEGAL_OPERATOR`, `LEGAL_IDENTITY_CONFIRMED`,
-`STRIPE_PUBLISHABLE_KEY`, `POSTHOG_BROWSER_KEY`, `POSTHOG_BROWSER_HOST`,
-`POSTHOG_DESTINATION_ENV`, `META_PIXEL_ID`, `META_DESTINATION_ENV`, and
-`ANALYTICS_RUNTIME_ENV` for `NEXT_PUBLIC_ANALYTICS_ENV`. Write it with mode 600,
-owned by root, and keep the originals.
-
-Then install the command, which also disables and removes the old
-`agentify-pull@production` timer and service:
-
-```sh
-sudo deploy/install.sh production
-```
-
-Take a backup of both databases as they are, before anything else changes. It
-goes into `/var/backups/agentify/production-before-move/`, outside the
-channel's own directory, so the rotation of restore points never deletes it,
-and it is written with umask 077, since the commerce dump holds merchants' keys
-and WooCommerce credentials. `agentify-release --restore` restores it like any
-restore point.
-
-```sh
-sudo sh -c 'umask 077; d=/var/backups/agentify/production-before-move; mkdir -p "$d"; for db in agentify_commerce agentify_scanner; do docker exec agentify-commerce-postgres-1 pg_dump -U agentify_commerce -Fc "$db" > "$d/$db.dump"; done; ls -l "$d"'
-```
-
-Stop the old scanner project. List its containers by the label Compose wrote
-on them, read the list, and stop those and nothing else, with `docker stop`
-rather than removing them, so that a first release that fails can start them
-again; the scanner's data lives in the commerce database, which stays:
-
-```sh
-sudo docker ps -a --filter label=com.docker.compose.project=agentify --format '{{.Names}}'
-sudo docker stop <the names that command printed>
-```
-
-The old project is `agentify` and the new one `agentify-commerce` (the project
-names in the removed `ops/deploy/droplet/compose.production.yaml` and in
-`deploy/stack.sh`), so every old container's name begins `agentify-` followed
-by a service, and every new one `agentify-commerce-`; stopped, the old ones do
-not stand in the new ones' way. From that moment the front page answers 502
-until the release starts the new scanner. Release, with the `app-v*` tag of
-the revision to move to. This first release has no `current` to move forward
-from, so check first that the tag is ahead of the revision production runs,
-which the cabinet's image label names:
-
-```sh
-sudo docker inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$(sudo docker inspect -f '{{.Image}}' agentify-commerce-cabinet-1)"
-git merge-base --is-ancestor <that revision> app-v<X.Y.Z> && echo forward
-sudo agentify-release app-v<X.Y.Z>
-```
-
-If this first release fails before any migration, it starts the commerce
-applications again, and its message says that no scanner runs and points
-here: start the old scanner's containers again with
-`sudo docker start <the same names>`, and PRODUCTION is as it was before the
-move. If it fails while migrating, the channel stays down: run the release
-again once the cause is fixed, or put the databases back with
-`sudo agentify-release --restore /var/backups/agentify/production-before-move`
-and then start both the old commerce applications, which that release only
-stopped, and the old scanner, with `sudo docker start` and their names. If it
-fails after the new release started, the old scanner stays stopped and the
-release is fixed forward. Once a release has been verified, remove the old
-containers with `sudo docker rm <the same names>`.
-
-Two things the old scanner can leave behind hold `/api/health` at 503 and fail
-the route check: a scan its worker was running when it was removed, and a scan
-its web had queued. Find them in the scanner database and give them the
-terminal status they never reached, then run the release again:
-
-```sh
-sudo docker exec agentify-commerce-postgres-1 psql -U agentify_commerce -d agentify_scanner -c \
-  "update public.scans set status = 'failed' where status in ('accepted', 'queued', 'running') and accepted_at < now() - interval '10 minutes'"
-```
-
-Last, remove the private database network the old scanner project used, once
-`docker network inspect` shows it has no containers left (`docker network ls`
-names it).
 
 ## The Woo acceptance route on TEST
 

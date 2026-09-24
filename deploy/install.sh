@@ -8,10 +8,8 @@
 # /etc/agentify/release.json, and the rule that keeps needrestart from
 # restarting a release in the middle of an activation. On TEST it also installs
 # and starts the timer that releases whatever deploy-test names; PRODUCTION has
-# no timer, because a person releases it. On either channel it removes the pull
-# agent and the nightly job line the Ansible release installed. It touches no
-# channel data and no secret, and running it again installs the same files
-# again.
+# no timer, because a person releases it. It touches no channel data and no
+# secret, and running it again installs the same files again.
 set -euo pipefail
 
 channel="${1:-}"
@@ -30,32 +28,19 @@ aging="$(chage -l root)" || refuse "chage -l root did not say whether root's pas
 [[ ${aging,,} != *"password must be changed"* ]] \
   || refuse "root has to change its password first: sudo refuses to switch accounts until it does, which stopped every production release on 2026-09-22."
 
-# The timers are held while the files change, and whatever is still installed
-# is started again however this ends.
-systemctl stop agentify-release.timer "agentify-pull@$channel.timer" 2>/dev/null || true
-# errexit reaches into the trap, so a unit that is gone must not decide how the
-# script ends: every start in it is allowed to fail.
-trap 'systemctl start "agentify-pull@$channel.timer" 2>/dev/null || true; [[ $channel != test ]] || systemctl start agentify-release.timer 2>/dev/null || true' EXIT
-for unit in agentify-release.service "agentify-pull@$channel.service"; do
-  case "$(systemctl show -p ActiveState --value "$unit" 2>/dev/null || true)" in
-    activating | deactivating | reloading) refuse "$unit is releasing right now; run this again when it has finished." ;;
-  esac
-done
+# TEST's timer is held while the files change and started again however this
+# ends. errexit reaches into the trap, so the start in it is allowed to fail.
+systemctl stop agentify-release.timer 2>/dev/null || true
+trap '[[ $channel != test ]] || systemctl start agentify-release.timer 2>/dev/null || true' EXIT
+case "$(systemctl show -p ActiveState --value agentify-release.service 2>/dev/null || true)" in
+  activating | deactivating | reloading) refuse "agentify-release.service is releasing right now; run this again when it has finished." ;;
+esac
 
 install -m 755 "$root/deploy/agentify-release" /usr/local/sbin/agentify-release
 install -d -m 755 /etc/agentify
 install -m 644 /dev/stdin /etc/agentify/release.json <<JSON
 {"channel": "$channel", "repository": "https://github.com/nuanu-ai/agentify.git"}
 JSON
-
-# The Ansible release's pull agent. Its records in /var/lib/agentify-pull-agent stay.
-systemctl disable "agentify-pull@$channel.timer" 2>/dev/null || true
-rm -f /etc/systemd/system/agentify-pull@.service /etc/systemd/system/agentify-pull@.timer /etc/needrestart/conf.d/agentify-pull.conf
-rm -rf /opt/agentify-pull-agent /etc/agentify-pull-agent
-
-# The Ansible release's nightly privacy job ran without the release lock; the
-# first release by the command writes its own line in the same file.
-if grep -qs 'scanner-jobs.sh' /etc/cron.d/agentify-release; then rm -f /etc/cron.d/agentify-release; fi
 
 if [[ $channel == test ]]; then
   install -m 644 "$root/deploy/agentify-release.service" "$root/deploy/agentify-release.timer" /etc/systemd/system/
