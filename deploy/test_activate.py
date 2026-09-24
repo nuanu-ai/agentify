@@ -536,6 +536,8 @@ class Activation(unittest.TestCase):
         said = self.run_script(f"restore /var/backups/agentify/test/{point}")
         self.assertIn("restore exit 0", said)
         self.assertEqual((self.databases(), self.current()), (ORIGINAL, OLD))
+        # What it says is current is the revision it wrote, and nothing else.
+        self.assertIn(f"and {OLD} is current.", said)
         stopped = len(self.calls())
         said = self.run_script("activate")
         self.assertIn("exit 0", said)
