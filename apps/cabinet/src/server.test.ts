@@ -2617,7 +2617,8 @@ describe("what every screen says about the address", () => {
 
     for (const path of ["/cards", "/orders", "/receipts", "/keys", "/settings"]) {
       const answered = await browser.get(path);
-      expect(answered.html, path).toContain(`href="/settings">${PERSON}</a>`);
+      const link = /<a class="who" href="\/settings"[^>]*>([^<]*)<\/a>/.exec(answered.html);
+      expect(link?.[1], path).toBe(PERSON);
       expect(answered.html, path).not.toContain('action="/confirm"');
     }
   });
