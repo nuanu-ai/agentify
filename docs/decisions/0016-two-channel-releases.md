@@ -26,15 +26,18 @@ in the header of `.github/workflows/images.yml`. A host builds nothing and
 pulls nothing by tag, because any later push can move a registry tag.
 
 A PRODUCTION release is an `app-v*` tag, which only repository administrators
-can create, and then `agentify-release app-v<release>` run on the host by a
-person with access to the nuanu mesh. The command adds its conditions to the
-one path: the build was a push to `main`, `main`'s CI run for the commit
-succeeded, and the commit moves forward from the revision the host runs. That
-rule trusts `main`, which the repository's rules protect. The same tag
-publishes the SDK and the contracts to npm through Trusted Publishing, behind
-the same main-ancestry and CI checks, as soon as it is pushed; production
-gets the same revision when a person runs the command, which the runbook puts
-right after the tag.
+can create. The tag publishes the SDK and the contracts to npm through Trusted
+Publishing as soon as it is pushed, behind the same main-ancestry and CI
+checks. Production takes the tagged revision only when a person with access to
+the nuanu mesh runs `agentify-release app-v<release>` on the host, which the
+runbook puts right after the tag. The command refuses it unless the build was
+a push to `main`, `main`'s CI run for the commit succeeded and the commit moves
+forward from the revision the host runs, and a release that fails leaves
+production on the previous revision or on the tagged one unverified. So npm
+can hold a version production does not run, for a while or at all: a
+merchant's contract is the published package and its documentation, not the
+revision production runs, and every published version is still one revision
+`main` reviewed and an administrator tagged.
 
 A TEST release is the `deploy-test` tag, moved directly or through the manual
 workflow; a timer on the test host runs `agentify-release --timer deploy-test`
@@ -62,5 +65,5 @@ a new finding at the same path is still reported.
 - Pushing to hosts from GitHub: inbound SSH adds an expiring mesh credential,
   a webhook listener a public authenticated surface, and pull-request code on
   internal runners would cross the release boundary.
-- A separate `sdk-v*` tag let the SDK ship from a revision production never
-  accepted.
+- A separate `sdk-v*` tag: a published version could come from a revision no
+  `app-v*` tag accepted as the whole product that production can take.

@@ -52,11 +52,11 @@ rollback that includes configuration and data. A Compose project name is the
 prefix on every container and the label every volume is found by, so each
 host keeps the project and container names it was created under and moves
 them with the database in the one-database step, inside that one cutover;
-images, source and the edge's route table take the new names now. Automatic delivery and npm
-publication are separate gates under ADR-0016. The exact npm release recorded
-there is authorized; automatic host delivery and the production namespace
-cutover remain paused. Branch acceptance proves the new source and isolated
-checks; it does not prove migration of a live host.
+images, source and the edge's route table take the new names now. Host
+delivery and npm publication are separate gates under ADR-0016: TEST's timer
+delivers automatically, a person delivers PRODUCTION, and the production
+namespace cutover remains paused. Branch acceptance proves the new source and
+isolated checks; it does not prove migration of a live host.
 
 ## Alternatives rejected
 
