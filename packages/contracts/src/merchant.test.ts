@@ -501,11 +501,73 @@ describe("the wallet a merchant's sales are paid into", () => {
   // and what they read back is what a buyer's agent will actually be told to
   // pay. Nothing else in this contract carries an address, because nothing else
   // is money leaving somebody's hands.
-  const paid = { payout_wallet: "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed" };
-  const unpaid = { payout_wallet: null };
+  const paid = { payout_wallet: "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed", pending: null };
+  const unpaid = { payout_wallet: null, pending: null };
+  /** A change asked for on the live deployment, announced and not yet in effect. */
+  const waiting = {
+    payout_wallet: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+    pending: {
+      payout_wallet: "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+      takes_effect_at: "2026-09-26T12:00:00.000Z",
+    },
+  };
 
   it("carries the wallet a merchant chose", () => {
     expect(PayoutWalletSchema.parse(paid)).toStrictEqual(paid);
+  });
+
+  it("carries a change that is waiting, beside the wallet that is paid now", () => {
+    // The promise a caller reading its old address back depends on: the write
+    // did not fail, it is waiting, and here is what replaces the address and
+    // when. Without this a merchant whose change is announced and pending reads
+    // the old address and takes the change for lost.
+    expect(PayoutWalletSchema.parse(waiting)).toStrictEqual(waiting);
+  });
+
+  it("says nothing is waiting rather than leaving the pending field out", () => {
+    // Null is "no change is waiting", which is every answer on the test channel
+    // and in a sandbox. An absent field is a silence a screen cannot tell from a
+    // client that dropped it, and a screen that guessed "nothing waiting" over
+    // a change that is would hide the one thing its owner has to see.
+    expect(PayoutWalletSchema.parse(unpaid)).toStrictEqual(unpaid);
+    expectMissingFieldRejected(PayoutWalletSchema, paid, "pending");
+  });
+
+  it("refuses a waiting change that does not say what replaces the wallet, or when", () => {
+    // Half a pending change is not one: an address with no moment tells a
+    // merchant nothing about when their money moves, and a moment with no
+    // address tells them it moves without saying where.
+    for (const field of ["payout_wallet", "takes_effect_at"] as const) {
+      const pending = Object.fromEntries(
+        Object.entries(waiting.pending).filter(([name]) => name !== field),
+      );
+      const refused = PayoutWalletSchema.safeParse({ ...waiting, pending });
+      expect(refused.success, `a pending change without ${field} was accepted`).toBe(false);
+      expect(
+        refused.error?.issues.some((issue) => issue.path.join(".") === `pending.${field}`),
+      ).toBe(true);
+    }
+  });
+
+  it("holds the waiting address to the rule an address is written by", () => {
+    // The address that will be paid after the wait is as much money's
+    // destination as the one paid now, and a checksum that disagrees is a
+    // character that is wrong in either.
+    expect(
+      PayoutWalletSchema.safeParse({
+        ...waiting,
+        pending: {
+          ...waiting.pending,
+          payout_wallet: "0xfb6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      PayoutWalletSchema.safeParse({
+        ...waiting,
+        pending: { ...waiting.pending, takes_effect_at: "in two days" },
+      }).success,
+    ).toBe(false);
   });
 
   it("says a merchant has none rather than leaving the field out", () => {
@@ -523,18 +585,22 @@ describe("the wallet a merchant's sales are paid into", () => {
   });
 
   it("holds the wallet to the rule an address is written by", () => {
-    expect(PayoutWalletSchema.safeParse({ payout_wallet: "" }).success).toBe(false);
-    expect(PayoutWalletSchema.safeParse({ payout_wallet: "0x1234" }).success).toBe(false);
+    expect(PayoutWalletSchema.safeParse({ ...paid, payout_wallet: "" }).success).toBe(false);
+    expect(PayoutWalletSchema.safeParse({ ...paid, payout_wallet: "0x1234" }).success).toBe(false);
     // The checksummed spelling a wallet shows, and the same address with one
     // letter's case wrong: the first is an address, the second is a paste that
     // went through something.
     expect(
-      PayoutWalletSchema.safeParse({ payout_wallet: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed" })
-        .success,
+      PayoutWalletSchema.safeParse({
+        ...paid,
+        payout_wallet: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+      }).success,
     ).toBe(true);
     expect(
-      PayoutWalletSchema.safeParse({ payout_wallet: "0x5aaeb6053F3E94C9b9A09f33669435E7Ef1BeAed" })
-        .success,
+      PayoutWalletSchema.safeParse({
+        ...paid,
+        payout_wallet: "0x5aaeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+      }).success,
     ).toBe(false);
   });
 
