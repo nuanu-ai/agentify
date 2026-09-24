@@ -547,9 +547,14 @@ image: activation records the images per checkout. On both channels it names
 `AGENTIFY_PUBLIC_ORIGIN`, `AGENTIFY_COOKIE_SECURE`, `AGENTIFY_SURFACE_MODE`,
 `AGENTIFY_PAYMENT_NETWORK`, `AGENTIFY_FACILITATOR_URL`, `AGENTIFY_SEED_KEY`,
 `AGENTIFY_AUTH_SECRET`, `AGENTIFY_INVITATION`, `ADMIN_BASIC_AUTH_USER`,
-`ADMIN_BASIC_AUTH_HASH`, `TOKEN_HMAC_SECRET`, `EMAIL_ENCRYPTION_KEY` and
-`REPORT_IDENTITY_SECRET`. TEST adds `AGENTIFY_TEST_LISTEN_ADDRESS`, the
-private address its door binds on. PRODUCTION adds `AGENTIFY_DB_PASSWORD`,
+`ADMIN_BASIC_AUTH_HASH`, `TOKEN_HMAC_SECRET`, `EMAIL_ENCRYPTION_KEY`,
+`REPORT_IDENTITY_SECRET` and `ANNOUNCEMENT_SECRET`, the last two each at
+least 32 characters of their own (`openssl rand -base64 32`): the gateway
+presents `ANNOUNCEMENT_SECRET` to the cabinet to have a merchant told of a
+payout wallet change, and the preflight refuses a channel where any other
+service holds it or it opens any other door. TEST adds
+`AGENTIFY_TEST_LISTEN_ADDRESS`, the private address its door binds on.
+PRODUCTION adds `AGENTIFY_DB_PASSWORD`,
 `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `MAIL_URL`, `MAIL_API_KEY` and
 `MAIL_FROM`. The scanner's remaining settings — `PRIVACY_EMAIL`,
 `ABUSE_EMAIL`, the `LEGAL_*` pair, the `TURNSTILE_*`, `POSTHOG_*`, `META_*`,

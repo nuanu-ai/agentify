@@ -105,6 +105,8 @@
 #   TOKEN_HMAC_SECRET       what signs a report link         a sandbox value
 #   REPORT_IDENTITY_SECRET  what the scanner shows the       a sandbox value
 #                           cabinet's private route
+#   ANNOUNCEMENT_SECRET     what the gateway shows the       a sandbox value
+#                           cabinet's announcement route
 #
 # The scanner's remaining settings — who the operator is, which analytics
 # datasets may be named, the bot check, the paid surfaces — are the names its
@@ -299,6 +301,14 @@ services:
       # hands this service.
       CDP_API_KEY_ID: "${CDP_API_KEY_ID-}"
       CDP_API_KEY_SECRET: "${CDP_API_KEY_SECRET-}"
+      # Where a live gateway asks the cabinet to tell a merchant of a payout
+      # wallet change, a cancelled one or a new key, and the secret it asks
+      # with (ADR-0019). The cabinet's own listener on this stack's network,
+      # never the scanner's route on 3002 or its secret. A test stack and the
+      # sandbox read neither, since they apply a change at once and announce
+      # nothing; a live gateway will not start without both.
+      CABINET_ANNOUNCEMENT_URL: http://cabinet:3003
+      ANNOUNCEMENT_SECRET: "${ANNOUNCEMENT_SECRET:-a-sandbox-announcement-secret-nobody-should-reuse}"
       # A challenge has to name somewhere for the money to go or it cannot be
       # built at all, so this is here to give the document a shape where the
       # merchant selling has set no address of their own — which is what a stack
@@ -349,6 +359,12 @@ services:
       # Nothing publishes 3002, so the route is reachable from this stack's own
       # network and from nowhere else.
       REPORT_IDENTITY_SECRET: "${REPORT_IDENTITY_SECRET:-a-sandbox-report-identity-secret-nobody-should-reuse}"
+      # What the gateway presents on the cabinet's third listener, on 3003,
+      # where it asks for a merchant to be told of a change to their payout
+      # wallet or their keys (ADR-0019). The gateway and the cabinet hold it and
+      # nothing else does; a cabinet handed its session secret, the invitation
+      # or the scanner's secret here refuses to start. Nothing publishes 3003.
+      ANNOUNCEMENT_SECRET: "${ANNOUNCEMENT_SECRET:-a-sandbox-announcement-secret-nobody-should-reuse}"
       # What signs a merchant's session cookie. The component behind the sign-in
       # ships a fallback of its own, and a deployment that leans on it signs
       # sessions with a value out of somebody else's public source — so the
