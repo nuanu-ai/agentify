@@ -161,6 +161,16 @@ ${action}
   return "";
 };
 
+/**
+ * What a supported product is, said once on the origin.
+ *
+ * It was said three times — here, in the import form beside it, and again in
+ * the settings block on another screen — which is three copies of one rule and
+ * two of them free to go stale. This is the copy that stays, because this is
+ * the page the Connect and the Import are on; the integrations block links here.
+ * There is no WooCommerce page in the portal and this pass does not make one:
+ * the connector is experimental and is not the acceptance gate for anything.
+ */
 const WHAT_CONNECTING_DOES = `<p>The experimental connector works in test mode only and supports one kind of WooCommerce product: a published virtual download priced in USD, with one protected file, unlimited downloads, no stock management, and shop tax calculation turned off.</p>
   <p class="quiet">Connecting gives Agentify access to your shop, and importing publishes supported products as cards. You approve access in WooCommerce; Agentify never asks for your shop password.</p>`;
 
@@ -260,6 +270,32 @@ const KEYS_ARRIVED = `  <div class="callout done">
   </div>
 `;
 
+/**
+ * What the return address answers a browser that arrives carrying no session.
+ *
+ * Which, on a real return, is every browser. The cabinet's cookie is
+ * `SameSite=Strict` (ADR-0009) and the navigation back is started by the
+ * merchant's own shop, so the request that lands here has nothing on it even
+ * for somebody signed in on that very browser. Behind the sign-in gate that
+ * ends a working flow on a sign-in form, and a merchant reads the form as the
+ * connect having failed — which is what happened, twice, when this flow was
+ * walked by hand.
+ *
+ * So the page is drawn for anybody, and every word of it is chosen so that
+ * anybody may read it. It says what this address is for, which is true of the
+ * address rather than of the visitor; it does not say that a connection
+ * happened, because for whoever typed the address in by hand none did, and
+ * because what the shop's `success=1` claims is not something we have seen. It
+ * names no account, no shop and no key, and the same page is served whether
+ * this cabinet holds a connection or holds nothing — a stranger who walks up to
+ * this address learns that the address exists, and that is all there is here to
+ * learn.
+ *
+ * The next click is same-site, so a browser that was already signed in sends
+ * its Strict cookie again. A browser without one meets the cabinet's ordinary
+ * sign-in gate. The page does not ask for another email or interpret the
+ * untrusted redirect query.
+ */
 export const wooReturnScreen = (base: string, mode: SurfaceMode): string =>
   bare(
     base,

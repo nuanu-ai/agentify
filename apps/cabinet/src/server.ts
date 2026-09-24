@@ -1060,8 +1060,12 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     `${base}/integrations`,
     `${base}/woocommerce`,
   ];
+  // Only for a page being drawn, and never at the cost of the request: a POST
+  // that issues a key or saves a wallet must not wait on, or fail with, a
+  // card list it does not need. Without the list the bar simply says nothing.
   app.use((request, _response, next) => {
     if (
+      (request.method !== "GET" && request.method !== "HEAD") ||
       !withoutOwnCardList.some(
         (path) => request.path === path || request.path.startsWith(`${path}/`),
       )
@@ -1071,12 +1075,15 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     }
     gatewayAs(request)
       .cards()
-      .then((cards) => {
-        if (cards.ok) {
-          sellingSeen.set(request, SELLING_WORDS[cards.document.selling]);
-        }
-        next();
-      }, next);
+      .then(
+        (cards) => {
+          if (cards.ok) {
+            sellingSeen.set(request, SELLING_WORDS[cards.document.selling]);
+          }
+          next();
+        },
+        () => next(),
+      );
   });
 
   /**

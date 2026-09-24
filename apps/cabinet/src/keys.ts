@@ -181,6 +181,10 @@ ${
     ? ""
     : `  <p class="note">${escaped(WHAT_REVOKING_DOES)}</p>
   <p class="note">${escaped(
+    "This list is what the gateway returned, and it does not say whether that is every key." +
+      " The number above counts the rows below, nothing more.",
+  )}</p>
+  <p class="note">${escaped(
     "The last call time updates every few minutes, so it can lag a little behind." +
       ` "${NO_CALLS_RECORDED}" does not mean the key was never used: we started recording calls` +
       " recently, so for an older key this page cannot tell which it is until the key is used again.",

@@ -2163,7 +2163,7 @@ describe("the orders screen", () => {
 
     const text = readable((await browser.get("/orders?open=true")).html);
 
-    expect(text).toContain("the buyer did not receive it");
+    expect(text).toContain("the product was not released to the buyer");
     // The order is still open, which is the whole of what a merchant has to
     // know here: nothing is owed and nothing is theirs to do. What can still
     // happen to it — a fresh authorization on the same purchase, and the stored

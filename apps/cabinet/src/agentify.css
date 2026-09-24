@@ -731,6 +731,38 @@ td.control {
   margin: 0 0 32px;
 }
 
+/*
+ * The sentence that says which stack this is, on every page but a live one:
+ * a band across the whole window above the bar, in the notice pair, with its
+ * words lined up over the content under it.
+ *
+ * It was the notice panel, rounded and ruled down its left edge, inside the
+ * frame and with nothing above it — so it sat on the top edge of the window
+ * with its rounded corners cut off by that edge, and on a phone its four lines
+ * at the panel's padding took 120 pixels before the lockup. A band has no
+ * corners for the edge to cut, and at the small print's size and a band's
+ * padding it is three lines on a phone.
+ */
+.stack-note {
+  border-bottom: var(--hairline) solid var(--line);
+  background: var(--notice-bg);
+  color: var(--notice-ink);
+}
+
+.surface-words {
+  margin: 0;
+  padding-block: 10px;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 760px) {
+  .surface-words {
+    padding-block: 8px;
+    font-size: 0.75rem;
+  }
+}
+
 .summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

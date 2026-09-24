@@ -10,7 +10,7 @@
  * it appears on.
  */
 
-import { SURFACE_MARKER_ATTRIBUTE, type SurfaceMode } from "@agentify/core";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
 import { moment } from "./words.js";
 
 /** Text on its way into a page, with the five characters that are not text. */
@@ -84,10 +84,13 @@ const TABS: readonly [Tab, string][] = [
   ["settings", "Settings"],
 ];
 
-/** Keep the deployment marker available to runtime checks without drawing
- * environment copy inside the cabinet UI. */
-const surface = (mode: SurfaceMode): string =>
-  `<div ${SURFACE_MARKER_ATTRIBUTE}="${escaped(mode)}" hidden></div>`;
+/** Every page names its mode and warns only where there is something to warn about. */
+const surface = (mode: SurfaceMode): string => {
+  const words = SURFACE_WORDS[mode];
+  return words === null
+    ? `<div ${SURFACE_MARKER_ATTRIBUTE}="${escaped(mode)}"></div>`
+    : `<div class="stack-note" ${SURFACE_MARKER_ATTRIBUTE}="${escaped(mode)}"><div class="container"><p class="surface-words">${escaped(words)}</p></div></div>`;
+};
 
 /** The same compact lockup on the public site, the cabinet and every auth page. */
 export const brandLockup = (home = "/"): string =>

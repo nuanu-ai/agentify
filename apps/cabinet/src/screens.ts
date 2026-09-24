@@ -485,7 +485,7 @@ const testOrders = (orders: OrderList): string => {
 const whyItNeedsYou = (status: OrderList["orders"][number]["status"]): string =>
   status === "refund_due"
     ? "The payment was received, the delivery window ran out, and the product was not delivered. You return it from your own wallet — we recorded the amount and the order. A late delivery still clears the debt."
-    : "Your integration delivered the product, but the payment did not go through, so the buyer did not receive it. The order stays open.";
+    : "Your integration returned the product, but the payment did not go through, so the product was not released to the buyer. The order stays open.";
 
 /**
  * Where the rest of it is written, for the one of the two that has a rest.

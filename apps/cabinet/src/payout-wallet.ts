@@ -174,14 +174,14 @@ export const payoutWalletBlock = (viewer: Viewer): string => {
       ? "TEST settles test USDC on Base Sepolia to this address."
       : viewer.mode === "live"
         ? "LIVE settles real USDC on Base mainnet to this address."
-        : "";
+        : "SANDBOX does not settle a payment, so this address is optional here.";
 
   return `
   <div class="panel-top">
   <div class="lede">
     <div>
       <h2>Payout wallet</h2>
-      <p>${purpose === "" ? "" : `${purpose} `}<a href="/docs/money#where-the-money-arrives">How and when you get paid</a>.</p>
+      <p>${purpose} <a href="/docs/money#where-the-money-arrives">How and when you get paid</a>.</p>
       <p class="quiet">Enter only the public address. Never enter a private key or recovery phrase; Agentify will never ask for either.</p>
     </div>
   </div>${wallet === null ? "" : savedAddress(wallet)}
