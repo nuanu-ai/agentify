@@ -51,7 +51,6 @@ import {
   identityFor,
   LINK_MIN_INTERVAL_MS,
   LINK_RATE_WINDOW_MS,
-  SESSION_HOURS,
 } from "./identity.js";
 import type { Handover, Message, Postman } from "./mail.js";
 import { buildApp } from "./server.js";
@@ -69,8 +68,19 @@ const KEY = theMerchantKey("test");
 const asMerchant = { authorization: `Bearer ${KEY}` };
 const PAY_TO = "0x0000000000000000000000000000000000000001";
 
-/** The name the session cookie travels under. */
+/** The name the session cookie travels under on the plain-http local origin. */
 const COOKIE = "agentify.session_token";
+/**
+ * The name it travels under wherever the site is served over https.
+ *
+ * The prefix is a promise the browser keeps rather than one this cabinet makes:
+ * a cookie carrying it is refused unless it is Secure, set for the whole origin
+ * and names no Domain, so another host under the same registrable domain can
+ * neither plant a session here nor overwrite one (ADR-0009 §6).
+ */
+const SECURE_COOKIE = "__Host-agentify.session_token";
+/** Thirty days, the lifetime a session is given from the last visit. */
+const THIRTY_DAYS_SECONDS = 30 * 24 * 60 * 60;
 const REPORT_IDENTITY_SECRET = "a-dedicated-report-secret-at-least-32-characters";
 const REPORT_SCAN_ID = "0199a2fd-4f2a-7ccd-90ba-d7266c7b5133";
 const REPORT_PATH = `/report/${REPORT_SCAN_ID}`;
@@ -528,7 +538,7 @@ async function attachedTo(
       const opened = await call("POST", action.pathname, { token });
       return opened.to === null ? opened : call("GET", opened.to);
     },
-    sessionToken: () => jar.get(COOKIE) ?? null,
+    sessionToken: () => jar.get(COOKIE) ?? jar.get(SECURE_COOKIE) ?? null,
     withRawCookie: (raw) => ({
       ...browser,
       get: (path) => call("GET", path, undefined, { cookie: raw }),
@@ -622,6 +632,24 @@ const listedAs = async (running: Running): Promise<string | null> =>
 /** Where the gateway would pay this merchant, read out of the same row. */
 const paidInto = async (running: Running): Promise<string | null> =>
   (await running.harnessed.store.merchantById(running.harnessed.merchant.id))?.payoutWallet ?? null;
+
+/** The one line of an answer that sets the session cookie of this name, if any. */
+const sessionCookieIn = (answer: Visit, name: string): string | undefined =>
+  answer.headers.getSetCookie().find((line) => line.startsWith(`${name}=`));
+
+/** The attributes of one Set-Cookie line, keyed in lower case. */
+const attributesOf = (line: string): Map<string, string> =>
+  new Map(
+    line
+      .split(";")
+      .slice(1)
+      .map((part) => {
+        const at = part.indexOf("=");
+        return at === -1
+          ? [part.trim().toLowerCase(), ""]
+          : [part.slice(0, at).trim().toLowerCase(), part.slice(at + 1).trim()];
+      }),
+  );
 
 const actionIn = (message: Message | undefined): URL => {
   const found = /(https?:\/\/\S+)/.exec(message?.body ?? "")?.[1];
@@ -1081,11 +1109,7 @@ describe("the passwordless cabinet door", () => {
     expect(opened.to).toBe("/cabinet/cards");
     expect(opened.headers.get("cache-control")).toBe("private, no-store");
     expect(opened.headers.get("referrer-policy")).toBe("strict-origin");
-    const cookie = opened.headers.getSetCookie().join("; ");
-    expect(cookie).toContain("Path=/cabinet");
-    expect(cookie).toContain("HttpOnly");
-    expect(cookie).toContain("SameSite=Strict");
-    expect(cookie).toContain("Secure");
+    expect(sessionCookieIn(opened, SECURE_COOKIE)).toBeDefined();
 
     const replay = await running.browser.from(running.url).post("/cabinet/sign-in/open", { token });
     expect(replay.status).toBe(401);
@@ -1220,6 +1244,118 @@ describe("the passwordless cabinet door", () => {
       const answer = await running.browser.get(path);
       expect(answer.status, path).toBe(404);
     }
+  });
+});
+
+describe("one session for the whole site", () => {
+  it("sets one cookie for the whole origin over https: prefixed, Secure, HttpOnly and Lax", async () => {
+    // A report and the cabinet are two applications on one origin, and one
+    // session serves both (ADR-0009 §6, ADR-0026 §2). A cookie scoped to the
+    // cabinet's path would leave a person a stranger at the report, and the
+    // prefix is what stops a sibling host from planting or replacing it.
+    const running = await started({ base: "/cabinet", cabinet: { COOKIE_SECURE: "true" } });
+    await running.browser.post("/cabinet/sign-in", { email: PERSON });
+    const action = actionIn(running.mails.at(-1));
+
+    const opened = await running.browser
+      .from(running.url)
+      .post("/cabinet/sign-in/open", { token: action.searchParams.get("token") ?? "" });
+
+    const line = sessionCookieIn(opened, SECURE_COOKIE);
+    expect(line).toBeDefined();
+    const attributes = attributesOf(line ?? "");
+    expect(attributes.get("path")).toBe("/");
+    expect(attributes.get("samesite")?.toLowerCase()).toBe("lax");
+    expect(attributes.has("httponly")).toBe(true);
+    expect(attributes.has("secure")).toBe(true);
+    expect(attributes.has("domain")).toBe(false);
+    expect(Number(attributes.get("max-age"))).toBe(THIRTY_DAYS_SECONDS);
+    // Nothing under the unprefixed name goes out on the https origin.
+    expect(sessionCookieIn(opened, COOKIE)).toBeUndefined();
+    // And the cookie opens a page that is not under the cabinet's mount point
+    // as far as the cabinet is concerned: it is the same session at the root.
+    expect((await running.browser.get("/cabinet/cards")).status).toBe(200);
+  });
+
+  it("sets the same cookie without the prefix or Secure on the plain-http local origin", async () => {
+    // The prefix requires Secure, and a Secure cookie is never sent back over
+    // plain http, so the laptop's origin gets neither rather than a session
+    // nobody can use.
+    const running = await started();
+    await running.browser.post("/sign-in", { email: PERSON });
+    const action = actionIn(running.mails.at(-1));
+
+    const opened = await running.browser
+      .from(running.url)
+      .post("/sign-in/open", { token: action.searchParams.get("token") ?? "" });
+
+    const line = sessionCookieIn(opened, COOKIE);
+    expect(line).toBeDefined();
+    const attributes = attributesOf(line ?? "");
+    expect(attributes.get("path")).toBe("/");
+    expect(attributes.get("samesite")?.toLowerCase()).toBe("lax");
+    expect(attributes.has("httponly")).toBe(true);
+    expect(attributes.has("secure")).toBe(false);
+    expect(sessionCookieIn(opened, SECURE_COOKIE)).toBeUndefined();
+  });
+
+  it("keeps a returning person signed in: a visit a day on moves the end to thirty days from it", async () => {
+    // A person who keeps coming back does not meet the sign-in form again
+    // (ADR-0009 §6). The row decides, so the row is moved, and the browser is
+    // handed the renewed cookie, because a cookie left at its first lifetime
+    // drops out of the browser thirty days after sign-in however often its
+    // person came back.
+    const running = await started();
+    await running.browser.signIn();
+    const aDayAndAnHourAgo = Date.now() - 25 * 60 * 60 * 1_000;
+    for (const session of sessionRows()) {
+      session.expiresAt = new Date(aDayAndAnHourAgo + THIRTY_DAYS_SECONDS * 1_000);
+    }
+
+    const visited = await running.browser.get("/cards");
+
+    expect(visited.status).toBe(200);
+    const line = sessionCookieIn(visited, COOKIE);
+    expect(line).toBeDefined();
+    expect(Number(attributesOf(line ?? "").get("max-age"))).toBe(THIRTY_DAYS_SECONDS);
+    const [row] = sessionRows();
+    expect(new Date(row?.expiresAt as Date).getTime()).toBeGreaterThan(
+      Date.now() + (THIRTY_DAYS_SECONDS - 60) * 1_000,
+    );
+  });
+
+  it("writes nothing and hands out nothing on a second visit inside the same day", async () => {
+    // The negative half of the one above: renewal is once a day, not a write
+    // on every page, and a page that sets the cookie on every answer would be
+    // a write to the sessions table on every click.
+    const running = await started();
+    await running.browser.signIn();
+    const before = structuredClone(sessionRows());
+
+    const visited = await running.browser.get("/cards");
+
+    expect(visited.status).toBe(200);
+    expect(sessionCookieIn(visited, COOKIE)).toBeUndefined();
+    expect(sessionRows()).toStrictEqual(before);
+  });
+
+  it("clears the site-wide cookie on sign-out, with the attributes the prefix demands", async () => {
+    // A clearing line the browser refuses leaves the session cookie in place:
+    // a prefixed cookie is only replaced by a line that is Secure and for the
+    // whole origin, and a path-scoped clear would miss a cookie set at the root.
+    const running = await started({ base: "/cabinet", cabinet: { COOKIE_SECURE: "true" } });
+    await running.browser.signIn();
+
+    const out = await running.browser.from(running.url).post("/cabinet/sign-out");
+
+    expect(out.status).toBe(303);
+    const line = sessionCookieIn(out, SECURE_COOKIE);
+    expect(line).toBeDefined();
+    const attributes = attributesOf(line ?? "");
+    expect(attributes.get("path")).toBe("/");
+    expect(attributes.has("secure")).toBe(true);
+    expect(new Date(attributes.get("expires") ?? "").getTime()).toBeLessThan(Date.now());
+    expect(running.rows.cabinet_sessions).toStrictEqual([]);
   });
 });
 
@@ -3047,9 +3183,9 @@ describe("a session that is ended while somebody is looking at a page", () => {
   });
 
   it("refuses a session whose time is up, without anybody ending it", async () => {
-    // Twelve hours from the moment it opens, never extended. The
-    // cookie in the browser is untouched and still carries a good signature;
-    // what has run out is the row, and the row is what decides.
+    // Thirty days from the last visit. The cookie in the browser is untouched
+    // and still carries a good signature; what has run out is the row, and the
+    // row is what decides.
     const { browser } = await started();
     await browser.signIn();
     expect((await browser.get("/cards")).status).toBe(200);
@@ -3065,7 +3201,6 @@ describe("a session that is ended while somebody is looking at a page", () => {
     const recovery = await browser.get(answered.to ?? "");
     const message = readable(recovery.html);
     expect(message).toContain("Your session ended");
-    expect(message).toContain(`${SESSION_HOURS} hours`);
     expect(message).not.toContain("not saved");
     expect(message).not.toContain("submitted a change");
   });
