@@ -440,6 +440,38 @@ if (databaseUrl === null) {
       });
     });
 
+    it("names a merchant's accounts and ends their sessions but the one kept", async () => {
+      // A cancelled wallet change signs out every session of every account
+      // naming the merchant but the one that pressed, and an announcement goes
+      // to those accounts and no other (ADR-0019). On PostgreSQL the account's
+      // merchant is a column the component maps, so the lookup is asked here
+      // and not only of the memory store.
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      const signedIn = async (email: string, merchant: typeof MERCHANT): Promise<string> => {
+        await identity.make(email, merchant);
+        await identity.requestLink(email, "default");
+        const opened = await identity.openLink(tokenIn(messages.at(-1) as Message));
+        if (opened.status !== "opened") throw new Error(`${email} could not sign in`);
+        return opened.setCookies.map((line) => line.split(";")[0]).join("; ");
+      };
+      const pressed = await signedIn("owner@example.com", MERCHANT);
+      const partner = await signedIn("partner@example.com", MERCHANT);
+      const elsewhere = await signedIn("stranger@example.com", {
+        id: "mer_another",
+        key: "another-merchants-own-key-long-enough",
+      });
+
+      expect([...(await identity.emailsNaming(MERCHANT.id))].sort()).toStrictEqual([
+        "owner@example.com",
+        "partner@example.com",
+      ]);
+      expect(await identity.endOtherSessionsOfMerchant(MERCHANT.id, pressed)).toBe(1);
+      expect((await identity.whoIs(pressed))?.email).toBe("owner@example.com");
+      expect(await identity.whoIs(partner)).toBeNull();
+      expect((await identity.whoIs(elsewhere))?.email).toBe("stranger@example.com");
+    });
+
     it("retains compare-and-swap key rotation", async () => {
       const identity = identityOn([]);
       const person = await identity.make("person@example.com", MERCHANT);
