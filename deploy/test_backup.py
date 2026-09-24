@@ -506,7 +506,7 @@ class Backups(unittest.TestCase):
     def credentials(self, lines, **environment):
         """Pipes the lines into the credentials command, then reads backup.env the way the backup does."""
         said = self.run_script(
-            f"printf '%s' {lines!r} | /h/tree/deploy/backup-credentials.sh --stdin; echo \"credentials exit $?\"\n"
+            f"printf '%b' {lines!r} | /h/tree/deploy/backup-credentials.sh --stdin; echo \"credentials exit $?\"\n"
             "stat -c '%U %a' /etc/agentify/backup.env > /h/world/mode\n"
             "(set -a; . /etc/agentify/backup.env; env) | grep -E '^(RESTIC|AWS)_' | sort > /h/world/values",
             **environment,
@@ -548,7 +548,7 @@ class Backups(unittest.TestCase):
     def test_nothing_typed_or_pasted_at_its_prompts_reaches_the_screen(self):
         # Run on a terminal, as `ssh -t agentify sudo agentify-backup-credentials`
         # runs it, with each value answered once its prompt has appeared.
-        (self.root / "pty.py").write_text(textwrap.dedent("""\
+        (self.root / "terminal.py").write_text(textwrap.dedent("""\
             import os, pty, select, time
             pid, fd = pty.fork()
             if pid == 0:
@@ -574,7 +574,7 @@ class Backups(unittest.TestCase):
             print("pty exit", os.waitstatus_to_exitcode(status))
             """))
         said = self.run_script(
-            "python3 /h/pty.py\n(set -a; . /etc/agentify/backup.env; env) | grep -E '^AWS_' | sort > /h/world/values"
+            "python3 /h/terminal.py\n(set -a; . /etc/agentify/backup.env; env) | grep -E '^AWS_' | sort > /h/world/values"
         )
         self.assertIn("pty exit 0", said)
         self.assertNotIn("pty-secret-value", said)
