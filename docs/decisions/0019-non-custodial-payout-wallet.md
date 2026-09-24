@@ -67,41 +67,64 @@ a setting, and the act somebody reaching for that wants is the pause.
 The first address a merchant sets applies at once, or a new merchant could
 not start selling. Replacing it takes effect forty-eight hours after the
 change is announced, whichever key asks, and until then payment requests
-name the address that applies now. A change asked for while another is
-pending replaces it and starts the forty-eight hours again, and asking for
-the address that applies now cancels the pending one. Setting and reading
-the wallet answer with the pending address and the moment it takes effect,
-always present and null when nothing is pending, so a caller that reads
-the old address back does not take it for a failed write. These fields are
-added without moving `CONTRACT_VERSION` (ADR-0006 §2; Dmitry: "не надо
-поднимать согласен"): the published SDK never reads this answer, and
-moving the version would stop every installed worker for a field no worker
-sees. The price is that a merchant's own code validating this answer with
-the strict `PayoutWalletSchema` of an already-published contracts package
-refuses it until that package is upgraded.
+name the address that applies now. Asking again for the address already
+pending changes nothing, sends no new message and restarts no clock, and
+answers with the pending change, so a retry after a dropped connection
+stays safe; only a different address replaces a pending change and starts
+the forty-eight hours again, and asking for the address that applies now
+cancels the pending one. Setting and reading the wallet answer with the
+pending address and the moment it takes effect, always present and null
+when nothing is pending, so a caller that reads the old address back does
+not take it for a failed write. These fields, and any refusal code only
+this route returns, are added without moving `CONTRACT_VERSION`
+(ADR-0006 §2; Dmitry: "не надо поднимать согласен"): no SDK worker reads this
+route's answers or refusals, and moving the version would stop every
+installed worker for words no worker sees. The price is that a merchant's
+own code validating this answer with the strict `PayoutWalletSchema` of an
+already-published contracts package refuses it until that package is
+upgraded.
 
 No wallet change applies unless the merchant has been told of it. The
 wallet is set only through `/v0/payout-wallet`, and no terminal command
 writes it, so every change reaches the gateway as the same call and the
 gateway is the one place that sees them all. Before writing anything, the
 gateway asks the cabinet, which holds the addresses, to tell every account
-that names the merchant, since several accounts may name one merchant. It
-asks over an internal route on the cabinet, reachable only on the compose
-network and authenticated by a secret the two processes share, as the
-scanner's route is (ADR-0026). If the message has been handed to the mail
-provider, the gateway records the pending change, answers with it and
-counts the forty-eight hours from then. If there is nobody to tell, or the
-message could not be handed over, the gateway refuses the change in words
-that say which and writes nothing, so a retry is safe.
+that names the merchant, since several accounts may name one merchant, and
+the message to every one of them must be handed to the mail provider. It
+asks over an internal route of its own, reachable only on the compose
+network and authenticated by a secret that only the gateway and the
+cabinet hold. It never uses the scanner's route or secret (ADR-0026),
+which would give the money path the power to look up sessions and remove
+people. When every message has been handed over, the gateway records the
+pending change, answers with it and counts the forty-eight hours from
+then. Otherwise it writes nothing and refuses the change in words that say
+which of three cases it met: there is nobody to tell; a message could not
+be handed over; or the cabinet did not answer, so a message may have gone
+out although nothing was recorded. The third is not "not sent", and the
+refusal does not read as if it were. Changes for one merchant are
+serialized, so the pending address recorded is always the one last
+announced.
 
-The message says what changes, when and which key asked. Its cancel
-control is a one-time link built as the sign-in link is (ADR-0026 §1),
-landing on a page with one control so that a mail preview cannot cancel a
-change somebody meant. Pressing it cancels the change, ends every session
-of every account naming the merchant, and signs this browser in afresh. It
-disables no key (Dmitry: "перебор. отключить могли по ошибке"): the
-message names the key that asked, so a person who does not recognise it
-disables it in the cabinet.
+This runs the effect before the state, the reverse of ADR-0013, and on
+purpose: a change nobody was told about is the dangerous failure, while a
+message about a change that then did not land is the safe one, because
+every message says the change takes effect only if the cabinet's wallet
+screen shows it.
+
+The message says what changes, when and which key asked, and links plainly
+to the cabinet's wallet screen, a named cabinet screen that an ordinary
+sign-in reaches when the person is signed out; the message carries no
+token. That screen shows the pending change with a cancel control, a
+same-origin POST by a signed-in person. The cabinet cancels by asking the
+gateway for the address that applies now, which is what cancelling is, and
+on success ends every session of every account naming the merchant except
+the one that pressed. A cancel is never refused for want of a message,
+because it moves money nowhere new: it is announced the way a new key is,
+and a failed announcement refuses nothing. Cancelling disables no key
+(Dmitry: "перебор. отключить могли по ошибке"): the message names the key
+that asked, so a person who does not recognise it disables it in the
+cabinet. If the key that asked is the cabinet's own, a session acted, and
+ending every session, which the cancel does, is the answer.
 
 The same route announces a key the merchant issues for their own code, but
 the key never waits on its message: if there is nobody to tell or the
@@ -140,7 +163,10 @@ which sales are still paid to the old one; a merchant who has lost the old
 wallet pauses selling for those two days rather than be paid where they
 cannot reach. A leaked key can ask again after every cancel: the wait and
 the message hold as long as the owner answers them, and the lasting remedy
-is disabling the key. A wallet change also depends on the cabinet and the
+is disabling that key and any key it issued. A leaked key can equally
+cancel the owner's change, a nuisance its announcement reveals. A test
+deployment never shows a pending change, so an integrator meets that shape
+only on production. A wallet change also depends on the cabinet and the
 mail provider being up, which is accepted: changes are rare, and a refusal
 at the door is honest where a silent change is not.
 
