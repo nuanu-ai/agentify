@@ -672,6 +672,12 @@ describe("the environment is derived from the chain", () => {
   });
 });
 
+/** Where a live gateway asks the cabinet to tell a merchant of a change, and with what. */
+const ANNOUNCEMENTS = {
+  CABINET_ANNOUNCEMENT_URL: "http://cabinet:3003",
+  ANNOUNCEMENT_SECRET: "a".repeat(48),
+};
+
 describe("a live chain is allowed exactly one facilitator", () => {
   const live = {
     ...required,
@@ -679,6 +685,7 @@ describe("a live chain is allowed exactly one facilitator", () => {
     FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
     CDP_API_KEY_ID: "key-id",
     CDP_API_KEY_SECRET: "secret",
+    ...ANNOUNCEMENTS,
   };
 
   it("starts on Coinbase's canonical facilitator with both credentials", () => {
@@ -785,5 +792,64 @@ describe("a live chain is allowed exactly one facilitator", () => {
         FACILITATOR_URL: SANDBOX_FACILITATOR,
       }),
     ).not.toThrow();
+  });
+});
+
+describe("a live gateway can tell a merchant of a wallet change", () => {
+  // On a live deployment a wallet change is announced before it is recorded
+  // (ADR-0019), over a route of the cabinet's own and with a secret only the
+  // two processes hold. A live gateway without either would refuse every
+  // change a merchant asks for, with nothing wrong until somebody asked — so it
+  // does not start, and says which of the two is missing.
+  const live = {
+    ...required,
+    PAYMENT_NETWORK: "eip155:8453",
+    FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+    CDP_API_KEY_ID: "key-id",
+    CDP_API_KEY_SECRET: "secret",
+  };
+
+  it("carries where the cabinet is asked and the secret it is asked with", () => {
+    expect(loadConfig({ ...live, ...ANNOUNCEMENTS }).announcements).toStrictEqual({
+      url: "http://cabinet:3003",
+      secret: ANNOUNCEMENTS.ANNOUNCEMENT_SECRET,
+    });
+  });
+
+  it("does not start without either, and names the one that is missing", () => {
+    const { ANNOUNCEMENT_SECRET, ...noSecret } = ANNOUNCEMENTS;
+    const { CABINET_ANNOUNCEMENT_URL, ...noAddress } = ANNOUNCEMENTS;
+
+    expect(refusalFor({ ...live, ...noSecret })).toMatch(/ANNOUNCEMENT_SECRET/);
+    expect(refusalFor({ ...live, ...noAddress })).toMatch(/CABINET_ANNOUNCEMENT_URL/);
+    // Set to nothing is how a compose file says "not here", and it reads the
+    // same as never set rather than as a secret of length zero.
+    expect(refusalFor({ ...live, ...ANNOUNCEMENTS, ANNOUNCEMENT_SECRET: "" })).toMatch(
+      /ANNOUNCEMENT_SECRET/,
+    );
+  });
+
+  it("refuses a secret too short to be one, without printing it", () => {
+    const short = "x".repeat(31);
+    const refused = refusalFor({ ...live, ...ANNOUNCEMENTS, ANNOUNCEMENT_SECRET: short });
+
+    expect(refused).toMatch(/ANNOUNCEMENT_SECRET/);
+    expect(refused).not.toContain(short);
+  });
+
+  it("refuses an address the cabinet cannot be asked at", () => {
+    expect(
+      refusalFor({ ...live, ...ANNOUNCEMENTS, CABINET_ANNOUNCEMENT_URL: "cabinet:3003" }),
+    ).toMatch(/CABINET_ANNOUNCEMENT_URL/);
+  });
+
+  it("asks nothing of a test deployment or a sandbox, which announce nothing", () => {
+    // A change applies at once where no money is real, and nothing is sent, so
+    // neither needs a way to the cabinet — and a test stack that does name one
+    // is not asked to use it.
+    expect(loadConfig(required).announcements).toBeNull();
+    expect(
+      loadConfig({ ...required, PAYMENT_NETWORK: "eip155:84532", ...ANNOUNCEMENTS }).announcements,
+    ).toBeNull();
   });
 });
