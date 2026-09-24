@@ -419,7 +419,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
             text("Use the "),
             link("data-request route", "/data-request"),
             text(
-              " for access, correction, unsubscribe, or verified deletion. Deletion first detaches or cancels the optional card signal and verifies provider state; only then are report sessions and shares revoked and lead, waitlist, analytics-delivery, and owned-scan identifiers removed or irreversibly anonymized. Deidentified score, coverage, check status, and coarse technical metrics may remain under the stated scan-dataset retention, but the original URL, host, access capability, share snapshot, and session join are removed from the retained scan record.",
+              " for access, correction, unsubscribe, or verified deletion. Deletion first detaches or cancels the optional card signal and verifies provider state; only then is report access closed, shares revoked, and lead, waitlist, analytics-delivery, and owned-scan identifiers removed or irreversibly anonymized. The sign-in for your address is removed with them unless it holds a merchant cabinet. Deidentified score, coverage, check status, and coarse technical metrics may remain under the stated scan-dataset retention, but the original URL, host, access capability, share snapshot, and session join are removed from the retained scan record.",
             ),
           ],
         },

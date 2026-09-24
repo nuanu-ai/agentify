@@ -1,40 +1,58 @@
+/**
+ * The cabinet's second listener: the internal route the scanner asks over.
+ *
+ * It publishes no port and is reached by service name on the compose network,
+ * behind a secret only the two processes hold (ADR-0024). The scanner asks it
+ * three things (ADR-0026 §2): send a link for this address with this
+ * destination; whose session is this cookie; and, for a privacy deletion,
+ * remove this person if they own no merchant.
+ */
+
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { Server } from "node:http";
 import {
-  type AcknowledgeReportLinkRequest,
-  acknowledgeReportLinkResponseSchema,
-  type ConsumeReportLinkRequest,
-  consumeReportLinkResponseSchema,
   type DeleteUnattachedPersonRequest,
   deleteUnattachedPersonResponseSchema,
-  type IssueCabinetLinkRequest,
-  issueCabinetLinkResponseSchema,
+  type ReadSessionResponse,
+  readSessionResponseSchema,
   reportIdentityRequestSchema,
   type SendReportLinkRequest,
   sendReportLinkResponseSchema,
 } from "@agentify/scanner-contracts/report-identity";
 import express, { type NextFunction, type Request, type Response } from "express";
+import type { Person } from "./cabinet-entry.js";
+import { sessionReader } from "./cabinet-key.js";
 import type { Identity } from "./identity.js";
 
 export const REPORT_IDENTITY_PATH = "/internal/report-identity";
 export const REPORT_IDENTITY_PORT = 3002;
 
-const MAX_BODY_BYTES = 8 * 1024;
+/**
+ * The largest body the route reads: a cookie header of the longest length the
+ * contract carries, with room for the JSON around it.
+ */
+const MAX_BODY_BYTES = 16 * 1024;
 const REQUEST_TIMEOUT_MS = 20_000;
 const HEADERS_TIMEOUT_MS = 5_000;
 const KEEP_ALIVE_TIMEOUT_MS = 5_000;
 
 type ReportIdentityOperations = Pick<
   Identity,
-  | "sendReportLink"
-  | "consumeReportLink"
-  | "acknowledgeReportLink"
-  | "issueCabinetLink"
-  | "deleteUnattachedPerson"
+  "sendReportLink" | "deleteUnattachedPerson" | "whoIs"
 >;
 
-export function buildReportIdentityApp(secret: string, identity: ReportIdentityOperations) {
+/**
+ * The route, with what renews an account's key when a reading of its session
+ * was the first of the day (ADR-0014 §2). The scanner's question is a reading
+ * like any page's, so a day spent on reports renews the key too.
+ */
+export function buildReportIdentityApp(
+  secret: string,
+  identity: ReportIdentityOperations,
+  renewKey: (person: Person) => Promise<void>,
+) {
   const app = express();
+  const readSession = sessionReader(identity, renewKey);
 
   app.post(
     REPORT_IDENTITY_PATH,
@@ -62,24 +80,18 @@ export function buildReportIdentityApp(secret: string, identity: ReportIdentityO
         );
         return;
       }
-      if (operation.operation === "verify") {
-        response.json(
-          operation.phase === "consume"
-            ? consumeReportLinkResponseSchema.parse(
-                await identity.consumeReportLink(operation as ConsumeReportLinkRequest),
-              )
-            : acknowledgeReportLinkResponseSchema.parse(
-                await identity.acknowledgeReportLink(operation as AcknowledgeReportLinkRequest),
-              ),
-        );
-        return;
-      }
-      if (operation.operation === "issue") {
-        response.json(
-          issueCabinetLinkResponseSchema.parse(
-            await identity.issueCabinetLink(operation as IssueCabinetLinkRequest),
-          ),
-        );
+      if (operation.operation === "session") {
+        const session = await readSession(operation.cookie, { renew: operation.renew });
+        const answer: ReadSessionResponse =
+          session === null
+            ? { status: "signed_out" }
+            : {
+                status: "signed_in",
+                email: session.person.email,
+                request: session.request,
+                set_cookie: [...session.setCookies],
+              };
+        response.json(readSessionResponseSchema.parse(answer));
         return;
       }
       response.json(
@@ -103,9 +115,10 @@ export function buildReportIdentityApp(secret: string, identity: ReportIdentityO
 export function startReportIdentityServer(
   secret: string | null,
   identity: ReportIdentityOperations,
+  renewKey: (person: Person) => Promise<void>,
 ): Server | null {
   if (secret === null) return null;
-  const server = buildReportIdentityApp(secret, identity).listen(REPORT_IDENTITY_PORT);
+  const server = buildReportIdentityApp(secret, identity, renewKey).listen(REPORT_IDENTITY_PORT);
   server.requestTimeout = REQUEST_TIMEOUT_MS;
   server.headersTimeout = HEADERS_TIMEOUT_MS;
   server.keepAliveTimeout = KEEP_ALIVE_TIMEOUT_MS;

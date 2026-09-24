@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { REPORT_SESSION_COOKIE } from "../../../../../lib/server/auth";
 import { errorResponse } from "../../../../../lib/server/http";
 import { getFullReport } from "../../../../../lib/server/reporting";
 
@@ -11,7 +10,7 @@ export async function GET(
   { params }: { params: Promise<{ scanId: string }> },
 ) {
   const { scanId } = await params;
-  const report = await getFullReport(scanId, request.cookies.get(REPORT_SESSION_COOKIE)?.value);
+  const report = await getFullReport(scanId, request.headers.get("cookie"));
   if (!report)
     return errorResponse(
       request,

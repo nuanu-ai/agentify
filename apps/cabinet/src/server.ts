@@ -33,7 +33,12 @@
 
 import { readFileSync } from "node:fs";
 import express, { type Express, type Request, type Response } from "express";
-import type { CabinetDestination, CabinetIdentity, Person } from "./cabinet-entry.js";
+import type {
+  CabinetDestination,
+  CabinetIdentity,
+  LinkDestination,
+  Person,
+} from "./cabinet-entry.js";
 import { keyRenewal, sessionReader } from "./cabinet-key.js";
 import type { CabinetConfig } from "./config.js";
 import {
@@ -649,25 +654,29 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    * site arrives signed in, so a navigation that could make a merchant is one
    * anybody could start. What a sign-in does do is renew the cabinet's key
    * for somebody who owns a merchant (ADR-0014 §2), before the cookie is
-   * handed over. A link with no destination of its own goes to the person's
-   * start; one asked for from a cabinet screen goes to that screen, or, for
-   * somebody with no merchant yet, to the one control that makes it.
+   * handed over. A link the scanner asked for goes to the report it was asked
+   * for, where the scanner finishes the request the session now names. A link
+   * with no destination of its own goes to the person's start; one asked for
+   * from a cabinet screen goes to that screen, or, for somebody with no
+   * merchant yet, to the one control that makes it.
    */
   const sendOpenedPerson = async (
     response: Response,
     person: Person,
-    destination: CabinetDestination,
+    destination: LinkDestination,
   ): Promise<void> => {
     if (person.merchant !== null) {
       await replaceTheKeyOf(person);
     }
     response.redirect(
       303,
-      destination === "default"
-        ? startOf(person)
-        : person.merchant === null
-          ? `${base}/merchant`
-          : cabinetPathFor(base, destination),
+      typeof destination !== "string"
+        ? `/report/${encodeURIComponent(destination.report)}`
+        : destination === "default"
+          ? startOf(person)
+          : person.merchant === null
+            ? `${base}/merchant`
+            : cabinetPathFor(base, destination),
     );
   };
 

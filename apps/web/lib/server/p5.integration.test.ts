@@ -518,7 +518,6 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
         markWaiting();
         await continueCleanup;
       },
-      beforeLeadAnonymizeInTransaction: async () => {},
     });
     await waiting;
     await getDatabase()

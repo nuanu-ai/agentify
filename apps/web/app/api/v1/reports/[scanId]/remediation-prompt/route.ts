@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { REPORT_SESSION_COOKIE } from "../../../../../../lib/server/auth";
 import { getServerConfig } from "../../../../../../lib/server/config";
 import { errorResponse } from "../../../../../../lib/server/http";
 import { getFullRemediationPrompt } from "../../../../../../lib/server/remediation";
@@ -16,10 +15,7 @@ export async function GET(
   if (request.nextUrl.searchParams.get("scope") !== "full")
     return errorResponse(request, 400, "invalid_scope", "Expected scope=full.");
   const { scanId } = await params;
-  const result = await getFullRemediationPrompt(
-    scanId,
-    request.cookies.get(REPORT_SESSION_COOKIE)?.value,
-  );
+  const result = await getFullRemediationPrompt(scanId, request.headers.get("cookie"));
   if (!result)
     return errorResponse(request, 404, "prompt_not_found", "No authorized prompt is available.");
   return NextResponse.json(result, {

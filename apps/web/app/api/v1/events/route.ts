@@ -3,7 +3,7 @@ import { emitStoredBusinessEvent, scans, sessions } from "@agentify/scanner-data
 import { eq } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 
-import { getVerifiedSession, REPORT_SESSION_COOKIE } from "../../../../lib/server/auth";
+import { signedInLead } from "../../../../lib/server/auth";
 import { getServerConfig } from "../../../../lib/server/config";
 import { hmacHex } from "../../../../lib/server/crypto";
 import { getDatabase } from "../../../../lib/server/database";
@@ -103,10 +103,7 @@ export async function POST(request: NextRequest) {
       identifiers: { session_id: session.id, scan_id: scan.id },
     };
   } else if (body.name === "results_viewed" && body.scan_id) {
-    const verified = await getVerifiedSession(
-      request.cookies.get(REPORT_SESSION_COOKIE)?.value,
-      body.scan_id,
-    );
+    const verified = await signedInLead(request.headers.get("cookie"), body.scan_id);
     const bearer = bearerToken(request);
     const capabilityScan = bearer ? await authorizeScan(body.scan_id, bearer) : undefined;
     const scan =

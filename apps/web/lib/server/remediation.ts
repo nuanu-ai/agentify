@@ -36,9 +36,9 @@ const fromBrowser = (
 
 export async function getTeaserRemediationPrompt(
   scanId: string,
-  sessionToken: string | undefined,
+  cookieHeader: string | undefined | null,
 ): Promise<RemediationPromptResponse | undefined> {
-  const status = await getScanStatusForVerifiedSession(scanId, sessionToken);
+  const status = await getScanStatusForVerifiedSession(scanId, cookieHeader);
   if (!status?.teaser) return undefined;
   const { db } = getDatabase();
   const scan = (await db.select().from(scans).where(eq(scans.id, scanId)).limit(1))[0];
@@ -79,11 +79,11 @@ export async function getTeaserRemediationPrompt(
 
 export async function getFullRemediationPrompt(
   scanId: string,
-  sessionToken: string | undefined,
+  cookieHeader: string | undefined | null,
 ): Promise<RemediationPromptResponse | undefined> {
-  const report = await getFullReport(scanId, sessionToken);
+  const report = await getFullReport(scanId, cookieHeader);
   if (!report) return undefined;
-  const browser = await getFullBrowserObservation(scanId, sessionToken);
+  const browser = await getFullBrowserObservation(scanId, cookieHeader);
   const canonicalFindings: RemediationFindingInput[] = report.checks.flatMap((check) =>
     check.status === "fail" || check.status === "partial"
       ? [

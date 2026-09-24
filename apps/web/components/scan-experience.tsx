@@ -18,6 +18,7 @@ import { PrivacyChoicesButton } from "./privacy-choices-button";
 import { PublicShareActions } from "./public-share-actions";
 import { RegistrationForm } from "./registration-form";
 import styles from "./scan-experience.module.css";
+import { SiteDoors } from "./site-chrome";
 import { StatusBadge } from "./status-badge";
 
 const CHECK_LABELS = {
@@ -141,6 +142,7 @@ export function ScanExperience({
     <main className={styles.page}>
       <div className={styles.brandWrap}>
         <Brand />
+        <SiteDoors />
       </div>
       <section className={styles.card}>
         <header className={styles.scanHeader}>

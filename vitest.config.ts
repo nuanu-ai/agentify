@@ -41,10 +41,6 @@ const scannerSources = [
     "@agentify/scanner-contracts/report-identity",
     "./packages/scanner-contracts/src/report-identity.ts",
   ],
-  [
-    "@agentify/scanner-contracts/report-cabinet-handoff",
-    "./packages/scanner-contracts/src/report-cabinet-handoff.ts",
-  ],
   ["@agentify/scanner-database", "./packages/scanner-database/src/index.ts"],
   ["@agentify/scanner-database/schema", "./packages/scanner-database/src/schema.ts"],
   ["@agentify/analytics", "./packages/analytics/src/index.ts"],

@@ -1,13 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { getVerifiedSession, REPORT_SESSION_COOKIE } from "../../../../../../lib/server/auth";
+import { signedInLead } from "../../../../../../lib/server/auth";
 import { bearerToken, errorResponse } from "../../../../../../lib/server/http";
 import { getPublicSharePreview } from "../../../../../../lib/server/reporting";
 import { authorizeScan } from "../../../../../../lib/server/scans";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const verified = await getVerifiedSession(request.cookies.get(REPORT_SESSION_COOKIE)?.value, id);
+  const verified = await signedInLead(request.headers.get("cookie"), id);
   const bearer = bearerToken(request);
   const scanAuthorized = bearer ? Boolean(await authorizeScan(id, bearer)) : false;
   if (!verified && !scanAuthorized)

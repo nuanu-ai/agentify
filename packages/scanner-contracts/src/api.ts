@@ -120,9 +120,16 @@ export const phoneE164Schema = z
   .transform((value) => value.replace(/[\s().-]/g, ""))
   .pipe(z.string().regex(/^\+[1-9]\d{7,14}$/));
 
+/**
+ * A request for the full report of one scan.
+ *
+ * The address is absent from a signed-in person's own ask, which is filed
+ * under the session's address and sends no message (ADR-0026 §2); the route
+ * refuses a stranger's ask without one.
+ */
 export const registrationRequestSchema = z
   .object({
-    email: z.email().max(320),
+    email: z.email().max(320).optional(),
     phone: phoneE164Schema.optional(),
     role: z.string().trim().min(1).max(100),
     site_is_mine: z.boolean(),
@@ -132,21 +139,22 @@ export const registrationRequestSchema = z
   .strict();
 export type RegistrationRequest = z.infer<typeof registrationRequestSchema>;
 
-export const registrationResponseSchema = z
-  .object({ status: z.literal("verification_sent") })
-  .strict();
+/**
+ * What became of a request for the full report: a link went to the address, or
+ * the signed-in person's own ask was filed under their address at once and the
+ * report is ready, with the address named so the page can say it.
+ */
+export const registrationResponseSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("verification_sent") }).strict(),
+  z
+    .object({
+      status: z.literal("report_ready"),
+      report_url: z.string().startsWith("/report/"),
+      email: z.email().max(320),
+    })
+    .strict(),
+]);
 export type RegistrationResponse = z.infer<typeof registrationResponseSchema>;
-
-export const authFinalizeRequestSchema = z.object({ state: z.string().min(32).max(512) }).strict();
-export type AuthFinalizeRequest = z.infer<typeof authFinalizeRequestSchema>;
-
-export const authFinalizeResponseSchema = z
-  .object({
-    status: z.literal("verified"),
-    report_url: z.string().startsWith("/report/"),
-  })
-  .strict();
-export type AuthFinalizeResponse = z.infer<typeof authFinalizeResponseSchema>;
 
 export const contactAccessResponseSchema = z.object({ status: z.literal("verified") }).strict();
 

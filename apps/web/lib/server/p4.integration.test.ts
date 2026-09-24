@@ -31,9 +31,9 @@ import { GET as getTeaserPrompt } from "../../app/api/v1/scans/[id]/remediation-
 import { POST as publishShare } from "../../app/api/v1/scans/[id]/share/route";
 import { GET as previewShare } from "../../app/api/v1/scans/[id]/share-preview/route";
 import { POST as acceptScan } from "../../app/api/v1/scans/route";
-import { GET as readVisitor } from "../../app/api/v2/session/route";
 import { GET as getContactAccess } from "../../app/api/v2/scans/[id]/contact-access/route";
 import { POST as requestScannerRegistration } from "../../app/api/v2/scans/[id]/registrations/route";
+import { GET as readVisitor } from "../../app/api/v2/session/route";
 import { latestReportOf, visitorOf } from "./auth";
 import { getCabinetReportIdentityClient } from "./cabinet-report-identity";
 import { getServerConfig } from "./config";
@@ -136,39 +136,6 @@ function onlyRow<T>(rows: readonly T[]): T {
   return row;
 }
 
-async function createCompletedScan(label: string) {
-  const { db } = getDatabase();
-  const sessionId = createUuidV7();
-  const scanId = createUuidV7();
-  await db.insert(sessions).values({
-    id: sessionId,
-    anonymousIdHash: `p4-${label}-${sessionId}`,
-    firstLandingVariant: "owner-v1",
-  });
-  await db.insert(scans).values({
-    id: scanId,
-    sessionId,
-    segment: "owner",
-    rubricVersion: "gtm-v1.0.0",
-    submittedUrlRedacted: `https://${label}.example/`,
-    canonicalTargetUrl: `https://${label}.example/`,
-    targetHost: `${label}.example`,
-    targetHash: `target-${label}-${scanId}`,
-    status: "completed",
-    score: 72,
-    coverage: "1.000",
-    level: "ahead_of_market",
-    applicableWeight: "100",
-    earnedWeight: "72",
-    finishedAt: new Date(),
-    accessTokenHash: `access-${label}-${scanId}`,
-    accessTokenExpiresAt: new Date(Date.now() + 86_400_000),
-    idempotencyKeyHash: `idem-${label}-${scanId}`,
-    idempotencyBodyHash: `body-${label}-${scanId}`,
-  });
-  return onlyRow(await db.select().from(scans).where(eq(scans.id, scanId)));
-}
-
 async function createFreshCompletedScan(label: string) {
   const { db } = getDatabase();
   const source = onlyRow(await db.select().from(scans).where(eq(scans.id, scanId)));
@@ -205,13 +172,11 @@ const registrationBody = (email: string) => ({
   dataset_reuse_acknowledged: true as const,
 });
 
-
 async function copyChecks(id: string) {
   const { db } = getDatabase();
   const sourceChecks = await db.select().from(scanChecks).where(eq(scanChecks.scanId, scanId));
   await db.insert(scanChecks).values(sourceChecks.map((check) => ({ ...check, scanId: id })));
 }
-
 
 async function registrationEventsFor(id: string) {
   return (
@@ -660,8 +625,9 @@ describe("P4 cabinet-owned scanner identity", () => {
 
     expect(intruder).toMatchObject({ kind: "person", leadId: null });
     expect(
-      onlyRow(await db.select().from(registrationIntents).where(eq(registrationIntents.id, link.request)))
-        .consumedAt,
+      onlyRow(
+        await db.select().from(registrationIntents).where(eq(registrationIntents.id, link.request)),
+      ).consumedAt,
     ).toBeNull();
     expect(await registrationEventsFor(scan.id)).toBe("0");
   });
@@ -677,7 +643,10 @@ describe("P4 cabinet-owned scanner identity", () => {
       .set({ expiresAt: new Date(Date.now() - 1_000) })
       .where(eq(registrationIntents.id, link.request));
 
-    await expect(visitorOf(pressLink(link))).resolves.toMatchObject({ kind: "person", leadId: null });
+    await expect(visitorOf(pressLink(link))).resolves.toMatchObject({
+      kind: "person",
+      leadId: null,
+    });
 
     expect(await registrationEventsFor(scan.id)).toBe("0");
     expect(await getFullReport(scan.id, pressLink(link))).toBeUndefined();
@@ -728,8 +697,12 @@ describe("P4 cabinet-owned scanner identity", () => {
     expect(sentLinks).toHaveLength(sentBefore);
     expect((await getFullReport(scan.id, cookie))?.checks).toHaveLength(18);
     expect(
-      onlyRow(await db.select().from(registrationIntents).where(eq(registrationIntents.id, strangers.request)))
-        .consumedAt,
+      onlyRow(
+        await db
+          .select()
+          .from(registrationIntents)
+          .where(eq(registrationIntents.id, strangers.request)),
+      ).consumedAt,
     ).toBeNull();
     const consent = onlyRow(
       await db
@@ -743,7 +716,9 @@ describe("P4 cabinet-owned scanner identity", () => {
       await db
         .select()
         .from(leads)
-        .where(eq(leads.emailLookupHash, hmacHex(tokenHmacSecret, "email", "typed-over@example.com"))),
+        .where(
+          eq(leads.emailLookupHash, hmacHex(tokenHmacSecret, "email", "typed-over@example.com")),
+        ),
     ).toHaveLength(0);
   });
 
@@ -821,7 +796,8 @@ describe("P4 cabinet-owned scanner identity", () => {
     }
 
     const person = await visitorOf(signedInAs(email));
-    if (person.kind !== "person" || person.leadId === null) throw new Error("no lead for the person");
+    if (person.kind !== "person" || person.leadId === null)
+      throw new Error("no lead for the person");
     expect(await latestReportOf(person.leadId)).toBe(newer.id);
     const nobody = await visitorOf(signedInAs("no-reports@example.com"));
     expect(nobody).toMatchObject({ kind: "person", leadId: null });
@@ -1567,7 +1543,10 @@ describe("P4 cabinet-owned scanner identity", () => {
     // request went with the address, and the reports are gone.
     await visitorOf(pressLink(firstLink));
     expect(
-      await db.select().from(registrationIntents).where(eq(registrationIntents.id, firstLink.request)),
+      await db
+        .select()
+        .from(registrationIntents)
+        .where(eq(registrationIntents.id, firstLink.request)),
     ).toHaveLength(0);
     expect((await db.select().from(scans).where(eq(scans.id, scan.id)))[0]?.leadId).toBeNull();
     expect((await db.select().from(leads).where(eq(leads.id, leadId)))[0]?.role).toBe("deleted");
@@ -1593,12 +1572,7 @@ describe("P4 cabinet-owned scanner identity", () => {
     });
     expect(result.sent).toBe(true);
     await visitorOf(pressLink(latestLink(email)));
-    expect(
-      await db
-        .select()
-        .from(leadScans)
-        .where(eq(leadScans.scanId, scan.id)),
-    ).toHaveLength(1);
+    expect(await db.select().from(leadScans).where(eq(leadScans.scanId, scan.id))).toHaveLength(1);
   });
 
   it("serializes finishing a request with deletion and leaves the scan anonymized", async () => {
@@ -1629,13 +1603,13 @@ describe("P4 cabinet-owned scanner identity", () => {
     });
     await createScannerRegistrationIntent(scan, registrationBody(email));
     const link = latestLink(email);
-    await admin.pool.query(`create function hold_report_session_for_deletion() returns trigger
+    await admin.pool.query(`create function hold_finishing_for_deletion() returns trigger
       language plpgsql as $$ begin
         if new.lead_id = '${leadId}'::uuid then perform pg_advisory_xact_lock(479926); end if;
         return new;
       end $$`);
-    await admin.pool.query(`create trigger hold_report_session_for_deletion before insert
-      on waitlist_entries for each row execute function hold_report_session_for_deletion()`);
+    await admin.pool.query(`create trigger hold_finishing_for_deletion before insert
+      on waitlist_entries for each row execute function hold_finishing_for_deletion()`);
     const blocker = await admin.pool.connect();
     await blocker.query("begin");
     await blocker.query("select pg_advisory_xact_lock(479926)");
@@ -1668,8 +1642,8 @@ describe("P4 cabinet-owned scanner identity", () => {
       await blocker.query("commit");
       blocker.release();
       await Promise.allSettled([confirmation, deletion]);
-      await admin.pool.query("drop trigger hold_report_session_for_deletion on waitlist_entries");
-      await admin.pool.query("drop function hold_report_session_for_deletion() ");
+      await admin.pool.query("drop trigger hold_finishing_for_deletion on waitlist_entries");
+      await admin.pool.query("drop function hold_finishing_for_deletion() ");
     }
     if (!confirmation || !deletion)
       throw new Error("the blocked confirmation and deletion never started");
@@ -1710,10 +1684,10 @@ describe("P4 cabinet-owned scanner identity", () => {
     });
     await createScannerRegistrationIntent(scan, registrationBody(newEmail));
     const link = latestLink(newEmail);
-    await admin.pool.query(`create function hold_cross_email_report_session() returns trigger
+    await admin.pool.query(`create function hold_cross_email_finishing() returns trigger
       language plpgsql as $$ begin perform pg_advisory_xact_lock(479927); return new; end $$`);
-    await admin.pool.query(`create trigger hold_cross_email_report_session before insert
-      on waitlist_entries for each row execute function hold_cross_email_report_session()`);
+    await admin.pool.query(`create trigger hold_cross_email_finishing before insert
+      on waitlist_entries for each row execute function hold_cross_email_finishing()`);
     const blocker = await admin.pool.connect();
     await blocker.query("begin");
     await blocker.query("select pg_advisory_xact_lock(479927)");
@@ -1746,8 +1720,8 @@ describe("P4 cabinet-owned scanner identity", () => {
       await blocker.query("commit");
       blocker.release();
       await Promise.allSettled([confirmation, deletion]);
-      await admin.pool.query("drop trigger hold_cross_email_report_session on waitlist_entries");
-      await admin.pool.query("drop function hold_cross_email_report_session()");
+      await admin.pool.query("drop trigger hold_cross_email_finishing on waitlist_entries");
+      await admin.pool.query("drop function hold_cross_email_finishing()");
     }
     if (!confirmation || !deletion)
       throw new Error("the blocked confirmation and deletion never started");
@@ -1882,5 +1856,4 @@ describe("P4 cabinet-owned scanner identity", () => {
       process.env.REGISTRATION_ENABLED = "false";
     }
   });
-
 });

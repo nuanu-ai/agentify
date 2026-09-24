@@ -1,7 +1,7 @@
 import { createShareRequestSchema } from "@agentify/scanner-contracts";
 import { type NextRequest, NextResponse } from "next/server";
 
-import { getVerifiedSession, REPORT_SESSION_COOKIE } from "../../../../../../lib/server/auth";
+import { signedInLead } from "../../../../../../lib/server/auth";
 import { getServerConfig } from "../../../../../../lib/server/config";
 import { bearerToken, errorResponse, hasSameOrigin } from "../../../../../../lib/server/http";
 import { createPublicShare } from "../../../../../../lib/server/reporting";
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const parsed = createShareRequestSchema.safeParse(await request.json().catch(() => ({})));
   if (!parsed.success)
     return errorResponse(request, 400, "invalid_share_request", "The share request is invalid.");
-  const verified = await getVerifiedSession(request.cookies.get(REPORT_SESSION_COOKIE)?.value, id);
+  const verified = await signedInLead(request.headers.get("cookie"), id);
   const bearer = bearerToken(request);
   const scanAuthorized = bearer ? Boolean(await authorizeScan(id, bearer)) : false;
   if (!verified && !scanAuthorized)

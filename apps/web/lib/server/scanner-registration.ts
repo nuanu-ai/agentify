@@ -1,3 +1,16 @@
+/**
+ * A request for the full report of one scan, from asking to finished.
+ *
+ * A stranger's request waits for its own link: the scanner writes it down, asks
+ * the cabinet to send a link for the address to the report of this scan, and
+ * names the request, which the cabinet records with the token and then with
+ * the session the link opens. The scanner finishes it at that session's first
+ * visit, whichever page it is (ADR-0026 §2). A signed-in person's own ask is
+ * made and finished at once, under the session's address, with no message.
+ * Finishing is what links the lead to the scan, and it is the only way a
+ * report comes to belong to an address.
+ */
+
 import { partnerClickIdSchema, type RegistrationRequest } from "@agentify/scanner-contracts";
 import type { SendReportLinkResponse } from "@agentify/scanner-contracts/report-identity";
 import {
@@ -9,12 +22,11 @@ import {
   leadScans,
   leads,
   registrationIntents,
-  reportSessions,
   scans,
   sessions,
   waitlistEntries,
 } from "@agentify/scanner-database";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { getCabinetReportIdentityClient } from "./cabinet-report-identity";
 import { getServerConfig } from "./config";
 import {
@@ -23,8 +35,6 @@ import {
   encryptSensitiveValue,
   hmacHex,
   normalizeEmail,
-  randomCapability,
-  sha256,
 } from "./crypto";
 import { getDatabase } from "./database";
 import type { LinkSendOutcome } from "./link-wait";
@@ -34,12 +44,63 @@ const REGISTRATION_INTENT_TTL_MS = 60 * 60 * 1000;
 
 type RegistrationIntentOptions = Readonly<{
   partnerClickId?: string;
-  sendReportLink?: (email: string, state: string) => Promise<SendReportLinkResponse>;
+  sendReportLink?: (email: string, request: string) => Promise<SendReportLinkResponse>;
 }>;
 
-export async function createScannerRegistrationIntent(
+/** What a request is made of, written down before anything is sent or finished. */
+function intentValues(
   scan: typeof scans.$inferSelect,
   body: RegistrationRequest,
+  normalizedEmail: string,
+  partnerClickId: string | undefined,
+  now: Date,
+) {
+  const config = getServerConfig();
+  return {
+    id: createUuidV7(),
+    scanId: scan.id,
+    sessionId: scan.sessionId,
+    emailNormalizedCiphertext: encryptEmail(normalizedEmail, config.encryptionKey),
+    emailLookupHash: hmacHex(config.hmacSecret, "email", normalizedEmail),
+    phoneE164Ciphertext: body.phone ? encryptEmail(body.phone, config.encryptionKey) : null,
+    phoneLookupHash: body.phone ? hmacHex(config.hmacSecret, "phone", body.phone) : null,
+    partnerClickIdCiphertext: partnerClickId
+      ? encryptSensitiveValue(partnerClickId, config.encryptionKey)
+      : null,
+    role: body.role,
+    siteOwnershipClaim: body.site_is_mine,
+    marketingEmailOptIn: body.marketing_email_opt_in,
+    datasetReuseAcknowledged: body.dataset_reuse_acknowledged,
+    expiresAt: new Date(now.getTime() + REGISTRATION_INTENT_TTL_MS),
+  };
+}
+
+async function refuseDeletingAddress(tx: DatabaseTransaction, emailLookupHash: string) {
+  const deleting = (
+    await tx
+      .select({ id: leads.id })
+      .from(leads)
+      .where(
+        and(
+          eq(leads.emailLookupHash, emailLookupHash),
+          sql`${leads.deletionRequestedAt} is not null`,
+          isNull(leads.anonymizedAt),
+        ),
+      )
+      .limit(1)
+  )[0];
+  if (deleting) throw new Error("registration_email_deleting");
+}
+
+/**
+ * A stranger's request: written down, then a link asked of the cabinet.
+ *
+ * The request is inactive until the cabinet says the link went out, so a
+ * request whose message never left cannot be finished by anybody.
+ */
+export async function createScannerRegistrationIntent(
+  scan: typeof scans.$inferSelect,
+  body: RegistrationRequest & { email: string },
   options: RegistrationIntentOptions = {},
 ): Promise<LinkSendOutcome> {
   const config = getServerConfig();
@@ -68,57 +129,31 @@ export async function createScannerRegistrationIntent(
           : ("unspecified" as const),
     };
 
-  const state = randomCapability();
   const now = new Date();
   const { db } = getDatabase();
-  const intentId = createUuidV7();
+  const intent = intentValues(
+    scan,
+    body,
+    normalizedEmail,
+    partnerClickId.success ? partnerClickId.data : undefined,
+    now,
+  );
   await db.transaction(async (tx) => {
     await lockScannerEmail(tx, emailLookupHash);
-    const deleting = (
-      await tx
-        .select({ id: leads.id })
-        .from(leads)
-        .where(
-          and(
-            eq(leads.emailLookupHash, emailLookupHash),
-            sql`${leads.deletionRequestedAt} is not null`,
-            isNull(leads.anonymizedAt),
-          ),
-        )
-        .limit(1)
-    )[0];
-    if (deleting) throw new Error("registration_email_deleting");
+    await refuseDeletingAddress(tx, emailLookupHash);
     if (!(await currentRegistrationScan(tx, scan)))
       throw new Error("registration_scan_unavailable");
-    await tx.insert(registrationIntents).values({
-      id: intentId,
-      scanId: scan.id,
-      sessionId: scan.sessionId,
-      callbackStateHash: sha256(state),
-      emailNormalizedCiphertext: encryptEmail(normalizedEmail, config.encryptionKey),
-      emailLookupHash,
-      phoneE164Ciphertext: body.phone ? encryptEmail(body.phone, config.encryptionKey) : null,
-      phoneLookupHash: body.phone ? hmacHex(config.hmacSecret, "phone", body.phone) : null,
-      partnerClickIdCiphertext: partnerClickId.success
-        ? encryptSensitiveValue(partnerClickId.data, config.encryptionKey)
-        : null,
-      role: body.role,
-      siteOwnershipClaim: body.site_is_mine,
-      marketingEmailOptIn: body.marketing_email_opt_in,
-      datasetReuseAcknowledged: body.dataset_reuse_acknowledged,
-      consumedAt: now,
-      expiresAt: new Date(now.getTime() + REGISTRATION_INTENT_TTL_MS),
-    });
+    await tx.insert(registrationIntents).values({ ...intent, consumedAt: now });
   });
 
   let handover: SendReportLinkResponse;
   try {
     handover = options.sendReportLink
-      ? await options.sendReportLink(normalizedEmail, state)
+      ? await options.sendReportLink(normalizedEmail, intent.id)
       : await getCabinetReportIdentityClient().sendReportLink({
           email: normalizedEmail,
-          intentKind: "registration",
-          state,
+          scanId: scan.id,
+          request: intent.id,
         });
   } catch {
     throw new Error("cabinet_identity_unavailable");
@@ -144,18 +179,81 @@ export async function createScannerRegistrationIntent(
     const activated = await tx
       .update(registrationIntents)
       .set({ consumedAt: null })
-      .where(eq(registrationIntents.id, intentId))
+      .where(eq(registrationIntents.id, intent.id))
       .returning({ id: registrationIntents.id });
     if (!activated.length) throw new Error("registration_scan_unavailable");
   });
   return { sent: true as const };
 }
 
-type FinalizedRegistration = Readonly<{
-  leadId: string;
-  scanId: string;
-  sessionToken: string;
-}>;
+/**
+ * A signed-in person's own ask: made and finished at once, with no message.
+ *
+ * The address is the session's and never the form's, and the request is a new
+ * one carrying this person's own choices. A request somebody else made with
+ * this address is left waiting until it expires, because it carries what its
+ * form said, a marketing choice included (ADR-0026 §2).
+ */
+export async function askAsSignedIn(
+  scan: typeof scans.$inferSelect,
+  body: RegistrationRequest,
+  sessionEmail: string,
+  options: Pick<RegistrationIntentOptions, "partnerClickId"> = {},
+): Promise<LinkSendOutcome> {
+  const config = getServerConfig();
+  const partnerClickId = partnerClickIdSchema.safeParse(options.partnerClickId);
+  const normalizedEmail = normalizeEmail(sessionEmail);
+  const emailLookupHash = hmacHex(config.hmacSecret, "email", normalizedEmail);
+  // No message goes out, so the address's hour is not spent; the scan's hour
+  // still counts asks, which is what keeps one session from filing a report
+  // under its address over and over.
+  const limits = await consumeRateLimitsAtomically([
+    {
+      keyHash: hmacHex(config.hmacSecret, "registration-session", scan.sessionId),
+      kind: "registration_session_hour",
+      limit: 10,
+    },
+  ]);
+  if (!limits.allowed)
+    return { sent: false as const, retryAt: limits.retryAt, wall: "unspecified" as const };
+  const now = new Date();
+  const intent = intentValues(
+    scan,
+    { ...body, email: normalizedEmail },
+    normalizedEmail,
+    partnerClickId.success ? partnerClickId.data : undefined,
+    now,
+  );
+  await getDatabase().db.transaction(async (tx) => {
+    await lockScannerEmail(tx, emailLookupHash);
+    await refuseDeletingAddress(tx, emailLookupHash);
+    if (!(await currentRegistrationScan(tx, scan)))
+      throw new Error("registration_scan_unavailable");
+    await tx.insert(registrationIntents).values({ ...intent, consumedAt: null });
+    const finished = await finishIntentInTransaction(tx, intent.id, normalizedEmail);
+    if (!finished) throw new Error("registration_scan_unavailable");
+  });
+  return { sent: true as const };
+}
+
+/**
+ * Finishes the request a session names, at that session's first visit.
+ *
+ * Idempotent across tabs: every page a session opens may be the first, the
+ * address's lock puts them in a line, and only the first finds the request
+ * still waiting. A request for another address, one already finished, and one
+ * that has waited past its hour are left as they are. A scan that can no
+ * longer carry a report finishes nothing and is not an error of the visit.
+ */
+export async function finishWaitingRequest(requestId: string, email: string): Promise<boolean> {
+  return await getDatabase().db.transaction(async (tx) => {
+    const normalizedEmail = normalizeEmail(email);
+    await lockScannerEmail(tx, hmacHex(getServerConfig().hmacSecret, "email", normalizedEmail));
+    return (await finishIntentInTransaction(tx, requestId, normalizedEmail)) !== undefined;
+  });
+}
+
+type FinishedRegistration = Readonly<{ leadId: string; scanId: string }>;
 
 async function lockScannerEmail(tx: DatabaseTransaction, emailLookupHash: string) {
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${emailLookupHash}, 0))`);
@@ -184,51 +282,55 @@ async function currentRegistrationScan(
   );
 }
 
-export async function finalizeCabinetScannerRegistrationInTransaction(
+/**
+ * The finishing itself, inside a transaction that already holds the address's
+ * lock: the lead, its link to the scan, the consent the form gave, the record
+ * that this lead registered for this scan, and the event.
+ */
+async function finishIntentInTransaction(
   tx: DatabaseTransaction,
-  state: string,
-  email: string,
-): Promise<FinalizedRegistration | undefined> {
-  return await finalizeRegistrationIntentInTransaction(tx, state, normalizeEmail(email));
-}
-
-async function finalizeRegistrationIntentInTransaction(
-  tx: DatabaseTransaction,
-  state: string,
+  requestId: string,
   normalizedEmail: string,
-): Promise<FinalizedRegistration | undefined> {
+): Promise<FinishedRegistration | undefined> {
   const config = getServerConfig();
   const emailLookupHash = hmacHex(config.hmacSecret, "email", normalizedEmail);
-  const sessionToken = randomCapability();
   const now = new Date();
 
-  await lockScannerEmail(tx, emailLookupHash);
+  const waiting = (
+    await tx
+      .select()
+      .from(registrationIntents)
+      .where(
+        and(
+          eq(registrationIntents.id, requestId),
+          eq(registrationIntents.emailLookupHash, emailLookupHash),
+          isNull(registrationIntents.consumedAt),
+          gt(registrationIntents.expiresAt, now),
+        ),
+      )
+      .limit(1)
+      .for("update")
+  )[0];
+  if (!waiting) return undefined;
 
+  const scan = (
+    await tx.select().from(scans).where(eq(scans.id, waiting.scanId)).limit(1).for("update")
+  )[0];
+  if (
+    !scan ||
+    scan.sessionId !== waiting.sessionId ||
+    (scan.status !== "completed" && scan.status !== "partial")
+  ) {
+    return undefined;
+  }
   const intent = (
     await tx
       .update(registrationIntents)
       .set({ consumedAt: now })
-      .where(
-        and(
-          eq(registrationIntents.callbackStateHash, sha256(state)),
-          eq(registrationIntents.emailLookupHash, emailLookupHash),
-          isNull(registrationIntents.consumedAt),
-        ),
-      )
+      .where(eq(registrationIntents.id, waiting.id))
       .returning()
   )[0];
   if (!intent) return undefined;
-
-  const scan = (
-    await tx.select().from(scans).where(eq(scans.id, intent.scanId)).limit(1).for("update")
-  )[0];
-  if (
-    !scan ||
-    scan.sessionId !== intent.sessionId ||
-    (scan.status !== "completed" && scan.status !== "partial")
-  ) {
-    throw new Error("registration_scan_unavailable");
-  }
 
   let lead = (
     await tx.select().from(leads).where(eq(leads.emailLookupHash, emailLookupHash)).limit(1)
@@ -333,12 +435,6 @@ async function finalizeRegistrationIntentInTransaction(
     .onConflictDoNothing({
       target: [waitlistEntries.leadId, waitlistEntries.scanId],
     });
-  await tx.insert(reportSessions).values({
-    id: createUuidV7(),
-    leadId: lead.id,
-    sessionTokenHash: sha256(sessionToken),
-    expiresAt: new Date(now.getTime() + 30 * 86_400_000),
-  });
   const registrationEvent = await emitStoredBusinessEvent(tx, {
     name: "registration_completed",
     identifiers: { lead_id: lead.id, scan_id: scan.id },
@@ -379,5 +475,5 @@ async function finalizeRegistrationIntentInTransaction(
       });
   }
 
-  return { leadId: lead.id, scanId: scan.id, sessionToken };
+  return { leadId: lead.id, scanId: scan.id };
 }

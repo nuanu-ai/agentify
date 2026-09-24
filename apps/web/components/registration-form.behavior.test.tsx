@@ -23,11 +23,13 @@ function answerWith(
   body: unknown,
   visitor: { status: number; body: unknown } = { status: 200, body: { status: "signed_out" } },
 ) {
-  return vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
-    String(input).endsWith("/api/v2/session")
-      ? json(visitor.status, visitor.body)
-      : json(status, body),
-  );
+  return vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async (input) =>
+      String(input).endsWith("/api/v2/session")
+        ? json(visitor.status, visitor.body)
+        : json(status, body),
+    );
 }
 
 async function askForALink() {

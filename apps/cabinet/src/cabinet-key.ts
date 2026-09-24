@@ -11,7 +11,7 @@
  * the scanner's question about a cookie renew the key alike.
  */
 
-import type { CabinetIdentity, LiveSession, Person } from "./cabinet-entry.js";
+import type { CabinetIdentity, LiveSession, Person, SessionReading } from "./cabinet-entry.js";
 import type { GatewayClient } from "./gateway.js";
 
 /**
@@ -164,6 +164,10 @@ export const keyRenewal =
  * Reads a request's session, and renews the key when the reading was the first
  * of the session's day.
  *
+ * A reading asked not to renew moves nothing, so it renews nothing either: it
+ * is the one a page drawn on the server makes, and that page cannot pass a
+ * renewed cookie on.
+ *
  * The person is read again after a renewal, because the key the first reading
  * carried may be the one the renewal has just forgotten, and a handler that
  * called the gateway with it would be refused. The renewed cookie lines of the
@@ -171,12 +175,15 @@ export const keyRenewal =
  */
 export const sessionReader =
   (identity: Pick<CabinetIdentity, "whoIs">, renewKey: (person: Person) => Promise<void>) =>
-  async (cookieHeader: string | undefined): Promise<LiveSession | null> => {
-    const session = await identity.whoIs(cookieHeader);
+  async (
+    cookieHeader: string | undefined,
+    reading: SessionReading = {},
+  ): Promise<LiveSession | null> => {
+    const session = await identity.whoIs(cookieHeader, reading);
     if (session === null || session.setCookies.length === 0 || session.person.merchant === null) {
       return session;
     }
     await renewKey(session.person);
-    const renewed = await identity.whoIs(cookieHeader);
-    return renewed === null ? null : { person: renewed.person, setCookies: session.setCookies };
+    const renewed = await identity.whoIs(cookieHeader, { renew: false });
+    return renewed === null ? null : { ...renewed, setCookies: session.setCookies };
   };

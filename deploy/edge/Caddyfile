@@ -21,7 +21,7 @@
 		~^/scan/[^/]+$ page_scan
 		~^/report/[^/]+$ page_report
 		~^/s/[^/]+$ page_share
-		~^/(auth/callback|email/unsubscribe|verification/error)$ page_account_flow
+		~^/email/unsubscribe$ page_account_flow
 		~^/api/health$ api_health
 		~^/api/health/live$ api_health_live
 		~^/api/v1/scans$ api_v1_scans_create
@@ -34,7 +34,7 @@
 		~^/api/v1/account/.*$ api_v1_account
 		~^/api/v1/auth/verify$ api_v1_auth
 		~^/api/v1/webhooks/stripe$ api_v1_stripe_webhook
-		~^/api/v2/auth/finalize$ api_v2_auth
+		~^/api/v2/session$ api_v2_session
 		~^/api/v2/scans/[^/]+/.*$ api_v2_scan_action
 		~^/_next/ asset_next
 		~^/(cabinet|v0|x402)(?:/.*)?$ commerce

@@ -2,7 +2,6 @@ import { uuidV7Schema } from "@agentify/scanner-contracts";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { REPORT_SESSION_COOKIE } from "../../../../../lib/server/auth";
 import { errorResponse, hasSameOrigin } from "../../../../../lib/server/http";
 import { setupCardSignal } from "../../../../../lib/server/stripe-card-signal";
 
@@ -36,7 +35,7 @@ export async function POST(request: NextRequest) {
     );
   try {
     const result = await setupCardSignal({
-      sessionToken: request.cookies.get(REPORT_SESSION_COOKIE)?.value,
+      cookieHeader: request.headers.get("cookie"),
       scanId: parsed.data.scan_id,
       idempotencyKey,
     });

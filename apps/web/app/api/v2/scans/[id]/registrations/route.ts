@@ -1,10 +1,14 @@
 import { partnerClickIdSchema, registrationRequestSchema } from "@agentify/scanner-contracts";
 import { type NextRequest, NextResponse } from "next/server";
 import { PARTNER_CLICK_ID_COOKIE } from "../../../../../../lib/server/attribution";
+import { visitorOf } from "../../../../../../lib/server/auth";
 import { getServerConfig } from "../../../../../../lib/server/config";
 import { bearerToken, errorResponse, hasSameOrigin } from "../../../../../../lib/server/http";
 import { linkCooldownResponse } from "../../../../../../lib/server/link-wait";
-import { createScannerRegistrationIntent } from "../../../../../../lib/server/scanner-registration";
+import {
+  askAsSignedIn,
+  createScannerRegistrationIntent,
+} from "../../../../../../lib/server/scanner-registration";
 import { authorizeScan } from "../../../../../../lib/server/scans";
 
 export const runtime = "nodejs";
@@ -44,13 +48,50 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       "invalid_registration",
       "Check the email, the phone if given, and the consent fields.",
     );
-  try {
-    const partnerClickId = partnerClickIdSchema.safeParse(
-      request.cookies.get(PARTNER_CLICK_ID_COOKIE)?.value,
+  // Who is asking decides what the ask is. A signed-in person's own ask is
+  // filed under the session's address at once and sends nothing; anybody
+  // else's waits for the link sent to the address they typed. A cabinet that
+  // does not answer is neither, and nothing is asked on a guess (ADR-0026 §2).
+  const visitor = await visitorOf(request.headers.get("cookie"));
+  if (visitor.kind === "unknown")
+    return errorResponse(
+      request,
+      503,
+      "visitor_unknown",
+      "We cannot tell who is visiting right now, so the report cannot be asked for. Try again shortly.",
+      true,
+      30,
     );
-    const result = await createScannerRegistrationIntent(scan, parsed.data, {
-      ...(partnerClickId.success ? { partnerClickId: partnerClickId.data } : {}),
-    });
+  const email = parsed.data.email;
+  if (visitor.kind === "stranger" && email === undefined)
+    return errorResponse(
+      request,
+      400,
+      "invalid_registration",
+      "Enter the email address the report should be sent to.",
+    );
+  const partnerClickId = partnerClickIdSchema.safeParse(
+    request.cookies.get(PARTNER_CLICK_ID_COOKIE)?.value,
+  );
+  const partner = partnerClickId.success ? { partnerClickId: partnerClickId.data } : {};
+  try {
+    if (visitor.kind === "person") {
+      const result = await askAsSignedIn(scan, parsed.data, visitor.email, partner);
+      if (!result.sent) return linkCooldownResponse(request, result);
+      return NextResponse.json(
+        {
+          status: "report_ready",
+          report_url: `/report/${encodeURIComponent(scan.id)}`,
+          email: visitor.email,
+        },
+        { headers: { "Cache-Control": "private, no-store" } },
+      );
+    }
+    const result = await createScannerRegistrationIntent(
+      scan,
+      { ...parsed.data, email: email ?? "" },
+      partner,
+    );
     if (!result.sent) return linkCooldownResponse(request, result);
     return NextResponse.json(
       { status: "verification_sent" },

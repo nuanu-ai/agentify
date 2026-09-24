@@ -8,6 +8,7 @@ import { captureLandingAttribution } from "../lib/attribution-client";
 import { clearPendingScan, type PendingScanRequest, readPendingScan } from "../lib/pending-scan";
 import { Brand } from "./brand";
 import styles from "./pending-scan-experience.module.css";
+import { SiteDoors } from "./site-chrome";
 import { TURNSTILE_TOKEN_EVENT, TurnstileChallenge } from "./turnstile-challenge";
 
 type StartState = "starting" | "challenge" | "hard-limit" | "busy" | "error" | "missing";
@@ -112,6 +113,7 @@ export function PendingScanExperience({
     <main className={styles.page}>
       <div className={styles.brandWrap}>
         <Brand />
+        <SiteDoors />
       </div>
       <section className={styles.card}>
         <header className={styles.header}>

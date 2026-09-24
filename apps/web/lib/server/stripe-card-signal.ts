@@ -11,7 +11,7 @@ import {
 } from "@agentify/scanner-database";
 import { and, desc, eq, sql } from "drizzle-orm";
 
-import { getVerifiedSession } from "./auth";
+import { signedInLead } from "./auth";
 import { getServerConfig } from "./config";
 import { sha256 } from "./crypto";
 import { getDatabase } from "./database";
@@ -35,14 +35,14 @@ export type SetupCardSignalResult =
     }>;
 
 export async function setupCardSignal(input: {
-  sessionToken: string | undefined;
+  cookieHeader: string | undefined | null;
   scanId: string;
   idempotencyKey: string;
   provider?: StripeCardSignalProvider;
 }): Promise<SetupCardSignalResult> {
   const cardConfig = getStripeCardSignalConfig();
   if (!cardConfig.CARD_SIGNAL_ENABLED) return { status: "disabled" };
-  const verified = await getVerifiedSession(input.sessionToken, input.scanId);
+  const verified = await signedInLead(input.cookieHeader, input.scanId);
   if (!verified) return { status: "unauthorized" };
   const { db } = getDatabase();
   const scan = (await db.select().from(scans).where(eq(scans.id, input.scanId)).limit(1))[0];
@@ -159,8 +159,11 @@ export async function setupCardSignal(input: {
   };
 }
 
-export async function getCardSignalState(signalId: string, sessionToken: string | undefined) {
-  const verified = await getVerifiedSession(sessionToken);
+export async function getCardSignalState(
+  signalId: string,
+  cookieHeader: string | undefined | null,
+) {
+  const verified = await signedInLead(cookieHeader);
   if (!verified) return undefined;
   const { db } = getDatabase();
   const signal = (
@@ -175,9 +178,9 @@ export async function getCardSignalState(signalId: string, sessionToken: string 
 
 export async function getOwnedCardSignalForReport(
   scanId: string,
-  sessionToken: string | undefined,
+  cookieHeader: string | undefined | null,
 ) {
-  const verified = await getVerifiedSession(sessionToken, scanId);
+  const verified = await signedInLead(cookieHeader, scanId);
   if (!verified) return undefined;
   const signal = (
     await getDatabase()
@@ -208,10 +211,10 @@ export async function getOwnedCardSignalForReport(
 
 export async function detachCardSignal(input: {
   signalId: string;
-  sessionToken: string | undefined;
+  cookieHeader: string | undefined | null;
   provider?: StripeCardSignalProvider;
 }) {
-  const verified = await getVerifiedSession(input.sessionToken);
+  const verified = await signedInLead(input.cookieHeader);
   if (!verified) return undefined;
   const { db } = getDatabase();
   const signal = (
@@ -437,10 +440,10 @@ async function attachFromReadback(input: {
 
 export async function confirmLocalCardSignal(input: {
   signalId: string;
-  sessionToken: string | undefined;
+  cookieHeader: string | undefined | null;
   provider?: StripeCardSignalProvider;
 }) {
-  const verified = await getVerifiedSession(input.sessionToken);
+  const verified = await signedInLead(input.cookieHeader);
   if (!verified) return undefined;
   const config = getStripeCardSignalConfig();
   if (config.production || config.STRIPE_ADAPTER !== "local")
@@ -458,7 +461,7 @@ export async function confirmLocalCardSignal(input: {
   if (!provider.confirmLocalSetup) throw new Error("local_card_confirmation_unavailable");
   const event = await provider.confirmLocalSetup(signal.setupIntentId);
   await processCardSignalWebhook({ ...event, provider });
-  return await getCardSignalState(signal.id, input.sessionToken);
+  return await getCardSignalState(signal.id, input.cookieHeader);
 }
 
 /**

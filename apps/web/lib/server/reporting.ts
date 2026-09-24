@@ -21,9 +21,9 @@ import {
 } from "@agentify/scanner-database";
 import { and, avg, count, eq, sql } from "drizzle-orm";
 
-import { getVerifiedSession } from "./auth";
+import { signedInLead } from "./auth";
 import { getServerConfig } from "./config";
-import { decryptEmail, deriveCapability, hmacHex, normalizeEmail } from "./crypto";
+import { deriveCapability, hmacHex } from "./crypto";
 import { getDatabase } from "./database";
 import { requestScannerIdentityDeletion } from "./scanner-identity-deletion";
 
@@ -52,9 +52,9 @@ function sanitizeEvidence(value: unknown): Record<string, string | number | bool
 
 export async function getFullReport(
   scanId: string,
-  sessionToken: string | undefined,
+  cookieHeader: string | undefined | null,
 ): Promise<ReportResponse | undefined> {
-  const verified = await getVerifiedSession(sessionToken, scanId);
+  const verified = await signedInLead(cookieHeader, scanId);
   if (!verified) return undefined;
   const { db } = getDatabase();
   const scan = (await db.select().from(scans).where(eq(scans.id, scanId)).limit(1))[0];
@@ -115,37 +115,12 @@ export async function getFullReport(
   };
 }
 
-export async function getReportOwnerEmail(
-  scanId: string,
-  sessionToken: string | undefined,
-): Promise<string | undefined> {
-  const verified = await getVerifiedSession(sessionToken, scanId);
-  if (!verified) return undefined;
-  const lead = (
-    await getDatabase()
-      .db.select({
-        encryptedEmail: leads.emailNormalizedCiphertext,
-        emailLookupHash: leads.emailLookupHash,
-      })
-      .from(leads)
-      .where(eq(leads.id, verified.leadId))
-      .limit(1)
-  )[0];
-  if (!lead || lead.encryptedEmail === "deleted") return undefined;
-  const config = getServerConfig();
-  const email = normalizeEmail(decryptEmail(lead.encryptedEmail, config.encryptionKey));
-  if (hmacHex(config.hmacSecret, "email", email) !== lead.emailLookupHash) {
-    throw new Error("lead_email_identity_mismatch");
-  }
-  return email;
-}
-
 export async function getFullBrowserObservation(
   scanId: string,
-  sessionToken: string | undefined,
+  cookieHeader: string | undefined | null,
 ): Promise<BrowserObservationStatusResponse | undefined> {
   if (getServerConfig().APIFY_BROWSER_MODE !== "report") return undefined;
-  const verified = await getVerifiedSession(sessionToken, scanId);
+  const verified = await signedInLead(cookieHeader, scanId);
   if (!verified) return undefined;
   const { db } = getDatabase();
   const observation = await createBrowserObservationRepository(db).getForScan(scanId);

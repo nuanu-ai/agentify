@@ -1,6 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { REPORT_SESSION_COOKIE } from "../../../../../../lib/server/auth";
 import { errorResponse, hasSameOrigin } from "../../../../../../lib/server/http";
 import { confirmLocalCardSignal } from "../../../../../../lib/server/stripe-card-signal";
 
@@ -16,7 +15,7 @@ export async function POST(
   try {
     const result = await confirmLocalCardSignal({
       signalId,
-      sessionToken: request.cookies.get(REPORT_SESSION_COOKIE)?.value,
+      cookieHeader: request.headers.get("cookie"),
     });
     if (!result)
       return errorResponse(request, 404, "card_signal_not_found", "The card signal was not found.");

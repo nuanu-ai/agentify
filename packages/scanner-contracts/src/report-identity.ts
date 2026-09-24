@@ -1,18 +1,18 @@
-import { createHash } from "node:crypto";
+/**
+ * The internal route between the scanner and the cabinet (ADR-0026 §2).
+ *
+ * The cabinet holds every identity and every session on the site, and the
+ * scanner never handles a token or mints a session. Over this route, reachable
+ * only on the compose network and authenticated by a secret the two processes
+ * share, the scanner asks three things: send a link for this address with this
+ * destination; whose session is this cookie; and, for a privacy deletion,
+ * remove this person if they own no merchant.
+ */
+
 import { z } from "zod";
 
-const base64urlCapabilitySchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
-const rawIdentityTokenSchema = z.string().regex(/^[A-Za-z0-9]{32}$/);
-const receiptIdSchema = z.uuid();
 const operationIdSchema = z.uuid().refine((value) => value[14] === "7", "Expected UUIDv7");
 const timestampSchema = z.iso.datetime({ offset: true });
-const actionUrlSchema = z
-  .url({ protocol: /^https?$/ })
-  .max(2048)
-  .refine((value) => {
-    const parsed = new URL(value);
-    return parsed.username === "" && parsed.password === "" && parsed.hash === "";
-  });
 
 const normalizedEmailSchema = z
   .email()
@@ -22,87 +22,76 @@ const normalizedEmailSchema = z
     "Expected a normalized email",
   );
 
-const reportIntentKindSchema = z.enum(["registration", "recovery"]);
+/**
+ * The request a full-report link was asked for: the scanner's own identifier
+ * for it, which the cabinet records with the token and then with the session
+ * the link opens, and never reads.
+ */
+const reportRequestSchema = z.uuid();
 
-export const reportIdentityTokenHashSchema = base64urlCapabilitySchema;
+/**
+ * Where a link the scanner asks for leads: the full report of one named scan.
+ *
+ * A closed set of one, recorded with the token when the link is asked for;
+ * nothing in the link is ever read as a destination (ADR-0026 §1).
+ */
+const reportDestinationSchema = z.object({ report: z.uuid() }).strict();
 
-export function reportIdentityTokenHash(token: string): string {
-  return createHash("sha256").update(token).digest("base64url");
-}
+/**
+ * The longest cookie header the scanner passes on.
+ *
+ * The scanner does not know the session cookie's name, which is the cabinet's
+ * to choose per deployment, so it passes the whole header and the cabinet
+ * reads its own cookie out of it. Eight kilobytes is more than any browser
+ * sends to one origin in practice and bounds what the route will parse.
+ */
+export const SESSION_COOKIE_HEADER_MAX = 8_192;
 
 export const sendReportLinkRequestSchema = z
   .object({
     operation: z.literal("send"),
     email: normalizedEmailSchema,
-    intent_kind: reportIntentKindSchema,
-    state: base64urlCapabilitySchema,
+    destination: reportDestinationSchema,
+    request: reportRequestSchema,
   })
   .strict();
 
 export const sendReportLinkResponseSchema = z.union([
-  z
-    .object({
-      status: z.literal("accepted"),
-      token_hash: base64urlCapabilitySchema,
-    })
-    .strict(),
+  z.object({ status: z.literal("accepted") }).strict(),
   z.object({ status: z.literal("cooldown"), retry_at: timestampSchema }).strict(),
   z.object({ status: z.literal("unavailable") }).strict(),
 ]);
 
-export const consumeReportLinkRequestSchema = z
+/**
+ * Whose session this cookie is.
+ *
+ * `renew` says whether the scanner can pass a renewed cookie on to the browser
+ * from the answer it is about to make. A reading the component makes may move
+ * the session's end, at most once a day, and the line that tells the browser
+ * so has to reach it or the cookie runs out thirty days after sign-in however
+ * often its person came back. A page drawn on the server cannot set a cookie,
+ * so what it asks is a reading that moves nothing.
+ */
+export const readSessionRequestSchema = z
   .object({
-    operation: z.literal("verify"),
-    phase: z.literal("consume"),
-    token: rawIdentityTokenSchema,
-    email: normalizedEmailSchema,
-    intent_kind: reportIntentKindSchema,
-    state: base64urlCapabilitySchema,
+    operation: z.literal("session"),
+    cookie: z.string().max(SESSION_COOKIE_HEADER_MAX),
+    renew: z.boolean(),
   })
   .strict();
 
-export const consumeReportLinkResponseSchema = z.union([
+export const readSessionResponseSchema = z.union([
   z
     .object({
-      status: z.literal("pending"),
-      receipt_id: receiptIdSchema,
-      completion_deadline: timestampSchema,
+      status: z.literal("signed_in"),
+      email: normalizedEmailSchema,
+      /** The request the link that opened this session was asked for, if any. */
+      request: reportRequestSchema.nullable(),
+      /** The lines that renew the cookie, passed on as they are; empty when nothing moved. */
+      set_cookie: z.array(z.string().max(4_096)).max(4),
     })
     .strict(),
-  z.object({ status: z.literal("refused") }).strict(),
-]);
-
-export const acknowledgeReportLinkRequestSchema = z
-  .object({
-    operation: z.literal("verify"),
-    phase: z.literal("acknowledge"),
-    receipt_id: receiptIdSchema,
-    token_hash: base64urlCapabilitySchema,
-  })
-  .strict();
-
-export const acknowledgeReportLinkResponseSchema = z.union([
-  z.object({ status: z.literal("completed") }).strict(),
-  z.object({ status: z.literal("refused") }).strict(),
-]);
-
-export const verifyReportLinkRequestSchema = z.discriminatedUnion("phase", [
-  consumeReportLinkRequestSchema,
-  acknowledgeReportLinkRequestSchema,
-]);
-
-export const issueCabinetLinkRequestSchema = z
-  .object({
-    operation: z.literal("issue"),
-    receipt_id: receiptIdSchema,
-    token_hash: base64urlCapabilitySchema,
-  })
-  .strict();
-
-export const issueCabinetLinkResponseSchema = z.union([
-  z.object({ status: z.literal("issued"), action_url: actionUrlSchema }).strict(),
-  z.object({ status: z.literal("already_attempted") }).strict(),
-  z.object({ status: z.literal("refused") }).strict(),
+  z.object({ status: z.literal("signed_out") }).strict(),
 ]);
 
 export const deleteUnattachedPersonRequestSchema = z
@@ -122,19 +111,14 @@ export const deleteUnattachedPersonResponseSchema = z.union([
 
 export const reportIdentityRequestSchema = z.union([
   sendReportLinkRequestSchema,
-  verifyReportLinkRequestSchema,
-  issueCabinetLinkRequestSchema,
+  readSessionRequestSchema,
   deleteUnattachedPersonRequestSchema,
 ]);
 
 export type SendReportLinkRequest = z.infer<typeof sendReportLinkRequestSchema>;
 export type SendReportLinkResponse = z.infer<typeof sendReportLinkResponseSchema>;
-export type ConsumeReportLinkRequest = z.infer<typeof consumeReportLinkRequestSchema>;
-export type ConsumeReportLinkResponse = z.infer<typeof consumeReportLinkResponseSchema>;
-export type AcknowledgeReportLinkRequest = z.infer<typeof acknowledgeReportLinkRequestSchema>;
-export type AcknowledgeReportLinkResponse = z.infer<typeof acknowledgeReportLinkResponseSchema>;
-export type IssueCabinetLinkRequest = z.infer<typeof issueCabinetLinkRequestSchema>;
-export type IssueCabinetLinkResponse = z.infer<typeof issueCabinetLinkResponseSchema>;
+export type ReadSessionRequest = z.infer<typeof readSessionRequestSchema>;
+export type ReadSessionResponse = z.infer<typeof readSessionResponseSchema>;
 export type DeleteUnattachedPersonRequest = z.infer<typeof deleteUnattachedPersonRequestSchema>;
 export type DeleteUnattachedPersonResponse = z.infer<typeof deleteUnattachedPersonResponseSchema>;
 export type ReportIdentityRequest = z.infer<typeof reportIdentityRequestSchema>;

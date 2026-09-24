@@ -222,7 +222,7 @@ async function main() {
   const jsonLd = parseJsonLd(base.body);
   if (!jsonLd.nodes.some((node) => node["@type"] === "Organization"))
     fail("front page is missing Organization JSON-LD");
-  for (const path of ["/data-request", "/auth/callback"]) {
+  for (const path of ["/data-request", "/email/unsubscribe"]) {
     const privatePage = await fetchArtifact(path);
     if (parseJsonLd(privatePage.body).scriptCount !== 0)
       fail(`${path} leaked public marketing JSON-LD`);

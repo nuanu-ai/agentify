@@ -5,7 +5,7 @@ import {
   canonicalSummaryCopy,
 } from "@agentify/remediation";
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { Brand } from "../../../components/brand";
 import { BrowserObservations } from "../../../components/browser-observations";
@@ -15,16 +15,13 @@ import { PrivacyChoicesButton } from "../../../components/privacy-choices-button
 import { ReportActionPanel } from "../../../components/report-action-panel";
 import { ReportBenchmark } from "../../../components/report-benchmark";
 import { ReportCabinetControl } from "../../../components/report-cabinet-control";
+import { SiteDoors } from "../../../components/site-chrome";
 import { StatusBadge } from "../../../components/status-badge";
 import { getPublicAppConfig } from "../../../lib/app-config";
 import { buildCanonicalFixPrompt, buildFixPrompts } from "../../../lib/fix-prompts";
-import { REPORT_SESSION_COOKIE } from "../../../lib/server/auth";
+import { visitorOf } from "../../../lib/server/auth";
 import { getServerConfig } from "../../../lib/server/config";
-import {
-  getFullBrowserObservation,
-  getFullReport,
-  getReportOwnerEmail,
-} from "../../../lib/server/reporting";
+import { getFullBrowserObservation, getFullReport } from "../../../lib/server/reporting";
 import { getOwnedCardSignalForReport } from "../../../lib/server/stripe-card-signal";
 import { getCardSignalPublicConfig } from "../../../lib/server/stripe-card-signal-config";
 import styles from "./report.module.css";
@@ -35,34 +32,77 @@ export const metadata: Metadata = {
   referrer: "strict-origin",
 };
 
+/**
+ * The top of every report page: the brand, and the header's doors with who is
+ * signed in beside them (ADR-0026 §3).
+ */
+function Top() {
+  return (
+    <div className={styles.top}>
+      <Brand />
+      <SiteDoors />
+    </div>
+  );
+}
+
 export default async function ReportPage({ params }: { params: Promise<{ scanId: string }> }) {
   const { scanId } = await params;
-  const cookieStore = await cookies();
-  const sessionToken = cookieStore.get(REPORT_SESSION_COOKIE)?.value;
-  const report = await getFullReport(scanId, sessionToken);
+  // Read without renewing: a page drawn here cannot set a cookie, and the
+  // header's own call renews the session and passes the cookie on. A session
+  // whose link was asked for this report finishes its request right here, at
+  // its first visit (ADR-0026 §2).
+  const cookieHeader = (await headers()).get("cookie");
+  const visitor = await visitorOf(cookieHeader);
+  const report = visitor.kind === "person" ? await getFullReport(scanId, cookieHeader) : undefined;
   if (!report) {
     return (
       <main className={styles.page}>
-        <Brand />
+        <Top />
         <section className={styles.locked}>
-          <h1>Private report access required</h1>
-          <p>
-            Open the one-time verification link sent after this scan. A scan token alone cannot open
-            the full report.
-          </p>
-          <Link className="button button-primary" href="/auth/callback?recover=1">
-            Recover report access
-          </Link>
+          {visitor.kind === "unknown" ? (
+            <>
+              <h1>We cannot tell who is visiting right now</h1>
+              <p>
+                This report opens for the address it is filed under, and the part of the site that
+                knows who is signed in did not answer. Nothing is wrong with the report. Try again
+                in a moment.
+              </p>
+              <Link
+                className="button button-primary"
+                href={`/report/${encodeURIComponent(scanId)}`}
+              >
+                Try again
+              </Link>
+            </>
+          ) : visitor.kind === "person" ? (
+            <>
+              <h1>This report is not filed under {visitor.email}</h1>
+              <p>
+                A report opens for the address it was asked for with. If that is another address of
+                yours, sign out and sign in with it.
+              </p>
+            </>
+          ) : (
+            <>
+              <h1>Private report access required</h1>
+              <p>
+                This report opens for the address it is filed under. Sign in with that address and
+                open this page again; the link that was sent after the scan does both.
+              </p>
+              <a className="button button-primary" href="/cabinet/sign-in">
+                Sign in
+              </a>
+            </>
+          )}
         </section>
       </main>
     );
   }
   const serverConfig = getServerConfig();
-  const browserObservation = await getFullBrowserObservation(scanId, sessionToken);
+  const browserObservation = await getFullBrowserObservation(scanId, cookieHeader);
   const cardSignal = getCardSignalPublicConfig();
-  const initialCardSignal = await getOwnedCardSignalForReport(scanId, sessionToken);
+  const initialCardSignal = await getOwnedCardSignalForReport(scanId, cookieHeader);
   const publicConfig = getPublicAppConfig();
-  const reportOwnerEmail = await getReportOwnerEmail(scanId, sessionToken);
   const { aiPrompt, devBrief } = buildFixPrompts(
     report,
     publicConfig.displayBrand,
@@ -71,7 +111,7 @@ export default async function ReportPage({ params }: { params: Promise<{ scanId:
   const firstFailId = report.checks.find((check) => check.status === "fail")?.id;
   return (
     <main className={styles.page} data-agentify-results-viewed-scan={report.scan_id}>
-      <Brand />
+      <Top />
       <header className={styles.hero}>
         <div>
           <span className="eyebrow">Private diagnostic · {report.host}</span>
@@ -103,22 +143,17 @@ export default async function ReportPage({ params }: { params: Promise<{ scanId:
         scanId={report.scan_id}
         shareEnabled={serverConfig.PUBLIC_SHARE_ENABLED}
       />
-      {reportOwnerEmail ? (
-        <section className={styles.cabinet}>
-          <h2>Selling to agents</h2>
-          <p>
-            If what you sell can be sent a second time without loss, an access, a key, a link, a
-            subscription, the same address opens a merchant cabinet: your engineer publishes the
-            cards and takes orders in the test channel, and selling live needs a seller name, a
-            payout wallet and our switch. If not, this report is the whole result, and you can scan
-            the site again whenever it changes.
-          </p>
-          <ReportCabinetControl
-            email={reportOwnerEmail}
-            reportPath={`/report/${encodeURIComponent(report.scan_id)}`}
-          />
-        </section>
-      ) : null}
+      <section className={styles.cabinet}>
+        <h2>Selling to agents</h2>
+        <p>
+          If what you sell can be sent a second time without loss, an access, a key, a link, a
+          subscription, the same address opens a merchant cabinet: your engineer publishes the cards
+          and takes orders in the test channel, and selling live needs a seller name, a payout
+          wallet and our switch. If not, this report is the whole result, and you can scan the site
+          again whenever it changes.
+        </p>
+        <ReportCabinetControl />
+      </section>
       <section className={styles.checks}>
         <div className={styles.sectionHeading}>
           <h2>All 18 checks</h2>
