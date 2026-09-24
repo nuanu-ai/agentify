@@ -335,7 +335,7 @@ export const catalogueOf = async (
       return {
         ok: false,
         why:
-          `Your shop answered ${answered.status} when we asked for its catalogue: ` +
+          `Your shop answered ${answered.status} when we asked for its catalog: ` +
           whatTheShopSaid(said, answered.status),
       };
     }
@@ -347,7 +347,7 @@ export const catalogueOf = async (
       return {
         ok: false,
         why:
-          "Your shop answered the catalogue address with something that is not JSON. Check that" +
+          "Your shop answered the catalog address with something that is not JSON. Check that" +
           " nothing in front of it is serving a page of its own at /wp-json.",
       };
     }
@@ -360,7 +360,7 @@ export const catalogueOf = async (
       return {
         ok: false,
         why:
-          "Your shop answered the catalogue address with a document we could not read as a list" +
+          "Your shop answered the catalog address with a document we could not read as a list" +
           ` of products: ${read.error.issues[0]?.message ?? "the shape was not the expected one"}.`,
       };
     }

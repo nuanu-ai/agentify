@@ -48,6 +48,7 @@ ${brandLockup("/")}
   ${destinationInput(destination)}
   <button class="button button-primary" type="submit">Send me a sign-in link</button>
   <p class="quiet">Every sign-in gets its own link. It opens once and expires an hour after it is sent, so there is nothing to keep and no password to remember.</p>
+  <p class="auth-switch">Don't have an account? <a href="${escaped(base)}/create-account">Create one</a></p>
 </form>
 </div>`,
     mode,
@@ -147,6 +148,50 @@ const COUNTDOWN = `<script>
 </script>`;
 
 /**
+ * A separate public registration presentation over the same one-way door.
+ *
+ * ADR-0026 deliberately gives new and returning merchants one backend flow:
+ * an email and a single-use link. This screen does not fork that identity
+ * contract. It explains the first-visit outcome and posts to the existing
+ * non-enumerating sign-in endpoint.
+ */
+export const registerScreen = (
+  base: string,
+  mode: SurfaceMode,
+  problem?: string,
+  email = "",
+): string =>
+  bare(
+    base,
+    "Create an account",
+    `<div class="gate auth-gate">
+${brandLockup("/")}
+<form class="gate-card" method="post" action="${escaped(base)}/sign-in">
+  <input type="hidden" name="flow" value="register">
+  <p class="eyebrow">New account</p>
+  <h1>Connect your first catalog</h1>
+  <p>Enter your work email. We will send you a one-time link and set up your account the first time you sign in.</p>
+  <div class="auth-unlock">
+    <span>After you sign in, you can</span>
+    <ul>
+      <li>choose your seller name</li>
+      <li>publish cards through the SDK</li>
+      <li>connect supported WooCommerce products</li>
+      <li>see your orders, receipts, and API keys</li>
+    </ul>
+  </div>
+  <label for="email">Work email</label>
+  <input id="email" name="email" type="email" value="${escaped(email)}" autocomplete="email" autocapitalize="off" spellcheck="false" autofocus required>
+  <button class="button button-primary" type="submit">Continue with email</button>
+  ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
+  <p class="quiet">No password needed. The link works once and expires in an hour.</p>
+  <p class="auth-switch">Already have an account? <a href="${escaped(base)}/sign-in">Sign in</a></p>
+</form>
+</div>`,
+    mode,
+  );
+
+/**
  * The non-enumerating answer to a request for a link, accepted or refused.
  *
  * The resend is on all three versions of this page. An accepted request needs
@@ -197,7 +242,7 @@ export const linkRequestedScreen = (
   <p class="quiet">${afterTheSend}</p>`
       : wall === "interval"
         ? `<p>No new link was sent to <strong>${escaped(email)}</strong>. A sign-in link went to this address less than a minute ago.</p>
-  <p class="quiet">Look for it in your inbox and your spam folder. It opens wherever it was asked for, which may not be here; one address gets one link a minute, so you can ask for another as soon as that minute is up.</p>`
+  <p class="quiet">Look for it in your inbox and your spam folder. The link opens wherever it was requested, which may not be this page. One address gets one link a minute, so you can ask for another as soon as the minute is up.</p>`
         : `<p>No new link was sent to <strong>${escaped(email)}</strong>. One email address gets three links an hour, and this one has had its three.</p>
   <p class="problem">Try again in ${waitInWords(answer.seconds)}.</p>`;
 
@@ -241,7 +286,7 @@ export const mailUnavailableScreen = (base: string, mode: SurfaceMode): string =
 ${brandLockup("/")}
 <form class="gate-card" method="get" action="${escaped(base)}/sign-in">
   <h1>We could not confirm your sign-in link went out</h1>
-  <p>Something failed while the message was going out, and we cannot tell whether it reached you. Nothing was created on this attempt — no account and no session. Try again in a moment, and if nothing arrives, check that the email address is spelled right.</p>
+  <p>Something went wrong while sending the email, so we do not know whether it was delivered. No account or session was created. Try again, and check that the email address is correct.</p>
   <button class="button button-primary" type="submit">Try again</button>
 </form>
 </div>`,
@@ -252,14 +297,14 @@ ${brandLockup("/")}
 export const openLinkScreen = (base: string, token: string, mode: SurfaceMode): string =>
   bare(
     base,
-    "Open your cabinet",
+    "Open your dashboard",
     `<div class="gate">
 ${brandLockup("/")}
 <form class="gate-card" method="post" action="${escaped(base)}/sign-in/open">
-  <h1>Open your cabinet</h1>
-  <p>Confirm that you want to open your cabinet in this browser.</p>
+  <h1>Open your dashboard</h1>
+  <p>Confirm that you want to open your dashboard in this browser.</p>
   <input type="hidden" name="token" value="${escaped(token)}">
-  <button class="button button-primary" type="submit">Open my cabinet</button>
+  <button class="button button-primary" type="submit">Open my dashboard</button>
 </form>
 </div>`,
     mode,
@@ -278,7 +323,7 @@ export const refusedLinkScreen = (
       ? `<p>A sign-in link opens once and expires an hour after it is sent. This one no longer opens anything.</p>
   <p>Nothing is lost: access belongs to your email address, not to any one link. Ask for a new one.</p>`
       : `<p>This link has already done its work, and you are signed in as ${escaped(signedIn.email)}.</p>
-  <p><a class="button button-primary" href="${escaped(base)}/${signedIn.destination}">Open your cabinet</a></p>
+  <p><a class="button button-primary" href="${escaped(base)}/${signedIn.destination}">Open your dashboard</a></p>
   <p class="quiet">Every link opens once, so the next time you sign in, ask for a new one.</p>`;
   // Somebody already signed in cannot be sent to the sign-in form: that route
   // reads their session and redirects them back into the cabinet. Ending the

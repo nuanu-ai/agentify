@@ -21,8 +21,23 @@ export interface Person {
   readonly merchant: AccountMerchant | null;
 }
 
-/** The only places a cabinet mail link may return to after it is opened. */
-export type CabinetDestination = "default" | "settings" | "woocommerce";
+/**
+ * The only places a cabinet mail link may return to after it is opened: the
+ * cabinet's own screens, by name. "default" is the card list.
+ */
+export const CABINET_DESTINATIONS = [
+  "default",
+  "orders",
+  "receipts",
+  "integrations",
+  "keys",
+  "settings",
+  "woocommerce",
+] as const;
+export type CabinetDestination = (typeof CABINET_DESTINATIONS)[number];
+
+export const cabinetDestinationIn = (value: unknown): CabinetDestination =>
+  CABINET_DESTINATIONS.find((destination) => destination === value) ?? "default";
 
 /**
  * Which of the two walls in front of a link refused this request.

@@ -323,7 +323,8 @@ describe("the shop screens are behind the sign-in", () => {
     const running = await started();
     const seen = await running.get("/woocommerce");
     expect(seen.status).toBe(303);
-    expect(seen.to).toBe("/sign-in");
+    // 24.09: the sign-in now carries the screen the stranger opened (П11).
+    expect(seen.to).toBe("/sign-in?destination=woocommerce");
   });
 });
 
@@ -811,7 +812,8 @@ describe("importing the catalogue", () => {
   });
 });
 
-describe("what the settings screen says about a shop", () => {
+describe("what the integrations screen says about a shop", () => {
+  // 24.09 (П2): the block moved from the settings to the Integrations tab.
   // The promise, and it is the whole reason this block reads rows at all: the
   // settings screen is where a merchant lands after their shop sends them back,
   // and it has to be able to tell them apart the four things that can have
@@ -841,13 +843,13 @@ describe("what the settings screen says about a shop", () => {
   };
 
   const settings = async (running: Running): Promise<string> =>
-    readable((await running.get("/settings")).html);
+    readable((await running.get("/integrations")).html);
 
   it("offers to connect one where nothing was ever started", async () => {
     const running = await started();
     await running.signIn();
 
-    const screen = await running.get("/settings");
+    const screen = await running.get("/integrations");
 
     expect(screen.status).toBe(200);
     expect(readable(screen.html)).toContain("Connect a WooCommerce shop");
@@ -912,7 +914,7 @@ describe("what the settings screen says about a shop", () => {
     await running.signIn();
     await startedMinutesAgo(running, 40);
 
-    const screen = await running.get("/settings");
+    const screen = await running.get("/integrations");
     const text = readable(screen.html);
 
     expect(text).toContain(SHOP);
@@ -962,11 +964,11 @@ describe("what the settings screen says about a shop", () => {
   it("leads to the shop screen from every state", async () => {
     const running = await started();
     await running.signIn();
-    const nothing = await running.get("/settings");
+    const nothing = await running.get("/integrations");
     await startedMinutesAgo(running, 4);
-    const waiting = await running.get("/settings");
+    const waiting = await running.get("/integrations");
     await approve(running);
-    const connected = await running.get("/settings");
+    const connected = await running.get("/integrations");
 
     for (const screen of [nothing, waiting, connected]) {
       expect(screen.html).toContain(`href="/woocommerce"`);
@@ -980,7 +982,7 @@ describe("what the settings screen says about a shop", () => {
     await running.signIn();
     await approve(running);
 
-    const screen = await running.get("/settings");
+    const screen = await running.get("/integrations");
 
     expect(screen.html).not.toContain("ck_a-key-nobody-may-read");
     expect(screen.html).not.toContain("cs_a-secret-nobody-may-read");
@@ -1001,10 +1003,15 @@ describe("what the settings screen says about a shop", () => {
     });
     await running.signIn();
 
-    const screen = await running.get("/settings");
+    // 24.09 (П2): the wallet box stayed on the settings, the shop block moved
+    // to the Integrations tab; each page is checked for its own half.
+    const settings = await running.get("/settings");
+    expect(settings.status).toBe(200);
+    expect(readable(settings.html)).toContain("Payout wallet");
+
+    const screen = await running.get("/integrations");
 
     expect(screen.status).toBe(200);
-    expect(readable(screen.html)).toContain("Where your money arrives");
     expect(readable(screen.html)).toContain("could not be read just now");
     expect(readable(screen.html)).toContain("Reload this page in a moment");
     expect(readable(screen.html)).not.toContain("Connect a WooCommerce shop");
@@ -1184,12 +1191,20 @@ describe("coming back from the shop with no session on the request", () => {
       "/receipts",
       "/keys",
       "/settings",
+      "/integrations",
       "/",
       "/no-such-page",
     ]) {
       const seen = await running.getWithoutCookie(path);
       expect(seen.status, path).toBe(303);
-      expect(seen.to, path).toBe("/sign-in");
+      // 24.09: a screen of the cabinet's own is carried to the sign-in (П11);
+      // everything else, the shop's import included, lands on the bare form.
+      const screen = path.slice(1);
+      expect(seen.to, path).toBe(
+        ["woocommerce", "orders", "receipts", "integrations", "keys", "settings"].includes(screen)
+          ? `/sign-in?destination=${screen}`
+          : "/sign-in",
+      );
     }
   });
 });

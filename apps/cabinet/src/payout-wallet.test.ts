@@ -124,11 +124,11 @@ describe("the block on the settings screen", () => {
     expect(readable(block).toLowerCase()).not.toMatch(/enter your (private key|recovery phrase)/);
   });
 
-  it("says a sandbox address is optional because nothing settles", () => {
+  it("says nothing about the local stand, which no merchant ever sees", () => {
     const text = readable(payoutWalletBlock(looking({ wallet: null })));
 
-    expect(text).toMatch(/does not settle/i);
-    expect(text).toMatch(/optional/i);
+    expect(text).not.toMatch(/sandbox|does not settle|optional/i);
+    expect(text).toContain("How and when you get paid");
   });
 
   it("names Base Sepolia and test USDC on the test stack", () => {

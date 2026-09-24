@@ -16,6 +16,15 @@
  * the cabinet needs lives with the cabinet".
  */
 
+/* Text runs the full width of its block: no balanced or "pretty" early
+   line breaks inherited from the shared tokens. */
+h1,
+h2,
+h3,
+p {
+  text-wrap: wrap;
+}
+
 /*
  * The cabinet takes the shared base whole: 16 pixels at 1.6.
  *
@@ -248,6 +257,14 @@ textarea {
   flex-wrap: wrap;
 }
 
+/* Explanatory copy uses all space left by an action or filter. Do not force
+   desktop text into an arbitrary reading column: it creates needless line
+   breaks while half of the cabinet panel stays empty. */
+.lede > div:first-child {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
 /* The title of a screen inside the cabinet, which is a section heading rather
    than the hero a gate page opens with, so it is calm: the scanner's report
    uses the same size over the block it names. */
@@ -258,7 +275,6 @@ textarea {
 .lede p {
   margin-top: 6px;
   color: var(--muted);
-  max-width: 68ch;
 }
 
 .actions {
@@ -399,6 +415,9 @@ td.key {
 
 .title {
   font-weight: 500;
+  /* A name typed as one long word (a key's label, a product's title) breaks
+     where it has to rather than pushing the table wider than the page. */
+  overflow-wrap: anywhere;
 }
 
 .under {
@@ -652,25 +671,11 @@ td.control {
 
 /* --- notes and summaries ------------------------------------------------ */
 
-/*
- * Two shapes for a box with text in it, where there were three.
- *
- * An aside is the first: something worth saying beside the data and not worth
- * a box, which is how the scanner draws the note over the scope of a report
- * (report.module.css `.scopeNote`). A rule down the left margin and nothing
- * else — no dashed border, no arrow. The dashed box and the `↳` in front of it
- * made a sentence about the last-call column look like an alert, and there are
- * two of them under one table.
- *
- * A notice is the second: something the merchant has to act on. That one is a
- * tinted panel on the notice pair. The claim a page makes about the stack it
- * belongs to is drawn in the same pair but not in this panel — it is a band
- * across the window, below.
- */
+/* Secondary notes stay part of the reading flow instead of looking like an
+   alert. Actionable notices use a complete panel; no cabinet message uses the
+   one-sided-border callout pattern. */
 .note {
   margin: 0 0 32px;
-  border-left: 3px solid var(--line-strong);
-  padding-left: 12px;
   color: var(--muted);
   font-size: 0.875rem;
   line-height: 1.55;
@@ -678,7 +683,7 @@ td.control {
 
 .callout {
   margin: 0 0 32px;
-  border-left: 3px solid var(--notice-ink);
+  border: var(--hairline) solid color-mix(in srgb, var(--notice-ink) 24%, var(--line));
   border-radius: var(--radius-card);
   padding: 16px 20px;
   background: var(--notice-bg);
@@ -686,24 +691,14 @@ td.control {
   line-height: 1.55;
 }
 
-/*
- * The notice at the top of a working screen — the one about a seller name not
- * chosen yet — stands clear of the bar above it and no further from the heading
- * under it. With the margin every notice takes it was flush against the bar's
- * rule, where it read as a piece of the bar, and 64 pixels over the heading,
- * because the heading's own block brings its 32 with it.
- */
-.container > .callout:first-child {
+/* The seller-name notice at the top of a working screen stands clear of the
+   bar above it; the heading block under it brings its own 32px. */
+.app-content > .callout:first-child {
   margin: 32px 0 0;
 }
 
-/*
- * The same panel for something that went right. Only the bar changes colour: an
- * amber bar beside "Your shop is connected" reads as a problem, which is the
- * opposite of what the sentence says.
- */
 .callout.done {
-  border-left-color: var(--pass);
+  border-color: color-mix(in srgb, var(--pass) 32%, var(--line));
 }
 
 .callout .what {
@@ -736,43 +731,25 @@ td.control {
   margin: 0 0 32px;
 }
 
-/*
- * The sentence that says which stack this is, on every page but a live one:
- * a band across the whole window above the bar, in the notice pair, with its
- * words lined up over the content under it.
- *
- * It was the notice panel, rounded and ruled down its left edge, inside the
- * frame and with nothing above it — so it sat on the top edge of the window
- * with its rounded corners cut off by that edge, and on a phone its four lines
- * at the panel's padding took 120 pixels before the lockup. A band has no
- * corners for the edge to cut, and at the small print's size and a band's
- * padding it is three lines on a phone.
- */
-.stack-note {
-  border-bottom: var(--hairline) solid var(--line);
-  background: var(--notice-bg);
-  color: var(--notice-ink);
-}
-
-.surface-words {
-  margin: 0;
-  padding-block: 10px;
-  font-size: 0.8125rem;
-  line-height: 1.5;
-}
-
-@media (max-width: 760px) {
-  .surface-words {
-    padding-block: 8px;
-    font-size: 0.75rem;
-  }
-}
-
 .summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 16px;
   margin: 24px 0 0;
+}
+
+/* Copy that explains the figures sits under them, so a merchant sees the
+   numbers first and reads what they leave out before the table. */
+.summary-text {
+  margin: 20px 0 0;
+}
+
+.summary-text p {
+  color: var(--muted);
+}
+
+.summary-text p + p {
+  margin-top: 6px;
 }
 
 .tile {
@@ -1012,6 +989,12 @@ h2 {
   min-width: 0;
 }
 
+/* A key's name is a few words, so its box is sized for a few words with the
+   button beside it rather than stretched across the whole frame. */
+.key-name > div {
+  flex: 0 1 420px;
+}
+
 /* A refusal is a line of its own under the box and its button, never inside
    the box's cell: the row lines its items up at the bottom, so a sentence in
    that cell made the cell taller and carried the button down beside the last
@@ -1099,7 +1082,6 @@ h2 {
   color: var(--muted);
   font-size: 0.875rem;
   margin-top: 10px;
-  max-width: 70ch;
 }
 
 /* Settings are four distinct subjects. Panels keep their explanations and
@@ -1177,9 +1159,951 @@ h2 {
   margin-left: 24px;
   margin-right: 24px;
 }
+/* A callout under the shop screen's opening paragraphs stands clear of them. */
+.integration-shell > .lede + .callout {
+  margin-top: 20px;
+}
 
 @media (max-width: 980px) {
   .settings-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Igor's isolated UX shell: the navigation model from the first Agentify
+   concept, applied to Dmitry's existing commerce screens and routes. */
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 252px minmax(0, 1fr);
+}
+
+.app-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  border-right: var(--hairline) solid var(--line);
+  background: var(--surface);
+  z-index: 30;
+}
+
+.app-sidebar-brand {
+  padding: 24px 22px 20px;
+  border-bottom: var(--hairline) solid var(--line);
+}
+
+.app-sidebar-brand > span {
+  display: block;
+  margin: 10px 0 0;
+  color: var(--faint);
+  font: 600 0.625rem / 1.2 var(--font-mono);
+  letter-spacing: 0.09em;
+}
+
+.app-sidebar .tabs {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 20px 14px;
+  overflow: visible;
+}
+
+.app-sidebar .tabs a,
+.app-sidebar .tabs span {
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 10px;
+  gap: 11px;
+  color: var(--fg-2);
+  font-size: 0.875rem;
+  font-weight: 550;
+  box-shadow: none;
+}
+
+.app-sidebar .tabs i {
+  width: 23px;
+  height: 23px;
+  display: grid;
+  place-items: center;
+  border: var(--hairline) solid var(--line);
+  border-radius: 7px;
+  color: var(--faint);
+  font: normal 600 0.625rem var(--font-mono);
+}
+
+.app-sidebar .tabs .here {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.app-sidebar .tabs .here i {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--line));
+  background: var(--surface);
+}
+
+/* The link to the showcase of rare states stands apart from the numbered
+   sections: a hairline above it, no number, a quieter colour. */
+.app-sidebar .tabs .tabs-states {
+  position: relative;
+  margin-top: 13px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.app-sidebar .tabs .tabs-states::before {
+  content: "";
+  position: absolute;
+  top: -9px;
+  right: 12px;
+  left: 12px;
+  border-top: var(--hairline) solid var(--line);
+}
+
+.sidebar-help {
+  margin: auto 14px 12px;
+  padding: 14px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--bg);
+}
+
+.sidebar-help span,
+.sidebar-help a {
+  display: block;
+}
+.sidebar-help span {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.sidebar-help a {
+  margin-top: 4px;
+  font-size: 0.8125rem;
+  font-weight: 650;
+}
+
+.app-sidebar .account {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  padding: 14px;
+  border-top: var(--hairline) solid var(--line);
+}
+
+.account-avatar {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font: 700 0.75rem var(--font-mono);
+}
+
+.app-sidebar .who b,
+.app-sidebar .who small {
+  display: block;
+}
+.app-sidebar .who b {
+  color: var(--fg);
+  font-size: 0.75rem;
+}
+/* The address wraps rather than ending in an ellipsis: it is the one line
+   that says whose dashboard this is, so it is shown whole. */
+.app-sidebar .who small {
+  font-size: 0.6875rem;
+  overflow-wrap: anywhere;
+}
+/* The account row opens a small menu instead of hiding sign-out behind an
+   icon: pressing it shows the settings and an explicit "Выйти". */
+.app-sidebar .account {
+  position: relative;
+  display: block;
+  padding: 0;
+}
+.app-sidebar .account summary {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 14px;
+  cursor: pointer;
+  list-style: none;
+}
+.app-sidebar .account summary::-webkit-details-marker {
+  display: none;
+}
+.app-sidebar .account summary:hover,
+.app-sidebar .account[open] summary {
+  background: var(--surface);
+}
+.account-more {
+  color: var(--muted);
+  font-size: 0.75rem;
+  letter-spacing: 1px;
+}
+.account-menu {
+  position: absolute;
+  right: 14px;
+  bottom: calc(100% + 6px);
+  left: 14px;
+  display: grid;
+  padding: 6px;
+  border: var(--hairline) solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgb(26 25 23 / 12%);
+}
+.account-menu a,
+.app-sidebar .account-menu button {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--fg);
+  font-size: 0.875rem;
+  text-align: left;
+  text-decoration: none;
+}
+.account-menu a:hover,
+.app-sidebar .account-menu button:hover {
+  background: var(--bg);
+  color: var(--fg);
+}
+.app-sidebar .account-menu button {
+  color: var(--fail);
+}
+
+.app-workspace {
+  min-width: 0;
+}
+.app-workspace .top {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  border-bottom: var(--hairline) solid var(--line);
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  backdrop-filter: blur(14px);
+}
+
+.app-workspace .top-inner {
+  min-height: 68px;
+  padding: 0 clamp(22px, 4vw, 52px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.app-workspace .top-inner > div:first-child {
+  display: grid;
+}
+.app-workspace .top-kicker {
+  color: var(--faint);
+  font: 600 0.625rem var(--font-mono);
+  letter-spacing: 0.1em;
+}
+.app-workspace .top-inner strong {
+  margin-top: 2px;
+  font-size: 0.9375rem;
+}
+.top-docs {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.app-content {
+  width: min(1180px, calc(100% - clamp(44px, 8vw, 104px)));
+  margin: 0 auto;
+  padding-bottom: 56px;
+}
+
+.app-content > .lede:first-of-type {
+  padding-top: 28px;
+}
+.app-workspace .top-title {
+  margin: 0;
+  font-size: clamp(1.5rem, 2.4vw, 2rem);
+  letter-spacing: -0.035em;
+}
+.app-content .lede h1 {
+  font-size: clamp(1.75rem, 3vw, 2.25rem);
+  letter-spacing: -0.035em;
+}
+.app-content .scroller,
+.app-content .settings-panel,
+.app-content .integration-shell {
+  box-shadow: 0 18px 48px -40px rgba(26, 25, 23, 0.55);
+}
+
+.page > .foot {
+  display: none;
+}
+
+.auth-gate {
+  background: radial-gradient(circle at 50% 20%, var(--accent-soft), transparent 38%);
+}
+.auth-gate .gate-card {
+  max-width: 560px;
+}
+.auth-gate .eyebrow {
+  margin: 0 0 12px;
+  color: var(--accent);
+}
+.auth-unlock {
+  margin-top: 22px;
+  padding: 16px 18px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--bg);
+}
+.auth-unlock > span {
+  color: var(--fg);
+  font-size: 0.8125rem;
+  font-weight: 650;
+}
+.auth-unlock ul {
+  display: grid;
+  gap: 5px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.auth-unlock li {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.auth-unlock li::before {
+  content: "✓";
+  margin-right: 8px;
+  color: var(--pass);
+  font-weight: 700;
+}
+.auth-switch {
+  padding-top: 16px;
+  border-top: var(--hairline) solid var(--line);
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+  .app-sidebar {
+    position: sticky;
+    height: auto;
+    border-right: 0;
+    border-bottom: var(--hairline) solid var(--line);
+  }
+  .app-sidebar-brand {
+    display: flex;
+    align-items: center;
+    padding: 12px 18px;
+  }
+  .app-sidebar-brand > span {
+    margin: 0 0 0 auto;
+  }
+  .app-sidebar .tabs {
+    display: flex;
+    overflow-x: auto;
+    padding: 8px 12px 10px;
+  }
+  .app-sidebar .tabs a,
+  .app-sidebar .tabs span {
+    flex: 0 0 auto;
+    min-height: 36px;
+    padding-inline: 10px;
+  }
+  .app-sidebar .tabs i {
+    display: none;
+  }
+  .app-sidebar .tabs .tabs-states {
+    margin: 0 0 0 11px;
+  }
+  .app-sidebar .tabs .tabs-states::before {
+    top: 9px;
+    right: auto;
+    bottom: 9px;
+    left: -6px;
+    border-top: 0;
+    border-left: var(--hairline) solid var(--line);
+  }
+  .sidebar-help {
+    display: none;
+  }
+  .app-workspace .top {
+    top: 109px;
+  }
+  .app-content {
+    width: calc(100% - 36px);
+  }
+}
+
+@media (max-width: 560px) {
+  .app-sidebar-brand > span {
+    display: none;
+  }
+  .app-workspace .top {
+    top: 103px;
+  }
+  .app-workspace .top-inner {
+    min-height: 56px;
+    padding-inline: 18px;
+  }
+  .app-content > .lede:first-of-type {
+    padding-top: 28px;
+  }
+}
+
+/* Igor's settings layout: the two forms sit on the bottom edge of equal-height
+   panels, the ways to connect a catalogue span the width, and the account is a
+   strip of its own at the foot. */
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+}
+.settings-panel > .issue {
+  margin-top: auto;
+}
+/* The name and the wallet panels share three rows across the pair: what the
+   panel says, the box with its button, and the refusal under it. A refusal in
+   one panel used to lift that panel's box above the other's, because each form
+   sat on its own panel's bottom edge and the red line made the form taller. */
+.settings-pair {
+  display: grid;
+  grid-row: span 3;
+  grid-template-rows: subgrid;
+  row-gap: 0;
+}
+.settings-pair > .issue {
+  margin-top: 0;
+  padding-bottom: 0;
+  align-self: end;
+}
+/* The sample address in the empty wallet box is shown whole: its size follows
+   the box (42 characters take about 23.5 times the font size), up to the size
+   of the settings copy and down to 10 pixels, which a 360-pixel phone needs. */
+.wallet-box {
+  container-type: inline-size;
+}
+.wallet-box input::placeholder {
+  font-size: max(10px, min(0.8125rem, calc((100cqi - 32px) / 23.5)));
+}
+.panel-top > .lede {
+  padding: 24px 24px 0;
+}
+.panel-top > .lede + .lede,
+.panel-top > .saved + .lede {
+  padding-top: 0;
+}
+.panel-top > .saved {
+  margin: 16px 24px 8px;
+}
+.panel-messages {
+  padding: 0 24px 24px;
+}
+.panel-messages > p {
+  margin: 12px 0 0;
+}
+.settings-wide {
+  grid-column: 1 / -1;
+}
+.tariff-name {
+  font-size: 1rem;
+}
+.tariff-includes {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0 24px;
+  display: grid;
+  gap: 6px;
+  font-size: 0.875rem;
+}
+.tariff-includes li::before {
+  content: "✓";
+  color: var(--pass);
+  font-weight: 700;
+  margin-right: 9px;
+}
+.tariff-actions {
+  padding: 16px 24px 24px;
+}
+.connect-ways {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding: 16px 24px 24px;
+}
+/* On the Integrations page the ways are the panel's first thing, with no
+   heading above them to carry the top inset. */
+.settings-connect > .connect-ways:first-child {
+  padding-top: 24px;
+}
+.connect-way {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 20px;
+  border: var(--hairline) solid var(--line);
+  border-radius: 14px;
+  background: var(--bg);
+}
+.connect-way h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.connect-way p {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.connect-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 16px;
+}
+.settings-account > .lede {
+  align-items: center;
+  padding-bottom: 24px;
+}
+.gate-skip {
+  text-align: center;
+}
+/* Side by side only where each way has room for its buttons on one line;
+   on a phone the insets shrink so the longest label still fits. */
+@media (max-width: 1180px) {
+  .connect-ways {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 560px) {
+  .connect-ways,
+  .settings-connect > .connect-ways:first-child {
+    padding: 16px;
+  }
+  .connect-way {
+    padding: 16px;
+  }
+  .connect-way .connect-actions .button {
+    padding-inline: 16px;
+  }
+}
+@media (max-width: 400px) {
+  .connect-ways,
+  .settings-connect > .connect-ways:first-child {
+    padding: 12px;
+  }
+  .connect-way {
+    padding: 14px;
+  }
+  .connect-way .connect-actions .button {
+    padding-inline: 12px;
+    font-size: 0.9375rem;
+  }
+}
+
+/* The card counts as pills, the empty catalogue as a panel with its two ways
+   in as buttons, and the example rows under it clearly set apart. */
+.stat-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+.stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border: var(--hairline) solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.stat-pills .stat-pill b {
+  color: var(--fg);
+  font-family: var(--font-mono);
+}
+.empty-start {
+  margin-top: 24px;
+  padding: 28px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  text-align: center;
+}
+.empty-start .connect-actions {
+  justify-content: center;
+}
+.demo-cards {
+  margin-top: 32px;
+}
+.demo-label {
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.demo-cards tr.demo td {
+  opacity: 0.55;
+}
+
+/* The heading in the top bar starts on the same line as the content under it. */
+.app-workspace .top-inner {
+  width: min(1180px, calc(100% - clamp(44px, 8vw, 104px)));
+  min-height: 84px;
+  margin: 0 auto;
+  padding-inline: 0;
+}
+@media (max-width: 900px) {
+  .app-workspace .top-inner {
+    width: calc(100% - 36px);
+    min-height: 64px;
+  }
+}
+
+/* The form that adds a product by hand (manual-card.ts): two columns of boxes
+   on a wide screen, one on a narrow one. The description, the delivery choice,
+   the refusals and the buttons take the whole row. */
+.card-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 24px;
+  padding: 20px 0 32px;
+}
+.card-field {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.card-field > label,
+.card-field > legend {
+  display: block;
+  margin-bottom: 8px;
+  padding: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.card-field > p.quiet {
+  margin-top: 6px;
+}
+.card-field-wide,
+.card-form > p.problem,
+.card-actions {
+  grid-column: 1 / -1;
+}
+.card-form > p.problem {
+  margin: 0;
+}
+.card-form textarea {
+  display: block;
+  width: 100%;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  padding: 12px 14px;
+  background: var(--surface);
+  color: var(--fg);
+  resize: vertical;
+}
+.card-price {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 7rem;
+  gap: 8px;
+}
+.card-field > .card-choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 1rem;
+  font-weight: 400;
+}
+.card-choice input {
+  width: auto;
+  min-height: 0;
+  accent-color: var(--accent);
+}
+.card-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+@media (max-width: 720px) {
+  .card-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The documentation sits in the sidebar's help box on a wide screen, so the
+   account menu carries it only where that box is hidden. */
+.account-menu .account-docs {
+  display: none;
+}
+
+/* On a phone and a tablet the sidebar is a bar, and the account is the round
+   button at the right end of its top row: pressing it opens the settings, the
+   documentation and sign-out underneath. */
+@media (max-width: 900px) {
+  /* The bar takes the height it needs; on a short page the rest of the screen
+     belongs to the content, not to a stretched empty bar. */
+  .app-shell {
+    grid-template-rows: auto 1fr;
+  }
+  .app-sidebar-brand {
+    padding-right: 66px;
+  }
+  .app-sidebar .account {
+    position: absolute;
+    top: 10px;
+    right: 14px;
+    border-top: 0;
+  }
+  .app-sidebar .account summary {
+    display: block;
+    padding: 0;
+    border-radius: 50%;
+  }
+  .app-sidebar .account summary .who,
+  .app-sidebar .account summary .account-more {
+    display: none;
+  }
+  .account-menu {
+    top: calc(100% + 8px);
+    right: 0;
+    bottom: auto;
+    left: auto;
+    width: 220px;
+  }
+  .account-menu .account-docs {
+    display: block;
+  }
+}
+
+/* On a phone the ways into an empty catalogue stand one under another at one
+   width, rather than as a ladder of three buttons each as wide as its words. */
+@media (max-width: 560px) {
+  .empty-start .connect-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* Revoking a key is two presses: the first opens the question under the
+   button, inside the row, the second answers it (keys.ts). Inside the row
+   rather than floating over it, because the table's rounded frame clips
+   anything that hangs out of its last row. */
+.confirm-open {
+  list-style: none;
+  cursor: pointer;
+}
+.confirm-open::-webkit-details-marker {
+  display: none;
+}
+.confirm-pop {
+  margin-top: 8px;
+  text-align: right;
+}
+.confirm-pop > p {
+  margin: 0 0 8px;
+  font-size: 0.875rem;
+}
+
+/* The showcase of rare states (stand only): one block per state, separated by a line. */
+.state-list {
+  margin-top: 24px;
+}
+
+.state-item {
+  padding: 20px 0;
+  border-top: var(--hairline) solid var(--line);
+}
+
+.state-item h2 {
+  margin: 0 0 8px;
+}
+
+.state-item p {
+  margin: 0 0 6px;
+}
+
+/* The burger menu (html.ts, narrowMenu). Where there is no room for the
+   sidebar, the bar at the top is one row — the lockup and the burger — and the
+   sections, the documentation and the account open over the page from it,
+   instead of a strip of tabs two rows tall. */
+.app-menu {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .app-sidebar {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    height: 60px;
+  }
+  .app-sidebar-brand {
+    flex: 1 1 auto;
+    padding: 0 18px;
+    border-bottom: 0;
+  }
+  .app-sidebar > .tabs,
+  .app-sidebar > .sidebar-help,
+  .app-sidebar > .account {
+    display: none;
+  }
+  .app-workspace .top {
+    top: 60px;
+  }
+  .app-sidebar .app-menu {
+    display: block;
+    margin-right: 12px;
+  }
+  .app-sidebar .app-menu > summary {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border: var(--hairline) solid var(--line);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--fg);
+    cursor: pointer;
+    list-style: none;
+  }
+  .app-sidebar .app-menu > summary::-webkit-details-marker {
+    display: none;
+  }
+  .app-sidebar .app-menu > summary span {
+    width: 18px;
+    height: 2px;
+    border-radius: 1px;
+    background: currentColor;
+    transition:
+      transform 0.2s ease,
+      opacity 0.2s ease;
+  }
+  .app-sidebar .app-menu[open] > summary span:nth-child(1) {
+    transform: translateY(6px) rotate(45deg);
+  }
+  .app-sidebar .app-menu[open] > summary span:nth-child(2) {
+    opacity: 0;
+  }
+  .app-sidebar .app-menu[open] > summary span:nth-child(3) {
+    transform: translateY(-6px) rotate(-45deg);
+  }
+  .app-sidebar .app-menu-panel {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    left: 0;
+    max-height: calc(100dvh - 60px);
+    overflow-y: auto;
+    padding: 10px 14px 16px;
+    border-bottom: var(--hairline) solid var(--line);
+    background: var(--surface);
+    box-shadow: 0 24px 40px -32px rgb(26 25 23 / 45%);
+  }
+  .app-sidebar .app-menu-sections {
+    display: grid;
+    gap: 4px;
+  }
+  .app-sidebar .app-menu-sections a,
+  .app-sidebar .app-menu-sections span {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    min-height: 44px;
+    padding: 0 12px;
+    border-radius: 10px;
+    color: var(--fg-2);
+    font-size: 0.9375rem;
+    font-weight: 550;
+    text-decoration: none;
+  }
+  .app-sidebar .app-menu-sections i {
+    width: 23px;
+    height: 23px;
+    display: grid;
+    place-items: center;
+    border: var(--hairline) solid var(--line);
+    border-radius: 7px;
+    color: var(--faint);
+    font: normal 600 0.625rem var(--font-mono);
+  }
+  .app-sidebar .app-menu-sections .here {
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .app-sidebar .app-menu-sections .here i {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 25%, var(--line));
+    background: var(--surface);
+  }
+  .app-sidebar .app-menu-sections .tabs-states {
+    margin-top: 9px;
+    padding-top: 9px;
+    border-top: var(--hairline) solid var(--line);
+    border-radius: 0;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .app-sidebar .app-menu-docs {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    margin-top: 6px;
+    padding: 0 12px;
+    font-size: 0.875rem;
+    font-weight: 650;
+  }
+  .app-sidebar .app-menu-account {
+    display: grid;
+    margin-top: 8px;
+    padding-top: 10px;
+    border-top: var(--hairline) solid var(--line);
+  }
+  .app-sidebar .app-menu-account small {
+    padding: 4px 12px 6px;
+    color: var(--muted);
+    font-size: 0.8125rem;
+    overflow-wrap: anywhere;
+  }
+  .app-sidebar .app-menu-account a,
+  .app-sidebar .app-menu-account button {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 44px;
+    padding: 0 12px;
+    border-radius: 8px;
+    color: var(--fg);
+    font-size: 0.9375rem;
+    text-align: left;
+    text-decoration: none;
+  }
+  .app-sidebar .app-menu-account button {
+    border: 0;
+    background: none;
+    color: var(--fail);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.9375rem;
+  }
+  .app-sidebar .app-menu-account a:hover,
+  .app-sidebar .app-menu-account button:hover {
+    background: var(--bg);
+  }
+  body:has(.app-menu[open]) {
+    overflow: hidden;
   }
 }
