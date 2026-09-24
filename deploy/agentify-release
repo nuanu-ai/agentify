@@ -212,11 +212,17 @@ def write(path, text):
     os.replace(temporary, path)
 
 
+def booted():
+    """When this host booted, as its monotonic clock counts."""
+    return int(time.time() - time.monotonic())
+
+
 def first_seen(state, revision):
-    """When the timer began waiting for this revision."""
+    """When the timer began waiting for this revision, in this boot: a host that
+    was down does not spend the patience of what it waited for before."""
     seen = (read(state / "seen") or "").split()
     if len(seen) == 2 and seen[0] == revision and seen[1].isdigit():
-        return int(seen[1])
+        return max(int(seen[1]), booted())
     now = int(time.time())
     write(state / "seen", f"{revision} {now}")
     return now
@@ -269,6 +275,14 @@ def release(config, name, timer):
             raise Refusal(f"{name} names nothing in the repository")
         if timer and revision in (read(state / "current"), read(state / "failed")):
             return 0
+        # Another revision's transition that had not started, or an unfinished
+        # restore, waits for a person (activate.sh), so the timer leaves this
+        # revision alone rather than recording it as failed.
+        open_transition = json.loads(read(state / "transition") or "{}")
+        if timer and open_transition.get("to") != revision and (
+            open_transition.get("restoring") or open_transition.get("phase") not in (None, "started")
+        ):
+            return 0
         since = first_seen(state, revision) if timer else None
         mirror = state / "repository.git"
         if not mirror.exists():
@@ -312,12 +326,19 @@ def read_config(path):
 def launch(config, argv):
     """Hands a person's release to a transient unit and follows its journal until it ends."""
     unit = f"agentify-release-{config['channel']}.service"
+    if os.geteuid() != 0:
+        raise Refusal(f"agentify-release runs as root: sudo agentify-release {' '.join(argv)}")
     if subprocess.run(["systemctl", "is-active", "--quiet", unit]).returncode == 0:
         raise Wait(f"a release is already running as {unit}; journalctl -u {unit} -f follows it")
     since = f"@{int(time.time())}"
     say(f"the release runs as {unit}: a lost connection does not stop it, and journalctl -u {unit} holds its whole log")
     unit_run = subprocess.Popen(
         ["systemd-run", f"--unit={unit}", "--wait", "--collect", "--quiet",
+         # What agentify-release.service holds for the timer: after Docker,
+         # so a shutdown stops the release and its restore before Docker;
+         # the same last resort and time to restore; readable state.
+         "--property=After=network-online.target docker.service", "--property=Wants=network-online.target",
+         "--property=Requires=docker.service", "--property=UMask=0022",
          "--property=RuntimeMaxSec=2h", "--property=TimeoutStopSec=30min",
          sys.executable, str(Path(__file__).resolve()), *argv],
         start_new_session=True,
