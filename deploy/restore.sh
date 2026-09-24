@@ -1,29 +1,31 @@
 #!/usr/bin/env bash
 # Puts both databases of this host's channel back the way a restore point
-# holds them:
+# holds them. Only a person restores, through the release command, which runs
+# this in the same systemd unit a release runs in, so a dropped connection
+# does not stop it halfway:
 #
-#   sudo deploy/restore.sh /var/backups/agentify/<channel>/<time>-<previous>-before-<new>
+#   sudo agentify-release --restore /var/backups/agentify/<channel>/<time>-<previous>-before-<new>
 #
-# deploy/activate.sh runs it itself when a release fails during its
-# migrations, and a person runs it the same way, from the checkout the failure
-# message names. Everything written to the databases after the dump is lost.
+# Everything written to the databases after the dump is lost.
 #
-# It takes the release lock, and run by hand it waits while a release unit
-# runs, so neither a release, TEST's timer nor the nightly privacy job runs
-# while it does. Before it changes anything, it marks the channel's transition
-# record as restoring, and no release starts until a restore finishes. It
-# stops the four applications that write, restores each dump into a scratch
-# database, and only when both are whole renames them in, in one transaction,
-# dropping the replaced databases after. A bad dump, a failure or a crash
-# before that transaction leaves the databases as they were; running it again
-# starts over.
+# It takes the release lock, so neither a release, TEST's timer nor the nightly
+# privacy job runs while it does, and it checks that the database volume has
+# room for a second copy of both databases before it changes anything. Then it
+# marks the channel's transition record as restoring, which holds every release
+# back, stops the four applications that write, restores each dump into a
+# scratch database, and only when both are whole renames them in, in one
+# transaction. The databases they replace stay, renamed
+# <name>_replaced_<time>, until the next verified release drops them. A bad
+# dump or a failure before that transaction leaves the databases as they were
+# and the record as it found it; a crash leaves the record marked, and running
+# this again starts over.
 #
 # Then `current` names the revision whose data the databases hold, the
-# restore point's <previous>, so a release of <new> or of anything later
-# migrates again, and the transition record goes. The applications stay
-# stopped until a release starts them.
+# restore point's <previous>, or none for a directory named after no revision,
+# so a release of <new> or of anything later migrates again, and the record
+# goes. The applications stay stopped until a release starts them.
 set -Eeuo pipefail
-dir="${1%/}"
+dir="${1%/}" step="checking"
 refuse() { echo "restore: $*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || refuse "restoring runs as root."
 [[ -f $dir/agentify_commerce.dump && -f $dir/agentify_scanner.dump ]] \
@@ -34,52 +36,58 @@ state="/var/lib/agentify/$channel"
 stack() { "$root/deploy/stack.sh" "$channel" "$@"; }
 sql() { stack exec -T postgres psql -U agentify_commerce -d postgres -v ON_ERROR_STOP=1 -q "$@"; }
 transition() { "$root/deploy/transition" "$state/transition" "$@"; }
+named() { local tags; tags="$(transition tags "$1")"; echo "$1${tags:+ ($tags)}"; }
 previous=""
 if [[ ${dir##*/} =~ ^[0-9]{8}T[0-9]{6}Z-([0-9a-f]{40})-before- ]]; then previous="${BASH_REMATCH[1]}"; fi
 
-# deploy/activate.sh hands its lock over on descriptor 9. Run by hand, this
-# also waits for a release unit that has not taken the lock yet.
-if ! { true >&9; } 2>/dev/null; then
-  if systemctl is-active --quiet 'agentify-release*.service' 2>/dev/null; then
-    echo "restore: a release is running (systemctl status 'agentify-release*.service'); nothing was changed." >&2
-    exit 75
-  fi
-  exec 9>/run/lock/agentify-release.lock
-fi
-flock -n 9 || { echo "restore: a release or the privacy job holds the release lock; nothing was changed." >&2; exit 75; }
-trap 'echo "restore: $step failed, before the restored databases were swapped in, so the databases are as they were and nothing was started; run this again." >&2' ERR
+open="$(transition show)" \
+  || refuse "$state/transition cannot be read; deploy/README.md, \"The transition record\", says how to move it aside."
+IFS='|' read -r _ found found_point _ _ found_restoring _ _ <<<"$open"
+exec 9>/run/lock/agentify-release.lock
+flock -n 9 || { echo "restore: a release, the privacy job or a process an earlier run left holds the release lock; nothing was changed." >&2; exit 75; }
+stack up -d --wait --no-deps postgres
+size="$(sql -Atc "select coalesce(sum(pg_database_size(datname)), 0) from pg_database where datname in ('agentify_commerce', 'agentify_scanner')")"
+free="$(stack exec -T postgres df -Pk /var/lib/postgresql/data | awk 'NR == 2 { print $4 * 1024 }')"
+((free > size + (1 << 30))) \
+  || refuse "the database volume has $((free >> 20)) MiB free, and a second copy of $((size >> 20)) MiB of databases needs that and a GiB more; nothing was changed."
 
-transition set restore="$dir" restoring="$root/deploy/restore.sh"
+# A failure before the swap changed no database, so the record goes back to
+# what it was and holds no release back, unless an earlier restore did not
+# finish either.
+failed() {
+  if [[ -n $found_restoring ]]; then
+    :
+  elif [[ -n $found ]]; then
+    transition set restore="$found_point" restoring=
+  else
+    transition clear
+  fi
+  echo "restore: $step failed before the restored databases were swapped in, so the databases are as they were. gateway, cabinet, scanner and scanner-worker are stopped, and the channel is down. If the cause has passed, run this again; if the dump itself is bad, restore another restore point, or release again the revision the databases hold." >&2
+}
+trap failed ERR
+transition set restore="$dir" restoring=true
 step="stopping the applications"
 stack stop --timeout 60 gateway cabinet scanner scanner-worker
-stack up -d --wait --no-deps postgres
 for database in agentify_commerce agentify_scanner; do
   step="restoring $database into ${database}_restoring"
   echo "restore: $step, from $dir" >&2
-  sql -c "DROP DATABASE IF EXISTS ${database}_restoring WITH (FORCE)" -c "DROP DATABASE IF EXISTS ${database}_replaced WITH (FORCE)" \
-    -c "CREATE DATABASE ${database}_restoring"
+  sql -c "DROP DATABASE IF EXISTS ${database}_restoring WITH (FORCE)" -c "CREATE DATABASE ${database}_restoring"
   stack exec -T postgres pg_restore -U agentify_commerce -d "${database}_restoring" --exit-on-error < "$dir/$database.dump"
 done
 step="swapping the restored databases in"
-sql >/dev/null <<'SQL'
+stamp="$(date -u +%Y%m%d%H%M%S)"
+sql >/dev/null <<SQL
 SELECT pg_terminate_backend(pid) FROM pg_stat_activity
   WHERE datname IN ('agentify_commerce', 'agentify_scanner') AND pid <> pg_backend_pid();
 BEGIN;
-ALTER DATABASE agentify_commerce RENAME TO agentify_commerce_replaced;
+ALTER DATABASE agentify_commerce RENAME TO agentify_commerce_replaced_$stamp;
 ALTER DATABASE agentify_commerce_restoring RENAME TO agentify_commerce;
-ALTER DATABASE agentify_scanner RENAME TO agentify_scanner_replaced;
+ALTER DATABASE agentify_scanner RENAME TO agentify_scanner_replaced_$stamp;
 ALTER DATABASE agentify_scanner_restoring RENAME TO agentify_scanner;
 COMMIT;
 SQL
 trap - ERR
-sql -c "DROP DATABASE agentify_commerce_replaced WITH (FORCE)" -c "DROP DATABASE agentify_scanner_replaced WITH (FORCE)" \
-  || echo "restore: the replaced databases stay beside the restored ones until the next restore drops them." >&2
 
-if [[ -n $previous ]]; then
-  (umask 022 && echo "$previous" > "$state/current.new" && mv "$state/current.new" "$state/current")
-else
-  rm -f "$state/current"
-fi
-transition clear
+transition finish "$previous"
 rm -f "$state/cards-before"
-echo "restore: agentify_commerce and agentify_scanner hold what $dir holds, and ${previous:-no revision} is current; gateway, cabinet, scanner and scanner-worker are stopped until a release starts them." >&2
+echo "restore: agentify_commerce and agentify_scanner hold what $dir holds, and ${previous:+$(named "$previous") is current}${previous:-no revision is current}. The databases they replaced stay as agentify_commerce_replaced_$stamp and agentify_scanner_replaced_$stamp until a release is verified. gateway, cabinet, scanner and scanner-worker are stopped, and the channel is down until a release starts them." >&2
