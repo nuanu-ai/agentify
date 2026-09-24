@@ -31,24 +31,28 @@ present state and not the destination: one database is the goal, but not
 immediate (Dmitry's word, 2026-09-22), and the merge is a decision of its own
 when he names the day.
 
-The cabinet owns identity (ADR-0026). Scanner email verification uses Better
-Auth's expiring, hashed, single-use magic links, issued and verified by the
-cabinet's component over an internal route and consumed only by an explicit
-same-origin submission. That submission completes in two phases: the cabinet
-consumes the hashed proof and records a pending receipt in one step, then the
-scanner commits its report session in its own transaction and acknowledges the
-receipt, and a bounded retry finishes that same operation without reusing a
-completed proof, because the two databases share no transaction. No separate
-identity service is deployed, and the scanner database holds no identity data. Registration keeps its intent, email,
-scan and consent checks, a verified identity finishes only the intent for that
-same email, and scanner permissions are checked against report ownership. A
-callback state is only a report-routing hint: a valid report session may follow
-it only to a report that session owns, and otherwise the owner requests a
-fresh, purpose-bound link, with one generic answer whether a report exists or a
-rate limit applies. Privacy deletion revokes report access, removes the lead
-and, for a person who owns no merchant, the identity row in the cabinet. The
-Supabase user ID on older leads is migration provenance, never a credential,
-and no Supabase access or refresh token is accepted.
+The cabinet owns identity (ADR-0026). Email verification uses Better Auth's
+expiring, hashed, single-use magic links. The scanner asks the cabinet over an
+internal route to send one; every link lands on the cabinet's page and is
+consumed only by an explicit same-origin submission there, which opens the
+session and sends the browser on. The scanner never handles a token. A request
+for a full report is finished at the first visit of the session its own link
+opened, which the cabinet names when asked whose session a cookie is, and the
+lead is linked to the scan in the scanner's own transaction, so the two
+databases never need to share one. No separate identity service is deployed,
+and the scanner database holds no identity data. Registration keeps its intent,
+email, scan and consent checks, a session finishes only the intent its own link
+was asked for or its own signed-in ask made, and scanner permissions
+are checked against report ownership. Where a link leads is recorded with its
+token, the full report of a named scan or a named cabinet screen, and nothing in
+the link is read as a destination; a session is shown a report only when its
+address owns it; anybody else asks for it, and a request for a link meets one
+generic answer whether a report exists or a rate limit applies. The scanner
+keeps no session of its own and asks the cabinet whose session a cookie is
+(ADR-0026). Privacy deletion removes the lead, which is what gave the address
+its reports, and for a person who owns no merchant the identity row in the
+cabinet. The Supabase user ID on older leads is migration provenance, never a
+credential, and no Supabase access or refresh token is accepted.
 
 ## Consequences
 
@@ -56,8 +60,10 @@ Running the complete Supabase platform ourselves adds services without advancing
 the shared stack. Reusing legacy hand-written verification avoids a dependency
 but abandons the component boundary established by ADR-0009. The route above is
 the cabinet's second listener, publishing no port and reached by service name;
-the release proves no other service in the rendered graph holds either half of
-its credential. Cross-domain SSO, a shared session and automatic merging of
-scanner and merchant identities are not built; what crosses the boundary is
-ADR-0026's decision, and the separation above stands for scans, reports and
-leads.
+the release proves that each of the cabinet's internal credentials, this one and
+the one the gateway announces wallet changes with (ADR-0019), is held by its own
+two processes and by no other service in the rendered graph.
+Cross-domain SSO and automatic merging of scanner and merchant
+identities are not built; the one session for the site and what crosses the
+boundary are ADR-0026's decision, and the separation above stands for scans,
+reports and leads.

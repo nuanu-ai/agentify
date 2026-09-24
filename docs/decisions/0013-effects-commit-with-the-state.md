@@ -119,7 +119,10 @@ the state's own transaction — is available without the table.
 **Run the effects before committing the state.** Worse in the direction that
 matters: an effect that ran against a state change that then rolled back is a
 merchant handed an order that does not exist, and there is no record to
-reconcile it against.
+reconcile it against. The one known exception is the payout wallet change
+(ADR-0019), announced before it is recorded, because there a change nobody
+was told about is the dangerous failure and a message about a change that
+did not land is the safe one.
 
 **Leave it and name the gap.** Defensible while the sandbox settles against
 nothing, and it is what today does. It stops being defensible at the first real

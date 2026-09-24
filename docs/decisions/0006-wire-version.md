@@ -31,7 +31,10 @@ the merchant's routes and is not derived from it.
    reader cannot read — a new value in a response enum, a new required field, a
    renamed or removed one — requires the version to move. Moving it stops an old
    worker at startup with a clear message instead of letting it misreport its own
-   successes.
+   successes. The one known exception is the payout-wallet route (ADR-0019),
+   whose answers and refusals no SDK worker reads: its pending fields and any
+   refusal code only it returns leave the version alone, and an older contracts
+   package validating them refuses them until upgraded.
 
 3. **The published SDK remains strict.** A result word riding alongside
    `ok: true` informs rather than directs, but it is still part of the generated

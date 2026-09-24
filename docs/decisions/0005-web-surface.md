@@ -36,8 +36,8 @@ page for a person, so the shape of that is a decision rather than a detail.
    documentation release of the SDK, which chooses no address itself and names
    the old one only in its README and in one error. The test channel has isolated data, secrets and the test payment network.
    Its scanner front page and commerce paths match production. A shared origin
-   also shares browser-script authority: cookie paths separate session handling,
-   not protection against script injection in another surface. Scanner content
+   also shares browser-script authority: one session cookie reaches every
+   surface (ADR-0009 §6), and injected script acts with it. Scanner content
    must remain escaped; a second origin is the alternative if script isolation
    becomes a requirement. Cheapest before the first external merchant, which is why it is
    not deferred.
@@ -70,6 +70,9 @@ page for a person, so the shape of that is a decision rather than a detail.
    merchant's data. Everything on every screen still comes from the public API,
    and no query in the cabinet can reach the gateway's tables — that is the
    part of this section the dogfooding argument is about, and it is unchanged.
+   One call goes the other way: the gateway asks the cabinet, over an internal
+   route of its own, to announce a payout wallet change before recording it,
+   and a cancelled change or a new merchant key once it is done (ADR-0019).
 
 4. **Server-rendered HTML, no client-side framework and no client build step.**
    The cabinet v0 shows three lists and offers one real action. A single-page
