@@ -65,6 +65,9 @@ const A = "mch_a";
 /** A second one, for the cases whose subject is that the two cannot see each other. */
 const B = "mch_b";
 
+/** A merchant paid nowhere, with nothing waiting: where every merchant starts. */
+const NO_WALLET = { address: null, pending: null } as const;
+
 const card = (merchantItemId: string, title: string): Card => ({
   merchant_item_id: merchantItemId,
   title,
@@ -352,14 +355,23 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         const store = await twoMerchants();
         await store.publishCard(A, card("sku-1", "A's room"), 10_000);
         await store.publishCard(B, card("sku-1", "B's room"), 20_000);
-        await store.setPayoutWallet(A, "0x0000000000000000000000000000000000000009", 30_000);
+        const paid = {
+          address: "0x0000000000000000000000000000000000000009",
+          // A change waiting beside it travels too, because a waiting change
+          // whose moment has passed is the address a sale is paid at, and a
+          // catalog read that dropped it would offer a card at the old one.
+          pending: { address: "0x0000000000000000000000000000000000000008", takesEffectAt: 90_000 },
+        };
+        await store.setPayoutWallet(A, NO_WALLET, paid, 30_000);
 
         const entries = await store.catalogEntries();
 
-        expect(entries.find((entry) => entry.card.merchantId === A)?.payoutWallet).toBe(
-          "0x0000000000000000000000000000000000000009",
+        expect(entries.find((entry) => entry.card.merchantId === A)?.payoutWallet).toStrictEqual(
+          paid,
         );
-        expect(entries.find((entry) => entry.card.merchantId === B)?.payoutWallet).toBeNull();
+        expect(entries.find((entry) => entry.card.merchantId === B)?.payoutWallet).toStrictEqual(
+          NO_WALLET,
+        );
       });
 
       it("carries what each card's merchant is listed as, and nothing where nobody named one", async () => {
@@ -499,22 +511,78 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
         // Nobody has said where the money goes, which is the ordinary state
         // and is never guessed at from anywhere.
-        expect((await store.merchantById(A))?.payoutWallet).toBeNull();
+        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(NO_WALLET);
 
         // Written as a wallet shows it, which is what the one caller of this
         // hands over — the store keeps what it is given and normalizes nothing,
         // so the fixture is written in the form that actually arrives.
-        const wallet = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
-        expect((await store.setPayoutWallet(A, wallet, 3_000))?.payoutWallet).toBe(wallet);
-        expect((await store.merchantById(A))?.payoutWallet).toBe(wallet);
+        const wallet = { address: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", pending: null };
+        const written = await store.setPayoutWallet(A, NO_WALLET, wallet, 3_000);
+        expect(
+          written === null || written === "moved" ? written : written.payoutWallet,
+        ).toStrictEqual(wallet);
+        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(wallet);
         // And the merchant beside them is still paid nowhere.
-        expect((await store.merchantById(B))?.payoutWallet).toBeNull();
+        expect((await store.merchantById(B))?.payoutWallet).toStrictEqual(NO_WALLET);
 
-        const second = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
-        expect((await store.setPayoutWallet(A, second, 4_000))?.payoutWallet).toBe(second);
-        expect((await store.merchantById(A))?.payoutWallet).toBe(second);
+        expect(await store.setPayoutWallet("mch_nobody", NO_WALLET, wallet, 5_000)).toBeNull();
+      });
 
-        expect(await store.setPayoutWallet("mch_nobody", wallet, 5_000)).toBeNull();
+      it("keeps a waiting change beside the wallet paid now, with the moment it takes effect", async () => {
+        // ADR-0019: on the live deployment a replacement waits forty-eight hours
+        // after it is announced, and the address in every payment request until
+        // then is the one paid now. A store that dropped either half, or moved
+        // the instant by a millisecond, would pay a sale to the new address
+        // early or tell the merchant a moment that is not the one kept.
+        const store = await twoMerchants();
+        const now = { address: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", pending: null };
+        await store.setPayoutWallet(A, NO_WALLET, now, 3_000);
+
+        const waiting = {
+          address: now.address,
+          pending: {
+            address: "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+            takesEffectAt: Date.parse("2026-09-26T12:00:00.123Z"),
+          },
+        };
+        await store.setPayoutWallet(A, now, waiting, 4_000);
+
+        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(waiting);
+        // And cleared again, which is what a cancel writes.
+        await store.setPayoutWallet(A, waiting, now, 5_000);
+        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(now);
+      });
+
+      it("writes nothing where the wallet moved after it was read, and says so", async () => {
+        // Changes for one merchant are serialized by this: a change is
+        // announced between reading the row and writing it, and a second change
+        // recorded in that time must not be overwritten by the first — or the
+        // waiting address would be one whose message went out before the one
+        // that is now shown, and the merchant would be looking at the wrong
+        // change. So the write is conditional on the row still holding what was
+        // read, and a row that moved answers with a word rather than a merchant.
+        const store = await twoMerchants();
+        const now = { address: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", pending: null };
+        await store.setPayoutWallet(A, NO_WALLET, now, 3_000);
+        const first = {
+          address: now.address,
+          pending: { address: "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359", takesEffectAt: 90_000 },
+        };
+        const second = {
+          address: now.address,
+          pending: { address: "0x0000000000000000000000000000000000000007", takesEffectAt: 95_000 },
+        };
+        await store.setPayoutWallet(A, now, first, 4_000);
+
+        // Both were read as `now`; the first has already been written.
+        expect(await store.setPayoutWallet(A, now, second, 5_000)).toBe("moved");
+        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(first);
+
+        // The same address with another moment is another row, too: a clock
+        // restarted in between is a change this write never read.
+        const restarted = { ...first, pending: { ...first.pending, takesEffectAt: 99_000 } };
+        expect(await store.setPayoutWallet(A, restarted, now, 6_000)).toBe("moved");
+        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(first);
       });
 
       it("is registered with a first key, both in one write", async () => {
@@ -579,8 +647,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(made?.merchant.serviceName).toBeNull();
         expect((await store.merchantById(A))?.serviceName).toBeNull();
         // And paid nowhere, for the same reason: registering asks for neither.
-        expect(made?.merchant.payoutWallet).toBeNull();
-        expect((await store.merchantById(A))?.payoutWallet).toBeNull();
+        expect(made?.merchant.payoutWallet).toStrictEqual(NO_WALLET);
+        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(NO_WALLET);
       });
 
       it("is not written at all where the key beside them cannot be", async () => {
