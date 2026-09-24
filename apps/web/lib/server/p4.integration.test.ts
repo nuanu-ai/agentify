@@ -595,6 +595,21 @@ describe("P4 cabinet-owned scanner identity", () => {
     expect(other).toMatchObject({ kind: "person", email });
     expect(header).toMatchObject({ kind: "person", email });
     expect(await registrationEventsFor(scan.id)).toBe("1");
+    const formConsents = async () =>
+      (
+        await db
+          .select({ id: consentSnapshots.id })
+          .from(consentSnapshots)
+          .where(
+            and(
+              eq(consentSnapshots.sessionId, scan.sessionId),
+              eq(consentSnapshots.source, "report_identity_registration"),
+            ),
+          )
+      ).length;
+    // The form's choices are applied once, by the visit that finished it; a
+    // later visit must not apply them again over whatever was chosen since.
+    expect(await formConsents()).toBe(1);
     const lead = onlyRow(
       await db
         .select()
@@ -610,6 +625,7 @@ describe("P4 cabinet-owned scanner identity", () => {
     // A later visit finds it finished and does nothing more.
     await visitorOf(cookie);
     expect(await registrationEventsFor(scan.id)).toBe("1");
+    expect(await formConsents()).toBe(1);
   });
 
   it("never finishes a request for a session of another address", async () => {
@@ -894,10 +910,13 @@ describe("P4 cabinet-owned scanner identity", () => {
     ).toBe(activeIntent.id);
 
     const strangerCookie = `${SESSION_COOKIE}=nobody-issued-this`;
+    // Signed in with reports of its own, and not this one's.
+    const otherOwnerCookie = signedInAs("first-visit@example.com");
     const authorizedCookie = pressLink(firstLink);
     for (const [cookie, status] of [
       [undefined, 401],
       [strangerCookie, 401],
+      [otherOwnerCookie, 401],
       [authorizedCookie, 200],
     ] as const) {
       expect(
@@ -923,17 +942,23 @@ describe("P4 cabinet-owned scanner identity", () => {
         )
       ).status,
     ).toBe(401);
-    expect(
-      (
-        await getTeaserPrompt(
-          new NextRequest(
-            `http://localhost:3000/api/v1/scans/${scan.id}/remediation-prompt?scope=teaser`,
-            { headers: { cookie: authorizedCookie } },
-          ),
-          { params: Promise.resolve({ id: scan.id }) },
-        )
-      ).status,
-    ).toBe(200);
+    for (const [cookie, status] of [
+      [otherOwnerCookie, 401],
+      [authorizedCookie, 200],
+    ] as const) {
+      expect(
+        (
+          await getTeaserPrompt(
+            new NextRequest(
+              `http://localhost:3000/api/v1/scans/${scan.id}/remediation-prompt?scope=teaser`,
+              { headers: { cookie } },
+            ),
+            { params: Promise.resolve({ id: scan.id }) },
+          )
+        ).status,
+        cookie,
+      ).toBe(status);
+    }
     const verifiedDownload = await downloadTeaserPrompt(
       new NextRequest(`http://localhost:3000/api/v1/scans/${scan.id}/remediation-prompt/download`, {
         headers: { cookie: authorizedCookie },
