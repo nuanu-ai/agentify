@@ -36,21 +36,24 @@ screen offering to make a merchant, and anybody else in the cabinet; that is the
 person's start. A used, expired or unknown link opened in a browser with a live
 session goes to the start of that session's person instead of an empty form,
 which reveals nothing about the link's address, because the session's own
-address decides it. Signing in and recovering access are one act.
+address decides it. Signing in and recovering access are one act. Against a
+sign-in link for somebody else's address sent to a victim, the page with the one
+control names the address being signed in, the signed-in full-report ask names
+the address the report will be filed under, and the header always shows it.
 
 **2. One identity and one session, held by the cabinet.** The person of an
 address is one row in the cabinet's Better Auth, and the session a link opens
 serves the whole site, reports, the cabinet and, for an operator, the dashboard,
 with the cookie and lifetime of ADR-0009 §6. The scanner never handles a token
-or sets a session cookie. Over the internal route, reachable only on the compose
+and mints no session. Over the internal route, reachable only on the compose
 network and authenticated by a secret the two processes share, it asks the
 cabinet to send a link for this address with this destination, to say whose
 session this cookie is, and, for a privacy deletion, to remove this person if
 they own no merchant. When the second answer renews the session, the scanner
-passes the renewed cookie on, so a visit to a report counts toward the thirty
-days. A scanner page that cannot reach the cabinet says it cannot tell who is
-visiting right now, because not knowing who somebody is must not look like
-knowing they are nobody.
+passes on the renewed cookie that answer carries, so a visit to a report counts
+toward the thirty days. A public scanner page that cannot reach the cabinet says
+it cannot tell who is visiting right now, because not knowing who somebody is
+must not look like knowing they are nobody.
 
 A report opens for a session whose address owns it, meaning the lead with that
 address is linked to the scan. A request made in the full-report form waits for
@@ -93,12 +96,14 @@ the day the operator cannot keep up.
 **6. The operator enters through the same door.** Dmitry's word for the
 dashboard: "я думаю о том чтобы сделать вход в нее по той же сессии что и все
 остальное, только пользователь должен быть привелигирован". Being an operator is
-a flag on the account's row in `cabinet_accounts`, closed to input the way
-`merchantId` is, which only a subcommand of `pnpm account` at the server's
-terminal sets or clears. An operator signs in once like anybody, which writes
+a flag on the account's row in `cabinet_accounts`, closed to input from the
+browser like `merchantId`, and only a subcommand of `pnpm account` at the
+server's terminal writes it. An operator signs in once like anybody, writing
 the row, and is flagged afterwards. `/admin` opens for a session whose account
 carries the flag, and everybody else, signed in or not, gets one answer, the
-ordinary answer of a page that does not exist. The dashboard stays read-only.
+ordinary answer of a page that does not exist. When the flag cannot be
+confirmed because the cabinet does not answer, the answer is the same: the
+dashboard fails closed. The dashboard stays read-only.
 
 ## Cases the scanner's and the cabinet's suites answer for
 
@@ -107,8 +112,8 @@ ordinary answer of a page that does not exist. The dashboard stays read-only.
 | a sign-in link with no destination | reports and no merchant | the link leads to their latest report, never to the screen that makes a merchant | the latest report |
 | a link to a report or the cabinet from another site | a session | the cookie rides the navigation; nothing is made, and no request but the session's own is finished | that page |
 | the cabinet, the first time | a session, no merchant | one control; its press makes the merchant and key | the seller-name screen |
-| `/admin` | anything but a flagged session | the answer of a page that does not exist | nowhere |
-| a scanner page, the cabinet unreachable | anything | the page says it cannot tell who is visiting | that page |
+| `/admin` | anything but a session whose flag the cabinet confirms | the answer of a page that does not exist | nowhere |
+| a public scanner page, the cabinet unreachable | anything | the page says it cannot tell who is visiting | that page |
 | a link pressed twice, expired or unknown | no session | refused the same way | the sign-in page |
 | the same link | a live session | nothing is said about the link's address | that person's start |
 

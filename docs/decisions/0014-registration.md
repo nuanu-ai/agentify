@@ -16,7 +16,7 @@ wait for perfection: the road's order is ADR-0010's.
 
 **1. The account is written at sign-in, the merchant and its key on the
 cabinet's explicit request.** The account appears when a one-time link is
-consumed for an address that has none (ADR-0026 §1), and no form asks for a
+consumed for an address that has none (ADR-0009 §5), and no form asks for a
 password or an invitation. The merchant and the key its cabinet calls with are
 made later, when the signed-in person presses the one control the cabinet
 offers (ADR-0026 §4). That act crosses the boundary once and each side writes
