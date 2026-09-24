@@ -26,6 +26,7 @@ fails with that sentence when there is none.
 """
 
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -215,8 +216,13 @@ class Activation(unittest.TestCase):
         (self.root / "state/test/current").write_text(OLD + "\n")
 
     def tearDown(self):
-        subprocess.run(["docker", "run", "--rm", "-v", f"{self.root}:/h", IMAGE, "chmod", "-R", "a+rwX", "/h"], capture_output=True)
+        # Every run already gives the tree back; this is for one cut short.
+        subprocess.run(["docker", "run", "--rm", "-v", f"{self.root}:/h", IMAGE, "chown", "-R", self.owner, "/h"], capture_output=True)
         self.temp.cleanup()
+
+    @property
+    def owner(self):
+        return f"{os.getuid()}:{os.getgid()}"
 
     def run_script(self, script, **environment):
         """Runs a bash script as root in the container, with the fakes first on PATH."""
@@ -224,7 +230,12 @@ class Activation(unittest.TestCase):
             f"AGENTIFY_{name.upper().replace('-', '_')}_IMAGE": f"ghcr.io/nuanu-ai/agentify-{name}@sha256:{index:064x}"
             for index, name in enumerate(("app", "web", "scanner", "scanner-worker", "scanner-privacy"))
         }
+        # The scripts run as root, and on Linux what root writes into the bind
+        # mount stays root's, with the scripts' own modes (0700, 0600). So each
+        # run ends by giving the whole tree back to the user running the tests,
+        # keeping its modes, which the tests assert, and the script's status.
         prelude = textwrap.dedent("""\
+            trap 'status=$?; chown -R "$OWNER" /h; exit $status' EXIT
             mkdir -p /run/lock /etc/cron.d /var/lib /var/backups /etc/agentify
             ln -s /h/state /var/lib/agentify; ln -s /h/backups /var/backups/agentify; cp /h/etc/release.json /etc/agentify/
             export PATH=/h/bin:$PATH
@@ -233,7 +244,7 @@ class Activation(unittest.TestCase):
             restore() { /h/tree/deploy/restore.sh "$1"; echo "restore exit $?"; }
             privacy() { bash -c "$(sed -n 's/^23 4 \\* \\* \\* root //p' /etc/cron.d/agentify-release)"; }
             """)
-        options = [f"--env={key}={value}" for key, value in {"NEW": NEW, "OLD": OLD, **digests, **environment}.items()]
+        options = [f"--env={key}={value}" for key, value in {"NEW": NEW, "OLD": OLD, "OWNER": self.owner, **digests, **environment}.items()]
         result = subprocess.run(
             ["docker", "run", "--rm", "--network", "none", "-v", f"{self.root}:/h", *options, IMAGE, "bash", "-c", prelude + script],
             capture_output=True, text=True, timeout=240,
@@ -380,8 +391,10 @@ class Activation(unittest.TestCase):
     def test_a_rerun_after_the_new_release_started_never_restores_and_carries_it_forward(self):
         said = self.run_script("activate", FAIL_AT=FAILED_START)
         self.assertIn("exit 1", said)
-        with (self.world / "db/agentify_commerce").open("a") as database:
-            database.write(ORDER + "\n")
+        # Written from inside, as the running release would: an append from
+        # the macOS side of Docker Desktop's file sharing can reach the next
+        # container after that container's own append, which overwrites it.
+        self.run_script(f'echo "{ORDER}" >> /h/world/db/agentify_commerce')
         said = self.run_script("activate", FAIL_AT=FAILED_MIGRATION)
         self.assertIn("exit 1", said)
         self.assertIn("nothing was restored", said)

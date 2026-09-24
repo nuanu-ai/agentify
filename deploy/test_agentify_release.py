@@ -143,6 +143,8 @@ class ReleaseTest(unittest.TestCase):
             (self.source / "deploy" / name).chmod(0o755)
         self.restores = root / "restores.jsonl"
         self.github = FakeGitHub()
+        # Booted long before anything a test does, unless the test says else.
+        self.booted_at = 0
         self.first = self.commit("first")
         self.push("main")
         self.first_run = self.github.built(self.first)
@@ -189,6 +191,9 @@ class ReleaseTest(unittest.TestCase):
             stack.enter_context(contextlib.redirect_stdout(output))
             stack.enter_context(mock.patch.object(RELEASE, "fetch_json", self.github))
             stack.enter_context(mock.patch.object(RELEASE, "STATES", self.states))
+            # The host's boot never reaches a test: a runner up for less than
+            # the timer's thirty minutes would otherwise shorten its patience.
+            stack.enter_context(mock.patch.object(RELEASE, "booted", lambda: self.booted_at))
             code = RELEASE.main(["--config", str(self.config), *flags, name])
         self.said = output.getvalue()
         return code
@@ -471,8 +476,8 @@ class TheTimer(ReleaseTest):
         self.tag("deploy-test", self.first)
         self.state.mkdir(parents=True)
         (self.state / "seen").write_text(f"{self.first} {int(RELEASE.time.time()) - 3600}\n")
-        with mock.patch.object(RELEASE, "booted", return_value=int(RELEASE.time.time()) - 60):
-            self.assertEqual(self.tick(exit_code=75), 75, self.said)
+        self.booted_at = int(RELEASE.time.time()) - 60
+        self.assertEqual(self.tick(exit_code=75), 75, self.said)
         self.assertIsNone(self.recorded("failed"))
 
     def test_leaves_another_revision_alone_while_a_transition_waits_for_a_person(self):
