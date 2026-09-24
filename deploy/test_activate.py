@@ -363,6 +363,26 @@ class Activation(unittest.TestCase):
         self.assertEqual(taken, ["agentify_commerce.dump", "agentify_scanner.dump"], said)
         self.assert_old_release_runs_on_old_data(said)
 
+    def test_a_rerun_of_a_migrating_release_restores_even_when_stopped_before_its_own_migrations(self):
+        # The run before was killed while migrating: the data holds part of
+        # the migrations, whatever the rerun has done yet.
+        self.open_transition(NEW, "migrating")
+        with (self.world / "db/agentify_commerce").open("a") as database:
+            database.write("the gateway's migration\n")
+        said = self.run_script("activate", TERM_AT="stop --timeout 60 gateway cabinet scanner scanner-worker")
+        self.assertIn("exit 1", said)
+        self.assert_old_release_runs_on_old_data(said)
+        self.assertIsNone(self.record())
+
+    def test_a_record_that_cannot_be_read_starts_and_stops_nothing(self):
+        # Even for the revision the channel runs, which would otherwise only
+        # be checked again: the record is not the same as no record.
+        (self.root / "state/test/current").write_text(NEW + "\n")
+        (self.root / "state/test/transition").write_text('{"to": "')
+        said = self.run_script("activate")
+        self.assertIn("exit 1", said)
+        self.assert_old_release_runs_on_old_data(said)
+
     def test_a_rerun_after_the_new_release_started_never_restores_and_carries_it_forward(self):
         said = self.run_script("activate", FAIL_AT=FAILED_START)
         self.assertIn("exit 1", said)
