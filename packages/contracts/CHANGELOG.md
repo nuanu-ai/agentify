@@ -1,5 +1,27 @@
 # Contracts release history
 
+## 0.4.0
+
+### Minor Changes
+
+- 8394f96: The order document an agent reads now carries `status_url`, a required field
+  holding the absolute address of the order's status route. An agent that buys a
+  product whose goods come later receives an order and no goods, and until now no
+  answer said where to come back for them. Every answer that carries the document
+  names the address, the purchase's own answer included. A reader holding the
+  previous schema refuses a document with the new field, and the new schema
+  refuses one without it, which is why this is a minor release rather than a
+  patch.
+
+### Patch Changes
+
+- 8550654: The status route's description stops calling the delivery deadline the end of
+  an order whose goods come later. When the deadline passes with no goods, the
+  order becomes `refund_due`. That is not an ending: goods the merchant delivers
+  afterwards still appear at `status_url` and settle the debt. `refund_due`
+  cannot say whether the money has already gone back. The comment on
+  `refund_due` in the status vocabulary says the same. The schemas do not change.
+
 ## 0.3.2
 
 ### Patch Changes

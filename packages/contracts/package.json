@@ -1,6 +1,6 @@
 {
   "name": "@nuanu-ai/agentify-contracts",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "type": "module",
   "description": "The Agentify wire contract as code: the schemas for cards, orders, price checks and receipts that the gateway and the merchant SDK both read.",
   "keywords": [
