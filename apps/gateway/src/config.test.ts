@@ -127,6 +127,7 @@ describe("loadConfig", () => {
       PAY_TO_ADDRESS: "0x0000000000000000000000000000000000000001",
       CDP_API_KEY_ID: "key-id",
       CDP_API_KEY_SECRET: "key-secret",
+      ...ANNOUNCEMENTS,
     });
 
     expect(live.payment).toStrictEqual({
@@ -654,6 +655,7 @@ describe("the environment is derived from the chain", () => {
         FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
         CDP_API_KEY_ID: "key-id",
         CDP_API_KEY_SECRET: "secret",
+        ...ANNOUNCEMENTS,
       }).environment,
     ).toBe("live");
   });

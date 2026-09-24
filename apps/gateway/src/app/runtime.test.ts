@@ -26,7 +26,7 @@ import type { Card } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import { SANDBOX_FACILITATOR } from "../config.js";
 import type { StoredCard } from "../ports/store.js";
-import { testConfig } from "../testing/harness.js";
+import { ANNOUNCING, testConfig } from "../testing/harness.js";
 import { sellableBy, sellingFor } from "./runtime.js";
 
 const card: Card = {
@@ -137,6 +137,7 @@ describe("whether a merchant could make a sale at all", () => {
       FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
       CDP_API_KEY_ID: "key-id",
       CDP_API_KEY_SECRET: "key-secret",
+      ...ANNOUNCING,
     });
     const merchant = {
       payoutWallet: wallet,
