@@ -117,7 +117,10 @@ if (databaseUrl === null) {
     cards: readonly string[],
   ): Promise<{ readonly person: Person; readonly merchantId: string }> => {
     const person = await signIn(email);
-    const merchant = await store.addMerchant({ id: randomIds("mch"), name: "A merchant" }, Date.now());
+    const merchant = await store.addMerchant(
+      { id: randomIds("mch"), name: "A merchant" },
+      Date.now(),
+    );
     if (merchant === null) throw new Error("the merchant was not made");
     const issued = await issueKey(store, randomIds, merchant.id, "worker", Date.now(), "test");
     const attached = await identity.attachMerchant(person.id, async () => ({
