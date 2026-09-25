@@ -4114,6 +4114,19 @@ describe("a wallet change waiting on the live deployment", () => {
       .mockImplementation((...parts) => said.push(parts.map(String).join(" ")));
     try {
       const running = await live();
+      // Paid at an address with letters in it, so the one typed back can be
+      // in the other spelling a wallet may be written in, as a person pastes
+      // it out of a block explorer.
+      const PAID = checksummedAddressOf("0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed");
+      const { store } = running.harnessed;
+      const merchant = await store.merchantById(running.harnessed.merchant.id);
+      if (merchant === null) throw new Error("the harness's merchant is not in its store");
+      await store.setPayoutWallet(
+        merchant.id,
+        merchant.payoutWallet,
+        { address: PAID, pending: null },
+        running.harnessed.now(),
+      );
       await onACabinetKey(running);
       await running.browser.signIn();
       const otherDevice = await running.another();
@@ -4121,11 +4134,11 @@ describe("a wallet change waiting on the live deployment", () => {
       await aChangeWaits(running);
 
       const typed = await running.browser.post("/settings/payout-wallet", {
-        payout_wallet: running.harnessed.merchant.wallet,
+        payout_wallet: PAID.toLowerCase(),
       });
 
       expect(await waitingNow(running)).toBeNull();
-      expect(await paidNow(running)).toBe(running.harnessed.merchant.wallet);
+      expect(await paidNow(running)).toBe(PAID);
       expect((await otherDevice.get("/settings")).to).toMatch(/^\/sign-in/);
       expect(readable(typed.html)).toMatch(/cancelled/i);
       expect(said.join("\n")).toMatch(/cancelled a waiting change/);
