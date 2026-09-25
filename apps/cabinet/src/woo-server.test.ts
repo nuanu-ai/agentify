@@ -30,7 +30,7 @@ import { gatewayFor } from "./gateway.js";
 import { type Identity, identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 import { buildApp } from "./server.js";
-import { readable } from "./testing/html.js";
+import { importFormOf, readable } from "./testing/html.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
 import type { StoreProduct } from "./woo-catalog.js";
 import type { Preflight } from "./woo-connect.js";
@@ -904,15 +904,6 @@ describe("importing the catalogue", () => {
    */
   const bodyOf = (html: string): string =>
     html.slice(html.indexOf("</header>"), html.indexOf("<footer"));
-
-  /**
-   * The Import form alone, where what an import needs is said beside the
-   * button. Read apart from the rest of the screen because the banner every
-   * screen carries while no seller name is chosen also names the name and
-   * links to Settings, and would stand in for a line that said neither.
-   */
-  const importFormOf = (html: string): string =>
-    /<form[^>]*action="\/woocommerce\/import"[^>]*>[\s\S]*?<\/form>/.exec(html)?.[0] ?? "";
 
   /** An address of the right shape that is nobody's, in the lower case a wallet accepts. */
   const A_WALLET = "0x0123456789abcdef0123456789abcdef01234567";
