@@ -241,6 +241,8 @@ export {
   PROTOTYPE_KEY_IS_DROPPED,
   paramSpecToValidator,
 } from "./param-spec.js";
+export type { TextLines } from "./plain-text.js";
+export { notPlainTextIn } from "./plain-text.js";
 export { PAYABLE_CURRENCIES, PAYABLE_DECIMALS, priceProblemsOf } from "./price-rule.js";
 export type {
   Amount,

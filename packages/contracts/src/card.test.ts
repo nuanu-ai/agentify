@@ -559,9 +559,11 @@ describe("a card as its own merchant reads it", () => {
   });
 
   it("refuses a card its own merchant could not have published", () => {
-    // The card inside is held to the rules publishing holds it to. A document
-    // that admitted a card the publish route refuses would describe a catalog
-    // entry that cannot exist.
+    // The card inside is held to the rules publishing holds it to, but for one.
+    // A document that admitted a card the publish route refuses would describe
+    // a catalog entry that cannot exist. The exception is that a card's words
+    // are plain text: that rule is the door's, a card stored before it exists,
+    // and `plain-text.test.ts` holds that it reads back.
     const impossible = { ...merchantCard, card: { ...syncCard, fulfillment: "confirm" } };
 
     expect(errorOf(MerchantCardSchema, impossible)).toContain("confirm");

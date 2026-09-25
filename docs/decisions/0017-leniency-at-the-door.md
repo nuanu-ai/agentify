@@ -30,6 +30,16 @@ promise after the first external merchant. The placement is the
 architecture: a spelling that reached storage or a reader would be a
 second shape for the same fact, and two shapes drift.
 
+A spelling opens out without loss; a reading does not, and the door does
+no readings. A card's words — its title, its description and each
+declared field's title — are plain text (Dmitry, 2026-09-25), and the
+door refuses markup, character references and control characters in
+them, naming what it found and where, instead of turning them into
+text. A shop connector whose source is HTML reads it as text on its own
+side, through the one converter every connector shares, which asks the
+door's own rule of its output and names a product it cannot make plain.
+The rule is the publish's alone: a stored card is read back without it.
+
 ## Consequences
 
 What this buys: the card reference, the quickstart and the door all take
@@ -39,10 +49,15 @@ logic, and anyone extending it must put new leniency there and nowhere
 else.
 
 Rejected: a second, "simple" publish surface — two doors is two
-contracts to learn and keep honest, while a spelling accepted by the
-one door adds no surface. Expanding short forms in the SDK only — the
-door itself must accept what the documentation shows, or curl and the
-SDK meet different contracts and the examples stop being fixtures of
-the real thing. Storing what was written and normalizing on read —
-every reader becomes a parser, and the one that misses serves the
-second shape.
+contracts to learn and keep honest, while a spelling accepted by the one
+door adds no surface. Cleaning HTML at the door — stripping a tag can
+join two sentences and a reference has to be looked up, so an agent
+would read words the merchant never wrote, and the merchant would never
+learn their source needs fixing. Holding stored cards to the plain-text
+rule on read — every answer is checked against its contract on the way
+out, so one old row would fail the merchant's list and the catalog.
+Expanding short forms in the SDK only — the door itself must accept what
+the documentation shows, or curl and the SDK meet different contracts
+and the examples stop being fixtures of the real thing. Storing what was
+written and normalizing on read — every reader becomes a parser, and the
+one that misses serves the second shape.

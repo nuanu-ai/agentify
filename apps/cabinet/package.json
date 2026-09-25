@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Agentify merchant cabinet \u2014 cards, orders and receipts, server-rendered",
+  "description": "Agentify merchant cabinet — cards, orders and receipts, server-rendered",
   "exports": {
     ".": "./src/index.ts"
   },
@@ -24,6 +24,7 @@
     "@nuanu-ai/agentify-contracts": "workspace:*",
     "better-auth": "1.7.2",
     "drizzle-orm": "0.45.2",
+    "entities": "8.1.0",
     "express": "5.2.1",
     "pg": "8.23.0",
     "zod": "^4.4.3"

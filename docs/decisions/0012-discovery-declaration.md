@@ -64,10 +64,12 @@ was accepted once, which is not acceptance; `pnpm smoke:listing` makes the
 live call with the purchase's method and reports a probe with no verdict as
 no verdict. The card schema is shared by the publish and read paths on
 purpose, so a row stored before the description ceiling stops being readable
-until the card is republished. We pay in what a merchant may write: a name in
-Cyrillic, Greek or Arabic cannot be a listing name, and the refusal happens
-here, where the merchant sees it, not in the catalog, where it is silent. The
-challenge carries the declaration in one header that grows with the card.
+until the card is republished; the plain-text rule of ADR-0017 is the one
+exception, held at the publish alone. We pay in what a merchant may write: a
+name in Cyrillic, Greek or Arabic cannot be a listing name, and the refusal
+happens here, where the merchant sees it, not in the catalog, where it is
+silent. The challenge carries the declaration in one header that grows with
+the card.
 
 Rejected: an opt-in flag on the card — it would make the default invisibility,
 the state this change exists to leave. Reusing the merchant's display name as

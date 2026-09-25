@@ -1927,16 +1927,18 @@ describe("the cards screen", () => {
   });
 
   it("puts a merchant's own text on the page as text, whatever is in it", async () => {
-    // A card title is text somebody else wrote. The contract lets it hold any
-    // printable character, so a title with a bracket or an ampersand in it must
-    // arrive on the page as those characters rather than as markup — a merchant
-    // whose product is called "Tom & Jerry <the box set>" should see their
-    // product, not a page that stopped rendering halfway down the row.
+    // A card title is text somebody else wrote. The contract refuses markup in
+    // it and not the characters markup is made of, so a title with a bracket,
+    // an ampersand or a quotation mark in it must arrive on the page as those
+    // characters rather than as markup — a merchant whose product is called
+    // 'Tom & Jerry <"the box set">' should see their product, not a page that
+    // stopped rendering halfway down the row. The merchant's own key is held
+    // to no such rule, so it carries a tag.
     const { browser, gateway } = await started();
     await publish(gateway, {
       ...roomCard,
       merchant_item_id: "a&b<c>",
-      title: 'Tom & Jerry <the "box set">',
+      title: 'Tom & Jerry <"the box set">',
     });
 
     const page = (await browser.signIn()).html;
@@ -1944,9 +1946,9 @@ describe("the cards screen", () => {
     // Not one character of the title reaches the page as markup...
     expect(page).not.toContain("Jerry <");
     expect(page).not.toContain("a&b");
-    expect(page).toContain("Tom &amp; Jerry &lt;the &quot;box set&quot;&gt;");
+    expect(page).toContain("Tom &amp; Jerry &lt;&quot;the box set&quot;&gt;");
     // ...and a merchant still reads their own product's name, unchanged.
-    expect(readable(page)).toContain('Tom & Jerry <the "box set">');
+    expect(readable(page)).toContain('Tom & Jerry <"the box set">');
     expect(readable(page)).toContain("a&b<c>");
   });
 
