@@ -38,7 +38,6 @@ const runCli = (channel: string, input: string) =>
 /** Values a public preflight diagnostic must never repeat from a fixture. */
 const expectNoFixtureSecrets = (stderr: string, resolved: ResolvedCompose): void => {
   const values = [
-    resolved.services.gateway.environment?.SANDBOX_MERCHANT_KEY,
     resolved.services.gateway.environment?.REGISTRATION_INVITATION,
     resolved.services.gateway.environment?.CDP_API_KEY_ID,
     resolved.services.gateway.environment?.CDP_API_KEY_SECRET,
@@ -690,7 +689,6 @@ describe("the announcement route belongs to the gateway and the cabinet alone", 
       ["scanner", "REPORT_IDENTITY_SECRET"],
       ["cabinet", "AUTH_SECRET"],
       ["cabinet", "REGISTRATION_INVITATION"],
-      ["gateway", "SANDBOX_MERCHANT_KEY"],
       ["gateway", "CDP_API_KEY_SECRET"],
       ["scanner", "TOKEN_HMAC_SECRET"],
     ] as const) {

@@ -197,6 +197,54 @@ What ends that is the edge being recreated from a checkout of this release or
 later, whose `deploy/edge/compose.yaml` does not name them; nothing else about
 the edge depends on them.
 
+## The release that stops seeding
+
+A merchant comes into being one way on either channel: a person asks for a
+link at `/cabinet/sign-in`, opens it from their mailbox, and presses the one
+control the cabinet then offers, which makes the merchant (ADR-0014). The
+gateway of a deployed channel used to write a merchant key of its own at every
+start, from `AGENTIFY_SEED_KEY` in the host's environment file, onto the
+merchant the database was created with, `the_merchant`. It no longer does:
+from the first release that carries this, the release's preflight refuses a
+channel whose file still gives `AGENTIFY_SEED_KEY` a value, before anything
+stops, and the running release keeps running. On TEST that refusal is recorded
+as the revision's failure, and the timer does not try that revision again.
+
+So before moving `deploy-test` to such a commit, and before running
+`agentify-release` on PRODUCTION for one, take the line out of each host's
+file. The last two lines print `0`, and the file keeps its owner and mode,
+which the two before them show as `root 600`:
+
+```sh
+ssh agentify-test "sudo sed -i '/^AGENTIFY_SEED_KEY=/d' /etc/agentify/test.env"
+ssh agentify "sudo sed -i '/^AGENTIFY_SEED_KEY=/d' /etc/agentify/production.env"
+ssh agentify-test sudo stat -c '%U %a' /etc/agentify/test.env
+ssh agentify sudo stat -c '%U %a' /etc/agentify/production.env
+ssh agentify-test sudo grep -c '^AGENTIFY_SEED_KEY=' /etc/agentify/test.env
+ssh agentify sudo grep -c '^AGENTIFY_SEED_KEY=' /etc/agentify/production.env
+```
+
+If a revision was refused for it on TEST first, a person releases it after
+the line is gone (`ssh -t agentify-test sudo agentify-release <name>`) or moves
+`deploy-test` to a newer commit.
+
+Taking the line out does not take the key out of the database. The key it
+held is a row on `the_merchant` and still opens that merchant for whoever
+presents it, until it is disabled; the release disables nothing. The gateway's
+terminal lists that merchant's keys, the seeded one under the label "the
+sandbox key from the compose file", and disables one by the identifier the
+list prints:
+
+```sh
+ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T gateway pnpm --filter @agentify/gateway merchant keys the_merchant'
+ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T gateway pnpm --filter @agentify/gateway merchant disable <key id>'
+```
+
+On PRODUCTION the same two commands run over `ssh -t agentify` with
+`production` in the path. On PRODUCTION a snapshot of the backup holds
+`production.env` ("Backups"), so the key stays readable in the snapshots taken
+before the line went, for as long as they are kept.
+
 ## Releasing to production
 
 A production release starts from `main`. Every change a merchant can see in
@@ -638,7 +686,7 @@ The environment file, `/etc/agentify/<channel>.env`, owned by root with mode
 600, holds every setting the compose files and the preflight ask for, and no
 image: activation records the images per checkout. On both channels it names
 `AGENTIFY_PUBLIC_ORIGIN`, `AGENTIFY_COOKIE_SECURE`, `AGENTIFY_SURFACE_MODE`,
-`AGENTIFY_PAYMENT_NETWORK`, `AGENTIFY_FACILITATOR_URL`, `AGENTIFY_SEED_KEY`,
+`AGENTIFY_PAYMENT_NETWORK`, `AGENTIFY_FACILITATOR_URL`,
 `AGENTIFY_AUTH_SECRET`, `AGENTIFY_INVITATION`, `TOKEN_HMAC_SECRET`,
 `EMAIL_ENCRYPTION_KEY`, `REPORT_IDENTITY_SECRET` and `ANNOUNCEMENT_SECRET`, the last two each at
 least 32 characters of their own (`openssl rand -base64 32`): the gateway
@@ -654,7 +702,9 @@ PRODUCTION adds `AGENTIFY_DB_PASSWORD`,
 `SCAN_ACCEPTANCE_ENABLED`, `SCANNER_CONCURRENCY`, `ANALYTICS_RUNTIME_ENV` —
 keep the defaults `compose.yaml` gives them unless the file names them, and on
 TEST the scanner's policy is fixed by `deploy/compose.agentify-test.yaml`
-whatever the file says.
+whatever the file says. Neither channel's file names `AGENTIFY_SEED_KEY`: a
+deployed channel seeds no merchant, and the preflight refuses one whose file
+gives it a value ("The release that stops seeding").
 
 A value holding a `$`, as a secret from a password manager sometimes does,
 goes inside single quotes: `AGENTIFY_AUTH_SECRET='…$…'`. Compose reads a `$`

@@ -99,7 +99,7 @@
         "PORT": "3000",
         "PUBLIC_BASE_URL": "https://test.agentify.ad",
         "REGISTRATION_INVITATION": "fixture-invitation",
-        "SANDBOX_MERCHANT_KEY": "csk_test_fixture-deployment-key"
+        "SANDBOX_MERCHANT_KEY": ""
       },
       "healthcheck": {
         "test": [

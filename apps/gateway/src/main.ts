@@ -179,6 +179,11 @@ const gateway = new Gateway(runtime);
  * of the two it did — so silence is the one answer that cannot be given: it
  * reads the same whether the key was taken and honoured, was already there, or
  * was never configured at all.
+ *
+ * It is the laptop's stack that seeds. A deployed channel hands this process
+ * nothing to seed, and its release refuses one that would (ADR-0014): a
+ * merchant there comes into being only through the link mailed to a person
+ * and the cabinet's one control.
  */
 async function seedTheSandbox(secret: string | null): Promise<void> {
   const surface = config.surfaceMode.toUpperCase();
@@ -200,7 +205,7 @@ async function seedTheSandbox(secret: string | null): Promise<void> {
   if (seeded.kind === "issued") {
     console.warn(
       `[gateway] ${surface}: the key in SANDBOX_MERCHANT_KEY now opens ${seeded.merchantId} — ` +
-        "its value also remains in deployment configuration, so a production deployment should not set it" +
+        "its value also remains in this stack's configuration, which is why only the laptop's stack seeds one" +
         (seeded.listedAs === null
           ? ""
           : `. It had no listing name, so this start listed it as "${seeded.listedAs}" — the seller a ` +

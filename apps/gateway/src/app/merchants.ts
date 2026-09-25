@@ -401,15 +401,20 @@ export const SEEDED_MERCHANT = { id: "the_merchant", name: "The pilot merchant" 
 
 /**
  * What a seeded merchant is listed as, which is different on each of the three
- * stacks and is nothing at all on one of them.
+ * surfaces and is nothing at all on one of them.
+ *
+ * Two gateways seed: the laptop's stack, on the sandbox, and the slice's
+ * in-process gateway, whose smoke runs on a test chain and may be pointed at a
+ * live one. A deployed channel seeds nothing (ADR-0014), so none of these names
+ * reaches the catalog of either site through a seed.
  *
  * It says what it is out loud on purpose: this name travels to a catalog, and
  * a listing that reads like a real seller is the one thing a sandbox must not
- * look like. `Agentify sandbox` is right for the laptop, wrong for the test
- * site, and wrong in a way that reaches strangers on the live one.
+ * look like. `Agentify sandbox` is right for the laptop, wrong on a test
+ * chain, and wrong in a way that reaches strangers on a live one.
  *
- * A live stack is seeded with no name. A merchant with no name is off sale, so
- * a live stack nobody has named sells nothing, and the name it eventually
+ * A live chain is seeded with no name. A merchant with no name is off sale, so
+ * a live gateway nobody has named sells nothing, and the name it eventually
  * trades under is typed by a person rather than inherited from a constant
  * written for a sandbox.
  */
