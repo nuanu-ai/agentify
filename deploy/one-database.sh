@@ -100,7 +100,9 @@ if [[ -z $phase ]]; then
     sleep 2
   done
   if ((unfinished > 0)); then
-    old start scanner
+    # By its container, as activate.sh restarts what it stopped: `compose start`
+    # walks the dependencies and refuses a one-off migration that is gone.
+    old ps -aq scanner | xargs -r docker start > /dev/null
     refuse "the scanner's queue still held $unfinished unfinished jobs after three minutes, so the scanner runs again and nothing else was stopped; run this again later."
   fi
 
