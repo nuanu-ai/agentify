@@ -39,7 +39,7 @@ COMMON = {
     "TOKEN_HMAC_SECRET": "c" * 32,
     "EMAIL_ENCRYPTION_KEY": "d" * 32,
     "REPORT_IDENTITY_SECRET": "e" * 32,
-    "ANNOUNCEMENT_SECRET": "f" * 32,
+    "GATEWAY_CABINET_SECRET": "f" * 32,
 }
 CHANNELS = {
     "test": {

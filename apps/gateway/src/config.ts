@@ -287,8 +287,8 @@ const SDK_WORKER_POLL_DEADLINE_MS = 50_000;
 const WORKER_POLL_WAIT_CEILING_MS = 40_000;
 
 /**
- * The shortest secret the gateway will present to the cabinet's announcement
- * route: what `openssl rand -base64 32` produces, and the floor the cabinet
+ * The shortest secret the gateway will present on its route into the
+ * cabinet: what `openssl rand -base64 32` produces, and the floor the cabinet
  * holds its own internal secrets to. It catches a placeholder left in a file,
  * not a weak choice by somebody who read the sentence.
  */
@@ -620,7 +620,9 @@ const environmentSchema = z.object({
 
   /**
    * Where the cabinet is asked to tell a merchant of a change, and what it is
-   * asked with (ADR-0019).
+   * asked with (ADR-0019). The route and the secret are the gateway's one way
+   * into the cabinet, and anything else it ever needs from the cabinet is
+   * asked over them too.
    *
    * On a live deployment a change of a payout wallet already set is announced
    * to every account naming the merchant before anything is written, and a new
@@ -637,10 +639,10 @@ const environmentSchema = z.object({
    * give. The secret is held to the length the cabinet's other internal secret
    * is, and a refusal names the variable and never the value.
    */
-  CABINET_ANNOUNCEMENT_URL: emptyIsAbsent(
-    z.string().refine(isHttpUrl, "must be an http address of the cabinet's announcement route"),
+  CABINET_INTERNAL_URL: emptyIsAbsent(
+    z.string().refine(isHttpUrl, "must be an http address of the gateway's route into the cabinet"),
   ),
-  ANNOUNCEMENT_SECRET: emptyIsAbsent(
+  GATEWAY_CABINET_SECRET: emptyIsAbsent(
     z
       .string()
       .refine(
@@ -693,8 +695,8 @@ export interface WorkerConfig {
   readonly pollMaxEnvelopes: number;
 }
 
-/** Where and with what a live gateway asks the cabinet to tell a merchant of a change. */
-export interface AnnouncementConfig {
+/** Where and with what a live gateway asks the cabinet, to tell a merchant of a change. */
+export interface CabinetRouteConfig {
   readonly url: string;
   /** Presented as a bearer to the cabinet's route. Never printed. */
   readonly secret: string;
@@ -745,11 +747,13 @@ export interface GatewayConfig {
    */
   readonly surfaceMode: SurfaceMode;
   /**
-   * How a wallet change, a new key and a cancelled change are announced, on
-   * the live deployment and nowhere else (ADR-0019). Null everywhere a change
-   * applies at once and nothing is announced, whatever the environment named.
+   * Where and with what the gateway asks the cabinet over its route into it,
+   * which is how a wallet change, a new key and a cancelled change are
+   * announced, on the live deployment and nowhere else (ADR-0019). Null
+   * everywhere a change applies at once and nothing is announced, whatever the
+   * environment named.
    */
-  readonly announcements: AnnouncementConfig | null;
+  readonly cabinetRoute: CabinetRouteConfig | null;
 }
 
 /**
@@ -962,10 +966,8 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
   // two is missing is the whole of what an operator needs to fix it.
   if (chainEnvironment === "live") {
     const missing = [
-      ...(environmentValues.CABINET_ANNOUNCEMENT_URL === undefined
-        ? ["CABINET_ANNOUNCEMENT_URL"]
-        : []),
-      ...(environmentValues.ANNOUNCEMENT_SECRET === undefined ? ["ANNOUNCEMENT_SECRET"] : []),
+      ...(environmentValues.CABINET_INTERNAL_URL === undefined ? ["CABINET_INTERNAL_URL"] : []),
+      ...(environmentValues.GATEWAY_CABINET_SECRET === undefined ? ["GATEWAY_CABINET_SECRET"] : []),
     ];
     if (missing.length > 0) {
       problems.push(
@@ -1022,13 +1024,13 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
     surfaceMode: surfaceModeOf(network, environmentValues.FACILITATOR_URL),
     // Past the refusal above a live chain has both, so the only question left
     // is whether this deployment announces at all.
-    announcements:
+    cabinetRoute:
       derivedEnvironment === "live" &&
-      environmentValues.CABINET_ANNOUNCEMENT_URL !== undefined &&
-      environmentValues.ANNOUNCEMENT_SECRET !== undefined
+      environmentValues.CABINET_INTERNAL_URL !== undefined &&
+      environmentValues.GATEWAY_CABINET_SECRET !== undefined
         ? {
-            url: environmentValues.CABINET_ANNOUNCEMENT_URL.replace(/\/+$/, ""),
-            secret: environmentValues.ANNOUNCEMENT_SECRET,
+            url: environmentValues.CABINET_INTERNAL_URL.replace(/\/+$/, ""),
+            secret: environmentValues.GATEWAY_CABINET_SECRET,
           }
         : null,
   };

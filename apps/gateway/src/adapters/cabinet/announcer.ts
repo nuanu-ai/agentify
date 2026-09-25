@@ -20,11 +20,12 @@
  */
 
 import {
-  ANNOUNCEMENTS_PATH,
   type Announcement,
   AnnouncementAnswerSchema,
+  GATEWAY_ROUTE_PATH,
+  type GatewayRequest,
 } from "../../announcements.js";
-import type { AnnouncementConfig } from "../../config.js";
+import type { CabinetRouteConfig } from "../../config.js";
 import type { AnnouncementOutcome, Announcer } from "../../ports/announcer.js";
 
 /**
@@ -45,8 +46,8 @@ export class CabinetAnnouncer implements Announcer {
   readonly #secret: string;
   readonly #answerWithinMs: number;
 
-  constructor(config: AnnouncementConfig, answerWithinMs: number = ANSWER_WITHIN_MS) {
-    this.#endpoint = `${config.url}${ANNOUNCEMENTS_PATH}`;
+  constructor(config: CabinetRouteConfig, answerWithinMs: number = ANSWER_WITHIN_MS) {
+    this.#endpoint = `${config.url}${GATEWAY_ROUTE_PATH}`;
     this.#secret = config.secret;
     this.#answerWithinMs = answerWithinMs;
   }
@@ -61,7 +62,7 @@ export class CabinetAnnouncer implements Announcer {
           authorization: `Bearer ${this.#secret}`,
           "content-type": "application/json",
         },
-        body: JSON.stringify(announcement),
+        body: JSON.stringify({ operation: "announce", ...announcement } satisfies GatewayRequest),
       });
     } catch {
       // Not printed: the exception can carry the request, and the request
@@ -80,7 +81,7 @@ export class CabinetAnnouncer implements Announcer {
       // deployment is being refused until somebody makes the two agree.
       console.error(
         answered.status === 401
-          ? `[gateway] the cabinet refused the announcement secret (${announcement.kind}): ANNOUNCEMENT_SECRET on the gateway and on the cabinet are not the same value, and nothing was announced`
+          ? `[gateway] the cabinet refused the gateway's secret (${announcement.kind}): GATEWAY_CABINET_SECRET on the gateway and on the cabinet are not the same value, and nothing was announced`
           : `[gateway] the cabinet refused an announcement (${announcement.kind}) with ${answered.status} before telling anybody`,
       );
       return "refused_by_cabinet";

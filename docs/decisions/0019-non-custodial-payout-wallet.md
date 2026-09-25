@@ -98,8 +98,13 @@ asks over an internal route of its own, reachable only on the compose
 network and authenticated by a secret that only the gateway and the
 cabinet hold. It never uses the scanner's route or secret (ADR-0026),
 which would give the money path the power to look up sessions and remove
-people. When every message has been handed over, the gateway records the
-pending change, answers with it and counts the forty-eight hours from
+people. That route and its secret (`/internal/gateway`,
+`GATEWAY_CABINET_SECRET`) are the gateway's one way into the cabinet, and
+are named for it: each request names its `operation`, as the scanner's
+do, and anything else the gateway ever needs from the cabinet is another
+operation on the same route with the same secret, never a second route or
+a second secret. When every message has been handed over, the gateway
+records the pending change, answers with it and counts the forty-eight hours from
 then. Otherwise it writes nothing and refuses the change in words that say
 which of three cases it met: there is nobody to tell; a message could not
 be handed over, or the cabinet turned the request away before sending any;
