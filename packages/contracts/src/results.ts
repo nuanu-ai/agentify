@@ -263,9 +263,10 @@ export const CARD_REJECTED = "card_rejected";
  * be paid into, or no approval from the operator for the live catalog. The
  * first two are set with a call of the merchant's own (`POST /v0/seller-name`,
  * `POST /v0/payout-wallet`); the third is the operator's decision and has no
- * call. Which of them a deployment asks for is its own rule and is not
- * promised here; a program that branches on these learns what is missing
- * where it is refused, at the publish.
+ * call. The name is asked for everywhere, the wallet wherever a payment
+ * settles and the approval on the live deployment alone, as the publish
+ * route's description says; a program needs no copy of that rule, because it
+ * learns what is missing where it is refused, at the publish.
  */
 export const MERCHANT_FINDINGS = Object.freeze({
   NO_SELLER_NAME: "no_seller_name",
