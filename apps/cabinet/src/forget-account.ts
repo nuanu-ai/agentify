@@ -10,9 +10,11 @@
  * that row and goes with it. The merchant row takes its keys by cascade, and
  * its payout wallet, with any change waiting on it, is on the row itself; its
  * cards are deleted first, because the gateway's schema does not let a
- * merchant with cards go. The sends the sign-in door and the report door count
- * against an address are cleared under the keys those doors write them with,
- * so the next link can be asked for at once.
+ * merchant with cards go. The link sends the cabinet counts against an
+ * address, for its own sign-in and for the report links it sends on the
+ * scanner's behalf, are cleared under the keys it writes them with, so the next
+ * link can be asked for at once. The scanner's own limit on registrations per
+ * address is the scanner's, and this does not touch it.
  *
  * Two things refuse it, and both refuse before anything is written. A merchant
  * with an order or a receipt has money history, and money history is not
@@ -177,7 +179,7 @@ export async function runForget(
       committing
         ? "The TEST forget's outcome is unknown: the database did not confirm the commit." +
             " Run the same command again; it finishes the work or says the address has no account."
-        : "The TEST forget could not finish, and removed nothing. No database details were printed.",
+        : "The TEST forget could not finish, and removed nothing.",
     );
     return 1;
   } finally {
