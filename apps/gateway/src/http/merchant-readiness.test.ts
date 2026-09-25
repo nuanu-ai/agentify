@@ -198,17 +198,21 @@ describe("the one line a refusal is read by", () => {
   });
 
   it("still points at the card's own findings beside the merchant's", async () => {
-    const { served, key } = await aMerchant("test", NOTHING);
+    // One answer carries everything: told one thing at a time, a merchant fixes
+    // the card, publishes again, and only then hears about the rest.
+    const { served, key } = await aMerchant("live", NOTHING);
 
     const refusal = (
       (await publish(served, key, { ...CARD, price: { amount: "not a number", currency: "USD" } }))
         .body as { error: Refusal }
     ).error;
 
+    expect(aboutTheMerchant(refusal)).toStrictEqual(Object.values(MERCHANT_FINDINGS));
+    expect(refusal.problems.some((finding) => finding.path.includes("price"))).toBe(true);
     expect(refusal.message).toMatch(/seller name/i);
     expect(refusal.message).toMatch(/payout wallet/i);
+    expect(refusal.message).toMatch(/approv/i);
     expect(refusal.message).toContain("price");
-    expect(refusal.problems.some((finding) => finding.path.includes("price"))).toBe(true);
   });
 
   it("says nothing about the merchant where the card alone is at fault", async () => {

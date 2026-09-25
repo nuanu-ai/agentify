@@ -12,7 +12,6 @@
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { grantLiveApproval } from "../app/merchants.js";
-import { SANDBOX_FACILITATOR } from "../config.js";
 import {
   ANNOUNCING,
   type Harness,
@@ -172,41 +171,6 @@ describe("live publication before operator approval", () => {
     const own = await served.call("GET", "/v0/cards", { headers: bearer(key) });
     expect(own.status, JSON.stringify(own.body)).toBe(200);
     expect((own.body as { cards: unknown[] }).cards).toStrictEqual([]);
-  });
-
-  it("reports every missing prerequisite beside an invalid card", async () => {
-    const { served } = await started();
-    const key = await freshMerchant(served);
-
-    const refused = await publish(served, key, {
-      ...card("another-room"),
-      price: { amount: "not a number", currency: "USD" },
-    });
-
-    expect(refused.status).toBe(422);
-    const { problems } = (
-      refused.body as { error: { problems: { code: string; path: string[] }[] } }
-    ).error;
-    const codes = problems.map((problem) => problem.code);
-    expect(codes).toContain("no_seller_name");
-    expect(codes).toContain("no_payout_wallet");
-    expect(codes).toContain("no_operator_approval");
-    expect(problems.some((problem) => problem.path.includes("price"))).toBe(true);
-  });
-
-  it("does not require operator approval or a wallet in the sandbox", async () => {
-    const { served } = await started({
-      PAYMENT_NETWORK: "eip155:84532",
-      FACILITATOR_URL: SANDBOX_FACILITATOR,
-      CDP_API_KEY_ID: "",
-      CDP_API_KEY_SECRET: "",
-    });
-    const key = await freshMerchant(served);
-    await name(served, key);
-
-    const published = await publish(served, key, card("sandbox-room"));
-
-    expect(published.status, JSON.stringify(published.body)).toBe(200);
   });
 });
 
