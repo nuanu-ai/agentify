@@ -19,8 +19,9 @@
 # second run finds drizzle.scanner_migrations and moves nothing.
 #
 # `finish` drops the scanner's database, which takes its pg-boss schema, its
-# metabase views and every policy naming the old roles with it, then the four
-# roles, then renames the database and the bootstrap account to agentify. The
+# metabase views and every policy naming the old roles with it, the test
+# suites' scratch database under its old name, then the four roles, and
+# renames the database and the bootstrap account to agentify. The
 # account is the one initdb created, which PostgreSQL will not drop, so it is
 # renamed rather than replaced, by a superuser that exists for that one
 # statement. Every step looks before it acts, so a second run repeats only
@@ -100,6 +101,7 @@ finish() {
     say "dropping agentify_scanner"
     q -d postgres -c 'DROP DATABASE agentify_scanner'
   fi
+  q -d postgres -c 'DROP DATABASE IF EXISTS agentify_commerce_test'
   for old in agentify_web agentify_worker agentify_privacy agentify_dashboard; do
     q -d postgres -c "DROP ROLE IF EXISTS $old"
   done
