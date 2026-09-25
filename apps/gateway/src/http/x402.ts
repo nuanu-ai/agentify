@@ -40,6 +40,7 @@ import type {
 } from "@x402/core/types";
 import { getDefaultAsset } from "@x402/evm";
 import { bazaarResourceServerExtension, declareDiscoveryExtension } from "@x402/extensions/bazaar";
+import { PAYABLE_CURRENCIES } from "../app/prices.js";
 import { isSandboxFacilitator, type PaymentConfig } from "../config.js";
 
 /** The x402 version this edge speaks. */
@@ -75,22 +76,6 @@ export function atomicUnits(amount: string, decimals: number): string {
   const written = `${whole}${fraction.padEnd(decimals, "0")}`.replace(/^0+(?=\d)/, "");
   return written;
 }
-
-/**
- * The currencies a price may be written in, and the one conversion this gateway
- * does make.
- *
- * A card priced in dollars is charged in the network's own dollar-denominated
- * asset, one for one. That is a decision and not the absence of one, so it is
- * written here rather than left to be inferred from the fact that it works: a
- * merchant who writes "USD" is charging their buyer USDC on the configured
- * chain, and the two are held to be the same number of dollars.
- *
- * Everything else is refused. There is no exchange rate anywhere in this
- * system, nobody has decided where one would come from, and a charge based on
- * an invented one would be the clearest possible claim beyond the evidence.
- */
-const PAYABLE = new Set(["USD", "USDC"]);
 
 export class PaymentEdge {
   readonly #config: PaymentConfig;
@@ -133,7 +118,10 @@ export class PaymentEdge {
     orderId: string | null,
     payoutWallet: string | null,
   ): PaymentRequirements {
-    if (!PAYABLE.has(price.currency.toUpperCase())) {
+    // The set the publish door and the price answer's door hold a price to, so
+    // what reaches this line in another currency is a card stored before the
+    // door refused it.
+    if (!PAYABLE_CURRENCIES.has(price.currency.toUpperCase())) {
       throw new Error(
         `${price.currency} is not a currency this gateway can charge in, and it will not invent a rate to one that is`,
       );

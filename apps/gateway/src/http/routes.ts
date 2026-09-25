@@ -553,14 +553,28 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
     },
 
     answer_quote: {
-      serve: async (call) => ({
-        status: OK,
-        document: await gateway.answerQuote(
+      serve: async (call) => {
+        const answered = await gateway.answerQuote(
           merchantOf(call),
           call.params.price_id ?? "",
           call.body as never,
-        ),
-      }),
+        );
+        if ("refused" in answered) {
+          // Refused as a body that is not what this call takes, with the
+          // reasons as the sentence itself rather than behind it: a worker
+          // reporting a refused answer prints the sentence and not the list.
+          return written(
+            call.response,
+            BAD_REQUEST,
+            refusal(
+              "malformed_body",
+              answered.refused.map((problem) => problem.message).join("; "),
+              { problems: answered.refused },
+            ),
+          );
+        }
+        return { status: OK, document: answered };
+      },
     },
 
     purchase_item: {

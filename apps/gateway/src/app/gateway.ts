@@ -74,6 +74,7 @@ import {
   registerMerchant,
   setServiceName,
 } from "./merchants.js";
+import { priceProblemsOf } from "./prices.js";
 import { OrderRunner, orderDocumentOf, SWEEP_EFFECTS } from "./runner.js";
 import {
   approvedForLive,
@@ -155,6 +156,14 @@ export const SWEEP_CLAIMS = "agentify_forget_old_claims";
 export type SellingChange =
   | { readonly ok: true; readonly cards: MerchantCardList }
   | { readonly ok: false; readonly why: string };
+
+/**
+ * A price answer the door turned away, and what stands between its price and a
+ * sale. Nothing moved: the question it answered is still open.
+ */
+export interface QuoteAnswerRefused {
+  readonly refused: readonly Problem[];
+}
 
 /**
  * One product as a thing that can be paid for, and everything a challenge for
@@ -429,8 +438,11 @@ export class Gateway {
     if (!parsed.success) {
       return cardRejected([...missing, ...findingsOf(parsed.error.issues)]);
     }
-    if (missing.length > 0) {
-      return cardRejected(missing);
+    // Asked of the card as it was opened out, so a price written as one string
+    // meets the same rule in the same words as one written as two fields.
+    const unsellable = priceProblemsOf(parsed.data.price);
+    if (missing.length > 0 || unsellable.length > 0) {
+      return cardRejected([...missing, ...unsellable]);
     }
 
     const stored = await this.runtime.store.publishCard(
@@ -1638,12 +1650,23 @@ export class Gateway {
    *
    * So the answer is put to the machine here, and what the machine made of it is
    * what comes back.
+   *
+   * A price no payment can be taken at is turned away before any of that, by
+   * the rule a card's price meets at publication, and it is turned away
+   * whichever question it names: the fault is in the answer, not in the
+   * question. The question stays open, so a corrected answer may still price
+   * the sale, and if none comes it ends as a silent one does.
    */
   async answerQuote(
     merchantId: string,
     priceId: string,
     response: QuoteResponse,
-  ): Promise<QuoteAnswerAck> {
+  ): Promise<QuoteAnswerAck | QuoteAnswerRefused> {
+    const unsellable = response.available ? priceProblemsOf(response.price) : [];
+    if (unsellable.length > 0) {
+      return { refused: unsellable };
+    }
+
     const asked = this.#questions.get(priceId);
     // A question this merchant was not the one asked is answered exactly as a
     // question we no longer hold — a worker replaying an envelope from an hour
