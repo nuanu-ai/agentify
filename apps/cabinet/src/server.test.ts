@@ -4080,6 +4080,39 @@ describe("a wallet change waiting on the live deployment", () => {
     expect(await waitingNow(running)).not.toBeNull();
   });
 
+  it("cancels a waiting change when the address paid now is typed in, and signs the others out", async () => {
+    // The same act as the cancel control, reached through the box: the
+    // gateway reads the address that applies now as a cancel. A cancel that
+    // left the session which asked for the change signed in would leave it
+    // free to ask again, and a page or a log that called it a change would
+    // tell the person something else happened.
+    const said: string[] = [];
+    const log = vi
+      .spyOn(console, "log")
+      .mockImplementation((...parts) => said.push(parts.map(String).join(" ")));
+    try {
+      const running = await live();
+      await onACabinetKey(running);
+      await running.browser.signIn();
+      const otherDevice = await running.another();
+      await otherDevice.signIn();
+      await aChangeWaits(running);
+
+      const typed = await running.browser.post("/settings/payout-wallet", {
+        payout_wallet: running.harnessed.merchant.wallet,
+      });
+
+      expect(await waitingNow(running)).toBeNull();
+      expect(await paidNow(running)).toBe(running.harnessed.merchant.wallet);
+      expect((await otherDevice.get("/settings")).to).toMatch(/^\/sign-in/);
+      expect(readable(typed.html)).toMatch(/cancelled/i);
+      expect(said.join("\n")).toMatch(/cancelled a waiting change/);
+      expect(said.join("\n")).not.toMatch(/changed the address/);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it("signs nobody out when there was nothing to cancel", async () => {
     const running = await live();
     await onACabinetKey(running);
