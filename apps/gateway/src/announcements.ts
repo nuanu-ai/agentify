@@ -8,7 +8,10 @@
  * on the live deployment a change of a payout wallet already set is announced
  * to every account that names the merchant before anything is written, and a
  * first wallet, a new key of the merchant's own and a cancelled change are
- * announced once they are done. Anything else the gateway ever needs from the
+ * announced once they are done. A wallet is changed only with the cabinet's
+ * own key (ADR-0019), so a wallet announcement names no key: it was asked for
+ * by a person signed in to the cabinet. A new key names the key that asked,
+ * because any key of the merchant's may issue one. Anything else the gateway ever needs from the
  * cabinet is another `operation` in `GatewayRequestSchema`, over this route
  * and with this secret, never a second route or a second secret.
  *
@@ -21,8 +24,8 @@
  *
  * What a request carries is facts and no words. The message a person reads is
  * the cabinet's to write, because the cabinet is what knows where its own
- * screens are; the gateway says what changed, from what to what, and which key
- * asked. Nothing in it can open anything: there is no token here, and the
+ * screens are; the gateway says what changed, from what to what, and, for a
+ * new key, which key asked. Nothing in it can open anything: there is no token here, and the
  * message built from it carries none.
  */
 
@@ -54,9 +57,8 @@ const LONGEST_ANNOUNCED_LABEL = 101;
  *
  * A new key's label is held to that at the door, but a key issued at the
  * server's terminal, or before the door held labels to anything, can be named
- * anything at all — and an announcement about a wallet change made with such
- * a key must still be one the cabinet takes, rather than a change refused
- * because of how a key was named. So the gateway writes every label it
+ * anything at all — and an announcement of a key issued with such a key must
+ * still be one the cabinet takes. So the gateway writes every label it
  * announces down to this, and the cabinet refuses anything else.
  */
 export function announcedLabel(label: string): string {
@@ -85,15 +87,15 @@ const AnnouncedLabelSchema = z
   );
 
 /**
- * Which key a call was made with, named the way the merchant's list of keys
- * names it.
+ * Which key a new key was issued with, named the way the merchant's list of
+ * keys names it.
  *
  * A key of the merchant's own code is on that list under its label, with its
  * identifier beneath, so that is how a message names it: a person reading "the
  * key you called the stock worker" can find the row and disable it. The key the
  * cabinet signs in with is on no list, and a call made with it means a person
  * signed in to the cabinet acted — so it is named as the cabinet and nothing
- * more (ADR-0019).
+ * more.
  */
 export const AskedWithSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("cabinet") }),
@@ -105,16 +107,15 @@ export const AskedWithSchema = z.discriminatedUnion("kind", [
 ]);
 
 /**
- * A merchant's first payout wallet was set, and applies already. Sent
- * after, and never waited on: it replaces nothing, and a new merchant has to
- * be able to start selling — but a leaked key could set it before its owner
- * does, and this is how the owner hears of it.
+ * A merchant's first payout wallet was set in the cabinet, and applies
+ * already. Sent after, and never waited on: it replaces nothing, and a new
+ * merchant has to be able to start selling — but a session that is not the
+ * owner's could set it, and this is how the owner hears of it.
  */
 const WalletSetSchema = z.strictObject({
   kind: z.literal("wallet_set"),
   merchant_id: z.string().min(1),
   to: WalletSchema,
-  asked_with: AskedWithSchema,
 });
 
 /**
@@ -130,7 +131,6 @@ const WalletChangeSchema = z.strictObject({
   from: WalletSchema,
   to: WalletSchema,
   not_before: z.iso.datetime({ offset: true }),
-  asked_with: AskedWithSchema,
 });
 
 /** A waiting change was cancelled by asking for the address paid now. Sent after. */
@@ -139,7 +139,6 @@ const WalletChangeCancelledSchema = z.strictObject({
   merchant_id: z.string().min(1),
   kept: WalletSchema,
   cancelled: WalletSchema,
-  asked_with: AskedWithSchema,
 });
 
 /** A key for the merchant's own code was issued. Sent after, and never waited on. */

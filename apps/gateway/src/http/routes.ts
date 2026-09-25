@@ -341,7 +341,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
         const set = await gateway.setPayoutWallet(
           merchantOf(call),
           (call.body as PayoutWalletRequest).payout_wallet,
-          { keyId: callersKey(call), purpose: callersPurpose(call) },
+          callersPurpose(call),
         );
         if (set === "not_a_cabinet_key") {
           return walletIsSetInTheCabinet(call.response);

@@ -23,7 +23,6 @@
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it } from "vitest";
-import type { Announcement } from "../announcements.js";
 import {
   ANNOUNCING,
   buyOverHttp,
@@ -717,9 +716,10 @@ describe("a new key on the live deployment", () => {
 
     expect(issued.status, JSON.stringify(issued.body)).toBe(200);
     const [announced] = harnessed.announcer.announced;
-    const named = (announced as Announcement).asked_with;
-    expect(named.kind).toBe("merchant_code");
-    const label = named.kind === "merchant_code" ? named.label : "";
+    expect(announced?.kind).toBe("key_issued");
+    const named = announced?.kind === "key_issued" ? announced.asked_with : null;
+    expect(named?.kind).toBe("merchant_code");
+    const label = named?.kind === "merchant_code" ? named.label : "";
     expect(label).not.toMatch(/[\r\n\t]/);
     expect(label.length).toBeLessThanOrEqual(101);
     expect(label.startsWith("the stock worker kkk")).toBe(true);

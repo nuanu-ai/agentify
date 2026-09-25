@@ -2,11 +2,13 @@
  * The messages the cabinet sends when the gateway asks it to tell a merchant
  * of a change (ADR-0019).
  *
- * Four kinds, all about something done with one of the merchant's keys: a
- * first payout wallet set, a replacement that is waiting, a waiting change
- * that was cancelled, and a new key for the merchant's own code. Each says what
- * happened, which key it was done with, and where in the cabinet to look. The
- * one the rest exist around is the first, and it has three things to get
+ * Four kinds: a first payout wallet set, a replacement that is waiting, a
+ * waiting change that was cancelled, and a new key for the merchant's own
+ * code. Each says what happened, where it was asked for, and where in the
+ * cabinet to look. A wallet is changed only in the cabinet, by a person signed
+ * in to it (ADR-0019), so the three about the wallet say so; a new key may be
+ * issued with any key of the merchant's, so that message names the one. The
+ * one the rest exist around is the replacement, and it has three things to get
  * right.
  *
  * When. The gateway counts the forty-eight hours from the moment every message
@@ -25,10 +27,11 @@
  * would turn every forwarded or intercepted copy of it into a way into the
  * merchant's cabinet, on the one day somebody is trying to move their money.
  *
- * A key is named the way the merchant's list of keys names it: its label, with
- * its identifier beside it, so the row can be found and disabled. The key the
- * cabinet signs in with is on no list, and a call made with it means a person
- * signed in to the cabinet acted, so it is named as that.
+ * A key that issued a new one is named the way the merchant's list of keys
+ * names it: its label, with its identifier beside it, so the row can be found
+ * and disabled. The key the cabinet signs in with is on no list, and a call
+ * made with it means a person signed in to the cabinet acted, so it is named
+ * as that.
  */
 
 import type { Announcement, AskedWith } from "@agentify/gateway/announcements";
@@ -62,11 +65,12 @@ const named = (key: AskedWith): string =>
     ? "the cabinet, by a person signed in to it"
     : `the key ${key.id}, named "${inert(key.label)}", one of the keys issued for your own code`;
 
-/** What to do about it, if the reader did not ask for it. */
-const ifNotYou = (key: AskedWith): string =>
-  key.kind === "cabinet"
-    ? "If nobody at your business did this, somebody else may be signed in to your cabinet: cancelling a waiting wallet change on the wallet screen signs every other session out."
-    : `If nobody at your business did this, disable the key ${key.id} on the keys screen of your cabinet.`;
+/** Where every wallet change is asked for, and the only place it can be. */
+const IN_THE_CABINET = "in the cabinet, by a person signed in to it";
+
+/** What to do about a wallet change, if the reader did not ask for it. */
+const IF_NOT_YOU =
+  "If nobody at your business did this, somebody else may be signed in to your cabinet: cancelling a waiting wallet change on the wallet screen signs every other session out.";
 
 export function announcementMessage(
   to: string,
@@ -77,11 +81,11 @@ export function announcementMessage(
     case "wallet_change": {
       const notBefore = moment(announcement.not_before);
       const lead =
-        `A change of the wallet your sales are paid into was asked for with ${named(announcement.asked_with)}.` +
+        `A change of the wallet your sales are paid into was asked for ${IN_THE_CABINET}.` +
         ` From ${announcement.from} to ${announcement.to}.`;
       const paragraphs = [
         `It takes effect not before ${notBefore}, and only if the wallet screen of your cabinet shows it waiting: ${screens.wallet}. Until then every sale is paid into ${announcement.from}.`,
-        `If you did not ask for this, cancel it on that screen. ${ifNotYou(announcement.asked_with)}`,
+        `If you did not ask for this, cancel it on that screen. ${IF_NOT_YOU}`,
         "This message opens nothing by itself: sign in to your cabinet the usual way.",
       ];
       return written(to, {
@@ -96,7 +100,7 @@ export function announcementMessage(
     }
     case "wallet_set": {
       const lead =
-        `The wallet your sales are paid into was set to ${announcement.to}, with ${named(announcement.asked_with)}.` +
+        `The wallet your sales are paid into was set to ${announcement.to} ${IN_THE_CABINET}.` +
         " It is the first address your merchant has had, so it applies now.";
       return written(to, {
         subject: "A payout wallet was set for your merchant",
@@ -106,14 +110,14 @@ export function announcementMessage(
         action: "Open the wallet screen",
         link: screens.wallet,
         paragraphs: [
-          `If nobody at your business set it, stop selling from your cabinet and set your own address on the wallet screen: ${screens.wallet}. A replacement waits forty-eight hours and is announced. ${ifNotYou(announcement.asked_with)}`,
+          `If nobody at your business set it, stop selling from your cabinet and set your own address on the wallet screen: ${screens.wallet}. A replacement waits forty-eight hours and is announced. ${IF_NOT_YOU}`,
           "This message opens nothing by itself: sign in to your cabinet the usual way.",
         ],
       });
     }
     case "wallet_change_cancelled": {
       const lead =
-        `The waiting change of your payout wallet to ${announcement.cancelled} was cancelled with ${named(announcement.asked_with)}.` +
+        `The waiting change of your payout wallet to ${announcement.cancelled} was cancelled ${IN_THE_CABINET}.` +
         ` Your sales are still paid into ${announcement.kept}.`;
       return written(to, {
         subject: "A payout wallet change was cancelled",
@@ -123,7 +127,7 @@ export function announcementMessage(
         action: "Open the wallet screen",
         link: screens.wallet,
         paragraphs: [
-          `If you did not cancel it, ask for the change again on that screen. ${ifNotYou(announcement.asked_with)}`,
+          `If you did not cancel it, ask for the change again on that screen. ${IF_NOT_YOU}`,
           "This message opens nothing by itself: sign in to your cabinet the usual way.",
         ],
       });
@@ -131,7 +135,7 @@ export function announcementMessage(
     case "key_issued": {
       const lead =
         `A new key, ${announcement.key.id}, named "${inert(announcement.key.label)}", was issued for your own code with ${named(announcement.asked_with)}.` +
-        " A key can call everything your code can, including a change of your payout wallet, which is announced and waits.";
+        " A key can call everything your code can, except changing where your money goes, which only the cabinet does.";
       return written(to, {
         subject: "A new key was issued for your merchant",
         eyebrow: "Keys",

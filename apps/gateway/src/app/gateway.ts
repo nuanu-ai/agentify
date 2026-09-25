@@ -792,9 +792,9 @@ export class Gateway {
   async setPayoutWallet(
     merchantId: string,
     wallet: string,
-    askedBy: KeyOnTheCall,
+    madeWith: KeyPurpose,
   ): Promise<PayoutWallet | WalletChangeRefusal | "not_a_cabinet_key"> {
-    if (askedBy.purpose !== "cabinet") {
+    if (madeWith !== "cabinet") {
       return "not_a_cabinet_key";
     }
     // The route holds the same rule on the way in, so a throw from here is a
@@ -824,7 +824,6 @@ export class Gateway {
           kind: "wallet_set",
           merchant_id: merchantId,
           to: address,
-          asked_with: await this.#named(merchantId, askedBy),
         });
       }
       return set;
@@ -842,7 +841,6 @@ export class Gateway {
           merchant_id: merchantId,
           kept: address,
           cancelled,
-          asked_with: await this.#named(merchantId, askedBy),
         });
       }
       return written;
@@ -858,7 +856,6 @@ export class Gateway {
       from: now.address,
       to: address,
       not_before: asTimestamp(this.runtime.clock() + WALLET_CHANGE_WAITS_MS),
-      asked_with: await this.#named(merchantId, askedBy),
     });
     if (told !== "handed_over") {
       console.warn(`[gateway] a payout wallet change for ${merchantId} was refused: ${told}`);
@@ -991,9 +988,9 @@ export class Gateway {
    * Issues another key for this merchant's own code, and hands it back once.
    *
    * On the live deployment the merchant is told of it afterwards, and the key
-   * never waits on the message (ADR-0019): a key moves no money, a wallet
-   * change made with it is itself announced and waited on, and a merchant must
-   * not be kept from a key — their first above all — because mail is down.
+   * never waits on the message (ADR-0019): a key moves no money and cannot set
+   * the wallet, and a merchant must not be kept from a key — their first above
+   * all — because mail is down.
    */
   async issueMerchantKey(
     merchantId: string,
