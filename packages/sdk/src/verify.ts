@@ -143,19 +143,23 @@ const USAGE = [
  * that route promises is worth repeating exactly, because every part of it is
  * easy to overstate. Whose cards it returns is settled: the merchant whose key
  * the call was made with, and nobody else. A card reaches that list by being accepted at
- * `publish_card`, which parses the same `CardSchema` this package parses, so
- * the cards on it passed this check on the day they went out — which is not
- * the same as passing it now, because the schema can move, nothing parses a
- * stored card again on the way back out, and a command that builds no client
- * can never learn which version of the contract the gateway is speaking. And
- * publishing is more than this check: it can refuse a card for reasons no
- * schema carries, which `checkCard` says in its own words.
+ * `publish_card`, which parses the same `CardSchema` and applies the same
+ * price rule this package does, so the cards on it passed this check on the
+ * day they went out — which is not the same as passing it now. The schema can
+ * move, and the price rule is applied only at publication: a stored card is
+ * parsed again on its way back out against the schema alone, so a card
+ * published before the price rule tightened is read back as it was, and one
+ * that no longer fits a schema that moved fails that read. And a
+ * command that builds no client can never learn which version of the contract
+ * the gateway is speaking. Publishing is more than this check, too: it can
+ * refuse a card for reasons the contract does not carry, which `checkCard`
+ * says in its own words.
  *
  * Taking no key is a choice and not a hole, which is worth saying here because
  * the first line of the message reads like a limitation somebody would set out
- * to remove. A check that read published cards over that route would always
- * pass — they got onto it by passing this very schema — and a green that cannot
- * fail teaches a merchant to stop reading it. What would earn a keyed mode is a
+ * to remove. A check that read published cards over that route would all but
+ * always pass — they got onto it by passing this very check — and a green that
+ * cannot fail teaches a merchant to stop reading it. What would earn a keyed mode is a
  * dry run of publishing, which can refuse for reasons no schema carries; there
  * is no such route (`docs/research/00-open-questions.md`).
  *

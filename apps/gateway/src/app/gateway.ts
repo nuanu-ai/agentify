@@ -159,7 +159,8 @@ export type SellingChange =
 
 /**
  * A price answer the door turned away, and what stands between its price and a
- * sale. Nothing moved: the question it answered is still open.
+ * sale. Nothing moved: a question it named that is still held stays open, and
+ * one that is not held was never looked up.
  */
 export interface QuoteAnswerRefused {
   readonly refused: readonly Problem[];
@@ -1654,8 +1655,8 @@ export class Gateway {
    * A price no payment can be taken at is turned away before any of that, by
    * the rule a card's price meets at publication, and it is turned away
    * whichever question it names: the fault is in the answer, not in the
-   * question. The question stays open, so a corrected answer may still price
-   * the sale, and if none comes it ends as a silent one does.
+   * question. A question still held stays open, so a corrected answer may
+   * still price the sale, and if none comes it ends as a silent one does.
    */
   async answerQuote(
     merchantId: string,
