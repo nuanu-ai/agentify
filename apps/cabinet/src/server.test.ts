@@ -650,6 +650,24 @@ const paidInto = async (running: Running): Promise<string | null> =>
   (await running.harnessed.store.merchantById(running.harnessed.merchant.id))?.payoutWallet
     .address ?? null;
 
+/**
+ * Puts a key made for a cabinet on every account row of the merchant this file
+ * signs in as, one key per row.
+ *
+ * The rows this file seeds hold the harness's own key, which is one of the
+ * merchant's own code, and the payout wallet is set with a cabinet's key and no
+ * other (ADR-0019). One per row, because a sign-in renews the key on its row
+ * and forgets the one it replaced, which would leave a second row holding a
+ * key the gateway no longer knows.
+ */
+const onACabinetKey = async (running: Running): Promise<void> => {
+  for (const row of running.rows.cabinet_accounts ?? []) {
+    if (row.merchantId === THE_MERCHANT.id) {
+      row.merchantKey = await running.harnessed.addCabinetKey(running.harnessed.merchant.id);
+    }
+  }
+};
+
 /** The one line of an answer that sets the session cookie of this name, if any. */
 const sessionCookieIn = (answer: Visit, name: string): string | undefined =>
   answer.headers.getSetCookie().find((line) => line.startsWith(`${name}=`));
@@ -1586,6 +1604,7 @@ describe("the address a merchant's money arrives at", () => {
 
   it("is saved, and the whole of it is on the page afterwards", async () => {
     const running = await started();
+    await onACabinetKey(running);
     await running.browser.signIn();
 
     const saved = await running.browser.post("/settings/payout-wallet", {
@@ -1609,6 +1628,7 @@ describe("the address a merchant's money arrives at", () => {
     // reads their own wallet's spelling back, and the page never asks anybody
     // to believe that two strings are one address.
     const running = await started();
+    await onACabinetKey(running);
     await running.browser.signIn();
 
     const saved = await running.browser.post("/settings/payout-wallet", { payout_wallet: LOWER });
@@ -1654,6 +1674,7 @@ describe("the address a merchant's money arrives at", () => {
     // newline on the end about as often as not. Refusing that is refusing a
     // merchant who did exactly the right thing.
     const running = await started();
+    await onACabinetKey(running);
     await running.browser.signIn();
 
     const saved = await running.browser.post("/settings/payout-wallet", {
@@ -1666,6 +1687,7 @@ describe("the address a merchant's money arrives at", () => {
 
   it("refuses an address of the wrong shape and sends nothing", async () => {
     const running = await started();
+    await onACabinetKey(running);
     await running.browser.signIn();
     await running.browser.post("/settings/payout-wallet", {
       payout_wallet: AS_A_WALLET_SHOWS_IT,
@@ -3831,24 +3853,22 @@ describe("a wallet change waiting on the live deployment", () => {
   };
 
   /**
-   * A cabinet in front of a live gateway, with every account at the merchant
-   * holding the key that gateway's door takes: a live door refuses a key
-   * carrying the test prefix, which is what the rest of this file's accounts
-   * hold.
+   * A cabinet in front of a live gateway. A live door refuses a key carrying
+   * the test prefix, which is what this file's accounts hold, so every test
+   * here puts a cabinet key that gateway made on the rows before signing in.
    */
   const live = async (options: Starting = {}): Promise<Running> =>
     await started({ ...options, gateway: LIVE_GATEWAY, cabinet: LIVE_CABINET });
-  const onTheLiveKey = (running: Running): void => {
-    for (const row of running.rows.cabinet_accounts ?? []) {
-      if (row.merchantId === THE_MERCHANT.id) row.merchantKey = theMerchantKey("live");
-    }
-  };
 
-  /** A replacement asked for with the merchant's own key, as their code would. */
+  /**
+   * A replacement asked for from another session of the cabinet, on a key of
+   * its own: the session somebody forgot to sign out of, or never owned.
+   */
   const aChangeWaits = async (running: Running): Promise<void> => {
+    const elsewhere = await running.harnessed.addCabinetKey(running.harnessed.merchant.id);
     const asked = await running.gateway.call("POST", "/v0/payout-wallet", {
       body: { payout_wallet: WAITING },
-      headers: { authorization: `Bearer ${running.harnessed.merchant.key}` },
+      headers: { authorization: `Bearer ${elsewhere}` },
     });
     expect(asked.status, JSON.stringify(asked.body)).toBe(200);
   };
@@ -3874,7 +3894,7 @@ describe("a wallet change waiting on the live deployment", () => {
 
   it("shows the address waiting, the moment it takes effect, and a control to cancel it", async () => {
     const running = await live();
-    onTheLiveKey(running);
+    await onACabinetKey(running);
     await running.browser.signIn();
     await aChangeWaits(running);
 
@@ -3892,7 +3912,7 @@ describe("a wallet change waiting on the live deployment", () => {
 
   it("shows no cancel control where nothing is waiting", async () => {
     const running = await live();
-    onTheLiveKey(running);
+    await onACabinetKey(running);
     await running.browser.signIn();
 
     const screen = await running.browser.get("/settings");
@@ -3903,7 +3923,7 @@ describe("a wallet change waiting on the live deployment", () => {
   it("cancels with one press, keeps the session that pressed, and signs every other session of the merchant out", async () => {
     const running = await live();
     await running.identity.make(OTHER, THE_MERCHANT);
-    onTheLiveKey(running);
+    await onACabinetKey(running);
     await running.browser.signIn();
     const otherDevice = await running.another();
     await otherDevice.signIn();
@@ -3929,7 +3949,7 @@ describe("a wallet change waiting on the live deployment", () => {
     // the gateway reading the wallet for this cancel and writing it, so the
     // cancel is refused as raced and nothing it asked for is written.
     const running = await live();
-    onTheLiveKey(running);
+    await onACabinetKey(running);
     await running.browser.signIn();
     const otherDevice = await running.another();
     await otherDevice.signIn();
@@ -3974,7 +3994,7 @@ describe("a wallet change waiting on the live deployment", () => {
       .mockImplementation((...parts) => said.push(parts.map(String).join(" ")));
     try {
       const running = await live();
-      onTheLiveKey(running);
+      await onACabinetKey(running);
       await running.browser.signIn();
       const otherDevice = await running.another();
       await otherDevice.signIn();
@@ -4022,7 +4042,7 @@ describe("a wallet change waiting on the live deployment", () => {
         }),
       });
       holder.running = running;
-      onTheLiveKey(running);
+      await onACabinetKey(running);
       await running.browser.signIn();
       const otherDevice = await running.another();
       await otherDevice.signIn();
@@ -4048,7 +4068,7 @@ describe("a wallet change waiting on the live deployment", () => {
 
   it("is refused from a page on another site", async () => {
     const running = await live();
-    onTheLiveKey(running);
+    await onACabinetKey(running);
     await running.browser.signIn();
     await aChangeWaits(running);
 
@@ -4062,7 +4082,7 @@ describe("a wallet change waiting on the live deployment", () => {
 
   it("signs nobody out when there was nothing to cancel", async () => {
     const running = await live();
-    onTheLiveKey(running);
+    await onACabinetKey(running);
     await running.browser.signIn();
     const otherDevice = await running.another();
     await otherDevice.signIn();

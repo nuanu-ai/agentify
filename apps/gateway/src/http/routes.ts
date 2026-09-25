@@ -137,6 +137,25 @@ const notTheCabinets = (response: RouteCall["response"]): RouteAnswer =>
   );
 
 /**
+ * What a key of the merchant's own code is answered with at the payout wallet.
+ *
+ * The code is the one the cabinet's key calls are refused under, because the
+ * fact is the same: this call is one only a cabinet's key makes. The words are
+ * this route's, because what the caller needs is where the wallet is set and
+ * why a key cannot set it (ADR-0019). The published list of codes does not
+ * move, and no worker of the SDK calls this route (ADR-0006 §2).
+ */
+const walletIsSetInTheCabinet = (response: RouteCall["response"]): RouteAnswer =>
+  written(
+    response,
+    FORBIDDEN,
+    refusal(
+      "not_a_cabinet_key",
+      "the payout wallet is set in the cabinet, on its Settings screen, by a person signed in to it, and never with a key of the merchant's own code: a key operates the shop, and where the shop's money goes is a person's decision. Nothing was changed and sales are paid where they were",
+    ),
+  );
+
+/**
  * What a wallet change the gateway would not record is answered with.
  *
  * Four codes, and in every one nothing was written: the address paid now
@@ -324,6 +343,9 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
           (call.body as PayoutWalletRequest).payout_wallet,
           { keyId: callersKey(call), purpose: callersPurpose(call) },
         );
+        if (set === "not_a_cabinet_key") {
+          return walletIsSetInTheCabinet(call.response);
+        }
         return typeof set === "string"
           ? walletChangeRefused(call.response, set)
           : { status: OK, document: set };

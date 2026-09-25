@@ -1134,9 +1134,10 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    * the merchant but the one that pressed (ADR-0019).
    *
    * Cancelling is asking the gateway for the address that applies now, which
-   * is what the gateway reads as a cancel — so the cabinet holds no power over
-   * the wallet that a merchant's own code does not. It reads the wallet first
-   * rather than trusting a page that may be a day old.
+   * is what the gateway reads as a cancel, and like every change of the wallet
+   * it is made with the cabinet's own key: a key of the merchant's own code
+   * cannot set the wallet at all. It reads the wallet first rather than
+   * trusting a page that may be a day old.
    *
    * The sessions go because the change may have been asked for from one of
    * them — a device left signed in, somebody else at the merchant — and the

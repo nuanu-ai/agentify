@@ -737,22 +737,30 @@ export class Gateway {
 
   /**
    * Sets where this merchant's sales are paid, or asks for a change of it to
-   * wait — and answers with the wallet as it then stands, or with which of the
-   * four reasons it was refused for.
+   * wait — and answers with the wallet as it then stands, or with why it was
+   * refused.
+   *
+   * Only a cabinet's own key reaches it: keys operate the shop, and where its
+   * money goes is changed by a person signed in to the cabinet (ADR-0019). A
+   * key of the merchant's own code is refused before anything is read or
+   * announced, the first address included, so a copy of one sitting in a
+   * server's environment can neither move the money nor send a message about
+   * moving it.
    *
    * There is no taking one away, and no verb at a terminal writes one either:
    * every change reaches the gateway as this call, which is what lets it hold
-   * every change to the rule below (ADR-0019).
+   * every change to the rule below.
    *
    * Where no money is real — the test channel and the sandbox — the address
    * applies at once and nobody is told. The first address a merchant sets on
    * the live deployment applies at once too, because it replaces nothing and a
    * new merchant has to be able to start selling, and it is announced
-   * afterwards without being waited on: a leaked key could set it before its
-   * owner does, and the message is how the owner hears of it.
+   * afterwards without being waited on: somebody signed in to the cabinet on
+   * a session that is not the owner's could set it, and the message is how
+   * the owner hears of it.
    *
-   * On the live deployment a replacement is the act a leaked key would reach
-   * for, and any key of the merchant's reaches this call. So it is announced to
+   * On the live deployment a replacement is the act a stolen or forgotten
+   * session would reach for. So it is announced to
    * every account that names the merchant before anything is written, and it is
    * recorded — waiting, forty-eight hours from the moment every message was
    * handed over — only if every message was. Until then payment requests name
@@ -785,7 +793,10 @@ export class Gateway {
     merchantId: string,
     wallet: string,
     askedBy: KeyOnTheCall,
-  ): Promise<PayoutWallet | WalletChangeRefusal> {
+  ): Promise<PayoutWallet | WalletChangeRefusal | "not_a_cabinet_key"> {
+    if (askedBy.purpose !== "cabinet") {
+      return "not_a_cabinet_key";
+    }
     // The route holds the same rule on the way in, so a throw from here is a
     // caller that skipped it.
     const address = payoutWalletFrom(wallet);
@@ -805,8 +816,8 @@ export class Gateway {
     if (now.address === null) {
       // The first address applies at once and is announced afterwards, the
       // way a new key is: it replaces nothing, so it waits on nothing, and a
-      // message that cannot be sent refuses nothing — but a leaked key could
-      // set it before its owner does, and the message is how they hear of it.
+      // message that cannot be sent refuses nothing — but a session that is
+      // not the owner's could set it, and the message is how they hear of it.
       const set = await this.#recordWallet(merchantId, read, { address, pending: null });
       if (typeof set !== "string") {
         this.#announceAfterwards({
@@ -2369,8 +2380,8 @@ const NO_PAYOUT_WALLET: Problem = {
   message:
     "this merchant has not set a wallet to be paid at, so the money from sales of this card" +
     " would have nowhere to go — a buyer's agent pays the merchant's own address directly and" +
-    " nothing of it is held here; set one with POST /v0/payout-wallet and publish this card" +
-    " again",
+    " nothing of it is held here; a person signed in to the merchant's cabinet sets one on its" +
+    " Settings screen, and then this card can be published again",
 };
 
 /**
