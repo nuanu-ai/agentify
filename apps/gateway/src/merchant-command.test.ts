@@ -359,6 +359,32 @@ describe("the name a merchant is listed under", () => {
   });
 });
 
+describe("what the terminal does not make", () => {
+  // A merchant comes into being one way: a person opens the link mailed to
+  // their address and presses the cabinet's one control (ADR-0014), and a key
+  // for a merchant's own code is issued from their cabinet, where it is
+  // announced (ADR-0019). The terminal looks after what exists and makes
+  // neither.
+  it("makes no merchant, and says what the verbs are", async () => {
+    const terminal = aTerminal();
+
+    expect(await terminal.run("add", "Someone's shop")).toBe(2);
+
+    expect(await terminal.store.merchants()).toStrictEqual([]);
+    expect(terminal.text()).toContain("disable");
+  });
+
+  it("issues no key, even for a merchant that exists", async () => {
+    const terminal = aTerminal();
+    await terminal.store.addMerchant({ id: "mch_1", name: "Someone's shop" }, terminal.at);
+
+    expect(await terminal.run("key", "mch_1", "the shop's own worker")).toBe(2);
+
+    expect(await terminal.store.keysOf("mch_1")).toStrictEqual([]);
+    expect(terminal.text()).not.toContain("csk_");
+  });
+});
+
 describe("the address a merchant is paid at", () => {
   it("is not written from a terminal, so every change reaches the call that announces it", async () => {
     // A change of the wallet waits and is announced before anything is written
