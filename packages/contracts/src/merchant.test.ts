@@ -191,6 +191,23 @@ describe("asking for a key", () => {
     expect(IssueKeyRequestSchema.safeParse({ label: " " }).success).toBe(false);
   });
 
+  it("takes a label of a hundred characters and refuses a longer one, in words", () => {
+    // A label is what a merchant reads to find a key on a list, and it is also
+    // what the live site's message about a new key or a wallet change names
+    // the key by (ADR-0019). Unbounded, a leaked key could issue one long
+    // enough that the message about it cannot be sent at all.
+    expect(IssueKeyRequestSchema.safeParse({ label: "k".repeat(100) }).success).toBe(true);
+    expect(errorOf(IssueKeyRequestSchema, { label: "k".repeat(101) })).toContain("100");
+  });
+
+  it("refuses a label that is more than one line", () => {
+    // A line break in a label is a paragraph of somebody else's words inside a
+    // message Agentify sends.
+    for (const label of ["the stock\nworker", "the stock\r\nworker", "the stock\tworker"]) {
+      expect(IssueKeyRequestSchema.safeParse({ label }).success, JSON.stringify(label)).toBe(false);
+    }
+  });
+
   it("refuses a secret somebody chose for themselves", () => {
     // A key is generated and never taken from a caller: one somebody picks is
     // one somebody reuses. There is nowhere in this request to put one.

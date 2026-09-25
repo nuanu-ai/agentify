@@ -3604,6 +3604,21 @@ describe("the key the cabinet signs in with", () => {
   }, 30_000);
 });
 
+describe("naming a new key", () => {
+  it("refuses a name longer than the one line a key is known by, and issues nothing", async () => {
+    const running = await started();
+    await running.browser.signIn();
+
+    const refused = await running.browser.post("/keys", { label: "k".repeat(101) });
+
+    expect(refused.status).toBe(400);
+    const listed = await running.gateway.call("GET", "/v0/keys", { headers: asMerchant });
+    expect((listed.body as MerchantKeyList).keys.some((key) => key.label.startsWith("kkk"))).toBe(
+      false,
+    );
+  });
+});
+
 describe("a wallet change waiting on the live deployment", () => {
   // On the live deployment a replacement wallet is announced to every account
   // naming the merchant and waits forty-eight hours (ADR-0019). The message

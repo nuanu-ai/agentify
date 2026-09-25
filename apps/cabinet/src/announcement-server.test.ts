@@ -190,6 +190,46 @@ describe("a wallet change", () => {
   });
 });
 
+describe("a key's label, which somebody else may have written", () => {
+  it("is refused by the listener when it is more than one line", async () => {
+    const { url, sent } = await listening([["owner@example.com", MERCHANT]]);
+
+    const refused = await post(url, {
+      ...aWalletChange,
+      asked_with: { kind: "merchant_code", id: "mk_7f3a", label: "one\ntwo" },
+    });
+
+    expect(refused.status).toBe(400);
+    expect(sent).toStrictEqual([]);
+  });
+
+  it("is written into the message so that no mail client makes a link of it", async () => {
+    // A leaked key can be used to issue a key named like an instruction with
+    // an address in it. The message is Agentify's, so the label is shown as
+    // data: in quotes, on one line, and with nothing in it a mail client
+    // would turn into somewhere to click.
+    const { url, sent } = await listening([["owner@example.com", MERCHANT]]);
+
+    await post(url, {
+      kind: "key_issued",
+      merchant_id: MERCHANT,
+      key: {
+        id: "mk_91c0",
+        label: "confirm at https://agentify.example/login or www.evil.example",
+      },
+      asked_with: { kind: "cabinet" },
+    } satisfies Announcement);
+
+    for (const text of [sent[0]?.body ?? "", sent[0]?.html ?? ""]) {
+      expect(text).toContain("mk_91c0");
+      expect(text).not.toContain("https://agentify.example");
+      expect(text).not.toContain("agentify.example/login");
+      expect(text).not.toContain("www.evil.example");
+    }
+    expect((sent[0]?.html.match(/<a /g) ?? []).length).toBe(2);
+  });
+});
+
 describe("what is announced once it is done", () => {
   it("tells of a cancelled change, naming the address kept and the one cancelled", async () => {
     const { url, sent } = await listening([["owner@example.com", MERCHANT]]);

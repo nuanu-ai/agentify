@@ -485,6 +485,41 @@ describe("a new key on the live deployment", () => {
     expect(issued.status).toBe(200);
   });
 
+  it("is refused at the door with a label longer than one line of a hundred characters", async () => {
+    // Nothing is issued and nothing is announced, so a key cannot be named in
+    // a way that makes the message about it impossible to send.
+    const { served, harnessed } = await started();
+
+    for (const label of ["k".repeat(8 * 1024), "the stock worker\nhttps://example.com/login"]) {
+      const refused = await served.call("POST", "/v0/keys", {
+        body: { label },
+        headers: bearer(harnessed.merchant.key),
+      });
+      expect(refused.status).toBe(400);
+    }
+    expect(harnessed.announcer.announced).toStrictEqual([]);
+  });
+
+  it("names a key made elsewhere by one line of at most a hundred characters", async () => {
+    // A key issued at the terminal, or before labels had a limit, can carry
+    // anything. The announcement names it all the same, as one line the
+    // cabinet's listener takes, rather than failing to announce a wallet
+    // change because of how a key was named.
+    const { served, harnessed } = await started();
+    const long = `the stock\nworker ${"k".repeat(200)}`;
+    const key = await harnessed.addKey(harnessed.merchant.id, long);
+
+    await ask(served, key, A_WALLET);
+
+    const [announced] = harnessed.announcer.announced;
+    const named = (announced as Announcement).asked_with;
+    expect(named.kind).toBe("merchant_code");
+    const label = named.kind === "merchant_code" ? named.label : "";
+    expect(label).not.toMatch(/[\r\n\t]/);
+    expect(label.length).toBeLessThanOrEqual(101);
+    expect(label.startsWith("the stock worker kkk")).toBe(true);
+  });
+
   it("is not announced when it is the cabinet's own, renewed at every sign-in", async () => {
     const { served, harnessed } = await started();
     const registered = await served.call("POST", "/v0/merchants", {
