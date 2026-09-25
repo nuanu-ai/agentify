@@ -44,9 +44,10 @@ terminal makes either (ADR-0014).
 From there the merchant's engineer takes over. The cabinet issues the key
 their code calls with, the SDK publishes the product cards and runs a handler
 beside the shop's existing API, and the first sale happens on the test
-channel, where payments settle on Base Sepolia with test funds. Live
-publication needs a seller name, a payout wallet and the operator's one-time
-approval of that merchant; publication lists whatever is still missing. The
+channel, where payments settle on Base Sepolia with test funds. Publishing
+there needs a seller name and a payout wallet, and live publication also needs
+the operator's one-time approval of that merchant; publication lists whatever
+is still missing. The
 whole integration, from an empty project to a test sale, is the portal's
 [quickstart](apps/docs/quickstart.md).
 

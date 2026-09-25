@@ -197,11 +197,11 @@ each with an empty path, because no field of the card is at fault — and the
 package exports them as `MERCHANT_FINDINGS`. The first two you set yourself,
 with `POST /v0/seller-name` and `POST /v0/payout-wallet` or in the cabinet's
 settings; the third is the operator's decision. The error's `message` names
-the missing settings in words as well. Nothing asks this question earlier:
-the publish is where you learn what your merchant still lacks. Sending the same
-card again gets the same refusal, and the error says as much: its `retryable`
-flag is false, because what changes the answer is fixing what the findings
-name.
+the missing settings in words as well. No call answers this in advance: the
+publish is where your code learns what your merchant still lacks. Sending the
+same card again gets the same refusal, and the error says as much: its
+`retryable` flag is false, because what changes the answer is fixing what the
+findings name.
 
 A call that fails for some other reason — a key we do not accept, an address
 that does not answer — does throw, as an `AgentifyError`. It carries a `code`.

@@ -4,9 +4,10 @@ Date: 2026-09-24
 Status: accepted (Dmitry, 2026-09-17: "средство аутентификации у нас — ссылка
 из письма"; 2026-09-24: "я думал что вот ссылка в письме один раз авторизует
 тебя в продукте и ты можешь и отчеты смотреть и в кабинет ходить, а админка -
-это некий привелигированный признак"; 2026-09-25, on §5: a merchant's readiness
-to sell is one rule every path asks, and the SDK learns it from the refusal at
-publish rather than from a question of its own)
+это некий привелигированный признак"; 2026-09-25, on §5, in substance rather
+than in his words: a merchant's readiness to sell is one rule every path asks,
+and the SDK learns it from the refusal at publish rather than from a question
+of its own)
 
 ## Context
 
