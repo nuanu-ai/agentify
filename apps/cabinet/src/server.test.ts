@@ -3678,6 +3678,16 @@ describe("a wallet change waiting on the live deployment", () => {
     expect(asked.status, JSON.stringify(asked.body)).toBe(200);
   };
 
+  /** The address a payment request names right now, as the gateway answers it. */
+  const paidNow = async (running: Running): Promise<unknown> =>
+    (
+      (
+        await running.gateway.call("GET", "/v0/payout-wallet", {
+          headers: { authorization: `Bearer ${running.harnessed.merchant.key}` },
+        })
+      ).body as { payout_wallet: unknown }
+    ).payout_wallet;
+
   const waitingNow = async (running: Running): Promise<unknown> =>
     (
       (
@@ -3808,7 +3818,7 @@ describe("a wallet change waiting on the live deployment", () => {
       expect(pressed.html.replaceAll(/<[^>]*>/g, "")).toContain(WAITING);
       expect(page).not.toMatch(/cancelled/i);
       expect(await waitingNow(running)).toBeNull();
-      expect(await paidInto(running)).toBe(WAITING);
+      expect(await paidNow(running)).toBe(WAITING);
       expect((await otherDevice.get("/settings")).to).toMatch(/^\/sign-in/);
       expect(said.join("\n")).not.toMatch(/cancelled/i);
     } finally {
@@ -3850,7 +3860,7 @@ describe("a wallet change waiting on the live deployment", () => {
 
       expect(pressed.status).toBe(200);
       expect(readable(pressed.html)).not.toMatch(/cancelled/i);
-      expect(await paidInto(running)).toBe(WAITING);
+      expect(await paidNow(running)).toBe(WAITING);
       expect(await waitingNow(running)).toMatchObject({
         payout_wallet: running.harnessed.merchant.wallet,
       });

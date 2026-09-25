@@ -125,6 +125,11 @@ export interface PayoutWallet {
    * where nothing waits.
    */
   readonly pending?: { readonly wallet: string; readonly takesEffectAt: string } | null;
+  /**
+   * What became of a press that could not be a cancel, in words, where there
+   * is something to say: the change had already taken effect.
+   */
+  readonly notice?: string;
   /** What was wrong with the address just typed, where one was refused. */
   readonly problem?: string;
   /** What was refused, so the merchant can correct it rather than retype it. */
@@ -165,14 +170,23 @@ const savedAddress = (address: string): string => `
  * true if the screen always does. The cancel is a form post from this page and
  * nothing else — a link could be sent from anywhere — and it says what else it
  * does, because ending every other session is not something a person expects
- * from a button about an address.
+ * from a button about an address. The form carries the change it showed and
+ * the address paid beside it, so a press that arrives after that change has
+ * taken effect is told apart from a cancel and said as what it is.
  */
-const pendingAddress = (base: string, pending: NonNullable<PayoutWallet["pending"]>): string => `
+const pendingAddress = (
+  base: string,
+  paid: string | null,
+  pending: NonNullable<PayoutWallet["pending"]>,
+): string => `
   <div class="saved">
     <div class="label">Waiting to replace it</div>
     <div class="address">${inFours(pending.wallet)}</div>
     <p class="under">From ${when(pending.takesEffectAt)} your sales are paid into this address instead. Every account of your merchant was sent a message about it. If nobody at your business asked for it, cancel it; cancelling also signs out every session of your merchant but this one.</p>
     <form class="inline" method="post" action="${escaped(base)}/settings/payout-wallet/cancel">
+      <input type="hidden" name="waiting" value="${escaped(pending.wallet)}">
+      <input type="hidden" name="waiting_from" value="${escaped(pending.takesEffectAt)}">
+      <input type="hidden" name="paid" value="${escaped(paid ?? "")}">
       <button class="button button-secondary" type="submit">Cancel this change</button>
     </form>
   </div>`;
@@ -203,7 +217,7 @@ export const payoutWalletBlock = (viewer: Viewer): string => {
   if (payout === undefined) {
     return "";
   }
-  const { wallet, pending, problem, typed } = payout;
+  const { wallet, pending, problem, typed, notice } = payout;
   const purpose =
     viewer.mode === "test"
       ? "TEST settles test USDC on Base Sepolia to this address."
@@ -218,7 +232,12 @@ export const payoutWalletBlock = (viewer: Viewer): string => {
       <p>${purpose} <a href="/docs/money#where-the-money-arrives">Where the money arrives, and when</a>.</p>
       <p class="quiet">Enter only the public address. Never enter a private key or recovery phrase; Agentify will never ask for either.</p>
     </div>
-  </div>${wallet === null ? "" : savedAddress(wallet)}${pending === undefined || pending === null ? "" : pendingAddress(base, pending)}
+  </div>${wallet === null ? "" : savedAddress(wallet)}${pending === undefined || pending === null ? "" : pendingAddress(base, wallet, pending)}${
+    notice === undefined
+      ? ""
+      : `
+  <p class="problem">${escaped(notice)}</p>`
+  }
   <div class="lede">
     <div>
       <p class="quiet">${escaped(WALLET_RULE)}</p>${
