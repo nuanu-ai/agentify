@@ -92,10 +92,30 @@ export type ShopState =
  */
 export type ShopTile = ShopState | { readonly kind: "unread" };
 
+/**
+ * What a merchant sets in Settings and the publish door asks of them before it
+ * takes any card at all: the name buyers see, and on a channel where money
+ * settles, the wallet it is paid to.
+ */
+export type Unset = "seller_name" | "payout_wallet";
+
+/** Each of them as the settings screen names it. */
+const UNSET_WORDS: Readonly<Record<Unset, string>> = {
+  seller_name: "the name your products are sold under",
+  payout_wallet: "the wallet address your money arrives at",
+};
+
 /** What the page is drawn from: where the channel is, and anything just refused. */
 export interface WooView {
   /** Where this account's channel has got to, read off our own rows. */
   readonly state: ShopState;
+  /** What the merchant has yet to set, as the gateway answered when the page was drawn. */
+  readonly unset?: readonly Unset[];
+  /**
+   * What a press of Import was refused for, where this page is the answer to
+   * one: what was unset at that moment, before the shop was read.
+   */
+  readonly refused?: readonly Unset[];
   /** What was wrong with what the merchant just typed, where anything was. */
   readonly problem?: string;
   /** What they typed, so a refusal leaves the box as they left it. */
@@ -323,6 +343,7 @@ const theConnection = (
       <label>Import the catalogue</label>
       <p class="quiet">Reads up to ${PRODUCTS_AT_MOST} products and publishes only the supported single-file downloads described above. If the shop has more, the whole import is refused. Running it again updates the same cards.</p>
       <p class="quiet">A card remains listed if its shop product is later deleted, out of stock or unsupported, but a fresh price check refuses it before payment. Pause cards you no longer want agents to see.</p>
+      ${beforeImporting(base, view)}
     </div>
     <button class="button button-primary" type="submit">Import the catalogue</button>
   </form>
@@ -334,6 +355,32 @@ const theConnection = (
     <button class="button button-secondary" type="submit">Forget this shop</button>
   </form>
 `;
+
+/**
+ * What stands between this merchant and any card an import could publish,
+ * said beside the button that would otherwise find out card by card.
+ *
+ * The publish door refuses every card of a merchant who has not set these, and
+ * its sentence ends by naming an API route, which is right for an engineer
+ * holding a response and means nothing to a merchant who connected a shop and
+ * wrote no code. So the line names the thing as the settings screen names it
+ * and links there. It is drawn before the press as well as after it, so the
+ * merchant can learn it without pressing; after a refused press it says that
+ * nothing was imported, and names what was unset at that moment rather than at
+ * the redraw.
+ */
+const beforeImporting = (base: string, view: WooView): string => {
+  const refused = view.refused ?? [];
+  const unset = refused.length > 0 ? refused : (view.unset ?? []);
+  if (unset.length === 0) {
+    return "";
+  }
+  const what = unset.map((one) => UNSET_WORDS[one]).join(" and ");
+  const settings = `<a href="${escaped(base)}/settings">Settings</a>`;
+  return refused.length > 0
+    ? `<p class="problem">Nothing was imported. Set ${what} in ${settings}, then import again.</p>`
+    : `<p class="problem">Import publishes nothing until you set ${what} in ${settings}.</p>`;
+};
 
 /** A product an import sent through the publish door, named as the shop names it. */
 interface Sent {
