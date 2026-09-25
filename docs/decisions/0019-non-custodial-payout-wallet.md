@@ -146,10 +146,10 @@ message cannot be handed over, the key is issued all the same. A key moves
 no money, any wallet change made with it is itself announced and waited
 on, and a merchant must not be kept from a key, their first above all,
 because mail is down. The cabinet's own key, renewed daily (ADR-0014 §2),
-is announced to nobody, and so is a key an operator issues at the server's
-terminal: that command writes the key straight into the database, outside the
-gateway, and the operator issuing it for a merchant is the one to tell them. The pause stays immediate, because it is the act
-for "stop selling now".
+is announced to nobody. No command at a server's terminal issues a key
+(ADR-0014), so every key made for a merchant's own code is issued through the
+gateway's keys route and announced as above, the laptop sandbox's seed aside.
+The pause stays immediate, because it is the act for "stop selling now".
 
 The wait and the messages hold on a live deployment, the one whose chain
 makes the money real (ADR-0020). A test deployment and the sandbox apply a
@@ -184,7 +184,12 @@ cancel the owner's change, a nuisance its announcement reveals. A key that
 leaks before its merchant has set any address can still set the first one,
 which applies at once; the owner learns of it from the message that follows,
 when mail works, or from the wallet screen, and replacing it waits like any
-other change, so they stop selling until it does. A test
+other change, so they stop selling until it does. A merchant no account names
+has nobody to tell, so every replacement of its wallet is refused. A merchant is
+made only by a signed-in person's press (ADR-0014), so that is the litter of a
+press whose cabinet failed after the gateway answered, whose key nobody holds,
+or the merchant every database is created with (ADR-0010), for which no
+deployed channel seeds a key and nobody can ask for live approval. A test
 deployment never shows a pending change, so an integrator meets that shape
 only on production. A wallet change also depends on the cabinet and the
 mail provider being up, which is accepted: changes are rare, and a refusal

@@ -1,7 +1,8 @@
 # 0014. Registration makes a merchant and its cabinet's key in one act
 
 Date: 2026-08-28
-Status: accepted (Dmitry, 2026-08-28: "разрабатывай экраны, реализуй регистрацию")
+Status: accepted (Dmitry, 2026-08-28: "разрабатывай экраны, реализуй регистрацию";
+2026-09-25: "удаляем все пути регистрации кроме одного основного")
 
 ## Context
 
@@ -13,6 +14,17 @@ every buyer. Registration therefore needs tenancy and a door, and neither may
 wait for perfection: the road's order is ADR-0010's.
 
 ## Decision
+
+There is one way in. An account comes into being when a person types their
+address, opens the link mailed to it and presses the button on the page it
+opens (ADR-0026 §1); a merchant, when that signed-in person presses the one
+control the cabinet offers (§1). No command at a server's terminal makes an
+account, a merchant or a key, and no deployed channel's gateway seeds a
+merchant at start-up: the release refuses a channel configured to. The
+operator's terminal looks after what exists — lists merchants, keys and
+accounts, disables a key, takes a listing name away, ends a person's sessions,
+moves the operator flag, approves live sales. Only the laptop's stack seeds its
+sandbox merchant, so that one command brings it up selling (ADR-0010).
 
 **1. The account is written at sign-in, the merchant and its key on the
 cabinet's explicit request.** The account appears when a one-time link is
@@ -94,6 +106,18 @@ person at a merchant, roles, deleting a merchant.
 
 ## Alternatives rejected
 
+**A merchant or an account made at the terminal.** Commands that made a
+merchant with no account, wrote a key for it straight into the database, and
+wrote an account for an existing merchant from a key piped in were a second
+door beside the mailed link: a merchant nobody could sign in as, a key no
+announcement covered (ADR-0019), an account whose address nobody had proved.
+What they were for is what the one way in does: a person who needs an
+account signs in, and a merchant who has lost every key signs in, which
+renews the cabinet's own, and issues a new one there.
+**Seeding a merchant on a deployed channel.** A key in a host's file, written
+into the database at every start, is a merchant nobody registered and a
+credential nobody can retire without a release: disabling its row stops it,
+and a database brought up from nothing is seeded off the same line again.
 **Open registration.** Not before an address means something: the catalogue is
 shared, and the first cost of a stranger's words is the buyer's, not ours.
 **Wait for mail, build nothing.** Everything here is needed whichever the door
