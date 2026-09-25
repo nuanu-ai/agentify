@@ -46,9 +46,10 @@ const LONGEST_ANNOUNCED_LABEL = 101;
  * A key's label as an announcement carries it: one line, cut to a hundred
  * characters with an ellipsis saying so.
  *
- * A new key's label is held to that at the door, but a key issued at the
- * server's terminal, or before the door held labels to anything, can be named
- * anything at all — and an announcement about a wallet change made with such
+ * A new key's label is held to that at the door, but a key written before the
+ * door held labels to anything, including one a terminal command issued when
+ * there was such a command, can be named anything at all — and an announcement
+ * about a wallet change made with such
  * a key must still be one the cabinet takes, rather than a change refused
  * because of how a key was named. So the gateway writes every label it
  * announces down to this, and the cabinet refuses anything else.

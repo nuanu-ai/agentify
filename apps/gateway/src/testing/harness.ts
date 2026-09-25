@@ -26,7 +26,6 @@ import {
   grantLiveApproval,
   issueKey,
   keyDigest,
-  makeMerchant,
   setPayoutWallet,
   setServiceName,
 } from "../app/merchants.js";
@@ -209,7 +208,7 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
   // here, saying which rule it broke. A test that wants a merchant listed under
   // nothing takes the name away through the route.
   const seed = async (name: string, secret?: string): Promise<SeededMerchant> => {
-    const made = await makeMerchant(store, ids, name, now);
+    const made = await store.addMerchant({ id: ids("mch"), name }, now);
     if (made === null) {
       throw new Error(`the harness could not make the merchant ${name}`);
     }

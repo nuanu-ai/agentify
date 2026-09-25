@@ -155,8 +155,8 @@ const gateway = new Gateway(runtime);
  * The sandbox's one key, put in the database if it is not there already.
  *
  * It is what makes `docker compose up` sell with no manual step: the same
- * string is given to the cabinet and to the merchant process in that file, and
- * without a row to match it the door would turn both of them away. Writing it
+ * string is given to the merchant process in that file, and without a row to
+ * match it the door would turn that process away. Writing it
  * is idempotent — the key is looked up by its digest first — so a restart and a
  * second replica both write nothing.
  *
