@@ -9,7 +9,13 @@
  * with paragraphs in `<p>`, the editor's block comments, and punctuation that
  * wptexturize and convert_chars turned into numbered references. So the
  * connector does the reading the door will not do, on its own side, and hands
- * the door the text the shop's own page shows.
+ * the door the text the shop's own page shows a person.
+ *
+ * It reads HTML the way a shop writes it, not every way a browser tolerates
+ * it. WordPress writes a bracket in prose as `&lt;`, so a bare bracket in its
+ * HTML is a tag. Where one is not — `<jane@example.com>` in hand-written HTML,
+ * which a browser would read as an element and hide — it stays in the text,
+ * and the door's rule decides what it is.
  *
  * What comes out is held to one promise: it passes the door's rule, or the
  * converter says what in it does not. The second case is real and it is not a
@@ -22,8 +28,9 @@
  * Every step here is linear in the length of the page. The page comes from a
  * shop its merchant controls and this runs in the same process as the
  * gateway, so a pattern that backtracked on a crafted page would stall every
- * merchant's sales, not only one merchant's import. Each pattern below is
- * bounded by the next angle bracket, or by the end of the page.
+ * merchant's sales, not only one merchant's import. Each pattern below stops
+ * at the next angle bracket, at the close of a quoted value, or at the end of
+ * the page, and the tests hold it at a quarter of a megabyte.
  */
 
 import { notPlainTextIn } from "@nuanu-ai/agentify-contracts";
@@ -89,22 +96,23 @@ const BREAKS_THE_LINE = new Set([
  * The branches, in the order they are tried at each position:
  *
  * - A comment, `<!-- … -->`, including the ones a block editor puts around
- *   every block. One that is never closed runs to the end of the page, as it
- *   does in a browser.
- * - A `<script>` or `<style>` block, removed whole with its contents, which a
- *   browser does not show either. Stripping only the tags would put a
- *   stylesheet into the description of a product.
+ *   every block. One that is never closed runs to the end of the page, and
+ *   `<!-->` and `<!--->` are empty comments, as they are in a browser.
+ * - A `<script>`, `<style>` or `<template>` block, removed whole with its
+ *   contents, which a browser does not show either. Stripping only the tags
+ *   would put a stylesheet into the description of a product.
  * - A tag, with its name captured so a block element can leave a space behind.
  *   The name has to be followed by whitespace, a slash or the close, which is
  *   what keeps it from trading characters with the attributes after it. An
- *   attribute value in quotation marks may carry a closing bracket.
+ *   attribute value in quotation marks may carry either bracket, as the alt
+ *   text a block editor writes into an image does.
  * - A declaration or a processing instruction, `<!DOCTYPE …>` and `<?xml …?>`,
  *   which a browser reads as a comment.
  *
  * A bracket that begins none of these — `5 < 10`, `x<y` — is text, and stays.
  */
 const NOT_TEXT =
-  /<!--[\s\S]*?(?:-->|$)|<(script|style)(?=[\s/>])[^<>]*>[\s\S]*?(?:<\/\1\s*>|$)|<\/?([A-Za-z][A-Za-z0-9:-]*)(?=[\s/>])(?:[^<>"']|"[^"<]*"|'[^'<]*')*>|<[!?][^<>]*>/gi;
+  /<!--(?:-?>|[\s\S]*?(?:-->|$))|<(script|style|template)(?=[\s/>])[^<>]*>[\s\S]*?(?:<\/\1\s*>|$)|<\/?([A-Za-z][A-Za-z0-9:-]*)(?=[\s/>])(?:[^<>"']|"[^"]*"|'[^']*')*>|<[!?][^<>]*>/gi;
 
 /**
  * Characters that show nothing and are not space: C0 other than the
