@@ -668,6 +668,16 @@ const onACabinetKey = async (running: Running): Promise<void> => {
   }
 };
 
+/** The change of the payout wallet waiting at the gateway, or null. */
+const waitingOf = async (running: Running): Promise<unknown> =>
+  (
+    (
+      await running.gateway.call("GET", "/v0/payout-wallet", {
+        headers: { authorization: `Bearer ${running.harnessed.merchant.key}` },
+      })
+    ).body as { pending: unknown }
+  ).pending;
+
 /** The one line of an answer that sets the session cookie of this name, if any. */
 const sessionCookieIn = (answer: Visit, name: string): string | undefined =>
   answer.headers.getSetCookie().find((line) => line.startsWith(`${name}=`));
@@ -4178,6 +4188,76 @@ describe("a wallet change waiting on the live deployment", () => {
 
     expect(pressed.to).toBe("/settings");
     expect((await otherDevice.get("/settings")).status).toBe(200);
+  });
+});
+
+describe("signing out every other device", () => {
+  // The answer to a session that is not the owner's, wherever it was left
+  // open (ADR-0026 §3, ADR-0019). It reaches this account's sessions and no
+  // other account's, touches no key, and needs no wallet change to be waiting.
+
+  it("ends every other session of this account, keeps this one, and says how many", async () => {
+    const running = await started();
+    await running.browser.signIn();
+    const laptop = await running.another();
+    await laptop.signIn();
+    const phone = await running.another();
+    await phone.signIn();
+
+    const pressed = await running.browser.post("/settings/sign-out-others");
+
+    expect(pressed.status).toBe(200);
+    expect(readable(pressed.html)).toMatch(/\b2\b/);
+    expect(readable(pressed.html)).toMatch(/signed out/i);
+    expect((await running.browser.get("/settings")).status).toBe(200);
+    // Each of the others has to sign in again.
+    expect((await laptop.get("/settings")).to).toMatch(/^\/sign-in/);
+    expect((await phone.get("/cards")).to).toMatch(/^\/sign-in/);
+  });
+
+  it("works with no wallet change waiting, and is offered on the settings screen", async () => {
+    const running = await started();
+    await running.browser.signIn();
+
+    const screen = await running.browser.get("/settings");
+
+    expect(screen.html).toContain('action="/settings/sign-out-others"');
+    expect(await waitingOf(running)).toBeNull();
+    expect((await running.browser.post("/settings/sign-out-others")).status).toBe(200);
+  });
+
+  it("leaves the sessions of another account at the same merchant alone", async () => {
+    const running = await started();
+    await running.identity.make(OTHER, THE_MERCHANT);
+    await running.browser.signIn();
+    const partner = await running.another();
+    await partner.signIn(OTHER);
+
+    await running.browser.post("/settings/sign-out-others");
+
+    expect((await partner.get("/settings")).status).toBe(200);
+  });
+
+  it("is refused from a page on another site", async () => {
+    const running = await started();
+    await running.browser.signIn();
+    const laptop = await running.another();
+    await laptop.signIn();
+
+    const pressed = await running.browser
+      .from("https://elsewhere.example")
+      .post("/settings/sign-out-others");
+
+    expect(pressed.status).toBe(403);
+    expect((await laptop.get("/settings")).status).toBe(200);
+  });
+
+  it("is behind the gate", async () => {
+    const running = await started();
+
+    const pressed = await running.browser.post("/settings/sign-out-others");
+
+    expect(pressed.to).toMatch(/^\/sign-in/);
   });
 });
 
