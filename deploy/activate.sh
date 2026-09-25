@@ -108,7 +108,7 @@ flock -n 9 || { echo "activate: another activation, a restore or the privacy job
 # "One database"). Until it says done, the database volume is a copy in the
 # middle of a move, and nothing may start on it.
 read -r moving _ < "$state/one-database" 2>/dev/null || moving=""
-[[ -z $moving || $moving == done ]] \
+[[ -z $moving || $moving == "done" ]] \
   || refuse "$state/one-database says the move to one database stopped at $moving; finish it with deploy/one-database.sh $channel, or go back with deploy/one-database.sh $channel --back. Nothing was stopped."
 
 at "pulling the images of $revision"
