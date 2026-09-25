@@ -24,7 +24,8 @@ will be as many lines here as there were sales.
 Buyers pay in USDC, a digital dollar whose rate is pegged to the dollar. A card
 may write its price in USD or USDC; either way the gateway asks the buyer for
 the same number of USDC on the configured network. There is no exchange-rate
-conversion in between.
+conversion in between, so a price in any other currency is refused when the
+card is published, and so is a price check's answer written in one.
 
 These payments have one more property worth knowing in advance: the transfer is
 final. A buyer cannot reverse it the way a charge on a bank card is reversed,
