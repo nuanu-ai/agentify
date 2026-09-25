@@ -14,15 +14,19 @@
  * from their own site, with no payment request in front of it (ADR-0002 §2).
  *
  * A currency other than the dollar is refused, because there is no exchange
- * rate anywhere in this system to charge it at. The payment edge charges in the
- * same set, read from here, so a price the door took is a price the edge can
- * charge and the two cannot drift into two lists.
+ * rate anywhere in this system to charge it at.
  *
  * An amount is written in dollars with at least two digits after the dot, so
  * that a merchant who counts in cents and writes "500" for five dollars is
- * refused rather than listed at five hundred. Fractions of a cent stay allowed:
- * a price per call is often below one. How many places a charge may carry is
- * the payment edge's own bound and is not repeated here.
+ * refused rather than listed at five hundred. Fractions of a cent stay allowed,
+ * because a price per call is often below one, down to the finest amount the
+ * token a buyer pays in can carry and no further: past that there is no exact
+ * amount to charge, and a rounded charge is a different charge.
+ *
+ * So a price the door took is a price the payment edge can charge. The edge
+ * reads the currencies from here, and the places its token carries on every
+ * chain it can charge on are held equal to `PAYABLE_DECIMALS` by a test beside
+ * it, so the door and the edge cannot become two answers.
  *
  * It is a rule applied at the doors rather than part of any schema, and that is
  * the point of it being a function. The schemas also read back every document
@@ -52,17 +56,28 @@ import type { Problem } from "./results.js";
 export const PAYABLE_CURRENCIES: readonly string[] = Object.freeze(["USD", "USDC"]);
 
 /**
+ * How many places after the dot a price may carry: the places of USDC, which is
+ * what a buyer pays in. Its smallest unit is a millionth of a dollar, so
+ * "0.000001" is the finest price there is an exact charge for.
+ */
+export const PAYABLE_DECIMALS = 6;
+
+/**
  * What stands between this price and a sale, as findings on the fields of the
  * document that carried it — empty where nothing does.
  *
  * The paths name `price` because a card and a price answer both carry the
  * price under that name, so one finding reads right in either. An amount gets
- * at most one finding: zero is said before the missing cents, because "0"
- * written as "0.00" would only be refused again.
+ * at most one finding: zero is said before the places, because "0" written as
+ * "0.00" would only be refused again.
+ *
+ * The amount has already passed `AmountSchema`, so it is digits with at most
+ * one dot, and the places are what follows the dot.
  */
 export function priceProblemsOf(price: Money): Problem[] {
   const problems: Problem[] = [];
   const written = JSON.stringify(price.amount);
+  const places = price.amount.split(".")[1]?.length ?? 0;
 
   if (!/[1-9]/.test(price.amount)) {
     problems.push({
@@ -70,11 +85,17 @@ export function priceProblemsOf(price: Money): Problem[] {
       code: "custom",
       message: `the price is ${written}, and nothing is sold through Agentify at a price of zero: a free item is offered from your own site, without a payment`,
     });
-  } else if (!/\.\d{2,}$/.test(price.amount)) {
+  } else if (places < 2) {
     problems.push({
       path: ["price", "amount"],
       code: "custom",
       message: `the price is ${written}, and a price is written in dollars with at least two digits after the dot — five dollars is "5.00" — so that an amount counted in cents is never charged as dollars`,
+    });
+  } else if (places > PAYABLE_DECIMALS) {
+    problems.push({
+      path: ["price", "amount"],
+      code: "custom",
+      message: `the price is ${written}, and a price carries at most ${PAYABLE_DECIMALS} digits after the dot, the finest amount USDC can be paid in, so there is no exact amount to charge for it`,
     });
   }
 

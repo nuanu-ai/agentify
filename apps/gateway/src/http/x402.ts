@@ -66,7 +66,10 @@ export const ORDER_ID_IN_EXTRA = "order_id";
  * Money never becomes a float on the way through here. A price with more
  * fractional digits than the token carries is refused rather than rounded: a
  * rounded charge is a different charge, and which way it was rounded is the
- * difference between shorting the buyer and shorting the merchant.
+ * difference between shorting the buyer and shorting the merchant. The publish
+ * door and a price answer's door refuse such a price first, against
+ * `PAYABLE_DECIMALS`, which a test holds equal to the token's own places, so
+ * what reaches this throw is a card stored before the door refused it.
  */
 export function atomicUnits(amount: string, decimals: number): string {
   const [whole = "0", fraction = ""] = amount.split(".");
