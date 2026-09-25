@@ -114,7 +114,7 @@ succeeded.
 
 ## A secret a host's file may still lack
 
-Every channel's environment file names `ANNOUNCEMENT_SECRET` ("Setting up a
+Every channel's environment file names `GATEWAY_CABINET_SECRET` ("Setting up a
 host"): the gateway presents it to the cabinet to have a merchant told of a
 payout wallet change, and the cabinet refuses every other secret on that
 route. A file written before the variable existed does not have it, and the
@@ -132,10 +132,10 @@ secret, and one value serves both the gateway and the cabinet of a channel,
 since both read the same file:
 
 ```sh
-ssh agentify-test "sudo sh -c 'umask 077; printf \"ANNOUNCEMENT_SECRET=%s\\n\" \"\$(openssl rand -base64 32)\" >> /etc/agentify/test.env'"
-ssh agentify "sudo sh -c 'umask 077; printf \"ANNOUNCEMENT_SECRET=%s\\n\" \"\$(openssl rand -base64 32)\" >> /etc/agentify/production.env'"
-ssh agentify-test sudo grep -c '^ANNOUNCEMENT_SECRET=' /etc/agentify/test.env
-ssh agentify sudo grep -c '^ANNOUNCEMENT_SECRET=' /etc/agentify/production.env
+ssh agentify-test "sudo sh -c 'umask 077; printf \"GATEWAY_CABINET_SECRET=%s\\n\" \"\$(openssl rand -base64 32)\" >> /etc/agentify/test.env'"
+ssh agentify "sudo sh -c 'umask 077; printf \"GATEWAY_CABINET_SECRET=%s\\n\" \"\$(openssl rand -base64 32)\" >> /etc/agentify/production.env'"
+ssh agentify-test sudo grep -c '^GATEWAY_CABINET_SECRET=' /etc/agentify/test.env
+ssh agentify sudo grep -c '^GATEWAY_CABINET_SECRET=' /etc/agentify/production.env
 ```
 
 Each of the last two prints `1`. The value is made on the host and never
@@ -640,9 +640,9 @@ image: activation records the images per checkout. On both channels it names
 `AGENTIFY_PUBLIC_ORIGIN`, `AGENTIFY_COOKIE_SECURE`, `AGENTIFY_SURFACE_MODE`,
 `AGENTIFY_PAYMENT_NETWORK`, `AGENTIFY_FACILITATOR_URL`, `AGENTIFY_SEED_KEY`,
 `AGENTIFY_AUTH_SECRET`, `AGENTIFY_INVITATION`, `TOKEN_HMAC_SECRET`,
-`EMAIL_ENCRYPTION_KEY`, `REPORT_IDENTITY_SECRET` and `ANNOUNCEMENT_SECRET`, the last two each at
+`EMAIL_ENCRYPTION_KEY`, `REPORT_IDENTITY_SECRET` and `GATEWAY_CABINET_SECRET`, the last two each at
 least 32 characters of their own (`openssl rand -base64 32`): the gateway
-presents `ANNOUNCEMENT_SECRET` to the cabinet to have a merchant told of a
+presents `GATEWAY_CABINET_SECRET` to the cabinet to have a merchant told of a
 payout wallet change, and the preflight refuses a channel where any other
 service holds it or it opens any other door. TEST adds
 `AGENTIFY_TEST_LISTEN_ADDRESS`, the private address its door binds on.

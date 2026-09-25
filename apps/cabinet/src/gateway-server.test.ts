@@ -1,5 +1,5 @@
 /**
- * The cabinet's announcement listener: the gateway asks, the cabinet tells
+ * The cabinet's listener for the gateway: the gateway asks, the cabinet tells
  * every account that names the merchant (ADR-0019).
  *
  * The promises are the gateway's to rely on and the merchant's to read. The
@@ -15,16 +15,16 @@
 
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { Announcement } from "@agentify/gateway/announcements";
+import type { GatewayRequest } from "@agentify/gateway/announcements";
 import { afterEach, describe, expect, it } from "vitest";
-import { buildAnnouncementApp, startAnnouncementServer, tellerFor } from "./announcement-server.js";
 import { loadConfig } from "./config.js";
+import { buildGatewayApp, startGatewayServer, tellerFor } from "./gateway-server.js";
 import { identityFor } from "./identity.js";
 import type { Handover, Message } from "./mail.js";
 
-const SECRET = "the-gateway-announcement-secret-of-32-characters";
+const SECRET = "the-gateway-cabinet-secret-this-suite-presents";
 const REPORT_IDENTITY_SECRET = "the-scanner-report-identity-secret-32-characters";
-const PATH = "/internal/announcements";
+const PATH = "/internal/gateway";
 
 const MERCHANT = "mch_the_shop";
 const FROM = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
@@ -36,7 +36,7 @@ const config = () =>
     DATABASE_URL: "postgres://unused.example/unused",
     AUTH_SECRET: "a".repeat(44),
     REPORT_IDENTITY_SECRET,
-    ANNOUNCEMENT_SECRET: SECRET,
+    GATEWAY_CABINET_SECRET: SECRET,
     PAYMENT_NETWORK: "eip155:8453",
     FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
     REGISTRATION_INVITATION: "the-existing-gateway-invitation",
@@ -44,7 +44,8 @@ const config = () =>
     BASE_PATH: "/cabinet",
   });
 
-const aWalletChange: Announcement = {
+const aWalletChange: GatewayRequest = {
+  operation: "announce",
   kind: "wallet_change",
   merchant_id: MERCHANT,
   from: FROM,
@@ -83,7 +84,7 @@ const listening = async (
   for (const [email, merchantId] of people) {
     await identity.make(email, { id: merchantId, key: `csk_live_key-of-${email}` });
   }
-  const server = buildAnnouncementApp(SECRET, tellerFor(settings, identity, postman)).listen(
+  const server = buildGatewayApp(SECRET, tellerFor(settings, identity, postman)).listen(
     0,
     "127.0.0.1",
   );
@@ -104,13 +105,13 @@ const post = async (url: string, body: unknown, secret: string | null = SECRET) 
   });
 
 describe("who may ask", () => {
-  it("opens no listener for a cabinet that holds no announcement secret", () => {
-    expect(startAnnouncementServer(null, async () => "handed_over")).toBeNull();
+  it("opens no listener for a cabinet that holds no gateway secret", () => {
+    expect(startGatewayServer(null, async () => "handed_over")).toBeNull();
   });
 
   it.each([
     ["no secret", null],
-    ["a wrong one", "a-wrong-announcement-secret-of-32-characters!"],
+    ["a wrong one", "a-wrong-gateway-cabinet-secret-nobody-holds"],
     ["the scanner's", REPORT_IDENTITY_SECRET],
   ])("refuses a request carrying %s, and tells nobody", async (_what, secret) => {
     const { url, sent } = await listening([["owner@example.com", MERCHANT]]);
@@ -121,10 +122,15 @@ describe("who may ask", () => {
     expect(sent).toStrictEqual([]);
   });
 
-  it("refuses a request that is not an announcement, and tells nobody", async () => {
+  const { operation: _operation, ...withoutOperation } = aWalletChange;
+
+  it.each([
+    ["a request that is not an announcement", { ...aWalletChange, kind: "wallet_gone" }],
+    ["a request that names no operation", withoutOperation],
+  ])("refuses %s, and tells nobody", async (_what, body) => {
     const { url, sent } = await listening([["owner@example.com", MERCHANT]]);
 
-    const refused = await post(url, { ...aWalletChange, kind: "wallet_gone" });
+    const refused = await post(url, body);
 
     expect(refused.status).toBe(400);
     expect(sent).toStrictEqual([]);
@@ -211,6 +217,7 @@ describe("a key's label, which somebody else may have written", () => {
     const { url, sent } = await listening([["owner@example.com", MERCHANT]]);
 
     await post(url, {
+      operation: "announce",
       kind: "key_issued",
       merchant_id: MERCHANT,
       key: {
@@ -218,7 +225,7 @@ describe("a key's label, which somebody else may have written", () => {
         label: "confirm at https://agentify.example/login or www.evil.example",
       },
       asked_with: { kind: "cabinet" },
-    } satisfies Announcement);
+    } satisfies GatewayRequest);
 
     for (const text of [sent[0]?.body ?? "", sent[0]?.html ?? ""]) {
       expect(text).toContain("mk_91c0");
@@ -237,11 +244,12 @@ describe("what is announced once it is done", () => {
     const { url, sent } = await listening([["owner@example.com", MERCHANT]]);
 
     const answered = await post(url, {
+      operation: "announce",
       kind: "wallet_set",
       merchant_id: MERCHANT,
       to: TO,
       asked_with: { kind: "merchant_code", id: "mk_7f3a", label: "the stock worker" },
-    } satisfies Announcement);
+    } satisfies GatewayRequest);
 
     expect(await answered.json()).toStrictEqual({ outcome: "handed_over" });
     for (const text of [sent[0]?.body ?? "", sent[0]?.html ?? ""]) {
@@ -255,12 +263,13 @@ describe("what is announced once it is done", () => {
     const { url, sent } = await listening([["owner@example.com", MERCHANT]]);
 
     const answered = await post(url, {
+      operation: "announce",
       kind: "wallet_change_cancelled",
       merchant_id: MERCHANT,
       kept: FROM,
       cancelled: TO,
       asked_with: { kind: "cabinet" },
-    } satisfies Announcement);
+    } satisfies GatewayRequest);
 
     expect(await answered.json()).toStrictEqual({ outcome: "handed_over" });
     expect(sent[0]?.body).toContain(FROM);
@@ -271,11 +280,12 @@ describe("what is announced once it is done", () => {
     const { url, sent } = await listening([["owner@example.com", MERCHANT]]);
 
     const answered = await post(url, {
+      operation: "announce",
       kind: "key_issued",
       merchant_id: MERCHANT,
       key: { id: "mk_91c0", label: "the price desk" },
       asked_with: { kind: "cabinet" },
-    } satisfies Announcement);
+    } satisfies GatewayRequest);
 
     expect(await answered.json()).toStrictEqual({ outcome: "handed_over" });
     expect(sent[0]?.body).toContain("the price desk");

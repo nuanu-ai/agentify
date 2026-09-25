@@ -107,8 +107,8 @@
 #   TOKEN_HMAC_SECRET       what signs a report link         a sandbox value
 #   REPORT_IDENTITY_SECRET  what the scanner shows the       a sandbox value
 #                           cabinet's private route
-#   ANNOUNCEMENT_SECRET     what the gateway shows the       a sandbox value
-#                           cabinet's announcement route
+#   GATEWAY_CABINET_SECRET  what the gateway shows the       a sandbox value
+#                           cabinet's route for the gateway
 #
 # The scanner's remaining settings — who the operator is, which analytics
 # datasets may be named, the bot check, the paid surfaces — are the names its
@@ -309,8 +309,8 @@ services:
       # never the scanner's route on 3002 or its secret. A test stack and the
       # sandbox read neither, since they apply a change at once and announce
       # nothing; a live gateway will not start without both.
-      CABINET_ANNOUNCEMENT_URL: http://cabinet:3003
-      ANNOUNCEMENT_SECRET: "${ANNOUNCEMENT_SECRET:-a-sandbox-announcement-secret-nobody-should-reuse}"
+      CABINET_INTERNAL_URL: http://cabinet:3003
+      GATEWAY_CABINET_SECRET: "${GATEWAY_CABINET_SECRET:-a-sandbox-gateway-cabinet-secret-nobody-should-reuse}"
       # A challenge has to name somewhere for the money to go or it cannot be
       # built at all, so this is here to give the document a shape where the
       # merchant selling has set no address of their own — which is what a stack
@@ -366,7 +366,7 @@ services:
       # wallet or their keys (ADR-0019). The gateway and the cabinet hold it and
       # nothing else does; a cabinet handed its session secret, the invitation
       # or the scanner's secret here refuses to start. Nothing publishes 3003.
-      ANNOUNCEMENT_SECRET: "${ANNOUNCEMENT_SECRET:-a-sandbox-announcement-secret-nobody-should-reuse}"
+      GATEWAY_CABINET_SECRET: "${GATEWAY_CABINET_SECRET:-a-sandbox-gateway-cabinet-secret-nobody-should-reuse}"
       # What signs a merchant's session cookie. The component behind the sign-in
       # ships a fallback of its own, and a deployment that leans on it signs
       # sessions with a value out of somebody else's public source — so the

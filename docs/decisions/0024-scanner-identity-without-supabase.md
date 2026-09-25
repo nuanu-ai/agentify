@@ -60,8 +60,8 @@ the shared stack. Reusing legacy hand-written verification avoids a dependency
 but abandons the component boundary established by ADR-0009. The route above is
 the cabinet's second listener, publishing no port and reached by service name;
 the release proves that each of the cabinet's internal credentials, this one and
-the one the gateway announces wallet changes with (ADR-0019), is held by its own
-two processes and by no other service in the rendered graph.
+the gateway's (ADR-0019), is held by its own two processes and by no other
+service in the rendered graph.
 Cross-domain SSO and automatic merging of scanner and merchant
 identities are not built; the one session for the site and what crosses the
 boundary are ADR-0026's decision, and the separation above stands for scans,

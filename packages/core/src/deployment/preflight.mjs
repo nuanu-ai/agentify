@@ -55,8 +55,8 @@ const WRITTEN_IN_THIS_REPOSITORY = [
   ["scanner", "TOKEN_HMAC_SECRET", "a-sandbox-token-hmac-secret-nobody-should-reuse"],
   ["cabinet", "REPORT_IDENTITY_SECRET", "a-sandbox-report-identity-secret-nobody-should-reuse"],
   ["scanner", "REPORT_IDENTITY_SECRET", "a-sandbox-report-identity-secret-nobody-should-reuse"],
-  ["gateway", "ANNOUNCEMENT_SECRET", "a-sandbox-announcement-secret-nobody-should-reuse"],
-  ["cabinet", "ANNOUNCEMENT_SECRET", "a-sandbox-announcement-secret-nobody-should-reuse"],
+  ["gateway", "GATEWAY_CABINET_SECRET", "a-sandbox-gateway-cabinet-secret-nobody-should-reuse"],
+  ["cabinet", "GATEWAY_CABINET_SECRET", "a-sandbox-gateway-cabinet-secret-nobody-should-reuse"],
 ];
 
 const envOf = (resolved, service) => resolved.services?.[service]?.environment ?? {};
@@ -204,10 +204,13 @@ export function problemsWith(channel, resolved) {
           "CDP_API_KEY_SECRET",
           "SANDBOX_MERCHANT_KEY",
           "REGISTRATION_INVITATION",
-          "ANNOUNCEMENT_SECRET",
+          "GATEWAY_CABINET_SECRET",
         ],
       ],
-      ["cabinet", ["AUTH_SECRET", "MAIL_URL", "MAIL_API_KEY", "MAIL_FROM", "ANNOUNCEMENT_SECRET"]],
+      [
+        "cabinet",
+        ["AUTH_SECRET", "MAIL_URL", "MAIL_API_KEY", "MAIL_FROM", "GATEWAY_CABINET_SECRET"],
+      ],
     ]) {
       for (const name of names) {
         if ((envOf(resolved, service)[name] ?? "").startsWith("REPLACE_")) {
@@ -294,27 +297,27 @@ export function problemsWith(channel, resolved) {
       );
     }
   }
-  // The gateway's announcement route (ADR-0019), held to the same proof: the
+  // The gateway's internal route (ADR-0019), held to the same proof: the
   // gateway and the cabinet hold its secret and nothing else does, the secret
   // opens no other door — the scanner's route above all, which can name
   // sessions and remove people — and the gateway asks the cabinet's own
   // listener on this stack's network and nothing else.
-  const announcement = cabinet.ANNOUNCEMENT_SECRET ?? "";
-  if (announcement.length < 32) {
+  const gatewaySecret = cabinet.GATEWAY_CABINET_SECRET ?? "";
+  if (gatewaySecret.length < 32) {
     problems.push(
-      "cabinet: ANNOUNCEMENT_SECRET is missing or shorter than 32 characters, so the " +
-        "announcement route has no secret to ask for",
+      "cabinet: GATEWAY_CABINET_SECRET is missing or shorter than 32 characters, so the " +
+        "gateway's route has no secret to ask for",
     );
   }
-  if (gateway.ANNOUNCEMENT_SECRET !== cabinet.ANNOUNCEMENT_SECRET) {
+  if (gateway.GATEWAY_CABINET_SECRET !== cabinet.GATEWAY_CABINET_SECRET) {
     problems.push(
-      "gateway: ANNOUNCEMENT_SECRET is not the cabinet's, so the cabinet turns every announcement " +
+      "gateway: GATEWAY_CABINET_SECRET is not the cabinet's, so the cabinet turns every announcement " +
         "away and every wallet change on the live site is refused",
     );
   }
-  if (gateway.CABINET_ANNOUNCEMENT_URL !== "http://cabinet:3003") {
+  if (gateway.CABINET_INTERNAL_URL !== "http://cabinet:3003") {
     problems.push(
-      `gateway: CABINET_ANNOUNCEMENT_URL is ${JSON.stringify(gateway.CABINET_ANNOUNCEMENT_URL ?? null)} ` +
+      `gateway: CABINET_INTERNAL_URL is ${JSON.stringify(gateway.CABINET_INTERNAL_URL ?? null)} ` +
         "and the route is http://cabinet:3003, on this stack's own network",
     );
   }
@@ -329,22 +332,22 @@ export function problemsWith(channel, resolved) {
     ["gateway", "CDP_API_KEY_SECRET"],
     ["scanner", "TOKEN_HMAC_SECRET"],
   ]) {
-    if (announcement !== "" && envOf(resolved, service)[name] === announcement) {
+    if (gatewaySecret !== "" && envOf(resolved, service)[name] === gatewaySecret) {
       problems.push(
-        `${service}: ANNOUNCEMENT_SECRET is also its ${name}, and one credential opens one door`,
+        `${service}: GATEWAY_CABINET_SECRET is also its ${name}, and one credential opens one door`,
       );
     }
   }
   for (const [service, definition] of Object.entries(resolved.services ?? {})) {
     const environment = definition?.environment ?? {};
-    if (service !== "gateway" && service !== "cabinet" && "ANNOUNCEMENT_SECRET" in environment) {
+    if (service !== "gateway" && service !== "cabinet" && "GATEWAY_CABINET_SECRET" in environment) {
       problems.push(
-        `${service}: ANNOUNCEMENT_SECRET is handed to a service that is neither the gateway nor the cabinet`,
+        `${service}: GATEWAY_CABINET_SECRET is handed to a service that is neither the gateway nor the cabinet`,
       );
     }
-    if (service !== "gateway" && "CABINET_ANNOUNCEMENT_URL" in environment) {
+    if (service !== "gateway" && "CABINET_INTERNAL_URL" in environment) {
       problems.push(
-        `${service}: CABINET_ANNOUNCEMENT_URL is handed to a service that is not the gateway`,
+        `${service}: CABINET_INTERNAL_URL is handed to a service that is not the gateway`,
       );
     }
   }
