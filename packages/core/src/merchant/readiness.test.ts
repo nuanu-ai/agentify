@@ -81,7 +81,7 @@ describe("a fact the caller could not read", () => {
     // Approval unread on the test channel is no gap: nobody approves anybody
     // there, and a page that said it could not tell would send a merchant
     // looking for something that does not exist.
-    const unread = { ...EVERYTHING_SET, liveApproval: UNKNOWN };
+    const unread: MerchantFacts = { ...EVERYTHING_SET, liveApproval: UNKNOWN };
     expect(readinessOf(unread, "test").unknown).toStrictEqual([]);
     expect(readinessOf(unread, "live").unknown).toStrictEqual(["no_operator_approval"]);
   });
@@ -89,7 +89,7 @@ describe("a fact the caller could not read", () => {
   it("leaves what was read to be judged as it stands", () => {
     // The cabinet reads the name and the wallet and never the approval; what
     // it read still decides what is missing.
-    const cabinet = { sellerName: null, payoutWallet: null, liveApproval: UNKNOWN };
+    const cabinet: MerchantFacts = { sellerName: null, payoutWallet: null, liveApproval: UNKNOWN };
     expect(readinessOf(cabinet, "live")).toMatchObject({
       missing: ["no_seller_name", "no_payout_wallet"],
       unknown: ["no_operator_approval"],
