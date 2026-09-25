@@ -714,16 +714,17 @@ class Activation(unittest.TestCase):
         # deploy/one-database.sh keeps its progress beside the transition
         # record; until it says done, the new project's database is a copy in
         # the middle of a move, and a release must not start on it.
+        # Written from inside, as the move writes it: a rewrite from the macOS
+        # side of Docker Desktop's file sharing can reach the container late.
+        write = 'echo "{}" > /var/lib/agentify/test/one-database\nactivate'
         for progress in ("stopping", "stopped /var/backups/agentify/test/point 1", "copied /var/backups/agentify/test/point 1 2"):
             with self.subTest(progress=progress):
-                (self.root / "state/test/one-database").write_text(progress + "\n")
-                said = self.run_script("activate")
+                said = self.run_script(write.format(progress))
                 self.assertIn("exit 1", said)
                 self.assertIn("/var/lib/agentify/test/one-database", said)
                 self.assert_old_release_runs_on_old_data(said)
                 self.assertEqual((self.restore_points(), self.record()), ([], None))
-        (self.root / "state/test/one-database").write_text("done /var/backups/agentify/test/point 1 2\n")
-        self.assertIn("exit 0", self.run_script("activate"))
+        self.assertIn("exit 0", self.run_script(write.format("done /var/backups/agentify/test/point 1 2")))
 
     def test_a_database_running_another_image_than_the_pinned_one_stops_nothing(self):
         said = self.run_script("activate", POSTGRES_IMAGE="sha256:postgres-16")

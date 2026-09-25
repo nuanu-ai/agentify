@@ -104,6 +104,12 @@ esac
 
 exec 9>/run/lock/agentify-release.lock
 flock -n 9 || { echo "activate: another activation, a restore or the privacy job holds the release lock; nothing was changed." >&2; exit 75; }
+# The one-time move to one database keeps its progress here (deploy/README.md,
+# "One database"). Until it says done, the database volume is a copy in the
+# middle of a move, and nothing may start on it.
+read -r moving _ < "$state/one-database" 2>/dev/null || moving=""
+[[ -z $moving || $moving == done ]] \
+  || refuse "$state/one-database says the move to one database stopped at $moving; finish it with deploy/one-database.sh $channel, or go back with deploy/one-database.sh $channel --back. Nothing was stopped."
 
 at "pulling the images of $revision"
 pinned=""
