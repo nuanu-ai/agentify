@@ -7,11 +7,11 @@
  * is in front of somebody who can tell them what is wrong. Three rules, each
  * standing for a payment this gateway cannot take.
  *
- * A price of zero is refused. Nothing has yet been sold for nothing through the
- * payment step — the challenge, the facilitator's check and its settlement —
- * and what that step does with a charge of zero is not known. That is a "not
- * yet": it is lifted once a free sale has been carried through payment from
- * end to end (ADR-0002 §2).
+ * A price of zero is refused, and by design rather than for now. A payment
+ * request for nothing asks for something that cannot be done, and a gateway
+ * that took free items would be hosting content rather than selling it. A
+ * merchant gives a free item away from their own site, with no payment
+ * request in front of it (ADR-0002 §2).
  *
  * A currency other than the dollar is refused, because there is no exchange
  * rate anywhere in this system to charge it at. The set is the one the payment
@@ -66,7 +66,7 @@ export function priceProblemsOf(price: Money): Problem[] {
     problems.push({
       path: ["price", "amount"],
       code: "custom",
-      message: `the price is ${written}, and a price of zero cannot be sold yet: a payment of nothing has not been proven to go through, so the price has to be above zero`,
+      message: `the price is ${written}, and nothing is sold through Agentify at a price of zero: a free item is offered from your own site, without a payment`,
     });
   } else if (!/\.\d{2,}$/.test(price.amount)) {
     problems.push({

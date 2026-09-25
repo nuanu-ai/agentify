@@ -266,9 +266,9 @@ export const inspectProductInTheShop = async (
     return {
       ok: false,
       why:
-        `The shop's price for this product is ${product.price}, and Agentify cannot sell` +
-        " anything at a price of zero yet: a payment of nothing has not been proven to go" +
-        " through. Give the product a price above zero in WooCommerce to sell it here.",
+        `The shop's price for this product is ${product.price}, and nothing is sold through` +
+        " Agentify at a price of zero: a free product is offered from your own shop, without" +
+        " a payment.",
     };
   }
   const fingerprint = createHash("sha256")

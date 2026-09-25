@@ -550,7 +550,7 @@ describe("the protected product check", () => {
   });
 
   it("leaves a product priced at zero in the shop and says why", async () => {
-    // Agentify sells nothing at zero yet, and its door refuses such a card. A
+    // Agentify sells nothing at zero, and its door refuses such a card. A
     // product the connector cannot sell is named on the import page with the
     // reason rather than sent to the door, and a price question about one that
     // was repriced after it was imported is answered as not for sale here

@@ -124,9 +124,9 @@ describe("the catalog", () => {
   it("refuses a price it cannot sell at, and names what it found", async () => {
     // The promise: a card reaches the catalog only at a price a payment can
     // actually be taken at, and a merchant who is told no is told which half of
-    // the price is wrong and what it said. A charge of nothing has not been
-    // carried through a payment, a currency other than the dollar has no rate
-    // to be charged at, and an amount written without its cents is how "500"
+    // the price is wrong and what it said. A payment of nothing is not a sale
+    // Agentify makes, a currency other than the dollar has no rate to be
+    // charged at, and an amount written without its cents is how "500"
     // meant as five dollars becomes a five-hundred-dollar card. The short
     // spelling is opened out before the rule is applied, so it meets the same
     // rule in the same words.
