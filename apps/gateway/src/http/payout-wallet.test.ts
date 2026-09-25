@@ -104,6 +104,19 @@ const fresh = async (served: Served): Promise<string> => {
   return (answered.body as { secret: string }).secret;
 };
 
+/** A key for the merchant's own code, issued the way the cabinet's keys screen issues one. */
+const ownKeyOf = async (served: Served, cabinetKey: string): Promise<string> => {
+  const issued = await served.call("POST", "/v0/keys", {
+    body: { label: "the stock worker" },
+    headers: bearer(cabinetKey),
+  });
+  expect(issued.status, JSON.stringify(issued.body)).toBe(200);
+  return (issued.body as { secret: string }).secret;
+};
+
+const refusalOf = (body: unknown) =>
+  (body as { error: { code: string; message: string; retryable: boolean } }).error;
+
 /** One merchant ready to sell but for the wallet: named, and nothing else. */
 const named = async (served: Served, key: string, name: string): Promise<void> => {
   const answered = await served.call("POST", "/v0/seller-name", {
@@ -285,6 +298,73 @@ describe("the wallet a merchant is paid at", () => {
   });
 });
 
+describe("who may set it", () => {
+  // Keys operate the shop; where its money goes is changed only by a person
+  // signed in to the cabinet (ADR-0019). A key of the merchant's own code
+  // lives in a server's environment, and whoever holds a copy of it must not
+  // be able to send the merchant's takings anywhere.
+
+  it("refuses a key of the merchant's own code, points to the cabinet's settings, and writes nothing", async () => {
+    const { served, harnessed } = await started();
+
+    const refused = await setPayoutWallet(served, harnessed.merchant.key, A_WALLET);
+
+    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
+    const error = refusalOf(refused.body);
+    expect(error.code).toBe("not_a_cabinet_key");
+    expect(error.retryable).toBe(false);
+    // Where the caller goes instead, which is the whole use of the refusal.
+    expect(error.message).toMatch(/cabinet/i);
+    expect(error.message).toMatch(/settings/i);
+    expect(await payoutWallet(served, harnessed.merchant.key)).toStrictEqual({
+      payout_wallet: harnessed.merchant.wallet,
+      pending: null,
+    });
+  });
+
+  it("refuses the first address from a key of the merchant's own code too", async () => {
+    // The first address replaces nothing, and it is still where every sale
+    // goes: set by a key that leaked before its owner chose one, it would be
+    // the address the merchant's first takings are paid to.
+    const { served } = await started();
+    const cabinet = await fresh(served);
+    const own = await ownKeyOf(served, cabinet);
+
+    const refused = await setPayoutWallet(served, own, A_WALLET);
+
+    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
+    expect(refusalOf(refused.body).code).toBe("not_a_cabinet_key");
+    expect(await payoutWallet(served, cabinet)).toStrictEqual({
+      payout_wallet: null,
+      pending: null,
+    });
+  });
+
+  it("sets it with the key a cabinet holds", async () => {
+    const { served } = await started();
+    const cabinet = await fresh(served);
+
+    const answered = await setPayoutWallet(served, cabinet, A_WALLET);
+
+    expect(answered.status, JSON.stringify(answered.body)).toBe(200);
+    expect(answered.body).toStrictEqual({ payout_wallet: A_WALLET, pending: null });
+  });
+
+  it("reads it with any key of the merchant's", async () => {
+    // Reading moves no money, and a merchant's own code has good reason to
+    // know where the takings go: a reconciliation, a check before selling.
+    const { served } = await started();
+    const cabinet = await fresh(served);
+    const own = await ownKeyOf(served, cabinet);
+    await setPayoutWallet(served, cabinet, A_WALLET);
+
+    expect(await payoutWallet(served, own)).toStrictEqual({
+      payout_wallet: A_WALLET,
+      pending: null,
+    });
+  });
+});
+
 describe("publishing before a wallet has been set", () => {
   it("refuses a merchant with no wallet, and says where to set one", async () => {
     // The rule this half of the file exists for. A card published with no
@@ -303,8 +383,12 @@ describe("publishing before a wallet has been set", () => {
     // The words have to tell them what to do next. What is missing is not on
     // the card at all, so a merchant told "something is missing" would go
     // through the fields of a card looking for a field that is not there.
-    expect(problems.map((finding) => finding.code)).toContain("no_payout_wallet");
-    expect(problems.map((finding) => finding.message).join(" ")).toContain("/v0/payout-wallet");
+    // The wallet is set in the cabinet and nowhere else, so that is where the
+    // words send them.
+    const said = problems.find((finding) => finding.code === "no_payout_wallet")?.message ?? "";
+    expect(said).toMatch(/cabinet/i);
+    expect(said).toMatch(/settings/i);
+    expect(said).not.toContain("/v0/payout-wallet");
   });
 
   it("carries an empty path, because it is not about a field of the card", async () => {

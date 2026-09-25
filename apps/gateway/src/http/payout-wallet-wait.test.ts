@@ -202,6 +202,20 @@ describe("the first address a merchant sets", () => {
 });
 
 describe("a replacement on the live deployment", () => {
+  it("is refused to a key of the merchant's own code before anybody is told", async () => {
+    // A key that cannot make the change must not be able to send messages
+    // about one either, so the refusal comes before the announcement.
+    const { served, harnessed } = await started();
+    const before = await walletOf(served, harnessed.merchant.key);
+
+    const refused = await asking(served, harnessed.merchant.key, A_WALLET);
+
+    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
+    expect(refusalOf(refused.body).code).toBe("not_a_cabinet_key");
+    expect(harnessed.announcer.announced).toStrictEqual([]);
+    expect(await walletOf(served, harnessed.merchant.key)).toStrictEqual(before);
+  });
+
   it("waits forty-eight hours, and payment requests name the address paid now until then", async () => {
     // The promise the whole wait is for: a key that leaked cannot move a
     // merchant's money today. Until the moment is reached, every agent asking
