@@ -122,10 +122,19 @@ export const WALLET_CHANGE_WAITS_MS = 48 * 60 * 60 * 1_000;
  *
  * `nobody_to_tell`: no account names the merchant. `not_announced`: a message
  * could not be handed to the mail provider — though others may have been.
- * `unconfirmed`: the cabinet did not answer, so a message may have gone out.
- * `raced`: another change was recorded while this one was being announced.
+ * `refused_by_cabinet`: the cabinet turned the request away before telling
+ * anybody. `unconfirmed`: the cabinet did not answer, so a message may have
+ * gone out. `raced`: another write landed between reading the wallet and
+ * writing it, on a change nothing had announced; `raced_after_announcing`:
+ * the same, after this change's own message went out.
  */
-export type WalletChangeRefusal = "nobody_to_tell" | "not_announced" | "unconfirmed" | "raced";
+export type WalletChangeRefusal =
+  | "nobody_to_tell"
+  | "not_announced"
+  | "refused_by_cabinet"
+  | "unconfirmed"
+  | "raced"
+  | "raced_after_announcing";
 
 /** The key a call was made with, as the door resolved it. */
 export interface KeyOnTheCall {
@@ -828,10 +837,11 @@ export class Gateway {
     }
     // Counted from now, after every message was handed over, so the change
     // takes effect no earlier than the moment any message named.
-    return await this.#recordWallet(merchantId, read, {
+    const recorded = await this.#recordWallet(merchantId, read, {
       address: now.address,
       pending: { address, takesEffectAt: this.runtime.clock() + WALLET_CHANGE_WAITS_MS },
     });
+    return recorded === "raced" ? "raced_after_announcing" : recorded;
   }
 
   /** Whether this deployment waits on and announces a change: the live one alone. */

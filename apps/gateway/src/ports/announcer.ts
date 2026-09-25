@@ -2,13 +2,17 @@
  * Telling a merchant of a change to their payout wallet or their keys
  * (ADR-0019).
  *
- * Four outcomes rather than the cabinet's three, and the fourth is the one
- * that matters. `unconfirmed` is a cabinet that did not answer — gone, slow
- * past the deadline, or answering something the wire does not recognise — and
- * then a message may have gone out although nothing here knows it did. It is
- * a different fact from "a message could not be handed over", and the refusal
- * built on it must not read as "not sent": a merchant who got the message and
- * was told nothing happened would be told something untrue about their money.
+ * Five outcomes rather than the cabinet's three, and the last two are the
+ * ones that matter. `refused_by_cabinet` is a listener that turned the request
+ * away before reading it — the wrong secret, a body it would not take, an
+ * address it does not answer on — so nobody was told. `unconfirmed` is a
+ * cabinet that did not answer — gone, slow past the deadline, failing, or
+ * answering something the wire does not recognise — and then a message may
+ * have gone out although nothing here knows it did. The two are different
+ * facts about somebody's inbox, and the refusal built on each says its own:
+ * a merchant who got the message and was told nothing happened would be told
+ * something untrue about their money, and so would one told a message may
+ * have reached them when none could have.
  *
  * Nothing here throws on a silence. The adapter turns every way the call can
  * fail into `unconfirmed`, so the flow above has four answers to write and no
@@ -17,7 +21,10 @@
 
 import type { Announcement, AnnouncementAnswer } from "../announcements.js";
 
-export type AnnouncementOutcome = AnnouncementAnswer["outcome"] | "unconfirmed";
+export type AnnouncementOutcome =
+  | AnnouncementAnswer["outcome"]
+  | "refused_by_cabinet"
+  | "unconfirmed";
 
 export interface Announcer {
   announce(announcement: Announcement): Promise<AnnouncementOutcome>;

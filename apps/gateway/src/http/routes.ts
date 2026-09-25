@@ -139,12 +139,16 @@ const notTheCabinets = (response: RouteCall["response"]): RouteAnswer =>
 /**
  * What a wallet change the gateway would not record is answered with.
  *
- * Four refusals, and in every one nothing was written: the address paid now
+ * Four codes, and in every one nothing was written: the address paid now
  * and whatever change was already waiting are as they were (ADR-0019). They
  * are four codes rather than one because each asks something different of
- * whoever reads it, and the two that turn on a message say what may have
- * reached a mailbox — a merchant who has read a message about a change must
- * not be told nothing was sent.
+ * whoever reads it. Two of them come in two wordings, because the words say
+ * what may have reached a mailbox and the code alone does not know: a cabinet
+ * that turned the request away told nobody, where one whose provider refused
+ * a message may have told some; a change raced after its message went out
+ * has a message in an inbox, where one raced before anything was announced
+ * has none. A merchant who has read a message about a change must not be told
+ * nothing was sent, and one who has none must not be sent looking for it.
  *
  * The codes are this route's alone and no worker of the SDK meets them, which
  * is why they joined the published list without moving the contract version
@@ -175,6 +179,15 @@ function walletChangeRefused(
           "the message about this change could not be handed to the mail provider for every account that names this merchant, so nothing was recorded and sales are paid where they were; an account may still have received it, and it says the change takes effect only if the cabinet's wallet screen shows it, which it does not",
         ),
       );
+    case "refused_by_cabinet":
+      return written(
+        response,
+        UNAVAILABLE,
+        refusal(
+          "wallet_change_not_announced",
+          "the cabinet that sends the message about this change turned the request away before telling anybody, so nothing was sent and nothing was recorded; sales are paid where they were",
+        ),
+      );
     case "unconfirmed":
       return written(
         response,
@@ -190,7 +203,16 @@ function walletChangeRefused(
         CONFLICT,
         refusal(
           "wallet_change_raced",
-          "another change of this merchant's payout wallet was recorded while this one was being announced, so this one was not recorded; its message may have gone out and says the change takes effect only if the cabinet's wallet screen shows it. Read the wallet and ask again if this is still the address wanted",
+          "another change of this merchant's payout wallet was recorded between reading the wallet and writing this one, so this one was not recorded; read the wallet and ask again if this is still the address wanted",
+        ),
+      );
+    case "raced_after_announcing":
+      return written(
+        response,
+        CONFLICT,
+        refusal(
+          "wallet_change_raced",
+          "another change of this merchant's payout wallet was recorded while this one was being announced, so this one was not recorded; its message went out and says the change takes effect only if the cabinet's wallet screen shows it, which it does not. Read the wallet and ask again if this is still the address wanted",
         ),
       );
     default: {

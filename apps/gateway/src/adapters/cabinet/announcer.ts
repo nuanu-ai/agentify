@@ -3,10 +3,11 @@
  * (ADR-0019).
  *
  * One call, made synchronously by the flow that is about to record a wallet
- * change, and read strictly: the cabinet's three answers pass through, and
- * every other way the call can end — a status that is not a 200, a body the
- * wire does not recognise, nothing listening, nothing back before the deadline
- * — is `unconfirmed`. The last of those is the one worth naming. A cabinet
+ * change, and read strictly: the cabinet's three answers pass through, a 4xx
+ * is `refused_by_cabinet` because the listener answers those before telling
+ * anybody, and every other way the call can end — a 5xx, a body the wire does
+ * not recognise, nothing listening, nothing back before the deadline — is
+ * `unconfirmed`. The last of those is the one worth naming. A cabinet
  * that answers after the gateway stopped waiting may well have handed every
  * message over, and a merchant who reads one was told of a change the gateway
  * then refused; the refusal says exactly that, which is only possible because
@@ -72,6 +73,18 @@ export class CabinetAnnouncer implements Announcer {
     }
 
     const text = await answered.text().catch(() => "");
+    if (answered.status >= 400 && answered.status < 500) {
+      // The cabinet's listener answers these before it reads an announcement,
+      // and so before it tells anybody: nothing was sent. The one worth its
+      // own sentence is the secret, because it means every change on this
+      // deployment is being refused until somebody makes the two agree.
+      console.error(
+        answered.status === 401
+          ? `[gateway] the cabinet refused the announcement secret (${announcement.kind}): ANNOUNCEMENT_SECRET on the gateway and on the cabinet are not the same value, and nothing was announced`
+          : `[gateway] the cabinet refused an announcement (${announcement.kind}) with ${answered.status} before telling anybody`,
+      );
+      return "refused_by_cabinet";
+    }
     if (answered.status !== 200) {
       console.error(
         `[gateway] the cabinet answered an announcement (${announcement.kind}) with ${answered.status}`,
