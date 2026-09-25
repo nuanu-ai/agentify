@@ -316,7 +316,10 @@ describe("asking again", () => {
 
     const cancelled = await ask(served, harnessed.merchant.key, harnessed.merchant.wallet);
 
-    expect(cancelled).toStrictEqual({ payout_wallet: harnessed.merchant.wallet, pending: null });
+    expect(cancelled).toStrictEqual({
+      payout_wallet: harnessed.merchant.wallet,
+      pending: null,
+    });
     expect(harnessed.announcer.announced[1]).toStrictEqual({
       kind: "wallet_change_cancelled",
       merchant_id: harnessed.merchant.id,
@@ -427,6 +430,85 @@ describe("two changes for one merchant at once", () => {
     expect(refusalOf(refused.body).code).toBe("wallet_change_raced");
     // Its message did go out, and the refusal says so.
     expect(claimsAMessage(refused.body)).toBe(true);
+    expect((await walletOf(served, harnessed.merchant.key)).pending?.payout_wallet).toBe(
+      ANOTHER_WALLET,
+    );
+  });
+
+  it("answers a retry that arrives while the first ask is still announced with the same waiting change", async () => {
+    // "Asking again is safe" is a promise to a caller whose connection dropped
+    // while the gateway was waiting on the cabinet — up to twenty seconds. The
+    // retry is announced and recorded first; the first ask then finds the row
+    // moved, and what moved it is exactly the change it asked for.
+    const { served, harnessed } = await started();
+    const retry: { answered?: Awaited<ReturnType<typeof asking>> } = {};
+    let retrying = false;
+    harnessed.announcer.answer = async () => {
+      if (!retrying) {
+        retrying = true;
+        retry.answered = await asking(served, harnessed.merchant.key, A_WALLET);
+      }
+      return "handed_over";
+    };
+
+    const first = await asking(served, harnessed.merchant.key, A_WALLET);
+
+    expect(first.status, JSON.stringify(first.body)).toBe(200);
+    expect(retry.answered?.status).toBe(200);
+    expect(first.body).toStrictEqual(retry.answered?.body);
+    expect((first.body as WalletAnswer).pending?.payout_wallet).toBe(A_WALLET);
+  });
+
+  it("lets a cancel win over a change still being announced, and refuses the change", async () => {
+    const { served, harnessed } = await started();
+    await ask(served, harnessed.merchant.key, A_WALLET);
+    const cancel: { answered?: WalletAnswer } = {};
+    let cancelling = false;
+    harnessed.announcer.answer = async (announcement) => {
+      if (announcement.kind === "wallet_change" && !cancelling) {
+        cancelling = true;
+        cancel.answered = await ask(served, harnessed.merchant.key, harnessed.merchant.wallet);
+      }
+      return "handed_over";
+    };
+
+    const refused = await asking(served, harnessed.merchant.key, ANOTHER_WALLET);
+
+    expect(cancel.answered).toStrictEqual({
+      payout_wallet: harnessed.merchant.wallet,
+      pending: null,
+    });
+    expect(refused.status, JSON.stringify(refused.body)).toBe(409);
+    expect(refusalOf(refused.body).code).toBe("wallet_change_raced");
+    expect((await walletOf(served, harnessed.merchant.key)).pending).toBeNull();
+  });
+
+  it("refuses a cancel that a recorded change overtook, without claiming a message", async () => {
+    const { served, harnessed } = await started();
+    await ask(served, harnessed.merchant.key, A_WALLET);
+    const writing = harnessed.store.setPayoutWallet.bind(harnessed.store);
+    let overtaken = false;
+    harnessed.store.setPayoutWallet = async (id, expected, next, when) => {
+      if (!overtaken) {
+        overtaken = true;
+        await writing(
+          id,
+          expected,
+          {
+            address: harnessed.merchant.wallet,
+            pending: { address: ANOTHER_WALLET, takesEffectAt: when + 48 * HOURS },
+          },
+          when,
+        );
+      }
+      return await writing(id, expected, next, when);
+    };
+
+    const refused = await asking(served, harnessed.merchant.key, harnessed.merchant.wallet);
+
+    expect(refused.status, JSON.stringify(refused.body)).toBe(409);
+    expect(refusalOf(refused.body).code).toBe("wallet_change_raced");
+    expect(claimsAMessage(refused.body)).toBe(false);
     expect((await walletOf(served, harnessed.merchant.key)).pending?.payout_wallet).toBe(
       ANOTHER_WALLET,
     );
