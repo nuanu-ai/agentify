@@ -851,7 +851,8 @@ export class Gateway {
 
   /**
    * Writes a merchant's wallet where the row still holds what was read, and
-   * answers with it as it then stands — or `raced` where it moved.
+   * answers with it as it then stands — or `raced` where it moved to anything
+   * but what this write asked for.
    */
   async #recordWallet(
     merchantId: string,
@@ -869,10 +870,23 @@ export class Gateway {
         `the key on this call resolved to ${merchantId}, and there is no such merchant`,
       );
     }
-    if (written === "moved") {
-      return "raced";
+    if (written !== "moved") {
+      return payoutWalletAnswer(payoutWalletAt(written.payoutWallet, this.runtime.clock()));
     }
-    return payoutWalletAnswer(payoutWalletAt(written.payoutWallet, this.runtime.clock()));
+    // Another write landed between the read and this one. What it wrote may
+    // be exactly what this call asked for — a retry after a dropped connection
+    // that reached the gateway while the first was still waiting on the
+    // cabinet — and then the answer is that change, not a refusal of it:
+    // "asking again is safe" is the promise the retry was made on.
+    const merchant = await this.runtime.store.merchantById(merchantId);
+    const standing =
+      merchant === null ? null : payoutWalletAt(merchant.payoutWallet, this.runtime.clock());
+    const asked = next.pending;
+    return standing !== null &&
+      standing.address === next.address &&
+      (asked === null ? standing.pending === null : standing.pending?.address === asked.address)
+      ? payoutWalletAnswer(standing)
+      : "raced";
   }
 
   /**
