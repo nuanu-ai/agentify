@@ -60,8 +60,8 @@ networks:
     external: true
     name: agentify-test-ingress
 
-# External, as on PRODUCTION: deploy/one-database.sh made them from the volumes
-# the host ran two databases on, and nothing creates them by itself.
+# External, as on PRODUCTION: nothing creates them by itself, so a host
+# without them stops Compose rather than starting an empty database.
 volumes:
   agentify-postgres:
     external: true

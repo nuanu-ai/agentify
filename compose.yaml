@@ -25,8 +25,7 @@
 # A volume made before the scanner's tables joined that database still holds
 # them in a second one, `agentify_scanner`, and the first start of this file
 # would build empty scanner tables beside them. `docker compose down -v` once
-# starts from nothing; the move the hosts made keeps the data
-# (deploy/README.md, "One database").
+# starts from nothing.
 #
 # The suite that needs a real database runs against a database of its own,
 # `agentify_test`, on this same server. It needs the server and nothing else
