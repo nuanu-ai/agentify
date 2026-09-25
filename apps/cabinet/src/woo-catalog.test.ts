@@ -131,6 +131,32 @@ describe("the shop's own prose", () => {
     );
   });
 
+  it("reads a character written as a hexadecimal reference", () => {
+    expect(plainTextOf("Caf&#xE9; brunch")).toBe("Café brunch");
+  });
+
+  it("leaves a name it does not know as it arrived", () => {
+    // An HTML 4 name the table lacks, typed by hand, which wp_kses_post passes
+    // through. Not dropped and not guessed at: what the card says can always
+    // be traced back to what the shop sent.
+    expect(plainTextOf("Caf&eacute; brunch")).toBe("Caf&eacute; brunch");
+  });
+
+  it("reads each reference once", () => {
+    // What the shop sends for a merchant who typed the six characters `&#038;`
+    // into their prose. Read twice, it would show an ampersand they never
+    // wrote.
+    expect(plainTextOf("Type &amp;#038; for an ampersand")).toBe("Type &#038; for an ampersand");
+  });
+
+  it("keeps a tag the merchant wrote as text", () => {
+    // The markup goes before the references are read. The other way round, a
+    // tag spelled out in the prose becomes a tag and is removed with the rest.
+    expect(plainTextOf("<p>Adds a &lt;header&gt; block to the theme.</p>")).toBe(
+      "Adds a <header> block to the theme.",
+    );
+  });
+
   it("drops what a browser would not have shown either", () => {
     expect(plainTextOf("<script>alert(1)</script><p>Real text.</p>")).toBe("Real text.");
     expect(plainTextOf("<style>p{color:red}</style>Real text.")).toBe("Real text.");
@@ -162,6 +188,32 @@ describe("turning a shop's products into cards", () => {
     const { cards } = cardsFromTheShop([product()]);
     expect(cards[0]?.card.title).toBe("Canvas tote bag");
     expect(cards[0]?.card.description).toBe("A physical item that has to be shipped somewhere.");
+  });
+
+  it("titles the card with the name the shop shows rather than the references it is sent in", () => {
+    // The Store API passes a product name through wptexturize and
+    // convert_chars, so the ampersand a merchant typed arrives as `&#038;` and
+    // an apostrophe as `&#8217;`. The first name is the one a live shop serves.
+    const { cards } = cardsFromTheShop([
+      product({ id: 12, name: "Coffee &#038; Brunch Gift Card" }),
+      product({ id: 13, name: "Chef&#8217;s Table Gift Card" }),
+      product({ id: 14, name: "Dinner for Two Gift Card" }),
+    ]);
+    expect(cards.map((one) => one.card.title)).toEqual([
+      "Coffee & Brunch Gift Card",
+      "Chef’s Table Gift Card",
+      "Dinner for Two Gift Card",
+    ]);
+    expect(cards.map((one) => one.title)).toEqual(cards.map((one) => one.card.title));
+  });
+
+  it("describes the card in the characters the shop's page shows", () => {
+    const { cards } = cardsFromTheShop([
+      product({
+        description: "<p>Coffee &amp; brunch for two.&nbsp;Valid for twelve months.</p>\n",
+      }),
+    ]);
+    expect(cards[0]?.card.description).toBe("Coffee & brunch for two. Valid for twelve months.");
   });
 
   it("falls back to the short description where there is no other", () => {
