@@ -33,8 +33,9 @@ if [[ ! -r $environment ]]; then
   exit 78
 fi
 # Compose reads a $ outside single quotes as the start of a variable: the value
-# is cut short there, and every command prints the rest in a warning. A bcrypt
-# hash is the usual victim, so the file is refused, naming the key only.
+# is cut short there, and every command prints the rest in a warning. A secret
+# a password manager generated is the usual victim, so the file is refused,
+# naming the key only.
 unquoted=""
 while IFS= read -r line || [[ -n $line ]]; do
   [[ $line =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue

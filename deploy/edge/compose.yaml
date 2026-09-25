@@ -4,9 +4,6 @@ services:
   caddy:
     image: "${AGENTIFY_EDGE_IMAGE:?set the pinned Caddy image}"
     restart: unless-stopped
-    environment:
-      ADMIN_BASIC_AUTH_USER: ${ADMIN_BASIC_AUTH_USER:?set the scanner admin user}
-      ADMIN_BASIC_AUTH_HASH: ${ADMIN_BASIC_AUTH_HASH:?set the scanner admin bcrypt hash}
     ports:
       - "80:80"
       - "443:443"

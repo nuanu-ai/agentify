@@ -557,9 +557,8 @@ The environment file, `/etc/agentify/<channel>.env`, owned by root with mode
 image: activation records the images per checkout. On both channels it names
 `AGENTIFY_PUBLIC_ORIGIN`, `AGENTIFY_COOKIE_SECURE`, `AGENTIFY_SURFACE_MODE`,
 `AGENTIFY_PAYMENT_NETWORK`, `AGENTIFY_FACILITATOR_URL`, `AGENTIFY_SEED_KEY`,
-`AGENTIFY_AUTH_SECRET`, `AGENTIFY_INVITATION`, `ADMIN_BASIC_AUTH_USER`,
-`ADMIN_BASIC_AUTH_HASH`, `TOKEN_HMAC_SECRET`, `EMAIL_ENCRYPTION_KEY` and
-`REPORT_IDENTITY_SECRET`. TEST adds `AGENTIFY_TEST_LISTEN_ADDRESS`, the
+`AGENTIFY_AUTH_SECRET`, `AGENTIFY_INVITATION`, `TOKEN_HMAC_SECRET`,
+`EMAIL_ENCRYPTION_KEY` and `REPORT_IDENTITY_SECRET`. TEST adds `AGENTIFY_TEST_LISTEN_ADDRESS`, the
 private address its door binds on. PRODUCTION adds `AGENTIFY_DB_PASSWORD`,
 `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `MAIL_URL`, `MAIL_API_KEY` and
 `MAIL_FROM`. The scanner's remaining settings — `PRIVACY_EMAIL`,
@@ -570,10 +569,10 @@ keep the defaults `compose.yaml` gives them unless the file names them, and on
 TEST the scanner's policy is fixed by `deploy/compose.agentify-test.yaml`
 whatever the file says.
 
-A value holding a `$` goes inside single quotes, as a bcrypt hash always does:
-`ADMIN_BASIC_AUTH_HASH='$2a$14$…'`. Compose reads a `$` anywhere else as the
-start of a variable, cuts the value there and prints the rest in a warning, so
-`stack.sh` refuses such a file and names the key. The first release renders
+A value holding a `$`, as a secret from a password manager sometimes does,
+goes inside single quotes: `AGENTIFY_AUTH_SECRET='…$…'`. Compose reads a `$`
+anywhere else as the start of a variable, cuts the value there and prints the
+rest in a warning, so `stack.sh` refuses such a file and names the key. The first release renders
 the file and refuses, before it stops anything, if a variable is missing, the
 preflight disagrees or the scanner refuses the configuration at its own start.
 

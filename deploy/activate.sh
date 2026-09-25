@@ -314,7 +314,7 @@ fi
 
 at "checking the public routes"
 for route in /=200 /owner=308 /api/health/live=200 /api/health=200 /cabinet/sign-in=200 \
-  /cabinet/healthz=200 /docs/=200 /healthz=200 /x402/catalog=200 /admin=401; do
+  /cabinet/healthz=200 /docs/=200 /healthz=200 /x402/catalog=200 /admin=404; do
   status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 --connect-to "$origin:443:$address" "https://$origin${route%=*}" || true)"
   [[ $status == "${route#*=}" ]] \
     || refuse "https://$origin${route%=*} answered ${status:-nothing} where ${route#*=} was expected, so $revision runs unverified."

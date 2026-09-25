@@ -49,8 +49,6 @@ services:
       - "${AGENTIFY_TEST_LISTEN_ADDRESS:?set the address the test edge binds on}:8443:443"
     environment:
       AGENTIFY_SITE_ADDRESS: "test.agentify.ad"
-      ADMIN_BASIC_AUTH_USER: "${ADMIN_BASIC_AUTH_USER:?set the scanner admin user}"
-      ADMIN_BASIC_AUTH_HASH: "${ADMIN_BASIC_AUTH_HASH:?set the scanner admin bcrypt hash}"
     networks:
       default:
       agentify-ingress:

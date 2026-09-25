@@ -63,6 +63,8 @@
 #
 # The command prints no password. The same email-and-link sign-in opens this
 # account. `list` inspects accounts and `revoke` ends their sessions.
+# `operator you@example.com` lets an address that has signed in once read the
+# operator's dashboard at /admin, and `--off` takes that away (ADR-0026 §6).
 #
 # Nothing is bought by itself. The merchant publishes its catalogue and waits;
 # a purchase is an explicit command, so a sale in the cabinet is one somebody
@@ -99,9 +101,6 @@
 #                           registration secret
 #   AGENTIFY_POSTGRES_PUBLISH  the published port of the     5432:5432
 #                           database, or a narrower bind
-#   ADMIN_BASIC_AUTH_USER   who reaches the scanner's        agentify
-#   ADMIN_BASIC_AUTH_HASH   operator screens, and the        a hash of
-#                           bcrypt hash of their password    local-sandbox-admin
 #   TOKEN_HMAC_SECRET       what signs a report link         a sandbox value
 #   REPORT_IDENTITY_SECRET  what the scanner shows the       a sandbox value
 #                           cabinet's private route
@@ -748,15 +747,6 @@ services:
       # front page nobody chose. There is one product and one front page, and
       # it is the scanner's, here and on both deployed channels.
       AGENTIFY_FRONT_PAGE: scanner_front_page
-      # What stands in front of the scanner's operator screens. Caddy cannot
-      # load a `basic_auth` block with nothing in it, so a laptop needs an
-      # answer here as much as a server does — and a laptop's answer is in this
-      # file, for the reason every other secret here is. The password is
-      # `local-sandbox-admin`. The dollars are doubled because compose
-      # substitutes this value before Caddy sees it, and a bcrypt hash is three
-      # fields separated by the character it substitutes on.
-      ADMIN_BASIC_AUTH_USER: "${ADMIN_BASIC_AUTH_USER:-agentify}"
-      ADMIN_BASIC_AUTH_HASH: "${ADMIN_BASIC_AUTH_HASH:-$$2a$$14$$DxglsPhcmQsW3rTfSLUm1Od3CSJm/Ch4q9z..anerRuVT8AOQ31kG}"
       # What the portal says about this stack. It is a variable
       # rather than a derivation because Caddy cannot read a CAIP-2 identifier
       # and cannot hold the list of chains (deploy/Caddyfile). Two fields can

@@ -164,7 +164,7 @@ case $path in
     printf 'HTTP/2 402\r\npayment-required: %s\r\n\r\n' "$(printf '%s' "$challenge" | base64 -w0)" ;;
   *)
     if [[ -n $code ]]; then
-      case $path in /owner) printf 308 ;; /admin) printf 401 ;; *) printf 200 ;; esac
+      case $path in /owner) printf 308 ;; /admin) printf 404 ;; *) printf 200 ;; esac
     else
       printf '{"items": [%s]}' "$(tr ' ' '\n' < /h/world/cards | sed '/^$/d; s/.*/{"id": "&"}/' | paste -sd, -)"
     fi ;;
@@ -781,14 +781,14 @@ class TheEnvironmentFile(unittest.TestCase):
         return result.stdout + result.stderr
 
     def test_refuses_an_unquoted_or_double_quoted_dollar_and_names_only_the_key(self):
-        said = self.check("A=plain\nADMIN_BASIC_AUTH_HASH=$2a$14$saltandhash\nB=\"x$y\"\n")
+        said = self.check("A=plain\nAGENTIFY_AUTH_SECRET=aaaa$bbbb$cccc\nB=\"x$y\"\n")
         self.assertIn("exit 78", said)
-        self.assertIn("ADMIN_BASIC_AUTH_HASH", said)
+        self.assertIn("AGENTIFY_AUTH_SECRET", said)
         self.assertIn("B ", said)
-        self.assertNotIn("saltandhash", said)
+        self.assertNotIn("bbbb", said)
 
     def test_takes_a_dollar_inside_single_quotes_and_a_comment(self):
-        said = self.check("ADMIN_BASIC_AUTH_HASH='$2a$14$saltandhash'\n# NOTE=$x\n")
+        said = self.check("AGENTIFY_AUTH_SECRET='aaaa$bbbb$cccc'\n# NOTE=$x\n")
         self.assertIn("compose would run", said)
         self.assertIn("exit 0", said)
 
