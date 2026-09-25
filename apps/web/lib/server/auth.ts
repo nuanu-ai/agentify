@@ -32,6 +32,8 @@ export type Visitor =
   | Readonly<{
       kind: "person";
       email: string;
+      /** Whether this person's account carries the operator flag (ADR-0026 §6). */
+      operator: boolean;
       /** The lead this address owns reports through, or null for an address with none. */
       leadId: string | null;
       /** The cabinet's renewed cookie, for an answer that asked to renew and can pass it on. */
@@ -87,6 +89,7 @@ export async function visitorOf(
   return {
     kind: "person",
     email: answer.email,
+    operator: answer.operator,
     leadId: await leadOf(answer.email),
     setCookies: answer.set_cookie,
   };
