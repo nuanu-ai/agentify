@@ -1124,8 +1124,10 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
         ...viewingSettings(request, base, settings.document),
         accountNotice:
           ended === 0
-            ? "No other session of this account was signed in, so nothing was signed out."
-            : `Every other session of this account was signed out, ${ended} in all. This one stays signed in.`,
+            ? "No other session of this account was signed in, so none was signed out."
+            : ended === 1
+              ? "1 other session of this account was signed out."
+              : `${ended} other sessions of this account were signed out.`,
       }),
     );
   });
@@ -1231,7 +1233,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     return await withNotice(
       request,
       response,
-      `The change to ${pending.payout_wallet} took effect at ${moment(pending.takes_effect_at)}, as you asked. ` +
+      `The change to ${pending.payout_wallet} took effect at ${moment(pending.takes_effect_at)}, just before your request reached it. ` +
         `Asking for ${applies} back is a change like any other: it waits forty-eight hours and every account of your merchant was sent a message about it. ` +
         "Every other session of your merchant was signed out.",
     );
