@@ -1238,6 +1238,36 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   };
 
   /**
+   * A press on a page drawn while a change waited, arriving after the change
+   * took effect: the Cancel control, or the address that page showed as paid
+   * typed back into the box. Nothing takes the change back at once, so nothing
+   * is asked of the gateway; the page says when it took effect and how the
+   * old address comes back, and the other sessions end, since this is the
+   * moment an unwanted change has just landed.
+   */
+  const tookEffectBeforePress = async (
+    request: Request,
+    response: Response,
+    shown: { readonly waiting: string; readonly from: string | null; readonly paid: string | null },
+    how: string,
+  ): Promise<void> => {
+    const ended = await signOutTheOthers(request);
+    noted(
+      whoIs(request),
+      `${how} after a change of the address their money arrives at had taken effect, and ${ended} other sessions of the merchant were ended`,
+    );
+    return await withNotice(
+      request,
+      response,
+      `The change to ${shown.waiting} took effect at ${shown.from === null ? "its moment" : moment(shown.from)}, before you pressed, and your sales are now paid into it. ` +
+        (shown.paid === null
+          ? "Setting another address back is a change like any other: it waits forty-eight hours and is announced. "
+          : `Setting ${shown.paid} back is a change like any other: it waits forty-eight hours and is announced. `) +
+        "Every other session of your merchant was signed out.",
+    );
+  };
+
+  /**
    * Where a merchant's money arrives.
    *
    * Its own route rather than a second field on the one above, because they are
@@ -1278,6 +1308,24 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     const { payout_wallet: applies, pending } = read.document;
     if (pending !== null && applies !== null && typed.toLowerCase() === applies.toLowerCase()) {
       return await cancelWaiting(request, response, gateway, applies, pending, true);
+    }
+    // The page was drawn while a change waited, that change has since taken
+    // effect, and what was typed is the address the page showed as paid: the
+    // same act as pressing Cancel on that page, answered the same way.
+    const shown = shownIn(request);
+    if (
+      pending === null &&
+      shown !== null &&
+      applies === shown.waiting &&
+      shown.paid !== null &&
+      typed.toLowerCase() === shown.paid.toLowerCase()
+    ) {
+      return await tookEffectBeforePress(
+        request,
+        response,
+        shown,
+        "typed the previous address back",
+      );
     }
 
     const set = await gateway.setPayoutWallet(typed);
@@ -1331,27 +1379,13 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     }
     const shown = shownIn(request);
     const { payout_wallet: applies, pending } = read.document;
-    const person = whoIs(request);
 
     if (pending !== null && applies !== null) {
       return await cancelWaiting(request, response, gateway, applies, pending, false);
     }
 
     if (shown !== null && applies === shown.waiting) {
-      const ended = await signOutTheOthers(request);
-      noted(
-        person,
-        `pressed cancel after a change of the address their money arrives at had taken effect, and ${ended} other sessions of the merchant were ended`,
-      );
-      return await withNotice(
-        request,
-        response,
-        `The change to ${shown.waiting} took effect at ${shown.from === null ? "its moment" : moment(shown.from)}, before you pressed, and your sales are now paid into it. ` +
-          (shown.paid === null
-            ? "Setting another address back is a change like any other: it waits forty-eight hours and is announced. "
-            : `Setting ${shown.paid} back is a change like any other: it waits forty-eight hours and is announced. `) +
-          "Every other session of your merchant was signed out.",
-      );
+      return await tookEffectBeforePress(request, response, shown, "pressed cancel");
     }
 
     response.redirect(303, `${base}/settings`);
