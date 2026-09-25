@@ -48,7 +48,7 @@ products_json="$(curl -fsS --connect-timeout 5 --max-time 20 \
   --resolve "woo.nuanu.ai:443:$WOO_LAB_INGRESS_IP" \
   'https://woo.nuanu.ai/wp-json/wc/store/v1/products?per_page=100')"
 catalogue_json="$(wp wc product list --user=admin --status=publish --per_page=100 \
-  --fields=name,type,purchasable,stock_status,manage_stock,sold_individually,virtual,downloadable,downloads,download_limit,download_expiry \
+  --fields=name,price,type,purchasable,stock_status,manage_stock,sold_individually,virtual,downloadable,downloads,download_limit,download_expiry \
   --format=json)"
 # The deny rule answers 403 whether or not a file is behind it, so the files
 # themselves are also compared with the seed's copies, inside the WordPress
@@ -67,6 +67,7 @@ import html
 import json
 import os
 import subprocess
+from decimal import Decimal, InvalidOperation
 
 # The seed creates two groups, and the lab exists to show the Agentify
 # connector telling them apart. A gift card promises an experience that no
@@ -80,10 +81,13 @@ GIFT_CARDS = {
     "Creative Workshop Pass",
     "Weekend Escape Gift Card",
 }
+# Each download with its price as the seed types it: one with cents and one
+# without, the two shapes a merchant types into WooCommerce.
 DOWNLOADS = {
-    "Gift Message Templates",
-    "Gift Wrapping Guide",
+    "Gift Message Templates": "1.00",
+    "Gift Wrapping Guide": "2",
 }
+SEEDED = GIFT_CARDS | set(DOWNLOADS)
 PROTECTED_UPLOADS = "https://woo.nuanu.ai/wp-content/uploads/woocommerce_uploads/"
 SHOP_UPLOADS = "/var/www/html/wp-content/uploads/woocommerce_uploads/"
 SEED_DOWNLOADS = "seed/downloads"
@@ -97,7 +101,7 @@ def fail(message):
 # pass for the catalogue.
 public = json.loads(os.environ["PRODUCTS_JSON"])
 public_names = {html.unescape(product["name"]) for product in public}
-if len(public) != len(GIFT_CARDS | DOWNLOADS) or public_names != GIFT_CARDS | DOWNLOADS:
+if len(public) != len(SEEDED) or public_names != SEEDED:
     fail(f"the public catalogue has {len(public)} products, not the seeded ones: {sorted(public_names)}")
 if any(not product.get("is_purchasable") for product in public):
     fail("every seeded product must be purchasable")
@@ -112,8 +116,29 @@ print("PASS: private ingress Store API exposes the seven seeded products")
 
 listed = json.loads(os.environ["CATALOGUE_JSON"])
 catalogue = {html.unescape(product.get("name", "")): product for product in listed}
-if len(listed) != len(GIFT_CARDS | DOWNLOADS) or set(catalogue) != GIFT_CARDS | DOWNLOADS:
+if len(listed) != len(SEEDED) or set(catalogue) != SEEDED:
     fail(f"WP-CLI lists {len(listed)} published products, not the seeded ones: {sorted(catalogue)}")
+
+# The public catalogue writes a price in cents, while WooCommerce keeps the
+# price the merchant typed, with cents or without. The two must agree as
+# amounts, and the downloads must keep both typed shapes.
+for product in public:
+    name = html.unescape(product["name"])
+    prices = product.get("prices") or {}
+    if prices.get("currency_code") != "USD" or prices.get("currency_minor_unit") != 2:
+        fail(f"{name} is not priced in US dollars at two decimals in the public catalogue")
+    typed = catalogue[name].get("price")
+    try:
+        public_amount = Decimal(prices.get("price")).scaleb(-2)
+        typed_amount = Decimal(typed)
+    except (InvalidOperation, TypeError):
+        fail(f"{name} has a price that is not an amount: {prices.get('price')!r} public, {typed!r} typed")
+    if public_amount != typed_amount:
+        fail(f"{name} costs {public_amount} in the public catalogue but {typed} in WooCommerce")
+typed_prices = {name: catalogue[name].get("price") for name in DOWNLOADS}
+if typed_prices != DOWNLOADS:
+    fail(f"the downloads must keep the prices the seed types, {DOWNLOADS}: {typed_prices}")
+print("PASS: every public price equals, as an amount, the price WooCommerce keeps")
 
 with_a_file = sorted(
     name
