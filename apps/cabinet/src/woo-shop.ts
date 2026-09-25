@@ -22,6 +22,7 @@ import {
   productIdFromMerchantItem,
   type StoreProduct,
   StoreProductsSchema,
+  usdAmountOf,
 } from "./woo-catalog.js";
 import { type WooRequest, wooRequest } from "./woo-request.js";
 
@@ -229,6 +230,20 @@ export const inspectProductInTheShop = async (
   if (!/^\d+(?:\.\d+)?$/.test(product.price)) {
     return { ok: false, why: "The protected product price is not a decimal amount." };
   }
+  // From here on the price is the one form the card, the quote, the order and
+  // WooCommerce's own order totals all speak. The fingerprint hashes that form
+  // too, so a price that already had two decimals hashes as it always did and
+  // "25" hashes as "25.00" does.
+  const amount = usdAmountOf(product.price);
+  if (amount === null) {
+    return {
+      ok: false,
+      why:
+        `The shop's price for this product is ${product.price}, which has more than the two` +
+        " decimal places a US dollar price has. It is not rounded to an amount the shop never" +
+        " set; give the product a price in whole cents in WooCommerce.",
+    };
+  }
   const fingerprint = createHash("sha256")
     .update(
       JSON.stringify([
@@ -237,7 +252,7 @@ export const inspectProductInTheShop = async (
         download.id,
         download.name,
         raw.toString(),
-        product.price,
+        amount,
         "USD",
         product.type,
         product.status,
@@ -262,7 +277,7 @@ export const inspectProductInTheShop = async (
       productId,
       downloadId: download.id,
       fileName: download.name,
-      price: { amount: product.price, currency: "USD" },
+      price: { amount, currency: "USD" },
       fingerprint,
     },
   };

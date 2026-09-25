@@ -75,7 +75,12 @@ import {
   refusedLinkScreen,
   signInScreen,
 } from "./sign-in.js";
-import { cardsFromTheShop, decimalOfMinorUnits, merchantItemIdFor } from "./woo-catalog.js";
+import {
+  cardsFromTheShop,
+  decimalOfMinorUnits,
+  merchantItemIdFor,
+  USD_SCALE,
+} from "./woo-catalog.js";
 import {
   APP_NAME,
   authorizeUrlFor,
@@ -1440,9 +1445,15 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
           product.prices.price,
           product.prices.currency_minor_unit,
         );
+        // Compared only at the scale the connector sells at, which is the
+        // scale the protected price is carried at. A shop set to another
+        // number of decimals is refused below in words that name that setting;
+        // comparing its "25" with the protected "25.00" here would tell the
+        // merchant that two equal prices differ.
         if (
-          publicPrice !== inspected.product.price.amount ||
-          product.prices.currency_code !== inspected.product.price.currency
+          product.prices.currency_minor_unit === USD_SCALE &&
+          (publicPrice !== inspected.product.price.amount ||
+            product.prices.currency_code !== inspected.product.price.currency)
         ) {
           return {
             ...product,
