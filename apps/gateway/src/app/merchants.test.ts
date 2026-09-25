@@ -21,7 +21,6 @@ import {
   issueCabinetKey,
   issueKey,
   keyDigest,
-  makeMerchant,
   newKeySecret,
   REGISTERED_MERCHANT_NAME,
   registerMerchant,
@@ -37,7 +36,7 @@ const aStore = () => new MemoryStore(countedIds());
 describe("the operator's live approval", () => {
   it("distinguishes a missing merchant from an idempotent repeat", async () => {
     const store = aStore();
-    await makeMerchant(store, countedIds(), "A merchant", 1_000, "mch_1");
+    await store.addMerchant({ id: "mch_1", name: "A merchant" }, 1_000);
 
     expect(await grantLiveApproval(store, "mch_nobody", 2_000)).toBeNull();
     expect(await grantLiveApproval(store, "mch_1", 2_000)).toMatchObject({
@@ -113,7 +112,7 @@ describe("a key", () => {
     // The promise a copy of the table rests on: what is kept is not a key
     // anybody can spend, and nobody — us included — can read one back.
     const store = aStore();
-    await makeMerchant(store, countedIds(), "A merchant", 1_000, "mch_1");
+    await store.addMerchant({ id: "mch_1", name: "A merchant" }, 1_000);
 
     const issued = await issueKey(store, countedIds(), "mch_1", "the worker's", 1_000, "test");
 
@@ -131,7 +130,7 @@ describe("a key", () => {
     // for the wrong one is reaching for a different act.
     const store = aStore();
     const ids = countedIds();
-    await makeMerchant(store, ids, "A merchant", 1_000, "mch_1");
+    await store.addMerchant({ id: "mch_1", name: "A merchant" }, 1_000);
 
     const theirs = await issueKey(store, ids, "mch_1", "the worker's", 1_000, "test");
     const cabinet = await issueCabinetKey(store, ids, "mch_1", 2_000, "test");
@@ -148,7 +147,7 @@ describe("a key", () => {
     // reading the whole of a merchant's keys sees this text and has to be able
     // to tell what the row is without knowing this design.
     const store = aStore();
-    await makeMerchant(store, countedIds(), "A merchant", 1_000, "mch_1");
+    await store.addMerchant({ id: "mch_1", name: "A merchant" }, 1_000);
 
     const cabinet = await issueCabinetKey(store, countedIds(), "mch_1", 1_000, "test");
 
@@ -172,7 +171,7 @@ describe("the wallet a merchant is paid at", () => {
 
   const seller = async () => {
     const store = aStore();
-    await makeMerchant(store, countedIds(), "A merchant", 1_000, "mch_1");
+    await store.addMerchant({ id: "mch_1", name: "A merchant" }, 1_000);
     return store;
   };
 
@@ -530,20 +529,21 @@ describe("the name a merchant is listed under", () => {
   // merchant owns, kept in the one place a merchant is kept, and it never
   // reaches the catalog in a shape the catalog would quietly cut down.
   it("is nothing at all until somebody sets one", async () => {
-    // A merchant is made from a name typed at a terminal, and that name is not
-    // a listing name: it may be written in any alphabet and be any length.
+    // A merchant's row carries a name a person reads at a terminal, and that
+    // name is not a listing name: it may be written in any alphabet and be any
+    // length.
     // Standing it in for one would put a mangled version of somebody's name in
     // front of every agent that searches.
     const store = aStore();
 
-    const made = await makeMerchant(store, countedIds(), "Кафе «Ветер»", 1_000, "mch_1");
+    const made = await store.addMerchant({ id: "mch_1", name: "Кафе «Ветер»" }, 1_000);
 
     expect(made?.serviceName).toBeNull();
   });
 
   it("is kept once it is set, and read back with the merchant", async () => {
     const store = aStore();
-    await makeMerchant(store, countedIds(), "A merchant", 1_000, "mch_1");
+    await store.addMerchant({ id: "mch_1", name: "A merchant" }, 1_000);
 
     const named = await setServiceName(store, "mch_1", "Freeland", 2_000);
 
@@ -553,7 +553,7 @@ describe("the name a merchant is listed under", () => {
 
   it("can be taken away again", async () => {
     const store = aStore();
-    await makeMerchant(store, countedIds(), "A merchant", 1_000, "mch_1");
+    await store.addMerchant({ id: "mch_1", name: "A merchant" }, 1_000);
     await setServiceName(store, "mch_1", "Freeland", 2_000);
 
     const cleared = await setServiceName(store, "mch_1", null, 3_000);
@@ -570,7 +570,7 @@ describe("the name a merchant is listed under", () => {
     // longer than thirty-two characters is dropped without a word. A merchant
     // has to meet that here, where somebody is reading the answer.
     const store = aStore();
-    await makeMerchant(store, countedIds(), "A merchant", 1_000, "mch_1");
+    await store.addMerchant({ id: "mch_1", name: "A merchant" }, 1_000);
 
     await expect(setServiceName(store, "mch_1", "x".repeat(33), 2_000)).rejects.toThrow(/32/);
     await expect(setServiceName(store, "mch_1", "Кафе", 2_000)).rejects.toThrow(/ASCII/i);

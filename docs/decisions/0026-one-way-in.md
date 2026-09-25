@@ -80,7 +80,13 @@ a shared cache may keep, and a browser that runs no script sees the header's
 doors without the address. The sign-out is a same-origin POST that ends this
 session's row, clears the cookie and opens the sign-in page with an empty field,
 since people mostly sign out to come back as another address. It signs this
-browser out of everything and leaves other devices alone.
+browser out of everything and leaves other devices alone. The cabinet's
+Settings screen carries the other half (Dmitry, 2026-09-25: «Делаем»): "Sign
+out every other device", a same-origin POST behind the gate that ends every
+other session of this account, keeps this one and says how many it ended. It
+reaches this account only, never another account naming the same merchant,
+and touches no key; ending every account's sessions is the wallet cancel's
+(ADR-0019).
 
 **4. The merchant is made on the cabinet's explicit request.** A person may own
 reports and no merchant. The cabinet offers a signed-in person without one a
@@ -89,7 +95,10 @@ merchant and the key the cabinet calls with. Opening a link never makes one,
 "Open your cabinet" on a report included, because under `Lax` a link from
 another site arrives signed in. A gateway that does not answer leaves the person
 signed in to press again, and a cabinet that fails after the gateway answered
-leaves a merchant nobody names, litter as ADR-0014 §1 says.
+leaves a merchant nobody names, litter as ADR-0014 §1 says. This press is the
+only way a merchant comes into being, as the link is the only way an account
+does: no command at a server's terminal makes either, and no deployed channel
+seeds a merchant (ADR-0014).
 
 **5. The door to the shared catalogue is live publication.** Anyone who reads
 their mail holds a cabinet, integrates against the SDK and sells on the test

@@ -34,7 +34,8 @@ import { importFormOf, readable } from "./testing/html.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
 import type { StoreProduct } from "./woo-catalog.js";
 import type { Preflight } from "./woo-connect.js";
-import type { CatalogueRead, inspectProductInTheShop, ProductInspection } from "./woo-shop.js";
+import type { WooRequest } from "./woo-request.js";
+import { type CatalogueRead, inspectProductInTheShop, type ProductInspection } from "./woo-shop.js";
 import { memoryWooShops, type WooShops } from "./woo-shops.js";
 
 const KEY = theMerchantKey("test");
@@ -1060,6 +1061,183 @@ describe("importing the catalogue", () => {
     expect(imported.status).toBe(502);
     expect(readable(imported.html)).toContain("could not be reached");
     expect(running.read).toEqual([]);
+  });
+
+  /**
+   * The merchant's shop answering the protected product check, in-process,
+   * with each product's `wc/v3` price stored the way the merchant typed it and
+   * the shop's Number of decimals as given. The check itself is the real one;
+   * only the shop is not.
+   */
+  const shopStoring =
+    (typed: Readonly<Record<string, string>>, decimals = "2"): WooRequest =>
+    async (url) => {
+      const path = new URL(url).pathname;
+      if (path === "/protected/guide.txt") return new Response(null, { status: 403 });
+      const setting = /\/settings\/\w+\/(\w+)$/.exec(path)?.[1];
+      if (setting !== undefined) {
+        const safe: Readonly<Record<string, string>> = {
+          woocommerce_currency: "USD",
+          woocommerce_calc_taxes: "no",
+          woocommerce_file_download_method: "force",
+          woocommerce_downloads_require_login: "no",
+          woocommerce_downloads_grant_access_after_payment: "yes",
+          woocommerce_downloads_redirect_fallback_allowed: "no",
+          woocommerce_price_num_decimals: decimals,
+        };
+        return Response.json({ value: safe[setting] });
+      }
+      const id = /\/products\/(\d+)$/.exec(path)?.[1] ?? "";
+      return Response.json({
+        id: Number(id),
+        type: "simple",
+        status: "publish",
+        purchasable: true,
+        stock_status: "instock",
+        manage_stock: false,
+        sold_individually: false,
+        virtual: true,
+        downloadable: true,
+        download_limit: -1,
+        download_expiry: -1,
+        price: typed[id],
+        downloads: [{ id: "dl_guide", name: "Guide", file: `${SHOP}/protected/guide.txt` }],
+      });
+    };
+
+  /** What the import page says about each product it left in the shop. */
+  const leftInTheShop = (html: string): Record<string, string> =>
+    Object.fromEntries(
+      [
+        ...(/<h2>Left in the shop<\/h2>[\s\S]*?<\/ul>/.exec(html)?.[0] ?? "").matchAll(
+          /<li>([\s\S]*?)<\/li>/g,
+        ),
+      ]
+        .map((item) => readable(item[1] ?? ""))
+        .flatMap((line) => {
+          const found = /^(.*?) — product (\d+) (.*)$/.exec(line);
+          return found === null ? [] : [[found[2], found[3]]];
+        }),
+    );
+
+  it("imports a price typed without cents, or with one decimal, at the amount the shop charges", async () => {
+    // WooCommerce keeps a price as the merchant typed it, so wc/v3 says "25"
+    // or "19.9" where the Store API says 2500 or 1990 cents. Those are the
+    // same money, and ordinary shops are full of prices typed this way.
+    const usd = (cents: string) => ({ price: cents, currency_code: "USD", currency_minor_unit: 2 });
+    const running = await started({
+      catalogue: async () => ({
+        ok: true,
+        products: [
+          aProduct({ id: 11, name: "Whole dollars", prices: usd("2500") }),
+          aProduct({ id: 12, name: "One decimal", prices: usd("1990") }),
+          aProduct({ id: 13, name: "Two decimals", prices: usd("2500") }),
+        ],
+      }),
+      inspectProduct: (keys, item) =>
+        inspectProductInTheShop(keys, item, shopStoring({ 11: "25", 12: "19.9", 13: "25.00" })),
+    });
+    await connected(running);
+
+    const imported = await running.post("/woocommerce/import");
+
+    expect(imported.status).toBe(200);
+    expect(leftInTheShop(imported.html)).toEqual({});
+    const priced = Object.fromEntries(
+      (await cardsOf(running)).map((held) => [held.card.title, held.card.price.amount]),
+    );
+    expect(priced).toEqual({
+      "Whole dollars": "25.00",
+      "One decimal": "19.90",
+      "Two decimals": "25.00",
+    });
+  });
+
+  it("still refuses a public price that differs, and a price it would have to round", async () => {
+    const usd = (cents: string) => ({ price: cents, currency_code: "USD", currency_minor_unit: 2 });
+    const running = await started({
+      catalogue: async () => ({
+        ok: true,
+        products: [
+          aProduct({ id: 11, name: "Changed price", prices: usd("2600") }),
+          aProduct({ id: 12, name: "Fraction of a cent", prices: usd("2500") }),
+        ],
+      }),
+      inspectProduct: (keys, item) =>
+        inspectProductInTheShop(keys, item, shopStoring({ 11: "25", 12: "25.001" })),
+    });
+    await connected(running);
+
+    const imported = await running.post("/woocommerce/import");
+    const left = leftInTheShop(imported.html);
+
+    expect(await cardsOf(running)).toHaveLength(0);
+    expect(left["11"]).toContain("does not match");
+    // Not "does not match": the Store API rounded 25.001 to 2500 cents, and a
+    // merchant told the two prices differ would find them equal on screen.
+    // Nor the decimals setting: the price is the thing to change.
+    expect(left["12"]).toContain("25.001");
+    expect(left["12"]).not.toContain("Number of decimals");
+  });
+
+  it("tells a shop set to another number of decimals about the setting, not about a mismatch", async () => {
+    // A merchant who hides cents sets WooCommerce's Number of decimals to 0,
+    // and the Store API then writes 25 dollars as "25" at a scale of 0. The
+    // import sells at two decimals and names the setting that changes that;
+    // the two prices are the same, and retyping them would change nothing.
+    const noCents = (whole: string) => ({
+      price: whole,
+      currency_code: "USD",
+      currency_minor_unit: 0,
+    });
+    const running = await started({
+      catalogue: async () => ({
+        ok: true,
+        products: [
+          aProduct({ id: 11, name: "Typed without cents", prices: noCents("25") }),
+          aProduct({ id: 12, name: "Typed with cents", prices: noCents("25") }),
+        ],
+      }),
+      inspectProduct: (keys, item) =>
+        inspectProductInTheShop(keys, item, shopStoring({ 11: "25", 12: "25.00" }, "0")),
+    });
+    await connected(running);
+
+    const imported = await running.post("/woocommerce/import");
+    const left = leftInTheShop(imported.html);
+
+    expect(await cardsOf(running)).toHaveLength(0);
+    expect(left["11"]).toContain("Number of decimals");
+    expect(left["12"]).toContain("Number of decimals");
+  });
+
+  it("names the setting when the catalogue is written at another scale than the setting says", async () => {
+    // The setting reads 2 while the public catalogue writes prices at 0, which
+    // is what a plugin that changes the shop's decimals looks like from here.
+    // The two prices are still the same money, so the refusal is about the
+    // decimals and not about a mismatch.
+    const running = await started({
+      catalogue: async () => ({
+        ok: true,
+        products: [
+          aProduct({
+            id: 11,
+            name: "Written without cents",
+            prices: { price: "25", currency_code: "USD", currency_minor_unit: 0 },
+          }),
+        ],
+      }),
+      inspectProduct: (keys, item) =>
+        inspectProductInTheShop(keys, item, shopStoring({ 11: "25" }, "2")),
+    });
+    await connected(running);
+
+    const imported = await running.post("/woocommerce/import");
+    const left = leftInTheShop(imported.html);
+
+    expect(await cardsOf(running)).toHaveLength(0);
+    expect(left["11"]).toContain("Number of decimals");
+    expect(left["11"]).not.toContain("does not match");
   });
 });
 

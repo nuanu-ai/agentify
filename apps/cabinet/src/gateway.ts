@@ -66,7 +66,17 @@ export type Answer<T> =
    * a gateway that answered, and a page that folded the two would tell a
    * merchant their catalog is empty when the truth is that nothing answered.
    */
-  | { readonly ok: false; readonly status: number; readonly why: string };
+  | {
+      readonly ok: false;
+      readonly status: number;
+      readonly why: string;
+      /**
+       * The code of the gateway's refusal, where it answered in its envelope.
+       * Read for the one refusal a screen words for itself; everything else
+       * shows `why`.
+       */
+      readonly code?: string;
+    };
 
 export interface GatewayClient {
   cards(): Promise<Answer<MerchantCardList>>;
@@ -215,7 +225,7 @@ const caller =
     }
 
     if (!answered.ok) {
-      return { ok: false, status: answered.status, why: await reasonIn(answered) };
+      return { ok: false, status: answered.status, ...(await refusalIn(answered)) };
     }
 
     const document = schema.parse(await answered.json());
@@ -412,11 +422,18 @@ export const registrarFor = (
  * fallback is the point: an error text is a claim like any other, and where
  * there is none to read this says the status instead of inventing one.
  */
-const reasonIn = async (answered: Response): Promise<string> => {
+const refusalIn = async (
+  answered: Response,
+): Promise<{ readonly why: string; readonly code?: string }> => {
   try {
-    return reasonWritten(await answered.json(), answered.status);
+    const document: unknown = await answered.json();
+    const code = (document as { error?: { code?: unknown } } | null)?.error?.code;
+    return {
+      why: reasonWritten(document, answered.status),
+      ...(typeof code === "string" && code !== "" ? { code } : {}),
+    };
   } catch {
-    return `the gateway answered ${answered.status}`;
+    return { why: `the gateway answered ${answered.status}` };
   }
 };
 

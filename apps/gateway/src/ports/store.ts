@@ -488,8 +488,9 @@ export interface Store {
    * Writes down a merchant that is not there yet, or answers null where that
    * identifier is taken.
    *
-   * Null rather than a thrown error because the one caller is a command
-   * somebody typed, and running it twice is a thing people do.
+   * Null rather than a thrown error because the one caller is the sandbox's
+   * seed, which runs at every start and finds the row there from the second
+   * start on.
    */
   addMerchant(
     merchant: { readonly id: string; readonly name: string },

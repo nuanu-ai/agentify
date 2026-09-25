@@ -48,7 +48,7 @@ describe("the database the suite is given", () => {
 
   it("takes that over a DATABASE_URL meant for something else", () => {
     // On such a host DATABASE_URL is already spoken for: it is what
-    // `db:migrate` and `account add` are handed, and what it names there is the
+    // `db:migrate` and `account list` are handed, and what it names there is the
     // stack's own database. The variable with "test" in its name is the
     // specific one, so it wins, and the suite runs where it was sent instead of
     // refusing over a variable that was never about it.

@@ -24,7 +24,6 @@ const ANNOUNCEMENT: Announcement = {
   from: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
   to: "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
   not_before: "2026-09-26T12:00:00.000Z",
-  asked_with: { kind: "cabinet" },
 };
 
 interface Arrived {

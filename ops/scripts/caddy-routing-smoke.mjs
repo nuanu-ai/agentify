@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import http from "node:http";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
@@ -153,6 +154,87 @@ async function expectUnmarked(baseUrl, requestPath) {
   assert.deepEqual(await headersOf(requestPath), await headersOf("/elsewhere"), requestPath);
 }
 
+/**
+ * Sends one request with its path exactly as written — no client normalizes a
+ * dot segment or a doubled slash away first — and answers which upstream took
+ * it, or the status when none of the three did.
+ */
+function rawRequest(baseUrl, method, rawPath) {
+  const { hostname, port } = new URL(baseUrl);
+  return new Promise((resolve, reject) => {
+    const request = http.request(
+      { hostname, port, method, path: rawPath, headers: { "content-type": "application/json" } },
+      (response) => {
+        let body = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          body += chunk;
+        });
+        response.on("end", () => {
+          let role = null;
+          try {
+            role = JSON.parse(body).role ?? null;
+          } catch {
+            // Not one of the three fake upstreams: Caddy answered itself.
+          }
+          resolve({ status: response.statusCode, role });
+        });
+      },
+    );
+    request.on("error", reject);
+    request.end(method === "GET" || method === "DELETE" ? undefined : '{"invitation":"x"}');
+  });
+}
+
+/**
+ * The calls only the cabinet makes to the gateway, which it makes over the
+ * stack's own network: registering a merchant, and making and forgetting the
+ * key a cabinet calls with. From outside they are paths this site does not
+ * have, so they go where every such path goes, the scanner and its missing
+ * page, and never to the gateway — whatever the method, case, encoding or
+ * spelling of the path (ADR-0014).
+ */
+const CABINET_ONLY = [
+  ["POST", "/v0/merchants"],
+  ["GET", "/v0/merchants"],
+  ["POST", "/v0/merchants/"],
+  ["POST", "/V0/Merchants"],
+  ["POST", "/v0%2Fmerchants"],
+  ["POST", "/v0%2fmerchants"],
+  ["POST", "//v0/merchants"],
+  ["POST", "/v0/./merchants"],
+  ["POST", "/v0/keys/../merchants"],
+  ["POST", "/v0/merchants?invitation=x"],
+  ["POST", "/v0/keys/cabinet"],
+  ["DELETE", "/v0/keys/cabinet"],
+  ["POST", "/v0/keys/cabinet/"],
+  ["POST", "/V0/KEYS/CABINET"],
+  ["DELETE", "/v0/keys%2Fcabinet"],
+  ["POST", "/v0/keys/./cabinet"],
+];
+
+/** The gateway's neighbours of those paths, which stay the gateway's. */
+const MERCHANT_KEY_CALLS = [
+  ["GET", "/v0/keys"],
+  ["POST", "/v0/keys"],
+  ["POST", "/v0/keys/mk_1/disable"],
+  ["GET", "/v0/seller-name"],
+  ["POST", "/v0/merchants-list"],
+  ["POST", "/v0/keys/cabinets"],
+];
+
+async function expectCabinetOnlyCallsClosed(baseUrl) {
+  for (const [method, rawPath] of CABINET_ONLY) {
+    const answered = await rawRequest(baseUrl, method, rawPath);
+    assert.notEqual(answered.role, "gateway", `${method} ${rawPath} reached the gateway`);
+    assert.equal(answered.role, "scanner", `${method} ${rawPath} answered ${answered.status}`);
+  }
+  for (const [method, rawPath] of MERCHANT_KEY_CALLS) {
+    const answered = await rawRequest(baseUrl, method, rawPath);
+    assert.equal(answered.role, "gateway", `${method} ${rawPath} answered ${answered.status}`);
+  }
+}
+
 async function expectUpstreamMissing(baseUrl, requestPath, role) {
   const response = await fetch(`${baseUrl}${requestPath}`);
   assert.equal(response.status, 404, requestPath);
@@ -170,6 +252,86 @@ async function expectSingleForwardedClient(baseUrl, spoofed) {
   assert.ok(body.forwardedFor.length > 0);
   assert.notEqual(body.forwardedFor, spoofed);
   assert.equal(body.forwardedFor.includes(","), false, body.forwardedFor);
+}
+
+/**
+ * Which upstream took one request sent exactly as written — the method as
+ * spelled, the path with no dot segment or doubled slash normalized away — or
+ * null when none of the three did and Caddy answered itself. Written over a
+ * bare socket because an HTTP client would upper-case a method like `post`.
+ */
+function whoTakes(baseUrl, method, rawPath) {
+  const { hostname, port } = new URL(baseUrl);
+  return new Promise((resolve, reject) => {
+    const socket = net.connect(Number(port), hostname, () => {
+      const body = method === "GET" || method === "HEAD" ? "" : '{"payout_wallet":"0x0"}';
+      socket.write(
+        `${method} ${rawPath} HTTP/1.1\r\nHost: ${hostname}:${port}\r\n` +
+          `Content-Type: application/json\r\nContent-Length: ${body.length}\r\n` +
+          `Connection: close\r\n\r\n${body}`,
+      );
+    });
+    let answer = "";
+    socket.setEncoding("utf8");
+    socket.on("data", (chunk) => {
+      answer += chunk;
+    });
+    socket.on("error", reject);
+    socket.on("end", () => {
+      const status = Number(/^HTTP\/1\.1 (\d{3})/.exec(answer)?.[1]);
+      const role = /"role":"(\w+)"/.exec(answer)?.[1] ?? null;
+      resolve({ status, role });
+    });
+  });
+}
+
+/**
+ * Setting the payout wallet is not on the public door: only the cabinet sets
+ * it, over the stack's own network (ADR-0019). Every way of writing to that
+ * path from outside — any method but a read, any case, encoding or spelling of
+ * the path — falls through to the site's ordinary missing page. Reading it
+ * stays the gateway's, for any key of the merchant's, and so do its
+ * neighbours.
+ */
+const WALLET_WRITES = [
+  ["POST", "/v0/payout-wallet"],
+  ["POST", "/v0/payout-wallet/"],
+  ["POST", "/V0/Payout-Wallet"],
+  ["POST", "/v0%2Fpayout-wallet"],
+  ["POST", "/v0%2fpayout-wallet"],
+  ["POST", "//v0/payout-wallet"],
+  ["POST", "/v0/./payout-wallet"],
+  ["POST", "/v0/keys/../payout-wallet"],
+  ["POST", "/v0/payout-wallet?pending=x"],
+  ["post", "/v0/payout-wallet"],
+  ["PUT", "/v0/payout-wallet"],
+  ["PATCH", "/v0/payout-wallet"],
+  ["DELETE", "/v0/payout-wallet"],
+];
+
+const WALLET_READS_AND_NEIGHBOURS = [
+  ["GET", "/v0/payout-wallet"],
+  ["GET", "/V0/Payout-Wallet"],
+  ["POST", "/v0/payout-wallets"],
+  ["POST", "/v0/seller-name"],
+];
+
+async function expectWalletWritesClosed(baseUrl) {
+  for (const [method, rawPath] of WALLET_WRITES) {
+    const answered = await whoTakes(baseUrl, method, rawPath);
+    assert.notEqual(answered.role, "gateway", `${method} ${rawPath} reached the gateway`);
+    // A method the server does not recognise may be refused by Caddy itself,
+    // which is as closed as the missing page; anything else goes there.
+    if (answered.role === null) {
+      assert.equal(answered.status, 400, `${method} ${rawPath} answered ${answered.status}`);
+      continue;
+    }
+    assert.equal(answered.role, "scanner", `${method} ${rawPath} answered ${answered.status}`);
+  }
+  for (const [method, rawPath] of WALLET_READS_AND_NEIGHBOURS) {
+    const answered = await whoTakes(baseUrl, method, rawPath);
+    assert.equal(answered.role, "gateway", `${method} ${rawPath} answered ${answered.status}`);
+  }
 }
 
 function runInner({ configPath, containerName, trustedEdge, ports }) {
@@ -285,6 +447,9 @@ try {
   }
 
   await expectSharedAssets(innerBase);
+  for (const baseUrl of [innerBase, edgeBase]) {
+    await expectWalletWritesClosed(baseUrl);
+  }
 
   let response = await fetch(`${innerBase}/docs`, { redirect: "manual" });
   assert.equal(response.status, 302);
@@ -322,6 +487,7 @@ try {
   assert.match(await response.text(), /documentation guide/);
 
   for (const baseUrl of [innerBase, edgeBase]) {
+    await expectCabinetOnlyCallsClosed(baseUrl);
     await expectSingleForwardedClient(baseUrl, "198.51.100.77");
     for (const adminPath of ["/admin", "/admin/users", "/admin%2Fusers"]) {
       await expectUnmarked(baseUrl, adminPath);
@@ -365,7 +531,7 @@ try {
   );
 
   console.log(
-    "PASS: actual Caddy preserves exact commerce/docs/assets routes, passes /admin to the scanner unmarked, and keeps one trusted scanner client IP",
+    "PASS: actual Caddy preserves exact commerce/docs/assets routes, keeps the cabinet's own gateway calls off the public door, passes /admin to the scanner unmarked, and keeps one trusted scanner client IP",
   );
 } finally {
   for (const container of [mutatedName, innerName, edgeName]) {

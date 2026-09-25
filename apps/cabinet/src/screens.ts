@@ -20,6 +20,7 @@ import {
   type OrderList,
   type ReceiptList,
 } from "@nuanu-ai/agentify-contracts";
+import { STOP_ALL_SELLING } from "./control-labels.js";
 import { escaped, momentCell, page, type Row, state, type Tab, table, when } from "./html.js";
 import type { PayoutWallet } from "./payout-wallet.js";
 // A type and nothing else, so this leaves no import behind once it is compiled
@@ -89,6 +90,11 @@ export interface Viewer {
    * (ADR-0023).
    */
   readonly shop?: ShopTile;
+  /**
+   * What became of signing out every other device, on the settings screen
+   * that pressed it, and absent everywhere else.
+   */
+  readonly accountNotice?: string;
 }
 
 interface Frame {
@@ -265,7 +271,7 @@ export const cardsScreen = (
         gone
           ? ""
           : `<form class="inline" method="post" action="${escaped(base)}/selling/${stopped ? "resume" : "pause"}">
-        <button class="button ${stopped ? "button-primary" : "button-secondary"}" type="submit">${stopped ? "Start selling again" : "Stop all selling"}</button>
+        <button class="button ${stopped ? "button-primary" : "button-secondary"}" type="submit">${stopped ? "Start selling again" : STOP_ALL_SELLING}</button>
       </form>`
       }
     </div>

@@ -49,7 +49,6 @@ const CHANNELS = {
  * variable and supplied the published value.
  */
 const WRITTEN_IN_THIS_REPOSITORY = [
-  ["gateway", "SANDBOX_MERCHANT_KEY", "csk_test_local-sandbox-merchant-key"],
   ["cabinet", "AUTH_SECRET", "a-sandbox-secret-nobody-should-reuse-anywhere"],
   ["gateway", "REGISTRATION_INVITATION", "register-on-this-laptop"],
   ["scanner", "TOKEN_HMAC_SECRET", "a-sandbox-token-hmac-secret-nobody-should-reuse"],
@@ -202,7 +201,6 @@ export function problemsWith(channel, resolved) {
         [
           "CDP_API_KEY_ID",
           "CDP_API_KEY_SECRET",
-          "SANDBOX_MERCHANT_KEY",
           "REGISTRATION_INVITATION",
           "GATEWAY_CABINET_SECRET",
         ],
@@ -236,10 +234,20 @@ export function problemsWith(channel, resolved) {
     }
   }
 
-  if ((gateway.SANDBOX_MERCHANT_KEY ?? "") === "") {
+  // A merchant comes into being one way: a person opens the link mailed to
+  // their address and presses the one control the cabinet offers (ADR-0014,
+  // ADR-0026 §4). A key the gateway seeds at start-up is a second way, kept in
+  // a file and written back into the database at every start, so a deployed
+  // channel seeds nothing; the laptop's stack is the one that does.
+  // deploy/compose.public.yaml gives the seed nothing whatever a host's file
+  // says, so a rendered one is a file after it that put a key back. The value
+  // is never repeated, since it opens a merchant.
+  if ((gateway.SANDBOX_MERCHANT_KEY ?? "") !== "") {
     problems.push(
-      "gateway: SANDBOX_MERCHANT_KEY is not set, so this stack seeds no merchant and there is " +
-        "nobody to sign in as",
+      "gateway: SANDBOX_MERCHANT_KEY is set, and a deployed channel seeds no merchant: a " +
+        "merchant comes into being only when a person opens the link mailed to their address " +
+        "and presses the cabinet's one control. deploy/compose.public.yaml gives it nothing, so " +
+        "a compose file rendered after it has put a key back",
     );
   }
 
@@ -328,7 +336,6 @@ export function problemsWith(channel, resolved) {
     ["cabinet", "REGISTRATION_INVITATION"],
     ["cabinet", "MAIL_API_KEY"],
     ["gateway", "REGISTRATION_INVITATION"],
-    ["gateway", "SANDBOX_MERCHANT_KEY"],
     ["gateway", "CDP_API_KEY_SECRET"],
     ["scanner", "TOKEN_HMAC_SECRET"],
   ]) {

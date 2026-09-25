@@ -332,20 +332,16 @@ const environmentSchema = z.object({
    * configuration at all, and holds one of its own instead, made at every
    * sign-in and typed by nobody (ADR-0014 §2).
    *
-   * A deployment sets it too, to a key generated for that host, kept in its own
-   * file, and carrying that site's prefix, because the merchant process a stack
-   * runs beside the gateway reads its key out of that file and has nothing to
-   * present until a row for it exists. A person needs none of this — an
-   * invitation makes them a merchant with a key of their own and no terminal
-   * (ADR-0014 §3) — so what seeding is for is whatever the stack itself sells
-   * as. What to keep in mind is that a key in an environment is a key that
-   * cannot be revoked without a deployment, which is the thing keys became rows
-   * in order to fix: disabling its row stops it opening anything, and the string
-   * is still handed to this process at every start, so a fresh database is
-   * seeded off that same line again. So it is unset once nothing presents that
-   * key any more — once whatever sells on that host has a key of its own.
-   * Absent, this process writes nothing and every key is one somebody made
-   * deliberately.
+   * A deployed channel sets nothing here, and its release refuses one that
+   * does. A merchant there comes into being one way: a person opens the link
+   * mailed to their address and presses the cabinet's one control (ADR-0014),
+   * and a key in an environment would be a second way, and one that cannot be
+   * revoked without a deployment, which is the thing keys became rows in order
+   * to fix: disabling its row stops it opening anything, and the string is
+   * still handed to this process at every start, so a fresh database is seeded
+   * off that same line again. The other caller that seeds is the slice's
+   * in-process gateway, whose smoke runs on a real chain. Absent, this process
+   * writes nothing and every key is one somebody made deliberately.
    *
    * Set to nothing reads the same as never set, and that is the one spelling
    * that matters to whoever unsets it. A deployment says this in a file the
@@ -906,9 +902,8 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
   // A key in an environment is a key that cannot be revoked without a
   // deployment, which is the thing keys became rows in order to fix. The
   // prefix rule is about which environment a key belongs to and is not a test
-  // of whether it is secret — on the public test stack the laptop's default
-  // would pass this, which is why the release checks separately that the
-  // seeded key is not the value written in this repository.
+  // of whether it is secret or whether seeding is allowed here — the release
+  // refuses any seeded key on a deployed channel, whatever its prefix.
   const seeded = environmentValues.SANDBOX_MERCHANT_KEY;
   if (chainEnvironment !== null && seeded !== null) {
     const theirs = environmentOfKeyPrefix(seeded);
