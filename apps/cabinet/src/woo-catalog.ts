@@ -111,12 +111,22 @@ export const decimalOfMinorUnits = (minor: string, scale: number): string | null
 };
 
 /**
- * The five characters HTML has to spell out, and the one that is a space.
+ * The named references WordPress writes into a Store API product.
  *
- * Written out rather than reached for through a parser, because the whole
- * dependency tree of an HTML parser would arrive for one field of prose. What
- * this covers is what a WordPress editor actually emits; anything else in the
- * numeric forms below is covered by the arithmetic.
+ * WooCommerce sends a product's name and prose through wptexturize,
+ * convert_chars and wp_kses_post. The first two write what they produce as
+ * numbers — an apostrophe as `&#8217;`, an ampersand as `&#038;` — which the
+ * arithmetic below reads whatever the character is. Names come from what the
+ * merchant stored. WordPress's own editor writes characters as themselves
+ * except `&amp;`, `&lt;`, `&gt;` and `&nbsp;`; the dash, quotation mark and
+ * ellipsis names in this table come from HTML pasted in or written by hand.
+ * wp_kses_post lets any other name on HTML 4's list through, so one missing
+ * here (`&eacute;` typed by hand) reaches the card as it was written: visible,
+ * and never guessed at.
+ *
+ * A table and not a dependency: a decoder with HTML's whole list would be one
+ * more package in the cabinet for names no shop we have read sends. The day
+ * one does, that package is the smaller change.
  */
 const NAMED_CHARACTERS: Readonly<Record<string, string>> = {
   amp: "&",
