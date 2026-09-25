@@ -11,14 +11,14 @@
  */
 
 import type { MerchantSelling, OrderMode, OrderPolicy } from "@agentify/core";
-import { modeOf } from "@agentify/core";
-import type { Card } from "@nuanu-ai/agentify-contracts";
-import { type GatewayConfig, isSandboxFacilitator } from "../config.js";
+import { modeOf, readinessOf } from "@agentify/core";
+import type { Card, MerchantFinding } from "@nuanu-ai/agentify-contracts";
+import type { GatewayConfig } from "../config.js";
 import type { Announcer } from "../ports/announcer.js";
 import type { Clock, Ids } from "../ports/clock.js";
 import type { Facilitator } from "../ports/facilitator.js";
 import type { Queue } from "../ports/queue.js";
-import type { Store, StoredCard, StoredPayoutWallet } from "../ports/store.js";
+import type { Store, StoredCard, StoredMerchant, StoredPayoutWallet } from "../ports/store.js";
 
 export interface Runtime {
   readonly config: GatewayConfig;
@@ -136,75 +136,49 @@ export function payoutWalletAt(wallet: StoredPayoutWallet, at: number): StoredPa
     : wallet;
 }
 
-/**
- * Whether a sale of this merchant's card could be paid for at all.
- *
- * It is the publish door's own rule, read at every later moment as well: an
- * address is what a payment request names, so a merchant who has none has
- * nothing that can be sold where the money is real. The sandbox asks for none
- * and this says so, because there is nothing to send and no chain to send it on
- * (ADR-0008) — a local stack that stopped selling over an address nobody can be
- * paid at would be a stack nobody can bring up.
- */
-export function payableTo(payoutWallet: string | null, config: GatewayConfig): boolean {
-  return payoutWallet !== null || isSandboxFacilitator(config.payment.facilitatorUrl);
-}
+/** The part of a merchant's row the rule reads. */
+type MerchantStanding = Pick<StoredMerchant, "payoutWallet" | "serviceName" | "liveApprovedAt">;
 
 /**
- * Whether there is a seller for a payment request to name.
+ * What this merchant lacks on this deployment, read off their row.
  *
- * The sibling of the rule above, and the publish door's other one. A challenge
- * carries the name its merchant is listed under, and where there is none the
- * field is left out altogether — which is the only honest thing a document can
- * do with a name nobody chose, and which leaves an agent invited to pay
- * somebody the request does not name. That has been shipped from here once.
+ * The rule is not here. It is `readinessOf` in the core, the one the cabinet
+ * asks as well, so the publish door, every later sale and the merchant's own
+ * screens cannot come to disagree about what a merchant must have. What is
+ * here is the gateway's reading of the row, and the gateway reads every fact,
+ * so nothing it asks is ever unknown.
  *
- * There is no sandbox in this one, and the asymmetry with the wallet is the
- * point: a sandbox settles against nothing, so no money is going anywhere and
- * no address is missing — but a challenge in a sandbox names its seller exactly
- * as a real one does, and nothing about pretending to take money makes a
- * nameless seller nameable.
+ * Why each fact is asked lives with the rule. Why each is asked here as well as
+ * at the publish door is that a merchant's row changes after their cards are
+ * published — a name taken away with `merchant listed-as <id> --none`, a card
+ * published before live approval was asked for — and a sale whose challenge
+ * named nobody, or named no address, would be an invitation to pay that nobody
+ * can honour.
  */
-export function listedUnder(serviceName: string | null): boolean {
-  return serviceName !== null;
-}
-
-/**
- * Whether the operator has admitted this merchant wherever approval applies.
- *
- * The switch is the surface the process is allowed to present, not the chain
- * beneath it. Test surfaces exercise the whole integration without an
- * operator, while every live offer must carry the immutable grant from the
- * merchant row.
- */
-export function approvedForLive(liveApprovedAt: number | null, config: GatewayConfig): boolean {
-  return config.surfaceMode !== "live" || liveApprovedAt !== null;
-}
-
-/**
- * Whether this merchant could make a sale at all, combining the prerequisites
- * above into the one fact the fold needs.
- *
- * They are apart where somebody can be told which is missing — the publish door
- * names the wallet, seller name and approval separately, as does the cabinet — and
- * together everywhere the answer is a word about a card. From the order's side
- * there is nothing to tell apart: all belong to the merchant rather than the
- * card, and any missing prerequisite means this sale cannot be made.
- */
-export function sellableBy(
-  merchant: {
-    readonly payoutWallet: StoredPayoutWallet;
-    readonly serviceName: string | null;
-    readonly liveApprovedAt: number | null;
-  },
+export function missingFrom(
+  merchant: MerchantStanding,
   config: GatewayConfig,
-): boolean {
-  // Whether there is an address does not turn on the instant — a waiting
-  // change replaces an address and never gives one where there was none — so
-  // this asks the row rather than the clock.
-  return (
-    payableTo(merchant.payoutWallet.address, config) &&
-    listedUnder(merchant.serviceName) &&
-    approvedForLive(merchant.liveApprovedAt, config)
-  );
+): readonly MerchantFinding[] {
+  return readinessOf(
+    {
+      sellerName: merchant.serviceName,
+      // Whether there is an address does not turn on the instant — a waiting
+      // change replaces an address and never gives one where there was none —
+      // so this asks the row rather than the clock.
+      payoutWallet: merchant.payoutWallet.address,
+      liveApproval: merchant.liveApprovedAt !== null,
+    },
+    config.surfaceMode,
+  ).missing;
+}
+
+/**
+ * Whether this merchant could make a sale at all: the one fact the fold needs.
+ *
+ * From the order's side there is nothing to tell apart. Every prerequisite
+ * belongs to the merchant rather than the card, and any one missing means this
+ * sale cannot be made; the publish door is where they are named one by one.
+ */
+export function sellableBy(merchant: MerchantStanding, config: GatewayConfig): boolean {
+  return missingFrom(merchant, config).length === 0;
 }
