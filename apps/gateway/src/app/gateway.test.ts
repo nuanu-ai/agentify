@@ -1596,6 +1596,37 @@ describe("the price question", () => {
     expect(offered.order.order.quoteSource).toBe("card_snapshot");
   });
 
+  it("still prices the sale off a corrected answer that follows a refused one", async () => {
+    // A refused answer moves nothing, so the question is still open and an
+    // answer the door takes, sent while we are still waiting, prices the sale.
+    // The portal promises exactly this beside the refusal.
+    const harnessed = await started();
+    const itemId = await published(harnessed, livePriced(syncCard));
+
+    let refused: unknown = null;
+    const worker = workUntilStopped(harnessed, {
+      onQuote: async (question) => {
+        refused = await harnessed.gateway.answerQuote(harnessed.merchant.id, question.price_id, {
+          available: true,
+          price: { amount: "95", currency: "USD" },
+          as_of: "2026-08-26T12:00:00.000Z",
+        });
+        return {
+          available: true,
+          price: { amount: "95.00", currency: "USD" },
+          as_of: "2026-08-26T12:00:00.000Z",
+        };
+      },
+    });
+    const offered = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
+    await worker.stop();
+
+    expect(refused).toMatchObject({ refused: [{ path: ["price", "amount"] }] });
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    expect(offered.order.order.price?.amount).toBe("95.00");
+    expect(offered.order.order.quoteSource).toBe("merchant_answer");
+  });
+
   it("does not sell what the merchant says is gone", async () => {
     const harnessed = await started();
     const itemId = await published(harnessed, livePriced(syncCard));
