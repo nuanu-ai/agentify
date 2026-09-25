@@ -22,6 +22,7 @@ import {
   productIdFromMerchantItem,
   type StoreProduct,
   StoreProductsSchema,
+  USD_SCALE,
   usdAmountOf,
 } from "./woo-catalog.js";
 import { type WooRequest, wooRequest } from "./woo-request.js";
@@ -139,6 +140,7 @@ export const inspectProductInTheShop = async (
     "/wp-json/wc/v3/settings/products/woocommerce_downloads_require_login",
     "/wp-json/wc/v3/settings/products/woocommerce_downloads_grant_access_after_payment",
     "/wp-json/wc/v3/settings/products/woocommerce_downloads_redirect_fallback_allowed",
+    "/wp-json/wc/v3/settings/general/woocommerce_price_num_decimals",
   ] as const;
   let responses: Response[];
   try {
@@ -175,7 +177,7 @@ export const inspectProductInTheShop = async (
     return { ok: false, why: "The shop's protected product or settings document is incomplete." };
   }
   const product = parsed.data;
-  const [currency, taxes, method, login, afterPayment, redirectFallback] = settings.map(
+  const [currency, taxes, method, login, afterPayment, redirectFallback, decimals] = settings.map(
     (setting) => (setting.success ? setting.data.value : ""),
   );
   const unsupported: string[] = [];
@@ -196,6 +198,18 @@ export const inspectProductInTheShop = async (
   if (login !== "no") unsupported.push("downloads require a WooCommerce login");
   if (afterPayment !== "yes") unsupported.push("download access is not granted after payment");
   if (redirectFallback !== "no") unsupported.push("insecure redirect fallback is enabled");
+  // WooCommerce writes an order's totals at this setting, and the order this
+  // creates is matched with those totals character for character. A shop at
+  // any other number is refused here, before a paid order exists there that
+  // could not be matched. It is left out of the fingerprint below: every
+  // product that passes has the same value, and leaving it out keeps the
+  // fingerprints already recorded for accepted quotes valid.
+  if (decimals !== String(USD_SCALE)) {
+    unsupported.push(
+      `prices are not written at ${USD_SCALE} decimals (set WooCommerce → Settings → General →` +
+        ` Number of decimals to ${USD_SCALE})`,
+    );
+  }
   if (unsupported.length > 0) {
     return {
       ok: false,
