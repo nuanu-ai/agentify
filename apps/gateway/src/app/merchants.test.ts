@@ -186,8 +186,8 @@ describe("the wallet a merchant is paid at", () => {
 
     const written = await setPayoutWallet(store, "mch_1", A_WALLET_IN_LOWER, 2_000);
 
-    expect(written?.payoutWallet).toBe(A_WALLET);
-    expect((await store.merchantById("mch_1"))?.payoutWallet).toBe(A_WALLET);
+    expect(written?.payoutWallet.address).toBe(A_WALLET);
+    expect((await store.merchantById("mch_1"))?.payoutWallet.address).toBe(A_WALLET);
   });
 
   it("writes the same string for an address that already came that way", async () => {
@@ -195,7 +195,9 @@ describe("the wallet a merchant is paid at", () => {
     // what their wallet showed them and reads back exactly that.
     const store = await seller();
 
-    expect((await setPayoutWallet(store, "mch_1", A_WALLET, 2_000))?.payoutWallet).toBe(A_WALLET);
+    expect((await setPayoutWallet(store, "mch_1", A_WALLET, 2_000))?.payoutWallet.address).toBe(
+      A_WALLET,
+    );
   });
 
   it("refuses an address whose own letters disagree with it, and writes nothing", async () => {
@@ -211,7 +213,7 @@ describe("the wallet a merchant is paid at", () => {
       setPayoutWallet(store, "mch_1", "0x5aaeb6053F3E94C9b9A09f33669435E7Ef1BeAed", 3_000),
     ).rejects.toThrow();
 
-    expect((await store.merchantById("mch_1"))?.payoutWallet).toBe(A_WALLET);
+    expect((await store.merchantById("mch_1"))?.payoutWallet.address).toBe(A_WALLET);
   });
 
   it("refuses something that is not an address at all", async () => {
@@ -219,7 +221,7 @@ describe("the wallet a merchant is paid at", () => {
 
     await expect(setPayoutWallet(store, "mch_1", "0x1234", 2_000)).rejects.toThrow();
     await expect(setPayoutWallet(store, "mch_1", "", 2_000)).rejects.toThrow();
-    expect((await store.merchantById("mch_1"))?.payoutWallet).toBeNull();
+    expect((await store.merchantById("mch_1"))?.payoutWallet.address).toBeNull();
   });
 
   it("answers with nothing for a merchant who is not there", async () => {

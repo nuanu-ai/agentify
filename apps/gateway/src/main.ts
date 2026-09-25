@@ -20,6 +20,7 @@
  * are published and belongs with the deployment step rather than here.
  */
 
+import { CabinetAnnouncer } from "./adapters/cabinet/announcer.js";
 import { ScriptedFacilitator } from "./adapters/memory/facilitator.js";
 import { queueOn } from "./adapters/pgboss/queue.js";
 import { connect, PostgresStore } from "./adapters/postgres/store.js";
@@ -31,6 +32,7 @@ import type { Runtime } from "./app/runtime.js";
 import { isSandboxFacilitator, loadConfig } from "./config.js";
 import { buildApp } from "./http/server.js";
 import { PaymentEdge } from "./http/x402.js";
+import { nobodyAnnounces } from "./ports/announcer.js";
 import { randomIds, systemClock } from "./ports/clock.js";
 import type { Facilitator } from "./ports/facilitator.js";
 
@@ -140,6 +142,11 @@ const runtime: Runtime = {
   facilitator: await paymentLayer(),
   clock: systemClock,
   ids: randomIds,
+  // The cabinet's announcement route on the live deployment, and nothing at
+  // all anywhere else: the configuration is null exactly where a change
+  // applies at once and nobody is told (ADR-0019).
+  announcer:
+    config.announcements === null ? nobodyAnnounces : new CabinetAnnouncer(config.announcements),
 };
 
 const gateway = new Gateway(runtime);

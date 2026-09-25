@@ -17,6 +17,7 @@ import { type Environment, keyPrefixFor } from "@agentify/core";
 import type { HandlerAnswer, Order, QuoteResponse } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader, encodePaymentSignatureHeader } from "@x402/core/http";
 import type { PaymentPayload } from "@x402/core/types";
+import { RecordingAnnouncer } from "../adapters/memory/announcer.js";
 import { ScriptedFacilitator } from "../adapters/memory/facilitator.js";
 import { MemoryQueue } from "../adapters/memory/queue.js";
 import { MemoryStore } from "../adapters/memory/store.js";
@@ -51,6 +52,20 @@ export const countedIds = (): Ids => {
   };
 };
 
+/**
+ * What a live gateway is told about the cabinet it announces through.
+ *
+ * A live configuration does not start without both (ADR-0019), and the harness
+ * never calls the address: every harness announces through the recording
+ * announcer below, whatever the configuration names. So a test that makes a
+ * gateway live spreads this beside the chain and the facilitator and buys the
+ * configuration check, nothing else.
+ */
+export const ANNOUNCING = {
+  CABINET_ANNOUNCEMENT_URL: "http://cabinet:3003",
+  ANNOUNCEMENT_SECRET: "the-harness-announcement-secret-nobody-reuses",
+} as const;
+
 export const testConfig = (overrides: Record<string, string> = {}): GatewayConfig =>
   loadConfig({
     DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
@@ -83,6 +98,11 @@ export interface Harness {
   readonly store: MemoryStore;
   readonly queue: MemoryQueue;
   readonly facilitator: ScriptedFacilitator;
+  /**
+   * What the gateway asked the cabinet to tell a merchant, and what the cabinet
+   * answers. A harness never calls a cabinet, whatever its configuration names.
+   */
+  readonly announcer: RecordingAnnouncer;
   readonly now: () => number;
   /** Moves the clock the flows read. Nothing fires from this on its own. */
   readonly advance: (ms: number) => void;
@@ -153,6 +173,7 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
     (merchantId, envelope, afterMs) => queue.stage(merchantId, envelope, afterMs),
   );
   const facilitator = new ScriptedFacilitator();
+  const announcer = new RecordingAnnouncer();
   const ids = countedIds();
 
   const runtime: Runtime = {
@@ -162,6 +183,7 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
     facilitator,
     clock: () => now,
     ids,
+    announcer,
   };
 
   const gateway = new Gateway(runtime);
@@ -232,6 +254,7 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
       store,
       queue,
       facilitator,
+      announcer,
       merchant,
       now: () => now,
       advance: (ms) => {

@@ -55,6 +55,7 @@ export {
 } from "./config.js";
 export { buildApp, type MountedRoute, type RouteAnswer, type RouteHandler } from "./http/server.js";
 export { PaymentEdge, paymentFingerprint, presentedPayment } from "./http/x402.js";
+export { type AnnouncementOutcome, type Announcer, nobodyAnnounces } from "./ports/announcer.js";
 export { asTimestamp, type Clock, type Ids, randomIds, systemClock } from "./ports/clock.js";
 export type { Charge, Facilitator, SettleOutcome, VerifyOutcome } from "./ports/facilitator.js";
 export type { DrawnEnvelope, Queue, Reminder } from "./ports/queue.js";

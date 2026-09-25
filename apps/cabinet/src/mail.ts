@@ -2,9 +2,12 @@
  * The two ways a message leaves the cabinet, and the one value that picks
  * between them.
  *
- * There is one kind of message: a one-time link that proves its reader owns an
- * address. It is short, it is sent because somebody just asked for it, and
- * nothing here ever sends anything nobody asked for.
+ * There are two kinds of message. One is a one-time link that proves its reader
+ * owns an address, sent because somebody just asked for it. The other tells
+ * every account of a merchant that something was done with one of its keys —
+ * a payout wallet change that waits, a waiting one cancelled, a new key
+ * (ADR-0019) — sent because the gateway asked, and carrying no link that opens
+ * anything. Nothing here sends anything else.
  *
  * Which sender is in force is `MAIL_URL`, one variable with one value, the same
  * shape the gateway uses to pick its facilitator (`apps/gateway/src/config.ts`).

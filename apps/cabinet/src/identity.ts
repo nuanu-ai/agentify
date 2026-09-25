@@ -91,6 +91,8 @@ export interface Identity extends CabinetIdentity {
    * every reading of a session, so the next request already sees the move.
    */
   setOperator(email: string, operator: boolean): Promise<boolean>;
+  /** The addresses of every account naming this merchant, for an announcement. */
+  emailsNaming(merchantId: string): Promise<readonly string[]>;
   list(now: Date): Promise<readonly AccountSummary[]>;
   sendReportLink(request: SendReportLinkRequest): Promise<SendReportLinkResponse>;
   deleteUnattachedPerson(
@@ -842,6 +844,36 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
         update: { operator },
       });
       return written !== null && written !== undefined;
+    },
+
+    async emailsNaming(merchantId) {
+      const people = await (await contextOf()).adapter.findMany<{ email: string }>({
+        model: "user",
+        where: [{ field: "merchantId", value: merchantId }],
+      });
+      return people.map((person) => person.email);
+    },
+
+    async endOtherSessionsOfMerchant(merchantId, keep) {
+      // Read without renewing: this is not the pressing person's visit, and a
+      // renewal here would move their session's end in the database while the
+      // cookie lines that tell their browser so are thrown away.
+      const kept = new Set((await liveOnesIn(keep, false)).map((one) => one.token));
+      const context = await contextOf();
+      const people = await context.adapter.findMany<{ id: string }>({
+        model: "user",
+        where: [{ field: "merchantId", value: merchantId }],
+      });
+      let ended = 0;
+      for (const person of people) {
+        for (const session of await context.internalAdapter.listSessions(person.id)) {
+          if (!kept.has(session.token)) {
+            await endSession(session.token);
+            ended += 1;
+          }
+        }
+      }
+      return ended;
     },
 
     async list(now) {

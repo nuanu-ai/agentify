@@ -31,6 +31,7 @@ import { Gateway } from "./app/gateway.js";
 import { keyDigest, setPayoutWallet, setServiceName } from "./app/merchants.js";
 import { loadConfig } from "./config.js";
 import { buildApp } from "./http/server.js";
+import { nobodyAnnounces } from "./ports/announcer.js";
 
 /**
  * The key this walk carries. It is prefixed because the door reads the prefix
@@ -98,6 +99,8 @@ async function aGatewayOnAPort() {
     facilitator,
     clock: () => Date.now(),
     ids,
+    // A test channel, where nothing is announced.
+    announcer: nobodyAnnounces,
   });
   await gateway.start();
 
@@ -518,7 +521,7 @@ describe("a purchase from the outside", () => {
         body: { payout_wallet: theirWallet.toLowerCase() },
       });
       expect(paidAt.status, JSON.stringify(paidAt.body)).toBe(200);
-      expect(paidAt.body).toStrictEqual({ payout_wallet: theirWallet });
+      expect(paidAt.body).toStrictEqual({ payout_wallet: theirWallet, pending: null });
 
       const published = await gateway.call("POST", "/v0/catalog/publish", {
         headers: { authorization: `Bearer ${theirKey}` },

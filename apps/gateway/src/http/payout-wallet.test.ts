@@ -84,7 +84,7 @@ const bearer = (key: string): Record<string, string> => ({ authorization: `Beare
 const payoutWallet = async (served: Served, key: string) => {
   const answered = await served.call("GET", "/v0/payout-wallet", { headers: bearer(key) });
   expect(answered.status, JSON.stringify(answered.body)).toBe(200);
-  return answered.body as { payout_wallet: string | null };
+  return answered.body as { payout_wallet: string | null; pending: unknown };
 };
 
 const setPayoutWallet = async (served: Served, key: string, wallet: string | null) =>
@@ -141,7 +141,7 @@ describe("the wallet a merchant is paid at", () => {
     const { served } = await started();
     const key = await fresh(served);
 
-    expect(await payoutWallet(served, key)).toStrictEqual({ payout_wallet: null });
+    expect(await payoutWallet(served, key)).toStrictEqual({ payout_wallet: null, pending: null });
   });
 
   it("sets a wallet and hands back what was written rather than what was sent", async () => {
@@ -150,11 +150,12 @@ describe("the wallet a merchant is paid at", () => {
     const answered = await setPayoutWallet(served, harnessed.merchant.key, A_WALLET);
 
     expect(answered.status, JSON.stringify(answered.body)).toBe(200);
-    expect(answered.body).toStrictEqual({ payout_wallet: A_WALLET });
+    expect(answered.body).toStrictEqual({ payout_wallet: A_WALLET, pending: null });
     // And it is there on the next call, which is what makes the answer above a
     // read of the row rather than an echo of the request.
     expect(await payoutWallet(served, harnessed.merchant.key)).toStrictEqual({
       payout_wallet: A_WALLET,
+      pending: null,
     });
   });
 
@@ -168,7 +169,7 @@ describe("the wallet a merchant is paid at", () => {
     const answered = await setPayoutWallet(served, harnessed.merchant.key, A_WALLET);
 
     expect(answered.status, JSON.stringify(answered.body)).toBe(200);
-    expect(answered.body).toStrictEqual({ payout_wallet: A_WALLET });
+    expect(answered.body).toStrictEqual({ payout_wallet: A_WALLET, pending: null });
   });
 
   it("takes the lower-case spelling too, and answers in the one a wallet shows", async () => {
@@ -180,7 +181,7 @@ describe("the wallet a merchant is paid at", () => {
     const answered = await setPayoutWallet(served, harnessed.merchant.key, A_WALLET_IN_LOWER);
 
     expect(answered.status, JSON.stringify(answered.body)).toBe(200);
-    expect(answered.body).toStrictEqual({ payout_wallet: A_WALLET });
+    expect(answered.body).toStrictEqual({ payout_wallet: A_WALLET, pending: null });
     expect(A_WALLET_IN_LOWER).not.toBe(A_WALLET);
   });
 
@@ -203,6 +204,7 @@ describe("the wallet a merchant is paid at", () => {
     // written would be worse than no rule at all.
     expect(await payoutWallet(served, harnessed.merchant.key)).toStrictEqual({
       payout_wallet: A_WALLET,
+      pending: null,
     });
   });
 
@@ -219,6 +221,7 @@ describe("the wallet a merchant is paid at", () => {
     // And nothing was written: the merchant is still paid where they were.
     expect(await payoutWallet(served, harnessed.merchant.key)).toStrictEqual({
       payout_wallet: harnessed.merchant.wallet,
+      pending: null,
     });
   });
 
@@ -237,6 +240,7 @@ describe("the wallet a merchant is paid at", () => {
     expect(error.problems.map((problem) => problem.message).join(" ")).toContain("pause");
     expect(await payoutWallet(served, harnessed.merchant.key)).toStrictEqual({
       payout_wallet: A_WALLET,
+      pending: null,
     });
   });
 
@@ -249,6 +253,7 @@ describe("the wallet a merchant is paid at", () => {
     expect(moved.status, JSON.stringify(moved.body)).toBe(200);
     expect(await payoutWallet(served, harnessed.merchant.key)).toStrictEqual({
       payout_wallet: ANOTHER_WALLET,
+      pending: null,
     });
   });
 
@@ -262,7 +267,10 @@ describe("the wallet a merchant is paid at", () => {
 
     await setPayoutWallet(served, first.key, A_WALLET);
 
-    expect(await payoutWallet(served, first.key)).toStrictEqual({ payout_wallet: A_WALLET });
+    expect(await payoutWallet(served, first.key)).toStrictEqual({
+      payout_wallet: A_WALLET,
+      pending: null,
+    });
     expect((await payoutWallet(served, second.key)).payout_wallet).not.toBe(A_WALLET);
   });
 

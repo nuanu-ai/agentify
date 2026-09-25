@@ -274,6 +274,36 @@ export type PaymentClaim =
   | { readonly claimed: false; readonly heldBy: string };
 
 /**
+ * A change of a merchant's wallet that has been announced and has not taken
+ * effect yet (ADR-0019).
+ *
+ * On the live deployment a replacement for an address already set waits
+ * forty-eight hours after every account of the merchant was told of it, and
+ * this is what waits: the address, and the instant it replaces the one paid
+ * now. Both or neither — the table refuses half of one.
+ */
+export interface PendingPayoutWallet {
+  /** The address sales are paid into from `takesEffectAt` on. */
+  readonly address: string;
+  /** When it replaces the address paid now, counted from the announcement. */
+  readonly takesEffectAt: number;
+}
+
+/**
+ * Where a merchant is paid, as their row holds it.
+ *
+ * `address` is the address that applied when the row was last written, or null
+ * where none was ever set; `pending` is a replacement waiting beside it, or
+ * null. The two are one value rather than two fields on the merchant because
+ * they are written together and compared together: a change is recorded only
+ * where the row still holds the pair that was read before it was announced.
+ */
+export interface StoredPayoutWallet {
+  readonly address: string | null;
+  readonly pending: PendingPayoutWallet | null;
+}
+
+/**
  * A merchant: a row with an identity, and the one fact the order machine asks
  * about them.
  *
@@ -328,8 +358,15 @@ export interface StoredMerchant {
    * the money goes. It is never filled in from the gateway's own configured
    * address, because that address is the operator's and paying a merchant's
    * sales into it is the custodial arrangement this whole design refuses.
+   *
+   * It is the row as written, with a change that may be waiting beside it, and
+   * not the address a sale is paid at: a waiting change whose moment has passed
+   * is that address, though the row does not say so until it is next written.
+   * So nothing reads `address` off this for a payment; everything that asks
+   * where a sale goes asks `payoutWalletAt` in `app/runtime.ts`, with the
+   * clock.
    */
-  readonly payoutWallet: string | null;
+  readonly payoutWallet: StoredPayoutWallet;
   /**
    * When the operator admitted this merchant to the live catalogue, or null
    * where that one-time decision has never been made.
@@ -420,8 +457,12 @@ export interface CatalogEntry {
    * whose merchant has none cannot be sold where the money is real, and a
    * catalog that listed one would be making an offer every purchase of which
    * comes back refused.
+   *
+   * As the row holds it, with any change waiting beside it, for the reason the
+   * merchant's own field gives: the address a card is paid at now is asked of
+   * `payoutWalletAt`, with the clock.
    */
-  readonly payoutWallet: string | null;
+  readonly payoutWallet: StoredPayoutWallet;
   /**
    * What that merchant is listed under, or nothing where nobody has named one.
    *
@@ -520,23 +561,40 @@ export interface Store {
   ): Promise<StoredMerchant | null>;
 
   /**
-   * Sets the address one merchant's sales are paid into, and hands back the
-   * merchant as they now stand. Null where there is no such merchant.
+   * Writes where one merchant's sales are paid, and any change waiting beside
+   * it, where the row still holds what the caller read — and hands back the
+   * merchant as they now stand. `"moved"` where the row holds something else
+   * by now, and then nothing was written; null where there is no such merchant.
    *
-   * The value is expected to be an address already, in the checksummed spelling
-   * a wallet shows; the caller that makes it so is `setPayoutWallet` in
-   * `app/merchants.ts`, which is the one place an address is checked and written
-   * out before it is stored.
+   * The condition is the serialization ADR-0019 asks for, without a lock held
+   * across anything slow. A change on the live deployment is announced between
+   * reading the row and writing it, and the announcement is a call to another
+   * process and a mail provider: a lock held across that would be a row held
+   * for seconds on the money path. So the write asks instead whether the row
+   * is still what was read, compared by both halves and the instant, and a
+   * second change recorded in the meantime turns this one away rather than
+   * being overwritten by it — so what is waiting is always a change whose own
+   * announcement went out before it was written.
    *
-   * There is no clearing it, and the absence of a null is the difference from
-   * the listing name beside it. A payment request cannot be written without an
-   * address, so a merchant whose address was taken away would have every card
-   * of theirs go off sale at once — the selling word folds that in — and what
-   * somebody reaching for this wants is either a different address, which is
-   * this same call, or an end to selling, which is the pause and says so in its
-   * own name.
+   * The addresses are expected to be addresses already, in the checksummed
+   * spelling a wallet shows; the one place an address is checked and written
+   * out before it is stored is `payoutWalletFrom` in `app/merchants.ts`.
+   *
+   * There is no clearing an address that is set, and the absence of a null is
+   * the difference from the listing name beside it. A payment request cannot be
+   * written without an address, so a merchant whose address was taken away
+   * would have every card of theirs go off sale at once — the selling word
+   * folds that in — and what somebody reaching for this wants is either a
+   * different address, which is this same call, or an end to selling, which is
+   * the pause and says so in its own name. So what is written always names an
+   * address, and the type says so; only what was read may say "none yet".
    */
-  setPayoutWallet(id: string, payoutWallet: string, at: number): Promise<StoredMerchant | null>;
+  setPayoutWallet(
+    id: string,
+    expected: StoredPayoutWallet,
+    next: StoredPayoutWallet & { readonly address: string },
+    at: number,
+  ): Promise<StoredMerchant | "moved" | null>;
 
   /**
    * Writes down one key of one merchant. The digest is what is kept, not the

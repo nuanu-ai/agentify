@@ -112,6 +112,91 @@ commit has to move forward from the one the host runs. TEST takes a tag, a
 branch or a full commit SHA, as long as exactly one image build of it
 succeeded.
 
+## A secret a host's file may still lack
+
+Every channel's environment file names `ANNOUNCEMENT_SECRET` ("Setting up a
+host"): the gateway presents it to the cabinet to have a merchant told of a
+payout wallet change, and the cabinet refuses every other secret on that
+route. A file written before the variable existed does not have it, and the
+first release that carries it refuses such a channel in its preflight, before
+anything stops, so the running release keeps running. On TEST that refusal is
+recorded as the revision's failure, and the timer does not try that revision
+again; after the secret is added, a person releases it
+(`ssh -t agentify-test sudo agentify-release <name>`) or moves `deploy-test`
+to a newer commit.
+
+So before moving `deploy-test` to such a commit, and before running
+`agentify-release` on PRODUCTION for one, add the secret to each host's file,
+with a value made on that host for that channel alone — the channels share no
+secret, and one value serves both the gateway and the cabinet of a channel,
+since both read the same file:
+
+```sh
+ssh agentify-test "sudo sh -c 'umask 077; printf \"ANNOUNCEMENT_SECRET=%s\\n\" \"\$(openssl rand -base64 32)\" >> /etc/agentify/test.env'"
+ssh agentify "sudo sh -c 'umask 077; printf \"ANNOUNCEMENT_SECRET=%s\\n\" \"\$(openssl rand -base64 32)\" >> /etc/agentify/production.env'"
+ssh agentify-test sudo grep -c '^ANNOUNCEMENT_SECRET=' /etc/agentify/test.env
+ssh agentify sudo grep -c '^ANNOUNCEMENT_SECRET=' /etc/agentify/production.env
+```
+
+Each of the last two prints `1`. The value is made on the host and never
+passes through the terminal it was asked from; the file keeps its owner and
+mode.
+
+On a host that has still to move to one database ("One database (one-time)"
+below), add the secret before the move's first release. That release is
+meant to be refused, and the one after the move is meant to start
+everything; a missing secret would refuse that second one too, in the
+middle of the window.
+
+## The release that takes the password off /admin
+
+The operator's dashboard at `/admin` opens for a session whose account carries
+the operator flag, and answers everybody else with the site's 404 page
+(ADR-0026 §6). The route table in the web image has no password for it any
+more, so from the first verified release that carries this, `/admin` stops
+asking for one on both channels. Nothing about `/admin` has to be done on
+either host before that release (the secret in the section above still
+has to be there): it asks for neither of the two old settings,
+and its own check of the public routes expects `/admin` to answer 404.
+
+After it, the dashboard opens for nobody until somebody is flagged. The person
+who is to read it signs in once at `/cabinet/sign-in`, which makes their
+account; on TEST the cabinet writes its mail to its log rather than sending
+it, so the link is read with `deploy/stack.sh test logs cabinet` from the
+newest checkout. They are then flagged on the host of that channel:
+
+```sh
+ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T cabinet pnpm --filter @agentify/cabinet account operator you@example.com'
+ssh -t agentify 'sudo "$(ls -dt /var/lib/agentify/production/checkouts/*/ | head -n 1)deploy/stack.sh" production exec -T cabinet pnpm --filter @agentify/cabinet account operator you@example.com'
+```
+
+The scanner's header then shows them an Admin link, on the next page they
+open, without signing in again. `account list` says who is an operator, and
+`account operator you@example.com --off` takes the flag away.
+
+`ADMIN_BASIC_AUTH_USER` and `ADMIN_BASIC_AUTH_HASH` are left in the host's
+environment file by the release and read by nothing in it: no compose file of
+this release names them, so the preflight does not see them either. They go
+from `/etc/agentify/<channel>.env` by hand, with two things in mind. A
+release of an older revision renders that revision's compose files, which
+require both, so while going back is still an option, removing them turns
+such a release into a refusal before anything stops. And on PRODUCTION the
+edge Caddy was started from a checkout of `deploy/edge/` of its own, whose
+`compose.yaml` requires both whenever the edge is recreated, although its
+route table, which every release rewrites, has not used them. The first line
+below names the compose file the edge was started from, and the second prints
+`0` once that file no longer asks for them:
+
+```sh
+ssh agentify "sudo docker inspect -f '{{index .Config.Labels \"com.docker.compose.project.config_files\"}}' agentify-edge-caddy-1"
+ssh agentify "sudo grep -c ADMIN_BASIC_AUTH <that file>"
+```
+
+Until it prints `0`, the two stay in whatever file that compose is run with.
+What ends that is the edge being recreated from a checkout of this release or
+later, whose `deploy/edge/compose.yaml` does not name them; nothing else about
+the edge depends on them.
+
 ## Releasing to production
 
 A production release starts from `main`. Every change a merchant can see in
@@ -223,54 +308,6 @@ person's run never skips one:
 ```sh
 ssh -t agentify-test sudo agentify-release my-branch
 ```
-
-## The release that takes the password off /admin
-
-The operator's dashboard at `/admin` opens for a session whose account carries
-the operator flag, and answers everybody else with the site's 404 page
-(ADR-0026 §6). The route table in the web image has no password for it any
-more, so from the first verified release that carries this, `/admin` stops
-asking for one on both channels. Nothing about `/admin` has to be done on
-either host before that release: it asks for neither of the two old settings,
-and its own check of the public routes expects `/admin` to answer 404.
-
-After it, the dashboard opens for nobody until somebody is flagged. The person
-who is to read it signs in once at `/cabinet/sign-in`, which makes their
-account; on TEST the cabinet writes its mail to its log rather than sending
-it, so the link is read with `deploy/stack.sh test logs cabinet` from the
-newest checkout. They are then flagged on the host of that channel:
-
-```sh
-ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T cabinet pnpm --filter @agentify/cabinet account operator you@example.com'
-ssh -t agentify 'sudo "$(ls -dt /var/lib/agentify/production/checkouts/*/ | head -n 1)deploy/stack.sh" production exec -T cabinet pnpm --filter @agentify/cabinet account operator you@example.com'
-```
-
-The scanner's header then shows them an Admin link, on the next page they
-open, without signing in again. `account list` says who is an operator, and
-`account operator you@example.com --off` takes the flag away.
-
-`ADMIN_BASIC_AUTH_USER` and `ADMIN_BASIC_AUTH_HASH` are left in the host's
-environment file by the release and read by nothing in it: no compose file of
-this release names them, so the preflight does not see them either. They go
-from `/etc/agentify/<channel>.env` by hand, with two things in mind. A
-release of an older revision renders that revision's compose files, which
-require both, so while going back is still an option, removing them turns
-such a release into a refusal before anything stops. And on PRODUCTION the
-edge Caddy was started from a checkout of `deploy/edge/` of its own, whose
-`compose.yaml` requires both whenever the edge is recreated, although its
-route table, which every release rewrites, has not used them. The first line
-below names the compose file the edge was started from, and the second prints
-`0` once that file no longer asks for them:
-
-```sh
-ssh agentify "sudo docker inspect -f '{{index .Config.Labels \"com.docker.compose.project.config_files\"}}' agentify-edge-caddy-1"
-ssh agentify "sudo grep -c ADMIN_BASIC_AUTH <that file>"
-```
-
-Until it prints `0`, the two stay in whatever file that compose is run with.
-What ends that is the edge being recreated from a checkout of this release or
-later, whose `deploy/edge/compose.yaml` does not name them; nothing else about
-the edge depends on them.
 
 ## When a release fails
 
@@ -603,8 +640,13 @@ image: activation records the images per checkout. On both channels it names
 `AGENTIFY_PUBLIC_ORIGIN`, `AGENTIFY_COOKIE_SECURE`, `AGENTIFY_SURFACE_MODE`,
 `AGENTIFY_PAYMENT_NETWORK`, `AGENTIFY_FACILITATOR_URL`, `AGENTIFY_SEED_KEY`,
 `AGENTIFY_AUTH_SECRET`, `AGENTIFY_INVITATION`, `TOKEN_HMAC_SECRET`,
-`EMAIL_ENCRYPTION_KEY` and `REPORT_IDENTITY_SECRET`. TEST adds `AGENTIFY_TEST_LISTEN_ADDRESS`, the
-private address its door binds on. PRODUCTION adds `AGENTIFY_DB_PASSWORD`,
+`EMAIL_ENCRYPTION_KEY`, `REPORT_IDENTITY_SECRET` and `ANNOUNCEMENT_SECRET`, the last two each at
+least 32 characters of their own (`openssl rand -base64 32`): the gateway
+presents `ANNOUNCEMENT_SECRET` to the cabinet to have a merchant told of a
+payout wallet change, and the preflight refuses a channel where any other
+service holds it or it opens any other door. TEST adds
+`AGENTIFY_TEST_LISTEN_ADDRESS`, the private address its door binds on.
+PRODUCTION adds `AGENTIFY_DB_PASSWORD`,
 `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `MAIL_URL`, `MAIL_API_KEY` and
 `MAIL_FROM`. The scanner's remaining settings — `PRIVACY_EMAIL`,
 `ABUSE_EMAIL`, the `LEGAL_*` pair, the `TURNSTILE_*`, `POSTHOG_*`, `META_*`,

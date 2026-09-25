@@ -53,17 +53,25 @@ import {
   type WorkerEnvelope,
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
+import { type Announcement, type AskedWith, announcedLabel } from "../announcements.js";
+import type { AnnouncementOutcome } from "../ports/announcer.js";
 import { asTimestamp } from "../ports/clock.js";
 import type { Reminder } from "../ports/queue.js";
-import type { KeyPurpose, StoredCard, StoredKey, StoredOrder } from "../ports/store.js";
+import type {
+  KeyPurpose,
+  StoredCard,
+  StoredKey,
+  StoredOrder,
+  StoredPayoutWallet,
+} from "../ports/store.js";
 import { orderCallResponseOf } from "./answers.js";
 import {
   invitationAccepted,
   issueCabinetKey,
   issueKey,
   keyDigest,
+  payoutWalletFrom,
   registerMerchant,
-  setPayoutWallet,
   setServiceName,
 } from "./merchants.js";
 import { OrderRunner, orderDocumentOf, SWEEP_EFFECTS } from "./runner.js";
@@ -72,6 +80,7 @@ import {
   listedUnder,
   modeForCard,
   payableTo,
+  payoutWalletAt,
   policyFor,
   priceCheckOf,
   quoteReachesTheMerchant,
@@ -98,6 +107,40 @@ import { purchaseOf, Waiting } from "./waiting.js";
  * deployment under load with nothing about it looking wrong.
  */
 const KEY_USE_WRITTEN_EVERY_MS = 5 * 60_000;
+
+/**
+ * How long a replacement payout wallet waits on the live deployment, counted
+ * from the moment every message about it was handed over (ADR-0019).
+ *
+ * A constant rather than a setting: a knob here is the one that turns the
+ * guard off, on the one field money is sent to.
+ */
+export const WALLET_CHANGE_WAITS_MS = 48 * 60 * 60 * 1_000;
+
+/**
+ * Why a wallet change was refused, and in every case nothing was written.
+ *
+ * `nobody_to_tell`: no account names the merchant. `not_announced`: a message
+ * could not be handed to the mail provider — though others may have been.
+ * `refused_by_cabinet`: the cabinet turned the request away before telling
+ * anybody. `unconfirmed`: the cabinet did not answer, so a message may have
+ * gone out. `raced`: another write landed between reading the wallet and
+ * writing it, on a change nothing had announced; `raced_after_announcing`:
+ * the same, after this change's own message went out.
+ */
+export type WalletChangeRefusal =
+  | "nobody_to_tell"
+  | "not_announced"
+  | "refused_by_cabinet"
+  | "unconfirmed"
+  | "raced"
+  | "raced_after_announcing";
+
+/** The key a call was made with, as the door resolved it. */
+export interface KeyOnTheCall {
+  readonly keyId: string;
+  readonly purpose: KeyPurpose;
+}
 
 /** The queue's name for the daily sweep of claims on payments. */
 export const SWEEP_CLAIMS = "agentify_forget_old_claims";
@@ -376,7 +419,7 @@ export class Gateway {
     // nowhere for this product's money to go. The sandbox asks for no address,
     // and that is not leniency — it settles against nothing, so there is no
     // money to send anywhere and no chain to send it on (ADR-0008).
-    if (!payableTo(merchant.payoutWallet, this.runtime.config)) {
+    if (!payableTo(merchant.payoutWallet.address, this.runtime.config)) {
       missing.push(NO_PAYOUT_WALLET);
     }
     if (!approvedForLive(merchant.liveApprovedAt, this.runtime.config)) {
@@ -465,7 +508,12 @@ export class Gateway {
           ? "paused"
           : sellingFor(merchant.selling, stored, sellableBy(merchant, this.runtime.config)),
       serviceName: merchant?.serviceName ?? null,
-      payoutWallet: merchant?.payoutWallet ?? null,
+      // The address a payment request written now names, which is a waiting
+      // change once its moment has come and not before (ADR-0019).
+      payoutWallet:
+        merchant === null
+          ? null
+          : payoutWalletAt(merchant.payoutWallet, this.runtime.clock()).address,
     };
   }
 
@@ -684,46 +732,227 @@ export class Gateway {
         `the key on this call resolved to ${merchantId}, and there is no such merchant`,
       );
     }
-    return { payout_wallet: merchant.payoutWallet };
+    return payoutWalletAnswer(payoutWalletAt(merchant.payoutWallet, this.runtime.clock()));
   }
 
   /**
-   * Sets where this merchant's sales are paid.
+   * Sets where this merchant's sales are paid, or asks for a change of it to
+   * wait — and answers with the wallet as it then stands, or with which of the
+   * four reasons it was refused for.
    *
-   * There is no taking one away, and unlike the listing name there is no verb
-   * at a terminal for it either: the address is what a payment request is
-   * written around, so a merchant without one has cards on sale that cannot be
-   * offered at all, and there is no caller for whom that is the right outcome.
+   * There is no taking one away, and no verb at a terminal writes one either:
+   * every change reaches the gateway as this call, which is what lets it hold
+   * every change to the rule below (ADR-0019).
    *
-   * The address is checked and written out in the one spelling anything here
-   * holds — the mixed-case one a wallet shows — by the one function that does
-   * both. The route above holds the same rule on the way in, so a throw from
-   * here is a caller that skipped it.
+   * Where no money is real — the test channel and the sandbox — the address
+   * applies at once and nobody is told. The first address a merchant sets on
+   * the live deployment applies at once too, because it replaces nothing and a
+   * new merchant has to be able to start selling, and it is announced
+   * afterwards without being waited on: a leaked key could set it before its
+   * owner does, and the message is how the owner hears of it.
    *
-   * That is the opposite spelling from the one a payer's wallet is kept in a
-   * few hundred lines below, and the two are not in conflict. A payer's address
-   * arrives from a facilitator and is only ever compared, so it is lowered to
-   * make two spellings one identity; this one is read by a person off a screen,
-   * so it is kept in the form they can recognise.
+   * On the live deployment a replacement is the act a leaked key would reach
+   * for, and any key of the merchant's reaches this call. So it is announced to
+   * every account that names the merchant before anything is written, and it is
+   * recorded — waiting, forty-eight hours from the moment every message was
+   * handed over — only if every message was. Until then payment requests name
+   * the address that applies now. That runs the effect before the state, the
+   * reverse of ADR-0013 and on purpose: a change nobody was told of is the
+   * dangerous failure, and a message about a change that then did not land is
+   * the safe one, because the message says the change takes effect only if the
+   * cabinet's wallet screen shows it.
+   *
+   * Three asks change nothing new. The address already waiting is a retry after
+   * a dropped connection, and it answers with the waiting change and sends
+   * nothing. The address that applies now, with a change waiting, is a cancel:
+   * written at once and announced afterwards, and never refused for want of a
+   * message, because it moves money nowhere new. And the address that applies
+   * now with nothing waiting is nothing at all.
+   *
+   * Changes for one merchant are serialized without a lock held across the
+   * announcement, which is a call to another process and to a mail provider:
+   * the write is conditional on the row still holding what was read before the
+   * announcement went out, and a change recorded in between turns this one
+   * away as `raced` rather than being overwritten by it. So the address waiting
+   * is always one whose own message went out before it was written.
    *
    * What comes back is read off the row that was written. Echoed, this answer
    * would look identical whether the write landed or not — which for the one
    * field in this system that money is sent to is not a difference to leave to
    * chance.
    */
-  async setPayoutWallet(merchantId: string, wallet: string): Promise<PayoutWallet> {
-    const paid = await setPayoutWallet(
-      this.runtime.store,
-      merchantId,
-      wallet,
-      this.runtime.clock(),
-    );
-    if (paid === null) {
+  async setPayoutWallet(
+    merchantId: string,
+    wallet: string,
+    askedBy: KeyOnTheCall,
+  ): Promise<PayoutWallet | WalletChangeRefusal> {
+    // The route holds the same rule on the way in, so a throw from here is a
+    // caller that skipped it.
+    const address = payoutWalletFrom(wallet);
+    const merchant = await this.runtime.store.merchantById(merchantId);
+    if (merchant === null) {
       throw new Error(
         `the key on this call resolved to ${merchantId}, and there is no such merchant`,
       );
     }
-    return { payout_wallet: paid.payoutWallet };
+    const read = merchant.payoutWallet;
+    const now = payoutWalletAt(read, this.runtime.clock());
+
+    if (!this.#announces()) {
+      return await this.#recordWallet(merchantId, read, { address, pending: null });
+    }
+
+    if (now.address === null) {
+      // The first address applies at once and is announced afterwards, the
+      // way a new key is: it replaces nothing, so it waits on nothing, and a
+      // message that cannot be sent refuses nothing — but a leaked key could
+      // set it before its owner does, and the message is how they hear of it.
+      const set = await this.#recordWallet(merchantId, read, { address, pending: null });
+      if (typeof set !== "string") {
+        this.#announceAfterwards({
+          kind: "wallet_set",
+          merchant_id: merchantId,
+          to: address,
+          asked_with: await this.#named(merchantId, askedBy),
+        });
+      }
+      return set;
+    }
+
+    if (address === now.address) {
+      if (now.pending === null) {
+        return payoutWalletAnswer(now);
+      }
+      const cancelled = now.pending.address;
+      const written = await this.#recordWallet(merchantId, read, { address, pending: null });
+      if (typeof written !== "string") {
+        this.#announceAfterwards({
+          kind: "wallet_change_cancelled",
+          merchant_id: merchantId,
+          kept: address,
+          cancelled,
+          asked_with: await this.#named(merchantId, askedBy),
+        });
+      }
+      return written;
+    }
+
+    if (now.pending?.address === address) {
+      return payoutWalletAnswer(now);
+    }
+
+    const told = await this.#announce({
+      kind: "wallet_change",
+      merchant_id: merchantId,
+      from: now.address,
+      to: address,
+      not_before: asTimestamp(this.runtime.clock() + WALLET_CHANGE_WAITS_MS),
+      asked_with: await this.#named(merchantId, askedBy),
+    });
+    if (told !== "handed_over") {
+      console.warn(`[gateway] a payout wallet change for ${merchantId} was refused: ${told}`);
+      return told === "not_handed_over" ? "not_announced" : told;
+    }
+    // Counted from now, after every message was handed over, so the change
+    // takes effect no earlier than the moment any message named.
+    const recorded = await this.#recordWallet(merchantId, read, {
+      address: now.address,
+      pending: { address, takesEffectAt: this.runtime.clock() + WALLET_CHANGE_WAITS_MS },
+    });
+    return recorded === "raced" ? "raced_after_announcing" : recorded;
+  }
+
+  /** Whether this deployment waits on and announces a change: the live one alone. */
+  #announces(): boolean {
+    return this.runtime.config.surfaceMode === "live";
+  }
+
+  /**
+   * Writes a merchant's wallet where the row still holds what was read, and
+   * answers with it as it then stands — or `raced` where it moved to anything
+   * but what this write asked for.
+   */
+  async #recordWallet(
+    merchantId: string,
+    read: StoredPayoutWallet,
+    next: StoredPayoutWallet & { readonly address: string },
+  ): Promise<PayoutWallet | "raced"> {
+    const written = await this.runtime.store.setPayoutWallet(
+      merchantId,
+      read,
+      next,
+      this.runtime.clock(),
+    );
+    if (written === null) {
+      throw new Error(
+        `the key on this call resolved to ${merchantId}, and there is no such merchant`,
+      );
+    }
+    if (written !== "moved") {
+      return payoutWalletAnswer(payoutWalletAt(written.payoutWallet, this.runtime.clock()));
+    }
+    // Another write landed between the read and this one. What it wrote may
+    // be exactly what this call asked for — a retry after a dropped connection
+    // that reached the gateway while the first was still waiting on the
+    // cabinet — and then the answer is that change, not a refusal of it:
+    // "asking again is safe" is the promise the retry was made on.
+    const merchant = await this.runtime.store.merchantById(merchantId);
+    const standing =
+      merchant === null ? null : payoutWalletAt(merchant.payoutWallet, this.runtime.clock());
+    const asked = next.pending;
+    return standing !== null &&
+      standing.address === next.address &&
+      (asked === null ? standing.pending === null : standing.pending?.address === asked.address)
+      ? payoutWalletAnswer(standing)
+      : "raced";
+  }
+
+  /**
+   * Asks the cabinet to tell the merchant, and reads a cabinet that threw the
+   * way the adapter reads one that did not answer: a message may have gone out.
+   */
+  async #announce(announcement: Announcement): Promise<AnnouncementOutcome> {
+    try {
+      return await this.runtime.announcer.announce(announcement);
+    } catch (thrown) {
+      console.error(`[gateway] an announcement (${announcement.kind}) failed`, thrown);
+      return "unconfirmed";
+    }
+  }
+
+  /**
+   * Announces something already done, and waits on nothing: a new key and a
+   * cancelled change are not refused, delayed or undone for want of a message
+   * (ADR-0019). What became of it is written to the log and nowhere else.
+   */
+  #announceAfterwards(announcement: Announcement): void {
+    void this.#announce(announcement).then((outcome) => {
+      if (outcome !== "handed_over") {
+        console.warn(
+          `[gateway] ${announcement.kind} for ${announcement.merchant_id} was done and not announced: ${outcome}`,
+        );
+      }
+    });
+  }
+
+  /**
+   * The key a call was made with, named the way the merchant's list of keys
+   * names it — or as the cabinet, whose key is on no list and whose call means
+   * a person signed in to it acted.
+   */
+  async #named(merchantId: string, askedBy: KeyOnTheCall): Promise<AskedWith> {
+    if (askedBy.purpose === "cabinet") {
+      return { kind: "cabinet" };
+    }
+    const key = (await this.runtime.store.keysOf(merchantId)).find(
+      (one) => one.id === askedBy.keyId,
+    );
+    if (key === undefined) {
+      throw new Error(
+        `the call was made with ${askedBy.keyId}, and ${merchantId} has no such key to name`,
+      );
+    }
+    return { kind: "merchant_code", id: key.id, label: announcedLabel(key.label) };
   }
 
   /**
@@ -747,8 +976,19 @@ export class Gateway {
     return { keys: keys.map(merchantKeyOf), this_call: thisCall };
   }
 
-  /** Issues another key for this merchant's own code, and hands it back once. */
-  async issueMerchantKey(merchantId: string, label: string): Promise<IssuedKey> {
+  /**
+   * Issues another key for this merchant's own code, and hands it back once.
+   *
+   * On the live deployment the merchant is told of it afterwards, and the key
+   * never waits on the message (ADR-0019): a key moves no money, a wallet
+   * change made with it is itself announced and waited on, and a merchant must
+   * not be kept from a key — their first above all — because mail is down.
+   */
+  async issueMerchantKey(
+    merchantId: string,
+    label: string,
+    askedBy: KeyOnTheCall,
+  ): Promise<IssuedKey> {
     const issued = await issueKey(
       this.runtime.store,
       this.runtime.ids,
@@ -757,6 +997,14 @@ export class Gateway {
       this.runtime.clock(),
       this.runtime.config.environment,
     );
+    if (this.#announces()) {
+      this.#announceAfterwards({
+        kind: "key_issued",
+        merchant_id: merchantId,
+        key: { id: issued.key.id, label: announcedLabel(issued.key.label) },
+        asked_with: await this.#named(merchantId, askedBy),
+      });
+    }
     return { key: merchantKeyOf(issued.key), secret: issued.secret };
   }
 
@@ -1010,7 +1258,14 @@ export class Gateway {
     // sale, whatever else is right about it — and the same string is then kept
     // on the order for the charge, so the money goes where the payer signed for
     // it to go rather than wherever the merchant's wallet has got to by then.
-    const payTo = (await this.runtime.store.merchantById(before.merchantId))?.payoutWallet ?? null;
+    //
+    // Read at the instant of the verification, like the challenge before it:
+    // a waiting change whose moment has passed is the address from then on.
+    const payingMerchant = await this.runtime.store.merchantById(before.merchantId);
+    const payTo =
+      payingMerchant === null
+        ? null
+        : payoutWalletAt(payingMerchant.payoutWallet, this.runtime.clock()).address;
 
     const verified = await this.runtime.facilitator.verify({
       orderId,
@@ -2088,6 +2343,26 @@ const NO_SELLER_NAME: Problem = {
  * address, it is the operator's, and a card published against it would send a
  * merchant's takings to somebody else with nobody the wiser.
  */
+/**
+ * A merchant's wallet, already read at an instant, as the route answers with it.
+ *
+ * The waiting change travels with the address rather than being left for a
+ * second call, because a caller that reads its own old address back must be
+ * able to see in the same answer that its change is waiting rather than lost.
+ */
+function payoutWalletAnswer(wallet: StoredPayoutWallet): PayoutWallet {
+  return {
+    payout_wallet: wallet.address,
+    pending:
+      wallet.pending === null
+        ? null
+        : {
+            payout_wallet: wallet.pending.address,
+            takes_effect_at: asTimestamp(wallet.pending.takesEffectAt),
+          },
+  };
+}
+
 const NO_PAYOUT_WALLET: Problem = {
   path: [],
   code: "no_payout_wallet",
