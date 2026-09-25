@@ -309,7 +309,9 @@ describe("a replacement on the live deployment", () => {
     await ask(served, cabinetKey, ANOTHER_WALLET);
 
     expect(
-      harnessed.announcer.announced.map((one) => (one as Announcement).asked_with),
+      harnessed.announcer.announced
+        .filter((one) => one.kind === "wallet_change")
+        .map((one) => (one as Announcement).asked_with),
     ).toStrictEqual([{ kind: "cabinet" }]);
   });
 });

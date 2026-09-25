@@ -5,8 +5,8 @@
  *
  * On the live deployment a change of a payout wallet already set is announced
  * to every account that names the merchant before anything is written, and a
- * new key of the merchant's own and a cancelled change are announced once they
- * are done. The gateway knows the merchant and the change; the cabinet knows
+ * first wallet, a new key of the merchant's own and a cancelled change are
+ * announced once they are done. The gateway knows the merchant and the change; the cabinet knows
  * the addresses and sends the mail. This file is the wire between them, and it
  * is here rather than in the published contracts because nobody outside these
  * two processes calls it: the cabinet imports it from this package's
@@ -99,6 +99,18 @@ export const AskedWithSchema = z.discriminatedUnion("kind", [
 ]);
 
 export const AnnouncementSchema = z.discriminatedUnion("kind", [
+  /**
+   * A merchant's first payout wallet was set, and applies already. Sent
+   * after, and never waited on: it replaces nothing, and a new merchant has to
+   * be able to start selling — but a leaked key could set it before its owner
+   * does, and this is how the owner hears of it.
+   */
+  z.strictObject({
+    kind: z.literal("wallet_set"),
+    merchant_id: z.string().min(1),
+    to: WalletSchema,
+    asked_with: AskedWithSchema,
+  }),
   /**
    * A replacement for the wallet paid now has been asked for. Sent before
    * anything is written; the change is recorded only if every message was

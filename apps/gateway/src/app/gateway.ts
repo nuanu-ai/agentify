@@ -744,11 +744,12 @@ export class Gateway {
    * every change reaches the gateway as this call, which is what lets it hold
    * every change to the rule below (ADR-0019).
    *
-   * Where no money is real — the test channel and the sandbox — and for the
-   * first address a merchant sets anywhere, the address applies at once and
-   * nobody is told. The first replaces nothing, so no money that was going
-   * somewhere starts going somewhere else, and a new merchant has to be able to
-   * start selling.
+   * Where no money is real — the test channel and the sandbox — the address
+   * applies at once and nobody is told. The first address a merchant sets on
+   * the live deployment applies at once too, because it replaces nothing and a
+   * new merchant has to be able to start selling, and it is announced
+   * afterwards without being waited on: a leaked key could set it before its
+   * owner does, and the message is how the owner hears of it.
    *
    * On the live deployment a replacement is the act a leaked key would reach
    * for, and any key of the merchant's reaches this call. So it is announced to
@@ -797,8 +798,25 @@ export class Gateway {
     const read = merchant.payoutWallet;
     const now = payoutWalletAt(read, this.runtime.clock());
 
-    if (!this.#announces() || now.address === null) {
+    if (!this.#announces()) {
       return await this.#recordWallet(merchantId, read, { address, pending: null });
+    }
+
+    if (now.address === null) {
+      // The first address applies at once and is announced afterwards, the
+      // way a new key is: it replaces nothing, so it waits on nothing, and a
+      // message that cannot be sent refuses nothing — but a leaked key could
+      // set it before its owner does, and the message is how they hear of it.
+      const set = await this.#recordWallet(merchantId, read, { address, pending: null });
+      if (typeof set !== "string") {
+        this.#announceAfterwards({
+          kind: "wallet_set",
+          merchant_id: merchantId,
+          to: address,
+          asked_with: await this.#named(merchantId, askedBy),
+        });
+      }
+      return set;
     }
 
     if (address === now.address) {

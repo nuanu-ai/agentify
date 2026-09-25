@@ -64,9 +64,10 @@ honestly. An address is changed, never taken away — taking it
 away would put every published card off sale under the name of editing
 a setting, and the act somebody reaching for that wants is the pause.
 
-The first address a merchant sets applies at once and is announced to
-nobody, or a new merchant could not start selling; it replaces nothing, so no
-money that was going somewhere starts going somewhere else. Replacing it takes
+The first address a merchant sets applies at once, or a new merchant could
+not start selling; it replaces nothing, so no money that was going somewhere
+starts going somewhere else, and it is announced once it applies, the way a
+new key is. Replacing it takes
 effect forty-eight hours after the change is announced, whichever key asks, and until then payment requests
 name the address that applies now. Asking again for the address already
 pending changes nothing, sends no new message and restarts no clock, and
@@ -86,8 +87,8 @@ already-published contracts package refuses it until that package is
 upgraded.
 
 No replacement of an address already set applies unless the merchant has
-been told of it; the first address is the one change told to nobody, for the
-reason above. The wallet is set only through `/v0/payout-wallet`, and no terminal command
+been told of it, and every address set is told to them; the first is told
+afterwards, for the reason above. The wallet is set only through `/v0/payout-wallet`, and no terminal command
 writes it, so every change reaches the gateway as the same call and the
 gateway is the one place that sees them all. Before writing anything, the
 gateway asks the cabinet, which holds the addresses, to tell every account
@@ -177,10 +178,10 @@ cannot reach. A leaked key can ask again after every cancel: the wait and
 the message hold as long as the owner answers them, and the lasting remedy
 is disabling that key and any key it issued. A leaked key can equally
 cancel the owner's change, a nuisance its announcement reveals. A key that
-leaks before its merchant has set any address can set the first one, which
-applies at once and is announced to nobody; the merchant finds it on the
-wallet screen when they come to set their own, and replacing it waits like
-any other change. A test
+leaks before its merchant has set any address can still set the first one,
+which applies at once; the owner learns of it from the message that follows,
+when mail works, or from the wallet screen, and replacing it waits like any
+other change, so they stop selling until it does. A test
 deployment never shows a pending change, so an integrator meets that shape
 only on production. A wallet change also depends on the cabinet and the
 mail provider being up, which is accepted: changes are rare, and a refusal
