@@ -876,6 +876,22 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
       return ended;
     },
 
+    async endOtherSessionsOfPerson(personId, keep) {
+      // Read without renewing, for the reason the merchant's version gives.
+      const kept = new Set((await liveOnesIn(keep, false)).map((one) => one.token));
+      const now = new Date();
+      let ended = 0;
+      for (const session of await (await contextOf()).internalAdapter.listSessions(personId)) {
+        // An expired session signs nobody in, so it is neither ended here nor
+        // counted among the devices that were signed out.
+        if (!kept.has(session.token) && session.expiresAt > now) {
+          await endSession(session.token);
+          ended += 1;
+        }
+      }
+      return ended;
+    },
+
     async list(now) {
       const context = await contextOf();
       const everybody = await context.internalAdapter.listUsers();

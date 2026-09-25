@@ -1089,6 +1089,37 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     response.redirect(303, `${base}/settings`);
   });
 
+  /**
+   * Signs out every other device of this account, from the settings screen
+   * (ADR-0026 §3).
+   *
+   * The header's sign-out ends this browser's session; this ends every other
+   * session of the same account and keeps this one, which is the answer to a
+   * session left open somewhere or held by somebody else (ADR-0019). It needs
+   * no wallet change to be waiting, ends no other account's sessions and
+   * touches no key. It stands behind the gate and, like every form here, is
+   * refused from another site. The page says how many it ended, because the
+   * count is the one thing the person could not otherwise see.
+   */
+  app.post(`${base}/settings/sign-out-others`, async (request, response) => {
+    const person = whoIs(request);
+    const ended = await identity.endOtherSessionsOfPerson(person.id, request.headers.cookie);
+    noted(person, `signed out every other device of their account, ${ended} sessions in all`);
+    const settings = await settingsOf(request);
+    if (!settings.ok) {
+      return trouble(response, base, settings);
+    }
+    response.type("html").send(
+      settingsScreen({
+        ...viewingSettings(request, base, settings.document),
+        accountNotice:
+          ended === 0
+            ? "No other session of this account was signed in, so nothing was signed out."
+            : `Every other session of this account was signed out, ${ended} in all. This one stays signed in.`,
+      }),
+    );
+  });
+
   /** Ends every session of the merchant but the one on this request, and says how many. */
   const signOutTheOthers = async (request: Request): Promise<number> => {
     const person = whoIs(request);

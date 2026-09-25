@@ -89,6 +89,11 @@ export interface Viewer {
    * (ADR-0023).
    */
   readonly shop?: ShopTile;
+  /**
+   * What became of signing out every other device, on the settings screen
+   * that pressed it, and absent everywhere else.
+   */
+  readonly accountNotice?: string;
 }
 
 interface Frame {

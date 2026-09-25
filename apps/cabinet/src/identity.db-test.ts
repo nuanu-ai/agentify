@@ -502,6 +502,32 @@ if (databaseUrl === null) {
       expect((await identity.whoIs(elsewhere))?.person.email).toBe("stranger@example.com");
     });
 
+    it("ends every other session of one account and leaves another account's alone", async () => {
+      // Signing out every other device from Settings (ADR-0026 §3). On
+      // PostgreSQL the sessions are rows the component reads by account, so
+      // the reach of the call is asked here and not only of the memory store.
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      const signedIn = async (email: string): Promise<string> => {
+        await rewindLinkSends();
+        await identity.requestLink(email, "default");
+        const opened = await identity.openLink(tokenIn(messages.at(-1) as Message));
+        if (opened.status !== "opened") throw new Error(`${email} could not sign in`);
+        return opened.setCookies.map((line) => line.split(";")[0]).join("; ");
+      };
+      const owner = await identity.make("owner@example.com", MERCHANT);
+      if (owner === null) throw new Error("the owner's account was not made");
+      await identity.make("partner@example.com", MERCHANT);
+      const pressed = await signedIn("owner@example.com");
+      const laptop = await signedIn("owner@example.com");
+      const partner = await signedIn("partner@example.com");
+
+      expect(await identity.endOtherSessionsOfPerson(owner.id, pressed)).toBe(1);
+      expect((await identity.whoIs(pressed))?.person.email).toBe("owner@example.com");
+      expect(await identity.whoIs(laptop)).toBeNull();
+      expect((await identity.whoIs(partner))?.person.email).toBe("partner@example.com");
+    });
+
     it("retains compare-and-swap key rotation", async () => {
       const identity = identityOn([]);
       const person = await identity.make("person@example.com", MERCHANT);
