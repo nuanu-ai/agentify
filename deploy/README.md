@@ -142,12 +142,6 @@ Each of the last two prints `1`. The value is made on the host and never
 passes through the terminal it was asked from; the file keeps its owner and
 mode.
 
-On a host that has still to move to one database ("One database (one-time)"
-below), add the secret before the move's first release. That release is
-meant to be refused, and the one after the move is meant to start
-everything; a missing secret would refuse that second one too, in the
-middle of the window.
-
 ## The release that takes the password off /admin
 
 The operator's dashboard at `/admin` opens for a session whose account carries
@@ -207,8 +201,9 @@ start, from `AGENTIFY_SEED_KEY` in the host's environment file, onto the
 merchant the database was created with, `the_merchant`. From the first release
 that carries this it does not, whatever the file says:
 `deploy/compose.public.yaml` gives the seed nothing, and the release's
-preflight refuses a rendered one. Nothing has to be done on either host before
-that release.
+preflight refuses a rendered one. Nothing about the seed has to be done on
+either host before that release (the secret in "A secret a host's file may
+still lack" still has to be there).
 
 After it, the line in the host's file is read by nothing in the release, and it
 goes from `/etc/agentify/<channel>.env` by hand, with one thing in mind. A
@@ -734,9 +729,9 @@ PRODUCTION adds `AGENTIFY_DB_PASSWORD`,
 keep the defaults `compose.yaml` gives them unless the file names them, and on
 TEST the scanner's policy is fixed by `deploy/compose.agentify-test.yaml`
 whatever the file says. Neither channel's file needs `AGENTIFY_SEED_KEY`: a
-deployed channel seeds no merchant whatever the file says, and a line an
-older file still carries is taken out after the release that stops seeding
-("The release that stops seeding").
+deployed channel seeds no merchant, and a line an older file still carries
+is taken out by hand once going back is no longer wanted ("The release that
+stops seeding").
 
 A value holding a `$`, as a secret from a password manager sometimes does,
 goes inside single quotes: `AGENTIFY_AUTH_SECRET='…$…'`. Compose reads a `$`
