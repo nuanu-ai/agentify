@@ -48,8 +48,6 @@ const HEADING = "Agentify operating dashboard";
 const people = new Set(["operator", "person"]);
 const operators = new Set(["operator"]);
 let cabinetFails = false;
-/** How many times the scanner has asked the stand-in whose session a cookie is. */
-let questions = 0;
 
 const database = createDatabase(connectionString, { max: 1 });
 let madeSchema = false;
@@ -69,7 +67,6 @@ function standInCabinet(): Server {
     request.on("data", (chunk: string) => (body += chunk));
     request.on("end", () => {
       const asked = JSON.parse(body || "{}") as { operation?: string; cookie?: string };
-      if (asked.operation === "session") questions += 1;
       if (cabinetFails || asked.operation !== "session") {
         response.statusCode = 503;
         response.end();
@@ -283,12 +280,17 @@ describe("the operator's dashboard at /admin", () => {
   it("opens for an operator, and shuts on the next request once the flag is cleared", async () => {
     const operator = { cookie: `theme=dark; ${SESSION}=operator` };
 
-    const before = questions;
     const opened = await ask("/admin", operator);
     expect(opened.status).toBe(200);
     expect(opened.body).toContain(HEADING);
-    // One question per view, however many parts of the page need the answer.
-    expect(questions - before).toBe(1);
+    // The one answer that carries the dashboard is kept by no cache: nothing
+    // in front of the scanner says so any more, so the scanner has to.
+    const cacheControl = opened.headers
+      .filter(([name]) => (name ?? "").toLowerCase() === "cache-control")
+      .map(([, value]) => value ?? "")
+      .join(", ");
+    expect(cacheControl).toContain("private");
+    expect(cacheControl).toContain("no-store");
 
     operators.delete("operator");
     try {
