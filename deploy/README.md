@@ -229,10 +229,10 @@ ssh -t agentify-test sudo agentify-release my-branch
 The operator's dashboard at `/admin` opens for a session whose account carries
 the operator flag, and answers everybody else with the site's 404 page
 (ADR-0026 §6). The route table in the web image has no password for it any
-more, so from the first release that carries this, `/admin` stops asking for
-one on both channels. Nothing has to be done on either host before that
-release: it asks for neither of the two old settings, and its own check of the
-public routes expects `/admin` to answer 404.
+more, so from the first verified release that carries this, `/admin` stops
+asking for one on both channels. Nothing about `/admin` has to be done on
+either host before that release: it asks for neither of the two old settings,
+and its own check of the public routes expects `/admin` to answer 404.
 
 After it, the dashboard opens for nobody until somebody is flagged. The person
 who is to read it signs in once at `/cabinet/sign-in`, which makes their
