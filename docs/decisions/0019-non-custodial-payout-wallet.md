@@ -4,7 +4,8 @@ Date: 2026-08-28
 Status: accepted (Dmitry, 2026-09-24, on the wait before a change: "деньги
 защищать нужно другим способом (cooldown например)"; on the message: "думаю что
 обязательно. для gateway же не должно быть разницы как сменили. это api вызов";
-on where the wait holds: "да, только prod")
+on where the wait holds: "да, только prod"; 2026-09-25, on the cabinet
+alone setting it: "делаем")
 
 ## Context
 
@@ -23,10 +24,9 @@ nothing passes through us. So the only question is whose address goes in
 that field, and the answer decides whether this is a payments business
 or a catalogue.
 
-That address is also the one setting whose change redirects money, and any
-key of the merchant's reaches it — the cabinet's, or one that lives in the
-merchant's own server environment — so a guard on a change has to hold
-however the caller got in.
+That address is also the one setting whose change redirects money, and it
+is changed in the cabinet, so the threat to it is a session that is not the
+owner's: one left open on a device they no longer hold, or one somebody took.
 
 ## Decision
 
@@ -38,6 +38,12 @@ is settled to the address it was verified against: a wallet moved
 mid-sale governs the merchant's next sale, never the one whose payer has
 already signed. There is no balance, no settlement run, and no moment at
 which a merchant's money is ours.
+
+The keys a merchant issues operate the shop; where its money goes is a
+person's act. Any key of the merchant's reads the address, and only the key
+the cabinet holds for a signed-in person sets it, on the Settings screen; a
+key made for the merchant's own code is refused under `not_a_cabinet_key`,
+the first address too.
 
 The address is a nullable column on the merchant, set and read through
 `/v0/payout-wallet`, held to `EvmAddressSchema` in the contracts: `0x`
@@ -68,7 +74,7 @@ The first address a merchant sets applies at once, or a new merchant could
 not start selling; it replaces nothing, so no money that was going somewhere
 starts going somewhere else, and it is announced once it applies, the way a
 new key is. Replacing it takes
-effect forty-eight hours after the change is announced, whichever key asks, and until then payment requests
+effect forty-eight hours after the change is announced, and until then payment requests
 name the address that applies now. Asking again for the address already
 pending changes nothing, sends no new message and restarts no clock, and
 answers with the pending change, so a retry after a dropped connection
@@ -77,8 +83,8 @@ the forty-eight hours again, and asking for the address that applies now
 cancels the pending one. Setting and reading the wallet answer with the
 pending address and the moment it takes effect, always present and null
 when nothing is pending, so a caller that reads the old address back does
-not take it for a failed write. These fields, and any refusal code only
-this route returns, are added without moving `CONTRACT_VERSION`
+not take it for a failed write. These fields, and the refusals this route
+answers with, are added without moving `CONTRACT_VERSION`
 (ADR-0006 §2; Dmitry: "не надо поднимать согласен"): no SDK worker reads this
 route's answers or refusals, and moving the version would stop every
 installed worker for words no worker sees. The price is that a merchant's
@@ -88,8 +94,8 @@ upgraded.
 
 No replacement of an address already set applies unless the merchant has
 been told of it, and every address set is told to them; the first is told
-afterwards, for the reason above. The wallet is set only through `/v0/payout-wallet`, and no terminal command
-writes it, so every change reaches the gateway as the same call and the
+afterwards, for the reason above. No terminal command
+writes the wallet, so every change reaches the gateway as the same call and the
 gateway is the one place that sees them all. Before writing anything, the
 gateway asks the cabinet, which holds the addresses, to tell every account
 that names the merchant, since several accounts may name one merchant, and
@@ -130,7 +136,8 @@ screen shows it.
 
 The message says what changes, when — not before a moment it names, since
 the forty-eight hours are counted from after it is handed over, while the
-wallet screen shows the exact one — and which key asked, and links plainly
+wallet screen shows the exact one — and that it was asked for in the
+cabinet, and links plainly
 to the cabinet's wallet screen, a named cabinet screen that an ordinary
 sign-in reaches when the person is signed out; the message carries no
 token. That screen shows the pending change with a cancel control, a
@@ -139,17 +146,14 @@ gateway for the address that applies now, which is what cancelling is, and
 on success ends every session of every account naming the merchant except
 the one that pressed. A cancel is never refused for want of a message,
 because it moves money nowhere new: it is announced the way a new key is,
-and a failed announcement refuses nothing. Cancelling disables no key
-(Dmitry: "перебор. отключить могли по ошибке"): the message names the key
-that asked, so a person who does not recognise it disables it in the
-cabinet. If the key that asked is the cabinet's own, a session acted, and
-ending every session, which the cancel does, is the answer.
+and a failed announcement refuses nothing. Every change comes from a
+session, which is why the cancel ends the others.
 
 The same route announces a key the merchant issues for their own code, but
 the key never waits on its message: if there is nobody to tell or the
 message cannot be handed over, the key is issued all the same. A key moves
-no money, any wallet change made with it is itself announced and waited
-on, and a merchant must not be kept from a key, their first above all,
+no money and cannot set the wallet, and a merchant must not be kept from a
+key, their first above all,
 because mail is down. The cabinet's own key, renewed daily (ADR-0014 §2),
 is announced to nobody, and so is a key an operator issues at the server's
 terminal: that command writes the key straight into the database, outside the
@@ -182,11 +186,8 @@ needs a hash.
 The wait costs a merchant who replaces a wallet in earnest two days in
 which sales are still paid to the old one; a merchant who has lost the old
 wallet pauses selling for those two days rather than be paid where they
-cannot reach. A leaked key can ask again after every cancel: the wait and
-the message hold as long as the owner answers them, and the lasting remedy
-is disabling that key and any key it issued. A leaked key can equally
-cancel the owner's change, a nuisance its announcement reveals. A key that
-leaks before its merchant has set any address can still set the first one,
+cannot reach. A session that is not the owner's, open before any address
+is set, can still set the first one,
 which applies at once; the owner learns of it from the message that follows,
 when mail works, or from the wallet screen, and replacing it waits like any
 other change, so they stop selling until it does. A test
@@ -207,6 +208,8 @@ case as the canon — cheaper to compute and impossible to check by eye,
 which trades the one safeguard a person has for nothing. Storing what
 was sent and normalizing on read — every reader becomes a parser, and
 the one that misses serves the second spelling (ADR-0017). A fresh
-confirmation in the cabinet, or a short session, in place of the wait —
-either guards the cabinet alone and leaves the merchant's own keys, which
-reach the same route, unguarded.
+confirmation by mail, or a short session, in place of the wait — the
+first goes to the mailbox a session opens from (ADR-0009), the second
+narrows the window without closing it. Any key of the merchant's setting
+the wallet — every copy of a key could redirect the takings, held back only
+by an owner answering each message in time.
