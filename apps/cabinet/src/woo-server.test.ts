@@ -1065,11 +1065,12 @@ describe("importing the catalogue", () => {
 
   /**
    * The merchant's shop answering the protected product check, in-process,
-   * with each product's `wc/v3` price stored the way the merchant typed it.
-   * The check itself is the real one; only the shop is not.
+   * with each product's `wc/v3` price stored the way the merchant typed it and
+   * the shop's Number of decimals as given. The check itself is the real one;
+   * only the shop is not.
    */
   const shopStoring =
-    (typed: Readonly<Record<string, string>>): WooRequest =>
+    (typed: Readonly<Record<string, string>>, decimals = "2"): WooRequest =>
     async (url) => {
       const path = new URL(url).pathname;
       if (path === "/protected/guide.txt") return new Response(null, { status: 403 });
@@ -1082,6 +1083,7 @@ describe("importing the catalogue", () => {
           woocommerce_downloads_require_login: "no",
           woocommerce_downloads_grant_access_after_payment: "yes",
           woocommerce_downloads_redirect_fallback_allowed: "no",
+          woocommerce_price_num_decimals: decimals,
         };
         return Response.json({ value: safe[setting] });
       }
@@ -1177,10 +1179,11 @@ describe("importing the catalogue", () => {
     expect(left["12"]).toContain("two decimal places");
   });
 
-  it("tells a shop set to another number of decimals about the decimals, not about a mismatch", async () => {
-    // A merchant who hides cents sets WooCommerce's number of decimals to 0,
+  it("tells a shop set to another number of decimals about the setting, not about a mismatch", async () => {
+    // A merchant who hides cents sets WooCommerce's Number of decimals to 0,
     // and the Store API then writes 25 dollars as "25" at a scale of 0. The
-    // import sells at two decimals and says so; the two prices are the same.
+    // import sells at two decimals and names the setting that changes that;
+    // the two prices are the same, and retyping them would change nothing.
     const noCents = (whole: string) => ({
       price: whole,
       currency_code: "USD",
@@ -1195,7 +1198,7 @@ describe("importing the catalogue", () => {
         ],
       }),
       inspectProduct: (keys, item) =>
-        inspectProductInTheShop(keys, item, shopStoring({ 11: "25", 12: "25.00" })),
+        inspectProductInTheShop(keys, item, shopStoring({ 11: "25", 12: "25.00" }, "0")),
     });
     await connected(running);
 
@@ -1203,8 +1206,8 @@ describe("importing the catalogue", () => {
     const left = leftInTheShop(imported.html);
 
     expect(await cardsOf(running)).toHaveLength(0);
-    expect(left["11"]).toContain("two decimal places");
-    expect(left["12"]).toContain("two decimal places");
+    expect(left["11"]).toContain("Number of decimals");
+    expect(left["12"]).toContain("Number of decimals");
   });
 });
 

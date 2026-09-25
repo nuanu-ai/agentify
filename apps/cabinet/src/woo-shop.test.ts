@@ -426,6 +426,7 @@ describe("the protected product check", () => {
 
   const settingFor = (url: string): string => {
     if (url.includes("woocommerce_currency")) return "USD";
+    if (url.includes("woocommerce_price_num_decimals")) return "2";
     if (url.includes("woocommerce_calc_taxes")) return "no";
     if (url.includes("woocommerce_file_download_method")) return "force";
     if (url.includes("woocommerce_downloads_grant_access_after_payment")) return "yes";
@@ -454,7 +455,7 @@ describe("the protected product check", () => {
         fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
       },
     });
-    expect(stand.asked.filter((asked) => asked.authorization !== undefined)).toHaveLength(7);
+    expect(stand.asked.filter((asked) => asked.authorization !== undefined)).toHaveLength(8);
     expect(
       stand.asked.find((asked) => asked.url === "/protected/guide.txt")?.authorization,
     ).toBeUndefined();
@@ -515,6 +516,37 @@ describe("the protected product check", () => {
       ok: false,
       why: expect.stringContaining("tax calculation"),
     });
+  });
+
+  it("refuses a shop that writes prices at another number of decimals and names the setting", async () => {
+    // WooCommerce writes an order's totals at the shop's Number of decimals:
+    // "25" and a tax of "0" at zero, "25.000" at three. An order created at
+    // "25.00" in such a shop would be answered in a form it cannot be matched
+    // with, after the paid order already exists there.
+    for (const decimals of ["0", "3"]) {
+      stand = await shopAnswering((asked) => {
+        if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
+        if (asked.url.includes("woocommerce_price_num_decimals")) {
+          return { status: 200, body: { value: decimals } };
+        }
+        if (asked.url.includes("/settings/")) {
+          return { status: 200, body: { value: settingFor(asked.url) } };
+        }
+        return { status: 200, body: productDocument() };
+      });
+
+      const read = await inspectProduct(
+        connectionTo(stand.url),
+        merchantItemIdFor(stand.url, "11"),
+      );
+
+      expect(read, decimals).toMatchObject({
+        ok: false,
+        why: expect.stringContaining("Number of decimals"),
+      });
+      await stand.close();
+      stand = null;
+    }
   });
 
   it("names an unreadable tax-calculation setting", async () => {
