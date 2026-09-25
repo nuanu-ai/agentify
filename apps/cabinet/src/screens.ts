@@ -27,7 +27,16 @@ import type { PayoutWallet } from "./payout-wallet.js";
 // and the two files are not a cycle at run time. The shape belongs beside the
 // screen that draws a shop, and the viewer that carries it belongs here.
 import type { ShopTile } from "./woo-screens.js";
-import { FULFILLMENT_WORDS, money, needsAttention, ORDER_WORDS, SELLING_WORDS } from "./words.js";
+import {
+  APPROVAL_UNREAD,
+  FULFILLMENT_WORDS,
+  money,
+  needsAttention,
+  ORDER_WORDS,
+  SELLING_WORDS,
+  UNSET_WORDS,
+  type Unset,
+} from "./words.js";
 
 /**
  * Who is looking at a page, and where the cabinet is mounted.
@@ -66,9 +75,10 @@ export interface Viewer {
    *
    * The refusal travels with the address because one block on one screen draws
    * both, and a screen holding one of them without the other cannot draw that
-   * block at all. Absent everywhere the block is not drawn, which today is
-   * every screen but the settings — a page that did not ask the gateway must
-   * not tell a merchant they have set no address.
+   * block at all. Present only where the screen asked the gateway for the
+   * address: the settings, which draw the block, and the cards, which need it
+   * to say what holds a card off sale. Absent everywhere else — a page that did
+   * not ask the gateway must not tell a merchant they have set no address.
    */
   readonly payout?: PayoutWallet;
   /**
@@ -116,6 +126,18 @@ export const readinessSeenBy = (viewer: Viewer): Readiness =>
 /** Whether publishing is refused for want of the name buyers see, as far as this screen knows. */
 export const refusedForNoName = (viewer: Viewer): boolean =>
   readinessSeenBy(viewer).missing.includes(MERCHANT_FINDINGS.NO_SELLER_NAME);
+
+/**
+ * What the door would refuse for that the merchant sets in Settings.
+ *
+ * Every screen asks the rule with the approval unread, so the approval is only
+ * ever in `unknown`; this narrows what is missing to what has words for
+ * Settings rather than dropping anything.
+ */
+export const unsetIn = (door: Readiness): readonly Unset[] =>
+  door.missing.filter(
+    (finding): finding is Unset => finding !== MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL,
+  );
 
 interface Frame {
   readonly viewer: Viewer;
@@ -189,23 +211,51 @@ const cardAside = (entry: MerchantCard): string => {
 };
 
 /**
- * Which switch is holding a card off sale.
+ * What is holding a card off sale, where it is not the card's own pause.
  *
  * This is the sentence the contract's own document warns about: with all
  * selling stopped every card reads paused, and resuming one of them changes
  * nothing a merchant can see. Saying which switch is holding it is the whole
  * reason the document carries two fields instead of one.
+ *
+ * There is a third reason besides the two switches, and the document does not
+ * name it: the merchant lacks something the publish door asks of every
+ * merchant, and the gateway folds that into every card's word. A card whose
+ * merchant is selling and which nobody paused reads paused for that reason
+ * alone, so there the control says what the rule says is missing, in the
+ * words and with the link the other screens use, and never that selling was
+ * stopped — a claim about a switch nobody pressed. Where the rule finds
+ * nothing this page can read, which is the operator's approval on live, it
+ * says that it cannot tell; and a card that reads paused where the rule finds
+ * nothing at all, which only a change landing between two reads can make, is
+ * said to be off sale and no more.
  */
-const cardControl = (base: string, entry: MerchantCard): string => {
+const cardControl = (
+  base: string,
+  entry: MerchantCard,
+  merchant: MerchantCardList["selling"],
+  door: Readiness,
+): string => {
   if (entry.paused) {
     return `<form class="inline" method="post" action="${escaped(base)}/cards/${encodeURIComponent(entry.id)}/resume">
 <button class="button button-compact button-primary" type="submit">Resume</button></form>`;
   }
-  if (entry.selling !== "open") {
+  if (entry.selling === "open") {
+    return `<form class="inline" method="post" action="${escaped(base)}/cards/${encodeURIComponent(entry.id)}/pause">
+<button class="button button-compact button-secondary" type="submit">Pause</button></form>`;
+  }
+  if (merchant !== "open") {
     return '<span class="quiet">All selling is stopped</span>';
   }
-  return `<form class="inline" method="post" action="${escaped(base)}/cards/${encodeURIComponent(entry.id)}/pause">
-<button class="button button-compact button-secondary" type="submit">Pause</button></form>`;
+  const unset = unsetIn(door);
+  const unread = door.unknown.includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL)
+    ? ` ${APPROVAL_UNREAD}`
+    : "";
+  if (unset.length > 0) {
+    const what = unset.map((one) => UNSET_WORDS[one]).join(" and ");
+    return `<span class="quiet">Not on sale until you set ${escaped(what)} in <a href="${escaped(base)}/settings">Settings</a>.${escaped(unread)}</span>`;
+  }
+  return `<span class="quiet">Not on sale.${escaped(unread)}</span>`;
 };
 
 /**
@@ -260,6 +310,7 @@ export const cardsScreen = (
   // that this fold is the one not to make.
   const gone = cards.selling === "departed";
   const stopped = cards.selling === "paused";
+  const door = readinessSeenBy(viewer);
 
   const rows = cards.cards.map(
     (entry): Row => ({
@@ -272,7 +323,7 @@ export const cardsScreen = (
         { kind: "amount", html: escaped(money(entry.card.price)) },
         { kind: "quiet", html: escaped(FULFILLMENT_WORDS[entry.card.fulfillment]) },
         { html: state(SELLING_WORDS[entry.selling]) },
-        { kind: "control", html: cardControl(base, entry) },
+        { kind: "control", html: cardControl(base, entry, cards.selling, door) },
       ],
     }),
   );

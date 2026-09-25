@@ -2843,6 +2843,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
           receipts: answer,
           sellerName: answer,
           setSellerName: answer,
+          payoutWallet: answer,
           // The two the sign-in makes about this cabinet's own key answer the
           // same way as everything else here. A merchant whose gateway is
           // refusing every call is refused these too, and what the tests below

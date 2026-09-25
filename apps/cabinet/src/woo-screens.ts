@@ -25,6 +25,7 @@ import { refusedForNoName, type Viewer } from "./screens.js";
 import type { SkippedProduct } from "./woo-catalog.js";
 import { GRANT_MINUTES } from "./woo-connect.js";
 import { PRODUCTS_AT_MOST } from "./woo-shop.js";
+import { APPROVAL_UNREAD, UNSET_WORDS, type Unset } from "./words.js";
 
 /**
  * A connected shop as a screen may know it.
@@ -92,20 +93,6 @@ export type ShopState =
  * distinguishable from "there is none".
  */
 export type ShopTile = ShopState | { readonly kind: "unread" };
-
-/**
- * What the publish door can refuse every card of a merchant for and the
- * merchant sets in Settings: the door's own codes, less the operator's
- * approval, which nobody sets there. Which of them the door asks for on which
- * channel is its rule (`readinessOf` in the core), not this page's.
- */
-export type Unset = Exclude<MerchantFinding, typeof MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL>;
-
-/** Each of them as the settings screen names it. */
-const UNSET_WORDS: Readonly<Record<Unset, string>> = {
-  no_seller_name: "the name your products are sold under",
-  no_payout_wallet: "the wallet address your money arrives at",
-};
 
 /** What the page is drawn from: where the channel is, and anything just refused. */
 export interface WooView {
@@ -393,13 +380,9 @@ const beforeImporting = (base: string, view: WooView): string => {
   const settings = `<a href="${escaped(base)}/settings">Settings</a>`;
   const unread = (view.unsure ?? []).includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL);
   return refused.length > 0
-    ? `<p class="problem" role="alert">Nothing was imported. Set ${what} in ${settings}${unread ? `. ${LIVE_APPROVAL}` : ", then import again."}</p>`
-    : `<p class="problem">Import publishes nothing until you set ${what} in ${settings}.${unread ? ` ${LIVE_APPROVAL}` : ""}</p>`;
+    ? `<p class="problem" role="alert">Nothing was imported. Set ${what} in ${settings}${unread ? `. ${APPROVAL_UNREAD}` : ", then import again."}</p>`
+    : `<p class="problem">Import publishes nothing until you set ${what} in ${settings}.${unread ? ` ${APPROVAL_UNREAD}` : ""}</p>`;
 };
-
-/** What the line adds where the door asks for approval: what this page cannot check, and that it cannot. */
-const LIVE_APPROVAL =
-  "Selling live also needs Agentify to approve your merchant, and this page cannot tell whether it has.";
 
 /** A product an import sent through the publish door, named as the shop names it. */
 interface Sent {

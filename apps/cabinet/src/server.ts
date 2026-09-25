@@ -36,7 +36,6 @@ import { readinessOf, UNKNOWN } from "@agentify/core";
 import {
   EvmAddressSchema,
   IssueKeyRequestSchema,
-  MERCHANT_FINDINGS,
   type MerchantFinding,
   type PayoutWallet as PayoutWalletDocument,
 } from "@nuanu-ai/agentify-contracts";
@@ -61,7 +60,7 @@ import { SESSION_DAYS } from "./identity.js";
 import { keysScreen, newKeyScreen } from "./keys.js";
 import { WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
 import { printable } from "./printable.js";
-import { cardsScreen, ordersScreen, receiptsScreen, type Viewer } from "./screens.js";
+import { cardsScreen, ordersScreen, receiptsScreen, unsetIn, type Viewer } from "./screens.js";
 import {
   chooseNameScreen,
   NAME_CANNOT_BE_TAKEN_AWAY,
@@ -98,7 +97,6 @@ import {
   type ImportOutcome,
   type ShopState,
   type ShopTile,
-  type Unset,
   wooImportScreen,
   wooReturnScreen,
   wooScreen,
@@ -111,7 +109,7 @@ import {
   type ProductInspection,
 } from "./woo-shop.js";
 import type { WooConnection, WooShops } from "./woo-shops.js";
-import { moment } from "./words.js";
+import { moment, type Unset } from "./words.js";
 
 /** Preserves input order while bounding calls into one merchant's shop. */
 const mapAtMost = async <Input, Output>(
@@ -1296,11 +1294,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
         ok: true,
         document: {
           sellerName: name.document,
-          // The approval went in unknown, so it can only be in `unsure`; what
-          // is missing is what the merchant sets in Settings.
-          unset: door.missing.filter(
-            (finding): finding is Unset => finding !== MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL,
-          ),
+          unset: unsetIn(door),
           unsure: door.unknown,
         },
       };
@@ -1560,23 +1554,33 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
 
   app.get(`${base}/cards`, async (request, response) => {
     const gateway = gatewayAs(request);
-    const [cards, name] = await Promise.all([gateway.cards(), gateway.sellerName()]);
+    // The wallet as well as the name, because a card can read paused for the
+    // want of either, and the control beside it says which (`cardControl`).
+    const [cards, name, wallet] = await Promise.all([
+      gateway.cards(),
+      gateway.sellerName(),
+      gateway.payoutWallet(),
+    ]);
     if (!cards.ok) {
       return trouble(response, base, cards);
     }
     if (!name.ok) {
       return trouble(response, base, name);
     }
-    response
-      .type("html")
-      .send(
-        cardsScreen(
-          viewing(request, base, name.document),
-          cards.document,
-          config.publicBaseUrl,
-          shops !== undefined,
-        ),
-      );
+    if (!wallet.ok) {
+      return trouble(response, base, wallet);
+    }
+    response.type("html").send(
+      cardsScreen(
+        {
+          ...viewing(request, base, name.document),
+          payout: { wallet: wallet.document.payout_wallet },
+        },
+        cards.document,
+        config.publicBaseUrl,
+        shops !== undefined,
+      ),
+    );
   });
 
   app.get(`${base}/orders`, async (request, response) => {
