@@ -237,20 +237,44 @@ ssh agentify sudo grep -c '^AGENTIFY_SEED_KEY=' /etc/agentify/production.env
 
 Taking the line out does not take the key out of the database. The key it
 held is a row on `the_merchant` and still opens that merchant for whoever
-presents it, until it is disabled; the release disables nothing. The gateway's
-terminal lists that merchant's keys, the seeded one under the label "the
-sandbox key from the compose file", and disables one by the identifier the
-list prints:
+presents it, until it is disabled; the release disables nothing. Disabling it
+cannot be undone, and nothing takes its place: no command issues a key or
+makes an account, so unless an account already names `the_merchant` — the
+cabinet's `account list` says whether one does — nobody can sign in and have
+the cabinet ask for a new one, and once its keys are disabled nothing can act
+as that merchant again. So look before disabling. The first line below lists that merchant's keys, the seeded
+one under the label "the sandbox key from the compose file", each with the day
+a call was last recorded on it; the second lists every merchant with its
+selling state, `open` or not, and the name it is sold under:
 
 ```sh
 ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T gateway pnpm --filter @agentify/gateway merchant keys the_merchant'
+ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T gateway pnpm --filter @agentify/gateway merchant list'
+```
+
+After the release nothing on the channel presents that key by itself, so a
+call recorded on it on the day of the release or later was made by something
+still running as `the_merchant` — a worker started by hand, say. And a
+merchant whose selling is `open` under a name may have cards on sale. In
+either case disabling the key would end that for good. Take the merchant off
+sale instead, which leaves the key as it is, puts every card of theirs off
+sale, and is undone by listing them under a name again:
+
+```sh
+ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T gateway pnpm --filter @agentify/gateway merchant listed-as the_merchant --none'
+```
+
+Only when `the_merchant` sells nothing and no call has been recorded on its key
+since the release, disable the key, by the identifier the list printed:
+
+```sh
 ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T gateway pnpm --filter @agentify/gateway merchant disable <key id>'
 ```
 
-On PRODUCTION the same two commands run over `ssh -t agentify` with
-`production` in the path. On PRODUCTION a snapshot of the backup holds
-`production.env` ("Backups"), so the key stays readable in the snapshots taken
-before the line went, for as long as they are kept.
+On PRODUCTION the same commands run over `ssh -t agentify` with `production`
+in the path. On PRODUCTION a snapshot of the backup holds `production.env`
+("Backups"), so the key stays readable in the snapshots taken before the line
+went, for as long as they are kept.
 
 ## Releasing to production
 
