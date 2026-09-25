@@ -90,6 +90,7 @@ import {
   type ImportOutcome,
   type ShopState,
   type ShopTile,
+  type Unset,
   wooImportScreen,
   wooReturnScreen,
   wooScreen,
@@ -1246,20 +1247,53 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     const catalogue = parts.shop?.catalogue ?? catalogueOf;
     const inspectProduct = parts.shop?.inspectProduct ?? inspectProductInTheShop;
 
+    /**
+     * The merchant as the publish door will judge them before it looks at any
+     * card: the name they are listed under, and which of the things the door
+     * asks of a merchant are still unset.
+     *
+     * The door asks for a seller name on every channel and for a wallet on
+     * every channel but the sandbox (`payableTo` in the gateway). This cabinet
+     * is given the same chain and facilitator as its gateway, so its own
+     * surface mode answers the second question the way the door does. The
+     * door's third rule about a merchant, the operator's approval on the live
+     * channel, is not here: no route tells a merchant's key whether it holds
+     * one, so on that channel the door's own sentence still carries it.
+     */
+    const standingOf = async (
+      request: Request,
+    ): Promise<
+      Answer<{ readonly sellerName: string | null; readonly unset: readonly Unset[] }>
+    > => {
+      const gateway = gatewayAs(request);
+      const [name, wallet] = await Promise.all([gateway.sellerName(), gateway.payoutWallet()]);
+      if (!name.ok) {
+        return name;
+      }
+      if (!wallet.ok) {
+        return wallet;
+      }
+      const unset: Unset[] = [];
+      if (name.document === null) {
+        unset.push("seller_name");
+      }
+      if (config.surfaceMode !== "sandbox" && wallet.document.payout_wallet === null) {
+        unset.push("payout_wallet");
+      }
+      return { ok: true, document: { sellerName: name.document, unset } };
+    };
+
     /** The page, drawn from where the channel is and from what buyers read. */
     const drawTheShop = async (
       request: Request,
       response: Response,
-      view: { problem?: string; typed?: string; cameBack?: boolean },
+      view: { problem?: string; typed?: string; cameBack?: boolean; refused?: readonly Unset[] },
       status = 200,
     ): Promise<void> => {
       const person = whoIs(request);
-      const [state, name] = await Promise.all([
-        shopStateFor(person.id),
-        gatewayAs(request).sellerName(),
-      ]);
-      if (!name.ok) {
-        return trouble(response, base, name);
+      const [state, standing] = await Promise.all([shopStateFor(person.id), standingOf(request)]);
+      if (!standing.ok) {
+        return trouble(response, base, standing);
       }
       if (state === undefined) {
         // Unreachable: these routes are mounted only where there is a store,
@@ -1272,7 +1306,13 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       response
         .status(status)
         .type("html")
-        .send(wooScreen(viewing(request, base, name.document), { ...view, state }));
+        .send(
+          wooScreen(viewing(request, base, standing.document.sellerName), {
+            ...view,
+            state,
+            unset: standing.document.unset,
+          }),
+        );
     };
 
     app.get(`${base}/woocommerce`, async (request, response) => {
@@ -1360,6 +1400,25 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       if (connection === null) {
         response.redirect(303, `${base}/woocommerce`);
         return;
+      }
+
+      // Asked before the shop is. The door refuses every card of a merchant
+      // missing any of these, whatever the card says, so an import that went
+      // ahead would read the shop and inspect every product for nothing, and
+      // then show the door's refusal once per product in words that name an
+      // API route. A gateway that cannot answer this would not take a card
+      // either, so that too is said before the shop is read.
+      const standing = await standingOf(request);
+      if (!standing.ok) {
+        return trouble(response, base, standing);
+      }
+      if (standing.document.unset.length > 0) {
+        noted(
+          person,
+          `pressed Import with ${standing.document.unset.join(" and ")} unset, so the shop at` +
+            ` ${connection.shopUrl} was not read and nothing was published`,
+        );
+        return await drawTheShop(request, response, { refused: standing.document.unset }, 409);
       }
 
       // The ceiling goes in rather than being checked on the way out, so that a
