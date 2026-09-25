@@ -741,11 +741,11 @@ export class Gateway {
    * refused.
    *
    * Only a cabinet's own key reaches it: keys operate the shop, and where its
-   * money goes is changed by a person signed in to the cabinet (ADR-0019). A
-   * key of the merchant's own code is refused before anything is read or
-   * announced, the first address included, so a copy of one sitting in a
-   * server's environment can neither move the money nor send a message about
-   * moving it.
+   * money goes is set through the cabinet, whose calls come from inside the
+   * stack; the public door does not route this call at all (ADR-0019). A key
+   * of the merchant's own code is refused here too, before anything is read or
+   * announced, the first address included, so a copy of one can neither move
+   * the money nor send a message about moving it.
    *
    * There is no taking one away, and no verb at a terminal writes one either:
    * every change reaches the gateway as this call, which is what lets it hold

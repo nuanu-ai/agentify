@@ -139,11 +139,15 @@ const notTheCabinets = (response: RouteCall["response"]): RouteAnswer =>
 /**
  * What a key of the merchant's own code is answered with at the payout wallet.
  *
+ * The public door does not route a write to this path at all (ADR-0019), so
+ * what meets this is something inside the stack: a cabinet account left
+ * holding a key of the other kind, or a command somebody runs by hand. It
+ * stays as the gateway's own word on the rule rather than the door's alone.
  * The code is the one the cabinet's key calls are refused under, because the
  * fact is the same: this call is one only a cabinet's key makes. The words are
  * this route's, because what the caller needs is where the wallet is set and
- * why a key cannot set it (ADR-0019). The published list of codes does not
- * move, and no worker of the SDK calls this route (ADR-0006 §2).
+ * why this key cannot set it. The published list of codes does not move, and
+ * no worker of the SDK calls this route (ADR-0006 §2).
  */
 const walletIsSetInTheCabinet = (response: RouteCall["response"]): RouteAnswer =>
   written(
@@ -151,7 +155,7 @@ const walletIsSetInTheCabinet = (response: RouteCall["response"]): RouteAnswer =
     FORBIDDEN,
     refusal(
       "not_a_cabinet_key",
-      "the payout wallet is set in the cabinet, on its Settings screen, by a person signed in to it, and never with a key of the merchant's own code: a key operates the shop, and where the shop's money goes is a person's decision. Nothing was changed and sales are paid where they were",
+      "the payout wallet is set only through the cabinet, on its Settings screen, with the key the cabinet holds, and the key this call was made with was made for the merchant's own code: a key of that kind operates the shop and cannot change where its money goes. Nothing was changed",
     ),
   );
 

@@ -341,6 +341,9 @@ describe("who may set it", () => {
 
     expect(refused.status, JSON.stringify(refused.body)).toBe(403);
     expect(refusalOf(refused.body).code).toBe("not_a_cabinet_key");
+    // There is no wallet yet, so the refusal must not say sales are being paid
+    // anywhere.
+    expect(refusalOf(refused.body).message).not.toMatch(/paid where/i);
     expect(await payoutWallet(served, cabinet)).toStrictEqual({
       payout_wallet: null,
       pending: null,
