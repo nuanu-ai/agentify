@@ -406,8 +406,9 @@ card is refused at publication where one of them carries any of these:
 
 - HTML markup: a tag such as `<p>`, `</p>`, `<br/>` or `<a href="…">`, or the
   opening of a comment, `<!--`;
-- an HTML character reference: an ampersand, a name or a number, and a
-  semicolon, such as `&amp;`, `&nbsp;`, `&#8217;` or `&#x2019;`;
+- an HTML character reference: an ampersand, a number or a name of two or
+  more letters and digits, and a semicolon, such as `&amp;`, `&nbsp;`,
+  `&#8217;` or `&#x2019;`;
 - a control character: a tab, a carriage return, a line break in a title, or
   anything else from U+0000 to U+001F, U+007F, and U+0080 to U+009F.
 
@@ -416,11 +417,13 @@ it may run to paragraphs. A title, and the title of a declared field, is one
 line.
 
 The characters markup is made of are not refused on their own. `Tea & coffee`,
-`AT&T`, `5 < 10`, `a -> b` and an address written as `<jane@example.com>` are
-text, and they are published and shown as you wrote them. What counts as a tag
-is what an HTML parser reads as one: an angle bracket, a name that begins with a
-letter, and a closing bracket, so `List<String>` is refused and `List< String >`
-is not.
+`AT&T`, `R&D;`, `5 < 10`, `a -> b` and an address written as
+`<jane@example.com>` are text, and they are published and shown as you wrote
+them. A tag is an angle bracket, a name, and a closing bracket, with attributes
+between the name and the bracket if there are any; the name begins with a
+letter and carries letters and digits, joined by a colon or a hyphen where
+there is one, as in `<o:p>`. So `List<String>` is refused, while
+`List< String >` and the address are not.
 
 A refusal names the field, what was found in it, how many times, and the
 character where the first of it begins, counted from one. Nothing is cleaned or

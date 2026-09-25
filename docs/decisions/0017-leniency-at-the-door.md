@@ -49,15 +49,15 @@ logic, and anyone extending it must put new leniency there and nowhere
 else.
 
 Rejected: a second, "simple" publish surface — two doors is two
-contracts to learn and keep honest, while a spelling accepted by the
-one door adds no surface. Cleaning HTML at the door — stripping a tag
-can join two sentences and a reference has to be looked up, so an agent
+contracts to learn and keep honest, while a spelling accepted by the one
+door adds no surface. Cleaning HTML at the door — stripping a tag can
+join two sentences and a reference has to be looked up, so an agent
 would read words the merchant never wrote, and the merchant would never
 learn their source needs fixing. Holding stored cards to the plain-text
 rule on read — every answer is checked against its contract on the way
-out, so one old row would fail the merchant's list and the catalog. Expanding short forms in the SDK only — the
-door itself must accept what the documentation shows, or curl and the
-SDK meet different contracts and the examples stop being fixtures of
-the real thing. Storing what was written and normalizing on read —
-every reader becomes a parser, and the one that misses serves the
-second shape.
+out, so one old row would fail the merchant's list and the catalog.
+Expanding short forms in the SDK only — the door itself must accept what
+the documentation shows, or curl and the SDK meet different contracts
+and the examples stop being fixtures of the real thing. Storing what was
+written and normalizing on read — every reader becomes a parser, and the
+one that misses serves the second shape.
