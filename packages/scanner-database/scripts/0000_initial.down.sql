@@ -43,4 +43,5 @@ DROP TYPE IF EXISTS outbox_status;
 DROP TYPE IF EXISTS diagnostic_level;
 DROP TYPE IF EXISTS delivery_destination;
 DROP TYPE IF EXISTS check_status;
-DROP SCHEMA IF EXISTS drizzle CASCADE;
+-- The scanner's own history only: the gateway's and the cabinet's share the schema.
+DROP TABLE IF EXISTS drizzle.scanner_migrations;
