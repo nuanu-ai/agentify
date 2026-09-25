@@ -161,30 +161,56 @@ describe("pnpm forget's local TEST wrapper", () => {
     expect(output).toMatch(/again/i);
   });
 
+  const DATABASE = `postgresql://operator:${"p".repeat(24)}@127.0.0.1/agentify`;
+  const TEST = "eip155:84532";
+  const SECRET = "x".repeat(40);
+
   it.each([
-    { case: "no payment network", network: undefined, words: /PAYMENT_NETWORK is not set/i },
-    { case: "an unrecognised network", network: "eip155:1", words: /not a recogni[sz]ed network/i },
-    { case: "the live network", network: "eip155:8453", words: /live network/i },
-  ])("the server command refuses $case before reading a database", ({ network, words }) => {
-    const secret = `postgresql://operator:${"p".repeat(24)}@127.0.0.1/agentify`;
-    const environment: Record<string, string | undefined> = {
-      ...Object.fromEntries(
-        Object.entries(process.env).filter(([name]) => name !== "PAYMENT_NETWORK"),
-      ),
-      DATABASE_URL: secret,
-      AUTH_SECRET: "x".repeat(40),
-      ...(network === undefined ? {} : { PAYMENT_NETWORK: network }),
-    };
+    {
+      case: "no payment network",
+      set: { DATABASE_URL: DATABASE, AUTH_SECRET: SECRET },
+      words: /PAYMENT_NETWORK is not set/i,
+    },
+    {
+      case: "an unrecognised network",
+      set: { PAYMENT_NETWORK: "eip155:1", DATABASE_URL: DATABASE, AUTH_SECRET: SECRET },
+      words: /not a recogni[sz]ed network/i,
+    },
+    {
+      case: "the live network",
+      set: { PAYMENT_NETWORK: "eip155:8453", DATABASE_URL: DATABASE, AUTH_SECRET: SECRET },
+      words: /live network/i,
+    },
+    {
+      case: "no database address",
+      set: { PAYMENT_NETWORK: TEST, AUTH_SECRET: SECRET },
+      words: /DATABASE_URL is not set/i,
+    },
+    {
+      case: "no cabinet secret",
+      set: { PAYMENT_NETWORK: TEST, DATABASE_URL: DATABASE },
+      words: /AUTH_SECRET is not set/i,
+    },
+  ])("the server command refuses $case before reading a database", ({ set, words }) => {
+    const unset = new Set(["PAYMENT_NETWORK", "DATABASE_URL", "AUTH_SECRET"]);
     const result = spawnSync(
       process.execPath,
       ["--import", tsx, join(root, "apps", "cabinet", "src", "forget.ts")],
-      { cwd: root, encoding: "utf8", env: environment, input: `${EMAIL}\n` },
+      {
+        cwd: root,
+        encoding: "utf8",
+        env: {
+          ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !unset.has(name))),
+          ...set,
+        },
+        input: `${EMAIL}\n`,
+      },
     );
     const output = `${result.stdout}\n${result.stderr}`;
 
     expect(result.status).not.toBe(0);
     expect(output).toMatch(words);
-    expect(output).not.toContain(secret);
+    expect(output).not.toContain(DATABASE);
   });
 });
 
