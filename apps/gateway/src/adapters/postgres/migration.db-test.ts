@@ -758,4 +758,90 @@ if (databaseUrl === null) {
       expect(future.rows).toStrictEqual([{ live_approved_at: null }]);
     });
   });
+
+  describe("the migration that lets a wallet change wait", () => {
+    const url = databaseUrl;
+    let pool: Pool;
+
+    const run = async (file: string): Promise<void> => {
+      for (const statement of await statementsOf(file)) {
+        await pool.query(statement);
+      }
+    };
+
+    beforeAll(async () => {
+      pool = connect(url).pool;
+    }, 60_000);
+
+    afterAll(async () => {
+      await pool.end();
+    });
+
+    beforeEach(async () => {
+      await pool.query("drop schema public cascade");
+      await pool.query("create schema public");
+      for (const file of [
+        "0000_init.sql",
+        "0001_payment_claims.sql",
+        "0002_selling.sql",
+        "0003_merchant_tenancy.sql",
+        "0004_merchant_service_name.sql",
+        "0005_merchant_payout_wallet.sql",
+        "0006_order_pay_to_backfill.sql",
+        "0007_cabinet_keys.sql",
+        "0008_key_last_use.sql",
+        "0009_live_approval.sql",
+      ]) {
+        await run(file);
+      }
+    });
+
+    it("leaves every wallet paying where it paid, with nothing waiting", async () => {
+      // A merchant already being paid is paid at the same address the moment
+      // after this runs. Nothing was announced for any of them, so nothing may
+      // be waiting: a change found waiting after a migration is a change nobody
+      // was told about.
+      const updatedAt = new Date("2026-09-20T10:00:00.000Z");
+      await pool.query(
+        `insert into merchants (id, name, payout_wallet, selling, created_at, updated_at)
+         values ('mch_paid', 'A paid merchant', $1, 'open', $2, $2)`,
+        ["0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", updatedAt],
+      );
+
+      await run("0010_pending_payout_wallet.sql");
+
+      const rows = await pool.query(
+        `select payout_wallet, pending_payout_wallet, pending_payout_wallet_from, updated_at
+         from merchants where id = 'mch_paid'`,
+      );
+      expect(rows.rows).toStrictEqual([
+        {
+          payout_wallet: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+          pending_payout_wallet: null,
+          pending_payout_wallet_from: null,
+          updated_at: updatedAt,
+        },
+      ]);
+    });
+
+    it("refuses half a waiting change, an address with no moment or a moment with none", async () => {
+      // Read back, half a change is a sale paid somewhere at no stated time or
+      // at a stated time to nowhere. The store never writes one, and the table
+      // says so for anybody who writes to it by hand.
+      await run("0010_pending_payout_wallet.sql");
+
+      await expect(
+        pool.query(
+          `insert into merchants (id, name, selling, created_at, updated_at, pending_payout_wallet)
+           values ('mch_half', 'Half', 'open', now(), now(), '0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359')`,
+        ),
+      ).rejects.toThrow(/pending_payout_wallet/);
+      await expect(
+        pool.query(
+          `insert into merchants (id, name, selling, created_at, updated_at, pending_payout_wallet_from)
+           values ('mch_half', 'Half', 'open', now(), now(), now())`,
+        ),
+      ).rejects.toThrow(/pending_payout_wallet/);
+    });
+  });
 }

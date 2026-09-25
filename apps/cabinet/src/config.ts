@@ -184,6 +184,23 @@ const environmentSchema = z.object({
   ),
 
   /**
+   * What the gateway presents on the cabinet's announcement listener, the
+   * route it asks the cabinet over to tell a merchant of a change to their
+   * payout wallet or their keys (ADR-0019). Held by the gateway and this
+   * process alone, and apart from every other secret either holds: the
+   * scanner's route is a different door with a different holder, and the
+   * money path must not be able to reach it. Absent, no listener opens.
+   */
+  ANNOUNCEMENT_SECRET: emptyIsAbsent(
+    z
+      .string()
+      .refine(
+        (value) => value.length >= SHORTEST_SECRET,
+        `must be at least ${SHORTEST_SECRET} characters; make one with: openssl rand -base64 32`,
+      ),
+  ),
+
+  /**
    * The address a merchant reaches this cabinet at, from their own machine.
    *
    * It is what the one-time links in mail are built on, and that is its only
@@ -275,6 +292,8 @@ export interface CabinetConfig {
   readonly authSecret: string;
   /** Dedicated bearer for the optional private report identity listener. */
   readonly reportIdentitySecret: string | null;
+  /** Dedicated bearer for the gateway's announcement listener, or none. */
+  readonly announcementSecret: string | null;
   /** What the cabinet's one-time links are built on. */
   readonly publicBaseUrl: string;
   readonly mailUrl: string;
@@ -364,6 +383,21 @@ export function loadConfig(environment: Record<string, string | undefined>): Cab
     );
   }
 
+  if (
+    values.ANNOUNCEMENT_SECRET !== undefined &&
+    [
+      values.AUTH_SECRET,
+      values.REGISTRATION_INVITATION,
+      values.MAIL_API_KEY,
+      values.REPORT_IDENTITY_SECRET,
+    ].includes(values.ANNOUNCEMENT_SECRET)
+  ) {
+    throw new Error(
+      "The cabinet cannot start, ANNOUNCEMENT_SECRET must be dedicated to the gateway's" +
+        " announcement listener",
+    );
+  }
+
   if (problems.length > 0) {
     throw new Error(`The cabinet cannot start, the mail is not set up — ${problems.join("; ")}`);
   }
@@ -381,6 +415,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Cab
     databaseUrl: values.DATABASE_URL,
     authSecret: values.AUTH_SECRET,
     reportIdentitySecret: values.REPORT_IDENTITY_SECRET ?? null,
+    announcementSecret: values.ANNOUNCEMENT_SECRET ?? null,
     publicBaseUrl: values.PUBLIC_BASE_URL,
     mailUrl: values.MAIL_URL,
     mailApiKey: values.MAIL_API_KEY ?? null,

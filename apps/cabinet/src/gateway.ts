@@ -42,6 +42,7 @@ import {
   OrderListSchema,
   type OrderWithStatus,
   OrderWithStatusSchema,
+  type PayoutWallet,
   PayoutWalletSchema,
   type PublishResult,
   PublishResultSchema,
@@ -98,9 +99,9 @@ export interface GatewayClient {
   /** The name buyers read beside this merchant's products, or null for none. */
   sellerName(): Promise<Answer<string | null>>;
   setSellerName(name: string): Promise<Answer<string | null>>;
-  /** The address this merchant's money arrives at, or null for none. */
-  payoutWallet(): Promise<Answer<string | null>>;
-  setPayoutWallet(address: string): Promise<Answer<string | null>>;
+  /** Where this merchant's money arrives now, and any change of it that waits. */
+  payoutWallet(): Promise<Answer<PayoutWallet>>;
+  setPayoutWallet(address: string): Promise<Answer<PayoutWallet>>;
   /**
    * Publishes one card, and hands back what the door said about it — including
    * its refusal, which is the answer the caller most needs.
@@ -287,20 +288,16 @@ export const gatewayFor = (
       });
       return answered.ok ? { ok: true, document: answered.document.seller_name } : answered;
     },
-    // The same shape as the two above and for the same reasons: the contract
-    // wraps the address so the answer can grow a field beside it, and the one
-    // screen that draws it wants the address. Null is a real answer — it is the
-    // merchant who has told us nowhere to send their money yet.
-    payoutWallet: async () => {
-      const answered = await call(API_ROUTES.get_payout_wallet, PayoutWalletSchema);
-      return answered.ok ? { ok: true, document: answered.document.payout_wallet } : answered;
-    },
-    setPayoutWallet: async (address) => {
-      const answered = await call(API_ROUTES.set_payout_wallet, PayoutWalletSchema, {
+    // The whole document rather than the address alone, unlike the name above:
+    // the answer grew the field it was wrapped for, and the screen that draws
+    // the address has to draw a change waiting beside it (ADR-0019) — a
+    // merchant shown only the address paid now, after asking for another,
+    // would take a waiting change for one that did not happen.
+    payoutWallet: () => call(API_ROUTES.get_payout_wallet, PayoutWalletSchema),
+    setPayoutWallet: (address) =>
+      call(API_ROUTES.set_payout_wallet, PayoutWalletSchema, {
         body: { payout_wallet: address },
-      });
-      return answered.ok ? { ok: true, document: answered.document.payout_wallet } : answered;
-    },
+      }),
     publishCard: (card) =>
       // A refused card is the answer and not the absence of one, so this is the
       // one route read through `answering` rather than through `call`.

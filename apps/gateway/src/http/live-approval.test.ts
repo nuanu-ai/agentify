@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { grantLiveApproval } from "../app/merchants.js";
 import { SANDBOX_FACILITATOR } from "../config.js";
 import {
+  ANNOUNCING,
   type Harness,
   harness,
   type Served,
@@ -29,6 +30,7 @@ const LIVE_CHAIN = {
   FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
   CDP_API_KEY_ID: "key-id",
   CDP_API_KEY_SECRET: "key-secret",
+  ...ANNOUNCING,
 };
 
 const card = (merchantItemId: string): Card => ({

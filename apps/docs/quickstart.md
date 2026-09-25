@@ -59,9 +59,47 @@ merchant's products cannot start new live purchases. Operator approval is not
 required on the test channel. A local scripted sandbox moves no funds, so it
 does not require a merchant wallet either.
 
+On the live channel a wallet already saved is not replaced at once, whether
+the change comes from the cabinet or from your code calling
+`POST /v0/payout-wallet`. Every cabinet account of your merchant is sent a
+message first, and the answer keeps the address still paid in
+`payout_wallet` and puts the new one under `pending`, with `takes_effect_at`
+forty-eight hours after the message went out; every payment request names the
+address still paid until that moment. Sending the address under `pending`
+again changes nothing, restarts no clock and answers with the same change; a
+retry sent while the first call is still waiting for its message to go out is
+answered the same way, and your accounts may then get the message twice. A
+different address replaces the waiting one and starts the forty-eight hours
+again, and sending the address still paid cancels the change. The first
+wallet your merchant saves applies at once, and on the live channel every
+account is sent a message about it afterwards. On the test channel every
+change applies at once, nothing is sent and `pending` is always null, so the
+first time your code meets a waiting change is on the live channel.
+
+A change that cannot be recorded is refused, nothing about the wallet
+changes, and the code says which of four things happened. None of them is
+retryable: each is answered by something else changing first.
+
+- `wallet_change_nobody_to_tell` (409): no cabinet account names your
+  merchant, so there is nobody to send the message to.
+- `wallet_change_not_announced` (503): the message was not sent to every
+  account. Either the mail provider refused a copy, and another account may
+  still have received one, or the cabinet turned the request away before
+  sending anything; the sentence in the refusal says which.
+- `wallet_change_unconfirmed` (503): the cabinet that sends the message did
+  not answer, so a message may have gone out although nothing was recorded.
+- `wallet_change_raced` (409): another change of the wallet was recorded while
+  this one was being made. Read the wallet and ask again if the address is
+  still the one you want.
+
+A message about a change that was then refused is safe to ignore: every
+message says the change takes effect only if the wallet screen of your
+cabinet shows it waiting.
+
 Once the seller name and wallet are set, open API Keys, press "Issue a key",
-name it so you can distinguish it from the next one, and copy it. The secret is
-shown once. Keep it with your other secrets; do not put it in source control.
+name it so you can distinguish it from the next one — one line of at most 100
+characters — and copy it. The secret is shown once. Keep it with your other
+secrets; do not put it in source control.
 
 Every key on that page is one you asked for, and your code is what calls with
 it. The cabinet uses none of them. It holds a key of its own, which the list

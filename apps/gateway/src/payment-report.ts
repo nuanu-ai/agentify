@@ -18,6 +18,7 @@ import { connect, PostgresStore } from "./adapters/postgres/store.js";
 import { Gateway } from "./app/gateway.js";
 import { loadConfig } from "./config.js";
 import { runPaymentReport } from "./payment-report-command.js";
+import { nobodyAnnounces } from "./ports/announcer.js";
 import { randomIds, systemClock } from "./ports/clock.js";
 import type { Facilitator } from "./ports/facilitator.js";
 
@@ -52,6 +53,9 @@ try {
     facilitator: refusesToAsk,
     clock: systemClock,
     ids: randomIds,
+    // Recording what a payment layer said about an order changes no wallet
+    // and issues no key, so there is nothing here to announce.
+    announcer: nobodyAnnounces,
   });
   code = await runPaymentReport(
     process.argv.slice(2),

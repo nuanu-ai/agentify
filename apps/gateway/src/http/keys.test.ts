@@ -21,7 +21,7 @@ import type { Card, MerchantKeyList } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { keyDigest } from "../app/merchants.js";
-import { type Harness, harness, type Served, serve } from "../testing/harness.js";
+import { ANNOUNCING, type Harness, harness, type Served, serve } from "../testing/harness.js";
 import { PAYMENT_REQUIRED_HEADER } from "./x402.js";
 
 const PAY_TO = "0x0000000000000000000000000000000000000001";
@@ -774,6 +774,7 @@ const LIVE_CHAIN = {
   FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
   CDP_API_KEY_ID: "key-id",
   CDP_API_KEY_SECRET: "secret",
+  ...ANNOUNCING,
 };
 
 describe("what a presented value's prefix says", () => {

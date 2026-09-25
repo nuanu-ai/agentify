@@ -111,6 +111,18 @@ and does not require a wallet. Live sales also require the operator's one-time
 approval of your merchant; test sales do not. Publication lists every missing
 prerequisite. [The first test sale](/quickstart) walks through the setup.
 
+On the live channel, replacing a wallet you have already saved takes two days.
+Every cabinet account of your merchant is sent a message about the change
+first, and the new address takes effect forty-eight hours later; until then
+your sales keep arriving at the address you had. The wait is there because the
+wallet is the one setting that sends your money somewhere else, and any of
+your keys can ask for a change: whoever asked, you hear about it and can
+cancel it on the wallet screen of your cabinet. If you have lost access to the
+old wallet, pause selling for those two days. The first wallet you save
+applies at once, and on the live channel you are sent a message about it too,
+so a wallet somebody else set is not news you find on a screen. On the test
+channel every change applies at once and nothing is sent.
+
 The first test purchase is started by an Agentify operator. If an operator is
 already coordinating your pilot, give them the catalogue ID and keep your
 handler running while they start it. There is no public request path for an
