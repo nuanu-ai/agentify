@@ -26,6 +26,7 @@ import {
 import type { Express } from "express";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
+import { gatewayFor } from "./gateway.js";
 import { type Identity, identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 import { buildApp } from "./server.js";
@@ -81,6 +82,10 @@ interface Running {
   readonly url: string;
   /** Every authorize address the preflight was asked about. */
   readonly asked: string[];
+  /** Every shop whose catalogue was read, once per read. */
+  readonly read: string[];
+  /** A key of the merchant's own, for reading their catalogue off the gateway. */
+  readonly ownKey: string;
   get(path: string): Promise<Visit>;
   /**
    * A GET carrying no cookie: a browser coming back from a merchant's own shop
@@ -134,20 +139,79 @@ interface Standing {
   /**
    * Where the cabinet is told the gateway is, instead of the one this harness
    * serves. Pointed at an address nothing answers at, it is the one way this
-   * suite can ask what an import says when the publish door is not there.
+   * suite can ask what an import says when the gateway is not there at all.
    */
   readonly gatewayAt?: string;
+  /**
+   * Where the cabinet sends a card to be published, while every other call
+   * still reaches the gateway this harness serves. Pointed at an address
+   * nothing answers at, it is a gateway that went away in the middle of an
+   * import, after it had answered what the merchant has set.
+   */
+  readonly publishingAt?: string;
+  /**
+   * The channel the cabinet and its gateway are both on: the sandbox, where
+   * nothing settles and the publish door asks for no wallet, or the test
+   * channel, where test money settles on a chain and a merchant with nowhere
+   * to be paid publishes nothing. The sandbox where a test does not say.
+   */
+  readonly channel?: "sandbox" | "test";
+  /**
+   * Signs in as a merchant just registered through the gateway's own door
+   * instead of the harness's ready seller, which is the merchant a person
+   * holds in the minutes after making one in the cabinet: no wallet, and a
+   * seller name only where the test asks for one.
+   */
+  readonly fresh?: "named" | "unnamed";
 }
 
+/** What each channel's facilitator is, told to both the cabinet and the gateway. */
+const FACILITATORS = {
+  sandbox: "sandbox:scripted",
+  test: "https://x402.org/facilitator",
+} as const;
+
+/** What the harness's gateway takes a registration with, in this suite. */
+const INVITATION = "i".repeat(24);
+
+/**
+ * A merchant made through the gateway's registration door, the way the
+ * cabinet makes one, and named or not. Nothing else is set on them.
+ */
+const registered = async (
+  gateway: Served,
+  named: boolean,
+): Promise<{ readonly id: string; readonly key: string }> => {
+  const made = await gateway.call("POST", "/v0/merchants", { body: { invitation: INVITATION } });
+  if (made.status !== 200) {
+    throw new Error(`the gateway would not register a merchant: ${JSON.stringify(made.body)}`);
+  }
+  const { merchant_id: id, secret: key } = made.body as { merchant_id: string; secret: string };
+  if (named) {
+    const listed = await gateway.call("POST", "/v0/seller-name", {
+      body: { seller_name: "Their own shop" },
+      headers: { authorization: `Bearer ${key}` },
+    });
+    if (listed.status !== 200) {
+      throw new Error(`the gateway would not name the merchant: ${JSON.stringify(listed.body)}`);
+    }
+  }
+  return { id, key };
+};
+
 const started = async (standing: Standing = {}): Promise<Running> => {
-  const harnessed = await harness();
+  const facilitator = FACILITATORS[standing.channel ?? "sandbox"];
+  const harnessed = await harness({
+    FACILITATOR_URL: facilitator,
+    REGISTRATION_INVITATION: INVITATION,
+  });
   const gateway = await serve(harnessed);
   const config = loadConfig({
     GATEWAY_URL: standing.gatewayAt ?? gateway.url,
     DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
     AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
     PAYMENT_NETWORK: "eip155:84532",
-    FACILITATOR_URL: "sandbox:scripted",
+    FACILITATOR_URL: facilitator,
     PUBLIC_BASE_URL: PUBLIC,
     REGISTRATION_INVITATION: "the-existing-gateway-process-secret",
   });
@@ -166,7 +230,15 @@ const started = async (standing: Standing = {}): Promise<Running> => {
       return "accepted";
     },
   });
-  const person = await identity.make(PERSON, { id: harnessed.merchant.id, key: KEY });
+  const merchant =
+    standing.fresh === undefined
+      ? { id: harnessed.merchant.id, key: KEY }
+      : await registered(gateway, standing.fresh === "named");
+  // A key of the merchant's own, apart from the one on the account: signing in
+  // replaces that one and forgets the key it replaced (ADR-0014 §2), and a test
+  // reading the catalogue afterwards must not be holding a forgotten key.
+  const ownKey = standing.fresh === undefined ? KEY : await harnessed.addKey(merchant.id);
+  const person = await identity.make(PERSON, merchant);
   if (person === null) {
     throw new Error("the test account could not be made");
   }
@@ -182,9 +254,19 @@ const started = async (standing: Standing = {}): Promise<Running> => {
           grantFor: async () => breakRead(),
         };
   const asked: string[] = [];
+  const read: string[] = [];
+  const publishingAt = standing.publishingAt;
   const app: Express = buildApp(config, {
     identity,
     wooShops: shops,
+    ...(publishingAt === undefined
+      ? {}
+      : {
+          gatewayFor: (key: string, answerWithinMs?: number) => ({
+            ...gatewayFor(config.gatewayUrl, key, answerWithinMs),
+            publishCard: gatewayFor(publishingAt, key, answerWithinMs).publishCard,
+          }),
+        }),
     shop: {
       grantScreen: async (authorizeUrl) => {
         asked.push(authorizeUrl);
@@ -192,7 +274,12 @@ const started = async (standing: Standing = {}): Promise<Running> => {
           ? { ok: true }
           : await standing.grantScreen(authorizeUrl);
       },
-      catalogue: standing.catalogue ?? (async () => ({ ok: true, products: [] })),
+      catalogue: async (shopUrl) => {
+        read.push(shopUrl);
+        return standing.catalogue === undefined
+          ? { ok: true, products: [] }
+          : await standing.catalogue(shopUrl);
+      },
       inspectProduct:
         standing.inspectProduct ??
         (async (_keys, merchantItemId) => ({
@@ -255,6 +342,8 @@ const started = async (standing: Standing = {}): Promise<Running> => {
     accountId: person.id,
     url,
     asked,
+    read,
+    ownKey,
     get: (path) => visit("GET", path),
     getWithoutCookie: (path) => visit("GET", path, { noCookie: true }),
     post: (path, form = {}) => visit("POST", path, { body: new URLSearchParams(form).toString() }),
@@ -615,7 +704,7 @@ describe("importing the catalogue", () => {
   /** The merchant's own cards as the gateway holds them, read with their key. */
   const cardsOf = async (running: Running): Promise<readonly Held[]> => {
     const answered = await running.gateway.call("GET", "/v0/cards", {
-      headers: { authorization: `Bearer ${KEY}` },
+      headers: { authorization: `Bearer ${running.ownKey}` },
     });
     return (answered.body as { cards: Held[] }).cards;
   };
@@ -745,7 +834,7 @@ describe("importing the catalogue", () => {
     // instead of an answer, and what to do about that.
     const running = await started({
       catalogue: async () => ({ ok: true, products: [aProduct()] }),
-      gatewayAt: await nowhere(),
+      publishingAt: await nowhere(),
     });
     await connected(running);
 
@@ -767,7 +856,7 @@ describe("importing the catalogue", () => {
         ok: true,
         products: [aProduct(), aProduct({ id: 10, name: "Access code" })],
       }),
-      gatewayAt: await nowhere(),
+      publishingAt: await nowhere(),
     });
     await connected(running);
 
@@ -806,6 +895,153 @@ describe("importing the catalogue", () => {
 
     expect(imported.status).toBe(502);
     expect(imported.html).toContain("Forbidden");
+  });
+
+  /**
+   * What the screen itself says, without the header and the footer. The header
+   * carries a link to the settings on every page, the account's own address,
+   * so a page as a whole always has a way there and says nothing by having one.
+   */
+  const bodyOf = (html: string): string =>
+    html.slice(html.indexOf("</header>"), html.indexOf("<footer"));
+
+  /** An address of the right shape that is nobody's, in the lower case a wallet accepts. */
+  const A_WALLET = "0x0123456789abcdef0123456789abcdef01234567";
+
+  it("reads nothing and publishes nothing for a merchant with nowhere to be paid, and sends them to Settings", async () => {
+    // The door refuses every card of a merchant with no wallet on a channel
+    // where money settles, in a sentence written for an engineer holding an
+    // API response. A WooCommerce merchant wrote no code: what they can act on
+    // is the cabinet's own screen where the wallet is set, and they learn it
+    // before their shop is read product by product for nothing.
+    const running = await started({
+      channel: "test",
+      fresh: "named",
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
+    });
+    await connected(running);
+
+    const imported = await running.post("/woocommerce/import");
+    const body = bodyOf(imported.html);
+
+    expect(imported.status).toBe(409);
+    expect(readable(body)).toMatch(/wallet/i);
+    expect(body).toContain('href="/settings"');
+    expect(readable(imported.html)).not.toContain("/v0/");
+    expect(running.read).toEqual([]);
+    expect(await cardsOf(running)).toEqual([]);
+  });
+
+  it("imports once the merchant has set a wallet in Settings", async () => {
+    // The road out of the refusal, walked through the screen it links to. A
+    // refusal a merchant cannot get past from the cabinet is a wall.
+    const running = await started({
+      channel: "test",
+      fresh: "named",
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
+    });
+    await connected(running);
+    await running.post("/woocommerce/import");
+
+    const saved = await running.post("/settings/payout-wallet", { payout_wallet: A_WALLET });
+    const imported = await running.post("/woocommerce/import");
+
+    expect(saved.status).toBe(303);
+    expect(imported.status).toBe(200);
+    expect(await cardsOf(running)).toHaveLength(1);
+  });
+
+  it("asks for no wallet in the sandbox, where the door takes a card without one", async () => {
+    // Nothing settles in the sandbox, the settings screen says the address is
+    // optional there, and the door agrees. An import refused for it would be
+    // this cabinet stricter than its own gateway.
+    const running = await started({
+      channel: "sandbox",
+      fresh: "named",
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
+    });
+    await connected(running);
+
+    const imported = await running.post("/woocommerce/import");
+
+    expect(imported.status).toBe(200);
+    expect(await cardsOf(running)).toHaveLength(1);
+  });
+
+  it("reads nothing for a merchant with no seller name, and sends them to Settings", async () => {
+    // The door's other rule about the merchant rather than the card, and the
+    // one that holds on every channel, the sandbox included.
+    const running = await started({
+      channel: "sandbox",
+      fresh: "unnamed",
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
+    });
+    await connected(running);
+
+    const imported = await running.post("/woocommerce/import");
+    const body = bodyOf(imported.html);
+
+    expect(imported.status).toBe(409);
+    expect(readable(body)).toMatch(/\bname\b/i);
+    expect(body).toContain('href="/settings"');
+    expect(readable(imported.html)).not.toContain("/v0/");
+    expect(running.read).toEqual([]);
+  });
+
+  it("names the seller name and the wallet together when both are missing", async () => {
+    // Told one at a time, a merchant sets the name, presses Import again, and
+    // only then hears about the wallet.
+    const running = await started({
+      channel: "test",
+      fresh: "unnamed",
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
+    });
+    await connected(running);
+
+    const imported = await running.post("/woocommerce/import");
+    const text = readable(bodyOf(imported.html));
+
+    expect(imported.status).toBe(409);
+    expect(text).toMatch(/wallet/i);
+    expect(text).toMatch(/\bname\b/i);
+  });
+
+  it("says a wallet is needed on the shop screen, before Import is pressed", async () => {
+    const running = await started({ channel: "test", fresh: "named" });
+    await connected(running);
+
+    const screen = await running.get("/woocommerce");
+    const body = bodyOf(screen.html);
+
+    expect(screen.status).toBe(200);
+    expect(readable(body)).toMatch(/wallet/i);
+    expect(body).toContain('href="/settings"');
+  });
+
+  it("says nothing about a wallet on the shop screen once one is set", async () => {
+    const running = await started({ channel: "test" });
+    await connected(running);
+
+    const screen = await running.get("/woocommerce");
+
+    expect(screen.status).toBe(200);
+    expect(readable(bodyOf(screen.html))).not.toMatch(/wallet/i);
+  });
+
+  it("does not read the shop when the gateway cannot say what the merchant has set", async () => {
+    // Nothing could be published through a gateway that is not there, so
+    // reading the shop product by product first is work done for nothing.
+    const running = await started({
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
+      gatewayAt: await nowhere(),
+    });
+    await connected(running);
+
+    const imported = await running.post("/woocommerce/import");
+
+    expect(imported.status).toBe(502);
+    expect(readable(imported.html)).toContain("could not be reached");
+    expect(running.read).toEqual([]);
   });
 });
 
