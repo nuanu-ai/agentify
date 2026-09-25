@@ -22,10 +22,18 @@
  *
  * What is refused is what reads as markup or as a reference, and nothing that
  * merely shares a character with them. An ampersand between words, a
- * comparison and an arrow are text: `Tea & coffee`, `5 < 10`, `a -> b` and
- * `AT&T` all pass. So do an address in angle brackets, `<jane@example.com>`,
- * and a space after the bracket, `List< String >`, because an HTML parser reads
- * neither as a tag.
+ * comparison and an arrow are text: `Tea & coffee`, `5 < 10`, `a -> b`, `AT&T`
+ * and `R&D;` all pass, and so does a space after a bracket, `List< String >`,
+ * which an HTML parser reads as text too.
+ *
+ * Three more shapes pass, and for them the rule is a choice rather than a fact
+ * about HTML: an address in angle brackets, `<jane@example.com>` or
+ * `<https://example.com>`, a bracket that is never closed, `x<y`, and a
+ * bracket before a name HTML would not give an element, `Map<String, Integer>`.
+ * A browser would swallow each of them as a tag, or drop it. They pass because
+ * each is how plain text has always been written, the rule is about text
+ * written as HTML rather than about everything a renderer might misread, and
+ * no reader between the merchant and an agent renders HTML.
  *
  * The rule is the publish door's and not the reader's. A card stored before it
  * may carry anything it refuses, and every answer that carries a stored card is
@@ -47,30 +55,38 @@ export type TextLines = "one line" | "several lines";
  * writes `<!--`, and matching on to the close would cost a scan to the end of
  * the text for every opening in it.
  *
- * A tag is what an HTML parser reads as one: an angle bracket, an optional
- * slash, a name that begins with a letter, and then the bracket's close — at
- * once, after a slash, or after whitespace and whatever attributes follow. The
- * name may carry a colon or a hyphen between letters and digits, which is how
- * `<o:p>`, the tag a word processor leaves in pasted text, and a custom element
- * are written. What it does not take is the rest of what can follow a bracket:
- * a digit, a space, an `@` or a `:/`, which is why `<3`, `List< String >` and
- * `<https://example.com>` are text. The close has to be there, so `x<y` is text
- * as well.
+ * A tag is an angle bracket, an optional slash, a name, and then the bracket's
+ * close — at once, after a slash, or after whitespace and whatever attributes
+ * follow. The name begins with a letter and carries letters and digits, joined
+ * by a colon or a hyphen where there is one, which is how `<o:p>`, the tag a
+ * word processor leaves in pasted text, and a custom element are written. An
+ * attribute value in quotation marks may carry either bracket, as the alt text
+ * a block editor writes into an image does: `<img alt="Mug <3 coffee">` is one
+ * tag. What the name does not take is the rest of what can follow a bracket —
+ * a digit, a space, an `@`, a `:/` — which is why `<3`, `List< String >` and
+ * `<https://example.com>` are not tags here. The close has to be there, so
+ * `x<y` is not one either.
  *
- * Every quantifier is bounded by the next angle bracket, so the scan is linear
- * in the length of the text however it is written.
+ * The scan is linear in the length of the text however it is written: outside
+ * quotation marks everything stops at the next angle bracket, and a quoted
+ * value stops at its own closing mark, so no stretch of text is read twice
+ * over from one bracket. The tests hold it at a quarter of a megabyte, which
+ * is more than a publish body may carry.
  */
-const MARKUP = /<!--|<\/?[A-Za-z][A-Za-z0-9]*(?:[:-][A-Za-z0-9]+)*(?:[\t\n\f\r /][^<>]*)?>/g;
+const MARKUP =
+  /<!--|<\/?[A-Za-z][A-Za-z0-9]*(?:[:-][A-Za-z0-9]+)*(?:[\t\n\f\r /](?:[^<>"']|"[^"]*"|'[^']*')*)?>/g;
 
 /**
- * A character reference: an ampersand, a name or a number, and a semicolon.
+ * A character reference: an ampersand, a number or a name, and a semicolon.
  *
- * The semicolon is what separates a reference from an ampersand in prose —
- * `AT&T` and `A&B` are text. A name is refused whether or not HTML knows it,
- * because the only reader who would decode it is one that renders HTML, and
- * a name it does not know it shows as written.
+ * The semicolon, and a name of at least two characters, are what separate a
+ * reference from an ampersand in prose. HTML has no name of one letter, so
+ * `AT&T`, `A&B` and `R&D;` are text. A name of two or more is refused whether
+ * or not HTML's own list carries it: `&eacute;` and `&foo;` are both text
+ * written for an HTML reader, and a merchant who meant a character writes the
+ * character.
  */
-const REFERENCE = /&(?:#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]*);/g;
+const REFERENCE = /&(?:#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);/g;
 
 /**
  * Control characters: C0, DEL and C1. A description may carry a line feed,
@@ -90,11 +106,20 @@ const CONTROL_IN_ONE_LINE = /[\u0000-\u001F\u007F-\u009F]/g;
 // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it refuses
 const CONTROL_IN_LINES = /[\u0000-\u0009\u000B-\u001F\u007F-\u009F]/g;
 
-/** The names a merchant knows the commonest control characters by. */
-const CONTROL_NAMES: Readonly<Record<string, string>> = {
-  "\t": "a tab",
-  "\n": "a line break",
-  "\r": "a carriage return",
+/**
+ * The names a merchant knows the commonest control characters by, in text of
+ * each shape.
+ *
+ * A carriage return in a description is nearly always half of the `\r\n` a
+ * form on Windows submits between two lines, so there it is named together
+ * with the one line break a description does take.
+ */
+const CONTROL_NAMES: Readonly<Record<TextLines, Readonly<Record<string, string>>>> = {
+  "one line": { "\t": "a tab", "\n": "a line break", "\r": "a carriage return" },
+  "several lines": {
+    "\t": "a tab",
+    "\r": "a carriage return; a description breaks its lines with a line feed, U+000A, alone",
+  },
 };
 
 /**
@@ -106,25 +131,54 @@ const CONTROL_NAMES: Readonly<Record<string, string>> = {
  */
 const QUOTED_AT_MOST = 40;
 
-/** A piece of the text as a finding quotes it: in quotation marks, cut where it is long. */
-const quoted = (fragment: string): string =>
-  fragment.length <= QUOTED_AT_MOST
-    ? JSON.stringify(fragment)
-    : `${JSON.stringify(fragment.slice(0, QUOTED_AT_MOST))}… (cut short)`;
+/** A character by its code point, as `U+0007`. */
+const codeOf = (character: string): string =>
+  `U+${(character.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, "0")}`;
+
+/**
+ * DEL and C1, which a quotation leaves as they are.
+ *
+ * `JSON.stringify` escapes C0 and a lone surrogate and nothing else, so a
+ * control character inside a quoted tag would otherwise reach the merchant's
+ * terminal as itself — and U+009B is the start of an escape sequence there.
+ */
+const UNESCAPED_BY_JSON = /[\u007F-\u009F]/g;
+
+/**
+ * A piece of the text as a finding quotes it: in quotation marks, with every
+ * control character escaped, and cut where it is long.
+ *
+ * The cut is made between two characters and never inside one: a character
+ * outside the basic plane is two units long, and a cut through the middle of
+ * it would quote half a character as an escape nobody wrote.
+ */
+const quoted = (fragment: string): string => {
+  const whole = fragment.length <= QUOTED_AT_MOST;
+  const head = whole ? fragment : fragment.slice(0, QUOTED_AT_MOST).replace(/[\uD800-\uDBFF]$/, "");
+  const shown = JSON.stringify(head).replace(
+    UNESCAPED_BY_JSON,
+    (character) => `\\u${(character.codePointAt(0) ?? 0).toString(16).padStart(4, "0")}`,
+  );
+  return whole ? shown : `${shown}… (cut short)`;
+};
 
 /** A control character as a finding names it: by its code, never printed. */
-const named = (character: string): string => {
-  const code = `U+${(character.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, "0")}`;
-  const name = CONTROL_NAMES[character];
-  return name === undefined ? code : `${code} (${name})`;
-};
+const namedIn =
+  (lines: TextLines) =>
+  (character: string): string => {
+    const name = CONTROL_NAMES[lines][character];
+    return name === undefined ? codeOf(character) : `${codeOf(character)} (${name})`;
+  };
 
 /**
  * One kind of thing that is not plain text, said once for all the places it
  * occurs: how many there are, and the first of them, where it is.
  *
  * The position counts from one, in the same units a description's length is
- * counted in, so a merchant is sent to the character their editor would show.
+ * counted in: UTF-16 code units, so a character outside the basic plane — an
+ * emoji — counts as two, and the number can run ahead of what an editor shows
+ * by one for each such character before it. It is the same count in both
+ * places, which is what lets a merchant set one number against the other.
  */
 const found = (
   text: string,
@@ -163,6 +217,6 @@ export const notPlainTextIn = (text: string, lines: TextLines): readonly string[
       lines === "one line" ? CONTROL_IN_ONE_LINE : CONTROL_IN_LINES,
       "a control character",
       "control characters",
-      named,
+      namedIn(lines),
     ),
   ].filter((phrase): phrase is string => phrase !== null);

@@ -64,6 +64,7 @@ describe("a card's own words are plain text", () => {
       "a -> b <- c",
       "Fish & chips < £10",
       "List< String >",
+      "Map<String, Integer>",
       "Write to <jane@example.com>",
       "Docs at <https://example.com/docs>",
       "&",
@@ -298,6 +299,10 @@ describe("a card's own words are plain text", () => {
       "&a".repeat(100_000),
       `&${"a".repeat(200_000)}`,
       "<!--".repeat(50_000),
+      '<a "'.repeat(60_000),
+      "<a '".repeat(60_000),
+      `<a b="${"<a ".repeat(80_000)}`,
+      `<a b='${"x".repeat(240_000)}`,
     ];
     const started = performance.now();
     for (const text of hostile) findingsOf({ ...card, title: text, description: text });
