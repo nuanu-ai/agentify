@@ -259,6 +259,18 @@ export const inspectProductInTheShop = async (
         " set; give the product a price in whole cents in WooCommerce.",
     };
   }
+  // Agentify's own door refuses a price of zero, and a product priced at zero
+  // is named here instead: on the import page as a product left in the shop,
+  // and to a price question as one that is not for sale here.
+  if (!/[1-9]/.test(amount)) {
+    return {
+      ok: false,
+      why:
+        `The shop's price for this product is ${product.price}, and Agentify cannot sell` +
+        " anything at a price of zero yet: a payment of nothing has not been proven to go" +
+        " through. Give the product a price above zero in WooCommerce to sell it here.",
+    };
+  }
   const fingerprint = createHash("sha256")
     .update(
       JSON.stringify([
