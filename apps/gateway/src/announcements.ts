@@ -11,9 +11,10 @@
  * announced once they are done. A wallet is changed only with the cabinet's
  * own key (ADR-0019), so a wallet announcement names no key: it was asked for
  * by a person signed in to the cabinet. A new key names the key that asked,
- * because any key of the merchant's may issue one. Anything else the gateway ever needs from the
- * cabinet is another `operation` in `GatewayRequestSchema`, over this route
- * and with this secret, never a second route or a second secret.
+ * because any key of the merchant's may issue one. Anything else the gateway
+ * ever needs from the cabinet is another `operation` in
+ * `GatewayRequestSchema`, over this route and with this secret, never a
+ * second route or a second secret.
  *
  * The gateway knows the merchant and the change; the cabinet knows
  * the addresses and sends the mail. This file is the wire between them, and it
@@ -25,8 +26,8 @@
  * What a request carries is facts and no words. The message a person reads is
  * the cabinet's to write, because the cabinet is what knows where its own
  * screens are; the gateway says what changed, from what to what, and, for a
- * new key, which key asked. Nothing in it can open anything: there is no token here, and the
- * message built from it carries none.
+ * new key, which key asked. Nothing in it can open anything: there is no
+ * token here, and the message built from it carries none.
  */
 
 import { checksummedAddressOf, EvmAddressSchema } from "@nuanu-ai/agentify-contracts";

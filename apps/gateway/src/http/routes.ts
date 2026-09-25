@@ -104,9 +104,9 @@ function callersKey({ keyId }: RouteCall): string {
 /**
  * What the key this call was made with was made for.
  *
- * Null cannot arrive here for the reason it cannot arrive above, and the two
- * routes that ask are the cabinet's own, where the answer decides whether the
- * call happens at all.
+ * Null cannot arrive here for the reason it cannot arrive above, and on the
+ * cabinet's own two routes and the payout wallet the answer decides whether
+ * the call happens at all.
  */
 function callersPurpose({ keyPurpose }: RouteCall): KeyPurpose {
   if (keyPurpose === null) {
