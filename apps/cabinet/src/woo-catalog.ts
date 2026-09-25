@@ -121,6 +121,14 @@ export const decimalOfMinorUnits = (minor: string, scale: number): string | null
 export const USD_SCALE = 2;
 
 /**
+ * A price the way WooCommerce stores what a merchant typed: digits, or digits,
+ * a dot and more digits, where the digits before the dot may be missing.
+ * WooCommerce keeps ".99" as typed and drops a trailing dot, so "5." never
+ * arrives and is not a price here either.
+ */
+export const TYPED_PRICE = /^(?=\.?\d)(\d*)(?:\.(\d+))?$/;
+
+/**
  * A price as a merchant typed it into WooCommerce, written at two decimal
  * places, or null where that would take rounding or the text is not a decimal.
  *
@@ -131,17 +139,19 @@ export const USD_SCALE = 2;
  * are compared with those totals character for character, so this is the one
  * form they all carry.
  *
- * Padding is exact, and so is dropping a leading zero or a zero past the
- * second place. Dropping any other digit is rounding, and a rounded price is a
+ * Padding is exact, and so are writing the zero a merchant left off before
+ * the dot, dropping a leading zero and dropping a zero past the second place. Dropping any other digit is rounding, and a rounded price is a
  * price the merchant did not set, which is why `"25.001"` is null rather than
  * `"25.00"`.
  */
 export const usdAmountOf = (typed: string): string | null => {
-  const written = /^(\d+)(?:\.(\d+))?$/.exec(typed);
+  const written = TYPED_PRICE.exec(typed);
   if (written === null) {
     return null;
   }
-  const whole = (written[1] ?? "").replace(/^0+(?=\d)/, "");
+  // Leading zeros go, and a whole part left empty — "0.99", or ".99" as it
+  // was typed — is the zero it stands for, exactly.
+  const whole = (written[1] ?? "").replace(/^0+/, "") || "0";
   const fraction = written[2] ?? "";
   if (/[1-9]/.test(fraction.slice(USD_SCALE))) {
     return null;

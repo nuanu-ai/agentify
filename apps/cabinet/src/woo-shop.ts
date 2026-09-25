@@ -22,6 +22,7 @@ import {
   productIdFromMerchantItem,
   type StoreProduct,
   StoreProductsSchema,
+  TYPED_PRICE,
   USD_SCALE,
   usdAmountOf,
 } from "./woo-catalog.js";
@@ -241,7 +242,7 @@ export const inspectProductInTheShop = async (
   } catch {
     return { ok: false, why: "The shop's raw download protection could not be verified." };
   }
-  if (!/^\d+(?:\.\d+)?$/.test(product.price)) {
+  if (!TYPED_PRICE.test(product.price)) {
     return { ok: false, why: "The protected product price is not a decimal amount." };
   }
   // From here on the price is the one form the card, the quote, the order and
