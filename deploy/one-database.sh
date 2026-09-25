@@ -149,7 +149,12 @@ step="moving the scanner's tables"
 back="$containers"
 new up -d --wait --no-deps postgres
 new exec -T postgres sh -s -- move < "$move"
-if [[ -n $(new exec -T postgres psql -X -U agentify_commerce -d postgres -Atc "select 1 from pg_database where datname = 'agentify_scanner'" 2> /dev/null) ]]; then
+# Asked of the move script, which knows the account's name before and after
+# the rename; no answer stops the run here, before anything is dropped.
+scanner="$(new exec -T postgres sh -s -- scanner-database < "$move")"
+[[ $scanner == present || $scanner == absent ]] \
+  || refuse "the database did not say whether agentify_scanner is still there, so nothing was dropped. The way back: $back"
+if [[ $scanner == present ]]; then
   step="comparing every table with the restore point's fingerprints"
   { cat "$point/agentify_commerce.fingerprints"
     grep '^public\.' "$point/agentify_scanner.fingerprints"
@@ -172,8 +177,9 @@ if [[ -n $(new exec -T postgres psql -X -U agentify_commerce -d postgres -Atc "s
     && new_sql -d one_database_views < "$point/metabase-views.sql" > /dev/null; then
     new_sql -d agentify_scanner -c "$views" > "$point/metabase-views.host"
     new_sql -d one_database_views -c "$views" > "$point/metabase-views.file"
+    views="$(new_sql -d agentify_scanner -c "select count(*) from pg_views where schemaname = 'metabase'")"
     if diff "$point/metabase-views.file" "$point/metabase-views.host" > "$point/metabase-views.diff"; then
-      say "the $(new_sql -d agentify_scanner -c "select count(*) from pg_views where schemaname = 'metabase'") metabase views are the ones ops/dashboards/install-aggregate-views.sql installs"
+      say "the $views metabase views are the ones ops/dashboards/install-aggregate-views.sql installs"
     else
       say "the metabase views differ from ops/dashboards/install-aggregate-views.sql as $point/metabase-views.diff records"
     fi

@@ -6,6 +6,7 @@
 #   docker exec -i <postgres> sh -s -- move            < deploy/one-database-move.sh
 #   docker exec -i <postgres> sh -s -- finish          < deploy/one-database-move.sh
 #   docker exec -i <postgres> sh -s -- fingerprints <database> < deploy/one-database-move.sh
+#   docker exec -i <postgres> sh -s -- scanner-database < deploy/one-database-move.sh
 #
 # `move` puts the scanner's tables, types and rows into the public schema of
 # agentify_commerce, and its migration history into drizzle.scanner_migrations
@@ -28,7 +29,9 @@
 # what the first did not finish.
 #
 # `fingerprints` prints one line per table, name|rows|md5 of its rows in a
-# fixed order, which is what deploy/one-database.sh compares before and after.
+# fixed order, which is what deploy/one-database.sh compares before and after,
+# and `scanner-database` says whether agentify_scanner is still there, present
+# or absent, whatever the account is called by then.
 set -eu
 
 mode="${1:-}"
@@ -125,5 +128,6 @@ case "$mode" in
   move) move ;;
   finish) finish ;;
   fingerprints) fingerprints "${2:?name the database}" ;;
-  *) refuse "usage: sh -s -- move|finish|fingerprints <database>" ;;
+  scanner-database) if has_database agentify_scanner; then echo present; else echo absent; fi ;;
+  *) refuse "usage: sh -s -- move|finish|fingerprints <database>|scanner-database" ;;
 esac
