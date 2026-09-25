@@ -436,6 +436,14 @@ describe("the contract as JSON Schema", () => {
     for (const code of [...contracts.ORDER_CALL_ERROR_CODES, contracts.CARD_REJECTED]) {
       expect(callError, code).toContain(code);
     }
+
+    // A finding's code is open too — the card's findings carry whatever the
+    // validator names — and the three about the merchant are the ones a
+    // program branches on, so they travel with the field that carries them.
+    const finding = nested(documents.problem.properties?.code).description ?? "";
+    for (const code of Object.values(contracts.MERCHANT_FINDINGS)) {
+      expect(finding, code).toContain(code);
+    }
   });
 
   it("carries the rules it cannot express as structure in words instead", () => {
