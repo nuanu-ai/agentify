@@ -5,8 +5,8 @@
  * scanner never handles a token or mints a session. Over this route, reachable
  * only on the compose network and authenticated by a secret the two processes
  * share, the scanner asks three things: send a link for this address with this
- * destination; whose session is this cookie; and, for a privacy deletion,
- * remove this person if they own no merchant.
+ * destination; whose session is this cookie, and is its account an operator;
+ * and, for a privacy deletion, remove this person if they own no merchant.
  */
 
 import { z } from "zod";
@@ -104,6 +104,11 @@ export const readSessionResponseSchema = z.union([
     .object({
       status: z.literal("signed_in"),
       email: normalizedEmailSchema,
+      /**
+       * Whether this session's account may read the operator's dashboard, as
+       * the flag stands at this question (ADR-0026 §6).
+       */
+      operator: z.boolean(),
       /** The request the link that opened this session was asked for, if any. */
       request: reportRequestSchema.nullable(),
       /** The lines that renew the cookie, passed on as they are; empty when nothing moved. */

@@ -338,6 +338,7 @@ beforeAll(async () => {
           ? {
               status: "signed_in",
               email: session.email,
+              operator: false,
               request: session.request,
               set_cookie: body.renew
                 ? [`${SESSION_COOKIE}=${held?.[1]}; Max-Age=2592000; Path=/; HttpOnly; Secure`]
