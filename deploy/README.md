@@ -224,6 +224,52 @@ person's run never skips one:
 ssh -t agentify-test sudo agentify-release my-branch
 ```
 
+## The release that takes the password off /admin
+
+The operator's dashboard at `/admin` opens for a session whose account carries
+the operator flag, and answers everybody else with the site's 404 page
+(ADR-0026 §6). The route table in the web image has no password for it any
+more, so from the first release that carries this, `/admin` stops asking for
+one on both channels. Nothing has to be done on either host before that
+release: it asks for neither of the two old settings, and its own check of the
+public routes expects `/admin` to answer 404.
+
+After it, the dashboard opens for nobody until somebody is flagged. The person
+who is to read it signs in once at `/cabinet/sign-in`, which makes their
+account, and is then flagged on the host of that channel:
+
+```sh
+ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T cabinet pnpm --filter @agentify/cabinet account operator you@example.com'
+ssh -t agentify 'sudo "$(ls -dt /var/lib/agentify/production/checkouts/*/ | head -n 1)deploy/stack.sh" production exec -T cabinet pnpm --filter @agentify/cabinet account operator you@example.com'
+```
+
+The scanner's header then shows them an Admin link, on the next page they
+open, without signing in again. `account list` says who is an operator, and
+`account operator you@example.com --off` takes the flag away.
+
+`ADMIN_BASIC_AUTH_USER` and `ADMIN_BASIC_AUTH_HASH` are left in the host's
+environment file by the release and read by nothing in it: no compose file of
+this release names them, so the preflight does not see them either. They go
+from `/etc/agentify/<channel>.env` by hand, with two things in mind. A
+release of an older revision renders that revision's compose files, which
+require both, so while going back is still an option, removing them turns
+such a release into a refusal before anything stops. And on PRODUCTION the
+edge Caddy was started from a checkout of `deploy/edge/` of its own, whose
+`compose.yaml` requires both whenever the edge is recreated, although its
+route table, which every release rewrites, has not used them. The first line
+below names the compose file the edge was started from, and the second prints
+`0` once that file no longer asks for them:
+
+```sh
+ssh agentify "sudo docker inspect -f '{{index .Config.Labels \"com.docker.compose.project.config_files\"}}' agentify-edge-caddy-1"
+ssh agentify "sudo grep -c ADMIN_BASIC_AUTH <that file>"
+```
+
+Until it prints `0`, the two stay in whatever file that compose is run with.
+What ends that is the edge being recreated from a checkout of this release or
+later, whose `deploy/edge/compose.yaml` does not name them; nothing else about
+the edge depends on them.
+
 ## When a release fails
 
 A refusal is one sentence that begins `agentify-release: refused:` or
