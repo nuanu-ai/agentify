@@ -95,6 +95,8 @@ class TheMove(unittest.TestCase):
         else:
             self.fail(f"{self.name} did not start")
         self.sql("postgres", "".join(f"CREATE ROLE {role} LOGIN;" for role in ROLES) + "CREATE DATABASE agentify_scanner;")
+        # The test suites' scratch database under the old name, as the hosts have it.
+        self.sql("postgres", "CREATE DATABASE agentify_commerce_test;")
         self.sql("agentify_scanner", SCANNER)
         self.sql("agentify_commerce", COMMERCE)
 
@@ -204,7 +206,7 @@ class TheMove(unittest.TestCase):
         refused = self.run_move("finish")
         self.assertEqual(refused.returncode, 1)
         self.assertIn("only copy", refused.stderr)
-        self.assertEqual(self.sql("postgres", "SELECT count(*) FROM pg_database WHERE datname IN ('agentify_scanner', 'agentify_commerce')"), "2")
+        self.assertEqual(self.sql("postgres", "SELECT count(*) FROM pg_database WHERE datname IN ('agentify_scanner', 'agentify_commerce', 'agentify_commerce_test')"), "3")
         self.assertEqual(self.sql("postgres", f"SELECT count(*) FROM pg_roles WHERE rolname IN {ROLES}"), "4")
 
 
