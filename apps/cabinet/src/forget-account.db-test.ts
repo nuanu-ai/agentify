@@ -155,6 +155,8 @@ if (databaseUrl === null) {
         encoding: "utf8",
         env: { ...process.env, DATABASE_URL: databaseUrl, AUTH_SECRET, PAYMENT_NETWORK: network },
         input: `${rawEmail}\n`,
+        // A command that hangs fails here instead of holding the suite.
+        timeout: 20_000,
       },
     );
     return { status: result.status, output: `${result.stdout}\n${result.stderr}` };
@@ -288,11 +290,14 @@ if (databaseUrl === null) {
     it("refuses an address with no account in words, and removes nothing", async () => {
       const bystander = await merchantAccount(BYSTANDER, ["their-room"]);
 
-      const refused = await forget("nobody@example.com");
+      // The address is echoed back, so what a terminal would obey in it is
+      // shown rather than obeyed.
+      const refused = await forget("nobody@example.com\u001b[2J");
 
       expect(refused.code).not.toBe(0);
       expect(refused.output).toContain("nobody@example.com");
       expect(refused.output).toMatch(/no account/i);
+      expect(refused.output).not.toContain("\u001b");
       expect(await countOf("cabinet_accounts", "id", bystander.person.id)).toBe(1);
       expect(await countOf("merchants", "id", bystander.merchantId)).toBe(1);
     });

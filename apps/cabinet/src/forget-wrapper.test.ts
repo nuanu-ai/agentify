@@ -204,6 +204,8 @@ describe("pnpm forget's local TEST wrapper", () => {
           ...set,
         },
         input: `${EMAIL}\n`,
+        // A command that hangs fails here instead of holding the suite.
+        timeout: 20_000,
       },
     );
     const output = `${result.stdout}\n${result.stderr}`;
