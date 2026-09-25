@@ -101,6 +101,23 @@ written as one string, with a single space between them. Either spelling can be
 written on a card; the longer one is in [the same card, written out in
 full](#the-same-card-written-out-in-full).
 
+Four kinds of price are refused at publication, and each refusal names the
+half of the price that is wrong and what it said:
+
+- an amount with fewer than two digits after the dot, such as `500` or `5`. The
+  amount is in dollars — five dollars is `5.00`, a tenth of a cent for a
+  product priced per call is `0.001` — so a number counted in cents is never
+  listed as that many dollars;
+- an amount with more than six digits after the dot, such as `0.0000001`. Six
+  places are all USDC carries, so `0.000001` is the finest price there is an
+  exact charge for, and we do not round one;
+- a currency other than `USD` or `USDC`, which buyers pay as the same number
+  of USDC ([What they pay in](/money#what-they-pay-in)), because we hold no
+  exchange rate to charge anything else at;
+- a price of zero, because a request to pay nothing asks for something that
+  cannot be done: a free item is offered from your own site, without a
+  payment.
+
 Where the price is not fixed but worked out when somebody buys, the card
 carries a price check as well, and that is [further down this
 page](#a-price-worked-out-at-the-moment-of-purchase).
@@ -330,6 +347,12 @@ In full it looks like this:
 
 <<< @/examples/quote-response/available.json
 
+The price in an answer is held to the rule a card's price meets at
+publication: above zero, in `USD` or `USDC`, with two to six digits after the
+dot. An answer that breaks it is refused with the reason in the refusal's own
+words, and unless a corrected answer arrives while we are still waiting, the
+purchase goes on as though you had not answered.
+
 The mark `as_of` says which moment the answer is true for, and it separates
 "went and checked just now" from "handed over what was in the cache". A price
 handler is given it as the last argument; a call made without it stamps the
@@ -523,3 +546,7 @@ what that ought to be is not settled.
   us. A price handler has neither question — the subscription channel is
   authenticated when it connects.
 - How a card is removed altogether rather than paused, and how long that takes.
+- The smallest price the live channel can charge. Its payment service documents
+  a minimum below which it does not settle a payment and does not publish the
+  number, so a price of a fraction of a cent is taken at publication and may be
+  refused when a buyer pays. Where that line lies has not been measured.
