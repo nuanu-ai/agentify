@@ -259,18 +259,6 @@ export const inspectProductInTheShop = async (
         " set; give the product a price in whole cents in WooCommerce.",
     };
   }
-  // Agentify's own door refuses a price of zero, and a product priced at zero
-  // is named here instead: on the import page as a product left in the shop,
-  // and to a price question as one that is not for sale here.
-  if (!/[1-9]/.test(amount)) {
-    return {
-      ok: false,
-      why:
-        `The shop's price for this product is ${product.price}, and nothing is sold through` +
-        " Agentify at a price of zero: a free product is offered from your own shop, without" +
-        " a payment.",
-    };
-  }
   const fingerprint = createHash("sha256")
     .update(
       JSON.stringify([
