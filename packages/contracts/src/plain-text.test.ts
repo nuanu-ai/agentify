@@ -247,6 +247,26 @@ describe("a card's own words are plain text", () => {
     expect(finding?.length).toBeLessThan(400);
   });
 
+  it("takes no longer on words built to be slow than on ordinary ones", () => {
+    // The door runs in the gateway's own process, and a publish body may be a
+    // quarter of a megabyte. Words crafted to make a pattern backtrack would
+    // stall every sale behind one merchant's publish.
+    const hostile = [
+      `<a${" a".repeat(100_000)}`,
+      "<a ".repeat(70_000),
+      "<a".repeat(100_000),
+      `<${"a".repeat(200_000)}`,
+      `<a${":b".repeat(100_000)}`,
+      "&a".repeat(100_000),
+      `&${"a".repeat(200_000)}`,
+      "<!--".repeat(50_000),
+    ];
+    const started = performance.now();
+    for (const text of hostile) findingsOf({ ...card, title: text, description: text });
+
+    expect(performance.now() - started).toBeLessThan(1_000);
+  });
+
   it("says in the card document what it refuses, for the reader who has only that", () => {
     const description = toJsonSchemas().card.description ?? "";
 

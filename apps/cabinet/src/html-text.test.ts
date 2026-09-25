@@ -140,6 +140,8 @@ describe("a shop's HTML as plain text", () => {
     // backtrack would stall everybody's sales, not only the merchant's import.
     const hostile = [
       `<a${" a".repeat(20_000)}`,
+      "<a ".repeat(20_000),
+      '<a "'.repeat(20_000),
       "<a".repeat(20_000),
       "<script".repeat(20_000),
       "<!--".repeat(20_000),
