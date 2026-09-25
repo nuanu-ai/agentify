@@ -406,16 +406,14 @@ export class Gateway {
     }
     // The same question the selling word asks of every card afterwards, put
     // here where the merchant is in front of somebody who can be told what is
-    // missing, one finding for each.
-    const missing = missingFrom(merchant, this.runtime.config).map(
-      (finding) => MERCHANT_PROBLEMS[finding],
-    );
+    // missing.
+    const missing = missingFrom(merchant, this.runtime.config);
 
     if (!parsed.success) {
-      return cardRejected([...missing, ...findingsOf(parsed.error.issues)]);
+      return cardRejected(missing, findingsOf(parsed.error.issues));
     }
     if (missing.length > 0) {
-      return cardRejected(missing);
+      return cardRejected(missing, []);
     }
 
     const stored = await this.runtime.store.publishCard(
@@ -2261,37 +2259,68 @@ function misfitsIn(findings: readonly Problem[]): string {
  * A card that is not going in the catalog, with everything standing in its way.
  *
  * The findings are the answer and the sentence is how it is recognised: a
- * program reads `problems` field by field, and the message names the first of
- * them and counts the rest, because a message that recited the list would be
- * the same answer twice — once in a shape that can be acted on and once in a
- * shape that cannot. The first is the one that leads the list, which is the
- * merchant's own missing name or wallet wherever either is missing: the finding
- * nothing on the card explains.
+ * program reads `problems` field by field, and the message is one line for a
+ * person reading a log. The merchant's own findings lead the list, because
+ * they are the ones nothing on the card explains, and where there are any the
+ * line names every one of them plainly — the merchant has no seller name, no
+ * payout wallet — rather than quoting the first finding's long sentence cut off
+ * before it says how to fix it. There are three at most and each is a few
+ * words, so naming them all is never long. What is wrong with the card itself
+ * is counted and the first of it quoted, as it is where the merchant is not at
+ * fault, because a card can have a dozen findings and one of them can be as
+ * long as what the merchant sent.
  */
-function cardRejected(problems: readonly Problem[]): PublishResult {
-  const first = problems[0];
-  if (first === undefined) {
-    // "Refused, and here is nothing" is the one answer a merchant cannot act
-    // on, and it is not one this can send: a card is refused because something
-    // about it or about its merchant is wrong, and that something is what fills
-    // the list. Stopping here beats sending an answer the contract will not
-    // carry and nobody could use.
-    throw new Error("a card was refused with nothing named as standing in its way");
-  }
-
-  const counted = problems.length === 1 ? "one thing stands" : `${problems.length} things stand`;
+function cardRejected(
+  merchant: readonly MerchantFinding[],
+  card: readonly Problem[],
+): PublishResult {
   return {
     ok: false,
     error: {
       code: CARD_REJECTED,
-      message: `this card was not published: ${counted} between it and the catalog, and the first of them is ${misfitOf(first)}`,
+      message: `this card was not published: ${whatStands(merchant, card)}`,
       // The same card published again is refused again. What changes the
       // outcome is fixing what the findings name, and saying so here keeps a
       // merchant's retry loop off a door that will not open.
       retryable: false,
-      problems: [...problems],
+      problems: [...merchant.map((finding) => MERCHANT_PROBLEMS[finding]), ...card],
     },
   };
+}
+
+/** What a refusal's line calls each missing merchant setting. */
+const MERCHANT_WORDS: Readonly<Record<MerchantFinding, string>> = {
+  no_seller_name: "no seller name",
+  no_payout_wallet: "no payout wallet",
+  no_operator_approval: "no operator approval for the live catalog",
+};
+
+/** The body of the line: the merchant's missing settings, then the card's findings. */
+function whatStands(merchant: readonly MerchantFinding[], card: readonly Problem[]): string {
+  const [first] = card;
+  const words = merchant.map((finding) => MERCHANT_WORDS[finding]);
+  const last = words.pop();
+  if (last === undefined) {
+    if (first === undefined) {
+      // "Refused, and here is nothing" is the one answer a merchant cannot act
+      // on, and it is not one this can send: a card is refused because
+      // something about it or about its merchant is wrong, and that something
+      // is what fills the list. Stopping here beats sending an answer the
+      // contract will not carry and nobody could use.
+      throw new Error("a card was refused with nothing named as standing in its way");
+    }
+    const counted = card.length === 1 ? "one thing stands" : `${card.length} things stand`;
+    return `${counted} between it and the catalog, and the first of them is ${misfitOf(first)}`;
+  }
+  const lacks = `the merchant has ${words.length === 0 ? last : `${words.join(", ")} and ${last}`}`;
+  if (first === undefined) {
+    return `${lacks}, and nothing about the card itself stands in its way; each finding in problems says what to do`;
+  }
+  const counted =
+    card.length === 1
+      ? "one thing about the card stands in its way as well, which is"
+      : `${card.length} things about the card stand in its way as well, the first of which is`;
+  return `${lacks}, and ${counted} ${misfitOf(first)}`;
 }
 
 /**

@@ -10,5 +10,7 @@ already sent these codes, each with an empty path in the error's `problems`;
 the constants let a program tell "fix the card" from "fix the merchant"
 without spelling the words itself. The SDK re-exports both beside
 `CARD_REJECTED`. The exported JSON Schema of a finding now describes its
-`code` and names the three. Nothing on the wire changes, so the contract
-version stays where it is.
+`code` and names the three, and the description of a refusal's `problems`
+says that its `message` names the merchant's missing settings plainly rather
+than quoting the first finding. Nothing on the wire changes shape, so the
+contract version stays where it is.

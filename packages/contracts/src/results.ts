@@ -240,7 +240,7 @@ export const CallErrorSchema = z.strictObject({
    */
   problems: z.array(ProblemSchema).min(1).optional().meta({
     description:
-      'What was wrong with what was sent, one finding at a time: where it is, a code for the program that reads it, and the same finding in words. Present where the call is refusing what it was handed — a card that was not published, a delivery that is not what its card declares — and absent where the refusal is about a state of the world instead: a refund already settled is about the order, not about a field of the request. Never empty where it is present, and a refused publish always carries it. This field is the complete account of what stands in the way, and it is the one to read the findings from. The error\'s "message" is a single line written to be read in a log and does not carry the list: it says how many findings there are, quotes one or a few of them, and marks the place where a long one was cut — so a reader can always tell a short refusal from a shortened account of a long one.',
+      "What was wrong with what was sent, one finding at a time: where it is, a code for the program that reads it, and the same finding in words. Present where the call is refusing what it was handed — a card that was not published, a delivery that is not what its card declares — and absent where the refusal is about a state of the world instead: a refund already settled is about the order, not about a field of the request. Never empty where it is present, and a refused publish always carries it. This field is the complete account of what stands in the way, and it is the one to read the findings from. The error's \"message\" is a single line written to be read in a log and does not carry the list. Where what stands in the way is the merchant's own — no seller name, no payout wallet, no operator approval — the message names each of those plainly; for the rest it says how many findings there are, quotes one of them, and marks the place where a long one was cut — so a reader can always tell a short refusal from a shortened account of a long one.",
   }),
 });
 
@@ -283,11 +283,10 @@ export type MerchantFinding = (typeof MERCHANT_FINDINGS)[keyof typeof MERCHANT_F
  * "Refused, and here is nothing" is the one answer a merchant cannot act on,
  * and publishing is the call where that would be easiest to send — a card is
  * refused precisely because something about it is wrong, so there is always
- * something to name. Not every finding is about the card. A merchant who has
- * set no name for buyers to read is refused here too, and so is one who has set
- * no wallet for their sales to be paid into; both ride in the same list, so one
- * answer carries everything standing between this card and the catalog rather
- * than handing it over one round trip at a time.
+ * something to name. Not every finding is about the card: the merchant's own
+ * missing settings (`MERCHANT_FINDINGS`) ride in the same list, so one answer
+ * carries everything standing between this card and the catalog rather than
+ * handing it over one round trip at a time.
  */
 const PublishRefusalSchema = CallErrorSchema.extend({
   problems: z.array(ProblemSchema).min(1),
