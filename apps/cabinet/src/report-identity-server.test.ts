@@ -147,6 +147,12 @@ describe("the cabinet's internal route for the scanner", () => {
         400,
       ],
       [JSON.stringify({ ...sendBody, destination: "/cabinet/settings" }), "application/json", 400],
+      // The question about a session reads the flag and has no way to carry one.
+      [
+        JSON.stringify({ operation: "session", cookie: "", renew: false, operator: true }),
+        "application/json",
+        400,
+      ],
     ] as const;
     for (const [body, contentType, status] of cases) {
       const response = await post(url, body, SECRET, contentType);
@@ -177,6 +183,7 @@ describe("the cabinet's internal route for the scanner", () => {
     expect(asked).toStrictEqual({
       status: "signed_in",
       email: EMAIL,
+      operator: false,
       request: REQUEST,
       set_cookie: [],
     });
@@ -186,6 +193,33 @@ describe("the cabinet's internal route for the scanner", () => {
         unknown,
       ).toStrictEqual({ status: "signed_out" });
     }
+  });
+
+  it("says whether the session's account is an operator, as the flag stands at each question", async () => {
+    // The scanner opens the operator's dashboard on this answer and nothing
+    // else (ADR-0026 §6), so a flag set or cleared at the terminal has to reach
+    // the very next question about a session that is already open.
+    const messages: Message[] = [];
+    const { identity, url } = await serve(async (message) => {
+      messages.push(message);
+      return "accepted";
+    });
+    await post(url, sendBody);
+    const opened = await identity.openLink(tokenIn(messages[0] as Message));
+    if (opened.status !== "opened") throw new Error("the report link did not open");
+    const cookie = opened.setCookies.map((line) => line.split(";")[0]).join("; ");
+    const operatorNow = async () =>
+      (
+        readSessionResponseSchema.parse(
+          await (await post(url, { operation: "session", cookie, renew: false })).json(),
+        ) as { operator?: unknown }
+      ).operator;
+
+    expect(await operatorNow()).toBe(false);
+    await identity.setOperator(EMAIL, true);
+    expect(await operatorNow()).toBe(true);
+    await identity.setOperator(EMAIL, false);
+    expect(await operatorNow()).toBe(false);
   });
 
   it("passes the renewed cookie on when asked to renew a day-old session, and only then", async () => {

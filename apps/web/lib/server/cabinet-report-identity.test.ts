@@ -91,6 +91,7 @@ describe("cabinet report identity client", () => {
           JSON.stringify({
             status: "signed_in",
             email: "owner@example.com",
+            operator: true,
             request: requestId,
             set_cookie: [renewed],
           }),
@@ -105,6 +106,7 @@ describe("cabinet report identity client", () => {
     ).resolves.toEqual({
       status: "signed_in",
       email: "owner@example.com",
+      operator: true,
       request: requestId,
       set_cookie: [renewed],
     });
