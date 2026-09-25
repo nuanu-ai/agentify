@@ -57,15 +57,17 @@
 #
 # Open http://localhost:8080/cabinet/sign-in and request a link for your email.
 # This local sandbox writes the message to the cabinet log. Open the link and
-# press its confirmation button; the first sign-in creates your merchant.
+# press its confirmation button, which makes your account; then press the one
+# control the cabinet offers, "Open my merchant cabinet", which makes your
+# merchant. That is the one way in, here and on both deployed channels
+# (ADR-0014): no command makes an account or a merchant.
 #
-# An operator can make an account for the seeded merchant on an existing stack:
+# The operator's commands look after the accounts there are:
 #
 #   docker compose exec cabinet \
-#     pnpm --filter @agentify/cabinet account add you@example.com
+#     pnpm --filter @agentify/cabinet account list
 #
-# The command prints no password. The same email-and-link sign-in opens this
-# account. `list` inspects accounts and `revoke` ends their sessions.
+# `list` inspects accounts and `revoke` ends their sessions.
 # `operator you@example.com` lets an address that has signed in once read the
 # operator's dashboard at /admin, and `--off` takes that away (ADR-0026 §6).
 #
@@ -144,8 +146,9 @@
 # AGENTIFY_INVITATION protects registration between the cabinet and gateway
 # (ADR-0014). People never type it. On a laptop it defaults to a local value;
 # a deployment supplies its own nonempty secret to both processes. The cabinet
-# refuses to start without it, because first sign-in must be able to create
-# the merchant. Admission to live sales is a separate operator approval.
+# refuses to start without it, because the cabinet's one control must be able
+# to create the merchant. Admission to live sales is a separate operator
+# approval.
 
 # One image behind four of the services below. They are four entry points into
 # one workspace and share every dependency below their own file, so which one a

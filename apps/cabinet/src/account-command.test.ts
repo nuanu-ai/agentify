@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type CabinetKeyCheck, runAccount } from "./account-command.js";
+import { runAccount } from "./account-command.js";
 import { loadConfig } from "./config.js";
 import { type Identity, identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
@@ -41,22 +41,12 @@ function store() {
 
 type Run = Readonly<{ code: number; said: string }>;
 
-async function running(
-  identity: Identity,
-  argv: readonly string[],
-  readKey: () => Promise<string> = async () => KEY,
-  ask: CabinetKeyCheck = async () => ({
-    ok: true,
-    document: "a-fresh-cabinet-key-the-command-does-not-keep",
-  }),
-): Promise<Run> {
+async function running(identity: Identity, argv: readonly string[]): Promise<Run> {
   const lines: string[] = [];
-  const code = await runAccount(
-    argv,
-    identity,
-    { say: (line) => lines.push(line), readKey, now: () => NOON },
-    ask,
-  );
+  const code = await runAccount(argv, identity, {
+    say: (line) => lines.push(line),
+    now: () => NOON,
+  });
   return { code, said: lines.join("\n") };
 }
 
@@ -89,117 +79,6 @@ const rowOf = (listed: Run, email: string): string => {
 };
 
 describe("the passwordless account command", () => {
-  it("seeds an unconfirmed P2 without a password or session", async () => {
-    const { identity, rows } = store();
-
-    const made = await running(identity, ["add", " Person@Example.com ", MERCHANT]);
-
-    expect(made.code).toBe(0);
-    expect(made.said).toContain("unconfirmed account for person@example.com");
-    expect(made.said).toMatch(/one-time link/i);
-    expect(made.said).not.toContain(KEY);
-    expect(await identity.byEmail("person@example.com")).toStrictEqual({
-      id: expect.any(String),
-      email: "person@example.com",
-      confirmed: false,
-      merchant: { id: MERCHANT, key: KEY },
-    });
-    expect(rows.cabinet_credentials).toHaveLength(0);
-    expect(rows.cabinet_sessions).toHaveLength(0);
-  });
-
-  it("trims the piped key before checking and storing it", async () => {
-    const { identity } = store();
-    const checked: string[] = [];
-    const result = await running(
-      identity,
-      ["add", "person@example.com", MERCHANT],
-      async () => `  ${KEY}\n`,
-      async (key) => {
-        checked.push(key);
-        return { ok: true, document: "unused-fresh-key" };
-      },
-    );
-
-    expect(result.code).toBe(0);
-    expect(checked).toStrictEqual([KEY]);
-    expect((await identity.byEmail("person@example.com"))?.merchant?.key).toBe(KEY);
-  });
-
-  it("does not overwrite an existing person or merchant", async () => {
-    const { identity } = store();
-    await running(identity, ["add", "person@example.com", MERCHANT]);
-
-    const repeated = await running(identity, ["add", "person@example.com", "mer_somebody_else"]);
-
-    expect(repeated.code).not.toBe(0);
-    expect(repeated.said).toMatch(/already.*nothing was changed/i);
-    expect((await identity.byEmail("person@example.com"))?.merchant?.id).toBe(MERCHANT);
-  });
-
-  it("refuses missing, short and wrong-kind keys without printing them", async () => {
-    for (const scenario of [
-      {
-        key: "",
-        answer: async () => ({ ok: true, document: "unused" }) as const,
-        words: /standard input/i,
-      },
-      {
-        key: "too-short",
-        answer: async () => ({ ok: true, document: "unused" }) as const,
-        words: /16 characters/i,
-      },
-      {
-        key: KEY,
-        answer: async () => ({ ok: false, status: 403, why: "wrong kind" }) as const,
-        words: /own code/i,
-      },
-    ]) {
-      const { identity } = store();
-      const tried = await running(
-        identity,
-        ["add", "person@example.com", MERCHANT],
-        async () => scenario.key,
-        scenario.answer,
-      );
-      expect(tried.code).not.toBe(0);
-      expect(tried.said).toMatch(scenario.words);
-      expect(tried.said).not.toContain(KEY);
-      await expect(identity.byEmail("person@example.com")).resolves.toBeNull();
-    }
-  });
-
-  it("writes nothing when the gateway cannot answer", async () => {
-    const { identity } = store();
-    const tried = await running(
-      identity,
-      ["add", "person@example.com", MERCHANT],
-      async () => KEY,
-      async () => ({ ok: false, status: 0, why: "the gateway could not be reached" }),
-    );
-
-    expect(tried.code).not.toBe(0);
-    expect(tried.said).toMatch(/gateway did not answer/i);
-    await expect(identity.byEmail("person@example.com")).resolves.toBeNull();
-  });
-
-  it("validates address and merchant before asking the gateway", async () => {
-    const { identity } = store();
-    let asked = 0;
-    const ask: CabinetKeyCheck = async () => {
-      asked += 1;
-      return { ok: true, document: "unused" };
-    };
-    for (const args of [
-      ["add", "not-an-address", MERCHANT],
-      ["add", "person@example.com"],
-      ["add", "person@example.com", "merchant with spaces"],
-    ]) {
-      expect((await running(identity, args, async () => KEY, ask)).code).not.toBe(0);
-    }
-    expect(asked).toBe(0);
-  });
-
   it("lists confirmation, merchant and live session count without the key", async () => {
     const { identity, messages } = store();
     await identity.make("person@example.com", { id: MERCHANT, key: KEY });
