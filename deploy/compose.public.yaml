@@ -17,13 +17,15 @@ services:
   # A deployed channel seeds no merchant (ADR-0014). A merchant comes into
   # being one way: a person opens the link mailed to their address and presses
   # the cabinet's one control. The base file seeds the laptop's key by default,
-  # so this puts nothing in its place, and a channel's environment file that
-  # still gives AGENTIFY_SEED_KEY a value is refused by the release's
-  # preflight before anything stops (deploy/README.md, "The release that stops
-  # seeding").
+  # so this puts nothing in its place, and says nothing rather than reading a
+  # variable: a channel's environment file may still name AGENTIFY_SEED_KEY,
+  # because an older revision, whose preflight requires a seed, can be released
+  # back onto the channel only while it does, so the line leaves the file after
+  # a release is verified (deploy/README.md, "The release that stops
+  # seeding"). The release's preflight refuses a rendered seed all the same.
   gateway:
     environment:
-      SANDBOX_MERCHANT_KEY: "${AGENTIFY_SEED_KEY-}"
+      SANDBOX_MERCHANT_KEY: ""
 
   merchant:
     # The laptop's fixture, kept out of a public catalog without the laptop

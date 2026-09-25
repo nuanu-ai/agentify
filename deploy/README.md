@@ -204,16 +204,27 @@ link at `/cabinet/sign-in`, opens it from their mailbox, and presses the one
 control the cabinet then offers, which makes the merchant (ADR-0014). The
 gateway of a deployed channel used to write a merchant key of its own at every
 start, from `AGENTIFY_SEED_KEY` in the host's environment file, onto the
-merchant the database was created with, `the_merchant`. It no longer does:
-from the first release that carries this, the release's preflight refuses a
-channel whose file still gives `AGENTIFY_SEED_KEY` a value, before anything
-stops, and the running release keeps running. On TEST that refusal is recorded
-as the revision's failure, and the timer does not try that revision again.
+merchant the database was created with, `the_merchant`. From the first release
+that carries this it does not, whatever the file says:
+`deploy/compose.public.yaml` gives the seed nothing, and the release's
+preflight refuses a rendered one. Nothing has to be done on either host before
+that release.
 
-So before moving `deploy-test` to such a commit, and before running
-`agentify-release` on PRODUCTION for one, take the line out of each host's
-file. The last two lines print `0`, and the file keeps its owner and mode,
-which the two before them show as `root 600`:
+After it, the line in the host's file is read by nothing in the release, and it
+goes from `/etc/agentify/<channel>.env` by hand, with one thing in mind. A
+release of an older revision renders that revision's compose files, which seed
+from the line, and runs that revision's preflight, which requires a seed.
+Without the line those files fall back to the key written in this repository,
+which that preflight refuses, so while going back is still an option, taking
+the line out turns such a release, a restore's included, into a refusal before
+anything stops. On TEST that also holds for any branch that has not been
+rebased onto this. An older revision released while the line is there finds
+its key already in the database and writes nothing new.
+
+Once the release is verified and going back to a revision before it is no
+longer wanted, take the line out of each host's file. The last two lines print
+`0`, and the file keeps its owner and mode, which the two before them show as
+`root 600`:
 
 ```sh
 ssh agentify-test "sudo sed -i '/^AGENTIFY_SEED_KEY=/d' /etc/agentify/test.env"
@@ -223,10 +234,6 @@ ssh agentify "sudo stat -c '%U %a' /etc/agentify/production.env"
 ssh agentify-test sudo grep -c '^AGENTIFY_SEED_KEY=' /etc/agentify/test.env
 ssh agentify sudo grep -c '^AGENTIFY_SEED_KEY=' /etc/agentify/production.env
 ```
-
-If a revision was refused for it on TEST first, a person releases it after
-the line is gone (`ssh -t agentify-test sudo agentify-release <name>`) or moves
-`deploy-test` to a newer commit.
 
 Taking the line out does not take the key out of the database. The key it
 held is a row on `the_merchant` and still opens that merchant for whoever
@@ -702,9 +709,10 @@ PRODUCTION adds `AGENTIFY_DB_PASSWORD`,
 `SCAN_ACCEPTANCE_ENABLED`, `SCANNER_CONCURRENCY`, `ANALYTICS_RUNTIME_ENV` —
 keep the defaults `compose.yaml` gives them unless the file names them, and on
 TEST the scanner's policy is fixed by `deploy/compose.agentify-test.yaml`
-whatever the file says. Neither channel's file names `AGENTIFY_SEED_KEY`: a
-deployed channel seeds no merchant, and the preflight refuses one whose file
-gives it a value ("The release that stops seeding").
+whatever the file says. Neither channel's file needs `AGENTIFY_SEED_KEY`: a
+deployed channel seeds no merchant whatever the file says, and a line an
+older file still carries is taken out after the release that stops seeding
+("The release that stops seeding").
 
 A value holding a `$`, as a secret from a password manager sometimes does,
 goes inside single quotes: `AGENTIFY_AUTH_SECRET='…$…'`. Compose reads a `$`

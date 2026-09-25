@@ -229,15 +229,17 @@ export function problemsWith(channel, resolved) {
   // A merchant comes into being one way: a person opens the link mailed to
   // their address and presses the one control the cabinet offers (ADR-0014,
   // ADR-0026 §4). A key the gateway seeds at start-up is a second way, kept in
-  // the host's file and written back into the database at every start, so a
-  // deployed channel seeds nothing; the laptop's stack is the one that does.
-  // The value is never repeated, since it opens a merchant.
+  // a file and written back into the database at every start, so a deployed
+  // channel seeds nothing; the laptop's stack is the one that does.
+  // deploy/compose.public.yaml gives the seed nothing whatever a host's file
+  // says, so a rendered one is a file after it that put a key back. The value
+  // is never repeated, since it opens a merchant.
   if ((gateway.SANDBOX_MERCHANT_KEY ?? "") !== "") {
     problems.push(
       "gateway: SANDBOX_MERCHANT_KEY is set, and a deployed channel seeds no merchant: a " +
         "merchant comes into being only when a person opens the link mailed to their address " +
-        "and presses the cabinet's one control. Remove AGENTIFY_SEED_KEY from this channel's " +
-        'environment file (deploy/README.md, "The release that stops seeding")',
+        "and presses the cabinet's one control. deploy/compose.public.yaml gives it nothing, so " +
+        "a compose file rendered after it has put a key back",
     );
   }
 
