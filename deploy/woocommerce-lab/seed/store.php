@@ -191,9 +191,9 @@ $gift_cards = [
 // product the connector imports: a published, in-stock simple product in US
 // dollars, virtual and downloadable, without managed stock, not sold
 // individually, with exactly one protected file that can be downloaded any
-// number of times and never expires. Prices carry two decimals, the form in
-// which the public catalogue reports them, because the connector compares the
-// protected price with the public one character for character.
+// number of times and never expires. One price is typed with cents and the
+// other without, the two shapes a merchant types into WooCommerce, which keeps
+// the price as typed while its public catalogue reports it in cents.
 $download_category = product_category(
     'Guides and Templates',
     'guides-and-templates',
@@ -211,7 +211,7 @@ $downloads = [
     [
         'sku' => 'DL-WRAPPING-GUIDE',
         'name' => 'Gift Wrapping Guide',
-        'price' => '2.00',
+        'price' => '2',
         'short' => 'Step-by-step instructions for wrapping a box and tying a bow, in one plain-text file.',
         'description' => '<p>Step-by-step instructions for wrapping a rectangular box neatly: what you need, how to measure and cut the paper, how to fold the sides and the ends, and how to tie a ribbon with a bow.</p><p>Delivered as one plain-text file.</p>',
         'file' => 'gift-wrapping-guide.txt',

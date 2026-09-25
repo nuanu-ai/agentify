@@ -15,7 +15,9 @@ sell an order number in place of the experience.
 
 Two inexpensive downloads, a pack of gift-message templates and a gift-wrapping
 guide, are the opposite case: each is a plain-text file from `seed/downloads/`,
-and that file is the whole of what the product promises. They are built to the
+and that file is the whole of what the product promises. One price is typed
+with cents and the other without, the two ways a merchant writes a price into
+WooCommerce, which keeps it as written. They are built to the
 one class of product the connector imports, described in
 [ADR-0023](../../docs/decisions/0023-woocommerce-connect.md): a published,
 in-stock simple product priced in US dollars, virtual and downloadable, without
