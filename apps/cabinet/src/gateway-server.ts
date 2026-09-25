@@ -1,6 +1,9 @@
 /**
- * The cabinet's second internal listener: where the gateway asks it to tell a
- * merchant of a change to their payout wallet or their keys (ADR-0019).
+ * The cabinet's second internal listener: the gateway's route, where the
+ * gateway asks it to tell a merchant of a change to their payout wallet or
+ * their keys (ADR-0019). Each request names its `operation`; announcing is the
+ * only one, and anything else the gateway ever asks the cabinet is another
+ * operation here, behind the same secret.
  *
  * It is its own listener, on its own port and behind its own secret, rather
  * than another operation on the scanner's report identity route. The two
@@ -22,11 +25,11 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { Server } from "node:http";
 import {
-  ANNOUNCEMENTS_PATH,
-  ANNOUNCEMENTS_PORT,
   type Announcement,
   type AnnouncementAnswer,
-  AnnouncementSchema,
+  GATEWAY_ROUTE_PATH,
+  GATEWAY_ROUTE_PORT,
+  GatewayRequestSchema,
 } from "@agentify/gateway/announcements";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { announcementMessage } from "./announcement-mail.js";
@@ -78,15 +81,15 @@ export function tellerFor(
   };
 }
 
-export function buildAnnouncementApp(secret: string, tell: Teller) {
+export function buildGatewayApp(secret: string, tell: Teller) {
   const app = express();
 
   app.post(
-    ANNOUNCEMENTS_PATH,
+    GATEWAY_ROUTE_PATH,
     authorize(secret),
     express.json({ limit: MAX_BODY_BYTES, strict: true }),
     async (request, response) => {
-      const read = AnnouncementSchema.safeParse(request.body);
+      const read = GatewayRequestSchema.safeParse(request.body);
       if (!read.success) {
         response.status(400).end();
         return;
@@ -107,9 +110,9 @@ export function buildAnnouncementApp(secret: string, tell: Teller) {
 }
 
 /** Opens the listener where this cabinet holds the secret, and nowhere else. */
-export function startAnnouncementServer(secret: string | null, tell: Teller): Server | null {
+export function startGatewayServer(secret: string | null, tell: Teller): Server | null {
   if (secret === null) return null;
-  const server = buildAnnouncementApp(secret, tell).listen(ANNOUNCEMENTS_PORT);
+  const server = buildGatewayApp(secret, tell).listen(GATEWAY_ROUTE_PORT);
   server.requestTimeout = REQUEST_TIMEOUT_MS;
   server.headersTimeout = HEADERS_TIMEOUT_MS;
   server.keepAliveTimeout = KEEP_ALIVE_TIMEOUT_MS;

@@ -20,11 +20,11 @@
  * on boot migrates once per replica and races itself.
  */
 
-import { startAnnouncementServer, tellerFor } from "./announcement-server.js";
 import { keyRenewal } from "./cabinet-key.js";
 import { loadConfig } from "./config.js";
 import { connect } from "./database.js";
 import { gatewayFor } from "./gateway.js";
+import { startGatewayServer, tellerFor } from "./gateway-server.js";
 import { identityFor } from "./identity.js";
 import { isSandboxMail, postmanFor } from "./mail.js";
 import { startReportIdentityServer } from "./report-identity-server.js";
@@ -41,10 +41,10 @@ const reportIdentityServer = startReportIdentityServer(
   identity,
   keyRenewal(identity, (key, answerWithinMs) => gatewayFor(config.gatewayUrl, key, answerWithinMs)),
 );
-// The gateway's route for telling a merchant of a change to their wallet or
+// The gateway's route, for telling a merchant of a change to their wallet or
 // their keys (ADR-0019), on a port of its own behind a secret of its own.
-const announcementServer = startAnnouncementServer(
-  config.announcementSecret,
+const gatewayServer = startGatewayServer(
+  config.gatewayCabinetSecret,
   tellerFor(config, identity, postmanFor(config)),
 );
 
@@ -69,7 +69,7 @@ const worker = startWooWorker({
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
     const publicClosed = new Promise<void>((resolve) => server.close(() => resolve()));
-    const privateClosed = [reportIdentityServer, announcementServer].map((listener) =>
+    const privateClosed = [reportIdentityServer, gatewayServer].map((listener) =>
       listener === null
         ? Promise.resolve()
         : new Promise<void>((resolve) => listener.close(() => resolve())),

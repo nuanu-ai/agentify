@@ -142,11 +142,11 @@ const runtime: Runtime = {
   facilitator: await paymentLayer(),
   clock: systemClock,
   ids: randomIds,
-  // The cabinet's announcement route on the live deployment, and nothing at
+  // The gateway's route into the cabinet on the live deployment, and nothing at
   // all anywhere else: the configuration is null exactly where a change
   // applies at once and nobody is told (ADR-0019).
   announcer:
-    config.announcements === null ? nobodyAnnounces : new CabinetAnnouncer(config.announcements),
+    config.cabinetRoute === null ? nobodyAnnounces : new CabinetAnnouncer(config.cabinetRoute),
 };
 
 const gateway = new Gateway(runtime);

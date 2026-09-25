@@ -128,7 +128,7 @@ const mapAtMost = async <Input, Output>(
  * How long the cabinet waits on the gateway for a payout wallet change.
  *
  * Longer than a screen's ten seconds, because on the live deployment the
- * gateway does not answer until this cabinet's own announcement listener has
+ * gateway does not answer until this cabinet's own listener for the gateway has
  * handed every message to the mail provider, and it gives that twenty seconds
  * (ADR-0019). A cabinet that stopped waiting first would tell a person the
  * gateway did not answer while their change was being recorded.
