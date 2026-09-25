@@ -123,6 +123,7 @@ describe("a card's own words are plain text", () => {
       "<o:p></o:p>",
       "<custom-element>",
       '<p\nclass="x">split over lines</p>',
+      "Returns List<String>",
     ]) {
       expect(findingsAt({ ...card, description: text }, "description"), text).toHaveLength(1);
     }

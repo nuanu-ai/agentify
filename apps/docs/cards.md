@@ -70,10 +70,11 @@ with punctuation of our own would be us writing your listing for you — so what
 goes out there is the description, the field a card writes for a program to
 read.
 
-A title has to be there and it has to be more than blank space. Nothing else is
-checked: no length is measured and nothing is shortened, so what you write is
-what an agent is shown, whole, and a title long enough to be a paragraph is one
-nothing on our side will stop. What the limits ought to be is not settled.
+A title has to be there, it has to be more than blank space, and it is [plain
+text](#the-words-on-a-card-are-plain-text) on one line. No length is measured
+and nothing is shortened or rewritten, so what you write is what an agent is
+shown, whole, and a title long enough to be a paragraph is one nothing on our
+side will stop. What the limit on its length ought to be is not settled.
 
 ### Description
 
@@ -88,6 +89,9 @@ catalog documents, not ours and not the payment protocol's: the description is
 the one field of your prose that goes out to a catalog whole, and a card longer
 than this is refused at publication rather than being cut to fit somewhere you
 would never see it happen.
+
+A description is [plain text](#the-words-on-a-card-are-plain-text) as well, and
+it may run to several lines.
 
 ### Price
 
@@ -117,7 +121,8 @@ A declared field is a name and a type, and the type may be `string`, `number`,
 a choice from a set travels as one of them. Where the name says enough,
 `access_url: 'string'` is the whole declaration. Where it does not, write the
 field out and give it a `title`, a line of human words that the agent reads
-beside the name:
+beside the name — [plain text](#the-words-on-a-card-are-plain-text) on one
+line, as the card's own title is:
 
 ```ts
 result: {
@@ -391,6 +396,42 @@ does past them is drop the word without telling anybody.
 A card with no tags leaves the field out rather than sending an empty list, and
 we invent none for it.
 
+## The words on a card are plain text
+
+The title, the description and the `title` of each declared field are read by
+the buying program exactly as you write them, and nothing between you and it
+renders HTML. So they are plain text: the characters themselves, with no HTML
+markup, no HTML character references and no control characters in them. A
+card is refused at publication where one of them carries any of these:
+
+- HTML markup: a tag such as `<p>`, `</p>`, `<br/>` or `<a href="…">`, or the
+  opening of a comment, `<!--`;
+- an HTML character reference: an ampersand, a name or a number, and a
+  semicolon, such as `&amp;`, `&nbsp;`, `&#8217;` or `&#x2019;`;
+- a control character: a tab, a carriage return, a line break in a title, or
+  anything else from U+0000 to U+001F, U+007F, and U+0080 to U+009F.
+
+A description may carry line breaks, written as a line feed (U+000A), because
+it may run to paragraphs. A title, and the title of a declared field, is one
+line.
+
+The characters markup is made of are not refused on their own. `Tea & coffee`,
+`AT&T`, `5 < 10`, `a -> b` and an address written as `<jane@example.com>` are
+text, and they are published and shown as you wrote them. What counts as a tag
+is what an HTML parser reads as one: an angle bracket, a name that begins with a
+letter, and a closing bracket, so `List<String>` is refused and `List< String >`
+is not.
+
+A refusal names the field, what was found in it, how many times, and the
+character where the first of it begins, counted from one. Nothing is cleaned or
+rewritten for you: stripping tags or decoding references on our side would put
+words in front of an agent that you never wrote, and you would not find out.
+Write the characters themselves — `&` rather than `&amp;`, `’` rather than
+`&#8217;` — and leave the markup out.
+
+The rule is checked when a card is published. Reading a card back, and showing
+it in a catalogue, does not check it.
+
 ## The same card, written out in full
 
 Three fields on this page have a shorter spelling and a longer one, and a card
@@ -425,8 +466,8 @@ required fields first.
 | --- | --- | --- | --- |
 | `id` | string | not yours to fill in: we issue it at publication | `item_f9290a94590540088e90afef0fdfd175` |
 | `merchant_item_id` | string | required | `access-monthly` |
-| `title` | string | required | `One month of access to the service` |
-| `description` | string, up to 500 characters — the discovery catalog's ceiling, not ours | required | `Access for 30 days from delivery, renewal not included` |
+| `title` | plain text, one line | required | `One month of access to the service` |
+| `description` | plain text, up to 500 characters — the discovery catalog's ceiling, not ours | required | `Access for 30 days from delivery, renewal not included` |
 | `price` | an amount as a string, and a currency; or the two as one string | required | `{ amount: '5.00', currency: 'USD' }`, or `'5.00 USD'` |
 | `result` | the shape of what the agent receives on delivery | required | `{ access_url: { type: 'string' } }`, or `{ access_url: 'string' }` |
 | `params` | the shape of the purchase parameters | required where the delivery needs input | `{ email: { type: 'string', required: true } }` |
@@ -497,7 +538,7 @@ what that ought to be is not settled.
 
 ## What is not settled yet
 
-- The maximum length of a title and the characters allowed in one.
+- The maximum length of a title.
 - The limits on a description beyond its length: the language it is written in,
   and the ban on addressing the buying program or instructing it.
 - The exact shape that describes the purchase parameters and the delivery
