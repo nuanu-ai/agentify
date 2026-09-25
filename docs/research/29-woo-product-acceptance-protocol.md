@@ -4,6 +4,14 @@
 COIN-41 SDK baseline, after the Woo implementation is reviewed and deployed.
 WooCommerce remains experimental. This run does not gate or close Stage 4.
 
+**Later change to the lab (2026-09-25):** the lab's seed now builds a baseline
+with two supported downloads beside the five gift cards; the
+[lab README](../../deploy/woocommerce-lab/README.md) describes that catalogue.
+The completed run and its evidence stand as recorded. The product numbers and
+row expectations below describe the baseline of that run, not a baseline
+rebuilt since, and a rerun needs a fresh pre-registration against the current
+baseline.
+
 ## Product claim and narrow boundary
 
 From the public Agentify entry, a new owner can open a TEST cabinet, connect a

@@ -65,7 +65,12 @@ change:
 ```
 
 That maintenance mode performs the network downloads once and atomically
-replaces the two baseline archives. A normal reset never enters it.
+replaces the two baseline archives. A normal reset never enters it. A rebuild
+starts from an empty database, so it also renumbers what follows the gift
+cards: on the current baseline they are products 12 to 20, and the downloads
+take the numbers after them. A product number above 20 recorded against an
+older baseline, such as that of a product someone added by hand, may name a
+different product after a rebuild.
 
 Run `./verify.sh` afterward to check public DNS, the catalogue through the
 private side of the shared ingress, and payment-method state. For the
