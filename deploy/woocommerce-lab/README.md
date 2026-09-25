@@ -47,7 +47,11 @@ That maintenance mode performs the network downloads once and atomically
 replaces the two baseline archives. A normal reset never enters it.
 
 Run `./verify.sh` afterward to check public DNS, the catalogue through the
-private side of the shared ingress, and payment-method state. It needs two
+private side of the shared ingress, and payment-method state. For the
+catalogue it checks both halves: that the gift cards still carry no file, and
+that each download is in the class the connector imports, including a request
+for its file that WooCommerce refuses without an order's download permission.
+It also reads the shop settings the connector depends on. It needs two
 addresses and refuses without them, naming what is missing:
 
 ```sh

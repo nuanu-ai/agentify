@@ -47,32 +47,130 @@ printf 'PASS: public DNS points woo.nuanu.ai at the shared ingress\n'
 products_json="$(curl -fsS --connect-timeout 5 --max-time 20 \
   --resolve "woo.nuanu.ai:443:$WOO_LAB_INGRESS_IP" \
   'https://woo.nuanu.ai/wp-json/wc/store/v1/products?per_page=100')"
-PRODUCTS_JSON="$products_json" python3 - <<'PY'
+catalogue_json="$(wp wc product list --user=admin --status=publish --per_page=100 \
+  --fields=name,type,purchasable,stock_status,manage_stock,sold_individually,virtual,downloadable,downloads,download_limit,download_expiry \
+  --format=json)"
+PRODUCTS_JSON="$products_json" CATALOGUE_JSON="$catalogue_json" \
+  WOO_LAB_INGRESS_IP="$WOO_LAB_INGRESS_IP" python3 - <<'PY'
 import html
 import json
 import os
+import subprocess
 
-products = json.loads(os.environ["PRODUCTS_JSON"])
-expected = {
+# The seed creates two groups, and the lab exists to show the Agentify
+# connector telling them apart. A gift card promises an experience that no
+# file can deliver, so it carries none and the connector must name it and
+# leave it in the shop. A download is the whole of what it promises, and it is
+# shaped to the one class of product the connector imports.
+GIFT_CARDS = {
     "Coffee & Brunch Gift Card",
     "Dinner for Two Gift Card",
     "Wellness Day Gift Card",
     "Creative Workshop Pass",
     "Weekend Escape Gift Card",
 }
-actual = {html.unescape(product["name"]) for product in products}
-if actual != expected:
-    raise SystemExit(f"FAIL: unexpected catalogue: {sorted(actual)}")
-if any(not product.get("is_purchasable") for product in products):
-    raise SystemExit("FAIL: every seeded product must be purchasable")
+DOWNLOADS = {
+    "Gift Message Templates",
+    "Gift Wrapping Guide",
+}
+PROTECTED_UPLOADS = "https://woo.nuanu.ai/wp-content/uploads/woocommerce_uploads/"
+
+
+def fail(message):
+    raise SystemExit(f"FAIL: {message}")
+
+
+# Exact counts as well as names, so that an empty or duplicated answer cannot
+# pass for the catalogue.
+public = json.loads(os.environ["PRODUCTS_JSON"])
+public_names = {html.unescape(product["name"]) for product in public}
+if len(public) != len(GIFT_CARDS | DOWNLOADS) or public_names != GIFT_CARDS | DOWNLOADS:
+    fail(f"the public catalogue has {len(public)} products, not the seeded ones: {sorted(public_names)}")
+if any(not product.get("is_purchasable") for product in public):
+    fail("every seeded product must be purchasable")
 if any(
     not product.get("images")
     or not product["images"][0].get("src", "").lower().endswith(".webp")
-    for product in products
+    for product in public
+    if html.unescape(product["name"]) in GIFT_CARDS
 ):
-    raise SystemExit("FAIL: every seeded product must have a WebP product photo")
-print("PASS: private ingress Store API exposes the five seeded products")
+    fail("every gift card must have a WebP product photo")
+print("PASS: private ingress Store API exposes the seven seeded products")
+
+listed = json.loads(os.environ["CATALOGUE_JSON"])
+catalogue = {html.unescape(product.get("name", "")): product for product in listed}
+if len(listed) != len(GIFT_CARDS | DOWNLOADS) or set(catalogue) != GIFT_CARDS | DOWNLOADS:
+    fail(f"WP-CLI lists {len(listed)} published products, not the seeded ones: {sorted(catalogue)}")
+
+with_a_file = sorted(
+    name
+    for name in GIFT_CARDS
+    if catalogue[name].get("downloadable") or catalogue[name].get("downloads")
+)
+if with_a_file:
+    fail(f"gift cards must carry no downloadable file, so the connector refuses them: {with_a_file}")
+print("PASS: the five gift cards carry no downloadable file")
+
+for name in sorted(DOWNLOADS):
+    product = catalogue[name]
+    files = product.get("downloads") or []
+    missing = [
+        fact
+        for fact, holds in (
+            ("a simple product", product.get("type") == "simple"),
+            ("purchasable", product.get("purchasable") is True),
+            ("in stock", product.get("stock_status") == "instock"),
+            ("without managed stock", product.get("manage_stock") is False),
+            ("not sold individually", product.get("sold_individually") is False),
+            ("virtual", product.get("virtual") is True),
+            ("downloadable", product.get("downloadable") is True),
+            ("with exactly one file", len(files) == 1),
+            ("unlimited in download count", product.get("download_limit") == -1),
+            ("without download expiry", product.get("download_expiry") == -1),
+            (
+                "with its file in WooCommerce's protected uploads",
+                len(files) == 1 and files[0].get("file", "").startswith(PROTECTED_UPLOADS),
+            ),
+        )
+        if not holds
+    ]
+    if missing:
+        fail(f"{name} must be {'; '.join(missing)}")
+
+    # The connector refuses a file that answers a request without an order's
+    # download permission, so this asks the same question it does.
+    answer = subprocess.run(
+        [
+            "curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}",
+            "--connect-timeout", "5", "--max-time", "20",
+            "--resolve", f"woo.nuanu.ai:443:{os.environ['WOO_LAB_INGRESS_IP']}",
+            files[0]["file"],
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if answer.returncode != 0:
+        fail(f"could not request the file of {name}: {answer.stderr.strip()}")
+    if answer.stdout not in ("401", "403"):
+        fail(f"the file of {name} answered {answer.stdout} without an order permission")
+print("PASS: both downloads are in the connector's class and their files need an order permission")
 PY
+
+# The connector reads these shop settings before it imports or sells a
+# download, and refuses every product while any one of them differs.
+for setting in \
+  woocommerce_currency=USD \
+  woocommerce_calc_taxes=no \
+  woocommerce_file_download_method=force \
+  woocommerce_downloads_redirect_fallback_allowed=no \
+  woocommerce_downloads_require_login=no \
+  woocommerce_downloads_grant_access_after_payment=yes; do
+  option="${setting%%=*}"
+  expected="${setting#*=}"
+  actual="$(wp option get "$option")"
+  [[ "$actual" == "$expected" ]] || fail "$option is '$actual'; the connector needs '$expected'"
+done
+printf 'PASS: the shop settings the connector reads are the ones it supports\n'
 
 enabled_gateways="$(wp wc payment_gateway list --user=admin --format=json | \
   python3 -c 'import json,sys; print(" ".join(x["id"] for x in json.load(sys.stdin) if x.get("enabled")))')"
