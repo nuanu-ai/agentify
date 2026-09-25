@@ -227,6 +227,25 @@ if (databaseUrl === null) {
       ).rejects.toMatchObject({ code: "23514" });
     });
 
+    it("makes nobody an operator when the flag arrives on accounts already there", async () => {
+      await emptyEverything();
+      const files = (await readdir(migrationsIn)).filter((file) => file.endsWith(".sql")).sort();
+      const flag = files.findIndex((file) => /^\d{4}_the_operator_flag\.sql$/.test(file));
+      expect(flag, "the migration that adds the operator flag").toBeGreaterThan(0);
+      for (const file of files.slice(0, flag)) await run(file);
+      await pool.query(
+        `insert into cabinet_accounts
+           (id, email, email_verified, name, created_at, updated_at, merchant_id, merchant_key)
+         values ('person_before', 'before@example.com', true, '', now(), now(), null, null)`,
+      );
+
+      for (const file of files.slice(flag)) await run(file);
+
+      expect(
+        (await pool.query(`select email, "operator" from cabinet_accounts`)).rows,
+      ).toStrictEqual([{ email: "before@example.com", operator: false }]);
+    });
+
     it("refuses a partial merchant pair before deleting any legacy row", async () => {
       await pool.query(
         `insert into cabinet_accounts
@@ -466,6 +485,40 @@ if (databaseUrl === null) {
       expect((await identity.byId(person.id))?.merchant?.key).toMatch(
         /the-(first|second)-fresh-key/,
       );
+    });
+
+    it("keeps the operator flag off until the terminal sets it, and a session reads it afresh", async () => {
+      // Being an operator is a flag on the account's row (ADR-0026 §6). A
+      // sign-in writes the row without it; only the terminal's call moves it,
+      // and a session already open sees the move on its next reading.
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      await identity.requestLink("operator@example.com", "default");
+      const opened = await identity.openLink(tokenIn(messages[0] as Message));
+      if (opened.status !== "opened") throw new Error("the link should have opened");
+      const cookie = cookieHeader(opened.setCookies);
+
+      expect((await pool.query(`select "operator" from cabinet_accounts`)).rows).toStrictEqual([
+        { operator: false },
+      ]);
+      expect((await identity.whoIs(cookie, { renew: false }))?.operator).toBe(false);
+
+      await expect(identity.setOperator(" Operator@Example.com ", true)).resolves.toBe(true);
+      expect((await identity.whoIs(cookie, { renew: false }))?.operator).toBe(true);
+      expect(
+        (await identity.list(new Date())).map(({ email, operator }) => ({ email, operator })),
+      ).toStrictEqual([{ email: "operator@example.com", operator: true }]);
+
+      await expect(identity.setOperator("operator@example.com", false)).resolves.toBe(true);
+      expect((await identity.whoIs(cookie, { renew: false }))?.operator).toBe(false);
+
+      await expect(identity.setOperator("nobody@example.com", true)).resolves.toBe(false);
+      expect(
+        (await pool.query("select count(*)::int as count from cabinet_sessions")).rows[0],
+      ).toStrictEqual({ count: 1 });
+      expect(
+        (await pool.query("select count(*)::int as count from cabinet_accounts")).rows[0],
+      ).toStrictEqual({ count: 1 });
     });
 
     it("reports an uncertain key write without logging its query or keys", async () => {
