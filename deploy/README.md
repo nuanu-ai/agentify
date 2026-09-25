@@ -142,6 +142,12 @@ Each of the last two prints `1`. The value is made on the host and never
 passes through the terminal it was asked from; the file keeps its owner and
 mode.
 
+On a host that has still to move to one database ("One database (one-time)"
+below), add the secret before the move's first release. That release is
+meant to be refused, and the one after the move is meant to start
+everything; a missing secret would refuse that second one too, in the
+middle of the window.
+
 ## Releasing to production
 
 A production release starts from `main`. Every change a merchant can see in
