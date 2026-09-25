@@ -678,6 +678,10 @@ describe("the protected product check", () => {
       ["0.01", "0.01"],
       ["25.000", "25.00"],
       ["025", "25.00"],
+      // WooCommerce stores a price typed without its leading zero as typed,
+      // and the Store API prices it as 99 and 50 cents.
+      [".99", "0.99"],
+      [".5", "0.50"],
     ] as const) {
       stand = await shopStoringPrice(() => typed);
 
@@ -762,7 +766,9 @@ describe("the protected product check", () => {
   });
 
   it("refuses a price that is not a decimal amount at all", async () => {
-    for (const typed of ["", "-5", "1e3"]) {
+    // "5." is here although WooCommerce stores it as "5": it cannot arrive, so
+    // there is no form of it this has to accept.
+    for (const typed of ["", "-5", "1e3", "5.", "."]) {
       stand = await shopStoringPrice(() => typed);
 
       const read = await inspectProduct(
