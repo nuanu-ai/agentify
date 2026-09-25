@@ -3,8 +3,19 @@
   margin: 0 auto;
   padding: 40px 0 80px;
 }
-.page > :global(.brand) {
+/* The brand and the header's doors on one row, the way every scanner header
+   carries them; the doors wrap under the brand before they run off a phone. */
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
   margin-bottom: 32px;
+}
+.top > nav {
+  padding-left: 0;
+  border-left: 0;
 }
 .hero,
 .locked,

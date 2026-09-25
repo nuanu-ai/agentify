@@ -1,27 +1,22 @@
 /**
- * Cabinet identity behind one emailed-link door.
+ * Cabinet identity behind one emailed-link door, for the whole site.
  *
  * Better Auth owns token consumption, people and sessions. Its generated HTTP
- * routes stay unmounted: the cabinet sends the link itself and calls the
- * component only from the same-origin POST owned by the SSR server. Production
- * verification runs on a transaction-bound Drizzle adapter; the deterministic
- * memory store runs the same component against an isolated transaction copy.
+ * routes stay unmounted: the cabinet sends every link itself, the ones the
+ * scanner asks for included, and calls the component only from the same-origin
+ * POST owned by the SSR server. Production verification runs on a
+ * transaction-bound Drizzle adapter; the deterministic memory store runs the
+ * same component against an isolated transaction copy.
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import { createHmac, randomBytes, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import {
-  type AcknowledgeReportLinkRequest,
-  type AcknowledgeReportLinkResponse,
-  type ConsumeReportLinkRequest,
-  type ConsumeReportLinkResponse,
   type DeleteUnattachedPersonRequest,
   type DeleteUnattachedPersonResponse,
-  type IssueCabinetLinkRequest,
-  type IssueCabinetLinkResponse,
-  reportIdentityTokenHash,
   type SendReportLinkRequest,
   type SendReportLinkResponse,
+  sessionCookieName,
 } from "@agentify/scanner-contracts/report-identity";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -38,8 +33,10 @@ import type {
   CabinetDestination,
   CabinetIdentity,
   CabinetLinkResult,
+  LinkDestination,
   LinkRequestResult,
   LinkWall,
+  LiveSession,
   MerchantPerson,
   Person,
   UnattachedPerson,
@@ -54,7 +51,6 @@ import {
   linkSends,
   reportDeletionTombstones,
   reportIdentitySecrets,
-  reportReceipts,
   sessions,
   verifications,
 } from "./schema.js";
@@ -65,7 +61,9 @@ export type {
   CabinetDestination,
   CabinetIdentity,
   CabinetLinkResult,
+  LinkDestination,
   LinkRequestResult,
+  LiveSession,
   MerchantKeyReplacement,
   MerchantPerson,
   Person,
@@ -90,11 +88,6 @@ export interface Identity extends CabinetIdentity {
   emailsNaming(merchantId: string): Promise<readonly string[]>;
   list(now: Date): Promise<readonly AccountSummary[]>;
   sendReportLink(request: SendReportLinkRequest): Promise<SendReportLinkResponse>;
-  consumeReportLink(request: ConsumeReportLinkRequest): Promise<ConsumeReportLinkResponse>;
-  acknowledgeReportLink(
-    request: AcknowledgeReportLinkRequest,
-  ): Promise<AcknowledgeReportLinkResponse>;
-  issueCabinetLink(request: IssueCabinetLinkRequest): Promise<IssueCabinetLinkResponse>;
   deleteUnattachedPerson(
     request: DeleteUnattachedPersonRequest,
   ): Promise<DeleteUnattachedPersonResponse>;
@@ -103,16 +96,29 @@ export interface Identity extends CabinetIdentity {
 
 export const emailAs = (raw: string): string => raw.trim().toLowerCase();
 
-/** How long a session lasts from the moment it opens; it is never extended. */
-export const SESSION_HOURS = 12;
+/**
+ * How long a session lasts from the last visit (ADR-0009 §6).
+ *
+ * Thirty days, and sliding: a person who keeps coming back does not meet the
+ * sign-in form again. A short session is not what protects the money; the wait
+ * on a wallet change is (ADR-0019).
+ */
+export const SESSION_DAYS = 30;
+/**
+ * How often a visit moves a session's end, at most.
+ *
+ * Once a day rather than on every request, so a click is not a write to the
+ * sessions table, and the cookie handed back on that visit carries the new end.
+ */
+const SESSION_RENEWAL_SECONDS = 24 * 60 * 60;
 export const LINK_TTL_SECONDS = 60 * 60;
 export const LINK_RATE_WINDOW_MS = 60 * 60 * 1000;
 export const LINK_RATE_LIMIT = 3;
 export const LINK_MIN_INTERVAL_MS = 60 * 1000;
 export const LINK_SEND_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
-export const REPORT_COMPLETION_MS = 5 * 60 * 1000;
-export const REPORT_EVIDENCE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
-const REPORT_CLEANUP_BATCH = 100;
+/** How long a link's hashed row is kept once it has run out, then removed. */
+export const LINK_PROOF_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const LINK_CLEANUP_BATCH = 100;
 const REPORT_DIGEST_KEY_ID = "digest-v1";
 const RAW_TOKEN = /^[A-Za-z0-9]{32}$/;
 
@@ -124,41 +130,21 @@ export interface IdentityParts {
   readonly postman?: Postman;
 }
 
-type CabinetClaim = Readonly<{
+/**
+ * What a link's token was asked for, recorded with the token and read only
+ * from there: the address, where the link leads, and the scanner's request it
+ * was asked for, if any (ADR-0026 §1, §2). Nothing in the link itself is ever
+ * read as any of these.
+ */
+type LinkClaim = Readonly<{
   email: string;
-  purpose: "cabinet";
-  destination: CabinetDestination;
+  destination: LinkDestination;
+  request: string | null;
 }>;
-
-type ReportClaim = Readonly<{
-  email: string;
-  purpose: "report";
-  intentKind: "registration" | "recovery";
-  state: string;
-}>;
-
-type IdentityClaim = CabinetClaim | ReportClaim;
 
 type LinkSend = {
-  readonly claim: IdentityClaim;
+  readonly claim: LinkClaim;
   handed: "accepted" | "refused";
-  tokenHash?: string;
-};
-
-type ReportReceiptRow = {
-  id: string;
-  tokenHash: string;
-  emailHash: string;
-  stateHash: string;
-  intentKind: "registration" | "recovery";
-  status: "pending" | "completed" | "invalidated";
-  consumedAt: Date;
-  completionDeadline: Date;
-  completedAt: Date | null;
-  invalidatedAt: Date | null;
-  issueAttemptedAt: Date | null;
-  issuedLinkExpiresAt: Date | null;
-  retentionUntil: Date;
 };
 
 type ReportIdentitySecretRow = {
@@ -182,6 +168,9 @@ const schema = {
 class DeliveryRefused extends Error {}
 class VerificationRefused extends Error {}
 
+/** How a one-time token is written at rest, the way the component hashes it. */
+const tokenHash = (token: string): string => createHash("sha256").update(token).digest("base64url");
+
 export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): Identity {
   const postman = parts.postman ?? postmanFor(config);
   const base = `${config.publicBaseUrl}${config.basePath}`;
@@ -196,7 +185,6 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
       cabinet_verifications: [],
       cabinet_link_sends: [],
       cabinet_report_identity_secrets: [],
-      cabinet_report_receipts: [],
       cabinet_report_deletion_tombstones: [],
     } satisfies MemoryRows);
 
@@ -215,16 +203,29 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
       },
       session: {
         modelName: "cabinet_sessions",
-        expiresIn: SESSION_HOURS * 60 * 60,
-        disableSessionRefresh: true,
+        expiresIn: SESSION_DAYS * 24 * 60 * 60,
+        updateAge: SESSION_RENEWAL_SECONDS,
+        additionalFields: {
+          // The scanner's request the link that opened this session was asked
+          // for, which the answer to whose session a cookie is names so the
+          // scanner can finish that request and no other (ADR-0026 §2).
+          reportRequest: { type: "string", required: false, input: false },
+        },
       },
       account: { modelName: "cabinet_credentials" },
       verification: { modelName: "cabinet_verifications" },
       advanced: {
         cookiePrefix: "agentify",
+        // The prefix is chosen here and not by the component. Left to itself it
+        // puts `__Secure-` in front of every name on an https base, and what
+        // ADR-0009 §6 asks for is `__Host-`: the one a browser refuses unless
+        // the cookie is Secure, for the whole origin and names no Domain, which
+        // is what keeps a sibling host from planting or replacing a session.
+        useSecureCookies: false,
+        cookies: { session_token: { name: sessionCookieName(config.cookieSecure) } },
         defaultCookieAttributes: {
-          path: config.basePath === "" ? "/" : config.basePath,
-          sameSite: "strict",
+          path: "/",
+          sameSite: "lax",
           httpOnly: true,
           secure: config.cookieSecure,
         },
@@ -235,7 +236,7 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
           storeToken: "hashed",
           async sendMagicLink({ email, token, metadata }, context) {
             const active = sending.getStore();
-            const claim = identityClaim(metadata);
+            const claim = metadata === undefined ? null : claimOf(metadata);
             if (
               active === undefined ||
               claim === null ||
@@ -252,17 +253,14 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
             if (stored === null || stored === undefined) {
               throw new Error("cabinet_link_storage_missing");
             }
-            active.tokenHash = reportIdentityTokenHash(token);
-            if (claim.purpose === "cabinet") {
-              const action = new URL(`${base}/sign-in/open`);
-              action.searchParams.set("token", token);
-              active.handed = await postman(cabinetLinkMessage(email, action.toString()));
-              return;
-            }
-            const action = new URL(`${config.publicBaseUrl}/auth/callback`);
-            action.hash = new URLSearchParams({ state: claim.state, token }).toString();
+            // Every link lands on the cabinet's page with one control, whoever
+            // asked for it; only the token rides in it (ADR-0026 §1).
+            const action = new URL(`${base}/sign-in/open`);
+            action.searchParams.set("token", token);
             active.handed = await postman(
-              reportLinkMessage(email, claim.intentKind, action.toString()),
+              typeof claim.destination === "string"
+                ? cabinetLinkMessage(email, action.toString())
+                : reportLinkMessage(email, action.toString()),
             );
           },
         }),
@@ -309,7 +307,7 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
     retryAt: Date,
   ): Promise<LinkRequestResult> => {
     const active: LinkSend = {
-      claim: { email, purpose: "cabinet", destination },
+      claim: { email, destination, request: null },
       handed: "refused",
     };
     await sending.run(active, async () => {
@@ -326,11 +324,10 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
     bound: typeof auth,
     request: SendReportLinkRequest,
   ): Promise<SendReportLinkResponse> => {
-    const claim: ReportClaim = {
+    const claim: LinkClaim = {
       email: request.email,
-      purpose: "report",
-      intentKind: request.intent_kind,
-      state: request.state,
+      destination: { report: request.destination.report },
+      request: request.request,
     };
     const active: LinkSend = { claim, handed: "refused" };
     await sending.run(active, async () => {
@@ -339,10 +336,8 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
         body: { email: request.email, metadata: claim },
       });
     });
-    if (active.handed !== "accepted" || active.tokenHash === undefined) {
-      throw new DeliveryRefused();
-    }
-    return { status: "accepted", token_hash: active.tokenHash };
+    if (active.handed !== "accepted") throw new DeliveryRefused();
+    return { status: "accepted" };
   };
 
   const openWith = async (
@@ -359,7 +354,7 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
     if (stored === null || new Date(stored.expiresAt).getTime() <= Date.now()) {
       return { status: "refused" };
     }
-    const claim = cabinetClaimFrom(stored.value);
+    const claim = claimFrom(stored.value);
     if (claim === null) return { status: "refused" };
     await lockEmail?.(claim.email);
 
@@ -379,48 +374,20 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
     if (opened.response.user.email !== claim.email || opened.response.user.emailVerified !== true) {
       throw new VerificationRefused();
     }
+    if (claim.request !== null) {
+      // In the same transaction as the session itself: a session that opened
+      // without the request it was asked for would leave that request waiting
+      // for a visit that can never finish it.
+      await context.internalAdapter.updateSession(opened.response.token, {
+        reportRequest: claim.request,
+      });
+    }
     return {
       status: "opened",
       person: personFrom(opened.response.user),
       destination: claim.destination,
       setCookies: opened.headers.getSetCookie(),
     };
-  };
-
-  const consumeReportAuthWith = async (
-    bound: typeof auth,
-    request: ConsumeReportLinkRequest,
-  ): Promise<Person | null> => {
-    if (!RAW_TOKEN.test(request.token)) return null;
-    const context = await bound.$context;
-    const stored = await context.adapter.findOne<StoredVerification>({
-      model: "verification",
-      where: [{ field: "identifier", value: reportIdentityTokenHash(request.token) }],
-    });
-    if (stored === null || new Date(stored.expiresAt).getTime() <= Date.now()) return null;
-    const claim = reportClaimFrom(stored.value);
-    if (
-      claim === null ||
-      claim.email !== request.email ||
-      claim.intentKind !== request.intent_kind ||
-      claim.state !== request.state
-    ) {
-      return null;
-    }
-
-    let opened: Awaited<ReturnType<typeof bound.api.magicLinkVerify>>;
-    try {
-      opened = await bound.api.magicLinkVerify({
-        query: { token: request.token },
-        headers: originHeaders,
-      });
-    } catch (thrown) {
-      if (thrown instanceof APIError) return null;
-      throw thrown;
-    }
-    if (opened.user.email !== claim.email || opened.user.emailVerified !== true) return null;
-    await context.internalAdapter.deleteSession(opened.session.token);
-    return personFrom(opened.user);
   };
 
   const makeWith = async (
@@ -457,13 +424,37 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
   const asHeaders = (value: string): Headers =>
     new Headers({ cookie: `${sessionCookie}=${value}` });
   const contextOf = async () => await auth.$context;
+  /**
+   * Every live session among the values a request carries, each with the lines
+   * that renew its cookie when this reading moved its end.
+   *
+   * The component moves a session's end at most once a day and says so with a
+   * cookie of its own; a reader that dropped that line would extend the row and
+   * leave the browser holding a cookie that still expires thirty days after
+   * sign-in. A value whose session is dead answers with a line clearing the
+   * cookie, and that line is dropped here: it names the same cookie the live
+   * value sits under, so passing it on would sign the person out.
+   */
   const liveOnesIn = async (
     cookieHeader: string | undefined,
-  ): Promise<readonly { token: string; person: Person }[]> => {
-    const live: { token: string; person: Person }[] = [];
+    renew = true,
+  ): Promise<readonly (LiveSession & { token: string })[]> => {
+    const live: (LiveSession & { token: string })[] = [];
     for (const value of valuesIn(cookieHeader)) {
-      const found = await auth.api.getSession({ headers: asHeaders(value) });
-      if (found !== null) live.push({ token: found.session.token, person: personFrom(found.user) });
+      const found = await auth.api.getSession({
+        headers: asHeaders(value),
+        returnHeaders: true,
+        ...(renew ? {} : { query: { disableRefresh: true } }),
+      });
+      if (found.response !== null) {
+        const request = (found.response.session as { reportRequest?: unknown }).reportRequest;
+        live.push({
+          token: found.response.session.token,
+          person: personFrom(found.response.user),
+          request: typeof request === "string" ? request : null,
+          setCookies: found.headers.getSetCookie(),
+        });
+      }
     }
     return live;
   };
@@ -514,7 +505,7 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
         if (parts.pool === undefined) {
           return await inMemoryTransaction(async (bound, rows) => {
             const now = new Date();
-            cleanupReportEvidenceInMemory(rows, now);
+            cleanupOldLinksInMemory(rows, now);
             const digestKey = reportDigestKeyInMemory(rows, now);
             const rated = memoryRate(rows, rateKey(digestKey, request.email), "report");
             if (!rated.sent) {
@@ -529,7 +520,6 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
             credentials,
             linkSends,
             reportIdentitySecrets,
-            reportReceipts,
             sessions,
             verifications,
           },
@@ -537,7 +527,7 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
         return await db.transaction(async (tx) => {
           const now = new Date();
           const digestKey = await reportDigestKeyInPostgres(tx, now);
-          await cleanupReportEvidenceInPostgres(tx, now);
+          await cleanupOldLinksInPostgres(tx, now);
           await lockEmail(tx, request.email);
           const rated = await postgresRate(tx, rateKey(digestKey, request.email), "report");
           if (!rated.sent) {
@@ -552,6 +542,16 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
         if (thrown instanceof DeliveryRefused) return { status: "unavailable" };
         throw thrown;
       }
+    },
+
+    async addressOfLink(token) {
+      if (!RAW_TOKEN.test(token)) return null;
+      const stored = await (await contextOf()).adapter.findOne<StoredVerification>({
+        model: "verification",
+        where: [{ field: "identifier", value: tokenHash(token) }],
+      });
+      if (stored === null || new Date(stored.expiresAt).getTime() <= Date.now()) return null;
+      return claimFrom(stored.value)?.email ?? null;
     },
 
     async openLink(token) {
@@ -574,218 +574,6 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
       }
     },
 
-    async consumeReportLink(request) {
-      const tokenHash = reportIdentityTokenHash(request.token);
-      const stateHash = reportIdentityTokenHash(request.state);
-      if (parts.pool === undefined) {
-        return await inMemoryTransaction(async (bound, rows) => {
-          const now = new Date();
-          cleanupReportEvidenceInMemory(rows, now);
-          const digestKey = reportDigestKeyInMemory(rows, now);
-          const emailHash = reportEmailKey(digestKey, request.email);
-          const existing = (rows.cabinet_report_receipts ?? []).find(
-            (row) => row.tokenHash === tokenHash,
-          ) as ReportReceiptRow | undefined;
-          if (existing !== undefined) {
-            return pendingRetry(existing, emailHash, stateHash, request.intent_kind, now);
-          }
-          const person = await consumeReportAuthWith(bound, request);
-          if (person === null) return { status: "refused" };
-          const deadline = new Date(now.getTime() + REPORT_COMPLETION_MS);
-          const receipt: ReportReceiptRow = {
-            id: randomUUID(),
-            tokenHash,
-            emailHash,
-            stateHash,
-            intentKind: request.intent_kind,
-            status: "pending",
-            consumedAt: now,
-            completionDeadline: deadline,
-            completedAt: null,
-            invalidatedAt: null,
-            issueAttemptedAt: null,
-            issuedLinkExpiresAt: null,
-            retentionUntil: new Date(deadline.getTime() + REPORT_EVIDENCE_RETENTION_MS),
-          };
-          const receipts = rows.cabinet_report_receipts ?? [];
-          rows.cabinet_report_receipts = receipts;
-          receipts.push(receipt);
-          return pendingResponse(receipt);
-        });
-      }
-
-      const db = drizzle(parts.pool, {
-        schema: {
-          accounts,
-          credentials,
-          reportIdentitySecrets,
-          reportReceipts,
-          sessions,
-          verifications,
-        },
-      });
-      return await db.transaction(async (tx) => {
-        const now = new Date();
-        const digestKey = await reportDigestKeyInPostgres(tx, now);
-        await cleanupReportEvidenceInPostgres(tx, now);
-        await lockEmail(tx, request.email);
-        const emailHash = reportEmailKey(digestKey, request.email);
-        const existing = (
-          await tx
-            .select()
-            .from(reportReceipts)
-            .where(eq(reportReceipts.tokenHash, tokenHash))
-            .for("update")
-        )[0] as ReportReceiptRow | undefined;
-        if (existing !== undefined) {
-          return pendingRetry(existing, emailHash, stateHash, request.intent_kind, now);
-        }
-        const person = await consumeReportAuthWith(
-          authFor(drizzleAdapter(tx, { provider: "pg", schema })),
-          request,
-        );
-        if (person === null) return { status: "refused" };
-        const deadline = new Date(now.getTime() + REPORT_COMPLETION_MS);
-        const receipt: ReportReceiptRow = {
-          id: randomUUID(),
-          tokenHash,
-          emailHash,
-          stateHash,
-          intentKind: request.intent_kind,
-          status: "pending",
-          consumedAt: now,
-          completionDeadline: deadline,
-          completedAt: null,
-          invalidatedAt: null,
-          issueAttemptedAt: null,
-          issuedLinkExpiresAt: null,
-          retentionUntil: new Date(deadline.getTime() + REPORT_EVIDENCE_RETENTION_MS),
-        };
-        await tx.insert(reportReceipts).values(receipt);
-        return pendingResponse(receipt);
-      });
-    },
-
-    async acknowledgeReportLink(request) {
-      if (parts.pool === undefined) {
-        return await inMemoryTransaction(async (_bound, rows) => {
-          const now = new Date();
-          cleanupReportEvidenceInMemory(rows, now);
-          const receipt = (rows.cabinet_report_receipts ?? []).find(
-            (row) => row.id === request.receipt_id && row.tokenHash === request.token_hash,
-          ) as ReportReceiptRow | undefined;
-          return acknowledgeReceipt(receipt, now);
-        });
-      }
-      const db = drizzle(parts.pool, { schema: { reportReceipts, verifications } });
-      return await db.transaction(async (tx) => {
-        const now = new Date();
-        await cleanupReportEvidenceInPostgres(tx, now);
-        const receipt = (
-          await tx
-            .select()
-            .from(reportReceipts)
-            .where(
-              and(
-                eq(reportReceipts.id, request.receipt_id),
-                eq(reportReceipts.tokenHash, request.token_hash),
-              ),
-            )
-            .for("update")
-        )[0] as ReportReceiptRow | undefined;
-        const result = acknowledgeReceipt(receipt, now);
-        if (result.status === "completed" && receipt?.status === "completed") {
-          await tx
-            .update(reportReceipts)
-            .set({
-              status: receipt.status,
-              completedAt: receipt.completedAt,
-              retentionUntil: receipt.retentionUntil,
-            })
-            .where(eq(reportReceipts.id, receipt.id));
-        }
-        return result;
-      });
-    },
-
-    async issueCabinetLink(request) {
-      if (parts.pool === undefined) {
-        return await inMemoryTransaction(async (_bound, rows) => {
-          const now = new Date();
-          cleanupReportEvidenceInMemory(rows, now);
-          const digestKey = reportDigestKeyInMemory(rows, now);
-          const receipt = (rows.cabinet_report_receipts ?? []).find(
-            (row) => row.id === request.receipt_id && row.tokenHash === request.token_hash,
-          ) as ReportReceiptRow | undefined;
-          const preliminary = issueStatus(receipt, now);
-          if (preliminary !== null) return preliminary;
-          if (receipt === undefined) return { status: "refused" };
-          const email = emailForReceipt(rows.cabinet_accounts ?? [], receipt, digestKey);
-          if (email === null) return { status: "refused" };
-          return issueFor(rows, receipt, email, base, now);
-        });
-      }
-      const db = drizzle(parts.pool, {
-        schema: { accounts, reportIdentitySecrets, reportReceipts, verifications },
-      });
-      return await db.transaction(async (tx) => {
-        const beforeLock = new Date();
-        const digestKey = await reportDigestKeyInPostgres(tx, beforeLock);
-        await cleanupReportEvidenceInPostgres(tx, beforeLock);
-        const emails = await tx.select({ email: accounts.email }).from(accounts);
-        const receiptBeforeLock = (
-          await tx
-            .select()
-            .from(reportReceipts)
-            .where(
-              and(
-                eq(reportReceipts.id, request.receipt_id),
-                eq(reportReceipts.tokenHash, request.token_hash),
-              ),
-            )
-        )[0] as ReportReceiptRow | undefined;
-        const resolvedEmail =
-          receiptBeforeLock === undefined
-            ? null
-            : emailForReceipt(emails, receiptBeforeLock, digestKey);
-        if (resolvedEmail === null) return { status: "refused" };
-        await lockEmail(tx, resolvedEmail);
-        const receipt = (
-          await tx
-            .select()
-            .from(reportReceipts)
-            .where(
-              and(
-                eq(reportReceipts.id, request.receipt_id),
-                eq(reportReceipts.tokenHash, request.token_hash),
-              ),
-            )
-            .for("update")
-        )[0] as ReportReceiptRow | undefined;
-        const now = new Date();
-        const preliminary = issueStatus(receipt, now);
-        if (preliminary !== null) return preliminary;
-        const owner = await tx
-          .select({ id: accounts.id })
-          .from(accounts)
-          .where(eq(accounts.email, resolvedEmail));
-        if (owner.length !== 1 || receipt?.emailHash !== reportEmailKey(digestKey, resolvedEmail)) {
-          return { status: "refused" };
-        }
-        const issued = issuedCabinetLink(resolvedEmail, base, now);
-        await tx.insert(verifications).values(issued.verification);
-        await tx
-          .update(reportReceipts)
-          .set({
-            issueAttemptedAt: now,
-            issuedLinkExpiresAt: issued.expiresAt,
-            retentionUntil: new Date(issued.expiresAt.getTime() + REPORT_EVIDENCE_RETENTION_MS),
-          })
-          .where(eq(reportReceipts.id, receipt.id));
-        return { status: "issued", action_url: issued.actionUrl };
-      });
-    },
-
     async deleteUnattachedPerson(request) {
       if (parts.pool === undefined) {
         return await inMemoryTransaction(async (_bound, rows) => {
@@ -804,8 +592,8 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
               ? { status: prior.result }
               : { status: "refused" };
           }
-          cleanupReportEvidenceInMemory(rows, now);
-          const result = deleteFromMemory(rows, request.email, digestKey, now);
+          cleanupOldLinksInMemory(rows, now);
+          const result = deleteFromMemory(rows, request.email);
           const tombstones = rows.cabinet_report_deletion_tombstones ?? [];
           rows.cabinet_report_deletion_tombstones = tombstones;
           tombstones.push({
@@ -824,7 +612,6 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
           accounts,
           reportDeletionTombstones,
           reportIdentitySecrets,
-          reportReceipts,
           verifications,
         },
       });
@@ -846,7 +633,7 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
             ? { status: prior.result as DeleteResult }
             : { status: "refused" };
         }
-        await cleanupReportEvidenceInPostgres(tx, now);
+        await cleanupOldLinksInPostgres(tx, now);
         await lockEmail(tx, request.email);
         const candidate = (
           await tx
@@ -868,27 +655,11 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
             : row.merchantId === null && row.merchantKey === null
               ? "deleted"
               : "retained";
-        const emailHash = reportEmailKey(digestKey, request.email);
-        await tx
-          .update(reportReceipts)
-          .set({
-            status: "invalidated",
-            invalidatedAt: now,
-            retentionUntil: sql`greatest(
-              ${reportReceipts.retentionUntil},
-              ${new Date(now.getTime() + REPORT_EVIDENCE_RETENTION_MS)}
-            )`,
-          })
-          .where(eq(reportReceipts.emailHash, emailHash));
         const proofs = await tx
           .select({ id: verifications.id, value: verifications.value })
           .from(verifications);
         for (const proof of proofs) {
-          const claim = identityClaimFrom(proof.value);
-          if (
-            claim?.email === request.email &&
-            (claim.purpose === "report" || result !== "retained")
-          ) {
+          if (goesWithTheDeletion(claimFrom(proof.value), request.email, result)) {
             await tx.delete(verifications).where(eq(verifications.id, proof.id));
           }
         }
@@ -906,11 +677,14 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
       });
     },
 
-    async whoIs(cookieHeader) {
-      const live = await liveOnesIn(cookieHeader);
-      if (live.length === 0) return null;
+    async whoIs(cookieHeader, options) {
+      const live = await liveOnesIn(cookieHeader, options?.renew ?? true);
+      const first = live[0];
+      if (first === undefined) return null;
       const owners = new Set(live.map((one) => one.person.id));
-      if (owners.size === 1) return live[0]?.person ?? null;
+      if (owners.size === 1) {
+        return { person: first.person, request: first.request, setCookies: first.setCookies };
+      }
       for (const one of live) await endSession(one.token);
       console.log(
         `[cabinet] a request carried live sessions of ${owners.size} different people;` +
@@ -1055,7 +829,10 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
     },
 
     async endOtherSessionsOfMerchant(merchantId, keep) {
-      const kept = new Set((await liveOnesIn(keep)).map((one) => one.token));
+      // Read without renewing: this is not the pressing person's visit, and a
+      // renewal here would move their session's end in the database while the
+      // cookie lines that tell their browser so are thrown away.
+      const kept = new Set((await liveOnesIn(keep, false)).map((one) => one.token));
       const context = await contextOf();
       const people = await context.adapter.findMany<{ id: string }>({
         model: "user",
@@ -1143,69 +920,65 @@ function asUnattachedPerson(person: Person): UnattachedPerson {
   return person as UnattachedPerson;
 }
 
-function identityClaim(metadata: Record<string, unknown> | undefined): IdentityClaim | null {
-  if (metadata === undefined) return null;
-  return identityClaimOf(metadata);
-}
-
-function cabinetClaimFrom(value: string): CabinetClaim | null {
-  const claim = identityClaimFrom(value);
-  return claim?.purpose === "cabinet" ? claim : null;
-}
-
-function reportClaimFrom(value: string): ReportClaim | null {
-  const claim = identityClaimFrom(value);
-  return claim?.purpose === "report" ? claim : null;
-}
-
-function identityClaimFrom(value: string): IdentityClaim | null {
+function claimFrom(value: string): LinkClaim | null {
   try {
     const parsed: unknown = JSON.parse(value);
     if (typeof parsed !== "object" || parsed === null) return null;
-    return identityClaimOf(parsed as Record<string, unknown>);
+    return claimOf(parsed as Record<string, unknown>);
   } catch {
     return null;
   }
 }
 
-function identityClaimOf(value: Record<string, unknown>): IdentityClaim | null {
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * A claim read back, held to the closed set it was written from.
+ *
+ * A destination is one of the cabinet's three screens or the report of one
+ * named scan, and a request is the scanner's identifier or nothing. A row
+ * holding anything else was not written by this file and opens nothing.
+ */
+function claimOf(value: Record<string, unknown>): LinkClaim | null {
   if (typeof value.email !== "string" || value.email !== emailAs(value.email)) return null;
-  if (value.purpose === "cabinet") {
-    if (
-      value.destination !== "default" &&
-      value.destination !== "settings" &&
-      value.destination !== "woocommerce"
-    ) {
-      return null;
-    }
-    return { email: value.email, purpose: "cabinet", destination: value.destination };
+  const request = value.request ?? null;
+  if (request !== null && (typeof request !== "string" || !UUID.test(request))) return null;
+  const destination = value.destination;
+  if (destination === "default" || destination === "settings" || destination === "woocommerce") {
+    return { email: value.email, destination, request };
   }
-  if (
-    value.purpose === "report" &&
-    (value.intentKind === "registration" || value.intentKind === "recovery") &&
-    typeof value.state === "string" &&
-    /^[A-Za-z0-9_-]{43}$/.test(value.state)
-  ) {
-    return {
-      email: value.email,
-      purpose: "report",
-      intentKind: value.intentKind,
-      state: value.state,
-    };
-  }
-  return null;
+  if (typeof destination !== "object" || destination === null) return null;
+  const keys = Object.keys(destination);
+  const report = (destination as { report?: unknown }).report;
+  if (keys.length !== 1 || typeof report !== "string" || !UUID.test(report)) return null;
+  return { email: value.email, destination: { report }, request };
 }
 
-function sameClaim(one: IdentityClaim, other: IdentityClaim): boolean {
-  if (one.purpose !== other.purpose || one.email !== other.email) return false;
-  return one.purpose === "cabinet" && other.purpose === "cabinet"
-    ? one.destination === other.destination
-    : one.purpose === "report" && other.purpose === "report"
-      ? one.intentKind === other.intentKind && one.state === other.state
-      : false;
+function sameClaim(one: LinkClaim, other: LinkClaim): boolean {
+  return (
+    one.email === other.email &&
+    one.request === other.request &&
+    (typeof one.destination === "string" || typeof other.destination === "string"
+      ? one.destination === other.destination
+      : one.destination.report === other.destination.report)
+  );
 }
 
-const tokenHash = reportIdentityTokenHash;
+/**
+ * Whether a link still in somebody's mailbox goes when their address is
+ * deleted at the scanner.
+ *
+ * A link to a report always goes, because the reports it led to are being
+ * deleted. A link into the cabinet goes with the person, and stays for a
+ * person who owns a merchant and is kept.
+ */
+function goesWithTheDeletion(
+  claim: LinkClaim | null,
+  email: string,
+  result: DeleteResult,
+): boolean {
+  return claim?.email === email && (typeof claim.destination !== "string" || result !== "retained");
+}
 
 const rateKey = (secret: string, email: string): string =>
   createHmac("sha256", secret).update(`cabinet-link:${email}`).digest("hex");
@@ -1399,208 +1172,45 @@ async function reportDigestKeyInPostgres(tx: CabinetTransaction, now: Date): Pro
   return stored.digestKey;
 }
 
-function cleanupReportEvidenceInMemory(rows: MemoryRows, now: Date): void {
-  let removedReceipts = 0;
-  rows.cabinet_report_receipts = (rows.cabinet_report_receipts ?? []).filter((row) => {
-    if (
-      removedReceipts < REPORT_CLEANUP_BATCH &&
-      new Date(row.retentionUntil as Date).getTime() <= now.getTime()
-    ) {
-      removedReceipts += 1;
-      return false;
-    }
-    return true;
-  });
-
-  const verificationCutoff = now.getTime() - REPORT_EVIDENCE_RETENTION_MS;
-  let removedVerifications = 0;
+/**
+ * Removes the rows of links that ran out more than a week ago.
+ *
+ * The component deletes a link's row when it is spent; a link nobody pressed
+ * stays, holding a hashed token and the claim with an address in it, and this
+ * is what bounds how long. In batches, so one request never pays for a backlog.
+ */
+function cleanupOldLinksInMemory(rows: MemoryRows, now: Date): void {
+  const cutoff = now.getTime() - LINK_PROOF_RETENTION_MS;
+  let removed = 0;
   rows.cabinet_verifications = (rows.cabinet_verifications ?? []).filter((row) => {
-    if (
-      removedVerifications < REPORT_CLEANUP_BATCH &&
-      new Date(row.expiresAt as Date).getTime() <= verificationCutoff &&
-      reportClaimFrom(String(row.value)) !== null
-    ) {
-      removedVerifications += 1;
+    if (removed < LINK_CLEANUP_BATCH && new Date(row.expiresAt as Date).getTime() <= cutoff) {
+      removed += 1;
       return false;
     }
     return true;
   });
 }
 
-async function cleanupReportEvidenceInPostgres(tx: CabinetTransaction, now: Date): Promise<void> {
-  const expiredReceipts = await tx
-    .select({ id: reportReceipts.id })
-    .from(reportReceipts)
-    .where(lte(reportReceipts.retentionUntil, now))
-    .orderBy(asc(reportReceipts.retentionUntil), asc(reportReceipts.id))
-    .limit(REPORT_CLEANUP_BATCH);
-  for (const receipt of expiredReceipts) {
-    await tx.delete(reportReceipts).where(eq(reportReceipts.id, receipt.id));
-  }
-
-  const verificationCutoff = new Date(now.getTime() - REPORT_EVIDENCE_RETENTION_MS);
-  const expiredReportProofs = await tx
-    .select({ id: verifications.id, value: verifications.value })
+async function cleanupOldLinksInPostgres(tx: CabinetTransaction, now: Date): Promise<void> {
+  const old = await tx
+    .select({ id: verifications.id })
     .from(verifications)
-    .where(
-      and(
-        lte(verifications.expiresAt, verificationCutoff),
-        sql`${verifications.value} like ${'%"purpose":"report"%'}`,
-      ),
-    )
+    .where(lte(verifications.expiresAt, new Date(now.getTime() - LINK_PROOF_RETENTION_MS)))
     .orderBy(asc(verifications.expiresAt), asc(verifications.id))
-    .limit(REPORT_CLEANUP_BATCH);
-  for (const proof of expiredReportProofs) {
-    if (reportClaimFrom(proof.value) !== null) {
-      await tx.delete(verifications).where(eq(verifications.id, proof.id));
-    }
+    .limit(LINK_CLEANUP_BATCH);
+  for (const proof of old) {
+    await tx.delete(verifications).where(eq(verifications.id, proof.id));
   }
 }
-
-const reportEmailKey = (secret: string, email: string): string =>
-  createHmac("sha256", secret).update(`report-email\0${email}`).digest("base64url");
 
 const reportDeleteDigest = (secret: string, operationId: string, email: string): string =>
   createHmac("sha256", secret)
     .update(`report-delete\0${operationId}\0${email}`)
     .digest("base64url");
 
-function pendingResponse(receipt: ReportReceiptRow): ConsumeReportLinkResponse {
-  return {
-    status: "pending",
-    receipt_id: receipt.id,
-    completion_deadline: receipt.completionDeadline.toISOString(),
-  };
-}
-
-function pendingRetry(
-  receipt: ReportReceiptRow,
-  emailHash: string,
-  stateHash: string,
-  intentKind: "registration" | "recovery",
-  now: Date,
-): ConsumeReportLinkResponse {
-  if (
-    receipt.retentionUntil.getTime() <= now.getTime() ||
-    receipt.status !== "pending" ||
-    receipt.completionDeadline.getTime() <= now.getTime() ||
-    receipt.emailHash !== emailHash ||
-    receipt.stateHash !== stateHash ||
-    receipt.intentKind !== intentKind
-  ) {
-    return { status: "refused" };
-  }
-  return pendingResponse(receipt);
-}
-
-function acknowledgeReceipt(
-  receipt: ReportReceiptRow | undefined,
-  now: Date,
-): AcknowledgeReportLinkResponse {
-  if (
-    receipt === undefined ||
-    receipt.retentionUntil.getTime() <= now.getTime() ||
-    receipt.status === "invalidated"
-  ) {
-    return { status: "refused" };
-  }
-  if (receipt.status === "completed") return { status: "completed" };
-  if (receipt.completionDeadline.getTime() <= now.getTime()) return { status: "refused" };
-  receipt.status = "completed";
-  receipt.completedAt = now;
-  receipt.retentionUntil = laterDate(
-    receipt.retentionUntil,
-    new Date(now.getTime() + REPORT_EVIDENCE_RETENTION_MS),
-  );
-  return { status: "completed" };
-}
-
-function issueStatus(
-  receipt: ReportReceiptRow | undefined,
-  now: Date,
-): IssueCabinetLinkResponse | null {
-  if (
-    receipt === undefined ||
-    receipt.retentionUntil.getTime() <= now.getTime() ||
-    receipt.status !== "completed" ||
-    receipt.invalidatedAt !== null
-  ) {
-    return { status: "refused" };
-  }
-  if (receipt.issueAttemptedAt !== null) return { status: "already_attempted" };
-  if (receipt.completionDeadline.getTime() <= now.getTime()) return { status: "refused" };
-  return null;
-}
-
-function emailForReceipt(
-  accountRows: readonly Record<string, unknown>[],
-  receipt: ReportReceiptRow,
-  secret: string,
-): string | null {
-  const matches = accountRows
-    .map((row) => row.email)
-    .filter((email): email is string => typeof email === "string")
-    .filter((email) => reportEmailKey(secret, email) === receipt.emailHash);
-  return matches.length === 1 ? (matches[0] ?? null) : null;
-}
-
-function issuedCabinetLink(email: string, base: string, now: Date) {
-  const rawToken = randomBearerToken();
-  const expiresAt = new Date(now.getTime() + LINK_TTL_SECONDS * 1000);
-  const action = new URL(`${base}/sign-in/open`);
-  action.searchParams.set("token", rawToken);
-  return {
-    actionUrl: action.toString(),
-    expiresAt,
-    verification: {
-      id: randomUUID(),
-      identifier: tokenHash(rawToken),
-      value: JSON.stringify({ email, purpose: "cabinet", destination: "default" }),
-      expiresAt,
-      createdAt: now,
-      updatedAt: now,
-    },
-  };
-}
-
-function issueFor(
-  rows: MemoryRows,
-  receipt: ReportReceiptRow,
-  email: string,
-  base: string,
-  now: Date,
-): IssueCabinetLinkResponse {
-  const issued = issuedCabinetLink(email, base, now);
-  const proofs = rows.cabinet_verifications ?? [];
-  rows.cabinet_verifications = proofs;
-  proofs.push(issued.verification);
-  receipt.issueAttemptedAt = now;
-  receipt.issuedLinkExpiresAt = issued.expiresAt;
-  receipt.retentionUntil = new Date(issued.expiresAt.getTime() + REPORT_EVIDENCE_RETENTION_MS);
-  return { status: "issued", action_url: issued.actionUrl };
-}
-
-function randomBearerToken(): string {
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let token = "";
-  while (token.length < 32) {
-    for (const byte of randomBytes(32)) {
-      if (byte >= 248) continue;
-      token += alphabet[byte % alphabet.length];
-      if (token.length === 32) return token;
-    }
-  }
-  return token;
-}
-
 type DeleteResult = "deleted" | "already_absent" | "retained";
 
-function deleteFromMemory(
-  rows: MemoryRows,
-  email: string,
-  secret: string,
-  now: Date,
-): DeleteResult {
+function deleteFromMemory(rows: MemoryRows, email: string): DeleteResult {
   const account = (rows.cabinet_accounts ?? []).find((row) => row.email === email);
   let result: DeleteResult;
   if (account === undefined) result = "already_absent";
@@ -1608,20 +1218,9 @@ function deleteFromMemory(
     const person = personFrom(account as PersonRow);
     result = person.merchant === null ? "deleted" : "retained";
   }
-  const emailHash = reportEmailKey(secret, email);
-  for (const receipt of (rows.cabinet_report_receipts ?? []) as ReportReceiptRow[]) {
-    if (receipt.emailHash !== emailHash) continue;
-    receipt.status = "invalidated";
-    receipt.invalidatedAt = now;
-    receipt.retentionUntil = laterDate(
-      receipt.retentionUntil,
-      new Date(now.getTime() + REPORT_EVIDENCE_RETENTION_MS),
-    );
-  }
-  rows.cabinet_verifications = (rows.cabinet_verifications ?? []).filter((proof) => {
-    const claim = identityClaimFrom(String(proof.value));
-    return !(claim?.email === email && (claim.purpose === "report" || result !== "retained"));
-  });
+  rows.cabinet_verifications = (rows.cabinet_verifications ?? []).filter(
+    (proof) => !goesWithTheDeletion(claimFrom(String(proof.value)), email, result),
+  );
   if (result === "deleted" && account !== undefined) {
     const personId = String(account.id);
     rows.cabinet_accounts = (rows.cabinet_accounts ?? []).filter((row) => row.id !== personId);
@@ -1640,10 +1239,6 @@ function deleteFromMemory(
     );
   }
   return result;
-}
-
-function laterDate(one: Date, two: Date): Date {
-  return one.getTime() >= two.getTime() ? one : two;
 }
 
 function cabinetLinkMessage(to: string, link: string): Message {

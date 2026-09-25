@@ -313,6 +313,6 @@ describe("the page a mail link lands on", () => {
   it("runs nothing at all", () => {
     // It holds a one-time token, and ADR-0009 §3 keeps the enhancement to the
     // one screen that has a wait to draw. Nothing here has one.
-    expect(openLinkScreen("", "a-token", "sandbox")).not.toContain("<script");
+    expect(openLinkScreen("", "a-token", "person@example.com", "sandbox")).not.toContain("<script");
   });
 });

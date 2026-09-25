@@ -31,12 +31,53 @@
 
 .doors {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 18px;
+  justify-content: flex-end;
+  gap: 6px 18px;
   padding-left: 24px;
   border-left: 1px solid var(--line);
   font-size: 0.875rem;
   font-weight: 500;
+}
+
+.visitorSlot {
+  display: contents;
+}
+
+/* The signed-in address: a label, not a door. A long address is cut at the
+   end with its whole self in the title, so the bar never runs off the page. */
+.who {
+  max-width: 24ch;
+  overflow: hidden;
+  color: var(--muted);
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visitor {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.signOut {
+  display: inline;
+  margin: 0;
+}
+
+.signOut button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--fg);
+  cursor: pointer;
+  font: inherit;
+}
+
+.signOut button:hover,
+.signOut button:focus-visible {
+  color: var(--accent);
 }
 
 .doors a {
@@ -148,9 +189,13 @@
   }
 
   .doors {
-    gap: 12px;
+    gap: 4px 12px;
     padding-left: 14px;
     font-size: 0.8125rem;
+  }
+
+  .who {
+    max-width: 16ch;
   }
 }
 

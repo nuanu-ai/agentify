@@ -6,6 +6,7 @@ import type {
 import { CHECK_DEFINITIONS } from "@agentify/scanner-contracts";
 import { scanChecks, scans } from "@agentify/scanner-database";
 import { eq } from "drizzle-orm";
+import type { Visitor } from "./auth";
 import { getDatabase } from "./database";
 import { getFullBrowserObservation, getFullReport } from "./reporting";
 import { getScanStatusForVerifiedSession } from "./scans";
@@ -36,9 +37,9 @@ const fromBrowser = (
 
 export async function getTeaserRemediationPrompt(
   scanId: string,
-  sessionToken: string | undefined,
+  visitor: Visitor,
 ): Promise<RemediationPromptResponse | undefined> {
-  const status = await getScanStatusForVerifiedSession(scanId, sessionToken);
+  const status = await getScanStatusForVerifiedSession(scanId, visitor);
   if (!status?.teaser) return undefined;
   const { db } = getDatabase();
   const scan = (await db.select().from(scans).where(eq(scans.id, scanId)).limit(1))[0];
@@ -79,11 +80,11 @@ export async function getTeaserRemediationPrompt(
 
 export async function getFullRemediationPrompt(
   scanId: string,
-  sessionToken: string | undefined,
+  visitor: Visitor,
 ): Promise<RemediationPromptResponse | undefined> {
-  const report = await getFullReport(scanId, sessionToken);
+  const report = await getFullReport(scanId, visitor);
   if (!report) return undefined;
-  const browser = await getFullBrowserObservation(scanId, sessionToken);
+  const browser = await getFullBrowserObservation(scanId, visitor);
   const canonicalFindings: RemediationFindingInput[] = report.checks.flatMap((check) =>
     check.status === "fail" || check.status === "partial"
       ? [

@@ -248,82 +248,88 @@ ${brandLockup("/")}
     mode,
   );
 
-/** The no-script GET target in the message. */
-export const openLinkScreen = (base: string, token: string, mode: SurfaceMode): string =>
+/**
+ * The page every mailed link lands on: one control, and the address it signs in.
+ *
+ * Drawing it spends nothing; the press does. The address is on it because a
+ * link for somebody else's address, sent to a victim, would otherwise sign
+ * them in as that somebody without their noticing (ADR-0026 §1).
+ */
+export const openLinkScreen = (
+  base: string,
+  token: string,
+  email: string,
+  mode: SurfaceMode,
+): string =>
   bare(
     base,
-    "Open your cabinet",
+    "Sign in",
     `<div class="gate">
 ${brandLockup("/")}
 <form class="gate-card" method="post" action="${escaped(base)}/sign-in/open">
-  <h1>Open your cabinet</h1>
-  <p>Confirm that you want to open your cabinet in this browser.</p>
+  <h1>Sign in</h1>
+  <p>This link signs <strong>${escaped(email)}</strong> in on this browser.</p>
   <input type="hidden" name="token" value="${escaped(token)}">
-  <button class="button button-primary" type="submit">Open my cabinet</button>
+  <button class="button button-primary" type="submit">Sign in as ${escaped(email)}</button>
+  <p class="quiet">If that is not your address, close this page. Nothing happens unless the button is pressed.</p>
 </form>
 </div>`,
     mode,
   );
 
-/** One refusal for a malformed, expired, wrong-purpose, or already-used link. */
-export const refusedLinkScreen = (
-  base: string,
-  mode: SurfaceMode,
-  signedIn?: { readonly email: string; readonly destination: "cards" | "merchant" },
-): string => {
-  const heading =
-    signedIn === undefined ? "That link no longer works" : "You are already signed in";
-  const recovery =
-    signedIn === undefined
-      ? `<p>A sign-in link opens once and expires an hour after it is sent. This one no longer opens anything.</p>
-  <p>Nothing is lost: access belongs to your email address, not to any one link. Ask for a new one.</p>`
-      : `<p>This link has already done its work, and you are signed in as ${escaped(signedIn.email)}.</p>
-  <p><a class="button button-primary" href="${escaped(base)}/${signedIn.destination}">Open your cabinet</a></p>
-  <p class="quiet">Every link opens once, so the next time you sign in, ask for a new one.</p>`;
-  // Somebody already signed in cannot be sent to the sign-in form: that route
-  // reads their session and redirects them back into the cabinet. Ending the
-  // session is the only control here that can put them at another address.
-  const another =
-    signedIn === undefined
-      ? `<form method="get" action="${escaped(base)}/sign-in">
-    <button class="button button-secondary" type="submit">Ask for another link</button>
-  </form>`
-      : `<form method="post" action="${escaped(base)}/sign-out">
-    <button class="button button-secondary" type="submit">Sign out and use another address</button>
-  </form>`;
-
-  return bare(
+/**
+ * One refusal for a malformed, expired, already-used or unknown link.
+ *
+ * It is drawn only for a browser with no live session, which is sent to its
+ * own start instead, so it has nobody to name and says nothing about whose the
+ * link was.
+ */
+export const refusedLinkScreen = (base: string, mode: SurfaceMode): string =>
+  bare(
     base,
-    heading,
+    "That link no longer works",
     `<div class="gate">
 ${brandLockup("/")}
 <div class="gate-card">
-  <h1>${heading}</h1>
-  ${recovery}
-  ${another}
+  <h1>That link no longer works</h1>
+  <p>A sign-in link opens once and expires an hour after it is sent. This one no longer opens anything.</p>
+  <p>Nothing is lost: access belongs to your email address, not to any one link. Ask for a new one.</p>
+  <form method="get" action="${escaped(base)}/sign-in">
+    <button class="button button-secondary" type="submit">Ask for another link</button>
+  </form>
 </div>
 </div>`,
     mode,
   );
-};
 
-/** The authenticated P1 state after the gateway did not attach a merchant. */
-export const merchantSetupScreen = (base: string, mode: SurfaceMode, unavailable = false): string =>
+/**
+ * The screen a signed-in person without a merchant is offered (ADR-0026 §4).
+ *
+ * One control, and only its same-origin press makes the merchant and the key
+ * the cabinet calls with. A gateway that did not answer leaves the person here,
+ * signed in, to press again.
+ */
+export const merchantSetupScreen = (
+  base: string,
+  mode: SurfaceMode,
+  email: string,
+  unavailable = false,
+): string =>
   bare(
     base,
-    "Finish setting up your cabinet",
+    "Open a merchant cabinet",
     `<div class="gate">
 ${brandLockup("/")}
 <div class="gate-card">
-  <h1>Finish setting up your cabinet</h1>
-  <p>You are signed in${
+  <h1>Open a merchant cabinet</h1>
+  <p>You are signed in as <strong>${escaped(email)}</strong>.</p>
+  ${
     unavailable
-      ? ", but your cabinet could not be finished because of a fault on our side"
-      : ", and your cabinet is not finished yet"
-  }. Nothing is lost.</p>
-  <p class="quiet">You are still signed in, so Try again does not need another link.</p>
+      ? `<p class="problem">The merchant could not be made because of a fault on our side. Nothing is lost, and you are still signed in, so pressing again needs no new link.</p>`
+      : `<p>A merchant cabinet is where your engineer publishes what you sell to agents and where the orders arrive. Nothing is made until you press the button.</p>`
+  }
   <form method="post" action="${escaped(base)}/merchant">
-    <button class="button button-primary" type="submit">Try again</button>
+    <button class="button button-primary" type="submit">Open my merchant cabinet</button>
   </form>
   <form method="post" action="${escaped(base)}/sign-out">
     <button class="button button-secondary" type="submit">Sign out</button>

@@ -21,6 +21,7 @@
  */
 
 import { startAnnouncementServer, tellerFor } from "./announcement-server.js";
+import { keyRenewal } from "./cabinet-key.js";
 import { loadConfig } from "./config.js";
 import { connect } from "./database.js";
 import { gatewayFor } from "./gateway.js";
@@ -35,7 +36,11 @@ const config = loadConfig(process.env);
 const pool = connect(config.databaseUrl);
 const identity = identityFor(config, { pool });
 const wooShops = postgresWooShops(pool);
-const reportIdentityServer = startReportIdentityServer(config.reportIdentitySecret, identity);
+const reportIdentityServer = startReportIdentityServer(
+  config.reportIdentitySecret,
+  identity,
+  keyRenewal(identity, (key, answerWithinMs) => gatewayFor(config.gatewayUrl, key, answerWithinMs)),
+);
 // The gateway's route for telling a merchant of a change to their wallet or
 // their keys (ADR-0019), on a port of its own behind a secret of its own.
 const announcementServer = startAnnouncementServer(

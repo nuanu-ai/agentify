@@ -252,6 +252,11 @@ export const scans = pgTable(
   ],
 );
 
+/**
+ * A request for the full report of one scan, from the form until it is
+ * finished. A stranger's waits for its own link, whose session names it by
+ * this id; a signed-in person's own is finished as it is written (ADR-0026 §2).
+ */
 export const registrationIntents = pgTable(
   "registration_intents",
   {
@@ -262,7 +267,6 @@ export const registrationIntents = pgTable(
     sessionId: uuid("session_id")
       .notNull()
       .references(() => sessions.id, { onDelete: "cascade" }),
-    callbackStateHash: text("callback_state_hash").notNull(),
     emailNormalizedCiphertext: text("email_normalized_ciphertext").notNull(),
     emailLookupHash: text("email_lookup_hash").notNull(),
     phoneE164Ciphertext: text("phone_e164_ciphertext"),
@@ -282,7 +286,6 @@ export const registrationIntents = pgTable(
       "registration_intents_dataset_acknowledged",
       sql`${table.datasetReuseAcknowledged} = true`,
     ),
-    uniqueIndex("registration_intents_callback_state_uidx").on(table.callbackStateHash),
     index("registration_intents_expiry_idx").on(table.expiresAt),
   ],
 );
@@ -479,95 +482,6 @@ export const leadScans = pgTable(
   (table) => [primaryKey({ columns: [table.leadId, table.scanId] })],
 );
 
-export const reportSessions = pgTable(
-  "report_sessions",
-  {
-    id: uuid("id").primaryKey(),
-    leadId: uuid("lead_id")
-      .notNull()
-      .references(() => leads.id, { onDelete: "cascade" }),
-    sessionTokenHash: text("session_token_hash").notNull(),
-    expiresAt: utcTimestamp("expires_at").notNull(),
-    revokedAt: utcTimestamp("revoked_at"),
-    createdAt: utcTimestamp("created_at").notNull().defaultNow(),
-    lastSeenAt: utcTimestamp("last_seen_at").notNull().defaultNow(),
-  },
-  (table) => [
-    check("report_sessions_id_uuidv7", uuidV7Check(table.id)),
-    uniqueIndex("report_sessions_token_hash_uidx").on(table.sessionTokenHash),
-  ],
-);
-
-export const scannerRecoveryIntents = pgTable(
-  "scanner_recovery_intents",
-  {
-    id: uuid("id").primaryKey(),
-    tokenHash: text("token_hash"),
-    stateHash: text("state_hash").notNull(),
-    emailLookupHash: text("email_lookup_hash").notNull(),
-    leadId: uuid("lead_id")
-      .notNull()
-      .references(() => leads.id, { onDelete: "cascade" }),
-    scanId: uuid("scan_id")
-      .notNull()
-      .references(() => scans.id, { onDelete: "cascade" }),
-    createdAt: utcTimestamp("created_at").notNull().defaultNow(),
-    expiresAt: utcTimestamp("expires_at").notNull(),
-    activatedAt: utcTimestamp("activated_at"),
-    consumedAt: utcTimestamp("consumed_at"),
-  },
-  (table) => [
-    check(
-      "scanner_recovery_intents_token_hash_format",
-      sql`${table.tokenHash} is null or ${table.tokenHash} ~ '^[A-Za-z0-9_-]{43}$'`,
-    ),
-    check("scanner_recovery_intents_state_hash_format", sql`${table.stateHash} ~ '^[a-f0-9]{64}$'`),
-    check(
-      "scanner_recovery_intents_activation",
-      sql`(${table.tokenHash} is null and ${table.activatedAt} is null and ${table.consumedAt} is null) or (${table.tokenHash} is not null and ${table.activatedAt} is not null)`,
-    ),
-    uniqueIndex("scanner_recovery_intents_token_hash_uidx")
-      .on(table.tokenHash)
-      .where(sql`${table.tokenHash} is not null`),
-    index("scanner_recovery_intents_state_hash_idx").on(table.stateHash),
-    index("scanner_recovery_intents_expiry_idx").on(table.expiresAt),
-  ],
-);
-
-export const scannerIdentityCompletions = pgTable(
-  "scanner_identity_completions",
-  {
-    receiptId: uuid("receipt_id").primaryKey(),
-    tokenHash: text("token_hash").notNull(),
-    intentKind: text("intent_kind").notNull(),
-    stateHash: text("state_hash").notNull(),
-    leadId: uuid("lead_id")
-      .notNull()
-      .references(() => leads.id, { onDelete: "cascade" }),
-    scanId: uuid("scan_id")
-      .notNull()
-      .references(() => scans.id, { onDelete: "cascade" }),
-    completedAt: utcTimestamp("completed_at").notNull(),
-    retainUntil: utcTimestamp("retain_until").notNull(),
-  },
-  (table) => [
-    check(
-      "scanner_identity_completions_token_hash_format",
-      sql`${table.tokenHash} ~ '^[A-Za-z0-9_-]{43}$'`,
-    ),
-    check(
-      "scanner_identity_completions_state_hash_format",
-      sql`${table.stateHash} ~ '^[a-f0-9]{64}$'`,
-    ),
-    check(
-      "scanner_identity_completions_intent_kind",
-      sql`${table.intentKind} in ('registration', 'recovery')`,
-    ),
-    uniqueIndex("scanner_identity_completions_token_hash_uidx").on(table.tokenHash),
-    index("scanner_identity_completions_retention_idx").on(table.retainUntil),
-  ],
-);
-
 export const scannerIdentityDeletionOperations = pgTable(
   "scanner_identity_deletion_operations",
   {
@@ -600,8 +514,8 @@ export const scannerIdentityDeletionOperations = pgTable(
 
 /**
  * The record that a lead registered for a scan: registration writes one row
- * per lead and scan, the report opens only for a lead with one, and access
- * recovery joins it. The name is the former product's, where the row was also
+ * per lead and scan, the report opens only for a lead with one, and a person's
+ * latest report is read through it. The name is the former product's, where the row was also
  * a place in a queue and carried a survey answer; those columns are gone
  * (docs/research/31-user-journey.md §3), and the rename is a step of its own.
  */

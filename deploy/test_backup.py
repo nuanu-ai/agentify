@@ -231,14 +231,15 @@ class Backups(unittest.TestCase):
         )
         return said, (self.world / "installed").read_text().split()
 
-    BACKUP = ["agentify-backup", "agentify-backup-check", "agentify-backup-check.service", "agentify-backup-check.timer",
+    BACKUP = ["agentify-backup", "agentify-backup-check", "agentify-backup-check.service",
               "agentify-backup-credentials", "agentify-backup-failed@.service", "agentify-backup.service", "agentify-backup.timer"]
 
     def test_production_installs_the_backup_starts_its_timers_and_removes_the_interim_job(self):
         said, installed = self.install("production")
         self.assertIn("install exit 0", said)
         self.assertEqual([name for name in installed if name.startswith("agentify-backup")], self.BACKUP)
-        self.assertIn("systemctl enable --now agentify-backup.timer agentify-backup-check.timer", self.calls())
+        self.assertIn("systemctl enable --now agentify-backup.timer", self.calls())
+        self.assertNotIn("agentify-backup-check.timer", " ".join(self.calls()))
 
     def test_production_without_a_root_600_backup_env_is_refused_and_installs_nothing(self):
         said, installed = self.install("production", BACKUP_ENV_MODE="644")

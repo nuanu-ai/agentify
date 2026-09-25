@@ -13,8 +13,9 @@
 #
 # On PRODUCTION it also installs the off-host backup (deploy/README.md,
 # "Backups"): restic where the host has none, agentify-backup every ten
-# minutes, agentify-backup-check every week, agentify-backup-credentials and
-# their units, and it removes the interim cron job. It refuses until
+# minutes, agentify-backup-check for a restore rehearsal a person runs,
+# agentify-backup-credentials and their units, and it removes the interim cron
+# job. It refuses until
 # /etc/agentify/backup.env is root's with mode 600. TEST takes no backups,
 # since its data is test data.
 set -euo pipefail
@@ -61,7 +62,7 @@ else
   install -m 755 "$root/deploy/backup.sh" /usr/local/sbin/agentify-backup
   install -m 755 "$root/deploy/backup-check.sh" /usr/local/sbin/agentify-backup-check
   install -m 755 "$root/deploy/backup-credentials.sh" /usr/local/sbin/agentify-backup-credentials
-  install -m 644 "$root"/deploy/agentify-backup{,-check}.{service,timer} "$root/deploy/agentify-backup-failed@.service" /etc/systemd/system/
+  install -m 644 "$root"/deploy/agentify-backup.{service,timer} "$root/deploy/agentify-backup-check.service" "$root/deploy/agentify-backup-failed@.service" /etc/systemd/system/
   rm -f /etc/cron.d/agentify-backup-interim /usr/local/sbin/agentify-backup-interim
 fi
 if [[ -d /etc/needrestart ]]; then
@@ -74,7 +75,7 @@ if [[ $channel == test ]]; then
   systemctl enable --now agentify-release.timer
   echo "install: TEST releases what deploy-test names within a minute; journalctl -u agentify-release.service shows it."
 else
-  systemctl enable --now agentify-backup.timer agentify-backup-check.timer
+  systemctl enable --now agentify-backup.timer
   echo "install: PRODUCTION releases when a person runs: sudo agentify-release app-v<release>"
-  echo "install: it is backed up every ten minutes and its latest backup restored every week; /var/lib/agentify/production/backup-status says how that went."
+  echo "install: it is backed up every ten minutes, and a person rehearses a restore with: sudo systemctl start agentify-backup-check.service"
 fi

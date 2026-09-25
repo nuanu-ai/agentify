@@ -2,9 +2,9 @@
  * The one cabinet identity surface used by its server-rendered pages.
  *
  * Better Auth, verification rows and database locks stay behind this port. A
- * page can ask for or open a cabinet link, read or end a session, and finish
- * the one merchant binding. Report identity is a later private boundary and
- * deliberately does not make this interface larger.
+ * page can ask for or open a link, read or end a session, and finish the one
+ * merchant binding. What the scanner asks over the internal route is on the
+ * operator-facing `Identity` in `identity.ts` and does not make this larger.
  */
 
 /** The merchant an account belongs to, and the key used only behind a page. */
@@ -21,8 +21,15 @@ export interface Person {
   readonly merchant: AccountMerchant | null;
 }
 
-/** The only places a cabinet mail link may return to after it is opened. */
+/** The cabinet screens a link asked for on the sign-in page may lead to. */
 export type CabinetDestination = "default" | "settings" | "woocommerce";
+
+/**
+ * Every place a link may lead once it is opened: a cabinet screen, or the full
+ * report of one named scan for a link the scanner asked for. A closed set,
+ * recorded with the token when the link is asked for (ADR-0026 §1).
+ */
+export type LinkDestination = CabinetDestination | Readonly<{ report: string }>;
 
 /**
  * Which of the two walls in front of a link refused this request.
@@ -53,7 +60,7 @@ export type CabinetLinkResult =
   | Readonly<{
       status: "opened";
       person: Person;
-      destination: CabinetDestination;
+      destination: LinkDestination;
       setCookies: readonly string[];
     }>
   | Readonly<{ status: "refused" }>;
@@ -72,13 +79,40 @@ export type AttachMerchantResult =
 /** What is known after the conditional merchant-key write returns. */
 export type MerchantKeyReplacement = "replaced" | "not-matched" | "unknown";
 
+/**
+ * A live session: whose it is, which request its link was asked for, and what
+ * reading it asked of the browser.
+ *
+ * The request is the scanner's full-report request the link that opened this
+ * session was asked for, and null for any other session. The lines renew the
+ * session's cookie when the reading moved the session's end, which happens at
+ * most once a day, and are empty otherwise. Whoever answers the browser passes
+ * them on as they are.
+ */
+export type LiveSession = Readonly<{
+  person: Person;
+  request: string | null;
+  setCookies: readonly string[];
+}>;
+
+/**
+ * How a session is read. `renew: false` reads it without moving its end, for
+ * an answer that cannot pass a renewed cookie on to the browser.
+ */
+export type SessionReading = Readonly<{ renew?: boolean }>;
+
 export interface CabinetIdentity {
   readonly cookieNames: readonly string[];
 
   requestLink(email: string, destination: CabinetDestination): Promise<LinkRequestResult>;
+  /**
+   * The address a live link would sign in, read without spending it, or null
+   * for a link that no longer opens anything.
+   */
+  addressOfLink(token: string): Promise<string | null>;
   openLink(token: string): Promise<CabinetLinkResult>;
 
-  whoIs(cookieHeader: string | undefined): Promise<Person | null>;
+  whoIs(cookieHeader: string | undefined, reading?: SessionReading): Promise<LiveSession | null>;
   signOut(cookieHeader: string | undefined): Promise<number>;
 
   attachMerchant(

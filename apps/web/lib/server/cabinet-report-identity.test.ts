@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCabinetReportIdentityClient } from "./cabinet-report-identity";
 
 const secret = "s".repeat(32);
-const state = "A".repeat(43);
+const scanId = "019b41a0-7c51-7d63-84bd-a5a20faef497";
+const requestId = "019b41a0-7c51-7d63-84bd-a5a20faef498";
 
 async function listen(
   handler: (request: IncomingMessage, response: ServerResponse) => void,
@@ -46,7 +47,7 @@ describe("cabinet report identity client", () => {
           body,
         });
         response.setHeader("content-type", "application/json");
-        response.end(JSON.stringify({ status: "accepted", token_hash: "B".repeat(43) }));
+        response.end(JSON.stringify({ status: "accepted" }));
       });
     });
     servers.push(running.server);
@@ -58,10 +59,10 @@ describe("cabinet report identity client", () => {
     await expect(
       client.sendReportLink({
         email: "owner@example.com",
-        intentKind: "recovery",
-        state,
+        scanId,
+        request: requestId,
       }),
-    ).resolves.toEqual({ status: "accepted", token_hash: "B".repeat(43) });
+    ).resolves.toEqual({ status: "accepted" });
     expect(received).toEqual([
       {
         url: "/internal/report-identity",
@@ -69,16 +70,55 @@ describe("cabinet report identity client", () => {
         body: JSON.stringify({
           operation: "send",
           email: "owner@example.com",
-          intent_kind: "recovery",
-          state,
+          destination: { report: scanId },
+          request: requestId,
         }),
       },
     ]);
   });
 
+  it("asks whose session a cookie header is and reads the cabinet's answer", async () => {
+    const bodies: string[] = [];
+    const renewed = "__Host-agentify.session_token=v.s; Max-Age=2592000; Path=/; Secure";
+    const running = await listen((request, response) => {
+      let body = "";
+      request.setEncoding("utf8");
+      request.on("data", (chunk: string) => (body += chunk));
+      request.on("end", () => {
+        bodies.push(body);
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            status: "signed_in",
+            email: "owner@example.com",
+            request: requestId,
+            set_cookie: [renewed],
+          }),
+        );
+      });
+    });
+    servers.push(running.server);
+    const client = createCabinetReportIdentityClient({ baseUrl: running.url, secret });
+
+    await expect(
+      client.readSession({ cookie: "a=1; __Host-agentify.session_token=v.s", renew: true }),
+    ).resolves.toEqual({
+      status: "signed_in",
+      email: "owner@example.com",
+      request: requestId,
+      set_cookie: [renewed],
+    });
+    expect(JSON.parse(bodies[0] ?? "{}")).toEqual({
+      operation: "session",
+      cookie: "a=1; __Host-agentify.session_token=v.s",
+      renew: true,
+    });
+  });
+
   it.each([
     ["non-200", 503, undefined],
     ["response-schema drift", 200, { status: "accepted", token_hash: "hex" }],
+    ["an unknown answer", 200, { status: "maybe" }],
   ])("fails closed on %s", async (_name, status, payload) => {
     const running = await listen((_request, response) => {
       response.statusCode = status;
@@ -95,12 +135,11 @@ describe("cabinet report identity client", () => {
       secret,
     });
     await expect(
-      client.sendReportLink({
-        email: "owner@example.com",
-        intentKind: "registration",
-        state,
-      }),
+      client.sendReportLink({ email: "owner@example.com", scanId, request: requestId }),
     ).rejects.toThrow("cabinet_identity_unavailable");
+    await expect(client.readSession({ cookie: "a=1", renew: false })).rejects.toThrow(
+      "cabinet_identity_unavailable",
+    );
   });
 
   it("aborts at its fixed boundary and does not log sensitive values", async () => {
@@ -118,14 +157,41 @@ describe("cabinet report identity client", () => {
       secret,
       fetchImpl,
     });
-    const result = client.consumeReportLink({
-      token: "T".repeat(32),
+    const result = client.sendReportLink({
       email: "sensitive@example.com",
-      intentKind: "recovery",
-      state,
+      scanId,
+      request: requestId,
     });
     const rejection = expect(result).rejects.toThrow("cabinet_identity_unavailable");
     await vi.advanceTimersByTimeAsync(14_999);
+    expect(requestSignal?.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await rejection;
+    expect(requestSignal?.aborted).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it("gives up on a session question sooner, because a page is waiting on it", async () => {
+    // Every scanner page that shows who is visiting asks this, and a cabinet
+    // that hangs must turn into "we cannot tell who is visiting" in seconds,
+    // not into a page that never draws (ADR-0026 §2).
+    vi.useFakeTimers();
+    let requestSignal: AbortSignal | null | undefined;
+    const fetchImpl = (_input: string | URL | Request, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        requestSignal = init?.signal;
+        requestSignal?.addEventListener("abort", () =>
+          reject(new DOMException("Aborted", "AbortError")),
+        );
+      });
+    const client = createCabinetReportIdentityClient({
+      baseUrl: "http://cabinet.internal:3002",
+      secret,
+      fetchImpl,
+    });
+    const result = client.readSession({ cookie: "sensitive-cookie-value", renew: false });
+    const rejection = expect(result).rejects.toThrow("cabinet_identity_unavailable");
+    await vi.advanceTimersByTimeAsync(2_999);
     expect(requestSignal?.aborted).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     await rejection;

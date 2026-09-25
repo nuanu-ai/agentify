@@ -5,8 +5,6 @@ import {
   accountDataRequestSchema,
   apiErrorEnvelopeSchema,
   apiErrorSchema,
-  authFinalizeRequestSchema,
-  authFinalizeResponseSchema,
   BROWSER_OBSERVATION_IDS,
   BROWSER_OBSERVATION_VERSION,
   browserObservationFindingSchema,
@@ -34,17 +32,13 @@ import {
   sharePreviewResponseSchema,
 } from "./index.js";
 import {
-  acknowledgeReportLinkRequestSchema,
-  consumeReportLinkRequestSchema,
   deleteUnattachedPersonRequestSchema,
-  issueCabinetLinkRequestSchema,
+  readSessionRequestSchema,
   sendReportLinkRequestSchema,
 } from "./report-identity.js";
 
 const uuid = "019b41a0-7c51-7d63-84bd-a5a20faef497";
-const receiptId = "550e8400-e29b-41d4-a716-446655440000";
 const timestamp = "2026-09-21T12:00:00.000Z";
-const tokenHash = "h".repeat(43);
 
 const reportCheck = (id: number) => ({
   id,
@@ -237,6 +231,9 @@ const contracts = [
     ],
   },
   {
+    // The address is not required here: a signed-in person's own ask files the
+    // report under the session's address and sends none (ADR-0026 §2). The
+    // route refuses a stranger's ask without one, in its own words.
     name: "registrationRequestSchema",
     schema: registrationRequestSchema,
     valid: {
@@ -246,13 +243,7 @@ const contracts = [
       marketing_email_opt_in: false,
       dataset_reuse_acknowledged: true,
     },
-    required: [
-      "email",
-      "role",
-      "site_is_mine",
-      "marketing_email_opt_in",
-      "dataset_reuse_acknowledged",
-    ],
+    required: ["role", "site_is_mine", "marketing_email_opt_in", "dataset_reuse_acknowledged"],
   },
   {
     name: "registrationResponseSchema",
@@ -261,16 +252,10 @@ const contracts = [
     required: ["status"],
   },
   {
-    name: "authFinalizeRequestSchema",
-    schema: authFinalizeRequestSchema,
-    valid: { state: "s".repeat(32) },
-    required: ["state"],
-  },
-  {
-    name: "authFinalizeResponseSchema",
-    schema: authFinalizeResponseSchema,
-    valid: { status: "verified", report_url: `/report/${uuid}` },
-    required: ["status", "report_url"],
+    name: "registrationResponseSchema (the signed-in ask)",
+    schema: registrationResponseSchema,
+    valid: { status: "report_ready", report_url: `/report/${uuid}`, email: "owner@example.com" },
+    required: ["status", "report_url", "email"],
   },
   {
     name: "contactAccessResponseSchema",
@@ -459,44 +444,16 @@ const contracts = [
     valid: {
       operation: "send",
       email: "owner@example.com",
-      intent_kind: "registration",
-      state: tokenHash,
+      destination: { report: uuid },
+      request: uuid,
     },
-    required: ["operation", "email", "intent_kind", "state"],
+    required: ["operation", "email", "destination", ["destination", "report"], "request"],
   },
   {
-    name: "consumeReportLinkRequestSchema",
-    schema: consumeReportLinkRequestSchema,
-    valid: {
-      operation: "verify",
-      phase: "consume",
-      token: "T".repeat(32),
-      email: "owner@example.com",
-      intent_kind: "recovery",
-      state: tokenHash,
-    },
-    required: ["operation", "phase", "token", "email", "intent_kind", "state"],
-  },
-  {
-    name: "acknowledgeReportLinkRequestSchema",
-    schema: acknowledgeReportLinkRequestSchema,
-    valid: {
-      operation: "verify",
-      phase: "acknowledge",
-      receipt_id: receiptId,
-      token_hash: tokenHash,
-    },
-    required: ["operation", "phase", "receipt_id", "token_hash"],
-  },
-  {
-    name: "issueCabinetLinkRequestSchema",
-    schema: issueCabinetLinkRequestSchema,
-    valid: {
-      operation: "issue",
-      receipt_id: receiptId,
-      token_hash: tokenHash,
-    },
-    required: ["operation", "receipt_id", "token_hash"],
+    name: "readSessionRequestSchema",
+    schema: readSessionRequestSchema,
+    valid: { operation: "session", cookie: "agentify.session_token=value", renew: false },
+    required: ["operation", "cookie", "renew"],
   },
   {
     name: "deleteUnattachedPersonRequestSchema",

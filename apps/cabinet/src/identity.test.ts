@@ -206,22 +206,30 @@ describe("cabinet magic links", () => {
     expect(opened).toMatchObject({ status: "opened", destination: "woocommerce" });
   });
 
-  it("refuses a report-purpose token at the cabinet door without consuming it", async () => {
+  it("refuses a token whose recorded destination is outside the closed set, spending nothing", async () => {
+    // Where a link leads is one of the cabinet's screens or one scan's report,
+    // and a row naming anything else was not written by the door: it opens
+    // nothing rather than sending somebody to where it says (ADR-0026 §1).
     const { identity, messages, rows } = memoryIdentity();
     await identity.requestLink("person@example.com", "default");
     const token = tokenIn(messages[0] as Message);
     const verification = rows.cabinet_verifications?.[0];
     if (verification === undefined) throw new Error("the link was not stored");
-    verification.value = JSON.stringify({
-      email: "person@example.com",
-      purpose: "report",
-      destination: "default",
-    });
 
-    await expect(identity.openLink(token)).resolves.toStrictEqual({ status: "refused" });
-    expect(rows.cabinet_verifications).toHaveLength(1);
-    expect(rows.cabinet_accounts).toHaveLength(0);
-    expect(rows.cabinet_sessions).toHaveLength(0);
+    for (const destination of [
+      "https://evil.example/",
+      { url: "https://evil.example/" },
+      { report: "not-a-scan" },
+      { report: "019b41a0-7c51-7d63-84bd-a5a20faef497", also: "settings" },
+    ]) {
+      verification.value = JSON.stringify({ email: "person@example.com", destination });
+
+      await expect(identity.openLink(token)).resolves.toStrictEqual({ status: "refused" });
+      expect(await identity.addressOfLink(token)).toBeNull();
+      expect(rows.cabinet_verifications).toHaveLength(1);
+      expect(rows.cabinet_accounts).toHaveLength(0);
+      expect(rows.cabinet_sessions).toHaveLength(0);
+    }
   });
 
   it("keeps no token or rate event when the mail provider refuses the message", async () => {

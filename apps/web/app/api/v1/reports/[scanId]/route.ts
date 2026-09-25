@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { REPORT_SESSION_COOKIE } from "../../../../../lib/server/auth";
-import { errorResponse } from "../../../../../lib/server/http";
+import { visitorOf } from "../../../../../lib/server/auth";
+import { errorResponse, visitorUnknownResponse } from "../../../../../lib/server/http";
 import { getFullReport } from "../../../../../lib/server/reporting";
 
 export const runtime = "nodejs";
@@ -11,7 +11,9 @@ export async function GET(
   { params }: { params: Promise<{ scanId: string }> },
 ) {
   const { scanId } = await params;
-  const report = await getFullReport(scanId, request.cookies.get(REPORT_SESSION_COOKIE)?.value);
+  const visitor = await visitorOf(request.headers.get("cookie"));
+  if (visitor.kind === "unknown") return visitorUnknownResponse(request);
+  const report = await getFullReport(scanId, visitor);
   if (!report)
     return errorResponse(
       request,

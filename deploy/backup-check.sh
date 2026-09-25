@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Once a week, from agentify-backup-check.timer: restic's own check of the
+# A restore rehearsal, which a person starts (agentify-backup-check.service,
+# deploy/README.md "Backups"); nothing schedules it: restic's own check of the
 # repository, then the latest snapshot restored into scratch databases
 # check_<database> on PRODUCTION's server. Every table must hold the row count
 # that the snapshot recorded when it was taken. The check compares with that

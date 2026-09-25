@@ -20,8 +20,8 @@ point objective is ten minutes. The repository has its own password, since a
 Hetzner key opens every bucket of its project; the password and the key live in
 `/etc/agentify/backup.env`, which no snapshot holds, and the password also in
 Dmitry's 1Password. Snapshots are kept for a day, hourly for two days and daily
-for 30 days, and a weekly check restores the latest and compares its row
-counts. The bucket keeps a deleted object's version for 30 days. Object Lock
+for 30 days, and a restore rehearsal, which a person runs and nothing
+schedules, restores the latest and compares its row counts. The bucket keeps a deleted object's version for 30 days. Object Lock
 retention is not set, so whoever holds the key can delete every version.
 
 ## Alternatives rejected

@@ -1,3 +1,15 @@
+/**
+ * A deterministic local report for the browser smoke, and a way to sign in to it.
+ *
+ * The scanner keeps no session (ADR-0026 §2), so the smoke signs in the way a
+ * person does: through the cabinet's page with one control. What this plants
+ * in the cabinet's database is exactly what the cabinet writes when the scanner
+ * asks it for a link, a hashed one-time token with its address and
+ * destination, because the message itself goes to the cabinet's log and a
+ * browser script cannot read that. Local databases only.
+ */
+
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { chmod, writeFile } from "node:fs/promises";
 
 import {
@@ -9,10 +21,10 @@ import {
   browserObservationFindings,
   browserObservations,
   consentSnapshots,
+  createDatabase,
   createUuidV7,
   leadScans,
   leads,
-  reportSessions,
   scanChecks,
   scans,
   sessions,
@@ -32,6 +44,33 @@ const outputFileInput = process.env.LOCAL_E2E_VERIFICATION_FILE;
 if (!outputFileInput?.startsWith("/tmp/"))
   throw new Error("LOCAL_E2E_VERIFICATION_FILE must be under /tmp");
 const outputFile = outputFileInput;
+const cabinetDatabaseUrl = new URL(process.env.CABINET_DATABASE_URL ?? "");
+if (!["localhost", "127.0.0.1"].includes(cabinetDatabaseUrl.hostname))
+  throw new Error("Local E2E fixture refuses a non-local CABINET_DATABASE_URL");
+
+/** A one-time link for this address to this report, written the way the cabinet writes one. */
+async function plantSignInLink(email: string, scanId: string): Promise<string> {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const token = [...randomBytes(32)].map((byte) => alphabet[byte % alphabet.length]).join("");
+  const cabinet = createDatabase(cabinetDatabaseUrl.toString(), { max: 1 });
+  try {
+    const now = new Date();
+    await cabinet.pool.query(
+      `insert into cabinet_verifications (id, identifier, value, expires_at, created_at, updated_at)
+       values ($1, $2, $3, $4, $5, $5)`,
+      [
+        randomUUID(),
+        createHash("sha256").update(token).digest("base64url"),
+        JSON.stringify({ email, destination: { report: scanId }, request: null }),
+        new Date(now.getTime() + 60 * 60 * 1_000),
+        now,
+      ],
+    );
+  } finally {
+    await cabinet.pool.end();
+  }
+  return token;
+}
 async function main() {
   const { db, pool } = getDatabase();
   const config = getServerConfig();
@@ -43,7 +82,6 @@ async function main() {
     const browserObservationId = createUuidV7();
     const browserOperationId = createUuidV7();
     const leadId = createUuidV7();
-    const reportSessionToken = `local-report-session-${suffix}`;
     const accessToken = `local-e2e-access-${suffix}`;
     const email = `local-e2e-${suffix}@example.com`;
     await db.insert(sessions).values({
@@ -188,24 +226,19 @@ async function main() {
       siteOwnershipClaim: true,
     });
     await db.update(scans).set({ leadId }).where(eq(scans.id, scanId));
-    await db.insert(reportSessions).values({
-      id: createUuidV7(),
-      leadId,
-      sessionTokenHash: sha256(reportSessionToken),
-      expiresAt: new Date(Date.now() + 86_400_000),
-    });
     await db.insert(waitlistEntries).values({
       id: createUuidV7(),
       leadId,
       scanId,
     });
     const baseUrl = process.env.APP_BASE_URL ?? "http://localhost:3000";
+    const signInToken = await plantSignInLink(email, scanId);
     await writeFile(
       outputFile,
       JSON.stringify({
         scanUrl: `${baseUrl}/scan/${scanId}?segment=owner#access_token=${accessToken}`,
         reportUrl: `${baseUrl}/report/${scanId}`,
-        reportSessionToken,
+        signInUrl: `${baseUrl}/cabinet/sign-in/open?token=${signInToken}`,
         email,
       }),
       { mode: 0o600 },

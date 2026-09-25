@@ -141,6 +141,13 @@
       "when": 1789986930878,
       "tag": "0019_drop_waitlist_survey_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1790262052271,
+      "tag": "0020_the_scanner_keeps_no_sessions",
+      "breakpoints": true
     }
   ]
 }

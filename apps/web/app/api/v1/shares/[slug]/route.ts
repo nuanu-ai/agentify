@@ -1,7 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { getVerifiedSession, REPORT_SESSION_COOKIE } from "../../../../../lib/server/auth";
-import { bearerToken, errorResponse, hasSameOrigin } from "../../../../../lib/server/http";
+import { ownedLead, visitorOf } from "../../../../../lib/server/auth";
+import {
+  bearerToken,
+  errorResponse,
+  hasSameOrigin,
+  visitorUnknownResponse,
+} from "../../../../../lib/server/http";
 import { getPublicShare, revokePublicShare } from "../../../../../lib/server/reporting";
 import { authorizeScan } from "../../../../../lib/server/scans";
 
@@ -15,14 +20,12 @@ export async function DELETE(
   const share = await getPublicShare(slug);
   if (!share)
     return errorResponse(request, 404, "share_not_found", "The public link was not found.");
-  const verified = await getVerifiedSession(
-    request.cookies.get(REPORT_SESSION_COOKIE)?.value,
-    share.scanId,
-  );
   const bearer = bearerToken(request);
   const scanAuthorized = bearer ? Boolean(await authorizeScan(share.scanId, bearer)) : false;
+  const visitor = await visitorOf(request.headers.get("cookie"));
+  if (visitor.kind === "unknown" && !scanAuthorized) return visitorUnknownResponse(request);
   const result = await revokePublicShare(slug, {
-    verifiedLeadId: verified?.leadId,
+    verifiedLeadId: await ownedLead(visitor, share.scanId),
     scanTokenAuthorized: scanAuthorized,
   });
   if (result === "unauthorized")

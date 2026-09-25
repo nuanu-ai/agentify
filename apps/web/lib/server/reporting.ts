@@ -21,9 +21,9 @@ import {
 } from "@agentify/scanner-database";
 import { and, avg, count, eq, sql } from "drizzle-orm";
 
-import { getVerifiedSession } from "./auth";
+import { ownedLead, type Visitor, visitorOf } from "./auth";
 import { getServerConfig } from "./config";
-import { decryptEmail, deriveCapability, hmacHex, normalizeEmail } from "./crypto";
+import { deriveCapability, hmacHex } from "./crypto";
 import { getDatabase } from "./database";
 import { requestScannerIdentityDeletion } from "./scanner-identity-deletion";
 
@@ -50,12 +50,48 @@ function sanitizeEvidence(value: unknown): Record<string, string | number | bool
   return output;
 }
 
+/**
+ * What a report page draws, from one reading of who is visiting.
+ *
+ * The cabinet's silence, a stranger, a person the report is not filed under,
+ * and the report itself are four different pages, and the reading that tells
+ * them apart is made once here so that nothing later on the page can be told
+ * a different story.
+ */
+export async function loadReportPage(
+  scanId: string,
+  cookieHeader: string | undefined | null,
+): Promise<
+  | Readonly<{ kind: "unknown" }>
+  | Readonly<{ kind: "stranger" }>
+  | Readonly<{ kind: "not_yours"; email: string }>
+  | Readonly<{
+      kind: "report";
+      visitor: Visitor;
+      report: ReportResponse;
+      browserObservation: BrowserObservationStatusResponse | undefined;
+    }>
+> {
+  const visitor = await visitorOf(cookieHeader);
+  if (visitor.kind === "unknown") return { kind: "unknown" };
+  if (visitor.kind === "stranger") return { kind: "stranger" };
+  const report = await getFullReport(scanId, visitor);
+  if (!report) return { kind: "not_yours", email: visitor.email };
+  return {
+    kind: "report",
+    visitor,
+    report,
+    browserObservation: await getFullBrowserObservation(scanId, visitor),
+  };
+}
+
 export async function getFullReport(
   scanId: string,
-  sessionToken: string | undefined,
+  visitor: Visitor,
 ): Promise<ReportResponse | undefined> {
-  const verified = await getVerifiedSession(sessionToken, scanId);
-  if (!verified) return undefined;
+  const leadId = await ownedLead(visitor, scanId);
+  if (!leadId) return undefined;
+  const verified = { leadId };
   const { db } = getDatabase();
   const scan = (await db.select().from(scans).where(eq(scans.id, scanId)).limit(1))[0];
   // The row in waitlist_entries is the record that this lead registered for
@@ -115,38 +151,12 @@ export async function getFullReport(
   };
 }
 
-export async function getReportOwnerEmail(
-  scanId: string,
-  sessionToken: string | undefined,
-): Promise<string | undefined> {
-  const verified = await getVerifiedSession(sessionToken, scanId);
-  if (!verified) return undefined;
-  const lead = (
-    await getDatabase()
-      .db.select({
-        encryptedEmail: leads.emailNormalizedCiphertext,
-        emailLookupHash: leads.emailLookupHash,
-      })
-      .from(leads)
-      .where(eq(leads.id, verified.leadId))
-      .limit(1)
-  )[0];
-  if (!lead || lead.encryptedEmail === "deleted") return undefined;
-  const config = getServerConfig();
-  const email = normalizeEmail(decryptEmail(lead.encryptedEmail, config.encryptionKey));
-  if (hmacHex(config.hmacSecret, "email", email) !== lead.emailLookupHash) {
-    throw new Error("lead_email_identity_mismatch");
-  }
-  return email;
-}
-
 export async function getFullBrowserObservation(
   scanId: string,
-  sessionToken: string | undefined,
+  visitor: Visitor,
 ): Promise<BrowserObservationStatusResponse | undefined> {
   if (getServerConfig().APIFY_BROWSER_MODE !== "report") return undefined;
-  const verified = await getVerifiedSession(sessionToken, scanId);
-  if (!verified) return undefined;
+  if (!(await ownedLead(visitor, scanId))) return undefined;
   const { db } = getDatabase();
   const observation = await createBrowserObservationRepository(db).getForScan(scanId);
   if (!observation) return undefined;

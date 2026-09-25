@@ -172,7 +172,13 @@ for dependency in database scanner_worker worker_heartbeat worker_database worke
   }
 done
 
-check_private_headers "$WEB_BASE_URL/auth/callback" "auth callback"
+# The header's answer to who is visiting carries an address when somebody is
+# signed in, so no shared cache may store it, whoever asks.
+session_headers="$(curl --silent --show-error --max-time 20 --dump-header - --output /dev/null "$WEB_BASE_URL/api/v2/session")"
+grep -qi '^cache-control:.*private.*no-store' <<<"$session_headers" || {
+  echo "session answer missing private no-store" >&2
+  exit 1
+}
 
 if [[ -n "$WORKER_BASE_URL" ]]; then
   curl --silent --show-error --fail --max-time 20 "$WORKER_BASE_URL/health/live" >/dev/null

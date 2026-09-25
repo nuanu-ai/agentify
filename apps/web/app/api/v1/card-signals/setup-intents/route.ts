@@ -2,8 +2,12 @@ import { uuidV7Schema } from "@agentify/scanner-contracts";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
-import { REPORT_SESSION_COOKIE } from "../../../../../lib/server/auth";
-import { errorResponse, hasSameOrigin } from "../../../../../lib/server/http";
+import { visitorOf } from "../../../../../lib/server/auth";
+import {
+  errorResponse,
+  hasSameOrigin,
+  visitorUnknownResponse,
+} from "../../../../../lib/server/http";
 import { setupCardSignal } from "../../../../../lib/server/stripe-card-signal";
 
 export const runtime = "nodejs";
@@ -34,9 +38,11 @@ export async function POST(request: NextRequest) {
       "invalid_card_signal_request",
       "Explicit card-signal consent and a valid scan are required.",
     );
+  const visitor = await visitorOf(request.headers.get("cookie"));
+  if (visitor.kind === "unknown") return visitorUnknownResponse(request);
   try {
     const result = await setupCardSignal({
-      sessionToken: request.cookies.get(REPORT_SESSION_COOKIE)?.value,
+      visitor,
       scanId: parsed.data.scan_id,
       idempotencyKey,
     });

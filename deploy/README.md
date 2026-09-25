@@ -40,7 +40,7 @@ host are these, with `<channel>` standing for `test` or `production`:
 /var/backups/agentify/<channel>/         the restore points, one directory per release
 /etc/cron.d/agentify-release             the nightly privacy job, written by each verified release
 /etc/agentify/backup.env                 PRODUCTION only: the backup repository's password and S3 key, root, mode 600
-/var/lib/agentify/production/backup-status  the last backup and the last weekly check ("Backups")
+/var/lib/agentify/production/backup-status  the last backup and the last restore rehearsal ("Backups")
 ```
 
 The database mounts its init scripts from `postgres-init/` rather than from a
@@ -435,10 +435,21 @@ table, `production.env` and `release.json`. It never holds
 `/etc/agentify/backup.env`, which holds the repository's password and the S3
 key; the password is also in Dmitry's 1Password, and the key can be issued
 again in the Hetzner console. Snapshots are kept for the last day, one an hour
-for two days and one a day for thirty days, and once a week one is restored
-into scratch databases and its row counts compared.
+for two days and one a day for thirty days.
 
-There is no alert yet. A failed backup or check writes one line at priority
+A restore is rehearsed by a person, never on a schedule: the rehearsal restores
+the latest snapshot into scratch databases `check_<database>` beside the live
+ones, which it never touches, compares every table's row count with the count
+the snapshot recorded, drops the scratch databases however it ends, and writes
+its result into the status file. It takes seconds and exits non-zero if the
+snapshot does not restore whole:
+
+```sh
+ssh agentify sudo systemctl start agentify-backup-check.service
+ssh agentify cat /var/lib/agentify/production/backup-status
+```
+
+There is no alert yet. A failed backup or rehearsal writes one line at priority
 err to the journal, and the status file says when each last succeeded, so look
 at both:
 

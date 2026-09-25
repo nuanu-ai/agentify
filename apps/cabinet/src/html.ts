@@ -161,34 +161,36 @@ ${surface(chrome.mode)}
           : `<a href="${escaped(chrome.base)}/${tab}">${label}</a>`,
       ).join("")}</nav>
       ${chrome.selling === undefined ? "" : state(chrome.selling)}
-    </div>
+${accountRow(chrome.base, chrome.who)}    </div>
   </header>
   <div class="container">
 ${chrome.unnamed === true ? unnamedNote(chrome.base) : ""}${chrome.body}
-${accountRow(chrome.base, chrome.who)}  </div>
+  </div>
 ${FOOT}</div>
 </body>
 </html>
 `;
 
 /**
- * Who is signed in, and how to stop being them.
+ * Who is signed in, and how to stop being them, at the end of the bar.
  *
- * Under the content rather than in the bar, which is where the scanner puts the
- * same two things (apps/web/app/report/[scanId]/report.module.css, `.account`).
- * An address is a label and not a destination: in the bar it read as a fifth
- * tab, and it pushed the one item up there that genuinely is status — the
- * selling light — out to the far edge behind three things that are not.
+ * In the header, as the scanner's header carries the same two things
+ * (apps/web/components/site-chrome.tsx), because one session serves the whole
+ * site and the site reads as one product (ADR-0026 §3). It stands behind a rule
+ * of its own at the far end, in the muted weight of a label, so the address
+ * does not read as a sixth tab and the selling light stays the one piece of
+ * status beside the tabs.
  *
- * It is still a link, and it still leads to the settings, because pressing your
- * own name means "show me my account" and the account is on that page.
+ * The address is still a link to the settings, because pressing your own name
+ * means "show me my account" and the account is on that page. A long address is
+ * cut with its whole self in the title, so the bar never runs off a phone.
  */
-const accountRow = (base: string, who: string): string => `  <div class="account">
-    <a class="who" href="${escaped(base)}/settings">${escaped(who)}</a>
-    <form class="inline" method="post" action="${escaped(base)}/sign-out">
-      <button type="submit">Sign out</button>
-    </form>
-  </div>
+const accountRow = (base: string, who: string): string => `      <div class="account">
+        <a class="who" href="${escaped(base)}/settings" title="${escaped(who)}">${escaped(who)}</a>
+        <form class="inline" method="post" action="${escaped(base)}/sign-out">
+          <button type="submit">Sign out</button>
+        </form>
+      </div>
 `;
 
 /**
