@@ -13,12 +13,7 @@
 
 import { CardSchema } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
-import {
-  cardsFromTheShop,
-  decimalOfMinorUnits,
-  plainTextOf,
-  type StoreProduct,
-} from "./woo-catalog.js";
+import { cardsFromTheShop, decimalOfMinorUnits, type StoreProduct } from "./woo-catalog.js";
 
 /** One Store API product, with the awkward parts overridable per test. */
 const product = (overrides: Partial<StoreProduct> = {}): StoreProduct => ({
@@ -115,56 +110,6 @@ describe("a price in minor units", () => {
     expect(decimalOfMinorUnits("500", -1)).toBeNull();
     expect(decimalOfMinorUnits("500", 1.5)).toBeNull();
     expect(decimalOfMinorUnits("500", 1_000_000_000)).toBeNull();
-  });
-});
-
-describe("the shop's own prose", () => {
-  it("comes out as text rather than as markup", () => {
-    expect(plainTextOf("<p>A single-use access code <em>by email</em>.</p>")).toBe(
-      "A single-use access code by email.",
-    );
-  });
-
-  it("puts the characters back that the shop wrote as entities", () => {
-    expect(plainTextOf("Tea &amp; coffee &#8212; &quot;the set&quot;")).toBe(
-      'Tea & coffee — "the set"',
-    );
-  });
-
-  it("reads a character written as a hexadecimal reference", () => {
-    expect(plainTextOf("Caf&#xE9; brunch")).toBe("Café brunch");
-  });
-
-  it("leaves a name it does not know as it arrived", () => {
-    // An HTML 4 name the table lacks, typed by hand, which wp_kses_post passes
-    // through. Not dropped and not guessed at: what the card says can always
-    // be traced back to what the shop sent.
-    expect(plainTextOf("Caf&eacute; brunch")).toBe("Caf&eacute; brunch");
-  });
-
-  it("reads each reference once", () => {
-    // What the shop sends for a merchant who typed the six characters `&#038;`
-    // into their prose. Read twice, it would show an ampersand they never
-    // wrote.
-    expect(plainTextOf("Type &amp;#038; for an ampersand")).toBe("Type &#038; for an ampersand");
-  });
-
-  it("keeps a tag the merchant wrote as text", () => {
-    // The markup goes before the references are read. The other way round, a
-    // tag spelled out in the prose becomes a tag and is removed with the rest.
-    expect(plainTextOf("<p>Adds a &lt;header&gt; block to the theme.</p>")).toBe(
-      "Adds a <header> block to the theme.",
-    );
-  });
-
-  it("drops what a browser would not have shown either", () => {
-    expect(plainTextOf("<script>alert(1)</script><p>Real text.</p>")).toBe("Real text.");
-    expect(plainTextOf("<style>p{color:red}</style>Real text.")).toBe("Real text.");
-  });
-
-  it("is empty for prose that was only markup", () => {
-    expect(plainTextOf("<p>&nbsp;</p>")).toBe("");
-    expect(plainTextOf("")).toBe("");
   });
 });
 
@@ -312,6 +257,45 @@ describe("turning a shop's products into cards", () => {
       expect.stringMatching(/^woo_[a-f0-9]{16}_12$/),
     ]);
     expect(skipped.map((one) => one.id)).toEqual(["11"]);
+  });
+
+  it("makes a card the door accepts out of the shapes a live shop sends", () => {
+    // The name and the prose as WordPress sends them: an ampersand as a
+    // number, paragraphs, a newline between them, an apostrophe as a number,
+    // and a name typed by hand.
+    const { cards, skipped } = cardsFromTheShop([
+      product({
+        id: 12,
+        name: "Coffee &#038; Brunch Gift Card",
+        description:
+          "<p>Treat someone to an unhurried morning.</p>\n<p>Valid for twelve months&#8217; time at the Caf&eacute;.</p>",
+      }),
+    ]);
+
+    expect(skipped).toStrictEqual([]);
+    expect(cards[0]?.card.title).toBe("Coffee & Brunch Gift Card");
+    expect(cards[0]?.card.description).toBe(
+      "Treat someone to an unhurried morning. Valid for twelve months’ time at the Café.",
+    );
+    expect(CardSchema.safeParse(cards[0]?.card).success).toBe(true);
+  });
+
+  it("leaves a product whose page shows markup as text in the shop, and says what it found", () => {
+    // What the page shows is what the card would say, and the door refuses it.
+    // The product is named here, with what was found, rather than sent to be
+    // refused in words about writing HTML the merchant never wrote.
+    const { cards, skipped } = cardsFromTheShop([
+      product({ id: 1, description: "<p>Adds a &lt;header&gt; block to the theme.</p>" }),
+      product({ id: 2, name: "Coffee &amp;amp; Brunch" }),
+      product({ id: 3 }),
+    ]);
+
+    expect(cards.map((one) => one.id)).toStrictEqual(["3"]);
+    expect(skipped.map((one) => one.id)).toStrictEqual(["1", "2"]);
+    expect(skipped[0]?.why).toContain('"<header>"');
+    expect(skipped[0]?.why).toContain("description");
+    expect(skipped[1]?.why).toContain('"&amp;"');
+    expect(skipped[1]?.why).toContain("name");
   });
 
   it("names each skipped product the way the merchant sees it in their shop", () => {
