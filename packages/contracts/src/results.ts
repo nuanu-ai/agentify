@@ -173,8 +173,17 @@ export const ProblemSchema = z
      */
     path: z.array(z.string()),
 
-    /** What kind of finding it is, for the code that reads it. */
-    code: z.string().regex(/\S/, "a finding carries a code"),
+    /**
+     * What kind of finding it is, for the code that reads it.
+     *
+     * Open, because a finding about a field carries whatever the check that
+     * found it calls it. The three about the merchant are promised, and they
+     * are described for the export for the reason the error's codes are.
+     */
+    code: z.string().regex(/\S/, "a finding carries a code").meta({
+      description:
+        'What kind of finding it is, for the program that reads it. The set is open: a finding about a field of what was sent carries the name the check gave it. Three are promised, always with an empty path, and each says the merchant rather than the card is missing something, so no edit to the card clears it: "no_seller_name" (no name set for buyers to read), "no_payout_wallet" (no wallet set for the sales to be paid into, asked for wherever a payment settles) and "no_operator_approval" (the operator has not admitted this merchant to the live catalog, which only the operator can change).',
+    }),
 
     /** The same finding in words, for the person who has to fix the card. */
     message: z.string().regex(/\S/, "a finding carries an explanation a person can read"),
@@ -243,6 +252,29 @@ export const CallErrorSchema = z.strictObject({
  * writes the branch that reads it.
  */
 export const CARD_REJECTED = "card_rejected";
+
+/**
+ * The findings of a refused publish that are about the merchant rather than
+ * the card.
+ *
+ * Each arrives in the refusal's `problems` with an empty path, beside whatever
+ * is wrong with the card, and none of them is cleared by editing the card: the
+ * merchant has no name set for buyers to read, no wallet set for their sales to
+ * be paid into, or no approval from the operator for the live catalog. The
+ * first two are set with a call of the merchant's own (`POST /v0/seller-name`,
+ * `POST /v0/payout-wallet`); the third is the operator's decision and has no
+ * call. Which of them a deployment asks for is its own rule and is not
+ * promised here; a program that branches on these learns what is missing
+ * where it is refused, at the publish.
+ */
+export const MERCHANT_FINDINGS = Object.freeze({
+  NO_SELLER_NAME: "no_seller_name",
+  NO_PAYOUT_WALLET: "no_payout_wallet",
+  NO_OPERATOR_APPROVAL: "no_operator_approval",
+} as const);
+
+/** One of the findings about the merchant, as its code travels on the wire. */
+export type MerchantFinding = (typeof MERCHANT_FINDINGS)[keyof typeof MERCHANT_FINDINGS];
 
 /**
  * The error a refused publish carries: the shared shape, with the findings made
