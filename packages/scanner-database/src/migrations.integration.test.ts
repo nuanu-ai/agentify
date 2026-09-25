@@ -1,4 +1,6 @@
-import { readFile } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   BROWSER_OBSERVATION_IDS,
@@ -6,6 +8,8 @@ import {
   type CheckResult,
   type ScanJobV1,
 } from "@agentify/scanner-contracts";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -777,4 +781,101 @@ describe("initial database migration", () => {
       await pool.end();
     }
   }, 20_000);
+});
+
+/**
+ * The one database holds three migration sets, and drizzle's migrator applies
+ * every file dated after the newest entry of the history it reads and compares
+ * nothing else. So each set keeps a history of its own: sharing one, a set
+ * would skip the other's older files as though they had run. The gateway's
+ * and the cabinet's are applied the way their own commands apply them
+ * (apps/gateway/src/migrate.ts, apps/cabinet/src/database.ts).
+ */
+describe("the scanner's migrations in the one database", () => {
+  const gatewayMigrations = fileURLToPath(
+    new URL("../../../apps/gateway/drizzle", import.meta.url),
+  );
+  const cabinetMigrations = fileURLToPath(
+    new URL("../../../apps/cabinet/drizzle", import.meta.url),
+  );
+  const entries = async (folder: string): Promise<number> =>
+    JSON.parse(await readFile(join(folder, "meta", "_journal.json"), "utf8")).entries.length;
+
+  it("run beside the gateway's and the cabinet's, and none of the three skips or repeats another's", async () => {
+    await resetDatabase();
+    const { db, pool } = createDatabase(connectionString, { max: 2 });
+    // A gateway migration written after the scanner's newest file but dated
+    // before it, as a branch that waited in review would be.
+    const later = await mkdtemp(join(tmpdir(), "gateway-migrations-"));
+    try {
+      const gateway = async (folder: string) =>
+        migrate(drizzle(pool), { migrationsFolder: folder });
+      const cabinet = async () =>
+        migrate(drizzle(pool), {
+          migrationsFolder: cabinetMigrations,
+          migrationsTable: "cabinet_migrations",
+        });
+      await gateway(gatewayMigrations);
+      await cabinet();
+      await migrateDatabase(db, migrationsFolder);
+
+      const tables = await pool.query<{ tablename: string }>(
+        "select tablename from pg_tables where schemaname = 'public'",
+      );
+      expect(tables.rows.map(({ tablename }) => tablename)).toEqual(
+        expect.arrayContaining([...TABLES, "orders", "cabinet_accounts"]),
+      );
+      const histories = async () =>
+        (
+          await pool.query<{ table_name: string; count: string }>(
+            `select 'gateway' as table_name, count(*)::text from drizzle.__drizzle_migrations
+             union all select 'cabinet', count(*)::text from drizzle.cabinet_migrations
+             union all select 'scanner', count(*)::text from drizzle.scanner_migrations`,
+          )
+        ).rows;
+      expect(await histories()).toEqual([
+        { table_name: "gateway", count: String(await entries(gatewayMigrations)) },
+        { table_name: "cabinet", count: String(await entries(cabinetMigrations)) },
+        { table_name: "scanner", count: String(await entries(migrationsFolder)) },
+      ]);
+
+      await gateway(gatewayMigrations);
+      await cabinet();
+      await migrateDatabase(db, migrationsFolder);
+      const unchanged = await histories();
+
+      const scannerNewest = JSON.parse(
+        await readFile(join(migrationsFolder, "meta", "_journal.json"), "utf8"),
+      ).entries.at(-1).when;
+      await cp(gatewayMigrations, later, { recursive: true });
+      const journal = JSON.parse(await readFile(join(later, "meta", "_journal.json"), "utf8"));
+      journal.entries.push({
+        idx: journal.entries.length,
+        version: "7",
+        when: scannerNewest - 60_000,
+        tag: "9999_waited_in_review",
+        breakpoints: true,
+      });
+      await writeFile(join(later, "meta", "_journal.json"), JSON.stringify(journal));
+      await writeFile(
+        join(later, "9999_waited_in_review.sql"),
+        'CREATE TABLE "waited_in_review" ("id" integer);',
+      );
+      await gateway(later);
+
+      expect(
+        (await pool.query("select to_regclass('public.waited_in_review') is not null as there"))
+          .rows[0],
+      ).toEqual({ there: true });
+      expect(await histories()).toEqual(
+        unchanged.map((row) =>
+          row.table_name === "gateway" ? { ...row, count: String(Number(row.count) + 1) } : row,
+        ),
+      );
+    } finally {
+      await rm(later, { recursive: true, force: true });
+      await pool.end();
+      await resetDatabase();
+    }
+  }, 30_000);
 });

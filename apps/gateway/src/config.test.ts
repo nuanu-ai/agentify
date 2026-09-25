@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isSandboxFacilitator, loadConfig, SANDBOX_FACILITATOR } from "./config.js";
 
-const database = "postgres://agentify_commerce:secret@localhost:5432/agentify_commerce";
+const database = "postgres://agentify:secret@localhost:5432/agentify";
 
 /** The one variable that has no sensible default and must always be given. */
 const required = { DATABASE_URL: database };
@@ -381,7 +381,7 @@ describe("loadConfig", () => {
     expect(bothBroken).toThrowError(/PORT: must be a whole number/);
 
     expect(() =>
-      loadConfig({ ...required, DATABASE_URL: "mysql://localhost/agentify_commerce" }),
+      loadConfig({ ...required, DATABASE_URL: "mysql://localhost/agentify" }),
     ).toThrowError(/DATABASE_URL: must be an address of the form postgres/);
     expect(() => loadConfig({ ...required, PORT: "70000" })).toThrowError(
       /PORT: must be within the range/,

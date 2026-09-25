@@ -3,7 +3,7 @@
 # ADR-0005 §7: `docker compose up` brings up everything a merchant's engineer
 # would look at — the scanner at the front page, the documentation, the
 # cabinet and the gateway, all on http://localhost:8080, with one Postgres
-# behind them (ADR-0003 §6) holding two databases.
+# behind them (ADR-0003 §6) holding one database, `agentify`.
 # Nothing here needs a build on the host first: the documentation is built
 # inside its image, and the four services that share one image — the
 # migration, the gateway, the cabinet and the mock merchant — run their
@@ -17,14 +17,19 @@
 # The database volume outlives `docker compose down`; `down -v` starts from
 # nothing. Migrations run as their own service before the gateway, so an
 # existing database is brought up to date rather than found to be a version
-# behind on the first query. There are two of those services because there are
-# two databases: `agentify_commerce`, which the gateway and the cabinet share,
-# and `agentify_scanner`. deploy/postgres-init/ makes the second one, and it
-# does that only on a volume that is new — a machine that ran this stack before
-# the scanner joined it needs `docker compose down -v` once.
+# behind on the first query. There are two of those services, one for the
+# gateway's and the cabinet's migrations and one for the scanner's, because
+# the scanner's are built into another image; all three sets go into the one
+# database, each with a history of its own.
+#
+# A volume made before the scanner's tables joined that database still holds
+# them in a second one, `agentify_scanner`, and the first start of this file
+# would build empty scanner tables beside them. `docker compose down -v` once
+# starts from nothing; the move the hosts made keeps the data
+# (deploy/README.md, "One database").
 #
 # The suite that needs a real database runs against a database of its own,
-# `agentify_commerce_test`, on this same server. It needs the server and nothing else
+# `agentify_test`, on this same server. It needs the server and nothing else
 # from this file:
 #
 #   docker compose up -d --wait postgres
@@ -36,8 +41,7 @@
 # database — it makes it if it is not there — as long as the server is on the
 # 5432 this file publishes it on. A host that publishes it somewhere else names it in
 # AGENTIFY_TEST_DATABASE_URL, which the suite reads from the command rather than
-# from the `.env` below. Pointing either that or DATABASE_URL at
-# `agentify_commerce` is
+# from the `.env` below. Pointing either that or DATABASE_URL at `agentify` is
 # refused rather than obeyed, because that is the database the cabinet is
 # showing and this suite empties what it is given.
 #
@@ -186,13 +190,13 @@ services:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: agentify_commerce
-      POSTGRES_PASSWORD: agentify_commerce
-      POSTGRES_DB: agentify_commerce
+      POSTGRES_USER: agentify
+      POSTGRES_PASSWORD: agentify
+      POSTGRES_DB: agentify
     ports:
       # Published so that `pnpm test:db` and a psql from the terminal reach this
       # server. They reach a different database on it: the suite empties what it
-      # is given, and `agentify_commerce` is what the cabinet is showing.
+      # is given, and `agentify` is what the cabinet is showing.
       #
       # A deployment binds it to the loopback instead — `127.0.0.1:55432:5432`
       # — because the password above is in a repository and nothing off the host
@@ -205,15 +209,15 @@ services:
       - "${AGENTIFY_POSTGRES_PUBLISH:-5432:5432}"
     volumes:
       - agentify-postgres:/var/lib/postgresql/data
-      # Makes `agentify_commerce_test` beside `agentify_commerce` on a volume that is new. On one
-      # that is not — which is every volume that has ever run this stack —
-      # Postgres does not look at this directory at all, and the suite makes its
-      # own database instead. See deploy/postgres-init/01-test-database.sql.
+      # Makes the test suites' databases beside `agentify` on a volume that is
+      # new. On one that is not — which is every volume that has ever run this
+      # stack — Postgres does not look at this directory at all, and the suites
+      # make their own databases instead. See deploy/postgres-init/.
       - ./deploy/postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       # The gateway's first query is what would otherwise discover that the
       # server is up and the database is not ready yet.
-      test: ["CMD-SHELL", "pg_isready -U agentify_commerce -d agentify_commerce"]
+      test: ["CMD-SHELL", "pg_isready -U agentify -d agentify"]
       interval: 2s
       timeout: 3s
       retries: 15
@@ -222,15 +226,15 @@ services:
   # that runs inside the process it is migrating for runs once per replica and
   # races itself. Here it runs to completion, and both processes wait for it.
   #
-  # Two sets of migrations run here, the gateway's tables and the cabinet's two.
+  # Two sets of migrations run here, the gateway's tables and the cabinet's.
   # They are separate because they belong to separate processes and keep
   # separate histories (ADR-0009 §1); they are one service because they are one
-  # database and one thing to wait for.
+  # image and one thing to wait for.
   migrate:
     <<: *app
     command: ["pnpm", "db:migrate"]
     environment:
-      DATABASE_URL: postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_commerce
+      DATABASE_URL: postgres://agentify:agentify@postgres:5432/agentify
     depends_on:
       postgres:
         condition: service_healthy
@@ -240,7 +244,7 @@ services:
     <<: *app
     command: ["pnpm", "--filter", "@agentify/gateway", "start"]
     environment:
-      DATABASE_URL: postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_commerce
+      DATABASE_URL: postgres://agentify:agentify@postgres:5432/agentify
       PORT: "3000"
       # The key this sandbox comes up selling with. Keys are rows in the
       # database (ADR-0010), and this is not one the gateway compares anything
@@ -350,7 +354,7 @@ services:
       # (ADR-0009). The same server and the same database as the gateway's, and
       # nothing about a merchant's data — every card, order and receipt on every
       # screen still comes from the API.
-      DATABASE_URL: postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_commerce
+      DATABASE_URL: postgres://agentify:agentify@postgres:5432/agentify
       # What the scanner presents on the private identity route, and the reason
       # the cabinet opens a second listener on 3002 at all (ADR-0026). The two
       # processes are the only ones that hold it, and it is theirs alone: a
@@ -545,24 +549,23 @@ services:
       # writes the file at all.
       start_period: 15s
 
-  # The scanner's schema, on its own database on the server above. Its own
+  # The scanner's tables, in the one database beside the gateway's and the
+  # cabinet's, with their history in `drizzle.scanner_migrations`. Its own
   # service for the reason the commerce migration is one: a migration that runs
   # inside the process it is migrating for runs once per replica and races
-  # itself. The two migrations are separate services rather than one because
-  # they carry separate ledgers over separate databases, and the second of them
-  # is written in another package's dialect.
+  # itself. It is a service apart from `migrate` because the scanner's
+  # migrations are built into the scanner's image and the app image leaves them
+  # out.
   #
   # There is no service after it that prepares the queue. The queue lives in
-  # this database through pg-boss, and both the process that writes to it and
-  # the process that reads it ask for it by name at start — an insert into
-  # pg-boss's own table that says nothing the second time. A third service
-  # whose whole job was to do that first existed to carry a list of grants to
-  # four database roles that no longer exist.
+  # the one `pgboss` schema the gateway's does, and both the process that
+  # writes to it and the process that reads it ask for it by name at start — an
+  # insert into pg-boss's own table that says nothing the second time.
   scanner-migrate:
     <<: *scanner-app
     command: ["node", "packages/scanner-database/dist/migrate-cli.js"]
     environment:
-      DATABASE_URL: postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_scanner
+      DATABASE_URL: postgres://agentify:agentify@postgres:5432/agentify
     depends_on:
       postgres:
         condition: service_healthy
@@ -575,7 +578,7 @@ services:
   scanner-worker:
     <<: *scanner-app
     environment:
-      DATABASE_URL: postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_scanner
+      DATABASE_URL: postgres://agentify:agentify@postgres:5432/agentify
       # The address a report is linked at, which is the door Caddy answers
       # rather than the port any of these processes listens on.
       APP_BASE_URL: "${AGENTIFY_PUBLIC_ORIGIN:-http://localhost:${AGENTIFY_HOST_PORT:-8080}}"
@@ -633,7 +636,7 @@ services:
     image: "${AGENTIFY_SCANNER_IMAGE:-agentify-scanner}"
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_scanner
+      DATABASE_URL: postgres://agentify:agentify@postgres:5432/agentify
       APP_BASE_URL: "${AGENTIFY_PUBLIC_ORIGIN:-http://localhost:${AGENTIFY_HOST_PORT:-8080}}"
       # What signs the tokens in a report link, and what encrypts the address a
       # report was asked for. The scanner derives the second from the first
@@ -707,7 +710,7 @@ services:
     image: "${AGENTIFY_SCANNER_PRIVACY_IMAGE:-agentify-scanner-privacy}"
     restart: "no"
     environment:
-      DATABASE_URL: postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_scanner
+      DATABASE_URL: postgres://agentify:agentify@postgres:5432/agentify
       APP_BASE_URL: "${AGENTIFY_PUBLIC_ORIGIN:-http://localhost:${AGENTIFY_HOST_PORT:-8080}}"
       TOKEN_HMAC_SECRET: "${TOKEN_HMAC_SECRET:-a-sandbox-token-hmac-secret-nobody-should-reuse}"
       EMAIL_ENCRYPTION_KEY: "${EMAIL_ENCRYPTION_KEY:-}"

@@ -13,7 +13,6 @@ const optionalNonEmpty = <T extends z.ZodType>(schema: T) =>
 const schema = z.object({
   APP_BASE_URL: optionalNonEmpty(z.url({ protocol: /^https?$/ })),
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
-  DASHBOARD_DATABASE_URL: optionalNonEmpty(z.url({ protocol: /^postgres(ql)?$/ })),
   TOKEN_HMAC_SECRET: optionalNonEmpty(z.string().min(32)),
   EMAIL_ENCRYPTION_KEY: optionalNonEmpty(z.string()),
   REGISTRATION_ENABLED: z

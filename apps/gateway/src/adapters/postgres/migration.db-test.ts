@@ -40,7 +40,7 @@ import { connect, type Database, PostgresStore } from "./store.js";
  */
 const wanted = (() => {
   const url = new URL(testDatabaseUrl());
-  url.pathname = "/agentify_commerce_test_migration";
+  url.pathname = "/agentify_test_migration";
   return url.toString();
 })();
 const databaseUrl = await readyDatabase(wanted);

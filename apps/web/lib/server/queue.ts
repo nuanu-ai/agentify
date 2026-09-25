@@ -15,6 +15,8 @@ const globalQueue = globalThis as typeof globalThis & {
 
 export function getScanQueue(): Promise<PgBoss> {
   globalQueue.agentifyWebQueue ??= (async () => {
+    // The one `pgboss` schema the gateway's queue uses too
+    // (apps/scanner-worker/src/queue-schema.test.ts).
     const boss = new PgBoss({
       connectionString: normalizeNodePostgresConnectionString(getServerConfig().DATABASE_URL),
       schema: "pgboss",

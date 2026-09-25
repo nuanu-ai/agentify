@@ -124,7 +124,7 @@
 
         - name: Verify Cabinet reaches Woo through public DNS and TLS
           ansible.builtin.shell: |
-            docker exec -i agentify-test-cabinet-1 node - <<'JS'
+            docker exec -i agentify-cabinet-1 node - <<'JS'
             const dns = await import('node:dns/promises')
             const addresses = await dns.lookup('woo.nuanu.ai', { all: true })
             if (addresses.length === 0 || addresses.some((answer) => answer.address !== '{{ woo_hairpin_public_ip }}')) {

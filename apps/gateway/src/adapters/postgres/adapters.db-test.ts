@@ -7,7 +7,7 @@
  * --wait postgres` brings one up — and skips itself with a sentence saying so
  * when there is none.
  *
- * The database it runs against is `agentify_commerce_test`, which is this suite's own
+ * The database it runs against is `agentify_test`, which is this suite's own
  * and not the one the stack runs on: see `testing/database.ts` for what
  * happened when they were the same.
  *
