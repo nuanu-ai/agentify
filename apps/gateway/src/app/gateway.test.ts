@@ -140,10 +140,13 @@ describe("the catalog", () => {
 
       expect(PublishResultSchema.safeParse(result).success).toBe(true);
       if (result.ok) throw new Error(`${JSON.stringify(price)} was published`);
-      const finding = result.error.problems.find(
+      // One finding for each half of the price, so that "0" is told about zero
+      // and not also sent to write "0.00", which would only be refused again.
+      const findings = result.error.problems.filter(
         (problem) => problem.path.join(".") === `price.${field}`,
       );
-      expect(finding?.message, JSON.stringify(price)).toContain(JSON.stringify(found));
+      expect(findings, JSON.stringify(price)).toHaveLength(1);
+      expect(findings[0]?.message, JSON.stringify(price)).toContain(JSON.stringify(found));
     }
     expect((await harnessed.gateway.catalog()).items).toHaveLength(0);
   });
