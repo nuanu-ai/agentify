@@ -135,9 +135,29 @@ describe("a card's own words are plain text", () => {
       '<br title="<">',
       "<br title='5 > 4'>",
       "<br title='<'>",
+      // A quotation mark that opens no value is still inside the tag: an
+      // apostrophe in an unquoted value, or a stray mark after one.
+      "<img src=x.png alt=Mom's>",
+      "<br it's>",
+      '<img alt=5" src=x.png>Buy the "Classic" mug.',
     ]) {
       expect(findingsAt({ ...card, description: text }, "description"), text).toHaveLength(1);
     }
+  });
+
+  it("finds the first tag even where a quotation mark in it never closes", () => {
+    const [first] = findingsAt(
+      { ...card, description: "<a href=x title=Don't>link</a>" },
+      "description",
+    );
+    const [placeholders] = findingsAt(
+      { ...card, description: "Enter <your friend's name> and <your name>" },
+      "description",
+    );
+
+    expect(first).toContain("character 1");
+    expect(placeholders).toContain("2 places");
+    expect(placeholders).toContain("character 7");
   });
 
   it("refuses an HTML comment, the shape a block editor leaves behind", () => {
@@ -304,6 +324,11 @@ describe("a card's own words are plain text", () => {
       "<a '".repeat(60_000),
       `<a b="${"<a ".repeat(80_000)}`,
       `<a b='${"x".repeat(240_000)}`,
+      // Short on purpose: a pattern that lets a quotation mark be read two
+      // ways goes exponential here, and a synchronous match cannot be stopped,
+      // so a long one would hang the run instead of failing it.
+      `<a${' "x"'.repeat(20)}`,
+      `<a${" 'x'".repeat(20)}`,
     ];
     const started = performance.now();
     for (const text of hostile) findingsOf({ ...card, title: text, description: text });

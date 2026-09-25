@@ -85,6 +85,17 @@ describe("a shop's HTML as plain text", () => {
     expect(textOf("<a title='5<6'>five</a>")).toBe("five");
   });
 
+  it("reads a tag whose quotation mark never closes", () => {
+    expect(textOf("<p><img src=x.png alt=Mom's></p><p>A mug.</p>")).toBe("A mug.");
+    expect(textOf("<p><a href=/x title=Don't>link</a> text</p>")).toBe("link text");
+  });
+
+  it("drops a hidden block whole even when its tag quotes a bracket", () => {
+    expect(textOf('<style title="<">p{color:red}</style><p>Real.</p>')).toBe("Real.");
+    expect(textOf('<script data-x="<">alert(1)</script><p>Real.</p>')).toBe("Real.");
+    expect(textOf("<template data-x='a<b'><p>Hidden</p></template><p>Shown.</p>")).toBe("Shown.");
+  });
+
   it("reads an empty comment the way a browser does", () => {
     expect(textOf("A<!-->B")).toBe("AB");
     expect(textOf("A<!--->B")).toBe("AB");
@@ -168,6 +179,11 @@ describe("a shop's HTML as plain text", () => {
       `<a "${"x".repeat(250_000)}`,
       `<${"a".repeat(250_000)}`,
       `<a b="${"<a ".repeat(85_000)}`,
+      // Short on purpose: a pattern that lets a quotation mark be read two
+      // ways goes exponential here, and a synchronous match cannot be stopped,
+      // so a long one would hang the run instead of failing it.
+      `<a${' "x"'.repeat(20)}`,
+      `<a${" 'x'".repeat(20)}`,
     ];
     const started = performance.now();
     for (const html of hostile) plainTextOfHtml(html);
