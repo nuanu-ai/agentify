@@ -240,8 +240,9 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
   it("attaches once, hydrates current state, rejects replay drift, and detaches", async () => {
     const fixture = await createLeadFixture("card-lifecycle");
     const cookieHeader = signedInAs(fixture.email);
+    const visitor = await visitorOf(cookieHeader);
     const setup = await setupCardSignal({
-      cookieHeader,
+      visitor,
       scanId: fixture.scanId,
       idempotencyKey: "p5-browser-idempotency-key",
       provider,
@@ -252,7 +253,7 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
       clientSecret: expect.any(String),
     });
     if (!("signalId" in setup)) throw new Error("setup_failed");
-    await expect(getOwnedCardSignalForReport(fixture.scanId, cookieHeader)).resolves.toMatchObject({
+    await expect(getOwnedCardSignalForReport(fixture.scanId, visitor)).resolves.toMatchObject({
       signalId: setup.signalId,
       status: "setup_pending",
       clientSecret: expect.any(String),
@@ -275,7 +276,7 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
     expect(stored.status).toBe("attached");
     expect(stored.paymentMethodIdCiphertext).toMatch(/^v1\./);
     expect(stored.paymentMethodIdCiphertext).not.toContain("pm_local");
-    await expect(getOwnedCardSignalForReport(fixture.scanId, cookieHeader)).resolves.toMatchObject({
+    await expect(getOwnedCardSignalForReport(fixture.scanId, visitor)).resolves.toMatchObject({
       signalId: signal.id,
       status: "attached",
       clientSecret: null,
@@ -306,10 +307,10 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
         provider,
       }),
     ).rejects.toThrow("stripe_event_replay_mismatch");
-    await expect(
-      detachCardSignal({ signalId: signal.id, cookieHeader, provider }),
-    ).resolves.toEqual({ status: "detached" });
-    await expect(getOwnedCardSignalForReport(fixture.scanId, cookieHeader)).resolves.toMatchObject({
+    await expect(detachCardSignal({ signalId: signal.id, visitor, provider })).resolves.toEqual({
+      status: "detached",
+    });
+    await expect(getOwnedCardSignalForReport(fixture.scanId, visitor)).resolves.toMatchObject({
       signalId: signal.id,
       status: "detached",
       clientSecret: null,

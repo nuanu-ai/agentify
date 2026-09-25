@@ -22,10 +22,12 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { POST as requestDataAction } from "../../app/api/v1/account/data-request/route";
 import { POST as persistAttribution } from "../../app/api/v1/attribution/route";
 import { POST as persistConsent } from "../../app/api/v1/consent/route";
 import { POST as persistClientEvent } from "../../app/api/v1/events/route";
 import { GET as downloadFullPrompt } from "../../app/api/v1/reports/[scanId]/remediation-prompt/download/route";
+import { GET as readFullReport } from "../../app/api/v1/reports/[scanId]/route";
 import { GET as downloadTeaserPrompt } from "../../app/api/v1/scans/[id]/remediation-prompt/download/route";
 import { GET as getTeaserPrompt } from "../../app/api/v1/scans/[id]/remediation-prompt/route";
 import { POST as publishShare } from "../../app/api/v1/scans/[id]/share/route";
@@ -41,7 +43,13 @@ import { encryptEmail, hmacHex, sha256 } from "./crypto";
 import { getDatabase } from "./database";
 import { enqueueScanInTransaction, stopScanQueue } from "./queue";
 import { consumeRateLimitsAtomically, consumeScanRateLimits, readRateCount } from "./rate-limit";
-import { createPublicShare, getFullReport, getPublicShare, revokePublicShare } from "./reporting";
+import {
+  createPublicShare,
+  getFullReport,
+  getPublicShare,
+  loadReportPage,
+  revokePublicShare,
+} from "./reporting";
 import { requestScannerIdentityDeletion } from "./scanner-identity-deletion";
 import { createScannerRegistrationIntent } from "./scanner-registration";
 import { authorizeScan, createOrReplayScan } from "./scans";
@@ -86,6 +94,10 @@ const cabinetSessions = new Map<string, { email: string; request: string | null 
 let sessionSequence = 0;
 let sendCooldownUntil: Date | undefined;
 let cabinetDown = false;
+/** How many more session questions the stand-in answers before it stops answering. */
+let sessionAnswersLeft = Number.POSITIVE_INFINITY;
+/** Every cookie header the stand-in cabinet was shown, newest last. */
+const cookiesSeen: string[] = [];
 let cabinetServer: Server;
 let scanId = "";
 let scanAccessToken = "";
@@ -176,6 +188,11 @@ async function copyChecks(id: string) {
   const { db } = getDatabase();
   const sourceChecks = await db.select().from(scanChecks).where(eq(scanChecks.scanId, scanId));
   await db.insert(scanChecks).values(sourceChecks.map((check) => ({ ...check, scanId: id })));
+}
+
+/** The full report as a page gets it: the visitor read once, then the report for them. */
+async function reportFor(id: string, cookie: string | undefined) {
+  return await getFullReport(id, await visitorOf(cookie));
 }
 
 async function registrationEventsFor(id: string) {
@@ -301,6 +318,12 @@ beforeAll(async () => {
       return;
     }
     if (body.operation === "session") {
+      cookiesSeen.push(String(body.cookie));
+      if (sessionAnswersLeft <= 0) {
+        respondJson(response, 503, { status: "unavailable" });
+        return;
+      }
+      sessionAnswersLeft -= 1;
       const cookies = String(body.cookie)
         .split(";")
         .map((pair) => pair.trim().split("="));
@@ -583,10 +606,10 @@ describe("P4 cabinet-owned scanner identity", () => {
     const email = "first-visit@example.com";
     await createScannerRegistrationIntent(scan, registrationBody(email));
     const cookie = pressLink(latestLink(email));
-    expect(await getFullReport(scan.id, undefined)).toBeUndefined();
+    expect(await reportFor(scan.id, undefined)).toBeUndefined();
 
     const [report, other, header] = await Promise.all([
-      getFullReport(scan.id, cookie),
+      reportFor(scan.id, cookie),
       visitorOf(cookie),
       visitorOf(cookie, { renew: true }),
     ]);
@@ -665,7 +688,7 @@ describe("P4 cabinet-owned scanner identity", () => {
     });
 
     expect(await registrationEventsFor(scan.id)).toBe("0");
-    expect(await getFullReport(scan.id, pressLink(link))).toBeUndefined();
+    expect(await reportFor(scan.id, pressLink(link))).toBeUndefined();
   });
 
   it("files a signed-in person's own ask at once, sends nothing, and leaves a stranger's waiting request alone", async () => {
@@ -694,10 +717,24 @@ describe("P4 cabinet-owned scanner identity", () => {
       );
       expect(forged.status).toBe(403);
 
-      const asked = await registrationRequest(
+      // An address typed beside a session is not quietly swapped for the
+      // session's: the answer names the address the report would be filed
+      // under, and nothing is filed.
+      const typedOver = await registrationRequest(
         scan.id,
         accessToken,
         { ...registrationBody("typed-over@example.com"), marketing_email_opt_in: false },
+        { cookie },
+      );
+      expect(typedOver.status).toBe(409);
+      const refusal = (await typedOver.json()) as { error: { code: string; message: string } };
+      expect(refusal.error.code).toBe("signed_in_as_another_address");
+      expect(refusal.error.message).toContain(email);
+
+      const asked = await registrationRequest(
+        scan.id,
+        accessToken,
+        { ...registrationBody(email), email: undefined, marketing_email_opt_in: false },
         { cookie },
       );
 
@@ -711,7 +748,7 @@ describe("P4 cabinet-owned scanner identity", () => {
       process.env.REGISTRATION_ENABLED = "false";
     }
     expect(sentLinks).toHaveLength(sentBefore);
-    expect((await getFullReport(scan.id, cookie))?.checks).toHaveLength(18);
+    expect((await reportFor(scan.id, cookie))?.checks).toHaveLength(18);
     expect(
       onlyRow(
         await db
@@ -775,10 +812,186 @@ describe("P4 cabinet-owned scanner identity", () => {
       );
       expect(asked.status).toBe(503);
       expect(sentLinks.some((link) => link.email === "cabinet-down@example.com")).toBe(false);
+      // Every answer that depends on who is asking says it cannot tell, rather
+      // than that there is nothing here for them.
+      const unknownAnswers = [
+        await readFullReport(
+          new NextRequest(`http://localhost:3000/api/v1/reports/${scan.id}`, {
+            headers: { cookie },
+          }),
+          { params: Promise.resolve({ scanId: scan.id }) },
+        ),
+        await downloadFullPrompt(
+          new NextRequest(
+            `http://localhost:3000/api/v1/reports/${scan.id}/remediation-prompt/download`,
+            { headers: { cookie } },
+          ),
+          { params: Promise.resolve({ scanId: scan.id }) },
+        ),
+        await getContactAccess(
+          new NextRequest(`http://localhost:3000/api/v2/scans/${scan.id}/contact-access`, {
+            headers: { cookie },
+          }),
+          { params: Promise.resolve({ id: scan.id }) },
+        ),
+        await requestDataAction(
+          new NextRequest("http://localhost:3000/api/v1/account/data-request", {
+            method: "POST",
+            headers: {
+              cookie,
+              origin: "http://localhost:3000",
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ type: "access" }),
+          }),
+        ),
+      ];
+      for (const answer of unknownAnswers) {
+        expect(answer.status, answer.url).toBe(503);
+        expect(((await answer.json()) as { error: { code: string } }).error.code).toBe(
+          "visitor_unknown",
+        );
+      }
+      await expect(loadReportPage(scan.id, cookie)).resolves.toEqual({ kind: "unknown" });
     } finally {
       cabinetDown = false;
       process.env.REGISTRATION_ENABLED = "false";
     }
+  });
+
+  it("reads who is visiting once for a report page, so a cabinet failing partway does not say the report is not theirs", async () => {
+    // A page that asked twice could be told "signed in" and then nothing, and
+    // draw "this report is not filed under you" for its owner. One reading
+    // decides the whole page.
+    const { scan } = await createFreshCompletedScan("partway");
+    await copyChecks(scan.id);
+    const email = "partway@example.com";
+    await createScannerRegistrationIntent(scan, registrationBody(email));
+    const cookie = pressLink(latestLink(email));
+    await visitorOf(cookie);
+    sessionAnswersLeft = 1;
+    try {
+      const page = await loadReportPage(scan.id, cookie);
+      expect(page.kind).toBe("report");
+    } finally {
+      sessionAnswersLeft = Number.POSITIVE_INFINITY;
+    }
+  });
+
+  it("tells a signed-in person with no reports that there is nothing to request, not to sign in", async () => {
+    const answer = await requestDataAction(
+      new NextRequest("http://localhost:3000/api/v1/account/data-request", {
+        method: "POST",
+        headers: {
+          cookie: signedInAs("no-reports-data@example.com"),
+          origin: "http://localhost:3000",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ type: "access" }),
+      }),
+    );
+    expect(answer.status).toBe(404);
+    expect(((await answer.json()) as { error: { code: string } }).error.code).toBe(
+      "no_reports_for_address",
+    );
+    const stranger = await requestDataAction(
+      new NextRequest("http://localhost:3000/api/v1/account/data-request", {
+        method: "POST",
+        headers: { origin: "http://localhost:3000", "content-type": "application/json" },
+        body: JSON.stringify({ type: "access" }),
+      }),
+    );
+    expect(((await stranger.json()) as { error: { code: string } }).error.code).toBe(
+      "session_not_found",
+    );
+  });
+
+  it("answers a signed-in ask that cannot be filed in its own words, not as a failed email", async () => {
+    const { db } = getDatabase();
+    const { scan, accessToken } = await createFreshCompletedScan("signed-in-failure");
+    const email = "signed-in-failure@example.com";
+    const config = getServerConfig();
+    await db.insert(leads).values({
+      id: createUuidV7(),
+      emailNormalizedCiphertext: encryptEmail(email, config.encryptionKey),
+      emailLookupHash: hmacHex(config.hmacSecret, "email", email),
+      role: "developer",
+      verifiedAt: new Date(),
+      deletionRequestedAt: new Date(),
+      firstSegment: "owner",
+      firstSessionId: scan.sessionId,
+    });
+    process.env.REGISTRATION_ENABLED = "true";
+    try {
+      const answer = await registrationRequest(
+        scan.id,
+        accessToken,
+        { ...registrationBody(email), email: undefined },
+        { cookie: signedInAs(email) },
+      );
+      expect(answer.status).toBe(503);
+      expect(((await answer.json()) as { error: { code: string } }).error.code).toBe(
+        "report_unavailable",
+      );
+    } finally {
+      process.env.REGISTRATION_ENABLED = "false";
+    }
+  });
+
+  it("refuses a signed-in ask past the scan's hour as asks, not as links", async () => {
+    const { scan, accessToken } = await createFreshCompletedScan("signed-in-cooldown");
+    const cookie = signedInAs("signed-in-cooldown@example.com");
+    process.env.REGISTRATION_ENABLED = "true";
+    try {
+      let last: Response | undefined;
+      for (let ask = 0; ask < 11; ask += 1) {
+        last = await registrationRequest(
+          scan.id,
+          accessToken,
+          { ...registrationBody("unused@example.com"), email: undefined },
+          { cookie },
+        );
+      }
+      expect(last?.status).toBe(429);
+      const refusal = (await last?.json()) as {
+        error: { code: string; retry_after_seconds?: number };
+      };
+      expect(refusal.error.code).toBe("report_ask_cooldown");
+      expect(refusal.error.retry_after_seconds).toBeGreaterThan(0);
+    } finally {
+      process.env.REGISTRATION_ENABLED = "false";
+    }
+  });
+
+  it("goes on when finishing a waiting request fails, and finishes it at a later visit", async () => {
+    const { scan } = await createFreshCompletedScan("finish-fails");
+    await copyChecks(scan.id);
+    const email = "finish-fails@example.com";
+    await createScannerRegistrationIntent(scan, registrationBody(email));
+    const cookie = pressLink(latestLink(email));
+    await admin.pool.query(`create function refuse_finishing() returns trigger
+      language plpgsql as $$ begin raise exception 'finishing refused on purpose'; end $$`);
+    await admin.pool.query(`create trigger refuse_finishing before insert
+      on waitlist_entries for each row execute function refuse_finishing()`);
+    try {
+      await expect(visitorOf(cookie)).resolves.toMatchObject({ kind: "person", email });
+    } finally {
+      await admin.pool.query("drop trigger refuse_finishing on waitlist_entries");
+      await admin.pool.query("drop function refuse_finishing()");
+    }
+    expect((await reportFor(scan.id, cookie))?.checks).toHaveLength(18);
+  });
+
+  it("shows the cabinet only the session's cookie, however many others the browser carries", async () => {
+    const { scan } = await createFreshCompletedScan("only-session-cookie");
+    const email = "only-session-cookie@example.com";
+    await createScannerRegistrationIntent(scan, registrationBody(email));
+    const cookie = `${pressLink(latestLink(email))}; big=${"x".repeat(9_000)}`;
+
+    await expect(visitorOf(cookie)).resolves.toMatchObject({ kind: "person", email });
+
+    const seen = cookiesSeen.at(-1) ?? "";
+    expect(seen.split(";").map((pair) => pair.trim().split("=")[0])).toEqual([SESSION_COOKIE]);
   });
 
   it("answers the header privately and passes the renewed cookie on", async () => {
@@ -834,7 +1047,7 @@ describe("P4 cabinet-owned scanner identity", () => {
     expect(intent.phoneE164Ciphertext).toBeNull();
     expect(intent.phoneLookupHash).toBeNull();
 
-    expect((await getFullReport(scan.id, pressLink(link)))?.scan_id).toBe(scan.id);
+    expect((await reportFor(scan.id, pressLink(link)))?.scan_id).toBe(scan.id);
     const lead = onlyRow(
       await db.select().from(leads).where(eq(leads.emailLookupHash, emailLookupHash)),
     );
@@ -1026,14 +1239,14 @@ describe("P4 cabinet-owned scanner identity", () => {
       await getDatabase().db.select().from(scans).where(eq(scans.id, scanId)).limit(1),
     );
     const owner = signedInAs("owner@example.com");
-    const report = await getFullReport(scanId, owner);
+    const report = await reportFor(scanId, owner);
     expect(report?.checks).toHaveLength(18);
     expect(JSON.stringify(report)).not.toContain("private.example");
     expect(report?.benchmark).toBeNull();
     // Somebody else, signed in, does not own it: neither an address with no
     // reports nor one whose reports are other scans'.
-    expect(await getFullReport(scanId, signedInAs("not-the-owner@example.com"))).toBeUndefined();
-    expect(await getFullReport(scanId, signedInAs("first-visit@example.com"))).toBeUndefined();
+    expect(await reportFor(scanId, signedInAs("not-the-owner@example.com"))).toBeUndefined();
+    expect(await reportFor(scanId, signedInAs("first-visit@example.com"))).toBeUndefined();
     await expect(visitorOf(signedInAs("first-visit@example.com"))).resolves.toMatchObject({
       kind: "person",
       leadId: expect.any(String),

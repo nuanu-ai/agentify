@@ -3,6 +3,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { RegistrationForm } from "./registration-form";
 import { SiteDoors } from "./site-chrome";
 
 function visitorIs(status: number, body: unknown) {
@@ -51,14 +52,34 @@ describe("the header's doors", () => {
   });
 
   it("shows a stranger the doors and nobody's address", async () => {
-    const fetched = visitorIs(200, { status: "signed_out" });
+    visitorIs(200, { status: "signed_out" });
 
     const { container } = render(<SiteDoors />);
 
-    await vi.waitFor(() => expect(fetched).toHaveBeenCalled());
+    // The header says when it has stopped finding out who is visiting, which
+    // is what a screen reader announces and what the doors below settle on.
+    await vi.waitFor(() => expect(container.querySelector('[aria-busy="false"]')).toBeTruthy());
     expect(container.querySelector('a[href="/docs/"]')).toBeTruthy();
     expect(container.querySelector('a[href="/cabinet/sign-in"]')).toBeTruthy();
     expect(container.querySelector('form[action="/cabinet/sign-out"]')).toBeNull();
     expect(screen.queryByText(/cannot tell/i)).toBeNull();
+  });
+
+  it("asks who is visiting once for a page that shows it twice", async () => {
+    // The header and the full-report form on a scan page both need the
+    // answer; two questions would renew the session twice in one moment.
+    const fetched = visitorIs(200, { status: "signed_in", email: "owner@example.com" });
+
+    render(
+      <>
+        <SiteDoors />
+        <RegistrationForm scanId="019f5b6a-4b9f-7000-8000-0000000000aa" />
+      </>,
+    );
+
+    expect(await screen.findAllByText(/owner@example\.com/)).toHaveLength(2);
+    expect(
+      fetched.mock.calls.filter(([input]) => String(input).endsWith("/api/v2/session")),
+    ).toHaveLength(1);
   });
 });
