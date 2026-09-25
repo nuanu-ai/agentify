@@ -241,6 +241,7 @@ export {
   PROTOTYPE_KEY_IS_DROPPED,
   paramSpecToValidator,
 } from "./param-spec.js";
+export { PAYABLE_CURRENCIES, priceProblemsOf } from "./price-rule.js";
 export type {
   Amount,
   CurrencyCode,

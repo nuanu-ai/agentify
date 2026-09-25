@@ -1,22 +1,22 @@
 /**
- * What a price a merchant sets has to be before this gateway will sell at it.
+ * What a price a merchant sets has to be before Agentify will sell at it.
  *
  * A price comes in by two doors: on a card, when it is published, and in the
- * answer to a price question, when a purchase is priced live. Both are held to
- * the rules below and nothing else is, because both are the moment a merchant
- * is in front of somebody who can tell them what is wrong. Three rules, each
- * standing for a payment this gateway cannot take.
+ * answer to a price question, when a purchase is priced live. The gateway holds
+ * both to the rule below, and the merchant SDK's own check of a card holds it
+ * to the same rule, so a card the check passes is not refused at publication
+ * for its price. Three parts, each standing for a payment that cannot be
+ * taken.
  *
- * A price of zero is refused, and by design rather than for now. A payment
- * request for nothing asks for something that cannot be done, and a gateway
- * that took free items would be hosting content rather than selling it. A
- * merchant gives a free item away from their own site, with no payment
- * request in front of it (ADR-0002 §2).
+ * A price of zero is refused, by design. A payment request for nothing asks
+ * for something that cannot be done, and a gateway that took free items would
+ * be hosting content rather than selling it. A merchant gives a free item away
+ * from their own site, with no payment request in front of it (ADR-0002 §2).
  *
  * A currency other than the dollar is refused, because there is no exchange
- * rate anywhere in this system to charge it at. The set is the one the payment
- * edge charges in (`http/x402.ts` reads it from here), so a price the door took
- * is a price the edge can charge and the two cannot drift into two lists.
+ * rate anywhere in this system to charge it at. The payment edge charges in the
+ * same set, read from here, so a price the door took is a price the edge can
+ * charge and the two cannot drift into two lists.
  *
  * An amount is written in dollars with at least two digits after the dot, so
  * that a merchant who counts in cents and writes "500" for five dollars is
@@ -24,18 +24,20 @@
  * a price per call is often below one. How many places a charge may carry is
  * the payment edge's own bound and is not repeated here.
  *
- * What these rules do not touch is a card already stored. Every answer that
- * carries a card is held to the contract on its way out, so a rule written
- * into the card's schema would turn the whole list of a merchant who published
- * such a price before the rule existed into a failure. And the contract itself
- * says which currencies are accepted is the gateway's question, not its own.
+ * It is a rule applied at the doors rather than part of any schema, and that is
+ * the point of it being a function. The schemas also read back every document
+ * already written — every answer that carries a card is held to the contract
+ * on its way out — so a rule written into the card's schema would turn the
+ * whole list of a merchant who published such a price before the rule existed
+ * into a failure, for cards they could otherwise see, pause and replace.
  */
 
-import type { Money, Problem } from "@nuanu-ai/agentify-contracts";
+import type { Money } from "./primitives.js";
+import type { Problem } from "./results.js";
 
 /**
- * The currencies a price may be written in, and the one conversion this
- * gateway does make.
+ * The currencies a price may be written in, and the one conversion Agentify
+ * makes.
  *
  * A card priced in dollars is charged in the network's own dollar-denominated
  * asset, one for one. That is a decision and not the absence of one, so it is
@@ -47,7 +49,7 @@ import type { Money, Problem } from "@nuanu-ai/agentify-contracts";
  * come from, and a charge based on an invented one would be the clearest
  * possible claim beyond the evidence.
  */
-export const PAYABLE_CURRENCIES: ReadonlySet<string> = new Set(["USD", "USDC"]);
+export const PAYABLE_CURRENCIES: readonly string[] = Object.freeze(["USD", "USDC"]);
 
 /**
  * What stands between this price and a sale, as findings on the fields of the
@@ -76,11 +78,11 @@ export function priceProblemsOf(price: Money): Problem[] {
     });
   }
 
-  if (!PAYABLE_CURRENCIES.has(price.currency)) {
+  if (!PAYABLE_CURRENCIES.includes(price.currency)) {
     problems.push({
       path: ["price", "currency"],
       code: "custom",
-      message: `the price is in ${JSON.stringify(price.currency)}, which this gateway cannot charge: it takes USD, paid as USDC one for one, or USDC itself, and holds no exchange rate to anything else`,
+      message: `the price is in ${JSON.stringify(price.currency)}, which Agentify cannot charge: it takes USD, paid as USDC one for one, or USDC itself, and holds no exchange rate to anything else`,
     });
   }
 

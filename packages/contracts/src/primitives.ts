@@ -50,10 +50,11 @@ export const AmountSchema = z
  * this contract has had to carry; which currencies are accepted is the
  * gateway's to decide.
  *
- * What this does not do is check membership in any list. We hold no currency
- * table, and a schema that pretended to would be claiming knowledge the
- * package does not have. Which currencies the gateway accepts is a gateway
- * question, and it is not answered here.
+ * What this does not do is check membership in any list. Which currencies a
+ * merchant may set a price in is answered once, by the price rule in
+ * `price-rule.ts`, at the moment a price comes in. This shape also reads back
+ * every document already written, and a list here would make one written
+ * before the list changed unreadable.
  */
 export const CurrencyCodeSchema = z
   .string()

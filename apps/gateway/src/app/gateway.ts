@@ -42,6 +42,7 @@ import {
   type PayoutWallet,
   type Problem,
   type PublishResult,
+  priceProblemsOf,
   publicCardOf,
   purchaseCheckFor,
   type QuoteAnswerAck,
@@ -74,7 +75,6 @@ import {
   registerMerchant,
   setServiceName,
 } from "./merchants.js";
-import { priceProblemsOf } from "./prices.js";
 import { OrderRunner, orderDocumentOf, SWEEP_EFFECTS } from "./runner.js";
 import {
   approvedForLive,

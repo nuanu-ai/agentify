@@ -26,7 +26,12 @@
 
 import { createHash } from "node:crypto";
 import type { BazaarDeclaration, Card } from "@nuanu-ai/agentify-contracts";
-import { API_ROUTES, bazaarDeclarationOf, expandPath } from "@nuanu-ai/agentify-contracts";
+import {
+  API_ROUTES,
+  bazaarDeclarationOf,
+  expandPath,
+  PAYABLE_CURRENCIES,
+} from "@nuanu-ai/agentify-contracts";
 import {
   decodePaymentSignatureHeader,
   encodePaymentRequiredHeader,
@@ -40,7 +45,6 @@ import type {
 } from "@x402/core/types";
 import { getDefaultAsset } from "@x402/evm";
 import { bazaarResourceServerExtension, declareDiscoveryExtension } from "@x402/extensions/bazaar";
-import { PAYABLE_CURRENCIES } from "../app/prices.js";
 import { isSandboxFacilitator, type PaymentConfig } from "../config.js";
 
 /** The x402 version this edge speaks. */
@@ -121,7 +125,7 @@ export class PaymentEdge {
     // The set the publish door and the price answer's door hold a price to, so
     // what reaches this line in another currency is a card stored before the
     // door refused it.
-    if (!PAYABLE_CURRENCIES.has(price.currency.toUpperCase())) {
+    if (!PAYABLE_CURRENCIES.includes(price.currency.toUpperCase())) {
       throw new Error(
         `${price.currency} is not a currency this gateway can charge in, and it will not invent a rate to one that is`,
       );
