@@ -19,8 +19,9 @@
  */
 
 import type { SurfaceMode } from "@agentify/core";
+import { MERCHANT_FINDINGS, type MerchantFinding } from "@nuanu-ai/agentify-contracts";
 import { bare, brandLockup, escaped, page, when } from "./html.js";
-import type { Viewer } from "./screens.js";
+import { refusedForNoName, type Viewer } from "./screens.js";
 import type { SkippedProduct } from "./woo-catalog.js";
 import { GRANT_MINUTES } from "./woo-connect.js";
 import { PRODUCTS_AT_MOST } from "./woo-shop.js";
@@ -93,16 +94,17 @@ export type ShopState =
 export type ShopTile = ShopState | { readonly kind: "unread" };
 
 /**
- * What a merchant sets in Settings and the publish door asks of them before it
- * takes any card at all: the name buyers see, and on a channel where money
- * settles, the wallet it is paid to.
+ * What the publish door can refuse every card of a merchant for and the
+ * merchant sets in Settings: the door's own codes, less the operator's
+ * approval, which nobody sets there. Which of them the door asks for on which
+ * channel is its rule (`readinessOf` in the core), not this page's.
  */
-export type Unset = "seller_name" | "payout_wallet";
+export type Unset = Exclude<MerchantFinding, typeof MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL>;
 
 /** Each of them as the settings screen names it. */
 const UNSET_WORDS: Readonly<Record<Unset, string>> = {
-  seller_name: "the name your products are sold under",
-  payout_wallet: "the wallet address your money arrives at",
+  no_seller_name: "the name your products are sold under",
+  no_payout_wallet: "the wallet address your money arrives at",
 };
 
 /** What the page is drawn from: where the channel is, and anything just refused. */
@@ -116,6 +118,11 @@ export interface WooView {
    * one: what was unset at that moment, before the shop was read.
    */
   readonly refused?: readonly Unset[];
+  /**
+   * What the door asks of this merchant that this page could not read, which
+   * is the operator's approval wherever the door asks for it.
+   */
+  readonly unsure?: readonly MerchantFinding[];
   /** What was wrong with what the merchant just typed, where anything was. */
   readonly problem?: string;
   /** What they typed, so a refusal leaves the box as they left it. */
@@ -200,7 +207,7 @@ export const wooScreen = (viewer: Viewer, view: WooView): string => {
   </div>
 ${view.cameBack === true && view.state.kind === "connected" ? KEYS_ARRIVED : ""}${
   view.state.kind === "connected"
-    ? theConnection(base, viewer.mode, view.state.shop, view)
+    ? theConnection(base, view.state.shop, view)
     : `${waitingBlock(view.state)}${theForm(base, view)}`
 }
   </div>`;
@@ -212,7 +219,7 @@ ${view.cameBack === true && view.state.kind === "connected" ? KEYS_ARRIVED : ""}
     confirmed: viewer.confirmed,
     tab: "settings",
     title: "WooCommerce",
-    ...(viewer.sellerName === undefined ? {} : { unnamed: viewer.sellerName === null }),
+    unnamed: refusedForNoName(viewer),
     body,
   });
 };
@@ -324,7 +331,6 @@ const theForm = (base: string, view: WooView): string => `  <div class="lede">
  */
 const theConnection = (
   base: string,
-  mode: SurfaceMode,
   connection: ConnectedShop,
   view: WooView,
 ): string => `  <div class="lede">
@@ -344,7 +350,7 @@ const theConnection = (
       <label>Import the catalogue</label>
       <p class="quiet">Reads up to ${PRODUCTS_AT_MOST} products and publishes only the supported single-file downloads described above. If the shop has more, the whole import is refused. Running it again updates the same cards.</p>
       <p class="quiet">A card remains listed if its shop product is later deleted, out of stock or unsupported, but a fresh price check refuses it before payment. Pause cards you no longer want agents to see.</p>
-      ${beforeImporting(base, mode, view)}
+      ${beforeImporting(base, view)}
     </div>
     <button class="button button-primary" type="submit">Import the catalogue</button>
   </form>
@@ -372,13 +378,12 @@ const theConnection = (
  * the press is a standing notice, and a screen reader announcing it on every
  * visit would make the one announcement that matters indistinguishable.
  *
- * On the live channel these are not all the door asks: it also waits for the
- * operator's approval of the merchant, which no route tells this cabinet
- * about. So there the line says approval is needed too and that this page
- * cannot see it, and does not send the merchant back to Import as though
- * Settings were the whole of it.
+ * Where the door also waits for the operator's approval of the merchant, which
+ * no route tells this cabinet about, those are not all it asks. So there the
+ * line says approval is needed too and that this page cannot see it, and does
+ * not send the merchant back to Import as though Settings were the whole of it.
  */
-const beforeImporting = (base: string, mode: SurfaceMode, view: WooView): string => {
+const beforeImporting = (base: string, view: WooView): string => {
   const refused = view.refused ?? [];
   const unset = refused.length > 0 ? refused : (view.unset ?? []);
   if (unset.length === 0) {
@@ -386,13 +391,13 @@ const beforeImporting = (base: string, mode: SurfaceMode, view: WooView): string
   }
   const what = unset.map((one) => UNSET_WORDS[one]).join(" and ");
   const settings = `<a href="${escaped(base)}/settings">Settings</a>`;
-  const live = mode === "live";
+  const unread = (view.unsure ?? []).includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL);
   return refused.length > 0
-    ? `<p class="problem" role="alert">Nothing was imported. Set ${what} in ${settings}${live ? `. ${LIVE_APPROVAL}` : ", then import again."}</p>`
-    : `<p class="problem">Import publishes nothing until you set ${what} in ${settings}.${live ? ` ${LIVE_APPROVAL}` : ""}</p>`;
+    ? `<p class="problem" role="alert">Nothing was imported. Set ${what} in ${settings}${unread ? `. ${LIVE_APPROVAL}` : ", then import again."}</p>`
+    : `<p class="problem">Import publishes nothing until you set ${what} in ${settings}.${unread ? ` ${LIVE_APPROVAL}` : ""}</p>`;
 };
 
-/** What the live line adds: the rule this page cannot check, and that it cannot. */
+/** What the line adds where the door asks for approval: what this page cannot check, and that it cannot. */
 const LIVE_APPROVAL =
   "Selling live also needs Agentify to approve your merchant, and this page cannot tell whether it has.";
 

@@ -32,9 +32,12 @@
  */
 
 import { readFileSync } from "node:fs";
+import { readinessOf, UNKNOWN } from "@agentify/core";
 import {
   EvmAddressSchema,
   IssueKeyRequestSchema,
+  MERCHANT_FINDINGS,
+  type MerchantFinding,
   type PayoutWallet as PayoutWalletDocument,
 } from "@nuanu-ai/agentify-contracts";
 import express, { type Express, type Request, type Response } from "express";
@@ -1253,21 +1256,25 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
 
     /**
      * The merchant as the publish door will judge them before it looks at any
-     * card: the name they are listed under, and which of the things the door
-     * asks of a merchant are still unset.
+     * card: the name they are listed under, which of the things the door asks
+     * of a merchant are still unset, and which it asks that this cabinet cannot
+     * read.
      *
-     * The door asks for a seller name on every channel and for a wallet on
-     * every channel but the sandbox (`payableTo` in the gateway). This cabinet
-     * is given the same chain and facilitator as its gateway, so its own
-     * surface mode answers the second question the way the door does. The
-     * door's third rule about a merchant, the operator's approval on the live
-     * channel, is not here: no route tells a merchant's key whether it holds
-     * one, so on that channel the door's own sentence still carries it.
+     * The rule is the door's own (`readinessOf` in the core), asked with what
+     * the gateway answers for this merchant. This cabinet is given the same
+     * chain and facilitator as its gateway, so its surface mode is the door's.
+     * The operator's approval goes in as unknown, since no route tells a
+     * merchant's key whether it holds one; where the door asks for it, the
+     * rule says so, and the page says it cannot tell.
      */
     const standingOf = async (
       request: Request,
     ): Promise<
-      Answer<{ readonly sellerName: string | null; readonly unset: readonly Unset[] }>
+      Answer<{
+        readonly sellerName: string | null;
+        readonly unset: readonly Unset[];
+        readonly unsure: readonly MerchantFinding[];
+      }>
     > => {
       const gateway = gatewayAs(request);
       const [name, wallet] = await Promise.all([gateway.sellerName(), gateway.payoutWallet()]);
@@ -1277,14 +1284,26 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       if (!wallet.ok) {
         return wallet;
       }
-      const unset: Unset[] = [];
-      if (name.document === null) {
-        unset.push("seller_name");
-      }
-      if (config.surfaceMode !== "sandbox" && wallet.document.payout_wallet === null) {
-        unset.push("payout_wallet");
-      }
-      return { ok: true, document: { sellerName: name.document, unset } };
+      const door = readinessOf(
+        {
+          sellerName: name.document,
+          payoutWallet: wallet.document.payout_wallet,
+          liveApproval: UNKNOWN,
+        },
+        config.surfaceMode,
+      );
+      return {
+        ok: true,
+        document: {
+          sellerName: name.document,
+          // The approval went in unknown, so it can only be in `unsure`; what
+          // is missing is what the merchant sets in Settings.
+          unset: door.missing.filter(
+            (finding): finding is Unset => finding !== MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL,
+          ),
+          unsure: door.unknown,
+        },
+      };
     };
 
     /** The page, drawn from where the channel is and from what buyers read. */
@@ -1315,6 +1334,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
             ...view,
             state,
             unset: standing.document.unset,
+            unsure: standing.document.unsure,
           }),
         );
     };
@@ -1419,7 +1439,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       if (standing.document.unset.length > 0) {
         noted(
           person,
-          `pressed Import with ${standing.document.unset.join(" and ")} unset, so the shop at` +
+          `pressed Import while the publish door would refuse every card with ${standing.document.unset.join(" and ")}, so the shop at` +
             ` ${connection.shopUrl} was not read and nothing was published`,
         );
         return await drawTheShop(request, response, { refused: standing.document.unset }, 409);

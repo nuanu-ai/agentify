@@ -40,10 +40,10 @@
  * on trust that two spellings are one address.
  */
 
-import { EvmAddressSchema } from "@nuanu-ai/agentify-contracts";
+import { EvmAddressSchema, MERCHANT_FINDINGS } from "@nuanu-ai/agentify-contracts";
 
 import { escaped, when } from "./html.js";
-import type { Viewer } from "./screens.js";
+import { readinessSeenBy, type Viewer } from "./screens.js";
 
 /**
  * What an address has to look like, and the two things this page cannot tell
@@ -218,12 +218,20 @@ export const payoutWalletBlock = (viewer: Viewer): string => {
     return "";
   }
   const { wallet, pending, problem, typed, notice } = payout;
-  const purpose =
+  const settles =
     viewer.mode === "test"
       ? "TEST settles test USDC on Base Sepolia to this address."
       : viewer.mode === "live"
         ? "LIVE settles real USDC on Base mainnet to this address."
-        : "SANDBOX does not settle a payment, so this address is optional here.";
+        : "SANDBOX does not settle a payment.";
+  // Whether publishing needs the address is the door's rule and not this
+  // block's; what the channel settles, and on which chain, is this block's.
+  const door = readinessSeenBy(viewer);
+  const purpose = !door.asked.includes(MERCHANT_FINDINGS.NO_PAYOUT_WALLET)
+    ? `${settles} Publishing does not ask for this address here, so it is optional.`
+    : door.missing.includes(MERCHANT_FINDINGS.NO_PAYOUT_WALLET)
+      ? `${settles} Until you set one, publishing a card is refused.`
+      : settles;
 
   return `
   <div class="lede">

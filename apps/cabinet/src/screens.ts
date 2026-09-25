@@ -11,10 +11,11 @@
  * weaker thing. `words.ts` carries those cases and the reasons.
  */
 
-import type { SurfaceMode } from "@agentify/core";
+import { type Readiness, readinessOf, type SurfaceMode, UNKNOWN } from "@agentify/core";
 import {
   API_ROUTES,
   expandPath,
+  MERCHANT_FINDINGS,
   type MerchantCard,
   type MerchantCardList,
   type OrderList,
@@ -52,10 +53,11 @@ export interface Viewer {
    * The name buyers read beside this merchant's products, where the screen
    * asked the gateway for it.
    *
-   * Null is a merchant who has chosen none, and it is what the line at the top
-   * of these three screens is drawn from: until a name is set, a card their
-   * code publishes is refused. Absent where the screen did not ask — the keys,
-   * for the reason `html.ts` gives beside the selling word.
+   * Null is a merchant who has chosen none, and the line at the top of these
+   * three screens is drawn from what the publish door's rule makes of it
+   * (`readinessSeenBy` below): until a name is set, a card their code
+   * publishes is refused. Absent where the screen did not ask — the keys, for
+   * the reason `html.ts` gives beside the selling word.
    */
   readonly sellerName?: string | null;
   /**
@@ -91,6 +93,30 @@ export interface Viewer {
   readonly shop?: ShopTile;
 }
 
+/**
+ * What the publish door asks of this merchant, as far as this screen read them.
+ *
+ * The rule is the door's own, `readinessOf` in the core, so no screen holds an
+ * opinion of its own about which setting publishing needs where. What the
+ * screen did not ask the gateway for goes in as unknown, and so does the
+ * operator's approval on every screen, because no route tells the cabinet
+ * whether a merchant holds it: a page that did not read something must not say
+ * anything either way about it.
+ */
+export const readinessSeenBy = (viewer: Viewer): Readiness =>
+  readinessOf(
+    {
+      sellerName: viewer.sellerName === undefined ? UNKNOWN : viewer.sellerName,
+      payoutWallet: viewer.payout === undefined ? UNKNOWN : viewer.payout.wallet,
+      liveApproval: UNKNOWN,
+    },
+    viewer.mode,
+  );
+
+/** Whether publishing is refused for want of the name buyers see, as far as this screen knows. */
+export const refusedForNoName = (viewer: Viewer): boolean =>
+  readinessSeenBy(viewer).missing.includes(MERCHANT_FINDINGS.NO_SELLER_NAME);
+
 interface Frame {
   readonly viewer: Viewer;
   readonly tab: Tab;
@@ -108,7 +134,7 @@ const framed = (frame: Frame): string =>
     tab: frame.tab,
     title: frame.title,
     selling: SELLING_WORDS[frame.selling],
-    unnamed: frame.viewer.sellerName === null,
+    unnamed: refusedForNoName(frame.viewer),
     body: frame.body,
   });
 
@@ -278,7 +304,7 @@ ${table(
   // was refused. While no name is set, the second one is what happens to
   // everything, so the line says it rather than leaving a merchant to work out
   // why their code's card never arrived.
-  viewer.sellerName === null
+  refusedForNoName(viewer)
     ? "You have not published a card yet, and until you choose the name buyers see, publishing one is refused. Choose it in your settings and publish again."
     : "You have not published a card yet. Your code publishes them; they appear here.",
 )}
