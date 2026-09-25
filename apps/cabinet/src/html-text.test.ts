@@ -76,8 +76,22 @@ describe("a shop's HTML as plain text", () => {
     expect(textOf("<!DOCTYPE html><?xml version='1.0'?>Real text.")).toBe("Real text.");
   });
 
-  it("reads a tag whose attribute carries a closing bracket", () => {
+  it("reads a tag whose attribute carries a bracket, either way round", () => {
     expect(textOf('<a title="a > b" href="/x">the shop</a>')).toBe("the shop");
+    // The image block's own shape, with alt text a merchant wrote.
+    expect(
+      textOf('<figure><img src="x.png" alt="Mug <3 coffee"/></figure><p>A mug for tea.</p>'),
+    ).toBe("A mug for tea.");
+    expect(textOf("<a title='5<6'>five</a>")).toBe("five");
+  });
+
+  it("reads an empty comment the way a browser does", () => {
+    expect(textOf("A<!-->B")).toBe("AB");
+    expect(textOf("A<!--->B")).toBe("AB");
+  });
+
+  it("drops a template, which a browser keeps out of the page", () => {
+    expect(textOf("<template><p>Not shown.</p></template><p>Shown.</p>")).toBe("Shown.");
   });
 
   it("never hands on a control character, however the shop wrote it", () => {
@@ -138,15 +152,22 @@ describe("a shop's HTML as plain text", () => {
     // The HTML comes from a shop the merchant controls and the converter runs
     // in the same process as the gateway, so a page crafted to make a pattern
     // backtrack would stall everybody's sales, not only the merchant's import.
+    // A quarter of a megabyte each, the size at which a pattern that has
+    // turned quadratic takes seconds rather than milliseconds.
     const hostile = [
-      `<a${" a".repeat(20_000)}`,
-      "<a ".repeat(20_000),
-      '<a "'.repeat(20_000),
-      "<a".repeat(20_000),
-      "<script".repeat(20_000),
-      "<!--".repeat(20_000),
-      `<a "${"x".repeat(20_000)}`,
-      `<${"a".repeat(40_000)}`,
+      `<a${" a".repeat(125_000)}`,
+      "<a ".repeat(85_000),
+      '<a "'.repeat(64_000),
+      "<a '".repeat(64_000),
+      "<a".repeat(125_000),
+      "<script".repeat(36_000),
+      "<script ".repeat(32_000),
+      "<script>x".repeat(28_000),
+      "<!--".repeat(64_000),
+      "<!--x".repeat(50_000),
+      `<a "${"x".repeat(250_000)}`,
+      `<${"a".repeat(250_000)}`,
+      `<a b="${"<a ".repeat(85_000)}`,
     ];
     const started = performance.now();
     for (const html of hostile) plainTextOfHtml(html);

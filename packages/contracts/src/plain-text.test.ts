@@ -68,6 +68,10 @@ describe("a card's own words are plain text", () => {
       "Docs at <https://example.com/docs>",
       "&",
       "& more",
+      // HTML has no name of one letter, so these are prose however they end.
+      "R&D; then more",
+      "Q&A; with the author",
+      "AT&T;",
     ]) {
       expect(findingsOf({ ...card, title: text }), text).toStrictEqual([]);
       expect(findingsOf({ ...card, description: text }), text).toStrictEqual([]);
@@ -124,6 +128,11 @@ describe("a card's own words are plain text", () => {
       "<custom-element>",
       '<p\nclass="x">split over lines</p>',
       "Returns List<String>",
+      // An attribute in quotation marks may carry either bracket, as the text
+      // a block editor writes into an image's alt attribute does.
+      '<img alt="Mug <3 coffee" src="mug.png">',
+      '<br title="<">',
+      "<a title='5 > 4'>link</a>",
     ]) {
       expect(findingsAt({ ...card, description: text }, "description"), text).toHaveLength(1);
     }
@@ -172,6 +181,34 @@ describe("a card's own words are plain text", () => {
       expect(findings[0]).toContain("character 7");
       expect(findings[0]).not.toContain(text.charAt(6));
     }
+  });
+
+  it("never prints a control character, even one inside a tag it quotes", () => {
+    for (const text of ["<a \u009b31m>", "<a \u007f>", "<a title='\u0085'>"]) {
+      const findings = findingsAt({ ...card, description: text }, "description");
+
+      expect(findings.length, JSON.stringify(text)).toBeGreaterThan(0);
+      for (const finding of findings) {
+        // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it looks for
+        expect(finding, JSON.stringify(finding)).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/);
+      }
+    }
+  });
+
+  it("tells a description broken with a carriage return what a line break is", () => {
+    // What a form on Windows submits between two lines. The finding names the
+    // one line break a description does take, so the fix is not a guess.
+    const [finding] = findingsAt({ ...card, description: "One.\r\nTwo." }, "description");
+
+    expect(finding).toContain("U+000D");
+    expect(finding).toContain("U+000A");
+  });
+
+  it("quotes a long fragment without splitting a character in two", () => {
+    const long = `<a title="x${"🎉".repeat(30)}">`;
+    const [finding] = findingsAt({ ...card, description: long }, "description");
+
+    expect(finding).not.toMatch(/\\ud83c/i);
   });
 
   it("lets a description run to several lines, and holds a title to one", () => {
