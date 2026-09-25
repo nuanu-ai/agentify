@@ -37,6 +37,7 @@ import {
 import {
   type Card,
   checksummedAddressOf,
+  MERCHANT_FINDINGS,
   type MerchantKey,
   type MerchantKeyList,
 } from "@nuanu-ai/agentify-contracts";
@@ -1979,6 +1980,122 @@ describe("the cards screen", () => {
     expect(text).toContain("paused");
     expect(await purchasable(gateway, itemId)).toBe(false);
   });
+});
+
+describe("a card held off sale by what its merchant lacks", () => {
+  // The promise: the control beside a card says what is holding it off sale,
+  // in the same terms as the publish door that would refuse it. A card whose
+  // merchant is selling and which nobody paused reads paused for one reason
+  // only, that the merchant lacks something the door asks of every merchant;
+  // "All selling is stopped" there is a claim about a switch nobody pressed,
+  // and it sends the merchant looking for a control that changes nothing. The
+  // settings the merchant sets are named and the page that sets them is
+  // linked; the operator's approval, which this cabinet cannot read, is said
+  // to be unread exactly where the door asks for it.
+  //
+  // Each merchant is registered through the cabinet's own press and never
+  // approved, and its card is written straight into the gateway's store: the
+  // door would refuse to publish it for the very reason the test is about,
+  // and a merchant reaches this state when something is taken away or asked
+  // for after their cards are published.
+  const CHANNELS = {
+    sandbox: { PAYMENT_NETWORK: "eip155:84532", FACILITATOR_URL: "sandbox:scripted" },
+    test: { PAYMENT_NETWORK: "eip155:84532", FACILITATOR_URL: "https://x402.org/facilitator" },
+    live: {
+      PAYMENT_NETWORK: "eip155:8453",
+      FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+    },
+  } as const;
+  type Channel = keyof typeof CHANNELS;
+  const LIVE_GATEWAY_ONLY = {
+    CDP_API_KEY_ID: "key-id",
+    CDP_API_KEY_SECRET: "key-secret",
+    ...ANNOUNCING,
+  };
+  const A_WALLET = "0x0123456789abcdef0123456789abcdef01234567";
+
+  /** What the door refuses a card with nothing wrong with it for, about the merchant. */
+  const theDoorSays = async (gateway: Served, key: string): Promise<readonly string[]> => {
+    const answered = await gateway.call("POST", "/v0/catalog/publish", {
+      body: roomCard,
+      headers: { authorization: `Bearer ${key}` },
+    });
+    if (answered.status === 200) {
+      return [];
+    }
+    const { problems } = (answered.body as { error: { problems: { code: string }[] } }).error;
+    const aboutTheMerchant: ReadonlySet<string> = new Set(Object.values(MERCHANT_FINDINGS));
+    return problems.map((finding) => finding.code).filter((code) => aboutTheMerchant.has(code));
+  };
+
+  /** What a control names, in the door's words for the same things. */
+  const named = (control: string): readonly string[] => [
+    ...(/\bname\b/i.test(control) ? [MERCHANT_FINDINGS.NO_SELLER_NAME] : []),
+    ...(/wallet/i.test(control) ? [MERCHANT_FINDINGS.NO_PAYOUT_WALLET] : []),
+  ];
+
+  for (const channel of Object.keys(CHANNELS) as Channel[]) {
+    for (const [hasName, hasWallet] of [
+      [false, false],
+      [true, false],
+      [false, true],
+      [true, true],
+    ] as const) {
+      const who = `${hasName ? "a" : "no"} seller name and ${hasWallet ? "a" : "no"} wallet`;
+      it(`on ${channel}, for a merchant with ${who}`, async () => {
+        const running = await started({
+          gateway: {
+            REGISTRATION_INVITATION: INVITATION,
+            ...CHANNELS[channel],
+            ...(channel === "live" ? LIVE_GATEWAY_ONLY : {}),
+          },
+          cabinet: CHANNELS[channel],
+        });
+        await running.browser.signIn(FRESH.email);
+        expect((await running.browser.makeMerchant()).status).toBe(200);
+        const merchant = (await running.identity.byEmail(FRESH.email))?.merchant;
+        if (merchant == null) throw new Error("the press made no merchant");
+        const asTheMerchant = { authorization: `Bearer ${merchant.key}` };
+        if (hasName) {
+          const listed = await running.gateway.call("POST", "/v0/seller-name", {
+            body: { seller_name: "Their own shop" },
+            headers: asTheMerchant,
+          });
+          expect(listed.status, JSON.stringify(listed.body)).toBe(200);
+        }
+        if (hasWallet) {
+          const paid = await running.gateway.call("POST", "/v0/payout-wallet", {
+            body: { payout_wallet: A_WALLET },
+            headers: asTheMerchant,
+          });
+          expect(paid.status, JSON.stringify(paid.body)).toBe(200);
+        }
+        const door = await theDoorSays(running.gateway, merchant.key);
+        await running.harnessed.store.publishCard(merchant.id, roomCard, running.harnessed.now());
+
+        const screen = await running.browser.get("/cards");
+        const cell = /<td class="control"[^>]*>([\s\S]*?)<\/td>/.exec(screen.html)?.[1] ?? "";
+        const control = readable(cell);
+
+        expect(screen.status).toBe(200);
+        if (door.length === 0) {
+          // Nothing stands in the way, so the card is on sale and the control
+          // is the merchant's own switch.
+          expect(control).toBe("Pause");
+          return;
+        }
+        expect(control).not.toMatch(/all selling is stopped/i);
+        const settable = door.filter((code) => code !== MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL);
+        expect(named(control), control).toStrictEqual(settable);
+        expect(cell.includes('href="/settings"'), cell).toBe(settable.length > 0);
+        const approvalAsked = door.includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL);
+        expect(/approv/i.test(control), control).toBe(approvalAsked);
+        if (approvalAsked) {
+          expect(control).toMatch(/cannot tell/i);
+        }
+      });
+    }
+  }
 });
 
 describe("a merchant who has left", () => {
