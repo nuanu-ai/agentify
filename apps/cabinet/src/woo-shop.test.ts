@@ -549,6 +549,32 @@ describe("the protected product check", () => {
     }
   });
 
+  it("leaves a product priced at zero in the shop and says why", async () => {
+    // Agentify sells nothing at zero yet, and its door refuses such a card. A
+    // product the connector cannot sell is named on the import page with the
+    // reason rather than sent to the door, and a price question about one that
+    // was repriced after it was imported is answered as not for sale here
+    // rather than with a price the door would refuse.
+    for (const price of ["0", "0.00", ".00", "0.000"]) {
+      stand = await shopAnswering((asked) => {
+        if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
+        if (asked.url.includes("/settings/")) {
+          return { status: 200, body: { value: settingFor(asked.url) } };
+        }
+        return { status: 200, body: productDocument({ price }) };
+      });
+
+      const read = await inspectProduct(
+        connectionTo(stand.url),
+        merchantItemIdFor(stand.url, "11"),
+      );
+
+      expect(read, price).toMatchObject({ ok: false, why: expect.stringContaining("zero") });
+      await stand.close();
+      stand = null;
+    }
+  });
+
   it("names an unreadable tax-calculation setting", async () => {
     stand = await shopAnswering((asked) => {
       if (asked.url.includes("woocommerce_calc_taxes")) {
