@@ -385,6 +385,22 @@ describe("asking again", () => {
     expect(await payToNow(served, itemId)).toBe(harnessed.merchant.wallet);
   });
 
+  it("is refused to a key of the merchant's own code when it would cancel", async () => {
+    // A cancel moves no money, but it undoes the owner's own replacement:
+    // a key must not reach that either, and nobody is told of a cancel that
+    // did not happen.
+    const { served, harnessed } = await started();
+    const cabinet = await harnessed.addCabinetKey(harnessed.merchant.id);
+    const waiting = await ask(served, cabinet, A_WALLET);
+
+    const refused = await asking(served, harnessed.merchant.key, harnessed.merchant.wallet);
+
+    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
+    expect(refusalOf(refused.body).code).toBe("not_a_cabinet_key");
+    expect(await walletOf(served, harnessed.merchant.key)).toStrictEqual(waiting);
+    expect(harnessed.announcer.announced.map((one) => one.kind)).toStrictEqual(["wallet_change"]);
+  });
+
   it("cancels even while mail is down, because a cancel moves money nowhere new", async () => {
     const { served, harnessed } = await started();
     const cabinet = await harnessed.addCabinetKey(harnessed.merchant.id);
