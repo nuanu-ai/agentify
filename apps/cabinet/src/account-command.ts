@@ -1,5 +1,5 @@
 /**
- * The command that makes an account, and the two operations that keep one.
+ * The command that makes an account, and the operations that keep one.
  *
  * A merchant registers for themselves now (ADR-0014), so this is no longer the
  * only door into the cabinet. It is still the door somebody walks through when
@@ -25,7 +25,7 @@
  */
 
 import type { Answer } from "./gateway.js";
-import type { AccountMerchant, Identity } from "./identity.js";
+import { type AccountMerchant, emailAs, type Identity } from "./identity.js";
 import { printable } from "./printable.js";
 
 /**
@@ -55,8 +55,11 @@ const USAGE = [
   "                            sign-in address; the merchant's key is read",
   "                            from standard input",
   "  revoke <address>          end every session that person has, keeping the account",
-  "  list                      the accounts there are, their merchant, and how",
-  "                            many sessions are open",
+  "  operator <address>        let that person read the operator's dashboard at",
+  "                            /admin; they must have signed in once already",
+  "  operator <address> --off  take that away again",
+  "  list                      the accounts there are, their merchant, how many",
+  "                            sessions are open, and who is an operator",
   "",
   "A merchant can register for themselves, and ask for a key once they are in",
   "(ADR-0014). This command is for the other case: a merchant that already",
@@ -176,7 +179,7 @@ async function dispatch(
   if (verb === "list") {
     return await listAccounts(identity, say, now);
   }
-  if (verb !== "add" && verb !== "revoke") {
+  if (verb !== "add" && verb !== "revoke" && verb !== "operator") {
     for (const line of USAGE) {
       say(line);
     }
@@ -194,7 +197,49 @@ async function dispatch(
   if (verb === "add") {
     return await addAccount(identity, say, address, merchant, readKey, askTheGateway);
   }
+  if (verb === "operator") {
+    return await flagOperator(identity, say, address, argv.slice(2));
+  }
   return await revokeSessions(identity, say, address);
+}
+
+/**
+ * Sets or clears the flag that opens the operator's dashboard (ADR-0026 §6).
+ *
+ * Only an account can carry it, and an account is written when its person
+ * signs in, so an address nobody has signed in as is refused rather than
+ * remembered: a privilege granted before the mailbox is proved, and kept apart
+ * from the row it belongs to, is what the decision set out not to have.
+ *
+ * No session is ended either way. The flag is read with the session on every
+ * request, so the person's next page already follows it.
+ */
+async function flagOperator(
+  identity: Identity,
+  say: (line: string) => void,
+  address: string,
+  rest: readonly string[],
+): Promise<number> {
+  const email = emailAs(address);
+  const off = rest[0] === "--off";
+  if (rest.length > 1 || (rest.length === 1 && !off)) {
+    say("The operator command takes an address and, to take the flag away, --off:");
+    say(`    operator ${email}`);
+    say(`    operator ${email} --off`);
+    return 2;
+  }
+  if (!(await identity.setOperator(email, !off))) {
+    say(`Nobody has an account at ${email}, so there is nobody to flag.`);
+    say("An account is made when its person signs in: they sign in once with that address,");
+    say("and then this command can flag it.");
+    return 1;
+  }
+  say(
+    off
+      ? `${email} is not an operator. /admin is a page that does not exist for them from their next request.`
+      : `${email} is an operator. /admin opens for them on their next request, with the session they have.`,
+  );
+  return 0;
 }
 
 async function addAccount(
@@ -358,8 +403,10 @@ async function listAccounts(
     const whose = row.merchant ?? "no merchant, setup pending";
     // Whether the address has been confirmed by consuming a link.
     const address = row.confirmed ? "address confirmed" : "address not confirmed";
+    // Whether this person may read the operator's dashboard.
+    const role = row.operator ? "operator" : "not an operator";
     say(
-      `${row.email.padEnd(widest)}  made ${row.createdAt.toISOString().slice(0, 10)}  ${open}  ${address}  ${whose}`,
+      `${row.email.padEnd(widest)}  made ${row.createdAt.toISOString().slice(0, 10)}  ${open}  ${address}  ${role}  ${whose}`,
     );
   }
   return 0;

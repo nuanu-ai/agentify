@@ -62,6 +62,14 @@ export const accounts = pgTable(
     merchantId: text("merchant_id"),
     /** The gateway key is a secret at rest and never reaches a page or log. */
     merchantKey: text("merchant_key"),
+    /**
+     * Whether this person may read the operator's dashboard (ADR-0026 §6).
+     *
+     * Off on every row a sign-in writes. Only `pnpm account operator` moves it,
+     * at the server's terminal, and nothing a browser sends can: the component
+     * is told the field is closed to input, and no page writes it.
+     */
+    operator: boolean("operator").notNull().default(false),
   },
   (table) => [
     check(
