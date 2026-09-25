@@ -14,7 +14,7 @@ import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { connect, issueKey, makeMerchant, PostgresStore, randomIds } from "@agentify/gateway";
+import { connect, issueKey, PostgresStore, randomIds } from "@agentify/gateway";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "@agentify/gateway/testing/database";
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -117,7 +117,10 @@ if (databaseUrl === null) {
     cards: readonly string[],
   ): Promise<{ readonly person: Person; readonly merchantId: string }> => {
     const person = await signIn(email);
-    const merchant = await makeMerchant(store, randomIds, "A merchant", Date.now());
+    const merchant = await store.addMerchant(
+      { id: randomIds("mch"), name: "A merchant" },
+      Date.now(),
+    );
     if (merchant === null) throw new Error("the merchant was not made");
     const issued = await issueKey(store, randomIds, merchant.id, "worker", Date.now(), "test");
     const attached = await identity.attachMerchant(person.id, async () => ({
