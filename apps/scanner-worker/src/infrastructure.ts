@@ -113,10 +113,14 @@ export async function startWorkerInfrastructure(
   };
   pool.on("error", logDatabaseError);
 
+  // The one `pgboss` schema the gateway's queue uses too (queue-schema.test.ts).
+  // The gateway's nightly schedules are its own to send, so this client sends
+  // none.
   const boss = new PgBoss({
     connectionString: normalizeNodePostgresConnectionString(env.DATABASE_URL),
     schema: "pgboss",
     application_name: "agentify-scanner-worker",
+    schedule: false,
   });
   boss.on("error", logQueueError);
   boss.on("warning", (warning) => {

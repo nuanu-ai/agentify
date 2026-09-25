@@ -26,7 +26,7 @@
     "@fontsource/schibsted-grotesk": "5.2.8",
     "drizzle-orm": "0.45.2",
     "next": "16.2.10",
-    "pg-boss": "12.26.0",
+    "pg-boss": "12.28.0",
     "posthog-js": "1.399.2",
     "react": "19.2.7",
     "react-dom": "19.2.7",
