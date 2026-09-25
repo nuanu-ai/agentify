@@ -757,7 +757,8 @@ describe("the protected product check", () => {
     const read = await inspectProduct(connectionTo(stand.url), merchantItemIdFor(stand.url, "11"));
 
     expect(read).toMatchObject({ ok: false, why: expect.stringContaining("25.001") });
-    expect(read.ok === false && read.why).toMatch(/two decimal places/);
+    // The price is what the merchant changes, not the shop's decimals setting.
+    expect(read.ok === false && read.why).not.toContain("Number of decimals");
   });
 
   it("refuses a price that is not a decimal amount at all", async () => {

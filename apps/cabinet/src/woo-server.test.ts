@@ -1175,8 +1175,9 @@ describe("importing the catalogue", () => {
     expect(left["11"]).toContain("does not match");
     // Not "does not match": the Store API rounded 25.001 to 2500 cents, and a
     // merchant told the two prices differ would find them equal on screen.
+    // Nor the decimals setting: the price is the thing to change.
     expect(left["12"]).toContain("25.001");
-    expect(left["12"]).toContain("two decimal places");
+    expect(left["12"]).not.toContain("Number of decimals");
   });
 
   it("tells a shop set to another number of decimals about the setting, not about a mismatch", async () => {
@@ -1208,6 +1209,35 @@ describe("importing the catalogue", () => {
     expect(await cardsOf(running)).toHaveLength(0);
     expect(left["11"]).toContain("Number of decimals");
     expect(left["12"]).toContain("Number of decimals");
+  });
+
+  it("names the setting when the catalogue is written at another scale than the setting says", async () => {
+    // The setting reads 2 while the public catalogue writes prices at 0, which
+    // is what a plugin that changes the shop's decimals looks like from here.
+    // The two prices are still the same money, so the refusal is about the
+    // decimals and not about a mismatch.
+    const running = await started({
+      catalogue: async () => ({
+        ok: true,
+        products: [
+          aProduct({
+            id: 11,
+            name: "Written without cents",
+            prices: { price: "25", currency_code: "USD", currency_minor_unit: 0 },
+          }),
+        ],
+      }),
+      inspectProduct: (keys, item) =>
+        inspectProductInTheShop(keys, item, shopStoring({ 11: "25" }, "2")),
+    });
+    await connected(running);
+
+    const imported = await running.post("/woocommerce/import");
+    const left = leftInTheShop(imported.html);
+
+    expect(await cardsOf(running)).toHaveLength(0);
+    expect(left["11"]).toContain("Number of decimals");
+    expect(left["11"]).not.toContain("does not match");
   });
 });
 
