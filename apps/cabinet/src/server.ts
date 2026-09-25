@@ -56,7 +56,11 @@ import {
 import { bare, brandLockup, escaped } from "./html.js";
 import { SESSION_DAYS } from "./identity.js";
 import { keysScreen, newKeyScreen } from "./keys.js";
-import { WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
+import {
+  ACCOUNT_KEY_CANNOT_SET_THE_WALLET,
+  WALLET_NEEDED,
+  whatIsWrongWithTheWallet,
+} from "./payout-wallet.js";
 import { printable } from "./printable.js";
 import { cardsScreen, ordersScreen, receiptsScreen, type Viewer } from "./screens.js";
 import {
@@ -1098,6 +1102,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     request: Request,
     response: Response,
     notice: string,
+    status = 200,
   ): Promise<void> => {
     const settings = await settingsOf(request);
     if (!settings.ok) {
@@ -1105,6 +1110,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     }
     const viewer = viewingSettings(request, base, settings.document);
     response
+      .status(status)
       .type("html")
       .send(
         settingsScreen(
@@ -1114,6 +1120,24 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
         ),
       );
   };
+
+  /**
+   * A wallet call the gateway refused, in words that fit it.
+   *
+   * One refusal is worded here rather than passed through: an account whose
+   * key was made for the merchant's own code, which the gateway will not let
+   * set the wallet. Its sentence under "Try again" would send somebody round
+   * a loop nothing in the cabinet can end, so the settings screen is drawn as
+   * it stands and says who can mend it. Everything else is the usual page.
+   */
+  const walletRefused = async (
+    request: Request,
+    response: Response,
+    refused: Answer<unknown>,
+  ): Promise<void> =>
+    !refused.ok && refused.code === "not_a_cabinet_key"
+      ? await withNotice(request, response, ACCOUNT_KEY_CANNOT_SET_THE_WALLET, 403)
+      : trouble(response, base, refused);
 
   /**
    * Cancels the replacement that waits, by asking the gateway for the address
@@ -1140,7 +1164,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     const person = whoIs(request);
     const cancelled = await gateway.setPayoutWallet(applies);
     if (!cancelled.ok) {
-      return trouble(response, base, cancelled);
+      return await walletRefused(request, response, cancelled);
     }
     const ended = await signOutTheOthers(request);
     if (cancelled.document.pending === null) {
@@ -1217,7 +1241,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
 
     const set = await gateway.setPayoutWallet(typed);
     if (!set.ok) {
-      return trouble(response, base, set);
+      return await walletRefused(request, response, set);
     }
     // The address itself stays out of the line. It is not a secret, but this
     // log is a process log and the record of who changed it is what it is for.

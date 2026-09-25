@@ -73,6 +73,20 @@ export const LIVE_CHANGE_WAITS =
   "A different address takes effect forty-eight hours after every account of your merchant" +
   " is sent a message about it. Until then your sales are paid into the address above.";
 
+/**
+ * What an account whose key cannot set the wallet is told.
+ *
+ * An account made before accounts were checked can hold a key made for the
+ * merchant's own code rather than one made for the cabinet (ADR-0014 §5). The
+ * gateway will not let such a key change where the money goes, the cabinet
+ * cannot replace it, and the cabinet has no screen that could; so the page
+ * says what happened and who can mend it, and offers nothing to press again.
+ */
+export const ACCOUNT_KEY_CANNOT_SET_THE_WALLET =
+  "Nothing was changed. This account signs in with a key made for your merchant's own code" +
+  " rather than one made for the cabinet, and a key of that kind cannot change where your" +
+  " money goes. Nothing in the cabinet can replace it: this needs Agentify's operator.";
+
 /** What somebody who pressed the button with an empty box is told. */
 export const WALLET_NEEDED =
   "An address is needed here. Copy it out of the wallet you want to be paid in rather than" +
