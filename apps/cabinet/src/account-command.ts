@@ -234,11 +234,18 @@ async function flagOperator(
     say("and then this command can flag it.");
     return 1;
   }
-  say(
-    off
-      ? `${email} is not an operator. /admin is a page that does not exist for them from their next request.`
-      : `${email} is an operator. /admin opens for them on their next request, with the session they have.`,
-  );
+  if (off) {
+    say(
+      `${email} is not an operator. From their next request, /admin is the site's 404 page for them.`,
+    );
+    return 0;
+  }
+  // Said as a condition, because neither half is this command's to promise:
+  // the account may never have signed in (one `add` made has not), and the
+  // dashboard reads views in the scanner's database that no migration makes.
+  say(`${email} is an operator. /admin draws the operator's dashboard for them while they are`);
+  say("signed in, from their next request, where the scanner's database carries the four");
+  say("metabase.operator_* views the dashboard reads; without them it answers an error.");
   return 0;
 }
 

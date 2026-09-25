@@ -65,6 +65,10 @@
 # account. `list` inspects accounts and `revoke` ends their sessions.
 # `operator you@example.com` lets an address that has signed in once read the
 # operator's dashboard at /admin, and `--off` takes that away (ADR-0026 §6).
+# The dashboard reads four `metabase.operator_*` views in the scanner's
+# database that no migration in this repository makes, so on this stack a
+# flagged operator gets the dashboard's error page, not the dashboard, until
+# a database that carries them is behind it.
 #
 # Nothing is bought by itself. The merchant publishes its catalogue and waits;
 # a purchase is an explicit command, so a sale in the cabinet is one somebody
