@@ -59,13 +59,11 @@ merchant's products cannot start new live purchases. Operator approval is not
 required on the test channel. A local scripted sandbox moves no funds, so it
 does not require a merchant wallet either.
 
-The payout wallet is set in the cabinet, on the Settings screen, by a person
-signed in to it, and nowhere else. The keys you issue operate your shop, but
-none of them can change where its money goes, so a copy of a key in a server's
-environment cannot send your sales anywhere else. A call to
-`POST /v0/payout-wallet` made with one of your keys is refused under
-`not_a_cabinet_key` and changes nothing. Your code can still read the wallet
-with `GET /v0/payout-wallet`.
+The payout wallet is set in the cabinet, on the Settings screen, and nowhere
+else. The keys you issue operate your shop, but none of them can change where
+its money goes, so a copy of a key in a server's environment cannot send your
+sales anywhere else: the API has no call that sets the wallet. Your code can
+still read it with `GET /v0/payout-wallet`.
 
 On the live channel a wallet already saved is not replaced at once. Every
 cabinet account of your merchant is sent a message first, saying the change
