@@ -27,7 +27,22 @@ const answerSchema = z.union([
   z.object({ status: z.literal("signed_out") }),
 ]);
 
-export async function askWhoIsVisiting(): Promise<Visitor> {
+/**
+ * The question in flight, shared by every part of the page that asks it at
+ * once: the header and the full-report form on a scan page want the same
+ * answer, and two questions would renew the session twice in one moment. It
+ * is forgotten when it settles, so a later part of the page asks afresh.
+ */
+let inFlight: Promise<Visitor> | null = null;
+
+export function askWhoIsVisiting(): Promise<Visitor> {
+  inFlight ??= ask().finally(() => {
+    inFlight = null;
+  });
+  return inFlight;
+}
+
+async function ask(): Promise<Visitor> {
   try {
     const response = await fetch("/api/v2/session", {
       credentials: "same-origin",

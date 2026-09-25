@@ -3,11 +3,16 @@ import { emitStoredBusinessEvent, scans, sessions } from "@agentify/scanner-data
 import { eq } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 
-import { signedInLead } from "../../../../lib/server/auth";
+import { ownedLead, visitorOf } from "../../../../lib/server/auth";
 import { getServerConfig } from "../../../../lib/server/config";
 import { hmacHex } from "../../../../lib/server/crypto";
 import { getDatabase } from "../../../../lib/server/database";
-import { bearerToken, errorResponse, hasSameOrigin } from "../../../../lib/server/http";
+import {
+  bearerToken,
+  errorResponse,
+  hasSameOrigin,
+  visitorUnknownResponse,
+} from "../../../../lib/server/http";
 import { ANONYMOUS_COOKIE, authorizeScan } from "../../../../lib/server/scans";
 
 export const runtime = "nodejs";
@@ -103,9 +108,11 @@ export async function POST(request: NextRequest) {
       identifiers: { session_id: session.id, scan_id: scan.id },
     };
   } else if (body.name === "results_viewed" && body.scan_id) {
-    const verified = await signedInLead(request.headers.get("cookie"), body.scan_id);
     const bearer = bearerToken(request);
     const capabilityScan = bearer ? await authorizeScan(body.scan_id, bearer) : undefined;
+    const visitor = capabilityScan ? undefined : await visitorOf(request.headers.get("cookie"));
+    if (visitor?.kind === "unknown") return visitorUnknownResponse(request);
+    const verified = visitor === undefined ? undefined : await ownedLead(visitor, body.scan_id);
     const scan =
       verified || capabilityScan
         ? (await db.select().from(scans).where(eq(scans.id, body.scan_id)).limit(1))[0]
@@ -126,7 +133,7 @@ export async function POST(request: NextRequest) {
       consentSnapshotId: session.consentSnapshotId,
       segment: scan.segment,
       landingVariant: session.firstLandingVariant ?? "unknown",
-      leadId: verified?.leadId,
+      leadId: verified,
       scanId: scan.id,
       identifiers: { session_id: session.id, scan_id: scan.id },
     };

@@ -14,17 +14,22 @@ import styles from "./site-chrome.module.css";
  */
 export function VisitorDoor() {
   const visitor = useVisitor();
-  if (visitor.status === "unknown")
-    return <span className={styles.visitor}>We cannot tell who is visiting right now</span>;
-  if (visitor.status !== "signed_in") return null;
+  // Busy while the header is still finding out, which is what a screen reader
+  // announces; the slot takes no room of its own in the row of doors.
   return (
-    <>
-      <span className={styles.who} title={visitor.email}>
-        {visitor.email}
-      </span>
-      <form action="/cabinet/sign-out" className={styles.signOut} method="post">
-        <button type="submit">Sign out</button>
-      </form>
-    </>
+    <span aria-busy={visitor.status === "loading"} className={styles.visitorSlot}>
+      {visitor.status === "unknown" ? (
+        <span className={styles.visitor}>We cannot tell who is visiting right now</span>
+      ) : visitor.status === "signed_in" ? (
+        <>
+          <span className={styles.who} title={visitor.email}>
+            {visitor.email}
+          </span>
+          <form action="/cabinet/sign-out" className={styles.signOut} method="post">
+            <button type="submit">Sign out</button>
+          </form>
+        </>
+      ) : null}
+    </span>
   );
 }

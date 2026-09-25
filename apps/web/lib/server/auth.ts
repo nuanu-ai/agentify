@@ -12,6 +12,8 @@
  * knowing who somebody is must not look like knowing they are nobody.
  */
 
+import { createLogger, safeErrorType } from "@agentify/observability";
+import { sessionCookiePairs } from "@agentify/scanner-contracts/report-identity";
 import { leadScans, leads, scans, waitlistEntries } from "@agentify/scanner-database";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 
@@ -20,6 +22,11 @@ import { getServerConfig } from "./config";
 import { hmacHex, normalizeEmail } from "./crypto";
 import { getDatabase } from "./database";
 import { finishWaitingRequest } from "./scanner-registration";
+
+const logger = createLogger({
+  service: "web",
+  environment: process.env.NODE_ENV ?? "development",
+});
 
 export type Visitor =
   | Readonly<{
@@ -42,26 +49,41 @@ export type Visitor =
  * it once a day and passes the cookie on.
  *
  * When the session names the request its link was asked for, that request is
- * finished here, at whichever page is the session's first visit.
+ * finished here, at whichever page is the session's first visit. A finishing
+ * that fails is logged and the visit goes on: the request keeps waiting and the
+ * next visit finishes it, which is better than a page that does not draw.
+ *
+ * A page reads this once and passes it down, so that everything it draws is
+ * about one answer: a cabinet that stops answering between two questions could
+ * otherwise turn a report's owner into somebody it is not filed under.
  */
 export async function visitorOf(
   cookieHeader: string | undefined | null,
   options: Readonly<{ renew?: boolean }> = {},
 ): Promise<Visitor> {
-  // No cookie at all is nobody's session, and asking the cabinet about it
-  // would put a call to it in front of every first visit to the site.
-  if (!cookieHeader) return { kind: "stranger" };
+  // Only the session's cookie goes to the cabinet: it is told whose session
+  // this is and nothing about the visitor's other cookies. None at all is
+  // nobody's session, and asking the cabinet about it would put a call to it
+  // in front of every first visit to the site.
+  const cookie = sessionCookiePairs(cookieHeader ?? "");
+  if (cookie === "") return { kind: "stranger" };
   let answer: Awaited<ReturnType<ReturnType<typeof getCabinetReportIdentityClient>["readSession"]>>;
   try {
     answer = await getCabinetReportIdentityClient().readSession({
-      cookie: cookieHeader,
+      cookie,
       renew: options.renew ?? false,
     });
   } catch {
     return { kind: "unknown" };
   }
   if (answer.status === "signed_out") return { kind: "stranger" };
-  if (answer.request !== null) await finishWaitingRequest(answer.request, answer.email);
+  if (answer.request !== null) {
+    try {
+      await finishWaitingRequest(answer.request, answer.email);
+    } catch (error) {
+      logger.error("waiting_request_not_finished", { error_type: safeErrorType(error) });
+    }
+  }
   return {
     kind: "person",
     email: answer.email,
@@ -71,21 +93,15 @@ export async function visitorOf(
 }
 
 /**
- * The lead a signed-in visitor owns reports through, and, when a scan is
- * named, only if that lead is linked to it.
- *
- * Undefined for a stranger, for a visitor the cabinet could not name, and for
- * a person whose address owns nothing here; the callers that must tell those
- * apart ask `visitorOf` instead.
+ * The lead a visitor already read owns reports through, and, when a scan is
+ * named, only if that lead is linked to it: undefined for a stranger and for a
+ * person whose address owns nothing here. A visitor the cabinet could not name
+ * never reaches this; whoever read it answers that it cannot tell.
  */
-export async function signedInLead(
-  cookieHeader: string | undefined | null,
-  scanId?: string,
-): Promise<Readonly<{ leadId: string }> | undefined> {
-  const visitor = await visitorOf(cookieHeader);
+export async function ownedLead(visitor: Visitor, scanId?: string): Promise<string | undefined> {
   if (visitor.kind !== "person" || visitor.leadId === null) return undefined;
   if (scanId !== undefined && !(await owns(visitor.leadId, scanId))) return undefined;
-  return { leadId: visitor.leadId };
+  return visitor.leadId;
 }
 
 /** Whether this lead is linked to this scan, which is what owning its report means. */

@@ -11,11 +11,12 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
-import type {
-  DeleteUnattachedPersonRequest,
-  DeleteUnattachedPersonResponse,
-  SendReportLinkRequest,
-  SendReportLinkResponse,
+import {
+  type DeleteUnattachedPersonRequest,
+  type DeleteUnattachedPersonResponse,
+  type SendReportLinkRequest,
+  type SendReportLinkResponse,
+  sessionCookieName,
 } from "@agentify/scanner-contracts/report-identity";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -92,16 +93,6 @@ export interface Identity extends CabinetIdentity {
 }
 
 export const emailAs = (raw: string): string => raw.trim().toLowerCase();
-
-/**
- * The name the session cookie travels under.
- *
- * With the `__Host-` prefix wherever the site is served over https, and without
- * it on the plain-http local origin, because the prefix requires `Secure` and a
- * Secure cookie is never sent back over http (ADR-0009 §6).
- */
-export const sessionCookieName = (secure: boolean): string =>
-  `${secure ? "__Host-" : ""}agentify.session_token`;
 
 /**
  * How long a session lasts from the last visit (ADR-0009 §6).

@@ -38,13 +38,32 @@ const reportRequestSchema = z.uuid();
 const reportDestinationSchema = z.object({ report: z.uuid() }).strict();
 
 /**
- * The longest cookie header the scanner passes on.
+ * The name the site's one session cookie travels under (ADR-0009 §6).
  *
- * The scanner does not know the session cookie's name, which is the cabinet's
- * to choose per deployment, so it passes the whole header and the cabinet
- * reads its own cookie out of it. Eight kilobytes is more than any browser
- * sends to one origin in practice and bounds what the route will parse.
+ * With the `__Host-` prefix wherever the site is served over https and without
+ * it on the plain-http local origin, because the prefix requires `Secure` and
+ * a Secure cookie is never sent back over http. The cabinet sets it; the
+ * scanner reads the names to pass on the session's cookie and no other.
  */
+export const sessionCookieName = (secure: boolean): string =>
+  `${secure ? "__Host-" : ""}agentify.session_token`;
+
+const SESSION_COOKIE_NAMES = new Set([sessionCookieName(true), sessionCookieName(false)]);
+
+/**
+ * The pairs of a cookie header that are the site's session cookie, and none of
+ * the others: the cabinet is told whose session this is and nothing about the
+ * visitor's other cookies, and a browser carrying many of them cannot push the
+ * question past the size this route reads.
+ */
+export const sessionCookiePairs = (header: string): string =>
+  header
+    .split(";")
+    .map((pair) => pair.trim())
+    .filter((pair) => SESSION_COOKIE_NAMES.has(pair.slice(0, pair.indexOf("="))))
+    .join("; ");
+
+/** The longest cookie header the scanner passes on: session pairs, bounded. */
 export const SESSION_COOKIE_HEADER_MAX = 8_192;
 
 export const sendReportLinkRequestSchema = z

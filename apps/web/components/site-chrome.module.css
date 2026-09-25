@@ -41,6 +41,10 @@
   font-weight: 500;
 }
 
+.visitorSlot {
+  display: contents;
+}
+
 /* The signed-in address: a label, not a door. A long address is cut at the
    end with its whole self in the title, so the bar never runs off the page. */
 .who {

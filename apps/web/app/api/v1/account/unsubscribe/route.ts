@@ -17,12 +17,19 @@ export async function POST(request: NextRequest) {
       true,
       30,
     );
-  if (visitor.kind !== "person" || visitor.leadId === null)
+  if (visitor.kind === "stranger")
     return errorResponse(
       request,
       404,
       "session_not_found",
       "Sign in with the address your reports were sent to before making this request.",
+    );
+  if (visitor.leadId === null)
+    return errorResponse(
+      request,
+      404,
+      "no_reports_for_address",
+      `No reports are filed under ${visitor.email}, so there is nothing here to act on for that address.`,
     );
   await updateAccountState(visitor.leadId, "unsubscribe");
   return NextResponse.json({ status: "unsubscribed" });

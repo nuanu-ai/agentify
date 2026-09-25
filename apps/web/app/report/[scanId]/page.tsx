@@ -19,9 +19,8 @@ import { SiteDoors } from "../../../components/site-chrome";
 import { StatusBadge } from "../../../components/status-badge";
 import { getPublicAppConfig } from "../../../lib/app-config";
 import { buildCanonicalFixPrompt, buildFixPrompts } from "../../../lib/fix-prompts";
-import { visitorOf } from "../../../lib/server/auth";
 import { getServerConfig } from "../../../lib/server/config";
-import { getFullBrowserObservation, getFullReport } from "../../../lib/server/reporting";
+import { loadReportPage } from "../../../lib/server/reporting";
 import { getOwnedCardSignalForReport } from "../../../lib/server/stripe-card-signal";
 import { getCardSignalPublicConfig } from "../../../lib/server/stripe-card-signal-config";
 import styles from "./report.module.css";
@@ -47,19 +46,18 @@ function Top() {
 
 export default async function ReportPage({ params }: { params: Promise<{ scanId: string }> }) {
   const { scanId } = await params;
-  // Read without renewing: a page drawn here cannot set a cookie, and the
-  // header's own call renews the session and passes the cookie on. A session
-  // whose link was asked for this report finishes its request right here, at
-  // its first visit (ADR-0026 §2).
-  const cookieHeader = (await headers()).get("cookie");
-  const visitor = await visitorOf(cookieHeader);
-  const report = visitor.kind === "person" ? await getFullReport(scanId, cookieHeader) : undefined;
-  if (!report) {
+  // One reading of who is visiting decides the whole page, and it does not
+  // renew: a page drawn here cannot set a cookie, and the header's own call
+  // renews the session and passes the cookie on. A session whose link was
+  // asked for this report finishes its request right here, at its first visit
+  // (ADR-0026 §2).
+  const page = await loadReportPage(scanId, (await headers()).get("cookie"));
+  if (page.kind !== "report") {
     return (
       <main className={styles.page}>
         <Top />
         <section className={styles.locked}>
-          {visitor.kind === "unknown" ? (
+          {page.kind === "unknown" ? (
             <>
               <h1>We cannot tell who is visiting right now</h1>
               <p>
@@ -74,9 +72,9 @@ export default async function ReportPage({ params }: { params: Promise<{ scanId:
                 Try again
               </Link>
             </>
-          ) : visitor.kind === "person" ? (
+          ) : page.kind === "not_yours" ? (
             <>
-              <h1>This report is not filed under {visitor.email}</h1>
+              <h1>This report is not filed under {page.email}</h1>
               <p>
                 A report opens for the address it was asked for with. If that is another address of
                 yours, sign out and sign in with it.
@@ -98,10 +96,10 @@ export default async function ReportPage({ params }: { params: Promise<{ scanId:
       </main>
     );
   }
+  const { report, browserObservation, visitor } = page;
   const serverConfig = getServerConfig();
-  const browserObservation = await getFullBrowserObservation(scanId, cookieHeader);
   const cardSignal = getCardSignalPublicConfig();
-  const initialCardSignal = await getOwnedCardSignalForReport(scanId, cookieHeader);
+  const initialCardSignal = await getOwnedCardSignalForReport(scanId, visitor);
   const publicConfig = getPublicAppConfig();
   const { aiPrompt, devBrief } = buildFixPrompts(
     report,
