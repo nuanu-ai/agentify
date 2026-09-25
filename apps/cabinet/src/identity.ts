@@ -481,6 +481,36 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
     await (await contextOf()).internalAdapter.deleteSession(token);
   };
 
+  /**
+   * Ends every live session of one account but the kept ones, and says how
+   * many it ended.
+   *
+   * Only live rows are asked for: a session that ran out signs nobody in, and
+   * its row is never deleted, so an account that has signed in often has many
+   * of them. The store reads at most a hundred rows at a time, in no order,
+   * so this asks again until a read finds nothing left to end. A token already
+   * ended that comes back is not ended or counted twice, which is also what
+   * stops the loop if a row somehow survives its delete.
+   */
+  const endLiveSessionsOf = async (
+    personId: string,
+    kept: ReadonlySet<string>,
+  ): Promise<number> => {
+    const context = await contextOf();
+    const ended = new Set<string>();
+    for (;;) {
+      const live = await context.internalAdapter.listSessions(personId, {
+        onlyActiveSessions: true,
+      });
+      const others = live.filter((one) => !kept.has(one.token) && !ended.has(one.token));
+      if (others.length === 0) return ended.size;
+      for (const one of others) {
+        await endSession(one.token);
+        ended.add(one.token);
+      }
+    }
+  };
+
   return {
     cookieNames: [
       cookies.sessionToken.name,
@@ -866,19 +896,13 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
       // renewal here would move their session's end in the database while the
       // cookie lines that tell their browser so are thrown away.
       const kept = new Set((await liveOnesIn(keep, false)).map((one) => one.token));
-      const context = await contextOf();
-      const people = await context.adapter.findMany<{ id: string }>({
+      const people = await (await contextOf()).adapter.findMany<{ id: string }>({
         model: "user",
         where: [{ field: "merchantId", value: merchantId }],
       });
       let ended = 0;
       for (const person of people) {
-        for (const session of await context.internalAdapter.listSessions(person.id)) {
-          if (!kept.has(session.token)) {
-            await endSession(session.token);
-            ended += 1;
-          }
-        }
+        ended += await endLiveSessionsOf(person.id, kept);
       }
       return ended;
     },
@@ -886,17 +910,7 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
     async endOtherSessionsOfPerson(personId, keep) {
       // Read without renewing, for the reason the merchant's version gives.
       const kept = new Set((await liveOnesIn(keep, false)).map((one) => one.token));
-      const now = new Date();
-      let ended = 0;
-      for (const session of await (await contextOf()).internalAdapter.listSessions(personId)) {
-        // An expired session signs nobody in, so it is neither ended here nor
-        // counted among the devices that were signed out.
-        if (!kept.has(session.token) && session.expiresAt > now) {
-          await endSession(session.token);
-          ended += 1;
-        }
-      }
-      return ended;
+      return await endLiveSessionsOf(personId, kept);
     },
 
     async list(now) {
