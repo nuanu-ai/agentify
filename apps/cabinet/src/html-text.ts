@@ -87,6 +87,23 @@ const BREAKS_THE_LINE = new Set([
 ]);
 
 /**
+ * What follows a tag's name up to its closing bracket.
+ *
+ * Attributes with their quoted values paired first, because a value in
+ * quotation marks may carry either bracket, as the alt text a block editor
+ * writes into an image does. Where the tag cannot be read that way — a
+ * quotation mark that opens no value, like the apostrophe in `alt=Mom's` —
+ * everything up to the first closing bracket, so a stray mark never hides the
+ * tag it sits in. One definition, used for every tag below, so a hidden block
+ * and an ordinary tag cannot come to read their attributes differently.
+ *
+ * Linear however it is written: outside quotation marks both readings stop at
+ * the next angle bracket, a quoted value stops at its own closing mark, and a
+ * quotation mark is read one way only at any point in the first reading.
+ */
+const ATTRIBUTES = `(?:(?:[^<>"']|"[^"]*"|'[^']*')*|[^<>]*)>`;
+
+/**
  * Everything in a page that is not its text, in the order a browser meets it.
  *
  * One pattern with four branches rather than four passes, because the order is
@@ -103,16 +120,21 @@ const BREAKS_THE_LINE = new Set([
  *   would put a stylesheet into the description of a product.
  * - A tag, with its name captured so a block element can leave a space behind.
  *   The name has to be followed by whitespace, a slash or the close, which is
- *   what keeps it from trading characters with the attributes after it. An
- *   attribute value in quotation marks may carry either bracket, as the alt
- *   text a block editor writes into an image does.
+ *   what keeps it from trading characters with the attributes after it.
  * - A declaration or a processing instruction, `<!DOCTYPE …>` and `<?xml …?>`,
  *   which a browser reads as a comment.
  *
  * A bracket that begins none of these — `5 < 10`, `x<y` — is text, and stays.
  */
-const NOT_TEXT =
-  /<!--(?:-?>|[\s\S]*?(?:-->|$))|<(script|style|template)(?=[\s/>])[^<>]*>[\s\S]*?(?:<\/\1\s*>|$)|<\/?([A-Za-z][A-Za-z0-9:-]*)(?=[\s/>])(?:[^<>"']|"[^"]*"|'[^']*')*>|<[!?][^<>]*>/gi;
+const NOT_TEXT = new RegExp(
+  [
+    String.raw`<!--(?:-?>|[\s\S]*?(?:-->|$))`,
+    String.raw`<(script|style|template)(?=[\s/>])${ATTRIBUTES}[\s\S]*?(?:<\/\1\s*>|$)`,
+    String.raw`<\/?([A-Za-z][A-Za-z0-9:-]*)(?=[\s/>])${ATTRIBUTES}`,
+    "<[!?][^<>]*>",
+  ].join("|"),
+  "gi",
+);
 
 /**
  * Characters that show nothing and are not space: C0 other than the
