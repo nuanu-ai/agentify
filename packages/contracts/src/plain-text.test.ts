@@ -133,7 +133,8 @@ describe("a card's own words are plain text", () => {
       // a block editor writes into an image's alt attribute does.
       '<img alt="Mug <3 coffee" src="mug.png">',
       '<br title="<">',
-      "<a title='5 > 4'>link</a>",
+      "<br title='5 > 4'>",
+      "<br title='<'>",
     ]) {
       expect(findingsAt({ ...card, description: text }, "description"), text).toHaveLength(1);
     }
