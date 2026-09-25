@@ -417,6 +417,91 @@ describe("what a call may carry", () => {
     expect(problems.map((finding) => finding.path.join("."))).toContain("merchant_item_id");
   });
 
+  it("refuses a price answer it could not charge, in the words a merchant's worker prints", async () => {
+    // The promise: the answer to a price question is held to the rule a card's
+    // price is held to at publication. An answer of nothing, in a currency with
+    // no rate to charge it at, or written without its cents, is refused before
+    // it can price a sale — and the refusal's own sentence names what was wrong,
+    // because that sentence is the one line of it a merchant's worker log shows.
+    const { served } = await started();
+
+    const refused: [price: unknown, field: string, found: string][] = [
+      [{ amount: "0", currency: "USD" }, "amount", "0"],
+      [{ amount: "0.00", currency: "USD" }, "amount", "0.00"],
+      [{ amount: "0.000000", currency: "USD" }, "amount", "0.000000"],
+      [{ amount: "500", currency: "USD" }, "amount", "500"],
+      [{ amount: "5", currency: "USD" }, "amount", "5"],
+      [{ amount: "5.0", currency: "USD" }, "amount", "5.0"],
+      [{ amount: "5.00", currency: "EUR" }, "currency", "EUR"],
+    ];
+
+    for (const [price, field, found] of refused) {
+      const answered = await served.call("POST", "/v0/quotes/prc_1/answer", {
+        body: { available: true, price, as_of: "2026-08-26T10:15:00Z" },
+        headers: asMerchant,
+      });
+
+      expect(answered.status, JSON.stringify(price)).toBe(400);
+      const { error } = answered.body as {
+        error: { code: string; message: string; problems: { path: string[] }[] };
+      };
+      expect(error.code).toBe("malformed_body");
+      expect(error.message, JSON.stringify(price)).toContain(JSON.stringify(found));
+      expect(error.problems.map((finding) => finding.path.join("."))).toContain(`price.${field}`);
+    }
+  });
+
+  it("takes a price answer a payment can be taken at, the portal's own example among them", async () => {
+    // The other side of the same rule. Nothing is held under prc_1, so each of
+    // these is taken and prices nothing — which is what `used: false` says, and
+    // is a different answer from a refusal.
+    const { served } = await started();
+    const portal: unknown = JSON.parse(
+      readFileSync(
+        new URL("../../../docs/examples/quote-response/available.json", import.meta.url),
+        "utf8",
+      ),
+    );
+    const answers = [
+      portal,
+      ...[
+        { amount: "0.01", currency: "USD" },
+        { amount: "0.001", currency: "USD" },
+        { amount: "19.999", currency: "USD" },
+        { amount: "5.00", currency: "USDC" },
+      ].map((price) => ({ available: true, price, as_of: "2026-08-26T10:15:00Z" })),
+    ];
+
+    for (const body of answers) {
+      const answered = await served.call("POST", "/v0/quotes/prc_1/answer", {
+        body,
+        headers: asMerchant,
+      });
+
+      expect(answered.status, JSON.stringify(body)).toBe(200);
+      expect(answered.body).toStrictEqual({ used: false });
+    }
+  });
+
+  it("reads back a card stored before the door refused its price", async () => {
+    // The rule is the door's and not the stored card's. Every answer that
+    // carries a card is held to the contract on its way out, so a rule written
+    // into the card's schema would turn the whole list of any merchant who
+    // published a zero before the rule existed into a failure — for a card
+    // they could otherwise see, pause and replace.
+    const { harnessed, served } = await started();
+    await harnessed.store.publishCard(
+      harnessed.merchant.id,
+      { ...syncCard, price: { amount: "0.00", currency: "USD" } },
+      harnessed.now(),
+    );
+
+    const listed = await served.call("GET", "/v0/cards", { headers: asMerchant });
+
+    expect(listed.status).toBe(200);
+    expect(JSON.stringify(listed.body)).toContain('"0.00"');
+  });
+
   it("refuses a query the table does not describe", async () => {
     const { served } = await started();
 

@@ -47,6 +47,32 @@ const asyncCard: Card = {
 
 const livePriced = (card: Card): Card => ({ ...card, price_check: "handler" });
 
+/**
+ * Prices a merchant may write that no payment here can be taken at: the price,
+ * the half of it that is wrong, and what that half said.
+ */
+const UNSELLABLE_PRICES: readonly [price: unknown, field: string, found: string][] = [
+  [{ amount: "0", currency: "USD" }, "amount", "0"],
+  [{ amount: "0.00", currency: "USD" }, "amount", "0.00"],
+  [{ amount: "0.000000", currency: "USD" }, "amount", "0.000000"],
+  ["0.00 USD", "amount", "0.00"],
+  [{ amount: "500", currency: "USD" }, "amount", "500"],
+  [{ amount: "5", currency: "USD" }, "amount", "5"],
+  [{ amount: "5.0", currency: "USD" }, "amount", "5.0"],
+  ["5 USD", "amount", "5"],
+  [{ amount: "5.00", currency: "EUR" }, "currency", "EUR"],
+];
+
+/** Prices the same door takes, written each way a merchant writes them. */
+const SELLABLE_PRICES: readonly unknown[] = [
+  { amount: "0.01", currency: "USD" },
+  { amount: "5.00", currency: "USD" },
+  { amount: "0.001", currency: "USD" },
+  { amount: "19.999", currency: "USD" },
+  { amount: "5.00", currency: "USDC" },
+  "5.00 USD",
+];
+
 let open: Harness | null = null;
 const started = async (overrides: Record<string, string> = {}) => {
   open = await harness(overrides);
@@ -93,6 +119,50 @@ describe("the catalog", () => {
     // counts the rest, which is what a person reading one line of a log needs.
     // That it is not blank is the schema's business and is checked there.
     expect(result.error.message).toContain(String(result.error.problems.length));
+  });
+
+  it("refuses a price it cannot sell at, and names what it found", async () => {
+    // The promise: a card reaches the catalog only at a price a payment can
+    // actually be taken at, and a merchant who is told no is told which half of
+    // the price is wrong and what it said. A charge of nothing has not been
+    // carried through a payment, a currency other than the dollar has no rate
+    // to be charged at, and an amount written without its cents is how "500"
+    // meant as five dollars becomes a five-hundred-dollar card. The short
+    // spelling is opened out before the rule is applied, so it meets the same
+    // rule in the same words.
+    const harnessed = await started();
+
+    for (const [price, field, found] of UNSELLABLE_PRICES) {
+      const result = await harnessed.gateway.publishCard(harnessed.merchant.id, {
+        ...syncCard,
+        price,
+      });
+
+      expect(PublishResultSchema.safeParse(result).success).toBe(true);
+      if (result.ok) throw new Error(`${JSON.stringify(price)} was published`);
+      const finding = result.error.problems.find(
+        (problem) => problem.path.join(".") === `price.${field}`,
+      );
+      expect(finding?.message, JSON.stringify(price)).toContain(JSON.stringify(found));
+    }
+    expect((await harnessed.gateway.catalog()).items).toHaveLength(0);
+  });
+
+  it("publishes every price a payment can be taken at", async () => {
+    // The other side of the rule, so that it cannot grow past what it is for:
+    // a price below a cent is an ordinary price for a call priced per use, and
+    // a card priced in USDC is charged in USDC as it stands.
+    const harnessed = await started();
+
+    for (const [index, price] of SELLABLE_PRICES.entries()) {
+      const result = await harnessed.gateway.publishCard(harnessed.merchant.id, {
+        ...syncCard,
+        merchant_item_id: `room-${index}`,
+        price,
+      });
+      expect(result.ok, JSON.stringify(price)).toBe(true);
+    }
+    expect((await harnessed.gateway.catalog()).items).toHaveLength(SELLABLE_PRICES.length);
   });
 
   it("shows an agent the card as a card, and never the merchant's own key", async () => {
@@ -1498,6 +1568,29 @@ describe("the price question", () => {
     const receipt = await harnessed.store.receiptForOrder(orderId);
     expect(receipt?.price.at).toBe(asTimestamp(struck));
     expect(receipt?.paid_at).toBe(asTimestamp(paid));
+  });
+
+  it("does not price a sale off an answer it could not charge", async () => {
+    // The price check is the second door a price comes in by, and it keeps the
+    // card's rule: an answer of nothing is refused rather than charged. The
+    // sale then goes on as though nobody had answered — here a synchronous
+    // card, which sells at its own published price.
+    const harnessed = await started({ QUOTE_RESPONSE_MS: "50" });
+    const itemId = await published(harnessed, livePriced(syncCard));
+
+    const worker = workUntilStopped(harnessed, {
+      onQuote: () => ({
+        available: true,
+        price: { amount: "0.00", currency: "USD" },
+        as_of: "2026-08-26T12:00:00.000Z",
+      }),
+    });
+    const offered = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
+    await worker.stop();
+
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    expect(offered.order.order.price?.amount).toBe("80.00");
+    expect(offered.order.order.quoteSource).toBe("card_snapshot");
   });
 
   it("does not sell what the merchant says is gone", async () => {
