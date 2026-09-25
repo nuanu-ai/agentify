@@ -61,12 +61,14 @@ image="$(new config --images postgres)"
 containers="docker start \$(docker ps -aq --filter label=com.docker.compose.project=$old_project)"
 old_sql() { old exec -T postgres psql -X -U agentify_commerce -At "$@"; }
 
+# A person who went back started the old project again, and its data has
+# moved on since; this run does not carry on from there.
+if [[ -n $phase && -n $(old ps --status running -q gateway) ]]; then
+  refuse "the project $old_project runs again after an earlier run reached $phase; to start over, run  $root/deploy/stack.sh $channel down  and  docker volume rm $new_postgres $new_caddy  and remove $progress."
+fi
 if [[ $phase == "done" ]]; then
   say "$channel already holds one database in the project $new_project; releasing the revision starts it."
   exit 0
-fi
-if [[ -n $phase && -n $(old ps --status running -q gateway) ]]; then
-  refuse "the project $old_project runs again after an earlier run reached $phase; to start over, run  $root/deploy/stack.sh $channel down  and  docker volume rm $new_postgres $new_caddy  and remove $progress."
 fi
 
 if [[ -z $phase ]]; then
