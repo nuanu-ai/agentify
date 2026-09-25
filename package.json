@@ -26,6 +26,7 @@
     "smoke:bootstrap": "pnpm --filter @agentify/slice run bootstrap",
     "outside": "./scripts/outside.sh",
     "approve": "node scripts/approve.mjs",
+    "forget": "node scripts/forget.mjs",
     "buy": "pnpm --filter @agentify/slice run buy",
     "stand": "pnpm --filter @agentify/slice run stand",
     "changeset": "changeset",

@@ -1015,7 +1015,8 @@ function goesWithTheDeletion(
   return claim?.email === email && (typeof claim.destination !== "string" || result !== "retained");
 }
 
-const rateKey = (secret: string, email: string): string =>
+/** How one address's link sends are keyed; `pnpm forget` clears them by the same key. */
+export const rateKey = (secret: string, email: string): string =>
   createHmac("sha256", secret).update(`cabinet-link:${email}`).digest("hex");
 
 type LinkRefusal = Readonly<{ wall: LinkWall; retryAt: Date }>;
