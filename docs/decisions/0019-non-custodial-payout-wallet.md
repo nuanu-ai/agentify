@@ -212,7 +212,7 @@ only on production. A wallet change also depends on the cabinet and the
 mail provider being up, which is accepted: changes are rare, and a refusal
 at the door is honest where a silent change is not. An account left holding
 a key made for the merchant's own code, from before accounts were checked,
-cannot set the wallet, and only the operator can mend it.
+cannot set the wallet, and nothing in the product replaces its key.
 
 Rejected: one address per deployment, kept as it was — custody with
 extra steps, and the reconciliation it implies is a product nobody has

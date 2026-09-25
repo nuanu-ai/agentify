@@ -1715,7 +1715,7 @@ describe("the address a merchant's money arrives at", () => {
     expect(await paidInto(running)).toBe(AS_A_WALLET_SHOWS_IT);
   });
 
-  it("tells an account holding a key of the merchant's own code that it cannot set the wallet, and who can mend it", async () => {
+  it("tells an account holding a key of the merchant's own code that its key is of the wrong kind for the wallet", async () => {
     // The row of the account every test here signs in as holds the harness's
     // own key, which is one of the merchant's own code: the shape an account
     // made before accounts were checked is left in. The gateway will not let
@@ -1731,7 +1731,7 @@ describe("the address a merchant's money arrives at", () => {
 
     expect(answered.status).toBe(403);
     const text = readable(answered.html);
-    expect(text).toMatch(/operator/i);
+    expect(text).toMatch(/wrong kind/i);
     expect(text).not.toMatch(/try again/i);
     expect(answered.html).toContain('name="payout_wallet"');
     expect(await paidInto(running)).toBe(before);
@@ -4171,7 +4171,7 @@ describe("a wallet change waiting on the live deployment", () => {
     }
   });
 
-  it("tells an account holding a key of the merchant's own code that it cannot cancel, and who can mend it", async () => {
+  it("tells an account holding a key of the merchant's own code that its key is of the wrong kind to cancel", async () => {
     const running = await live();
     for (const row of running.rows.cabinet_accounts ?? []) {
       if (row.merchantId === THE_MERCHANT.id) row.merchantKey = theMerchantKey("live");
@@ -4185,7 +4185,7 @@ describe("a wallet change waiting on the live deployment", () => {
     );
 
     expect(pressed.status).toBe(403);
-    expect(readable(pressed.html)).toMatch(/operator/i);
+    expect(readable(pressed.html)).toMatch(/wrong kind/i);
     expect(readable(pressed.html)).not.toMatch(/try again/i);
     expect(await waitingNow(running)).toMatchObject({ payout_wallet: WAITING });
   });

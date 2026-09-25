@@ -80,12 +80,13 @@ export const LIVE_CHANGE_WAITS =
  * merchant's own code rather than one made for the cabinet (ADR-0014 §5). The
  * gateway will not let such a key change where the money goes, the cabinet
  * cannot replace it, and the cabinet has no screen that could; so the page
- * says what happened and who can mend it, and offers nothing to press again.
+ * says what happened and that nothing here mends it, and offers nothing to
+ * press again.
  */
 export const ACCOUNT_KEY_CANNOT_SET_THE_WALLET =
-  "Nothing was changed. This account signs in with a key made for your merchant's own code" +
-  " rather than one made for the cabinet, and a key of that kind cannot change where your" +
-  " money goes. Nothing in the cabinet can replace it: this needs Agentify's operator.";
+  "Nothing was changed. The key this account's cabinet calls Agentify with is of the wrong" +
+  " kind: it was made for your merchant's own code, and a key of that kind cannot change where" +
+  " your money goes. Nothing in the cabinet can replace it.";
 
 /** What somebody who pressed the button with an empty box is told. */
 export const WALLET_NEEDED =

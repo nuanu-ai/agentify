@@ -1171,7 +1171,8 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    * key was made for the merchant's own code, which the gateway will not let
    * set the wallet. Its sentence under "Try again" would send somebody round
    * a loop nothing in the cabinet can end, so the settings screen is drawn as
-   * it stands and says who can mend it. Everything else is the usual page.
+   * it stands and says why, and that nothing here mends it. Everything else is
+   * the usual page.
    */
   const walletRefused = async (
     request: Request,
