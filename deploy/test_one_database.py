@@ -216,6 +216,16 @@ class TheMove(unittest.TestCase):
         self.assertIn("both agentify and agentify_commerce exist", refused.stderr)
         self.assertEqual(self.sql("agentify_commerce", "SELECT count(*) FROM public.scans"), "2")
 
+    def test_says_whether_the_scanner_database_is_still_there_whatever_the_account_is_called(self):
+        # What the cutover asks before it compares the tables: a wrong answer,
+        # or none, must stop it rather than skip the comparison.
+        self.assertEqual(self.run_move("scanner-database").stdout.strip(), "present")
+        self.assertEqual(self.run_move("move").returncode, 0)
+        self.assertEqual(self.run_move("scanner-database").stdout.strip(), "present")
+        self.assertEqual(self.run_move("finish").returncode, 0)
+        after = self.run_move("scanner-database")
+        self.assertEqual((after.returncode, after.stdout.strip()), (0, "absent"))
+
     def test_finish_before_the_move_drops_nothing(self):
         refused = self.run_move("finish")
         self.assertEqual(refused.returncode, 1)
