@@ -3884,6 +3884,19 @@ describe("a wallet change waiting on the live deployment", () => {
     );
   };
 
+  /** What the box's own form sends besides the address, as the page was drawn. */
+  const fromTheWalletForm = (screen: Visit): Record<string, string> => {
+    const form = /<form[^>]*action="\/settings\/payout-wallet"[^>]*>([\s\S]*?)<\/form>/.exec(
+      screen.html,
+    )?.[1];
+    if (form === undefined) throw new Error("the settings screen carries no wallet form");
+    return Object.fromEntries(
+      [...form.matchAll(/<input type="hidden"[^>]*name="([^"]+)"[^>]*value="([^"]*)"/g)].map(
+        (field) => [field[1] ?? "", field[2] ?? ""],
+      ),
+    );
+  };
+
   /**
    * A cabinet in front of a live gateway. A live door refuses a key carrying
    * the test prefix, which is what this file's accounts hold, so every test
@@ -4175,6 +4188,41 @@ describe("a wallet change waiting on the live deployment", () => {
     expect(readable(pressed.html)).toMatch(/operator/i);
     expect(readable(pressed.html)).not.toMatch(/try again/i);
     expect(await waitingNow(running)).toMatchObject({ payout_wallet: WAITING });
+  });
+
+  it("says a change that took effect before the old address was typed back took effect, and signs the others out", async () => {
+    // The box on a page drawn while a change waited, used after it took
+    // effect: typing the address the page showed as paid is the same act as
+    // pressing Cancel there, and has to be answered the same way rather than
+    // as a new change that leaves the other sessions signed in.
+    const said: string[] = [];
+    const log = vi
+      .spyOn(console, "log")
+      .mockImplementation((...parts) => said.push(parts.map(String).join(" ")));
+    try {
+      const running = await live();
+      await onACabinetKey(running);
+      await running.browser.signIn();
+      const otherDevice = await running.another();
+      await otherDevice.signIn();
+      await aChangeWaits(running);
+      const screen = await running.browser.get("/settings");
+      running.harnessed.advance(48 * 60 * 60 * 1_000);
+
+      const typed = await running.browser.post("/settings/payout-wallet", {
+        ...fromTheWalletForm(screen),
+        payout_wallet: running.harnessed.merchant.wallet,
+      });
+
+      expect(typed.status).toBe(200);
+      expect(readable(typed.html)).toMatch(/took effect/i);
+      expect(await paidNow(running)).toBe(WAITING);
+      expect(await waitingNow(running)).toBeNull();
+      expect((await otherDevice.get("/settings")).to).toMatch(/^\/sign-in/);
+      expect(said.join("\n")).not.toMatch(/asked for a change/);
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it("signs nobody out when there was nothing to cancel", async () => {
