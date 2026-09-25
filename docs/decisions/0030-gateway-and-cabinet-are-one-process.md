@@ -1,7 +1,9 @@
 # 0030. The gateway and the cabinet are one process
 
 Date: 2026-09-25
-Status: proposed (direction set by Dmitry on 2026-09-25; details await his word)
+Status: accepted (Dmitry, 2026-09-25, on the direction: "слияние следующим
+шагом"; 2026-09-25, on the name, the wallet message, the WooCommerce worker and
+the contract version: "согласен с рекомендациями")
 
 ## Context
 
@@ -30,14 +32,16 @@ apart, and Caddy the one door.
 
 **The cabinet calls the application, not the HTTP API.** Its screens, its
 WooCommerce worker and its registration call the `Gateway` methods the `/v0`
-handlers call, as the merchant on the signed-in account's row, recorded as the
-cabinet rather than as a key, with requests and answers still held to the
-contract's schemas. The cabinet then proves that the application and the
-contract's documents are enough to draw every screen, and no longer that the
-HTTP API is. What proves that is what a merchant's engineer uses: the SDK's
-tests, the purchase through the real gateway in `packages/slice`, the portal's
-examples run as fixtures, and the gateway's HTTP test of every `/v0` route. A
-screen that needs what a merchant's code could need still gets a contract route.
+handlers call, as the merchant on the signed-in account's row, with requests
+and answers still held to the contract's schemas. The caller is the signed-in
+person rather than a key, so a message about a payout wallet change asked for
+in the cabinet names that person, as one asked for with a key names the key.
+The cabinet then proves that the application and the contract's documents are
+enough to draw every screen, and no longer that the HTTP API is. What proves
+that is what a merchant's engineer uses: the SDK's tests, the purchase through
+the real gateway in `packages/slice`, the portal's examples run as fixtures,
+and the gateway's HTTP test of every `/v0` route. A screen that needs what a
+merchant's code could need still gets a contract route.
 
 **What goes.** The cabinet key, with its renewal, its leftovers, the
 `merchant_key` column, the routes at `/v0/keys/cabinet` and their two

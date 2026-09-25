@@ -1,9 +1,10 @@
 # One process for the gateway and the cabinet
 
 Date: 2026-09-25. A design note: a survey of how the gateway and the cabinet
-are two processes today, what that boundary costs and buys, and a proposal for
-making them one. Dmitry set the direction on 2026-09-25; the decision is
-ADR-0030, and this note holds the detail it rests on.
+are two processes today, what that boundary costs and buys, and the design for
+making them one. Dmitry set the direction on 2026-09-25 and agreed with the
+note's recommendations the same day; the decision is ADR-0030, and this note
+holds the detail it rests on.
 
 ## How to read this note
 
@@ -74,8 +75,8 @@ the one-shot `migrate`, `gateway`, `cabinet`, and the laptop's mock merchant,
 which `deploy/compose.public.yaml` puts under a `fixtures` profile so no
 deployed channel runs it. Deployed channels pin the image by digest in
 `deploy/compose.images.yaml`. So a deployed channel already runs one image as
-two long-lived containers and one migration, which is the shape this note
-proposes to collapse. Each service names its own command; the image's default
+two long-lived containers and one migration, which is the shape ADR-0030
+collapses. Each service names its own command; the image's default
 starts the gateway (`deploy/Dockerfile.app`, line 48).
 
 Each container has its own health check: the gateway's fetches
@@ -114,7 +115,7 @@ worker (`main.ts`, line 65), and two terminal commands, `woo:recover`
 Each of the client's calls is one route, and each route's handler in
 `apps/gateway/src/http/routes.ts` is one call to a method of `Gateway`
 (`apps/gateway/src/app/gateway.ts`) plus the status and the words of any
-refusal. That thinness is what makes the proposal below cheap.
+refusal. That thinness is what makes the design below cheap.
 
 | The cabinet's call | Route | `Gateway` method | Also called by the SDK |
 |---|---|---|---|
@@ -316,12 +317,14 @@ the seller name in `seller-name.test.ts`; the payout wallet in
 test fixtures (`packages/contracts/src/portal-fixtures.test.ts`,
 `packages/sdk/src/portal-fences.test.ts`).
 
-## The proposal
+## The design
 
 ### One process
 
 One Node process, the `app` service of `compose.yaml`, named after the image
-it already runs from. A small workspace package, `apps/app`, holds only its
+it already runs from. The word `deploy/activate.sh` uses for the pair,
+"commerce", was not chosen, because it names a boundary inside one product
+rather than what the process is. A small workspace package, `apps/app`, holds only its
 entry point: it reads both configurations from one environment, starts the
 gateway, then the cabinet, and stops them in the reverse order. `apps/gateway`
 and `apps/cabinet` stay packages with their own tests, migrations and terminal
@@ -372,7 +375,7 @@ disabling refuses the caller's own key (`key_opened_this_call`). A caller with
 no key would have to be described in the published contract, which would go on
 explaining to every merchant's engineer a kind of caller none of them can be.
 
-The proposal is the third: the cabinet calls the application, the same
+The decision is the third: the cabinet calls the application, the same
 `Gateway` methods the handlers call, as the merchant named on the signed-in
 account's row. It keeps its own port, the `GatewayClient` interface in
 `apps/cabinet/src/gateway.ts`, whose methods already return the contract's
@@ -388,10 +391,14 @@ wording moves out of `routes.ts` into a function both call. Each call keeps
 the page's ten-second deadline; the work behind a call that runs out is not
 cancelled, as it is not today when a request times out on the client.
 
-The caller is the cabinet, not a key. `KeyOnTheCall` in `gateway.ts` becomes
-a caller that is either a key or the cabinet; a message about a change already
-names a cabinet caller as "the cabinet" (`AskedWithSchema` in
-`apps/gateway/src/announcements.ts`). Two things follow. The cabinet's list of
+The caller is a signed-in person, not a key. `KeyOnTheCall` in `gateway.ts`
+becomes a caller that is either a key or a person in the cabinet, and a message
+about a payout wallet change names who acted: a change asked for in the
+cabinet names the signed-in person's address, and one asked for with a key
+names the key, as it does today. Today a change from the cabinet is named only
+as "the cabinet" (`AskedWithSchema` in `apps/gateway/src/announcements.ts`),
+because the gateway sees the cabinet's key and not the person behind it. Two
+more things follow. The cabinet's list of
 keys has no `this_call`, because a page acting for a signed-in person holds no
 key, and every key on it can be disabled from there. And a merchant can no
 longer lock themselves out by disabling keys: the way back in is always the
@@ -412,14 +419,14 @@ contract route in the same change.
 ### The WooCommerce worker and the terminal commands
 
 The worker fills orders for merchants who wrote no code, and it is the one
-part of the cabinet that uses the API the way the SDK does. It could stay an
-HTTP client of `/v0` with an ordinary key issued when a shop is connected,
-listed and disableable like any other. That key would have to be stored as
-issued in order to be used, which is the property of the cabinet key this
-decision removes, beside a shop credential of the same kind ADR-0023 already
-keeps. The proposal is that the worker calls the application in-process like
-the screens, drawing with `Gateway.poll`, which a purchase in the same process
-wakes at once. If the connector ever leaves the process, as a plugin in the
+part of the cabinet that uses the API the way the SDK does. It calls the
+application in-process like the screens, drawing with `Gateway.poll`, which a
+purchase in the same process wakes at once. Keeping it an HTTP client of `/v0`
+would take an ordinary key issued when a shop is connected, listed and
+disableable like any other, and that key would have to be stored as issued in
+order to be used, which is the property of the cabinet key this decision
+removes, beside a shop credential of the same kind ADR-0023 already keeps. The
+dogfooding it would keep is the one the SDK's own tests already give. If the connector ever leaves the process, as a plugin in the
 shop for instance, it becomes an ordinary client of the SDK with an ordinary
 key.
 
@@ -508,8 +515,10 @@ change of behaviour and the ones that change behaviour touch no deployment.
    registration and the WooCommerce worker get the in-process implementation
    of their port; the fetch client and its wire tests, `GATEWAY_URL` and
    `REGISTRATION_INVITATION` go; the renewal and its two triggers go, so the
-   key on the account row is no longer read or written; `woo:recover` builds
-   the application in its own process.
+   key on the account row is no longer read or renewed, though registration
+   still writes one until step 4 drops the column; a message about a wallet
+   change asked for in the cabinet names the signed-in person; `woo:recover`
+   builds the application in its own process.
 4. **The cabinet key is deleted.** The gateway loses the kind and its six
    special cases; a migration in the gateway's history deletes the rows made
    for a cabinet, leftovers included, and the `purpose` column, and one in the
@@ -519,11 +528,11 @@ change of behaviour and the ones that change behaviour touch no deployment.
    schemas and their three codes leave the contract, and `this_call` is always
    one of the listed keys. The contracts package is released.
 
-The contract version does not move in steps 2 and 4 on ADR-0006 §2's
-reasoning: no SDK worker calls these routes or reads these codes, and moving
-it would stop every installed worker for words none of them sees. That section
-names only the payout-wallet route as its exception today, so it needs an edit
-to cover routes and codes only the cabinet ever used.
+The contract version does not move in steps 2 and 4: no SDK worker calls
+these routes or reads these codes, and moving it would stop every installed
+worker for words none of them sees. ADR-0006 §2's exception, which names only
+the payout-wallet route, widens to cover the routes and codes only the cabinet
+ever used.
 
 ## Records this changes
 
@@ -575,23 +584,6 @@ edited in the change that makes them untrue.
 - ADR-0006 §2: the exception covers routes and codes only the cabinet used.
 - ADR-0003 §2 lists `apps/gateway` in the workspace's split; `apps/app` joins
   it if the package is made.
-
-## Questions only Dmitry can answer
-
-The name of the process, its service and its package, `app`, follows the
-image it already runs from. The word `deploy/activate.sh` uses for the pair,
-"commerce", was not proposed, because it names a boundary inside one product
-rather than what the process is.
-
-Whether a message about a wallet change made from the cabinet should name the
-person who made it, now that the caller is a signed-in account rather than a
-key. It is a change to what a merchant reads, not to the architecture.
-
-Whether the WooCommerce worker is in-process, as proposed, or an SDK client
-with an ordinary stored key, which keeps a dogfooding the SDK's own tests
-already give.
-
-Whether ADR-0006 §2 is widened as above, or step 4 moves the contract version.
 
 ## What was not verified
 
