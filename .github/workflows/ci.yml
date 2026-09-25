@@ -122,6 +122,12 @@ jobs:
           APP_BASE_URL: https://agentify.ad
           DATABASE_URL: postgresql://agentify_scanner:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
           MIGRATION_TEST_DATABASE_URL: postgresql://agentify_scanner:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
+      # The door to the operator's dashboard is Next's router's answer, so it is
+      # asked of the build too: /admin must answer everybody but an operator
+      # exactly as a page that does not exist (ADR-0026 §6).
+      - run: pnpm scanner:test:admin-door
+        env:
+          MIGRATION_TEST_DATABASE_URL: postgresql://agentify_scanner:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
 
   # The browser observer's test drives a real Chromium, and installing one with
   # its system packages is the slowest step in this file by a wide margin:

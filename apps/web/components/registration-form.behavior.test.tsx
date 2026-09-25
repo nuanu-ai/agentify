@@ -102,7 +102,7 @@ describe("asking the scanner for a verification link", () => {
     const fetched = answerWith(
       200,
       { status: "report_ready", report_url: `/report/${scanId}`, email: "owner@example.com" },
-      { status: 200, body: { status: "signed_in", email: "owner@example.com" } },
+      { status: 200, body: { status: "signed_in", email: "owner@example.com", operator: false } },
     );
     sessionStorage.setItem(`agentify:scan-token:${scanId}`, "scan-token");
     render(<RegistrationForm scanId={scanId} />);

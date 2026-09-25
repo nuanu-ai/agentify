@@ -24,7 +24,7 @@ describe("the header's doors", () => {
   it("carries the signed-in address and a sign-out that posts to the cabinet", async () => {
     // A person signed in anywhere on the site sees who they are signed in as
     // on every page with a header, and can sign out from it (ADR-0026 §3).
-    visitorIs(200, { status: "signed_in", email: "owner@example.com" });
+    visitorIs(200, { status: "signed_in", email: "owner@example.com", operator: false });
 
     const { container } = render(<SiteDoors />);
 
@@ -32,6 +32,34 @@ describe("the header's doors", () => {
     const form = container.querySelector('form[action="/cabinet/sign-out"]');
     expect(form?.getAttribute("method")).toBe("post");
     expect(form?.querySelector("button")?.textContent).toMatch(/sign out/i);
+  });
+
+  it("shows an operator the way to the dashboard", async () => {
+    // The flag rides on the same answer as the address: it is the person's
+    // own, and the header is where they find the dashboard (ADR-0026 §6).
+    visitorIs(200, { status: "signed_in", email: "operator@example.com", operator: true });
+
+    const { container } = render(<SiteDoors />);
+
+    await screen.findByText("operator@example.com");
+    expect(container.querySelector('a[href="/admin"]')?.textContent).toBe("Admin");
+  });
+
+  it("shows nobody else the way to the dashboard", async () => {
+    for (const [status, body] of [
+      [200, { status: "signed_in", email: "owner@example.com", operator: false }],
+      [200, { status: "signed_out" }],
+      [503, { status: "unknown" }],
+    ] as const) {
+      visitorIs(status, body);
+      const { container } = render(<SiteDoors />);
+      await vi.waitFor(() =>
+        expect(container.querySelector('[aria-busy="false"]'), JSON.stringify(body)).toBeTruthy(),
+      );
+      expect(container.querySelector('a[href="/admin"]'), JSON.stringify(body)).toBeNull();
+      vi.restoreAllMocks();
+      cleanup();
+    }
   });
 
   it("says it cannot tell who is visiting when the cabinet does not answer", async () => {
@@ -68,7 +96,11 @@ describe("the header's doors", () => {
   it("asks who is visiting once for a page that shows it twice", async () => {
     // The header and the full-report form on a scan page both need the
     // answer; two questions would renew the session twice in one moment.
-    const fetched = visitorIs(200, { status: "signed_in", email: "owner@example.com" });
+    const fetched = visitorIs(200, {
+      status: "signed_in",
+      email: "owner@example.com",
+      operator: false,
+    });
 
     render(
       <>

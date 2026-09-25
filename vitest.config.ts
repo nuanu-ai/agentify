@@ -7,7 +7,7 @@ import { configDefaults, defineConfig, type ViteUserConfig } from "vitest/config
  *
  * `pnpm test` must be free, deterministic and work without the network.
  * Everything that touches the chain, the facilitator, a merchant's live API or
- * a database lives in a separate command and does not get in here. The five
+ * a database lives in a separate command and does not get in here. The
  * `*.integration.test.ts` files are those, and they are excluded by name.
  *
  * That was a sentence until a pair of tests quietly called a validation
@@ -76,7 +76,7 @@ export const unitTests: TestOptions = {
   exclude: [...configDefaults.exclude, "**/.next/**", "**/*.integration.test.ts"],
 };
 
-/** The five that own a database, a browser or both. */
+/** The ones that own a database, a browser, a built server or more than one. */
 const integrationTests: TestOptions = {
   ...shared,
   name: "integration",

@@ -35,6 +35,7 @@
     "scanner:test:actor": "vitest run --project integration apps/browser-observer-actor/src/actor.integration.test.ts",
     "scanner:test:db": "pnpm scanner:build && pnpm scanner:db:check && pnpm scanner:db:test:migrations",
     "scanner:self-readiness": "node ops/scripts/self-readiness-candidate.mjs",
+    "scanner:test:admin-door": "vitest run --project integration apps/web/admin-door.integration.test.ts",
     "scanner:db:migrate": "node ops/scripts/with-env.mjs pnpm --filter @agentify/scanner-database db:migrate",
     "scanner:dev": "node ops/scripts/with-env.mjs pnpm --parallel --filter @agentify/web --filter @agentify/scanner-worker dev",
     "scanner:test:integration:inner": "pnpm scanner:build && vitest run --project integration apps/scanner-worker/src/analytics-outbox.integration.test.ts && vitest run --project integration apps/web/lib/server/p4.integration.test.ts && vitest run --project integration apps/web/lib/server/p5.integration.test.ts",
