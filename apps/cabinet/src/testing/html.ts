@@ -70,3 +70,16 @@ export const waitingButton = (html: string): ServedButton => {
   }
   return { tag, label, attributes };
 };
+
+/**
+ * The WooCommerce shop screen's Import form alone, where what an import needs
+ * is said beside the button, or the empty string where the page has none.
+ *
+ * Read apart from the rest of the page because two other parts of it say
+ * words these tests look for: the banner every screen carries while no seller
+ * name is chosen names the name and links to Settings, and the paragraph
+ * about connecting says a shop asks for approval on its own screen. Asked of
+ * the whole page, a test would pass for an Import line that said neither.
+ */
+export const importFormOf = (html: string): string =>
+  /<form[^>]*action="[^"]*\/woocommerce\/import"[^>]*>[\s\S]*?<\/form>/.exec(html)?.[0] ?? "";
