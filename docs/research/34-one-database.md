@@ -1,8 +1,8 @@
 # One database
 
-Date: 2026-09-23. A design note, not a decision: a survey of the two
-databases the product keeps on one PostgreSQL server, and a proposal for
-making them one. The code for it follows the branch that replaces the Ansible
+Date: 2026-09-23. A design note: a survey of the two databases the product
+kept on one PostgreSQL server, a proposal for making them one, Dmitry's
+decisions, and at the end how it was built. The code for it follows the branch that replaces the Ansible
 release with `deploy/activate.sh` and the `agentify-release` command, because
 both change the release path and the migrations; the release of it follows
 production's move onto that path and the off-host backup.
@@ -780,6 +780,53 @@ and the dashboard queries beside it, as they were before commit `ad5a772`
 deleted them. The cutover compares the hosts' view definitions with that file
 before it drops them and records any difference in its report, and the
 restore point taken before the move holds the views as the hosts had them.
+
+## How it was built
+
+Option 1 with the host rename, as decided, and the recommendation holds: the
+scanner's tables sit in `public` of `agentify`, its history in
+`drizzle.scanner_migrations`, and the gateway and the scanner share one
+`pgboss` schema on pg-boss 12.28.0. Where the build departs from what this
+note proposed, the proposal was wrong or incomplete, and the build is what
+stands.
+
+The `scanner-migrate` service stays. The app image leaves the scanner's
+packages out (`deploy/Dockerfile.app.dockerignore`), so `migrate` cannot run
+the scanner's set; both services now point at the one database. The guard
+against a table name shared by two sets, or two sets sharing a history, is
+not a CI step but a test in `pnpm scanner:test:db`, which applies the three
+sets to one database twice and then a gateway migration dated inside the
+scanner's range.
+
+Something in the repository did read the `metabase` views: the operator page
+at `/admin`, through four of them. A database built from the migrations has
+none, so that page answered with an error on every laptop, and dropping the
+views would have broken it on both hosts. The four queries now live in
+`apps/web/lib/server/operator-dashboard.ts`, read the tables, and are tested
+on a database the migrations built. `DASHBOARD_DATABASE_URL` and its second
+pool are gone.
+
+The account follows the database. PostgreSQL refuses to reassign or drop the
+role initdb created ("required by the database system"), so "create,
+reassign, drop" cannot work, but a temporary superuser can rename it, and a
+SCRAM password survives a rename; both were measured on 17.11. TEST's
+database password was the laptop default printed in `compose.yaml`, which is
+now `agentify`, so the cutover gives the account the password the new
+configuration names on each host, PRODUCTION's own included.
+
+The cutover is `deploy/one-database.sh` on the host and
+`deploy/one-database-move.sh` inside the database container, the second
+tested against the pinned PostgreSQL in `deploy/test_one_database.py`. It
+runs after a first release of the revision has pulled its images and been
+refused for want of the new volume, which the release now checks before it
+stops anything; it writes no transition record, since `current` still names
+the revision whose data the moved database holds, and the second release
+takes its own restore point of the one database. The comparison with a
+fresh build by catalog is not in the script; the rehearsal did it once. The
+rehearsal on a laptop, with the four roles, 88 policies, 15 metabase views
+and data seeded through the applications, found defects in the script before
+any host saw it, and measured the downtime (deploy/README.md, "One
+database").
 
 ## What I don't know
 
