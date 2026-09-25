@@ -261,14 +261,22 @@ describe("what a message advises and claims", () => {
       },
     ],
   ] as const)(
-    "advises pausing selling at once after %s, not cancelling what is not waiting",
+    "advises stopping selling, signing out every other device, then an address of one's own, after %s",
     async (_what, request) => {
       const { url, sent } = await listening([["owner@example.com", MERCHANT]]);
 
       await post(url, request satisfies GatewayRequest);
 
+      // In that order, and by the names the screens give the two controls:
+      // the stop is immediate, the sign-out keeps an intruder from undoing
+      // what comes next, and the address waits and is announced.
       const body = sent[0]?.body ?? "";
-      expect(body).toMatch(/pause selling/i);
+      const stop = body.indexOf("Stop all selling");
+      const signOut = body.indexOf("Sign out every other device");
+      const address = body.search(/set your own address/i);
+      expect(stop).toBeGreaterThan(-1);
+      expect(signOut).toBeGreaterThan(stop);
+      expect(address).toBeGreaterThan(signOut);
       expect(body).not.toMatch(/cancelling a waiting/i);
     },
   );
