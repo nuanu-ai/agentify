@@ -25,12 +25,15 @@
  * their shop. Cutting it here would publish prose under their name that they
  * never wrote, and they would have no way of finding out. The same goes for a
  * product this cannot map at all: it is left out and named, rather than
- * published as something approximate.
+ * published as something approximate. Reading the shop's HTML as the text its
+ * page shows is not an edit — it is the one reading of the page a person makes
+ * too — and it is `html-text.ts`'s, shared with any connector that reads HTML.
  */
 
 import { createHash } from "node:crypto";
 import { type CardInput, CurrencyCodeSchema, IdentifierSchema } from "@nuanu-ai/agentify-contracts";
 import { z } from "zod";
+import { type HtmlAsText, plainTextOfHtml } from "./html-text.js";
 
 /**
  * One product as the Store API serves it — the fields we read, and no claim
@@ -110,139 +113,6 @@ export const decimalOfMinorUnits = (minor: string, scale: number): string | null
   return `${digits.slice(0, digits.length - scale)}.${digits.slice(digits.length - scale)}`;
 };
 
-/**
- * The named references WordPress writes into a Store API product.
- *
- * WooCommerce sends a product's name and prose through wptexturize,
- * convert_chars and wp_kses_post. The first two write what they produce as
- * numbers — an apostrophe as `&#8217;`, an ampersand as `&#038;` — which the
- * arithmetic below reads whatever the character is. Names come from what the
- * merchant stored. WordPress's own editor writes characters as themselves
- * except `&amp;`, `&lt;`, `&gt;` and `&nbsp;`; the dash, quotation mark and
- * ellipsis names in this table come from HTML pasted in or written by hand.
- * wp_kses_post lets any other name on HTML 4's list through, so one missing
- * here (`&eacute;` typed by hand) reaches the card as it was written: visible,
- * and never guessed at.
- *
- * A table and not a dependency: a decoder with HTML's whole list would be one
- * more package in the cabinet for names no shop we have read sends. The day
- * one does, that package is the smaller change.
- */
-const NAMED_CHARACTERS: Readonly<Record<string, string>> = {
-  amp: "&",
-  lt: "<",
-  gt: ">",
-  quot: '"',
-  apos: "'",
-  nbsp: " ",
-  ndash: "–",
-  mdash: "—",
-  hellip: "…",
-  laquo: "«",
-  raquo: "»",
-  ldquo: "“",
-  rdquo: "”",
-  lsquo: "‘",
-  rsquo: "’",
-};
-
-/**
- * The elements a browser puts on a line of their own.
- *
- * Everything not on this list is inline and leaves no gap behind it. The list
- * is short because the mistake it prevents is one-directional: a block element
- * missing from it joins two sentences into one word, which a reader notices,
- * while an inline element wrongly on it leaves a space before a comma, which
- * nobody does.
- */
-const BREAKS_THE_LINE = new Set([
-  "p",
-  "div",
-  "br",
-  "hr",
-  "li",
-  "ul",
-  "ol",
-  "dl",
-  "dt",
-  "dd",
-  "tr",
-  "td",
-  "th",
-  "table",
-  "thead",
-  "tbody",
-  "h1",
-  "h2",
-  "h3",
-  "h4",
-  "h5",
-  "h6",
-  "blockquote",
-  "pre",
-  "section",
-  "article",
-  "header",
-  "footer",
-  "figure",
-  "figcaption",
-]);
-
-/**
- * A shop's prose as text: the markup gone, the entities put back, the
- * whitespace collapsed.
- *
- * The two blocks that are removed whole rather than unwrapped are the ones a
- * browser does not show either — a `<script>` and a `<style>` — so stripping
- * only their tags would put a stylesheet into the description of a product.
- *
- * Whitespace is collapsed because a card's description is read by a program and
- * displayed in a catalogue, where the paragraphs of a shop page have nowhere to
- * go; what would otherwise cross is the newline the editor put between two
- * `<p>` elements, counted against the length limit as a character the merchant
- * cannot see.
- */
-export const plainTextOf = (html: string): string => {
-  const withoutHiddenBlocks = html.replace(
-    /<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
-    // A space, so that "a<style>…</style>b" does not become one word.
-    " ",
-  );
-  const withoutTags = withoutHiddenBlocks.replace(
-    /<\/?([a-z][a-z0-9]*)\b[^>]*>/gi,
-    // A tag that ends a line becomes a space and a tag inside a line becomes
-    // nothing, because the two are not the same edit. "code <em>by email</em>."
-    // with every tag spaced out reads "code by email ." — a space before a full
-    // stop, in prose a stranger's agent is about to read.
-    (_whole: string, name: string) => (BREAKS_THE_LINE.has(name.toLowerCase()) ? " " : ""),
-  );
-  const decoded = withoutTags.replace(
-    /&(#x[0-9a-f]+|#\d+|[a-z]+);/gi,
-    (whole: string, name: string) => {
-      if (name.startsWith("#x") || name.startsWith("#X")) {
-        return codePoint(Number.parseInt(name.slice(2), 16)) ?? whole;
-      }
-      if (name.startsWith("#")) {
-        return codePoint(Number.parseInt(name.slice(1), 10)) ?? whole;
-      }
-      return NAMED_CHARACTERS[name.toLowerCase()] ?? whole;
-    },
-  );
-  return decoded.replace(/\s+/g, " ").trim();
-};
-
-/** One character from its number, or null where that number is not one. */
-const codePoint = (value: number): string | null => {
-  if (!Number.isInteger(value) || value < 0 || value > 0x10ffff) {
-    return null;
-  }
-  try {
-    return String.fromCodePoint(value);
-  } catch {
-    return null;
-  }
-};
-
 /** One product turned into a card, with the product it came from named. */
 export interface ImportedCard {
   /** The shop's own identifier, which is the card's `merchant_item_id`. */
@@ -304,7 +174,8 @@ export const cardsFromTheShop = (
 
   for (const product of products) {
     const id = String(product.id);
-    const title = plainTextOf(product.name);
+    const name = plainTextOfHtml(product.name);
+    const title = name.text;
     // The shop's own name for the product where there is one, so that a line
     // about a product nobody could map names it the way the merchant knows it.
     const named = title === "" ? (product.sku === "" ? id : product.sku) : title;
@@ -383,18 +254,27 @@ export const cardsFromTheShop = (
       refused("The product has no name in the shop, and a card is found by its title.");
       continue;
     }
+    if (!name.plain) {
+      refused(stillNotPlainText("name", name.found));
+      continue;
+    }
     const merchantItemId = merchantItemIdFor(shopOrigin, id);
     if (!IdentifierSchema.safeParse(merchantItemId).success) {
       refused("The shop's own identifier for this product is not one a card can be keyed by.");
       continue;
     }
 
-    const description = firstProseOf(product);
+    const prose = firstProseOf(product);
+    const description = prose.text;
     if (description === "") {
       refused(
         "The shop's page for this product has no description. A card carries one, because it is" +
           " what an agent reads before it decides to buy.",
       );
+      continue;
+    }
+    if (!prose.plain) {
+      refused(stillNotPlainText("description", prose.found));
       continue;
     }
 
@@ -444,7 +324,21 @@ export const productIdFromMerchantItem = (
  * everything in the excerpt is a shop whose products would otherwise all be
  * refused for having no description at all.
  */
-const firstProseOf = (product: StoreProduct): string => {
-  const long = plainTextOf(product.description);
-  return long === "" ? plainTextOf(product.short_description) : long;
+const firstProseOf = (product: StoreProduct): HtmlAsText => {
+  const long = plainTextOfHtml(product.description);
+  return long.text === "" ? plainTextOfHtml(product.short_description) : long;
 };
+
+/**
+ * Why a product whose words are still not plain text, once its HTML is read,
+ * stays in the shop.
+ *
+ * This is the merchant's own text rather than anything of the shop's markup:
+ * a page that shows `<header>` or `&#038;` to a person shows it because the
+ * merchant wrote it there as text. So the sentence says what was found, in the
+ * publish door's own words, and where to change it — rather than sending the
+ * card to be refused in words about HTML the merchant never wrote as HTML.
+ */
+const stillNotPlainText = (what: "name" | "description", found: readonly string[]): string =>
+  `Read the way the shop's page shows it, this product's ${what} carries ${found.join("; and ")}.` +
+  ` A card's text is plain text, so change the ${what} in the shop and import again.`;

@@ -87,6 +87,9 @@ importers:
       drizzle-orm:
         specifier: 0.45.2
         version: 0.45.2(@types/pg@8.23.1)(kysely@0.29.5)(pg@8.23.0)
+      entities:
+        specifier: 8.1.0
+        version: 8.1.0
       express:
         specifier: 5.2.1
         version: 5.2.1
