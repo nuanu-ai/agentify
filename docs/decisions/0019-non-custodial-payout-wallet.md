@@ -102,14 +102,17 @@ people. When every message has been handed over, the gateway records the
 pending change, answers with it and counts the forty-eight hours from
 then. Otherwise it writes nothing and refuses the change in words that say
 which of three cases it met: there is nobody to tell; a message could not
-be handed over; or the cabinet did not answer, so a message may have gone
-out although nothing was recorded. The third is not "not sent", and the
+be handed over, or the cabinet turned the request away before sending any;
+or the cabinet did not answer, so a message may have gone out although
+nothing was recorded. The third is not "not sent", and the
 refusal does not read as if it were. Changes for one merchant are
 serialized without a lock held across the announcement, which is a call to
 another process and a mail provider: a change is recorded only where the
 wallet still stands as it was read before its message went out, and one that
 another change overtook meanwhile is refused in words of its own, a fourth
-refusal. So nothing recorded is ever written over by a change announced
+refusal, which says a message went out only when this change's own did. A
+change that finds the wallet already holding exactly what it asked for, a
+retry that overtook its own first attempt, is answered with it instead. So nothing recorded is ever written over by a change announced
 beside it, and the one that loses — which may be the one announced last — is
 refused, its message saying, like every message, that it applies only if the
 wallet screen shows it.
