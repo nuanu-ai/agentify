@@ -419,14 +419,15 @@ line.
 The characters markup is made of are not refused on their own. `Tea & coffee`,
 `AT&T`, `R&D;`, `5 < 10`, `a -> b` and an address written as
 `<jane@example.com>` are text, and they are published and shown as you wrote
-them. A tag is an angle bracket, a name, and a closing bracket, with attributes
-between the name and the bracket if there are any; the name begins with a
-letter and carries letters and digits, joined by a colon or a hyphen where
-there is one, as in `<o:p>`. So `List<String>` is refused, while
-`List< String >` and the address are not.
+them. A tag is an angle bracket and a name, closed by a bracket straight after
+the name or after a space or a slash and whatever attributes follow; the name
+begins with a letter and carries letters and digits, joined by a colon or a
+hyphen where there is one, as in `<o:p>` — so `List<String>` is refused, while
+`List< String >`, `Map<String, Integer>` and the address are not.
 
 A refusal names the field, what was found in it, how many times, and the
-character where the first of it begins, counted from one. Nothing is cleaned or
+character where the first of it begins, counted from one in the same units as a
+description's length, where an emoji counts as two. Nothing is cleaned or
 rewritten for you: stripping tags or decoding references on our side would put
 words in front of an agent that you never wrote, and you would not find out.
 Write the characters themselves — `&` rather than `&amp;`, `’` rather than
