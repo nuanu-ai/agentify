@@ -11,6 +11,7 @@
  * address.
  */
 
+import { SIGN_OUT_EVERY_OTHER_DEVICE } from "./control-labels.js";
 import { escaped } from "./html.js";
 import type { Viewer } from "./screens.js";
 
@@ -28,7 +29,7 @@ export const accountSettings = (viewer: Viewer): string => `
     <p class="quiet">${escaped(
       `Ends every session of ${viewer.who} except this one, on any device. Each of them needs a new link to sign in again.`,
     )}</p>
-    <button class="button button-secondary" type="submit">Sign out every other device</button>
+    <button class="button button-secondary" type="submit">${escaped(SIGN_OUT_EVERY_OTHER_DEVICE)}</button>
     ${viewer.accountNotice === undefined ? "" : `<p role="status">${escaped(viewer.accountNotice)}</p>`}
   </form>
 `;

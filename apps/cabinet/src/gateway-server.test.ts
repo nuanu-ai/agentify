@@ -18,6 +18,7 @@ import type { AddressInfo } from "node:net";
 import type { GatewayRequest } from "@agentify/gateway/announcements";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
+import { SIGN_OUT_EVERY_OTHER_DEVICE, STOP_ALL_SELLING } from "./control-labels.js";
 import { buildGatewayApp, startGatewayServer, tellerFor } from "./gateway-server.js";
 import { identityFor } from "./identity.js";
 import type { Handover, Message } from "./mail.js";
@@ -267,12 +268,13 @@ describe("what a message advises and claims", () => {
 
       await post(url, request satisfies GatewayRequest);
 
-      // In that order, and by the names the screens give the two controls:
-      // the stop is immediate, the sign-out keeps an intruder from undoing
-      // what comes next, and the address waits and is announced.
+      // In that order, and by the names the screens give the two controls,
+      // which both read from one place: the stop is immediate, the sign-out
+      // keeps an intruder from undoing what comes next, and the address waits
+      // and is announced.
       const body = sent[0]?.body ?? "";
-      const stop = body.indexOf("Stop all selling");
-      const signOut = body.indexOf("Sign out every other device");
+      const stop = body.indexOf(STOP_ALL_SELLING);
+      const signOut = body.indexOf(SIGN_OUT_EVERY_OTHER_DEVICE);
       const address = body.search(/set your own address/i);
       expect(stop).toBeGreaterThan(-1);
       expect(signOut).toBeGreaterThan(stop);

@@ -38,10 +38,12 @@
  * change can be cancelled, and the cancel signs every other session out. After
  * a first wallet or a cancel nothing waits, so what works is stopping the
  * selling at once, signing out every other device, and then setting an
- * address, which waits and is announced.
+ * address, which waits and is announced. The two controls are named from
+ * `control-labels.ts`, the file the screens draw them from.
  */
 
 import type { Announcement, AskedWith } from "@agentify/gateway/announcements";
+import { SIGN_OUT_EVERY_OTHER_DEVICE, STOP_ALL_SELLING } from "./control-labels.js";
 import type { Message } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
 import { moment } from "./words.js";
@@ -86,7 +88,7 @@ const IF_NOT_YOU =
  * waits and is announced. The two controls are named as the screens name them.
  */
 const PAUSE_THEN_SET = (settings: string): string =>
-  `Somebody else may be signed in to your cabinet. First press Stop all selling on the Cards screen, which stops new sales at once. Then press Sign out every other device in Settings: ${settings}. Then set your own address there; that waits forty-eight hours and is announced, so keep selling stopped until it applies.`;
+  `Somebody else may be signed in to your cabinet. First press ${STOP_ALL_SELLING} on the Cards screen, which stops new sales at once. Then press ${SIGN_OUT_EVERY_OTHER_DEVICE} in Settings, which ends every other session of your account: ${settings}. Then set your own address there; that waits forty-eight hours and is announced, so keep selling stopped until it applies.`;
 
 export function announcementMessage(
   to: string,
