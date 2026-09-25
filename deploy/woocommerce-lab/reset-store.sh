@@ -133,12 +133,10 @@ build_baseline() {
   wp plugin install woocommerce --activate
   wp rewrite flush --hard
 
-  wp option update woocommerce_currency USD
   wp option update woocommerce_default_country 'US:CA'
   wp option update woocommerce_store_address '1 Digital Market Street'
   wp option update woocommerce_store_city 'San Francisco'
   wp option update woocommerce_store_postcode '94105'
-  wp option update woocommerce_calc_taxes no
   wp option update woocommerce_onboarding_profile '{"skipped":true}' --format=json
   wp option update woocommerce_task_list_hidden yes || true
   wp option update woocommerce_bacs_settings '{"enabled":"no"}' --format=json
