@@ -56,7 +56,11 @@ import {
 import { bare, brandLockup, escaped } from "./html.js";
 import { SESSION_DAYS } from "./identity.js";
 import { keysScreen, newKeyScreen } from "./keys.js";
-import { WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
+import {
+  ACCOUNT_KEY_CANNOT_SET_THE_WALLET,
+  WALLET_NEEDED,
+  whatIsWrongWithTheWallet,
+} from "./payout-wallet.js";
 import { printable } from "./printable.js";
 import { cardsScreen, ordersScreen, receiptsScreen, type Viewer } from "./screens.js";
 import {
@@ -759,6 +763,11 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       await refuseLink(request, response);
       return;
     }
+    // A browser already signed in gets its new session in place of the old
+    // one rather than beside it: the old row would otherwise live on with
+    // nothing holding its cookie, and be counted as another place this
+    // account is signed in.
+    await identity.signOut(request.headers.cookie);
     carryCookies(response, opened.setCookies);
     await sendOpenedPerson(response, opened.person, opened.destination);
   });
@@ -1091,6 +1100,177 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   });
 
   /**
+   * Signs out every other device of this account, from the settings screen
+   * (ADR-0026 §3).
+   *
+   * The header's sign-out ends this browser's session; this ends every other
+   * session of the same account and keeps this one, which is the answer to a
+   * session left open somewhere or held by somebody else (ADR-0019). It needs
+   * no wallet change to be waiting, ends no other account's sessions and
+   * touches no key. It stands behind the gate and, like every form here, is
+   * refused from another site. The page says how many it ended, because the
+   * count is the one thing the person could not otherwise see.
+   */
+  app.post(`${base}/settings/sign-out-others`, async (request, response) => {
+    const person = whoIs(request);
+    const ended = await identity.endOtherSessionsOfPerson(person.id, request.headers.cookie);
+    noted(person, `signed out every other device of their account, ${ended} sessions in all`);
+    const settings = await settingsOf(request);
+    if (!settings.ok) {
+      return trouble(response, base, settings);
+    }
+    response.type("html").send(
+      settingsScreen({
+        ...viewingSettings(request, base, settings.document),
+        accountNotice:
+          ended === 0
+            ? "No other session of this account was signed in, so none was signed out."
+            : ended === 1
+              ? "1 other session of this account was signed out."
+              : `${ended} other sessions of this account were signed out.`,
+      }),
+    );
+  });
+
+  /** Ends every session of the merchant but the one on this request, and says how many. */
+  const signOutTheOthers = async (request: Request): Promise<number> => {
+    const person = whoIs(request);
+    return person.merchant === null
+      ? 0
+      : await identity.endOtherSessionsOfMerchant(person.merchant.id, request.headers.cookie);
+  };
+
+  /** The settings screen as it now stands, with one sentence above the wallet. */
+  const withNotice = async (
+    request: Request,
+    response: Response,
+    notice: string,
+    status = 200,
+  ): Promise<void> => {
+    const settings = await settingsOf(request);
+    if (!settings.ok) {
+      return trouble(response, base, settings);
+    }
+    const viewer = viewingSettings(request, base, settings.document);
+    response
+      .status(status)
+      .type("html")
+      .send(
+        settingsScreen(
+          viewer.payout === undefined
+            ? viewer
+            : { ...viewer, payout: { ...viewer.payout, notice } },
+        ),
+      );
+  };
+
+  /**
+   * A wallet call the gateway refused, in words that fit it.
+   *
+   * One refusal is worded here rather than passed through: an account whose
+   * key was made for the merchant's own code, which the gateway will not let
+   * set the wallet. Its sentence under "Try again" would send somebody round
+   * a loop nothing in the cabinet can end, so the settings screen is drawn as
+   * it stands and says why, and that nothing here mends it. Everything else is
+   * the usual page.
+   */
+  const walletRefused = async (
+    request: Request,
+    response: Response,
+    refused: Answer<unknown>,
+  ): Promise<void> =>
+    !refused.ok && refused.code === "not_a_cabinet_key"
+      ? await withNotice(request, response, ACCOUNT_KEY_CANNOT_SET_THE_WALLET, 403)
+      : trouble(response, base, refused);
+
+  /**
+   * Cancels the replacement that waits, by asking the gateway for the address
+   * that applies now, and ends every other session of the merchant (ADR-0019).
+   *
+   * Two things reach it: the cancel control, and that same address typed into
+   * the box while a change waits, which the gateway reads as the same cancel.
+   * A cancel that ended no session would leave the one that asked for the
+   * change free to ask again. Typed in, the person may not know they cancelled
+   * anything, so the screen says so; pressed, the control already did.
+   *
+   * A change that took effect between the read and the request is not
+   * cancelled: asking for the old address is then a change back, which waits
+   * and is announced, and the page and the log say that instead.
+   */
+  const cancelWaiting = async (
+    request: Request,
+    response: Response,
+    gateway: GatewayClient,
+    applies: string,
+    pending: { readonly payout_wallet: string; readonly takes_effect_at: string },
+    typedIn: boolean,
+  ): Promise<void> => {
+    const person = whoIs(request);
+    const cancelled = await gateway.setPayoutWallet(applies);
+    if (!cancelled.ok) {
+      return await walletRefused(request, response, cancelled);
+    }
+    const ended = await signOutTheOthers(request);
+    if (cancelled.document.pending === null) {
+      noted(
+        person,
+        `cancelled a waiting change of the address their money arrives at, and ${ended} other sessions of the merchant were ended`,
+      );
+      if (typedIn) {
+        return await withNotice(
+          request,
+          response,
+          `${applies} is the address your sales are paid into now, so the waiting change to ${pending.payout_wallet} was cancelled. ` +
+            "Every other session of your merchant was signed out.",
+        );
+      }
+      response.redirect(303, `${base}/settings`);
+      return;
+    }
+    noted(
+      person,
+      `asked for the address their money arrives at back as a change of it took effect; that now waits, and ${ended} other sessions of the merchant were ended`,
+    );
+    return await withNotice(
+      request,
+      response,
+      `The change to ${pending.payout_wallet} took effect at ${moment(pending.takes_effect_at)}, just before your request reached it. ` +
+        `Asking for ${applies} back is a change like any other: it waits forty-eight hours and every account of your merchant was sent a message about it. ` +
+        "Every other session of your merchant was signed out.",
+    );
+  };
+
+  /**
+   * A press on a page drawn while a change waited, arriving after the change
+   * took effect: the Cancel control, or the address that page showed as paid
+   * typed back into the box. Nothing takes the change back at once, so nothing
+   * is asked of the gateway; the page says when it took effect and how the
+   * old address comes back, and the other sessions end, since this is the
+   * moment an unwanted change has just landed.
+   */
+  const tookEffectBeforePress = async (
+    request: Request,
+    response: Response,
+    shown: { readonly waiting: string; readonly from: string | null; readonly paid: string | null },
+    how: string,
+  ): Promise<void> => {
+    const ended = await signOutTheOthers(request);
+    noted(
+      whoIs(request),
+      `${how} after a change of the address their money arrives at had taken effect, and ${ended} other sessions of the merchant were ended`,
+    );
+    return await withNotice(
+      request,
+      response,
+      `The change to ${shown.waiting} took effect at ${shown.from === null ? "its moment" : moment(shown.from)}, before you pressed, and your sales are now paid into it. ` +
+        (shown.paid === null
+          ? "Setting another address back is a change like any other: it waits forty-eight hours and is announced. "
+          : `Setting ${shown.paid} back is a change like any other: it waits forty-eight hours and is announced. `) +
+        "Every other session of your merchant was signed out.",
+    );
+  };
+
+  /**
    * Where a merchant's money arrives.
    *
    * Its own route rather than a second field on the one above, because they are
@@ -1120,9 +1300,40 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       return;
     }
 
-    const set = await gatewayAs(request, WALLET_CHANGE_MS).setPayoutWallet(typed);
+    const gateway = gatewayAs(request, WALLET_CHANGE_MS);
+    // With a change waiting, the address that applies now is a cancel at the
+    // gateway, so it is treated as one here: the other sessions end, and the
+    // page and the log say it was cancelled rather than changed.
+    const read = await gateway.payoutWallet();
+    if (!read.ok) {
+      return trouble(response, base, read);
+    }
+    const { payout_wallet: applies, pending } = read.document;
+    if (pending !== null && applies !== null && typed.toLowerCase() === applies.toLowerCase()) {
+      return await cancelWaiting(request, response, gateway, applies, pending, true);
+    }
+    // The page was drawn while a change waited, that change has since taken
+    // effect, and what was typed is the address the page showed as paid: the
+    // same act as pressing Cancel on that page, answered the same way.
+    const shown = shownIn(request);
+    if (
+      pending === null &&
+      shown !== null &&
+      applies === shown.waiting &&
+      shown.paid !== null &&
+      typed.toLowerCase() === shown.paid.toLowerCase()
+    ) {
+      return await tookEffectBeforePress(
+        request,
+        response,
+        shown,
+        "typed the previous address back",
+      );
+    }
+
+    const set = await gateway.setPayoutWallet(typed);
     if (!set.ok) {
-      return trouble(response, base, set);
+      return await walletRefused(request, response, set);
     }
     // The address itself stays out of the line. It is not a secret, but this
     // log is a process log and the record of who changed it is what it is for.
@@ -1140,9 +1351,10 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    * the merchant but the one that pressed (ADR-0019).
    *
    * Cancelling is asking the gateway for the address that applies now, which
-   * is what the gateway reads as a cancel — so the cabinet holds no power over
-   * the wallet that a merchant's own code does not. It reads the wallet first
-   * rather than trusting a page that may be a day old.
+   * is what the gateway reads as a cancel, and like every change of the wallet
+   * it is made with the cabinet's own key: a key of the merchant's own code
+   * cannot set the wallet at all. It reads the wallet first rather than
+   * trusting a page that may be a day old.
    *
    * The sessions go because the change may have been asked for from one of
    * them — a device left signed in, somebody else at the merchant — and the
@@ -1170,66 +1382,13 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     }
     const shown = shownIn(request);
     const { payout_wallet: applies, pending } = read.document;
-    const person = whoIs(request);
-    const signOutTheOthers = async (): Promise<number> =>
-      person.merchant === null
-        ? 0
-        : await identity.endOtherSessionsOfMerchant(person.merchant.id, request.headers.cookie);
-    const withNotice = async (notice: string): Promise<void> => {
-      const settings = await settingsOf(request);
-      if (!settings.ok) {
-        return trouble(response, base, settings);
-      }
-      const viewer = viewingSettings(request, base, settings.document);
-      response
-        .type("html")
-        .send(
-          settingsScreen(
-            viewer.payout === undefined
-              ? viewer
-              : { ...viewer, payout: { ...viewer.payout, notice } },
-          ),
-        );
-    };
 
     if (pending !== null && applies !== null) {
-      const cancelled = await gateway.setPayoutWallet(applies);
-      if (!cancelled.ok) {
-        return trouble(response, base, cancelled);
-      }
-      const ended = await signOutTheOthers();
-      if (cancelled.document.pending === null) {
-        noted(
-          person,
-          `cancelled a waiting change of the address their money arrives at, and ${ended} other sessions of the merchant were ended`,
-        );
-        response.redirect(303, `${base}/settings`);
-        return;
-      }
-      noted(
-        person,
-        `pressed cancel as a change of the address their money arrives at took effect; the previous address was asked for back, which now waits, and ${ended} other sessions of the merchant were ended`,
-      );
-      return await withNotice(
-        `The change to ${pending.payout_wallet} took effect at ${moment(pending.takes_effect_at)}, as you pressed. ` +
-          `Asking for ${applies} back is a change like any other: it waits forty-eight hours and every account of your merchant was sent a message about it. ` +
-          "Every other session of your merchant was signed out.",
-      );
+      return await cancelWaiting(request, response, gateway, applies, pending, false);
     }
 
     if (shown !== null && applies === shown.waiting) {
-      const ended = await signOutTheOthers();
-      noted(
-        person,
-        `pressed cancel after a change of the address their money arrives at had taken effect, and ${ended} other sessions of the merchant were ended`,
-      );
-      return await withNotice(
-        `The change to ${shown.waiting} took effect at ${shown.from === null ? "its moment" : moment(shown.from)}, before you pressed, and your sales are now paid into it. ` +
-          (shown.paid === null
-            ? "Setting another address back is a change like any other: it waits forty-eight hours and is announced. "
-            : `Setting ${shown.paid} back is a change like any other: it waits forty-eight hours and is announced. `) +
-          "Every other session of your merchant was signed out.",
-      );
+      return await tookEffectBeforePress(request, response, shown, "pressed cancel");
     }
 
     response.redirect(303, `${base}/settings`);

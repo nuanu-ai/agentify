@@ -125,8 +125,10 @@ again; after the secret is added, a person releases it
 (`ssh -t agentify-test sudo agentify-release <name>`) or moves `deploy-test`
 to a newer commit.
 
-So before moving `deploy-test` to such a commit, and before running
-`agentify-release` on PRODUCTION for one, add the secret to each host's file,
+So the secret has to be in `/etc/agentify/test.env` before `deploy-test` moves
+to such a commit, and in `/etc/agentify/production.env` before the next
+`agentify-release` on PRODUCTION, which has already made its one-time move to
+one database. Add it to each host's file,
 with a value made on that host for that channel alone — the channels share no
 secret, and one value serves both the gateway and the cabinet of a channel,
 since both read the same file:
