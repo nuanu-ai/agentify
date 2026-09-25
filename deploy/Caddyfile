@@ -2,8 +2,9 @@
 #
 # ADR-0005 §1: Caddy is the only address anybody types. `/` is the scanner,
 # `/docs` the portal, `/cabinet` the cabinet, and `/v0/*` and `/x402/*`
-# are both the gateway — the merchant's API and the storefront an agent buys at
-# — so a merchant's engineer sees one origin and never reasons about ports. The
+# are both the gateway — the merchant's API and the storefront an agent buys at,
+# less three calls only the cabinet makes from inside the stack — so a
+# merchant's engineer sees one origin and never reasons about ports. The
 # same file describes the server later, which is why nothing below is written
 # twice: every address the routes depend on is one environment variable with a
 # local default, and the deployment overrides the variable rather than editing
@@ -190,6 +191,21 @@
 	# the same probe under its own prefix, and the block below passes /cabinet/*
 	# through untouched, so /cabinet/healthz already arrives.
 	#
+	# Three of the gateway's calls are not on this door at all: registering a
+	# merchant, and making and forgetting the key a cabinet calls with. Only the
+	# cabinet makes them, and it makes them over the stack's own network, at the
+	# gateway's service name, never through here. A merchant comes into being
+	# one way, when a signed-in person presses the cabinet's one control
+	# (ADR-0014), and the registration call behind that press asks for nothing
+	# but the invitation, which lives in configuration files; reachable from
+	# outside, it would make a merchant and its cabinet's key for whoever holds
+	# a copy, with no address and no person. So these paths are left out of the
+	# gateway's matcher and fall through to the front page, which answers them
+	# as it answers any path this site does not have, with its missing page.
+	# The matcher is the same one the gateway's line uses, so a path spelled in
+	# another case, encoded, or with a dot segment or a doubled slash is left
+	# out exactly when the gateway's line would have taken it.
+	#
 	# Setting the payout wallet is not on this door. Only the cabinet sets it,
 	# for a person signed in to it, and it calls the gateway over the stack's own
 	# network at the gateway's service name, never through here (ADR-0019). A
@@ -205,6 +221,7 @@
 	# any key of the merchant's.
 	@gateway {
 		path /v0 /v0/* /x402 /x402/* /healthz
+		not path /v0/merchants /v0/merchants/* /v0/keys/cabinet /v0/keys/cabinet/*
 		not {
 			path /v0/payout-wallet /v0/payout-wallet/*
 			not method GET HEAD

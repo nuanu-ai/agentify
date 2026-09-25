@@ -45,9 +45,10 @@ version before the gateway speaks them.
 
 Open the [test cabinet](https://test.agentify.ad/cabinet/sign-in) and enter
 your email address. Open the link in the message and press the confirmation
-button. Your first sign-in creates your merchant and asks for the seller name
-buyers will see. Returning merchants reach their existing cabinet with the
-same email-and-link flow.
+button. The cabinet then offers one button, "Open my merchant cabinet"; its
+press creates your merchant and asks for the seller name buyers will see.
+That is the only way to get a merchant. Returning merchants reach their
+existing cabinet with the same email-and-link flow.
 
 The test channel settles test USDC on Base Sepolia. Save the Base wallet where
 those payments should arrive in Cabinet settings before publishing. The live

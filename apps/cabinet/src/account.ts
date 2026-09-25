@@ -1,25 +1,16 @@
 /**
- * The account command, wired to the database and to standard input.
+ * The account command, wired to the database.
  *
- * A merchant registers for themselves now (ADR-0014), so this is not the only
- * way an account comes into being. It is the way one is made for a merchant
- * that already exists at the gateway — the first account on a deployed server.
- * The account remains unconfirmed until its mailbox opens a cabinet link. In
- * the local stack it is one line, run against the cabinet that is already up,
- * with the merchant's key arriving on standard input rather than on the
- * command line:
+ * It lists the accounts there are, ends a person's sessions and moves the
+ * operator flag; it makes no account, since an account is made when its person
+ * opens the link the cabinet mails to their address (ADR-0026 §1). In the
+ * local stack it is one line, run against the cabinet that is already up:
  *
- *   docker compose exec -T cabinet \
- *     pnpm --filter @agentify/cabinet account add you@example.com mer_x
- *
- * Outside Docker it needs the same configuration the cabinet itself is given —
- * the key comes in on standard input, and `add` asks the gateway whether that
- * key is one a cabinet may sign in with, so the address of the gateway has to
- * be there too:
- *
- *   DATABASE_URL=postgres://agentify:agentify@localhost:5432/agentify \
- *   GATEWAY_URL=http://localhost:8080 \
+ *   docker compose exec cabinet \
  *     pnpm --filter @agentify/cabinet account list
+ *
+ * Outside Docker it needs the same configuration the cabinet itself is given,
+ * because the identity component reads the same secret and public address.
  *
  * What the file itself does is only the wiring. The commands are in
  * `account-command.ts`, where they are tested without a database.
@@ -28,13 +19,12 @@
 import { runAccount } from "./account-command.js";
 import { loadConfig } from "./config.js";
 import { connect } from "./database.js";
-import { gatewayFor } from "./gateway.js";
 import { identityFor } from "./identity.js";
 
 // The whole configuration, not the database address alone. The identity
-// component and gateway check need the same secret, public address and gateway
-// address as the cabinet process. Reading them here produces the same refusal,
-// in the same words, before anything is written.
+// component needs the same secret and public address as the cabinet process.
+// Reading them here produces the same refusal, in the same words, before
+// anything is written.
 let config: ReturnType<typeof loadConfig>;
 try {
   config = loadConfig(process.env);
@@ -43,46 +33,14 @@ try {
   process.exit(1);
 }
 
-/**
- * Everything on standard input, as one string.
- *
- * Read only when a verb asks for it, so that the three verbs with no key to
- * take do not sit waiting on a terminal nobody is piping into. Where standard
- * input is a terminal rather than a pipe, that wait is what a person would see,
- * so it is said out loud first — otherwise the command looks hung.
- */
-const readStandardInput = async (): Promise<string> => {
-  if (process.stdin.isTTY === true) {
-    console.log("Waiting for the merchant's key on standard input. Ctrl-D when it is in.");
-  }
-  process.stdin.setEncoding("utf8");
-  let said = "";
-  for await (const chunk of process.stdin) {
-    said += chunk;
-  }
-  return said;
-};
-
 const identity = identityFor(config, { pool: connect(config.databaseUrl) });
 let code = 1;
 try {
-  code = await runAccount(
-    process.argv.slice(2),
-    identity,
-    {
-      say: (line) => {
-        console.log(line);
-      },
-      readKey: readStandardInput,
+  code = await runAccount(process.argv.slice(2), identity, {
+    say: (line) => {
+      console.log(line);
     },
-    // The same call the sign-in makes, made here for its refusal rather than
-    // for its answer: only a key of the kind a cabinet holds is allowed to make
-    // another, so the gateway saying yes is the whole of what this asks. The
-    // key that comes back is held by nobody and nothing comes back for it:
-    // one row of litter per account made here, which is the same price every
-    // interrupted sign-in pays.
-    async (key) => await gatewayFor(config.gatewayUrl, key).issueCabinetKey(),
-  );
+  });
 } catch (thrown) {
   // Whatever the command did not have a better sentence for. The one failure
   // that has a better sentence — a database the migrations have never been run

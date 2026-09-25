@@ -56,10 +56,12 @@ taken. The first SDK release moves `CONTRACT_VERSION` to `"1"` for the release
 boundary itself (ADR-0006), not because tenancy changed this surface.
 
 **The sandbox still comes up selling from one command.** `docker compose up`
-seeds one merchant and one key deterministically, the merchant process and the
-cabinet get that key from the compose file exactly as they do today, and no
-manual step appears. The seeded values are sandbox values in a file, like the
-database password beside them, and for the same reason.
+seeds one merchant and one key deterministically, the merchant process gets
+that key from the compose file, and no manual step appears. The seeded values
+are sandbox values in a file, like the database password beside them, and for
+the same reason. The seed is the laptop's alone: a deployed channel seeds
+nothing, because a merchant there comes into being only by the one way in
+(ADR-0014).
 
 **The cabinet's accounts belong to a merchant.** Sign-in scopes every screen
 to the account's merchant. The screens for making and disabling keys follow in

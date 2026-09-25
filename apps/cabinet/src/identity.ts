@@ -81,6 +81,13 @@ export interface AccountSummary {
 
 /** Operator-only operations kept out of the page-facing identity port. */
 export interface Identity extends CabinetIdentity {
+  /**
+   * Writes an unconfirmed account naming a merchant that already exists, or
+   * null where the address has one. No command and no route calls it: an
+   * account is made when its person consumes a link (ADR-0026 §1), and a
+   * merchant by that person's press. It is how a suite arranges a person who
+   * already owns a merchant.
+   */
   make(email: string, merchant: AccountMerchant): Promise<Person | null>;
   byEmail(email: string): Promise<Person | null>;
   byId(personId: string): Promise<Person | null>;

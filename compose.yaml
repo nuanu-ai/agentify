@@ -57,15 +57,17 @@
 #
 # Open http://localhost:8080/cabinet/sign-in and request a link for your email.
 # This local sandbox writes the message to the cabinet log. Open the link and
-# press its confirmation button; the first sign-in creates your merchant.
+# press its confirmation button, which makes your account; then press the one
+# control the cabinet offers, "Open my merchant cabinet", which makes your
+# merchant. That is the one way in, here and on both deployed channels
+# (ADR-0014): no command makes an account or a merchant.
 #
-# An operator can make an account for the seeded merchant on an existing stack:
+# The operator's commands look after the accounts there are:
 #
 #   docker compose exec cabinet \
-#     pnpm --filter @agentify/cabinet account add you@example.com
+#     pnpm --filter @agentify/cabinet account list
 #
-# The command prints no password. The same email-and-link sign-in opens this
-# account. `list` inspects accounts and `revoke` ends their sessions.
+# `list` inspects accounts and `revoke` ends their sessions.
 # `operator you@example.com` lets an address that has signed in once read the
 # operator's dashboard at /admin, and `--off` takes that away (ADR-0026 §6).
 #
@@ -96,10 +98,6 @@
 #   CDP_API_KEY_ID             Coinbase facilitator key ID   absent
 #   CDP_API_KEY_SECRET         Coinbase facilitator secret   absent
 #   AGENTIFY_SURFACE_MODE     what the static pages say       sandbox
-#   AGENTIFY_MERCHANT_KEY   the key the mock merchant        csk_test_local-sandbox-merchant-key
-#                           sells with
-#   AGENTIFY_SEED_KEY       the key the gateway writes at    csk_test_local-sandbox-merchant-key
-#                           start-up, or nothing at all
 #   AGENTIFY_INVITATION     the private cabinet-to-gateway   register-on-this-laptop
 #                           registration secret
 #   AGENTIFY_POSTGRES_PUBLISH  the published port of the     5432:5432
@@ -122,43 +120,35 @@
 # has already made once — a challenge naming a door that answers nothing — so
 # they are written next to each other in one file where the mismatch is visible.
 #
-# On a host reached over https, AGENTIFY_COOKIE_SECURE must be "true", and the
-# key must not be the one printed above: it is in a repository, and a merchant
-# key opens that merchant's cards, orders and receipts.
+# On a host reached over https, AGENTIFY_COOKIE_SECURE must be "true".
 #
-# The last two are one string on a laptop and two different things on a server,
-# which is why they are two variables. Seeding is what makes `docker compose up`
-# come up selling with nothing run by hand: at start the gateway hangs a row for
-# that key on the sandbox's merchant, if there is not one there already. A
-# second boot writes nothing, and a key disabled at a terminal is left disabled
-# — revoking one is not a thing a restart undoes.
+# Two more variables belong to this laptop alone, and on it they are one
+# string, `csk_test_local-sandbox-merchant-key`: AGENTIFY_SEED_KEY, the key the
+# gateway writes at start-up, and AGENTIFY_MERCHANT_KEY, the key the mock
+# merchant sells with. Seeding is what makes `docker compose up` come up
+# selling with nothing run by hand: at start the gateway hangs a row for that
+# key on the sandbox's merchant, if there is not one there already. A second
+# boot writes nothing, and a key disabled at a terminal is left disabled —
+# revoking one is not a thing a restart undoes. Named with nothing after it,
+# `AGENTIFY_SEED_KEY=`, the gateway seeds nothing, reads that the same as a
+# name never set, and says at start-up which of the two it did.
 #
-# A stack on a server is seeded too, with a key of its own: one generated for
-# that host, kept in its `.env`, and carrying the prefix of the site it is for —
-# `csk_test_` on the test site, `csk_live_` on the live one. The door reads that
-# prefix before it looks anything up, so a key carrying the other site's is
-# turned away there whatever the database holds, and a key seeded under the
-# wrong prefix opens nothing on the host it was seeded into.
-#
-# What a key kept in a file cannot do is go away: disabling its row stops it
-# opening anything, but the string is still in the file the gateway is handed at
-# every start, so retiring it is an edit and a deployment rather than a row
-# disabled, and a database brought up from nothing is seeded off that same line
-# again. That is the reason to stop seeding once nothing presents that key any
-# more — once whatever sells on that host has a key of its own, issued with
-# `merchant key` and put in AGENTIFY_MERCHANT_KEY, the deployment sets seeding
-# to nothing:
-#
-#   AGENTIFY_SEED_KEY=
-#
-# The gateway reads a name set to nothing as a name never set, and says at
-# start-up which of the two it did.
+# A deployed channel does neither. deploy/compose.public.yaml puts nothing in
+# place of the seed and runs no mock merchant, because a merchant there comes
+# into being one way: a person opens the link mailed to their address and
+# presses the cabinet's one control (ADR-0014). A key kept in a host's file
+# would be a second way, and one that cannot go away: disabling its row stops
+# it opening anything, but the string is handed to the gateway at every start,
+# and a database brought up from nothing is seeded off that same line again.
+# The public overlay gives the seed nothing whatever a channel's file says, and
+# the release's preflight refuses a rendered one.
 #
 # AGENTIFY_INVITATION protects registration between the cabinet and gateway
 # (ADR-0014). People never type it. On a laptop it defaults to a local value;
 # a deployment supplies its own nonempty secret to both processes. The cabinet
-# refuses to start without it, because first sign-in must be able to create
-# the merchant. Admission to live sales is a separate operator approval.
+# refuses to start without it, because the cabinet's one control must be able
+# to create the merchant. Admission to live sales is a separate operator
+# approval.
 
 # One image behind four of the services below. They are four entry points into
 # one workspace and share every dependency below their own file, so which one a
@@ -247,20 +237,14 @@ services:
       # The key this sandbox comes up selling with. Keys are rows in the
       # database (ADR-0010), and this is not one the gateway compares anything
       # against: on start it makes sure a row for this key exists on the
-      # merchant every card, order and receipt here belongs to, so that the two
-      # services below are recognised without anybody running a command. A
-      # second boot writes nothing, and a key disabled at a terminal stays
-      # disabled. A deployment sets this too, to a key generated for that host
-      # and carrying that site's prefix, because the merchant service below
-      # reads its key out of a file and has nothing to present until a row for
-      # it exists; a person entering through an email link needs none of it. It
-      # is unset once nothing presents that key any more — once whatever sells
-      # there has a key of its own. Its own variable rather than
-      # the one the cabinet presents, because the two part company on a server:
-      # this one is read from a file at every start and put back into the
-      # database whenever the row is missing, which is what makes it a key
-      # nobody can retire without a deployment. Set to nothing, this process
-      # writes no key and every key is one somebody issued.
+      # merchant every card, order and receipt here belongs to, so that the
+      # mock merchant below is recognised without anybody running a command.
+      # A second boot writes nothing, and a key disabled at a terminal stays
+      # disabled. It is the laptop's alone: deploy/compose.public.yaml puts
+      # nothing in its place, because on a deployed channel a merchant comes
+      # into being only through the link mailed to a person and the cabinet's
+      # one control (ADR-0014). Set to nothing, this process writes no key and
+      # every key is one somebody issued.
       #
       # The dash carries no colon on purpose: `${VAR-default}` gives the default
       # only when nobody named the variable, so a deployment naming it with

@@ -426,6 +426,7 @@ describe("the protected product check", () => {
 
   const settingFor = (url: string): string => {
     if (url.includes("woocommerce_currency")) return "USD";
+    if (url.includes("woocommerce_price_num_decimals")) return "2";
     if (url.includes("woocommerce_calc_taxes")) return "no";
     if (url.includes("woocommerce_file_download_method")) return "force";
     if (url.includes("woocommerce_downloads_grant_access_after_payment")) return "yes";
@@ -454,7 +455,7 @@ describe("the protected product check", () => {
         fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
       },
     });
-    expect(stand.asked.filter((asked) => asked.authorization !== undefined)).toHaveLength(7);
+    expect(stand.asked.filter((asked) => asked.authorization !== undefined)).toHaveLength(8);
     expect(
       stand.asked.find((asked) => asked.url === "/protected/guide.txt")?.authorization,
     ).toBeUndefined();
@@ -515,6 +516,37 @@ describe("the protected product check", () => {
       ok: false,
       why: expect.stringContaining("tax calculation"),
     });
+  });
+
+  it("refuses a shop that writes prices at another number of decimals and names the setting", async () => {
+    // WooCommerce writes an order's totals at the shop's Number of decimals:
+    // "25" and a tax of "0" at zero, "25.000" at three. An order created at
+    // "25.00" in such a shop would be answered in a form it cannot be matched
+    // with, after the paid order already exists there.
+    for (const decimals of ["0", "3"]) {
+      stand = await shopAnswering((asked) => {
+        if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
+        if (asked.url.includes("woocommerce_price_num_decimals")) {
+          return { status: 200, body: { value: decimals } };
+        }
+        if (asked.url.includes("/settings/")) {
+          return { status: 200, body: { value: settingFor(asked.url) } };
+        }
+        return { status: 200, body: productDocument() };
+      });
+
+      const read = await inspectProduct(
+        connectionTo(stand.url),
+        merchantItemIdFor(stand.url, "11"),
+      );
+
+      expect(read, decimals).toMatchObject({
+        ok: false,
+        why: expect.stringContaining("Number of decimals"),
+      });
+      await stand.close();
+      stand = null;
+    }
   });
 
   it("names an unreadable tax-calculation setting", async () => {
@@ -588,5 +620,190 @@ describe("the protected product check", () => {
       merchantItemIdFor(stand.url, "11"),
     );
     expect(missing.ok).toBe(false);
+  });
+
+  /**
+   * The shop on loopback, storing the product's price the way the merchant
+   * typed it, and answering an order the way `wc/v3` does: with every total
+   * written at the shop's two decimals, whatever string it was sent.
+   */
+  const shopStoringPrice = (typed: () => string) =>
+    shopAnswering((asked) => {
+      if (asked.method === "POST" && asked.url === "/wp-json/wc/v3/orders") {
+        const sent = JSON.parse(asked.body);
+        const line = sent.line_items[0];
+        const atTwoDecimals = (amount: string): string => Number(amount).toFixed(2);
+        return {
+          status: 201,
+          body: {
+            id: 13,
+            number: "13",
+            order_key: "wc_order_13",
+            status: "processing",
+            currency: sent.currency,
+            total: atTwoDecimals(line.total),
+            total_tax: "0.00",
+            payment_method: sent.payment_method,
+            transaction_id: sent.transaction_id,
+            billing: sent.billing,
+            meta_data: sent.meta_data,
+            line_items: [
+              {
+                product_id: line.product_id,
+                quantity: line.quantity,
+                subtotal: atTwoDecimals(line.subtotal),
+                total: atTwoDecimals(line.total),
+                total_tax: "0.00",
+              },
+            ],
+          },
+        };
+      }
+      if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
+      if (asked.url.includes("/settings/")) {
+        return { status: 200, body: { value: settingFor(asked.url) } };
+      }
+      return { status: 200, body: productDocument({ price: typed() }) };
+    });
+
+  it("carries the price at a dollar's two decimals, however the merchant typed it", async () => {
+    // WooCommerce keeps a price as it was typed and hands it back that way:
+    // "25" stays "25" and "19.9" stays "19.9" in wc/v3, while the Store API
+    // and every order total carry the same money at two decimals. The card,
+    // the quote and the order all have to speak the second form.
+    for (const [typed, amount] of [
+      ["25", "25.00"],
+      ["19.9", "19.90"],
+      ["25.00", "25.00"],
+      ["0.01", "0.01"],
+      ["25.000", "25.00"],
+      ["025", "25.00"],
+      // WooCommerce stores a price typed without its leading zero as typed,
+      // and the Store API prices it as 99 and 50 cents.
+      [".99", "0.99"],
+      [".5", "0.50"],
+    ] as const) {
+      stand = await shopStoringPrice(() => typed);
+
+      const read = await inspectProduct(
+        connectionTo(stand.url),
+        merchantItemIdFor(stand.url, "11"),
+      );
+
+      expect(read.ok && read.product.price, typed).toEqual({ amount, currency: "USD" });
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("gives one price one fingerprint, whichever way it was typed", async () => {
+    // An accepted quote is held to this digest when its order is filled. A
+    // merchant who retypes "25.00" as "25" has not changed what the product
+    // costs, and the sales quoted before they pressed Update must still go
+    // through; a merchant who changes it to 25.01 has.
+    let typed = "25.00";
+    stand = await shopStoringPrice(() => typed);
+    const keys = connectionTo(stand.url);
+    const item = merchantItemIdFor(stand.url, "11");
+
+    const withCents = await inspectProduct(keys, item);
+    typed = "25";
+    const withoutCents = await inspectProduct(keys, item);
+    typed = "25.01";
+    const anotherPrice = await inspectProduct(keys, item);
+
+    expect(withCents.ok && withoutCents.ok && anotherPrice.ok).toBe(true);
+    const fingerprintOf = (read: typeof withCents) => read.ok && read.product.fingerprint;
+    expect(fingerprintOf(withoutCents)).toBe(fingerprintOf(withCents));
+    expect(fingerprintOf(anotherPrice)).not.toBe(fingerprintOf(withCents));
+  });
+
+  it("keeps the fingerprint already recorded for a product priced with its cents", async () => {
+    // Every accepted quote stores this digest, and so does the ledger entry of
+    // every paid order, and recovery compares a fresh reading with the stored
+    // one. A product whose shop price already had two decimals has to hash to
+    // what it hashed to when those rows were written, so the value is pinned:
+    // it is the digest this very product had before prices were normalised.
+    // The shop answers in-process at a fixed address because the address is
+    // part of what is hashed.
+    const origin = "https://shop.example.com";
+    const inProcess = async (url: string | URL): Promise<Response> => {
+      const path = new URL(url).pathname;
+      if (path === "/protected/guide.txt") return new Response(null, { status: 403 });
+      if (path.includes("/settings/")) return Response.json({ value: settingFor(path) });
+      return Response.json(
+        productDocument({
+          price: "0.01",
+          downloads: [
+            { id: "dl_guide", name: "Agentify guide.txt", file: `${origin}/protected/guide.txt` },
+          ],
+        }),
+      );
+    };
+
+    const read = await inspectProductInTheShop(
+      connectionTo(origin),
+      merchantItemIdFor(origin, "11"),
+      inProcess,
+    );
+
+    expect(read.ok && read.product.fingerprint).toBe(
+      "e99a840cd2bd3f94384df3aa19fa18abf96de58435552c19b64703f59ab598dc",
+    );
+  });
+
+  it("refuses a price with more decimals than a dollar has, rather than rounding it", async () => {
+    // The Store API rounds "25.001" to 2500 cents. Selling at 25.00 would be
+    // selling at a price the merchant did not set, and so would 25.01, so the
+    // product stays in the shop with a sentence that names the price.
+    stand = await shopStoringPrice(() => "25.001");
+
+    const read = await inspectProduct(connectionTo(stand.url), merchantItemIdFor(stand.url, "11"));
+
+    expect(read).toMatchObject({ ok: false, why: expect.stringContaining("25.001") });
+    // The price is what the merchant changes, not the shop's decimals setting.
+    expect(read.ok === false && read.why).not.toContain("Number of decimals");
+  });
+
+  it("refuses a price that is not a decimal amount at all", async () => {
+    // "5." is here although WooCommerce stores it as "5": it cannot arrive, so
+    // there is no form of it this has to accept.
+    for (const typed of ["", "-5", "1e3", "5.", "."]) {
+      stand = await shopStoringPrice(() => typed);
+
+      const read = await inspectProduct(
+        connectionTo(stand.url),
+        merchantItemIdFor(stand.url, "11"),
+      );
+
+      expect(read, typed).toMatchObject({
+        ok: false,
+        why: expect.stringContaining("not a decimal amount"),
+      });
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("sells a price typed without cents at the amount WooCommerce's own order carries", async () => {
+    // The price this check reads is the price the order is created at, and
+    // WooCommerce's answer to that order is compared with it character for
+    // character. A check that handed on "25" would create the order, read
+    // "25.00" back, and leave a paid order in the shop that nothing here can
+    // say was made.
+    stand = await shopStoringPrice(() => "25");
+    const keys = connectionTo(stand.url);
+    const read = await inspectProduct(keys, merchantItemIdFor(stand.url, "11"));
+    if (!read.ok) throw new Error(`the product check refused: ${read.why}`);
+
+    const made = await createOrder(keys, {
+      orderId: "ord_7",
+      productId: read.product.productId,
+      email: "merchant@example.com",
+      price: read.product.price,
+      download: { id: read.product.downloadId, name: read.product.fileName },
+    });
+
+    expect(made).toMatchObject({ ok: true, id: "13", orderKey: "wc_order_13" });
   });
 });

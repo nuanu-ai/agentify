@@ -95,7 +95,10 @@ merchant and the key the cabinet calls with. Opening a link never makes one,
 "Open your cabinet" on a report included, because under `Lax` a link from
 another site arrives signed in. A gateway that does not answer leaves the person
 signed in to press again, and a cabinet that fails after the gateway answered
-leaves a merchant nobody names, litter as ADR-0014 §1 says.
+leaves a merchant nobody names, litter as ADR-0014 §1 says. This press is the
+only way a merchant comes into being, as the link is the only way an account
+does: no command at a server's terminal makes either, and no deployed channel
+seeds a merchant (ADR-0014).
 
 **5. The door to the shared catalogue is live publication.** Anyone who reads
 their mail holds a cabinet, integrates against the SDK and sells on the test

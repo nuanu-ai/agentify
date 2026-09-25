@@ -105,11 +105,11 @@ const OTHER = "someone@example.com";
  * The code the gateway is told to accept, for the tests that register for real.
  *
  * Almost every test here signs in as an account the harness seeded, whose key
- * is one of the merchant's own — the shape a deployment only gets when somebody
- * at a terminal made the account. The tests about the key a cabinet holds
- * cannot use it: the two calls about that key are refused to any other kind. So
- * they go through the registration form against the real gateway, which is
- * where a real cabinet key comes from, and this is what stands in the door.
+ * is one of the merchant's own — a shape no way in makes, since an account's
+ * key comes from the cabinet's own press. The tests about the key a cabinet
+ * holds cannot use it: the two calls about that key are refused to any other
+ * kind. So they sign in and press against the real gateway, which is where a
+ * real cabinet key comes from, and this is what stands in the door.
  */
 const INVITATION = "the-invitation-the-gateway-accepts";
 
@@ -3263,10 +3263,10 @@ describe("the key the cabinet signs in with", () => {
    * for a cabinet.
    *
    * Every other account in this file was seeded with the harness's own key,
-   * which is one of the merchant's own — the shape a deployment only reaches
-   * when somebody at a terminal made the account, and one the gateway refuses
-   * both of these calls to. So these tests go in through the form, against the
-   * real gateway, and what comes back onto the row is the real thing.
+   * which is one of the merchant's own — a shape no way in makes, and one the
+   * gateway refuses both of these calls to. So these tests sign in and press,
+   * against the real gateway, and what comes back onto the row is the real
+   * thing.
    */
   const aRegisteredMerchant = async (over: Starting = {}): Promise<Running> => {
     const running = await started({
