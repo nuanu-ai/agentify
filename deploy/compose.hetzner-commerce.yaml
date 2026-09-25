@@ -74,8 +74,8 @@ networks:
     name: agentify-ingress
 
 # External, so that a host without them stops Compose rather than starting an
-# empty production database: deploy/one-database.sh made them on the host that
-# ran two databases, and a new host creates them (deploy/README.md, "Backups").
+# empty production database; a new host creates them (deploy/README.md,
+# "Backups").
 volumes:
   agentify-postgres:
     external: true

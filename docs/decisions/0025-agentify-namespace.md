@@ -50,11 +50,10 @@ stop all writers, preserve and restore-check data, resolve pending queue work,
 map volumes explicitly, replace environment and service names, and retain a
 rollback that includes configuration and data. A Compose project name is the
 prefix on every container and the label every volume is found by, so the
-hosts' project and volume names move with the database, in one cutover per
-host that a person runs (`deploy/one-database.sh`, deploy/README.md): both
-channels become the project `agentify` with the volumes `agentify-postgres`
-and `agentify-caddy`, copied from the old ones, which stay untouched as the
-way back until a person removes them. Host delivery and npm publication are
+hosts' project and volume names moved with the database, in one cutover per
+host that a person ran: both channels run the project `agentify` with the
+volumes `agentify-postgres` and `agentify-caddy`, copied from the old ones,
+which stay untouched until a person removes them. Host delivery and npm publication are
 separate gates under ADR-0016: TEST's timer delivers automatically and a
 person delivers PRODUCTION. Branch acceptance proves the new source and
 isolated checks; it does not prove migration of a live host.

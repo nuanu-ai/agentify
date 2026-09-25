@@ -104,12 +104,6 @@ esac
 
 exec 9>/run/lock/agentify-release.lock
 flock -n 9 || { echo "activate: another activation, a restore or the privacy job holds the release lock; nothing was changed." >&2; exit 75; }
-# The one-time move to one database keeps its progress here (deploy/README.md,
-# "One database"). Until it says done, the database volume is a copy in the
-# middle of a move, and nothing may start on it.
-read -r moving _ < "$state/one-database" 2>/dev/null || moving=""
-[[ -z $moving || $moving == "done" ]] \
-  || refuse "$state/one-database says the move to one database stopped at $moving; finish it with deploy/one-database.sh $channel, or go back with deploy/one-database.sh $channel --back. Nothing was stopped."
 
 at "pulling the images of $revision"
 pinned=""
@@ -201,8 +195,7 @@ running="$(stack ps -aq postgres | xargs -r docker inspect -f '{{.Image}}' | sor
 [[ -z $running || $running == "$(docker image inspect -f '{{.Id}}' "$(stack config --images postgres)")" ]] \
   || refuse "the postgres service runs another image than deploy/compose.images.yaml pins, and a database upgrade is a change of its own; nothing was stopped."
 # The database's volume is external, so without it Compose would refuse only
-# after the stop: a host that ran two databases gets it from
-# deploy/one-database.sh, and a new host creates it (deploy/README.md).
+# after the stop; a new host creates it (deploy/README.md, "Backups").
 volume="$(python3 -c 'import json, sys; print(json.load(sys.stdin)["volumes"]["agentify-postgres"]["name"])' <<<"$rendered")"
 docker volume inspect "$volume" >/dev/null 2>&1 \
   || refuse "the volume $volume, which holds the channel's database, does not exist, so nothing was stopped; deploy/README.md says how a host gets it."
