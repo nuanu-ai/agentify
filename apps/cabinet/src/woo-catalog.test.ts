@@ -261,6 +261,21 @@ describe("turning a shop's products into cards", () => {
     expect(why["2"]).not.toContain("Number of decimals");
   });
 
+  it("leaves a product priced at zero in the shop, in the door's own words", () => {
+    // Agentify sells nothing at zero, and its door refuses such a card. The
+    // import names the product as left in the shop, with the reason the door
+    // would have given, rather than sending it to be refused. A price of one
+    // cent is the other side of the line and becomes a card.
+    const { cards, skipped } = cardsFromTheShop([
+      product({ id: 1, prices: { price: "0", currency_code: "USD", currency_minor_unit: 2 } }),
+      product({ id: 2, prices: { price: "1", currency_code: "USD", currency_minor_unit: 2 } }),
+    ]);
+
+    expect(cards.map((one) => one.id)).toEqual(["2"]);
+    expect(skipped.map((one) => one.id)).toEqual(["1"]);
+    expect(skipped[0]?.why).toContain("zero");
+  });
+
   it("leaves a product it cannot map alone and says why", () => {
     const { cards, skipped } = cardsFromTheShop([
       product({ id: 1, type: "variable" }),
