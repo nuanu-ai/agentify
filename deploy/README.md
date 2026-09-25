@@ -577,23 +577,36 @@ preflight disagrees or the scanner refuses the configuration at its own start.
 ## One database (one-time)
 
 This section and the two scripts it runs go in the change after both hosts
-have run it. Until then a host still runs two databases, `agentify_commerce`
-and `agentify_scanner`, in the project it was created under, `agentify-test`
-on TEST and `agentify-commerce` on PRODUCTION. The first revision that
-expects one database moves it, once, in one window per host that a person
-runs: TEST first, PRODUCTION when that revision has an `app-v*` tag.
+have run it. Until then a host that has not moved still runs two databases,
+`agentify_commerce` and `agentify_scanner`, in the project it was created
+under, `agentify-test` on TEST and `agentify-commerce` on PRODUCTION. The
+first revision that expects one database moves it, once, in one window per
+host that a person runs. TEST moved on 2026-09-25; PRODUCTION moves when that
+revision has an `app-v*` tag.
 
 The first release of that revision pulls its images, checks everything it
 checks before a stop, and is refused there, because the volume
 `agentify-postgres` does not exist yet; nothing stops, and the checkout it
 leaves under `checkouts/<sha>` holds what the next step needs. Then
 `deploy/one-database.sh` from that checkout moves the host, and the same
-release again starts everything under the project `agentify`. On TEST, with
-the revision's SHA:
+release again starts everything under the project `agentify`. Four rules hold
+for the window:
+
+1. Run the script inside `tmux` on the host, so a dropped connection does not
+   kill it halfway.
+2. Release nothing until the script's last line says the host holds one
+   database; a release is refused anyway while the move's progress says
+   anything else.
+3. Before the second release, find the line that says every table holds the
+   rows it held before, row for row; without it the move is not verified.
+4. Never start the old project's containers by hand; the only way back is the
+   script's `--back`, below.
+
+On TEST, with the revision's SHA:
 
 ```sh
 ssh -t agentify-test sudo agentify-release <sha>
-ssh -t agentify-test sudo /var/lib/agentify/test/checkouts/<sha>/deploy/one-database.sh test
+ssh -t agentify-test sudo tmux new -s one-database /var/lib/agentify/test/checkouts/<sha>/deploy/one-database.sh test
 ssh -t agentify-test sudo agentify-release <sha>
 ```
 
@@ -603,22 +616,32 @@ Woo acceptance route on TEST" below, because the stack's network is now
 `agentify_default` with an address range of its own. On PRODUCTION the backup
 timer is held for the window, since the backup looks for the old project
 until `install.sh` from the new revision puts in the one that looks for the
-new one, and starts the timer again:
+new one and starts the timer again. Then one backup runs, and only after it
+has finished, the restore rehearsal, so that the rehearsal restores the
+snapshot of the one database rather than the last one of two:
 
 ```sh
 ssh -t agentify sudo systemctl stop agentify-backup.timer
 ssh -t agentify sudo agentify-release app-v<X.Y.Z>
-ssh -t agentify sudo /var/lib/agentify/production/checkouts/<sha>/deploy/one-database.sh production
+ssh -t agentify sudo tmux new -s one-database /var/lib/agentify/production/checkouts/<sha>/deploy/one-database.sh production
 ssh -t agentify sudo agentify-release app-v<X.Y.Z>
 ssh -t agentify 'cd /var/lib/agentify/production/checkouts/<sha> && sudo deploy/install.sh production'
-ssh -t agentify sudo systemctl start agentify-backup.service agentify-backup-check.service
+ssh -t agentify sudo systemctl start agentify-backup.service
+ssh -t agentify sudo systemctl start agentify-backup-check.service
+ssh agentify cat /var/lib/agentify/production/backup-status
 ```
 
-The script takes the release lock and stops the scanner first, so no new scan
-is accepted, and waits up to three minutes for its queue to finish; if it
-does not, the scanner runs again and nothing else has stopped. Then it stops
-the rest, writes a restore point of both databases, with the row count and
-checksum of every table, to
+`systemctl start` of either unit returns when the unit has finished, which is
+what keeps the two apart. `/etc/agentify/production.env` may still hold
+`DASHBOARD_DATABASE_URL`, with the password of a role the move drops. Nothing
+reads it any more: no Compose file names it, so it never reaches a container,
+and the preflight never sees it. Delete the line.
+
+The script records which of the old project's containers run, stops the
+scanner first, so no new scan is accepted, and waits up to three minutes for
+its queue to finish; if it does not, the scanner runs again and nothing else
+has stopped. Then it stops the rest, writes a restore point of both
+databases, with the row count and checksum of every table, to
 `/var/backups/agentify/<channel>/<time>-<previous>-before-one-database/`,
 stops the old database and copies its volume and Caddy's into
 `agentify-postgres` and `agentify-caddy`. On the copy it moves the scanner's
@@ -630,39 +653,57 @@ database, the four old roles and the views, renames the database and its
 account to `agentify`, and gives the account the password the new
 configuration names. Each step prints a line beginning `one-database:`, and
 no line holds a secret. The applications stay stopped until the second
-release starts them. In three runs of the laptop rehearsal the script took 8
-to 10 seconds and the release after it 20 to 24, and the front page answered
-nothing for 25 to 27 seconds; on a host the pull is already done, and the
-dumps grow with the data. Going back there took 8 seconds to the whole old
-site, and a release of the new revision afterwards was refused for want of
-the volume, as it should be.
+release starts them.
 
-Its progress is one line in `/var/lib/agentify/<channel>/one-database`, so a
-run that failed or was killed is carried on by running the same command
-again, and a run after the move says so and changes nothing. The old
-project's containers and volumes are stopped and never written again, which
-makes them the way back, and a failure prints it. Going back takes the new
-project down, removes what the move made, the two new volumes and the
-progress file, so that no later release starts the new project on a copy
-beside the old one, and starts the old containers:
+On TEST the script took 14 seconds and printed that 59 tables held the rows
+they held before, row for row; its `metabase-views.diff` showed a difference
+in column order only. The second release was verified in 31 seconds with 3
+cards checked, the front page was down for about 54 seconds in all, and
+`/admin` answered 200 with the operator's password and 401 without. The dumps
+grow with the data, so PRODUCTION's window is longer by what its larger
+databases take to dump and copy.
+
+Its progress is one line in `/var/lib/agentify/<channel>/one-database`: the
+phase it reached, the restore point, when the applications stopped, when the
+old database stopped for the copy, and the old containers that ran. A run
+that failed or was killed is carried on by running the same command again. It
+refuses to carry on if any of those containers runs again, or the old
+database has started since it stopped for the copy, because what they took
+since would not be in the copy; and before it copies it refuses while the
+new project has any container. Every failure prints the way back, which is
+the same script with `--back`:
 
 ```sh
-ssh -t agentify-test sudo /var/lib/agentify/test/checkouts/<sha>/deploy/stack.sh test down
-ssh -t agentify-test sudo docker volume rm agentify-postgres agentify-caddy
-ssh -t agentify-test sudo rm /var/lib/agentify/test/one-database
-ssh -t agentify-test 'sudo docker start $(sudo docker ps -aq --filter label=com.docker.compose.project=agentify-test)'
+ssh -t agentify-test sudo /var/lib/agentify/test/checkouts/<sha>/deploy/one-database.sh test --back
 ```
 
-On PRODUCTION the project is `agentify-commerce`. Whatever the new release
-wrote goes with the new volumes; if it has taken orders, dump the one
-database with `stack.sh production exec -T postgres pg_dump -U agentify -Fc
-agentify` before removing them. If the new release was already verified,
-`current` names the new revision: write the old one back into it, since the
-next release is measured from it. The move can then be run again from the
-start. Once the new release has run long enough to trust, a person removes
-the old project's stopped containers and its volumes, `agentify-test-postgres`
-and `agentify-test-caddy` or their `agentify-commerce-` twins; the restore
-point stays with the others.
+`--back` works until the second release is verified. When the move had
+finished, so that a release may have written to the new database, it stops
+the new project's applications and dumps that database into the restore
+point's directory as `after-one-database.dump`, and it refuses, taking
+nothing down, unless the dump is whole. Only then does it take the new
+project down, remove the two new volumes and the progress, each step only if
+the one before succeeded, move aside the record of the unverified release,
+and start the old project's containers that ran before the move. The old
+project comes back with its data as it was before the move. Whatever the new
+release took in between, orders, payment claims, receipts and sessions
+included, is in that dump and nowhere else, and a person carries it back by
+hand; the payments behind those orders have already settled.
+
+Once the second release is verified, going back is fixing forward, and
+`--back` refuses to try. The release has removed the old revision's checkout,
+which the old containers were started from, and it has pointed the nightly
+privacy job, and after `install.sh` the backup, at the project `agentify`.
+Starting the old containers then would run a site with no retention and no
+backup, beside a new database that holds the latest orders. A defect found
+after that point is fixed on a branch and released forward, as any release
+is.
+
+Once the new release has run long enough to trust, a person removes the old
+project's stopped containers and its volumes, `agentify-test-postgres` and
+`agentify-test-caddy` or their `agentify-commerce-` twins. The restore point
+is named like a release's, so the release rotation removes it after five more
+releases; copy it aside first if it should be kept longer.
 
 ## The Woo acceptance route on TEST
 
