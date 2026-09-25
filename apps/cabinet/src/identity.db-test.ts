@@ -550,6 +550,33 @@ if (databaseUrl === null) {
       },
     );
 
+    it("ends more than a hundred live sessions of one account, reading again until none is left", async () => {
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      const owner = await identity.make("owner@example.com", MERCHANT);
+      if (owner === null) throw new Error("the owner's account was not made");
+      await identity.requestLink("owner@example.com", "default");
+      const opened = await identity.openLink(tokenIn(messages.at(-1) as Message));
+      if (opened.status !== "opened") throw new Error("the owner could not sign in");
+      const pressed = opened.setCookies.map((line) => line.split(";")[0]).join("; ");
+      await pool.query(
+        `insert into cabinet_sessions (id, token, user_id, expires_at, created_at, updated_at)
+           select 'live_' || n, 'live-token-' || n, $1,
+                  now() + interval '20 days', now(), now()
+             from generate_series(1, 150) as n`,
+        [owner.id],
+      );
+
+      expect(await identity.endOtherSessionsOfPerson(owner.id, pressed)).toBe(150);
+      expect(
+        (
+          await pool.query("select count(*)::int as n from cabinet_sessions where user_id = $1", [
+            owner.id,
+          ])
+        ).rows[0],
+      ).toStrictEqual({ n: 1 });
+    });
+
     it("ends every other session of one account and leaves another account's alone", async () => {
       // Signing out every other device from Settings (ADR-0026 §3). On
       // PostgreSQL the sessions are rows the component reads by account, so
