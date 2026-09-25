@@ -200,7 +200,7 @@ export const wooScreen = (viewer: Viewer, view: WooView): string => {
   </div>
 ${view.cameBack === true && view.state.kind === "connected" ? KEYS_ARRIVED : ""}${
   view.state.kind === "connected"
-    ? theConnection(base, view.state.shop, view)
+    ? theConnection(base, viewer.mode, view.state.shop, view)
     : `${waitingBlock(view.state)}${theForm(base, view)}`
 }
   </div>`;
@@ -324,6 +324,7 @@ const theForm = (base: string, view: WooView): string => `  <div class="lede">
  */
 const theConnection = (
   base: string,
+  mode: SurfaceMode,
   connection: ConnectedShop,
   view: WooView,
 ): string => `  <div class="lede">
@@ -343,7 +344,7 @@ const theConnection = (
       <label>Import the catalogue</label>
       <p class="quiet">Reads up to ${PRODUCTS_AT_MOST} products and publishes only the supported single-file downloads described above. If the shop has more, the whole import is refused. Running it again updates the same cards.</p>
       <p class="quiet">A card remains listed if its shop product is later deleted, out of stock or unsupported, but a fresh price check refuses it before payment. Pause cards you no longer want agents to see.</p>
-      ${beforeImporting(base, view)}
+      ${beforeImporting(base, mode, view)}
     </div>
     <button class="button button-primary" type="submit">Import the catalogue</button>
   </form>
@@ -370,8 +371,14 @@ const theConnection = (
  * the redraw. Only that answer is an alert: the same line on the page before
  * the press is a standing notice, and a screen reader announcing it on every
  * visit would make the one announcement that matters indistinguishable.
+ *
+ * On the live channel these are not all the door asks: it also waits for the
+ * operator's approval of the merchant, which no route tells this cabinet
+ * about. So there the line says approval is needed too and that this page
+ * cannot see it, and does not send the merchant back to Import as though
+ * Settings were the whole of it.
  */
-const beforeImporting = (base: string, view: WooView): string => {
+const beforeImporting = (base: string, mode: SurfaceMode, view: WooView): string => {
   const refused = view.refused ?? [];
   const unset = refused.length > 0 ? refused : (view.unset ?? []);
   if (unset.length === 0) {
@@ -379,10 +386,15 @@ const beforeImporting = (base: string, view: WooView): string => {
   }
   const what = unset.map((one) => UNSET_WORDS[one]).join(" and ");
   const settings = `<a href="${escaped(base)}/settings">Settings</a>`;
+  const live = mode === "live";
   return refused.length > 0
-    ? `<p class="problem" role="alert">Nothing was imported. Set ${what} in ${settings}, then import again.</p>`
-    : `<p class="problem">Import publishes nothing until you set ${what} in ${settings}.</p>`;
+    ? `<p class="problem" role="alert">Nothing was imported. Set ${what} in ${settings}${live ? `. ${LIVE_APPROVAL}` : ", then import again."}</p>`
+    : `<p class="problem">Import publishes nothing until you set ${what} in ${settings}.${live ? ` ${LIVE_APPROVAL}` : ""}</p>`;
 };
+
+/** What the live line adds: the rule this page cannot check, and that it cannot. */
+const LIVE_APPROVAL =
+  "Selling live also needs Agentify to approve your merchant, and this page cannot tell whether it has.";
 
 /** A product an import sent through the publish door, named as the shop names it. */
 interface Sent {
