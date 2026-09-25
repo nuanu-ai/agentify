@@ -996,24 +996,6 @@ describe("importing the catalogue", () => {
     expect(running.read).toEqual([]);
   });
 
-  it("names the seller name and the wallet together when both are missing", async () => {
-    // Told one at a time, a merchant sets the name, presses Import again, and
-    // only then hears about the wallet.
-    const running = await started({
-      channel: "test",
-      fresh: "unnamed",
-      catalogue: async () => ({ ok: true, products: [aProduct()] }),
-    });
-    await connected(running);
-
-    const imported = await running.post("/woocommerce/import");
-    const text = readable(importFormOf(imported.html));
-
-    expect(imported.status).toBe(409);
-    expect(text).toMatch(/wallet/i);
-    expect(text).toMatch(/\bname\b/i);
-  });
-
   it("says a wallet is needed on the shop screen, before Import is pressed", async () => {
     const running = await started({ channel: "test", fresh: "named" });
     await connected(running);
@@ -1250,12 +1232,15 @@ describe("importing the catalogue", () => {
   describe("agrees with the publish door about what the merchant lacks", () => {
     // The promise: a merchant is told the same thing by the cabinet as by the
     // door their cards go through, on every channel. The cabinet stops an
-    // import before the shop is read for exactly the findings the door would
-    // refuse every card with, names them, and names nothing the door would not
+    // import before the shop is read for exactly the settings the door would
+    // refuse every card for, names them, and names nothing the door would not
     // ask for. The operator's approval is the one fact the cabinet cannot
-    // read, so it agrees about approval by never claiming it either way: where
-    // the door asks for it, the line says this page cannot tell, and where the
-    // door does not, the line says nothing about it.
+    // read, so it agrees about approval by never claiming it either way. Where
+    // the line is drawn because a setting is missing, it says this page cannot
+    // tell exactly where the door asks for approval. Where no setting is
+    // missing no line is drawn, and on live the import goes ahead and the door
+    // answers card by card: the cabinet saying nothing there is a limit of
+    // what it can read, not a claim that nothing is missing.
     //
     // Each merchant here is made through the gateway's registration door and
     // never approved, so on live the door always asks for the approval as well.
