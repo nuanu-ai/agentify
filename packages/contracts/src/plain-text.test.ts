@@ -146,7 +146,7 @@ describe("a card's own words are plain text", () => {
       ["Chef&#x2019;s table", "&#x2019;"],
       ["Caf&eacute; brunch", "&eacute;"],
       ["Coffee&nbsp;brunch", "&nbsp;"],
-    ]) {
+    ] as const) {
       const findings = findingsAt({ ...card, title: text }, "title");
 
       expect(findings, text).toHaveLength(1);
@@ -163,7 +163,7 @@ describe("a card's own words are plain text", () => {
       ["Access\u009bnow", "U+009B"],
       ["Access\tnow", "U+0009"],
       ["Access\rnow", "U+000D"],
-    ]) {
+    ] as const) {
       const findings = findingsAt({ ...card, description: text }, "description");
 
       expect(findings, JSON.stringify(text)).toHaveLength(1);
@@ -225,8 +225,16 @@ describe("a card's own words are plain text", () => {
     // A merchant told one thing at a time fixes it, publishes again, and only
     // then learns the rest. The words are checked even when the shape is not
     // right yet.
-    const findings = findingsOf({ ...card, price: "5 dollars", title: "<b>Sale</b>" });
+    // A key of the wrong type is the kind of finding that stops zod checking
+    // anything that looks at the card as a whole.
+    const findings = findingsOf({
+      ...card,
+      merchant_item_id: 7,
+      price: "5.00",
+      title: "<b>Sale</b>",
+    });
 
+    expect(findings.map((finding) => finding.path)).toContain("merchant_item_id");
     expect(findings.map((finding) => finding.path)).toContain("price");
     expect(findings.map((finding) => finding.path)).toContain("title");
   });

@@ -241,6 +241,8 @@ export {
   PROTOTYPE_KEY_IS_DROPPED,
   paramSpecToValidator,
 } from "./param-spec.js";
+export type { TextLines } from "./plain-text.js";
+export { notPlainTextIn } from "./plain-text.js";
 export type {
   Amount,
   CurrencyCode,

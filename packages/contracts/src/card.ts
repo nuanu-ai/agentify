@@ -28,6 +28,7 @@
 import { z } from "zod";
 import type { ParamSpec, ParamSpecInput, ParamType } from "./param-spec.js";
 import { ParamSpecSchema, paramSpecToValidator } from "./param-spec.js";
+import { notPlainTextIn, type TextLines } from "./plain-text.js";
 import type { Money } from "./primitives.js";
 import { IdentifierSchema, MoneySchema, TimestampSchema } from "./primitives.js";
 import { SellingStateSchema } from "./selling.js";
@@ -443,7 +444,7 @@ const CardFieldsSchema = z.strictObject({
  * wait for a synchronous answer is our system-wide budget, the same for every
  * product, so it has no field here at all.
  */
-export const CardSchema = CardFieldsSchema.superRefine((card, ctx) => {
+const cardRules = (card: z.output<typeof CardFieldsSchema>, ctx: z.RefinementCtx): void => {
   if (card.fulfillment === "confirm") {
     // The gate, and the reason it is a refusal rather than a note somewhere.
     // A confirmation request reaches the merchant before any money moves and
@@ -486,15 +487,126 @@ export const CardSchema = CardFieldsSchema.superRefine((card, ctx) => {
         'a synchronous card delivers inside the system-wide response budget and sets no delivery deadline; "async" and "confirm" do',
     });
   }
-}).meta({
-  // JSON Schema has no way to say "this field only when that one has this
-  // value", and zod drops the rules above when it renders a document. Left at
-  // that, an engineer generating a client from the export would build one that
-  // sends deadlines a card cannot carry and only find out on the first publish.
-  // Saying it in words is weaker than checking it, and better than silence.
-  description:
-    'A product in the catalog, as the merchant publishes it. Three rules are enforced beyond the shape below. A card cannot be published as fulfillment "confirm" during the pilot: the confirmation request has no shape on the wire yet, so a handler could not tell one from a paid order. confirm_deadline_seconds is only allowed when fulfillment is "confirm", and fulfill_deadline_seconds only when fulfillment is "async" or "confirm" — a synchronous card delivers inside the system-wide response budget and names no deadline of its own. This document describes the card as it is stored and read back; three fields also take a shorter spelling at publication, which JSON Schema has no way to show alongside the canonical one. price may be written as one string, the amount and the currency code with a single space between them ("5.00 USD"). A field of params or result may be written as its type word alone (access_url: "string") where it carries no title and no required flag. fulfillment may be left out, and a card that leaves it out is "sync". Each of those is opened out into the form below as the card is accepted, so a card generated from this document is accepted unchanged and a card read back is always in this form.',
+};
+
+// JSON Schema has no way to say "this field only when that one has this
+// value", and zod drops the rules above when it renders a document. Left at
+// that, an engineer generating a client from the export would build one that
+// sends deadlines a card cannot carry and only find out on the first publish.
+// Saying it in words is weaker than checking it, and better than silence.
+const CARD_RULES_IN_WORDS =
+  'A card cannot be published as fulfillment "confirm" during the pilot: the confirmation request has no shape on the wire yet, so a handler could not tell one from a paid order. confirm_deadline_seconds is only allowed when fulfillment is "confirm", and fulfill_deadline_seconds only when fulfillment is "async" or "confirm" — a synchronous card delivers inside the system-wide response budget and names no deadline of its own.';
+
+/**
+ * One piece of a card's own words: where a finding about it points, what the
+ * finding calls it, and whether it is one line.
+ */
+interface Words {
+  readonly path: readonly string[];
+  readonly text: string;
+  readonly called: "title" | "description";
+  readonly lines: TextLines;
+}
+
+/**
+ * The words on a card that an agent reads: the title, the description, and
+ * the title of each field the card declares.
+ *
+ * It reads whatever arrived rather than a card known to be whole, because the
+ * rule runs beside the shape checks and not after them — a merchant told about
+ * a price first and about their markup on the next attempt fixes one thing per
+ * publish. So anything that is not where a card keeps its words is passed over
+ * here and named by the shape check instead.
+ */
+const wordsOf = (card: unknown): Words[] => {
+  if (!isRecord(card)) return [];
+
+  const words: Words[] = [];
+  if (typeof card.title === "string") {
+    words.push({ path: ["title"], text: card.title, called: "title", lines: "one line" });
+  }
+  if (typeof card.description === "string") {
+    words.push({
+      path: ["description"],
+      text: card.description,
+      called: "description",
+      lines: "several lines",
+    });
+  }
+  for (const declaration of ["params", "result"] as const) {
+    const fields = card[declaration];
+    if (!isRecord(fields)) continue;
+    for (const [name, field] of Object.entries(fields)) {
+      if (isRecord(field) && typeof field.title === "string") {
+        words.push({
+          path: [declaration, name, "title"],
+          text: field.title,
+          called: "title",
+          lines: "one line",
+        });
+      }
+    }
+  }
+  return words;
+};
+
+/**
+ * The card's words are plain text, and a finding for each kind of thing in them
+ * that is not (see `plain-text.ts` for what counts and why the door refuses
+ * rather than cleans).
+ *
+ * Each finding names the field, what was found in it and where, and what the
+ * field is held to. The sentence is written for the merchant who has to find
+ * the characters in their own editor, which is why it quotes the fragment and
+ * counts the position rather than printing the rule.
+ */
+const plainWords = (card: unknown, ctx: z.RefinementCtx): void => {
+  for (const words of wordsOf(card)) {
+    const heldTo =
+      words.lines === "one line"
+        ? `a ${words.called} is plain text on one line`
+        : `a ${words.called} is plain text`;
+    for (const phrase of notPlainTextIn(words.text, words.lines)) {
+      ctx.addIssue({
+        code: "custom",
+        path: [...words.path],
+        message: `this ${words.called} carries ${phrase}, and ${heldTo}, which an agent reads exactly as it is written`,
+      });
+    }
+  }
+};
+
+const PLAIN_TEXT_IN_WORDS =
+  "The title, the description and the title of every declared field are plain text, which an agent reads exactly as it is written: a card is refused where one of them carries HTML markup (a tag, or the opening of a comment), an HTML character reference such as &amp; or &#8217;, or a control character, and a description alone may carry line feeds. An ampersand, a comparison or an arrow written as text passes.";
+
+/**
+ * The card as it is stored and as its merchant reads it back: every rule a
+ * publish holds it to except that its words are plain text.
+ *
+ * That one rule belongs to the door and not to the reader. A card stored
+ * before it may carry markup, and every answer that carries a stored card is
+ * held to its contract on the way out — so holding a stored card to the rule
+ * would fail the merchant's whole list, and the page of the catalog it sits
+ * on, over one old row, and the merchant could not even see the card they were
+ * meant to republish.
+ */
+const StoredCardSchema = CardFieldsSchema.superRefine(cardRules).meta({
+  description: `A product in the catalog, as it is stored and as its merchant reads it back. Three rules hold beyond the shape below. ${CARD_RULES_IN_WORDS} A publish also holds the title, the description and each declared field's title to plain text; reading a card back does not, so a card stored before that rule is read back exactly as it was stored.`,
 });
+
+/**
+ * A card as a merchant publishes it.
+ *
+ * The plain-text rule runs whatever else is wrong with the card, so a merchant
+ * hears about their markup in the same answer as about their price. The rules
+ * that compare one field with another run only once the shape is right, as
+ * they always have: they need the fields to be what they claim to be.
+ */
+export const CardSchema = CardFieldsSchema.superRefine(cardRules)
+  .superRefine(plainWords, { when: () => true })
+  .meta({
+    description: `A product in the catalog, as the merchant publishes it. Four rules are enforced beyond the shape below. ${CARD_RULES_IN_WORDS} ${PLAIN_TEXT_IN_WORDS} This document describes the card as it is stored and read back; three fields also take a shorter spelling at publication, which JSON Schema has no way to show alongside the canonical one. price may be written as one string, the amount and the currency code with a single space between them ("5.00 USD"). A field of params or result may be written as its type word alone (access_url: "string") where it carries no title and no required flag. fulfillment may be left out, and a card that leaves it out is "sync". Each of those is opened out into the form below as the card is accepted, so a card generated from this document is accepted unchanged and a card read back is always in this form.`,
+  });
 
 export type Fulfillment = z.infer<typeof FulfillmentSchema>;
 export type PriceCheck = z.infer<typeof PriceCheckSchema>;
@@ -864,8 +976,11 @@ export const MerchantCardSchema = z
     /** When this version of the card was published. */
     as_of: TimestampSchema,
 
-    /** The card exactly as its merchant published it. */
-    card: CardSchema,
+    /**
+     * The card exactly as its merchant published it, held to the rules of a
+     * stored card rather than to the publish door's.
+     */
+    card: StoredCardSchema,
 
     /** What a purchase of this card meets right now. */
     selling: SellingStateSchema,

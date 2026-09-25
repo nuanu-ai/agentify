@@ -352,11 +352,18 @@ describe("the contract as JSON Schema", () => {
     // needs a hash to check and so cannot be a pattern. It is reached from the
     // payout wallet documents too, and reported once, under the entry the walk
     // meets first.
+    //
+    // `merchant_card.card` is the card as it is stored and read back. It
+    // carries the rules that compare one field with another, as the published
+    // card does, and not the rule that a card's words are plain text, which is
+    // the publish door's alone — so it is a schema of its own rather than the
+    // published card's instance, and the walk finds it separately.
     expect(refinedSchemaPaths().sort()).toStrictEqual([
       "card",
       "card.result",
       "card.tags",
       "evm_address",
+      "merchant_card.card",
     ]);
   });
 
