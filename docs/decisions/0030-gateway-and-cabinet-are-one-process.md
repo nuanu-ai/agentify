@@ -34,8 +34,8 @@ apart, and Caddy the one door.
 WooCommerce worker and its registration call the `Gateway` methods the `/v0`
 handlers call, as the merchant on the signed-in account's row, with requests
 and answers still held to the contract's schemas. The caller is the signed-in
-person rather than a key, so a message about a payout wallet change asked for
-in the cabinet names that person, as one asked for with a key names the key.
+person rather than a key, so a message about a payout wallet change, which is
+asked for only in the cabinet (ADR-0019), names that person.
 The cabinet then proves that the application and the contract's documents are
 enough to draw every screen, and no longer that the HTTP API is. What proves
 that is what a merchant's engineer uses: the SDK's tests, the purchase through

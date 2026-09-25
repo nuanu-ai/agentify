@@ -393,9 +393,10 @@ cancelled, as it is not today when a request times out on the client.
 
 The caller is a signed-in person, not a key. `KeyOnTheCall` in `gateway.ts`
 becomes a caller that is either a key or a person in the cabinet, and a message
-about a payout wallet change names who acted: a change asked for in the
-cabinet names the signed-in person's address, and one asked for with a key
-names the key, as it does today. Today a change from the cabinet is named only
+about a payout wallet change names who acted: the signed-in person's address.
+A wallet is changed only in the cabinet (Dmitry, 2026-09-25, recorded in
+ADR-0019 by its own change), so no key ever asks. Today a change from the
+cabinet is named only
 as "the cabinet" (`AskedWithSchema` in `apps/gateway/src/announcements.ts`),
 because the gateway sees the cabinet's key and not the person behind it. Two
 more things follow. The cabinet's list of
