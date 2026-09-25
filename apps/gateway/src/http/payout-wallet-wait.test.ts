@@ -92,7 +92,14 @@ const ask = async (served: Served, key: string, wallet: string): Promise<WalletA
 };
 
 const refusalOf = (body: unknown) =>
-  (body as { error: { code: string; retryable: boolean } }).error;
+  (body as { error: { code: string; message: string; retryable: boolean } }).error;
+
+/**
+ * Whether a refusal tells its reader a message about the change may be in an
+ * inbox. It is a claim about the merchant's own mailbox, so it has to be true
+ * when it is made and absent when nothing can have been sent.
+ */
+const claimsAMessage = (body: unknown): boolean => /message/i.test(refusalOf(body).message);
 
 const at = (instant: number): string => new Date(instant).toISOString();
 
@@ -367,6 +374,23 @@ describe("a change that could not be announced", () => {
     },
   );
 
+  it("is refused as not announced when the cabinet turned the request away before telling anybody", async () => {
+    // A listener that refused the request — the wrong secret, a body it would
+    // not read — told nobody, so the refusal must not say an account may have
+    // been told.
+    const { served, harnessed } = await started();
+    await ask(served, harnessed.merchant.key, A_WALLET);
+    const before = await walletOf(served, harnessed.merchant.key);
+    harnessed.announcer.answer = "refused_by_cabinet";
+
+    const refused = await asking(served, harnessed.merchant.key, ANOTHER_WALLET);
+
+    expect(refused.status).toBe(503);
+    expect(refusalOf(refused.body).code).toBe("wallet_change_not_announced");
+    expect(refusalOf(refused.body).message).not.toMatch(/may (still )?have/i);
+    expect(await walletOf(served, harnessed.merchant.key)).toStrictEqual(before);
+  });
+
   it("is refused when the cabinet cannot be reached at all, which reads as no answer", async () => {
     const { served, harnessed } = await started();
     harnessed.announcer.answer = async () => {
@@ -401,9 +425,38 @@ describe("two changes for one merchant at once", () => {
 
     expect(refused.status, JSON.stringify(refused.body)).toBe(409);
     expect(refusalOf(refused.body).code).toBe("wallet_change_raced");
+    // Its message did go out, and the refusal says so.
+    expect(claimsAMessage(refused.body)).toBe(true);
     expect((await walletOf(served, harnessed.merchant.key)).pending?.payout_wallet).toBe(
       ANOTHER_WALLET,
     );
+  });
+
+  it("refuses a raced first address without claiming a message that was never sent", async () => {
+    // A first address is written before anything is announced, so when
+    // another write lands first there is no message about it anywhere, and a
+    // refusal that said there might be would send its reader looking for one.
+    const { served, harnessed } = await started();
+    const registered = await served.call("POST", "/v0/merchants", {
+      body: { invitation: INVITATION },
+    });
+    const key = (registered.body as { secret: string }).secret;
+    const writing = harnessed.store.setPayoutWallet.bind(harnessed.store);
+    let overtaken = false;
+    harnessed.store.setPayoutWallet = async (id, expected, next, when) => {
+      if (!overtaken) {
+        overtaken = true;
+        await writing(id, expected, { address: ANOTHER_WALLET, pending: null }, when);
+      }
+      return await writing(id, expected, next, when);
+    };
+
+    const refused = await asking(served, key, A_WALLET);
+
+    expect(refused.status, JSON.stringify(refused.body)).toBe(409);
+    expect(refusalOf(refused.body).code).toBe("wallet_change_raced");
+    expect(claimsAMessage(refused.body)).toBe(false);
+    expect((await walletOf(served, key)).payout_wallet).toBe(ANOTHER_WALLET);
   });
 });
 

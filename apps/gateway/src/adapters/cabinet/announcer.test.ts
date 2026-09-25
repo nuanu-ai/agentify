@@ -12,7 +12,7 @@
 
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ANNOUNCEMENTS_PATH, type Announcement } from "../../announcements.js";
 import { CabinetAnnouncer } from "./announcer.js";
 
@@ -104,9 +104,42 @@ describe("asking the cabinet", () => {
   );
 });
 
+describe("a cabinet that turned the request away", () => {
+  // Its listener answers these before it reads an announcement or tells
+  // anybody, so nothing was sent — which is a different fact from a cabinet
+  // that did not answer, and the refusal a merchant reads depends on it.
+  it.each([
+    ["the wrong secret", 401],
+    ["a body it would not read", 400],
+    ["a body too large", 413],
+    ["an address it does not answer on", 404],
+  ])("reads %s as refused, with nothing sent", async (_what, status) => {
+    const { url } = await aCabinet(status, "");
+
+    expect(await new CabinetAnnouncer({ url, secret: SECRET }).announce(ANNOUNCEMENT)).toBe(
+      "refused_by_cabinet",
+    );
+  });
+
+  it("says in the log that the two halves hold different secrets, without either", async () => {
+    const { url } = await aCabinet(401, "");
+    const said: string[] = [];
+    const error = vi.spyOn(console, "error").mockImplementation((...parts) => {
+      said.push(parts.map(String).join(" "));
+    });
+    try {
+      await new CabinetAnnouncer({ url, secret: SECRET }).announce(ANNOUNCEMENT);
+    } finally {
+      error.mockRestore();
+    }
+
+    expect(said.join("\n")).toContain("ANNOUNCEMENT_SECRET");
+    expect(said.join("\n")).not.toContain(SECRET);
+  });
+});
+
 describe("a cabinet that did not answer", () => {
   it.each([
-    ["a refusal", 401, ""],
     ["a failure", 500, JSON.stringify({ outcome: "handed_over" })],
     ["a body that is not an answer", 200, JSON.stringify({ outcome: "sent" })],
     ["a body that is not JSON", 200, "<html>"],
