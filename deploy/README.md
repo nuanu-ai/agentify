@@ -236,7 +236,9 @@ public routes expects `/admin` to answer 404.
 
 After it, the dashboard opens for nobody until somebody is flagged. The person
 who is to read it signs in once at `/cabinet/sign-in`, which makes their
-account, and is then flagged on the host of that channel:
+account; on TEST the cabinet writes its mail to its log rather than sending
+it, so the link is read with `deploy/stack.sh test logs cabinet` from the
+newest checkout. They are then flagged on the host of that channel:
 
 ```sh
 ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T cabinet pnpm --filter @agentify/cabinet account operator you@example.com'
