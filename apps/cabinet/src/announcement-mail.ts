@@ -44,17 +44,29 @@ export interface Screens {
   readonly keys: string;
 }
 
+/**
+ * A key's label as data rather than as words of ours.
+ *
+ * Somebody holding one of the merchant's keys chose it, and that somebody may
+ * be the person the message is warning about. It arrives on one line; here a
+ * zero-width space goes after every character a mail client builds a link or
+ * an address out of, so "confirm at https://…" in a label is shown as the
+ * characters it is and never becomes somewhere to click. It is always quoted,
+ * and always beside the key's identifier, which is what finds the key.
+ */
+const inert = (label: string): string => label.replace(/[.:/@]/g, (mark) => `${mark}\u200B`);
+
 /** A key, the way a person reading the message finds it in the cabinet. */
 const named = (key: AskedWith): string =>
   key.kind === "cabinet"
     ? "the cabinet, by a person signed in to it"
-    : `the key "${key.label}" (${key.id}), one of the keys issued for your own code`;
+    : `the key ${key.id}, named "${inert(key.label)}", one of the keys issued for your own code`;
 
 /** What to do about it, if the reader did not ask for it. */
 const ifNotYou = (key: AskedWith): string =>
   key.kind === "cabinet"
     ? "If nobody at your business did this, somebody else may be signed in to your cabinet: cancelling a waiting wallet change on the wallet screen signs every other session out."
-    : `If nobody at your business did this, disable the key "${key.label}" (${key.id}) on the keys screen of your cabinet.`;
+    : `If nobody at your business did this, disable the key ${key.id} on the keys screen of your cabinet.`;
 
 export function announcementMessage(
   to: string,
@@ -101,7 +113,7 @@ export function announcementMessage(
     }
     case "key_issued": {
       const lead =
-        `A new key, "${announcement.key.label}" (${announcement.key.id}), was issued for your own code with ${named(announcement.asked_with)}.` +
+        `A new key, ${announcement.key.id}, named "${inert(announcement.key.label)}", was issued for your own code with ${named(announcement.asked_with)}.` +
         " A key can call everything your code can, including a change of your payout wallet, which is announced and waits.";
       return written(to, {
         subject: "A new key was issued for your merchant",

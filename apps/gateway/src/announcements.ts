@@ -36,6 +36,49 @@ const WalletSchema = EvmAddressSchema.refine(
 );
 
 /**
+ * The longest a key's label is when an announcement names the key: the
+ * hundred characters a new key's label is held to at the door, and the one
+ * character that says a longer label was cut.
+ */
+const LONGEST_ANNOUNCED_LABEL = 101;
+
+/**
+ * A key's label as an announcement carries it: one line, cut to a hundred
+ * characters with an ellipsis saying so.
+ *
+ * A new key's label is held to that at the door, but a key issued at the
+ * server's terminal, or before the door held labels to anything, can be named
+ * anything at all — and an announcement about a wallet change made with such
+ * a key must still be one the cabinet takes, rather than a change refused
+ * because of how a key was named. So the gateway writes every label it
+ * announces down to this, and the cabinet refuses anything else.
+ */
+export function announcedLabel(label: string): string {
+  const oneLine = label.replace(/[\p{Cc}\p{Zl}\p{Zp}\s]+/gu, " ").trim();
+  if (oneLine === "") {
+    return "a key whose name has no printable characters";
+  }
+  const characters = [...oneLine];
+  return characters.length <= LONGEST_ANNOUNCED_LABEL - 1
+    ? oneLine
+    : `${characters
+        .slice(0, LONGEST_ANNOUNCED_LABEL - 1)
+        .join("")
+        .trimEnd()}…`;
+}
+
+/** A label on the wire: one line, not empty, no longer than a cut label. */
+const AnnouncedLabelSchema = z
+  .string()
+  .min(1)
+  .max(LONGEST_ANNOUNCED_LABEL * 2)
+  .regex(/^[^\p{Cc}\p{Zl}\p{Zp}]+$/u, "a label is announced as one line")
+  .refine(
+    (label) => [...label].length <= LONGEST_ANNOUNCED_LABEL,
+    "a label is announced cut to one line",
+  );
+
+/**
  * Which key a call was made with, named the way the merchant's list of keys
  * names it.
  *
@@ -51,7 +94,7 @@ export const AskedWithSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("merchant_code"),
     id: z.string().min(1),
-    label: z.string().min(1),
+    label: AnnouncedLabelSchema,
   }),
 ]);
 
@@ -83,7 +126,7 @@ export const AnnouncementSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("key_issued"),
     merchant_id: z.string().min(1),
-    key: z.strictObject({ id: z.string().min(1), label: z.string().min(1) }),
+    key: z.strictObject({ id: z.string().min(1), label: AnnouncedLabelSchema }),
     asked_with: AskedWithSchema,
   }),
 ]);

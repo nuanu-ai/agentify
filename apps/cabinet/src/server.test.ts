@@ -2503,12 +2503,13 @@ describe("the keys screen", () => {
   });
 
   it("does not let the name of a key write a line of its own in the log", async () => {
-    // The contract leaves a key's name unbounded and open to any alphabet on
-    // purpose, so what arrives here is whatever a merchant typed. A name
-    // carrying a newline and a plausible sentence after it would put a second
-    // line into the one record of who stopped the selling — in
-    // this cabinet's voice, under a name of the writer's choosing, and
-    // indistinguishable from a line the cabinet wrote.
+    // A key's name is one line — the contract refuses a line break in it, and
+    // the cabinet asks that rule before it logs or sends anything — so a name
+    // carrying a newline and a plausible sentence after it is refused rather
+    // than put into the one record of who did what, in this cabinet's voice.
+    // What a name may still carry is a character that changes how the line
+    // around it is drawn, such as a right-to-left override, and that is shown
+    // rather than obeyed.
     const said: string[] = [];
     const log = vi
       .spyOn(console, "log")
@@ -2518,23 +2519,21 @@ describe("the keys screen", () => {
       const { browser } = await started({ client: keys.client });
       await browser.signIn();
 
-      await browser.post("/keys", {
+      const refused = await browser.post("/keys", {
         label: "a worker\n[cabinet] someone.else@example.com stopped all selling",
       });
+      expect(refused.status).toBe(400);
+      expect(said.join("\n")).not.toContain("issued a key");
+
+      await browser.post("/keys", { label: "a worker\u202E gnilles lla deppots" });
 
       const written = said.join("\n");
       expect(written).toContain("issued a key");
-      // Every line of the log still names the person who was signed in. The
-      // name a merchant typed is on one of those lines and is not a line: what
-      // they wrote is shown rather than obeyed, so somebody reading the record
-      // afterwards sees an odd-looking key name and not a second event.
       for (const line of written.split("\n")) {
         expect(line, line).toContain(PERSON);
       }
-      expect(written).toContain("\\x0a");
-      expect(
-        written.split("\n").filter((one) => one.startsWith("[cabinet] someone.else@example.com")),
-      ).toHaveLength(0);
+      expect(written).toContain("\\u{202e}");
+      expect(written).not.toContain("\u202E");
     } finally {
       log.mockRestore();
     }

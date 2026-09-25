@@ -53,7 +53,7 @@ import {
   type WorkerEnvelope,
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
-import type { Announcement, AskedWith } from "../announcements.js";
+import { type Announcement, type AskedWith, announcedLabel } from "../announcements.js";
 import type { AnnouncementOutcome } from "../ports/announcer.js";
 import { asTimestamp } from "../ports/clock.js";
 import type { Reminder } from "../ports/queue.js";
@@ -910,7 +910,7 @@ export class Gateway {
         `the call was made with ${askedBy.keyId}, and ${merchantId} has no such key to name`,
       );
     }
-    return { kind: "merchant_code", id: key.id, label: key.label };
+    return { kind: "merchant_code", id: key.id, label: announcedLabel(key.label) };
   }
 
   /**
@@ -959,7 +959,7 @@ export class Gateway {
       this.#announceAfterwards({
         kind: "key_issued",
         merchant_id: merchantId,
-        key: { id: issued.key.id, label: issued.key.label },
+        key: { id: issued.key.id, label: announcedLabel(issued.key.label) },
         asked_with: await this.#named(merchantId, askedBy),
       });
     }

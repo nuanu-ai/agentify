@@ -36,7 +36,10 @@ import {
   openReportCabinetHandoff,
   REPORT_CABINET_HANDOFF_COOKIE,
 } from "@agentify/scanner-contracts/report-cabinet-handoff";
-import type { PayoutWallet as PayoutWalletDocument } from "@nuanu-ai/agentify-contracts";
+import {
+  IssueKeyRequestSchema,
+  type PayoutWallet as PayoutWalletDocument,
+} from "@nuanu-ai/agentify-contracts";
 import express, { type Express, type Request, type Response } from "express";
 import type { CabinetDestination, CabinetIdentity, Person } from "./cabinet-entry.js";
 import type { CabinetConfig } from "./config.js";
@@ -1672,6 +1675,29 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
             viewing(request, base),
             keys.document,
             "Give the key a name, so that you can tell it from the others when you come to revoke one.",
+          ),
+        );
+      return;
+    }
+
+    // The rest of the rule is the contract's, asked of it rather than written
+    // out again: one line, at most the length the gateway takes, which is
+    // also how the live site's message about the key names it (ADR-0019).
+    const unfit = IssueKeyRequestSchema.shape.label.safeParse(label);
+    if (!unfit.success) {
+      const keys = await gateway.keys();
+      if (!keys.ok) {
+        return trouble(response, base, keys);
+      }
+      const said = unfit.error.issues[0]?.message ?? "that name cannot be given to a key";
+      response
+        .status(400)
+        .type("html")
+        .send(
+          keysScreen(
+            viewing(request, base),
+            keys.document,
+            `${said.slice(0, 1).toUpperCase()}${said.slice(1)}. No key was issued.`,
           ),
         );
       return;

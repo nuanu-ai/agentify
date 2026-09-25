@@ -55,6 +55,40 @@ const KeyLabelSchema = z
   .regex(/^\S(?:[\s\S]*\S)?$/u, "a label must not be empty or padded with spaces");
 
 /**
+ * The longest label a key is issued with.
+ *
+ * A label used to have no bound, on the argument that no channel outside us
+ * carries it. One does now: on the live deployment the message that tells a
+ * merchant of a new key, or of a wallet change made with one, names the key
+ * by its label (ADR-0019), and that message is Agentify's words in somebody's
+ * inbox. A hundred characters is a line on a list and in a message, and
+ * longer than any name a person gives a worker.
+ */
+const LONGEST_KEY_LABEL = 100;
+
+/**
+ * A label as a new key is issued with it: the rule above, on one line, and no
+ * longer than {@link LONGEST_KEY_LABEL}.
+ *
+ * Only the request carries the bound. The keys a merchant already holds are
+ * read back under whatever they were named, including a key issued at the
+ * server's terminal, because refusing the list over one old row would hide
+ * every key on it; the message that names such a key cuts it to one line of
+ * the same length itself.
+ */
+const IssuedKeyLabelSchema = KeyLabelSchema.max(
+  LONGEST_KEY_LABEL,
+  `a label is at most ${LONGEST_KEY_LABEL} characters, the one line a key is known by`,
+).regex(
+  // Written as code-point ranges rather than a Unicode property, because this
+  // pattern is published in the JSON Schema a validator in another language
+  // reads, and not every one of those knows the property escapes.
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it refuses
+  /^[^\u0000-\u001F\u007F-\u009F\u2028\u2029]*$/u,
+  "a label is one line: it cannot carry a line break, a tab or another control character",
+);
+
+/**
  * The key itself, in the only form its owner will ever see it.
  *
  * No whitespace anywhere in it, and that bound belongs to the transport rather
@@ -178,11 +212,11 @@ export const MerchantKeyListSchema = z
 /** What a merchant sends to have a key made. */
 export const IssueKeyRequestSchema = z
   .strictObject({
-    label: KeyLabelSchema,
+    label: IssuedKeyLabelSchema,
   })
   .meta({
     description:
-      "What a merchant asks for when they want another key: the name they will know it by, and nothing else. There is nowhere here to put a secret, because a key is generated rather than chosen — one somebody picks is one somebody reuses somewhere else.",
+      "What a merchant asks for when they want another key: the name they will know it by, and nothing else. The name is one line of at most 100 characters, not empty and not padded with spaces; on the live deployment it is also how the message telling the merchant of the new key names it. There is nowhere here to put a secret, because a key is generated rather than chosen — one somebody picks is one somebody reuses somewhere else.",
   });
 
 /**
