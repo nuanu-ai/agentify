@@ -165,3 +165,62 @@ describe("what the publish door asks of a merchant", () => {
     }
   }
 });
+
+describe("the one line a refusal is read by", () => {
+  // `problems` is the answer a program reads; the message is what a person
+  // reads in a log, and for a merchant who lacks something it used to be the
+  // first finding cut off at a hundred and sixty letters, mid-sentence and
+  // before it said how to fix it. Where the merchant is what stands in the
+  // way, the line says which of their settings are missing, all of them and
+  // only them, and says it whole.
+  const NOTHING: Holding = { name: false, wallet: false, approval: false };
+
+  it("names every missing merchant setting, whole", async () => {
+    const { served, key } = await aMerchant("live", NOTHING);
+
+    const refusal = ((await publish(served, key, CARD)).body as { error: Refusal }).error;
+
+    expect(refusal.message).toMatch(/seller name/i);
+    expect(refusal.message).toMatch(/payout wallet/i);
+    expect(refusal.message).toMatch(/approv/i);
+    expect(refusal.message).not.toMatch(/cut short/i);
+    expect(aboutTheMerchant(refusal)).toHaveLength(3);
+  });
+
+  it("names only what is missing", async () => {
+    const { served, key } = await aMerchant("test", { ...EVERYTHING, name: false });
+
+    const { message } = ((await publish(served, key, CARD)).body as { error: Refusal }).error;
+
+    expect(message).toMatch(/seller name/i);
+    expect(message).not.toMatch(/wallet/i);
+    expect(message).not.toMatch(/approv/i);
+  });
+
+  it("still points at the card's own findings beside the merchant's", async () => {
+    const { served, key } = await aMerchant("test", NOTHING);
+
+    const refusal = (
+      (await publish(served, key, { ...CARD, price: { amount: "not a number", currency: "USD" } }))
+        .body as { error: Refusal }
+    ).error;
+
+    expect(refusal.message).toMatch(/seller name/i);
+    expect(refusal.message).toMatch(/payout wallet/i);
+    expect(refusal.message).toContain("price");
+    expect(refusal.problems.some((finding) => finding.path.includes("price"))).toBe(true);
+  });
+
+  it("says nothing about the merchant where the card alone is at fault", async () => {
+    const { served, key } = await aMerchant("sandbox", { ...EVERYTHING, wallet: false });
+
+    const refusal = (
+      (await publish(served, key, { ...CARD, price: { amount: "not a number", currency: "USD" } }))
+        .body as { error: Refusal }
+    ).error;
+
+    expect(aboutTheMerchant(refusal)).toStrictEqual([]);
+    expect(refusal.message).toContain("price");
+    expect(refusal.message).not.toMatch(/merchant has/i);
+  });
+});
