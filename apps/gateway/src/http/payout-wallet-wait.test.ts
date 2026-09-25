@@ -139,17 +139,64 @@ const theMerchantsKey = async (harnessed: Harness) => {
 };
 
 describe("the first address a merchant sets", () => {
-  it("applies at once and is announced to nobody, or a new merchant could not start selling", async () => {
-    const { served, harnessed } = await started();
+  /** A merchant with no address yet, and the cabinet key registering gave it. */
+  const aNewMerchant = async (served: Served): Promise<string> => {
     const registered = await served.call("POST", "/v0/merchants", {
       body: { invitation: INVITATION },
     });
-    const key = (registered.body as { secret: string }).secret;
+    return (registered.body as { secret: string }).secret;
+  };
+
+  it("applies at once, or a new merchant could not start selling, and is announced afterwards", async () => {
+    // The message is owed for every address set on the live site, the first
+    // included: a leaked key could set it before its owner does, and the
+    // message is how the owner learns of it.
+    const { served, harnessed } = await started();
+    const key = await aNewMerchant(served);
 
     expect(await ask(served, key, A_WALLET)).toStrictEqual({
       payout_wallet: A_WALLET,
       pending: null,
     });
+    const [announced] = harnessed.announcer.announced;
+    expect(announced).toMatchObject({
+      kind: "wallet_set",
+      to: A_WALLET,
+      asked_with: { kind: "cabinet" },
+    });
+  });
+
+  it.each([
+    ["mail is down", "not_handed_over" as const],
+    ["nobody is told", "nobody_to_tell" as const],
+  ])("applies all the same when %s, because it replaces nothing", async (_why, outcome) => {
+    const { served, harnessed } = await started();
+    const key = await aNewMerchant(served);
+    harnessed.announcer.answer = outcome;
+
+    expect(await ask(served, key, A_WALLET)).toStrictEqual({
+      payout_wallet: A_WALLET,
+      pending: null,
+    });
+  });
+
+  it("never waits on its message", async () => {
+    const { served, harnessed } = await started();
+    const key = await aNewMerchant(served);
+    harnessed.announcer.answer = () => new Promise(() => undefined);
+
+    expect((await asking(served, key, A_WALLET)).status).toBe(200);
+  });
+
+  it("is announced to nobody on the test channel", async () => {
+    const { served, harnessed } = await started({
+      PAYMENT_NETWORK: "eip155:84532",
+      REGISTRATION_INVITATION: INVITATION,
+    });
+    const key = await aNewMerchant(served);
+
+    await ask(served, key, A_WALLET);
+
     expect(harnessed.announcer.announced).toStrictEqual([]);
   });
 });

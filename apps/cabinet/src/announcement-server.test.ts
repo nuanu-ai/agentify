@@ -231,6 +231,26 @@ describe("a key's label, which somebody else may have written", () => {
 });
 
 describe("what is announced once it is done", () => {
+  it("tells of a first wallet set, naming the address and where to replace it", async () => {
+    // It applied at once, so the message is the owner's only word of it if
+    // somebody else set it.
+    const { url, sent } = await listening([["owner@example.com", MERCHANT]]);
+
+    const answered = await post(url, {
+      kind: "wallet_set",
+      merchant_id: MERCHANT,
+      to: TO,
+      asked_with: { kind: "merchant_code", id: "mk_7f3a", label: "the stock worker" },
+    } satisfies Announcement);
+
+    expect(await answered.json()).toStrictEqual({ outcome: "handed_over" });
+    for (const text of [sent[0]?.body ?? "", sent[0]?.html ?? ""]) {
+      expect(text).toContain(TO);
+      expect(text).toContain("mk_7f3a");
+      expect(text).toContain(THE_SETTINGS_SCREEN);
+    }
+  });
+
   it("tells of a cancelled change, naming the address kept and the one cancelled", async () => {
     const { url, sent } = await listening([["owner@example.com", MERCHANT]]);
 
