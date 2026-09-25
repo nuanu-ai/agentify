@@ -329,6 +329,18 @@ its one-time approval, and it says so when the approval already exists or the
 account is unknown. Approval publishes nothing and supplies no missing seller
 name or payout wallet; the test channel never needs it.
 
+Starting an address over is a command for the test deployment only:
+`pnpm forget <email>` from the operator's checkout reaches the test host over
+SSH and removes that address's cabinet account together with the merchant it
+names, the merchant's keys and cards, and the wait before the address's next
+sign-in link, so the address signs in again as if for the first time. It
+refuses, and says why, when the merchant has an order or a receipt, when
+another account names the same merchant, or when no account has the address;
+on a deployment whose payment network is live it refuses before it reads
+anything. An operator flag goes with the account, and a WooCommerce
+connection it drops keeps its key in that shop until somebody revokes it
+there.
+
 ## Where to read more
 
 - [`apps/docs/`](apps/docs/) — what a merchant reads: the owner's decision, the
