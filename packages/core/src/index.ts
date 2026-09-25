@@ -39,6 +39,8 @@ export {
   surfaceModeOf,
   TESTNET_CHAINS,
 } from "./deployment/environment.js";
+export type { MerchantFacts, Readiness, Unknown } from "./merchant/readiness.js";
+export { readinessOf, UNKNOWN } from "./merchant/readiness.js";
 /**
  * The order state machine. The design it implements is
  * `docs/research/16-order-state-machine.md` with all three of its addition

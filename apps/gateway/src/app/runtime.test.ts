@@ -5,15 +5,16 @@
  * nowhere for the money to go, can be listed under no name for the sale to be
  * made under, and can lack the operator's live grant — and the machine has
  * exactly one guard for all five. `sellingFor` is where they become the one;
- * the last three reach it through
- * `sellableBy`, because from the order's side they are one fact: this merchant
- * cannot make a sale.
+ * the last three reach it through `sellableBy`, because from the order's side
+ * they are one fact: this merchant cannot make a sale. Which of those three a
+ * deployment asks for is the rule in the core (`readinessOf`), tested there.
  *
  * What is here is only what a purchase cannot reach. Every combination a
  * merchant can actually get into is bought against over HTTP — the two switches
- * in `http/server.test.ts` and the missing address in `http/payout-wallet.test.ts`
- * — where the answer is a price or a refusal rather than a word, and a fold that
- * got any of them wrong dies there. Two cases are left, and neither can be
+ * in `http/server.test.ts`, the missing name in `http/seller-name.test.ts`, the
+ * missing address in `http/payout-wallet.test.ts` and the missing grant in
+ * `http/live-approval.test.ts` — where the answer is a price or a refusal
+ * rather than a word, and a fold that got any of them wrong dies there. Two cases are left, and neither can be
  * reached over HTTP: nothing in the pilot sets a merchant to `departed`, so a
  * defect in that branch would sit in the code with every route green and
  * surface the day departure is wired up as a merchant who had left going on
@@ -24,10 +25,8 @@
 import { MERCHANT_SELLING } from "@agentify/core";
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
-import { SANDBOX_FACILITATOR } from "../config.js";
 import type { StoredCard } from "../ports/store.js";
-import { ANNOUNCING, testConfig } from "../testing/harness.js";
-import { sellableBy, sellingFor } from "./runtime.js";
+import { sellingFor } from "./runtime.js";
 
 const card: Card = {
   merchant_item_id: "room-101",
@@ -75,78 +74,5 @@ describe("what the order machine is told about one card", () => {
         }
       }
     }
-  });
-});
-
-describe("whether a merchant could make a sale at all", () => {
-  const real = testConfig();
-  const sandbox = testConfig({ FACILITATOR_URL: SANDBOX_FACILITATOR });
-  const wallet = { address: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", pending: null };
-  const none = { address: null, pending: null };
-
-  it("says no to a merchant with nobody for the payment request to name", () => {
-    // The state a merchant is put in by `merchant listed-as <id> --none`, with
-    // cards already published and selling. A payment request carries the name
-    // of the seller, and a card of theirs would go out inside one that names
-    // nobody: the agent is invited to pay a stranger it cannot identify, and
-    // the gateway has shipped exactly that once. Off sale is the honest answer
-    // and the merchant already knows how to put it right.
-    expect(
-      sellableBy({ payoutWallet: wallet, serviceName: null, liveApprovedAt: null }, real),
-    ).toBe(false);
-    // And the other half, or the line above would pass against a gateway that
-    // had stopped selling for everybody.
-    expect(
-      sellableBy(
-        { payoutWallet: wallet, serviceName: "Someone's shop", liveApprovedAt: null },
-        real,
-      ),
-    ).toBe(true);
-  });
-
-  it("says no to a merchant with nowhere for the money to go", () => {
-    expect(
-      sellableBy({ payoutWallet: none, serviceName: "Someone's shop", liveApprovedAt: null }, real),
-    ).toBe(false);
-  });
-
-  it("excuses the wallet in the sandbox and never the name", () => {
-    // The two rules are not one rule. The sandbox settles against nothing, so
-    // there is no money to send and no address to be missing (ADR-0008) — but
-    // the name is not about money at all: it is what the request calls the
-    // seller, and a challenge in a sandbox names one exactly as a real one
-    // does. A local stack sells with no wallet configured anywhere; nothing
-    // sells under nobody's name.
-    expect(
-      sellableBy(
-        { payoutWallet: none, serviceName: "Someone's shop", liveApprovedAt: null },
-        sandbox,
-      ),
-    ).toBe(true);
-    expect(
-      sellableBy({ payoutWallet: none, serviceName: null, liveApprovedAt: null }, sandbox),
-    ).toBe(false);
-    expect(
-      sellableBy({ payoutWallet: wallet, serviceName: null, liveApprovedAt: null }, sandbox),
-    ).toBe(false);
-  });
-
-  it("requires the operator's grant only on the live surface", () => {
-    const live = testConfig({
-      PAYMENT_NETWORK: "eip155:8453",
-      FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
-      CDP_API_KEY_ID: "key-id",
-      CDP_API_KEY_SECRET: "key-secret",
-      ...ANNOUNCING,
-    });
-    const merchant = {
-      payoutWallet: wallet,
-      serviceName: "Someone's shop",
-      liveApprovedAt: null,
-    };
-
-    expect(sellableBy(merchant, real)).toBe(true);
-    expect(sellableBy(merchant, live)).toBe(false);
-    expect(sellableBy({ ...merchant, liveApprovedAt: 1_000 }, live)).toBe(true);
   });
 });

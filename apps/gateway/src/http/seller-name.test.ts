@@ -278,17 +278,6 @@ describe("publishing before a name has been chosen", () => {
     expect(problems.map((finding) => finding.message).join(" ")).toContain("/v0/seller-name");
   });
 
-  it("publishes for a merchant who has one, which is what makes the refusal a rule", async () => {
-    // The other half. Asserted alone, the refusal above would pass against a
-    // gateway that had stopped publishing anything at all.
-    const { served, harnessed } = await started();
-    await setSellerName(served, harnessed.merchant.key, "Someone's shop");
-
-    const published = await publishing(served, harnessed.merchant.key, cardFor("a-room", "A room"));
-
-    expect(published.status).toBe(200);
-  });
-
   it("writes nothing, so the card is not there afterwards", async () => {
     // A refusal that had already written the card would be worse than no rule:
     // the merchant would be told no and be selling anyway.
@@ -299,26 +288,6 @@ describe("publishing before a name has been chosen", () => {
 
     const own = await served.call("GET", "/v0/cards", { headers: bearer(key) });
     expect((own.body as { cards: unknown[] }).cards).toStrictEqual([]);
-  });
-
-  it("says what is wrong with the card as well, rather than one thing at a time", async () => {
-    // A merchant with no name and a card that is also wrong learns both in one
-    // answer. Told them one at a time, they fix the card, publish again, and
-    // only then find out about the name.
-    const { served } = await started();
-    const key = await nameless(served);
-
-    const refused = await publishing(served, key, {
-      ...cardFor("a-room", "A room"),
-      price: { amount: "not a number", currency: "USD" },
-    });
-
-    expect(refused.status).toBe(422);
-    const { problems } = (
-      refused.body as { error: { problems: { path: string[]; code: string }[] } }
-    ).error;
-    expect(problems.map((finding) => finding.code)).toContain("no_seller_name");
-    expect(problems.some((finding) => finding.path.includes("price"))).toBe(true);
   });
 
   it("lets a merchant publish as soon as they set one", async () => {

@@ -4,7 +4,9 @@ Date: 2026-09-24
 Status: accepted (Dmitry, 2026-09-17: "средство аутентификации у нас — ссылка
 из письма"; 2026-09-24: "я думал что вот ссылка в письме один раз авторизует
 тебя в продукте и ты можешь и отчеты смотреть и в кабинет ходить, а админка -
-это некий привелигированный признак")
+это некий привелигированный признак"; 2026-09-25, on §5: "должна быть
+нормальная сквозная логика для всего", of one rule for every path, and "хватит
+отказа", of the refusal at publish being enough, with no way to ask in advance)
 
 ## Context
 
@@ -102,10 +104,21 @@ seeds a merchant (ADR-0014).
 
 **5. The door to the shared catalogue is live publication.** Anyone who reads
 their mail holds a cabinet, integrates against the SDK and sells on the test
-channel. Live publication is refused until the merchant has a seller name and a
-payout wallet and the operator has switched that merchant on, once, with
-`pnpm approve`. The named trigger for the switch becoming a paid subscription is
-the day the operator cannot keep up.
+channel. What a merchant must have before a card of theirs is published or sold
+is one rule, `readinessOf` in `packages/core`, and every path that publishes,
+sells or tells a merchant whether they can asks it rather than restating it:
+the publish door and the check at every later sale in the gateway, the
+cabinet's screens and its WooCommerce import, and any shop connector after them.
+A seller name is asked for on every surface, the sandbox included, because a
+payment request names its seller there as anywhere; a payout wallet wherever a
+payment settles, which is the test channel and live and not the sandbox
+(ADR-0008); and the operator's approval on live alone, given once with
+`pnpm approve`. An integrator learns what their merchant lacks at the publish
+and nowhere earlier: the refusal carries `no_seller_name`, `no_payout_wallet`
+or `no_operator_approval` among its findings, which the contracts export as
+`MERCHANT_FINDINGS`, and its message names the missing settings in words. The
+named trigger for the switch becoming a paid subscription is the day the
+operator cannot keep up.
 
 **6. The operator enters through the same door.** Dmitry's word for the
 dashboard: "я думаю о том чтобы сделать вход в нее по той же сессии что и все
@@ -177,4 +190,7 @@ at publication, where a stranger's words reach a buyer. **Operator addresses in
 configuration** — a privilege kept apart from its account, granted before the
 address is proved and changed by editing a server's file. **Basic auth in front
 of `/admin`** — a shared password that names nobody and cannot be taken from one
-operator alone.
+operator alone. **A way to ask about readiness in advance**, a route or an SDK
+method answering what a merchant lacks before they publish — a second answer to
+the question the refusal already answers, one more surface a stranger's
+engineer has to learn, and one more place for the two answers to disagree.

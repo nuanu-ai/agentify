@@ -262,10 +262,17 @@ export type { QuotePurpose, QuoteRequest, QuoteResponse } from "./quote.js";
 export { QuotePurposeSchema, QuoteRequestSchema, QuoteResponseSchema } from "./quote.js";
 export type { Receipt, ReceiptOutcome } from "./receipt.js";
 export { ReceiptOutcomeSchema, ReceiptSchema } from "./receipt.js";
-export type { CallError, OrderCallResult, Problem, PublishResult } from "./results.js";
+export type {
+  CallError,
+  MerchantFinding,
+  OrderCallResult,
+  Problem,
+  PublishResult,
+} from "./results.js";
 export {
   CARD_REJECTED,
   CallErrorSchema,
+  MERCHANT_FINDINGS,
   ORDER_CALL_ERROR_CODES,
   ORDER_CALL_RESULTS,
   OrderCallResultSchema,

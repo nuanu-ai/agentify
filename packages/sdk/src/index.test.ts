@@ -64,6 +64,10 @@ describe("@nuanu-ai/agentify", () => {
       "AgentifyError",
       "CALL_DID_NOT_REACH_US",
       "CARD_REJECTED",
+      // The three findings a refused publish names about the merchant rather
+      // than the card. They were on the wire before they were here; exporting
+      // them is typing what a merchant's code already had to compare against.
+      "MERCHANT_FINDINGS",
       "ORDER_EVENT_TYPES",
       "OUTCOME_UNKNOWN",
       "RECOMMENDED_REFUSAL_CODES",

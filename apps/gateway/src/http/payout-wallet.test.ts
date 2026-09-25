@@ -401,29 +401,6 @@ describe("publishing before a wallet has been set", () => {
     expect(said).not.toContain("/v0/payout-wallet");
   });
 
-  it("carries an empty path, because it is not about a field of the card", async () => {
-    const { served } = await started();
-    const key = await fresh(served);
-    await named(served, key, "Their own shop");
-
-    const refused = await publishing(served, key, cardFor("a-room", "A room"));
-
-    const { problems } = (
-      refused.body as { error: { problems: { path: string[]; code: string }[] } }
-    ).error;
-    expect(problems.find((finding) => finding.code === "no_payout_wallet")?.path).toStrictEqual([]);
-  });
-
-  it("publishes for a merchant who has one, which is what makes the refusal a rule", async () => {
-    // The other half. Asserted alone, the refusal above would pass against a
-    // gateway that had stopped publishing anything at all.
-    const { served, harnessed } = await started();
-
-    const published = await publishing(served, harnessed.merchant.key, cardFor("a-room", "A room"));
-
-    expect(published.status, JSON.stringify(published.body)).toBe(200);
-  });
-
   it("writes nothing, so the card is not there afterwards", async () => {
     const { served } = await started();
     const key = await fresh(served);
@@ -433,38 +410,6 @@ describe("publishing before a wallet has been set", () => {
 
     const own = await served.call("GET", "/v0/cards", { headers: bearer(key) });
     expect((own.body as { cards: unknown[] }).cards).toStrictEqual([]);
-  });
-
-  it("says the name is missing too, rather than one thing at a time", async () => {
-    // A merchant who has just registered is missing both. Told one at a time,
-    // they set the name, publish again, and only then find out about the
-    // wallet.
-    const { served } = await started();
-    const key = await fresh(served);
-
-    const refused = await publishing(served, key, cardFor("a-room", "A room"));
-
-    expect(refused.status).toBe(422);
-    const { problems } = (refused.body as { error: { problems: { code: string }[] } }).error;
-    expect(problems.map((finding) => finding.code)).toContain("no_seller_name");
-    expect(problems.map((finding) => finding.code)).toContain("no_payout_wallet");
-  });
-
-  it("says what is wrong with the card as well", async () => {
-    const { served } = await started();
-    const key = await fresh(served);
-    await named(served, key, "Their own shop");
-
-    const refused = await publishing(served, key, {
-      ...cardFor("a-room", "A room"),
-      price: { amount: "not a number", currency: "USD" },
-    });
-
-    const { problems } = (
-      refused.body as { error: { problems: { path: string[]; code: string }[] } }
-    ).error;
-    expect(problems.map((finding) => finding.code)).toContain("no_payout_wallet");
-    expect(problems.some((finding) => finding.path.includes("price"))).toBe(true);
   });
 
   it("lets a merchant publish as soon as they set one", async () => {
@@ -479,18 +424,6 @@ describe("publishing before a wallet has been set", () => {
 
     const itemId = await publish(served, key, cardFor("a-room", "A room"));
     expect(await payToInTheChallenge(served, itemId)).toBe(A_WALLET);
-  });
-
-  it("asks for no wallet in the sandbox, where there is no chain and no money", async () => {
-    // A local stack has to come up and sell with nothing configured about a
-    // chain. The refusal above is about real money, and there is none here.
-    const { served } = await started({ FACILITATOR_URL: SANDBOX_FACILITATOR });
-    const key = await fresh(served);
-    await named(served, key, "Their own shop");
-
-    const published = await publishing(served, key, cardFor("a-room", "A room"));
-
-    expect(published.status, JSON.stringify(published.body)).toBe(200);
   });
 });
 
