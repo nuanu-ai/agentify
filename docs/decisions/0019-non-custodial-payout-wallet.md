@@ -192,9 +192,12 @@ wallet pauses selling for those two days rather than be paid where they
 cannot reach. A session that is not the owner's can pull against the owner:
 ask again after each cancel, cancel the owner's own replacement, and so end
 the owner's session. The wait and the message hold only while the owner
-answers them, and the pause, which is immediate, is what stops sales
-meanwhile. The message goes to the mailbox a session opens from (ADR-0009),
-so whoever holds that mailbox holds both. Such a session, open before any
+answers them. The answer is the pause, which is immediate, and signing out
+every other device from Settings (ADR-0026 §3), which reaches the pressing
+account only, where the cancel ends every session of every account naming
+the merchant. It ends the pull only if the intruder cannot sign in again:
+the message and every sign-in link go to the same mailbox (ADR-0009), so it
+holds only while that mailbox is the owner's. Such a session, open before any
 address is set, can still set the first one,
 which applies at once; the owner learns of it from the message that follows,
 when mail works, or from the wallet screen, and replacing it waits like any
