@@ -1262,6 +1262,15 @@ describe("the route table", () => {
     }
   });
 
+  it("says the payout wallet is set with a cabinet's key alone, and read with any", () => {
+    // A merchant's engineer reading this table decides from it whether their
+    // code can set the wallet. It cannot: where the money goes is set by a
+    // person in the cabinet, and a key of the merchant's own code is refused
+    // by name. Reading it stays open, and a reader has to know that too.
+    expect(API_ROUTES.set_payout_wallet.description).toContain("not_a_cabinet_key");
+    expect(API_ROUTES.get_payout_wallet.description).toContain("Any key of the merchant's");
+  });
+
   it("says the forgetting reaches only the key the call was made with", () => {
     // The fact a cabinet author builds on and the fact that makes the call
     // safe: there are no parameters and the only key it can remove is the one
