@@ -1201,6 +1201,12 @@ describe("the operator flag", () => {
     // the cabinet has a flag of its own, as a form, as JSON and in the query,
     // and is no operator afterwards. The routes are read off the cabinet's own
     // router rather than listed here, so a route added later is asked too.
+    //
+    // Every handler runs with what it is sent, and most stop early: a form
+    // without the fields it asks for is refused, and a route parameter is
+    // filled with an identifier no card or key has, so the gateway refuses it
+    // and the handler relays that. What this holds is that no handler takes
+    // the flag from a request, not that every line behind those refusals ran.
     const running = await started({ wooShops: memoryWooShops() });
     await running.browser.signIn();
     const listed = buildApp(
