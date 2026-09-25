@@ -313,6 +313,20 @@ describe("the passwordless account command", () => {
     expect((await identity.whoIs(cookie, { renew: false }))?.operator).toBe(false);
   });
 
+  it("makes no account: an account is made when its person opens the mailed link", async () => {
+    // One way in (ADR-0014, ADR-0026 §1): a person types an address, opens the
+    // link mailed to it, and the cabinet makes the account. The terminal looks
+    // after accounts that exist and makes none, for a merchant or otherwise.
+    const { identity, rows } = store();
+
+    const tried = await running(identity, ["add", "person@example.com", MERCHANT]);
+
+    expect(tried.code).toBe(2);
+    expect(tried.said).toContain("operator");
+    await expect(identity.byEmail("person@example.com")).resolves.toBeNull();
+    expect(rows.cabinet_accounts).toHaveLength(0);
+  });
+
   it("renders control characters from restored addresses harmlessly", async () => {
     const { identity, rows } = store();
     rows.cabinet_accounts?.push({
