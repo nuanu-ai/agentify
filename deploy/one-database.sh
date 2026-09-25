@@ -55,7 +55,8 @@ old_project="$(project old)" new_project="$(project new)"
 [[ $old_project != "$new_project" ]] || refuse "the revision $current and this one both name the project $new_project; there is nothing to move."
 old_postgres="$(volume old agentify-postgres)" old_caddy="$(volume old agentify-caddy)"
 new_postgres="$(volume new agentify-postgres)" new_caddy="$(volume new agentify-caddy)"
-read -r phase point stopped_at < "$progress" 2> /dev/null || phase="" point="" stopped_at=""
+phase="" point="" stopped_at=""
+[[ ! -f $progress ]] || read -r phase point stopped_at < "$progress"
 image="$(new config --images postgres)"
 containers="docker start \$(docker ps -aq --filter label=com.docker.compose.project=$old_project)"
 old_sql() { old exec -T postgres psql -X -U agentify_commerce -At "$@"; }
@@ -157,14 +158,17 @@ if [[ -n $(new exec -T postgres psql -X -U agentify_commerce -d postgres -Atc "s
   step="comparing the metabase views"
   views="select c.relname, pg_get_viewdef(c.oid), c.reloptions from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'metabase' and c.relkind = 'v' order by 1"
   new_sql() { new exec -T postgres psql -X -q -v ON_ERROR_STOP=1 -U agentify_commerce -At "$@"; }
+  # The file installed into a copy of the scanner's schema, views aside, beside
+  # what the host holds: PostgreSQL prints both definitions the same way.
   if git -C "$root" show ad5a772^:ops/dashboards/install-aggregate-views.sql > "$point/metabase-views.sql" \
     && new_sql -d postgres -c "DROP DATABASE IF EXISTS one_database_views" -c "CREATE DATABASE one_database_views" \
-    && new exec -T postgres pg_dump -U agentify_commerce --schema-only -n public agentify_scanner | new_sql -d one_database_views > /dev/null \
+    && new exec -T postgres pg_dump -U agentify_commerce --schema-only --exclude-schema=metabase --exclude-schema=pgboss agentify_scanner \
+    | new_sql -d one_database_views > /dev/null \
     && new_sql -d one_database_views < "$point/metabase-views.sql" > /dev/null; then
     new_sql -d agentify_scanner -c "$views" > "$point/metabase-views.host"
     new_sql -d one_database_views -c "$views" > "$point/metabase-views.file"
     if diff "$point/metabase-views.file" "$point/metabase-views.host" > "$point/metabase-views.diff"; then
-      say "the $(wc -l < "$point/metabase-views.host") metabase views are the ones ops/dashboards/install-aggregate-views.sql installs"
+      say "the $(new_sql -d agentify_scanner -c "select count(*) from pg_views where schemaname = 'metabase'") metabase views are the ones ops/dashboards/install-aggregate-views.sql installs"
     else
       say "the metabase views differ from ops/dashboards/install-aggregate-views.sql as $point/metabase-views.diff records"
     fi
