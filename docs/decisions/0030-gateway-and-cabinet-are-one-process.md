@@ -57,7 +57,9 @@ did not take while others may have gone out.
 process with both calls still made over loopback, the only step that touches
 deployment; the gateway telling the cabinet in-process; the cabinet calling the
 application in-process; the key deleted from the contract, the gateway and the
-data. The contract version stays, since no SDK worker calls these routes or
+data. Each of them edits, in the same change, the paragraphs of other
+decisions it makes true, and none earlier; the research note lists them by
+step. The contract version stays, since no SDK worker calls these routes or
 reads these codes: the reasoning of ADR-0006 §2, whose exception this widens
 beyond the payout wallet route.
 

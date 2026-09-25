@@ -321,13 +321,13 @@ test fixtures (`packages/contracts/src/portal-fixtures.test.ts`,
 
 ### One process
 
-One Node process, the `app` service of `compose.yaml`, named after the image
-it already runs from. The word `deploy/activate.sh` uses for the pair,
-"commerce", was not chosen, because it names a boundary inside one product
-rather than what the process is. A small workspace package, `apps/app`, holds only its
-entry point: it reads both configurations from one environment, starts the
-gateway, then the cabinet, and stops them in the reverse order. `apps/gateway`
-and `apps/cabinet` stay packages with their own tests, migrations and terminal
+One Node process, the `app` service of `compose.yaml`, named after the image it
+already runs from. The word `deploy/activate.sh` uses for the pair, "commerce",
+was not chosen, because it names a boundary inside one product rather than what
+the process is. A small workspace package, `apps/app`, holds only its entry
+point: it reads both configurations from one environment, starts the gateway,
+then the cabinet, and stops them in the reverse order. `apps/gateway` and
+`apps/cabinet` stay packages with their own tests, migrations and terminal
 commands, and lose their `main.ts`. The gateway's package does not import the
 cabinet's; the entry point is the one place the cabinet's teller is handed to
 the gateway as its announcer. The cabinet's package already imports the
@@ -379,15 +379,15 @@ The decision is the third: the cabinet calls the application, the same
 `Gateway` methods the handlers call, as the merchant named on the signed-in
 account's row. It keeps its own port, the `GatewayClient` interface in
 `apps/cabinet/src/gateway.ts`, whose methods already return the contract's
-document types and already carry the refusal as a sentence a page can show.
-The port loses its two methods about the cabinet key, and its list of keys
-loses `this_call`; otherwise only the implementation behind it changes, from
-`fetch` to a call. That implementation holds what it passes to the request
-schema the route table names for the same call, and what comes back to the
-response schema, so a mistyped wallet address is still refused in the schema's
-words, as the door refuses it today. A refusal the handler would word, such as a wallet change
-that could not be announced, reaches the page in the same words, because the
-wording moves out of `routes.ts` into a function both call. Each call keeps
+document types and already carry the refusal as a sentence a page can show. The
+port loses its two methods about the cabinet key, and its list of keys loses
+`this_call`; otherwise only the implementation behind it changes, from `fetch`
+to a call. That implementation holds what it passes to the request schema the
+route table names for the same call, and what comes back to the response
+schema, so a mistyped wallet address is still refused in the schema's words, as
+the door refuses it today. A refusal the handler would word, such as a wallet
+change that could not be announced, reaches the page in the same words, because
+the wording moves out of `routes.ts` into a function both call. Each call keeps
 the page's ten-second deadline; the work behind a call that runs out is not
 cancelled, as it is not today when a request times out on the client.
 
@@ -418,17 +418,17 @@ contract route in the same change.
 
 ### The WooCommerce worker and the terminal commands
 
-The worker fills orders for merchants who wrote no code, and it is the one
-part of the cabinet that uses the API the way the SDK does. It calls the
-application in-process like the screens, drawing with `Gateway.poll`, which a
-purchase in the same process wakes at once. Keeping it an HTTP client of `/v0`
-would take an ordinary key issued when a shop is connected, listed and
-disableable like any other, and that key would have to be stored as issued in
-order to be used, which is the property of the cabinet key this decision
-removes, beside a shop credential of the same kind ADR-0023 already keeps. The
-dogfooding it would keep is the one the SDK's own tests already give. If the connector ever leaves the process, as a plugin in the
-shop for instance, it becomes an ordinary client of the SDK with an ordinary
-key.
+The worker fills orders for merchants who wrote no code, and it is the one part
+of the cabinet that uses the API the way the SDK does. It calls the application
+in-process like the screens, drawing with `Gateway.poll`, which a purchase in
+the same process wakes at once. Keeping it an HTTP client of `/v0` would take
+an ordinary key issued when a shop is connected, listed and disableable like
+any other, and that key would have to be stored as issued in order to be used,
+which is the property of the cabinet key this decision removes, beside a shop
+credential of the same kind ADR-0023 already keeps. The dogfooding it would
+keep is the one the SDK's own tests already give. If the connector ever leaves
+the process, as a plugin in the shop for instance, it becomes an ordinary
+client of the SDK with an ordinary key.
 
 `woo:recover` reads one order and delivers late goods for it with the
 account's cabinet key. Once the key is gone it builds the application in its
@@ -534,56 +534,87 @@ worker for words none of them sees. ADR-0006 §2's exception, which names only
 the payout-wallet route, widens to cover the routes and codes only the cabinet
 ever used.
 
-## Records this changes
+## Records each step changes
 
-When ADR-0030 is accepted, these paragraphs describe the old shape and are
-edited in the change that makes them untrue.
+No other decision is edited with ADR-0030 itself. Each step's pull request
+edits, in the same change, the paragraphs that step makes true, and none
+earlier, for two reasons. A decision must not describe a state the code has
+not reached. And ADR-0014 and ADR-0019 are being edited now by the
+registration change, so an edit made ahead of the step would collide with it
+and might describe a registration that change does not leave.
 
+**Step 1, one process.**
+
+- ADR-0003 §2: `apps/app` joins the workspace's split beside `apps/gateway`.
 - ADR-0005 §1, the paragraph on `/healthz`: it answers for the process's
-  gateway listener, and `/cabinet/healthz` for its cabinet listener, in one
-  process. §2, "the cabinet is its own process", is replaced by a pointer to
-  ADR-0030. §3, "the cabinet reaches the gateway through the public API with a
-  merchant key", and its narrowing paragraph with the one call the other way,
-  become the cabinet calling the application as the signed-in account's
-  merchant, with the proof of the API named as above. In the consequences, "the
-  cabinet proves the API is usable by construction" narrows accordingly; in the
-  rejected alternatives, "the cabinet inside the gateway" is deleted, since it
-  is now the decision and ADR-0030 answers its objection, and "the cabinet
-  talking to Postgres directly" stays as "the cabinet querying the gateway's
-  tables".
+  gateway listener and `/cabinet/healthz` for its cabinet listener, and the
+  reason for having no aggregate health document stays, for the scanner and
+  Postgres. §2, "the cabinet is its own process", becomes a pointer to
+  ADR-0030, and the rejected alternative "the cabinet inside the gateway" is
+  deleted, since ADR-0030 answers its objection.
+- ADR-0024, the consequences: where each of the cabinet's internal credentials
+  is held by its own two processes, the scanner's is held by `app` and the
+  scanner, and the gateway's by `app` alone.
+- ADR-0026, the consequences: the cabinet's absence stops sales as well as
+  every sign-in, every full report and the dashboard.
+
+**Step 2, the gateway tells the cabinet in-process.**
+
+- ADR-0005 §3, the narrowing paragraph: the one call the other way is a call
+  inside the process.
+- ADR-0019: the paragraph on how the gateway asks the cabinet loses the
+  internal route, its secret, the caution about the scanner's route and the
+  case of a cabinet that did not answer, leaving nobody to tell, a message not
+  handed over, and the race; the serialization sentence's "a call to another
+  process and a mail provider" becomes a call to a mail provider; the
+  consequence "depends on the cabinet and the mail provider being up" keeps
+  only the mail provider.
+- ADR-0024, the consequences: the gateway's credential goes, and the scanner's
+  is the cabinet's only internal credential.
+
+**Step 3, the cabinet calls the application in-process.**
+
+- ADR-0005 §3: the cabinet calls the application as the signed-in account's
+  merchant rather than the public API with a key, and the proof of the API is
+  named as in ADR-0030; the consequences' "the cabinet proves the API is usable
+  by construction" narrows to the application and the contract's documents;
+  the rejected "the cabinet talking to Postgres directly" becomes "the cabinet
+  querying the gateway's tables".
 - ADR-0009 §2: "that merchant's key, the gateway client built per request from
   it" becomes the calls made as that merchant.
 - ADR-0010, the rejected "scoping in the cabinet only": the cabinet is a caller
   of the application, and scoping still lives in the gateway's store.
-- ADR-0014: the title and §1 lose the key and the network ("crosses the
-  boundary once"); §2 reduces to "an account names its merchant", with the
-  stored key, the renewal and its schedule gone; §5 keeps the three routes over
-  the merchant's own keys and the rule about the key on the call for HTTP
-  callers, and loses the two cabinet-key routes, the unswept leftovers and "the
-  way back in is a key of the other kind"; the rejected "encrypting the stored
-  key" has nothing left to encrypt. What the registration branch leaves of §3
-  and of the invitation is edited with it.
+- ADR-0014 §1: registration is a call inside the process, and a gateway that
+  does not answer becomes a database that does not answer. §2: the renewal and
+  its schedule go. §3, as far as the registration change leaves it: the
+  invitation leaves the configuration.
 - ADR-0019: the context's "the cabinet's, or one that lives in the merchant's
   own server environment" becomes a key or a person in the cabinet; the
-  paragraph on how the gateway asks the cabinet loses the internal route, its
-  secret, the scanner-route caution and the third case, leaving two refusals
-  and the race; the serialization sentence's "a call to another process and a
-  mail provider" becomes a call to a mail provider; "the cabinet's own key,
-  renewed daily, is announced to nobody" goes; the consequence "depends on the
-  cabinet and the mail provider being up" keeps only the mail provider.
+  message names the signed-in person for a change asked for in the cabinet,
+  and the key for one asked for with a key; the cancel paragraph's "if the key
+  that asked is the cabinet's own, a session acted" becomes a person in the
+  cabinet.
+- ADR-0023: "Cabinet fills the order as the merchant's worker" does so
+  in-process.
+- ADR-0026 §4: the press asks the application for the merchant, and a gateway
+  that does not answer becomes a database that does not answer.
+
+**Step 4, the cabinet key is deleted.**
+
+- ADR-0006 §2: the exception covers the routes and codes only the cabinet ever
+  used.
+- ADR-0014: the title and §1 lose the key; §2 reduces to "an account names its
+  merchant"; §3 loses the public registration route, as far as the
+  registration change leaves it; §5 keeps the three routes over the merchant's
+  own keys and the rule about the key on the call, and loses the two
+  cabinet-key routes, the unswept leftovers and "the way back in is a key of
+  the other kind"; the rejected "encrypting the stored key" goes.
+- ADR-0019: "the cabinet's own key, renewed daily, is announced to nobody"
+  goes.
 - ADR-0023: "the same host boundary as the cabinet key" becomes the account's;
-  "Cabinet fills the order as the merchant's worker" does so in-process; the
-  rejected "putting shop credentials in Gateway" stays true of the gateway's
-  tables.
-- ADR-0024, the consequences: of the cabinet's internal credentials only the
-  scanner's remains, held by the `app` process and the scanner.
-- ADR-0026 §4 and its table: the press makes the merchant, with no key, and the
-  case of a gateway that does not answer becomes a database that does not
-  answer; the consequences' "the cabinet's absence stops every sign-in, every
-  full report and the dashboard" adds sales.
-- ADR-0006 §2: the exception covers routes and codes only the cabinet used.
-- ADR-0003 §2 lists `apps/gateway` in the workspace's split; `apps/app` joins
-  it if the package is made.
+  the rejected "putting shop credentials in Gateway" stays true of the
+  gateway's tables.
+- ADR-0026 §4 and its table: the press makes the merchant with no key.
 
 ## What was not verified
 
