@@ -15,9 +15,11 @@
  * price as a string of minor units with `currency_minor_unit` beside it, so
  * `"12000"` is a hundred and twenty dollars at a scale of two and twelve
  * thousand yen at a scale of zero. `wc/v3`, which is what we create the order
- * through, writes the same price as a decimal. A converter that reads the
- * number and assumes the scale is wrong by a factor of a hundred for every
- * ordinary currency, silently, in the direction of somebody's money.
+ * through, writes the same price as a decimal, and in two ways: a product's
+ * price as the merchant typed it, `"25"` or `"19.9"`, and an order's totals at
+ * the shop's number of decimals, `"25.00"`. A converter that reads the number
+ * and assumes the scale is wrong by a factor of a hundred for every ordinary
+ * currency, silently, in the direction of somebody's money.
  *
  * **Nothing the merchant wrote is edited to fit.** A description too long for
  * our own catalogue is carried across whole and refused at the publish, where
@@ -108,6 +110,53 @@ export const decimalOfMinorUnits = (minor: string, scale: number): string | null
   }
   const digits = minor.padStart(scale + 1, "0");
   return `${digits.slice(0, digits.length - scale)}.${digits.slice(digits.length - scale)}`;
+};
+
+/**
+ * The decimal places this connector sells at: a US dollar's two. It is the
+ * `currency_minor_unit` the Store API has to answer for a product to be
+ * imported, and both that and the decimals WooCommerce writes an order's
+ * totals at come from one setting of the shop's, its number of decimals.
+ */
+export const USD_SCALE = 2;
+
+/**
+ * A price the way WooCommerce stores what a merchant typed: digits, or digits,
+ * a dot and more digits, where the digits before the dot may be missing.
+ * WooCommerce keeps ".99" as typed and drops a trailing dot, so "5." never
+ * arrives and is not a price here either.
+ */
+export const TYPED_PRICE = /^(?=\.?\d)(\d*)(?:\.(\d+))?$/;
+
+/**
+ * A price as a merchant typed it into WooCommerce, written at two decimal
+ * places, or null where that would take rounding or the text is not a decimal.
+ *
+ * WooCommerce keeps a product's price the way it was typed — it turns the
+ * shop's decimal separator into a dot and pads nothing — so `wc/v3` answers
+ * `"25"` and `"19.9"` for prices the Store API and every order total write as
+ * twenty-five and nineteen dollars ninety. The card, the quote and the order
+ * are compared with those totals character for character, so this is the one
+ * form they all carry.
+ *
+ * Padding is exact, and so are writing the zero a merchant left off before
+ * the dot, dropping a leading zero and dropping a zero past the second place. Dropping any other digit is rounding, and a rounded price is a
+ * price the merchant did not set, which is why `"25.001"` is null rather than
+ * `"25.00"`.
+ */
+export const usdAmountOf = (typed: string): string | null => {
+  const written = TYPED_PRICE.exec(typed);
+  if (written === null) {
+    return null;
+  }
+  // Leading zeros go, and a whole part left empty — "0.99", or ".99" as it
+  // was typed — is the zero it stands for, exactly.
+  const whole = (written[1] ?? "").replace(/^0+/, "") || "0";
+  const fraction = written[2] ?? "";
+  if (/[1-9]/.test(fraction.slice(USD_SCALE))) {
+    return null;
+  }
+  return `${whole}.${fraction.slice(0, USD_SCALE).padEnd(USD_SCALE, "0")}`;
 };
 
 /**
@@ -357,8 +406,22 @@ export const cardsFromTheShop = (
       continue;
     }
 
-    if (product.prices.currency_code !== "USD" || product.prices.currency_minor_unit !== 2) {
-      refused("This connector supports USD prices with two decimal places.");
+    if (product.prices.currency_code !== "USD") {
+      refused(
+        `The shop prices this product in ${JSON.stringify(product.prices.currency_code)}, and` +
+          " this connector sells in US dollars only.",
+      );
+      continue;
+    }
+    if (product.prices.currency_minor_unit !== USD_SCALE) {
+      // Named as the setting rather than as the prices: a whole-dollar shop
+      // that retyped every price with cents would be refused exactly the same.
+      refused(
+        `The shop's catalogue writes prices with ${product.prices.currency_minor_unit} decimal` +
+          ` places, and this connector sells at ${USD_SCALE}. Set WooCommerce → Settings → General →` +
+          ` Number of decimals to ${USD_SCALE}; if it already is, something in the shop is` +
+          " changing the decimals its catalogue is written at.",
+      );
       continue;
     }
     const amount = decimalOfMinorUnits(product.prices.price, product.prices.currency_minor_unit);

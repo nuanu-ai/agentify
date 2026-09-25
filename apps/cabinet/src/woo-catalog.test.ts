@@ -246,6 +246,21 @@ describe("turning a shop's products into cards", () => {
     expect(cards[0]?.card.description).toHaveLength(900);
   });
 
+  it("names the setting for a price at another scale, and the currency for another currency", () => {
+    // A whole-dollar shop is not fixed by retyping its prices with cents, so
+    // the refusal names the one setting that changes the scale. A shop in
+    // euros is not fixed by that setting, so its refusal does not name it.
+    const { skipped } = cardsFromTheShop([
+      product({ id: 1, prices: { price: "25", currency_code: "USD", currency_minor_unit: 0 } }),
+      product({ id: 2, prices: { price: "2500", currency_code: "EUR", currency_minor_unit: 2 } }),
+    ]);
+
+    const why = Object.fromEntries(skipped.map((one) => [one.id, one.why]));
+    expect(why["1"]).toContain("Number of decimals");
+    expect(why["2"]).toContain("EUR");
+    expect(why["2"]).not.toContain("Number of decimals");
+  });
+
   it("leaves a product it cannot map alone and says why", () => {
     const { cards, skipped } = cardsFromTheShop([
       product({ id: 1, type: "variable" }),
