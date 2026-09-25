@@ -396,11 +396,22 @@ export const cardsFromTheShop = (
       continue;
     }
 
-    if (
-      product.prices.currency_code !== "USD" ||
-      product.prices.currency_minor_unit !== USD_SCALE
-    ) {
-      refused("This connector supports USD prices with two decimal places.");
+    if (product.prices.currency_code !== "USD") {
+      refused(
+        `The shop prices this product in ${JSON.stringify(product.prices.currency_code)}, and` +
+          " this connector sells in US dollars only.",
+      );
+      continue;
+    }
+    if (product.prices.currency_minor_unit !== USD_SCALE) {
+      // Named as the setting rather than as the prices: a whole-dollar shop
+      // that retyped every price with cents would be refused exactly the same.
+      refused(
+        `The shop's catalogue writes prices with ${product.prices.currency_minor_unit} decimal` +
+          ` places, and this connector sells at ${USD_SCALE}. Set WooCommerce → Settings → General →` +
+          ` Number of decimals to ${USD_SCALE}; if it already is, something in the shop is` +
+          " changing the decimals its catalogue is written at.",
+      );
       continue;
     }
     const amount = decimalOfMinorUnits(product.prices.price, product.prices.currency_minor_unit);

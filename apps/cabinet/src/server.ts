@@ -1446,10 +1446,11 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
           product.prices.currency_minor_unit,
         );
         // Compared only at the scale the connector sells at, which is the
-        // scale the protected price is carried at. A shop set to another
-        // number of decimals is refused below in words that name that setting;
-        // comparing its "25" with the protected "25.00" here would tell the
-        // merchant that two equal prices differ.
+        // scale the protected price is carried at. A catalogue written at
+        // another scale is refused below by cardsFromTheShop in words that
+        // name WooCommerce's Number of decimals; comparing its "25" with the
+        // protected "25.00" here would tell the merchant that two equal prices
+        // differ.
         if (
           product.prices.currency_minor_unit === USD_SCALE &&
           (publicPrice !== inspected.product.price.amount ||
