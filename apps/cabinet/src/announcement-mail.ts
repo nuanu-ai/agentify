@@ -36,8 +36,9 @@
  *
  * What a message advises has to work in the state it describes. A waiting
  * change can be cancelled, and the cancel signs every other session out. After
- * a first wallet or a cancel nothing waits, so what works at once is pausing
- * the selling, and then setting an address, which waits and is announced.
+ * a first wallet or a cancel nothing waits, so what works is stopping the
+ * selling at once, signing out every other device, and then setting an
+ * address, which waits and is announced.
  */
 
 import type { Announcement, AskedWith } from "@agentify/gateway/announcements";
@@ -78,9 +79,14 @@ const IN_THE_CABINET = "in the cabinet";
 const IF_NOT_YOU =
   "If nobody at your business did this, somebody else may be signed in to your cabinet: cancelling the change on the wallet screen signs every other session out.";
 
-/** What works at once when nothing waits: the pause, then an address of one's own. */
-const PAUSE_THEN_SET = (wallet: string): string =>
-  `Somebody else may be signed in to your cabinet. Pause selling from your cabinet now, which stops new sales at once, then set your own address on the wallet screen: ${wallet}. That waits forty-eight hours and is announced, so keep selling paused until it applies.`;
+/**
+ * What works when nothing waits, in the order it works: the stop, which is
+ * immediate; the sign-out of every other device, so a session that is not the
+ * owner's cannot undo what comes next; and an address of one's own, which
+ * waits and is announced. The two controls are named as the screens name them.
+ */
+const PAUSE_THEN_SET = (settings: string): string =>
+  `Somebody else may be signed in to your cabinet. First press Stop all selling on the Cards screen, which stops new sales at once. Then press Sign out every other device in Settings: ${settings}. Then set your own address there; that waits forty-eight hours and is announced, so keep selling stopped until it applies.`;
 
 export function announcementMessage(
   to: string,
@@ -120,7 +126,7 @@ export function announcementMessage(
         action: "Open the wallet screen",
         link: screens.wallet,
         paragraphs: [
-          `If nobody at your business set it: ${PAUSE_THEN_SET(screens.wallet)}`,
+          `If nobody at your business set it, act now. ${PAUSE_THEN_SET(screens.wallet)}`,
           "This message opens nothing by itself: sign in to your cabinet the usual way.",
         ],
       });
