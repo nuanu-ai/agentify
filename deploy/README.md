@@ -112,6 +112,36 @@ commit has to move forward from the one the host runs. TEST takes a tag, a
 branch or a full commit SHA, as long as exactly one image build of it
 succeeded.
 
+## A secret a host's file may still lack
+
+Every channel's environment file names `ANNOUNCEMENT_SECRET` ("Setting up a
+host"): the gateway presents it to the cabinet to have a merchant told of a
+payout wallet change, and the cabinet refuses every other secret on that
+route. A file written before the variable existed does not have it, and the
+first release that carries it refuses such a channel in its preflight, before
+anything stops, so the running release keeps running. On TEST that refusal is
+recorded as the revision's failure, and the timer does not try that revision
+again; after the secret is added, a person releases it
+(`ssh -t agentify-test sudo agentify-release <name>`) or moves `deploy-test`
+to a newer commit.
+
+So before moving `deploy-test` to such a commit, and before running
+`agentify-release` on PRODUCTION for one, add the secret to each host's file,
+with a value made on that host for that channel alone — the channels share no
+secret, and one value serves both the gateway and the cabinet of a channel,
+since both read the same file:
+
+```sh
+ssh agentify-test "sudo sh -c 'umask 077; printf \"ANNOUNCEMENT_SECRET=%s\\n\" \"\$(openssl rand -base64 32)\" >> /etc/agentify/test.env'"
+ssh agentify "sudo sh -c 'umask 077; printf \"ANNOUNCEMENT_SECRET=%s\\n\" \"\$(openssl rand -base64 32)\" >> /etc/agentify/production.env'"
+ssh agentify-test sudo grep -c '^ANNOUNCEMENT_SECRET=' /etc/agentify/test.env
+ssh agentify sudo grep -c '^ANNOUNCEMENT_SECRET=' /etc/agentify/production.env
+```
+
+Each of the last two prints `1`. The value is made on the host and never
+passes through the terminal it was asked from; the file keeps its owner and
+mode.
+
 ## Releasing to production
 
 A production release starts from `main`. Every change a merchant can see in
