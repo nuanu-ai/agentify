@@ -218,8 +218,8 @@ which the two before them show as `root 600`:
 ```sh
 ssh agentify-test "sudo sed -i '/^AGENTIFY_SEED_KEY=/d' /etc/agentify/test.env"
 ssh agentify "sudo sed -i '/^AGENTIFY_SEED_KEY=/d' /etc/agentify/production.env"
-ssh agentify-test sudo stat -c '%U %a' /etc/agentify/test.env
-ssh agentify sudo stat -c '%U %a' /etc/agentify/production.env
+ssh agentify-test "sudo stat -c '%U %a' /etc/agentify/test.env"
+ssh agentify "sudo stat -c '%U %a' /etc/agentify/production.env"
 ssh agentify-test sudo grep -c '^AGENTIFY_SEED_KEY=' /etc/agentify/test.env
 ssh agentify sudo grep -c '^AGENTIFY_SEED_KEY=' /etc/agentify/production.env
 ```
