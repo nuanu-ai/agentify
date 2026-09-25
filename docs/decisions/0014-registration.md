@@ -1,7 +1,8 @@
 # 0014. Registration makes a merchant and its cabinet's key in one act
 
 Date: 2026-08-28
-Status: accepted (Dmitry, 2026-08-28: "разрабатывай экраны, реализуй регистрацию")
+Status: accepted (Dmitry, 2026-08-28: "разрабатывай экраны, реализуй регистрацию";
+2026-09-25: "удаляем все пути регистрации кроме одного основного")
 
 ## Context
 
@@ -13,6 +14,17 @@ every buyer. Registration therefore needs tenancy and a door, and neither may
 wait for perfection: the road's order is ADR-0010's.
 
 ## Decision
+
+There is one way in. An account comes into being when a person types their
+address, opens the link mailed to it and presses the button on the page it
+opens (ADR-0026 §1); a merchant, when that signed-in person presses the one
+control the cabinet offers (§1). No command at a server's terminal makes an
+account, a merchant or a key, and no deployed channel's gateway seeds a
+merchant at start-up: the release refuses a channel configured to. The
+operator's terminal looks after what exists — lists merchants, keys and
+accounts, disables a key, takes a listing name away, ends a person's sessions,
+moves the operator flag, approves live sales. Only the laptop's stack seeds its
+sandbox merchant, so that one command brings it up selling (ADR-0010).
 
 **1. The account is written at sign-in, the merchant and its key on the
 cabinet's explicit request.** The account appears when a one-time link is
@@ -44,11 +56,14 @@ nothing clears those yet. It is still not a secret store; the
 database is a boundary against the network, not against a host, and the day
 that stops being enough the fix is one, not a cleverer column.
 
-**3. The registration route is public, behind an invitation code.** Retired
-for people by ADR-0026 on 2026-09-17, as the last sentence of this paragraph
-said it would: the code is now a value in the cabinet's configuration guarding
-the wire between two processes of ours, and the door stands at live
-publication. What follows is why the route was built as it was. The route
+**3. The registration route is internal, behind an invitation code.** Only
+the cabinet calls it, at the gateway's name on the stack's own network, and
+the site answers it from outside as a path it does not have, as it answers the
+two calls at `/v0/keys/cabinet` (§5): the code is a value in the cabinet's and
+the gateway's configuration guarding the wire between two processes of ours,
+and a copy of that configuration must not be a way to make a merchant. People
+never type it; ADR-0026 retired it for them, and the door stands at live
+publication. What follows is why the route is built as it is. The route
 takes no key — nobody registering has one. A wrong code and a closed
 registration answer identically, in constant time against a decoy (the two
 answers that must be indistinguishable are the two refusals), so the form does
@@ -64,7 +79,9 @@ seller reaches an agent inside a payment challenge that names nobody.
 **5. Keys are made and disabled from the cabinet, and a key says what it is
 for.** Three merchant-scoped routes over the keys a merchant made for their own
 code — list, issue, disable — and two at `/v0/keys/cabinet` that make a key for
-a cabinet and forget one, refused to any other key. That kind is in no
+a cabinet and forget one, refused to any other key and reachable only inside
+the stack, so that a copied cabinet key cannot mint another from outside that
+no renewal ever forgets. That kind is in no
 merchant's list and is refused by the disabling, since a merchant switches off
 what they issued; forgetting removes rather than revokes. The forgetting takes
 the key the call was made with and no other: a rule of the form "every key but
@@ -94,6 +111,18 @@ person at a merchant, roles, deleting a merchant.
 
 ## Alternatives rejected
 
+**A merchant or an account made at the terminal.** Commands that made a
+merchant with no account, wrote a key for it straight into the database, and
+wrote an account for an existing merchant from a key piped in were a second
+door beside the mailed link: a merchant nobody could sign in as, a key no
+announcement covered (ADR-0019), an account whose address nobody had proved.
+What they were for is what the one way in does: a person who needs an
+account signs in, and a merchant who has lost every key signs in, which
+renews the cabinet's own, and issues a new one there.
+**Seeding a merchant on a deployed channel.** A key in a host's file, written
+into the database at every start, is a merchant nobody registered and a
+credential nobody can retire without a release: disabling its row stops it,
+and a database brought up from nothing is seeded off the same line again.
 **Open registration.** Not before an address means something: the catalogue is
 shared, and the first cost of a stranger's words is the buyer's, not ours.
 **Wait for mail, build nothing.** Everything here is needed whichever the door

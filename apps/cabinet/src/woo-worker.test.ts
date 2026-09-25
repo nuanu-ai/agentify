@@ -30,6 +30,7 @@ import { gatewayFor } from "./gateway.js";
 import { cardsFromTheShop, merchantItemIdFor, type StoreProduct } from "./woo-catalog.js";
 import {
   createTheOrderInTheShop,
+  inspectProductInTheShop,
   type OrderMade,
   type ShopKeys,
   type SoldItem,
@@ -782,5 +783,178 @@ describe("the worker that keeps every connected shop served", () => {
     await new Promise((resolve) => setTimeout(resolve, 60));
     await worker.stop();
     expect(gateway.polls()).toBe(0);
+  });
+});
+
+describe("a shop whose Number of decimals changed after the quote", () => {
+  let shopServer: Server | null = null;
+
+  afterEach(async () => {
+    await new Promise<void>((resolve) => {
+      if (shopServer === null) {
+        resolve();
+        return;
+      }
+      shopServer.close(() => resolve());
+    });
+    shopServer = null;
+  });
+
+  /**
+   * A WooCommerce on loopback answering the protected product check and the
+   * order call, with its Number of decimals as the test leaves it and every
+   * call it was asked remembered. Its order answer writes every total at that
+   * number of decimals, whatever string it was sent, which is what `wc/v3`
+   * does. The product's price is stored as a whole-dollar merchant typed it.
+   */
+  const aShopWritingDecimals = async (
+    decimals: () => string,
+  ): Promise<{ url: string; asked: { method: string; path: string }[] }> => {
+    const asked: { method: string; path: string }[] = [];
+    const settings: Readonly<Record<string, string>> = {
+      woocommerce_currency: "USD",
+      woocommerce_calc_taxes: "no",
+      woocommerce_file_download_method: "force",
+      woocommerce_downloads_require_login: "no",
+      woocommerce_downloads_grant_access_after_payment: "yes",
+      woocommerce_downloads_redirect_fallback_allowed: "no",
+    };
+    shopServer = createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk: Buffer) => chunks.push(chunk));
+      request.on("end", () => {
+        const method = request.method ?? "GET";
+        const path = request.url ?? "/";
+        asked.push({ method, path });
+        const answer = (status: number, body: unknown): void => {
+          response.writeHead(status, { "content-type": "application/json" });
+          response.end(JSON.stringify(body));
+        };
+        if (path === "/protected/guide.txt") return answer(403, {});
+        const setting = /\/settings\/\w+\/(\w+)$/.exec(path)?.[1];
+        if (setting !== undefined) {
+          return answer(200, {
+            value: setting === "woocommerce_price_num_decimals" ? decimals() : settings[setting],
+          });
+        }
+        if (method === "POST" && path === "/wp-json/wc/v3/orders") {
+          const sent = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          const written = (amount: string): string => Number(amount).toFixed(Number(decimals()));
+          return answer(201, {
+            id: 13,
+            number: "13",
+            order_key: "wc_order_13",
+            status: "processing",
+            currency: sent.currency,
+            total: written(sent.line_items[0].total),
+            total_tax: written("0"),
+            payment_method: sent.payment_method,
+            transaction_id: sent.transaction_id,
+            billing: sent.billing,
+            meta_data: sent.meta_data,
+            line_items: [
+              {
+                product_id: sent.line_items[0].product_id,
+                quantity: 1,
+                subtotal: written(sent.line_items[0].subtotal),
+                total: written(sent.line_items[0].total),
+                total_tax: written("0"),
+              },
+            ],
+          });
+        }
+        return answer(200, {
+          id: 11,
+          type: "simple",
+          status: "publish",
+          purchasable: true,
+          stock_status: "instock",
+          manage_stock: false,
+          sold_individually: false,
+          virtual: true,
+          downloadable: true,
+          download_limit: -1,
+          download_expiry: -1,
+          price: "25",
+          downloads: [
+            {
+              id: "dl_guide",
+              name: "Guide",
+              file: `http://${request.headers.host}/protected/guide.txt`,
+            },
+          ],
+        });
+      });
+    });
+    shopServer.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => shopServer?.once("listening", resolve));
+    const { port } = shopServer.address() as AddressInfo;
+    return { url: `http://127.0.0.1:${port}`, asked };
+  };
+
+  /**
+   * Filling against that shop with the real product check and the real order
+   * call; the quote's fingerprint is the one the check gave when it was taken.
+   */
+  const fillingAgainst = (shops: WooShops, quotedFingerprint: string | null) => ({
+    shops,
+    now: () => new Date("2026-09-14T12:00:00.000Z"),
+    placeOrder: (keys: ShopKeys, sold: SoldItem) => createTheOrderInTheShop(keys, sold, fetch),
+    eligibleProduct: async (connected: WooConnection, merchantItemId: string) => {
+      const read = await inspectProductInTheShop(connected, merchantItemId, fetch);
+      return read.ok ? read.product : null;
+    },
+    quotedProduct: async () => quotedFingerprint,
+  });
+
+  it("refuses the sale before any order is posted to the shop", async () => {
+    // A merchant who sold in whole dollars switched to two decimals to import,
+    // an agent was quoted, and the merchant switched back. Posted, the order
+    // would exist in the shop, paid, and WooCommerce's answer of "25" could
+    // never be matched with "25.00": the sale would end as an order nobody
+    // here can say was made. Refused before the post, it is a refund.
+    for (const changedTo of ["0", "3"]) {
+      let decimals = "2";
+      const shop = await aShopWritingDecimals(() => decimals);
+      const connected: WooConnection = { ...connection(), shopUrl: shop.url };
+      const item = merchantItemIdFor(shop.url, "11");
+      const quoted = await inspectProductInTheShop(connected, item, fetch);
+      expect(quoted.ok, changedTo).toBe(true);
+      decimals = changedTo;
+      const shops = memoryWooShops();
+
+      const answer = await fillFromTheShop(
+        anOrder({ merchant_item_id: item }),
+        connected,
+        MERCHANT_EMAIL,
+        fillingAgainst(shops, quoted.ok ? quoted.product.fingerprint : null),
+      );
+
+      expect(answer !== null && "refused" in answer, changedTo).toBe(true);
+      expect(
+        shop.asked.filter((one) => one.method === "POST"),
+        changedTo,
+      ).toEqual([]);
+      expect((await shops.knownOrder("ord_1"))?.kind, changedTo).toBe("precreate_refused");
+      await new Promise<void>((resolve) => shopServer?.close(() => resolve()));
+      shopServer = null;
+    }
+  });
+
+  it("places the order in a shop that still writes two decimals", async () => {
+    const shop = await aShopWritingDecimals(() => "2");
+    const connected: WooConnection = { ...connection(), shopUrl: shop.url };
+    const item = merchantItemIdFor(shop.url, "11");
+    const quoted = await inspectProductInTheShop(connected, item, fetch);
+
+    const answer = await fillFromTheShop(
+      anOrder({ merchant_item_id: item }),
+      connected,
+      MERCHANT_EMAIL,
+      fillingAgainst(memoryWooShops(), quoted.ok ? quoted.product.fingerprint : null),
+    );
+
+    expect(answer).toMatchObject({ delivered: { file_name: "Guide", order_number: "13" } });
+    expect(shop.asked.filter((one) => one.method === "POST")).toHaveLength(1);
   });
 });

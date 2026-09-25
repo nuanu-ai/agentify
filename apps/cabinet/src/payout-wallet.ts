@@ -73,6 +73,21 @@ export const LIVE_CHANGE_WAITS =
   "A different address takes effect forty-eight hours after every account of your merchant" +
   " is sent a message about it. Until then your sales are paid into the address above.";
 
+/**
+ * What an account whose key cannot set the wallet is told.
+ *
+ * An account made before accounts were checked can hold a key made for the
+ * merchant's own code rather than one made for the cabinet (ADR-0014 §5). The
+ * gateway will not let such a key change where the money goes, the cabinet
+ * cannot replace it, and the cabinet has no screen that could; so the page
+ * says what happened and that nothing here mends it, and offers nothing to
+ * press again.
+ */
+export const ACCOUNT_KEY_CANNOT_SET_THE_WALLET =
+  "Nothing was changed. The key this account's cabinet calls Agentify with is of the wrong" +
+  " kind: it was made for your merchant's own code, and a key of that kind cannot change where" +
+  " your money goes. Nothing in the cabinet can replace it.";
+
 /** What somebody who pressed the button with an empty box is told. */
 export const WALLET_NEEDED =
   "An address is needed here. Copy it out of the wallet you want to be paid in rather than" +
@@ -206,6 +221,11 @@ const pendingAddress = (
  * So the stored address is text, the box is for a different one, and the label
  * on it says which of the two acts this is.
  *
+ * With a change waiting, the box's form carries what the cancel form does —
+ * the change it showed and the address paid beside it — so an address typed
+ * after that change took effect is told apart and answered as a press of
+ * Cancel on the same page would be.
+ *
  * A refused address is handed back the same way, whole and in fours under the
  * sentence that refused it. The box keeps it too, so it can be corrected rather
  * than retyped, but a box shows only as much of an address as it is wide — on
@@ -248,7 +268,14 @@ export const payoutWalletBlock = (viewer: Viewer): string => {
       }
     </div>
   </div>
-  <form class="issue" method="post" action="${escaped(base)}/settings/payout-wallet">
+  <form class="issue" method="post" action="${escaped(base)}/settings/payout-wallet">${
+    pending === undefined || pending === null
+      ? ""
+      : `
+    <input type="hidden" name="waiting" value="${escaped(pending.wallet)}">
+    <input type="hidden" name="waiting_from" value="${escaped(pending.takesEffectAt)}">
+    <input type="hidden" name="paid" value="${escaped(wallet ?? "")}">`
+  }
     <div>
       <label for="payout_wallet">${wallet === null ? "The address your money arrives at" : "Change it to a different address"}</label>
       <input id="payout_wallet" name="payout_wallet" type="text" autocomplete="off" spellcheck="false" maxlength="42" size="42" value="${escaped(typed ?? "")}" required>

@@ -50,7 +50,7 @@ export const DEFAULT_TEST_DATABASE_URL = `postgres://agentify:agentify@localhost
  * not mean lying about DATABASE_URL.
  *
  * It is a name of its own rather than DATABASE_URL because DATABASE_URL is
- * already spoken for: it is what `db:migrate` and `account add` are handed, and
+ * already spoken for: it is what `db:migrate` and `account list` are handed, and
  * what it names for them is `agentify` — the one database this suite
  * refuses.
  * A variable with "test" in it cannot be mistaken for that one, so it is the

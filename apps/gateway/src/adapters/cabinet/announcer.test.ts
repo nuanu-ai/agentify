@@ -13,10 +13,10 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ANNOUNCEMENTS_PATH, type Announcement } from "../../announcements.js";
+import { type Announcement, GATEWAY_ROUTE_PATH } from "../../announcements.js";
 import { CabinetAnnouncer } from "./announcer.js";
 
-const SECRET = "the-announcement-secret-this-suite-presents";
+const SECRET = "the-gateway-cabinet-secret-this-suite-presents";
 
 const ANNOUNCEMENT: Announcement = {
   kind: "wallet_change",
@@ -24,7 +24,6 @@ const ANNOUNCEMENT: Announcement = {
   from: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
   to: "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
   not_before: "2026-09-26T12:00:00.000Z",
-  asked_with: { kind: "cabinet" },
 };
 
 interface Arrived {
@@ -87,9 +86,9 @@ describe("asking the cabinet", () => {
     expect(arrived).toStrictEqual([
       {
         method: "POST",
-        path: ANNOUNCEMENTS_PATH,
+        path: GATEWAY_ROUTE_PATH,
         authorization: `Bearer ${SECRET}`,
-        body: ANNOUNCEMENT,
+        body: { operation: "announce", ...ANNOUNCEMENT },
       },
     ]);
   });
@@ -133,7 +132,7 @@ describe("a cabinet that turned the request away", () => {
       error.mockRestore();
     }
 
-    expect(said.join("\n")).toContain("ANNOUNCEMENT_SECRET");
+    expect(said.join("\n")).toContain("GATEWAY_CABINET_SECRET");
     expect(said.join("\n")).not.toContain(SECRET);
   });
 });

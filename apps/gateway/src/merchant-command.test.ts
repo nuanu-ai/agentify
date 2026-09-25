@@ -1,75 +1,55 @@
 /**
- * The commands that make a merchant and keep their keys.
+ * The commands that look after the merchants there are and their keys.
  *
- * The one thing worth more than the rest: the key printed at the terminal is
- * the key that opens the door. Nothing else here can check that for the person
- * running it — there is no second chance to read the key, and a command that
- * printed one string while writing the digest of another would look exactly
- * like a merchant who typed it in wrong.
+ * The one thing worth more than the rest: nothing here makes a merchant or
+ * issues a key. A merchant comes into being when a person opens the link mailed
+ * to them and presses the cabinet's one control (ADR-0014), and a key for a
+ * merchant's own code is issued from their cabinet, where it is announced
+ * (ADR-0019). So every merchant and key below is arranged through the store and
+ * the gateway's own functions, the way a registration or the keys route writes
+ * them, and never through the command under test.
  *
  * The rest is what somebody does at a terminal: naming a merchant who is not
  * there, disabling a key twice, running a verb with half its arguments.
  */
 
-import type { Environment } from "@agentify/core";
 import { describe, expect, it } from "vitest";
 import { MemoryStore } from "./adapters/memory/store.js";
-import { issueCabinetKey, keyDigest } from "./app/merchants.js";
+import { issueCabinetKey, issueKey } from "./app/merchants.js";
 import { runMerchant } from "./merchant-command.js";
 import { countedIds } from "./testing/harness.js";
 
-/**
- * A store, the identifiers, a fixed clock, and everything the command said.
- *
- * The environment is a parameter because it is the one thing about this command
- * a caller has to be told rather than work out, and the keys it issues carry it.
- */
-function aTerminal(environment: Environment = "test") {
+/** A store, the identifiers, a fixed clock, and everything the command said. */
+function aTerminal() {
   const store = new MemoryStore(countedIds());
   const said: string[] = [];
   const at = Date.parse("2026-08-27T12:00:00.000Z");
-  // One generator across every run, because that is what a process has: two of
-  // them would issue two keys under one identifier, which a database refuses.
+  // One generator across every write, because that is what a process has: two
+  // of them would issue two keys under one identifier, which a database
+  // refuses.
   const ids = countedIds();
   const run = (...argv: string[]) =>
     runMerchant(
       argv,
       store,
-      ids,
       () => at,
       (line) => said.push(line),
-      environment,
     );
-  return { store, said, at, ids, run, text: () => said.join("\n") };
+  /** A merchant, written the way a registration writes one. */
+  const aMerchant = async (name: string): Promise<string> => {
+    const made = await store.addMerchant({ id: ids("mch"), name }, at);
+    if (made === null) {
+      throw new Error(`the store would not make ${name}`);
+    }
+    return made.id;
+  };
+  /** A key for the merchant's own code, issued the way the keys route issues one. */
+  const aKey = async (merchantId: string, label: string): Promise<string> =>
+    (await issueKey(store, ids, merchantId, label, at, "test")).secret;
+  return { store, said, at, ids, run, aMerchant, aKey, text: () => said.join("\n") };
 }
 
-describe("making a merchant", () => {
-  it("writes one down and prints the identifier everything else names it by", async () => {
-    const terminal = aTerminal();
-
-    const code = await terminal.run("add", "Someone's shop");
-
-    expect(code).toBe(0);
-    const [made] = await terminal.store.merchants();
-    expect(made?.name).toBe("Someone's shop");
-    expect(terminal.text()).toContain(made?.id ?? "no merchant was made");
-  });
-
-  it("takes a name with spaces in it rather than only its first word", async () => {
-    const terminal = aTerminal();
-
-    await terminal.run("add", "Someone's", "shop", "in", "Ubud");
-
-    expect((await terminal.store.merchants())[0]?.name).toBe("Someone's shop in Ubud");
-  });
-
-  it("asks for a name rather than making a merchant with none", async () => {
-    const terminal = aTerminal();
-
-    expect(await terminal.run("add")).toBe(2);
-    expect(await terminal.store.merchants()).toStrictEqual([]);
-  });
-
+describe("the merchants there are", () => {
   it("says what the verbs are when it is given one it does not know", async () => {
     const terminal = aTerminal();
 
@@ -92,9 +72,8 @@ describe("making a merchant", () => {
     // printing — nobody typed one — so a list that showed only that column
     // would read identically down every row of them.
     const terminal = aTerminal();
-    await terminal.run("add", "Someone's shop");
-    const [made] = await terminal.store.merchants();
-    await terminal.run("listed-as", made?.id ?? "", "The shop on the corner");
+    const merchantId = await terminal.aMerchant("Someone's shop");
+    await terminal.run("listed-as", merchantId, "The shop on the corner");
 
     const listed = await theListing(terminal);
 
@@ -107,7 +86,7 @@ describe("making a merchant", () => {
     // merchant it is — otherwise the change above would have replaced one name
     // with nothing at all for every merchant who has not chosen yet.
     const terminal = aTerminal();
-    await terminal.run("add", "Someone's shop");
+    await terminal.aMerchant("Someone's shop");
 
     const listed = await theListing(terminal);
 
@@ -129,76 +108,17 @@ async function theListing(terminal: ReturnType<typeof aTerminal>): Promise<strin
   return terminal.said.slice(before).join("\n");
 }
 
-describe("issuing a key", () => {
-  it("prints a key that opens the door, once", async () => {
-    // The whole of what this command is for. The key is generated here, printed
-    // here, and never readable again — so if the digest written down were of
-    // anything but the string printed, nobody would find out until a merchant
-    // reported that their key did not work.
-    const terminal = aTerminal();
-    await terminal.run("add", "Someone's shop");
-    const [made] = await terminal.store.merchants();
-    const merchantId = made?.id ?? "";
-    terminal.said.length = 0;
-
-    expect(await terminal.run("key", merchantId, "the shop's own worker")).toBe(0);
-
-    const printed = terminal.said
-      .map((line) => line.trim())
-      .find((line) => line.startsWith("csk_"));
-    expect(printed).toBeDefined();
-    expect((await terminal.store.workingKey(keyDigest(printed ?? "")))?.merchantId).toBe(
-      merchantId,
-    );
-  });
-
-  it("prints a key for the site it was told it is issuing on", async () => {
-    // The command is pointed at a database, and a database address says nothing
-    // about which chain the gateway in front of it settles on. Told the wrong
-    // one, this prints a key that opens nothing and reads as a key somebody
-    // typed in wrong — so the environment it was told is what the key carries.
-    const live = aTerminal("live");
-    await live.run("add", "Someone's shop");
-    const merchantId = (await live.store.merchants())[0]?.id ?? "";
-    live.said.length = 0;
-
-    expect(await live.run("key", merchantId, "the shop's own worker")).toBe(0);
-
-    const printed = live.said.map((line) => line.trim()).find((line) => line.startsWith("csk_"));
-    expect(printed?.startsWith("csk_live_")).toBe(true);
-  });
-
-  it("refuses to issue a key for a merchant nobody made", async () => {
-    // Named rather than left to the database's foreign key, so somebody who
-    // mistyped an identifier reads a sentence instead of a driver's error.
-    const terminal = aTerminal();
-
-    expect(await terminal.run("key", "mch_nobody", "a label")).toBe(1);
-    expect(terminal.text()).toContain("mch_nobody");
-  });
-
-  it("asks for a label rather than issuing a key nobody can tell from another", async () => {
-    const terminal = aTerminal();
-    await terminal.run("add", "Someone's shop");
-    const merchantId = (await terminal.store.merchants())[0]?.id ?? "";
-
-    expect(await terminal.run("key", merchantId)).toBe(2);
-    expect(await terminal.store.keysOf(merchantId)).toStrictEqual([]);
-  });
-
-  it("never prints a key back when the keys are listed", async () => {
+describe("listing a merchant's keys", () => {
+  it("never prints a key back", async () => {
     // What is kept is a digest, and this is the command that would leak it if
     // anything did.
     const terminal = aTerminal();
-    await terminal.run("add", "Someone's shop");
-    const merchantId = (await terminal.store.merchants())[0]?.id ?? "";
-    await terminal.run("key", merchantId, "the worker's");
-    const secret = terminal.said.map((line) => line.trim()).find((line) => line.startsWith("csk_"));
-    terminal.said.length = 0;
+    const merchantId = await terminal.aMerchant("Someone's shop");
+    const secret = await terminal.aKey(merchantId, "the worker's");
 
     expect(await terminal.run("keys", merchantId)).toBe(0);
 
-    expect(terminal.text()).not.toContain(secret ?? "csk_nothing-was-issued");
+    expect(terminal.text()).not.toContain(secret);
     expect(terminal.text()).toContain("the worker's");
   });
 
@@ -210,13 +130,9 @@ describe("issuing a key", () => {
     // between revoking a worker and locking a person out of their cabinet, so
     // it is said in a column rather than left to a label anybody can type.
     const terminal = aTerminal();
-    await terminal.run("add", "Someone's shop");
-    const merchantId = (await terminal.store.merchants())[0]?.id ?? "";
-    await terminal.run("key", merchantId, "the worker's");
-    // Through the terminal's own generator, because two of them would issue two
-    // keys under one identifier, exactly as two processes would.
+    const merchantId = await terminal.aMerchant("Someone's shop");
+    await terminal.aKey(merchantId, "the worker's");
     await issueCabinetKey(terminal.store, terminal.ids, merchantId, terminal.at, "test");
-    terminal.said.length = 0;
 
     expect(await terminal.run("keys", merchantId)).toBe(0);
 
@@ -235,13 +151,11 @@ describe("issuing a key", () => {
     // The call is put on a different day from the one the keys were made on, so
     // that a line printing the wrong instant in the right place cannot pass.
     const terminal = aTerminal();
-    await terminal.run("add", "Someone's shop");
-    const merchantId = (await terminal.store.merchants())[0]?.id ?? "";
-    await terminal.run("key", merchantId, "the worker's");
-    await terminal.run("key", merchantId, "the one nobody calls");
+    const merchantId = await terminal.aMerchant("Someone's shop");
+    await terminal.aKey(merchantId, "the worker's");
+    await terminal.aKey(merchantId, "the one nobody calls");
     const [called] = await terminal.store.keysOf(merchantId);
     await terminal.store.noteKeyUse(called?.id ?? "", Date.parse("2026-08-29T09:30:00.000Z"));
-    terminal.said.length = 0;
 
     expect(await terminal.run("keys", merchantId)).toBe(0);
 
@@ -265,12 +179,10 @@ describe("disabling a key", () => {
     // Somebody revoking a key that has leaked needs to know whether they have
     // just locked the merchant out of their own gateway.
     const terminal = aTerminal();
-    await terminal.run("add", "Someone's shop");
-    const merchantId = (await terminal.store.merchants())[0]?.id ?? "";
-    await terminal.run("key", merchantId, "the first");
-    await terminal.run("key", merchantId, "the second");
+    const merchantId = await terminal.aMerchant("Someone's shop");
+    await terminal.aKey(merchantId, "the first");
+    await terminal.aKey(merchantId, "the second");
     const [first, second] = await terminal.store.keysOf(merchantId);
-    terminal.said.length = 0;
 
     expect(await terminal.run("disable", first?.id ?? "")).toBe(0);
 
@@ -299,13 +211,12 @@ describe("disabling a key", () => {
 describe("the name a merchant is listed under", () => {
   it("sets it and says what it now is", async () => {
     const terminal = aTerminal();
-    await terminal.run("add", "Someone's shop");
-    const [made] = await terminal.store.merchants();
+    const merchantId = await terminal.aMerchant("Someone's shop");
 
-    const code = await terminal.run("listed-as", made?.id ?? "", "Someone's shop");
+    const code = await terminal.run("listed-as", merchantId, "Someone's shop");
 
     expect(code).toBe(0);
-    expect((await terminal.store.merchantById(made?.id ?? ""))?.serviceName).toBe("Someone's shop");
+    expect((await terminal.store.merchantById(merchantId))?.serviceName).toBe("Someone's shop");
     expect(terminal.text()).toContain("Someone's shop");
   });
 
@@ -314,14 +225,13 @@ describe("the name a merchant is listed under", () => {
     // render and tells nobody, so a merchant would trade under a word they did
     // not choose and never find out.
     const terminal = aTerminal();
-    await terminal.run("add", "A merchant");
-    const [made] = await terminal.store.merchants();
+    const merchantId = await terminal.aMerchant("A merchant");
 
-    const code = await terminal.run("listed-as", made?.id ?? "", "Кафе");
+    const code = await terminal.run("listed-as", merchantId, "Кафе");
 
     expect(code).toBe(1);
     expect(terminal.text()).toMatch(/ASCII/i);
-    expect((await terminal.store.merchantById(made?.id ?? ""))?.serviceName).toBeNull();
+    expect((await terminal.store.merchantById(merchantId))?.serviceName).toBeNull();
   });
 
   it("takes it away when nothing is named, and says the cards come off sale with it", async () => {
@@ -331,14 +241,13 @@ describe("the name a merchant is listed under", () => {
     // merchant's whole catalog off sale, and somebody who reads "nothing about
     // the seller goes out" and walks away has been told the small half of it.
     const terminal = aTerminal();
-    await terminal.run("add", "A merchant");
-    const [made] = await terminal.store.merchants();
-    await terminal.run("listed-as", made?.id ?? "", "Freeland");
+    const merchantId = await terminal.aMerchant("A merchant");
+    await terminal.run("listed-as", merchantId, "Freeland");
 
-    const code = await terminal.run("listed-as", made?.id ?? "", "--none");
+    const code = await terminal.run("listed-as", merchantId, "--none");
 
     expect(code).toBe(0);
-    expect((await terminal.store.merchantById(made?.id ?? ""))?.serviceName).toBeNull();
+    expect((await terminal.store.merchantById(merchantId))?.serviceName).toBeNull();
     expect(terminal.text()).toMatch(/off sale/i);
   });
 
@@ -359,22 +268,47 @@ describe("the name a merchant is listed under", () => {
   });
 });
 
+describe("what the terminal does not make", () => {
+  // A merchant comes into being one way: a person opens the link mailed to
+  // their address and presses the cabinet's one control (ADR-0014), and a key
+  // for a merchant's own code is issued from their cabinet, where it is
+  // announced (ADR-0019). The terminal looks after what exists and makes
+  // neither.
+  it("makes no merchant, and says what the verbs are", async () => {
+    const terminal = aTerminal();
+
+    expect(await terminal.run("add", "Someone's shop")).toBe(2);
+
+    expect(await terminal.store.merchants()).toStrictEqual([]);
+    expect(terminal.text()).toContain("disable");
+  });
+
+  it("issues no key, even for a merchant that exists", async () => {
+    const terminal = aTerminal();
+    await terminal.store.addMerchant({ id: "mch_1", name: "Someone's shop" }, terminal.at);
+
+    expect(await terminal.run("key", "mch_1", "the shop's own worker")).toBe(2);
+
+    expect(await terminal.store.keysOf("mch_1")).toStrictEqual([]);
+    expect(terminal.text()).not.toContain("csk_");
+  });
+});
+
 describe("the address a merchant is paid at", () => {
   it("is not written from a terminal, so every change reaches the call that announces it", async () => {
     // A change of the wallet waits and is announced before anything is written
     // (ADR-0019), which holds only while the gateway sees every change. A verb
     // here that wrote it would be the one change nobody was told about.
     const terminal = aTerminal();
-    await terminal.run("add", "A merchant");
-    const [made] = await terminal.store.merchants();
+    const merchantId = await terminal.aMerchant("A merchant");
 
     const code = await terminal.run(
       "pays-to",
-      made?.id ?? "",
+      merchantId,
       "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
     );
 
     expect(code).toBe(2);
-    expect((await terminal.store.merchantById(made?.id ?? ""))?.payoutWallet.address).toBeNull();
+    expect((await terminal.store.merchantById(merchantId))?.payoutWallet.address).toBeNull();
   });
 });

@@ -1002,10 +1002,11 @@ describe("the mark a call leaves on the key it was made with", () => {
 
 describe("the merchant every ordinary test sells as", () => {
   it("still reaches its own keys, which is what the seeded merchant is for", async () => {
-    // The harness seeds a merchant the way the command-line verb does, with no
-    // registration involved. Its key resolves to a key row like any other, so
-    // the list names it — a door that could only name a key registration made
-    // would break every merchant made at a terminal.
+    // The harness writes a merchant straight into the store, with no
+    // registration involved, the way the sandbox's seed does and the way every
+    // merchant a database already held came to be. Its key resolves to a key
+    // row like any other, so the list names it — a door that could only name a
+    // key registration made would break every one of those.
     const { served, harnessed } = await started();
 
     const listed = await keysWith(served, harnessed.merchant.key);

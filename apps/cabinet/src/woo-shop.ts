@@ -22,6 +22,9 @@ import {
   productIdFromMerchantItem,
   type StoreProduct,
   StoreProductsSchema,
+  TYPED_PRICE,
+  USD_SCALE,
+  usdAmountOf,
 } from "./woo-catalog.js";
 import { type WooRequest, wooRequest } from "./woo-request.js";
 
@@ -138,6 +141,7 @@ export const inspectProductInTheShop = async (
     "/wp-json/wc/v3/settings/products/woocommerce_downloads_require_login",
     "/wp-json/wc/v3/settings/products/woocommerce_downloads_grant_access_after_payment",
     "/wp-json/wc/v3/settings/products/woocommerce_downloads_redirect_fallback_allowed",
+    "/wp-json/wc/v3/settings/general/woocommerce_price_num_decimals",
   ] as const;
   let responses: Response[];
   try {
@@ -174,7 +178,7 @@ export const inspectProductInTheShop = async (
     return { ok: false, why: "The shop's protected product or settings document is incomplete." };
   }
   const product = parsed.data;
-  const [currency, taxes, method, login, afterPayment, redirectFallback] = settings.map(
+  const [currency, taxes, method, login, afterPayment, redirectFallback, decimals] = settings.map(
     (setting) => (setting.success ? setting.data.value : ""),
   );
   const unsupported: string[] = [];
@@ -195,6 +199,18 @@ export const inspectProductInTheShop = async (
   if (login !== "no") unsupported.push("downloads require a WooCommerce login");
   if (afterPayment !== "yes") unsupported.push("download access is not granted after payment");
   if (redirectFallback !== "no") unsupported.push("insecure redirect fallback is enabled");
+  // WooCommerce writes an order's totals at this setting, and the order this
+  // creates is matched with those totals character for character. A shop at
+  // any other number is refused here, before a paid order exists there that
+  // could not be matched. It is left out of the fingerprint below: every
+  // product that passes has the same value, and leaving it out keeps the
+  // fingerprints already recorded for accepted quotes valid.
+  if (decimals !== String(USD_SCALE)) {
+    unsupported.push(
+      `prices are not written at ${USD_SCALE} decimals (set WooCommerce → Settings → General →` +
+        ` Number of decimals to ${USD_SCALE})`,
+    );
+  }
   if (unsupported.length > 0) {
     return {
       ok: false,
@@ -226,8 +242,22 @@ export const inspectProductInTheShop = async (
   } catch {
     return { ok: false, why: "The shop's raw download protection could not be verified." };
   }
-  if (!/^\d+(?:\.\d+)?$/.test(product.price)) {
+  if (!TYPED_PRICE.test(product.price)) {
     return { ok: false, why: "The protected product price is not a decimal amount." };
+  }
+  // From here on the price is the one form the card, the quote, the order and
+  // WooCommerce's own order totals all speak. The fingerprint hashes that form
+  // too, so a price that already had two decimals hashes as it always did and
+  // "25" hashes as "25.00" does.
+  const amount = usdAmountOf(product.price);
+  if (amount === null) {
+    return {
+      ok: false,
+      why:
+        `The shop's price for this product is ${product.price}, which has more than the two` +
+        " decimal places a US dollar price has. It is not rounded to an amount the shop never" +
+        " set; give the product a price in whole cents in WooCommerce.",
+    };
   }
   const fingerprint = createHash("sha256")
     .update(
@@ -237,7 +267,7 @@ export const inspectProductInTheShop = async (
         download.id,
         download.name,
         raw.toString(),
-        product.price,
+        amount,
         "USD",
         product.type,
         product.status,
@@ -262,7 +292,7 @@ export const inspectProductInTheShop = async (
       productId,
       downloadId: download.id,
       fileName: download.name,
-      price: { amount: product.price, currency: "USD" },
+      price: { amount, currency: "USD" },
       fingerprint,
     },
   };

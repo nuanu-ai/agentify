@@ -184,14 +184,14 @@ const environmentSchema = z.object({
   ),
 
   /**
-   * What the gateway presents on the cabinet's announcement listener, the
+   * What the gateway presents on the cabinet's listener for the gateway, the
    * route it asks the cabinet over to tell a merchant of a change to their
    * payout wallet or their keys (ADR-0019). Held by the gateway and this
    * process alone, and apart from every other secret either holds: the
    * scanner's route is a different door with a different holder, and the
    * money path must not be able to reach it. Absent, no listener opens.
    */
-  ANNOUNCEMENT_SECRET: emptyIsAbsent(
+  GATEWAY_CABINET_SECRET: emptyIsAbsent(
     z
       .string()
       .refine(
@@ -292,8 +292,8 @@ export interface CabinetConfig {
   readonly authSecret: string;
   /** Dedicated bearer for the optional private report identity listener. */
   readonly reportIdentitySecret: string | null;
-  /** Dedicated bearer for the gateway's announcement listener, or none. */
-  readonly announcementSecret: string | null;
+  /** Dedicated bearer for the gateway's listener, or none. */
+  readonly gatewayCabinetSecret: string | null;
   /** What the cabinet's one-time links are built on. */
   readonly publicBaseUrl: string;
   readonly mailUrl: string;
@@ -384,17 +384,17 @@ export function loadConfig(environment: Record<string, string | undefined>): Cab
   }
 
   if (
-    values.ANNOUNCEMENT_SECRET !== undefined &&
+    values.GATEWAY_CABINET_SECRET !== undefined &&
     [
       values.AUTH_SECRET,
       values.REGISTRATION_INVITATION,
       values.MAIL_API_KEY,
       values.REPORT_IDENTITY_SECRET,
-    ].includes(values.ANNOUNCEMENT_SECRET)
+    ].includes(values.GATEWAY_CABINET_SECRET)
   ) {
     throw new Error(
-      "The cabinet cannot start, ANNOUNCEMENT_SECRET must be dedicated to the gateway's" +
-        " announcement listener",
+      "The cabinet cannot start, GATEWAY_CABINET_SECRET must be dedicated to the gateway's" +
+        " listener",
     );
   }
 
@@ -415,7 +415,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Cab
     databaseUrl: values.DATABASE_URL,
     authSecret: values.AUTH_SECRET,
     reportIdentitySecret: values.REPORT_IDENTITY_SECRET ?? null,
-    announcementSecret: values.ANNOUNCEMENT_SECRET ?? null,
+    gatewayCabinetSecret: values.GATEWAY_CABINET_SECRET ?? null,
     publicBaseUrl: values.PUBLIC_BASE_URL,
     mailUrl: values.MAIL_URL,
     mailApiKey: values.MAIL_API_KEY ?? null,

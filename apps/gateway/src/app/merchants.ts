@@ -2,12 +2,12 @@
  * Making a merchant, naming what their products are sold under, and issuing the
  * two kinds of key to one.
  *
- * It is one small module rather than a copy per caller because there are four
- * and they must not drift: the command somebody runs at a terminal, the seed the
- * sandbox comes up with, the routes a merchant reaches from their cabinet, and
- * the test harness. A second way of turning a secret into a digest would be a
- * key that works in one of them and not the others, and the failure would look
- * like a wrong key rather than like two hashes.
+ * It is one small module rather than a copy per caller because there are three
+ * and they must not drift: the seed the sandbox comes up with, the routes a
+ * merchant reaches from their cabinet, and the test harness. A second way of
+ * turning a secret into a digest would be a key that works in one of them and
+ * not the others, and the failure would look like a wrong key rather than like
+ * two hashes.
  *
  * Two things here are decisions rather than conveniences.
  *
@@ -189,17 +189,6 @@ export async function grantLiveApproval(
   at: number,
 ): Promise<LiveApprovalGrant | null> {
   return store.grantLiveApproval(merchantId, at);
-}
-
-/** Writes down a merchant. Null where that identifier is already taken. */
-export async function makeMerchant(
-  store: Store,
-  ids: Ids,
-  name: string,
-  at: number,
-  id: string = ids("mch"),
-): Promise<StoredMerchant | null> {
-  return store.addMerchant({ id, name }, at);
 }
 
 /**
@@ -401,15 +390,20 @@ export const SEEDED_MERCHANT = { id: "the_merchant", name: "The pilot merchant" 
 
 /**
  * What a seeded merchant is listed as, which is different on each of the three
- * stacks and is nothing at all on one of them.
+ * surfaces and is nothing at all on one of them.
+ *
+ * Two gateways seed: the laptop's stack, on the sandbox, and the slice's
+ * in-process gateway, whose smoke runs on a test chain and may be pointed at a
+ * live one. A deployed channel seeds nothing (ADR-0014), so none of these names
+ * reaches the catalog of either site through a seed.
  *
  * It says what it is out loud on purpose: this name travels to a catalog, and
  * a listing that reads like a real seller is the one thing a sandbox must not
- * look like. `Agentify sandbox` is right for the laptop, wrong for the test
- * site, and wrong in a way that reaches strangers on the live one.
+ * look like. `Agentify sandbox` is right for the laptop, wrong on a test
+ * chain, and wrong in a way that reaches strangers on a live one.
  *
- * A live stack is seeded with no name. A merchant with no name is off sale, so
- * a live stack nobody has named sells nothing, and the name it eventually
+ * A live chain is seeded with no name. A merchant with no name is off sale, so
+ * a live gateway nobody has named sells nothing, and the name it eventually
  * trades under is typed by a person rather than inherited from a constant
  * written for a sandbox.
  */
@@ -451,8 +445,8 @@ export type SeedOutcome =
  * found.
  *
  * This is what lets `docker compose up` sell with no manual step: the key in
- * `compose.yaml` is handed to the cabinet and to the merchant process, and this
- * puts the matching row in the database so that the door recognises it. Run
+ * `compose.yaml` is handed to the merchant process, and this puts the matching
+ * row in the database so that the door recognises it. Run
  * again — a restart, a second replica — and nothing in the database changes:
  * the merchant row is insert-if-absent, and everything after it hangs off the
  * key lookup coming back empty. The listing name included, for the reason given
@@ -462,7 +456,7 @@ export type SeedOutcome =
  * A key that is there but disabled is left disabled and said out loud. Bringing
  * it back would make revocation a thing a restart undoes, and a key somebody
  * revoked deliberately is not a key this should quietly re-issue; the way back
- * is to seed a different one or to make a new one at a terminal.
+ * is to seed a different one.
  *
  * The merchant row is written here as well as by the migration, and both are
  * needed: the migration is the only thing that can assign existing rows to it,

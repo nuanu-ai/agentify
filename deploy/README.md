@@ -114,7 +114,7 @@ succeeded.
 
 ## A secret a host's file may still lack
 
-Every channel's environment file names `ANNOUNCEMENT_SECRET` ("Setting up a
+Every channel's environment file names `GATEWAY_CABINET_SECRET` ("Setting up a
 host"): the gateway presents it to the cabinet to have a merchant told of a
 payout wallet change, and the cabinet refuses every other secret on that
 route. A file written before the variable existed does not have it, and the
@@ -125,28 +125,24 @@ again; after the secret is added, a person releases it
 (`ssh -t agentify-test sudo agentify-release <name>`) or moves `deploy-test`
 to a newer commit.
 
-So before moving `deploy-test` to such a commit, and before running
-`agentify-release` on PRODUCTION for one, add the secret to each host's file,
+So the secret has to be in `/etc/agentify/test.env` before `deploy-test` moves
+to such a commit, and in `/etc/agentify/production.env` before the next
+`agentify-release` on PRODUCTION, which has already made its one-time move to
+one database. Add it to each host's file,
 with a value made on that host for that channel alone — the channels share no
 secret, and one value serves both the gateway and the cabinet of a channel,
 since both read the same file:
 
 ```sh
-ssh agentify-test "sudo sh -c 'umask 077; printf \"ANNOUNCEMENT_SECRET=%s\\n\" \"\$(openssl rand -base64 32)\" >> /etc/agentify/test.env'"
-ssh agentify "sudo sh -c 'umask 077; printf \"ANNOUNCEMENT_SECRET=%s\\n\" \"\$(openssl rand -base64 32)\" >> /etc/agentify/production.env'"
-ssh agentify-test sudo grep -c '^ANNOUNCEMENT_SECRET=' /etc/agentify/test.env
-ssh agentify sudo grep -c '^ANNOUNCEMENT_SECRET=' /etc/agentify/production.env
+ssh agentify-test "sudo sh -c 'umask 077; printf \"GATEWAY_CABINET_SECRET=%s\\n\" \"\$(openssl rand -base64 32)\" >> /etc/agentify/test.env'"
+ssh agentify "sudo sh -c 'umask 077; printf \"GATEWAY_CABINET_SECRET=%s\\n\" \"\$(openssl rand -base64 32)\" >> /etc/agentify/production.env'"
+ssh agentify-test sudo grep -c '^GATEWAY_CABINET_SECRET=' /etc/agentify/test.env
+ssh agentify sudo grep -c '^GATEWAY_CABINET_SECRET=' /etc/agentify/production.env
 ```
 
 Each of the last two prints `1`. The value is made on the host and never
 passes through the terminal it was asked from; the file keeps its owner and
 mode.
-
-On a host that has still to move to one database ("One database (one-time)"
-below), add the secret before the move's first release. That release is
-meant to be refused, and the one after the move is meant to start
-everything; a missing secret would refuse that second one too, in the
-middle of the window.
 
 ## The release that takes the password off /admin
 
@@ -196,6 +192,86 @@ Until it prints `0`, the two stay in whatever file that compose is run with.
 What ends that is the edge being recreated from a checkout of this release or
 later, whose `deploy/edge/compose.yaml` does not name them; nothing else about
 the edge depends on them.
+
+## The release that stops seeding
+
+A merchant comes into being one way on either channel: a person asks for a
+link at `/cabinet/sign-in`, opens it from their mailbox, and presses the one
+control the cabinet then offers, which makes the merchant (ADR-0014). The
+gateway of a deployed channel used to write a merchant key of its own at every
+start, from `AGENTIFY_SEED_KEY` in the host's environment file, onto the
+merchant the database was created with, `the_merchant`. From the first release
+that carries this it does not, whatever the file says:
+`deploy/compose.public.yaml` gives the seed nothing, and the release's
+preflight refuses a rendered one. Nothing about the seed has to be done on
+either host before that release (the secret in "A secret a host's file may
+still lack" still has to be there).
+
+After it, the line in the host's file is read by nothing in the release, and it
+goes from `/etc/agentify/<channel>.env` by hand, with one thing in mind. A
+release of an older revision renders that revision's compose files, which seed
+from the line, and runs that revision's preflight, which requires a seed.
+Without the line those files fall back to the key written in this repository,
+which that preflight refuses, so while going back is still an option, taking
+the line out turns such a release, a restore's included, into a refusal before
+anything stops. On TEST that also holds for any branch that has not been
+rebased onto this. An older revision released while the line is there finds
+its key already in the database and writes nothing new.
+
+Once the release is verified and going back to a revision before it is no
+longer wanted, take the line out of each host's file. The last two lines print
+`0`, and the file keeps its owner and mode, which the two before them show as
+`root 600`:
+
+```sh
+ssh agentify-test "sudo sed -i '/^AGENTIFY_SEED_KEY=/d' /etc/agentify/test.env"
+ssh agentify "sudo sed -i '/^AGENTIFY_SEED_KEY=/d' /etc/agentify/production.env"
+ssh agentify-test "sudo stat -c '%U %a' /etc/agentify/test.env"
+ssh agentify "sudo stat -c '%U %a' /etc/agentify/production.env"
+ssh agentify-test sudo grep -c '^AGENTIFY_SEED_KEY=' /etc/agentify/test.env
+ssh agentify sudo grep -c '^AGENTIFY_SEED_KEY=' /etc/agentify/production.env
+```
+
+Taking the line out does not take the key out of the database. The key it
+held is a row on `the_merchant` and still opens that merchant for whoever
+presents it, until it is disabled; the release disables nothing. Disabling it
+cannot be undone, and nothing takes its place: no command issues a key or
+makes an account, so unless an account already names `the_merchant` — the
+cabinet's `account list` says whether one does — nobody can sign in and have
+the cabinet ask for a new one, and once its keys are disabled nothing can act
+as that merchant again. So look before disabling. The first line below lists that merchant's keys, the seeded
+one under the label "the sandbox key from the compose file", each with the day
+a call was last recorded on it; the second lists every merchant with its
+selling state, `open` or not, and the name it is sold under:
+
+```sh
+ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T gateway pnpm --filter @agentify/gateway merchant keys the_merchant'
+ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T gateway pnpm --filter @agentify/gateway merchant list'
+```
+
+After the release nothing on the channel presents that key by itself, so a
+call recorded on it on the day of the release or later was made by something
+still running as `the_merchant` — a worker started by hand, say. And a
+merchant whose selling is `open` under a name may have cards on sale. In
+either case disabling the key would end that for good. Take the merchant off
+sale instead, which leaves the key as it is, puts every card of theirs off
+sale, and is undone by listing them under a name again:
+
+```sh
+ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T gateway pnpm --filter @agentify/gateway merchant listed-as the_merchant --none'
+```
+
+Only when `the_merchant` sells nothing and no call has been recorded on its key
+since the release, disable the key, by the identifier the list printed:
+
+```sh
+ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T gateway pnpm --filter @agentify/gateway merchant disable <key id>'
+```
+
+On PRODUCTION the same commands run over `ssh -t agentify` with `production`
+in the path. On PRODUCTION a snapshot of the backup holds `production.env`
+("Backups"), so the key stays readable in the snapshots taken before the line
+went, for as long as they are kept.
 
 ## Releasing to production
 
@@ -638,11 +714,11 @@ The environment file, `/etc/agentify/<channel>.env`, owned by root with mode
 600, holds every setting the compose files and the preflight ask for, and no
 image: activation records the images per checkout. On both channels it names
 `AGENTIFY_PUBLIC_ORIGIN`, `AGENTIFY_COOKIE_SECURE`, `AGENTIFY_SURFACE_MODE`,
-`AGENTIFY_PAYMENT_NETWORK`, `AGENTIFY_FACILITATOR_URL`, `AGENTIFY_SEED_KEY`,
+`AGENTIFY_PAYMENT_NETWORK`, `AGENTIFY_FACILITATOR_URL`,
 `AGENTIFY_AUTH_SECRET`, `AGENTIFY_INVITATION`, `TOKEN_HMAC_SECRET`,
-`EMAIL_ENCRYPTION_KEY`, `REPORT_IDENTITY_SECRET` and `ANNOUNCEMENT_SECRET`, the last two each at
+`EMAIL_ENCRYPTION_KEY`, `REPORT_IDENTITY_SECRET` and `GATEWAY_CABINET_SECRET`, the last two each at
 least 32 characters of their own (`openssl rand -base64 32`): the gateway
-presents `ANNOUNCEMENT_SECRET` to the cabinet to have a merchant told of a
+presents `GATEWAY_CABINET_SECRET` to the cabinet to have a merchant told of a
 payout wallet change, and the preflight refuses a channel where any other
 service holds it or it opens any other door. TEST adds
 `AGENTIFY_TEST_LISTEN_ADDRESS`, the private address its door binds on.
@@ -654,7 +730,10 @@ PRODUCTION adds `AGENTIFY_DB_PASSWORD`,
 `SCAN_ACCEPTANCE_ENABLED`, `SCANNER_CONCURRENCY`, `ANALYTICS_RUNTIME_ENV` —
 keep the defaults `compose.yaml` gives them unless the file names them, and on
 TEST the scanner's policy is fixed by `deploy/compose.agentify-test.yaml`
-whatever the file says.
+whatever the file says. Neither channel's file needs `AGENTIFY_SEED_KEY`: a
+deployed channel seeds no merchant, and a line an older file still carries
+is taken out by hand once going back is no longer wanted ("The release that
+stops seeding").
 
 A value holding a `$`, as a secret from a password manager sometimes does,
 goes inside single quotes: `AGENTIFY_AUTH_SECRET='…$…'`. Compose reads a `$`

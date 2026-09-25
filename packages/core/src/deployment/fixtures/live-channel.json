@@ -35,7 +35,7 @@
       },
       "entrypoint": null,
       "environment": {
-        "ANNOUNCEMENT_SECRET": "fixture-announcement-secret-of-64-hexish-characters-00000000000000",
+        "GATEWAY_CABINET_SECRET": "fixture-gateway-cabinet-secret-of-more-than-thirty-two-characters",
         "AUTH_SECRET": "fixture-auth-secret",
         "BASE_PATH": "/cabinet",
         "COOKIE_SECURE": "true",
@@ -88,8 +88,8 @@
       },
       "entrypoint": null,
       "environment": {
-        "ANNOUNCEMENT_SECRET": "fixture-announcement-secret-of-64-hexish-characters-00000000000000",
-        "CABINET_ANNOUNCEMENT_URL": "http://cabinet:3003",
+        "GATEWAY_CABINET_SECRET": "fixture-gateway-cabinet-secret-of-more-than-thirty-two-characters",
+        "CABINET_INTERNAL_URL": "http://cabinet:3003",
         "CDP_API_KEY_ID": "fixture-key-id",
         "CDP_API_KEY_SECRET": "fixture-key-secret",
         "DATABASE_URL": "postgres://agentify:synthetic-new-database-password@postgres:5432/agentify",
@@ -99,7 +99,7 @@
         "PORT": "3000",
         "PUBLIC_BASE_URL": "https://agentify.ad",
         "REGISTRATION_INVITATION": "fixture-invitation",
-        "SANDBOX_MERCHANT_KEY": "csk_live_fixture-deployment-key"
+        "SANDBOX_MERCHANT_KEY": ""
       },
       "healthcheck": {
         "test": [

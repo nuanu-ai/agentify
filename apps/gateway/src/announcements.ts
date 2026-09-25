@@ -1,12 +1,22 @@
 /**
- * What the gateway asks the cabinet to tell a merchant, and what the cabinet
- * answers — the one call that goes from the money path to the cabinet
- * (ADR-0005 §3, ADR-0019).
+ * What the gateway asks the cabinet over the one internal route between them,
+ * and what the cabinet answers (ADR-0005 §3, ADR-0019).
  *
- * On the live deployment a change of a payout wallet already set is announced
+ * The route and its secret are named for the gateway, not for what it asks,
+ * and each request says what it asks in `operation`, the way the scanner's
+ * route says it (ADR-0026 §2). Today the gateway asks one thing, to announce:
+ * on the live deployment a change of a payout wallet already set is announced
  * to every account that names the merchant before anything is written, and a
  * first wallet, a new key of the merchant's own and a cancelled change are
- * announced once they are done. The gateway knows the merchant and the change; the cabinet knows
+ * announced once they are done. A wallet is changed only with the cabinet's
+ * own key (ADR-0019), so a wallet announcement names no key: it was asked for
+ * through the cabinet. A new key names the key that asked,
+ * because any key of the merchant's may issue one. Anything else the gateway
+ * ever needs from the cabinet is another `operation` in
+ * `GatewayRequestSchema`, over this route and with this secret, never a
+ * second route or a second secret.
+ *
+ * The gateway knows the merchant and the change; the cabinet knows
  * the addresses and sends the mail. This file is the wire between them, and it
  * is here rather than in the published contracts because nobody outside these
  * two processes calls it: the cabinet imports it from this package's
@@ -15,19 +25,19 @@
  *
  * What a request carries is facts and no words. The message a person reads is
  * the cabinet's to write, because the cabinet is what knows where its own
- * screens are; the gateway says what changed, from what to what, and which key
- * asked. Nothing in it can open anything: there is no token here, and the
- * message built from it carries none.
+ * screens are; the gateway says what changed, from what to what, and, for a
+ * new key, which key asked. Nothing in it can open anything: there is no
+ * token here, and the message built from it carries none.
  */
 
 import { checksummedAddressOf, EvmAddressSchema } from "@nuanu-ai/agentify-contracts";
 import { z } from "zod";
 
-/** The path the cabinet answers on, on its own listener inside the compose network. */
-export const ANNOUNCEMENTS_PATH = "/internal/announcements";
+/** The path the cabinet answers the gateway on, on its own listener inside the compose network. */
+export const GATEWAY_ROUTE_PATH = "/internal/gateway";
 
 /** The port of that listener. Nothing publishes it. */
-export const ANNOUNCEMENTS_PORT = 3003;
+export const GATEWAY_ROUTE_PORT = 3003;
 
 /** An address as the gateway holds one: the mixed-case spelling a wallet shows. */
 const WalletSchema = EvmAddressSchema.refine(
@@ -46,11 +56,11 @@ const LONGEST_ANNOUNCED_LABEL = 101;
  * A key's label as an announcement carries it: one line, cut to a hundred
  * characters with an ellipsis saying so.
  *
- * A new key's label is held to that at the door, but a key issued at the
- * server's terminal, or before the door held labels to anything, can be named
- * anything at all — and an announcement about a wallet change made with such
- * a key must still be one the cabinet takes, rather than a change refused
- * because of how a key was named. So the gateway writes every label it
+ * A new key's label is held to that at the door, but a key written before the
+ * door held labels to anything, including one a terminal command issued when
+ * there was such a command, can be named anything at all — and an announcement
+ * of a key issued with such a key must still be one the cabinet takes. So the
+ * gateway writes every label it
  * announces down to this, and the cabinet refuses anything else.
  */
 export function announcedLabel(label: string): string {
@@ -79,15 +89,15 @@ const AnnouncedLabelSchema = z
   );
 
 /**
- * Which key a call was made with, named the way the merchant's list of keys
- * names it.
+ * Which key a new key was issued with, named the way the merchant's list of
+ * keys names it.
  *
  * A key of the merchant's own code is on that list under its label, with its
  * identifier beneath, so that is how a message names it: a person reading "the
  * key you called the stock worker" can find the row and disable it. The key the
  * cabinet signs in with is on no list, and a call made with it means a person
  * signed in to the cabinet acted — so it is named as the cabinet and nothing
- * more (ADR-0019).
+ * more.
  */
 export const AskedWithSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("cabinet") }),
@@ -98,49 +108,71 @@ export const AskedWithSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
-export const AnnouncementSchema = z.discriminatedUnion("kind", [
-  /**
-   * A merchant's first payout wallet was set, and applies already. Sent
-   * after, and never waited on: it replaces nothing, and a new merchant has to
-   * be able to start selling — but a leaked key could set it before its owner
-   * does, and this is how the owner hears of it.
-   */
-  z.strictObject({
-    kind: z.literal("wallet_set"),
-    merchant_id: z.string().min(1),
-    to: WalletSchema,
-    asked_with: AskedWithSchema,
-  }),
-  /**
-   * A replacement for the wallet paid now has been asked for. Sent before
-   * anything is written; the change is recorded only if every message was
-   * handed over, and it takes effect forty-eight hours after that — which is
-   * after `not_before`, the instant the gateway can name while it is still
-   * asking.
-   */
-  z.strictObject({
-    kind: z.literal("wallet_change"),
-    merchant_id: z.string().min(1),
-    from: WalletSchema,
-    to: WalletSchema,
-    not_before: z.iso.datetime({ offset: true }),
-    asked_with: AskedWithSchema,
-  }),
-  /** A waiting change was cancelled by asking for the address paid now. Sent after. */
-  z.strictObject({
-    kind: z.literal("wallet_change_cancelled"),
-    merchant_id: z.string().min(1),
-    kept: WalletSchema,
-    cancelled: WalletSchema,
-    asked_with: AskedWithSchema,
-  }),
-  /** A key for the merchant's own code was issued. Sent after, and never waited on. */
-  z.strictObject({
-    kind: z.literal("key_issued"),
-    merchant_id: z.string().min(1),
-    key: z.strictObject({ id: z.string().min(1), label: AnnouncedLabelSchema }),
-    asked_with: AskedWithSchema,
-  }),
+/**
+ * A merchant's first payout wallet was set in the cabinet, and applies
+ * already. Sent after, and never waited on: it replaces nothing, and a new
+ * merchant has to be able to start selling — but a session that is not the
+ * owner's could set it, and this is how the owner hears of it.
+ */
+const WalletSetSchema = z.strictObject({
+  kind: z.literal("wallet_set"),
+  merchant_id: z.string().min(1),
+  to: WalletSchema,
+});
+
+/**
+ * A replacement for the wallet paid now has been asked for. Sent before
+ * anything is written; the change is recorded only if every message was
+ * handed over, and it takes effect forty-eight hours after that — which is
+ * after `not_before`, the instant the gateway can name while it is still
+ * asking.
+ */
+const WalletChangeSchema = z.strictObject({
+  kind: z.literal("wallet_change"),
+  merchant_id: z.string().min(1),
+  from: WalletSchema,
+  to: WalletSchema,
+  not_before: z.iso.datetime({ offset: true }),
+});
+
+/** A waiting change was cancelled by asking for the address paid now. Sent after. */
+const WalletChangeCancelledSchema = z.strictObject({
+  kind: z.literal("wallet_change_cancelled"),
+  merchant_id: z.string().min(1),
+  kept: WalletSchema,
+  cancelled: WalletSchema,
+});
+
+/** A key for the merchant's own code was issued. Sent after, and never waited on. */
+const KeyIssuedSchema = z.strictObject({
+  kind: z.literal("key_issued"),
+  merchant_id: z.string().min(1),
+  key: z.strictObject({ id: z.string().min(1), label: AnnouncedLabelSchema }),
+  asked_with: AskedWithSchema,
+});
+
+/** What the gateway has the cabinet tell a merchant. */
+const AnnouncementSchema = z.discriminatedUnion("kind", [
+  WalletSetSchema,
+  WalletChangeSchema,
+  WalletChangeCancelledSchema,
+  KeyIssuedSchema,
+]);
+
+const ANNOUNCE = { operation: z.literal("announce") };
+
+/**
+ * Everything the gateway may ask the cabinet over its route, told apart by
+ * `operation`. A request to announce is an announcement with
+ * `"operation": "announce"` beside its `kind`.
+ */
+export const GatewayRequestSchema = z.discriminatedUnion("operation", [
+  z.discriminatedUnion("kind", [
+    WalletSetSchema.extend(ANNOUNCE),
+    WalletChangeSchema.extend(ANNOUNCE),
+    WalletChangeCancelledSchema.extend(ANNOUNCE),
+    KeyIssuedSchema.extend(ANNOUNCE),
+  ]),
 ]);
 
 /**
@@ -158,4 +190,5 @@ export const AnnouncementAnswerSchema = z.strictObject({
 
 export type AskedWith = z.infer<typeof AskedWithSchema>;
 export type Announcement = z.infer<typeof AnnouncementSchema>;
+export type GatewayRequest = z.infer<typeof GatewayRequestSchema>;
 export type AnnouncementAnswer = z.infer<typeof AnnouncementAnswerSchema>;

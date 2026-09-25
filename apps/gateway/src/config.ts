@@ -287,8 +287,8 @@ const SDK_WORKER_POLL_DEADLINE_MS = 50_000;
 const WORKER_POLL_WAIT_CEILING_MS = 40_000;
 
 /**
- * The shortest secret the gateway will present to the cabinet's announcement
- * route: what `openssl rand -base64 32` produces, and the floor the cabinet
+ * The shortest secret the gateway will present on its route into the
+ * cabinet: what `openssl rand -base64 32` produces, and the floor the cabinet
  * holds its own internal secrets to. It catches a placeholder left in a file,
  * not a weak choice by somebody who read the sentence.
  */
@@ -332,20 +332,16 @@ const environmentSchema = z.object({
    * configuration at all, and holds one of its own instead, made at every
    * sign-in and typed by nobody (ADR-0014 §2).
    *
-   * A deployment sets it too, to a key generated for that host, kept in its own
-   * file, and carrying that site's prefix, because the merchant process a stack
-   * runs beside the gateway reads its key out of that file and has nothing to
-   * present until a row for it exists. A person needs none of this — an
-   * invitation makes them a merchant with a key of their own and no terminal
-   * (ADR-0014 §3) — so what seeding is for is whatever the stack itself sells
-   * as. What to keep in mind is that a key in an environment is a key that
-   * cannot be revoked without a deployment, which is the thing keys became rows
-   * in order to fix: disabling its row stops it opening anything, and the string
-   * is still handed to this process at every start, so a fresh database is
-   * seeded off that same line again. So it is unset once nothing presents that
-   * key any more — once whatever sells on that host has a key of its own.
-   * Absent, this process writes nothing and every key is one somebody made
-   * deliberately.
+   * A deployed channel sets nothing here, and its release refuses one that
+   * does. A merchant there comes into being one way: a person opens the link
+   * mailed to their address and presses the cabinet's one control (ADR-0014),
+   * and a key in an environment would be a second way, and one that cannot be
+   * revoked without a deployment, which is the thing keys became rows in order
+   * to fix: disabling its row stops it opening anything, and the string is
+   * still handed to this process at every start, so a fresh database is seeded
+   * off that same line again. The other caller that seeds is the slice's
+   * in-process gateway, whose smoke runs on a real chain. Absent, this process
+   * writes nothing and every key is one somebody made deliberately.
    *
    * Set to nothing reads the same as never set, and that is the one spelling
    * that matters to whoever unsets it. A deployment says this in a file the
@@ -624,7 +620,9 @@ const environmentSchema = z.object({
 
   /**
    * Where the cabinet is asked to tell a merchant of a change, and what it is
-   * asked with (ADR-0019).
+   * asked with (ADR-0019). The route and the secret are the gateway's one way
+   * into the cabinet, and anything else it ever needs from the cabinet is
+   * asked over them too.
    *
    * On a live deployment a change of a payout wallet already set is announced
    * to every account naming the merchant before anything is written, and a new
@@ -641,10 +639,10 @@ const environmentSchema = z.object({
    * give. The secret is held to the length the cabinet's other internal secret
    * is, and a refusal names the variable and never the value.
    */
-  CABINET_ANNOUNCEMENT_URL: emptyIsAbsent(
-    z.string().refine(isHttpUrl, "must be an http address of the cabinet's announcement route"),
+  CABINET_INTERNAL_URL: emptyIsAbsent(
+    z.string().refine(isHttpUrl, "must be an http address of the gateway's route into the cabinet"),
   ),
-  ANNOUNCEMENT_SECRET: emptyIsAbsent(
+  GATEWAY_CABINET_SECRET: emptyIsAbsent(
     z
       .string()
       .refine(
@@ -697,8 +695,8 @@ export interface WorkerConfig {
   readonly pollMaxEnvelopes: number;
 }
 
-/** Where and with what a live gateway asks the cabinet to tell a merchant of a change. */
-export interface AnnouncementConfig {
+/** Where and with what a live gateway asks the cabinet, to tell a merchant of a change. */
+export interface CabinetRouteConfig {
   readonly url: string;
   /** Presented as a bearer to the cabinet's route. Never printed. */
   readonly secret: string;
@@ -749,11 +747,13 @@ export interface GatewayConfig {
    */
   readonly surfaceMode: SurfaceMode;
   /**
-   * How a wallet change, a new key and a cancelled change are announced, on
-   * the live deployment and nowhere else (ADR-0019). Null everywhere a change
-   * applies at once and nothing is announced, whatever the environment named.
+   * Where and with what the gateway asks the cabinet over its route into it,
+   * which is how a wallet change, a new key and a cancelled change are
+   * announced, on the live deployment and nowhere else (ADR-0019). Null
+   * everywhere a change applies at once and nothing is announced, whatever the
+   * environment named.
    */
-  readonly announcements: AnnouncementConfig | null;
+  readonly cabinetRoute: CabinetRouteConfig | null;
 }
 
 /**
@@ -902,9 +902,8 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
   // A key in an environment is a key that cannot be revoked without a
   // deployment, which is the thing keys became rows in order to fix. The
   // prefix rule is about which environment a key belongs to and is not a test
-  // of whether it is secret — on the public test stack the laptop's default
-  // would pass this, which is why the release checks separately that the
-  // seeded key is not the value written in this repository.
+  // of whether it is secret or whether seeding is allowed here — the release
+  // refuses any seeded key on a deployed channel, whatever its prefix.
   const seeded = environmentValues.SANDBOX_MERCHANT_KEY;
   if (chainEnvironment !== null && seeded !== null) {
     const theirs = environmentOfKeyPrefix(seeded);
@@ -967,10 +966,8 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
   // two is missing is the whole of what an operator needs to fix it.
   if (chainEnvironment === "live") {
     const missing = [
-      ...(environmentValues.CABINET_ANNOUNCEMENT_URL === undefined
-        ? ["CABINET_ANNOUNCEMENT_URL"]
-        : []),
-      ...(environmentValues.ANNOUNCEMENT_SECRET === undefined ? ["ANNOUNCEMENT_SECRET"] : []),
+      ...(environmentValues.CABINET_INTERNAL_URL === undefined ? ["CABINET_INTERNAL_URL"] : []),
+      ...(environmentValues.GATEWAY_CABINET_SECRET === undefined ? ["GATEWAY_CABINET_SECRET"] : []),
     ];
     if (missing.length > 0) {
       problems.push(
@@ -1027,13 +1024,13 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
     surfaceMode: surfaceModeOf(network, environmentValues.FACILITATOR_URL),
     // Past the refusal above a live chain has both, so the only question left
     // is whether this deployment announces at all.
-    announcements:
+    cabinetRoute:
       derivedEnvironment === "live" &&
-      environmentValues.CABINET_ANNOUNCEMENT_URL !== undefined &&
-      environmentValues.ANNOUNCEMENT_SECRET !== undefined
+      environmentValues.CABINET_INTERNAL_URL !== undefined &&
+      environmentValues.GATEWAY_CABINET_SECRET !== undefined
         ? {
-            url: environmentValues.CABINET_ANNOUNCEMENT_URL.replace(/\/+$/, ""),
-            secret: environmentValues.ANNOUNCEMENT_SECRET,
+            url: environmentValues.CABINET_INTERNAL_URL.replace(/\/+$/, ""),
+            secret: environmentValues.GATEWAY_CABINET_SECRET,
           }
         : null,
   };

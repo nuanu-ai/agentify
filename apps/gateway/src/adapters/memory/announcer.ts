@@ -1,5 +1,5 @@
 /**
- * The cabinet's announcement route, recorded instead of called.
+ * Announcing over the cabinet's route, recorded instead of called.
  *
  * Every harness announces through one of these, whatever its configuration
  * names, so a test reads what the gateway asked to have said and decides what

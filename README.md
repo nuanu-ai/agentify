@@ -36,8 +36,10 @@ watches the checks run. The full report is unlocked with an email address and
 the one-time link sent to it. The same address is the key to the rest: the
 report carries one control that opens the merchant cabinet, and the cabinet's
 own door is that one field and that one link — there is no password and no
-invitation code (ADR-0026). The first visit creates the merchant and asks for
-the seller name buyers will see.
+invitation code (ADR-0026). The cabinet then offers one control, and its press
+creates the merchant and asks for the seller name buyers will see. That is the
+only way an account or a merchant comes into being; no command at a server's
+terminal makes either (ADR-0014).
 
 From there the merchant's engineer takes over. The cabinet issues the key
 their code calls with, the SDK publishes the product cards and runs a handler
@@ -100,12 +102,14 @@ The cabinet is where a merchant sets the name buyers see and issues the keys
 their own code calls with. Open `http://localhost:8080/cabinet/sign-in`, enter
 an email address, and take the one-time link from the cabinet's log — the
 local sandbox writes the message there instead of sending it. Pressing the
-link's confirmation button signs you in, creates your merchant if you have
-none, and asks for the seller name. That merchant is a new one, and it is not
-`the_merchant` — the merchant the stack seeds, whose two cards the merchant
-process publishes and `pnpm buy` buys. Somebody who has just signed in has no
-cards and no keys of their own, which is the truth about a merchant who has
-written no code yet (ADR-0014).
+link's confirmation button signs you in, and the cabinet then offers one
+button, "Open my merchant cabinet", whose press creates your merchant and asks
+for the seller name. That merchant is a new one, and it is not `the_merchant` —
+the merchant this laptop's stack seeds at start-up, whose two cards the
+merchant process publishes and `pnpm buy` buys. A deployed channel seeds
+nothing. Somebody who has just signed in has no cards and no keys of their
+own, which is the truth about a merchant who has written no code yet
+(ADR-0014).
 
 If port 8080 is taken, `AGENTIFY_HOST_PORT=8090 docker compose up` moves the
 stack and nothing else — the buy command runs on the host and needs
@@ -328,6 +332,18 @@ production host over SSH, resolves the cabinet account's merchant and records
 its one-time approval, and it says so when the approval already exists or the
 account is unknown. Approval publishes nothing and supplies no missing seller
 name or payout wallet; the test channel never needs it.
+
+Starting an address over is a command for the test deployment only:
+`pnpm forget <email>` from the operator's checkout reaches the test host over
+SSH and removes that address's cabinet account together with the merchant it
+names, the merchant's keys and cards, and the wait before the address's next
+sign-in link, so the address signs in again as if for the first time. It
+refuses, and says why, when the merchant has an order or a receipt, when
+another account names the same merchant, or when no account has the address;
+on a deployment whose payment network is live it refuses before it reads
+anything. An operator flag goes with the account, and a WooCommerce
+connection it drops keeps its key in that shop until somebody revokes it
+there.
 
 ## Where to read more
 

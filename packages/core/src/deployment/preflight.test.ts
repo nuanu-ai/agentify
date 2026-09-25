@@ -38,12 +38,11 @@ const runCli = (channel: string, input: string) =>
 /** Values a public preflight diagnostic must never repeat from a fixture. */
 const expectNoFixtureSecrets = (stderr: string, resolved: ResolvedCompose): void => {
   const values = [
-    resolved.services.gateway.environment?.SANDBOX_MERCHANT_KEY,
     resolved.services.gateway.environment?.REGISTRATION_INVITATION,
     resolved.services.gateway.environment?.CDP_API_KEY_ID,
     resolved.services.gateway.environment?.CDP_API_KEY_SECRET,
     resolved.services.cabinet.environment?.AUTH_SECRET,
-    resolved.services.cabinet.environment?.ANNOUNCEMENT_SECRET,
+    resolved.services.cabinet.environment?.GATEWAY_CABINET_SECRET,
   ];
   for (const value of values) {
     if (value !== undefined && value !== "") {
@@ -318,6 +317,46 @@ describe("the mock merchant is not among the services", () => {
   });
 });
 
+describe("a deployed channel seeds no merchant", () => {
+  // A merchant comes into being one way: a person opens the link mailed to
+  // their address and presses the cabinet's one control (ADR-0014). A key the
+  // gateway seeds from a host's file at every start would be a second way, and
+  // one nobody can retire without a release.
+  const CHANNELS = [
+    ["production", PRODUCTION_CHANNEL, "csk_live_"],
+    ["test", TEST_CHANNEL, "csk_test_"],
+  ] as const;
+
+  it.each(CHANNELS)("accepts %s with nothing to seed", (channel, config) => {
+    for (const nothing of [null, ""]) {
+      expect(
+        problemsWith(channel, withEnv(config, "gateway", "SANDBOX_MERCHANT_KEY", nothing)),
+      ).toEqual([]);
+    }
+  });
+
+  it.each(CHANNELS)(
+    "refuses %s seeding a key, names the mailed link, and does not print the key",
+    (channel, config, prefix) => {
+      // The channel's own prefix and the laptop's key alike: the reason is the
+      // second way in, not whose key it is.
+      for (const key of [`${prefix}${"x".repeat(44)}`, "csk_test_local-sandbox-merchant-key"]) {
+        const problems = problemsWith(
+          channel,
+          withEnv(config, "gateway", "SANDBOX_MERCHANT_KEY", key),
+        );
+        expect(problems).toContainEqual(expect.stringMatching(/^gateway: SANDBOX_MERCHANT_KEY/));
+        const said = problems.join("\n");
+        expect(said).toMatch(/link mailed/);
+        // Where the empty seed comes from, since a host's file cannot change
+        // it: the overlay every deployed channel is rendered with.
+        expect(said).toMatch(/deploy\/compose\.public\.yaml/);
+        expect(said).not.toContain(key);
+      }
+    },
+  );
+});
+
 describe("no laptop default survived", () => {
   // Prevents public exposure of a database, published defaults, and a dead public door.
   it("refuses PostgreSQL published to the host", () => {
@@ -326,25 +365,6 @@ describe("no laptop default survived", () => {
       { mode: "ingress", target: 5432, published: "5432", protocol: "tcp" },
     ];
     expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(/postgres/));
-  });
-
-  it("refuses the seeded key written in this repository", () => {
-    const wrong = withEnv(
-      TEST_CHANNEL,
-      "gateway",
-      "SANDBOX_MERCHANT_KEY",
-      "csk_test_local-sandbox-merchant-key",
-    );
-    expect(problemsWith("test", wrong)).toContainEqual(
-      expect.stringMatching(/SANDBOX_MERCHANT_KEY/),
-    );
-  });
-
-  it("refuses a stack with no seeded key at all", () => {
-    const wrong = withEnv(TEST_CHANNEL, "gateway", "SANDBOX_MERCHANT_KEY", "");
-    expect(problemsWith("test", wrong)).toContainEqual(
-      expect.stringMatching(/SANDBOX_MERCHANT_KEY/),
-    );
   });
 
   it("refuses the cabinet's signing secret written in this repository", () => {
@@ -582,10 +602,10 @@ describe("the private identity route belongs to the cabinet and the scanner alon
   });
 });
 
-describe("the announcement route belongs to the gateway and the cabinet alone", () => {
+describe("the gateway's route belongs to the gateway and the cabinet alone", () => {
   // Every service of a channel shares one network. What keeps anybody else
   // from asking the cabinet to mail a merchant about their money is that only
-  // the gateway holds the secret its announcement route asks for (ADR-0019,
+  // the gateway holds the secret its route asks for (ADR-0019,
   // ADR-0024), that the secret opens no other door, and that the gateway asks
   // nothing but the cabinet's own listener.
   const CHANNELS = [
@@ -593,9 +613,9 @@ describe("the announcement route belongs to the gateway and the cabinet alone", 
     ["production", PRODUCTION_CHANNEL],
   ] as const;
   const secretOf = (resolved: ResolvedCompose): string => {
-    const secret = envFor(resolved, "cabinet").ANNOUNCEMENT_SECRET;
+    const secret = envFor(resolved, "cabinet").GATEWAY_CABINET_SECRET;
     if (secret === undefined) {
-      throw new Error("the fixture's cabinet holds no announcement secret");
+      throw new Error("the fixture's cabinet holds no gateway secret");
     }
     return secret;
   };
@@ -607,28 +627,30 @@ describe("the announcement route belongs to the gateway and the cabinet alone", 
       for (const service of ["scanner", "web", "migrate", "scanner-worker", "scanner-privacy"]) {
         const credential = problemsWith(
           channel,
-          withEnv(config, service, "ANNOUNCEMENT_SECRET", secret),
+          withEnv(config, service, "GATEWAY_CABINET_SECRET", secret),
         );
-        expect(credential).toContainEqual(expect.stringMatching(`${service}: ANNOUNCEMENT_SECRET`));
+        expect(credential).toContainEqual(
+          expect.stringMatching(`${service}: GATEWAY_CABINET_SECRET`),
+        );
         expect(credential.join("\n")).not.toContain(secret);
       }
       for (const service of ["cabinet", "scanner", "web"]) {
         const route = problemsWith(
           channel,
-          withEnv(config, service, "CABINET_ANNOUNCEMENT_URL", "http://cabinet:3003"),
+          withEnv(config, service, "CABINET_INTERNAL_URL", "http://cabinet:3003"),
         );
-        expect(route).toContainEqual(expect.stringMatching(`${service}: CABINET_ANNOUNCEMENT_URL`));
+        expect(route).toContainEqual(expect.stringMatching(`${service}: CABINET_INTERNAL_URL`));
       }
     },
   );
 
   it.each(CHANNELS)("refuses two halves that hold different secrets in %s", (channel, config) => {
-    const other = "another-announcement-secret-of-enough-characters-2222";
+    const other = "another-gateway-cabinet-secret-of-enough-characters";
     const problems = problemsWith(
       channel,
-      withEnv(config, "gateway", "ANNOUNCEMENT_SECRET", other),
+      withEnv(config, "gateway", "GATEWAY_CABINET_SECRET", other),
     );
-    expect(problems).toContainEqual(expect.stringMatching(/gateway: ANNOUNCEMENT_SECRET/));
+    expect(problems).toContainEqual(expect.stringMatching(/gateway: GATEWAY_CABINET_SECRET/));
     expect(problems.join("\n")).not.toContain(other);
     expect(problems.join("\n")).not.toContain(secretOf(config));
   });
@@ -636,13 +658,13 @@ describe("the announcement route belongs to the gateway and the cabinet alone", 
   it("refuses a cabinet with no secret, or one too short to be a secret", () => {
     for (const value of [null, "", "x".repeat(31)]) {
       const withBoth = withEnv(
-        withEnv(TEST_CHANNEL, "cabinet", "ANNOUNCEMENT_SECRET", value),
+        withEnv(TEST_CHANNEL, "cabinet", "GATEWAY_CABINET_SECRET", value),
         "gateway",
-        "ANNOUNCEMENT_SECRET",
+        "GATEWAY_CABINET_SECRET",
         value,
       );
       expect(problemsWith("test", withBoth)).toContainEqual(
-        expect.stringMatching(/cabinet: ANNOUNCEMENT_SECRET/),
+        expect.stringMatching(/cabinet: GATEWAY_CABINET_SECRET/),
       );
     }
   });
@@ -653,16 +675,16 @@ describe("the announcement route belongs to the gateway and the cabinet alone", 
       const wrong = withEnv(
         TEST_CHANNEL,
         service,
-        "ANNOUNCEMENT_SECRET",
-        "a-sandbox-announcement-secret-nobody-should-reuse",
+        "GATEWAY_CABINET_SECRET",
+        "a-sandbox-gateway-cabinet-secret-nobody-should-reuse",
       );
       expect(problemsWith("test", wrong)).toContainEqual(
-        expect.stringMatching(new RegExp(`${service}: ANNOUNCEMENT_SECRET`)),
+        expect.stringMatching(new RegExp(`${service}: GATEWAY_CABINET_SECRET`)),
       );
     },
   );
 
-  it("refuses the scanner's secret as the announcement secret, or the secret of any other door", () => {
+  it("refuses the scanner's secret as the gateway's secret, or the secret of any other door", () => {
     // The scanner's credential opens the route that names sessions and removes
     // people. Presented on this route as well, whoever holds either holds both.
     const secret = secretOf(PRODUCTION_CHANNEL);
@@ -671,7 +693,6 @@ describe("the announcement route belongs to the gateway and the cabinet alone", 
       ["scanner", "REPORT_IDENTITY_SECRET"],
       ["cabinet", "AUTH_SECRET"],
       ["cabinet", "REGISTRATION_INVITATION"],
-      ["gateway", "SANDBOX_MERCHANT_KEY"],
       ["gateway", "CDP_API_KEY_SECRET"],
       ["scanner", "TOKEN_HMAC_SECRET"],
     ] as const) {
@@ -691,22 +712,22 @@ describe("the announcement route belongs to the gateway and the cabinet alone", 
       expect(
         problemsWith(
           "production",
-          withEnv(PRODUCTION_CHANNEL, "gateway", "CABINET_ANNOUNCEMENT_URL", url),
+          withEnv(PRODUCTION_CHANNEL, "gateway", "CABINET_INTERNAL_URL", url),
         ),
-      ).toContainEqual(expect.stringMatching(/gateway: CABINET_ANNOUNCEMENT_URL/));
+      ).toContainEqual(expect.stringMatching(/gateway: CABINET_INTERNAL_URL/));
     }
   });
 
   it("refuses a production secret still holding the template's placeholder", () => {
-    const placeholder = "REPLACE_WITH_A_NEW_ANNOUNCEMENT_SECRET_OF_32_CHARACTERS";
+    const placeholder = "REPLACE_WITH_A_NEW_GATEWAY_CABINET_SECRET";
     const both = withEnv(
-      withEnv(PRODUCTION_CHANNEL, "cabinet", "ANNOUNCEMENT_SECRET", placeholder),
+      withEnv(PRODUCTION_CHANNEL, "cabinet", "GATEWAY_CABINET_SECRET", placeholder),
       "gateway",
-      "ANNOUNCEMENT_SECRET",
+      "GATEWAY_CABINET_SECRET",
       placeholder,
     );
     expect(problemsWith("production", both)).toContainEqual(
-      expect.stringMatching(/ANNOUNCEMENT_SECRET still contains a template placeholder/),
+      expect.stringMatching(/GATEWAY_CABINET_SECRET still contains a template placeholder/),
     );
   });
 });
@@ -762,6 +783,21 @@ describe("the release entry point", () => {
     expect(stderr).toContain("CDP_API_KEY_SECRET");
     expect(stderr).toContain("COOKIE_SECURE");
     expectNoFixtureSecrets(stderr, wrong);
+  });
+
+  it("refuses a channel that seeds a key, before anything stops, without printing it", () => {
+    // What activation meets when something after deploy/compose.public.yaml
+    // puts a seed back: exit 65, which deploy/activate.sh turns into a refusal
+    // before the applications stop.
+    const key = `csk_test_${"x".repeat(44)}`;
+    const result = runCli(
+      "test",
+      JSON.stringify(withEnv(TEST_CHANNEL, "gateway", "SANDBOX_MERCHANT_KEY", key)),
+    );
+    expect(result.status).toBe(65);
+    expect(result.stdout ?? "").toBe("");
+    expect(result.stderr).toContain("gateway: SANDBOX_MERCHANT_KEY");
+    expect(result.stderr).not.toContain(key);
   });
 
   it("refuses malformed JSON without printing input", () => {

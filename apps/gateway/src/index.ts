@@ -29,7 +29,6 @@ export {
   issueKey,
   keyDigest,
   type LiveApprovalGrant,
-  makeMerchant,
   newKeySecret,
   SEEDED_MERCHANT,
   type SeedOutcome,
