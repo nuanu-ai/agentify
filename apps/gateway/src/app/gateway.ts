@@ -945,8 +945,7 @@ export class Gateway {
 
   /**
    * The key a call was made with, named the way the merchant's list of keys
-   * names it — or as the cabinet, whose key is on no list and whose call means
-   * a person signed in to it acted.
+   * names it — or as the cabinet's, which is on no list.
    */
   async #named(merchantId: string, askedBy: KeyOnTheCall): Promise<AskedWith> {
     if (askedBy.purpose === "cabinet") {

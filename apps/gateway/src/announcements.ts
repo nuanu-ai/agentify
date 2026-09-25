@@ -10,7 +10,7 @@
  * first wallet, a new key of the merchant's own and a cancelled change are
  * announced once they are done. A wallet is changed only with the cabinet's
  * own key (ADR-0019), so a wallet announcement names no key: it was asked for
- * by a person signed in to the cabinet. A new key names the key that asked,
+ * through the cabinet. A new key names the key that asked,
  * because any key of the merchant's may issue one. Anything else the gateway
  * ever needs from the cabinet is another `operation` in
  * `GatewayRequestSchema`, over this route and with this secret, never a
