@@ -76,7 +76,7 @@ statement() {
   esac
 }
 case "$args" in
-  "config --no-interpolate") echo "name: agentify-test" ;;
+  "config --no-interpolate") echo "name: agentify" ;;
   "--profile jobs config --format json") echo '{"services": {"scanner": {"environment": {"A": "1"}}}, "volumes": {"agentify-postgres": {"name": "agentify-postgres"}}}' ;;
   "config --images postgres") echo "postgres@sha256:pinned" ;;
   "stop --timeout 60 gateway cabinet scanner scanner-worker")
@@ -709,6 +709,21 @@ class Activation(unittest.TestCase):
         self.assertIn("the volume agentify-postgres", said)
         self.assert_old_release_runs_on_old_data(said)
         self.assertEqual((self.restore_points(), self.record()), ([], None))
+
+    def test_a_move_to_one_database_that_has_not_finished_stops_nothing(self):
+        # deploy/one-database.sh keeps its progress beside the transition
+        # record; until it says done, the new project's database is a copy in
+        # the middle of a move, and a release must not start on it.
+        for progress in ("stopping", "stopped /var/backups/agentify/test/point 1", "copied /var/backups/agentify/test/point 1 2"):
+            with self.subTest(progress=progress):
+                (self.root / "state/test/one-database").write_text(progress + "\n")
+                said = self.run_script("activate")
+                self.assertIn("exit 1", said)
+                self.assertIn("/var/lib/agentify/test/one-database", said)
+                self.assert_old_release_runs_on_old_data(said)
+                self.assertEqual((self.restore_points(), self.record()), ([], None))
+        (self.root / "state/test/one-database").write_text("done /var/backups/agentify/test/point 1 2\n")
+        self.assertIn("exit 0", self.run_script("activate"))
 
     def test_a_database_running_another_image_than_the_pinned_one_stops_nothing(self):
         said = self.run_script("activate", POSTGRES_IMAGE="sha256:postgres-16")
