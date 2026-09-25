@@ -3636,6 +3636,24 @@ describe("a wallet change waiting on the live deployment", () => {
     ...ANNOUNCING,
   };
   const WAITING = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
+  /** A third address, for a change that lands in between. */
+  const OVERTAKING = "0x0000000000000000000000000000000000000007";
+
+  /**
+   * What the cancel form on a settings screen sends: every field it carries,
+   * as the page was drawn. A browser posts what the page it was showing held,
+   * which is the point of the form carrying the change it showed.
+   */
+  const fromTheScreen = (screen: Visit): Record<string, string> => {
+    const form = /<form[^>]*payout-wallet\/cancel[^>]*>([\s\S]*?)<\/form>/.exec(screen.html)?.[1];
+    if (form === undefined) throw new Error("the settings screen carries no cancel form");
+    return Object.fromEntries(
+      [...form.matchAll(/<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"/g)].map((field) => [
+        field[1] ?? "",
+        field[2] ?? "",
+      ]),
+    );
+  };
 
   /**
    * A cabinet in front of a live gateway, with every account at the merchant
@@ -3722,23 +3740,125 @@ describe("a wallet change waiting on the live deployment", () => {
   });
 
   it("signs nobody out when the gateway would not cancel", async () => {
-    const running = await live({
-      client: (real) => ({
-        ...real,
-        setPayoutWallet: async () => ({ ok: false, status: 503, why: "the gateway said no" }),
-      }),
-    });
+    // A real refusal from the real gateway: another change is recorded between
+    // the gateway reading the wallet for this cancel and writing it, so the
+    // cancel is refused as raced and nothing it asked for is written.
+    const running = await live();
     onTheLiveKey(running);
     await running.browser.signIn();
     const otherDevice = await running.another();
     await otherDevice.signIn();
     await aChangeWaits(running);
+    const store = running.harnessed.store;
+    const writing = store.setPayoutWallet.bind(store);
+    let overtaken = false;
+    store.setPayoutWallet = async (id, expected, next, when) => {
+      if (!overtaken) {
+        overtaken = true;
+        await writing(
+          id,
+          expected,
+          {
+            address: running.harnessed.merchant.wallet,
+            pending: { address: OVERTAKING, takesEffectAt: when + 48 * 60 * 60 * 1_000 },
+          },
+          when,
+        );
+      }
+      return await writing(id, expected, next, when);
+    };
 
-    const pressed = await running.browser.post("/settings/payout-wallet/cancel");
+    const pressed = await running.browser.post(
+      "/settings/payout-wallet/cancel",
+      fromTheScreen(await running.browser.get("/settings")),
+    );
 
-    expect(pressed.status).not.toBe(303);
-    expect(await waitingNow(running)).not.toBeNull();
+    expect(pressed.status).toBe(409);
+    expect(await waitingNow(running)).toMatchObject({ payout_wallet: OVERTAKING });
     expect((await otherDevice.get("/settings")).status).toBe(200);
+  });
+
+  it("says a change that took effect before the press did take effect, and still signs the others out", async () => {
+    // The press that matters most: the unwanted change has just landed. It is
+    // not cancelled — nothing can take it back at once — and the page must not
+    // say it was; what it can do is sign every other session out and say how
+    // the old address comes back.
+    const said: string[] = [];
+    const log = vi
+      .spyOn(console, "log")
+      .mockImplementation((...parts) => said.push(parts.map(String).join(" ")));
+    try {
+      const running = await live();
+      onTheLiveKey(running);
+      await running.browser.signIn();
+      const otherDevice = await running.another();
+      await otherDevice.signIn();
+      await aChangeWaits(running);
+      const screen = await running.browser.get("/settings");
+      running.harnessed.advance(48 * 60 * 60 * 1_000);
+
+      const pressed = await running.browser.post(
+        "/settings/payout-wallet/cancel",
+        fromTheScreen(screen),
+      );
+
+      expect(pressed.status).toBe(200);
+      const page = readable(pressed.html);
+      expect(page).toContain("2026-08-28 12:00:00 UTC");
+      expect(pressed.html.replaceAll(/<[^>]*>/g, "")).toContain(WAITING);
+      expect(page).not.toMatch(/cancelled/i);
+      expect(await waitingNow(running)).toBeNull();
+      expect(await paidInto(running)).toBe(WAITING);
+      expect((await otherDevice.get("/settings")).to).toMatch(/^\/sign-in/);
+      expect(said.join("\n")).not.toMatch(/cancelled/i);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("does not call a change back a cancel when the change took effect as it was pressed", async () => {
+    // The narrower race: the cabinet read the change as waiting, and it took
+    // effect before the gateway got the cancel. Asking for the old address is
+    // then a change back, which waits and is announced — and the page and the
+    // log say that rather than that anything was cancelled.
+    const said: string[] = [];
+    const log = vi
+      .spyOn(console, "log")
+      .mockImplementation((...parts) => said.push(parts.map(String).join(" ")));
+    try {
+      const holder: { running?: Running } = {};
+      const running = await live({
+        client: (real) => ({
+          ...real,
+          setPayoutWallet: async (address) => {
+            holder.running?.harnessed.advance(48 * 60 * 60 * 1_000);
+            return await real.setPayoutWallet(address);
+          },
+        }),
+      });
+      holder.running = running;
+      onTheLiveKey(running);
+      await running.browser.signIn();
+      const otherDevice = await running.another();
+      await otherDevice.signIn();
+      await aChangeWaits(running);
+
+      const pressed = await running.browser.post(
+        "/settings/payout-wallet/cancel",
+        fromTheScreen(await running.browser.get("/settings")),
+      );
+
+      expect(pressed.status).toBe(200);
+      expect(readable(pressed.html)).not.toMatch(/cancelled/i);
+      expect(await paidInto(running)).toBe(WAITING);
+      expect(await waitingNow(running)).toMatchObject({
+        payout_wallet: running.harnessed.merchant.wallet,
+      });
+      expect((await otherDevice.get("/settings")).to).toMatch(/^\/sign-in/);
+      expect(said.join("\n")).not.toMatch(/cancelled/i);
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it("is refused from a page on another site", async () => {
