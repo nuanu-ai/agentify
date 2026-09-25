@@ -593,7 +593,7 @@ release again starts everything under the project `agentify`. Four rules hold
 for the window:
 
 1. Run the script inside `tmux` on the host, so a dropped connection does not
-   kill it halfway.
+   kill it halfway; `sudo tmux attach -t one-database` finds it again.
 2. Release nothing until the script's last line says the host holds one
    database; a release is refused anyway while the move's progress says
    anything else.
@@ -606,7 +606,8 @@ On TEST, with the revision's SHA:
 
 ```sh
 ssh -t agentify-test sudo agentify-release <sha>
-ssh -t agentify-test sudo tmux new -s one-database /var/lib/agentify/test/checkouts/<sha>/deploy/one-database.sh test
+ssh -t agentify-test sudo tmux new -s one-database
+/var/lib/agentify/test/checkouts/<sha>/deploy/one-database.sh test     # inside tmux, as root
 ssh -t agentify-test sudo agentify-release <sha>
 ```
 
@@ -623,7 +624,8 @@ snapshot of the one database rather than the last one of two:
 ```sh
 ssh -t agentify sudo systemctl stop agentify-backup.timer
 ssh -t agentify sudo agentify-release app-v<X.Y.Z>
-ssh -t agentify sudo tmux new -s one-database /var/lib/agentify/production/checkouts/<sha>/deploy/one-database.sh production
+ssh -t agentify sudo tmux new -s one-database
+/var/lib/agentify/production/checkouts/<sha>/deploy/one-database.sh production     # inside tmux, as root
 ssh -t agentify sudo agentify-release app-v<X.Y.Z>
 ssh -t agentify 'cd /var/lib/agentify/production/checkouts/<sha> && sudo deploy/install.sh production'
 ssh -t agentify sudo systemctl start agentify-backup.service
