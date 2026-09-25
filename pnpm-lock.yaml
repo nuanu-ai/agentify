@@ -204,8 +204,8 @@ importers:
         specifier: 2.23.4
         version: 2.23.4
       pg-boss:
-        specifier: 12.26.0
-        version: 12.26.0
+        specifier: 12.28.0
+        version: 12.28.0
       tldts:
         specifier: 7.4.8
         version: 7.4.8
@@ -274,8 +274,8 @@ importers:
         specifier: 16.2.10
         version: 16.2.10(@babel/core@8.0.5)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       pg-boss:
-        specifier: 12.26.0
-        version: 12.26.0
+        specifier: 12.28.0
+        version: 12.28.0
       posthog-js:
         specifier: 1.399.2
         version: 1.399.2
@@ -4003,10 +4003,6 @@ packages:
     resolution: {integrity: sha512-izNAxJyRWUP8ljBoDSub5WyrVOUlT4SLGShswE7eoRBpp6QUsSycYxLBMJlbshgPBMcPT/nrfgjNY2918ayv2A==}
     engines: {node: '>=18'}
 
-  cron-parser@5.6.1:
-    resolution: {integrity: sha512-QBm4o1PwZiuY7KFbVvW7FLC8bozy7YWzv+Fz6KRS7sQghzcbDZCGxr/Bc5b6TQreAoSwuWVP491dIcK0THCX6A==}
-    engines: {node: '>=18'}
-
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
     engines: {node: '>= 8'}
@@ -5263,11 +5259,6 @@ packages:
 
   perfect-debounce@1.0.0:
     resolution: {integrity: sha512-xCy9V055GLEqoFaHoC1SoLIaLmWctgCUaBaWxDZ7/Zx4CTyX7cJQLJOok/orfjZAh9kEYpjJa4d0KcJmCbctZA==}
-
-  pg-boss@12.26.0:
-    resolution: {integrity: sha512-qMLyokiG2/Ey8U3sptl0We4nRGr1iveHL/lQ7g6n7cI/ubp9HVJZJnfPf6B9jzAbpd55uSdltKL/DMkyBC0ynw==}
-    engines: {node: '>=22.12.0'}
-    hasBin: true
 
   pg-boss@12.28.0:
     resolution: {integrity: sha512-7OaS/sYcQ8jcA9fSSlcdJc3Z9GD+/7GtQD3TlfweKpJQ/UnSbZYQHs1TECXMRY2sZo8ah4khQu9+6Z9v86z1dg==}
@@ -9436,10 +9427,6 @@ snapshots:
     dependencies:
       luxon: 3.7.2
 
-  cron-parser@5.6.1:
-    dependencies:
-      luxon: 3.7.2
-
   cross-spawn@7.0.6:
     dependencies:
       path-key: 3.1.1
@@ -10800,14 +10787,6 @@ snapshots:
       through: 2.3.8
 
   perfect-debounce@1.0.0: {}
-
-  pg-boss@12.26.0:
-    dependencies:
-      cron-parser: 5.6.1
-      pg: 8.22.0
-      serialize-error: 13.0.1
-    transitivePeerDependencies:
-      - pg-native
 
   pg-boss@12.28.0:
     dependencies:

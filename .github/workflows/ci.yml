@@ -44,18 +44,18 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        # PostgreSQL 17.11 Alpine: the same immutable image the commerce stack deploys.
+        # PostgreSQL 17.11 Alpine: the same immutable image the stack deploys.
         image: postgres@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
         env:
-          POSTGRES_USER: agentify_commerce
+          POSTGRES_USER: agentify
           POSTGRES_PASSWORD: ci-only
-          POSTGRES_DB: agentify_commerce_test
+          POSTGRES_DB: agentify_test
         # Let GitHub choose the host port so concurrent jobs cannot contend for
         # the runner's 5432.
         ports:
           - 5432/tcp
         options: >-
-          --health-cmd "pg_isready -U agentify_commerce -d agentify_commerce_test"
+          --health-cmd "pg_isready -U agentify -d agentify_test"
           --health-interval 2s
           --health-timeout 3s
           --health-retries 15
@@ -73,24 +73,22 @@ jobs:
       # in the root package.json — the same one the developer has on the machine.
       - run: corepack enable
 
-      # One server, two schemas' worth of tests. The image makes the database it
-      # is given and the user that owns it; this makes the scanner's beside it.
+      # One server and one account for every suite, as the stack has. The image
+      # makes `pnpm test:db`'s database; this makes the one the scanner's suites
+      # drop and remake beside it (deploy/postgres-init/ does both on a laptop).
       #
-      # The role is a superuser, and three of the migrations are the reason:
-      # they put the browser-observation tables under FORCE row level security
-      # and write no policy for them, so an owner is subject to a policy set
-      # that admits nobody. This is the same account the deployed stack uses —
-      # there, too, the scanner connects as the cluster's own role — so the
-      # suites run against the privileges the product actually has.
-      - name: give the scanner its database on the same server
+      # The account is the cluster's own superuser, and three of the migrations
+      # are why that matters: they put the browser-observation tables under
+      # FORCE row level security and write no policy for them, so an owner that
+      # is not a superuser is subject to a policy set that admits nobody.
+      - name: give the scanner's suites their database on the same server
         env:
           PGPASSWORD: ci-only
         run: |
           psql -v ON_ERROR_STOP=1 -h 127.0.0.1 \
             -p ${{ job.services.postgres.ports[5432] }} \
-            -U agentify_commerce -d agentify_commerce_test \
-            -c "create role agentify_scanner login superuser password 'ci-only'" \
-            -c "create database agentify_scanner_migration_test owner agentify_scanner"
+            -U agentify -d agentify_test \
+            -c "create database agentify_scanner_migration_test"
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
@@ -98,15 +96,15 @@ jobs:
       - run: pnpm test
       - run: pnpm test:db
         env:
-          AGENTIFY_TEST_DATABASE_URL: postgresql://agentify_commerce:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_commerce_test
+          AGENTIFY_TEST_DATABASE_URL: postgresql://agentify:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_test
       - run: pnpm scanner:test:integration
         env:
-          DATABASE_URL: postgresql://agentify_scanner:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
-          MIGRATION_TEST_DATABASE_URL: postgresql://agentify_scanner:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
+          DATABASE_URL: postgresql://agentify:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
+          MIGRATION_TEST_DATABASE_URL: postgresql://agentify:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
       - run: pnpm scanner:test:db
         env:
-          DATABASE_URL: postgresql://agentify_scanner:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
-          MIGRATION_TEST_DATABASE_URL: postgresql://agentify_scanner:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
+          DATABASE_URL: postgresql://agentify:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
+          MIGRATION_TEST_DATABASE_URL: postgresql://agentify:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
       # `build` and `typecheck` compile different sets of files. The former uses
       # the package tsconfig that decides what ships; the latter reads the whole
       # source tree including tests and emits nothing.
@@ -120,14 +118,15 @@ jobs:
       - run: pnpm scanner:self-readiness
         env:
           APP_BASE_URL: https://agentify.ad
-          DATABASE_URL: postgresql://agentify_scanner:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
-          MIGRATION_TEST_DATABASE_URL: postgresql://agentify_scanner:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
-      # The door to the operator's dashboard is Next's router's answer, so it is
-      # asked of the build too: /admin must answer everybody but an operator
-      # exactly as a page that does not exist (ADR-0026 §6).
+          DATABASE_URL: postgresql://agentify:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
+          MIGRATION_TEST_DATABASE_URL: postgresql://agentify:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
+      # The door to the operator's dashboard is Next's answer, so it is asked of
+      # the build too, on a database the migrations built: /admin is the site's
+      # 404 page for everybody but an operator, and the dashboard for an
+      # operator (ADR-0026 §6).
       - run: pnpm scanner:test:admin-door
         env:
-          MIGRATION_TEST_DATABASE_URL: postgresql://agentify_scanner:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
+          MIGRATION_TEST_DATABASE_URL: postgresql://agentify:ci-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/agentify_scanner_migration_test
 
   # The browser observer's test drives a real Chromium, and installing one with
   # its system packages is the slowest step in this file by a wide margin:

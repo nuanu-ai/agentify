@@ -29,6 +29,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { visitorOf } from "./auth";
 import { encryptEmail, hmacHex } from "./crypto";
 import { getDatabase } from "./database";
+import { getOperatorDashboard } from "./operator-dashboard";
 import { executeRetentionCleanup } from "./privacy";
 import {
   requestScannerIdentityDeletion,
@@ -617,5 +618,14 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
       registrationIntentsDeleted: 0,
       rateLimitRowsDeleted: 0,
     });
+  });
+});
+
+describe("the operator page", () => {
+  it("reads a database the migrations built, with nothing installed beside them", async () => {
+    const dashboard = await getOperatorDashboard();
+    expect(dashboard.daily).toHaveLength(30);
+    expect(dashboard.overview.scansTotal).toBeGreaterThan(0);
+    expect(dashboard.recentScans.length).toBeLessThanOrEqual(50);
   });
 });

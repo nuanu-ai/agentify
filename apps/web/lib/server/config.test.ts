@@ -6,7 +6,6 @@ import { getStripeCardSignalConfig } from "./stripe-card-signal-config";
 const keys = [
   "APP_BASE_URL",
   "DATABASE_URL",
-  "DASHBOARD_DATABASE_URL",
   "TOKEN_HMAC_SECRET",
   "EMAIL_ENCRYPTION_KEY",
   "REGISTRATION_ENABLED",
@@ -40,8 +39,7 @@ afterEach(() => {
 describe("clean-clone environment", () => {
   it("treats optional empty .env.example values as absent", () => {
     Object.assign(process.env, {
-      DATABASE_URL:
-        "postgresql://agentify_scanner:agentify_scanner@localhost:5432/agentify_scanner",
+      DATABASE_URL: "postgresql://agentify:agentify@localhost:5432/agentify",
       APP_BASE_URL: "",
       TOKEN_HMAC_SECRET: "",
       EMAIL_ENCRYPTION_KEY: "",
@@ -75,8 +73,7 @@ describe("clean-clone environment", () => {
 
   it("allows an honest registration-off local deployment without cabinet credentials", () => {
     Object.assign(process.env, {
-      DATABASE_URL:
-        "postgresql://agentify_scanner:agentify_scanner@localhost:5432/agentify_scanner",
+      DATABASE_URL: "postgresql://agentify:agentify@localhost:5432/agentify",
       REGISTRATION_ENABLED: "false",
     });
     const config = getServerConfig();
@@ -85,8 +82,7 @@ describe("clean-clone environment", () => {
 
   it("allows registration against a configured local cabinet", () => {
     Object.assign(process.env, {
-      DATABASE_URL:
-        "postgresql://agentify_scanner:agentify_scanner@localhost:5432/agentify_scanner",
+      DATABASE_URL: "postgresql://agentify:agentify@localhost:5432/agentify",
       REGISTRATION_ENABLED: "true",
       CABINET_IDENTITY_URL: "http://cabinet.internal:3002",
       REPORT_IDENTITY_SECRET: "r".repeat(32),
@@ -96,8 +92,7 @@ describe("clean-clone environment", () => {
 
   it("supports the production scan acceptance kill-switch", () => {
     Object.assign(process.env, {
-      DATABASE_URL:
-        "postgresql://agentify_scanner:agentify_scanner@localhost:5432/agentify_scanner",
+      DATABASE_URL: "postgresql://agentify:agentify@localhost:5432/agentify",
       SCAN_ACCEPTANCE_ENABLED: "false",
       REGISTRATION_ENABLED: "false",
     });
@@ -107,8 +102,7 @@ describe("clean-clone environment", () => {
   it("allows production privacy cleanup with registration disabled and no cabinet credentials", () => {
     vi.stubEnv("NODE_ENV", "production");
     Object.assign(process.env, {
-      DATABASE_URL:
-        "postgresql://agentify_scanner:agentify_scanner@localhost:5432/agentify_scanner",
+      DATABASE_URL: "postgresql://agentify:agentify@localhost:5432/agentify",
       TOKEN_HMAC_SECRET: "h".repeat(32),
       REGISTRATION_ENABLED: "false",
       CABINET_IDENTITY_URL: "",
@@ -125,8 +119,7 @@ describe("clean-clone environment", () => {
   it("fails closed when production registration lacks cabinet credentials", () => {
     vi.stubEnv("NODE_ENV", "production");
     Object.assign(process.env, {
-      DATABASE_URL:
-        "postgresql://agentify_scanner:agentify_scanner@localhost:5432/agentify_scanner",
+      DATABASE_URL: "postgresql://agentify:agentify@localhost:5432/agentify",
       TOKEN_HMAC_SECRET: "h".repeat(32),
       REGISTRATION_ENABLED: "true",
       CABINET_IDENTITY_URL: "",
@@ -137,8 +130,7 @@ describe("clean-clone environment", () => {
 
   it("rejects incomplete enforced Turnstile configuration", () => {
     Object.assign(process.env, {
-      DATABASE_URL:
-        "postgresql://agentify_scanner:agentify_scanner@localhost:5432/agentify_scanner",
+      DATABASE_URL: "postgresql://agentify:agentify@localhost:5432/agentify",
       TURNSTILE_ENFORCED: "true",
       TURNSTILE_SECRET_KEY: "secret",
       TURNSTILE_SITE_KEY: "",
@@ -149,8 +141,7 @@ describe("clean-clone environment", () => {
 
   it("requires the cabinet identity URL and dedicated secret together", () => {
     Object.assign(process.env, {
-      DATABASE_URL:
-        "postgresql://agentify_scanner:agentify_scanner@localhost:5432/agentify_scanner",
+      DATABASE_URL: "postgresql://agentify:agentify@localhost:5432/agentify",
       CABINET_IDENTITY_URL: "http://cabinet.internal:3002",
       REPORT_IDENTITY_SECRET: "",
     });

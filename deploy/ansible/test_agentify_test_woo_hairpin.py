@@ -43,11 +43,11 @@ def settings(subject, **changes):
 
 def network(**changes):
     value = {
-        "Name": "agentify-test_default",
+        "Name": "agentify_default",
         "Driver": "bridge",
         "Internal": False,
         "Labels": {
-            "com.docker.compose.project": "agentify-test",
+            "com.docker.compose.project": "agentify",
             "com.docker.compose.network": "default",
         },
         "IPAM": {"Config": [{"Subnet": "172.18.0.0/16", "Gateway": "172.18.0.1"}]},
@@ -60,7 +60,7 @@ class HairpinContract(unittest.TestCase):
     def test_accepts_only_the_actual_private_test_compose_network(self):
         subject = load_subject()
         self.assertEqual(
-            subject.validate_network(network(), "agentify-test_default", "agentify-test", "default"),
+            subject.validate_network(network(), "agentify_default", "agentify", "default"),
             "172.18.0.0/16",
         )
 
@@ -82,8 +82,8 @@ class HairpinContract(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "compose project"):
             subject.validate_network(
                 network(Labels={"com.docker.compose.project": "somebody-else"}),
-                "agentify-test_default",
-                "agentify-test",
+                "agentify_default",
+                "agentify",
                 "default",
             )
 
@@ -97,7 +97,7 @@ class HairpinContract(unittest.TestCase):
         ):
             with self.subTest(document=document), self.assertRaises(RuntimeError):
                 subject.validate_network(
-                    document, "agentify-test_default", "agentify-test", "default"
+                    document, "agentify_default", "agentify", "default"
                 )
 
     def test_requires_the_one_reviewed_public_dns_answer(self):

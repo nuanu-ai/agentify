@@ -11,16 +11,14 @@
 # project directory, and the images are the ones deploy/activate.sh recorded
 # for it in deploy/images.env when it activated that revision.
 #
-# The project names are what the running hosts answer to rather than what
-# this repository calls things: a project name is the prefix on every
-# container and the label every volume is found by, so it moves only with the
-# database (ADR-0025).
+# Both channels are the project agentify, each on its own host, so a container
+# is agentify-<service>-1 wherever it runs (ADR-0025).
 set -euo pipefail
 
 channel="${1:-}"
 case "$channel" in
-  test) project=agentify-test overlay=deploy/compose.agentify-test.yaml ;;
-  production) project=agentify-commerce overlay=deploy/compose.hetzner-commerce.yaml ;;
+  test) overlay=deploy/compose.agentify-test.yaml ;;
+  production) overlay=deploy/compose.hetzner-commerce.yaml ;;
   *) echo "usage: deploy/stack.sh test|production <docker compose arguments>" >&2; exit 64 ;;
 esac
 shift
@@ -54,7 +52,7 @@ fi
 # The channel overlays mount the database's init scripts from here, a path no
 # release changes; deploy/activate.sh keeps it equal to the checkout's copy.
 export AGENTIFY_POSTGRES_INIT="/var/lib/agentify/$channel/postgres-init"
-exec docker compose --project-directory "$root" --project-name "$project" \
+exec docker compose --project-directory "$root" --project-name agentify \
   --env-file "$environment" --env-file "$images" \
   -f "$root/compose.yaml" -f "$root/deploy/compose.public.yaml" \
   -f "$root/$overlay" -f "$root/deploy/compose.images.yaml" "$@"

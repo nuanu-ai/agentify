@@ -161,7 +161,7 @@ describe("a channel that is what it claims to be", () => {
   it("refuses old/default database credentials or a differently wired process without printing secrets", () => {
     for (const change of [
       (wrong: ResolvedCompose) => {
-        envFor(wrong, "postgres").POSTGRES_PASSWORD = "agentify_commerce";
+        envFor(wrong, "postgres").POSTGRES_PASSWORD = "agentify";
       },
       (wrong: ResolvedCompose) => {
         envFor(wrong, "postgres").POSTGRES_PASSWORD =
@@ -169,11 +169,17 @@ describe("a channel that is what it claims to be", () => {
       },
       (wrong: ResolvedCompose) => {
         envFor(wrong, "cabinet").DATABASE_URL =
-          "postgres://agentify_commerce:other-secret@postgres:5432/agentify_commerce";
+          "postgres://agentify:other-secret@postgres:5432/agentify";
       },
       (wrong: ResolvedCompose) => {
         envFor(wrong, "migrate").DATABASE_URL =
-          "postgres://agentify_commerce:other-secret@postgres:5432/agentify_commerce";
+          "postgres://agentify:other-secret@postgres:5432/agentify";
+      },
+      (wrong: ResolvedCompose) => {
+        envFor(wrong, "scanner-worker").DATABASE_URL = envFor(
+          wrong,
+          "scanner-worker",
+        ).DATABASE_URL?.replace(/\/agentify$/, "/agentify_scanner");
       },
     ]) {
       const wrong = structuredClone(PRODUCTION_CHANNEL);

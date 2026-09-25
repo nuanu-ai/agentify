@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Puts the databases of this host's channel back the way a restore point holds
-# them: every database it holds a dump of, <database>.dump. A restore point a
-# release took holds all of them; a directory restored from a snapshot of the
-# off-host backup may hold one (deploy/README.md, "Backups"). Only a person
+# Puts the database of this host's channel back the way a restore point holds
+# it: every database it holds a dump of, <database>.dump, which for a restore
+# point a release took or a snapshot of the off-host backup is agentify.dump
+# (deploy/README.md, "Backups"). Only a person
 # restores, through the release command, which runs this in the same systemd
 # unit a release runs in, so a dropped connection does not stop it halfway:
 #
@@ -23,10 +23,9 @@
 # running this again starts over.
 #
 # Then `current` names the revision whose data the databases hold, the
-# restore point's <previous>, or none for a directory named after no revision
-# or holding the dumps of only some of the channel's databases, so a release of
-# <new> or of anything later migrates again, and the record goes. The
-# applications stay stopped until a release starts them.
+# restore point's <previous>, or none for a directory named after no revision,
+# so a release of <new> or of anything later migrates again, and the record
+# goes. The applications stay stopped until a release starts them.
 set -Eeuo pipefail
 dir="${1%/}" step="checking"
 refuse() { echo "restore: $*" >&2; exit 1; }
@@ -46,7 +45,7 @@ channel="$(python3 -c 'import json; print(json.load(open("/etc/agentify/release.
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 state="/var/lib/agentify/$channel"
 stack() { "$root/deploy/stack.sh" "$channel" "$@"; }
-sql() { stack exec -T postgres psql -U agentify_commerce -d postgres -v ON_ERROR_STOP=1 -q "$@"; }
+sql() { stack exec -T postgres psql -U agentify -d postgres -v ON_ERROR_STOP=1 -q "$@"; }
 transition() { "$root/deploy/transition" "$state/transition" "$@"; }
 named() { local tags; tags="$(transition tags "$1")"; echo "$1${tags:+ ($tags)}"; }
 previous=""
@@ -58,14 +57,6 @@ IFS='|' read -r _ found found_point _ _ found_restoring _ _ <<<"$open"
 exec 9>/run/lock/agentify-release.lock
 flock -n 9 || { echo "restore: a release, the privacy job or a process an earlier run left holds the release lock; nothing was changed." >&2; exit 75; }
 stack up -d --wait --no-deps postgres
-# A restore of fewer databases than the channel has leaves them holding the
-# data of different revisions, so no revision is current afterwards and the
-# next release migrates whatever it runs. The channel's databases are those
-# deploy/backup.sh backs up: all but the server's own, the test suites' and the
-# scratch of restores and checks.
-for database in $(sql -Atc "select datname from pg_database where not datistemplate"); do
-  if [[ ! $database =~ ^(postgres$|check_)|_replaced_|_restoring$|_test$ && " ${databases[*]} " != *" $database "* ]]; then previous=""; fi
-done
 size="$(sql -Atc "select coalesce(sum(pg_database_size(datname)), 0) from pg_database where datname in ($quoted)")"
 # Whole numbers, multiplied here: an awk may print a large product as 1.02e+12,
 # which bash arithmetic cannot read, and the refusal would then be skipped.
@@ -96,7 +87,7 @@ for database in "${databases[@]}"; do
   step="restoring $database into ${database}_restoring"
   echo "restore: $step, from $dir" >&2
   sql -c "DROP DATABASE IF EXISTS ${database}_restoring WITH (FORCE)" -c "CREATE DATABASE ${database}_restoring"
-  stack exec -T postgres pg_restore -U agentify_commerce -d "${database}_restoring" --exit-on-error < "$dir/$database.dump"
+  stack exec -T postgres pg_restore -U agentify -d "${database}_restoring" --exit-on-error < "$dir/$database.dump"
 done
 step="swapping the restored databases in"
 stamp="$(date -u +%Y%m%d%H%M%S)"

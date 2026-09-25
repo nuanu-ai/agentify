@@ -58,12 +58,12 @@ networks:
     external: true
     name: agentify-test-ingress
 
-# Test keeps its own data. These names appear only after the staged namespace
-# cutover has restored and verified the retained test database and Caddy state.
+# External, as on PRODUCTION: deploy/one-database.sh made them from the volumes
+# the host ran two databases on, and nothing creates them by itself.
 volumes:
   agentify-postgres:
     external: true
-    name: agentify-test-postgres
+    name: agentify-postgres
   agentify-caddy:
     external: true
-    name: agentify-test-caddy
+    name: agentify-caddy
