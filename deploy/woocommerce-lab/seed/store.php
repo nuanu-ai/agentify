@@ -98,8 +98,13 @@ function create_protected_download(string $filename): WC_Product_Download
 
     $upload = wp_upload_dir();
     $directory = trailingslashit($upload['basedir']) . 'woocommerce_uploads';
-    if (!wp_mkdir_p($directory)) {
-        throw new RuntimeException('Could not create the protected upload directory');
+    // WooCommerce's install writes this rule when Force Downloads is the
+    // method. Without it Apache serves the file to anyone, and a baseline
+    // captured that way would hold downloads the connector refuses, so the
+    // rebuild stops here, before the baseline archives are replaced.
+    $rule = trailingslashit($directory) . '.htaccess';
+    if (!is_readable($rule) || trim((string) file_get_contents($rule)) !== 'deny from all') {
+        throw new RuntimeException('WooCommerce did not protect its upload directory: ' . $rule . ' does not deny all requests');
     }
     if (!copy($source, trailingslashit($directory) . $filename)) {
         throw new RuntimeException('Could not copy download file: ' . $filename);
