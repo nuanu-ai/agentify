@@ -897,9 +897,10 @@ describe("the passwordless cabinet door", () => {
     expect(person?.confirmed).toBe(true);
     expect(person?.merchant).toBeNull();
     // Opening the cabinet by a plain navigation makes nothing either: it draws
-    // the one control and names who is signed in.
+    // the one control and names who is signed in, privately.
     const screen = await running.browser.get("/merchant");
     expect(screen.status).toBe(200);
+    expect(screen.headers.get("cache-control")).toBe("private, no-store");
     expect(readable(screen.html)).toContain(FRESH.email);
     expect(screen.html).toContain('method="post" action="/merchant"');
     expect(registered).toStrictEqual([]);
@@ -2607,6 +2608,9 @@ describe("what every screen says about the address", () => {
 
     for (const path of ["/cards", "/orders", "/receipts", "/keys", "/settings"]) {
       const answered = await browser.get(path);
+      // A page carrying a person's address is never stored by a shared cache
+      // (ADR-0026 §3).
+      expect(answered.headers.get("cache-control"), path).toBe("private, no-store");
       const bar = /<header class="top">([\s\S]*?)<\/header>/.exec(answered.html)?.[1] ?? "";
       expect(readable(bar), path).toContain(PERSON);
       expect(bar, path).toContain('method="post" action="/sign-out"');
@@ -3282,10 +3286,13 @@ describe("the key the cabinet signs in with", () => {
       expect(keyOnTheRowOf(FRESH.email)).toBe(before);
 
       expect((await ask(true)).status).toBe(200);
+      // The scanner is answered first and the key is renewed after, so a slow
+      // gateway never costs the browser its renewed cookie.
+      await vi.waitFor(() => expect(keyOnTheRowOf(FRESH.email)).not.toBe(before));
       const now = keyOnTheRowOf(FRESH.email);
       expect(now).not.toBe(before);
       expect(await theGatewayTakes(now)).toBe(true);
-      expect(await theGatewayTakes(before)).toBe(false);
+      await vi.waitFor(async () => expect(await theGatewayTakes(before)).toBe(false));
     } finally {
       await new Promise<void>((done) => internal.close(() => done()));
     }
