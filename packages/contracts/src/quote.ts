@@ -90,7 +90,10 @@ export const QuoteRequestSchema = z.strictObject({
 export const QuoteResponseSchema = z.discriminatedUnion("available", [
   z.strictObject({
     available: z.literal(true),
-    price: MoneySchema,
+    price: MoneySchema.meta({
+      description:
+        'Held to the rule a card\'s price meets at publication: above zero, in USD or USDC, with two to six digits after the dot ("5.00", "0.001"); an answer that breaks it is refused and prices nothing.',
+    }),
     as_of: TimestampSchema,
   }),
   z.strictObject({

@@ -33,8 +33,10 @@ import {
   type ForgottenCabinetKey,
   type HandlerAnswer,
   type IssuedKey,
+  MERCHANT_FINDINGS,
   type MerchantCard,
   type MerchantCardList,
+  type MerchantFinding,
   type MerchantKey,
   type MerchantKeyList,
   type OrderAcceptResponse,
@@ -42,6 +44,7 @@ import {
   type PayoutWallet,
   type Problem,
   type PublishResult,
+  priceProblemsOf,
   publicCardOf,
   purchaseCheckFor,
   type QuoteAnswerAck,
@@ -76,10 +79,8 @@ import {
 } from "./merchants.js";
 import { OrderRunner, orderDocumentOf, SWEEP_EFFECTS } from "./runner.js";
 import {
-  approvedForLive,
-  listedUnder,
+  missingFrom,
   modeForCard,
-  payableTo,
   payoutWalletAt,
   policyFor,
   priceCheckOf,
@@ -155,6 +156,15 @@ export const SWEEP_CLAIMS = "agentify_forget_old_claims";
 export type SellingChange =
   | { readonly ok: true; readonly cards: MerchantCardList }
   | { readonly ok: false; readonly why: string };
+
+/**
+ * A price answer the door turned away, and what stands between its price and a
+ * sale. Nothing moved: a question it named that is still held stays open, and
+ * one that is not held was never looked up.
+ */
+export interface QuoteAnswerRefused {
+  readonly refused: readonly Problem[];
+}
 
 /**
  * One product as a thing that can be paid for, and everything a challenge for
@@ -380,20 +390,14 @@ export class Gateway {
   /**
    * Puts one card in the catalog, or says everything standing in its way.
    *
-   * The findings are gathered rather than returned at the first one, and two of
-   * them are not about the card at all. A merchant who has set no name for
-   * buyers to read cannot publish: a card of theirs would be offered for sale
-   * through a payment request that names no seller, so the agent reading it is
-   * invited to pay somebody the request does not name. That has been shipped
-   * from here once, silently. And on a deployment that settles on a real chain,
-   * a merchant who has set no wallet cannot publish either, for the same shape
-   * of reason one step further along: the money from that card's sales would
-   * have nowhere to go, and the gateway has no address of its own to stand in
-   * for theirs — the operator's configured address is the operator's, and
-   * paying a merchant's sales into it is exactly the custodial arrangement this
-   * design refuses.
+   * The findings are gathered rather than returned at the first one, and some
+   * of them may not be about the card at all: a merchant who lacks what the
+   * deployment asks of every merchant — a name for buyers to read, a wallet for
+   * their sales to be paid into, the operator's approval for the live catalog,
+   * as the rule in the core decides — cannot publish, for the reasons
+   * `MERCHANT_PROBLEMS` gives beside each.
    *
-   * Both refusals come back beside whatever is wrong with the card because the
+   * Those come back beside whatever is wrong with the card because the
    * merchant is going to have to fix all of it, and told one at a time they fix
    * the card, publish again, and only then find out about the rest. They lead
    * the list for the same reason: a screen that shows one finding shows the one
@@ -410,27 +414,19 @@ export class Gateway {
     if (merchant === null) {
       throw new Error(`publishing resolved to ${merchantId}, and there is no such merchant`);
     }
-    const missing: Problem[] = [];
-    if (!listedUnder(merchant.serviceName)) {
-      missing.push(NO_SELLER_NAME);
-    }
     // The same question the selling word asks of every card afterwards, put
-    // here where the merchant is in front of somebody who can be told: there is
-    // nowhere for this product's money to go. The sandbox asks for no address,
-    // and that is not leniency — it settles against nothing, so there is no
-    // money to send anywhere and no chain to send it on (ADR-0008).
-    if (!payableTo(merchant.payoutWallet.address, this.runtime.config)) {
-      missing.push(NO_PAYOUT_WALLET);
-    }
-    if (!approvedForLive(merchant.liveApprovedAt, this.runtime.config)) {
-      missing.push(NO_OPERATOR_APPROVAL);
-    }
+    // here where the merchant is in front of somebody who can be told what is
+    // missing.
+    const missing = missingFrom(merchant, this.runtime.config);
 
     if (!parsed.success) {
-      return cardRejected([...missing, ...findingsOf(parsed.error.issues)]);
+      return cardRejected(missing, findingsOf(parsed.error.issues));
     }
-    if (missing.length > 0) {
-      return cardRejected(missing);
+    // Asked of the card as it was opened out, so a price written as one string
+    // meets the same rule in the same words as one written as two fields.
+    const unsellable = priceProblemsOf(parsed.data.price);
+    if (missing.length > 0 || unsellable.length > 0) {
+      return cardRejected(missing, unsellable);
     }
 
     const stored = await this.runtime.store.publishCard(
@@ -1645,12 +1641,23 @@ export class Gateway {
    *
    * So the answer is put to the machine here, and what the machine made of it is
    * what comes back.
+   *
+   * A price no payment can be taken at is turned away before any of that, by
+   * the rule a card's price meets at publication, and it is turned away
+   * whichever question it names: the fault is in the answer, not in the
+   * question. A question still held stays open, so a corrected answer may
+   * still price the sale, and if none comes it ends as a silent one does.
    */
   async answerQuote(
     merchantId: string,
     priceId: string,
     response: QuoteResponse,
-  ): Promise<QuoteAnswerAck> {
+  ): Promise<QuoteAnswerAck | QuoteAnswerRefused> {
+    const unsellable = response.available ? priceProblemsOf(response.price) : [];
+    if (unsellable.length > 0) {
+      return { refused: unsellable };
+    }
+
     const asked = this.#questions.get(priceId);
     // A question this merchant was not the one asked is answered exactly as a
     // question we no longer hold — a worker replaying an envelope from an hour
@@ -2283,73 +2290,129 @@ function misfitsIn(findings: readonly Problem[]): string {
  * A card that is not going in the catalog, with everything standing in its way.
  *
  * The findings are the answer and the sentence is how it is recognised: a
- * program reads `problems` field by field, and the message names the first of
- * them and counts the rest, because a message that recited the list would be
- * the same answer twice — once in a shape that can be acted on and once in a
- * shape that cannot. The first is the one that leads the list, which is the
- * merchant's own missing name or wallet wherever either is missing: the finding
- * nothing on the card explains.
+ * program reads `problems` field by field, and the message is one line for a
+ * person reading a log. The merchant's own findings lead the list, because
+ * they are the ones nothing on the card explains, and where there are any the
+ * line names every one of them plainly — the merchant has no seller name, no
+ * payout wallet — rather than quoting the first finding's long sentence cut off
+ * before it says how to fix it. There are three at most and each is a few
+ * words, so naming them all is never long. What is wrong with the card itself
+ * is counted and the first of it quoted, as it is where the merchant is not at
+ * fault, because a card can have a dozen findings and one of them can be as
+ * long as what the merchant sent.
  */
-function cardRejected(problems: readonly Problem[]): PublishResult {
-  const first = problems[0];
-  if (first === undefined) {
-    // "Refused, and here is nothing" is the one answer a merchant cannot act
-    // on, and it is not one this can send: a card is refused because something
-    // about it or about its merchant is wrong, and that something is what fills
-    // the list. Stopping here beats sending an answer the contract will not
-    // carry and nobody could use.
-    throw new Error("a card was refused with nothing named as standing in its way");
-  }
-
-  const counted = problems.length === 1 ? "one thing stands" : `${problems.length} things stand`;
+function cardRejected(
+  merchant: readonly MerchantFinding[],
+  card: readonly Problem[],
+): PublishResult {
   return {
     ok: false,
     error: {
       code: CARD_REJECTED,
-      message: `this card was not published: ${counted} between it and the catalog, and the first of them is ${misfitOf(first)}`,
+      message: `this card was not published: ${whatStands(merchant, card)}`,
       // The same card published again is refused again. What changes the
       // outcome is fixing what the findings name, and saying so here keeps a
       // merchant's retry loop off a door that will not open.
       retryable: false,
-      problems: [...problems],
+      problems: [...merchant.map((finding) => MERCHANT_PROBLEMS[finding]), ...card],
     },
   };
 }
 
-/**
- * The finding a merchant who has chosen no name for buyers meets when they try
- * to publish.
- *
- * Its path is empty because it is not about a field of the card: a merchant
- * reading this would search their card for what is missing and find nothing,
- * which is why the message names the call that fixes it instead. The address is
- * written out rather than described, so that the sentence works for whoever is
- * reading it — a person in a cabinet, and an engineer with a terminal and this
- * response.
- */
-const NO_SELLER_NAME: Problem = {
-  path: [],
-  code: "no_seller_name",
-  message:
-    "this merchant has not set the name their products are sold under, and a card published" +
-    " without one is offered for sale through a payment request that names no seller at all;" +
-    " set a name with POST /v0/seller-name and publish this card again",
+/** What a refusal's line calls each missing merchant setting. */
+const MERCHANT_WORDS: Readonly<Record<MerchantFinding, string>> = {
+  no_seller_name: "no seller name",
+  no_payout_wallet: "no payout wallet",
+  no_operator_approval: "no operator approval for the live catalog",
 };
 
+/** The body of the line: the merchant's missing settings, then the card's findings. */
+function whatStands(merchant: readonly MerchantFinding[], card: readonly Problem[]): string {
+  const [first] = card;
+  const words = merchant.map((finding) => MERCHANT_WORDS[finding]);
+  const last = words.pop();
+  if (last === undefined) {
+    if (first === undefined) {
+      // "Refused, and here is nothing" is the one answer a merchant cannot act
+      // on, and it is not one this can send: a card is refused because
+      // something about it or about its merchant is wrong, and that something
+      // is what fills the list. Stopping here beats sending an answer the
+      // contract will not carry and nobody could use.
+      throw new Error("a card was refused with nothing named as standing in its way");
+    }
+    const counted = card.length === 1 ? "one thing stands" : `${card.length} things stand`;
+    return `${counted} between it and the catalog, and the first of them is ${misfitOf(first)}`;
+  }
+  const lacks = `the merchant has ${words.length === 0 ? last : `${words.join(", ")} and ${last}`}`;
+  if (first === undefined) {
+    return `${lacks}, and nothing about the card itself stands in its way; problems carries each of them in full`;
+  }
+  const counted =
+    card.length === 1
+      ? "one thing about the card stands in its way as well, which is"
+      : `${card.length} things about the card stand in its way as well, the first of which is`;
+  return `${lacks}, and ${counted} ${misfitOf(first)}`;
+}
+
 /**
- * The finding a merchant who has said nothing about where their money goes
- * meets when they try to publish, on a deployment where the money is real.
+ * Each finding about the merchant, as the publish door says it.
  *
- * Its path is empty for the reason the one above is: it is not about a field of
- * the card, and a merchant reading it would search the card for what is missing
- * and find nothing. The sentence says what is missing, why it is refused here
- * rather than at the sale, and the one call that fixes it.
+ * The path of every one is empty, because none is about a field of the card: a
+ * merchant reading one would search their card for what is missing and find
+ * nothing, which is why each message names what fixes it instead. Where a
+ * call of the merchant's own fixes it, its address is written out rather than
+ * described, so that the sentence works for whoever is reading it — a person
+ * in a cabinet, and an engineer with a terminal and this response. Which of
+ * them a merchant meets on which surface is the rule's business (`readinessOf`
+ * in the core); what each says is this.
  *
- * Nothing here offers to stand an address of ours in for theirs, and the
- * silence is the decision (ADR-0019): the gateway is configured with an
- * address, it is the operator's, and a card published against it would send a
- * merchant's takings to somebody else with nobody the wiser.
+ * The seller name: a card published without one is offered for sale through a
+ * payment request that names no seller at all, so the agent reading it is
+ * invited to pay somebody the request does not name. That has been shipped
+ * from here once, silently.
+ *
+ * The wallet: the money from the card's sales would have nowhere to go. It is
+ * set in the cabinet alone, so the sentence names the cabinet's Settings screen
+ * rather than a call no merchant key may make. Nothing here offers to stand an
+ * address of ours in for theirs, and the silence is the decision (ADR-0019):
+ * the gateway is configured with an address, it is the operator's, and a card
+ * published against it would send a merchant's takings to somebody else with
+ * nobody the wiser.
+ *
+ * The operator's approval: there is no public call to name, because the
+ * boundary exists precisely so a merchant key cannot cross it. Test publication
+ * remains available while the live catalogue stays closed, which is the useful
+ * next move the merchant can take without pretending they control this
+ * decision.
  */
+const MERCHANT_PROBLEMS: Readonly<Record<MerchantFinding, Problem>> = {
+  no_seller_name: {
+    path: [],
+    code: MERCHANT_FINDINGS.NO_SELLER_NAME,
+    message:
+      "this merchant has not set the name their products are sold under, and a card published" +
+      " without one is offered for sale through a payment request that names no seller at all;" +
+      " set a name with POST /v0/seller-name and publish this card again",
+  },
+  no_payout_wallet: {
+    path: [],
+    code: MERCHANT_FINDINGS.NO_PAYOUT_WALLET,
+    message:
+      "this merchant has not set a wallet to be paid at, so the money from sales of this card" +
+      " would have nowhere to go — a buyer's agent pays the merchant's own address directly and" +
+      " nothing of it is held here; a person signed in to the merchant's cabinet sets one on its" +
+      " Settings screen, and then this card can be published again",
+  },
+  no_operator_approval: {
+    path: [],
+    code: MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL,
+    message:
+      "this merchant has not been approved by the operator for the live catalog; test" +
+      " publication remains available, but live publication stays refused until the operator" +
+      " admits this merchant",
+  },
+};
+
 /**
  * A merchant's wallet, already read at an instant, as the route answers with it.
  *
@@ -2369,33 +2432,6 @@ function payoutWalletAnswer(wallet: StoredPayoutWallet): PayoutWallet {
           },
   };
 }
-
-const NO_PAYOUT_WALLET: Problem = {
-  path: [],
-  code: "no_payout_wallet",
-  message:
-    "this merchant has not set a wallet to be paid at, so the money from sales of this card" +
-    " would have nowhere to go — a buyer's agent pays the merchant's own address directly and" +
-    " nothing of it is held here; a person signed in to the merchant's cabinet sets one on its" +
-    " Settings screen, and then this card can be published again",
-};
-
-/**
- * The finding a live merchant meets until the operator admits them once.
- *
- * There is no public call to name here: the boundary exists precisely so a
- * merchant key cannot cross it. Test publication remains available while the
- * live catalogue stays closed, which is the useful next move the merchant can
- * take without pretending they control this decision.
- */
-const NO_OPERATOR_APPROVAL: Problem = {
-  path: [],
-  code: "no_operator_approval",
-  message:
-    "this merchant has not been approved by the operator for the live catalog; test" +
-    " publication remains available, but live publication stays refused until the operator" +
-    " admits this merchant",
-};
 
 /** Zod's account of what is wrong, in the shape the contract publishes. */
 function findingsOf(

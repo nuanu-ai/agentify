@@ -10,16 +10,12 @@
  * door's own sentence, and the product nobody read under what came back
  * instead. The screen is a pure function of the outcomes, so the list is built
  * here by hand, in the shapes the import handler makes.
- *
- * The shop screen on the live channel is here for the same kind of reason: the
- * HTTP suite stands up the sandbox and the test channel and not live, and the
- * line beside Import is a pure function of the channel and what is unset.
  */
 
 import { describe, expect, it } from "vitest";
 import type { Viewer } from "./screens.js";
-import { importFormOf, readable } from "./testing/html.js";
-import { type Unset, type WooView, wooImportScreen, wooScreen } from "./woo-screens.js";
+import { readable } from "./testing/html.js";
+import { wooImportScreen } from "./woo-screens.js";
 
 const SEEN_BY: Viewer = { base: "", mode: "sandbox", who: "dmitry@example.com", confirmed: true };
 
@@ -95,45 +91,5 @@ describe("what the import screen says about a product the door never answered ab
     expect(text).toContain(finding);
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).not.toContain("<script>alert(1)</script>");
-  });
-});
-
-describe("what the Import line promises about the live channel", () => {
-  // Selling live needs the operator's approval as well as a name and a wallet,
-  // and no route tells the cabinet whether a merchant holds it. A live line
-  // that sent a merchant to Settings and back to Import as though that were
-  // enough would promise what the page cannot know. On the test channel
-  // nobody approves anybody, and naming an approval there would send a
-  // merchant looking for something that does not exist.
-  const lineOn = (mode: Viewer["mode"], said: Pick<WooView, "unset" | "refused">): string =>
-    readable(
-      importFormOf(
-        wooScreen(
-          { ...SEEN_BY, mode },
-          {
-            state: {
-              kind: "connected",
-              shop: {
-                shopUrl: "https://shop.example.com",
-                permissions: "read_write",
-                connectedAt: new Date("2026-09-25T12:00:00.000Z"),
-              },
-            },
-            ...said,
-          },
-        ),
-      ),
-    );
-  const unset: readonly Unset[] = ["payout_wallet"];
-
-  it("names the approval beside what is unset on live, before the press and after it", () => {
-    expect(lineOn("live", { unset })).toMatch(/approv/i);
-    expect(lineOn("live", { unset, refused: unset })).toMatch(/approv/i);
-  });
-
-  it("names no approval on the test channel", () => {
-    expect(lineOn("test", { unset })).toMatch(/wallet/i);
-    expect(lineOn("test", { unset })).not.toMatch(/approv/i);
-    expect(lineOn("test", { unset, refused: unset })).not.toMatch(/approv/i);
   });
 });

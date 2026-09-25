@@ -57,6 +57,7 @@ import {
   type Order,
   type OrderEvent,
   PROTOTYPE_KEY_IS_DROPPED,
+  priceProblemsOf,
   type QuoteRequest,
   type QuoteResponse,
   QuoteResponseSchema,
@@ -620,13 +621,21 @@ export const startWorker = (
     // gateway's complaint about a document, which reads as our fault and
     // names the merchant's field only inside a quoted blob.
     const checked = QuoteResponseSchema.safeParse(answer);
+    // The gateway holds the price to the rule a card's price meets, outside the
+    // schema; applied here too, a zero or a missing cent is named as the
+    // merchant's own field rather than coming back as a call that failed.
+    const problems = checked.success
+      ? checked.data.available
+        ? priceProblemsOf(checked.data.price)
+        : []
+      : problemsOf(checked.error.issues);
 
-    if (!checked.success) {
+    if (!checked.success || problems.length > 0) {
       report({
         kind: WORKER_PROBLEM_KINDS.HANDLER_ANSWER_REFUSED,
         fatal: false,
         subject: question.price_id,
-        message: `the price handler's answer for question ${question.price_id} is not one the contract carries, so no price was sent:\n${describeProblems(problemsOf(checked.error.issues))}`,
+        message: `the price handler's answer for question ${question.price_id} is not one the contract carries, so no price was sent:\n${describeProblems(problems)}`,
       });
       return;
     }

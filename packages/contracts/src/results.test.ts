@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CARD_REJECTED,
   CallErrorSchema,
+  MERCHANT_FINDINGS,
   ORDER_CALL_ERROR_CODES,
   ORDER_CALL_RESULTS,
   OrderCallResultSchema,
@@ -111,6 +112,19 @@ describe("what publishing a card returns", () => {
     // writes `error.code === 'card_rejected'`, so renaming the string is
     // changing the contract even where every call site here still compiles.
     expect(CARD_REJECTED).toBe("card_rejected");
+  });
+
+  it("names the findings about the merchant in the words a merchant's code branches on", () => {
+    // The same promise as the refusal's own code, one level down: a program
+    // tells "fix the card" from "fix the merchant" by comparing a finding's
+    // code with these, so each constant is the wire word the gateway sends and
+    // not a label for it. Every one of them is a statement about the merchant,
+    // which is why a program can act on it without looking at the card.
+    expect(Object.values(MERCHANT_FINDINGS)).toStrictEqual([
+      "no_seller_name",
+      "no_payout_wallet",
+      "no_operator_approval",
+    ]);
   });
 
   it("carries a finding that is about the merchant rather than the card", () => {

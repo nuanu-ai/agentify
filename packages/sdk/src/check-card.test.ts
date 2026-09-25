@@ -72,6 +72,25 @@ describe("checking a card before it is published", () => {
   // publish call answers in, and the report saying what a short list does and
   // does not imply — and that is what is left.
 
+  it("finds a price the publish call would refuse, and passes one it would take", () => {
+    // The promise the portal makes: a card this check passes is not refused at
+    // publication for anything about the card. The price rule is applied by
+    // the gateway's door rather than by the card's schema, so it is read here
+    // too — one case of each kind, because the rule itself is walked at the
+    // door. What stands on each side of it is what matters here.
+    for (const [price, field] of [
+      [{ amount: "0.00", currency: "USD" }, "amount"],
+      ["500 USD", "amount"],
+      ["0.0000001 USD", "amount"],
+      [{ amount: "5.00", currency: "EUR" }, "currency"],
+    ] as const) {
+      expect(pathsOf({ ...validCard, price }), JSON.stringify(price)).toStrictEqual([
+        ["price", field],
+      ]);
+    }
+    expect(checkCard({ ...validCard, price: "0.001 USDC" }).problems).toStrictEqual([]);
+  });
+
   it("stops before the rules that compare fields when the shape itself is wrong", () => {
     // Pinned rather than assumed, because a merchant is entitled to know that
     // a clean second run is not implied by a short first one. The card below

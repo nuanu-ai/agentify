@@ -18,7 +18,7 @@ import { ServiceNameSchema } from "@nuanu-ai/agentify-contracts";
 import { accountSettings } from "./account-settings.js";
 import { bare, brandLockup, escaped, page } from "./html.js";
 import { payoutWalletBlock } from "./payout-wallet.js";
-import type { Viewer } from "./screens.js";
+import { refusedForNoName, type Viewer } from "./screens.js";
 import { wooSettingsBlock } from "./woo-screens.js";
 
 /**
@@ -170,7 +170,7 @@ export const settingsScreen = (viewer: Viewer, problem?: string, typedName?: str
         // section is added, and one more line between somebody and the box
         // they came to fill in.
         name === null
-          ? "You have not chosen the name your products are sold under. Until you do, publishing a card is refused."
+          ? `You have not chosen the name your products are sold under.${refusedForNoName(viewer) ? " Until you do, publishing a card is refused." : ""}`
           : `Your products are sold under ${name}.`,
       )}</p>
     </div>

@@ -394,8 +394,15 @@ const CardFieldsSchema = z.strictObject({
    *
    * Written as the two fields, or as the one string that becomes them. What is
    * stored and what an agent reads are the two fields either way.
+   *
+   * Publishing holds it to the price rule in `price-rule.ts`, outside this
+   * schema so that a card stored before the rule stays readable; the export
+   * says so, or a generated client would first meet the rule as a refusal.
    */
-  price: CardPriceSchema,
+  price: CardPriceSchema.meta({
+    description:
+      'Publishing refuses a price that is zero, not in USD or USDC, or written with fewer than two or more than six digits after the dot ("5.00", "0.001"), so that a price the catalog shows is one a payment can be taken at.',
+  }),
 
   /** What the agent has to supply to buy. Absent when the purchase needs no input. */
   params: writtenShort(ParamSpecSchema).optional(),

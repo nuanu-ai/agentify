@@ -33,7 +33,12 @@
  */
 
 import { createHash } from "node:crypto";
-import { type CardInput, CurrencyCodeSchema, IdentifierSchema } from "@nuanu-ai/agentify-contracts";
+import {
+  type CardInput,
+  CurrencyCodeSchema,
+  IdentifierSchema,
+  priceProblemsOf,
+} from "@nuanu-ai/agentify-contracts";
 import { z } from "zod";
 import { type HtmlAsText, plainTextOfHtml } from "./html-text.js";
 
@@ -161,6 +166,10 @@ export const usdAmountOf = (typed: string): string | null => {
   }
   return `${whole}.${fraction.slice(0, USD_SCALE).padEnd(USD_SCALE, "0")}`;
 };
+
+/** A finding the door words as a clause, written as a sentence of its own. */
+const sentenceOf = (clause: string): string =>
+  `${clause.charAt(0).toUpperCase()}${clause.slice(1)}.`;
 
 /** One product turned into a card, with the product it came from named. */
 export interface ImportedCard {
@@ -310,6 +319,14 @@ export const cardsFromTheShop = (
         `The shop prices this product in ${JSON.stringify(currency)}, which is not a currency` +
           " code we can put on a card.",
       );
+      continue;
+    }
+    // The door's own price rule, in its own words, so a product it would refuse
+    // is named here as left in the shop instead. Only zero can reach it: the
+    // currency and the two decimals are settled above.
+    const unsellable = priceProblemsOf({ amount, currency });
+    if (unsellable.length > 0) {
+      refused(unsellable.map((problem) => sentenceOf(problem.message)).join(" "));
       continue;
     }
 

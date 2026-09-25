@@ -16,13 +16,8 @@
 
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import {
-  type Harness,
-  harness,
-  type Served,
-  serve,
-  theMerchantKey,
-} from "@agentify/gateway/testing";
+import { ANNOUNCING, type Harness, harness, type Served, serve } from "@agentify/gateway/testing";
+import { MERCHANT_FINDINGS } from "@nuanu-ai/agentify-contracts";
 import type { Express } from "express";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
@@ -38,7 +33,6 @@ import type { WooRequest } from "./woo-request.js";
 import { type CatalogueRead, inspectProductInTheShop, type ProductInspection } from "./woo-shop.js";
 import { memoryWooShops, type WooShops } from "./woo-shops.js";
 
-const KEY = theMerchantKey("test");
 const PERSON = "dmitry@example.com";
 const SHOP = "https://shop.example.com";
 const PUBLIC = "https://cabinet.example.com";
@@ -152,11 +146,11 @@ interface Standing {
   readonly publishingAt?: string;
   /**
    * The channel the cabinet and its gateway are both on: the sandbox, where
-   * nothing settles and the publish door asks for no wallet, or the test
-   * channel, where test money settles on a chain and a merchant with nowhere
-   * to be paid publishes nothing. The sandbox where a test does not say.
+   * nothing settles; the test channel, where test money settles on a chain;
+   * or live, where real money does and the operator admits each merchant. The
+   * sandbox where a test does not say.
    */
-  readonly channel?: "sandbox" | "test";
+  readonly channel?: Channel;
   /**
    * Signs in as a merchant just registered through the gateway's own door
    * instead of the harness's ready seller, which is the merchant a person
@@ -166,10 +160,22 @@ interface Standing {
   readonly fresh?: "named" | "unnamed";
 }
 
-/** What each channel's facilitator is, told to both the cabinet and the gateway. */
-const FACILITATORS = {
-  sandbox: "sandbox:scripted",
-  test: "https://x402.org/facilitator",
+/** What each channel is configured with, told to both the cabinet and the gateway. */
+const CHANNELS = {
+  sandbox: { PAYMENT_NETWORK: "eip155:84532", FACILITATOR_URL: "sandbox:scripted" },
+  test: { PAYMENT_NETWORK: "eip155:84532", FACILITATOR_URL: "https://x402.org/facilitator" },
+  live: {
+    PAYMENT_NETWORK: "eip155:8453",
+    FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+  },
+} as const;
+type Channel = keyof typeof CHANNELS;
+
+/** What only the gateway is told on live: a facilitator's credentials and a way to announce. */
+const LIVE_GATEWAY_ONLY = {
+  CDP_API_KEY_ID: "key-id",
+  CDP_API_KEY_SECRET: "key-secret",
+  ...ANNOUNCING,
 } as const;
 
 /** What the harness's gateway takes a registration with, in this suite. */
@@ -201,9 +207,10 @@ const registered = async (
 };
 
 const started = async (standing: Standing = {}): Promise<Running> => {
-  const facilitator = FACILITATORS[standing.channel ?? "sandbox"];
+  const channel = standing.channel ?? "sandbox";
   const harnessed = await harness({
-    FACILITATOR_URL: facilitator,
+    ...CHANNELS[channel],
+    ...(channel === "live" ? LIVE_GATEWAY_ONLY : {}),
     REGISTRATION_INVITATION: INVITATION,
   });
   const gateway = await serve(harnessed);
@@ -211,8 +218,7 @@ const started = async (standing: Standing = {}): Promise<Running> => {
     GATEWAY_URL: standing.gatewayAt ?? gateway.url,
     DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
     AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
-    PAYMENT_NETWORK: "eip155:84532",
-    FACILITATOR_URL: facilitator,
+    ...CHANNELS[channel],
     PUBLIC_BASE_URL: PUBLIC,
     REGISTRATION_INVITATION: "the-existing-gateway-process-secret",
   });
@@ -233,12 +239,13 @@ const started = async (standing: Standing = {}): Promise<Running> => {
   });
   const merchant =
     standing.fresh === undefined
-      ? { id: harnessed.merchant.id, key: KEY }
+      ? { id: harnessed.merchant.id, key: harnessed.merchant.key }
       : await registered(gateway, standing.fresh === "named");
   // A key of the merchant's own, apart from the one on the account: signing in
   // replaces that one and forgets the key it replaced (ADR-0014 §2), and a test
   // reading the catalogue afterwards must not be holding a forgotten key.
-  const ownKey = standing.fresh === undefined ? KEY : await harnessed.addKey(merchant.id);
+  const ownKey =
+    standing.fresh === undefined ? harnessed.merchant.key : await harnessed.addKey(merchant.id);
   const person = await identity.make(PERSON, merchant);
   if (person === null) {
     throw new Error("the test account could not be made");
@@ -989,24 +996,6 @@ describe("importing the catalogue", () => {
     expect(running.read).toEqual([]);
   });
 
-  it("names the seller name and the wallet together when both are missing", async () => {
-    // Told one at a time, a merchant sets the name, presses Import again, and
-    // only then hears about the wallet.
-    const running = await started({
-      channel: "test",
-      fresh: "unnamed",
-      catalogue: async () => ({ ok: true, products: [aProduct()] }),
-    });
-    await connected(running);
-
-    const imported = await running.post("/woocommerce/import");
-    const text = readable(importFormOf(imported.html));
-
-    expect(imported.status).toBe(409);
-    expect(text).toMatch(/wallet/i);
-    expect(text).toMatch(/\bname\b/i);
-  });
-
   it("says a wallet is needed on the shop screen, before Import is pressed", async () => {
     const running = await started({ channel: "test", fresh: "named" });
     await connected(running);
@@ -1238,6 +1227,100 @@ describe("importing the catalogue", () => {
     expect(await cardsOf(running)).toHaveLength(0);
     expect(left["11"]).toContain("Number of decimals");
     expect(left["11"]).not.toContain("does not match");
+  });
+
+  describe("agrees with the publish door about what the merchant lacks", () => {
+    // The promise: a merchant is told the same thing by the cabinet as by the
+    // door their cards go through, on every channel. The cabinet stops an
+    // import before the shop is read for exactly the settings the door would
+    // refuse every card for, names them, and names nothing the door would not
+    // ask for. The operator's approval is the one fact the cabinet cannot
+    // read, so it agrees about approval by never claiming it either way. Where
+    // the line is drawn because a setting is missing, it says this page cannot
+    // tell exactly where the door asks for approval. Where no setting is
+    // missing no line is drawn, and on live the import goes ahead and the door
+    // answers card by card: the cabinet saying nothing there is a limit of
+    // what it can read, not a claim that nothing is missing.
+    //
+    // Each merchant here is made through the gateway's registration door and
+    // never approved, so on live the door always asks for the approval as well.
+    const A_CARD = {
+      merchant_item_id: "a-guide",
+      title: "A guide",
+      description: "A guide sold by the merchant who published this card",
+      price: { amount: "25.00", currency: "USD" },
+      result: { download_url: { type: "string" } },
+      fulfillment: "sync",
+    };
+
+    /** What the door says about this merchant, as a program would pick it out. */
+    const theDoorSays = async (running: Running): Promise<readonly string[]> => {
+      const answered = await running.gateway.call("POST", "/v0/catalog/publish", {
+        body: A_CARD,
+        headers: { authorization: `Bearer ${running.ownKey}` },
+      });
+      if (answered.status === 200) {
+        return [];
+      }
+      const { problems } = (answered.body as { error: { problems: { code: string }[] } }).error;
+      const aboutTheMerchant: ReadonlySet<string> = new Set(Object.values(MERCHANT_FINDINGS));
+      return problems.map((finding) => finding.code).filter((code) => aboutTheMerchant.has(code));
+    };
+
+    /** The line beside Import, read the way a merchant reads it. */
+    const lineIn = (html: string): string =>
+      readable(/<p class="problem"[^>]*>[\s\S]*?<\/p>/.exec(importFormOf(html))?.[0] ?? "");
+
+    /** What a line names, in the door's words for the same things. */
+    const named = (line: string): readonly string[] => [
+      ...(/\bname\b/i.test(line) ? [MERCHANT_FINDINGS.NO_SELLER_NAME] : []),
+      ...(/wallet/i.test(line) ? [MERCHANT_FINDINGS.NO_PAYOUT_WALLET] : []),
+    ];
+
+    for (const channel of Object.keys(CHANNELS) as Channel[]) {
+      for (const [hasName, hasWallet] of [
+        [false, false],
+        [true, false],
+        [false, true],
+        [true, true],
+      ] as const) {
+        const who = `${hasName ? "a" : "no"} seller name and ${hasWallet ? "a" : "no"} wallet`;
+        it(`on ${channel}, for a merchant with ${who}`, async () => {
+          const running = await started({ channel, fresh: hasName ? "named" : "unnamed" });
+          await connected(running);
+          if (hasWallet) {
+            // Where a wallet is set: in the cabinet's Settings, by the person
+            // signed in, since no key of the merchant's own code may set one.
+            const saved = await running.post("/settings/payout-wallet", {
+              payout_wallet: A_WALLET,
+            });
+            expect(saved.status, saved.html).toBe(303);
+          }
+          const door = await theDoorSays(running);
+          if (hasWallet) {
+            // The fixture took: a wallet saved is a wallet the door has.
+            expect(door).not.toContain(MERCHANT_FINDINGS.NO_PAYOUT_WALLET);
+          }
+          const settable = door.filter((code) => code !== MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL);
+          const approvalAsked = door.includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL);
+
+          const before = lineIn((await running.get("/woocommerce")).html);
+          const pressed = await running.post("/woocommerce/import");
+          const after = lineIn(pressed.html);
+
+          expect(named(before)).toStrictEqual(settable);
+          expect(pressed.status).toBe(settable.length === 0 ? 200 : 409);
+          if (settable.length > 0) {
+            expect(named(after)).toStrictEqual(settable);
+            expect(/approv/i.test(before), before).toBe(approvalAsked);
+            expect(/approv/i.test(after), after).toBe(approvalAsked);
+            if (approvalAsked) {
+              expect(after).toMatch(/cannot tell/i);
+            }
+          }
+        });
+      }
+    }
   });
 });
 

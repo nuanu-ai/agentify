@@ -26,7 +26,12 @@
 
 import { createHash } from "node:crypto";
 import type { BazaarDeclaration, Card } from "@nuanu-ai/agentify-contracts";
-import { API_ROUTES, bazaarDeclarationOf, expandPath } from "@nuanu-ai/agentify-contracts";
+import {
+  API_ROUTES,
+  bazaarDeclarationOf,
+  expandPath,
+  PAYABLE_CURRENCIES,
+} from "@nuanu-ai/agentify-contracts";
 import {
   decodePaymentSignatureHeader,
   encodePaymentRequiredHeader,
@@ -61,7 +66,10 @@ export const ORDER_ID_IN_EXTRA = "order_id";
  * Money never becomes a float on the way through here. A price with more
  * fractional digits than the token carries is refused rather than rounded: a
  * rounded charge is a different charge, and which way it was rounded is the
- * difference between shorting the buyer and shorting the merchant.
+ * difference between shorting the buyer and shorting the merchant. The publish
+ * door and a price answer's door refuse such a price first, against
+ * `PAYABLE_DECIMALS`, which a test holds equal to the token's own places, so
+ * what reaches this throw is a card stored before the door refused it.
  */
 export function atomicUnits(amount: string, decimals: number): string {
   const [whole = "0", fraction = ""] = amount.split(".");
@@ -75,22 +83,6 @@ export function atomicUnits(amount: string, decimals: number): string {
   const written = `${whole}${fraction.padEnd(decimals, "0")}`.replace(/^0+(?=\d)/, "");
   return written;
 }
-
-/**
- * The currencies a price may be written in, and the one conversion this gateway
- * does make.
- *
- * A card priced in dollars is charged in the network's own dollar-denominated
- * asset, one for one. That is a decision and not the absence of one, so it is
- * written here rather than left to be inferred from the fact that it works: a
- * merchant who writes "USD" is charging their buyer USDC on the configured
- * chain, and the two are held to be the same number of dollars.
- *
- * Everything else is refused. There is no exchange rate anywhere in this
- * system, nobody has decided where one would come from, and a charge based on
- * an invented one would be the clearest possible claim beyond the evidence.
- */
-const PAYABLE = new Set(["USD", "USDC"]);
 
 export class PaymentEdge {
   readonly #config: PaymentConfig;
@@ -133,7 +125,10 @@ export class PaymentEdge {
     orderId: string | null,
     payoutWallet: string | null,
   ): PaymentRequirements {
-    if (!PAYABLE.has(price.currency.toUpperCase())) {
+    // The set the publish door and the price answer's door hold a price to, so
+    // what reaches this line in another currency is a card stored before the
+    // door refused it.
+    if (!PAYABLE_CURRENCIES.includes(price.currency.toUpperCase())) {
       throw new Error(
         `${price.currency} is not a currency this gateway can charge in, and it will not invent a rate to one that is`,
       );

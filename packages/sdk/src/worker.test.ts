@@ -343,6 +343,37 @@ describe("a price question off the same stream", () => {
     expect(gateway.callsTo("answer_quote")).toHaveLength(0);
   });
 
+  it("holds the price handler's answer to the price rule before sending it", async () => {
+    // The gateway refuses an answer priced at zero, or cent-less, or in a
+    // currency it cannot charge. Caught here, the merchant is told which field
+    // of their own answer it was, as a refused answer, rather than reading it
+    // as a call that failed.
+    const problems: WorkerProblem[] = [];
+
+    gateway = await startFakeGateway({
+      apiKey: API_KEY,
+      routes: {
+        poll_worker: polling(batch(envelopes.quote)),
+        answer_quote: () => ({ body: { used: true } }),
+      },
+    });
+
+    running = startWorker(
+      { apiKey: API_KEY, baseUrl: gateway.url },
+      {
+        quote: () => ({ available: true, price: { amount: "0.00", currency: "USD" }, as_of: AT }),
+        problem: (problem) => problems.push(problem),
+      },
+    );
+
+    await waitUntil(() => problems.length > 0, "the problem to be reported");
+
+    expect(problems[0]?.kind).toBe(WORKER_PROBLEM_KINDS.HANDLER_ANSWER_REFUSED);
+    expect(problems[0]?.subject).toBe("price-1");
+    expect(problems[0]?.message).toMatch(/price\.amount/);
+    expect(gateway.callsTo("answer_quote")).toHaveLength(0);
+  });
+
   it("tells the merchant when their price arrived too late to be used", async () => {
     // A merchant who set stock aside against the question can release it, and
     // the acknowledgement is the only notice they get.

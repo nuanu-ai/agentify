@@ -243,6 +243,7 @@ export {
 } from "./param-spec.js";
 export type { TextLines } from "./plain-text.js";
 export { notPlainTextIn } from "./plain-text.js";
+export { PAYABLE_CURRENCIES, PAYABLE_DECIMALS, priceProblemsOf } from "./price-rule.js";
 export type {
   Amount,
   CurrencyCode,
@@ -263,10 +264,17 @@ export type { QuotePurpose, QuoteRequest, QuoteResponse } from "./quote.js";
 export { QuotePurposeSchema, QuoteRequestSchema, QuoteResponseSchema } from "./quote.js";
 export type { Receipt, ReceiptOutcome } from "./receipt.js";
 export { ReceiptOutcomeSchema, ReceiptSchema } from "./receipt.js";
-export type { CallError, OrderCallResult, Problem, PublishResult } from "./results.js";
+export type {
+  CallError,
+  MerchantFinding,
+  OrderCallResult,
+  Problem,
+  PublishResult,
+} from "./results.js";
 export {
   CARD_REJECTED,
   CallErrorSchema,
+  MERCHANT_FINDINGS,
   ORDER_CALL_ERROR_CODES,
   ORDER_CALL_RESULTS,
   OrderCallResultSchema,

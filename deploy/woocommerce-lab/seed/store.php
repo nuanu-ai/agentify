@@ -15,17 +15,36 @@ update_option('page_on_front', (int) get_option('woocommerce_shop_page_id'));
 update_option('woocommerce_enable_guest_checkout', 'yes');
 update_option('woocommerce_enable_checkout_login_reminder', 'no');
 
+// The Agentify connector reads these six settings before it imports or sells a
+// download, and refuses every product in the shop while any one of them
+// differs: prices in US dollars, no tax calculated by WooCommerce, files
+// streamed by WooCommerce itself rather than served from their address, no
+// fallback that redirects a buyer to that address, no shop login between a
+// buyer and the file, and access granted as soon as an order is paid.
+update_option('woocommerce_currency', 'USD');
+update_option('woocommerce_calc_taxes', 'no');
+update_option('woocommerce_file_download_method', 'force');
+update_option('woocommerce_downloads_redirect_fallback_allowed', 'no');
+update_option('woocommerce_downloads_require_login', 'no');
+update_option('woocommerce_downloads_grant_access_after_payment', 'yes');
+
 wp_delete_post(1, true);
 wp_delete_post(2, true);
 
-$term = term_exists('Gift Cards', 'product_cat');
-if (!$term) {
-    $term = wp_insert_term('Gift Cards', 'product_cat', [
-        'description' => 'Digital gift cards for food, wellness, culture and travel.',
-        'slug' => 'gift-cards',
-    ]);
+function product_category(string $name, string $slug, string $description): int
+{
+    $term = term_exists($name, 'product_cat');
+    if (!$term) {
+        $term = wp_insert_term($name, 'product_cat', [
+            'description' => $description,
+            'slug' => $slug,
+        ]);
+    }
+    if (is_wp_error($term)) {
+        throw new RuntimeException($term->get_error_message());
+    }
+    return is_array($term) ? (int) $term['term_id'] : (int) $term;
 }
-$category_id = is_array($term) ? (int) $term['term_id'] : (int) $term;
 
 function create_product_image(string $filename, string $title): int
 {
@@ -59,7 +78,72 @@ function create_product_image(string $filename, string $title): int
     return (int) $attachment_id;
 }
 
-$products = [
+/**
+ * A file from the seed, placed where WooCommerce keeps protected downloads, as
+ * the single download of a product.
+ *
+ * The connector refuses a file that answers a request without an order's
+ * download permission. WooCommerce denies direct requests into
+ * woocommerce_uploads, and its default approved download directories cover
+ * that directory, so the file goes there rather than beside the product
+ * photos. The identifier is derived from the address rather than random, so a
+ * rebuilt baseline gives the same file the same identifier.
+ */
+function create_protected_download(string $filename): WC_Product_Download
+{
+    $source = '/seed/downloads/' . $filename;
+    if (!is_readable($source)) {
+        throw new RuntimeException('Download file is missing: ' . $filename);
+    }
+
+    $upload = wp_upload_dir();
+    $directory = trailingslashit($upload['basedir']) . 'woocommerce_uploads';
+    // WooCommerce's install writes this rule when Force Downloads is the
+    // method. Without it Apache serves the file to anyone, and a baseline
+    // captured that way would hold downloads the connector refuses, so the
+    // rebuild stops here, before the baseline archives are replaced.
+    $rule = trailingslashit($directory) . '.htaccess';
+    if (!is_readable($rule) || trim((string) file_get_contents($rule)) !== 'deny from all') {
+        throw new RuntimeException('WooCommerce did not protect its upload directory: ' . $rule . ' does not deny all requests');
+    }
+    if (!copy($source, trailingslashit($directory) . $filename)) {
+        throw new RuntimeException('Could not copy download file: ' . $filename);
+    }
+
+    $url = trailingslashit($upload['baseurl']) . 'woocommerce_uploads/' . $filename;
+    $download = new WC_Product_Download();
+    $download->set_id(md5($url));
+    $download->set_name($filename);
+    $download->set_file($url);
+    return $download;
+}
+
+function new_simple_product(array $item, int $category_id): WC_Product_Simple
+{
+    $product = new WC_Product_Simple();
+    $product->set_name($item['name']);
+    $product->set_slug(sanitize_title($item['name']));
+    $product->set_status('publish');
+    $product->set_catalog_visibility('visible');
+    $product->set_description($item['description']);
+    $product->set_short_description($item['short']);
+    $product->set_sku($item['sku']);
+    $product->set_regular_price($item['price']);
+    $product->set_virtual(true);
+    $product->set_stock_status('instock');
+    $product->set_category_ids([$category_id]);
+    return $product;
+}
+
+// The gift cards promise a brunch, a dinner, a wellness day, a workshop and a
+// weekend away. No file can deliver any of them, so they carry none, and the
+// connector must name each one and leave it in the shop.
+$gift_card_category = product_category(
+    'Gift Cards',
+    'gift-cards',
+    'Digital gift cards for food, wellness, culture and travel.'
+);
+$gift_cards = [
     [
         'sku' => 'GIFT-COFFEE-25',
         'name' => 'Coffee & Brunch Gift Card',
@@ -102,21 +186,53 @@ $products = [
     ],
 ];
 
-foreach ($products as $item) {
-    $product = new WC_Product_Simple();
-    $product->set_name($item['name']);
-    $product->set_slug(sanitize_title($item['name']));
-    $product->set_status('publish');
-    $product->set_catalog_visibility('visible');
-    $product->set_description($item['description']);
-    $product->set_short_description($item['short']);
-    $product->set_sku($item['sku']);
-    $product->set_regular_price($item['price']);
-    $product->set_virtual(true);
-    $product->set_stock_status('instock');
-    $product->set_category_ids([$category_id]);
+// Each download is a plain-text file from seed/downloads, and the file is the
+// whole of what the product promises. Together they are the one class of
+// product the connector imports: a published, in-stock simple product in US
+// dollars, virtual and downloadable, without managed stock, not sold
+// individually, with exactly one protected file that can be downloaded any
+// number of times and never expires. One price is typed with cents and the
+// other without, the two shapes a merchant types into WooCommerce, which keeps
+// the price as typed while its public catalogue reports it in cents.
+$download_category = product_category(
+    'Guides and Templates',
+    'guides-and-templates',
+    'Plain-text guides and templates, each delivered as one downloadable file.'
+);
+$downloads = [
+    [
+        'sku' => 'DL-GIFT-MESSAGES',
+        'name' => 'Gift Message Templates',
+        'price' => '1.00',
+        'short' => 'Twenty short gift-card messages for five occasions, in one plain-text file.',
+        'description' => '<p>Twenty short messages to write in a card that goes with a gift, four for each of five occasions: birthdays, thank-yous, weddings, new babies and sympathy.</p><p>Delivered as one plain-text file.</p>',
+        'file' => 'gift-message-templates.txt',
+    ],
+    [
+        'sku' => 'DL-WRAPPING-GUIDE',
+        'name' => 'Gift Wrapping Guide',
+        'price' => '2',
+        'short' => 'Step-by-step instructions for wrapping a box and tying a bow, in one plain-text file.',
+        'description' => '<p>Step-by-step instructions for wrapping a rectangular box neatly: what you need, how to measure and cut the paper, how to fold the sides and the ends, and how to tie a ribbon with a bow.</p><p>Delivered as one plain-text file.</p>',
+        'file' => 'gift-wrapping-guide.txt',
+    ],
+];
+
+foreach ($gift_cards as $item) {
+    $product = new_simple_product($item, $gift_card_category);
     $product->set_image_id(create_product_image($item['image'], $item['name']));
     $product->save();
 }
 
-echo "Seeded " . count($products) . " products.\n";
+foreach ($downloads as $item) {
+    $product = new_simple_product($item, $download_category);
+    $product->set_manage_stock(false);
+    $product->set_sold_individually(false);
+    $product->set_downloadable(true);
+    $product->set_downloads([create_protected_download($item['file'])]);
+    $product->set_download_limit(-1);
+    $product->set_download_expiry(-1);
+    $product->save();
+}
+
+echo "Seeded " . (count($gift_cards) + count($downloads)) . " products.\n";

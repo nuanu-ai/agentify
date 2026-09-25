@@ -11,10 +11,11 @@
  * weaker thing. `words.ts` carries those cases and the reasons.
  */
 
-import type { SurfaceMode } from "@agentify/core";
+import { type Readiness, readinessOf, type SurfaceMode, UNKNOWN } from "@agentify/core";
 import {
   API_ROUTES,
   expandPath,
+  MERCHANT_FINDINGS,
   type MerchantCard,
   type MerchantCardList,
   type OrderList,
@@ -27,7 +28,16 @@ import type { PayoutWallet } from "./payout-wallet.js";
 // and the two files are not a cycle at run time. The shape belongs beside the
 // screen that draws a shop, and the viewer that carries it belongs here.
 import type { ShopTile } from "./woo-screens.js";
-import { FULFILLMENT_WORDS, money, needsAttention, ORDER_WORDS, SELLING_WORDS } from "./words.js";
+import {
+  APPROVAL_UNREAD,
+  FULFILLMENT_WORDS,
+  money,
+  needsAttention,
+  ORDER_WORDS,
+  SELLING_WORDS,
+  UNSET_WORDS,
+  type Unset,
+} from "./words.js";
 
 /**
  * Who is looking at a page, and where the cabinet is mounted.
@@ -53,10 +63,11 @@ export interface Viewer {
    * The name buyers read beside this merchant's products, where the screen
    * asked the gateway for it.
    *
-   * Null is a merchant who has chosen none, and it is what the line at the top
-   * of these three screens is drawn from: until a name is set, a card their
-   * code publishes is refused. Absent where the screen did not ask — the keys,
-   * for the reason `html.ts` gives beside the selling word.
+   * Null is a merchant who has chosen none, and the line at the top of these
+   * three screens is drawn from what the publish door's rule makes of it
+   * (`readinessSeenBy` below): until a name is set, a card their code
+   * publishes is refused. Absent where the screen did not ask — the keys, for
+   * the reason `html.ts` gives beside the selling word.
    */
   readonly sellerName?: string | null;
   /**
@@ -65,9 +76,10 @@ export interface Viewer {
    *
    * The refusal travels with the address because one block on one screen draws
    * both, and a screen holding one of them without the other cannot draw that
-   * block at all. Absent everywhere the block is not drawn, which today is
-   * every screen but the settings — a page that did not ask the gateway must
-   * not tell a merchant they have set no address.
+   * block at all. Present only where the screen asked the gateway for the
+   * address: the settings, which draw the block, and the cards, which need it
+   * to say what holds a card off sale. Absent everywhere else — a page that did
+   * not ask the gateway must not tell a merchant they have set no address.
    */
   readonly payout?: PayoutWallet;
   /**
@@ -97,6 +109,42 @@ export interface Viewer {
   readonly accountNotice?: string;
 }
 
+/**
+ * What the publish door asks of this merchant, as far as this screen read them.
+ *
+ * The rule is the door's own, `readinessOf` in the core, so no screen holds an
+ * opinion of its own about which setting publishing needs where. What the
+ * screen did not ask the gateway for goes in as unknown, and so does the
+ * operator's approval on every screen, because no route tells the cabinet
+ * whether a merchant holds it: a page that did not read something must not say
+ * anything either way about it.
+ */
+export const readinessSeenBy = (viewer: Viewer): Readiness =>
+  readinessOf(
+    {
+      sellerName: viewer.sellerName === undefined ? UNKNOWN : viewer.sellerName,
+      payoutWallet: viewer.payout === undefined ? UNKNOWN : viewer.payout.wallet,
+      liveApproval: UNKNOWN,
+    },
+    viewer.mode,
+  );
+
+/** Whether publishing is refused for want of the name buyers see, as far as this screen knows. */
+export const refusedForNoName = (viewer: Viewer): boolean =>
+  readinessSeenBy(viewer).missing.includes(MERCHANT_FINDINGS.NO_SELLER_NAME);
+
+/**
+ * What the door would refuse for that the merchant sets in Settings.
+ *
+ * Every screen asks the rule with the approval unread, so the approval is only
+ * ever in `unknown`; this narrows what is missing to what has words for
+ * Settings rather than dropping anything.
+ */
+export const unsetIn = (door: Readiness): readonly Unset[] =>
+  door.missing.filter(
+    (finding): finding is Unset => finding !== MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL,
+  );
+
 interface Frame {
   readonly viewer: Viewer;
   readonly tab: Tab;
@@ -114,7 +162,7 @@ const framed = (frame: Frame): string =>
     tab: frame.tab,
     title: frame.title,
     selling: SELLING_WORDS[frame.selling],
-    unnamed: frame.viewer.sellerName === null,
+    unnamed: refusedForNoName(frame.viewer),
     body: frame.body,
   });
 
@@ -169,23 +217,51 @@ const cardAside = (entry: MerchantCard): string => {
 };
 
 /**
- * Which switch is holding a card off sale.
+ * What is holding a card off sale, where it is not the card's own pause.
  *
  * This is the sentence the contract's own document warns about: with all
  * selling stopped every card reads paused, and resuming one of them changes
  * nothing a merchant can see. Saying which switch is holding it is the whole
  * reason the document carries two fields instead of one.
+ *
+ * There is a third reason besides the two switches, and the document does not
+ * name it: the merchant lacks something the publish door asks of every
+ * merchant, and the gateway folds that into every card's word. A card whose
+ * merchant is selling and which nobody paused reads paused for that reason
+ * alone, so there the control says what the rule says is missing, in the
+ * words and with the link the other screens use, and never that selling was
+ * stopped — a claim about a switch nobody pressed. Where the rule finds
+ * nothing this page can read, which is the operator's approval on live, it
+ * says that it cannot tell; and a card that reads paused where the rule finds
+ * nothing at all, which only a change landing between two reads can make, is
+ * said to be off sale and no more.
  */
-const cardControl = (base: string, entry: MerchantCard): string => {
+const cardControl = (
+  base: string,
+  entry: MerchantCard,
+  merchant: MerchantCardList["selling"],
+  door: Readiness,
+): string => {
   if (entry.paused) {
     return `<form class="inline" method="post" action="${escaped(base)}/cards/${encodeURIComponent(entry.id)}/resume">
 <button class="button button-compact button-primary" type="submit">Resume</button></form>`;
   }
-  if (entry.selling !== "open") {
+  if (entry.selling === "open") {
+    return `<form class="inline" method="post" action="${escaped(base)}/cards/${encodeURIComponent(entry.id)}/pause">
+<button class="button button-compact button-secondary" type="submit">Pause</button></form>`;
+  }
+  if (merchant !== "open") {
     return '<span class="quiet">All selling is stopped</span>';
   }
-  return `<form class="inline" method="post" action="${escaped(base)}/cards/${encodeURIComponent(entry.id)}/pause">
-<button class="button button-compact button-secondary" type="submit">Pause</button></form>`;
+  const unset = unsetIn(door);
+  const unread = door.unknown.includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL)
+    ? ` ${APPROVAL_UNREAD}`
+    : "";
+  if (unset.length > 0) {
+    const what = unset.map((one) => UNSET_WORDS[one]).join(" and ");
+    return `<span class="quiet">Not on sale until you set ${escaped(what)} in <a href="${escaped(base)}/settings">Settings</a>.${escaped(unread)}</span>`;
+  }
+  return `<span class="quiet">Not on sale.${escaped(unread)}</span>`;
 };
 
 /**
@@ -240,6 +316,7 @@ export const cardsScreen = (
   // that this fold is the one not to make.
   const gone = cards.selling === "departed";
   const stopped = cards.selling === "paused";
+  const door = readinessSeenBy(viewer);
 
   const rows = cards.cards.map(
     (entry): Row => ({
@@ -252,7 +329,7 @@ export const cardsScreen = (
         { kind: "amount", html: escaped(money(entry.card.price)) },
         { kind: "quiet", html: escaped(FULFILLMENT_WORDS[entry.card.fulfillment]) },
         { html: state(SELLING_WORDS[entry.selling]) },
-        { kind: "control", html: cardControl(base, entry) },
+        { kind: "control", html: cardControl(base, entry, cards.selling, door) },
       ],
     }),
   );
@@ -284,7 +361,7 @@ ${table(
   // was refused. While no name is set, the second one is what happens to
   // everything, so the line says it rather than leaving a merchant to work out
   // why their code's card never arrived.
-  viewer.sellerName === null
+  refusedForNoName(viewer)
     ? "You have not published a card yet, and until you choose the name buyers see, publishing one is refused. Choose it in your settings and publish again."
     : "You have not published a card yet. Your code publishes them; they appear here.",
 )}

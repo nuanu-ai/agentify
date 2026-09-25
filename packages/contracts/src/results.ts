@@ -173,8 +173,17 @@ export const ProblemSchema = z
      */
     path: z.array(z.string()),
 
-    /** What kind of finding it is, for the code that reads it. */
-    code: z.string().regex(/\S/, "a finding carries a code"),
+    /**
+     * What kind of finding it is, for the code that reads it.
+     *
+     * Open, because a finding about a field carries whatever the check that
+     * found it calls it. The three about the merchant are promised, and they
+     * are described for the export for the reason the error's codes are.
+     */
+    code: z.string().regex(/\S/, "a finding carries a code").meta({
+      description:
+        'What kind of finding it is, for the program that reads it. The set is open: a finding about a field of what was sent carries the name the check gave it. Three are promised, always with an empty path, and each says the merchant rather than the card is missing something, so no edit to the card clears it: "no_seller_name" (no name set for buyers to read), "no_payout_wallet" (no wallet set for the sales to be paid into, asked for wherever a payment settles) and "no_operator_approval" (the operator has not admitted this merchant to the live catalog, which only the operator can change).',
+    }),
 
     /** The same finding in words, for the person who has to fix the card. */
     message: z.string().regex(/\S/, "a finding carries an explanation a person can read"),
@@ -231,7 +240,7 @@ export const CallErrorSchema = z.strictObject({
    */
   problems: z.array(ProblemSchema).min(1).optional().meta({
     description:
-      'What was wrong with what was sent, one finding at a time: where it is, a code for the program that reads it, and the same finding in words. Present where the call is refusing what it was handed — a card that was not published, a delivery that is not what its card declares — and absent where the refusal is about a state of the world instead: a refund already settled is about the order, not about a field of the request. Never empty where it is present, and a refused publish always carries it. This field is the complete account of what stands in the way, and it is the one to read the findings from. The error\'s "message" is a single line written to be read in a log and does not carry the list: it says how many findings there are, quotes one or a few of them, and marks the place where a long one was cut — so a reader can always tell a short refusal from a shortened account of a long one.',
+      "What was wrong with what was sent, one finding at a time: where it is, a code for the program that reads it, and the same finding in words. Present where the call is refusing what it was handed — a card that was not published, a delivery that is not what its card declares — and absent where the refusal is about a state of the world instead: a refund already settled is about the order, not about a field of the request. Never empty where it is present, and a refused publish always carries it. This field is the complete account of what stands in the way, and it is the one to read the findings from. The error's \"message\" is a single line written to be read in a log and does not carry the list. Where what stands in the way is the merchant's own — no seller name, no payout wallet, no operator approval — the message names each of those plainly; for the rest it says how many findings there are, quotes one of them, and marks the place where a long one was cut — so a reader can always tell a short refusal from a shortened account of a long one.",
   }),
 });
 
@@ -245,17 +254,42 @@ export const CallErrorSchema = z.strictObject({
 export const CARD_REJECTED = "card_rejected";
 
 /**
+ * The findings of a refused publish that are about the merchant rather than
+ * the card.
+ *
+ * Each arrives in the refusal's `problems` with an empty path, beside whatever
+ * is wrong with the card, and none of them is cleared by editing the card: the
+ * merchant has no name set for buyers to read, no wallet set for their sales to
+ * be paid into, or no approval from the operator for the live catalog. The
+ * name is set with a call of the merchant's own (`POST /v0/seller-name`) or in
+ * the cabinet; the wallet in the cabinet's Settings alone, since no key of the
+ * merchant's code may say where the money goes; and the approval is the
+ * operator's decision, with no call. The name is asked for everywhere, the
+ * wallet wherever a payment settles and the approval on the live deployment
+ * alone, as the publish route's description says; a program needs no copy of
+ * that rule, because it learns what is missing where it is refused, at the
+ * publish.
+ */
+export const MERCHANT_FINDINGS = Object.freeze({
+  NO_SELLER_NAME: "no_seller_name",
+  NO_PAYOUT_WALLET: "no_payout_wallet",
+  NO_OPERATOR_APPROVAL: "no_operator_approval",
+} as const);
+
+/** One of the findings about the merchant, as its code travels on the wire. */
+export type MerchantFinding = (typeof MERCHANT_FINDINGS)[keyof typeof MERCHANT_FINDINGS];
+
+/**
  * The error a refused publish carries: the shared shape, with the findings made
  * required.
  *
  * "Refused, and here is nothing" is the one answer a merchant cannot act on,
  * and publishing is the call where that would be easiest to send — a card is
  * refused precisely because something about it is wrong, so there is always
- * something to name. Not every finding is about the card. A merchant who has
- * set no name for buyers to read is refused here too, and so is one who has set
- * no wallet for their sales to be paid into; both ride in the same list, so one
- * answer carries everything standing between this card and the catalog rather
- * than handing it over one round trip at a time.
+ * something to name. Not every finding is about the card: the merchant's own
+ * missing settings (`MERCHANT_FINDINGS`) ride in the same list, so one answer
+ * carries everything standing between this card and the catalog rather than
+ * handing it over one round trip at a time.
  */
 const PublishRefusalSchema = CallErrorSchema.extend({
   problems: z.array(ProblemSchema).min(1),

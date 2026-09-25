@@ -124,7 +124,7 @@ export const MerchantCardListSchema = z
   })
   .meta({
     description:
-      "A merchant's own catalog: every card they have published, and whether they are taking new orders at all. The merchant's own selling word is here as well as on each card because the two are different facts, and neither can be worked out from the other. A card reads open only where all of it holds at once: the merchant is selling, the card is not paused in its own right, the merchant has a name for it to be sold under, and — on a deployment that settles on a real chain — a wallet for the money to be paid into. So a card can read paused while this field reads open, and this field does not say which of the reasons it was. What does say is the refusal at the publish and the merchant's own settings, each of which names the piece that is missing. This document does not say whether it is the whole catalog: paging is not designed, and when it is, this object grows the field that answers it.",
+      "A merchant's own catalog: every card they have published, and whether they are taking new orders at all. The merchant's own selling word is here as well as on each card because the two are different facts, and neither can be worked out from the other. A card reads open only where all of it holds at once: the merchant is selling, the card is not paused in its own right, the merchant has a name for it to be sold under, on a deployment that settles on a real chain a wallet for the money to be paid into, and on the live deployment the operator's approval. So a card can read paused while this field reads open, and this field does not say which of the reasons it was. What does say is the refusal at the publish, whose findings about the merchant carry the codes no_seller_name, no_payout_wallet and no_operator_approval, and the merchant's own settings. This document does not say whether it is the whole catalog: paging is not designed, and when it is, this object grows the field that answers it.",
   });
 
 /**
@@ -1060,7 +1060,7 @@ export const API_ROUTES = Object.freeze({
     path: "/v0/quotes/:price_id/answer",
     auth: "merchant_key",
     description:
-      "The price and availability for a question that came off the worker stream, against the price_id that question carried. The acknowledgement says whether the answer arrived in time to price the purchase; when it did not, stock held against the question can be released.",
+      "The price and availability for a question that came off the worker stream, against the price_id that question carried. The acknowledgement says whether the answer arrived in time to price the purchase; when it did not, stock held against the question can be released. A price that is zero, not in USD or USDC, or written with fewer than two or more than six digits after the dot is refused as malformed_body with the reason as its message, and the question stays open for a corrected answer.",
     request: QuoteResponseSchema,
     response: { document: QuoteAnswerAckSchema },
   },
