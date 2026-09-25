@@ -799,6 +799,10 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
         // to be told or its cookie runs out thirty days after sign-in however
         // often its person came back.
         carryCookies(response, session.setCookies);
+        // Every page behind the gate carries the signed-in address in its
+        // header, and a page carrying an address is never stored by a shared
+        // cache (ADR-0026 §3).
+        response.setHeader("cache-control", "private, no-store");
         people.set(request, session.person);
         next();
       } catch (thrown) {

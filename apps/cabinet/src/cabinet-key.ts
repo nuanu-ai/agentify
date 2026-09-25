@@ -6,9 +6,10 @@
  * keys in a copy of this database taken today stop working at their people's
  * next visits. The first request of a day is the one whose reading of the
  * session moved the session's end, which the component does at most once a
- * day per session (`identity.ts`); a reading that moved it is what every door
- * that reads a session hands to `sessionReader`, so the cabinet's own pages and
- * the scanner's question about a cookie renew the key alike.
+ * day per session (`identity.ts`). The cabinet's own pages read through
+ * `sessionReader`, which renews before the handler runs because the handler
+ * calls the gateway with the key; the scanner's question about a cookie renews
+ * it too, after its answer (`report-identity-server.ts`).
  */
 
 import type { CabinetIdentity, LiveSession, Person, SessionReading } from "./cabinet-entry.js";

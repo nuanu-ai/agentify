@@ -21,7 +21,6 @@ import {
 } from "@agentify/scanner-contracts/report-identity";
 import express, { type NextFunction, type Request, type Response } from "express";
 import type { Person } from "./cabinet-entry.js";
-import { sessionReader } from "./cabinet-key.js";
 import type { Identity } from "./identity.js";
 
 export const REPORT_IDENTITY_PATH = "/internal/report-identity";
@@ -45,6 +44,14 @@ type ReportIdentityOperations = Pick<
  * The route, with what renews an account's key when a reading of its session
  * was the first of the day (ADR-0014 §2). The scanner's question is a reading
  * like any page's, so a day spent on reports renews the key too.
+ *
+ * The scanner is answered first and the key renewed after. The scanner gives
+ * up on this question in seconds, a renewal may wait on the gateway for longer,
+ * and an answer held for it would lose the browser its renewed cookie until the
+ * next day; the scanner does not call the gateway, so it needs no key from the
+ * renewal. What that costs is the window the cabinet's own pages already live
+ * with: a cabinet request in flight on another tab, made with the key the
+ * renewal is about to forget, is refused once and works on a reload.
  */
 export function buildReportIdentityApp(
   secret: string,
@@ -52,7 +59,6 @@ export function buildReportIdentityApp(
   renewKey: (person: Person) => Promise<void>,
 ) {
   const app = express();
-  const readSession = sessionReader(identity, renewKey);
 
   app.post(
     REPORT_IDENTITY_PATH,
@@ -81,7 +87,7 @@ export function buildReportIdentityApp(
         return;
       }
       if (operation.operation === "session") {
-        const session = await readSession(operation.cookie, { renew: operation.renew });
+        const session = await identity.whoIs(operation.cookie, { renew: operation.renew });
         const answer: ReadSessionResponse =
           session === null
             ? { status: "signed_out" }
@@ -92,6 +98,11 @@ export function buildReportIdentityApp(
                 set_cookie: [...session.setCookies],
               };
         response.json(readSessionResponseSchema.parse(answer));
+        if (session !== null && session.setCookies.length > 0 && session.person.merchant !== null) {
+          void renewKey(session.person).catch(() => {
+            console.error("[cabinet] the key was not renewed after a reading of the day");
+          });
+        }
         return;
       }
       response.json(
