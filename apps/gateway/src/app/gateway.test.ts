@@ -60,6 +60,8 @@ const UNSELLABLE_PRICES: readonly [price: unknown, field: string, found: string]
   [{ amount: "5", currency: "USD" }, "amount", "5"],
   [{ amount: "5.0", currency: "USD" }, "amount", "5.0"],
   ["5 USD", "amount", "5"],
+  [{ amount: "0.0000001", currency: "USD" }, "amount", "0.0000001"],
+  ["19.9999999 USDC", "amount", "19.9999999"],
   [{ amount: "5.00", currency: "EUR" }, "currency", "EUR"],
 ];
 
@@ -69,6 +71,7 @@ const SELLABLE_PRICES: readonly unknown[] = [
   { amount: "5.00", currency: "USD" },
   { amount: "0.001", currency: "USD" },
   { amount: "19.999", currency: "USD" },
+  { amount: "0.000001", currency: "USD" },
   { amount: "5.00", currency: "USDC" },
   "5.00 USD",
 ];
@@ -127,7 +130,8 @@ describe("the catalog", () => {
     // the price is wrong and what it said. A payment of nothing is not a sale
     // Agentify makes, a currency other than the dollar has no rate to be
     // charged at, and an amount written without its cents is how "500"
-    // meant as five dollars becomes a five-hundred-dollar card. The short
+    // meant as five dollars becomes a five-hundred-dollar card. An amount
+    // finer than the token a buyer pays in has no exact charge. The short
     // spelling is opened out before the rule is applied, so it meets the same
     // rule in the same words.
     const harnessed = await started();

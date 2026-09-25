@@ -1,5 +1,7 @@
-import { CardSchema } from "@nuanu-ai/agentify-contracts";
+import { LIVE_CHAINS, TESTNET_CHAINS } from "@agentify/core";
+import { CardSchema, PAYABLE_DECIMALS } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
+import { getDefaultAsset } from "@x402/evm";
 import type { DiscoveryExtension } from "@x402/extensions/bazaar";
 import {
   bazaarResourceServerExtension,
@@ -22,6 +24,27 @@ describe("a price in the token's own units", () => {
     expect(atomicUnits("0", 6)).toBe("0");
     expect(atomicUnits("0.000001", 6)).toBe("1");
     expect(atomicUnits("1234567890.123456", 6)).toBe("1234567890123456");
+  });
+
+  it("charges in the places the door lets a price be written to, on every chain it can charge on", () => {
+    // The promise: a price the publish door took is a price this edge can
+    // charge. The door reads its limit from the contract and this edge reads
+    // the token's own places from the payment library, per chain, so the two
+    // numbers are held equal here for every chain a deployment may name that
+    // has a token to charge in. A chain with none cannot charge anything, and
+    // is not what this is about.
+    const charged = [...TESTNET_CHAINS, ...LIVE_CHAINS].flatMap((chain) => {
+      try {
+        return [[chain, getDefaultAsset(chain as `${string}:${string}`).decimals]];
+      } catch {
+        return [];
+      }
+    });
+
+    expect(charged.length).toBeGreaterThan(0);
+    for (const [chain, decimals] of charged) {
+      expect(decimals, String(chain)).toBe(PAYABLE_DECIMALS);
+    }
   });
 
   it("refuses a price the token cannot hold, rather than rounding it", async () => {

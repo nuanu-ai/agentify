@@ -432,6 +432,7 @@ describe("what a call may carry", () => {
       [{ amount: "500", currency: "USD" }, "amount", "500"],
       [{ amount: "5", currency: "USD" }, "amount", "5"],
       [{ amount: "5.0", currency: "USD" }, "amount", "5.0"],
+      [{ amount: "0.0000001", currency: "USD" }, "amount", "0.0000001"],
       [{ amount: "5.00", currency: "EUR" }, "currency", "EUR"],
     ];
 
@@ -468,6 +469,7 @@ describe("what a call may carry", () => {
         { amount: "0.01", currency: "USD" },
         { amount: "0.001", currency: "USD" },
         { amount: "19.999", currency: "USD" },
+        { amount: "0.000001", currency: "USD" },
         { amount: "5.00", currency: "USDC" },
       ].map((price) => ({ available: true, price, as_of: "2026-08-26T10:15:00Z" })),
     ];
@@ -565,6 +567,26 @@ describe("the payment challenge", () => {
     expect(challenge.accepts[0]?.network).toBe("eip155:84532");
     // No order was opened by a call that cannot be a purchase.
     expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
+  });
+
+  it("asks for the smallest price the door takes, exactly", async () => {
+    // The promise: a price the door took is a price the payment edge can
+    // charge. The finest the door takes is one unit of the token a buyer pays
+    // in, and the challenge asks for exactly that unit — one place further and
+    // the card would have been refused at publication rather than here.
+    const { served } = await started();
+    const itemId = await publish(served, {
+      ...syncCard,
+      price: { amount: "0.000001", currency: "USD" },
+    });
+
+    const answered = await served.call("GET", `/x402/${itemId}/purchase`);
+
+    expect(answered.status).toBe(402);
+    const challenge = decodePaymentRequiredHeader(
+      answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+    );
+    expect(challenge.accepts[0]?.amount).toBe("1");
   });
 
   it("prices a POST against an order it opened, and says which order", async () => {

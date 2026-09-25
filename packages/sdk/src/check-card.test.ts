@@ -81,6 +81,7 @@ describe("checking a card before it is published", () => {
     for (const [price, field] of [
       [{ amount: "0.00", currency: "USD" }, "amount"],
       ["500 USD", "amount"],
+      ["0.0000001 USD", "amount"],
       [{ amount: "5.00", currency: "EUR" }, "currency"],
     ] as const) {
       expect(pathsOf({ ...validCard, price }), JSON.stringify(price)).toStrictEqual([
