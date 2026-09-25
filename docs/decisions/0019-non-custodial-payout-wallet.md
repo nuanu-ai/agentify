@@ -40,10 +40,13 @@ already signed. There is no balance, no settlement run, and no moment at
 which a merchant's money is ours.
 
 The keys a merchant issues operate the shop; where its money goes is a
-person's act. Any key of the merchant's reads the address, and only the key
-the cabinet holds for a signed-in person sets it, on the Settings screen; a
-key made for the merchant's own code is refused under `not_a_cabinet_key`,
-the first address too.
+person's act, done on the cabinet's Settings screen. Any key of the
+merchant's reads the address, and only the cabinet sets it, with its own key,
+from inside the stack. The public door does not route a write to
+`/v0/payout-wallet`, so a copy of a cabinet's key, which its database holds as
+issued, sets nothing from outside; and the gateway refuses a key made for the
+merchant's own code under `not_a_cabinet_key`, the first address too. The
+cabinet's key ends with ADR-0030, and with it this route's place on `/v0`.
 
 The address is a nullable column on the merchant, set and read through
 `/v0/payout-wallet`, held to `EvmAddressSchema` in the contracts: `0x`
@@ -186,15 +189,22 @@ needs a hash.
 The wait costs a merchant who replaces a wallet in earnest two days in
 which sales are still paid to the old one; a merchant who has lost the old
 wallet pauses selling for those two days rather than be paid where they
-cannot reach. A session that is not the owner's, open before any address
-is set, can still set the first one,
+cannot reach. A session that is not the owner's can pull against the owner:
+ask again after each cancel, cancel the owner's own replacement, and so end
+the owner's session. The wait and the message hold only while the owner
+answers them, and the pause, which is immediate, is what stops sales
+meanwhile. The message goes to the mailbox a session opens from (ADR-0009),
+so whoever holds that mailbox holds both. Such a session, open before any
+address is set, can still set the first one,
 which applies at once; the owner learns of it from the message that follows,
 when mail works, or from the wallet screen, and replacing it waits like any
 other change, so they stop selling until it does. A test
 deployment never shows a pending change, so an integrator meets that shape
 only on production. A wallet change also depends on the cabinet and the
 mail provider being up, which is accepted: changes are rare, and a refusal
-at the door is honest where a silent change is not.
+at the door is honest where a silent change is not. An account left holding
+a key made for the merchant's own code, from before accounts were checked,
+cannot set the wallet, and only the operator can mend it.
 
 Rejected: one address per deployment, kept as it was — custody with
 extra steps, and the reconciliation it implies is a product nobody has
@@ -207,9 +217,9 @@ finds out at the till, and the agent finds out instead of them. Lower
 case as the canon — cheaper to compute and impossible to check by eye,
 which trades the one safeguard a person has for nothing. Storing what
 was sent and normalizing on read — every reader becomes a parser, and
-the one that misses serves the second spelling (ADR-0017). A fresh
-confirmation by mail, or a short session, in place of the wait — the
-first goes to the mailbox a session opens from (ADR-0009), the second
-narrows the window without closing it. Any key of the merchant's setting
-the wallet — every copy of a key could redirect the takings, held back only
-by an owner answering each message in time.
+the one that misses serves the second spelling (ADR-0017). A confirmation
+by mail in place of the wait (Dmitry: "нет, ожидание все равно пусть будет")
+— it goes to the mailbox a session opens from (ADR-0009). A short session in
+place of it — it narrows the window without closing it. Any key of the
+merchant's setting the wallet — every copy of a key could redirect the
+takings, held back only by an owner answering each message in time.
