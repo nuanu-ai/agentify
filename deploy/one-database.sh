@@ -131,6 +131,9 @@ if [[ $phase == "done" ]]; then
   say "$channel already holds one database in the project $new_project; releasing the revision starts it."
   exit 0
 fi
+if [[ $phase != copied && -n $(new ps -aq) ]]; then
+  refuse "the project $new_project has containers, and the move copies into its volumes only while it has none; nothing was changed."
+fi
 
 if [[ -z $phase || $phase == stopping ]]; then
   step="checking the host"
@@ -198,8 +201,9 @@ if [[ $phase == stopped ]]; then
   for pair in "$old_postgres $new_postgres" "$old_caddy $new_caddy"; do
     read -r from to <<< "$pair"
     say "copying the volume $from into $to"
-    # Phase `stopped` means a copy of this script's own may have been cut short.
-    docker volume rm "$to" > /dev/null 2>&1 || true
+    # Phase `stopped` means a copy of this script's own may have been cut short;
+    # nothing uses it, since the new project has no container.
+    if docker volume inspect "$to" > /dev/null 2>&1; then docker volume rm "$to" > /dev/null; fi
     docker volume create "$to" > /dev/null
     docker run --rm --network none -v "$from:/from:ro" -v "$to:/to" "$image" cp -a /from/. /to/
   done
@@ -207,6 +211,11 @@ if [[ $phase == stopped ]]; then
 fi
 
 step="moving the scanner's tables"
+# The copy holds the old database as it was when it stopped for the copy; had
+# it run since, the orders it took would be left behind.
+started="$(old ps -aq postgres | xargs -r docker inspect -f '{{.State.StartedAt}}' | sort | tail -n 1)"
+[[ -z $started || $(date -d "$started" +%s) -le $copied_at ]] \
+  || refuse "the old database started again at $started, after it stopped for the copy, and what it took since is not in the copy; go back with  $back  and move again."
 new up -d --wait --no-deps postgres
 new exec -T postgres sh -s -- move < "$move"
 # Asked of the move script, which knows the account's name before and after
