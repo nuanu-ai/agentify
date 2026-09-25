@@ -2314,7 +2314,7 @@ function whatStands(merchant: readonly MerchantFinding[], card: readonly Problem
   }
   const lacks = `the merchant has ${words.length === 0 ? last : `${words.join(", ")} and ${last}`}`;
   if (first === undefined) {
-    return `${lacks}, and nothing about the card itself stands in its way; each finding in problems says what to do`;
+    return `${lacks}, and nothing about the card itself stands in its way; problems carries each of them in full`;
   }
   const counted =
     card.length === 1
