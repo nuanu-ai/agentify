@@ -1,5 +1,15 @@
 # Merchant SDK release history
 
+## 0.2.8
+
+### Patch Changes
+
+- Updated dependencies [ae15921]
+- Updated dependencies [b2de0fe]
+- Updated dependencies [4a4f100]
+- Updated dependencies [97529a5]
+  - @nuanu-ai/agentify-contracts@0.5.0
+
 ## 0.2.7
 
 ### Patch Changes

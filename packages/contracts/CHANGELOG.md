@@ -1,5 +1,55 @@
 # Contracts release history
 
+## 0.5.0
+
+### Minor Changes
+
+- b2de0fe: `IssueKeyRequestSchema` now refuses a label longer than 100 characters, or one
+  carrying a line break, a tab or another control character. On the live
+  deployment the message that tells a merchant of a new key names it, and the
+  key that issued it, by label, so a label is one line a list and a message can
+  show whole. Keys already issued are read back
+  under whatever they were named; `MerchantKeySchema` is unchanged.
+- 4a4f100: The payout wallet is set only through the merchant's cabinet, whose calls to
+  the gateway come from inside the stack, when a person sets it on the Settings
+  screen. `POST /v0/payout-wallet` is not routed by the public origin at all,
+  so from outside it answers as a path the site does not have, and at the
+  gateway a key made for the merchant's own code is refused with 403 under
+  `not_a_cabinet_key`, for the first address as for a replacement, with nothing
+  written or announced. `GET /v0/payout-wallet` still answers any key of the
+  merchant's. The descriptions of both routes say who may call them, and the
+  publish route's description sends a merchant with no wallet to the cabinet's
+  Settings.
+  
+  No schema changes and `ERROR_CODES` does not grow, since the code is the one
+  the cabinet's key routes already refuse under. What changes is what a reader
+  of the contract relies on: code written against the previous description
+  could set the wallet with its own key, and now it cannot, which is why this is
+  a minor release rather than a patch. No SDK worker calls the route, so the
+  contract version stays where it is.
+- 97529a5: The payout wallet answer now carries `pending`, a required field that is null
+  when nothing is waiting and otherwise names the replacement address and
+  `takes_effect_at`, the moment it replaces the address paid now. On the live
+  deployment a replacement for a wallet already set is announced to every
+  cabinet account of the merchant and takes effect forty-eight hours later, and
+  a caller that reads its old address back beside a pending change has not
+  failed to write. The nested document is published as `pending_payout_wallet`.
+  
+  Four refusal codes join `ERROR_CODES`, all returned by `POST
+  /v0/payout-wallet` alone: `wallet_change_nobody_to_tell`,
+  `wallet_change_not_announced`, `wallet_change_unconfirmed` and
+  `wallet_change_raced`. No SDK worker reads that route, so the contract
+  version stays where it is; a reader holding the previous `PayoutWalletSchema`
+  refuses an answer carrying `pending`, which is why this is a minor release.
+
+### Patch Changes
+
+- ae15921: The descriptions of `register_merchant`, `issue_cabinet_key` and
+  `forget_cabinet_key` say what is true of them: none is on the public origin.
+  Only the cabinet makes these calls, from inside the stack, and from outside
+  their paths answer as ones the site does not have. No schema, route or status
+  changes, and no merchant's own code ever made these calls.
+
 ## 0.4.0
 
 ### Minor Changes
