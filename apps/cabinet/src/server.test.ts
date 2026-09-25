@@ -4215,6 +4215,18 @@ describe("signing out every other device", () => {
     expect((await phone.get("/cards")).to).toMatch(/^\/sign-in/);
   });
 
+  it("counts no session of this browser's own that a second sign-in left behind", async () => {
+    // Opening a link from a browser already signed in replaces its session
+    // rather than adding one beside it, so the count is of other places.
+    const running = await started();
+    await running.browser.signIn();
+    await running.browser.signIn();
+
+    const pressed = await running.browser.post("/settings/sign-out-others");
+
+    expect(readable(pressed.html)).toMatch(/no other session/i);
+  });
+
   it("works with no wallet change waiting, and is offered on the settings screen", async () => {
     const running = await started();
     await running.browser.signIn();
