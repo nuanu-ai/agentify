@@ -3,9 +3,30 @@
 This is the disposable WooCommerce merchant used to exercise the Agentify
 connection flow against a realistic self-hosted shop. It is served at
 `https://woo.nuanu.ai`; the title is the only prominent indication that it is
-a test store. The catalogue contains five virtual gift cards with ordinary
-descriptions, prices and dedicated product photography. No WooCommerce payment
-gateway is enabled.
+a test store. No WooCommerce payment gateway is enabled.
+
+The catalogue holds two groups of product, and the difference between them is
+what the lab is for. Five virtual gift cards, with ordinary descriptions,
+prices and dedicated product photography, promise a brunch, a dinner for two, a
+wellness day, a creative workshop and a weekend away. No file can deliver any of
+those, so the cards carry none, and when a merchant imports the catalogue the
+Agentify connector must name each of them and leave it in the shop rather than
+sell an order number in place of the experience.
+
+Two inexpensive downloads, a pack of gift-message templates and a gift-wrapping
+guide, are the opposite case: each is a plain-text file from `seed/downloads/`,
+and that file is the whole of what the product promises. They are built to the
+one class of product the connector imports, described in
+[ADR-0023](../../docs/decisions/0023-woocommerce-connect.md): a published,
+in-stock simple product priced in US dollars, virtual and downloadable, without
+managed stock and not sold individually, carrying exactly one file that can be
+downloaded any number of times and never expires. The connector delivers that
+one file to the buying agent, so the file has to sit in WooCommerce's protected
+upload directory, where a direct request is refused and only an order's
+download permission retrieves it. The seed also sets the shop settings the
+connector reads before it imports or sells anything: prices in US dollars, tax
+calculation off, Force Downloads, no redirect fallback, no login required to
+download, and access granted once an order is paid.
 
 The shop runs as an isolated Compose project on the fixture host. Its
 WordPress, MariaDB and Caddy data live under the directory named by
