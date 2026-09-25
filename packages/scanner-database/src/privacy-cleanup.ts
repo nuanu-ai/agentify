@@ -14,7 +14,6 @@ import {
   rateLimitEvents,
   rateWindows,
   registrationIntents,
-  reportSessions,
   scanChecks,
   scanShares,
   scanSnapshots,
@@ -135,10 +134,6 @@ export async function anonymizeLeadData(
     });
 
     await tx
-      .update(reportSessions)
-      .set({ revokedAt: now })
-      .where(and(eq(reportSessions.leadId, leadId), isNull(reportSessions.revokedAt)));
-    await tx
       .delete(registrationIntents)
       .where(eq(registrationIntents.emailLookupHash, lead.email_lookup_hash));
     await tx.delete(waitlistEntries).where(eq(waitlistEntries.leadId, leadId));
@@ -246,7 +241,6 @@ export async function runRetentionCleanup(
   db: Database,
   input: {
     beforeLeadAnonymize: (leadId: string) => Promise<void>;
-    beforeLeadAnonymizeInTransaction?: (tx: DatabaseTransaction, leadId: string) => Promise<void>;
     now?: Date;
     batchSize?: number;
   },
@@ -266,7 +260,7 @@ export async function runRetentionCleanup(
       db,
       candidate.id,
       now,
-      input.beforeLeadAnonymizeInTransaction,
+      undefined,
       new Date(now.getTime() - UNVERIFIED_LEAD_RETENTION_MS),
     );
     if (result.status === "anonymized") leadsAnonymized += 1;

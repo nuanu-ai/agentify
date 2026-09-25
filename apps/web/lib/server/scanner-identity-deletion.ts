@@ -3,10 +3,7 @@ import {
   createUuidV7,
   leads,
   registrationIntents,
-  reportSessions,
-  scannerIdentityCompletions,
   scannerIdentityDeletionOperations,
-  scannerRecoveryIntents,
 } from "@agentify/scanner-database";
 import { and, asc, eq, isNull, lt, or, sql } from "drizzle-orm";
 
@@ -77,12 +74,10 @@ export async function beginScannerIdentityDeletion(leadId: string) {
       leadId,
       createdAt: now,
     });
+    // The lead is what gives an address its reports, so marking it closes them
+    // at once for every session of that address, whether or not the cabinet
+    // has answered the deletion yet (ADR-0024).
     await tx.update(leads).set({ deletionRequestedAt: now }).where(eq(leads.id, leadId));
-    await tx
-      .update(reportSessions)
-      .set({ revokedAt: now })
-      .where(and(eq(reportSessions.leadId, leadId), isNull(reportSessions.revokedAt)));
-    await tx.delete(scannerRecoveryIntents).where(eq(scannerRecoveryIntents.leadId, leadId));
     await tx
       .delete(registrationIntents)
       .where(eq(registrationIntents.emailLookupHash, lead.emailLookupHash));
@@ -233,10 +228,6 @@ export async function runScannerIdentityDeletionOperation(
       ) {
         throw new Error("scanner_deletion_lease_lost");
       }
-      await tx.delete(scannerRecoveryIntents).where(eq(scannerRecoveryIntents.leadId, leadId));
-      await tx
-        .delete(scannerIdentityCompletions)
-        .where(eq(scannerIdentityCompletions.leadId, leadId));
       const finished = await tx
         .update(scannerIdentityDeletionOperations)
         .set({ completedAt: now, leaseToken: null, leaseExpiresAt: null })

@@ -4,8 +4,6 @@ import {
   rateLimitEvents,
   rateWindows,
   registrationIntents,
-  scannerIdentityCompletions,
-  scannerRecoveryIntents,
 } from "@agentify/scanner-database";
 import { sql } from "drizzle-orm";
 
@@ -40,23 +38,11 @@ async function main() {
         sql`select count(*)::int as count from ${registrationIntents}
           where coalesce(${registrationIntents.consumedAt}, ${registrationIntents.expiresAt}) < now() - interval '7 days'`,
       );
-      const expiredScannerRecoveryIntents = await db.execute<{ count: number }>(
-        sql`select count(*)::int as count from ${scannerRecoveryIntents}
-          where coalesce(${scannerRecoveryIntents.consumedAt}, ${scannerRecoveryIntents.expiresAt}) <= now() - interval '7 days'`,
-      );
-      const expiredScannerIdentityCompletions = await db.execute<{
-        count: number;
-      }>(
-        sql`select count(*)::int as count from ${scannerIdentityCompletions}
-          where ${scannerIdentityCompletions.retainUntil} <= now()`,
-      );
       process.stdout.write(
         `${JSON.stringify({
           dryRun: true,
           overdueMerchantApplications: overdueMerchants.rows[0]?.count ?? 0,
           overdueRegistrationIntents: overdueRegistrationIntents.rows[0]?.count ?? 0,
-          expiredScannerRecoveryIntents: expiredScannerRecoveryIntents.rows[0]?.count ?? 0,
-          expiredScannerIdentityCompletions: expiredScannerIdentityCompletions.rows[0]?.count ?? 0,
           expiredRateLimitRows: expiredRateLimits.rows[0]?.count ?? 0,
           unverifiedLeadCandidates: candidates.length,
         })}\n`,

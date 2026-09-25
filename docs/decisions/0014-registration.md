@@ -30,12 +30,15 @@ attempt makes a new one.
 **2. An account names its merchant and holds a key made for the cabinet.** The
 cabinet builds its gateway client per request from the signed-in account's
 row; `MERCHANT_API_KEY` leaves the configuration. The key is stored as issued,
-and it is made afresh at every sign-in and at the first request of each day on
-a live session, and the one it replaces forgotten — so the keys in a copy of
-the database taken today stop working at each account's first visit on a later
-day, while an account that never returns keeps its key working. A session
-lasts thirty days from the last visit (ADR-0009 §6), and without the daily
-renewal that bound would stretch with it. Each renewal is also one more chance
+and it is made afresh at every sign-in and at most once a day, when a visit
+extends the session, and the one it replaces forgotten — so a key in a copy of
+the database stops working by its account's first visit more than a day after
+the copy was taken, while an account that never returns keeps its key working.
+The session is extended at most once a day by whichever reading of it comes
+first, a cabinet page or the scanner's question about a cookie, so a day spent
+only on reports renews the key too. A session lasts thirty days from the last
+visit (ADR-0009 §6), and without the daily renewal that bound would stretch
+with it. Each renewal is also one more chance
 to leave behind a key of the kind an interrupted sign-in leaves (§5), and
 nothing clears those yet. It is still not a secret store; the
 database is a boundary against the network, not against a host, and the day

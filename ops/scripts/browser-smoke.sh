@@ -31,7 +31,7 @@ set +e
   const expectLocalCard = $expect_local_card_json;
   const expectBrowserObservations = $expect_browser_observations_json;
   const axePath = $axe_path_json;
-  const routes = ['/','/store','/local','/scan/pending','/scanner','/methodology','/privacy','/terms','/data-request','/verification/error'];
+  const routes = ['/','/store','/local','/scan/pending','/scanner','/methodology','/privacy','/terms','/data-request'];
   if (scanPath) routes.push(scanPath);
   const widths = [360,390,768,1024,1440];
   const failures = [];
@@ -158,8 +158,10 @@ set +e
     const marketing = contactDialog.getByRole('checkbox', { name: 'Send optional product research updates.' });
     if (await marketing.isChecked()) failures.push('marketing consent was preselected');
     await contactDialog.getByRole('button', { name: 'Close registration' }).click();
-    await page.context().addCookies([{ name: 'agentify_report_session', value: localFlow.reportSessionToken, url: base }]);
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.goto(localFlow.signInUrl, { waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: 'Sign in as ' + localFlow.email }).click();
+    await page.waitForURL(url => url.pathname.startsWith('/report/'));
+    await page.goto(localFlow.scanUrl, { waitUntil: 'domcontentloaded' });
     const teaserPromptResponse = page.waitForResponse(response => response.url().includes('/remediation-prompt?scope=teaser'));
     await page.getByRole('button', { name: 'Copy AI fix prompt' }).click();
     if ((await teaserPromptResponse).status() !== 200) failures.push('verified teaser prompt API failed');

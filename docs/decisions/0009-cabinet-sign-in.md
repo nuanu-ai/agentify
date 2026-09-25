@@ -101,7 +101,9 @@ send. The check that a form came from this host stays, because
 site.
 
 The session lasts thirty days from the last visit, so a person who keeps coming
-back does not meet the sign-in form again. A short session is not what protects
+back does not meet the sign-in form again; its end is moved at most once a day,
+so a click is not a write, and the renewed cookie reaches the browser on the
+answer that moved it. A short session is not what protects
 the money; the wait on a wallet change is (ADR-0019).
 
 ## Consequences

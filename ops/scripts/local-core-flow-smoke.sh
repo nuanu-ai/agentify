@@ -2,6 +2,10 @@
 set -euo pipefail
 
 : "${DATABASE_URL:?DATABASE_URL is required}"
+# The cabinet's database, where the fixture plants the one-time link the smoke
+# signs in with, and an origin that serves the cabinet beside the scanner: the
+# scanner keeps no session, so signing in goes through the cabinet's page.
+: "${CABINET_DATABASE_URL:?CABINET_DATABASE_URL is required}"
 : "${WEB_BASE_URL:=http://localhost:3000}"
 [[ "$WEB_BASE_URL" == "http://localhost:"* || "$WEB_BASE_URL" == "http://127.0.0.1:"* ]] || {
   echo "Local core-flow smoke refuses a non-local WEB_BASE_URL" >&2

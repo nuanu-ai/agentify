@@ -4,9 +4,10 @@ import { registrationResponseSchema } from "@agentify/scanner-contracts";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 
 import { linkAnswerFailure, waitLabel } from "../lib/link-answer";
+import { useVisitor } from "../lib/visitor";
 import styles from "./registration-form.module.css";
 
-type RegistrationState = "idle" | "sending" | "sent" | "error";
+type RegistrationState = "idle" | "sending" | "sent" | "opening" | "error";
 
 /**
  * The wait is the server's to name. This button used to count sixty seconds
@@ -14,7 +15,7 @@ type RegistrationState = "idle" | "sending" | "sent" | "error";
  * a person nothing about the wall actually in front of them.
  */
 export function registrationSubmitLabel(state: RegistrationState, resendWait: number) {
-  if (state === "sending") return "Sending…";
+  if (state === "sending" || state === "opening") return "Sending…";
   if (resendWait > 0) return `Try again in ${waitLabel(resendWait)}`;
   if (state === "sent") return "Resend secure link";
   return "Email me a secure link";
@@ -27,7 +28,18 @@ export function sentConfirmationCopy(email: string) {
   return `We sent a secure link to ${email} (if the address can receive mail). ${followUp}`;
 }
 
+/**
+ * The ask for the full report.
+ *
+ * Who is visiting decides its shape (ADR-0026 §2). A stranger types an address
+ * and gets a link. A signed-in person is told the address the report will be
+ * filed under before the press, and their own ask carries their choices and no
+ * address, is filed at once and sends nothing. A page that cannot tell who is
+ * visiting says so and offers no ask, rather than taking an address over a
+ * session it could not see.
+ */
 export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
+  const visitor = useVisitor();
   const emailId = useId();
   const phoneId = useId();
   const [state, setState] = useState<RegistrationState>("idle");
@@ -61,6 +73,7 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
       return;
     }
     const form = new FormData(event.currentTarget);
+    const signedIn = visitor.status === "signed_in";
     setState("sending");
     const response = await fetch(`/api/v2/scans/${encodeURIComponent(scanId)}/registrations`, {
       method: "POST",
@@ -69,7 +82,7 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        email: form.get("email"),
+        ...(signedIn ? {} : { email: form.get("email") }),
         phone: form.get("phone") || undefined,
         role: form.get("role"),
         site_is_mine: form.get("site_is_mine") === "on",
@@ -79,6 +92,11 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
     });
     const payload: unknown = await response.json().catch(() => null);
     const parsed = registrationResponseSchema.safeParse(payload);
+    if (response.ok && parsed.success && parsed.data.status === "report_ready") {
+      setState("opening");
+      window.location.assign(parsed.data.report_url);
+      return;
+    }
     if (response.ok && parsed.success) {
       setState("sent");
       setResendWait(0);
@@ -92,6 +110,21 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
     }
   }
 
+  if (visitor.status === "loading")
+    return (
+      <p aria-live="polite" className={styles.hint}>
+        Checking who is visiting…
+      </p>
+    );
+  if (visitor.status === "unknown")
+    return (
+      <p aria-live="polite" className={styles.error}>
+        We cannot tell who is visiting right now, so the full report cannot be asked for. Try again
+        in a moment.
+      </p>
+    );
+  const signedIn = visitor.status === "signed_in";
+
   return (
     <form
       className={styles.form}
@@ -104,10 +137,17 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
           <p>{sentConfirmationCopy(sentTo)}</p>
         </div>
       ) : null}
-      <div>
-        <label htmlFor={emailId}>Email</label>
-        <input id={emailId} name="email" type="email" autoComplete="email" required />
-      </div>
+      {signedIn ? (
+        <p>
+          You are signed in, so the report will be filed under <strong>{visitor.email}</strong> and
+          open here without a message.
+        </p>
+      ) : (
+        <div>
+          <label htmlFor={emailId}>Email</label>
+          <input id={emailId} name="email" type="email" autoComplete="email" required />
+        </div>
+      )}
       <div>
         <label htmlFor={phoneId}>Phone</label>
         <input
@@ -146,10 +186,12 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
       </label>
       <button
         className="button button-primary"
-        disabled={state === "sending" || resendWait > 0}
+        disabled={state === "sending" || state === "opening" || resendWait > 0}
         type="submit"
       >
-        {registrationSubmitLabel(state, resendWait)}
+        {signedIn && resendWait === 0 && state !== "opening"
+          ? "Open the full report"
+          : registrationSubmitLabel(state, resendWait)}
       </button>
       {message && state === "error" ? (
         <p className={styles.error} aria-live="polite">

@@ -7,8 +7,22 @@
   background: var(--raised);
 }
 
+/* The brand and the header's doors on one row, as wide as the card below, the
+   way every scanner header carries them; the doors wrap under the brand before
+   they run off a phone. */
 .brandWrap {
+  width: min(100%, 700px);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
   margin-bottom: 30px;
+}
+
+.brandWrap > nav {
+  padding-left: 0;
+  border-left: 0;
 }
 
 .card {

@@ -1,6 +1,6 @@
 /** PostgreSQL authority for cabinet identity transactions and cutover. */
 
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "@agentify/gateway/testing/database";
@@ -61,10 +61,22 @@ if (databaseUrl === null) {
     await pool.query("drop function if exists fail_cabinet_key_update() cascade");
     await pool.query(`
       drop table if exists
-        cabinet_link_sends, cabinet_woo_orders, cabinet_woo_shops, cabinet_woo_grants,
-        cabinet_verifications, cabinet_credentials, cabinet_sessions, cabinet_accounts
+        cabinet_report_deletion_tombstones, cabinet_report_identity_secrets,
+        cabinet_report_receipts, cabinet_link_sends, cabinet_woo_quotes, cabinet_woo_orders,
+        cabinet_woo_shops, cabinet_woo_grants, cabinet_verifications, cabinet_credentials,
+        cabinet_sessions, cabinet_accounts
       cascade
     `);
+  }
+
+  /**
+   * Every checked-in migration, in order: the schema a deployment runs today,
+   * which is what the passwordless identity below is exercised against. The
+   * cutover tests stop at the migration they are about.
+   */
+  async function migrateEverything(): Promise<void> {
+    const files = (await readdir(migrationsIn)).filter((file) => file.endsWith(".sql")).sort();
+    for (const file of files) await run(file);
   }
 
   async function migrateThrough(file: (typeof migrationFiles)[number]): Promise<void> {
@@ -248,7 +260,7 @@ if (databaseUrl === null) {
   describe("the passwordless identity on PostgreSQL", () => {
     beforeEach(async () => {
       await emptyEverything();
-      await migrateThrough("0005_one_way_in_identity.sql");
+      await migrateEverything();
     });
 
     it("commits token, new person and session together, then consumes only once", async () => {
@@ -435,8 +447,7 @@ if (databaseUrl === null) {
         person: { merchant: null },
       });
       expect(await identity.whoIs(cookieHeader(opened.setCookies))).toMatchObject({
-        id: opened.person.id,
-        merchant: null,
+        person: { id: opened.person.id, merchant: null },
       });
     });
 

@@ -34,16 +34,13 @@ import {
   theMerchantKey,
 } from "@agentify/gateway/testing";
 import {
-  REPORT_CABINET_HANDOFF_COOKIE,
-  sealReportCabinetHandoff,
-} from "@agentify/scanner-contracts/report-cabinet-handoff";
-import {
   type Card,
   checksummedAddressOf,
   type MerchantKey,
   type MerchantKeyList,
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { keyRenewal } from "./cabinet-key.js";
 import { type CabinetConfig, loadConfig } from "./config.js";
 import { type Answer, type GatewayClient, gatewayFor, type Registrar } from "./gateway.js";
 import {
@@ -51,12 +48,13 @@ import {
   identityFor,
   LINK_MIN_INTERVAL_MS,
   LINK_RATE_WINDOW_MS,
-  SESSION_HOURS,
 } from "./identity.js";
 import type { Handover, Message, Postman } from "./mail.js";
+import { buildReportIdentityApp, REPORT_IDENTITY_PATH } from "./report-identity-server.js";
 import { buildApp } from "./server.js";
 import { readable, waitingButton } from "./testing/html.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
+import { memoryWooShops, type WooShops } from "./woo-shops.js";
 
 /**
  * The key the gateway harness's own merchant holds, named rather than spelled
@@ -69,12 +67,27 @@ const KEY = theMerchantKey("test");
 const asMerchant = { authorization: `Bearer ${KEY}` };
 const PAY_TO = "0x0000000000000000000000000000000000000001";
 
-/** The name the session cookie travels under. */
+/** The name the session cookie travels under on the plain-http local origin. */
 const COOKIE = "agentify.session_token";
-const REPORT_IDENTITY_SECRET = "a-dedicated-report-secret-at-least-32-characters";
-const REPORT_SCAN_ID = "0199a2fd-4f2a-7ccd-90ba-d7266c7b5133";
-const REPORT_PATH = `/report/${REPORT_SCAN_ID}`;
+/**
+ * The name it travels under wherever the site is served over https.
+ *
+ * The prefix is a promise the browser keeps rather than one this cabinet makes:
+ * a cookie carrying it is refused unless it is Secure, set for the whole origin
+ * and names no Domain, so another host under the same registrable domain can
+ * neither plant a session here nor overwrite one (ADR-0009 §6).
+ */
+const SECURE_COOKIE = "__Host-agentify.session_token";
+/** Thirty days, the lifetime a session is given from the last visit. */
+const THIRTY_DAYS_SECONDS = 30 * 24 * 60 * 60;
 const SESSION_ENDED = "/sign-in?reason=session-ended";
+/**
+ * Where a person who owns no merchant starts: the scanner's answer for their
+ * latest report, which sends somebody with no report back to the cabinet
+ * (ADR-0026 §1). It is not the cabinet's page, so these tests read the
+ * redirect and do not follow it.
+ */
+const LATEST_REPORT = "/report/latest";
 const SESSION_ENDED_UNSAVED = "/sign-in?reason=session-ended-unsaved";
 
 /** The person whose account every test in this file signs in as. */
@@ -196,6 +209,11 @@ interface Browser {
    * tests about the cooldown itself ask for their links directly.
    */
   signIn(email?: string): Promise<Visit>;
+  /**
+   * Presses the one control a signed-in person without a merchant is offered,
+   * and follows where it leads (ADR-0026 §4).
+   */
+  makeMerchant(): Promise<Visit>;
   /** The identifier in this browser's session cookie, or null. */
   sessionToken(): string | null;
   /** The same browser sending one exact cookie header instead of its jar. */
@@ -297,6 +315,8 @@ interface Starting {
    * the case a screen must not call a link sent.
    */
   readonly mailTakes?: Handover;
+  /** A store for WooCommerce connections, for the tests that need its routes. */
+  readonly wooShops?: WooShops;
 }
 
 const started = async (options: Starting = {}): Promise<Running> => {
@@ -406,6 +426,7 @@ async function visiting(
   const app = buildApp(config, {
     identity: options.identity === undefined ? identity : options.identity(identity),
     ...(options.registrar === undefined ? {} : { registrar: options.registrar }),
+    ...(options.wooShops === undefined ? {} : { wooShops: options.wooShops }),
     // Built from the configured address and given the deadline it was asked
     // for, so that a test which points the cabinet somewhere else — at nothing
     // at all, or at a server that never answers — is answered the way a
@@ -526,9 +547,13 @@ async function attachedTo(
       const action = new URL(found);
       const token = action.searchParams.get("token") ?? "";
       const opened = await call("POST", action.pathname, { token });
-      return opened.to === null ? opened : call("GET", opened.to);
+      return opened.to === null || opened.to === LATEST_REPORT ? opened : call("GET", opened.to);
     },
-    sessionToken: () => jar.get(COOKIE) ?? null,
+    async makeMerchant() {
+      const made = await call("POST", `${basePath}/merchant`, {});
+      return made.to === null ? made : call("GET", made.to);
+    },
+    sessionToken: () => jar.get(COOKIE) ?? jar.get(SECURE_COOKIE) ?? null,
     withRawCookie: (raw) => ({
       ...browser,
       get: (path) => call("GET", path, undefined, { cookie: raw }),
@@ -623,314 +648,29 @@ const listedAs = async (running: Running): Promise<string | null> =>
 const paidInto = async (running: Running): Promise<string | null> =>
   (await running.harnessed.store.merchantById(running.harnessed.merchant.id))?.payoutWallet ?? null;
 
+/** The one line of an answer that sets the session cookie of this name, if any. */
+const sessionCookieIn = (answer: Visit, name: string): string | undefined =>
+  answer.headers.getSetCookie().find((line) => line.startsWith(`${name}=`));
+
+/** The attributes of one Set-Cookie line, keyed in lower case. */
+const attributesOf = (line: string): Map<string, string> =>
+  new Map(
+    line
+      .split(";")
+      .slice(1)
+      .map((part) => {
+        const at = part.indexOf("=");
+        return at === -1
+          ? [part.trim().toLowerCase(), ""]
+          : [part.slice(0, at).trim().toLowerCase(), part.slice(at + 1).trim()];
+      }),
+  );
+
 const actionIn = (message: Message | undefined): URL => {
   const found = /(https?:\/\/\S+)/.exec(message?.body ?? "")?.[1];
   if (found === undefined) throw new Error("the message carried no action URL");
   return new URL(found);
 };
-
-const sealedHandoff = (
-  action: URL,
-  options: { readonly email?: string; readonly now?: Date } = {},
-): string => {
-  const sealed = sealReportCabinetHandoff({
-    actionUrl: action.toString(),
-    email: options.email ?? PERSON,
-    now: options.now ?? new Date(),
-    publicOrigin: action.origin,
-    scanId: REPORT_SCAN_ID,
-    secret: REPORT_IDENTITY_SECRET,
-  });
-  if (sealed === null) throw new Error("the report handoff fixture could not be sealed");
-  return sealed;
-};
-
-const handoffCookie = (sealed: string): string => `${REPORT_CABINET_HANDOFF_COOKIE}=${sealed}`;
-
-const expectHandoffCleared = (answer: Visit, secure = false): void => {
-  const cleared = answer.headers
-    .getSetCookie()
-    .find((line) => line.startsWith(`${REPORT_CABINET_HANDOFF_COOKIE}=`));
-  expect(cleared).toBeDefined();
-  expect(cleared).toContain("Path=/cabinet");
-  expect(cleared).toContain("HttpOnly");
-  expect(cleared).toContain("SameSite=Strict");
-  expect(cleared).toContain("Expires=Thu, 01 Jan 1970 00:00:00 GMT");
-  if (secure) expect(cleared).toContain("Secure");
-  else expect(cleared).not.toContain("Secure");
-};
-
-describe("the report-to-cabinet handoff", () => {
-  const start = async (options: Starting = {}): Promise<Running> =>
-    await started({
-      ...options,
-      base: "/cabinet",
-      cabinet: {
-        REPORT_IDENTITY_SECRET,
-        COOKIE_SECURE: "true",
-        ...(options.cabinet ?? {}),
-      },
-    });
-
-  const freshLink = async (running: Running, email = PERSON): Promise<URL> => {
-    rewindLinkSends(running.rows);
-    const requested = await running.browser.post("/cabinet/sign-in", { email });
-    expect(requested.status).toBe(202);
-    return actionIn(running.mails.at(-1));
-  };
-
-  it("opens the exact owner's existing link from the signed cookie and sends no mail", async () => {
-    const running = await start();
-    const action = await freshLink(running);
-    const token = action.searchParams.get("token") ?? "";
-    const beforeMails = running.mails.length;
-
-    const opened = await running.browser
-      .withRawCookie(handoffCookie(sealedHandoff(action)))
-      .post("/cabinet/report-handoff", { email: PERSON, report_path: REPORT_PATH });
-
-    expect(opened.status).toBe(303);
-    expect(opened.to).toBe("/cabinet/cards");
-    expectHandoffCleared(opened, true);
-    expect(running.mails).toHaveLength(beforeMails);
-    expect(
-      (await running.identity.whoIs(`${COOKIE}=${running.browser.sessionToken()}`))?.email,
-    ).toBe(PERSON);
-    expect(await running.identity.openLink(token)).toStrictEqual({ status: "refused" });
-  });
-
-  it("lets a matching live session through without requesting or opening a link, rotating a key, or renewing the session", async () => {
-    const issued = vi.fn();
-    const forgotten = vi.fn();
-    const running = await start({
-      client: (real) => ({
-        ...real,
-        issueCabinetKey: async () => {
-          issued();
-          return await real.issueCabinetKey();
-        },
-        forgetCabinetKey: async () => {
-          forgotten();
-          return await real.forgetCabinetKey();
-        },
-      }),
-    });
-    await running.browser.signIn();
-    const action = await freshLink(running);
-    const token = action.searchParams.get("token") ?? "";
-    const sessionToken = running.browser.sessionToken();
-    const sessions = structuredClone(running.rows.cabinet_sessions);
-    const issueCalls = issued.mock.calls.length;
-    const forgetCalls = forgotten.mock.calls.length;
-    const requestLink = vi.spyOn(running.identity, "requestLink");
-    const openLink = vi.spyOn(running.identity, "openLink");
-
-    const answer = await running.browser
-      .withRawCookie(`${COOKIE}=${sessionToken}; ${handoffCookie(sealedHandoff(action))}`)
-      .post("/cabinet/report-handoff", {
-        email: "  ＤＭＩＴＲＹ＠ＥＸＡＭＰＬＥ．ＣＯＭ  ",
-        report_path: REPORT_PATH,
-      });
-
-    expect(answer.status).toBe(303);
-    expect(answer.to).toBe("/cabinet/cards");
-    expectHandoffCleared(answer, true);
-    expect(requestLink).not.toHaveBeenCalled();
-    expect(openLink).not.toHaveBeenCalled();
-    expect(issued).toHaveBeenCalledTimes(issueCalls);
-    expect(forgotten).toHaveBeenCalledTimes(forgetCalls);
-    expect(running.browser.sessionToken()).toBe(sessionToken);
-    expect(running.rows.cabinet_sessions).toStrictEqual(sessions);
-    expect(await running.identity.openLink(token)).toMatchObject({ status: "opened" });
-  });
-
-  it("falls back to a prefilled ordinary form without mail for an absent, tampered, mismatched, or expired handoff", async () => {
-    const running = await start();
-    const action = await freshLink(running);
-    const valid = sealedHandoff(action);
-    const signatureStart = valid.lastIndexOf(".") + 1;
-    const tampered = `${valid.slice(0, signatureStart)}${valid[signatureStart] === "A" ? "B" : "A"}${valid.slice(signatureStart + 1)}`;
-    const expired = sealedHandoff(action, {
-      now: new Date(Date.now() - 2 * 60 * 60 * 1_000),
-    });
-    const requestLink = vi.spyOn(running.identity, "requestLink");
-    const beforeMails = running.mails.length;
-    const cases = [
-      {
-        name: "absent",
-        browser: running.browser,
-        email: PERSON,
-        reportPath: REPORT_PATH,
-      },
-      {
-        name: "tampered",
-        browser: running.browser.withRawCookie(handoffCookie(tampered)),
-        email: PERSON,
-        reportPath: REPORT_PATH,
-      },
-      {
-        name: "email mismatch",
-        browser: running.browser.withRawCookie(handoffCookie(valid)),
-        email: OTHER,
-        reportPath: REPORT_PATH,
-      },
-      {
-        name: "report mismatch",
-        browser: running.browser.withRawCookie(handoffCookie(valid)),
-        email: PERSON,
-        reportPath: "/report/0199a2fd-4f2a-7ccd-90ba-d7266c7b5999",
-      },
-      {
-        name: "expired",
-        browser: running.browser.withRawCookie(handoffCookie(expired)),
-        email: PERSON,
-        reportPath: REPORT_PATH,
-      },
-    ];
-
-    for (const example of cases) {
-      const answer = await example.browser.post("/cabinet/report-handoff", {
-        email: example.email,
-        report_path: example.reportPath,
-      });
-      expect(answer.status, example.name).toBe(200);
-      expect(answer.to, example.name).toBeNull();
-      expect(answer.html, example.name).toContain('action="/cabinet/sign-in"');
-      expect(answer.html, example.name).toContain(
-        `name="email" type="email" value="${example.email}"`,
-      );
-      expectHandoffCleared(answer, true);
-    }
-    expect(requestLink).not.toHaveBeenCalled();
-    expect(running.mails).toHaveLength(beforeMails);
-    expect(await running.identity.openLink(action.searchParams.get("token") ?? "")).toMatchObject({
-      status: "opened",
-    });
-  });
-
-  it("shows the prefilled form when the otherwise valid one-use handoff was replayed", async () => {
-    const running = await start();
-    const action = await freshLink(running);
-    const sealed = sealedHandoff(action);
-    const firstBrowser = await running.another();
-    const beforeMails = running.mails.length;
-
-    const first = await firstBrowser
-      .withRawCookie(handoffCookie(sealed))
-      .post("/cabinet/report-handoff", { email: PERSON, report_path: REPORT_PATH });
-    expect(first.status).toBe(303);
-
-    const replay = await running.browser
-      .withRawCookie(handoffCookie(sealed))
-      .post("/cabinet/report-handoff", { email: PERSON, report_path: REPORT_PATH });
-
-    expect(replay.status).toBe(200);
-    expect(replay.html).toContain(`name="email" type="email" value="${PERSON}"`);
-    expectHandoffCleared(replay, true);
-    expect(running.mails).toHaveLength(beforeMails);
-  });
-
-  it("does not carry a session when the opened link belongs to a different email", async () => {
-    const running = await start();
-    await running.identity.make(OTHER, THE_MERCHANT);
-    const otherAction = await freshLink(running, OTHER);
-    const handoffSignedForOwner = sealedHandoff(otherAction, { email: PERSON });
-    const beforeMails = running.mails.length;
-
-    const refused = await running.browser
-      .withRawCookie(handoffCookie(handoffSignedForOwner))
-      .post("/cabinet/report-handoff", { email: PERSON, report_path: REPORT_PATH });
-
-    expect(refused.status).toBe(200);
-    expect(refused.html).toContain(`name="email" type="email" value="${PERSON}"`);
-    expect(running.browser.sessionToken()).toBeNull();
-    expectHandoffCleared(refused, true);
-    expect(running.mails).toHaveLength(beforeMails);
-  });
-
-  it("does not accept another account as the owner, but a valid handoff replaces its browser session", async () => {
-    const running = await start();
-    await running.identity.make(OTHER, THE_MERCHANT);
-    await running.browser.signIn(OTHER);
-    const otherSession = running.browser.sessionToken();
-    const action = await freshLink(running, PERSON);
-    const sealed = sealedHandoff(action);
-    const signatureStart = sealed.lastIndexOf(".") + 1;
-    const tampered = `${sealed.slice(0, signatureStart)}${sealed[signatureStart] === "A" ? "B" : "A"}${sealed.slice(signatureStart + 1)}`;
-    const beforeMails = running.mails.length;
-
-    const refused = await running.browser
-      .withRawCookie(`${COOKIE}=${otherSession}; ${handoffCookie(tampered)}`)
-      .post("/cabinet/report-handoff", { email: PERSON, report_path: REPORT_PATH });
-    expect(refused.status).toBe(200);
-    expect(refused.html).toContain(`name="email" type="email" value="${PERSON}"`);
-
-    const switched = await running.browser
-      .withRawCookie(`${COOKIE}=${otherSession}; ${handoffCookie(sealed)}`)
-      .post("/cabinet/report-handoff", { email: PERSON, report_path: REPORT_PATH });
-
-    expect(switched.status).toBe(303);
-    expect(switched.to).toBe("/cabinet/cards");
-    expect(running.browser.sessionToken()).not.toBe(otherSession);
-    expect(
-      (await running.identity.whoIs(`${COOKIE}=${running.browser.sessionToken()}`))?.email,
-    ).toBe(PERSON);
-    expect(running.mails).toHaveLength(beforeMails);
-  });
-
-  it("keeps the origin gate in front of the handoff without spending its link", async () => {
-    const running = await start();
-    const action = await freshLink(running);
-    const sealed = sealedHandoff(action);
-
-    const forged = await running.browser
-      .withRawCookie(handoffCookie(sealed))
-      .from("https://evil.example")
-      .post("/cabinet/report-handoff", { email: PERSON, report_path: REPORT_PATH });
-    expect(forged.status).toBe(403);
-
-    const honest = await running.browser
-      .withRawCookie(handoffCookie(sealed))
-      .post("/cabinet/report-handoff", { email: PERSON, report_path: REPORT_PATH });
-    expect(honest.status).toBe(303);
-  });
-
-  it("clears an unspent handoff when its signed-in browser signs out", async () => {
-    const running = await start();
-    await running.browser.signIn();
-    const action = await freshLink(running);
-    const token = action.searchParams.get("token") ?? "";
-
-    const signedOut = await running.browser
-      .withRawCookie(
-        `${COOKIE}=${running.browser.sessionToken()}; ${handoffCookie(sealedHandoff(action))}`,
-      )
-      .post("/cabinet/sign-out");
-
-    expect(signedOut.status).toBe(303);
-    expect(signedOut.to).toBe("/cabinet/sign-in");
-    expectHandoffCleared(signedOut, true);
-    expect(await running.identity.openLink(token)).toMatchObject({ status: "opened" });
-  });
-
-  it("clears an unspent handoff when a stale cabinet session signs out", async () => {
-    const running = await start();
-    await running.browser.signIn();
-    const sessionToken = running.browser.sessionToken() ?? "";
-    const action = await freshLink(running);
-    const token = action.searchParams.get("token") ?? "";
-    await running.identity.signOut(`${COOKIE}=${sessionToken}`);
-
-    const signedOut = await running.browser
-      .withRawCookie(`${COOKIE}=${sessionToken}; ${handoffCookie(sealedHandoff(action))}`)
-      .post("/cabinet/sign-out");
-
-    expect(signedOut.status).toBe(303);
-    expect(signedOut.to).toBe("/cabinet/sign-in");
-    expectHandoffCleared(signedOut, true);
-    expect(await running.identity.openLink(token)).toMatchObject({ status: "opened" });
-  });
-});
 
 describe("the passwordless cabinet door", () => {
   it("sends a person with a live session on without asking for an address: to the cards, or to the name screen without a merchant", async () => {
@@ -1074,6 +814,10 @@ describe("the passwordless cabinet door", () => {
     expect(landing.headers.getSetCookie()).toStrictEqual([]);
     expect(landing.html).not.toContain("<script");
     expect(landing.html).toContain(`value="${token}"`);
+    // The page names the address the press would sign in, which is what stops
+    // a link for somebody else's address, sent to a victim, from signing them
+    // in as that somebody without their noticing (ADR-0026 §1).
+    expect(readable(landing.html)).toContain(PERSON);
     expect(running.rows.cabinet_sessions).toStrictEqual([]);
 
     const opened = await running.browser.from(running.url).post("/cabinet/sign-in/open", { token });
@@ -1081,24 +825,13 @@ describe("the passwordless cabinet door", () => {
     expect(opened.to).toBe("/cabinet/cards");
     expect(opened.headers.get("cache-control")).toBe("private, no-store");
     expect(opened.headers.get("referrer-policy")).toBe("strict-origin");
-    const cookie = opened.headers.getSetCookie().join("; ");
-    expect(cookie).toContain("Path=/cabinet");
-    expect(cookie).toContain("HttpOnly");
-    expect(cookie).toContain("SameSite=Strict");
-    expect(cookie).toContain("Secure");
+    expect(sessionCookieIn(opened, SECURE_COOKIE)).toBeDefined();
 
+    // Pressed twice in a browser that is now signed in: the person's start,
+    // not a page about the link (ADR-0026 §1).
     const replay = await running.browser.from(running.url).post("/cabinet/sign-in/open", { token });
-    expect(replay.status).toBe(401);
-    expect(replay.headers.getSetCookie()).toStrictEqual([]);
-    expect(readable(replay.html)).toContain(`signed in as ${PERSON}`);
-    expect(replay.html).toContain('href="/cabinet/cards"');
-    expect(readable(replay.html)).toContain("Open your cabinet");
-    // The second control is for somebody who wants another account, and the
-    // only thing that can give them one is sign-out: a browser that already
-    // carries a session is sent back into the cabinet by GET /sign-in, so a
-    // form pointing there would do nothing at all.
-    expect(replay.html).toContain('method="post" action="/cabinet/sign-out"');
-    expect(replay.html).not.toContain('action="/cabinet/sign-in"');
+    expect(replay.status).toBe(303);
+    expect(replay.to).toBe("/cabinet/cards");
 
     const switching = await running.browser.from(running.url).post("/cabinet/sign-out");
     expect(switching.status).toBe(303);
@@ -1141,16 +874,51 @@ describe("the passwordless cabinet door", () => {
     expect(rows.cabinet_link_sends).toStrictEqual([]);
   });
 
-  it("makes a merchant only after a new person's link is consumed", async () => {
-    const running = await started({ gateway: { REGISTRATION_INVITATION: INVITATION } });
+  it("never makes a merchant by opening a link: a person without one starts at their latest report", async () => {
+    // Under Lax a link from another site arrives signed in, so opening a link
+    // must not be able to make anything (ADR-0026 §4). A person who owns
+    // reports and no merchant starts at the latest of them, and the scanner
+    // sends somebody who owns none back to the cabinet (§1).
+    const registered: string[] = [];
+    const registrar: Registrar = {
+      register: async () => {
+        registered.push("asked");
+        return { ok: true, document: { merchant_id: "mer_never", secret: "never-made" } };
+      },
+    };
+    const running = await started({ registrar });
 
-    const inside = await running.browser.signIn(FRESH.email);
+    const opened = await running.browser.signIn(FRESH.email);
+
+    expect(opened.status).toBe(303);
+    expect(opened.to).toBe(LATEST_REPORT);
+    expect(registered).toStrictEqual([]);
+    const person = await running.identity.byEmail(FRESH.email);
+    expect(person?.confirmed).toBe(true);
+    expect(person?.merchant).toBeNull();
+    // Opening the cabinet by a plain navigation makes nothing either: it draws
+    // the one control and names who is signed in, privately.
+    const screen = await running.browser.get("/merchant");
+    expect(screen.status).toBe(200);
+    expect(screen.headers.get("cache-control")).toBe("private, no-store");
+    expect(readable(screen.html)).toContain(FRESH.email);
+    expect(screen.html).toContain('method="post" action="/merchant"');
+    expect(registered).toStrictEqual([]);
+  });
+
+  it("makes the merchant and its key on the explicit press, and only a same-origin one", async () => {
+    const running = await started({ gateway: { REGISTRATION_INVITATION: INVITATION } });
+    await running.browser.signIn(FRESH.email);
+
+    const forged = await running.browser.from("https://evil.example").post("/merchant");
+    expect(forged.status).toBe(403);
+    expect((await running.identity.byEmail(FRESH.email))?.merchant).toBeNull();
+
+    const inside = await running.browser.makeMerchant();
 
     expect(inside.status).toBe(200);
     expect(inside.html).toContain('name="seller_name"');
-    const person = await running.identity.byEmail(FRESH.email);
-    expect(person?.confirmed).toBe(true);
-    expect(person?.merchant).not.toBeNull();
+    expect((await running.identity.byEmail(FRESH.email))?.merchant).not.toBeNull();
   });
 
   it("keeps the P1 session when registration fails and retries without another link", async () => {
@@ -1168,8 +936,10 @@ describe("the passwordless cabinet door", () => {
     await running.browser.post("/sign-in", { email: FRESH.email });
     const action = actionIn(running.mails.at(-1));
     const token = action.searchParams.get("token") ?? "";
+    const opened = await running.browser.from(running.url).post("/sign-in/open", { token });
+    expect(opened.to).toBe(LATEST_REPORT);
 
-    const first = await running.browser.from(running.url).post("/sign-in/open", { token });
+    const first = await running.browser.from(running.url).post("/merchant");
     expect(first.status).toBe(503);
     expect(running.rows.cabinet_sessions).toHaveLength(1);
     expect((await running.identity.byEmail(FRESH.email))?.merchant).toBeNull();
@@ -1212,6 +982,93 @@ describe("the passwordless cabinet door", () => {
     expect(opened.to).toBe("/cards");
   });
 
+  it("sends a signed-in browser that opens a spent, expired or unknown link to its own start", async () => {
+    // What the browser holds decides, never the link: the answer is the same
+    // whoever the link was for, so it says nothing about that address
+    // (ADR-0026 §1).
+    const running = await started();
+    await running.identity.make(OTHER, THE_MERCHANT);
+    await running.browser.post("/sign-in", { email: OTHER });
+    const theirs = actionIn(running.mails.at(-1)).searchParams.get("token") ?? "";
+    const stranger = await running.another();
+    await stranger.from(running.url).post("/sign-in/open", { token: theirs });
+    await running.browser.signIn();
+    const expired = (): string => {
+      for (const row of running.rows.cabinet_verifications ?? []) {
+        row.expiresAt = new Date(Date.now() - 1_000);
+      }
+      return "";
+    };
+    rewindLinkSends(running.rows);
+    await running.browser.post("/sign-in", { email: PERSON });
+    const soonExpired = actionIn(running.mails.at(-1)).searchParams.get("token") ?? "";
+    expired();
+
+    for (const token of [theirs, soonExpired, "A".repeat(32)]) {
+      const pressed = await running.browser.from(running.url).post("/sign-in/open", { token });
+      expect(pressed.status, token).toBe(303);
+      expect(pressed.to, token).toBe("/cards");
+      const landed = await running.browser.get(`/sign-in/open?token=${token}`);
+      expect(landed.status, token).toBe(303);
+      expect(landed.to, token).toBe("/cards");
+    }
+
+    running.forgetMerchant(PERSON);
+    const withoutMerchant = await running.browser
+      .from(running.url)
+      .post("/sign-in/open", { token: theirs });
+    expect(withoutMerchant.to).toBe(LATEST_REPORT);
+  });
+
+  it("refuses a spent and an unknown link the same way when nobody is signed in", async () => {
+    const running = await started();
+    await running.browser.post("/sign-in", { email: PERSON });
+    const token = actionIn(running.mails.at(-1)).searchParams.get("token") ?? "";
+    const first = await running.another();
+    await first.from(running.url).post("/sign-in/open", { token });
+
+    const spent = await running.browser.from(running.url).post("/sign-in/open", { token });
+    const unknown = await running.browser
+      .from(running.url)
+      .post("/sign-in/open", { token: "B".repeat(32) });
+    const landedSpent = await running.browser.get(`/sign-in/open?token=${token}`);
+
+    expect(spent.status).toBe(401);
+    expect(unknown.status).toBe(401);
+    expect(landedSpent.status).toBe(401);
+    expect(readable(spent.html)).toBe(readable(unknown.html));
+    expect(readable(landedSpent.html)).toBe(readable(unknown.html));
+    expect(readable(spent.html)).not.toContain(PERSON);
+    expect(spent.headers.getSetCookie()).toStrictEqual([]);
+  });
+
+  it("sends the press on a report link to that report, whatever the browser posts beside it", async () => {
+    // The destination was recorded with the token when the scanner asked for
+    // the link, and nothing the browser sends is read as one (ADR-0026 §1).
+    const running = await started();
+    const scan = "019b41a0-7c51-7d63-84bd-a5a20faef497";
+    await running.identity.sendReportLink({
+      operation: "send",
+      email: FRESH.email,
+      destination: { report: scan },
+      request: "019b41a0-7c51-7d63-84bd-a5a20faef498",
+    });
+    const action = actionIn(running.mails.at(-1));
+    const token = action.searchParams.get("token") ?? "";
+
+    const landing = await running.browser.get(`${action.pathname}${action.search}`);
+    expect(readable(landing.html)).toContain(FRESH.email);
+
+    const opened = await running.browser.from(running.url).post(action.pathname, {
+      token,
+      destination: "https://evil.example",
+    });
+
+    expect(opened.status).toBe(303);
+    expect(opened.to).toBe(`/report/${scan}`);
+    expect((await running.identity.byEmail(FRESH.email))?.merchant).toBeNull();
+  });
+
   it("does not retain the retired password, registration, or confirmation routes", async () => {
     const running = await started();
     await running.browser.signIn();
@@ -1219,6 +1076,166 @@ describe("the passwordless cabinet door", () => {
     for (const path of ["/register", "/password", "/password/forgot", "/confirm"]) {
       const answer = await running.browser.get(path);
       expect(answer.status, path).toBe(404);
+    }
+  });
+});
+
+describe("one session for the whole site", () => {
+  it("sets one cookie for the whole origin over https: prefixed, Secure, HttpOnly and Lax", async () => {
+    // A report and the cabinet are two applications on one origin, and one
+    // session serves both (ADR-0009 §6, ADR-0026 §2). A cookie scoped to the
+    // cabinet's path would leave a person a stranger at the report, and the
+    // prefix is what stops a sibling host from planting or replacing it.
+    const running = await started({ base: "/cabinet", cabinet: { COOKIE_SECURE: "true" } });
+    await running.browser.post("/cabinet/sign-in", { email: PERSON });
+    const action = actionIn(running.mails.at(-1));
+
+    const opened = await running.browser
+      .from(running.url)
+      .post("/cabinet/sign-in/open", { token: action.searchParams.get("token") ?? "" });
+
+    const line = sessionCookieIn(opened, SECURE_COOKIE);
+    expect(line).toBeDefined();
+    const attributes = attributesOf(line ?? "");
+    expect(attributes.get("path")).toBe("/");
+    expect(attributes.get("samesite")?.toLowerCase()).toBe("lax");
+    expect(attributes.has("httponly")).toBe(true);
+    expect(attributes.has("secure")).toBe(true);
+    expect(attributes.has("domain")).toBe(false);
+    expect(Number(attributes.get("max-age"))).toBe(THIRTY_DAYS_SECONDS);
+    // Nothing under the unprefixed name goes out on the https origin.
+    expect(sessionCookieIn(opened, COOKIE)).toBeUndefined();
+    // And the cookie opens a page that is not under the cabinet's mount point
+    // as far as the cabinet is concerned: it is the same session at the root.
+    expect((await running.browser.get("/cabinet/cards")).status).toBe(200);
+  });
+
+  it("sets the same cookie without the prefix or Secure on the plain-http local origin", async () => {
+    // The prefix requires Secure, and a Secure cookie is never sent back over
+    // plain http, so the laptop's origin gets neither rather than a session
+    // nobody can use. Mounted where the stack mounts it, under /cabinet, so a
+    // cookie scoped to the mount point would show here: on https the prefix
+    // forces the root path whatever the cabinet asks for.
+    const running = await started({ base: "/cabinet" });
+    await running.browser.post("/cabinet/sign-in", { email: PERSON });
+    const action = actionIn(running.mails.at(-1));
+
+    const opened = await running.browser
+      .from(running.url)
+      .post("/cabinet/sign-in/open", { token: action.searchParams.get("token") ?? "" });
+
+    const line = sessionCookieIn(opened, COOKIE);
+    expect(line).toBeDefined();
+    const attributes = attributesOf(line ?? "");
+    expect(attributes.get("path")).toBe("/");
+    expect(attributes.get("samesite")?.toLowerCase()).toBe("lax");
+    expect(attributes.has("httponly")).toBe(true);
+    expect(attributes.has("secure")).toBe(false);
+    expect(sessionCookieIn(opened, SECURE_COOKIE)).toBeUndefined();
+  });
+
+  it("keeps a returning person signed in: a visit a day on moves the end to thirty days from it", async () => {
+    // A person who keeps coming back does not meet the sign-in form again
+    // (ADR-0009 §6). The row decides, so the row is moved, and the browser is
+    // handed the renewed cookie, because a cookie left at its first lifetime
+    // drops out of the browser thirty days after sign-in however often its
+    // person came back.
+    const running = await started();
+    await running.browser.signIn();
+    const aDayAndAnHourAgo = Date.now() - 25 * 60 * 60 * 1_000;
+    for (const session of sessionRows()) {
+      session.expiresAt = new Date(aDayAndAnHourAgo + THIRTY_DAYS_SECONDS * 1_000);
+    }
+
+    const visited = await running.browser.get("/cards");
+
+    expect(visited.status).toBe(200);
+    const line = sessionCookieIn(visited, COOKIE);
+    expect(line).toBeDefined();
+    expect(Number(attributesOf(line ?? "").get("max-age"))).toBe(THIRTY_DAYS_SECONDS);
+    const [row] = sessionRows();
+    expect(new Date(row?.expiresAt as Date).getTime()).toBeGreaterThan(
+      Date.now() + (THIRTY_DAYS_SECONDS - 60) * 1_000,
+    );
+  });
+
+  it("writes nothing and hands out nothing on a second visit inside the same day", async () => {
+    // The negative half of the one above: renewal is once a day, not a write
+    // on every page, and a page that sets the cookie on every answer would be
+    // a write to the sessions table on every click.
+    const running = await started();
+    await running.browser.signIn();
+    const before = structuredClone(sessionRows());
+
+    const visited = await running.browser.get("/cards");
+
+    expect(visited.status).toBe(200);
+    expect(sessionCookieIn(visited, COOKIE)).toBeUndefined();
+    expect(sessionRows()).toStrictEqual(before);
+  });
+
+  it("clears the site-wide cookie on sign-out, with the attributes the prefix demands", async () => {
+    // A clearing line the browser refuses leaves the session cookie in place:
+    // a prefixed cookie is only replaced by a line that is Secure and for the
+    // whole origin, and a path-scoped clear would miss a cookie set at the root.
+    const running = await started({ base: "/cabinet", cabinet: { COOKIE_SECURE: "true" } });
+    await running.browser.signIn();
+
+    const out = await running.browser.from(running.url).post("/cabinet/sign-out");
+
+    expect(out.status).toBe(303);
+    const line = sessionCookieIn(out, SECURE_COOKIE);
+    expect(line).toBeDefined();
+    const attributes = attributesOf(line ?? "");
+    expect(attributes.get("path")).toBe("/");
+    expect(attributes.has("secure")).toBe(true);
+    expect(new Date(attributes.get("expires") ?? "").getTime()).toBeLessThan(Date.now());
+    expect(running.rows.cabinet_sessions).toStrictEqual([]);
+  });
+});
+
+describe("the gate", () => {
+  it("lets a visitor with no session reach exactly the routes ADR-0009 §2 lists above it", async () => {
+    // The list is written in the decision rather than discovered by reading
+    // the routing, and this is where it is held: every route on it answers a
+    // stranger without the sign-in redirect, and a route that is not on it —
+    // including the report handoff that is gone — is behind the gate.
+    const running = await started({ base: "/cabinet", wooShops: memoryWooShops() });
+    // A browser carrying a session cookie that no longer opens anything, so
+    // that the gate's answer is its own: the sign-in with the reason the
+    // session ended, which no route above the gate ever answers with.
+    const stranger = running.browser.withRawCookie(`${COOKIE}=made-up-identifier`);
+    const gate = (answer: Visit): boolean =>
+      answer.status === 303 && (answer.to ?? "").includes("reason=session-ended");
+
+    const above: readonly [string, () => Promise<Visit>][] = [
+      ["the sign-in", () => stranger.get("/cabinet/sign-in")],
+      ["asking for a link", () => stranger.post("/cabinet/sign-in", { email: "" })],
+      ["the sign-out", () => stranger.post("/cabinet/sign-out")],
+      [
+        "the page a link lands on",
+        () => stranger.get(`/cabinet/sign-in/open?token=${"C".repeat(32)}`),
+      ],
+      ["pressing it", () => stranger.post("/cabinet/sign-in/open", { token: "C".repeat(32) })],
+      ["the stylesheet", () => stranger.get("/cabinet/agentify.css")],
+      ["the health probe", () => stranger.get("/cabinet/healthz")],
+      [
+        "the shop's callback",
+        () => running.browser.postRaw("/cabinet/woocommerce/callback", "application/json", "{}"),
+      ],
+      ["the shop's return", () => stranger.get("/cabinet/woocommerce/return")],
+    ];
+    for (const [name, visit] of above) {
+      const answer = await visit();
+      expect(gate(answer), name).toBe(false);
+      expect(answer.status, name).toBeLessThan(500);
+    }
+
+    for (const path of ["/cabinet/", "/cabinet/cards", "/cabinet/merchant", "/cabinet/settings"]) {
+      expect(gate(await stranger.get(path)), path).toBe(true);
+    }
+    for (const path of ["/cabinet/merchant", "/cabinet/report-handoff", "/cabinet/keys"]) {
+      expect(gate(await stranger.post(path)), path).toBe(true);
     }
   });
 });
@@ -2565,6 +2582,7 @@ describe("the keys screen", () => {
     // gateway's answer and not this test's.
     const { browser } = await started({ gateway: { REGISTRATION_INVITATION: INVITATION } });
     await browser.signIn(FRESH.email);
+    await browser.makeMerchant();
 
     const seen = await browser.get("/keys");
     const text = readable(seen.html);
@@ -2581,13 +2599,32 @@ describe("the keys screen", () => {
 });
 
 describe("what every screen says about the address", () => {
+  it("carries the signed-in address and a sign-out in the header bar of every working screen", async () => {
+    // ADR-0026 §3: when a person is signed in, the header of the cabinet's
+    // pages carries their address and a sign-out, as the scanner's header
+    // does, so the site reads as one product with one session.
+    const { browser } = await started();
+    await browser.signIn();
+
+    for (const path of ["/cards", "/orders", "/receipts", "/keys", "/settings"]) {
+      const answered = await browser.get(path);
+      // A page carrying a person's address is never stored by a shared cache
+      // (ADR-0026 §3).
+      expect(answered.headers.get("cache-control"), path).toBe("private, no-store");
+      const bar = /<header class="top">([\s\S]*?)<\/header>/.exec(answered.html)?.[1] ?? "";
+      expect(readable(bar), path).toContain(PERSON);
+      expect(bar, path).toContain('method="post" action="/sign-out"');
+    }
+  });
+
   it("links the signed-in address to settings without a confirmation control", async () => {
     const { browser } = await started();
     await browser.signIn();
 
     for (const path of ["/cards", "/orders", "/receipts", "/keys", "/settings"]) {
       const answered = await browser.get(path);
-      expect(answered.html, path).toContain(`href="/settings">${PERSON}</a>`);
+      const link = /<a class="who" href="\/settings"[^>]*>([^<]*)<\/a>/.exec(answered.html);
+      expect(link?.[1], path).toBe(PERSON);
       expect(answered.html, path).not.toContain('action="/confirm"');
     }
   });
@@ -3047,9 +3084,9 @@ describe("a session that is ended while somebody is looking at a page", () => {
   });
 
   it("refuses a session whose time is up, without anybody ending it", async () => {
-    // Twelve hours from the moment it opens, never extended. The
-    // cookie in the browser is untouched and still carries a good signature;
-    // what has run out is the row, and the row is what decides.
+    // Thirty days from the last visit. The cookie in the browser is untouched
+    // and still carries a good signature; what has run out is the row, and the
+    // row is what decides.
     const { browser } = await started();
     await browser.signIn();
     expect((await browser.get("/cards")).status).toBe(200);
@@ -3065,7 +3102,6 @@ describe("a session that is ended while somebody is looking at a page", () => {
     const recovery = await browser.get(answered.to ?? "");
     const message = readable(recovery.html);
     expect(message).toContain("Your session ended");
-    expect(message).toContain(`${SESSION_HOURS} hours`);
     expect(message).not.toContain("not saved");
     expect(message).not.toContain("submitted a change");
   });
@@ -3125,7 +3161,8 @@ describe("the key the cabinet signs in with", () => {
       ...over,
       gateway: { REGISTRATION_INVITATION: INVITATION, ...over.gateway },
     });
-    const made = await running.browser.signIn(FRESH.email);
+    await running.browser.signIn(FRESH.email);
+    const made = await running.browser.makeMerchant();
     if (made.status !== 200) {
       throw new Error(`the passwordless entry did not go through: ${made.status}`);
     }
@@ -3190,6 +3227,86 @@ describe("the key the cabinet signs in with", () => {
     // database is not — a log goes to a terminal, a file, whatever collects it.
     expect(written).not.toContain(before);
     expect(written).not.toContain(now);
+  });
+
+  it("renews the key at the first request of a day on a live session, and forgets the old one", async () => {
+    // ADR-0014 §2. A session lasts thirty days from the last visit, and without
+    // a daily renewal a key copied out of this database would last as long as
+    // its person kept coming back. The first request of a day is the one that
+    // moves the session's end, and it is the one that replaces the key.
+    const { browser } = await aRegisteredMerchant();
+    const before = keyOnTheRowOf(FRESH.email);
+    const aDayAndAnHourAgo = Date.now() - 25 * 60 * 60 * 1_000;
+    for (const session of sessionRows()) {
+      session.expiresAt = new Date(aDayAndAnHourAgo + THIRTY_DAYS_SECONDS * 1_000);
+    }
+
+    const visited = await browser.get("/cards");
+
+    // The page is drawn, which means it was drawn with the key that works.
+    expect(visited.status).toBe(200);
+    const now = keyOnTheRowOf(FRESH.email);
+    expect(now).not.toBe(before);
+    expect(await theGatewayTakes(now)).toBe(true);
+    expect(await theGatewayTakes(before)).toBe(false);
+  });
+
+  it("renews the key when the first reading of a day is the scanner's question about a cookie", async () => {
+    // A person who spends the day on reports is on a live session too, and the
+    // scanner's question is where that session is read (ADR-0026 §2). A day's
+    // first reading that did not renew the key would leave it to live as long
+    // as the person kept visiting only reports.
+    const running = await aRegisteredMerchant();
+    const before = keyOnTheRowOf(FRESH.email);
+    const secret = "d".repeat(49);
+    const internal = buildReportIdentityApp(
+      secret,
+      running.identity,
+      keyRenewal(running.identity, (key, within) => gatewayFor(running.gateway.url, key, within)),
+    ).listen(0, "127.0.0.1");
+    await new Promise<void>((ready) => internal.once("listening", ready));
+    const { port } = internal.address() as AddressInfo;
+    const ask = async (renew: boolean) =>
+      await fetch(`http://127.0.0.1:${port}${REPORT_IDENTITY_PATH}`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          operation: "session",
+          cookie: `${COOKIE}=${running.browser.sessionToken() ?? ""}`,
+          renew,
+        }),
+      });
+    try {
+      const aDayAndAnHourAgo = Date.now() - 25 * 60 * 60 * 1_000;
+      for (const session of sessionRows()) {
+        session.expiresAt = new Date(aDayAndAnHourAgo + THIRTY_DAYS_SECONDS * 1_000);
+      }
+
+      expect((await ask(false)).status).toBe(200);
+      expect(keyOnTheRowOf(FRESH.email)).toBe(before);
+
+      expect((await ask(true)).status).toBe(200);
+      // The scanner is answered first and the key is renewed after, so a slow
+      // gateway never costs the browser its renewed cookie.
+      await vi.waitFor(() => expect(keyOnTheRowOf(FRESH.email)).not.toBe(before));
+      const now = keyOnTheRowOf(FRESH.email);
+      expect(now).not.toBe(before);
+      expect(await theGatewayTakes(now)).toBe(true);
+      await vi.waitFor(async () => expect(await theGatewayTakes(before)).toBe(false));
+    } finally {
+      await new Promise<void>((done) => internal.close(() => done()));
+    }
+  });
+
+  it("leaves the key alone on a second request inside the same day", async () => {
+    const { browser } = await aRegisteredMerchant();
+    const before = keyOnTheRowOf(FRESH.email);
+
+    expect((await browser.get("/cards")).status).toBe(200);
+    expect((await browser.get("/orders")).status).toBe(200);
+
+    expect(keyOnTheRowOf(FRESH.email)).toBe(before);
+    expect(await theGatewayTakes(before)).toBe(true);
   });
 
   it("takes the key that was on the row away, and spares the one that replaced it", async () => {
@@ -3347,7 +3464,8 @@ describe("the key the cabinet signs in with", () => {
     });
 
     const written = await said(async () => {
-      expect((await browser.signIn(FRESH.email)).status).toBe(500);
+      await browser.signIn(FRESH.email);
+      expect((await browser.makeMerchant()).status).toBe(500);
     });
 
     expect(written).toMatch(/request failed/i);

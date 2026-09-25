@@ -24,7 +24,7 @@
  * something a stranger can read off it.
  *
  * What stands above the gate is written out in that decision and is short: the
- * sign-in, the page a mailed link lands on, the report handoff, the stylesheet,
+ * sign-in and the sign-out, the page a mailed link lands on, the stylesheet,
  * the health probe, the shop's own callback and the address a shop sends a
  * browser back to. Each is there because a session cannot reach it, and each
  * answers the same thing to everybody — which is the property that makes the
@@ -32,12 +32,14 @@
  */
 
 import { readFileSync } from "node:fs";
-import {
-  openReportCabinetHandoff,
-  REPORT_CABINET_HANDOFF_COOKIE,
-} from "@agentify/scanner-contracts/report-cabinet-handoff";
 import express, { type Express, type Request, type Response } from "express";
-import type { CabinetDestination, CabinetIdentity, Person } from "./cabinet-entry.js";
+import type {
+  CabinetDestination,
+  CabinetIdentity,
+  LinkDestination,
+  Person,
+} from "./cabinet-entry.js";
+import { keyRenewal, sessionReader } from "./cabinet-key.js";
 import type { CabinetConfig } from "./config.js";
 import {
   type Answer,
@@ -47,7 +49,7 @@ import {
   registrarFor,
 } from "./gateway.js";
 import { bare, brandLockup, escaped } from "./html.js";
-import { SESSION_HOURS } from "./identity.js";
+import { SESSION_DAYS } from "./identity.js";
 import { keysScreen, newKeyScreen } from "./keys.js";
 import { WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
 import { printable } from "./printable.js";
@@ -117,21 +119,6 @@ const mapAtMost = async <Input, Output>(
 };
 
 /**
- * How long the cabinet waits on the gateway for its own key, per call.
- *
- * Shorter than the deadline every screen gets, and that is the whole reason
- * there are two numbers. A screen is worth ten seconds because somebody is
- * looking at it and would rather wait than start again. The two calls that
- * replace this cabinet's key are not a screen: nobody asked for them, nothing
- * on the page depends on them, and a sign-in held open for as long as a
- * catalogue is the same locked door as a gateway that is down, only slower and
- * less honest about it. Two seconds a call, so the worst a silent gateway can
- * add to somebody's sign-in is four — and what it costs is that the key is not
- * replaced this time, which is a thing that can wait until the next sign-in.
- */
-const KEY_AT_SIGN_IN_MS = 2_000;
-
-/**
  * What an account with no merchant on it is told, wherever it turns up.
  *
  * There is one such account and it is on a deployed server: it was made before
@@ -155,22 +142,32 @@ const KEY_AT_SIGN_IN_MS = 2_000;
  */
 const LOOKS_LIKE_AN_ADDRESS = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
 
-const normalizedEmail = (value: string): string => value.trim().normalize("NFKC").toLowerCase();
-
 /**
  * What a person is told when the gate found no session behind their click.
  *
- * The gate cannot tell them why — the session may have run out, been signed
- * out in another tab or been revoked — so what it gives is the general rule.
- * Naming the lifetime is what makes being asked for an address again read as
- * the ordinary end of a session rather than as a fault.
+ * The gate cannot tell them why — the session may have gone thirty days
+ * without a visit, been signed out in another tab or been revoked — so what it
+ * gives is the general rule. Naming the lifetime is what makes being asked for
+ * an address again read as the ordinary end of a session rather than as a
+ * fault.
  */
 const SESSION_ENDED =
-  `Your session ended; a session lasts at most ${SESSION_HOURS} hours. ` +
+  `Your session ended; a session lasts ${SESSION_DAYS} days from your last visit. ` +
   `Send yourself a new link to carry on.`;
 
 const cabinetDestinationIn = (value: unknown): CabinetDestination =>
   value === "settings" || value === "woocommerce" ? value : "default";
+
+/**
+ * Where a person who owns no merchant starts (ADR-0026 §1).
+ *
+ * The scanner's page, because the scanner is what knows whether this person
+ * owns a report: it answers with the latest of them, and sends somebody who
+ * owns none back to the cabinet, whose first screen offers the one control
+ * that makes a merchant. Never that screen for a person with reports, and
+ * never the merchant itself, which only the explicit press makes (§4).
+ */
+export const LATEST_REPORT = "/report/latest";
 
 const cabinetPathFor = (base: string, destination: CabinetDestination): string =>
   destination === "settings"
@@ -342,7 +339,13 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     parts.gatewayFor ??
     ((key: string, answerWithinMs?: number) => gatewayFor(config.gatewayUrl, key, answerWithinMs));
   const registrar = parts.registrar ?? registrarFor(config.gatewayUrl);
-  const cookiePath = base === "" ? "/" : base;
+  const replaceTheKeyOf = keyRenewal(identity, clientFor);
+  /**
+   * Who a request's session belongs to. The first reading of a session's day
+   * also renews the key on the account (ADR-0014 §2), so every door below that
+   * reads a session goes through here and none reads the component directly.
+   */
+  const sessionIn = sessionReader(identity, replaceTheKeyOf);
 
   /**
    * The gateway as this request's merchant, built from the key on their row.
@@ -369,34 +372,29 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    *
    * Every name it sets, not the session alone: beside the session itself the
    * component keeps two cookies of its own, and clearing only the first would
-   * leave the others in a browser for good.
+   * leave the others in a browser for good. The clearing line carries the
+   * attributes the session was set with, because a browser replaces a cookie
+   * only with a line for the same path, and replaces a `__Host-` one only with
+   * a line that is Secure and for the whole origin (ADR-0009 §6).
    */
   const forget = (response: Response): void => {
     for (const name of identity.cookieNames) {
-      response.clearCookie(name, { path: cookiePath });
+      response.clearCookie(name, {
+        path: "/",
+        httpOnly: true,
+        sameSite: "lax",
+        secure: config.cookieSecure,
+      });
     }
   };
 
-  /** Removes the short-lived report handoff on every outcome that reads it. */
-  const forgetReportHandoff = (response: Response): void => {
-    response.clearCookie(REPORT_CABINET_HANDOFF_COOKIE, {
-      path: cookiePath,
-      httpOnly: true,
-      sameSite: "strict",
-      secure: config.cookieSecure,
-    });
-  };
-
-  const reportHandoffIn = (header: string | undefined): string | null => {
-    const values: string[] = [];
-    for (const pair of (header ?? "").split(";")) {
-      const at = pair.indexOf("=");
-      if (at === -1 || pair.slice(0, at).trim() !== REPORT_CABINET_HANDOFF_COOKIE) continue;
-      const value = pair.slice(at + 1).trim();
-      if (value !== "") values.push(value);
-    }
-    return values.length === 1 ? (values[0] ?? null) : null;
-  };
+  /**
+   * Where this person starts when nothing else says where to go: the cabinet
+   * for somebody who owns a merchant, and the scanner's latest-report page
+   * for anybody else (ADR-0026 §1).
+   */
+  const startOf = (person: Person): string =>
+    person.merchant !== null ? `${base}/cards` : LATEST_REPORT;
 
   const carriesIdentityCookie = (header: string | undefined): boolean => {
     const pairs = (header ?? "").split(";");
@@ -525,12 +523,15 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    * The address a merchant's own shop sends their browser back to.
    *
    * Above the gate, and that is the whole of this route's reason for being
-   * written out here rather than beside the shop screens. The session cookie is
-   * `SameSite=Strict` (ADR-0009): a navigation begun on the merchant's own
-   * shop is cross-site, so the request that lands here carries nothing — for a
-   * merchant signed in on that very browser, every time. Behind the gate it
-   * ended a flow that had worked on a sign-in form, and what a merchant read
-   * there was that the connect had failed.
+   * written out here rather than beside the shop screens. A browser can come
+   * back from the shop without a live session — the session ended while the
+   * merchant was in their shop, or the shop was opened in another browser than
+   * the one signed in here — and behind the gate a connection that worked would
+   * then end on a sign-in form, which a merchant reads as the connect having
+   * failed. It did, twice, when this flow was walked by hand, back when the
+   * cookie was `Strict` and no return carried it (ADR-0009 §2). A browser that
+   * does carry a session, which under `Lax` is the ordinary case, is sent on
+   * into the cabinet.
    *
    * Taking the address out from behind the gate costs nothing because there is
    * nothing behind it to take: with no session this route reads no row, asks the
@@ -547,15 +548,17 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    * in a `Referer`. What it does not buy is the request that already happened —
    * the token was in the address line of that one, so it is in this process's
    * own log and in the log of anything between the merchant and us, and only
-   * spending or expiry ends that. Now that a real return arrives with no
-   * session every time, this is the path that has to do the stripping, so it is
-   * a redirect to this same address with the query gone rather than the
-   * redirect into the cabinet that a signed-in visitor still gets.
+   * spending or expiry ends that. A return that arrives with no session is
+   * the one this page is drawn for, so it is the path that has to do the
+   * stripping: a redirect to this same address with the query gone, rather
+   * than the redirect into the cabinet that a signed-in visitor gets.
    */
   if (parts.wooShops !== undefined) {
     const returnPath = `${base}/woocommerce/return`;
     app.get(returnPath, async (request, response) => {
-      if ((await identity.whoIs(request.headers.cookie)) !== null) {
+      const signedIn = await sessionIn(request.headers.cookie);
+      if (signedIn !== null) {
+        carryCookies(response, signedIn.setCookies);
         response.redirect(303, `${base}/woocommerce?from=shop`);
         return;
       }
@@ -568,9 +571,13 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   }
 
   app.get(`${base}/sign-in`, async (request, response) => {
-    const person = await identity.whoIs(request.headers.cookie);
-    if (person !== null) {
-      response.redirect(303, person.merchant === null ? `${base}/merchant` : `${base}/cards`);
+    const signedIn = await sessionIn(request.headers.cookie);
+    if (signedIn !== null) {
+      carryCookies(response, signedIn.setCookies);
+      response.redirect(
+        303,
+        signedIn.person.merchant === null ? `${base}/merchant` : `${base}/cards`,
+      );
       return;
     }
     const destination = cabinetDestinationIn(request.query.destination);
@@ -586,132 +593,6 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       .type("html")
       .send(signInScreen(base, config.surfaceMode, destination, problem, "", reason));
   });
-
-  /**
-   * Replaces the key on somebody's row with a fresh one, as they sign in.
-   *
-   * ADR-0014 §2 asks for it: the key is stored as the gateway issued it, so a
-   * copy of this cabinet's database is a set of working keys, and what decides
-   * how long they are worth stealing is this. After it, the key that copy holds
-   * is one the gateway has forgotten.
-   *
-   * Three steps, and the order is the substance. Ask for a key with the one
-   * already on the row; move the row from that key to the fresh one; then put
-   * the key that is now out of use beyond use. Cut the power at any point and a
-   * working key is on the row: after the first step the old one, still live;
-   * after the second the fresh one, with the old one alive beside it; after the
-   * third the fresh one alone. Forgetting before the write is the one
-   * arrangement that cannot be interrupted safely, because the row would be
-   * left naming a key that no longer exists, and its owner would be locked out
-   * of their own cabinet by the act of signing into it.
-   *
-   * The write is conditional on the row still holding what this sign-in read
-   * off it, which is what decides which key this sign-in has finished with.
-   * Win, and the row has moved off the old key: no later write can put it back,
-   * because every sign-in still expecting it will now lose the same way, so the
-   * old key is this one's to forget. Lose, and the row never held the fresh key
-   * and never will — nothing but this sign-in could have written it, and this
-   * sign-in has lost — so the fresh key is the one to forget. Either way what
-   * goes is a key proved to be neither current nor able to become current, and
-   * the call that removes it is made with it. Interleave as many sign-ins as
-   * you like: no call can reach a key another sign-in wrote after it was sent,
-   * because reaching a key means holding it, so the row always names a key that
-   * works. If the database answer is lost, neither conclusion is safe: the
-   * row may hold either key, so both remain live and the next sign-in retries.
-   *
-   * What that gives up is the sweeping. Nobody clears anybody else's leavings
-   * any more, so a sign-in interrupted between the write and the forgetting
-   * leaves one key alive that nothing will ever come back for. That is a row
-   * per interrupted sign-in and it is the right trade: the alternative is a
-   * call able to take away a key somebody is holding. Clearing them by age, if
-   * it is ever worth doing, is counted from this side — the cabinet is the
-   * party that knows every key still on a row — and it is not built.
-   *
-   * None of it may stand between a person and their cabinet. A gateway that is
-   * down, one that refuses, one that answers something the contract does not
-   * recognise — each costs a line in the log and nothing more, and they are
-   * signed in on a key that works. The last of those three arrives as a throw
-   * rather than as an answer, which is why the whole of this is caught: the
-   * client holds what comes back to the contract's schema, and a document it
-   * refuses must not become a person who cannot sign in. Nothing about signing
-   * in belongs to the gateway anyway — the proof, the session and the row are
-   * this cabinet's own.
-   *
-   * It runs before the cookies are handed over rather than after the answer,
-   * and that is not tidiness. The key is read off the row on every request, so
-   * a first request racing an unfinished replacement could read the old key and
-   * be refused with it. What is left is a narrower window: a request already in
-   * flight from another device, which read the row before the write, is made
-   * with the key this sign-in is about to forget and is refused. It is
-   * milliseconds wide, it costs a page reload, and the only way to buy it off
-   * would be to leave the old key alive for a while — which is the thing this
-   * exists to stop.
-   */
-  const replaceTheKeyOf = async (person: Person): Promise<void> => {
-    const holding = person.merchant?.key;
-    if (holding === undefined) {
-      return;
-    }
-
-    /** Puts one key beyond use, with itself, and never fails a sign-in. */
-    const forget = async (key: string, which: string): Promise<void> => {
-      const gone = await clientFor(key, KEY_AT_SIGN_IN_MS).forgetCabinetKey();
-      if (!gone.ok) {
-        console.error(`[cabinet] a person signed in and ${which} is still working: ${gone.why}`);
-      }
-    };
-
-    try {
-      const made = await clientFor(holding, KEY_AT_SIGN_IN_MS).issueCabinetKey();
-      if (!made.ok) {
-        console.error(
-          "[cabinet] a person is signed in on the key their account already held:" +
-            ` no fresh one was made — ${made.why}`,
-        );
-        return;
-      }
-
-      // Conditional on the row still holding what was read off it, which is
-      // what makes the write and the choice of which key to forget one act
-      // rather than two moments with a gap between them.
-      const replaced = await identity.replaceMerchantKey(person.id, holding, made.document);
-      if (replaced === "replaced") {
-        // The row has moved off the key this sign-in arrived with, and no later
-        // write can put it back. It is this sign-in's to forget, and this is
-        // the only party holding it.
-        await forget(holding, "the key it replaced");
-        return;
-      }
-
-      if (replaced === "unknown") {
-        // The write may have committed before its answer was lost. Revoking
-        // either key could therefore revoke the one now on the row.
-        console.error(
-          "[cabinet] the database could not establish whether the account key was replaced;" +
-            " neither key was revoked",
-        );
-        return;
-      }
-
-      // Somebody else moved the row first. The fresh key was never on it and
-      // never will be — only this sign-in could have written it, and it has
-      // lost — so this is what this sign-in has to clear up, and the key on the
-      // row is left alone because it belongs to whoever won.
-      console.error(
-        "[cabinet] a person is signed in on the key their account holds:" +
-          " a fresh one was made and the row had already moved on from what this sign-in read",
-      );
-      await forget(made.document, "the key it made and did not use");
-    } catch {
-      // Which step it was is in the exception and not worth unpacking into
-      // three sentences: whichever it was, the row names a key the gateway
-      // takes, because the only write here is conditional on the row and the
-      // only key ever removed is one this sign-in had finished with.
-      console.error(
-        "[cabinet] a person is signed in and the key on their account was not replaced",
-      );
-    }
-  };
 
   app.post(`${base}/sign-in`, async (request, response) => {
     const form = (request.body ?? {}) as { email?: unknown; destination?: unknown };
@@ -766,75 +647,57 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   const attachMerchant = async (person: Person) =>
     await identity.attachMerchant(person.id, registerMerchant);
 
+  /**
+   * Sends a person whose link has just opened on to where it was asked for.
+   *
+   * Opening a link makes nothing (ADR-0026 §4): under Lax a link from another
+   * site arrives signed in, so a navigation that could make a merchant is one
+   * anybody could start. What a sign-in does do is renew the cabinet's key
+   * for somebody who owns a merchant (ADR-0014 §2), before the cookie is
+   * handed over. A link the scanner asked for goes to the report it was asked
+   * for, where the scanner finishes the request the session now names. A link
+   * with no destination of its own goes to the person's start; one asked for
+   * from a cabinet screen goes to that screen, or, for somebody with no
+   * merchant yet, to the one control that makes it.
+   */
   const sendOpenedPerson = async (
     response: Response,
     person: Person,
-    destination: CabinetDestination,
+    destination: LinkDestination,
   ): Promise<void> => {
     if (person.merchant !== null) {
       await replaceTheKeyOf(person);
-      response.redirect(303, cabinetPathFor(base, destination));
-      return;
     }
-
-    const attached = await attachMerchant(person);
-    if (attached.status === "attached") {
-      response.redirect(303, `${base}/choose-name`);
-      return;
-    }
-    if (attached.status === "already-attached") {
-      response.redirect(303, cabinetPathFor(base, destination));
-      return;
-    }
-    if (attached.status === "person-missing") {
-      response.status(401).type("html").send(refusedLinkScreen(base, config.surfaceMode));
-      return;
-    }
-    response
-      .status(503)
-      .type("html")
-      .send(merchantSetupScreen(base, config.surfaceMode, true));
+    response.redirect(
+      303,
+      typeof destination !== "string"
+        ? `/report/${encodeURIComponent(destination.report)}`
+        : destination === "default"
+          ? startOf(person)
+          : person.merchant === null
+            ? `${base}/merchant`
+            : cabinetPathFor(base, destination),
+    );
   };
 
   /**
-   * Exchanges the scanner's short-lived browser handoff for the cabinet link
-   * it already issued. The posted address and report path are untrusted: the
-   * signed cookie has to bind both before its one-use token is opened.
+   * The one answer to a link that no longer opens anything.
+   *
+   * A browser with a live session goes to that session's person's start, so
+   * what decides the answer is who the browser is and never whose the link
+   * was: it says nothing about the link's address (ADR-0026 §1). Anybody else
+   * gets the same refusal for a link pressed twice, one that ran out and one
+   * nobody issued.
    */
-  app.post(`${base}/report-handoff`, async (request, response) => {
-    const form = (request.body ?? {}) as { email?: unknown; report_path?: unknown };
-    const email = typeof form.email === "string" ? form.email : "";
-    const reportPath = typeof form.report_path === "string" ? form.report_path : "";
-    forgetReportHandoff(response);
-    response.setHeader("cache-control", "private, no-store");
-
-    const signedIn = await identity.whoIs(request.headers.cookie);
-    if (signedIn !== null && normalizedEmail(signedIn.email) === normalizedEmail(email)) {
-      response.redirect(303, signedIn.merchant === null ? `${base}/merchant` : `${base}/cards`);
+  const refuseLink = async (request: Request, response: Response): Promise<void> => {
+    const signedIn = await sessionIn(request.headers.cookie);
+    if (signedIn !== null) {
+      carryCookies(response, signedIn.setCookies);
+      response.redirect(303, startOf(signedIn.person));
       return;
     }
-
-    const sealed = reportHandoffIn(request.headers.cookie);
-    const handoff =
-      sealed === null || config.reportIdentitySecret === null
-        ? null
-        : openReportCabinetHandoff(sealed, {
-            email,
-            reportPath,
-            secret: config.reportIdentitySecret,
-            now: new Date(),
-          });
-    if (handoff !== null) {
-      const opened = await identity.openLink(handoff.token);
-      if (opened.status === "opened" && normalizedEmail(opened.person.email) === handoff.email) {
-        carryCookies(response, opened.setCookies);
-        await sendOpenedPerson(response, opened.person, opened.destination);
-        return;
-      }
-    }
-
-    response.type("html").send(signInScreen(base, config.surfaceMode, "default", undefined, email));
-  });
+    response.status(401).type("html").send(refusedLinkScreen(base, config.surfaceMode));
+  };
 
   const linkResponseHeaders = (_request: Request, response: Response, next: () => void): void => {
     response.setHeader("cache-control", "private, no-store");
@@ -845,39 +708,32 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     next();
   };
 
-  app.get(`${base}/sign-in/open`, linkResponseHeaders, (request, response) => {
+  /**
+   * The page every mailed link lands on: one control, and the address it signs
+   * in.
+   *
+   * Opening it spends nothing, so a mail client that previews the link signs
+   * nobody in; only the same-origin press below does. It reads the link to
+   * name the address, which is what stops a link for somebody else's address,
+   * sent to a victim, from signing them in as that somebody unnoticed
+   * (ADR-0026 §1). A link that no longer opens anything is answered here the
+   * way the press would answer it.
+   */
+  app.get(`${base}/sign-in/open`, linkResponseHeaders, async (request, response) => {
     const token = typeof request.query.token === "string" ? request.query.token : "";
-    if (token === "") {
-      response.status(400).type("html").send(refusedLinkScreen(base, config.surfaceMode));
+    const email = token === "" ? null : await identity.addressOfLink(token);
+    if (email === null) {
+      await refuseLink(request, response);
       return;
     }
-    response.type("html").send(openLinkScreen(base, token, config.surfaceMode));
+    response.type("html").send(openLinkScreen(base, token, email, config.surfaceMode));
   });
   app.post(`${base}/sign-in/open`, linkResponseHeaders, async (request, response) => {
     const form = (request.body ?? {}) as { token?: unknown };
     const token = typeof form.token === "string" ? form.token : "";
-    if (token === "") {
-      response.status(400).type("html").send(refusedLinkScreen(base, config.surfaceMode));
-      return;
-    }
-    const opened = await identity.openLink(token);
+    const opened = token === "" ? { status: "refused" as const } : await identity.openLink(token);
     if (opened.status === "refused") {
-      const signedIn = await identity.whoIs(request.headers.cookie);
-      response
-        .status(401)
-        .type("html")
-        .send(
-          refusedLinkScreen(
-            base,
-            config.surfaceMode,
-            signedIn === null
-              ? undefined
-              : {
-                  email: signedIn.email,
-                  destination: signedIn.merchant === null ? "merchant" : "cards",
-                },
-          ),
-        );
+      await refuseLink(request, response);
       return;
     }
     carryCookies(response, opened.setCookies);
@@ -888,23 +744,23 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   // forget something; anybody who copied the value still holds a session.
   // Every identifier the request carried, not one of them: a browser sends
   // cookies of one name longest-path first and then oldest first, so the one
-  // this person is signed in on is not necessarily the first. Sign-out also
-  // clears a pending report handoff when the cabinet session has already
-  // expired or been revoked. It stays above the session gate so a stale tab
-  // cannot leave that fresh re-entry proof in the browser.
+  // this person is signed in on is not necessarily the first. It signs this
+  // browser out of the whole site and leaves other devices alone, and it ends
+  // on the sign-in page with an empty field, because people mostly sign out to
+  // come back as another address (ADR-0026 §3). It stands above the gate so a
+  // tab whose session has already gone can still clear its cookie.
   app.post(`${base}/sign-out`, async (request, response) => {
     await identity.signOut(request.headers.cookie);
     console.log("[cabinet] a session was signed out");
     forget(response);
-    forgetReportHandoff(response);
     response.redirect(303, `${base}/sign-in`);
   });
 
   /**
    * The gate. Everything below this line needs a session; everything above it
-   * is the sign-in, the page a link lands on, the report handoff, the stylesheet,
-   * the health probe, the shop's callback and the address a shop sends a browser
-   * back to.
+   * is the sign-in and the sign-out, the page a link lands on, the stylesheet,
+   * the health probe, the shop's callback and the address a shop sends a
+   * browser back to — ADR-0009 §2's list, which a test holds.
    *
    * A visitor without one is answered the same way at every address, which is
    * why this is a middleware and not a check inside each handler: a page added
@@ -914,8 +770,8 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   app.use((request, response, next) => {
     void (async () => {
       try {
-        const person = await identity.whoIs(request.headers.cookie);
-        if (person === null) {
+        const session = await sessionIn(request.headers.cookie);
+        if (session === null) {
           // The cookies are cleared on the way out, so somebody whose session
           // was ended lands on a sign-in they can use rather than being bounced
           // through this gate again on every click.
@@ -939,7 +795,15 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
           );
           return;
         }
-        people.set(request, person);
+        // Once a day the reading moves the session's end, and the browser has
+        // to be told or its cookie runs out thirty days after sign-in however
+        // often its person came back.
+        carryCookies(response, session.setCookies);
+        // Every page behind the gate carries the signed-in address in its
+        // header, and a page carrying an address is never stored by a shared
+        // cache (ADR-0026 §3).
+        response.setHeader("cache-control", "private, no-store");
+        people.set(request, session.person);
         next();
       } catch (thrown) {
         next(thrown);
@@ -951,12 +815,18 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     response.redirect(303, whoIs(request).merchant === null ? `${base}/merchant` : `${base}/cards`);
   });
 
+  /**
+   * The screen a signed-in person without a merchant is offered, with the one
+   * control that makes it (ADR-0026 §4). Drawing it makes nothing: only the
+   * same-origin press below asks the gateway for the merchant and its key.
+   */
   app.get(`${base}/merchant`, (request, response) => {
-    if (whoIs(request).merchant !== null) {
+    const person = whoIs(request);
+    if (person.merchant !== null) {
       response.redirect(303, `${base}/cards`);
       return;
     }
-    response.type("html").send(merchantSetupScreen(base, config.surfaceMode));
+    response.type("html").send(merchantSetupScreen(base, config.surfaceMode, person.email));
   });
 
   app.post(`${base}/merchant`, async (request, response) => {
@@ -979,16 +849,19 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       response.redirect(303, `${base}/sign-in`);
       return;
     }
+    // A gateway that did not answer leaves the person signed in to press
+    // again, rather than spending another link.
     response
       .status(503)
       .type("html")
-      .send(merchantSetupScreen(base, config.surfaceMode, true));
+      .send(merchantSetupScreen(base, config.surfaceMode, person.email, true));
   });
-  // P1 may reach only the retry and sign-out routes above. Every commerce
-  // route below requires the complete merchant pair.
+  // A person without a merchant reaches only the screen above, its press and
+  // the sign-out. Every commerce route below requires the complete merchant
+  // pair, and sends anybody else to the one control that makes it.
   app.use((request, response, next) => {
     if (whoIs(request).merchant === null) {
-      response.status(503).type("html").send(merchantSetupScreen(base, config.surfaceMode));
+      response.redirect(303, `${base}/merchant`);
       return;
     }
     next();
@@ -1683,10 +1556,12 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
  * the switches, because that is a merchant's selling, and not the sign-in,
  * because signing somebody into an account of the attacker's choosing is a way
  * of getting them to do their work in a session somebody else can read.
- * SameSite=Strict on the cookie is the first answer and the main one; this is
- * the second, and it exists because SameSite is scoped to the registrable
- * domain rather than to the origin — the day anything at all is served from a
- * sibling subdomain, that page is "same site" and can forge every switch here.
+ * SameSite=Lax on the cookie is the first answer and the main one: a cross-site
+ * POST carries no Lax cookie, exactly as it carried no Strict one (ADR-0009
+ * §6). This is the second, and it exists because SameSite is scoped to the
+ * registrable domain rather than to the origin — `test.agentify.ad` beside
+ * `agentify.ad` is "same site", and a page there could otherwise forge every
+ * switch here.
  *
  * The component that signs people in brings a check of its own, and it does not
  * replace this one. What it brings is the same idea — compare the `Origin`

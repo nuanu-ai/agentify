@@ -23,12 +23,12 @@ export function AccountActions({ mode }: { mode: "unsubscribe" | "data" }) {
       setMessage(
         response.ok
           ? payload?.status === "completed"
-            ? "Deletion completed. Card/provider state was cleared first, then report sessions, shares, and personal data were anonymized."
+            ? "Deletion completed. Card/provider state was cleared first, then your reports, shares, and personal data were anonymized; your sign-in was removed unless it holds a merchant cabinet."
             : action === "deletion"
-              ? "Report access is revoked. Deletion was requested and will finish automatically."
+              ? "Report access is closed. Deletion was requested and will finish automatically."
               : "Request recorded."
           : (payload?.error?.message ??
-              "Sign in through a verified report before making this request."),
+              "Sign in with the address your reports were sent to before making this request."),
       );
       if (response.ok) setConfirmingDeletion(false);
     } finally {
@@ -65,8 +65,9 @@ export function AccountActions({ mode }: { mode: "unsubscribe" | "data" }) {
           ) : (
             <div>
               <p>
-                This revokes report access and shares, removes any saved card, and irreversibly
-                anonymizes your lead and owned scan identifiers.
+                This closes report access and revokes shares, removes any saved card, and
+                irreversibly anonymizes your lead and owned scan identifiers. Your sign-in goes too,
+                unless it holds a merchant cabinet.
               </p>
               <button
                 className="button button-primary"

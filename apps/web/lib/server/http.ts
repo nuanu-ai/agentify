@@ -128,3 +128,19 @@ export function bearerToken(request: Request): string | null {
   const authorization = request.headers.get("authorization");
   return authorization?.startsWith("Bearer ") ? authorization.slice(7) : null;
 }
+
+/**
+ * The answer to a request whose outcome depends on who is asking, when the
+ * cabinet that knows did not answer: not "there is nothing here for you",
+ * which would be a claim about somebody the scanner could not identify.
+ */
+export function visitorUnknownResponse(request: Request) {
+  return errorResponse(
+    request,
+    503,
+    "visitor_unknown",
+    "We cannot tell who is visiting right now. Try again shortly.",
+    true,
+    30,
+  );
+}

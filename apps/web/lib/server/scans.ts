@@ -18,7 +18,7 @@ import {
 } from "@agentify/scanner-database";
 import { and, eq, sql } from "drizzle-orm";
 
-import { getVerifiedSession } from "./auth";
+import { ownedLead, type Visitor } from "./auth";
 import { getServerConfig } from "./config";
 import { deriveCapability, hmacHex, sha256 } from "./crypto";
 import { getDatabase } from "./database";
@@ -287,9 +287,9 @@ export async function getScanStatus(
 
 export async function getScanStatusForVerifiedSession(
   scanId: string,
-  sessionToken: string | undefined,
+  visitor: Visitor,
 ): Promise<ScanStatusResponse | undefined> {
-  if (!(await getVerifiedSession(sessionToken, scanId))) return undefined;
+  if (!(await ownedLead(visitor, scanId))) return undefined;
   const { db } = getDatabase();
   const scan = (await db.select().from(scans).where(eq(scans.id, scanId)).limit(1))[0];
   return scan ? await buildScanStatus(scan) : undefined;

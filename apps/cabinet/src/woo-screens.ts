@@ -236,13 +236,14 @@ const waitingBlock = (state: ShopState): string => {
 /**
  * What the return address answers a browser that arrives carrying no session.
  *
- * Which, on a real return, is every browser. The cabinet's cookie is
- * `SameSite=Strict` (ADR-0009) and the navigation back is started by the
- * merchant's own shop, so the request that lands here has nothing on it even
- * for somebody signed in on that very browser. Behind the sign-in gate that
- * ends a working flow on a sign-in form, and a merchant reads the form as the
- * connect having failed — which is what happened, twice, when this flow was
- * walked by hand.
+ * The session cookie is `SameSite=Lax` (ADR-0009 §6), so the navigation back
+ * from the merchant's own shop carries it, and a signed-in browser is sent on
+ * into the cabinet before this is drawn. What arrives here is a browser that
+ * came back without one: the session ended while the merchant was in their
+ * shop, or the shop was opened in another browser. Behind the sign-in gate
+ * that ends a working flow on a sign-in form, and a merchant reads the form as
+ * the connect having failed — which is what happened, twice, when this flow
+ * was walked by hand while the cookie was still `Strict`.
  *
  * So the page is drawn for anybody, and every word of it is chosen so that
  * anybody may read it. It says what this address is for, which is true of the
@@ -254,10 +255,9 @@ const waitingBlock = (state: ShopState): string => {
  * this address learns that the address exists, and that is all there is here to
  * learn.
  *
- * The next click is same-site, so a browser that was already signed in sends
- * its Strict cookie again. A browser without one meets the cabinet's ordinary
- * sign-in gate. The page does not ask for another email or interpret the
- * untrusted redirect query.
+ * The next click goes to the cabinet, whose ordinary sign-in gate meets a
+ * browser without a session. The page does not ask for another email or
+ * interpret the untrusted redirect query.
  */
 export const wooReturnScreen = (base: string, mode: SurfaceMode): string =>
   bare(

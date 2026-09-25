@@ -42,7 +42,7 @@ export default function DataRequestPage() {
             <ProseList>
               <li>Access or correct lead information.</li>
               <li>Complete verified deletion with an explicit final confirmation.</li>
-              <li>Revoke active report sessions and public shares.</li>
+              <li>Close report access for your address and revoke its public shares.</li>
               <li>Unsubscribe from optional marketing email.</li>
               <li>
                 Detach an optional Stripe payment method, verify provider readback, and remove the
@@ -59,7 +59,7 @@ export default function DataRequestPage() {
             <p>
               We may ask for a verification step before disclosing or changing a private record. We
               do not use a public website domain alone as proof that someone controls an email,
-              report session, share, or payment signal.
+              sign-in, share, or payment signal.
             </p>
           ),
         },

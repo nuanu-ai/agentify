@@ -153,9 +153,7 @@ const routePatterns: readonly [RegExp, string][] = [
   [/^\/scan\/[^/]+$/, "page_scan"],
   [/^\/report\/[^/]+$/, "page_report"],
   [/^\/s\/[^/]+$/, "page_share"],
-  [/^\/auth\/callback$/, "page_auth_callback"],
   [/^\/email\/unsubscribe$/, "page_email_unsubscribe"],
-  [/^\/verification\/error$/, "page_verification_error"],
   [/^\/api\/health$/, "api_health"],
   [/^\/api\/health\/live$/, "api_health_live"],
   [/^\/api\/v1\/scans$/, "api_v1_scans_create"],
@@ -174,7 +172,7 @@ const routePatterns: readonly [RegExp, string][] = [
   [/^\/api\/v1\/account\/(data-request|unsubscribe)$/, "api_v1_account"],
   [/^\/api\/v1\/auth\/verify$/, "api_v1_auth_verify"],
   [/^\/api\/v1\/webhooks\/stripe$/, "api_v1_stripe_webhook"],
-  [/^\/api\/v2\/auth\/finalize$/, "api_v2_auth_finalize"],
+  [/^\/api\/v2\/session$/, "api_v2_session"],
   [/^\/api\/v2\/scans\/[^/]+\/(registrations|contact-access)$/, "api_v2_scan_contact"],
   [/^\/_next\//, "asset_next"],
 ];

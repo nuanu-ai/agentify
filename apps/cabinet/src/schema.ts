@@ -7,9 +7,8 @@
  * from a query in this process.
  *
  * Better Auth keeps people, sessions, its empty account model and one-time
- * links in separate places. Cabinet code adds bounded link-send and report
- * completion evidence, permanent deletion-operation tombstones, and the
- * WooCommerce channel tables. The names are prefixed so a person reading this
+ * links in separate places. Cabinet code adds bounded link-send evidence,
+ * permanent deletion-operation tombstones, and the WooCommerce channel tables. The names are prefixed so a person reading this
  * shared database can see which process owns them.
  *
  * The migrations generated from this file live in `drizzle/` and are applied by
@@ -113,6 +112,13 @@ export const sessions = pgTable(
      */
     ipAddress: text("ip_address"),
     userAgent: text("user_agent"),
+    /**
+     * The scanner's full-report request the link that opened this session was
+     * asked for, and null for every other session. The answer to whose session
+     * a cookie is names it, so the scanner finishes that request at the
+     * session's first visit and never one somebody else made (ADR-0026 §2).
+     */
+    reportRequest: text("report_request"),
   },
   (table) => [
     // Ending every session one person has reads by the first, and the sweep of
@@ -208,53 +214,11 @@ export const linkSends = pgTable(
 );
 
 /**
- * Short-lived proof that a report link was consumed for scanner state.
+ * Stable private key material for the scanner's link rates and deletions.
  *
- * Raw tokens, addresses, callback state and person identifiers never enter
- * this table. Their digests bind retries and let deletion invalidate every
- * report proof for one address without giving this row authority over cabinet
- * sessions or commerce data.
- */
-export const reportReceipts = pgTable(
-  "cabinet_report_receipts",
-  {
-    id: text("id").primaryKey(),
-    tokenHash: text("token_hash").notNull().unique(),
-    emailHash: text("email_hash").notNull(),
-    stateHash: text("state_hash").notNull(),
-    intentKind: text("intent_kind").notNull(),
-    status: text("status").notNull(),
-    consumedAt: moment("consumed_at"),
-    completionDeadline: moment("completion_deadline"),
-    completedAt: timestamp("completed_at", { withTimezone: true, mode: "date" }),
-    invalidatedAt: timestamp("invalidated_at", { withTimezone: true, mode: "date" }),
-    issueAttemptedAt: timestamp("issue_attempted_at", { withTimezone: true, mode: "date" }),
-    issuedLinkExpiresAt: timestamp("issued_link_expires_at", {
-      withTimezone: true,
-      mode: "date",
-    }),
-    retentionUntil: moment("retention_until"),
-  },
-  (table) => [
-    index("cabinet_report_receipts_email_idx").on(table.emailHash),
-    index("cabinet_report_receipts_retention_idx").on(table.retentionUntil),
-    check(
-      "cabinet_report_receipts_intent_kind",
-      sql`${table.intentKind} in ('registration', 'recovery')`,
-    ),
-    check(
-      "cabinet_report_receipts_status",
-      sql`${table.status} in ('pending', 'completed', 'invalidated')`,
-    ),
-  ],
-);
-
-/**
- * Stable private key material for report evidence digests.
- *
- * The singleton is generated atomically by the first report operation and
- * lives for the lifetime of this database. Session-signing and internal HTTP
- * credentials may rotate without changing receipt bindings or permanent
+ * The singleton is generated atomically by the first operation that needs it
+ * and lives for the lifetime of this database. Session-signing and internal
+ * HTTP credentials may rotate without changing the rate rows or permanent
  * deletion replay. The key has no operator setting and never leaves the
  * cabinet identity component.
  */

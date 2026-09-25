@@ -1,42 +1,30 @@
 import type { Message } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
 
-export type ReportMailPurpose = "registration" | "recovery";
-
-const copy = {
-  registration: {
-    subject: "Unlock your Agentify report",
-    eyebrow: "Report access",
-    heading: "Your Agentify report is ready",
-    body: "Confirm your email to unlock the AI fix prompt and downloadable Markdown report.",
-    action: "Open my report",
-  },
-  recovery: {
-    subject: "Recover your Agentify report",
-    eyebrow: "Report recovery",
-    heading: "Recover your Agentify report",
-    body: "If a private report is linked to this address, use this secure link to recover it.",
-    action: "Recover report access",
-  },
-} as const;
-
-export function reportLinkMessage(to: string, purpose: ReportMailPurpose, url: string): Message {
-  const content = copy[purpose];
+/**
+ * The message for a link the scanner asked for: the full report of one scan.
+ *
+ * Like every link, it lands on the cabinet's page with one control, and that
+ * press signs the address in on this browser before it opens the report.
+ */
+export function reportLinkMessage(to: string, url: string): Message {
+  const title = "Your Agentify report is ready";
+  const lead = "Confirm your email to unlock the AI fix prompt and downloadable Markdown report.";
   const lifetime =
-    "This link opens once and expires an hour after it was sent. If you did not ask for it, ignore this message.";
+    "This link opens once and expires an hour after it was sent. Opening it only shows a page; nothing happens unless the button on it is pressed. If you did not ask for it, ignore this message.";
 
   return {
     to,
-    subject: content.subject,
+    subject: "Unlock your Agentify report",
     // The URL stands on a line of its own, so that a client that draws no
     // button and a person copying it by hand both get the whole of it.
-    body: `Agentify\n\n${content.heading}\n\n${content.body}\n\n${content.action}:\n\n${url}\n\n${lifetime}`,
+    body: `Agentify\n\n${title}\n\n${lead}\n\nOpen my report:\n\n${url}\n\n${lifetime}`,
     html: transactionalEmailHtml({
-      preview: content.body,
-      eyebrow: content.eyebrow,
-      title: content.heading,
-      lead: content.body,
-      action: content.action,
+      preview: lead,
+      eyebrow: "Report access",
+      title,
+      lead,
+      action: "Open my report",
       link: url,
       paragraphs: [lifetime],
     }),

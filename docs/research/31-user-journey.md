@@ -139,7 +139,7 @@ Where each person lands, what they see and where they go.
 | an engineer sent by the owner | `/docs` | the quickstart and the cabinet's door | the cabinet |
 | a merchant, working day | `/cabinet`, a bookmark, or Cabinet in the header of any landing or trust page | a live session opens the cabinet at once; otherwise the one field and the mailed link | the cabinet, never the scanner |
 | a merchant inside the cabinet | the cabinet | Docs | the documentation, and back |
-| a site owner, scanning again | `/`, or the report link from the mail | the scan form on `/`; the report by its own link, which the thirty-day report cookie opens without another message. `/` does not list a visitor's reports | the report |
+| a site owner, scanning again | `/`, or the report link from the mail | the scan form on `/`; the report by its own link, which the site's one session opens without another message while it lasts, thirty days from the last visit; the address in the header. `/` does not list a visitor's reports | the report |
 
 ## The four changes
 
@@ -304,14 +304,15 @@ of the same shape for the application form that was removed.
 
 ## What is not done, and why
 
-A shared session or a "my place" page above both applications is not built.
-ADR-0026 rejected one session for both, and it would buy nothing a person
-can see: whoever holds a report opens it by its link, whoever holds a
-cabinet opens it by its own, and the header now shows both doors.
+A "my place" page above both applications is not built. One session serves
+the whole site (ADR-0026 §2), and the header of every scanner and cabinet
+page names who is signed in beside the doors, so a page listing a person's
+places would repeat what the header and the links already give them.
 
-The cabinet does not link back to a report. A merchant at work does not need
-the diagnostic, and the cabinet holds no knowledge of scans; adding a route
-for it would widen the boundary ADR-0024 keeps for the sake of one link.
+The cabinet's screens do not link back to a report. A merchant at work does
+not need the diagnostic, and the cabinet holds no knowledge of scans; the one
+scanner address it names is the page that sends a person without a merchant
+to their latest report, which is where ADR-0026 §1 says such a person starts.
 
 No page is written for the developer of a buying agent, the address of the
 `/agentic-shop` page is not changed, and the waitlist table is not renamed,

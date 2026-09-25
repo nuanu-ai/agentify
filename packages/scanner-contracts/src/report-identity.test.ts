@@ -1,27 +1,19 @@
-import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import {
-  acknowledgeReportLinkRequestSchema,
-  acknowledgeReportLinkResponseSchema,
-  consumeReportLinkRequestSchema,
-  consumeReportLinkResponseSchema,
   deleteUnattachedPersonRequestSchema,
   deleteUnattachedPersonResponseSchema,
-  issueCabinetLinkRequestSchema,
-  issueCabinetLinkResponseSchema,
+  readSessionRequestSchema,
+  readSessionResponseSchema,
   reportIdentityRequestSchema,
-  reportIdentityTokenHash,
   sendReportLinkRequestSchema,
   sendReportLinkResponseSchema,
 } from "./report-identity.js";
 
-const state = "s".repeat(43);
-const token = "T".repeat(32);
-const tokenHash = createHash("sha256").update(token).digest("base64url");
-const receiptId = "550e8400-e29b-41d4-a716-446655440000";
-const operationId = "019b41a0-7c51-7d63-84bd-a5a20faef497";
-const timestamp = "2026-09-17T12:00:00.000Z";
+const scanId = "019b41a0-7c51-7d63-84bd-a5a20faef497";
+const requestId = "019b41a0-7c51-7d63-84bd-a5a20faef498";
+const operationId = "019b41a0-7c51-7d63-84bd-a5a20faef499";
+const timestamp = "2026-09-24T12:00:00.000Z";
 
 const requests = [
   {
@@ -29,33 +21,17 @@ const requests = [
     value: {
       operation: "send",
       email: "owner@example.com",
-      intent_kind: "registration",
-      state,
+      destination: { report: scanId },
+      request: requestId,
     },
   },
   {
-    schema: consumeReportLinkRequestSchema,
+    schema: readSessionRequestSchema,
     value: {
-      operation: "verify",
-      phase: "consume",
-      token,
-      email: "owner@example.com",
-      intent_kind: "recovery",
-      state,
+      operation: "session",
+      cookie: "agentify.session_token=value.signature",
+      renew: true,
     },
-  },
-  {
-    schema: acknowledgeReportLinkRequestSchema,
-    value: {
-      operation: "verify",
-      phase: "acknowledge",
-      receipt_id: receiptId,
-      token_hash: tokenHash,
-    },
-  },
-  {
-    schema: issueCabinetLinkRequestSchema,
-    value: { operation: "issue", receipt_id: receiptId, token_hash: tokenHash },
   },
   {
     schema: deleteUnattachedPersonRequestSchema,
@@ -67,8 +43,8 @@ const requests = [
   },
 ] as const;
 
-describe("private report identity contract", () => {
-  it("accepts every closed request variant through the single route union", () => {
+describe("the internal route between the scanner and the cabinet", () => {
+  it("accepts the three questions the scanner asks through the one route", () => {
     for (const { schema, value } of requests) {
       expect(schema.safeParse(value).success).toBe(true);
       expect(reportIdentityRequestSchema.safeParse(value).success).toBe(true);
@@ -86,129 +62,91 @@ describe("private report identity contract", () => {
     }
   });
 
-  it("keeps capabilities and identifiers in their exact formats", () => {
-    expect(reportIdentityTokenHash(token)).toBe(tokenHash);
-    expect(tokenHash).toHaveLength(43);
-
+  it("names a destination only from the closed set: the report of one scan", () => {
+    // Where a link leads is recorded with its token when it is asked for, and
+    // nothing in the link is ever read as one (ADR-0026 §1). A destination the
+    // set does not hold is refused at the door rather than carried into mail.
+    for (const destination of [
+      { report: "not-a-scan" },
+      { report: scanId, next: "/cabinet/settings" },
+      { url: "https://evil.example/" },
+      "https://evil.example/",
+      "/report/anything",
+      {},
+    ]) {
+      expect(
+        sendReportLinkRequestSchema.safeParse({ ...requests[0].value, destination }).success,
+        JSON.stringify(destination),
+      ).toBe(false);
+    }
     expect(
-      consumeReportLinkRequestSchema.safeParse({
-        ...requests[1].value,
-        token: "-".repeat(32),
-      }).success,
-    ).toBe(false);
-    expect(
-      sendReportLinkRequestSchema.safeParse({
-        ...requests[0].value,
-        state: "s".repeat(42),
-      }).success,
-    ).toBe(false);
-    expect(
-      acknowledgeReportLinkRequestSchema.safeParse({
-        ...requests[2].value,
-        token_hash: createHash("sha256").update(token).digest("hex"),
-      }).success,
-    ).toBe(false);
-    expect(
-      deleteUnattachedPersonRequestSchema.safeParse({
-        ...requests[4].value,
-        operation_id: receiptId,
-      }).success,
+      sendReportLinkRequestSchema.safeParse({ ...requests[0].value, request: "a-request" }).success,
     ).toBe(false);
   });
 
-  it("accepts only scanner-normalized email claims", () => {
+  it("accepts only scanner-normalized addresses", () => {
     for (const email of [" OWNER@example.com", "OWNER@example.com", "ｏwner@example.com"])
       expect(sendReportLinkRequestSchema.safeParse({ ...requests[0].value, email }).success).toBe(
         false,
       );
-    expect(
-      sendReportLinkRequestSchema.safeParse({
-        ...requests[0].value,
-        email: "owner@example.com",
-      }).success,
-    ).toBe(true);
   });
 
-  it("accepts every closed phase-specific result and refuses cross-phase states", () => {
+  it("carries a cookie header of any ordinary size and no larger", () => {
+    expect(
+      readSessionRequestSchema.safeParse({ ...requests[1].value, cookie: "a".repeat(8_192) })
+        .success,
+    ).toBe(true);
+    expect(
+      readSessionRequestSchema.safeParse({ ...requests[1].value, cookie: "a".repeat(8_193) })
+        .success,
+    ).toBe(false);
+    expect(readSessionRequestSchema.safeParse({ ...requests[1].value, renew: "yes" }).success).toBe(
+      false,
+    );
+  });
+
+  it("answers whose session a cookie is with the address, the waiting request and the renewed cookie", () => {
+    const signedIn = {
+      status: "signed_in",
+      email: "owner@example.com",
+      request: requestId,
+      set_cookie: ["agentify.session_token=value.signature; Max-Age=2592000; Path=/"],
+    };
+    expect(readSessionResponseSchema.safeParse(signedIn).success).toBe(true);
+    expect(readSessionResponseSchema.safeParse({ ...signedIn, request: null }).success).toBe(true);
+    expect(readSessionResponseSchema.safeParse({ ...signedIn, set_cookie: [] }).success).toBe(true);
+    expect(readSessionResponseSchema.safeParse({ status: "signed_out" }).success).toBe(true);
+    for (const field of Object.keys(signedIn)) {
+      const incomplete = { ...signedIn } as Record<string, unknown>;
+      delete incomplete[field];
+      expect(readSessionResponseSchema.safeParse(incomplete).success, field).toBe(false);
+    }
+    expect(
+      readSessionResponseSchema.safeParse({ status: "signed_out", email: "owner@example.com" })
+        .success,
+    ).toBe(false);
+  });
+
+  it("accepts every closed send and delete result and refuses others", () => {
     for (const value of [
-      { status: "accepted", token_hash: tokenHash },
+      { status: "accepted" },
       { status: "cooldown", retry_at: timestamp },
       { status: "unavailable" },
     ])
       expect(sendReportLinkResponseSchema.safeParse(value).success).toBe(true);
-
+    expect(sendReportLinkResponseSchema.safeParse({ status: "cooldown" }).success).toBe(false);
     expect(
-      consumeReportLinkResponseSchema.safeParse({
-        status: "pending",
-        receipt_id: receiptId,
-        completion_deadline: timestamp,
-      }).success,
-    ).toBe(true);
-    expect(consumeReportLinkResponseSchema.safeParse({ status: "refused" }).success).toBe(true);
-    expect(consumeReportLinkResponseSchema.safeParse({ status: "completed" }).success).toBe(false);
-
-    expect(acknowledgeReportLinkResponseSchema.safeParse({ status: "completed" }).success).toBe(
-      true,
-    );
-    expect(acknowledgeReportLinkResponseSchema.safeParse({ status: "refused" }).success).toBe(true);
-    expect(acknowledgeReportLinkResponseSchema.safeParse({ status: "pending" }).success).toBe(
-      false,
-    );
-
-    for (const value of [
-      {
-        status: "issued",
-        action_url: "https://agentify.ad/cabinet/sign-in/open?token=secret",
-      },
-      { status: "already_attempted" },
-      { status: "refused" },
-    ])
-      expect(issueCabinetLinkResponseSchema.safeParse(value).success).toBe(true);
+      sendReportLinkResponseSchema.safeParse({ status: "accepted", token_hash: "h".repeat(43) })
+        .success,
+    ).toBe(false);
 
     for (const status of ["deleted", "already_absent", "retained", "refused"])
       expect(deleteUnattachedPersonResponseSchema.safeParse({ status }).success).toBe(true);
-  });
-
-  it("refuses missing or extra response fields and unsafe action URLs", () => {
-    const responses = [
-      {
-        schema: sendReportLinkResponseSchema,
-        value: { status: "accepted", token_hash: tokenHash },
-      },
-      {
-        schema: consumeReportLinkResponseSchema,
-        value: {
-          status: "pending",
-          receipt_id: receiptId,
-          completion_deadline: timestamp,
-        },
-      },
-      {
-        schema: issueCabinetLinkResponseSchema,
-        value: {
-          status: "issued",
-          action_url: "https://agentify.ad/cabinet/sign-in/open?token=secret",
-        },
-      },
-    ] as const;
-    for (const { schema, value } of responses) {
-      for (const field of Object.keys(value)) {
-        const incomplete = { ...value } as Record<string, unknown>;
-        delete incomplete[field];
-        expect(schema.safeParse(incomplete).success, `${value.status}.${field}`).toBe(false);
-      }
-      expect(schema.safeParse({ ...value, unexpected: true }).success).toBe(false);
-    }
-    for (const action_url of [
-      "file:///tmp/secret",
-      "https://user:password@agentify.ad/cabinet/sign-in/open?token=secret",
-      "https://agentify.ad/cabinet/sign-in/open?token=secret#leak",
-    ])
-      expect(
-        issueCabinetLinkResponseSchema.safeParse({
-          status: "issued",
-          action_url,
-        }).success,
-      ).toBe(false);
+    expect(
+      deleteUnattachedPersonRequestSchema.safeParse({
+        ...requests[2].value,
+        operation_id: "550e8400-e29b-41d4-a716-446655440000",
+      }).success,
+    ).toBe(false);
   });
 });

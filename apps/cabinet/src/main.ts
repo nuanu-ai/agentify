@@ -20,6 +20,7 @@
  * on boot migrates once per replica and races itself.
  */
 
+import { keyRenewal } from "./cabinet-key.js";
 import { loadConfig } from "./config.js";
 import { connect } from "./database.js";
 import { gatewayFor } from "./gateway.js";
@@ -34,7 +35,11 @@ const config = loadConfig(process.env);
 const pool = connect(config.databaseUrl);
 const identity = identityFor(config, { pool });
 const wooShops = postgresWooShops(pool);
-const reportIdentityServer = startReportIdentityServer(config.reportIdentitySecret, identity);
+const reportIdentityServer = startReportIdentityServer(
+  config.reportIdentitySecret,
+  identity,
+  keyRenewal(identity, (key, answerWithinMs) => gatewayFor(config.gatewayUrl, key, answerWithinMs)),
+);
 
 const server = buildApp(config, { identity, wooShops }).listen(config.port, () => {
   console.log(`[cabinet] listening on ${config.port}, reading ${config.gatewayUrl}`);

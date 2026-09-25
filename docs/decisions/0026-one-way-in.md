@@ -51,7 +51,9 @@ cabinet to send a link for this address with this destination, to say whose
 session this cookie is, and, for a privacy deletion, to remove this person if
 they own no merchant. When the second answer renews the session, the scanner
 passes on the renewed cookie that answer carries, so a visit to a report counts
-toward the thirty days. A public scanner page that cannot reach the cabinet says
+toward the thirty days. It asks for renewal only where its answer can pass a
+cookie on, the header's own request, since a page drawn on the server cannot
+set one; every scanner page carries the header. A public scanner page that cannot reach the cabinet says
 it cannot tell who is visiting right now, because not knowing who somebody is
 must not look like knowing they are nobody.
 
@@ -72,7 +74,10 @@ not a way in.
 scanner's and the cabinet's pages carries their address and a sign-out control;
 `/docs` keeps only its plain link to the cabinet (Dmitry, 2026-09-24). A
 response carrying a person's address is never stored by a shared cache, however
-the code draws the header. The sign-out is a same-origin POST that ends this
+the code draws the header. The cabinet draws it on the server; a scanner page
+asks for it with a small same-origin request of its own, so the page stays what
+a shared cache may keep, and a browser that runs no script sees the header's
+doors without the address. The sign-out is a same-origin POST that ends this
 session's row, clears the cookie and opens the sign-in page with an empty field,
 since people mostly sign out to come back as another address. It signs this
 browser out of everything and leaves other devices alone.
