@@ -58,7 +58,10 @@ new_postgres="$(volume new agentify-postgres)" new_caddy="$(volume new agentify-
 phase="" point="" stopped_at=""
 [[ ! -f $progress ]] || read -r phase point stopped_at < "$progress"
 image="$(new config --images postgres)"
-containers="docker start \$(docker ps -aq --filter label=com.docker.compose.project=$old_project)"
+# Going back also removes what the move made, so that no later release starts
+# the new project on a copy beside the old one; writes the new release took go
+# with it (deploy/README.md, "One database").
+containers="$root/deploy/stack.sh $channel down; docker volume rm -f $new_postgres $new_caddy; rm -f $progress; docker start \$(docker ps -aq --filter label=com.docker.compose.project=$old_project)"
 old_sql() { old exec -T postgres psql -X -U agentify_commerce -At "$@"; }
 
 # A person who went back started the old project again, and its data has
@@ -143,7 +146,7 @@ if [[ $phase == stopped ]]; then
 fi
 
 step="moving the scanner's tables"
-back="$root/deploy/stack.sh $channel down, then $containers"
+back="$containers"
 new up -d --wait --no-deps postgres
 new exec -T postgres sh -s -- move < "$move"
 if [[ -n $(new exec -T postgres psql -X -U agentify_commerce -d postgres -Atc "select 1 from pg_database where datname = 'agentify_scanner'" 2> /dev/null) ]]; then
@@ -163,7 +166,7 @@ if [[ -n $(new exec -T postgres psql -X -U agentify_commerce -d postgres -Atc "s
   # The file installed into a copy of the scanner's schema, views aside, beside
   # what the host holds: PostgreSQL prints both definitions the same way.
   if git -C "$root" show ad5a772^:ops/dashboards/install-aggregate-views.sql > "$point/metabase-views.sql" \
-    && new_sql -d postgres -c "DROP DATABASE IF EXISTS one_database_views" -c "CREATE DATABASE one_database_views" \
+    && new_sql -d postgres -c "SET client_min_messages = warning" -c "DROP DATABASE IF EXISTS one_database_views" -c "CREATE DATABASE one_database_views" \
     && new exec -T postgres pg_dump -U agentify_commerce --schema-only --exclude-schema=metabase --exclude-schema=pgboss agentify_scanner \
     | new_sql -d one_database_views > /dev/null \
     && new_sql -d one_database_views < "$point/metabase-views.sql" > /dev/null; then
@@ -177,7 +180,7 @@ if [[ -n $(new exec -T postgres psql -X -U agentify_commerce -d postgres -Atc "s
   else
     say "the metabase views could not be compared with the file, for the reason above; the restore point holds them as they were"
   fi
-  new_sql -d postgres -c "DROP DATABASE IF EXISTS one_database_views" || true
+  new_sql -d postgres -c "SET client_min_messages = warning" -c "DROP DATABASE IF EXISTS one_database_views" || true
 fi
 
 step="dropping the scanner's database and renaming the one that stays"

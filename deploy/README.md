@@ -630,30 +630,38 @@ database, the four old roles and the views, renames the database and its
 account to `agentify`, and gives the account the password the new
 configuration names. Each step prints a line beginning `one-database:`, and
 no line holds a secret. The applications stay stopped until the second
-release starts them. On the laptop rehearsal the script took 9 seconds and
-the release after it 23, and the front page answered nothing for about 26
+release starts them. On the laptop rehearsal the script took 10 seconds and
+the release after it 20, and the front page answered nothing for about 25
 seconds; on a host the pull is already done, and the dumps grow with the data.
+Going back there, the old front page answered 6 seconds after the new project
+went down, and the whole old site 15.
 
 Its progress is one line in `/var/lib/agentify/<channel>/one-database`, so a
 run that failed or was killed is carried on by running the same command
 again, and a run after the move says so and changes nothing. The old
 project's containers and volumes are stopped and never written again, which
-makes them the way back until the new release has taken a write:
+makes them the way back, and a failure prints it. Going back takes the new
+project down, removes what the move made, the two new volumes and the
+progress file, so that no later release starts the new project on a copy
+beside the old one, and starts the old containers:
 
 ```sh
 ssh -t agentify-test sudo /var/lib/agentify/test/checkouts/<sha>/deploy/stack.sh test down
+ssh -t agentify-test sudo docker volume rm agentify-postgres agentify-caddy
+ssh -t agentify-test sudo rm /var/lib/agentify/test/one-database
 ssh -t agentify-test 'sudo docker start $(sudo docker ps -aq --filter label=com.docker.compose.project=agentify-test)'
 ```
 
-On PRODUCTION the project is `agentify-commerce`. If the new release was
-already verified, `current` names the new revision: write the old one back
-into it, since the next release is measured from it. Anything written after
-the move is lost on this way back. To try the move again afterwards, remove
-the progress file and the two new volumes first; the script refuses while the
-old project runs and says so. Once the new release has run long enough to
-trust, a person removes the old project's stopped containers and its volumes,
-`agentify-test-postgres` and `agentify-test-caddy` or their `agentify-commerce-`
-twins; the restore point stays with the others.
+On PRODUCTION the project is `agentify-commerce`. Whatever the new release
+wrote goes with the new volumes; if it has taken orders, dump the one
+database with `stack.sh production exec -T postgres pg_dump -U agentify -Fc
+agentify` before removing them. If the new release was already verified,
+`current` names the new revision: write the old one back into it, since the
+next release is measured from it. The move can then be run again from the
+start. Once the new release has run long enough to trust, a person removes
+the old project's stopped containers and its volumes, `agentify-test-postgres`
+and `agentify-test-caddy` or their `agentify-commerce-` twins; the restore
+point stays with the others.
 
 ## The Woo acceptance route on TEST
 
