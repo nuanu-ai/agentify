@@ -905,6 +905,15 @@ describe("importing the catalogue", () => {
   const bodyOf = (html: string): string =>
     html.slice(html.indexOf("</header>"), html.indexOf("<footer"));
 
+  /**
+   * The Import form alone, where what an import needs is said beside the
+   * button. Read apart from the rest of the screen because the banner every
+   * screen carries while no seller name is chosen also names the name and
+   * links to Settings, and would stand in for a line that said neither.
+   */
+  const importFormOf = (html: string): string =>
+    /<form[^>]*action="\/woocommerce\/import"[^>]*>[\s\S]*?<\/form>/.exec(html)?.[0] ?? "";
+
   /** An address of the right shape that is nobody's, in the lower case a wallet accepts. */
   const A_WALLET = "0x0123456789abcdef0123456789abcdef01234567";
 
@@ -922,11 +931,11 @@ describe("importing the catalogue", () => {
     await connected(running);
 
     const imported = await running.post("/woocommerce/import");
-    const body = bodyOf(imported.html);
+    const form = importFormOf(imported.html);
 
     expect(imported.status).toBe(409);
-    expect(readable(body)).toMatch(/wallet/i);
-    expect(body).toContain('href="/settings"');
+    expect(readable(form)).toMatch(/wallet/i);
+    expect(form).toContain('href="/settings"');
     expect(readable(imported.html)).not.toContain("/v0/");
     expect(running.read).toEqual([]);
     expect(await cardsOf(running)).toEqual([]);
@@ -979,11 +988,11 @@ describe("importing the catalogue", () => {
     await connected(running);
 
     const imported = await running.post("/woocommerce/import");
-    const body = bodyOf(imported.html);
+    const form = importFormOf(imported.html);
 
     expect(imported.status).toBe(409);
-    expect(readable(body)).toMatch(/\bname\b/i);
-    expect(body).toContain('href="/settings"');
+    expect(readable(form)).toMatch(/\bname\b/i);
+    expect(form).toContain('href="/settings"');
     expect(readable(imported.html)).not.toContain("/v0/");
     expect(running.read).toEqual([]);
   });
@@ -999,7 +1008,7 @@ describe("importing the catalogue", () => {
     await connected(running);
 
     const imported = await running.post("/woocommerce/import");
-    const text = readable(bodyOf(imported.html));
+    const text = readable(importFormOf(imported.html));
 
     expect(imported.status).toBe(409);
     expect(text).toMatch(/wallet/i);
@@ -1011,11 +1020,11 @@ describe("importing the catalogue", () => {
     await connected(running);
 
     const screen = await running.get("/woocommerce");
-    const body = bodyOf(screen.html);
+    const form = importFormOf(screen.html);
 
     expect(screen.status).toBe(200);
-    expect(readable(body)).toMatch(/wallet/i);
-    expect(body).toContain('href="/settings"');
+    expect(readable(form)).toMatch(/wallet/i);
+    expect(form).toContain('href="/settings"');
   });
 
   it("says nothing about a wallet on the shop screen once one is set", async () => {
