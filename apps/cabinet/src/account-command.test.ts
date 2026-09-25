@@ -330,5 +330,8 @@ describe("the passwordless account command", () => {
 
     expect(listed.said).not.toContain("\u001b");
     expect(listed.said).toContain("\\x1b");
+    // A row written without the flag, as a hand-made or restored one can be,
+    // is nobody's operator.
+    expect(listed.said).toContain("not an operator");
   });
 });
