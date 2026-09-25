@@ -159,12 +159,15 @@ describe("the first address a merchant sets", () => {
       payout_wallet: A_WALLET,
       pending: null,
     });
-    const [announced] = harnessed.announcer.announced;
-    expect(announced).toMatchObject({
-      kind: "wallet_set",
-      to: A_WALLET,
-      asked_with: { kind: "cabinet" },
-    });
+    // It names no key: only a cabinet's key sets a wallet, so every change is
+    // one somebody signed in to the cabinet asked for.
+    expect(harnessed.announcer.announced).toStrictEqual([
+      {
+        kind: "wallet_set",
+        merchant_id: (await harnessed.gateway.keyBehind(key))?.merchantId,
+        to: A_WALLET,
+      },
+    ]);
   });
 
   it.each([
@@ -267,7 +270,7 @@ describe("a replacement on the live deployment", () => {
     expect(harnessed.facilitator.settles.at(-1)?.payTo).toBe(A_WALLET);
   });
 
-  it("is announced before it is recorded, saying what changes, when, and which key asked", async () => {
+  it("is announced before it is recorded, saying what changes and when", async () => {
     const { served, harnessed } = await started();
     const cabinet = await harnessed.addCabinetKey(harnessed.merchant.id);
     const asked = harnessed.now();
@@ -292,7 +295,6 @@ describe("a replacement on the live deployment", () => {
         from: harnessed.merchant.wallet,
         to: A_WALLET,
         not_before: at(asked + THE_WAIT),
-        asked_with: { kind: "cabinet" },
       },
     ]);
   });
@@ -315,23 +317,6 @@ describe("a replacement on the live deployment", () => {
     expect((harnessed.announcer.announced[0] as { not_before: string }).not_before).toBe(
       at(asked + THE_WAIT),
     );
-  });
-
-  it("names the cabinet as the key that asked, when a person signed in to it asked", async () => {
-    const { served, harnessed } = await started();
-    const registered = await served.call("POST", "/v0/merchants", {
-      body: { invitation: INVITATION },
-    });
-    const cabinetKey = (registered.body as { secret: string }).secret;
-    await ask(served, cabinetKey, A_WALLET);
-
-    await ask(served, cabinetKey, ANOTHER_WALLET);
-
-    expect(
-      harnessed.announcer.announced
-        .filter((one) => one.kind === "wallet_change")
-        .map((one) => (one as Announcement).asked_with),
-    ).toStrictEqual([{ kind: "cabinet" }]);
   });
 });
 
@@ -396,7 +381,6 @@ describe("asking again", () => {
       merchant_id: harnessed.merchant.id,
       kept: harnessed.merchant.wallet,
       cancelled: A_WALLET,
-      asked_with: { kind: "cabinet" },
     });
     harnessed.advance(THE_WAIT);
     expect(await payToNow(served, itemId)).toBe(harnessed.merchant.wallet);
