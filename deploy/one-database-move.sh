@@ -60,8 +60,9 @@ move() {
     say "the server already holds the one database, agentify; nothing was moved."
     return
   fi
-  has_database agentify_scanner && has_database agentify_commerce \
-    || refuse "the server holds neither agentify_commerce nor agentify_scanner as the move expects; nothing was moved."
+  if ! has_database agentify_scanner || ! has_database agentify_commerce; then
+    refuse "the server holds neither agentify_commerce nor agentify_scanner as the move expects; nothing was moved."
+  fi
   if moved; then
     say "the scanner's tables are already in agentify_commerce; nothing was moved again."
     return
@@ -71,7 +72,7 @@ move() {
     [ "$unfinished" = 0 ] \
       || refuse "the scanner's queue holds $unfinished unfinished jobs, which the move would lose; nothing was moved."
   fi
-  connected="$(q -d postgres -c "select count(*) from pg_stat_activity where datname = 'agentify_scanner'")"
+  connected="$(q -d postgres -c "select count(*) from pg_stat_activity where datname = 'agentify_scanner' and backend_type = 'client backend'")"
   [ "$connected" = 0 ] || refuse "$connected sessions are connected to agentify_scanner; nothing was moved."
   names="select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public'
          union select t.typname from pg_type t join pg_namespace n on n.oid = t.typnamespace where n.nspname = 'public'"
@@ -99,8 +100,9 @@ move() {
 
 finish() {
   if has_database agentify_scanner; then
-    has_database agentify_commerce && moved \
-      || refuse "agentify_scanner is still the only copy of the scanner's tables, so it was not dropped."
+    if ! has_database agentify_commerce || ! moved; then
+      refuse "agentify_scanner is still the only copy of the scanner's tables, so it was not dropped."
+    fi
     say "dropping agentify_scanner"
     q -d postgres -c 'DROP DATABASE agentify_scanner'
   fi
