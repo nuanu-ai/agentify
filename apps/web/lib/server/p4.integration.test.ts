@@ -90,7 +90,10 @@ type SentLink = { email: string; scanId: string; request: string };
 const SESSION_COOKIE = "__Host-agentify.session_token";
 
 const sentLinks: SentLink[] = [];
-const cabinetSessions = new Map<string, { email: string; request: string | null }>();
+const cabinetSessions = new Map<
+  string,
+  { email: string; request: string | null; operator?: boolean }
+>();
 let sessionSequence = 0;
 let sendCooldownUntil: Date | undefined;
 let cabinetDown = false;
@@ -122,10 +125,10 @@ function pressLink(link: SentLink): string {
 }
 
 /** A browser signed in from the cabinet's sign-in page: its session names no request. */
-function signedInAs(email: string): string {
+function signedInAs(email: string, { operator = false } = {}): string {
   sessionSequence += 1;
   const value = `session-${sessionSequence}`;
-  cabinetSessions.set(value, { email, request: null });
+  cabinetSessions.set(value, { email, request: null, operator });
   return `${SESSION_COOKIE}=${value}`;
 }
 
@@ -338,6 +341,7 @@ beforeAll(async () => {
           ? {
               status: "signed_in",
               email: session.email,
+              operator: session.operator ?? false,
               request: session.request,
               set_cookie: body.renew
                 ? [`${SESSION_COOKIE}=${held?.[1]}; Max-Age=2592000; Path=/; HttpOnly; Secure`]
@@ -1003,12 +1007,32 @@ describe("P4 cabinet-owned scanner identity", () => {
     const stranger = await readVisitor(new NextRequest("http://localhost:3000/api/v2/session"));
 
     expect(signedIn.status).toBe(200);
-    expect(await signedIn.json()).toEqual({ status: "signed_in", email: "header@example.com" });
+    expect(await signedIn.json()).toEqual({
+      status: "signed_in",
+      email: "header@example.com",
+      operator: false,
+    });
     // An answer carrying an address is never stored by a shared cache.
     expect(signedIn.headers.get("cache-control")).toBe("private, no-store");
     expect(signedIn.headers.getSetCookie().join("\n")).toContain(`${SESSION_COOKIE}=`);
     expect(await stranger.json()).toEqual({ status: "signed_out" });
     expect(stranger.headers.getSetCookie()).toEqual([]);
+  });
+
+  it("tells an operator's own header that they are one", async () => {
+    // The header shows an operator the way to the dashboard, and the flag
+    // rides on the answer that already carries their address (ADR-0026 §6).
+    const answered = await readVisitor(
+      new NextRequest("http://localhost:3000/api/v2/session", {
+        headers: { cookie: signedInAs("operator@example.com", { operator: true }) },
+      }),
+    );
+
+    expect(await answered.json()).toEqual({
+      status: "signed_in",
+      email: "operator@example.com",
+      operator: true,
+    });
   });
 
   it("starts a person with reports at the latest of them, and one without at nothing", async () => {

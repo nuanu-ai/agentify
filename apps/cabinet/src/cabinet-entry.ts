@@ -80,10 +80,12 @@ export type AttachMerchantResult =
 export type MerchantKeyReplacement = "replaced" | "not-matched" | "unknown";
 
 /**
- * A live session: whose it is, which request its link was asked for, and what
- * reading it asked of the browser.
+ * A live session: whose it is, whether that person is an operator, which
+ * request its link was asked for, and what reading it asked of the browser.
  *
- * The request is the scanner's full-report request the link that opened this
+ * The operator flag is read with the session every time, so a flag set or
+ * cleared at the terminal holds from the next request (ADR-0026 §6). The
+ * request is the scanner's full-report request the link that opened this
  * session was asked for, and null for any other session. The lines renew the
  * session's cookie when the reading moved the session's end, which happens at
  * most once a day, and are empty otherwise. Whoever answers the browser passes
@@ -91,6 +93,7 @@ export type MerchantKeyReplacement = "replaced" | "not-matched" | "unknown";
  */
 export type LiveSession = Readonly<{
   person: Person;
+  operator: boolean;
   request: string | null;
   setCookies: readonly string[];
 }>;

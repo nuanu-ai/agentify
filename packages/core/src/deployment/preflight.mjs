@@ -126,11 +126,6 @@ export function problemsWith(channel, resolved) {
 
   equal("web", "AGENTIFY_SURFACE_MODE", web.AGENTIFY_SURFACE_MODE, wanted.surfaceMode);
   equal("web", "AGENTIFY_FRONT_PAGE", web.AGENTIFY_FRONT_PAGE, "scanner_front_page");
-  for (const name of ["ADMIN_BASIC_AUTH_USER", "ADMIN_BASIC_AUTH_HASH"]) {
-    if (typeof web[name] !== "string" || web[name].trim() === "") {
-      problems.push(`web: ${name} is required to protect scanner administration`);
-    }
-  }
 
   // The cabinet was handed the gateway's pair, compared value for value. A
   // cabinet on the scripted facilitator beside a gateway on the public one

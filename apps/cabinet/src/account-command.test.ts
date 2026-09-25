@@ -60,6 +60,34 @@ async function running(
   return { code, said: lines.join("\n") };
 }
 
+/**
+ * Signs a person in the way anybody signs in, which is what writes their row,
+ * and hands back the cookie header their browser would carry.
+ */
+async function signedIn(
+  identity: Identity,
+  messages: Message[],
+  rows: Record<string, Record<string, unknown>[]>,
+  email: string,
+): Promise<string> {
+  rewindLinkSends(rows);
+  await identity.requestLink(email, "default");
+  const token = new URL(
+    messages.at(-1)?.body.match(/https?:\/\/\S+/)?.[0] ?? "wrong:",
+  ).searchParams.get("token");
+  if (token === null) throw new Error("the link was not mailed");
+  const opened = await identity.openLink(token);
+  if (opened.status !== "opened") throw new Error("the link did not open");
+  return opened.setCookies.map((line) => line.split(";")[0]).join("; ");
+}
+
+/** What one line of a listing says about this address, after the address itself. */
+const rowOf = (listed: Run, email: string): string => {
+  const line = listed.said.split("\n").find((one) => one.startsWith(`${email} `));
+  if (line === undefined) throw new Error(`the listing has no line for ${email}`);
+  return line.slice(email.length);
+};
+
 describe("the passwordless account command", () => {
   it("seeds an unconfirmed P2 without a password or session", async () => {
     const { identity, rows } = store();
@@ -214,6 +242,77 @@ describe("the passwordless account command", () => {
     expect((await identity.byEmail("person@example.com"))?.merchant?.id).toBe(MERCHANT);
   });
 
+  it("flags an operator, clears the flag, and lists who is one", async () => {
+    // Being an operator is a flag on the account's row that only this command
+    // writes (ADR-0026 §6), and `list` is how a terminal answers who holds it.
+    const { identity, messages, rows } = store();
+    await signedIn(identity, messages, rows, "operator@example.com");
+    await signedIn(identity, messages, rows, "person@example.com");
+
+    const flagged = await running(identity, ["operator", " Operator@Example.com "]);
+
+    expect(flagged.code).toBe(0);
+    expect(flagged.said).toContain("operator@example.com");
+    const listed = await running(identity, ["list"]);
+    expect(rowOf(listed, "operator@example.com")).toMatch(/\boperator\b/);
+    expect(rowOf(listed, "operator@example.com")).not.toContain("not an operator");
+    expect(rowOf(listed, "person@example.com")).toContain("not an operator");
+
+    const cleared = await running(identity, ["operator", "operator@example.com", "--off"]);
+
+    expect(cleared.code).toBe(0);
+    expect(rowOf(await running(identity, ["list"]), "operator@example.com")).toContain(
+      "not an operator",
+    );
+  });
+
+  it("moves the flag without ending a session, and the session reads it afresh", async () => {
+    // The flag is read on every request, so neither direction needs the person
+    // to sign in again, and neither signs them out.
+    const { identity, messages, rows } = store();
+    const cookie = await signedIn(identity, messages, rows, "operator@example.com");
+
+    await running(identity, ["operator", "operator@example.com"]);
+    expect((await identity.whoIs(cookie, { renew: false }))?.operator).toBe(true);
+
+    await running(identity, ["operator", "operator@example.com", "--off"]);
+    expect((await identity.whoIs(cookie, { renew: false }))?.operator).toBe(false);
+    expect(rowOf(await running(identity, ["list"]), "operator@example.com")).toContain(
+      "1 session open",
+    );
+  });
+
+  it("refuses to flag an address nobody has signed in as, and says to sign in first", async () => {
+    const { identity } = store();
+
+    for (const argv of [
+      ["operator", "stranger@example.com"],
+      ["operator", "stranger@example.com", "--off"],
+    ]) {
+      const refused = await running(identity, argv);
+
+      expect(refused.code, argv.join(" ")).not.toBe(0);
+      expect(refused.said, argv.join(" ")).toMatch(/nobody has an account/i);
+      expect(refused.said, argv.join(" ")).toMatch(/sign in/i);
+    }
+    await expect(identity.byEmail("stranger@example.com")).resolves.toBeNull();
+  });
+
+  it("refuses an operator command it cannot read, and changes nothing", async () => {
+    const { identity, messages, rows } = store();
+    const cookie = await signedIn(identity, messages, rows, "operator@example.com");
+
+    for (const argv of [
+      ["operator"],
+      ["operator", "not-an-address"],
+      ["operator", "operator@example.com", "--of"],
+      ["operator", "operator@example.com", "--off", "again"],
+    ]) {
+      expect((await running(identity, argv)).code, argv.join(" ")).toBe(2);
+    }
+    expect((await identity.whoIs(cookie, { renew: false }))?.operator).toBe(false);
+  });
+
   it("renders control characters from restored addresses harmlessly", async () => {
     const { identity, rows } = store();
     rows.cabinet_accounts?.push({
@@ -231,5 +330,8 @@ describe("the passwordless account command", () => {
 
     expect(listed.said).not.toContain("\u001b");
     expect(listed.said).toContain("\\x1b");
+    // A row written without the flag, as a hand-made or restored one can be,
+    // is nobody's operator.
+    expect(listed.said).toContain("not an operator");
   });
 });

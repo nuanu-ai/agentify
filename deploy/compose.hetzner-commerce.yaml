@@ -61,8 +61,6 @@ services:
     environment:
       AGENTIFY_SITE_ADDRESS: ":8080"
       AGENTIFY_TRUSTED_EDGE_CIDR: "172.30.80.2/32"
-      ADMIN_BASIC_AUTH_USER: "${ADMIN_BASIC_AUTH_USER:?set the scanner admin user}"
-      ADMIN_BASIC_AUTH_HASH: "${ADMIN_BASIC_AUTH_HASH:?set the scanner admin bcrypt hash}"
     networks:
       default:
       agentify-ingress:

@@ -70,8 +70,8 @@ agentify.ad {
 		-Server
 	}
 
-	# That image carries the whole route table, the scanner's front page and
-	# its administration protection included. Test runs the same one.
+	# That image carries the whole route table, the scanner's front page
+	# included. Test runs the same one.
 	reverse_proxy agentify-web:8080
 }
 

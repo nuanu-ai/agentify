@@ -136,6 +136,23 @@ async function expectSharedAssets(baseUrl) {
   }
 }
 
+/**
+ * Asserts that Caddy adds nothing to a path that it does not add to an ordinary
+ * scanner path: the operator's dashboard has no door of its own at the edge,
+ * so no header may tell `/admin` apart from any other page (ADR-0026 §6).
+ */
+async function expectUnmarked(baseUrl, requestPath) {
+  const headersOf = async (path) => {
+    const response = await fetch(`${baseUrl}${path}`);
+    assert.equal(response.status, 200, path);
+    assert.equal((await response.json()).role, "scanner", path);
+    return Object.fromEntries(
+      [...response.headers].filter(([name]) => name !== "date" && name !== "content-length"),
+    );
+  };
+  assert.deepEqual(await headersOf(requestPath), await headersOf("/elsewhere"), requestPath);
+}
+
 async function expectUpstreamMissing(baseUrl, requestPath, role) {
   const response = await fetch(`${baseUrl}${requestPath}`);
   assert.equal(response.status, 404, requestPath);
@@ -155,7 +172,7 @@ async function expectSingleForwardedClient(baseUrl, spoofed) {
   assert.equal(body.forwardedFor.includes(","), false, body.forwardedFor);
 }
 
-function runInner({ configPath, containerName, trustedEdge, ports, adminHash }) {
+function runInner({ configPath, containerName, trustedEdge, ports }) {
   docker(
     "run",
     "-d",
@@ -177,10 +194,6 @@ function runInner({ configPath, containerName, trustedEdge, ports, adminHash }) 
     "AGENTIFY_FRONT_PAGE=scanner_front_page",
     "-e",
     `AGENTIFY_TRUSTED_EDGE_CIDR=${trustedEdge}/32`,
-    "-e",
-    `ADMIN_BASIC_AUTH_HASH=${adminHash}`,
-    "-e",
-    "ADMIN_BASIC_AUTH_USER=acceptance",
     "-e",
     `AGENTIFY_SCANNER_UPSTREAM=host.docker.internal:${ports.scanner}`,
     "-e",
@@ -204,15 +217,6 @@ try {
     cabinet: await listen("cabinet"),
     gateway: await listen("gateway"),
   };
-  const adminHash = docker(
-    "run",
-    "--rm",
-    CADDY_IMAGE,
-    "caddy",
-    "hash-password",
-    "--plaintext",
-    "acceptance-only-not-a-secret",
-  );
   const edgeAdapt = dockerResult(
     "run",
     "--rm",
@@ -249,7 +253,6 @@ try {
     containerName: innerName,
     trustedEdge: edgeAddress,
     ports,
-    adminHash,
   });
 
   const innerBase = publishedBase(innerName);
@@ -268,6 +271,8 @@ try {
     ["/x402", "gateway"],
     ["/x402/catalog", "gateway"],
     ["/healthz", "gateway"],
+    ["/admin", "scanner"],
+    ["/admin/users", "scanner"],
     ["/cabinet-other", "scanner"],
     ["/v0-other", "scanner"],
     ["/x402-other", "scanner"],
@@ -318,21 +323,10 @@ try {
 
   for (const baseUrl of [innerBase, edgeBase]) {
     await expectSingleForwardedClient(baseUrl, "198.51.100.77");
-    for (const adminPath of ["/admin", "/admin%2Fusers"]) {
-      const admin = await fetch(`${baseUrl}${adminPath}`);
-      assert.equal(admin.status, 401, adminPath);
-      assert.equal(admin.headers.get("referrer-policy"), "same-origin", adminPath);
+    for (const adminPath of ["/admin", "/admin/users", "/admin%2Fusers"]) {
+      await expectUnmarked(baseUrl, adminPath);
     }
   }
-  response = await fetch(`${edgeBase}/admin`, {
-    headers: {
-      Authorization: `Basic ${Buffer.from("acceptance:acceptance-only-not-a-secret").toString(
-        "base64",
-      )}`,
-    },
-  });
-  assert.equal(response.status, 200);
-  assert.equal((await response.json()).role, "scanner");
 
   const missingSelector = dockerResult(
     "run",
@@ -361,7 +355,6 @@ try {
     containerName: mutatedName,
     trustedEdge: edgeAddress,
     ports,
-    adminHash,
   });
   const mutatedBase = publishedBase(mutatedName);
   await waitFor(mutatedBase);
@@ -372,7 +365,7 @@ try {
   );
 
   console.log(
-    "PASS: actual Caddy preserves exact commerce/docs/assets/admin routes and one trusted scanner client IP",
+    "PASS: actual Caddy preserves exact commerce/docs/assets routes, passes /admin to the scanner unmarked, and keeps one trusted scanner client IP",
   );
 } finally {
   for (const container of [mutatedName, innerName, edgeName]) {

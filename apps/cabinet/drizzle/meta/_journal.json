@@ -85,6 +85,13 @@
       "when": 1790257130683,
       "tag": "0011_one_session_for_the_site",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790316561142,
+      "tag": "0012_the_operator_flag",
+      "breakpoints": true
     }
   ]
 }

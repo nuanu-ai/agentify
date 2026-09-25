@@ -102,13 +102,19 @@ the day the operator cannot keep up.
 dashboard: "я думаю о том чтобы сделать вход в нее по той же сессии что и все
 остальное, только пользователь должен быть привелигирован". Being an operator is
 a flag on the account's row in `cabinet_accounts`, closed to input from the
-browser like `merchantId`, and only a subcommand of `pnpm account` at the
-server's terminal writes it. An operator signs in once like anybody, writing
-the row, and is flagged afterwards. `/admin` opens for a session whose account
-carries the flag, and everybody else, signed in or not, gets one answer, the
-ordinary answer of a page that does not exist. When the flag cannot be
-confirmed because the cabinet does not answer, the answer is the same: the
-dashboard fails closed. The dashboard stays read-only.
+browser like `merchantId`, and only `pnpm account operator` at the server's
+terminal writes it, `--off` clearing it. An operator signs in once like
+anybody, writing the row, and is flagged afterwards; an address with no row is
+refused. `/admin` opens for a session whose account carries the flag, and
+everybody else, signed in or not, gets one answer: a 404 with the site's
+missing-page page. When the flag cannot be confirmed because the cabinet does
+not answer, the answer is the same: the dashboard fails closed. The scanner
+learns the flag on the question it already asks, whose session a cookie is,
+and asks it on every request, so moving the flag ends no session and holds
+from the next page; the header shows an operator the way in. The refusal is
+the page's own and not byte for byte a path no route has, since a route that
+exists refuses with its own bytes; the repository is public, so that the
+route exists is no secret. The dashboard stays read-only.
 
 ## Cases the scanner's and the cabinet's suites answer for
 
@@ -117,7 +123,7 @@ dashboard fails closed. The dashboard stays read-only.
 | a sign-in link with no destination | reports and no merchant | the link leads to their latest report, never to the screen that makes a merchant | the latest report |
 | a link to a report or the cabinet from another site | a session | the cookie rides the navigation; nothing is made, and no request but the session's own is finished | that page |
 | the cabinet, the first time | a session, no merchant | one control; its press makes the merchant and key | the seller-name screen |
-| `/admin` | anything but a session whose flag the cabinet confirms | the answer of a page that does not exist | nowhere |
+| `/admin` | anything but a session whose flag the cabinet confirms | a 404 with the site's missing-page page | nowhere |
 | a public scanner page, the cabinet unreachable | anything | the page says it cannot tell who is visiting | that page |
 | a link pressed twice, expired or unknown | no session | refused the same way | the sign-in page |
 | the same link | a live session | nothing is said about the link's address | that person's start |
@@ -128,13 +134,15 @@ Out: the scanner's report sessions, their cookie and its landing page for links;
 the handoff from a report into the cabinet and the receipt the two processes
 passed between them; and the whole `/admin` block of the edge configuration,
 basic auth and headers alike, with its `ADMIN_BASIC_AUTH_*` values. The
-dashboard has no protection of its own, so the refusal lives in the application,
-and a routing test proves that `/admin` and every path under it answer a visitor
-without the flag as a page that does not exist. A request whose link was
-consumed but whose person never arrived waits, and asking again while signed in
-finishes it. A deletion request at the scanner removes the lead, and with it the
-address's reports, and for a person who owns no merchant their row and sessions;
-a merchant's owner is removed by rules not yet built (ADR-0014).
+dashboard has no protection of its own, so the refusal lives in the application:
+a routing test on the scanner's build proves that `/admin` and a path under it
+answer a visitor without the flag, and everybody while the cabinet cannot say,
+with a 404 and the site's missing-page page, and the edge's routing test proves
+that no header marks the path. A request whose link was consumed but whose
+person never arrived waits, and asking again while signed in finishes it. A
+deletion request at the scanner removes the lead, and with it the address's
+reports, and for a person who owns no merchant their row and sessions; a
+merchant's owner is removed by rules not yet built (ADR-0014).
 
 What it costs. The mailbox is the whole key: losing it loses the cabinet, and
 whoever reads a merchant's mail is that merchant. A refused request says when

@@ -105,14 +105,23 @@ describe("the internal route between the scanner and the cabinet", () => {
     );
   });
 
-  it("answers whose session a cookie is with the address, the waiting request and the renewed cookie", () => {
+  it("answers whose session a cookie is with the address, the operator flag, the waiting request and the renewed cookie", () => {
     const signedIn = {
       status: "signed_in",
       email: "owner@example.com",
+      operator: false,
       request: requestId,
       set_cookie: ["agentify.session_token=value.signature; Max-Age=2592000; Path=/"],
     };
     expect(readSessionResponseSchema.safeParse(signedIn).success).toBe(true);
+    expect(readSessionResponseSchema.safeParse({ ...signedIn, operator: true }).success).toBe(true);
+    // The flag opens the operator's dashboard (ADR-0026 §6), so only a stored
+    // yes or no is an answer; anything else is a cabinet the scanner cannot read.
+    for (const operator of ["true", 1, null])
+      expect(
+        readSessionResponseSchema.safeParse({ ...signedIn, operator }).success,
+        String(operator),
+      ).toBe(false);
     expect(readSessionResponseSchema.safeParse({ ...signedIn, request: null }).success).toBe(true);
     expect(readSessionResponseSchema.safeParse({ ...signedIn, set_cookie: [] }).success).toBe(true);
     expect(readSessionResponseSchema.safeParse({ status: "signed_out" }).success).toBe(true);

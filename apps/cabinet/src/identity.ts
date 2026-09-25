@@ -76,6 +76,7 @@ export interface AccountSummary {
   readonly sessions: number;
   readonly merchant: string | null;
   readonly confirmed: boolean;
+  readonly operator: boolean;
 }
 
 /** Operator-only operations kept out of the page-facing identity port. */
@@ -84,6 +85,12 @@ export interface Identity extends CabinetIdentity {
   byEmail(email: string): Promise<Person | null>;
   byId(personId: string): Promise<Person | null>;
   endEverySessionFor(email: string): Promise<number>;
+  /**
+   * Sets or clears the operator flag on the account at this address, and says
+   * whether there was one. Sessions are left as they are: the flag is read on
+   * every reading of a session, so the next request already sees the move.
+   */
+  setOperator(email: string, operator: boolean): Promise<boolean>;
   /** The addresses of every account naming this merchant, for an announcement. */
   emailsNaming(merchantId: string): Promise<readonly string[]>;
   list(now: Date): Promise<readonly AccountSummary[]>;
@@ -199,6 +206,10 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
         additionalFields: {
           merchantId: { type: "string", required: false, input: false },
           merchantKey: { type: "string", required: false, input: false },
+          // Whether this person may read the operator's dashboard (ADR-0026
+          // §6). Closed to input like the merchant: only the terminal's
+          // command writes it.
+          operator: { type: "boolean", required: false, defaultValue: false, input: false },
         },
       },
       session: {
@@ -451,6 +462,7 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
         live.push({
           token: found.response.session.token,
           person: personFrom(found.response.user),
+          operator: operatorOn(found.response.user),
           request: typeof request === "string" ? request : null,
           setCookies: found.headers.getSetCookie(),
         });
@@ -683,7 +695,12 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
       if (first === undefined) return null;
       const owners = new Set(live.map((one) => one.person.id));
       if (owners.size === 1) {
-        return { person: first.person, request: first.request, setCookies: first.setCookies };
+        return {
+          person: first.person,
+          operator: first.operator,
+          request: first.request,
+          setCookies: first.setCookies,
+        };
       }
       for (const one of live) await endSession(one.token);
       console.log(
@@ -820,6 +837,15 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
       return open.length;
     },
 
+    async setOperator(email, operator) {
+      const written = await (await contextOf()).adapter.update<{ operator?: unknown }>({
+        model: "user",
+        where: [{ field: "email", value: emailAs(email) }],
+        update: { operator },
+      });
+      return written !== null && written !== undefined;
+    },
+
     async emailsNaming(merchantId) {
       const people = await (await contextOf()).adapter.findMany<{ email: string }>({
         model: "user",
@@ -863,6 +889,7 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
           sessions: open.filter((session) => session.expiresAt > now).length,
           merchant: person.merchant?.id ?? null,
           confirmed: person.confirmed,
+          operator: operatorOn(one),
         });
       }
       return rows.sort((one, other) => one.email.localeCompare(other.email));
@@ -908,6 +935,14 @@ function personFrom(user: PersonRow): Person {
     confirmed: user.emailVerified === true,
     merchant: { id: user.merchantId, key: user.merchantKey },
   };
+}
+
+/**
+ * Whether a row the component read carries the operator flag. Anything but a
+ * stored true is no, so a row that predates the flag or lost it grants nothing.
+ */
+function operatorOn(user: object): boolean {
+  return (user as { operator?: unknown }).operator === true;
 }
 
 function asMerchantPerson(person: Person): MerchantPerson {

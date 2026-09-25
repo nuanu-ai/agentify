@@ -4,8 +4,9 @@
  * It publishes no port and is reached by service name on the compose network,
  * behind a secret only the two processes hold (ADR-0024). The scanner asks it
  * three things (ADR-0026 §2): send a link for this address with this
- * destination; whose session is this cookie; and, for a privacy deletion,
- * remove this person if they own no merchant.
+ * destination; whose session is this cookie, and is its account an operator
+ * (§6); and, for a privacy deletion, remove this person if they own no
+ * merchant.
  */
 
 import { createHash, timingSafeEqual } from "node:crypto";
@@ -94,6 +95,7 @@ export function buildReportIdentityApp(
             : {
                 status: "signed_in",
                 email: session.person.email,
+                operator: session.operator,
                 request: session.request,
                 set_cookie: [...session.setCookies],
               };

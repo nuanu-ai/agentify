@@ -18,12 +18,12 @@ import { z } from "zod";
 
 export type Visitor =
   | Readonly<{ status: "loading" }>
-  | Readonly<{ status: "signed_in"; email: string }>
+  | Readonly<{ status: "signed_in"; email: string; operator: boolean }>
   | Readonly<{ status: "signed_out" }>
   | Readonly<{ status: "unknown" }>;
 
 const answerSchema = z.union([
-  z.object({ status: z.literal("signed_in"), email: z.string().min(3) }),
+  z.object({ status: z.literal("signed_in"), email: z.string().min(3), operator: z.boolean() }),
   z.object({ status: z.literal("signed_out") }),
 ]);
 

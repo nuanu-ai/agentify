@@ -348,8 +348,6 @@
       },
       "entrypoint": null,
       "environment": {
-        "ADMIN_BASIC_AUTH_HASH": "$$2a$$14$$offline-fixture-bcrypt-hash",
-        "ADMIN_BASIC_AUTH_USER": "test-admin",
         "AGENTIFY_FRONT_PAGE": "scanner_front_page",
         "AGENTIFY_SITE_ADDRESS": "test.agentify.ad",
         "AGENTIFY_SURFACE_MODE": "test"

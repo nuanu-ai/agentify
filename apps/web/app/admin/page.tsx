@@ -1,6 +1,21 @@
+/**
+ * The operator's dashboard: read-only numbers about the scanner, for a session
+ * whose account carries the operator flag (ADR-0026 §6).
+ *
+ * Nothing stands in front of it. The page asks the cabinet on every request,
+ * and anybody it does not confirm, everybody while the cabinet cannot say
+ * included, gets the site's 404 page. The refusal happens in the metadata as
+ * well as in the page: metadata is resolved on its own, and a title resolved
+ * for a visitor who is then refused would tell them what this page is.
+ */
+
 import type { Metadata } from "next";
+import { headers } from "next/headers";
+import { notFound } from "next/navigation";
+import { cache } from "react";
 
 import { Brand } from "../../components/brand";
+import { isOperator } from "../../lib/server/operator";
 import {
   getOperatorDashboard,
   type OperatorDailyFunnel,
@@ -11,10 +26,13 @@ import styles from "./admin.module.css";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export const metadata: Metadata = {
-  title: "Operator dashboard",
-  robots: { index: false, follow: false },
-};
+/** Whether this request's session is an operator's, asked once per request. */
+const operatorVisiting = cache(async () => await isOperator((await headers()).get("cookie")));
+
+export async function generateMetadata(): Promise<Metadata> {
+  if (!(await operatorVisiting())) notFound();
+  return { title: "Operator dashboard", robots: { index: false, follow: false } };
+}
 
 const number = new Intl.NumberFormat("en-US");
 const percent = new Intl.NumberFormat("en-US", {
@@ -79,6 +97,7 @@ const statusClass = (status: string | null) => {
 };
 
 export default async function AdminPage() {
+  if (!(await operatorVisiting())) notFound();
   const data = await getOperatorDashboard();
   const { overview, selfScan } = data;
 

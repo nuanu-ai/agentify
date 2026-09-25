@@ -68,27 +68,17 @@
 	}
 }
 
+# Every path the site block below leaves unclaimed is the scanner's, `/admin`
+# included. The operator's dashboard has no door of its own here: it opens for
+# an account that carries the operator flag and answers everybody else with the
+# site's 404 page, and the scanner decides which (ADR-0026 §6).
 (scanner_front_page) {
-	@admin path /admin /admin/*
-	handle @admin {
-		basic_auth {
-			{$ADMIN_BASIC_AUTH_USER} {$ADMIN_BASIC_AUTH_HASH}
-		}
-		header {
-			Cache-Control "private, no-store"
-			X-Robots-Tag "noindex, nofollow"
-			Referrer-Policy same-origin
-		}
+	handle {
 		reverse_proxy {$AGENTIFY_SCANNER_UPSTREAM:scanner:3000} {
 			# Scanner consumers historically disagreed about whether the first or
 			# last forwarded address was the browser. Give them one address. The
 			# global trusted-proxy boundary above decides it; incoming values from
 			# any other peer are not evidence.
-			header_up X-Forwarded-For {client_ip}
-		}
-	}
-	handle {
-		reverse_proxy {$AGENTIFY_SCANNER_UPSTREAM:scanner:3000} {
 			header_up X-Forwarded-For {client_ip}
 		}
 	}

@@ -101,21 +101,13 @@ describe("a channel that is what it claims to be", () => {
   it.each([
     ["production", PRODUCTION_CHANNEL],
     ["test", TEST_CHANNEL],
-  ] as const)(
-    "refuses a static deployed root or unprotected scanner administration in %s",
-    (channel, config) => {
-      for (const value of [null, "some_other_front_page"]) {
-        expect(
-          problemsWith(channel, withEnv(config, "web", "AGENTIFY_FRONT_PAGE", value)).join("\n"),
-        ).toMatch(/AGENTIFY_FRONT_PAGE/);
-      }
-      for (const name of ["ADMIN_BASIC_AUTH_USER", "ADMIN_BASIC_AUTH_HASH"]) {
-        expect(problemsWith(channel, withEnv(config, "web", name, null)).join("\n")).toContain(
-          name,
-        );
-      }
-    },
-  );
+  ] as const)("refuses a static deployed root in %s", (channel, config) => {
+    for (const value of [null, "some_other_front_page"]) {
+      expect(
+        problemsWith(channel, withEnv(config, "web", "AGENTIFY_FRONT_PAGE", value)).join("\n"),
+      ).toMatch(/AGENTIFY_FRONT_PAGE/);
+    }
+  });
 
   it("refuses retired channel names", () => {
     expect(problemsWith("retired-test", TEST_CHANNEL)).toContainEqual(

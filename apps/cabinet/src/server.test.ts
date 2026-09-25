@@ -1196,6 +1196,63 @@ describe("one session for the whole site", () => {
   });
 });
 
+describe("the operator flag", () => {
+  it("is moved by no request a browser can send to the cabinet", async () => {
+    // Being an operator opens the operator's dashboard, and only the terminal's
+    // command grants it (ADR-0026 §6). So a signed-in person sends every route
+    // the cabinet has a flag of its own, as a form, as JSON and in the query,
+    // and is no operator afterwards. The routes are read off the cabinet's own
+    // router rather than listed here, so a route added later is asked too.
+    //
+    // Every handler runs with what it is sent, and most stop early: a form
+    // without the fields it asks for is refused, and a route parameter is
+    // filled with an identifier no card or key has, so the gateway refuses it
+    // and the handler relays that. What this holds is that no handler takes
+    // the flag from a request, not that every line behind those refusals ran.
+    const running = await started({ wooShops: memoryWooShops() });
+    await running.browser.signIn();
+    const listed = buildApp(
+      loadConfig({
+        GATEWAY_URL: running.gateway.url,
+        DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
+        AUTH_SECRET: "x".repeat(44),
+        PAYMENT_NETWORK: "eip155:84532",
+        FACILITATOR_URL: "sandbox:scripted",
+        REGISTRATION_INVITATION: INVITATION,
+      }),
+      { identity: running.identity, wooShops: memoryWooShops() },
+    );
+    const routes = (
+      listed.router.stack as { route?: { path: string; methods: Record<string, boolean> } }[]
+    ).flatMap(({ route }) =>
+      route === undefined
+        ? []
+        : Object.keys(route.methods).map((method) => ({
+            method,
+            path: route.path.replaceAll(/:[a-z_]+/g, "x"),
+          })),
+    );
+    expect(routes.filter(({ method }) => method === "post").length).toBeGreaterThan(10);
+
+    // Signing out ends the session the rest are sent with, so it goes last.
+    const lastly = (path: string) => (path.endsWith("/sign-out") ? 1 : 0);
+    for (const { method, path } of routes.sort(
+      (one, other) => lastly(one.path) - lastly(other.path),
+    )) {
+      if (method === "get") {
+        await running.browser.get(`${path}?operator=true`);
+        continue;
+      }
+      await running.browser.post(path, { operator: "true" });
+      await running.browser.postRaw(path, "application/json", JSON.stringify({ operator: true }));
+    }
+
+    const accounts = await running.identity.list(new Date());
+    expect(accounts.length).toBeGreaterThan(0);
+    expect(accounts.filter(({ operator }) => operator)).toStrictEqual([]);
+  });
+});
+
 describe("the gate", () => {
   it("lets a visitor with no session reach exactly the routes ADR-0009 §2 lists above it", async () => {
     // The list is written in the decision rather than discovered by reading

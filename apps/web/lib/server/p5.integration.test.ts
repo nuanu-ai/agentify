@@ -198,7 +198,7 @@ beforeAll(async () => {
         200,
         email === undefined
           ? { status: "signed_out" }
-          : { status: "signed_in", email, request: null, set_cookie: [] },
+          : { status: "signed_in", email, operator: false, request: null, set_cookie: [] },
       );
       return;
     }
