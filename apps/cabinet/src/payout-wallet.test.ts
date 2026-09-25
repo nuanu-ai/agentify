@@ -131,6 +131,24 @@ describe("the block on the settings screen", () => {
     expect(text).toMatch(/optional/i);
   });
 
+  it("says publishing is refused without an address where the door asks for one", () => {
+    // The consequence a merchant can feel, said on the one screen where the
+    // address is set: until it is, every card their code publishes comes back
+    // refused, on the test channel as on live. The sandbox asks for none.
+    for (const mode of ["test", "live"] as const) {
+      const text = readable(payoutWalletBlock({ ...looking({ wallet: null }), mode }));
+      expect(text, mode).toMatch(/publishing a card is refused/i);
+    }
+    expect(readable(payoutWalletBlock(looking({ wallet: null })))).not.toMatch(/refused/i);
+  });
+
+  it("says nothing about a refusal once an address is set", () => {
+    const text = readable(payoutWalletBlock({ ...looking({ wallet: SHAPED }), mode: "test" }));
+
+    expect(text).not.toMatch(/refused/i);
+    expect(text).not.toMatch(/optional/i);
+  });
+
   it("names Base Sepolia and test USDC on the test stack", () => {
     const text = readable(payoutWalletBlock({ ...looking({ wallet: null }), mode: "test" }));
 

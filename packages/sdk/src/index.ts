@@ -41,6 +41,7 @@ export type {
   Delivery,
   Fulfillment,
   HandlerAnswer,
+  MerchantFinding,
   Money,
   Order,
   OrderCallResponse,
@@ -60,6 +61,7 @@ export type {
 } from "@nuanu-ai/agentify-contracts";
 export {
   CARD_REJECTED,
+  MERCHANT_FINDINGS,
   ORDER_EVENT_TYPES,
   RECOMMENDED_REFUSAL_CODES,
 } from "@nuanu-ai/agentify-contracts";

@@ -31,7 +31,12 @@
  * asked the payment network and heard nothing — not that nothing was charged.
  */
 
-import type { Fulfillment, OrderStatus, SellingState } from "@nuanu-ai/agentify-contracts";
+import type {
+  Fulfillment,
+  MerchantFinding,
+  OrderStatus,
+  SellingState,
+} from "@nuanu-ai/agentify-contracts";
 
 /** How a state reads to the eye, before any word is read. */
 export type Tone = "ok" | "warn" | "busy" | "quiet";
@@ -98,6 +103,33 @@ export const NEEDS_ATTENTION: readonly OrderStatus[] = Object.freeze([
 ]);
 
 export const needsAttention = (status: OrderStatus): boolean => NEEDS_ATTENTION.includes(status);
+
+/**
+ * What the publish door can refuse every card of a merchant for and the
+ * merchant sets in Settings: the door's own codes, less the operator's
+ * approval, which nobody sets there. Which of them the door asks for on which
+ * channel is its rule (`readinessOf` in the core), never a screen's.
+ *
+ * Total by its type rather than by a walk: the type is drawn from the
+ * contract's codes, so a code added there does not compile here until it has
+ * words or is said to be nobody's to set.
+ */
+export type Unset = Exclude<MerchantFinding, "no_operator_approval">;
+
+/** Each of them as the settings screen names it, for every screen that names one. */
+export const UNSET_WORDS: Readonly<Record<Unset, string>> = Object.freeze({
+  no_seller_name: "the name your products are sold under",
+  no_payout_wallet: "the wallet address your money arrives at",
+});
+
+/**
+ * What a screen says where the door asks for the operator's approval: what
+ * this cabinet cannot check, and that it cannot. No route tells it whether a
+ * merchant holds one, so "I don't know" is said as that and never as "there is
+ * none".
+ */
+export const APPROVAL_UNREAD =
+  "Selling live also needs Agentify to approve your merchant, and this page cannot tell whether it has.";
 
 /**
  * A sum of money as a merchant reads it.
