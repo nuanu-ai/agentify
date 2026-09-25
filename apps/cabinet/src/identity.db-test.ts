@@ -502,6 +502,54 @@ if (databaseUrl === null) {
       expect((await identity.whoIs(elsewhere))?.person.email).toBe("stranger@example.com");
     });
 
+    it.each([
+      ["this account's", "person"],
+      ["the merchant's", "merchant"],
+    ] as const)(
+      "ends %s live sessions behind more than a hundred expired rows, and counts only the live ones",
+      async (_whose, reach) => {
+        // Rows of sessions that ran out are never deleted, and the store reads
+        // at most a hundred rows at a time. An account that has signed in many
+        // times has many such rows, and a sign-out that read only the first
+        // hundred would find them all expired and leave a live one signed in.
+        const messages: Message[] = [];
+        const identity = identityOn(messages);
+        const signedIn = async (email: string): Promise<string> => {
+          await rewindLinkSends();
+          await identity.requestLink(email, "default");
+          const opened = await identity.openLink(tokenIn(messages.at(-1) as Message));
+          if (opened.status !== "opened") throw new Error(`${email} could not sign in`);
+          return opened.setCookies.map((line) => line.split(";")[0]).join("; ");
+        };
+        const owner = await identity.make("owner@example.com", MERCHANT);
+        if (owner === null) throw new Error("the owner's account was not made");
+        const laptop = await signedIn("owner@example.com");
+        await pool.query(
+          `insert into cabinet_sessions (id, token, user_id, expires_at, created_at, updated_at)
+             select 'expired_' || n, 'expired-token-' || n, $1,
+                    now() - interval '60 days', now() - interval '90 days', now() - interval '90 days'
+               from generate_series(1, 120) as n`,
+          [owner.id],
+        );
+        // Rewriting the live row moves it behind the expired ones in the
+        // table, where a read that stops at a hundred rows never reaches it.
+        await pool.query(
+          "update cabinet_sessions set updated_at = updated_at where user_id = $1 and expires_at > now()",
+          [owner.id],
+        );
+        const pressed = await signedIn("owner@example.com");
+
+        const ended =
+          reach === "person"
+            ? await identity.endOtherSessionsOfPerson(owner.id, pressed)
+            : await identity.endOtherSessionsOfMerchant(MERCHANT.id, pressed);
+
+        expect(ended).toBe(1);
+        expect(await identity.whoIs(laptop)).toBeNull();
+        expect((await identity.whoIs(pressed))?.person.email).toBe("owner@example.com");
+      },
+    );
+
     it("ends every other session of one account and leaves another account's alone", async () => {
       // Signing out every other device from Settings (ADR-0026 §3). On
       // PostgreSQL the sessions are rows the component reads by account, so
