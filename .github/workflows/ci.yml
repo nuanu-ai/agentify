@@ -174,13 +174,21 @@ jobs:
 
       - run: pnpm build:portal
 
-  # The decision log needs neither Node nor dependencies — only bash and files.
+  # The decision log needs only bash and files, and the release's own tests
+  # need Docker, which the runner has. One of those renders each channel from
+  # the real compose files and runs the release's preflight over it, which is
+  # a Node script with no dependencies: Node comes from .nvmrc, as it does for
+  # the gate, and nothing is installed.
   decisions:
     name: decisions
     needs: secret_scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
       - run: ./scripts/check-decisions.sh
       - run: python3 -m unittest discover -s deploy -p 'test_*.py'
       - run: python3 -m unittest discover -s deploy/ansible -p 'test_*.py'

@@ -685,8 +685,7 @@ describe("a new key on the live deployment", () => {
   });
 
   it("names a key made elsewhere by one line of at most a hundred characters", async () => {
-    // A key issued at the terminal, or before labels had a limit, can carry
-    // anything. The announcement names it all the same, as one line the
+    // A key written before labels had a limit can carry anything. The announcement names it all the same, as one line the
     // cabinet's listener takes, rather than failing to announce a wallet
     // change because of how a key was named.
     const { served, harnessed } = await started();

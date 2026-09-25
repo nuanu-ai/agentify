@@ -36,8 +36,10 @@ watches the checks run. The full report is unlocked with an email address and
 the one-time link sent to it. The same address is the key to the rest: the
 report carries one control that opens the merchant cabinet, and the cabinet's
 own door is that one field and that one link — there is no password and no
-invitation code (ADR-0026). The first visit creates the merchant and asks for
-the seller name buyers will see.
+invitation code (ADR-0026). The cabinet then offers one control, and its press
+creates the merchant and asks for the seller name buyers will see. That is the
+only way an account or a merchant comes into being; no command at a server's
+terminal makes either (ADR-0014).
 
 From there the merchant's engineer takes over. The cabinet issues the key
 their code calls with, the SDK publishes the product cards and runs a handler
@@ -100,12 +102,14 @@ The cabinet is where a merchant sets the name buyers see and issues the keys
 their own code calls with. Open `http://localhost:8080/cabinet/sign-in`, enter
 an email address, and take the one-time link from the cabinet's log — the
 local sandbox writes the message there instead of sending it. Pressing the
-link's confirmation button signs you in, creates your merchant if you have
-none, and asks for the seller name. That merchant is a new one, and it is not
-`the_merchant` — the merchant the stack seeds, whose two cards the merchant
-process publishes and `pnpm buy` buys. Somebody who has just signed in has no
-cards and no keys of their own, which is the truth about a merchant who has
-written no code yet (ADR-0014).
+link's confirmation button signs you in, and the cabinet then offers one
+button, "Open my merchant cabinet", whose press creates your merchant and asks
+for the seller name. That merchant is a new one, and it is not `the_merchant` —
+the merchant this laptop's stack seeds at start-up, whose two cards the
+merchant process publishes and `pnpm buy` buys. A deployed channel seeds
+nothing. Somebody who has just signed in has no cards and no keys of their
+own, which is the truth about a merchant who has written no code yet
+(ADR-0014).
 
 If port 8080 is taken, `AGENTIFY_HOST_PORT=8090 docker compose up` moves the
 stack and nothing else — the buy command runs on the host and needs

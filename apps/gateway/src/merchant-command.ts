@@ -1,16 +1,21 @@
 /**
- * The commands that make a merchant and keep their keys.
+ * The commands that look after the merchants there are and their keys.
  *
- * A merchant now makes and revokes their own keys over the API, and sets the
- * name their products are sold under, from their cabinet (ADR-0014), so this is
- * no longer the only way any of it happens. What it is for is everything those
- * routes deliberately cannot do: making a merchant without an invitation,
- * issuing a key to somebody who has lost every key they had, disabling a key by
- * naming it alone — which is what the route refuses when it is the key the
- * caller is holding — and taking a listing name away, which the route refuses
- * outright. Somebody at a terminal has the whole database in front of them and
- * needs no merchant to be scoped to; that is the difference, and it is why
- * these verbs stay.
+ * None of them makes a merchant or issues a key. A merchant comes into being
+ * one way: a person opens the link mailed to their address and presses the
+ * cabinet's one control, which asks the gateway for the merchant and the key
+ * the cabinet calls with (ADR-0014). A merchant issues and disables keys for
+ * their own code from their cabinet, where each new key is announced to them
+ * (ADR-0019), and sets the name their products are sold under there too. A
+ * merchant who has lost every key signs in again, which renews the cabinet's
+ * own, and issues a new one there.
+ *
+ * What is left here is what those routes deliberately cannot do: listing every
+ * merchant and every key, disabling a key by naming it alone — which is what
+ * the route refuses when it is the key the caller is holding — and taking a
+ * listing name away, which the route refuses outright. Somebody at a terminal
+ * has the whole database in front of them and needs no merchant to be scoped
+ * to; that is the difference, and it is why these verbs stay.
  *
  * The listing name is the one worth reading twice, because the two sides differ
  * in what they allow rather than in who they are scoped to. A merchant sets a
@@ -31,86 +36,53 @@
  *
  * It is a tested module with the terminal handed to it rather than a script
  * that prints as it goes, for the reason the cabinet's account command is.
- *
- * A key is never taken as an argument. One typed on a command line is in the
- * shell's history and in the process list of everybody on the machine, so this
- * generates it, prints it once, and keeps nothing that can be read back: what
- * is written down is a SHA-256 digest. A key that is lost is gone, and the
- * answer to a lost key is a new one and then disabling the old — which is what
- * keys being rows is for.
  */
 
-import type { Environment } from "@agentify/core";
 import { ZodError } from "zod";
-import { issueKey, makeMerchant, setServiceName } from "./app/merchants.js";
-import type { Ids } from "./ports/clock.js";
+import { setServiceName } from "./app/merchants.js";
 import type { Store, StoredKey, StoredMerchant } from "./ports/store.js";
 
 const USAGE = [
   "Usage: pnpm --filter @agentify/gateway merchant <command>",
   "",
-  "  add <name>                 make a merchant and print the identifier it got",
   "  list                       the merchants there are, and how many keys work",
   "  listed-as <merchant> <name>",
   "                             the name this seller is shown under in a",
   "                             discovery catalog, or --none to take it away",
   "                             and their cards off sale with it",
-  "  key <merchant> <label>     issue a key to a merchant and print it, once",
   "  keys <merchant>            that merchant's keys, working and revoked",
   "  disable <key>              stop one key working, touching no other",
   "",
   "A merchant and a key are named by the identifiers these commands print.",
-  "Nothing here can show a key again: what is kept is a digest of it.",
+  "None of them makes a merchant or a key: a merchant is made when a person",
+  "opens the link mailed to them and presses the cabinet's one control, and",
+  "keys are issued from the merchant's cabinet.",
 ];
 
-/**
- * Runs one command. The answer is the exit code.
- *
- * The environment is handed in rather than worked out here, because a key
- * carries the environment it was issued in and this command has no way to see
- * one: the database address it is pointed at says nothing about which chain the
- * gateway behind it settles on. Whoever wires this up is told, and refuses to
- * guess.
- */
+/** Runs one command. The answer is the exit code. */
 export async function runMerchant(
   argv: readonly string[],
   store: Store,
-  ids: Ids,
   now: () => number,
   say: (line: string) => void,
-  environment: Environment,
 ): Promise<number> {
   const [verb, first, ...rest] = argv;
 
   if (verb === "list") {
     return await listMerchants(store, say);
   }
-  if (verb === "add") {
-    return first === undefined || first.trim() === ""
-      ? needs(say, "add", "a name", 'add "Someone\'s shop"')
-      : await addMerchant(store, ids, now, say, [first, ...rest].join(" "));
-  }
-  if (verb === "key") {
-    if (first === undefined) {
-      return needs(say, "key", "a merchant", 'key the_merchant "the shop\'s own worker"');
-    }
-    const label = rest.join(" ").trim();
-    return label === ""
-      ? needs(say, "key", "a label", 'key the_merchant "the shop\'s own worker"')
-      : await addKey(store, ids, now, say, first, label, environment);
-  }
   if (verb === "listed-as") {
     if (first === undefined) {
-      return needs(say, "listed-as", "a merchant", 'listed-as the_merchant "The pilot merchant"');
+      return needs(say, "listed-as", "a merchant", 'listed-as mch_3f2a... "Someone\'s shop"');
     }
     const named = rest.join(" ").trim();
     return named === ""
-      ? needs(say, "listed-as", "a name", 'listed-as the_merchant "The pilot merchant"')
+      ? needs(say, "listed-as", "a name", 'listed-as mch_3f2a... "Someone\'s shop"')
       : await setListingName(store, now, say, first, named === NO_NAME ? null : named);
   }
   if (verb === "keys") {
     return first === undefined
-      ? needs(say, "keys", "a merchant", "keys the_merchant")
+      ? needs(say, "keys", "a merchant", "keys mch_3f2a...")
       : await listKeys(store, say, first);
   }
   if (verb === "disable") {
@@ -128,29 +100,6 @@ export async function runMerchant(
 function needs(say: (line: string) => void, verb: string, what: string, example: string): number {
   say(`The ${verb} command needs ${what}: ${example}`);
   return 2;
-}
-
-async function addMerchant(
-  store: Store,
-  ids: Ids,
-  now: () => number,
-  say: (line: string) => void,
-  name: string,
-): Promise<number> {
-  const made = await makeMerchant(store, ids, name.trim(), now());
-  if (made === null) {
-    // Only reachable where the identifier was chosen rather than generated, and
-    // it is answered rather than thrown because the caller may have meant it.
-    say(`There is already a merchant under that identifier. Nothing was written.`);
-    return 1;
-  }
-
-  say(`A merchant, ${made.name}.`);
-  say("");
-  say(`    ${made.id}`);
-  say("");
-  say(`They have no keys yet: pnpm --filter @agentify/gateway merchant key ${made.id} "a name"`);
-  return 0;
 }
 
 /**
@@ -215,7 +164,8 @@ async function listMerchants(store: Store, say: (line: string) => void): Promise
   const merchants = await store.merchants();
   if (merchants.length === 0) {
     say("There are no merchants, so nothing can be published and no key opens anything.");
-    say('Make one: pnpm --filter @agentify/gateway merchant add "Someone\'s shop"');
+    say("A merchant is made when a person opens the link the cabinet mails them and presses");
+    say("the cabinet's one control.");
     return 0;
   }
 
@@ -248,32 +198,6 @@ async function listMerchants(store: Store, say: (line: string) => void): Promise
  * hundred keys the row goes ragged rather than wrong.
  */
 const COUNT_WIDTH = 12;
-
-async function addKey(
-  store: Store,
-  ids: Ids,
-  now: () => number,
-  say: (line: string) => void,
-  merchantId: string,
-  label: string,
-  environment: Environment,
-): Promise<number> {
-  // Looked up first, so that naming a merchant who is not there is a sentence
-  // somebody reads rather than a foreign key violation out of the driver.
-  if ((await store.merchantById(merchantId)) === null) {
-    say(`There is no merchant ${merchantId}, so there is nobody for a key to belong to.`);
-    return 1;
-  }
-
-  const issued = await issueKey(store, ids, merchantId, label, now(), environment);
-  say(`A key for ${merchantId}, called "${issued.key.label}", under ${issued.key.id}.`);
-  say("This is the key. It is shown once and nothing keeps a readable copy:");
-  say("");
-  say(`    ${issued.secret}`);
-  say("");
-  say("Hand it over. A key that is lost is replaced by a new one and the old one disabled.");
-  return 0;
-}
 
 async function listKeys(
   store: Store,

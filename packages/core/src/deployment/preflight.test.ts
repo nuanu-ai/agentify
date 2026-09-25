@@ -38,7 +38,6 @@ const runCli = (channel: string, input: string) =>
 /** Values a public preflight diagnostic must never repeat from a fixture. */
 const expectNoFixtureSecrets = (stderr: string, resolved: ResolvedCompose): void => {
   const values = [
-    resolved.services.gateway.environment?.SANDBOX_MERCHANT_KEY,
     resolved.services.gateway.environment?.REGISTRATION_INVITATION,
     resolved.services.gateway.environment?.CDP_API_KEY_ID,
     resolved.services.gateway.environment?.CDP_API_KEY_SECRET,
@@ -318,6 +317,46 @@ describe("the mock merchant is not among the services", () => {
   });
 });
 
+describe("a deployed channel seeds no merchant", () => {
+  // A merchant comes into being one way: a person opens the link mailed to
+  // their address and presses the cabinet's one control (ADR-0014). A key the
+  // gateway seeds from a host's file at every start would be a second way, and
+  // one nobody can retire without a release.
+  const CHANNELS = [
+    ["production", PRODUCTION_CHANNEL, "csk_live_"],
+    ["test", TEST_CHANNEL, "csk_test_"],
+  ] as const;
+
+  it.each(CHANNELS)("accepts %s with nothing to seed", (channel, config) => {
+    for (const nothing of [null, ""]) {
+      expect(
+        problemsWith(channel, withEnv(config, "gateway", "SANDBOX_MERCHANT_KEY", nothing)),
+      ).toEqual([]);
+    }
+  });
+
+  it.each(CHANNELS)(
+    "refuses %s seeding a key, names the mailed link, and does not print the key",
+    (channel, config, prefix) => {
+      // The channel's own prefix and the laptop's key alike: the reason is the
+      // second way in, not whose key it is.
+      for (const key of [`${prefix}${"x".repeat(44)}`, "csk_test_local-sandbox-merchant-key"]) {
+        const problems = problemsWith(
+          channel,
+          withEnv(config, "gateway", "SANDBOX_MERCHANT_KEY", key),
+        );
+        expect(problems).toContainEqual(expect.stringMatching(/^gateway: SANDBOX_MERCHANT_KEY/));
+        const said = problems.join("\n");
+        expect(said).toMatch(/link mailed/);
+        // Where the empty seed comes from, since a host's file cannot change
+        // it: the overlay every deployed channel is rendered with.
+        expect(said).toMatch(/deploy\/compose\.public\.yaml/);
+        expect(said).not.toContain(key);
+      }
+    },
+  );
+});
+
 describe("no laptop default survived", () => {
   // Prevents public exposure of a database, published defaults, and a dead public door.
   it("refuses PostgreSQL published to the host", () => {
@@ -326,25 +365,6 @@ describe("no laptop default survived", () => {
       { mode: "ingress", target: 5432, published: "5432", protocol: "tcp" },
     ];
     expect(problemsWith("test", wrong)).toContainEqual(expect.stringMatching(/postgres/));
-  });
-
-  it("refuses the seeded key written in this repository", () => {
-    const wrong = withEnv(
-      TEST_CHANNEL,
-      "gateway",
-      "SANDBOX_MERCHANT_KEY",
-      "csk_test_local-sandbox-merchant-key",
-    );
-    expect(problemsWith("test", wrong)).toContainEqual(
-      expect.stringMatching(/SANDBOX_MERCHANT_KEY/),
-    );
-  });
-
-  it("refuses a stack with no seeded key at all", () => {
-    const wrong = withEnv(TEST_CHANNEL, "gateway", "SANDBOX_MERCHANT_KEY", "");
-    expect(problemsWith("test", wrong)).toContainEqual(
-      expect.stringMatching(/SANDBOX_MERCHANT_KEY/),
-    );
   });
 
   it("refuses the cabinet's signing secret written in this repository", () => {
@@ -673,7 +693,6 @@ describe("the gateway's route belongs to the gateway and the cabinet alone", () 
       ["scanner", "REPORT_IDENTITY_SECRET"],
       ["cabinet", "AUTH_SECRET"],
       ["cabinet", "REGISTRATION_INVITATION"],
-      ["gateway", "SANDBOX_MERCHANT_KEY"],
       ["gateway", "CDP_API_KEY_SECRET"],
       ["scanner", "TOKEN_HMAC_SECRET"],
     ] as const) {
@@ -764,6 +783,21 @@ describe("the release entry point", () => {
     expect(stderr).toContain("CDP_API_KEY_SECRET");
     expect(stderr).toContain("COOKIE_SECURE");
     expectNoFixtureSecrets(stderr, wrong);
+  });
+
+  it("refuses a channel that seeds a key, before anything stops, without printing it", () => {
+    // What activation meets when something after deploy/compose.public.yaml
+    // puts a seed back: exit 65, which deploy/activate.sh turns into a refusal
+    // before the applications stop.
+    const key = `csk_test_${"x".repeat(44)}`;
+    const result = runCli(
+      "test",
+      JSON.stringify(withEnv(TEST_CHANNEL, "gateway", "SANDBOX_MERCHANT_KEY", key)),
+    );
+    expect(result.status).toBe(65);
+    expect(result.stdout ?? "").toBe("");
+    expect(result.stderr).toContain("gateway: SANDBOX_MERCHANT_KEY");
+    expect(result.stderr).not.toContain(key);
   });
 
   it("refuses malformed JSON without printing input", () => {
