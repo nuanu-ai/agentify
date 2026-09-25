@@ -11,10 +11,10 @@
  * has: the same status, the same page title and heading, none of the
  * dashboard, and no header of a door with a password of its own.
  *
- * The dashboard reads four views that production's database carries and no
- * migration in this repository makes. The test stands them in for one quiet
- * day, in a `*_migration_test` database it is told about, and takes them away
- * afterwards.
+ * The dashboard reads the scanner's own tables, so it is asked of a database
+ * the migrations alone built: the test empties the `*_migration_test`
+ * database it is told about and migrates it, the way the scanner's other
+ * integration suites do, and puts nothing beside what the migrations made.
  *
  *   pnpm --filter @agentify/web build
  *   MIGRATION_TEST_DATABASE_URL=postgresql://…/agentify_scanner_migration_test \
@@ -28,7 +28,7 @@ import { createServer, request as httpRequest, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 
-import { createDatabase } from "@agentify/scanner-database";
+import { createDatabase, migrateDatabase } from "@agentify/scanner-database";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const connectionString = process.env.MIGRATION_TEST_DATABASE_URL;
@@ -49,8 +49,10 @@ const people = new Set(["operator", "person"]);
 const operators = new Set(["operator"]);
 let cabinetFails = false;
 
+const migrationsFolder = fileURLToPath(
+  new URL("../../packages/scanner-database/migrations", import.meta.url),
+);
 const database = createDatabase(connectionString, { max: 1 });
-let madeSchema = false;
 let cabinet: Server;
 let scanner: ChildProcess;
 let scannerOutput = "";
@@ -180,34 +182,10 @@ async function expectMissingPages(visitor: Asking, who: string): Promise<void> {
 }
 
 beforeAll(async () => {
-  madeSchema =
-    (
-      await database.pool.query(
-        "select count(*)::int as found from pg_namespace where nspname = 'metabase'",
-      )
-    ).rows[0]?.found === 0;
-  await database.pool.query("create schema if not exists metabase");
-  for (const view of ["overview", "daily_funnel", "recent_scans", "self_scan"]) {
-    await database.pool.query(`drop view if exists metabase.operator_${view}`);
-  }
   await database.pool.query(
-    `create view metabase.operator_overview as
-       select 7 as visitors_total, 3 as visitors_30d, 5 as landing_views_30d, 2 as scans_total,
-              1 as scans_30d, 1 as completed_scans_30d, 1 as unique_sites_30d,
-              0 as verified_registrations_30d, 0 as shares_30d, 1 as accepted_requests_24h,
-              0 as challenge_passes_24h, 0 as browser_usage_usd_today`,
+    "drop schema if exists public cascade; drop schema if exists drizzle cascade; create schema public",
   );
-  await database.pool.query(
-    `create view metabase.operator_daily_funnel as
-       select current_date as day, 3 as visitors, 5 as landing_views, 1 as scans,
-              1 as completed_scans, 0 as verified_registrations, 0 as shares`,
-  );
-  await database.pool.query(
-    "create view metabase.operator_recent_scans as select now() as accepted_at where false",
-  );
-  await database.pool.query(
-    "create view metabase.operator_self_scan as select 1 as scan_id where false",
-  );
+  await migrateDatabase(database.db, migrationsFolder);
 
   cabinet = standInCabinet();
   await new Promise<void>((resolve) => cabinet.listen(0, "127.0.0.1", resolve));
@@ -261,10 +239,6 @@ afterAll(async () => {
     ]);
   }
   if (cabinet?.listening) await new Promise<void>((resolve) => cabinet.close(() => resolve()));
-  for (const view of ["overview", "daily_funnel", "recent_scans", "self_scan"]) {
-    await database.pool.query(`drop view if exists metabase.operator_${view}`);
-  }
-  if (madeSchema) await database.pool.query("drop schema if exists metabase");
   await database.pool.end();
 });
 
@@ -277,7 +251,7 @@ describe("the operator's dashboard at /admin", () => {
     await expectMissingPages({ cookie: `${SESSION}=person` }, "not an operator");
   });
 
-  it("opens for an operator, and shuts on the next request once the flag is cleared", async () => {
+  it("opens for an operator on a database the migrations built, and shuts on the next request once the flag is cleared", async () => {
     const operator = { cookie: `theme=dark; ${SESSION}=operator` };
 
     const opened = await ask("/admin", operator);

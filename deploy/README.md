@@ -249,14 +249,6 @@ The scanner's header then shows them an Admin link, on the next page they
 open, without signing in again. `account list` says who is an operator, and
 `account operator you@example.com --off` takes the flag away.
 
-What the link opens is only as good as the database behind it. The dashboard
-reads four views, `metabase.operator_overview`, `operator_daily_funnel`,
-`operator_recent_scans` and `operator_self_scan`, that no migration in this
-repository makes; a scanner database that does not carry them answers a
-flagged operator with the dashboard's error page instead of the dashboard.
-Which of the two channels' databases carry them has not been checked, so the
-first look at `/admin` after flagging somebody is that check.
-
 `ADMIN_BASIC_AUTH_USER` and `ADMIN_BASIC_AUTH_HASH` are left in the host's
 environment file by the release and read by nothing in it: no compose file of
 this release names them, so the preflight does not see them either. They go

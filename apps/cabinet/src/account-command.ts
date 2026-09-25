@@ -240,12 +240,10 @@ async function flagOperator(
     );
     return 0;
   }
-  // Said as a condition, because neither half is this command's to promise:
-  // the account may never have signed in (one `add` made has not), and the
-  // dashboard reads views in the scanner's database that no migration makes.
-  say(`${email} is an operator. /admin draws the operator's dashboard for them while they are`);
-  say("signed in, from their next request, where the scanner's database carries the four");
-  say("metabase.operator_* views the dashboard reads; without them it answers an error.");
+  // Said as a condition, because the account may never have signed in: one
+  // that `add` made has not, and the flag waits for a session to read it.
+  say(`${email} is an operator. /admin draws the operator's dashboard for them from their`);
+  say("next request, whenever they are signed in.");
   return 0;
 }
 
