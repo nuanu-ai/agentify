@@ -202,6 +202,20 @@ class TheMove(unittest.TestCase):
         self.assertEqual(moved.returncode, 0, moved.stderr)
         self.assertEqual(self.sql("agentify_commerce", "SELECT count(*) FROM public.scan_checks"), "2")
 
+    def test_a_fingerprint_is_the_rows_not_where_they_lie(self):
+        before = self.run_move("fingerprints", "agentify_scanner").stdout
+        # An update that changes nothing still writes the row anew, after the other.
+        self.sql("agentify_scanner", "UPDATE public.scans SET target = target WHERE target LIKE '%shop%';")
+        self.assertEqual(self.run_move("fingerprints", "agentify_scanner").stdout, before)
+
+    def test_finish_refuses_to_rename_onto_a_database_that_is_already_there(self):
+        self.assertEqual(self.run_move("move").returncode, 0)
+        self.sql("postgres", "CREATE DATABASE agentify;")
+        refused = self.run_move("finish")
+        self.assertEqual(refused.returncode, 1)
+        self.assertIn("both agentify and agentify_commerce exist", refused.stderr)
+        self.assertEqual(self.sql("agentify_commerce", "SELECT count(*) FROM public.scans"), "2")
+
     def test_finish_before_the_move_drops_nothing(self):
         refused = self.run_move("finish")
         self.assertEqual(refused.returncode, 1)
