@@ -62,19 +62,25 @@ export type TextLines = "one line" | "several lines";
  * word processor leaves in pasted text, and a custom element are written. An
  * attribute value in quotation marks may carry either bracket, as the alt text
  * a block editor writes into an image does: `<img alt="Mug <3 coffee">` is one
- * tag. What the name does not take is the rest of what can follow a bracket —
+ * tag. A quotation mark that opens no value — the apostrophe in
+ * `<img alt=Mom's>`, or `<your friend's name>` — does not hide its tag either:
+ * where the tag cannot be read with its quotation marks paired, it is read to
+ * the first closing bracket, as it was before quoted values were known. What
+ * the name does not take is the rest of what can follow a bracket —
  * a digit, a space, an `@`, a `:/` — which is why `<3`, `List< String >` and
  * `<https://example.com>` are not tags here. The close has to be there, so
  * `x<y` is not one either.
  *
  * The scan is linear in the length of the text however it is written: outside
- * quotation marks everything stops at the next angle bracket, and a quoted
- * value stops at its own closing mark, so no stretch of text is read twice
- * over from one bracket. The tests hold it at a quarter of a megabyte, which
- * is more than a publish body may carry.
+ * quotation marks everything stops at the next angle bracket, a quoted value
+ * stops at its own closing mark, and a quotation mark can be read only one
+ * way at any point, so no stretch of text is read over and over from one
+ * bracket. The tests hold it at a quarter of a megabyte, which is more than a
+ * publish body may carry, and on the short inputs that turn exponential the
+ * moment a quotation mark may be read two ways.
  */
 const MARKUP =
-  /<!--|<\/?[A-Za-z][A-Za-z0-9]*(?:[:-][A-Za-z0-9]+)*(?:[\t\n\f\r /](?:[^<>"']|"[^"]*"|'[^']*')*)?>/g;
+  /<!--|<\/?[A-Za-z][A-Za-z0-9]*(?:[:-][A-Za-z0-9]+)*(?:(?:[\t\n\f\r /](?:[^<>"']|"[^"]*"|'[^']*')*)?>|[\t\n\f\r /][^<>]*>)/g;
 
 /**
  * A character reference: an ampersand, a number or a name, and a semicolon.
