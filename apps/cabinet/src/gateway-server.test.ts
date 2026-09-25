@@ -240,6 +240,64 @@ describe("a key's label, which somebody else may have written", () => {
   });
 });
 
+describe("what a message advises and claims", () => {
+  // A first wallet and a cancel leave nothing waiting, so cancelling a
+  // waiting change is advice that cannot work there; what works at once is
+  // pausing the selling, and then a replacement, which waits. And the gateway
+  // knows the key a change came with, not the person, so no message claims one.
+  it.each([
+    [
+      "a first wallet",
+      { operation: "announce", kind: "wallet_set", merchant_id: MERCHANT, to: TO },
+    ],
+    [
+      "a cancelled change",
+      {
+        operation: "announce",
+        kind: "wallet_change_cancelled",
+        merchant_id: MERCHANT,
+        kept: FROM,
+        cancelled: TO,
+      },
+    ],
+  ] as const)(
+    "advises pausing selling at once after %s, not cancelling what is not waiting",
+    async (_what, request) => {
+      const { url, sent } = await listening([["owner@example.com", MERCHANT]]);
+
+      await post(url, request satisfies GatewayRequest);
+
+      const body = sent[0]?.body ?? "";
+      expect(body).toMatch(/pause selling/i);
+      expect(body).not.toMatch(/cancelling a waiting/i);
+    },
+  );
+
+  it.each([
+    ["a replacement", aWalletChange],
+    [
+      "a first wallet",
+      { operation: "announce", kind: "wallet_set", merchant_id: MERCHANT, to: TO },
+    ],
+    [
+      "a new key",
+      {
+        operation: "announce",
+        kind: "key_issued",
+        merchant_id: MERCHANT,
+        key: { id: "mk_91c0", label: "the price desk" },
+        asked_with: { kind: "cabinet" },
+      },
+    ],
+  ] as const)("claims no person signed in for %s, only the cabinet", async (_what, request) => {
+    const { url, sent } = await listening([["owner@example.com", MERCHANT]]);
+
+    await post(url, request satisfies GatewayRequest);
+
+    expect(sent[0]?.body ?? "").not.toMatch(/person signed in/i);
+  });
+});
+
 describe("what is announced once it is done", () => {
   it("tells of a first wallet set, naming the address and where to replace it", async () => {
     // It applied at once, so the message is the owner's only word of it if
