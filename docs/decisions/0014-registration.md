@@ -56,11 +56,14 @@ nothing clears those yet. It is still not a secret store; the
 database is a boundary against the network, not against a host, and the day
 that stops being enough the fix is one, not a cleverer column.
 
-**3. The registration route is public, behind an invitation code.** Retired
-for people by ADR-0026 on 2026-09-17, as the last sentence of this paragraph
-said it would: the code is now a value in the cabinet's configuration guarding
-the wire between two processes of ours, and the door stands at live
-publication. What follows is why the route was built as it was. The route
+**3. The registration route is internal, behind an invitation code.** Only
+the cabinet calls it, at the gateway's name on the stack's own network, and
+the site answers it from outside as a path it does not have, as it answers the
+two calls at `/v0/keys/cabinet` (§5): the code is a value in the cabinet's and
+the gateway's configuration guarding the wire between two processes of ours,
+and a copy of that configuration must not be a way to make a merchant. People
+never type it; ADR-0026 retired it for them, and the door stands at live
+publication. What follows is why the route is built as it is. The route
 takes no key — nobody registering has one. A wrong code and a closed
 registration answer identically, in constant time against a decoy (the two
 answers that must be indistinguishable are the two refusals), so the form does
@@ -76,7 +79,9 @@ seller reaches an agent inside a payment challenge that names nobody.
 **5. Keys are made and disabled from the cabinet, and a key says what it is
 for.** Three merchant-scoped routes over the keys a merchant made for their own
 code — list, issue, disable — and two at `/v0/keys/cabinet` that make a key for
-a cabinet and forget one, refused to any other key. That kind is in no
+a cabinet and forget one, refused to any other key and reachable only inside
+the stack, so that a copied cabinet key cannot mint another from outside that
+no renewal ever forgets. That kind is in no
 merchant's list and is refused by the disabling, since a merchant switches off
 what they issued; forgetting removes rather than revokes. The forgetting takes
 the key the call was made with and no other: a rule of the form "every key but
