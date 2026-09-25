@@ -630,11 +630,12 @@ database, the four old roles and the views, renames the database and its
 account to `agentify`, and gives the account the password the new
 configuration names. Each step prints a line beginning `one-database:`, and
 no line holds a secret. The applications stay stopped until the second
-release starts them. On the laptop rehearsal the script took 10 seconds and
-the release after it 20, and the front page answered nothing for about 25
-seconds; on a host the pull is already done, and the dumps grow with the data.
-Going back there, the old front page answered 6 seconds after the new project
-went down, and the whole old site 15.
+release starts them. In three runs of the laptop rehearsal the script took 8
+to 10 seconds and the release after it 20 to 24, and the front page answered
+nothing for 25 to 27 seconds; on a host the pull is already done, and the
+dumps grow with the data. Going back there took 8 seconds to the whole old
+site, and a release of the new revision afterwards was refused for want of
+the volume, as it should be.
 
 Its progress is one line in `/var/lib/agentify/<channel>/one-database`, so a
 run that failed or was killed is carried on by running the same command
