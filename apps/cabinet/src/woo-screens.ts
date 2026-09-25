@@ -367,7 +367,9 @@ const theConnection = (
  * and links there. It is drawn before the press as well as after it, so the
  * merchant can learn it without pressing; after a refused press it says that
  * nothing was imported, and names what was unset at that moment rather than at
- * the redraw.
+ * the redraw. Only that answer is an alert: the same line on the page before
+ * the press is a standing notice, and a screen reader announcing it on every
+ * visit would make the one announcement that matters indistinguishable.
  */
 const beforeImporting = (base: string, view: WooView): string => {
   const refused = view.refused ?? [];
@@ -378,7 +380,7 @@ const beforeImporting = (base: string, view: WooView): string => {
   const what = unset.map((one) => UNSET_WORDS[one]).join(" and ");
   const settings = `<a href="${escaped(base)}/settings">Settings</a>`;
   return refused.length > 0
-    ? `<p class="problem">Nothing was imported. Set ${what} in ${settings}, then import again.</p>`
+    ? `<p class="problem" role="alert">Nothing was imported. Set ${what} in ${settings}, then import again.</p>`
     : `<p class="problem">Import publishes nothing until you set ${what} in ${settings}.</p>`;
 };
 
