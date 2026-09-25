@@ -348,7 +348,9 @@ describe("a deployed channel seeds no merchant", () => {
         expect(problems).toContainEqual(expect.stringMatching(/^gateway: SANDBOX_MERCHANT_KEY/));
         const said = problems.join("\n");
         expect(said).toMatch(/link mailed/);
-        expect(said).toMatch(/AGENTIFY_SEED_KEY/);
+        // Where the empty seed comes from, since a host's file cannot change
+        // it: the overlay every deployed channel is rendered with.
+        expect(said).toMatch(/deploy\/compose\.public\.yaml/);
         expect(said).not.toContain(key);
       }
     },
@@ -782,9 +784,9 @@ describe("the release entry point", () => {
   });
 
   it("refuses a channel that seeds a key, before anything stops, without printing it", () => {
-    // What activation meets when a host's file still gives AGENTIFY_SEED_KEY a
-    // value: exit 65, which deploy/activate.sh turns into a refusal before the
-    // applications stop.
+    // What activation meets when something after deploy/compose.public.yaml
+    // puts a seed back: exit 65, which deploy/activate.sh turns into a refusal
+    // before the applications stop.
     const key = `csk_test_${"x".repeat(44)}`;
     const result = runCli(
       "test",
