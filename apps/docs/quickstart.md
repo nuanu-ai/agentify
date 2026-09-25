@@ -191,9 +191,17 @@ Not every finding is about the card. A name for buyers to read that you have
 not set, a wallet for your sales to be paid into, or, on the live channel, the
 operator's approval that has not been given yet: each arrives in the same list,
 so one answer names everything you have to fix instead of handing it to you a
-round trip at a time. Sending the same card again gets the same refusal, and
-the error says as much: its `retryable` flag is false, because what changes the
-answer is fixing what the findings name.
+round trip at a time. These three have codes of their own for a program to
+branch on — `no_seller_name`, `no_payout_wallet` and `no_operator_approval`,
+each with an empty path, because no field of the card is at fault — and the
+package exports them as `MERCHANT_FINDINGS`. The first two you set yourself,
+with `POST /v0/seller-name` and `POST /v0/payout-wallet` or in the cabinet's
+settings; the third is the operator's decision. The error's `message` names
+the missing settings in words as well. Nothing asks this question earlier:
+the publish is where you learn what your merchant still lacks. Sending the same
+card again gets the same refusal, and the error says as much: its `retryable`
+flag is false, because what changes the answer is fixing what the findings
+name.
 
 A call that fails for some other reason — a key we do not accept, an address
 that does not answer — does throw, as an `AgentifyError`. It carries a `code`.

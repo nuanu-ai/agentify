@@ -145,10 +145,10 @@ export default async function ReportPage({ params }: { params: Promise<{ scanId:
         <h2>Selling to agents</h2>
         <p>
           If what you sell can be sent a second time without loss, an access, a key, a link, a
-          subscription, the same address opens a merchant cabinet: your engineer publishes the cards
-          and takes orders in the test channel, and selling live needs a seller name, a payout
-          wallet and our switch. If not, this report is the whole result, and you can scan the site
-          again whenever it changes.
+          subscription, the same address opens a merchant cabinet: once it has a seller name and a
+          payout wallet, your engineer publishes the cards and takes orders in the test channel, and
+          selling live also needs our switch. If not, this report is the whole result, and you can
+          scan the site again whenever it changes.
         </p>
         <ReportCabinetControl />
       </section>

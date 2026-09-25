@@ -57,10 +57,11 @@ different address without going character by character, and nobody does
 that. On the one field money is sent to, that glance is the whole of the
 checking anybody performs.
 
-A merchant with no address cannot publish: the publish call refuses with
-`no_payout_wallet` beside `no_seller_name`, because a card with nowhere
-for its money to go is a product offered for sale that cannot be bought
-honestly. An address is changed, never taken away — taking it
+A merchant with no address cannot publish wherever a payment settles,
+which is every surface but the sandbox (ADR-0026 §5): the publish call
+refuses with `no_payout_wallet` beside any other finding, because a card
+with nowhere for its money to go is a product offered for sale that
+cannot be bought honestly. An address is changed, never taken away — taking it
 away would put every published card off sale under the name of editing
 a setting, and the act somebody reaching for that wants is the pause.
 

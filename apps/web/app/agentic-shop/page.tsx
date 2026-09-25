@@ -305,8 +305,9 @@ export default function AgenticShopPage() {
                 <span aria-hidden="true">✓</span>
               </div>
               <p>
-                A seller name, payout wallet and operator approval are separate live-publication
-                gates. Opening a cabinet grants none of them.
+                Publishing needs a seller name and a payout wallet, on the test channel as well as
+                live, and live publication also needs the operator’s approval. Opening a cabinet
+                grants none of them.
               </p>
             </div>
           </div>
@@ -412,8 +413,8 @@ export default function AgenticShopPage() {
                 <li>Publish and verify offers in the test channel</li>
               </ul>
               <div className={styles.entryNote}>
-                Live publication still needs a payout wallet and a one-time operator approval for
-                the merchant.
+                Publishing in the test channel also needs a test payout wallet. Live publication
+                needs a wallet of its own and a one-time operator approval for the merchant.
               </div>
             </div>
             <div className={styles.entryCard}>
