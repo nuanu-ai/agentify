@@ -124,7 +124,7 @@ describe("pnpm approve's local production wrapper", () => {
         "docker",
         "exec",
         "-i",
-        "agentify-commerce-cabinet-1",
+        "agentify-cabinet-1",
         "pnpm",
         "--filter",
         "./apps/cabinet",

@@ -169,21 +169,33 @@ export function problemsWith(channel, resolved) {
     const postgres = envOf(resolved, "postgres");
     const password = postgres.POSTGRES_PASSWORD;
     if (
-      postgres.POSTGRES_USER !== "agentify_commerce" ||
-      postgres.POSTGRES_DB !== "agentify_commerce" ||
+      postgres.POSTGRES_USER !== "agentify" ||
+      postgres.POSTGRES_DB !== "agentify" ||
       typeof password !== "string" ||
       !/^[A-Za-z0-9._~-]{24,}$/.test(password) ||
       password.startsWith("REPLACE_") ||
-      password === "agentify_commerce"
+      password === "agentify"
     ) {
       problems.push(
         "postgres: production needs a distinct URL-safe password of at least 24 characters",
       );
     } else {
-      const databaseUrl = `postgres://agentify_commerce:${password}@postgres:5432/agentify_commerce`;
-      for (const service of ["migrate", "gateway", "cabinet"]) {
+      // One database for every process that has one (ADR-0003): a service
+      // left naming another would start against a database nothing migrates.
+      const databaseUrl = `postgres://agentify:${password}@postgres:5432/agentify`;
+      for (const service of [
+        "migrate",
+        "gateway",
+        "cabinet",
+        "scanner-migrate",
+        "scanner",
+        "scanner-worker",
+        "scanner-privacy",
+      ]) {
         if (envOf(resolved, service).DATABASE_URL !== databaseUrl) {
-          problems.push(`${service}: DATABASE_URL is not wired to this private commerce Postgres`);
+          problems.push(
+            `${service}: DATABASE_URL is not the one database on this private Postgres`,
+          );
         }
       }
     }

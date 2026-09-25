@@ -54,7 +54,7 @@ if ((email === "--help" || email === "-h") && extra.length === 0) {
       "docker",
       "exec",
       "-i",
-      "agentify-commerce-cabinet-1",
+      "agentify-cabinet-1",
       "pnpm",
       "--filter",
       "./apps/cabinet",

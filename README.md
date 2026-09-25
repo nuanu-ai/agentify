@@ -125,10 +125,10 @@ cabinet whose a cookie is. A person becomes a merchant only by pressing the one
 control the cabinet offers for it. ADR-0026 draws that boundary and ADR-0024
 says what the scanner keeps of its own.
 
-The scanner's own data is a second database on the same server,
-`agentify_scanner`, made by `deploy/postgres-init/` on a volume that is new. A
-machine that ran this stack before the scanner joined it has a volume that is
-not new, so it needs `docker compose down -v` once.
+The scanner's tables live in the same database as the gateway's and the
+cabinet's, `agentify`. A machine whose volume still holds them in a second
+database, `agentify_scanner`, from before they moved, would come up with empty
+scanner tables beside it, so it needs `docker compose down -v` once.
 
 Editing the scanner is faster outside a container, and `pnpm scanner:dev` runs
 its two processes on the host against the same database the stack uses — the
@@ -221,11 +221,12 @@ its own.
 | `docs/decisions/` | The numbered decisions — what is expensive to reverse, and why it was decided that way. |
 | `docs/research/` | The working material behind them: research, runbooks, acceptance protocols. |
 
-Gateway and cabinet share one database and each owns its migrations under
-`drizzle/`; `pnpm db:migrate` runs both. The scanner's schema and migrations
-live in `packages/scanner-database` and go to a second database on the same
-server. One PostgreSQL, two databases, one account to reach them with: one
-database is where this is going, and is a decision of its own (ADR-0003 §2).
+One PostgreSQL, one database and one account for the whole product
+(ADR-0003). The gateway and the cabinet each own their migrations under
+`drizzle/`, and `pnpm db:migrate` runs both; the scanner's schema and
+migrations live in `packages/scanner-database`, and `pnpm scanner:db:migrate`
+runs them. Each set keeps a history table of its own in the schema `drizzle`,
+so none of them mistakes another's entries for its own.
 
 ## Checks
 

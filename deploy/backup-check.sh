@@ -13,8 +13,8 @@ trap 'echo "backup-check: line $LINENO failed: $BASH_COMMAND" >&2' ERR
 # shellcheck source=/dev/null
 set -a && . /etc/agentify/backup.env && set +a
 state=/var/lib/agentify/production work="" result=failed
-postgres="$(docker ps -q --filter label=com.docker.compose.project=agentify-commerce --filter label=com.docker.compose.service=postgres)"
-sql() { docker exec -i "$postgres" psql -U agentify_commerce -XAtq -v ON_ERROR_STOP=1 "$@"; }
+postgres="$(docker ps -q --filter label=com.docker.compose.project=agentify --filter label=com.docker.compose.service=postgres)"
+sql() { docker exec -i "$postgres" psql -U agentify -XAtq -v ON_ERROR_STOP=1 "$@"; }
 drop() {
   for database in $(sql -d postgres -c "SELECT datname FROM pg_database WHERE datname LIKE 'check\_%'"); do
     sql -d postgres -c "DROP DATABASE $database WITH (FORCE)"
@@ -42,7 +42,7 @@ count="SELECT format('%I.%I', n.nspname, c.relname), (xpath('/row/c/text()', que
 for dump in "$work"/*.dump; do
   database="$(basename "$dump" .dump)"
   sql -d postgres -c "CREATE DATABASE check_$database"
-  docker exec -i "$postgres" pg_restore -U agentify_commerce -d "check_$database" --exit-on-error < "$dump"
+  docker exec -i "$postgres" pg_restore -U agentify -d "check_$database" --exit-on-error < "$dump"
   sql -d "check_$database" -c "$count" | sed "s/^/$database|/" >> "$work/restored"
 done
 diff <(sort "$work/counts") <(sort "$work/restored") >&2

@@ -17,10 +17,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_TEST_DATABASE_URL, TEST_DATABASE, testDatabaseUrl } from "./database.js";
 
 /** The database the cabinet is showing. Never this suite's. */
-const stack = "postgres://agentify_commerce:agentify_commerce@localhost:5432/agentify_commerce";
+const stack = "postgres://agentify:agentify@localhost:5432/agentify";
 
 /** A server bound where a deployment binds it rather than where a laptop does. */
-const moved = `postgres://agentify_commerce:agentify_commerce@localhost:55432/${TEST_DATABASE}`;
+const moved = `postgres://agentify:agentify@localhost:55432/${TEST_DATABASE}`;
 
 const started = process.env.AGENTIFY_TEST_DATABASE_URL;
 
@@ -68,9 +68,9 @@ describe("the database the suite is given", () => {
     // a database is a second way of walking into it.
     for (const variable of ["AGENTIFY_TEST_DATABASE_URL", "DATABASE_URL"]) {
       for (const url of [
-        "postgres://agentify_commerce:agentify_commerce@localhost:5432/agentify_commerce",
-        "postgres://agentify_commerce:agentify_commerce@127.0.0.1:55432/agentify_commerce",
-        "postgres://agentify_commerce:agentify_commerce@postgres:5432/agentify_commerce?sslmode=disable",
+        "postgres://agentify:agentify@localhost:5432/agentify",
+        "postgres://agentify:agentify@127.0.0.1:55432/agentify",
+        "postgres://agentify:agentify@postgres:5432/agentify?sslmode=disable",
       ]) {
         expect(() => testDatabaseUrl({ [variable]: url }), `${variable}=${url}`).toThrow(
           /will not be pointed there/,
@@ -82,12 +82,12 @@ describe("the database the suite is given", () => {
   it("says which variable said it, and what to do instead", () => {
     // The message is the whole of the fix for whoever hits it, so it names the
     // variable that has to change — with two of them, "DATABASE_URL names
-    // agentify_commerce" sends half the people who read it to the wrong line.
+    // agentify" sends half the people who read it to the wrong line.
     expect(() => testDatabaseUrl({ AGENTIFY_TEST_DATABASE_URL: stack })).toThrow(
-      /^AGENTIFY_TEST_DATABASE_URL names "agentify_commerce"/,
+      /^AGENTIFY_TEST_DATABASE_URL names "agentify"/,
     );
     expect(() => testDatabaseUrl({ DATABASE_URL: stack })).toThrow(
-      /^DATABASE_URL names "agentify_commerce"/,
+      /^DATABASE_URL names "agentify"/,
     );
     expect(() => testDatabaseUrl({ DATABASE_URL: stack })).toThrow(new RegExp(TEST_DATABASE));
     expect(() => testDatabaseUrl({ DATABASE_URL: stack })).toThrow(/name any other database/);
@@ -96,12 +96,12 @@ describe("the database the suite is given", () => {
   it("refuses an address that names no database at all", () => {
     // Measured against postgres:17-alpine rather than assumed: an address that
     // stops at the port, and one that ends in a bare slash, both connect to the
-    // database named after the user — which on this stack is `agentify_commerce`. So a
+    // database named after the user — which on this stack is `agentify`. So a
     // URL that looks finished walks straight past the refusal above and empties
     // the cabinet's database.
     for (const url of [
-      "postgres://agentify_commerce:agentify_commerce@localhost:55432",
-      "postgres://agentify_commerce:agentify_commerce@localhost:55432/",
+      "postgres://agentify:agentify@localhost:55432",
+      "postgres://agentify:agentify@localhost:55432/",
     ]) {
       expect(() => testDatabaseUrl({ AGENTIFY_TEST_DATABASE_URL: url }), url).toThrow(
         /names no database/,
@@ -137,7 +137,7 @@ describe("the database the suite is given", () => {
     const thrown = (): string => {
       try {
         testDatabaseUrl({
-          AGENTIFY_TEST_DATABASE_URL: "postgres//agentify_commerce:s3cret@localhost/x",
+          AGENTIFY_TEST_DATABASE_URL: "postgres//agentify:s3cret@localhost/x",
         });
         return "";
       } catch (error) {

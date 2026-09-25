@@ -119,7 +119,7 @@ interface Pin {
 }
 
 const config = loadConfig({
-  DATABASE_URL: "postgres://agentify_commerce:secret@localhost:5432/agentify_commerce",
+  DATABASE_URL: "postgres://agentify:secret@localhost:5432/agentify",
 });
 const { deadlines, redelivery } = config;
 
