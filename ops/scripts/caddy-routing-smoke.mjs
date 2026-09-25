@@ -239,6 +239,12 @@ async function expectWalletWritesClosed(baseUrl) {
   for (const [method, rawPath] of WALLET_WRITES) {
     const answered = await whoTakes(baseUrl, method, rawPath);
     assert.notEqual(answered.role, "gateway", `${method} ${rawPath} reached the gateway`);
+    // A method the server does not recognise may be refused by Caddy itself,
+    // which is as closed as the missing page; anything else goes there.
+    if (answered.role === null) {
+      assert.equal(answered.status, 400, `${method} ${rawPath} answered ${answered.status}`);
+      continue;
+    }
     assert.equal(answered.role, "scanner", `${method} ${rawPath} answered ${answered.status}`);
   }
   for (const [method, rawPath] of WALLET_READS_AND_NEIGHBOURS) {

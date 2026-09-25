@@ -189,7 +189,27 @@
 	# The cabinet is the second process and needs no line of its own. It answers
 	# the same probe under its own prefix, and the block below passes /cabinet/*
 	# through untouched, so /cabinet/healthz already arrives.
-	@gateway path /v0 /v0/* /x402 /x402/* /healthz
+	#
+	# Setting the payout wallet is not on this door. Only the cabinet sets it,
+	# for a person signed in to it, and it calls the gateway over the stack's own
+	# network at the gateway's service name, never through here (ADR-0019). A
+	# copy of the key a cabinet calls with — its database holds them as issued —
+	# must not be a way to move a merchant's money from anywhere on the internet.
+	# So every request to that path but a read is left out of the gateway's
+	# matcher and falls through to the front page, which answers it as any path
+	# this site does not have. The path matcher is the gateway line's own, so a
+	# path spelled in another case, encoded, or with a dot segment or a doubled
+	# slash is left out exactly when the gateway's line would have taken it; the
+	# method is held to the two reads rather than one write refused, so a method
+	# spelled any other way is left out too. Reading the wallet stays here, for
+	# any key of the merchant's.
+	@gateway {
+		path /v0 /v0/* /x402 /x402/* /healthz
+		not {
+			path /v0/payout-wallet /v0/payout-wallet/*
+			not method GET HEAD
+		}
+	}
 	handle @gateway {
 		reverse_proxy {$AGENTIFY_GATEWAY_UPSTREAM:gateway:3000}
 	}
