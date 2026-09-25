@@ -1027,6 +1027,24 @@ describe("importing the catalogue", () => {
     expect(form).toContain('href="/settings"');
   });
 
+  it("answers a refused press with an alert the screen before the press does not carry", async () => {
+    // Both pages name what is missing, beside the same button. What tells a
+    // merchant, or the screen reader reading the page to them, that the press
+    // itself was refused is the alert only the answer to the press carries.
+    const running = await started({
+      channel: "test",
+      fresh: "named",
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
+    });
+    await connected(running);
+
+    const before = await running.get("/woocommerce");
+    const pressed = await running.post("/woocommerce/import");
+
+    expect(importFormOf(before.html)).not.toContain('role="alert"');
+    expect(importFormOf(pressed.html)).toContain('role="alert"');
+  });
+
   it("says nothing about a wallet on the shop screen once one is set", async () => {
     const running = await started({ channel: "test" });
     await connected(running);
