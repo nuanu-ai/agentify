@@ -10,8 +10,8 @@
 # and nothing was stopped.
 #
 # Everything that can refuse runs before anything stops. Then the four
-# applications stop for about a minute: a restore point of both databases,
-# the migrations, the start of the new release. Before the stop, the channel's
+# applications stop for about a minute: a restore point of the database, the
+# migrations, the start of the new release. Before the stop, the channel's
 # transition record (deploy/transition) is written, and it follows the run:
 # stopped, dumped, migrating, and started, which is on disk before the new
 # release starts and may take writes. It names the previous revision, the new
@@ -104,6 +104,12 @@ esac
 
 exec 9>/run/lock/agentify-release.lock
 flock -n 9 || { echo "activate: another activation, a restore or the privacy job holds the release lock; nothing was changed." >&2; exit 75; }
+# The one-time move to one database keeps its progress here (deploy/README.md,
+# "One database"). Until it says done, the database volume is a copy in the
+# middle of a move, and nothing may start on it.
+read -r moving _ < "$state/one-database" 2>/dev/null || moving=""
+[[ -z $moving || $moving == "done" ]] \
+  || refuse "$state/one-database says the move to one database stopped at $moving; finish it with deploy/one-database.sh $channel, or go back with deploy/one-database.sh $channel --back. Nothing was stopped."
 
 at "pulling the images of $revision"
 pinned=""
@@ -194,6 +200,12 @@ esac
 running="$(stack ps -aq postgres | xargs -r docker inspect -f '{{.Image}}' | sort -u)"
 [[ -z $running || $running == "$(docker image inspect -f '{{.Id}}' "$(stack config --images postgres)")" ]] \
   || refuse "the postgres service runs another image than deploy/compose.images.yaml pins, and a database upgrade is a change of its own; nothing was stopped."
+# The database's volume is external, so without it Compose would refuse only
+# after the stop: a host that ran two databases gets it from
+# deploy/one-database.sh, and a new host creates it (deploy/README.md).
+volume="$(python3 -c 'import json, sys; print(json.load(sys.stdin)["volumes"]["agentify-postgres"]["name"])' <<<"$rendered")"
+docker volume inspect "$volume" >/dev/null 2>&1 \
+  || refuse "the volume $volume, which holds the channel's database, does not exist, so nothing was stopped; deploy/README.md says how a host gets it."
 if [[ $channel == production ]]; then
   address=127.0.0.1:443
   edge=agentify-edge-caddy-1 caddy=docker.io/library/caddy@sha256:ae4458638da8e1a91aafffb231c5f8778e964bca650c8a8cb23a7e8ac557aa3c
@@ -222,7 +234,7 @@ fi
 if [[ $mode == release ]]; then backup="$backups/$(date -u +%Y%m%dT%H%M%SZ)-$from-before-$revision"; fi
 if [[ ( $mode == release || $mode == resume ) && ! -d $backup ]]; then
   mkdir -p "$backups"
-  size="$(stack exec -T postgres psql -U agentify_commerce -d postgres -Atc \
+  size="$(stack exec -T postgres psql -U agentify -d postgres -Atc \
     'select coalesce(sum(pg_database_size(datname)), 0) from pg_database' 2>/dev/null || echo 0)"
   free="$(df -B1 --output=avail "$backups" | tail -n 1)"
   ((free > size + (1 << 30))) \
@@ -265,9 +277,7 @@ if [[ $mode == release || $mode == resume ]]; then
     at "taking the restore point $backup"
     rm -rf "$backups"/*.partial
     mkdir "$backup.partial"
-    for database in agentify_commerce agentify_scanner; do
-      stack exec -T postgres pg_dump -U agentify_commerce -Fc "$database" > "$backup.partial/$database.dump"
-    done
+    stack exec -T postgres pg_dump -U agentify -Fc agentify > "$backup.partial/agentify.dump"
     [[ $channel == test ]] || cp "$edge_file" "$backup.partial/Caddyfile"
     # On disk before any migration relies on them.
     sync "$backup.partial"/*
@@ -284,9 +294,9 @@ fi
 if [[ $mode == reverify ]]; then
   at "checking $revision again: the channel already runs it, so nothing stops"
 else
-  at "migrating the scanner database"
+  at "migrating the scanner's tables"
   stack run --rm --no-deps -T scanner-migrate
-  at "migrating the gateway and cabinet database"
+  at "migrating the gateway's and the cabinet's tables"
   stack run --rm --no-deps -T migrate
   transition set phase=started
 fi
@@ -358,8 +368,8 @@ trap - ERR INT TERM HUP
 transition finish "$revision"
 rm -f "$state/cards-before"
 # The databases a restore replaced stay until a release after it is verified.
-for replaced in $(stack exec -T postgres psql -U agentify_commerce -d postgres -Atc "select datname from pg_database where datname like '%\_replaced\_%'"); do
-  stack exec -T postgres psql -U agentify_commerce -d postgres -q -c "DROP DATABASE \"$replaced\" WITH (FORCE)" \
+for replaced in $(stack exec -T postgres psql -U agentify -d postgres -Atc "select datname from pg_database where datname like '%\_replaced\_%'"); do
+  stack exec -T postgres psql -U agentify -d postgres -q -c "DROP DATABASE \"$replaced\" WITH (FORCE)" \
     || echo "activate: $replaced stays, and the next verified release tries again." >&2
 done
 # The five newest restore points are kept; older ones go.

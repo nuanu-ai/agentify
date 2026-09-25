@@ -29,7 +29,7 @@ import { postgresWooShops } from "./woo-shops.js";
  */
 const wanted = (() => {
   const url = new URL(testDatabaseUrl());
-  url.pathname = "/agentify_commerce_test_cabinet_woo";
+  url.pathname = "/agentify_test_cabinet_woo";
   return url.toString();
 })();
 const databaseUrl = await readyDatabase(wanted);

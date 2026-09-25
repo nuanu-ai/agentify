@@ -1,5 +1,130 @@
 import { getServerConfig } from "./config";
-import { getDashboardDatabase } from "./dashboard-database";
+import { getDatabase } from "./database";
+
+/**
+ * What the operator page reads, straight from the scanner's tables. Target
+ * hostnames appear, and no submitted URL, lead or session identifier, contact
+ * field, token or raw browser evidence does. They are queries here rather
+ * than views in the database, because a database built from the migrations
+ * alone has to answer this page too.
+ */
+const OVERVIEW = `
+  select
+    (select count(*)::bigint from public.sessions) as visitors_total,
+    (select count(*)::bigint from public.sessions where created_at >= now() - interval '30 days') as visitors_30d,
+    (select count(*)::bigint from public.analytics_events where name = 'landing_view' and occurred_at >= now() - interval '30 days') as landing_views_30d,
+    (select count(*)::bigint from public.scans) as scans_total,
+    (select count(*)::bigint from public.scans where accepted_at >= now() - interval '30 days') as scans_30d,
+    (select count(*)::bigint from public.scans where accepted_at >= now() - interval '30 days' and status in ('completed', 'partial')) as completed_scans_30d,
+    (select count(distinct target_hash)::bigint from public.scans where accepted_at >= now() - interval '30 days') as unique_sites_30d,
+    (select count(*)::bigint from public.analytics_events where name = 'registration_completed' and occurred_at >= now() - interval '30 days') as verified_registrations_30d,
+    (select count(*)::bigint from public.analytics_events where name = 'result_shared' and occurred_at >= now() - interval '30 days') as shares_30d,
+    (select count(*)::bigint from public.scans where accepted_at >= now() - interval '24 hours') as accepted_requests_24h,
+    (select count(*)::bigint from public.rate_limit_events where kind = 'scan_ip_hour' and challenge_passed and occurred_at >= now() - interval '1 hour') as challenge_passes_24h,
+    (select coalesce(sum(usage_usd), 0)::numeric(12, 6) from public.browser_observations where budget_day = current_date) as browser_usage_usd_today`;
+
+const DAILY_FUNNEL = `
+  with days as (
+    select generate_series(current_date - interval '29 days', current_date, interval '1 day')::date as day
+  ), visitors as (
+    select created_at::date as day, count(*)::bigint as visitors
+    from public.sessions
+    where created_at >= current_date - interval '29 days'
+    group by 1
+  ), landings as (
+    select occurred_at::date as day, count(*)::bigint as landing_views
+    from public.analytics_events
+    where name = 'landing_view' and occurred_at >= current_date - interval '29 days'
+    group by 1
+  ), scan_totals as (
+    select
+      accepted_at::date as day,
+      count(*)::bigint as scans,
+      count(*) filter (where status in ('completed', 'partial'))::bigint as completed_scans
+    from public.scans
+    where accepted_at >= current_date - interval '29 days'
+    group by 1
+  ), registrations as (
+    select occurred_at::date as day, count(*)::bigint as verified_registrations
+    from public.analytics_events
+    where name = 'registration_completed' and occurred_at >= current_date - interval '29 days'
+    group by 1
+  ), shares as (
+    select occurred_at::date as day, count(*)::bigint as shares
+    from public.analytics_events
+    where name = 'result_shared' and occurred_at >= current_date - interval '29 days'
+    group by 1
+  )
+  select
+    days.day,
+    coalesce(visitors.visitors, 0)::bigint as visitors,
+    coalesce(landings.landing_views, 0)::bigint as landing_views,
+    coalesce(scan_totals.scans, 0)::bigint as scans,
+    coalesce(scan_totals.completed_scans, 0)::bigint as completed_scans,
+    coalesce(registrations.verified_registrations, 0)::bigint as verified_registrations,
+    coalesce(shares.shares, 0)::bigint as shares
+  from days
+  left join visitors using (day)
+  left join landings using (day)
+  left join scan_totals using (day)
+  left join registrations using (day)
+  left join shares using (day)
+  order by days.day`;
+
+const RECENT_SCANS = `
+  select
+    s.id as scan_id,
+    s.target_host,
+    s.segment,
+    s.status,
+    s.score,
+    s.coverage,
+    s.level,
+    s.cache_hit,
+    s.accepted_at,
+    s.finished_at,
+    case
+      when s.finished_at is not null then extract(epoch from (s.finished_at - s.accepted_at))::integer
+    end as duration_seconds,
+    observation.status as browser_status
+  from public.scans s
+  left join lateral (
+    select bo.status
+    from public.browser_observations bo
+    where bo.scan_id = s.id
+    order by bo.queued_at desc
+    limit 1
+  ) observation on true
+  order by s.accepted_at desc
+  limit 50`;
+
+const SELF_SCAN = `
+  select
+    s.id as scan_id,
+    s.target_host,
+    s.segment,
+    s.status,
+    s.score,
+    s.coverage,
+    s.level,
+    s.accepted_at,
+    s.finished_at,
+    c12.status as substantive_html_status,
+    c13.status as agent_user_agent_status,
+    observation.status as browser_status
+  from public.scans s
+  left join public.scan_checks c12 on c12.scan_id = s.id and c12.check_id = 12
+  left join public.scan_checks c13 on c13.scan_id = s.id and c13.check_id = 13
+  left join lateral (
+    select bo.status
+    from public.browser_observations bo
+    where bo.scan_id = s.id
+    order by bo.queued_at desc
+    limit 1
+  ) observation on true
+  where s.target_host in ('agentify.ad', 'www.agentify.ad')
+  order by s.accepted_at desc
+  limit 1`;
 
 const asNumber = (value: unknown): number => {
   const parsed = Number(value ?? 0);
@@ -79,12 +204,12 @@ export type OperatorDashboard = {
 };
 
 export async function getOperatorDashboard(): Promise<OperatorDashboard> {
-  const { pool } = getDashboardDatabase();
+  const { pool } = getDatabase();
   const [overviewResult, dailyResult, scansResult, selfResult] = await Promise.all([
-    pool.query("select * from metabase.operator_overview"),
-    pool.query("select * from metabase.operator_daily_funnel order by day asc"),
-    pool.query("select * from metabase.operator_recent_scans order by accepted_at desc limit 50"),
-    pool.query("select * from metabase.operator_self_scan limit 1"),
+    pool.query(OVERVIEW),
+    pool.query(DAILY_FUNNEL),
+    pool.query(RECENT_SCANS),
+    pool.query(SELF_SCAN),
   ]);
 
   const overview = overviewResult.rows[0];

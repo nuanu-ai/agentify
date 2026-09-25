@@ -12,7 +12,7 @@ import type { Message } from "./mail.js";
 
 const wanted = (() => {
   const url = new URL(testDatabaseUrl());
-  url.pathname = "/agentify_commerce_test_cabinet_identity";
+  url.pathname = "/agentify_test_cabinet_identity";
   return url.toString();
 })();
 const databaseUrl = await readyDatabase(wanted);

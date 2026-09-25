@@ -2,7 +2,7 @@
 """Releases one revision on this host's channel.
 
     sudo agentify-release app-v1.2.3                 a tag, a branch, or on TEST a full SHA
-    sudo agentify-release --restore <restore point>  puts both databases back as it holds them
+    sudo agentify-release --restore <restore point>  puts the database back as it holds it
     agentify-release --timer deploy-test             what TEST's timer runs once a minute
 
 A person's run does not release or restore from the terminal. It hands the
@@ -431,7 +431,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Release one revision on this host's channel, or restore a restore point")
     parser.add_argument("name", nargs="?", help="an app-v* tag on production; a tag, branch or full SHA on test")
     parser.add_argument("--timer", action="store_true", help="skip what is current or failed, and wait quietly")
-    parser.add_argument("--restore", metavar="DIRECTORY", help="restore both databases from this restore point")
+    parser.add_argument("--restore", metavar="DIRECTORY", help="restore the database from this restore point")
     parser.add_argument("--config", type=Path, default=Path("/etc/agentify/release.json"))
     arguments = parser.parse_args(argv)
     if (arguments.name is None) == (arguments.restore is None) or (arguments.timer and arguments.restore):

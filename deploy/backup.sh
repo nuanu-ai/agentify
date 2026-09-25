@@ -2,9 +2,9 @@
 # One snapshot of PRODUCTION into its restic repository, every ten minutes from
 # agentify-backup.timer (deploy/README.md, "Backups"). A snapshot holds a
 # pg_dump of every database on the server except postgres, the test suites'
-# *_test and the scratch that restores and checks leave, so the list survives the
-# merge into one database. It also holds the server's roles, the row count of each
-# table as its dump holds it, production.env and release.json. It never holds
+# *_test and the scratch that restores and checks leave, which is agentify. It
+# also holds the server's roles, the row count of each table as its dump holds
+# it, production.env and release.json. It never holds
 # backup.env, which opens the snapshots. The dumps are taken under the
 # release lock, waited for five minutes at most (then exit 75 with nothing
 # dumped); the upload runs after the lock is released.
@@ -18,16 +18,16 @@ trap 'rm -rf "$work"' EXIT
 exec 9> /run/lock/agentify-release.lock
 flock -w 300 9 || { echo "backup: the release lock stayed busy for five minutes; nothing was dumped." >&2; exit 75; }
 # Found by Compose's labels, as a release finds it; deploy/stack.sh names the project.
-postgres="$(docker ps -q --filter label=com.docker.compose.project=agentify-commerce --filter label=com.docker.compose.service=postgres)"
+postgres="$(docker ps -q --filter label=com.docker.compose.project=agentify --filter label=com.docker.compose.service=postgres)"
 (($(wc -w <<< "$postgres") == 1)) || { echo "backup: PRODUCTION's postgres container is not running, so nothing was dumped." >&2; exit 1; }
 databases=()
-for database in $(docker exec "$postgres" psql -U agentify_commerce -d postgres -XAtc "SELECT datname FROM pg_database WHERE NOT datistemplate"); do
+for database in $(docker exec "$postgres" psql -U agentify -d postgres -XAtc "SELECT datname FROM pg_database WHERE NOT datistemplate"); do
   [[ $database =~ ^(postgres$|check_)|_replaced_|_restoring$|_test$ ]] || databases+=("$database")
 done
 for database in "${databases[@]}"; do
-  docker exec "$postgres" pg_dump -U agentify_commerce -Fc -Z0 "$database" > "$work/$database.dump"
+  docker exec "$postgres" pg_dump -U agentify -Fc -Z0 "$database" > "$work/$database.dump"
 done
-docker exec "$postgres" pg_dumpall -U agentify_commerce --roles-only > "$work/roles.sql"
+docker exec "$postgres" pg_dumpall -U agentify --roles-only > "$work/roles.sql"
 exec 9>&-
 install -m 600 /etc/agentify/production.env /etc/agentify/release.json "$work/"
 for database in "${databases[@]}"; do # the lines of each COPY block, which the restore rehearsal compares with

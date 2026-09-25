@@ -18,7 +18,7 @@ function runEntrypoint(overrides = {}) {
       PATH: process.env.PATH,
       REGISTRATION_ENABLED: "true",
       APP_BASE_URL: "https://agentify.ad",
-      DATABASE_URL: "postgresql://agentify_commerce:synthetic@postgres:5432/agentify_scanner",
+      DATABASE_URL: "postgresql://agentify:synthetic@postgres:5432/agentify",
       TOKEN_HMAC_SECRET: "synthetic-hmac-key-000000000000000000000000",
       CABINET_IDENTITY_URL: "http://cabinet:3002",
       REPORT_IDENTITY_SECRET: "synthetic-report-identity-secret-32-bytes",

@@ -90,7 +90,7 @@ export interface Booted {
  */
 export function sliceEnv(overrides: Record<string, string> = {}): Record<string, string> {
   const settings = {
-    DATABASE_URL: "postgres://agentify_commerce@localhost:5432/agentify_commerce",
+    DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
     PAY_TO_ADDRESS: SLICE_PAY_TO,
     // Short enough that an idle poll parks briefly rather than for the
     // production window, so the merchant's loop picks up work promptly and the

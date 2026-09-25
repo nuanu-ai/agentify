@@ -12,7 +12,7 @@
  * afterwards either, which is the worst version of it — the evening is spent
  * looking for a bug in the cabinet.
  *
- * So the suite gets `agentify_commerce_test` beside `agentify_commerce`, on the same
+ * So the suite gets `agentify_test` beside `agentify`, on the same
  * server, and
  * takes it as its own.
  *
@@ -21,7 +21,7 @@
  * in `/docker-entrypoint-initdb.d` only when it initialises an empty data
  * directory, and the volume outlives `docker compose down`. Every developer who
  * has already run the stack — which is all of them — would find `pnpm test:db`
- * failing with "database agentify_commerce_test does not exist" until somebody told them
+ * failing with "database agentify_test does not exist" until somebody told them
  * to destroy their volume. A safety change that arrives as a broken morning is
  * a safety change people work around. The init script is still there for a
  * fresh volume, so that a psql session finds the database without running the
@@ -31,13 +31,13 @@
 import { Pool } from "pg";
 
 /** The database this suite owns. */
-export const TEST_DATABASE = "agentify_commerce_test";
+export const TEST_DATABASE = "agentify_test";
 
 /** The database the stack runs on, which this suite must never be given. */
-const THE_STACK_DATABASE = "agentify_commerce";
+const THE_STACK_DATABASE = "agentify";
 
 /** Where the suite looks when nobody says otherwise. */
-export const DEFAULT_TEST_DATABASE_URL = `postgres://agentify_commerce:agentify_commerce@localhost:5432/${TEST_DATABASE}`;
+export const DEFAULT_TEST_DATABASE_URL = `postgres://agentify:agentify@localhost:5432/${TEST_DATABASE}`;
 
 /**
  * How a host that keeps its database somewhere else says so.
@@ -51,7 +51,7 @@ export const DEFAULT_TEST_DATABASE_URL = `postgres://agentify_commerce:agentify_
  *
  * It is a name of its own rather than DATABASE_URL because DATABASE_URL is
  * already spoken for: it is what `db:migrate` and `account add` are handed, and
- * what it names for them is `agentify_commerce` — the one database this suite
+ * what it names for them is `agentify` — the one database this suite
  * refuses.
  * A variable with "test" in it cannot be mistaken for that one, so it is the
  * specific answer and wins when both are set.
@@ -97,7 +97,7 @@ export function testDatabaseUrl(
   if (database === "") {
     // Measured against postgres:17-alpine: an address that stops at the port,
     // and one ending in a bare slash, both connect to the database named after
-    // the user — `agentify_commerce` on every stack this file is about. So an address
+    // the user — `agentify` on every stack this file is about. So an address
     // that looks finished is how the refusal above gets walked past.
     throw new Error(
       `${variable} stops at the server and names no database, and Postgres fills that in with the` +

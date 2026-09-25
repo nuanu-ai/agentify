@@ -18,9 +18,10 @@ names. Git and published releases retain the original historical record;
 archived descriptions anonymize identifiers explicitly rather than claiming
 that a new execution occurred. Copyright ownership and license terms remain.
 
-Commerce uses database/role `agentify_commerce` and scratch database
-`agentify_commerce_test`. Its queues, locks and cookies use the Agentify
-namespace. Scanner storage remains separate. The scanner's cookies, browser
+The product's one database and the account that reaches it are both
+`agentify` (ADR-0003), and the test suites' scratch databases are
+`agentify_test` and `agentify_scanner_migration_test`. Queues, locks and
+cookies use the Agentify namespace. The scanner's cookies, browser
 storage keys, DOM attributes, Postgres application names and the metadata it
 writes to Stripe use the Agentify namespace too: a consent
 choice stored under the former key is asked for once more, and a card-signal
@@ -48,13 +49,14 @@ before these definitions can be deployed. It must identify source and target,
 stop all writers, preserve and restore-check data, resolve pending queue work,
 map volumes explicitly, replace environment and service names, and retain a
 rollback that includes configuration and data. A Compose project name is the
-prefix on every container and the label every volume is found by, so each
-host keeps the project and container names it was created under and moves
-them with the database in the one-database step, inside that one cutover;
-images, source and the edge's route table take the new names now. Host
-delivery and npm publication are separate gates under ADR-0016: TEST's timer
-delivers automatically, a person delivers PRODUCTION, and the production
-namespace cutover remains paused. Branch acceptance proves the new source and
+prefix on every container and the label every volume is found by, so the
+hosts' project and volume names move with the database, in one cutover per
+host that a person runs (`deploy/one-database.sh`, deploy/README.md): both
+channels become the project `agentify` with the volumes `agentify-postgres`
+and `agentify-caddy`, copied from the old ones, which stay untouched as the
+way back until a person removes them. Host delivery and npm publication are
+separate gates under ADR-0016: TEST's timer delivers automatically and a
+person delivers PRODUCTION. Branch acceptance proves the new source and
 isolated checks; it does not prove migration of a live host.
 
 ## Alternatives rejected

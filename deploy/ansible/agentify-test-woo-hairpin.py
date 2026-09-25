@@ -28,7 +28,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 NETWORKS = (
-    ("agentify-test_default", "agentify-test", "default"),
+    ("agentify_default", "agentify", "default"),
     ("agentify-woo-lab", "agentify-woo-lab", "shop"),
 )
 HTTPS_PORT = "443"

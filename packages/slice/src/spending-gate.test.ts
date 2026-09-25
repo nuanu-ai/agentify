@@ -32,7 +32,7 @@ import {
 import { bootGateway, sliceEnv } from "./gateway-harness.js";
 import { whyNotThisNetwork } from "./smoke.js";
 
-const DATABASE_URL = "postgres://agentify_commerce@localhost:5432/agentify_commerce";
+const DATABASE_URL = "postgres://agentify@localhost:5432/agentify";
 
 /**
  * The three fixtures a bootstrap gate needs before it reaches the chain, built
