@@ -528,6 +528,21 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(await store.setPayoutWallet("mch_nobody", NO_WALLET, wallet, 5_000)).toBeNull();
       });
 
+      it("refuses a second first address written over one that landed after it was read", async () => {
+        // Two changes read the same row with no address on it and nothing
+        // waiting, and the second to write finds an address the first put
+        // there. Only the address tells the two rows apart — nothing waits on
+        // either — so this is the case that proves the address itself is
+        // compared, not only the change beside it.
+        const store = await twoMerchants();
+        const first = { address: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", pending: null };
+        const second = { address: "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359", pending: null };
+        await store.setPayoutWallet(A, NO_WALLET, first, 3_000);
+
+        expect(await store.setPayoutWallet(A, NO_WALLET, second, 4_000)).toBe("moved");
+        expect((await store.merchantById(A))?.payoutWallet).toStrictEqual(first);
+      });
+
       it("keeps a waiting change beside the wallet paid now, with the moment it takes effect", async () => {
         // ADR-0019: on the live deployment a replacement waits forty-eight hours
         // after it is announced, and the address in every payment request until

@@ -23,7 +23,14 @@ import type { Card } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Announcement } from "../announcements.js";
-import { ANNOUNCING, type Harness, harness, type Served, serve } from "../testing/harness.js";
+import {
+  ANNOUNCING,
+  buyOverHttp,
+  type Harness,
+  harness,
+  type Served,
+  serve,
+} from "../testing/harness.js";
 import { PAYMENT_REQUIRED_HEADER } from "./x402.js";
 
 const HOURS = 60 * 60 * 1_000;
@@ -167,6 +174,26 @@ describe("a replacement on the live deployment", () => {
       payout_wallet: A_WALLET,
       pending: null,
     });
+  });
+
+  it("is where a payment made once the wait is over is checked and settled", async () => {
+    // The challenge is not the only reader. A payment is verified against the
+    // address its merchant is paid at when it arrives, and a sale made after
+    // the moment has to be checked against the new address the agent was told
+    // to pay — checked against the old one, the payment layer would refuse a
+    // payment made out exactly as the challenge said.
+    const { served, harnessed } = await started();
+    const itemId = await published(served, harnessed.merchant.key);
+    await ask(served, harnessed.merchant.key, A_WALLET);
+    harnessed.advance(THE_WAIT);
+
+    const bought = await buyOverHttp(harnessed, served, itemId, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+
+    expect(bought.status, JSON.stringify(bought.body)).toBe(200);
+    expect(harnessed.facilitator.verifies.at(-1)?.payTo).toBe(A_WALLET);
+    expect(harnessed.facilitator.settles.at(-1)?.payTo).toBe(A_WALLET);
   });
 
   it("is announced before it is recorded, saying what changes, when, and which key asked", async () => {
