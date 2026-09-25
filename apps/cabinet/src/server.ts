@@ -763,6 +763,11 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       await refuseLink(request, response);
       return;
     }
+    // A browser already signed in gets its new session in place of the old
+    // one rather than beside it: the old row would otherwise live on with
+    // nothing holding its cookie, and be counted as another place this
+    // account is signed in.
+    await identity.signOut(request.headers.cookie);
     carryCookies(response, opened.setCookies);
     await sendOpenedPerson(response, opened.person, opened.destination);
   });
