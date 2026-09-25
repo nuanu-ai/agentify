@@ -23,18 +23,19 @@ IMAGE = "python:3.12-slim-bookworm"
 RESTIC_PASSWORD, S3_SECRET = "restic-repository-secret", "s3-secret-access-key"
 BACKUP_ENV = f"RESTIC_REPOSITORY=s3:https://example/bucket\nRESTIC_PASSWORD={RESTIC_PASSWORD}\nAWS_ACCESS_KEY_ID=KEY\nAWS_SECRET_ACCESS_KEY={S3_SECRET}\n"
 LIVE = {
-    "agentify_commerce": {"public.orders": ["ord_1", "ord_2", "ord_3"], "drizzle.__drizzle_migrations": ["1"], "public.receipts": []},
-    "agentify_scanner": {"public.scans": ["scan_1", "scan_2"]},
+    "agentify": {"public.orders": ["ord_1", "ord_2", "ord_3"], "drizzle.__drizzle_migrations": ["1"], "public.receipts": [],
+                 "public.scans": ["scan_1", "scan_2"], "drizzle.scanner_migrations": ["1", "2"]},
 }
 # What is not the channel's data: the server's own database, the test suites',
 # and the scratch a restore or a killed check leaves.
-SCRATCH = {"postgres": {}, "agentify_commerce_test": {"public.orders": ["x"]}, "agentify_scanner_replaced_20260924101010": {},
-           "agentify_commerce_restoring": {}, "check_agentify_scanner": {"public.scans": ["left by a killed check"]}}
+SCRATCH = {"postgres": {}, "agentify_test": {"public.orders": ["x"]}, "agentify_scanner_migration_test": {"public.scans": ["y"]},
+           "agentify_replaced_20260924101010": {}, "agentify_restoring": {}, "check_agentify": {"public.scans": ["left by a killed check"]}}
 
 DOCKER = r"""#!/usr/bin/env bash
 W=/h/world
 echo "docker $*" >> $W/calls
-if [[ $1 == ps ]]; then echo postgres-1; exit 0; fi
+# The channel's database is found by its project's label, and only that one.
+if [[ $1 == ps ]]; then [[ " $* " != *" label=com.docker.compose.project=agentify "* ]] || echo postgres-1; exit 0; fi
 [[ $2 != -i ]] || shift
 shift 2
 target() { while (($#)); do [[ $1 != -d ]] || { echo "$2"; return; }; shift; done; }
@@ -180,7 +181,7 @@ class Backups(unittest.TestCase):
         self.assertIn("backup exit 0", said)
         [snapshot] = self.snapshots()
         stored = self.stored(snapshot)
-        self.assertEqual(sorted(stored), ["agentify_commerce.dump", "agentify_scanner.dump", "counts", "production.env", "release.json", "roles.sql"])
+        self.assertEqual(sorted(stored), ["agentify.dump", "counts", "production.env", "release.json", "roles.sql"])
         counts = sorted(f"{database}|{table}|{len(rows)}" for database, tables in LIVE.items() for table, rows in tables.items())
         self.assertEqual(sorted(stored["counts"].splitlines()), counts)
         self.assertNotIn(RESTIC_PASSWORD, "".join(stored.values()))
@@ -189,7 +190,7 @@ class Backups(unittest.TestCase):
         self.assertEqual((self.root / "state/backup-status").stat().st_mode & 0o777, 0o644)
 
     def test_a_failed_dump_stores_no_snapshot(self):
-        said = self.run_script("backup", FAIL_DUMP="agentify_scanner")
+        said = self.run_script("backup", FAIL_DUMP="agentify")
         self.assertRegex(said, r"(?m)^backup exit [1-9]")
         self.assertIn("pg_dump", said)
         self.assertEqual((self.snapshots(), self.status()), ([], ""))
@@ -201,20 +202,17 @@ class Backups(unittest.TestCase):
         self.assertFalse([call for call in self.calls() if "pg_dump" in call])
         self.assertEqual(self.snapshots(), [])
 
-    def test_the_database_list_survives_the_merge_into_one_database_named_agentify(self):
-        self.server({"agentify": {"public.orders": ["ord_1"], "public.scans": ["scan_1", "scan_2"]}, "postgres": {}, "check_agentify": {}})
+    def test_a_check_restores_the_latest_snapshot_whole_and_leaves_only_the_live_databases(self):
         said = self.run_script("backup\ncheck")
         self.assertIn("backup exit 0", said)
         self.assertIn("check exit 0", said)
-        [snapshot] = self.snapshots()
-        self.assertEqual([name for name in self.stored(snapshot) if name.endswith(".dump")], ["agentify.dump"])
         self.assertIn("passed", self.status())
-        self.assertEqual(self.databases(), ["agentify", "postgres"])
+        self.assertEqual(self.databases(), sorted({**LIVE, **SCRATCH}.keys() - {"check_agentify"}))
 
     def test_the_check_drops_its_scratch_databases_even_when_a_restore_loses_a_row(self):
         said = self.run_script("backup\nLOSE_ROW=public.orders check")
         self.assertRegex(said, r"(?m)^check exit [1-9]")
-        self.assertIn("agentify_commerce|public.orders|3", said)
+        self.assertIn("agentify|public.orders|3", said)
         self.assertIn("failed", self.status())
         self.assertFalse([name for name in self.databases() if name.startswith("check_")])
 

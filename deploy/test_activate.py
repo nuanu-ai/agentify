@@ -39,12 +39,9 @@ HERE = Path(__file__).parent
 IMAGE = "python:3.12-slim-bookworm"
 NEW, OLD, OTHER = "a" * 40, "b" * 40, "c" * 40
 APPLICATIONS = ("cabinet", "gateway", "scanner", "scanner-worker")
-INIT = {"01-test-database.sql": "CREATE DATABASE agentify_commerce_test;\n", "02-scanner-database.sql": "CREATE DATABASE agentify_scanner;\n"}
-ORIGINAL = {"agentify_commerce": "agentify_commerce: the old release's data", "agentify_scanner": "agentify_scanner: the old release's data"}
-MIGRATED = {
-    "agentify_commerce": ORIGINAL["agentify_commerce"] + "\nthe gateway's migration\nthe cabinet's migration",
-    "agentify_scanner": ORIGINAL["agentify_scanner"] + "\na scanner migration",
-}
+INIT = {"01-test-databases.sql": "CREATE DATABASE agentify_test;\n"}
+ORIGINAL = {"agentify": "agentify: the old release's data"}
+MIGRATED = {"agentify": ORIGINAL["agentify"] + "\na scanner migration\nthe gateway's migration\nthe cabinet's migration"}
 ORDER = "an order written while the new release ran"
 FAILED_MIGRATION = "run --rm --no-deps -T migrate"
 FAILED_START = "up -d --wait --no-deps gateway cabinet web"
@@ -80,11 +77,11 @@ statement() {
 }
 case "$args" in
   "config --no-interpolate") echo "name: agentify-test" ;;
-  "--profile jobs config --format json") echo '{"services": {"scanner": {"environment": {"A": "1"}}}}' ;;
+  "--profile jobs config --format json") echo '{"services": {"scanner": {"environment": {"A": "1"}}}, "volumes": {"agentify-postgres": {"name": "agentify-postgres"}}}' ;;
   "config --images postgres") echo "postgres@sha256:pinned" ;;
   "stop --timeout 60 gateway cabinet scanner scanner-worker")
     for c in gateway cabinet scanner scanner-worker; do [[ ! -f $W/containers/$c ]] || sed -i 's/running/exited/' $W/containers/$c; done ;;
-  "exec -T postgres pg_dump -U agentify_commerce -Fc "*)
+  "exec -T postgres pg_dump -U agentify -Fc "*)
     [[ -f $W/record-at-dump ]] || cat $record > $W/record-at-dump 2>/dev/null
     cat "$W/db/${args##* }" ;;
   "exec -T postgres psql"*)
@@ -94,10 +91,10 @@ case "$args" in
       script="$(cat)"
       mapfile -t renames < <(grep -o 'ALTER DATABASE [a-z0-9_]* RENAME TO [a-z0-9_]*' <<<"$script")
       if [[ -n ${SWAP_FAILS:-} ]]; then
-        # The third rename fails: inside a transaction nothing is applied,
-        # outside one the renames before it stay.
-        [[ $script == *BEGIN* ]] || { statement "${renames[0]}"; statement "${renames[1]}"; }
-        echo "ERROR: the third rename failed" >&2; exit 1
+        # The second rename fails: inside a transaction nothing is applied,
+        # outside one the rename before it stays.
+        [[ $script == *BEGIN* ]] || statement "${renames[0]}"
+        echo "ERROR: the second rename failed" >&2; exit 1
       fi
       for rename in "${renames[@]}"; do statement "$rename"; done
     fi ;;
@@ -109,11 +106,11 @@ case "$args" in
       head -c 12 > "$W/db/$target"; echo "pg_restore: error: could not read from input file: end of file" >&2; exit 1
     fi
     cat > "$W/db/$target" ;;
-  "run --rm --no-deps -T scanner-migrate") echo "a scanner migration" >> $W/db/agentify_scanner ;;
+  "run --rm --no-deps -T scanner-migrate") echo "a scanner migration" >> $W/db/agentify ;;
   "run --rm --no-deps -T migrate")
-    echo "the gateway's migration" >> $W/db/agentify_commerce
+    echo "the gateway's migration" >> $W/db/agentify
     hook
-    echo "the cabinet's migration" >> $W/db/agentify_commerce ;;
+    echo "the cabinet's migration" >> $W/db/agentify ;;
   "up -d --wait --no-deps postgres")
     init=/var/lib/agentify/test/postgres-init
     mkdir -p $init; ls $init > $W/postgres-init-at-start ;;
@@ -149,6 +146,7 @@ case "$args" in
   "inspect -f {{.State.Running}} agentify-scanner-check") echo true ;;
   "exec agentify-scanner-check "*) echo "${SCANNER_HEALTH:-200}" ;;
   "start "*) for c in ${args#start }; do sed -i 's/exited/running/' $W/containers/$c; done ;;
+  "volume inspect agentify-postgres") [[ -z ${NO_VOLUME:-} ]] || { echo "Error response from daemon: get agentify-postgres: no such volume" >&2; exit 1; } ;;
 esac
 exit 0
 """
@@ -303,7 +301,7 @@ class Activation(unittest.TestCase):
         self.assertEqual(self.databases(), MIGRATED)
         [point] = self.restore_points()
         self.assertTrue(point.endswith(f"-{OLD}-before-{NEW}"), point)
-        self.assertEqual((self.root / "backups/test" / point / "agentify_commerce.dump").read_text().strip(), ORIGINAL["agentify_commerce"])
+        self.assertEqual((self.root / "backups/test" / point / "agentify.dump").read_text().strip(), ORIGINAL["agentify"])
         self.assertEqual((self.record(), self.current()), (None, NEW))
 
     def test_the_record_is_written_before_the_dump_and_says_started_before_the_new_release_starts(self):
@@ -331,7 +329,7 @@ class Activation(unittest.TestCase):
     # Failures of a first run, by how far it got. Nothing restores by itself.
 
     def test_a_failure_before_any_migration_ends_the_transition_and_the_previous_release_runs(self):
-        said = self.run_script("activate", FAIL_AT="exec -T postgres pg_dump -U agentify_commerce -Fc agentify_scanner")
+        said = self.run_script("activate", FAIL_AT="exec -T postgres pg_dump -U agentify -Fc agentify")
         self.assertIn("exit 1", said)
         self.assert_old_release_runs_on_old_data(said)
         self.assertEqual((self.restore_points(), self.record(), self.current()), ([], None, OLD))
@@ -343,7 +341,7 @@ class Activation(unittest.TestCase):
         self.assertIn("down", said)
         self.assertIn(f"agentify-release --restore /var/backups/agentify/test/{point}", said)
         # Nothing was restored, and nothing started again on the half-migrated data.
-        self.assertEqual(self.databases()["agentify_commerce"], ORIGINAL["agentify_commerce"] + "\nthe gateway's migration")
+        self.assertEqual(self.databases()["agentify"], ORIGINAL["agentify"] + "\na scanner migration\nthe gateway's migration")
         self.assertFalse([call for call in self.calls() if "pg_restore" in call])
         self.assertEqual(self.applications(), dict.fromkeys(APPLICATIONS, "old exited"))
         self.assertEqual((self.record()["phase"], self.current()), ("migrating", OLD))
@@ -366,7 +364,7 @@ class Activation(unittest.TestCase):
         self.assertIn("exit 0", said)
         [point] = self.restore_points()
         taken = sorted(path.name for path in (self.root / "backups/test" / point).iterdir())
-        self.assertEqual(taken, ["agentify_commerce.dump", "agentify_scanner.dump"], said)
+        self.assertEqual(taken, ["agentify.dump"], said)
         self.assertEqual((self.record(), self.current()), (None, NEW))
 
     def test_a_failure_after_the_new_release_started_restores_nothing_and_says_so(self):
@@ -382,7 +380,7 @@ class Activation(unittest.TestCase):
         (self.root / "state/test/current").unlink()
         for container in ("scanner", "scanner-worker"):
             (self.world / "containers" / container).unlink()
-        said = self.run_script("activate", FAIL_AT="exec -T postgres pg_dump -U agentify_commerce -Fc agentify_scanner")
+        said = self.run_script("activate", FAIL_AT="exec -T postgres pg_dump -U agentify -Fc agentify")
         self.assertIn("exit 1", said)
         self.assertIn("running now: cabinet gateway", said)
 
@@ -394,16 +392,16 @@ class Activation(unittest.TestCase):
         # Written from inside, as the running release would: an append from
         # the macOS side of Docker Desktop's file sharing can reach the next
         # container after that container's own append, which overwrites it.
-        self.run_script(f'echo "{ORDER}" >> /h/world/db/agentify_commerce')
+        self.run_script(f'echo "{ORDER}" >> /h/world/db/agentify')
         said = self.run_script("activate", FAIL_AT=FAILED_MIGRATION)
         self.assertIn("exit 1", said)
         self.assertIn("nothing was restored", said)
-        self.assertIn(ORDER, self.databases()["agentify_commerce"])
+        self.assertIn(ORDER, self.databases()["agentify"])
         self.assertEqual(self.record()["phase"], "started")
         stopped = len(self.calls())
         said = self.run_script("activate")
         self.assertIn("exit 0", said)
-        self.assertIn(ORDER, self.databases()["agentify_commerce"])
+        self.assertIn(ORDER, self.databases()["agentify"])
         self.assertNotIn("stack stop --timeout 60 gateway cabinet scanner scanner-worker", self.calls()[stopped:])
         self.assertIsNone(self.record())
 
@@ -499,7 +497,7 @@ class Activation(unittest.TestCase):
         self.assertEqual(self.record(), record, said)
 
     def test_a_fix_forward_whose_dump_fails_gives_the_started_release_its_record_back(self):
-        self.assert_the_started_release_keeps_its_record(FAIL_AT="exec -T postgres pg_dump -U agentify_commerce -Fc agentify_commerce")
+        self.assert_the_started_release_keeps_its_record(FAIL_AT="exec -T postgres pg_dump -U agentify -Fc agentify")
 
     def test_a_fix_forward_stopped_by_systemctl_stop_gives_the_started_release_its_record_back(self):
         self.assert_the_started_release_keeps_its_record(TERM_AT="stop --timeout 60 gateway cabinet scanner scanner-worker")
@@ -561,8 +559,8 @@ class Activation(unittest.TestCase):
         [point] = self.restore_points()
         self.assertIn("restore exit 0", self.run_script(f"restore /var/backups/agentify/test/{point}"))
         replaced = self.replaced()
-        self.assertEqual(len(replaced), 2, replaced)
-        self.assertEqual((self.world / "db" / replaced[0]).read_text().strip(), MIGRATED["agentify_commerce"])
+        self.assertEqual(len(replaced), 1, replaced)
+        self.assertEqual((self.world / "db" / replaced[0]).read_text().strip(), MIGRATED["agentify"])
         self.assertIn("exit 1", self.run_script("activate", FAIL_AT=FAILED_START))
         self.assertEqual(self.replaced(), replaced)
         self.assertIn("exit 0", self.run_script("activate"))
@@ -585,7 +583,7 @@ class Activation(unittest.TestCase):
         self.assertEqual(self.record(), record)
         self.assertIn("exit 0", self.run_script("activate"))
 
-    def test_a_swap_that_fails_partway_changes_neither_database(self):
+    def test_a_swap_that_fails_partway_leaves_the_database_as_it_was(self):
         self.assertIn("exit 0", self.run_script("activate"))
         [point] = self.restore_points()
         said = self.run_script(f"restore /var/backups/agentify/test/{point}", SWAP_FAILS="1")
@@ -610,20 +608,6 @@ class Activation(unittest.TestCase):
         self.assertIn("restore exit 1", said)
         self.assertIn("MiB free", said)
         self.assertEqual((self.databases(), self.record()), (MIGRATED, None))
-
-    def test_a_restore_point_holding_one_databases_dump_restores_that_one_and_leaves_the_other(self):
-        # How one database is restored from a snapshot of the off-host backup.
-        self.assertIn("exit 0", self.run_script("activate"))
-        [point] = self.restore_points()
-        (self.root / "backups/test" / point / "agentify_commerce.dump").unlink()
-        said = self.run_script(f"restore /var/backups/agentify/test/{point}")
-        self.assertIn("restore exit 0", said)
-        self.assertEqual(self.databases(), {"agentify_commerce": MIGRATED["agentify_commerce"], "agentify_scanner": ORIGINAL["agentify_scanner"]})
-        [replaced] = self.replaced()
-        self.assertTrue(replaced.startswith("agentify_scanner_replaced_"), replaced)
-        # The two databases now hold the data of different revisions, so no
-        # revision is current, and the next release migrates whatever it runs.
-        self.assertIsNone(self.current())
 
     def test_a_directory_holding_no_dump_is_refused_and_changes_nothing(self):
         (self.root / "backups/test/empty").mkdir(parents=True)
@@ -656,7 +640,7 @@ class Activation(unittest.TestCase):
         (self.root / "backups/test/point").mkdir(parents=True)
         for database, content in ORIGINAL.items():
             (self.root / "backups/test/point" / f"{database}.dump").write_text(content + "\n")
-        (self.world / "db/agentify_commerce").write_text("agentify_commerce: written after the dump\n")
+        (self.world / "db/agentify").write_text("agentify: written after the dump\n")
         said = self.run_script(
             "flock /run/lock/agentify-release.lock sleep 5 &\nsleep 1\n"
             "restore /var/backups/agentify/test/point\nwait\nrestore /var/backups/agentify/test/point"
@@ -718,6 +702,13 @@ class Activation(unittest.TestCase):
         self.assertIn("exit 1", said)
         self.assertIn("scanner", said)
         self.assert_old_release_runs_on_old_data(said)
+
+    def test_a_host_without_the_database_volume_stops_nothing(self):
+        said = self.run_script("activate", NO_VOLUME="1")
+        self.assertIn("exit 1", said)
+        self.assertIn("the volume agentify-postgres", said)
+        self.assert_old_release_runs_on_old_data(said)
+        self.assertEqual((self.restore_points(), self.record()), ([], None))
 
     def test_a_database_running_another_image_than_the_pinned_one_stops_nothing(self):
         said = self.run_script("activate", POSTGRES_IMAGE="sha256:postgres-16")
