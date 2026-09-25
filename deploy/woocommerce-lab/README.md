@@ -17,15 +17,17 @@ Two inexpensive downloads, a pack of gift-message templates and a gift-wrapping
 guide, are the opposite case: each is a plain-text file from `seed/downloads/`,
 and that file is the whole of what the product promises. One price is typed
 with cents and the other without, the two ways a merchant writes a price into
-WooCommerce, which keeps it as written. They are built to the
-one class of product the connector imports, described in
+WooCommerce, which keeps it as written. They are built to the one class of
+product the connector imports, described in
 [ADR-0023](../../docs/decisions/0023-woocommerce-connect.md): a published,
 in-stock simple product priced in US dollars, virtual and downloadable, without
 managed stock and not sold individually, carrying exactly one file that can be
-downloaded any number of times and never expires. The connector delivers that
-one file to the buying agent, so the file has to sit in WooCommerce's protected
-upload directory, where a direct request is refused and only an order's
-download permission retrieves it. The seed also sets the shop settings the
+downloaded any number of times and never expires. When an agent buys one, the
+connector hands it three things: WooCommerce's own download link for that
+order, the file's name and the shop's order number. WooCommerce then serves the
+bytes to whoever opens the link, so the file has to sit in WooCommerce's
+protected upload directory, where a direct request is refused and only an
+order's download link retrieves it. The seed also sets the shop settings the
 connector reads before it imports or sells anything: prices in US dollars, tax
 calculation off, Force Downloads, no redirect fallback, no login required to
 download, and access granted once an order is paid.
@@ -79,7 +81,11 @@ private side of the shared ingress, and payment-method state. For the
 catalogue it checks both halves: that the gift cards still carry no file, and
 that each download is in the class the connector imports, including a request
 for its file that WooCommerce refuses without an order's download permission.
-It also reads the shop settings the connector depends on. It needs two
+Because that refusal looks the same whether or not a file is there, it also
+compares each file inside the WordPress container with its copy in
+`seed/downloads/`. It checks that every public price equals, as an amount, the
+price WooCommerce keeps, and it reads the shop settings the connector depends
+on. It needs two
 addresses and refuses without them, naming what is missing:
 
 ```sh
