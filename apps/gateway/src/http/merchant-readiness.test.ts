@@ -62,7 +62,10 @@ interface Holding {
 
 /**
  * A merchant made through the registration door on this surface, holding what
- * the case says and nothing else, and a key of theirs.
+ * the case says and nothing else, and the key registration hands back. That
+ * key is a cabinet's, the one kind that may set a wallet, which is how the
+ * wallet is set here: as the cabinet sets it for a person on its Settings
+ * screen.
  */
 const aMerchant = async (surface: Surface, holding: Holding) => {
   const harnessed = await harness({ REGISTRATION_INVITATION: INVITATION, ...SURFACES[surface] });

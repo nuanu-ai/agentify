@@ -1287,17 +1287,22 @@ describe("importing the catalogue", () => {
         const who = `${hasName ? "a" : "no"} seller name and ${hasWallet ? "a" : "no"} wallet`;
         it(`on ${channel}, for a merchant with ${who}`, async () => {
           const running = await started({ channel, fresh: hasName ? "named" : "unnamed" });
+          await connected(running);
           if (hasWallet) {
-            const paid = await running.gateway.call("POST", "/v0/payout-wallet", {
-              body: { payout_wallet: A_WALLET },
-              headers: { authorization: `Bearer ${running.ownKey}` },
+            // Where a wallet is set: in the cabinet's Settings, by the person
+            // signed in, since no key of the merchant's own code may set one.
+            const saved = await running.post("/settings/payout-wallet", {
+              payout_wallet: A_WALLET,
             });
-            expect(paid.status, JSON.stringify(paid.body)).toBe(200);
+            expect(saved.status, saved.html).toBe(303);
           }
           const door = await theDoorSays(running);
+          if (hasWallet) {
+            // The fixture took: a wallet saved is a wallet the door has.
+            expect(door).not.toContain(MERCHANT_FINDINGS.NO_PAYOUT_WALLET);
+          }
           const settable = door.filter((code) => code !== MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL);
           const approvalAsked = door.includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL);
-          await connected(running);
 
           const before = lineIn((await running.get("/woocommerce")).html);
           const pressed = await running.post("/woocommerce/import");

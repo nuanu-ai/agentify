@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import http from "node:http";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
@@ -253,6 +254,86 @@ async function expectSingleForwardedClient(baseUrl, spoofed) {
   assert.equal(body.forwardedFor.includes(","), false, body.forwardedFor);
 }
 
+/**
+ * Which upstream took one request sent exactly as written — the method as
+ * spelled, the path with no dot segment or doubled slash normalized away — or
+ * null when none of the three did and Caddy answered itself. Written over a
+ * bare socket because an HTTP client would upper-case a method like `post`.
+ */
+function whoTakes(baseUrl, method, rawPath) {
+  const { hostname, port } = new URL(baseUrl);
+  return new Promise((resolve, reject) => {
+    const socket = net.connect(Number(port), hostname, () => {
+      const body = method === "GET" || method === "HEAD" ? "" : '{"payout_wallet":"0x0"}';
+      socket.write(
+        `${method} ${rawPath} HTTP/1.1\r\nHost: ${hostname}:${port}\r\n` +
+          `Content-Type: application/json\r\nContent-Length: ${body.length}\r\n` +
+          `Connection: close\r\n\r\n${body}`,
+      );
+    });
+    let answer = "";
+    socket.setEncoding("utf8");
+    socket.on("data", (chunk) => {
+      answer += chunk;
+    });
+    socket.on("error", reject);
+    socket.on("end", () => {
+      const status = Number(/^HTTP\/1\.1 (\d{3})/.exec(answer)?.[1]);
+      const role = /"role":"(\w+)"/.exec(answer)?.[1] ?? null;
+      resolve({ status, role });
+    });
+  });
+}
+
+/**
+ * Setting the payout wallet is not on the public door: only the cabinet sets
+ * it, over the stack's own network (ADR-0019). Every way of writing to that
+ * path from outside — any method but a read, any case, encoding or spelling of
+ * the path — falls through to the site's ordinary missing page. Reading it
+ * stays the gateway's, for any key of the merchant's, and so do its
+ * neighbours.
+ */
+const WALLET_WRITES = [
+  ["POST", "/v0/payout-wallet"],
+  ["POST", "/v0/payout-wallet/"],
+  ["POST", "/V0/Payout-Wallet"],
+  ["POST", "/v0%2Fpayout-wallet"],
+  ["POST", "/v0%2fpayout-wallet"],
+  ["POST", "//v0/payout-wallet"],
+  ["POST", "/v0/./payout-wallet"],
+  ["POST", "/v0/keys/../payout-wallet"],
+  ["POST", "/v0/payout-wallet?pending=x"],
+  ["post", "/v0/payout-wallet"],
+  ["PUT", "/v0/payout-wallet"],
+  ["PATCH", "/v0/payout-wallet"],
+  ["DELETE", "/v0/payout-wallet"],
+];
+
+const WALLET_READS_AND_NEIGHBOURS = [
+  ["GET", "/v0/payout-wallet"],
+  ["GET", "/V0/Payout-Wallet"],
+  ["POST", "/v0/payout-wallets"],
+  ["POST", "/v0/seller-name"],
+];
+
+async function expectWalletWritesClosed(baseUrl) {
+  for (const [method, rawPath] of WALLET_WRITES) {
+    const answered = await whoTakes(baseUrl, method, rawPath);
+    assert.notEqual(answered.role, "gateway", `${method} ${rawPath} reached the gateway`);
+    // A method the server does not recognise may be refused by Caddy itself,
+    // which is as closed as the missing page; anything else goes there.
+    if (answered.role === null) {
+      assert.equal(answered.status, 400, `${method} ${rawPath} answered ${answered.status}`);
+      continue;
+    }
+    assert.equal(answered.role, "scanner", `${method} ${rawPath} answered ${answered.status}`);
+  }
+  for (const [method, rawPath] of WALLET_READS_AND_NEIGHBOURS) {
+    const answered = await whoTakes(baseUrl, method, rawPath);
+    assert.equal(answered.role, "gateway", `${method} ${rawPath} answered ${answered.status}`);
+  }
+}
+
 function runInner({ configPath, containerName, trustedEdge, ports }) {
   docker(
     "run",
@@ -366,6 +447,9 @@ try {
   }
 
   await expectSharedAssets(innerBase);
+  for (const baseUrl of [innerBase, edgeBase]) {
+    await expectWalletWritesClosed(baseUrl);
+  }
 
   let response = await fetch(`${innerBase}/docs`, { redirect: "manual" });
   assert.equal(response.status, 302);

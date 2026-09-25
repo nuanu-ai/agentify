@@ -261,12 +261,14 @@ export const CARD_REJECTED = "card_rejected";
  * is wrong with the card, and none of them is cleared by editing the card: the
  * merchant has no name set for buyers to read, no wallet set for their sales to
  * be paid into, or no approval from the operator for the live catalog. The
- * first two are set with a call of the merchant's own (`POST /v0/seller-name`,
- * `POST /v0/payout-wallet`); the third is the operator's decision and has no
- * call. The name is asked for everywhere, the wallet wherever a payment
- * settles and the approval on the live deployment alone, as the publish
- * route's description says; a program needs no copy of that rule, because it
- * learns what is missing where it is refused, at the publish.
+ * name is set with a call of the merchant's own (`POST /v0/seller-name`) or in
+ * the cabinet; the wallet in the cabinet's Settings alone, since no key of the
+ * merchant's code may say where the money goes; and the approval is the
+ * operator's decision, with no call. The name is asked for everywhere, the
+ * wallet wherever a payment settles and the approval on the live deployment
+ * alone, as the publish route's description says; a program needs no copy of
+ * that rule, because it learns what is missing where it is refused, at the
+ * publish.
  */
 export const MERCHANT_FINDINGS = Object.freeze({
   NO_SELLER_NAME: "no_seller_name",

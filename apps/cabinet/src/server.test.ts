@@ -651,6 +651,34 @@ const paidInto = async (running: Running): Promise<string | null> =>
   (await running.harnessed.store.merchantById(running.harnessed.merchant.id))?.payoutWallet
     .address ?? null;
 
+/**
+ * Puts a key made for a cabinet on every account row of the merchant this file
+ * signs in as, one key per row.
+ *
+ * The rows this file seeds hold the harness's own key, which is one of the
+ * merchant's own code, and the payout wallet is set with a cabinet's key and no
+ * other (ADR-0019). One per row, because a sign-in renews the key on its row
+ * and forgets the one it replaced, which would leave a second row holding a
+ * key the gateway no longer knows.
+ */
+const onACabinetKey = async (running: Running): Promise<void> => {
+  for (const row of running.rows.cabinet_accounts ?? []) {
+    if (row.merchantId === THE_MERCHANT.id) {
+      row.merchantKey = await running.harnessed.addCabinetKey(running.harnessed.merchant.id);
+    }
+  }
+};
+
+/** The change of the payout wallet waiting at the gateway, or null. */
+const waitingOf = async (running: Running): Promise<unknown> =>
+  (
+    (
+      await running.gateway.call("GET", "/v0/payout-wallet", {
+        headers: { authorization: `Bearer ${running.harnessed.merchant.key}` },
+      })
+    ).body as { pending: unknown }
+  ).pending;
+
 /** The one line of an answer that sets the session cookie of this name, if any. */
 const sessionCookieIn = (answer: Visit, name: string): string | undefined =>
   answer.headers.getSetCookie().find((line) => line.startsWith(`${name}=`));
@@ -1587,6 +1615,7 @@ describe("the address a merchant's money arrives at", () => {
 
   it("is saved, and the whole of it is on the page afterwards", async () => {
     const running = await started();
+    await onACabinetKey(running);
     await running.browser.signIn();
 
     const saved = await running.browser.post("/settings/payout-wallet", {
@@ -1610,6 +1639,7 @@ describe("the address a merchant's money arrives at", () => {
     // reads their own wallet's spelling back, and the page never asks anybody
     // to believe that two strings are one address.
     const running = await started();
+    await onACabinetKey(running);
     await running.browser.signIn();
 
     const saved = await running.browser.post("/settings/payout-wallet", { payout_wallet: LOWER });
@@ -1655,6 +1685,7 @@ describe("the address a merchant's money arrives at", () => {
     // newline on the end about as often as not. Refusing that is refusing a
     // merchant who did exactly the right thing.
     const running = await started();
+    await onACabinetKey(running);
     await running.browser.signIn();
 
     const saved = await running.browser.post("/settings/payout-wallet", {
@@ -1667,6 +1698,7 @@ describe("the address a merchant's money arrives at", () => {
 
   it("refuses an address of the wrong shape and sends nothing", async () => {
     const running = await started();
+    await onACabinetKey(running);
     await running.browser.signIn();
     await running.browser.post("/settings/payout-wallet", {
       payout_wallet: AS_A_WALLET_SHOWS_IT,
@@ -1682,6 +1714,28 @@ describe("the address a merchant's money arrives at", () => {
     expect(readable(answered.html)).toMatch(/not saved/i);
     expect(answered.html.replaceAll(/<[^>]*>/g, "")).toContain(AS_A_WALLET_SHOWS_IT);
     expect(await paidInto(running)).toBe(AS_A_WALLET_SHOWS_IT);
+  });
+
+  it("tells an account holding a key of the merchant's own code that its key is of the wrong kind for the wallet", async () => {
+    // The row of the account every test here signs in as holds the harness's
+    // own key, which is one of the merchant's own code: the shape an account
+    // made before accounts were checked is left in. The gateway will not let
+    // that key set the wallet, nothing in the cabinet can replace it, and a
+    // page saying "try again" would send the person round a loop.
+    const running = await started();
+    await running.browser.signIn();
+    const before = await paidInto(running);
+
+    const answered = await running.browser.post("/settings/payout-wallet", {
+      payout_wallet: AS_A_WALLET_SHOWS_IT,
+    });
+
+    expect(answered.status).toBe(403);
+    const text = readable(answered.html);
+    expect(text).toMatch(/wrong kind/i);
+    expect(text).not.toMatch(/try again/i);
+    expect(answered.html).toContain('name="payout_wallet"');
+    expect(await paidInto(running)).toBe(before);
   });
 
   it("refuses an empty box and says what to paste into it", async () => {
@@ -2064,13 +2118,18 @@ describe("a card held off sale by what its merchant lacks", () => {
           expect(listed.status, JSON.stringify(listed.body)).toBe(200);
         }
         if (hasWallet) {
-          const paid = await running.gateway.call("POST", "/v0/payout-wallet", {
-            body: { payout_wallet: A_WALLET },
-            headers: asTheMerchant,
+          // Where a wallet is set: in the cabinet's Settings, by the person
+          // signed in, since no key of the merchant's own code may set one.
+          const saved = await running.browser.post("/settings/payout-wallet", {
+            payout_wallet: A_WALLET,
           });
-          expect(paid.status, JSON.stringify(paid.body)).toBe(200);
+          expect(saved.status, saved.html).toBe(303);
         }
         const door = await theDoorSays(running.gateway, merchant.key);
+        if (hasWallet) {
+          // The fixture took: a wallet saved is a wallet the door has.
+          expect(door).not.toContain(MERCHANT_FINDINGS.NO_PAYOUT_WALLET);
+        }
         await running.harnessed.store.publishCard(merchant.id, roomCard, running.harnessed.now());
 
         const screen = await running.browser.get("/cards");
@@ -3948,25 +4007,36 @@ describe("a wallet change waiting on the live deployment", () => {
     );
   };
 
+  /** What the box's own form sends besides the address, as the page was drawn. */
+  const fromTheWalletForm = (screen: Visit): Record<string, string> => {
+    const form = /<form[^>]*action="\/settings\/payout-wallet"[^>]*>([\s\S]*?)<\/form>/.exec(
+      screen.html,
+    )?.[1];
+    if (form === undefined) throw new Error("the settings screen carries no wallet form");
+    return Object.fromEntries(
+      [...form.matchAll(/<input type="hidden"[^>]*name="([^"]+)"[^>]*value="([^"]*)"/g)].map(
+        (field) => [field[1] ?? "", field[2] ?? ""],
+      ),
+    );
+  };
+
   /**
-   * A cabinet in front of a live gateway, with every account at the merchant
-   * holding the key that gateway's door takes: a live door refuses a key
-   * carrying the test prefix, which is what the rest of this file's accounts
-   * hold.
+   * A cabinet in front of a live gateway. A live door refuses a key carrying
+   * the test prefix, which is what this file's accounts hold, so every test
+   * here puts a cabinet key that gateway made on the rows before signing in.
    */
   const live = async (options: Starting = {}): Promise<Running> =>
     await started({ ...options, gateway: LIVE_GATEWAY, cabinet: LIVE_CABINET });
-  const onTheLiveKey = (running: Running): void => {
-    for (const row of running.rows.cabinet_accounts ?? []) {
-      if (row.merchantId === THE_MERCHANT.id) row.merchantKey = theMerchantKey("live");
-    }
-  };
 
-  /** A replacement asked for with the merchant's own key, as their code would. */
+  /**
+   * A replacement asked for from another session of the cabinet, on a key of
+   * its own: the session somebody forgot to sign out of, or never owned.
+   */
   const aChangeWaits = async (running: Running): Promise<void> => {
+    const elsewhere = await running.harnessed.addCabinetKey(running.harnessed.merchant.id);
     const asked = await running.gateway.call("POST", "/v0/payout-wallet", {
       body: { payout_wallet: WAITING },
-      headers: { authorization: `Bearer ${running.harnessed.merchant.key}` },
+      headers: { authorization: `Bearer ${elsewhere}` },
     });
     expect(asked.status, JSON.stringify(asked.body)).toBe(200);
   };
@@ -3992,7 +4062,7 @@ describe("a wallet change waiting on the live deployment", () => {
 
   it("shows the address waiting, the moment it takes effect, and a control to cancel it", async () => {
     const running = await live();
-    onTheLiveKey(running);
+    await onACabinetKey(running);
     await running.browser.signIn();
     await aChangeWaits(running);
 
@@ -4010,7 +4080,7 @@ describe("a wallet change waiting on the live deployment", () => {
 
   it("shows no cancel control where nothing is waiting", async () => {
     const running = await live();
-    onTheLiveKey(running);
+    await onACabinetKey(running);
     await running.browser.signIn();
 
     const screen = await running.browser.get("/settings");
@@ -4021,7 +4091,7 @@ describe("a wallet change waiting on the live deployment", () => {
   it("cancels with one press, keeps the session that pressed, and signs every other session of the merchant out", async () => {
     const running = await live();
     await running.identity.make(OTHER, THE_MERCHANT);
-    onTheLiveKey(running);
+    await onACabinetKey(running);
     await running.browser.signIn();
     const otherDevice = await running.another();
     await otherDevice.signIn();
@@ -4047,7 +4117,7 @@ describe("a wallet change waiting on the live deployment", () => {
     // the gateway reading the wallet for this cancel and writing it, so the
     // cancel is refused as raced and nothing it asked for is written.
     const running = await live();
-    onTheLiveKey(running);
+    await onACabinetKey(running);
     await running.browser.signIn();
     const otherDevice = await running.another();
     await otherDevice.signIn();
@@ -4092,7 +4162,7 @@ describe("a wallet change waiting on the live deployment", () => {
       .mockImplementation((...parts) => said.push(parts.map(String).join(" ")));
     try {
       const running = await live();
-      onTheLiveKey(running);
+      await onACabinetKey(running);
       await running.browser.signIn();
       const otherDevice = await running.another();
       await otherDevice.signIn();
@@ -4140,7 +4210,7 @@ describe("a wallet change waiting on the live deployment", () => {
         }),
       });
       holder.running = running;
-      onTheLiveKey(running);
+      await onACabinetKey(running);
       await running.browser.signIn();
       const otherDevice = await running.another();
       await otherDevice.signIn();
@@ -4166,7 +4236,7 @@ describe("a wallet change waiting on the live deployment", () => {
 
   it("is refused from a page on another site", async () => {
     const running = await live();
-    onTheLiveKey(running);
+    await onACabinetKey(running);
     await running.browser.signIn();
     await aChangeWaits(running);
 
@@ -4178,9 +4248,109 @@ describe("a wallet change waiting on the live deployment", () => {
     expect(await waitingNow(running)).not.toBeNull();
   });
 
+  it("cancels a waiting change when the address paid now is typed in, and signs the others out", async () => {
+    // The same act as the cancel control, reached through the box: the
+    // gateway reads the address that applies now as a cancel. A cancel that
+    // left the session which asked for the change signed in would leave it
+    // free to ask again, and a page or a log that called it a change would
+    // tell the person something else happened.
+    const said: string[] = [];
+    const log = vi
+      .spyOn(console, "log")
+      .mockImplementation((...parts) => said.push(parts.map(String).join(" ")));
+    try {
+      const running = await live();
+      // Paid at an address with letters in it, so the one typed back can be
+      // in the other spelling a wallet may be written in, as a person pastes
+      // it out of a block explorer.
+      const PAID = checksummedAddressOf("0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed");
+      const { store } = running.harnessed;
+      const merchant = await store.merchantById(running.harnessed.merchant.id);
+      if (merchant === null) throw new Error("the harness's merchant is not in its store");
+      await store.setPayoutWallet(
+        merchant.id,
+        merchant.payoutWallet,
+        { address: PAID, pending: null },
+        running.harnessed.now(),
+      );
+      await onACabinetKey(running);
+      await running.browser.signIn();
+      const otherDevice = await running.another();
+      await otherDevice.signIn();
+      await aChangeWaits(running);
+
+      const typed = await running.browser.post("/settings/payout-wallet", {
+        payout_wallet: PAID.toLowerCase(),
+      });
+
+      expect(await waitingNow(running)).toBeNull();
+      expect(await paidNow(running)).toBe(PAID);
+      expect((await otherDevice.get("/settings")).to).toMatch(/^\/sign-in/);
+      expect(readable(typed.html)).toMatch(/cancelled/i);
+      expect(said.join("\n")).toMatch(/cancelled a waiting change/);
+      expect(said.join("\n")).not.toMatch(/changed the address/);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("tells an account holding a key of the merchant's own code that its key is of the wrong kind to cancel", async () => {
+    const running = await live();
+    for (const row of running.rows.cabinet_accounts ?? []) {
+      if (row.merchantId === THE_MERCHANT.id) row.merchantKey = theMerchantKey("live");
+    }
+    await running.browser.signIn();
+    await aChangeWaits(running);
+
+    const pressed = await running.browser.post(
+      "/settings/payout-wallet/cancel",
+      fromTheScreen(await running.browser.get("/settings")),
+    );
+
+    expect(pressed.status).toBe(403);
+    expect(readable(pressed.html)).toMatch(/wrong kind/i);
+    expect(readable(pressed.html)).not.toMatch(/try again/i);
+    expect(await waitingNow(running)).toMatchObject({ payout_wallet: WAITING });
+  });
+
+  it("says a change that took effect before the old address was typed back took effect, and signs the others out", async () => {
+    // The box on a page drawn while a change waited, used after it took
+    // effect: typing the address the page showed as paid is the same act as
+    // pressing Cancel there, and has to be answered the same way rather than
+    // as a new change that leaves the other sessions signed in.
+    const said: string[] = [];
+    const log = vi
+      .spyOn(console, "log")
+      .mockImplementation((...parts) => said.push(parts.map(String).join(" ")));
+    try {
+      const running = await live();
+      await onACabinetKey(running);
+      await running.browser.signIn();
+      const otherDevice = await running.another();
+      await otherDevice.signIn();
+      await aChangeWaits(running);
+      const screen = await running.browser.get("/settings");
+      running.harnessed.advance(48 * 60 * 60 * 1_000);
+
+      const typed = await running.browser.post("/settings/payout-wallet", {
+        ...fromTheWalletForm(screen),
+        payout_wallet: running.harnessed.merchant.wallet,
+      });
+
+      expect(typed.status).toBe(200);
+      expect(readable(typed.html)).toMatch(/took effect/i);
+      expect(await paidNow(running)).toBe(WAITING);
+      expect(await waitingNow(running)).toBeNull();
+      expect((await otherDevice.get("/settings")).to).toMatch(/^\/sign-in/);
+      expect(said.join("\n")).not.toMatch(/asked for a change/);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it("signs nobody out when there was nothing to cancel", async () => {
     const running = await live();
-    onTheLiveKey(running);
+    await onACabinetKey(running);
     await running.browser.signIn();
     const otherDevice = await running.another();
     await otherDevice.signIn();
@@ -4189,6 +4359,88 @@ describe("a wallet change waiting on the live deployment", () => {
 
     expect(pressed.to).toBe("/settings");
     expect((await otherDevice.get("/settings")).status).toBe(200);
+  });
+});
+
+describe("signing out every other device", () => {
+  // The answer to a session that is not the owner's, wherever it was left
+  // open (ADR-0026 §3, ADR-0019). It reaches this account's sessions and no
+  // other account's, touches no key, and needs no wallet change to be waiting.
+
+  it("ends every other session of this account, keeps this one, and says how many", async () => {
+    const running = await started();
+    await running.browser.signIn();
+    const laptop = await running.another();
+    await laptop.signIn();
+    const phone = await running.another();
+    await phone.signIn();
+
+    const pressed = await running.browser.post("/settings/sign-out-others");
+
+    expect(pressed.status).toBe(200);
+    expect(readable(pressed.html)).toMatch(/\b2\b/);
+    expect(readable(pressed.html)).toMatch(/signed out/i);
+    expect((await running.browser.get("/settings")).status).toBe(200);
+    // Each of the others has to sign in again.
+    expect((await laptop.get("/settings")).to).toMatch(/^\/sign-in/);
+    expect((await phone.get("/cards")).to).toMatch(/^\/sign-in/);
+  });
+
+  it("counts no session of this browser's own that a second sign-in left behind", async () => {
+    // Opening a link from a browser already signed in replaces its session
+    // rather than adding one beside it, so the count is of other places.
+    const running = await started();
+    await running.browser.signIn();
+    await running.browser.signIn();
+
+    const pressed = await running.browser.post("/settings/sign-out-others");
+
+    expect(readable(pressed.html)).toMatch(/no other session/i);
+  });
+
+  it("works with no wallet change waiting, and is offered on the settings screen", async () => {
+    const running = await started();
+    await running.browser.signIn();
+
+    const screen = await running.browser.get("/settings");
+
+    expect(screen.html).toContain('action="/settings/sign-out-others"');
+    expect(await waitingOf(running)).toBeNull();
+    expect((await running.browser.post("/settings/sign-out-others")).status).toBe(200);
+  });
+
+  it("leaves the sessions of another account at the same merchant alone", async () => {
+    const running = await started();
+    await running.identity.make(OTHER, THE_MERCHANT);
+    await running.browser.signIn();
+    const partner = await running.another();
+    await partner.signIn(OTHER);
+
+    await running.browser.post("/settings/sign-out-others");
+
+    expect((await partner.get("/settings")).status).toBe(200);
+  });
+
+  it("is refused from a page on another site", async () => {
+    const running = await started();
+    await running.browser.signIn();
+    const laptop = await running.another();
+    await laptop.signIn();
+
+    const pressed = await running.browser
+      .from("https://elsewhere.example")
+      .post("/settings/sign-out-others");
+
+    expect(pressed.status).toBe(403);
+    expect((await laptop.get("/settings")).status).toBe(200);
+  });
+
+  it("is behind the gate", async () => {
+    const running = await started();
+
+    const pressed = await running.browser.post("/settings/sign-out-others");
+
+    expect(pressed.to).toMatch(/^\/sign-in/);
   });
 });
 
