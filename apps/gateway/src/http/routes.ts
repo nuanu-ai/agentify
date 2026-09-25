@@ -104,9 +104,9 @@ function callersKey({ keyId }: RouteCall): string {
 /**
  * What the key this call was made with was made for.
  *
- * Null cannot arrive here for the reason it cannot arrive above, and the two
- * routes that ask are the cabinet's own, where the answer decides whether the
- * call happens at all.
+ * Null cannot arrive here for the reason it cannot arrive above, and on the
+ * cabinet's own two routes and the payout wallet the answer decides whether
+ * the call happens at all.
  */
 function callersPurpose({ keyPurpose }: RouteCall): KeyPurpose {
   if (keyPurpose === null) {
@@ -133,6 +133,29 @@ const notTheCabinets = (response: RouteCall["response"]): RouteAnswer =>
     refusal(
       "not_a_cabinet_key",
       "this call is one a cabinet makes with a key of its own, and the key it was made with is one of the merchant's own code",
+    ),
+  );
+
+/**
+ * What a key of the merchant's own code is answered with at the payout wallet.
+ *
+ * The public door does not route a write to this path at all (ADR-0019), so
+ * what meets this is something inside the stack: a cabinet account left
+ * holding a key of the other kind, or a command somebody runs by hand. It
+ * stays as the gateway's own word on the rule rather than the door's alone.
+ * The code is the one the cabinet's key calls are refused under, because the
+ * fact is the same: this call is one only a cabinet's key makes. The words are
+ * this route's, because what the caller needs is where the wallet is set and
+ * why this key cannot set it. The published list of codes does not move, and
+ * no worker of the SDK calls this route (ADR-0006 §2).
+ */
+const walletIsSetInTheCabinet = (response: RouteCall["response"]): RouteAnswer =>
+  written(
+    response,
+    FORBIDDEN,
+    refusal(
+      "not_a_cabinet_key",
+      "the payout wallet is set only through the cabinet, on its Settings screen, with the key the cabinet holds, and the key this call was made with was made for the merchant's own code: a key of that kind operates the shop and cannot change where its money goes. Nothing was changed",
     ),
   );
 
@@ -322,8 +345,11 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
         const set = await gateway.setPayoutWallet(
           merchantOf(call),
           (call.body as PayoutWalletRequest).payout_wallet,
-          { keyId: callersKey(call), purpose: callersPurpose(call) },
+          callersPurpose(call),
         );
+        if (set === "not_a_cabinet_key") {
+          return walletIsSetInTheCabinet(call.response);
+        }
         return typeof set === "string"
           ? walletChangeRefused(call.response, set)
           : { status: OK, document: set };

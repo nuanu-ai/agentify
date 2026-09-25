@@ -138,4 +138,14 @@ export interface CabinetIdentity {
    * cancel is the one known to be the owner, so theirs is the one left.
    */
   endOtherSessionsOfMerchant(merchantId: string, keep: string | undefined): Promise<number>;
+
+  /**
+   * Ends every live session of this one account except the ones this cookie
+   * header carries, and says how many ended.
+   *
+   * What "sign out every other device" on the settings screen does (ADR-0026
+   * §3): another account naming the same merchant is somebody else's, and
+   * their sessions are not this person's to end.
+   */
+  endOtherSessionsOfPerson(personId: string, keep: string | undefined): Promise<number>;
 }

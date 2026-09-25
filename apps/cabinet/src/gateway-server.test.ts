@@ -9,8 +9,8 @@
  * answer says whether every message was handed over, whether there was nobody
  * to tell, or whether a message could not be. And each message carries the
  * facts a person needs to act — what changes, from what to what, when at the
- * earliest, which key asked, and where the screen is that decides it — and
- * nothing that opens anything.
+ * earliest, that it was asked for in the cabinet, and where the screen is that
+ * decides it — and nothing that opens anything.
  */
 
 import type { Server } from "node:http";
@@ -18,6 +18,7 @@ import type { AddressInfo } from "node:net";
 import type { GatewayRequest } from "@agentify/gateway/announcements";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
+import { SIGN_OUT_EVERY_OTHER_DEVICE, STOP_ALL_SELLING } from "./control-labels.js";
 import { buildGatewayApp, startGatewayServer, tellerFor } from "./gateway-server.js";
 import { identityFor } from "./identity.js";
 import type { Handover, Message } from "./mail.js";
@@ -51,7 +52,6 @@ const aWalletChange: GatewayRequest = {
   from: FROM,
   to: TO,
   not_before: "2026-09-26T12:00:00.000Z",
-  asked_with: { kind: "merchant_code", id: "mk_7f3a", label: "the stock worker" },
 };
 
 const servers: Server[] = [];
@@ -155,7 +155,7 @@ describe("a wallet change", () => {
     ]);
   });
 
-  it("says what changes, not before when, which key asked, and where it is decided, with no token", async () => {
+  it("says what changes, not before when, that it was asked in the cabinet, and where it is decided, with no token", async () => {
     const { url, sent } = await listening([["owner@example.com", MERCHANT]]);
 
     await post(url, aWalletChange);
@@ -165,8 +165,9 @@ describe("a wallet change", () => {
       expect(text).toContain(FROM);
       expect(text).toContain(TO);
       expect(text).toContain("2026-09-26 12:00:00 UTC");
-      expect(text).toContain("the stock worker");
-      expect(text).toContain("mk_7f3a");
+      // Only a cabinet's key changes a wallet, so where it was asked for is
+      // the cabinet, and a person who did not ask knows a session did.
+      expect(text).toMatch(/asked for in the cabinet/i);
       expect(text).toContain(THE_SETTINGS_SCREEN);
       expect(text).not.toMatch(/token/i);
     }
@@ -201,7 +202,10 @@ describe("a key's label, which somebody else may have written", () => {
     const { url, sent } = await listening([["owner@example.com", MERCHANT]]);
 
     const refused = await post(url, {
-      ...aWalletChange,
+      operation: "announce",
+      kind: "key_issued",
+      merchant_id: MERCHANT,
+      key: { id: "mk_91c0", label: "the price desk" },
       asked_with: { kind: "merchant_code", id: "mk_7f3a", label: "one\ntwo" },
     });
 
@@ -237,6 +241,73 @@ describe("a key's label, which somebody else may have written", () => {
   });
 });
 
+describe("what a message advises and claims", () => {
+  // A first wallet and a cancel leave nothing waiting, so cancelling a
+  // waiting change is advice that cannot work there; what works at once is
+  // pausing the selling, and then a replacement, which waits. And the gateway
+  // knows the key a change came with, not the person, so no message claims one.
+  it.each([
+    [
+      "a first wallet",
+      { operation: "announce", kind: "wallet_set", merchant_id: MERCHANT, to: TO },
+    ],
+    [
+      "a cancelled change",
+      {
+        operation: "announce",
+        kind: "wallet_change_cancelled",
+        merchant_id: MERCHANT,
+        kept: FROM,
+        cancelled: TO,
+      },
+    ],
+  ] as const)(
+    "advises stopping selling, signing out every other device, then an address of one's own, after %s",
+    async (_what, request) => {
+      const { url, sent } = await listening([["owner@example.com", MERCHANT]]);
+
+      await post(url, request satisfies GatewayRequest);
+
+      // In that order, and by the names the screens give the two controls,
+      // which both read from one place: the stop is immediate, the sign-out
+      // keeps an intruder from undoing what comes next, and the address waits
+      // and is announced.
+      const body = sent[0]?.body ?? "";
+      const stop = body.indexOf(STOP_ALL_SELLING);
+      const signOut = body.indexOf(SIGN_OUT_EVERY_OTHER_DEVICE);
+      const address = body.search(/set your own address/i);
+      expect(stop).toBeGreaterThan(-1);
+      expect(signOut).toBeGreaterThan(stop);
+      expect(address).toBeGreaterThan(signOut);
+      expect(body).not.toMatch(/cancelling a waiting/i);
+    },
+  );
+
+  it.each([
+    ["a replacement", aWalletChange],
+    [
+      "a first wallet",
+      { operation: "announce", kind: "wallet_set", merchant_id: MERCHANT, to: TO },
+    ],
+    [
+      "a new key",
+      {
+        operation: "announce",
+        kind: "key_issued",
+        merchant_id: MERCHANT,
+        key: { id: "mk_91c0", label: "the price desk" },
+        asked_with: { kind: "cabinet" },
+      },
+    ],
+  ] as const)("claims no person signed in for %s, only the cabinet", async (_what, request) => {
+    const { url, sent } = await listening([["owner@example.com", MERCHANT]]);
+
+    await post(url, request satisfies GatewayRequest);
+
+    expect(sent[0]?.body ?? "").not.toMatch(/person signed in/i);
+  });
+});
+
 describe("what is announced once it is done", () => {
   it("tells of a first wallet set, naming the address and where to replace it", async () => {
     // It applied at once, so the message is the owner's only word of it if
@@ -248,13 +319,12 @@ describe("what is announced once it is done", () => {
       kind: "wallet_set",
       merchant_id: MERCHANT,
       to: TO,
-      asked_with: { kind: "merchant_code", id: "mk_7f3a", label: "the stock worker" },
     } satisfies GatewayRequest);
 
     expect(await answered.json()).toStrictEqual({ outcome: "handed_over" });
     for (const text of [sent[0]?.body ?? "", sent[0]?.html ?? ""]) {
       expect(text).toContain(TO);
-      expect(text).toContain("mk_7f3a");
+      expect(text).toMatch(/in the cabinet/i);
       expect(text).toContain(THE_SETTINGS_SCREEN);
     }
   });
@@ -268,7 +338,6 @@ describe("what is announced once it is done", () => {
       merchant_id: MERCHANT,
       kept: FROM,
       cancelled: TO,
-      asked_with: { kind: "cabinet" },
     } satisfies GatewayRequest);
 
     expect(await answered.json()).toStrictEqual({ outcome: "handed_over" });

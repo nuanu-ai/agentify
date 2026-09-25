@@ -3,11 +3,12 @@
  * on (ADR-0019), over the real HTTP surface.
  *
  * The address a merchant is paid at is the one setting whose change redirects
- * money, and any key of theirs reaches it — the cabinet's, or one sitting in
- * their own server's environment. So on the live deployment a replacement is
- * told to every account naming the merchant before anything is written, and it
- * takes effect forty-eight hours after that. Everything here is what a caller
- * holding a key sees, and what an agent is told to pay while the wait runs.
+ * money, and only the cabinet's own key reaches it, so what it guards against
+ * is a session: one left signed in on somebody else's device, or one somebody
+ * stole. So on the live deployment a replacement is told to every account
+ * naming the merchant before anything is written, and it takes effect
+ * forty-eight hours after that. Everything here is what a caller holding a key
+ * sees, and what an agent is told to pay while the wait runs.
  *
  * The cabinet is not in this file. The harness records what the gateway asked
  * it to say and answers as a test tells it to, so each of the cabinet's answers
@@ -22,7 +23,6 @@
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it } from "vitest";
-import type { Announcement } from "../announcements.js";
 import {
   ANNOUNCING,
   buyOverHttp,
@@ -149,7 +149,7 @@ describe("the first address a merchant sets", () => {
 
   it("applies at once, or a new merchant could not start selling, and is announced afterwards", async () => {
     // The message is owed for every address set on the live site, the first
-    // included: a leaked key could set it before its owner does, and the
+    // included: a session that is not the owner's could set it, and the
     // message is how the owner learns of it.
     const { served, harnessed } = await started();
     const key = await aNewMerchant(served);
@@ -158,12 +158,15 @@ describe("the first address a merchant sets", () => {
       payout_wallet: A_WALLET,
       pending: null,
     });
-    const [announced] = harnessed.announcer.announced;
-    expect(announced).toMatchObject({
-      kind: "wallet_set",
-      to: A_WALLET,
-      asked_with: { kind: "cabinet" },
-    });
+    // It names no key: only a cabinet's key sets a wallet, so every change is
+    // one somebody signed in to the cabinet asked for.
+    expect(harnessed.announcer.announced).toStrictEqual([
+      {
+        kind: "wallet_set",
+        merchant_id: (await harnessed.gateway.keyBehind(key))?.merchantId,
+        to: A_WALLET,
+      },
+    ]);
   });
 
   it.each([
@@ -202,15 +205,30 @@ describe("the first address a merchant sets", () => {
 });
 
 describe("a replacement on the live deployment", () => {
+  it("is refused to a key of the merchant's own code before anybody is told", async () => {
+    // A key that cannot make the change must not be able to send messages
+    // about one either, so the refusal comes before the announcement.
+    const { served, harnessed } = await started();
+    const before = await walletOf(served, harnessed.merchant.key);
+
+    const refused = await asking(served, harnessed.merchant.key, A_WALLET);
+
+    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
+    expect(refusalOf(refused.body).code).toBe("not_a_cabinet_key");
+    expect(harnessed.announcer.announced).toStrictEqual([]);
+    expect(await walletOf(served, harnessed.merchant.key)).toStrictEqual(before);
+  });
+
   it("waits forty-eight hours, and payment requests name the address paid now until then", async () => {
-    // The promise the whole wait is for: a key that leaked cannot move a
-    // merchant's money today. Until the moment is reached, every agent asking
+    // The promise the whole wait is for: a session that is not the owner's
+    // cannot move a merchant's money today. Until the moment is reached, every agent asking
     // to pay is told the old address.
     const { served, harnessed } = await started();
+    const cabinet = await harnessed.addCabinetKey(harnessed.merchant.id);
     const itemId = await published(served, harnessed.merchant.key);
     const asked = harnessed.now();
 
-    const answered = await ask(served, harnessed.merchant.key, A_WALLET);
+    const answered = await ask(served, cabinet, A_WALLET);
 
     expect(answered).toStrictEqual({
       payout_wallet: harnessed.merchant.wallet,
@@ -237,8 +255,9 @@ describe("a replacement on the live deployment", () => {
     // to pay — checked against the old one, the payment layer would refuse a
     // payment made out exactly as the challenge said.
     const { served, harnessed } = await started();
+    const cabinet = await harnessed.addCabinetKey(harnessed.merchant.id);
     const itemId = await published(served, harnessed.merchant.key);
-    await ask(served, harnessed.merchant.key, A_WALLET);
+    await ask(served, cabinet, A_WALLET);
     harnessed.advance(THE_WAIT);
 
     const bought = await buyOverHttp(harnessed, served, itemId, {
@@ -250,8 +269,9 @@ describe("a replacement on the live deployment", () => {
     expect(harnessed.facilitator.settles.at(-1)?.payTo).toBe(A_WALLET);
   });
 
-  it("is announced before it is recorded, saying what changes, when, and which key asked", async () => {
+  it("is announced before it is recorded, saying what changes and when", async () => {
     const { served, harnessed } = await started();
+    const cabinet = await harnessed.addCabinetKey(harnessed.merchant.id);
     const asked = harnessed.now();
     let recordedWhileAnnouncing: WalletAnswer | null = null;
     harnessed.announcer.answer = async () => {
@@ -261,7 +281,7 @@ describe("a replacement on the live deployment", () => {
       return "handed_over";
     };
 
-    await ask(served, harnessed.merchant.key, A_WALLET);
+    await ask(served, cabinet, A_WALLET);
 
     expect(recordedWhileAnnouncing).toStrictEqual({
       payout_wallet: harnessed.merchant.wallet,
@@ -274,7 +294,6 @@ describe("a replacement on the live deployment", () => {
         from: harnessed.merchant.wallet,
         to: A_WALLET,
         not_before: at(asked + THE_WAIT),
-        asked_with: await theMerchantsKey(harnessed),
       },
     ]);
   });
@@ -284,35 +303,19 @@ describe("a replacement on the live deployment", () => {
     // it says "not before". What is recorded is counted from after, so the
     // change never takes effect earlier than any message said.
     const { served, harnessed } = await started();
+    const cabinet = await harnessed.addCabinetKey(harnessed.merchant.id);
     const asked = harnessed.now();
     harnessed.announcer.answer = async () => {
       harnessed.advance(5 * 60 * 1_000);
       return "handed_over";
     };
 
-    const answered = await ask(served, harnessed.merchant.key, A_WALLET);
+    const answered = await ask(served, cabinet, A_WALLET);
 
     expect(answered.pending?.takes_effect_at).toBe(at(asked + 5 * 60 * 1_000 + THE_WAIT));
     expect((harnessed.announcer.announced[0] as { not_before: string }).not_before).toBe(
       at(asked + THE_WAIT),
     );
-  });
-
-  it("names the cabinet as the key that asked, when a person signed in to it asked", async () => {
-    const { served, harnessed } = await started();
-    const registered = await served.call("POST", "/v0/merchants", {
-      body: { invitation: INVITATION },
-    });
-    const cabinetKey = (registered.body as { secret: string }).secret;
-    await ask(served, cabinetKey, A_WALLET);
-
-    await ask(served, cabinetKey, ANOTHER_WALLET);
-
-    expect(
-      harnessed.announcer.announced
-        .filter((one) => one.kind === "wallet_change")
-        .map((one) => (one as Announcement).asked_with),
-    ).toStrictEqual([{ kind: "cabinet" }]);
   });
 });
 
@@ -322,10 +325,11 @@ describe("asking again", () => {
     // answer with the change that is waiting, or the caller reads the old
     // address back and takes its own write for a failure.
     const { served, harnessed } = await started();
-    const first = await ask(served, harnessed.merchant.key, A_WALLET);
+    const cabinet = await harnessed.addCabinetKey(harnessed.merchant.id);
+    const first = await ask(served, cabinet, A_WALLET);
     harnessed.advance(HOURS);
 
-    const again = await ask(served, harnessed.merchant.key, A_WALLET.toLowerCase());
+    const again = await ask(served, cabinet, A_WALLET.toLowerCase());
 
     expect(again).toStrictEqual(first);
     expect(harnessed.announcer.announced).toHaveLength(1);
@@ -333,11 +337,12 @@ describe("asking again", () => {
 
   it("for a different address replaces the waiting change and starts the wait again", async () => {
     const { served, harnessed } = await started();
-    await ask(served, harnessed.merchant.key, A_WALLET);
+    const cabinet = await harnessed.addCabinetKey(harnessed.merchant.id);
+    await ask(served, cabinet, A_WALLET);
     harnessed.advance(HOURS);
     const replaced = harnessed.now();
 
-    const answered = await ask(served, harnessed.merchant.key, ANOTHER_WALLET);
+    const answered = await ask(served, cabinet, ANOTHER_WALLET);
 
     expect(answered).toStrictEqual({
       payout_wallet: harnessed.merchant.wallet,
@@ -360,10 +365,11 @@ describe("asking again", () => {
 
   it("for the address paid now cancels the waiting change, and says so", async () => {
     const { served, harnessed } = await started();
+    const cabinet = await harnessed.addCabinetKey(harnessed.merchant.id);
     const itemId = await published(served, harnessed.merchant.key);
-    await ask(served, harnessed.merchant.key, A_WALLET);
+    await ask(served, cabinet, A_WALLET);
 
-    const cancelled = await ask(served, harnessed.merchant.key, harnessed.merchant.wallet);
+    const cancelled = await ask(served, cabinet, harnessed.merchant.wallet);
 
     expect(cancelled).toStrictEqual({
       payout_wallet: harnessed.merchant.wallet,
@@ -374,18 +380,34 @@ describe("asking again", () => {
       merchant_id: harnessed.merchant.id,
       kept: harnessed.merchant.wallet,
       cancelled: A_WALLET,
-      asked_with: await theMerchantsKey(harnessed),
     });
     harnessed.advance(THE_WAIT);
     expect(await payToNow(served, itemId)).toBe(harnessed.merchant.wallet);
   });
 
+  it("is refused to a key of the merchant's own code when it would cancel", async () => {
+    // A cancel moves no money, but it undoes the owner's own replacement:
+    // a key must not reach that either, and nobody is told of a cancel that
+    // did not happen.
+    const { served, harnessed } = await started();
+    const cabinet = await harnessed.addCabinetKey(harnessed.merchant.id);
+    const waiting = await ask(served, cabinet, A_WALLET);
+
+    const refused = await asking(served, harnessed.merchant.key, harnessed.merchant.wallet);
+
+    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
+    expect(refusalOf(refused.body).code).toBe("not_a_cabinet_key");
+    expect(await walletOf(served, harnessed.merchant.key)).toStrictEqual(waiting);
+    expect(harnessed.announcer.announced.map((one) => one.kind)).toStrictEqual(["wallet_change"]);
+  });
+
   it("cancels even while mail is down, because a cancel moves money nowhere new", async () => {
     const { served, harnessed } = await started();
-    await ask(served, harnessed.merchant.key, A_WALLET);
+    const cabinet = await harnessed.addCabinetKey(harnessed.merchant.id);
+    await ask(served, cabinet, A_WALLET);
     harnessed.announcer.answer = "not_handed_over";
 
-    expect(await ask(served, harnessed.merchant.key, harnessed.merchant.wallet)).toStrictEqual({
+    expect(await ask(served, cabinet, harnessed.merchant.wallet)).toStrictEqual({
       payout_wallet: harnessed.merchant.wallet,
       pending: null,
     });
@@ -393,8 +415,9 @@ describe("asking again", () => {
 
   it("for the address paid now with nothing waiting changes nothing and sends nothing", async () => {
     const { served, harnessed } = await started();
+    const cabinet = await harnessed.addCabinetKey(harnessed.merchant.id);
 
-    expect(await ask(served, harnessed.merchant.key, harnessed.merchant.wallet)).toStrictEqual({
+    expect(await ask(served, cabinet, harnessed.merchant.wallet)).toStrictEqual({
       payout_wallet: harnessed.merchant.wallet,
       pending: null,
     });
@@ -413,11 +436,12 @@ describe("a change that could not be announced", () => {
     "is refused when the cabinet answers %s, and nothing is recorded",
     async (outcome, status, code) => {
       const { served, harnessed } = await started();
-      await ask(served, harnessed.merchant.key, A_WALLET);
+      const cabinet = await harnessed.addCabinetKey(harnessed.merchant.id);
+      await ask(served, cabinet, A_WALLET);
       const before = await walletOf(served, harnessed.merchant.key);
       harnessed.announcer.answer = outcome;
 
-      const refused = await asking(served, harnessed.merchant.key, ANOTHER_WALLET);
+      const refused = await asking(served, cabinet, ANOTHER_WALLET);
 
       expect(refused.status, JSON.stringify(refused.body)).toBe(status);
       expect(refusalOf(refused.body).code).toBe(code);
@@ -431,11 +455,12 @@ describe("a change that could not be announced", () => {
     // not read — told nobody, so the refusal must not say an account may have
     // been told.
     const { served, harnessed } = await started();
-    await ask(served, harnessed.merchant.key, A_WALLET);
+    const cabinet = await harnessed.addCabinetKey(harnessed.merchant.id);
+    await ask(served, cabinet, A_WALLET);
     const before = await walletOf(served, harnessed.merchant.key);
     harnessed.announcer.answer = "refused_by_cabinet";
 
-    const refused = await asking(served, harnessed.merchant.key, ANOTHER_WALLET);
+    const refused = await asking(served, cabinet, ANOTHER_WALLET);
 
     expect(refused.status).toBe(503);
     expect(refusalOf(refused.body).code).toBe("wallet_change_not_announced");
@@ -445,11 +470,12 @@ describe("a change that could not be announced", () => {
 
   it("is refused when the cabinet cannot be reached at all, which reads as no answer", async () => {
     const { served, harnessed } = await started();
+    const cabinet = await harnessed.addCabinetKey(harnessed.merchant.id);
     harnessed.announcer.answer = async () => {
       throw new Error("the cabinet is not there");
     };
 
-    const refused = await asking(served, harnessed.merchant.key, A_WALLET);
+    const refused = await asking(served, cabinet, A_WALLET);
 
     expect(refused.status).toBe(503);
     expect(refusalOf(refused.body).code).toBe("wallet_change_unconfirmed");
@@ -463,7 +489,9 @@ describe("two changes for one merchant at once", () => {
     // would land on top of it and the waiting address would be one whose
     // message went out before the one the merchant just read.
     const { served, harnessed } = await started();
-    const other = await harnessed.addKey(harnessed.merchant.id, "a second worker");
+    const cabinet = await harnessed.addCabinetKey(harnessed.merchant.id);
+    // Another session at the same merchant, on a key of its own.
+    const other = await harnessed.addCabinetKey(harnessed.merchant.id);
     let nested = false;
     harnessed.announcer.answer = async () => {
       if (!nested) {
@@ -473,7 +501,7 @@ describe("two changes for one merchant at once", () => {
       return "handed_over";
     };
 
-    const refused = await asking(served, harnessed.merchant.key, A_WALLET);
+    const refused = await asking(served, cabinet, A_WALLET);
 
     expect(refused.status, JSON.stringify(refused.body)).toBe(409);
     expect(refusalOf(refused.body).code).toBe("wallet_change_raced");
@@ -490,17 +518,18 @@ describe("two changes for one merchant at once", () => {
     // retry is announced and recorded first; the first ask then finds the row
     // moved, and what moved it is exactly the change it asked for.
     const { served, harnessed } = await started();
+    const cabinet = await harnessed.addCabinetKey(harnessed.merchant.id);
     const retry: { answered?: Awaited<ReturnType<typeof asking>> } = {};
     let retrying = false;
     harnessed.announcer.answer = async () => {
       if (!retrying) {
         retrying = true;
-        retry.answered = await asking(served, harnessed.merchant.key, A_WALLET);
+        retry.answered = await asking(served, cabinet, A_WALLET);
       }
       return "handed_over";
     };
 
-    const first = await asking(served, harnessed.merchant.key, A_WALLET);
+    const first = await asking(served, cabinet, A_WALLET);
 
     expect(first.status, JSON.stringify(first.body)).toBe(200);
     expect(retry.answered?.status).toBe(200);
@@ -510,18 +539,19 @@ describe("two changes for one merchant at once", () => {
 
   it("lets a cancel win over a change still being announced, and refuses the change", async () => {
     const { served, harnessed } = await started();
-    await ask(served, harnessed.merchant.key, A_WALLET);
+    const cabinet = await harnessed.addCabinetKey(harnessed.merchant.id);
+    await ask(served, cabinet, A_WALLET);
     const cancel: { answered?: WalletAnswer } = {};
     let cancelling = false;
     harnessed.announcer.answer = async (announcement) => {
       if (announcement.kind === "wallet_change" && !cancelling) {
         cancelling = true;
-        cancel.answered = await ask(served, harnessed.merchant.key, harnessed.merchant.wallet);
+        cancel.answered = await ask(served, cabinet, harnessed.merchant.wallet);
       }
       return "handed_over";
     };
 
-    const refused = await asking(served, harnessed.merchant.key, ANOTHER_WALLET);
+    const refused = await asking(served, cabinet, ANOTHER_WALLET);
 
     expect(cancel.answered).toStrictEqual({
       payout_wallet: harnessed.merchant.wallet,
@@ -534,7 +564,8 @@ describe("two changes for one merchant at once", () => {
 
   it("refuses a cancel that a recorded change overtook, without claiming a message", async () => {
     const { served, harnessed } = await started();
-    await ask(served, harnessed.merchant.key, A_WALLET);
+    const cabinet = await harnessed.addCabinetKey(harnessed.merchant.id);
+    await ask(served, cabinet, A_WALLET);
     const writing = harnessed.store.setPayoutWallet.bind(harnessed.store);
     let overtaken = false;
     harnessed.store.setPayoutWallet = async (id, expected, next, when) => {
@@ -553,7 +584,7 @@ describe("two changes for one merchant at once", () => {
       return await writing(id, expected, next, when);
     };
 
-    const refused = await asking(served, harnessed.merchant.key, harnessed.merchant.wallet);
+    const refused = await asking(served, cabinet, harnessed.merchant.wallet);
 
     expect(refused.status, JSON.stringify(refused.body)).toBe(409);
     expect(refusalOf(refused.body).code).toBe("wallet_change_raced");
@@ -597,8 +628,9 @@ describe("a deployment where no money is real", () => {
     ["a sandbox", { FACILITATOR_URL: "sandbox:scripted" }],
   ])("applies a replacement at once on %s and announces nothing", async (_where, overrides) => {
     const { served, harnessed } = await started(overrides);
+    const cabinet = await harnessed.addCabinetKey(harnessed.merchant.id);
 
-    expect(await ask(served, harnessed.merchant.key, A_WALLET)).toStrictEqual({
+    expect(await ask(served, cabinet, A_WALLET)).toStrictEqual({
       payout_wallet: A_WALLET,
       pending: null,
     });
@@ -685,19 +717,25 @@ describe("a new key on the live deployment", () => {
   });
 
   it("names a key made elsewhere by one line of at most a hundred characters", async () => {
-    // A key written before labels had a limit can carry anything. The announcement names it all the same, as one line the
-    // cabinet's listener takes, rather than failing to announce a wallet
-    // change because of how a key was named.
+    // A key written before labels had a limit can carry anything. When it
+    // issues another key, the announcement names it all the same, as one line
+    // the cabinet's listener takes, rather than failing to announce because of
+    // how a key was named.
     const { served, harnessed } = await started();
     const long = `the stock\nworker ${"k".repeat(200)}`;
     const key = await harnessed.addKey(harnessed.merchant.id, long);
 
-    await ask(served, key, A_WALLET);
+    const issued = await served.call("POST", "/v0/keys", {
+      body: { label: "the price desk" },
+      headers: bearer(key),
+    });
 
+    expect(issued.status, JSON.stringify(issued.body)).toBe(200);
     const [announced] = harnessed.announcer.announced;
-    const named = (announced as Announcement).asked_with;
-    expect(named.kind).toBe("merchant_code");
-    const label = named.kind === "merchant_code" ? named.label : "";
+    expect(announced?.kind).toBe("key_issued");
+    const named = announced?.kind === "key_issued" ? announced.asked_with : null;
+    expect(named?.kind).toBe("merchant_code");
+    const label = named?.kind === "merchant_code" ? named.label : "";
     expect(label).not.toMatch(/[\r\n\t]/);
     expect(label.length).toBeLessThanOrEqual(101);
     expect(label.startsWith("the stock worker kkk")).toBe(true);
