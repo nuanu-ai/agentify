@@ -13,8 +13,12 @@
  * the same definition; if it changes, it changes in both.
  *
  * Stryker is a triage tool here, not a gate: the run prints the clear-text
- * table and writes the JSON report, and someone reads the survivors. It is
- * run from the root of the checkout, from which Stryker copies the checkout
+ * table and writes the JSON report, and someone reads the survivors. A
+ * survivor worth acting on is confirmed by applying that mutation by hand and
+ * running `pnpm test`, the whole offline suite, judged by its exit code: there
+ * is no narrower commerce or scanner test command, and the sandbox run is
+ * already the narrow check. It is run from the root of the checkout, from
+ * which Stryker copies the checkout
  * into a sandbox, mutates the copies and runs vitest there. Nothing it does
  * reaches the checkout, and a run killed half-way leaves nothing behind but
  * its sandbox in the operator storage directory. Its `inPlace` mode, the one the spike
