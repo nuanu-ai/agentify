@@ -31,7 +31,7 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
     "The site answered requests carrying the ChatGPT-User and Claude-User tokens with a blocked or unusable page, where a plain request was answered.",
   agent_ua_compatible:
     "The site answered requests carrying the ChatGPT-User and Claude-User tokens as it answered a plain request.",
-  agent_ua_neutral_unavailable: "The neutral comparison request could not be assessed.",
+  agent_ua_neutral_unavailable: "The plain comparison request could not be assessed.",
   agent_ua_partial:
     "The site answered a request carrying one of the ChatGPT-User and Claude-User tokens with a blocked or unusable page, and the other as a plain request.",
   agent_ua_probe_unavailable:
@@ -144,7 +144,7 @@ const FINDING_HEADLINE_COPY: Readonly<Record<string, string>> = {
   a2a_malformed: "Your declared A2A card cannot be used reliably",
   a2a_noncanonical_or_malformed: "Your A2A declaration is misplaced or unreadable",
   agent_ua_blocked: "Your site turns away requests that carry AI agents' tokens",
-  agent_ua_partial: "Agents receive only part of your public content",
+  agent_ua_partial: "Your site answers one AI agent's token differently",
   ai_policy_absent: "Supported AI crawler groups have no clear robots.txt policy",
   ai_policy_partial: "Some supported AI crawler groups have no clear policy",
   content_signal_absent: "No Content-Signal policy is declared",
@@ -276,7 +276,7 @@ const FIX_COPY: Readonly<Record<string, string>> = {
   add_markdown_negotiation:
     "Add standards-based HTTP content negotiation for a fact-equivalent Markdown representation.",
   allow_agent_user_agents:
-    "If AI agents are meant to read this site, check your CDN's or firewall's setting for AI bots, which answered requests carrying their tokens differently. The scanner's requests come from its own addresses, so a rule that lets the real agents through by address can still turn it away. If the difference is intended, nothing needs to change.",
+    "If AI agents are meant to read this site, look for a rule that treats their tokens differently; a common one is a CDN's or firewall's setting that blocks AI bots. The scanner's requests come from its own addresses, so a rule that lets the real agents through by address can still turn it away. If the difference is intended, nothing needs to change.",
   complete_mcp_card:
     "Complete the MCP server card with valid discovery fields, and label the convention experimental.",
   complete_oauth_metadata:
