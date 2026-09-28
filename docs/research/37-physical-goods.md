@@ -436,9 +436,11 @@ on handling time»). The number is Dmitry's to move once a real merchant needs
 another.
 
 A handler that runs out of attempts, and the label its order closes under, stay
-as they are: «оставляем, если что подрегулируем». Duties, restricted goods,
-returns, a changed or mistyped address and pickup points are not worked on for
-now: «не работаем с этим пока». ADR-0032 names them as outside the mode.
+as they are: «оставляем, если что подрегулируем». Duties — where the recipient
+pays them, the price the agent paid is not the whole cost — restricted goods,
+which nothing here can check an age for, returns, a changed or mistyped address
+and pickup points are not worked on for now: «не работаем с этим пока».
+ADR-0032 names them as outside the mode.
 
 The decisions themselves were then held to the charter's length. What left them
 is the mechanics this note already carries — which envelopes, which error
