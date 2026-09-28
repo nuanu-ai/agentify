@@ -99,6 +99,15 @@ describe("initial database migration", () => {
       );
       expect(tableRows.rows.map(({ tablename }) => tablename)).toEqual([...TABLES].sort());
       expect(tableRows.rows.every(({ rowsecurity }) => rowsecurity)).toBe(true);
+      // What the product decided to stop keeping is gone, not only unread.
+      const deletedColumns = await pool.query(
+        `select table_name, column_name from information_schema.columns
+         where table_schema = 'public'
+           and ((table_name = 'scans' and column_name in ('cache_hit', 'source_scan_id'))
+             or (table_name = 'browser_observations'
+                 and column_name in ('signals', 'request_count', 'transferred_bytes')))`,
+      );
+      expect(deletedColumns.rows).toEqual([]);
 
       const oldWorkerStart = new Date("2026-07-12T10:00:00.000Z");
       const newWorkerStart = new Date("2026-07-12T11:00:00.000Z");
