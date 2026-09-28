@@ -133,6 +133,38 @@ describe("18-check engine", () => {
     expect(check?.fixCode).toBeUndefined();
   });
 
+  it("does not call a sitemap missing when robots.txt kept the scanner off a declared one", () => {
+    const input = makeArtifacts("store");
+    input.sitemap = [
+      artifact("https://example.com/feeds/sitemap.xml", "", {
+        status: 0,
+        errorCode: "robots_disallowed",
+      }),
+      artifact("https://example.com/sitemap.xml", "not found", { status: 404 }),
+    ];
+    expect(evaluateScan(input).checks.find((check) => check.id === 4)).toMatchObject({
+      status: "unavailable",
+      errorCode: "robots_disallowed",
+    });
+  });
+
+  it("names robots.txt among the reasons a discovery document went unread", () => {
+    const input = makeArtifacts("store");
+    input.mcp = [
+      artifact("https://example.com/.well-known/mcp.json", "", {
+        status: 0,
+        errorCode: "fetch_timeout",
+      }),
+      artifact("https://example.com/.well-known/mcp/server-card.json", "", {
+        status: 0,
+        errorCode: "robots_disallowed",
+      }),
+    ];
+    expect(evaluateScan(input).checks.find((check) => check.id === 9)?.errorCode).toBe(
+      "robots_disallowed",
+    );
+  });
+
   it("does not assess content for a target whose robots decision was left open", () => {
     const input = makeArtifacts("store");
     input.canonicalTargetUrl = `https://example.com/${"a".repeat(1_500)}`;

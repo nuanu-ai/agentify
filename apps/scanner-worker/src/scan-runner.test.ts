@@ -263,6 +263,43 @@ describe("bounded scan graph", () => {
     ).not.toContain("robots_disallowed");
   });
 
+  it("does not report a store's product data absent when robots.txt kept its product pages out", async () => {
+    const target = transport(
+      "User-agent: *\nDisallow: /products/\nSitemap: https://example.com/sitemap.xml\n",
+    );
+    // A home page with no structured data and no feed link: only the product
+    // page robots.txt disallows could have shown either.
+    const adapter: PinnedTransport = {
+      request: async (input) =>
+        input.url.pathname === "/" && input.headers.accept !== "text/markdown"
+          ? makeArtifact(
+              input,
+              200,
+              `<html><head><title>Store</title></head><body><h1>Store</h1><main>${"Handmade goods from our workshop. ".repeat(20)}<a href="/products/widget">Widget</a></main></body></html>`,
+              "text/html",
+            )
+          : target.adapter.request(input),
+    };
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(target.paths.some((request) => request.includes("/products/"))).toBe(false);
+    expect(
+      [5, 6, 15].map((id) => {
+        const check = evaluation.checks.find((candidate) => candidate.id === id);
+        return [check?.status, check?.errorCode];
+      }),
+    ).toEqual([
+      ["unavailable", "robots_disallowed"],
+      ["unavailable", "robots_disallowed"],
+      ["unavailable", "robots_disallowed"],
+    ]);
+  });
+
   it("does not fetch the well-known discovery files robots.txt keeps the scanner out of", async () => {
     const target = transport("User-agent: *\nDisallow: /.well-known/\n");
     await new ScanRunner({
