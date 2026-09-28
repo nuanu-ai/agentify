@@ -84,11 +84,11 @@ export const parseRobots = (body: string): RobotsParseResult => {
 
 const ruleMatches = (path: string, rule: string): boolean => {
   if (!rule) return false;
-  const escaped = rule
+  const anchored = rule.endsWith("$");
+  const escaped = (anchored ? rule.slice(0, -1) : rule)
     .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*/g, ".*")
-    .replace(/\$$/, "$");
-  return new RegExp(`^${escaped}`).test(path);
+    .replace(/\*/g, ".*");
+  return new RegExp(`^${escaped}${anchored ? "$" : ""}`).test(path);
 };
 
 export const isPathAllowed = (
