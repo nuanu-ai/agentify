@@ -1,13 +1,17 @@
 import {
   BROWSER_OBSERVATION_IDS,
   type BrowserObservationInputV1,
-  type BrowserObservationOutputV1,
   browserObservationOutputV1Schema,
 } from "@agentify/scanner-contracts";
 import { describe, expect, it } from "vitest";
 
 import type { PageSignals } from "./browser-signals.js";
-import { buildBrowserOutput, buildObservations, type ObservationRuntime } from "./observations.js";
+import {
+  buildBrowserOutput,
+  buildObservations,
+  type ObservationRuntime,
+  observedRunStatus,
+} from "./observations.js";
 
 const page = (overrides: Partial<PageSignals> = {}): PageSignals => ({
   renderedTextChars: 1_000,
@@ -173,14 +177,14 @@ describe("browser observation evaluator", () => {
 describe("the output the worker receives from the Actor", () => {
   // The worker reads the output as JSON from the run's key-value store and
   // parses it with the contract schema before anything is stored.
-  const received = (run: ObservationRuntime, status: BrowserObservationOutputV1["status"]) =>
+  const received = (run: ObservationRuntime) =>
     browserObservationOutputV1Schema.parse(
       JSON.parse(
         JSON.stringify(
           buildBrowserOutput({
             operationId: "019f5d64-1234-7abc-8abc-1234567890ab",
             actorBuild: "1.0.42",
-            status,
+            status: observedRunStatus(run, false),
             runtime: run,
             totalMs: 9_000,
           }),
@@ -192,16 +196,13 @@ describe("the output the worker receives from the Actor", () => {
     // A category page with 1,200 product images: the runner counts every
     // request the page makes, the ones it aborts past the budget included,
     // so robots.txt, the document and the images come to 1,202.
-    const output = received(
-      {
-        ...runtime([page()]),
-        requestCount: 1_202,
-        requestBudgetExceeded: true,
-        maxRequests: 243,
-      },
-      "partial",
-    );
-    expect(output.status).toBe("partial");
+    const output = received({
+      ...runtime([page()]),
+      requestCount: 1_202,
+      requestBudgetExceeded: true,
+      maxRequests: 243,
+    });
+    expect(output).toMatchObject({ status: "partial", pages_assessed: 1 });
     expect(output.observations.find((item) => item.id === "browser_runtime_cost")).toMatchObject({
       status: "fail",
       summary_code: "browser_runtime_request_budget_exceeded",
@@ -210,8 +211,8 @@ describe("the output the worker receives from the Actor", () => {
   });
 
   it("reports a page behind a cookie wall instead of failing the run", () => {
-    const output = received(runtime([page({ challengeKind: "cookie_wall" })]), "blocked");
-    expect(output.status).toBe("blocked");
+    const output = received(runtime([page({ challengeKind: "cookie_wall" })]));
+    expect(output).toMatchObject({ status: "blocked", pages_assessed: 1 });
     expect(
       output.observations.find((item) => item.id === "session_or_challenge_wall"),
     ).toMatchObject({

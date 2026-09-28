@@ -4,6 +4,7 @@ import {
   ANALYTICS_EVENT_NAMES,
   BROWSER_OBSERVATION_IDS,
   BROWSER_OBSERVATION_VERSION,
+  browserObservationFindingSchema,
   browserObservationInputV1Schema,
   browserObservationOutputV1Schema,
   browserObservationStatusResponseSchema,
@@ -327,9 +328,9 @@ describe("canonical contracts", () => {
     expect(browserObservationOutputV1Schema.safeParse(output).success).toBe(true);
   });
 
-  it("refuses the previous browser contract by the version it names", () => {
-    // browser-public-v1.0.0 carried a signals object. A worker or an Actor
-    // build still on it is told so at its version, not by a stray field.
+  it("refuses an input in the previous browser contract by the version it names", () => {
+    // browser-public-v1.0.0 carried a signals object. An Actor build of this
+    // version handed an input of that one is told so at its version.
     const previous = "browser-public-v1.0.0";
     const operationId = "019b41a0-7c51-7d63-84bd-a5a20faef497";
     const input = browserObservationInputV1Schema.safeParse({
@@ -358,23 +359,24 @@ describe("canonical contracts", () => {
     });
     expect(input.success).toBe(false);
     expect(input.error?.issues.map((issue) => issue.path)).toEqual([["schema_version"]]);
+    // An Actor's answer in the previous version is the worker's to refuse, by
+    // name, before its shape is read (browser-observation-job.test.ts).
+  });
 
-    const output = browserObservationOutputV1Schema.safeParse({
-      schema_version: previous,
-      operation_id: operationId,
-      actor_build: "1.0.42",
-      status: "completed",
-      pages_assessed: 1,
-      observations: BROWSER_OBSERVATION_IDS.map((id) => ({
-        id,
-        status: "pass",
-        summary_code: `${id}_observed`,
-        evidence: {},
-      })),
-      timings: { total_ms: 100 },
-    });
-    expect(output.success).toBe(false);
-    expect(output.error?.issues.map((issue) => issue.path)).toEqual([["schema_version"]]);
+  it("refuses a finding whose evidence list carries a raw address", () => {
+    const finding = {
+      id: "browser_network_health",
+      status: "fail",
+      summary_code: "required_resources_failed",
+      evidence: { failed_resource_categories: ["script", "https://cdn.example.com/app.js"] },
+    };
+    expect(browserObservationFindingSchema.safeParse(finding).success).toBe(false);
+    expect(
+      browserObservationFindingSchema.safeParse({
+        ...finding,
+        evidence: { failed_resource_categories: ["script"] },
+      }).success,
+    ).toBe(true);
   });
 
   it("keeps Actor build metadata out of the public browser response", () => {
