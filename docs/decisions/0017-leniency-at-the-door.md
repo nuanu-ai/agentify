@@ -32,7 +32,7 @@ second shape for the same fact, and two shapes drift.
 
 A spelling opens out without loss; a reading does not, and the door does
 no readings. A card's words — its title, its description and each
-declared field's title — are plain text (Dmitry, 2026-09-25), and the
+declared field's title — are plain text (decided 2026-09-25), and the
 door refuses markup, character references and control characters in
 them, naming what it found and where, instead of turning them into
 text. A shop connector whose source is HTML reads it as text on its own

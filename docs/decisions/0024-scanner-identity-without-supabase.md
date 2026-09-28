@@ -20,7 +20,7 @@ the gateway's and the cabinet's (ADR-0003), and every process reaches it with
 the one account, `agentify`. The scanner's four service roles — web, worker,
 privacy and dashboard — their reconcile, finalize and verify jobs, the
 policies and grants that named them and the Metabase views the fourth read
-are deleted (Dmitry's word, 2026-09-22 and 2026-09-23): they cost three
+are deleted (decided 2026-09-22 and 2026-09-23): they cost three
 activation steps and four sets of credentials to separate processes that are
 all ours on one host, and each host drops them when it moves to one
 database. The account is the instance's bootstrap superuser, so it owns every
@@ -28,7 +28,7 @@ table and leaves the schema's row-level security inert — twenty-six scanner
 tables declare it, three force it on their owner, and no policy exists. What
 keeps scanner data and cabinet data apart is therefore the identity route and
 the secret only those two processes hold, not the database: neither process
-reads or writes the other's tables (Dmitry's word, 2026-09-23).
+reads or writes the other's tables (decided 2026-09-23).
 
 The cabinet owns identity (ADR-0026). Email verification uses Better Auth's
 expiring, hashed, single-use magic links. The scanner asks the cabinet over an

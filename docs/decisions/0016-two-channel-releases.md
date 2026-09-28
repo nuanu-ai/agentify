@@ -1,7 +1,7 @@
 # 0016. Two isolated release channels
 
 Date: 2026-08-28
-Status: accepted (Dmitry's live word, updated 2026-09-24)
+Status: accepted (by live instruction, updated 2026-09-24)
 
 ## Context
 

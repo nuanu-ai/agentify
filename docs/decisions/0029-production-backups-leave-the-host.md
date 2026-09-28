@@ -1,7 +1,7 @@
 # 0029. Production's data and secrets leave the host, through restic, every ten minutes
 
 Date: 2026-09-24
-Status: accepted (Dmitry, 2026-09-24)
+Status: accepted (2026-09-24)
 
 ## Context
 
@@ -19,10 +19,11 @@ and the server's roles under the release lock and stores them, with
 point objective is ten minutes. The repository has its own password, since a
 Hetzner key opens every bucket of its project; the password and the key live in
 `/etc/agentify/backup.env`, which no snapshot holds, and the password also in
-Dmitry's 1Password. Snapshots are kept for a day, hourly for two days and daily
-for 30 days, and a restore rehearsal, which a person runs and nothing
-schedules, restores the latest and compares its row counts. The bucket keeps a deleted object's version for 30 days. Object Lock
-retention is not set, so whoever holds the key can delete every version.
+the product owner's password manager. Snapshots are kept for a day, hourly for
+two days and daily for 30 days, and a restore rehearsal, which a person runs
+and nothing schedules, restores the latest and compares its row counts. The
+bucket keeps a deleted object's version for 30 days. Object Lock retention is
+not set, so whoever holds the key can delete every version.
 
 ## Alternatives rejected
 
