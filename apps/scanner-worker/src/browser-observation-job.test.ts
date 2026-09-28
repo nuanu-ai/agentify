@@ -1,4 +1,5 @@
 import {
+  BROWSER_OBSERVATION_IDS,
   BROWSER_OBSERVATION_VERSION,
   type BrowserObservationOutputV1,
 } from "@agentify/scanner-contracts";
@@ -39,7 +40,12 @@ const output: BrowserObservationOutputV1 = {
   actor_build: observation.actorBuild,
   status: "completed",
   pages_assessed: 1,
-  observations: [],
+  observations: BROWSER_OBSERVATION_IDS.map((id) => ({
+    id,
+    status: "not_applicable",
+    summary_code: "not_observed",
+    evidence: {},
+  })),
   timings: { total_ms: 100, pages: [100] },
 };
 

@@ -1,8 +1,6 @@
 import {
   type BrowserObservationInputV1,
-  type BrowserObservationOutputV1,
   browserObservationInputV1Schema,
-  browserObservationOutputV1Schema,
 } from "@agentify/scanner-contracts";
 import { ApifyClient } from "apify-client";
 
@@ -28,7 +26,8 @@ export interface BrowserProviderClient {
   ): Promise<RecentBrowserRun | null>;
   waitForFinish(runId: string, waitSeconds: number): Promise<FinishedBrowserRun>;
   getUsage(runId: string): Promise<number | undefined>;
-  getOutput(runId: string): Promise<BrowserObservationOutputV1>;
+  /** The Actor's answer as stored, unread: the worker checks it itself. */
+  getOutput(runId: string): Promise<unknown>;
   abort(runId: string): Promise<void>;
   cleanup(runId: string): Promise<void>;
 }
@@ -92,10 +91,10 @@ export class ApifyBrowserProviderClient implements BrowserProviderClient {
     return typeof usage === "number" && Number.isFinite(usage) && usage >= 0 ? usage : undefined;
   }
 
-  async getOutput(runId: string): Promise<BrowserObservationOutputV1> {
+  async getOutput(runId: string): Promise<unknown> {
     const record = await this.#client.run(runId).keyValueStore().getRecord("OUTPUT");
     if (!record) throw new Error("apify_output_missing");
-    return browserObservationOutputV1Schema.parse(record.value);
+    return record.value;
   }
 
   async abort(runId: string): Promise<void> {

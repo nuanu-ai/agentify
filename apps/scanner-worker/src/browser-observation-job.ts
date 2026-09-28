@@ -2,7 +2,9 @@ import {
   BROWSER_OBSERVATION_VERSION,
   type BrowserObservationInputV1,
   type BrowserObservationJobV1,
+  type BrowserObservationOutputV1,
   browserObservationJobV1Schema,
+  browserObservationOutputV1Schema,
 } from "@agentify/scanner-contracts";
 import type {
   BrowserObservationClaim,
@@ -69,6 +71,19 @@ export const buildBrowserObservationInput = (
       run_timeout_ms: 45_000,
     },
   };
+};
+
+// The Actor's answer is read here, in the worker's own words: a build of
+// another contract version is named as such before its shape is judged.
+const readOutput = (answer: unknown): BrowserObservationOutputV1 | { refused: string } => {
+  const version =
+    typeof answer === "object" && answer !== null && "schema_version" in answer
+      ? answer.schema_version
+      : undefined;
+  if (version !== BROWSER_OBSERVATION_VERSION)
+    return { refused: "browser_contract_version_mismatch" };
+  const parsed = browserObservationOutputV1Schema.safeParse(answer);
+  return parsed.success ? parsed.data : { refused: "browser_output_invalid" };
 };
 
 const safeFailureCode = (error: unknown): string => {
@@ -258,13 +273,19 @@ export async function processBrowserObservationJob(
       if (!marked) runId = null;
       return "skipped";
     }
-    const output = await dependencies.provider.getOutput(runId);
-    if (output.actor_build !== observation.actorBuild) {
+    const output = readOutput(await dependencies.provider.getOutput(runId));
+    const refused =
+      "refused" in output
+        ? output.refused
+        : output.actor_build !== observation.actorBuild
+          ? "actor_build_mismatch"
+          : undefined;
+    if (refused || "refused" in output) {
       const marked = await dependencies.repository.markTerminal(
         observation.id,
         leaseToken,
         "failed",
-        "actor_build_mismatch",
+        refused ?? "browser_output_invalid",
         { at: now(), usageUsd: runUsageUsd },
       );
       if (!marked) runId = null;
