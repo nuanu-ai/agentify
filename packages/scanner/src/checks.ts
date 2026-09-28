@@ -724,7 +724,7 @@ const oauthCheck = (artifacts: ScanArtifacts): CheckResult => {
   });
 };
 
-const ssrCheck = (artifacts: ScanArtifacts): CheckResult => {
+const ssrCheck = (artifacts: ScanArtifacts, robotsBlockedCode: string): CheckResult => {
   const base = artifacts.base;
   const representative = artifacts.representative;
   const usableBase =
@@ -742,7 +742,7 @@ const ssrCheck = (artifacts: ScanArtifacts): CheckResult => {
       earnedWeight: 0,
       summaryCode: "ssr_unavailable",
       userImpactCode: "ssr_not_assessed",
-      errorCode: base?.errorCode ?? (base ? "base_blocked" : "robots_disallowed"),
+      errorCode: base?.errorCode ?? (base ? "base_blocked" : robotsBlockedCode),
     });
   const baseSignals = htmlSignals(usableBase?.body ?? "");
   const representativeSignals = htmlSignals(usableRepresentative?.body ?? "");
@@ -1046,13 +1046,14 @@ const hreflangCheck = (artifacts: ScanArtifacts): CheckResult => {
 export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
   const robotsParsed = parseRobots(artifacts.robots.body);
   const targetPath = new URL(artifacts.canonicalTargetUrl).pathname || "/";
+  const robotsMissing = artifacts.robots.status === 404 || artifacts.robots.status === 410;
+  const robotsReadable =
+    artifacts.robots.status === 200 && !artifacts.robots.errorCode && !robotsParsed.fatal;
   const targetContentAllowed =
-    artifacts.robots.status === 404 ||
-    artifacts.robots.status === 410 ||
-    (artifacts.robots.status === 200 &&
-      !artifacts.robots.errorCode &&
-      !robotsParsed.fatal &&
-      isPathAllowed(robotsParsed, "agentify-scanner", targetPath));
+    robotsMissing ||
+    (robotsReadable && isPathAllowed(robotsParsed, "agentify-scanner", targetPath));
+  const robotsBlockedCode =
+    robotsMissing || robotsReadable ? "robots_disallowed" : "robots_unavailable";
   const effective = targetContentAllowed
     ? artifacts
     : {
@@ -1071,7 +1072,7 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
     mcpCheck(artifacts),
     ucpCheck(artifacts),
     oauthCheck(artifacts),
-    ssrCheck(effective),
+    ssrCheck(effective, robotsBlockedCode),
     agentUaCheck(effective),
     performanceCheck(effective),
     feedCheck(effective),

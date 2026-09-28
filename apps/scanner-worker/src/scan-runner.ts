@@ -275,16 +275,14 @@ export class ScanRunner {
             }
             return artifacts;
           })()
-        : Promise.resolve(
-            sitemapTargets.map((url) => unavailableArtifact(url, "robots_disallowed")),
-          );
+        : Promise.resolve(sitemapTargets.map((url) => unavailableArtifact(url, blockedCode)));
       const llmsUrl = discoveryUrl(target, "/llms.txt");
       const llmsPromise = targetAllowed
         ? fetchIfRobotsAllowed(llmsUrl, {
             bodyLimit: 512 * 1024,
             accept: "text/plain,text/markdown,*/*;q=0.1",
           })
-        : Promise.resolve(unavailableArtifact(llmsUrl, "robots_disallowed"));
+        : Promise.resolve(unavailableArtifact(llmsUrl, blockedCode));
       const mcpUrl = discoveryUrl(target, "/.well-known/mcp.json");
       const mcpCardUrl = discoveryUrl(target, "/.well-known/mcp/server-card.json");
       const ucpUrl = discoveryUrl(target, "/.well-known/ucp");
