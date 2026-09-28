@@ -97,11 +97,97 @@ virtual, downloadable products and refuses the rest with «Only virtual products
 can be delivered to an agent without a shipping address»
 (`apps/cabinet/src/woo-catalog.ts`, ADR-0023).
 
+## Protocols and marketplaces
+
+Read on 2026-09-28: the Agentic Commerce Protocol at its release `2026-04-17`
+(github.com/agentic-commerce-protocol), the Universal Commerce Protocol at tag
+`v2026-08-25` (github.com/Universal-Commerce-Protocol/ucp), the Shopify Admin
+API `2026-07`, schema.org V30.1, the x402 repository now at
+`x402-foundation/x402`, and the public seller rules of Amazon and eBay. Amazon's
+guarantee text came through a search snippet because the page itself answered
+503, so it is worth reading again before it is quoted anywhere else.
+
+The word for "handed to a carrier" is `shipped` wherever there is one. ACP's
+order status defines it as «All items handed to carrier», and its line-item
+`fulfilled` means dispatched rather than received; UCP's fulfilment event
+`shipped` reads «handed to carrier»; Amazon's order status ends at `Shipped`;
+Shopify calls the same moment `FULFILLED` and tracks delivery separately, as
+shipment events. schema.org has no such word — its statuses go from
+`OrderProcessing` to `OrderInTransit` and `OrderDelivered`. No specification
+treats `shipped` as the last word: ACP expects `completed` once the goods are
+received, and UCP's events continue to `in_transit` and `delivered`. So the
+"nothing further is known to us" in ADR-0032 is ours and has to be said in the
+status's own description, not left to the word.
+
+The shipment itself is named the same way almost everywhere: `carrier`,
+`tracking_number`, `tracking_url` in ACP, UCP and WooCommerce's own
+fulfilments, `company`, `number`, `url` in Shopify's `tracking_info`, and
+`provider`, `trackingNumber`, `trackingUrl` in schema.org. ACP puts where the
+buyer asks in a `support` object of `email`, `phone` and `help_center_url`.
+UCP requires a tracking number and address on every event past `processing`,
+and the marketplaces measure sellers by it: Amazon by its valid tracking rate,
+eBay by a carrier's acceptance scan inside the handling time, which is what
+protects a seller against a claim that the parcel never arrived. Every
+specification also carries an expected delivery window — ACP's
+`estimated_delivery` with `earliest` and `latest`, schema.org's
+`expectedArrivalFrom` and `expectedArrivalUntil` — and both marketplaces start
+the buyer's "not received" claim from the latest estimated delivery date
+(Amazon adds three days; eBay allows thirty days from it).
+
+The time to ship is a named, separate promise. Amazon's order carries
+`LatestShipDate` beside `LatestDeliveryDate`; eBay's handling time begins at
+payment and ends at the carrier's scan. That is the clock ADR-0032 puts on the
+card as `fulfill_deadline_seconds`.
+
+On the address, every source spells the country as ISO 3166-1 alpha-2. They
+disagree on nearly everything else:
+
+| | ACP | UCP | Shopify | schema.org | WooCommerce | Stripe |
+| --- | --- | --- | --- | --- | --- | --- |
+| recipient | `name` | `first_name`, `last_name` | `firstName`, `lastName` | — | `first_name`, `last_name` | `name` |
+| lines | `line_one`, `line_two` | `street_address`, `extended_address` | `address1`, `address2` | `streetAddress`, `extendedAddress` | `address_1`, `address_2` | `line1`, `line2` |
+| city | `city` | `address_locality` | `city` | `addressLocality` | `city` | `city` |
+| region | `state` (a code) | `address_region` | `provinceCode` | `addressRegion` | `state` | `state` |
+| postal code | `postal_code` | `postal_code` | `zip` | `postalCode` | `postcode` | `postal_code` |
+| country | `country` | `address_country` | `countryCodeV2` | `addressCountry` | `country` | `country` |
+| phone | `phone_number`, beside the address | `phone_number` | `phone` | — | `phone` | `phone` |
+
+ACP's is the one address an agent already writes in snake case, and an agent
+holding an ACP address could pass it through unchanged. ACP requires the region
+and the postal code everywhere; UCP says the region is required only where the
+country has one, which is the truer rule.
+
+Two findings bear directly on ADR-0031. UCP names the very thing its price
+check does: a buyer's context before the purchase «SHOULD be non-identifying
+and can be disclosed progressively — coarse signals early, finer resolution as
+the session progresses», with `address_country`, `address_region` and
+`postal_code` as the coarse signal. But it also says that eligibility «MUST
+occur at checkout time using binding transaction data», and ACP, UCP and both
+intermediaries that sell parcels over x402 today (Rye with AgentCash, and
+Crossmint) show the merchant the full address before the money moves. A
+purchase here is priced at the moment of purchase, which is checkout, so the
+coarse-only price check is stricter than the practice: a street the merchant
+cannot deliver to surfaces only after the charge, as a refund owed. And on
+keeping the address, ACP asks only that addresses be redacted «as required by
+policy», UCP lets a business apply retention windows and regulatory erasure,
+and Amazon lets its integrators keep an address for thirty days after
+delivery. Erasing at acceptance is well inside all of them, and it gives up
+what eBay uses to settle a claim — that the address shipped to matches the
+order's.
+
+x402 itself has no convention for addresses or shipping: its extensions cover
+the catalogue, identity, gas and receipts, and a search of the repository finds
+nothing about physical goods. Physical goods over x402 today go through
+intermediaries that take the full address before quoting — Rye's buyer object
+is `firstName`, `lastName`, `address1`, `address2`, `city`, `province`,
+`country`, `postalCode`, Crossmint's is `name`, `line1`, `line2`, `city`,
+`state`, `postalCode`, `country` — and neither publishes a rule on keeping it.
+
 ## Open
 
-- The names of the `ship_to` fields and of the shipment record, taken from how
-  WooCommerce and the agent-commerce protocols name them; a survey of both is
-  under way and lands in this note.
+- The names of the `ship_to` fields and of the shipment record, fixed from the
+  survey above together with the WooCommerce survey, which lands in this note
+  separately.
 - A reason on the price check's "unavailable", so that "not to this
   destination" and "out of stock" are two answers to the agent.
 - The ceiling on the time to ship, and its number.
