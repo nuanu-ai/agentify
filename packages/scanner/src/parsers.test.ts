@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parseJsonLd, parseSafeJson, parseSitemap, visibleText } from "./parsers.js";
 import { explicitAiPolicies, isPathAllowed, parseRobots } from "./robots.js";
@@ -192,11 +193,34 @@ describe("a robots.txt as large as the fetch admits", () => {
     expect(decision.ms).toBeLessThan(budgetMs);
   });
 
-  it("is decided for as many wildcard rules as a large real file applies to every crawler", () => {
-    // Etsy's robots.txt applies 900 rules with a wildcard to every crawler.
-    const rules = Array.from({ length: 900 }, (_, index) => `Disallow: /*/c${index}/*\n`);
-    const body = `User-agent: *\n${rules.join("")}`;
-    expect(decide(body, `/shop/c899/${"a".repeat(2_048)}`).allowed).toBe(false);
-    expect(decide(body, `/shop/c900/${"a".repeat(2_048)}`).allowed).toBe(true);
+  it("is decided at its budget and left open one wildcard rule past it", () => {
+    // Each wildcard rule costs the path's length plus its own: 1,022 + 2.
+    // Rules without a wildcard only compare the path's start and cost nothing.
+    const path = `/${"a".repeat(1_021)}`;
+    const plain = "Disallow: /x\n".repeat(10_000);
+    const body = (wildcards: number) => `User-agent: *\n${plain}${"Allow: *b\n".repeat(wildcards)}`;
+    expect(decide(body(4_096), path).allowed).toBe(true);
+    expect(decide(body(4_097), path).allowed).toBeUndefined();
+  });
+
+  it("counts every character of a wildcard rule toward its budget", () => {
+    const path = `/${"a".repeat(1_021)}`;
+    const body = `User-agent: *\n${"Allow: *b\n".repeat(4_095)}Disallow: /x${"*".repeat(2_000)}\n`;
+    expect(decide(body, path).allowed).toBeUndefined();
+  });
+
+  it("is decided for every page of the largest real set of wildcard rules measured", () => {
+    const etsy = readFileSync(
+      new URL("./fixtures/robots/www.etsy.com.txt", import.meta.url),
+      "utf8",
+    );
+    for (const path of [
+      "/",
+      "/listing/1234567890/handmade-ceramic-mug",
+      "/c/home-and-living/kitchen-and-dining",
+      "/search",
+      `/listing/1234567890/${"a".repeat(2_048)}`,
+    ])
+      expect(decide(etsy, path).allowed).not.toBeUndefined();
   });
 });
