@@ -144,12 +144,13 @@ describe("a robots.txt as large as the fetch admits", () => {
   // shape that once stalled the decision without bound or threw instead of
   // deciding; each is now decided, correctly, well inside the budget.
   //
-  // What these cases do not bound: a file of many short wildcard rules costs
-  // time in proportion to the number of rules times the length of the path,
-  // about 0.65 s for 37,000 rules against a 2 KiB path.
+  // A rule with a wildcard is searched for along the whole path, so many of
+  // them against a long path cost time no matter how they are matched; past a
+  // budget the decision is left open, and the scanner says robots.txt could
+  // not be assessed rather than guess.
   const fetchCap = 512 * 1024;
   const budgetMs = 500;
-  const decide = (body: string, path: string): { allowed: boolean; ms: number } => {
+  const decide = (body: string, path: string): { allowed?: boolean; ms: number } => {
     const started = performance.now();
     const allowed = isPathAllowed(parseRobots(body), "agentify-scanner", path);
     return { allowed, ms: performance.now() - started };
@@ -182,5 +183,20 @@ describe("a robots.txt as large as the fetch admits", () => {
     const decision = decide(body, "/cart");
     expect(decision.allowed).toBe(false);
     expect(decision.ms).toBeLessThan(budgetMs);
+  });
+
+  it("is left open, in time, when wildcard rules against a long path cost too much", () => {
+    const body = `User-agent: *\n${"Allow: *aaaaab\n".repeat(30_000)}Disallow: /\n`;
+    const decision = decide(body, `/${"a".repeat(1_500)}`);
+    expect(decision.allowed).toBeUndefined();
+    expect(decision.ms).toBeLessThan(budgetMs);
+  });
+
+  it("is decided for as many wildcard rules as a large real file applies to every crawler", () => {
+    // Etsy's robots.txt applies 900 rules with a wildcard to every crawler.
+    const rules = Array.from({ length: 900 }, (_, index) => `Disallow: /*/c${index}/*\n`);
+    const body = `User-agent: *\n${rules.join("")}`;
+    expect(decide(body, `/shop/c899/${"a".repeat(2_048)}`).allowed).toBe(false);
+    expect(decide(body, `/shop/c900/${"a".repeat(2_048)}`).allowed).toBe(true);
   });
 });

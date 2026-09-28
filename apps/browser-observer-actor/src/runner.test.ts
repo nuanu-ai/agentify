@@ -83,6 +83,11 @@ describe("search-purpose policy", () => {
     expect(permitsBrowserNavigation(parsed, "/private/js-navigation")).toBe(false);
   });
 
+  it("does not navigate where the robots decision would cost too much to make", () => {
+    const parsed = parseRobots(`User-agent: *\n${"Allow: *aaaaab\n".repeat(30_000)}`);
+    expect(permitsBrowserNavigation(parsed, `/${"a".repeat(1_500)}`)).toBe(false);
+  });
+
   it("checks robots before redirect or script navigation can fetch content", async () => {
     for (const source of ["redirect", "script_navigation"] as const) {
       const events: string[] = [];

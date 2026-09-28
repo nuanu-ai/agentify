@@ -197,6 +197,22 @@ describe("bounded scan graph", () => {
     ]);
   });
 
+  it("does not fetch a page whose robots decision would cost too much, and says so", async () => {
+    const path = `/${"a".repeat(1_500)}`;
+    const target = transport(`User-agent: *\n${"Allow: *aaaaab\n".repeat(30_000)}`);
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: target.adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run({ ...job, canonical_target_url: `https://example.com${path}` });
+    expect(target.paths.some((request) => request.startsWith(`GET ${path} `))).toBe(false);
+    expect(
+      [4, 8, 12].map((id) => evaluation.checks.find((check) => check.id === id)?.errorCode),
+    ).toEqual(["robots_unavailable", "robots_unavailable", "robots_unavailable"]);
+  });
+
   it("does not fetch a disallowed representative path", async () => {
     const target = transport(
       "User-agent: agentify-scanner\nAllow: /\nDisallow: /products/\nSitemap: https://example.com/sitemap.xml\n",
