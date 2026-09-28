@@ -83,8 +83,8 @@ is part of the price the price check answers. The price check's "unavailable"
 carries no reason, so "we do not ship there" and "out of stock" are one bare
 `rejected` to the agent. The public card has no shape for the seller's identity
 or contact (`packages/contracts/src/card.ts`, the public card's description), so
-the agent would not know whom to ask about a parcel; ADR-0032 has a merchant
-who sells parcels name it once.
+the agent would not know whom to ask about a parcel; ADR-0033 gives it the
+shop's own site.
 
 ## How the scope was narrowed
 
@@ -340,7 +340,8 @@ price rule, where the offline card check sees it. The time to ship took a name
 of its own. The required price check has to be the handler, because a card
 naming a price hook that nothing calls would publish and never sell. The
 contact moved from each shipment to the merchant, because a buyer needs it
-before shipment and on a refund owed too. Tracking stays required, and the
+before shipment and on a refund owed too; Dmitry then took it out of our scope
+altogether, and the agent is given the shop's own site instead (ADR-0033). Tracking stays required, and the
 requirement is said at the door rather than first met at `deliver` after the
 charge; the number is recorded as the merchant's claim. The phone number
 became required and `state` was named a subdivision code. The per-country table
@@ -382,8 +383,8 @@ The count is the price of the mode, and it is paid once per integrator: the
 value `ship`; `ship_within_seconds`, required and under a ceiling; a price check
 that must be the handler, and receives the locality; the `ship_to` block on the
 order, present only once paid and read as `erased_at` once erased; the
-rule that taking an order on means the address is stored; the contact named
-once in the cabinet; the card without a `result`; `deliver` carrying the
+rule that taking an order on means the address is stored; the shop's site
+named once in the cabinet (ADR-0033); the card without a `result`; `deliver` carrying the
 shipment, with the carrier and the tracking number required; the status word
 `shipped`, on orders and receipts; a contract version that moves; and the
 refusal of a `ship` card on the live channel, with its reason.
@@ -395,8 +396,8 @@ The machine: a third switch on the order's mode, and the one edge from
 today every one of them says a debt was closed, and a shipped order never had
 one. The contract: the card's fulfillment values and its public projection,
 the purchase request, the order and its merchant document, the price question,
-the status vocabulary and the agent's status document with `ship_by` and the
-contact, the storefront's mode and status carried as open strings with the
+the status vocabulary and the agent's status document with `ship_by`, the
+seller's name and site on cards and orders, the storefront's mode and status carried as open strings with the
 catalogue read card by card, the receipt's outcome, the descriptions of
 `rejected` and of the field that carries what the merchant handed over, and the
 contract version. The gateway: the door checks, the erasure and its test, an
@@ -404,8 +405,8 @@ erased order never handed out again, the stripped errors, the refusal of a
 changed address at payment, the refusal on the live channel, and — when
 ADR-0028 is built — the receipt of a refunded parcel and the payer's address on
 a shipped order. The SDK's types. The discovery declaration.
-The cabinet's contact. The portal: the cards page (the mode, the time to ship,
-the contact, tracking required, what the card's price means), the orders page
+The cabinet's field for the site. The portal: the cards page (the mode, the
+time to ship, the site, tracking required, what the card's price means), the orders page
 (the mode's sequence, the endings table that the machine's tests read,
 acceptance storing the address, the restart walk), the quickstart's
 asynchronous pattern, the money page, and the FAQ's dispute answer, which
@@ -446,7 +447,11 @@ The revisions of the two review rounds were then put to Dmitry one at a time.
 The price question carries the locality — country, state, city and postal
 code — rather than the country and postal code alone: «да, вариант А». A lost
 parcel is a refund recorded on the shipped order, which becomes `refunded`,
-rather than a shipped order reopened into a refund owed: «Вариант А».
+rather than a shipped order reopened into a refund owed: «Вариант А». Where a
+buyer asks is not a contact Agentify keeps: Dmitry questioned the need for one
+at all — «мне бы не хотелось тащить больше скоупа в agentify» — and the agent
+is given the shop's site and the seller's name, with nothing else about the
+merchant: «давай начнем только с адреса» (ADR-0033).
 
 The decisions themselves were then held to the charter's length. What left them
 is the mechanics this note already carries — which envelopes, which error

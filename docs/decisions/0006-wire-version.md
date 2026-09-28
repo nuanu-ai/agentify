@@ -2,7 +2,8 @@
 
 Date: 2026-08-27
 Status: accepted (autonomous mandate of 2026-08-26; revisited on Dmitry's word;
-§5's open vocabularies added 2026-09-28 with ADR-0032, awaiting Dmitry's word)
+§5's open vocabularies added 2026-09-28 with ADR-0032, awaiting Dmitry's word,
+and its open documents with ADR-0033)
 
 ## Context
 
@@ -77,8 +78,10 @@ the merchant's routes and is not derived from it.
    again. §3's rejection of an open string does not reach here: there it would
    give up a version that stops an old worker with words before any order is in
    flight, and the storefront has no version to give up — a closed list there
-   only breaks a stranger's agent without a word. The merchant's schemas stay
-   closed. The first values added this way are `ship` and `shipped` (ADR-0032).
+   only breaks a stranger's agent without a word. For the same reason the
+   storefront's documents take fields added later, which an agent ignores. The
+   merchant's schemas stay closed. The first values added this way are `ship`
+   and `shipped` (ADR-0032), and the first fields the seller's site (ADR-0033).
 
    Rejected: a version segment on the storefront, on the argument that an
    incompatibly changed wire *is* a different resource to an agent and should

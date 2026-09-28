@@ -26,10 +26,9 @@ republished card changes no order in flight. The card asks for `ship_to`
 (ADR-0031), has a price check answered by the merchant's handler, and names
 `ship_within_seconds`: the time to hand the parcel to a carrier, counted from
 the charge, under a ceiling written in the contract and checked at publishing,
-shown on the card and as an absolute `ship_by` on the order. A merchant who
-sells parcels names, once and in the cabinet, a contact where buyers ask about
-their orders; the order's status carries it, and no `ship` card publishes
-without it.
+shown on the card and as an absolute `ship_by` on the order. No `ship` card
+publishes until its merchant has named their shop's site, where the agent takes
+whatever the order cannot answer (ADR-0033).
 
 The merchant declares no result. `deliver` on a parcel records a shipment:
 `carrier` and `tracking_number`, required and taken as the merchant's claim,
@@ -69,8 +68,8 @@ declares (no agent learns every shape); a second `deliver` to update tracking
 (the call keeps the first delivery in every mode); optional tracking (the
 merchant's word alone would stop the clock); reusing `fulfill_deadline_seconds`
 (one name, two meanings); a ceiling in deployment configuration (unseen by the
-offline check, and a lowered one strands published cards above it); a contact
-per shipment (absent before shipment and on a refund owed); reopening a lost
-parcel into a refund owed (a stale delivery would close it); a
-"physical" flag beside `fulfillment` (two fields for one fact; a parcel
-confirmed by hand waits for ADR-0007's trigger).
+offline check, and a lowered one strands published cards above it); a support
+contact of ours, per shipment or per merchant (ADR-0033 sends the agent to the
+shop's site instead); reopening a lost parcel into a refund owed (a stale
+delivery would close it); a "physical" flag beside `fulfillment` (two fields
+for one fact; a parcel confirmed by hand waits for ADR-0007's trigger).
