@@ -442,6 +442,10 @@ which nothing here can check an age for, returns, a changed or mistyped address
 and pickup points are not worked on for now: «не работаем с этим пока».
 ADR-0032 names them as outside the mode.
 
+The revisions of the two review rounds were then put to Dmitry one at a time.
+The price question carries the locality — country, state, city and postal
+code — rather than the country and postal code alone: «да, вариант А».
+
 The decisions themselves were then held to the charter's length. What left them
 is the mechanics this note already carries — which envelopes, which error
 paths, which fields and pages — and no rule or reason.
