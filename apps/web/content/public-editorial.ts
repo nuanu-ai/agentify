@@ -266,7 +266,11 @@ const scannerPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
             text("We fetch "),
             code("/robots.txt"),
             text(
-              " first. If the scanner or wildcard group disallows the submitted path, content checks are marked unavailable. We do not bypass that rule.",
+              " first and follow it for every later request: the page, its sitemap, llms.txt and the ",
+            ),
+            code("/.well-known"),
+            text(
+              " discovery files. A check whose requests it disallows is marked not assessed, and the report names robots.txt as the reason. If robots.txt cannot be read, or its rules cannot be decided for an address, we read nothing it might forbid. We do not bypass that rule.",
             ),
           ],
         },
