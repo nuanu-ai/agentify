@@ -171,6 +171,29 @@ describe("bounded scan graph", () => {
     expect(evaluation.checks.find((check) => check.id === 13)?.status).toBe("unavailable");
   });
 
+  it("names robots.txt as the reason for every check it kept from being assessed", async () => {
+    const reasons = async (robotsBody: string, robotsStatus: number) => {
+      const evaluation = await new ScanRunner({
+        resolver: {
+          resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+        },
+        transport: transport(robotsBody, robotsStatus).adapter,
+        appBaseUrl: "https://agentify.ad",
+      }).run(job);
+      // Checks 1 to 3 read robots.txt itself; every other check needs a
+      // request robots.txt rules on.
+      return evaluation.checks
+        .filter((check) => check.id > 3 && check.status === "unavailable")
+        .map((check) => [check.id, check.errorCode]);
+    };
+    const everyRobotsCheck = (code: string) =>
+      [4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 17, 18].map((id) => [id, code]);
+    expect(await reasons("User-agent: agentify-scanner\nDisallow: /\n", 200)).toEqual(
+      everyRobotsCheck("robots_disallowed"),
+    );
+    expect(await reasons("", 503)).toEqual(everyRobotsCheck("robots_unavailable"));
+  });
+
   it("does not fetch the well-known discovery files robots.txt keeps the scanner out of", async () => {
     const target = transport("User-agent: *\nDisallow: /.well-known/\n");
     await new ScanRunner({
