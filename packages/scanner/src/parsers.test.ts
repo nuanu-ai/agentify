@@ -58,6 +58,30 @@ Allow: /
     expect(isPathAllowed(specificAllow, "unmatched-bot", "/public")).toBe(false);
   });
 
+  it("reads * in a robots rule as any run of characters, the empty one included", () => {
+    const parsed = parseRobots(`
+User-agent: *
+Disallow: /*/collections/*+*
+`);
+    expect(isPathAllowed(parsed, "agentify-scanner", "/en/collections/shoes+boots")).toBe(false);
+    expect(isPathAllowed(parsed, "agentify-scanner", "//collections/+")).toBe(false);
+    expect(isPathAllowed(parsed, "agentify-scanner", "/en/collections/shoes")).toBe(true);
+    expect(isPathAllowed(parsed, "agentify-scanner", "/collections/shoes+boots")).toBe(true);
+  });
+
+  it("matches the pieces between wildcards in order, each character once", () => {
+    const parsed = parseRobots(`
+User-agent: *
+Disallow: /*ab*ba
+Disallow: /js*js$
+`);
+    expect(isPathAllowed(parsed, "agentify-scanner", "/abba")).toBe(false);
+    expect(isPathAllowed(parsed, "agentify-scanner", "/aba")).toBe(true);
+    expect(isPathAllowed(parsed, "agentify-scanner", "/bab")).toBe(true);
+    expect(isPathAllowed(parsed, "agentify-scanner", "/jsjs")).toBe(false);
+    expect(isPathAllowed(parsed, "agentify-scanner", "/js")).toBe(true);
+  });
+
   it("reads a trailing $ as the end of the path, and a $ anywhere else as itself", () => {
     const parsed = parseRobots(`
 User-agent: *
