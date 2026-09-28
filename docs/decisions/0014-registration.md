@@ -1,8 +1,8 @@
 # 0014. Registration makes a merchant and its cabinet's key in one act
 
 Date: 2026-08-28
-Status: accepted (Dmitry, 2026-08-28: "разрабатывай экраны, реализуй регистрацию";
-2026-09-25: "удаляем все пути регистрации кроме одного основного")
+Status: accepted (2026-08-28; 2026-09-25: every registration path except the
+one main path is removed)
 
 ## Context
 

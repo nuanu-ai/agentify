@@ -1,8 +1,8 @@
 # 0006. What the contract version promises, and when it moves
 
 Date: 2026-08-27
-Status: accepted (autonomous mandate of 2026-08-26; revisited on Dmitry's word;
-§5's open vocabularies and documents added 2026-09-28 with ADR-0032 and
+Status: accepted (autonomous mandate of 2026-08-26; revisited by the product
+owner; §5's open vocabularies and documents added 2026-09-28 with ADR-0032 and
 ADR-0033)
 
 ## Context
