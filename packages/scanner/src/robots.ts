@@ -55,7 +55,7 @@ export const parseRobots = (body: string): RobotsParseResult => {
     } else if (field === "content-signal") {
       const parsed: Record<string, "yes" | "no"> = {};
       for (const token of value.split(/[;,]/)) {
-        const [rawKey, rawValue, ...rest] = token.trim().split(/\s*=\s*/);
+        const [rawKey, rawValue, ...rest] = token.split("=").map((part) => part.trim());
         const key = rawKey?.toLowerCase();
         const setting = rawValue?.toLowerCase();
         if (
@@ -83,13 +83,29 @@ export const parseRobots = (body: string): RobotsParseResult => {
   };
 };
 
+// RFC 9309: a rule matches from the start of the path, "*" stands for any run
+// of characters, the empty one included, and "$" at the end of the rule for
+// the end of the path. The site writes the rule, so it is not compiled into a
+// RegExp, which backtracks without bound over a run of wildcards and throws
+// on a rule longer than its size limit. Taking each piece between wildcards
+// at its first occurrence after the previous one never misses a match that
+// exists, so the path is searched once per piece.
 const ruleMatches = (path: string, rule: string): boolean => {
   if (!rule) return false;
   const anchored = rule.endsWith("$");
-  const escaped = (anchored ? rule.slice(0, -1) : rule)
-    .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*/g, ".*");
-  return new RegExp(`^${escaped}${anchored ? "$" : ""}`).test(path);
+  const [head = "", ...pieces] = (anchored ? rule.slice(0, -1) : rule).split("*");
+  if (!path.startsWith(head)) return false;
+  const tail = pieces.pop();
+  if (tail === undefined) return !anchored || path.length === head.length;
+  let position = head.length;
+  for (const piece of pieces) {
+    const found = path.indexOf(piece, position);
+    if (found === -1) return false;
+    position = found + piece.length;
+  }
+  return anchored
+    ? path.length - tail.length >= position && path.endsWith(tail)
+    : path.includes(tail, position);
 };
 
 export const isPathAllowed = (
