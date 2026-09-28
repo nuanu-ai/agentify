@@ -97,6 +97,15 @@ Disallow: /price$list
     expect(isPathAllowed(parsed, "agentify-scanner", "/price")).toBe(true);
   });
 
+  it("reads a # anywhere in a line as the start of a comment", () => {
+    const parsed = parseRobots(`
+User-agent: GPTBot#openai
+Disallow: /#!/admin
+`);
+    expect(explicitAiPolicies(parsed)).toEqual({ openai: ["gptbot"] });
+    expect(isPathAllowed(parsed, "GPTBot", "/products/shoe")).toBe(false);
+  });
+
   it("rejects XML entities and bounds sitemap entries", () => {
     expect(
       parseSitemap(`<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><urlset/>`),
