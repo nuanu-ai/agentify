@@ -140,11 +140,16 @@ export class ScanRunner {
       deadline - startedAt,
     );
     const budget = new RequestBudget(18, 2);
+    const scannerPage = `${this.dependencies.appBaseUrl.replace(/\/$/, "")}/scanner`;
+    // Check 13 carries an AI agent's token, which is what a CDN's AI-bot rule
+    // matches, and names the scanner after it: it never passes for the agent.
+    const asAgent = (token: string) =>
+      `${token} (compatible; agentify-scanner/1.0; +${scannerPage})`;
     const fetcher = new SafeFetcher(
       this.dependencies.resolver,
       this.dependencies.transport,
       budget,
-      `agentify-scanner/1.0 (+${this.dependencies.appBaseUrl.replace(/\/$/, "")}/scanner)`,
+      `agentify-scanner/1.0 (+${scannerPage})`,
     );
     const fetch = async (
       input: string | URL,
@@ -238,11 +243,11 @@ export class ScanRunner {
             }),
             fetch(target, {
               bodyLimit: 2 * 1024 * 1024,
-              userAgent: "ChatGPT-User/1.0",
+              userAgent: asAgent("ChatGPT-User/1.0"),
             }),
             fetch(target, {
               bodyLimit: 2 * 1024 * 1024,
-              userAgent: "Claude-User",
+              userAgent: asAgent("Claude-User"),
             }),
           ])
         : Promise.resolve([]);

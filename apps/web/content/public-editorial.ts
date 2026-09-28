@@ -197,6 +197,18 @@ const scannerPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
         {
           kind: "paragraph",
           content: [
+            text(
+              "One check asks for your page twice more with the tokens ChatGPT and Claude agents send, followed by the scanner's own name, for example ",
+            ),
+            code(`ChatGPT-User/1.0 (compatible; agentify-scanner/1.0; +${config.baseUrl}/scanner)`),
+            text(
+              ", to see whether your site answers AI agents differently. It never presents itself as OpenAI or Anthropic without its own name.",
+            ),
+          ],
+        },
+        {
+          kind: "paragraph",
+          content: [
             text(`Operator: ${config.legalOperator}. Abuse and opt-out contact: `),
             link(config.abuseEmail, `mailto:${config.abuseEmail}`),
             text("."),

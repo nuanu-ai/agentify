@@ -106,9 +106,9 @@ export const HTTP_CHECK_CATALOG: Readonly<Record<string, HttpRemediationCatalogE
   "13": {
     labelCode: "agent_ua_accessibility",
     desiredState:
-      "Declared agent user agents receive the same public, non-challenge facts as a neutral client unless an explicit policy says otherwise.",
+      "Requests carrying the ChatGPT-User and Claude-User tokens receive the same public, non-challenge facts as a plain request unless an explicit policy says otherwise.",
     verification:
-      "Compare bounded neutral and declared-agent GET responses without bypassing WAF controls, then re-run check 13.",
+      "Compare a plain GET with GETs carrying each agent's token, without bypassing WAF controls, then re-run check 13.",
     standard: "https://www.rfc-editor.org/rfc/rfc9110",
   },
   "14": {
