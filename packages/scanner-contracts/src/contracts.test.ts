@@ -327,6 +327,56 @@ describe("canonical contracts", () => {
     expect(browserObservationOutputV1Schema.safeParse(output).success).toBe(true);
   });
 
+  it("refuses the previous browser contract by the version it names", () => {
+    // browser-public-v1.0.0 carried a signals object. A worker or an Actor
+    // build still on it is told so at its version, not by a stray field.
+    const previous = "browser-public-v1.0.0";
+    const operationId = "019b41a0-7c51-7d63-84bd-a5a20faef497";
+    const input = browserObservationInputV1Schema.safeParse({
+      schema_version: previous,
+      operation_id: operationId,
+      target: {
+        canonical_url: "https://example.com/",
+        registrable_domain: "example.com",
+        segment: "store",
+      },
+      representative_urls: [],
+      policy: {
+        user_agent: "agentify-browser-observer/1.0",
+        methods: ["GET", "HEAD"],
+        use_proxy: false,
+        respect_robots: true,
+        crawl_purpose: "search",
+      },
+      limits: {
+        max_pages: 3,
+        max_requests_per_page: 80,
+        max_total_bytes: 8 * 1024 * 1024,
+        page_timeout_ms: 12_000,
+        run_timeout_ms: 45_000,
+      },
+    });
+    expect(input.success).toBe(false);
+    expect(input.error?.issues.map((issue) => issue.path)).toEqual([["schema_version"]]);
+
+    const output = browserObservationOutputV1Schema.safeParse({
+      schema_version: previous,
+      operation_id: operationId,
+      actor_build: "1.0.42",
+      status: "completed",
+      pages_assessed: 1,
+      observations: BROWSER_OBSERVATION_IDS.map((id) => ({
+        id,
+        status: "pass",
+        summary_code: `${id}_observed`,
+        evidence: {},
+      })),
+      timings: { total_ms: 100, pages: [100] },
+    });
+    expect(output.success).toBe(false);
+    expect(output.error?.issues.map((issue) => issue.path)).toEqual([["schema_version"]]);
+  });
+
   it("keeps Actor build metadata out of the public browser response", () => {
     const publicResponse = {
       version: BROWSER_OBSERVATION_VERSION,
