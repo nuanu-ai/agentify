@@ -126,3 +126,38 @@ Disallow: /price$list
     expect(visibleText(html)).not.toContain("noise");
   });
 });
+
+describe("a robots.txt as large as the fetch admits", () => {
+  // The worker and the browser observer stop reading robots.txt at 512 KiB
+  // (apps/scanner-worker/src/scan-runner.ts, apps/browser-observer-actor/src/runner.ts).
+  // Parsing is synchronous: while it runs, the scan's deadline timer cannot
+  // fire and every other scan in the process waits. Whatever the site puts in
+  // that much text, the decision takes a small part of a scan's time.
+  const fetchCap = 512 * 1024;
+  const budgetMs = 500;
+  const decisionMs = (body: string, path: string): number => {
+    const started = performance.now();
+    isPathAllowed(parseRobots(body), "agentify-scanner", path);
+    return performance.now() - started;
+  };
+
+  it("is decided in time when a line is nothing but whitespace", () => {
+    const body = `User-agent: *\n${" ".repeat(fetchCap - 64)}x\nDisallow: /cart\n`;
+    expect(decisionMs(body, "/cart")).toBeLessThan(budgetMs);
+  });
+
+  it("is decided in time when a Content-Signal is padded with whitespace", () => {
+    const body = `User-agent: *\nContent-Signal: search=yes${" ".repeat(fetchCap - 64)}ai-train=no\n`;
+    expect(decisionMs(body, "/")).toBeLessThan(budgetMs);
+  });
+
+  it("is decided in time when a rule is made of wildcards", () => {
+    const body = `User-agent: *\nDisallow: /${"*a".repeat(32)}b\n`;
+    expect(decisionMs(body, `/${"a".repeat(512)}`)).toBeLessThan(budgetMs);
+  });
+
+  it("is decided in time when one rule runs the length of the file", () => {
+    const body = `User-agent: *\nDisallow: /${"a".repeat(fetchCap - 64)}\n`;
+    expect(decisionMs(body, "/cart")).toBeLessThan(budgetMs);
+  });
+});
