@@ -570,7 +570,7 @@ const mcpCheck = (artifacts: ScanArtifacts): CheckResult => {
         earnedWeight: 0,
         summaryCode: "mcp_unavailable",
         userImpactCode: "mcp_not_assessed",
-        errorCode: "mcp_unavailable",
+        errorCode: artifacts.mcp.find(inaccessible)?.errorCode ?? "mcp_unavailable",
       });
     return result({
       id: 9,
@@ -691,7 +691,7 @@ const oauthCheck = (artifacts: ScanArtifacts): CheckResult => {
         earnedWeight: 0,
         summaryCode: "oauth_unavailable",
         userImpactCode: "oauth_not_assessed",
-        errorCode: "oauth_unavailable",
+        errorCode: artifacts.oauth.find(inaccessible)?.errorCode ?? "oauth_unavailable",
       });
     return result({
       id: 11,
@@ -724,7 +724,7 @@ const oauthCheck = (artifacts: ScanArtifacts): CheckResult => {
   });
 };
 
-const ssrCheck = (artifacts: ScanArtifacts, robotsBlockedCode: string): CheckResult => {
+const ssrCheck = (artifacts: ScanArtifacts): CheckResult => {
   const base = artifacts.base;
   const representative = artifacts.representative;
   const usableBase =
@@ -742,7 +742,7 @@ const ssrCheck = (artifacts: ScanArtifacts, robotsBlockedCode: string): CheckRes
       earnedWeight: 0,
       summaryCode: "ssr_unavailable",
       userImpactCode: "ssr_not_assessed",
-      errorCode: base?.errorCode ?? (base ? "base_blocked" : robotsBlockedCode),
+      errorCode: base?.errorCode ?? (base ? "base_blocked" : "base_unavailable"),
     });
   const baseSignals = htmlSignals(usableBase?.body ?? "");
   const representativeSignals = htmlSignals(usableRepresentative?.body ?? "");
@@ -1056,13 +1056,26 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
       : undefined;
   const targetContentAllowed = targetVerdict === true;
   const robotsBlockedCode = targetVerdict === false ? "robots_disallowed" : "robots_unavailable";
+  // Content robots.txt kept the scanner from reads as a request that never
+  // happened, carrying the reason, so every check that needed it names it.
+  const withheld: FetchArtifact = {
+    url: artifacts.canonicalTargetUrl,
+    status: 0,
+    headers: {},
+    body: "",
+    decodedBytes: 0,
+    truncated: false,
+    durationMs: 0,
+    ttfbMs: 0,
+    errorCode: robotsBlockedCode,
+  };
   const effective = targetContentAllowed
     ? artifacts
     : {
         ...artifacts,
-        base: undefined,
+        base: withheld,
         representative: undefined,
-        markdown: undefined,
+        markdown: withheld,
         agentProbes: {},
       };
   const checks = [
@@ -1074,7 +1087,7 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
     mcpCheck(artifacts),
     ucpCheck(artifacts),
     oauthCheck(artifacts),
-    ssrCheck(effective, robotsBlockedCode),
+    ssrCheck(effective),
     agentUaCheck(effective),
     performanceCheck(effective),
     feedCheck(effective),
