@@ -46,6 +46,7 @@ describe("canonical contracts", () => {
         summary_code: null,
         user_impact_code: null,
         fix_code: null,
+        robots: null,
         evidence: {},
       })),
       benchmark: null,

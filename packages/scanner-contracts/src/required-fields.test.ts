@@ -47,6 +47,7 @@ const reportCheck = (id: number) => ({
   summary_code: "observed",
   user_impact_code: "clear",
   fix_code: null,
+  robots: null,
   evidence: {},
 });
 
@@ -201,7 +202,7 @@ const contracts = [
     valid: {
       status: "running",
       progress: { completed: 1, total: 18 },
-      checks: [{ id: 1, label_code: "robots", status: "pass" }],
+      checks: [{ id: 1, label_code: "robots", status: "pass", robots: null }],
       updated_at: timestamp,
       teaser: {
         score: 72,
@@ -221,6 +222,7 @@ const contracts = [
       ["checks", 0, "id"],
       ["checks", 0, "label_code"],
       ["checks", 0, "status"],
+      ["checks", 0, "robots"],
       "updated_at",
       ["teaser", "score"],
       ["teaser", "coverage"],
@@ -274,6 +276,7 @@ const contracts = [
       "summary_code",
       "user_impact_code",
       "fix_code",
+      "robots",
       "evidence",
     ],
   },
