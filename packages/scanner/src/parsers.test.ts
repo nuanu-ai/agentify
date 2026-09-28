@@ -58,6 +58,21 @@ Allow: /
     expect(isPathAllowed(specificAllow, "unmatched-bot", "/public")).toBe(false);
   });
 
+  it("reads a trailing $ as the end of the path, and a $ anywhere else as itself", () => {
+    const parsed = parseRobots(`
+User-agent: *
+Disallow: /*.pdf$
+Disallow: /search$
+Disallow: /price$list
+`);
+    expect(isPathAllowed(parsed, "agentify-scanner", "/files/menu.pdf")).toBe(false);
+    expect(isPathAllowed(parsed, "agentify-scanner", "/files/menu.pdf.html")).toBe(true);
+    expect(isPathAllowed(parsed, "agentify-scanner", "/search")).toBe(false);
+    expect(isPathAllowed(parsed, "agentify-scanner", "/search/shoes")).toBe(true);
+    expect(isPathAllowed(parsed, "agentify-scanner", "/price$list/2026")).toBe(false);
+    expect(isPathAllowed(parsed, "agentify-scanner", "/price")).toBe(true);
+  });
+
   it("rejects XML entities and bounds sitemap entries", () => {
     expect(
       parseSitemap(`<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><urlset/>`),
