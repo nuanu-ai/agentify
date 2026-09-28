@@ -263,7 +263,7 @@ const scannerPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
             "GET and HEAD only; public ports 80 and 443 only.",
             "No clicks, form entry/submission, login, checkout, CAPTCHA solving, proxy rotation, or access-control bypass.",
             "Fresh browser context for every run; downloads, popups, permissions, service workers, WebSockets, and mutating requests are blocked.",
-            "We retain sanitized aggregate signals and finding codes, not raw HTML, screenshots, cookies, storage state, console text, full accessibility trees, or provider run IDs.",
+            "We retain finding codes and the sanitized aggregate counts they rest on, not raw HTML, screenshots, cookies, storage state, console text, full accessibility trees, or provider run IDs.",
           ],
         },
       ],

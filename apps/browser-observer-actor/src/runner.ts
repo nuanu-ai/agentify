@@ -15,11 +15,7 @@ import {
   safeBrowserRequest,
   validateActorTarget,
 } from "./network-policy.js";
-import {
-  aggregateBrowserSignals,
-  buildBrowserOutput,
-  type ObservationRuntime,
-} from "./observations.js";
+import { buildBrowserOutput, type ObservationRuntime } from "./observations.js";
 import { discoverRepresentativeUrls } from "./representative-pages.js";
 import { installPassiveRuntimeGuards, PASSIVE_BROWSER_ARGS } from "./runtime-guards.js";
 import { OutputSanitizationError } from "./sanitize-output.js";
@@ -629,11 +625,10 @@ export const runBrowserObservation = async (options: {
       if (runtime.byteBudgetExceeded || runtime.requestBudgetExceeded) break;
     }
 
-    const signals = aggregateBrowserSignals(runtime);
     const status =
       runtime.pages.length === 0
         ? "failed"
-        : signals.challenge_kind
+        : runtime.pages.some((page) => page.challengeKind)
           ? "blocked"
           : runtime.pageFailureCount > 0 ||
               runtime.byteBudgetExceeded ||

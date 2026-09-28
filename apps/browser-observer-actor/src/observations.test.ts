@@ -7,12 +7,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import type { PageSignals } from "./browser-signals.js";
-import {
-  aggregateBrowserSignals,
-  buildBrowserOutput,
-  buildObservations,
-  type ObservationRuntime,
-} from "./observations.js";
+import { buildBrowserOutput, buildObservations, type ObservationRuntime } from "./observations.js";
 
 const page = (overrides: Partial<PageSignals> = {}): PageSignals => ({
   renderedTextChars: 1_000,
@@ -26,8 +21,6 @@ const page = (overrides: Partial<PageSignals> = {}): PageSignals => ({
   formSemanticIssueCount: 0,
   webmcpPresent: false,
   webmcpToolCount: 0,
-  domNodeCount: 100,
-  scriptCount: 3,
   challengeKind: null,
   hiddenInstructionCount: 0,
   apiDiscoveryCount: 1,
@@ -106,26 +99,6 @@ describe("browser observation evaluator", () => {
     const unavailable = buildObservations(runtime([]));
     expect(unavailable).toHaveLength(14);
     expect(unavailable.every((item) => item.status === "unavailable")).toBe(true);
-  });
-
-  it("caps aggregate signals to the strict output contract", () => {
-    const signals = aggregateBrowserSignals(
-      runtime([
-        page({
-          renderedTextChars: 5_000_000,
-          interactiveControlCount: 100_000,
-          domNodeCount: 5_000_000,
-        }),
-        page({
-          renderedTextChars: 5_000_000,
-          interactiveControlCount: 100_000,
-          domNodeCount: 5_000_000,
-        }),
-      ]),
-    );
-    expect(signals.rendered_text_chars).toBe(5_000_000);
-    expect(signals.interactive_control_count).toBe(100_000);
-    expect(signals.dom_node_count).toBe(5_000_000);
   });
 
   it("compares a bounded visible-fact sample instead of raw versus rendered JSON-LD", () => {

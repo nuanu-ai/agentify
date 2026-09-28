@@ -236,26 +236,6 @@ describe("canonical contracts", () => {
       actor_build: "1.0.42",
       status: "completed",
       pages_assessed: 1,
-      signals: {
-        rendered_text_chars: 10,
-        raw_to_rendered_ratio: 1,
-        landmark_counts: { main: 1 },
-        heading_level_counts: { h1: 1 },
-        interactive_control_count: 0,
-        unnamed_control_count: 0,
-        form_control_count: 0,
-        unlabeled_form_control_count: 0,
-        webmcp_present: false,
-        webmcp_tool_count: 0,
-        console_error_categories: [],
-        failed_resource_categories: [],
-        mixed_content_count: 0,
-        dom_node_count: 5,
-        script_count: 0,
-        request_count: 1,
-        transferred_bytes: 100,
-        challenge_kind: null,
-      },
       observations: BROWSER_OBSERVATION_IDS.map((id) => ({
         id,
         status: "pass",
@@ -302,7 +282,7 @@ describe("canonical contracts", () => {
     ).toBe(false);
   });
 
-  it("rejects unsafe browser code and category strings at worker ingestion", () => {
+  it("rejects unsafe browser finding codes at worker ingestion", () => {
     const operationId = "019b41a0-7c51-7d63-84bd-a5a20faef497";
     const output = {
       schema_version: BROWSER_OBSERVATION_VERSION,
@@ -310,26 +290,6 @@ describe("canonical contracts", () => {
       actor_build: "1.0.42",
       status: "completed",
       pages_assessed: 1,
-      signals: {
-        rendered_text_chars: 10,
-        raw_to_rendered_ratio: 1,
-        landmark_counts: { main: 1 },
-        heading_level_counts: { h1: 1 },
-        interactive_control_count: 0,
-        unnamed_control_count: 0,
-        form_control_count: 0,
-        unlabeled_form_control_count: 0,
-        webmcp_present: false,
-        webmcp_tool_count: 0,
-        console_error_categories: [],
-        failed_resource_categories: [],
-        mixed_content_count: 0,
-        dom_node_count: 5,
-        script_count: 0,
-        request_count: 1,
-        transferred_bytes: 100,
-        challenge_kind: null,
-      },
       observations: BROWSER_OBSERVATION_IDS.map((id) => ({
         id,
         status: "pass",
@@ -361,21 +321,6 @@ describe("canonical contracts", () => {
             ),
           }).success,
         ).toBe(false);
-      }
-    }
-
-    for (const unsafe of unsafeValues) {
-      const unsafeSignalVariants = [
-        { ...output.signals, landmark_counts: { [unsafe]: 1 } },
-        { ...output.signals, heading_level_counts: { [unsafe]: 1 } },
-        { ...output.signals, console_error_categories: [unsafe] },
-        { ...output.signals, failed_resource_categories: [unsafe] },
-        { ...output.signals, challenge_kind: unsafe },
-      ];
-      for (const signals of unsafeSignalVariants) {
-        expect(browserObservationOutputV1Schema.safeParse({ ...output, signals }).success).toBe(
-          false,
-        );
       }
     }
 

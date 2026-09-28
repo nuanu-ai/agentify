@@ -156,7 +156,7 @@ export async function anonymizeLeadData(
         .where(inArray(browserObservationFindings.observationId, observationIds));
       await tx
         .update(browserObservations)
-        .set({ signals: null, failureCode: "data_anonymized", updatedAt: now })
+        .set({ failureCode: "data_anonymized", updatedAt: now })
         .where(inArray(browserObservations.scanId, scanIds));
       await tx
         .update(scanShares)

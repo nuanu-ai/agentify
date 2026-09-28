@@ -25,8 +25,6 @@ export type PageSignals = {
   formSemanticIssueCount: number;
   webmcpPresent: boolean;
   webmcpToolCount: number;
-  domNodeCount: number;
-  scriptCount: number;
   challengeKind: string | null;
   hiddenInstructionCount: number;
   apiDiscoveryCount: number;
@@ -474,8 +472,6 @@ export const collectPageSignals = async (options: {
       formSemanticIssueCount: formControls.filter(formSemanticIssue).length,
       webmcpPresent: modelContext !== undefined,
       webmcpToolCount: Math.max(0, Math.min(10_000, webmcpToolCount)),
-      domNodeCount: document.getElementsByTagName("*").length,
-      scriptCount: document.scripts.length,
       challengeKind,
       hiddenInstructionCount,
       apiDiscoveryCount,

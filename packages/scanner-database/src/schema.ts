@@ -360,8 +360,6 @@ export const browserObservations = pgTable(
     finishedAt: utcTimestamp("finished_at"),
     lastPolledAt: utcTimestamp("last_polled_at"),
     pagesAssessed: smallint("pages_assessed").notNull().default(0),
-    requestCount: integer("request_count").notNull().default(0),
-    transferredBytes: integer("transferred_bytes").notNull().default(0),
     durationMs: integer("duration_ms"),
     usageUsd: numeric("usage_usd", { precision: 10, scale: 6 }),
     budgetDay: date("budget_day", { mode: "string" }),
@@ -374,7 +372,6 @@ export const browserObservations = pgTable(
     usageReconciledAt: utcTimestamp("usage_reconciled_at"),
     storageCleanedAt: utcTimestamp("storage_cleaned_at"),
     failureCode: text("failure_code"),
-    signals: jsonb("signals"),
     updatedAt: utcTimestamp("updated_at").notNull().defaultNow(),
   },
   (table) => [
