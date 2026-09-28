@@ -80,11 +80,18 @@ export const createScanResponseSchema = z
   .strict();
 export type CreateScanResponse = z.infer<typeof createScanResponseSchema>;
 
+// Why robots.txt kept a check from being assessed: its rules disallow what
+// the check reads, or it could not be read or decided for it. null when
+// robots.txt did not stand in the check's way.
+export const robotsReasonSchema = z.enum(["disallowed", "unassessed"]);
+export type RobotsReason = z.infer<typeof robotsReasonSchema>;
+
 const scanProgressCheckSchema = z
   .object({
     id: checkIdSchema,
     label_code: z.string().min(1),
     status: checkStatusSchema,
+    robots: robotsReasonSchema.nullable(),
   })
   .strict();
 
@@ -173,6 +180,7 @@ export const reportCheckSchema = z
     summary_code: z.string().nullable(),
     user_impact_code: z.string().nullable(),
     fix_code: z.string().nullable(),
+    robots: robotsReasonSchema.nullable(),
     evidence: z.record(z.string(), publicEvidenceValueSchema),
   })
   .strict();
