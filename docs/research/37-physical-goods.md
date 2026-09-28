@@ -183,11 +183,95 @@ is `firstName`, `lastName`, `address1`, `address2`, `city`, `province`,
 `country`, `postalCode`, Crossmint's is `name`, `line1`, `line2`, `city`,
 `state`, `postalCode`, `country` — and neither publishes a rule on keeping it.
 
-## Open
+## WooCommerce
 
-- The names of the `ship_to` fields and of the shipment record, fixed from the
-  survey above together with the WooCommerce survey, which lands in this note
-  separately.
+Read from WooCommerce's source at commit `943172b` of trunk (11.3.0-dev,
+2026-09-25), with paths below relative to `plugins/woocommerce/`, and from its
+published documentation. Nothing here was tried against a running shop.
+WooCommerce is not the goal; it is the shop software a large share of small
+merchants run, and so the nearest reading of what they already expect.
+
+An order's shipping address has `first_name`, `last_name`, `company`,
+`address_1`, `address_2`, `city`, `state`, `postcode`, `country` and, since
+5.6, `phone`, which the order keeps and the REST schema does not document
+(`includes/class-wc-order.php`). The REST API requires none of them. Which are
+required is decided per country at checkout (`WC_Countries::get_country_locale`),
+and that table reaches a client only as settings embedded in the checkout
+page; postal-code patterns exist for thirty-three countries, and any code is
+accepted for the rest (`includes/class-wc-validation.php`).
+
+Shipping cost is drawn from a zone, and a zone matches on the country, the
+country and state, the continent, or a postal-code pattern
+(`includes/data-stores/class-wc-shipping-zone-data-store.php`). So a price drawn
+from the country and the postal code alone is wrong for a shop whose zones are
+states, and a shop that hides shipping costs until the address is "full" — the
+country with the city, state and postal code its locale requires — shows no
+rate at all (`src/Blocks/Shipping/ShippingController.php`). That is why ADR-0031
+gives the price check the locality of four fields and not two. No REST endpoint
+calculates a rate. A client without a browser gets one through the Store API's
+cart: read the cart for a `Cart-Token`, add the item, set the customer's
+shipping address, and read `shipping_rates` from the answer
+(`src/StoreApi/Routes/V1/AbstractCartRoute.php`). Every such question leaves a
+guest session in the shop, and several rates can come back.
+
+A paid order is created as the connector already creates one for downloads,
+with `set_paid` and the merchant's own address in `billing`, so none of the
+shop's customer emails reaches the buyer; for a parcel it also carries the
+`shipping` block and a `shipping_lines` entry, whose `method_id` is required
+(`includes/rest-api/Controllers/Version2/class-wc-rest-orders-v2-controller.php`).
+Paying moves an order with anything not both virtual and downloadable to
+`processing`, reduces stock, and does not check stock first. A shop that
+forces shipping to the billing address, or has shipping switched off, would
+drop the address from the merchant's own screens and has to be refused.
+
+WooCommerce has no "shipped". `processing` means paid and awaiting
+fulfilment, and `completed` means «fulfilled and complete… Requires no further
+action», which merchants use for shipped and sometimes for delivered. Tracking
+lives in two places: the core «Order Fulfillments» (a fulfilment with
+`_tracking_number`, `_shipment_provider` and `_tracking_url`, at
+`wc/v3/orders/{id}/fulfillments`), present since 10.1 and switched off by
+default in every release so far (`src/Internal/Features/FeaturesController.php`);
+and the paid Shipment Tracking extension, with `tracking_provider`,
+`tracking_number`, `tracking_link` and `date_shipped`. A connector would read
+the first where it exists and the second otherwise, and learn of shipment by
+polling the order with `_fields` that leave the address out, or from the webhook
+topic `action.woocommerce_order_status_completed`, whose payload is the order's
+number and nothing else. The `order.updated` topic carries the whole order,
+address included. Returns do not exist in core; a lost parcel is a refund or a
+new order, and a refund on an order Agentify created needs `api_refund: false`.
+
+WooCommerce's own answer to keeping an address is to anonymise the order on a
+timer the merchant sets, blank by default: names, lines, city and postal code
+become «[deleted]», and the state and the country become empty strings
+(`includes/class-wc-privacy.php`, `includes/class-wc-privacy-erasers.php`). It
+keeps nothing of the address, which is what ADR-0031 does from the start.
+
+So a connector can carry physical simple products. The address maps one to one
+(`name` goes whole into `first_name`, because splitting it would be a guess);
+the paid order, the silent billing and the shipping line are what the
+connector already does; `shipped` is `completed` or a fulfilled fulfilment.
+What does not map cleanly is the rate, which needs the cart exchange, and
+whose chosen method and price have to be bound to the price identifier; the
+several places tracking may live; and the shop's own echo of the address in
+every answer, which the connector must neither keep nor log. Variable products
+would be one card per variation, or none.
+
+## The names this note fixes
+
+`ship_to` takes the Agentic Commerce Protocol's names, because that is the
+address an agent already writes: `name`, `line_one`, `line_two`, `city`,
+`state`, `postal_code`, `country`, `phone_number`. `country` is ISO 3166-1
+alpha-2; `state` is the subdivision code without the country prefix where the
+country has one. A single `name` holds a person with one name, which many
+people have, and a split name cannot be recovered from it without guessing.
+`company` is left out: the second line holds it.
+
+The shipment record takes the names ACP, UCP and WooCommerce share: `carrier`,
+`tracking_number`, `tracking_url`, `estimated_delivery` with `earliest` and
+`latest`, and ACP's `support` with `email`, `phone` and `help_center_url`. The
+moment of shipment is the gateway's to stamp, not the merchant's to write.
+
+## Open
 - A reason on the price check's "unavailable", so that "not to this
   destination" and "out of stock" are two answers to the agent.
 - The ceiling on the time to ship, and its number.
