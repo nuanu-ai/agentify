@@ -1,7 +1,8 @@
 # 0011. The order identifier is the agent's proof, for now
 
 Date: 2026-08-27
-Status: accepted for the controlled test and live launch; revisit before the first external buyer
+Status: accepted for the controlled test and live launch; revisit before the first external buyer;
+the shipment paragraph added 2026-09-28 with ADR-0032, awaiting Dmitry's word
 
 ## Context
 
@@ -46,8 +47,8 @@ door is either narrowed or explicitly accepted for that new audience.
 
 Since ADR-0032 the same door hands out a parcel's shipment: a tracking number
 and a tracking address, whose carrier's page may show the buyer's city or who
-signed for it. The revisit weighs that too, and selling parcels on the live
-channel waits for it.
+signed for it. The revisit weighs that too and writes its verdict here, and
+selling parcels on the live channel waits for it.
 
 ## Alternatives rejected
 

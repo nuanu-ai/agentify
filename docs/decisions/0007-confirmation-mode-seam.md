@@ -1,7 +1,8 @@
 # 0007. The confirmation mode is built inward and closed outward
 
 Date: 2026-08-27
-Status: accepted (Dmitry, 2026-08-27: "нужно архитектурно предусмотреть, но делать пока не нужно")
+Status: accepted (Dmitry, 2026-08-27: "нужно архитектурно предусмотреть, но делать пока не нужно";
+the parcel line in §5 added 2026-09-28 with ADR-0032, awaiting Dmitry's word)
 
 ## Context
 

@@ -1,8 +1,9 @@
 # 0032. A shipped order ends at the carrier, and the agent is told `shipped`
 
 Date: 2026-09-28
-Status: accepted (Dmitry, 2026-09-28: «Полностью согласен»), revised the same
-day after an adversarial review. Not built yet.
+Status: accepted (Dmitry, 2026-09-28: «Полностью согласен» to the first draft).
+Revised the same day after two rounds of adversarial review; the revisions
+await Dmitry's word. Not built yet.
 
 ## Context
 
@@ -19,17 +20,19 @@ until a refund can be recorded (`apps/docs/index.md`); a parcel does not.
 
 ## Decision
 
-A card for goods that are shipped says `fulfillment: 'ship'`. For money it is
-the asynchronous mode, and the machine gains no state; the order records at
-purchase that it is a parcel, so republishing the card changes no order in
-flight. The card carries a price check answered by the merchant's handler,
-because the destination decides the cost and whether they ship there at all.
-It names `ship_within_seconds`, the time to hand the parcel to a carrier,
-counted from the charge and held under a ceiling written in the contract beside
-the price rule and checked when the card is published. The agent reads it on
-the card and, as an absolute `ship_by`, on the order's status. A merchant who
-sells parcels names once, in the cabinet, where buyers ask about their orders;
-a `ship` card is not published without it, and the order's status carries it.
+A card for goods that are shipped says `fulfillment: 'ship'`. Until the
+shipment it is the asynchronous mode for money. The machine gains no state, but
+its mode gains a third switch — the goods are a parcel — which the order takes
+at purchase, so republishing the card changes no order in flight, and which one
+new edge reads: a refund recorded on a shipped order (below). The card carries
+a price check answered by the merchant's handler, because the destination
+decides the cost and whether they ship there at all. It names
+`ship_within_seconds`, the time to hand the parcel to a carrier, counted from
+the charge and held under a ceiling written in the contract beside the price
+rule and checked when the card is published. The agent reads it on the card
+and, as an absolute `ship_by`, on the order's status. A merchant who sells
+parcels names once, in the cabinet, where buyers ask about their orders; a
+`ship` card is not published without it, and the order's status carries it.
 
 The merchant declares no result. `deliver` on a parcel records a shipment of
 the contract's shape: `carrier` and `tracking_number`, which are required, and
@@ -40,19 +43,22 @@ is published, and the number is the merchant's claim, which we do not check.
 A recorded shipment reads `shipped` — to the agent, to the merchant and on the
 receipt: the parcel is with the carrier and the money with the merchant. It is
 the last word about the parcel, and the order moves again only if a refund is
-recorded. The status's own description says so, because in every protocol that
-uses the word it is not the last one. The discovery listing carries `ship_to`
-in its input schema and the shipment in its example output, with a real
-address, the company's own. `ship` and `shipped` are the first values added to
-the storefront, which has no version and reads them under ADR-0006 §5; the
+recorded, which the receipt then reads as well. The status's own description
+says so, because in every protocol that uses the word it is not the last one.
+The discovery listing carries `ship_to` in its input schema and the shipment in
+its example output, with a real address, the company's own, and a carrier's
+published test tracking number. `ship` and `shipped` are the first values added
+to the storefront, which has no version and reads them under ADR-0006 §5; the
 SDK's contract version moves (ADR-0006).
 
 What becomes of the parcel afterwards is between the buyer and the merchant.
-When ADR-0028's command is built, it also records a refund on a shipped order
-whose parcel the merchant admits lost. A `ship` card publishes on the test
-channel and is refused on the live one, with words naming the reason, until
-that command exists and ADR-0011's revisit has weighed a shipment readable by
-whoever holds the order identifier.
+ADR-0028's command also records a refund on a shipped order whose parcel the
+merchant admits lost — the machine's one edge out of `delivered`, for parcels
+only — and ADR-0028's view of the payer's address covers a shipped order too.
+A `ship` card publishes on the test channel and is refused on the live one,
+with words naming the reason, until both of those are running there and
+ADR-0011 carries its revisit's verdict on a shipment readable by whoever holds
+the order identifier.
 
 ## Consequences
 

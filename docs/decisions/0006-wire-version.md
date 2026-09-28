@@ -2,7 +2,7 @@
 
 Date: 2026-08-27
 Status: accepted (autonomous mandate of 2026-08-26; revisited on Dmitry's word;
-§5's open vocabularies added 2026-09-28 with ADR-0032)
+§5's open vocabularies added 2026-09-28 with ADR-0032, awaiting Dmitry's word)
 
 ## Context
 
@@ -68,11 +68,17 @@ the merchant's routes and is not derived from it.
    discovery catalog that establishes it is dated and recorded in
    `docs/research/04-spike-bazaar-listing.md`.
 
-   So the storefront's vocabularies are open, and each says so in its own
-   description. A card's fulfillment mode and an order's status gain values
-   without a version: an agent skips a card whose mode it does not know, and
-   reads a status it does not know as not an ending it knows, and asks again.
-   The first values added this way are `ship` and `shipped` (ADR-0032).
+   So the storefront's vocabularies are open, in its schemas and not only in
+   their words. On the catalogue and the agent's status document, a card's
+   fulfillment mode and an order's status are strings whose known values are
+   listed beside them, and the catalogue is read card by card, so one card of a
+   mode an agent does not know is skipped and the rest of the page stands. An
+   agent reads a status it does not know as not an ending it knows, and asks
+   again. §3's rejection of an open string does not reach here: there it would
+   give up a version that stops an old worker with words before any order is in
+   flight, and the storefront has no version to give up — a closed list there
+   only breaks a stranger's agent without a word. The merchant's schemas stay
+   closed. The first values added this way are `ship` and `shipped` (ADR-0032).
 
    Rejected: a version segment on the storefront, on the argument that an
    incompatibly changed wire *is* a different resource to an agent and should

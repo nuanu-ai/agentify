@@ -2,8 +2,9 @@
 
 Date: 2026-09-28
 Status: accepted (Dmitry, 2026-09-28: «мы передаем адрес, но хранить у себя
-адрес я не вижу смысла»; the details — «Полностью согласен»), revised the same
-day after an adversarial review. Not built yet.
+адрес я не вижу смысла»; the first draft — «Полностью согласен»). Revised the
+same day after two rounds of adversarial review; the revisions await Dmitry's
+word. Not built yet.
 
 ## Context
 
@@ -36,18 +37,23 @@ The merchant's price check receives where the parcel goes and not to whom:
 `country`, `state`, `city`, `postal_code`. The full block reaches the merchant
 only in a paid order, and only a paid order shows it on the merchant's reads.
 It is the block that was priced: a paid request carrying a different one is
-refused before the payment is verified, with words saying to start again.
+refused before the payment is verified, with words saying to start again, and
+one carrying none pays for the block that was priced.
 
-The address stays with us while the order waits for the merchant to take it —
-seconds while their worker runs, up to the time to ship while it does not — and
-is erased at the first of these: the merchant takes the order on, records the
-shipment, the order closes, or it becomes a refund owed without having been
-taken on. Erasing deletes every envelope of that order the queue holds,
-waiting, drawn or failed, and removes the block from the order, whose
-`ship_to` then reads `{ "erased_at": … }` — never absent. No error that leaves
-the store or the queue carries a bound parameter, and nothing logs the
-address. A handler Agentify runs for a merchant, such as a shop connector,
-keeps it no longer than the gateway does.
+The address stays with us from the priced request while the order waits for the
+merchant to take it — seconds while their worker runs, up to the time to ship
+while it does not — and is erased at the first of these: the merchant takes the
+order on, records the shipment, the order closes, or it becomes a refund owed
+without having been taken on. Erasing deletes every envelope of that order the
+queue holds — the messages to the merchant's subscription, waiting, drawn or
+failed, and not the reminders that keep its deadlines, which carry no address —
+and removes the block from the order, whose `ship_to` then reads
+`{ "erased_at": … }`, never absent. An erased order is never handed to a handler
+again: no envelope is built from it or published for it once more, and a
+handler never meets `erased_at`. No error that leaves the store or the queue
+carries a bound parameter, and nothing logs the address. A handler Agentify
+runs for a merchant, such as a shop connector, keeps it no longer than the
+gateway does.
 
 Nothing of the address is kept, neither a masked fragment nor a fingerprint. A
 readable fragment is still personal data and in a small place names a person;
