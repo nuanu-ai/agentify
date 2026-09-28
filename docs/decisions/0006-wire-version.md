@@ -1,7 +1,8 @@
 # 0006. What the contract version promises, and when it moves
 
 Date: 2026-08-27
-Status: accepted (autonomous mandate of 2026-08-26; revisited on Dmitry's word)
+Status: accepted (autonomous mandate of 2026-08-26; revisited on Dmitry's word;
+§5's open vocabularies added 2026-09-28 with ADR-0032)
 
 ## Context
 
@@ -66,6 +67,12 @@ the merchant's routes and is not derived from it.
    versionless in practice as well as in principle, and the walk of the live
    discovery catalog that establishes it is dated and recorded in
    `docs/research/04-spike-bazaar-listing.md`.
+
+   So the storefront's vocabularies are open, and each says so in its own
+   description. A card's fulfillment mode and an order's status gain values
+   without a version: an agent skips a card whose mode it does not know, and
+   reads a status it does not know as not an ending it knows, and asks again.
+   The first values added this way are `ship` and `shipped` (ADR-0032).
 
    Rejected: a version segment on the storefront, on the argument that an
    incompatibly changed wire *is* a different resource to an agent and should

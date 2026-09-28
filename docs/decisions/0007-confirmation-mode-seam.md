@@ -58,7 +58,10 @@ quietly, putting the pilot into a mode nobody chose.
    for, and the pilot plan already says so. A merchant reached through a
    messaging channel rather than through code is the same trigger wearing
    different clothes — the design backlog holds that idea, and if it is taken
-   up, the confirmation mode is completed with it rather than twice.
+   up, the confirmation mode is completed with it rather than twice. The same
+   holds for parcels (ADR-0032): a shop that confirms stock by hand before a
+   parcel is paid for is this trigger, and `ship` with confirmation is
+   completed together with the mode rather than on its own.
 
 ## Consequences
 

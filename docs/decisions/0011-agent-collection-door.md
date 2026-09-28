@@ -44,6 +44,11 @@ environments without protecting a public audience. Before the first buyer or
 agent outside Dmitry's controlled launch, this decision is revisited and the
 door is either narrowed or explicitly accepted for that new audience.
 
+Since ADR-0032 the same door hands out a parcel's shipment: a tracking number
+and a tracking address, whose carrier's page may show the buyer's city or who
+signed for it. The revisit weighs that too, and selling parcels on the live
+channel waits for it.
+
 ## Alternatives rejected
 
 **Leave the route unmounted.** This avoids the weak door but takes money for an
