@@ -412,24 +412,45 @@ asynchronous pattern, the money page, and the FAQ's dispute answer, which
 promises records of what happened with the delivery that for a parcel we do
 not keep. `apps/docs/index.md`'s pilot rule, when the live gate opens.
 
+## Dmitry's answers of the same evening
+
+The demonstration sells a product made for it in the test WooCommerce shop the
+lab keeps (`deploy/woocommerce-lab/`), and Dmitry buys it himself on the test
+channel, with his own address: a real product, a real address given with
+consent, and nobody hurt if something goes wrong. So the path the
+demonstration walks is the shop connector's, and the connector learns to carry
+a physical simple product as part of the build, with ADR-0023 edited in the
+same change. The SDK path comes first all the same, because the connector is a
+handler written against the same contract. The address stays in the test
+shop's own order until the lab is reset or anonymises it, since the shop, and
+so the merchant, is ours there.
+
+The ceiling on the time to ship is thirty days, `ship_within_seconds` of at
+most 2 592 000. It bounds how long a buyer's money can sit with a merchant
+before the order becomes a refund owed, and it is the ceiling the marketplaces
+already give sellers: Amazon's default maximum handling time is thirty days,
+longer only for a few product types
+(github.com/amzn/selling-partner-api-samples, discussion 124), and eBay's has
+been thirty business days, recently forty (eBay community, «40 days now showing
+on handling time»). The number is Dmitry's to move once a real merchant needs
+another.
+
+A handler that runs out of attempts, and the label its order closes under, stay
+as they are: «оставляем, если что подрегулируем». Duties, restricted goods,
+returns, a changed or mistyped address and pickup points are not worked on for
+now: «не работаем с этим пока». ADR-0032 names them as outside the mode.
+
+The decisions themselves were then held to the charter's length. What left them
+is the mechanics this note already carries — which envelopes, which error
+paths, which fields and pages — and no rule or reason.
+
 ## Open
 
 - A reason on the price check's "unavailable", so that "not to this
   destination" and "out of stock" are two answers to the agent.
-- The number for the ceiling on the time to ship.
 - Whether the rest of `params` should follow the address's retention.
-- A handler that runs out of attempts closes the order as a refund owed under
-  the label of a passed deadline, in about twenty seconds; for a parcel that
-  also erases the address. Whether running out of attempts should close an
-  order at all is a question for the asynchronous mode as a whole.
-- Duties and taxes on a parcel that crosses a border: the price the agent paid
-  is not the whole cost where duties fall on the recipient, and the card has
-  nowhere to say so but its description.
-- Goods that may not be sold to everybody (alcohol, tobacco): nothing here can
-  check an age.
-- Returns, a changed or mistyped address, and pickup points: none has a route.
-- The product the demonstration sells has to come from a real catalogue, and
-  there is no merchant of parcels yet.
-- A shop connector's rate is three or four calls to the shop's Store API inside
+- The connector's rate is three or four calls to the shop's Store API inside
   the price check's five seconds, and each leaves the locality in a guest
   session there.
+- Dmitry's word on the revisions of the two review rounds, which the status
+  lines of ADR-0031, ADR-0032 and the amended decisions say they await.
