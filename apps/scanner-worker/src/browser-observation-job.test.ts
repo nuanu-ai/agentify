@@ -246,6 +246,32 @@ describe("browser observation job", () => {
     });
   });
 
+  it("names the contract version when a build answers in another one", async () => {
+    const answer = async (value: unknown) => {
+      const { repo, state: repositoryState } = repositoryFake();
+      const { provider: apify } = providerFake({ getOutput: async () => value as never });
+      await processBrowserObservationJob(
+        {
+          observation_id: observation.id,
+          operation_id: observation.operationId,
+          attempt_no: 1,
+        },
+        { repository: repo, provider: apify, config },
+      );
+      return repositoryState.terminal?.reason;
+    };
+    // The shape an Actor build of the previous contract answers with.
+    expect(
+      await answer({
+        ...output,
+        schema_version: "browser-public-v1.0.0",
+        signals: { request_count: 1 },
+      }),
+    ).toBe("browser_contract_version_mismatch");
+    // An answer in this version that breaks it is refused in words of its own.
+    expect(await answer({ ...output, pages_assessed: 9 })).toBe("browser_output_invalid");
+  });
+
   it("does not create a duplicate paid run when stale state is unknown", async () => {
     const { repo, state: repositoryState } = repositoryFake({
       claim: async () => ({
