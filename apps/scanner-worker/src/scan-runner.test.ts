@@ -42,7 +42,7 @@ const makeArtifact = (
   ttfbMs: 5,
 });
 
-const transport = (robotsBody = robots) => {
+const transport = (robotsBody = robots, robotsStatus = 200) => {
   const paths: string[] = [];
   let active = 0;
   let maxActive = 0;
@@ -56,7 +56,8 @@ const transport = (robotsBody = robots) => {
       await new Promise((resolve) => setTimeout(resolve, 1));
       active -= 1;
       const path = input.url.pathname;
-      if (path === "/robots.txt") return makeArtifact(input, 200, robotsBody, "text/plain");
+      if (path === "/robots.txt")
+        return makeArtifact(input, robotsStatus, robotsBody, "text/plain");
       if (path === "/") {
         if (input.headers.accept === "text/markdown")
           return makeArtifact(
@@ -170,6 +171,30 @@ describe("bounded scan graph", () => {
     expect(target.paths.some((request) => request.includes("/products/widget"))).toBe(false);
     expect(evaluation.checks.find((check) => check.id === 12)?.status).toBe("unavailable");
     expect(evaluation.checks.find((check) => check.id === 13)?.status).toBe("unavailable");
+  });
+
+  it("does not report an unreadable robots.txt as a rule that keeps the scanner out", async () => {
+    // Checks 4, 8 and 12 read the sitemap, llms.txt and the page's HTML.
+    const blockedBy = async (robotsBody: string, robotsStatus: number) => {
+      const evaluation = await new ScanRunner({
+        resolver: {
+          resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+        },
+        transport: transport(robotsBody, robotsStatus).adapter,
+        appBaseUrl: "https://agentify.ad",
+      }).run(job);
+      return [4, 8, 12].map((id) => evaluation.checks.find((check) => check.id === id)?.errorCode);
+    };
+    expect(await blockedBy("", 503)).toEqual([
+      "robots_unavailable",
+      "robots_unavailable",
+      "robots_unavailable",
+    ]);
+    expect(await blockedBy("User-agent: *\nDisallow: /\n", 200)).toEqual([
+      "robots_disallowed",
+      "robots_disallowed",
+      "robots_disallowed",
+    ]);
   });
 
   it("does not fetch a disallowed representative path", async () => {
