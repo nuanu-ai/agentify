@@ -13,8 +13,8 @@ the off-host backup.
 The facts below were collected on 2026-09-23 between 10:40 and 11:15 UTC. On
 the two deployed hosts only read-only catalog queries, row counts and
 `pg_dump --schema-only` were run, in sessions forced read-only; nothing was
-written, stopped or moved. The hosts are TEST (`ssh agentify-test`, hostname
-`dmitry-dev`) and PRODUCTION (`ssh agentify`, hostname `agentify-prod-1`).
+written, stopped or moved. The hosts are TEST (`ssh agentify-test`, the
+development host) and PRODUCTION (`ssh agentify`, hostname `agentify-prod-1`).
 The comparison with the repository used a throwaway PostgreSQL 17.11 on a
 laptop, migrated by the repository's own commands at commit a7ee2dc and then
 removed.
@@ -345,8 +345,8 @@ least 2026-09-15 08:15 UTC until the morning of 2026-09-23 with "Authentication
 token is no longer valid", because root's password had expired; the journal
 holds 2,726 lines of that refusal [PRODUCTION]. So the scanner's privacy
 retention job and the backup job did not run on PRODUCTION in that time. The
-newest scanner dump found on the host, under
-`/home/dmitry/agentify-backups/scanner`, is from 2026-09-16 [PRODUCTION].
+newest scanner dump found on the host, under `agentify-backups/scanner` in
+the operator's home directory, is from 2026-09-16 [PRODUCTION].
 Whether tonight's backup run produces anything I don't know; the journal after
 03:17 UTC tonight settles it.
 

@@ -2,9 +2,9 @@
 
 The target has two public IP addresses. `agentify.ad`, `www.agentify.ad` and
 `app.agentify.ad` reach the production VM; `test.agentify.ad` reaches the
-existing Comino ingress and test cabinet on `dmitry-dev`. Production has no
-route to the test application. Moving the data does not combine the commerce
-and scanner databases or authentication systems.
+existing Comino ingress and test cabinet on the development host. Production
+has no route to the test application. Moving the data does not combine the
+commerce and scanner databases or authentication systems.
 
 Releases follow [the release runbook](../../deploy/README.md). Provider VM and
 shared ingress configuration remain owned by `nuanu-ai/infra`. The application
