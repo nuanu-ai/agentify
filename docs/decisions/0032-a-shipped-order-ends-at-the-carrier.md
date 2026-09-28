@@ -42,7 +42,7 @@ parcel. The status's description says so, because every protocol using the word
 goes on past it. The discovery listing shows `ship_to` and a shipment, with a
 real example: the company's own address and a carrier's published test number.
 `ship` and `shipped` join the storefront's open vocabularies (ADR-0006 §5), and
-the SDK's contract version moves.
+the SDK's contract version moves once, for the whole of this mode.
 
 What becomes of the parcel afterwards is between buyer and merchant. When a
 merchant admits a parcel lost, ADR-0028's command records a refund on the

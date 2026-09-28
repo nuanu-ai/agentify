@@ -461,7 +461,12 @@ not required: a coffee sent across town by the shop's courier has none, and a
 required one would shut such shops out or be filled with something made up.
 The carrier is required as a short plain-text string — «вариант А, но как я
 понимаю, там может быть свободное поле, просто строка» — and a shipment
-without a number says so explicitly.
+without a number says so explicitly. The storefront's vocabularies and
+documents are open to agents, the merchant's stay strict: «я за вариант А». His
+worry — «боюсь не утонуть в куче версий» at a stage this early — is met by what
+the choice already does and by one practice: the agent's side has no version at
+all, and the SDK's contract version moves once per feature released, not once
+per field, so the whole parcel mode is a single move.
 
 The decisions themselves were then held to the charter's length. What left them
 is the mechanics this note already carries — which envelopes, which error
