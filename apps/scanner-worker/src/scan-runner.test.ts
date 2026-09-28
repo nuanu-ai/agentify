@@ -154,7 +154,7 @@ describe("bounded scan graph", () => {
     );
   });
 
-  it("limits a target-disallowed scan to robots and explicit well-known discovery", async () => {
+  it("fetches nothing but robots.txt when robots.txt keeps the scanner out of the site", async () => {
     const target = transport("User-agent: agentify-scanner\nDisallow: /\n");
     const runner = new ScanRunner({
       resolver: {
@@ -164,13 +164,24 @@ describe("bounded scan graph", () => {
       appBaseUrl: "https://agentify.ad",
     });
     const evaluation = await runner.run(job);
-    expect(target.paths.some((request) => request.startsWith("GET / text/html"))).toBe(false);
-    expect(target.paths.some((request) => request.includes("/.well-known/mcp.json"))).toBe(true);
-    expect(target.paths.some((request) => request.includes("/sitemap.xml"))).toBe(false);
-    expect(target.paths.some((request) => request.includes("/llms.txt"))).toBe(false);
-    expect(target.paths.some((request) => request.includes("/products/widget"))).toBe(false);
+    expect(target.paths.map((request) => request.split(" ").slice(0, 2).join(" "))).toEqual([
+      "GET /robots.txt",
+    ]);
     expect(evaluation.checks.find((check) => check.id === 12)?.status).toBe("unavailable");
     expect(evaluation.checks.find((check) => check.id === 13)?.status).toBe("unavailable");
+  });
+
+  it("does not fetch the well-known discovery files robots.txt keeps the scanner out of", async () => {
+    const target = transport("User-agent: *\nDisallow: /.well-known/\n");
+    await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: target.adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(target.paths.some((request) => request.startsWith("GET / "))).toBe(true);
+    expect(target.paths.filter((request) => request.includes("/.well-known/"))).toEqual([]);
   });
 
   it("does not report an unreadable robots.txt as a rule that keeps the scanner out", async () => {
