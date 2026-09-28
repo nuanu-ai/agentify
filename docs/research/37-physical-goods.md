@@ -50,10 +50,15 @@ is handed over.
 The address has nowhere of its own to go. The only carrier is `params`: flat
 scalar fields the merchant declares, with no format, length or sensitivity. They
 are stored in `orders.record` from the unpaid request on, including orders that
-never get paid, copied into every order and price-question envelope, kept by
-pg-boss for seven days after an envelope is completed (its queue default,
-`deletion_seconds`), and in the nightly backups for thirty days. Nothing deletes
-an order. ADR-0031 answers this.
+never get paid, and the merchant can read them back on those too
+(`list_orders` keeps every priced order). They are copied into every order and
+price-question envelope, kept by pg-boss for seven days after an envelope is
+completed (its queue default, `deletion_seconds`), and dumped with the database
+every ten minutes into snapshots that live up to thirty days, their deleted
+copies thirty more (ADR-0029). The driver's error for a failed statement
+carries every bound parameter, and only the path that first writes an order
+strips it (`apps/gateway/src/adapters/postgres/store.ts`). Nothing deletes an
+order. ADR-0031 answers this.
 
 `delivered` claims more than a merchant who shipped can know. It means the goods
 are with the agent; for a parcel the merchant knows only that a carrier took it.
@@ -77,8 +82,8 @@ is part of the price the price check answers. The price check's "unavailable"
 carries no reason, so "we do not ship there" and "out of stock" are one bare
 `rejected` to the agent. The public card has no shape for the seller's identity
 or contact (`packages/contracts/src/card.ts`, the public card's description), so
-after shipment the agent would not know whom to ask; the shipment record
-carries it.
+the agent would not know whom to ask about a parcel; ADR-0032 has a merchant
+who sells parcels name it once.
 
 ## How the scope was narrowed
 
@@ -264,17 +269,142 @@ address an agent already writes: `name`, `line_one`, `line_two`, `city`,
 alpha-2; `state` is the subdivision code without the country prefix where the
 country has one. A single `name` holds a person with one name, which many
 people have, and a split name cannot be recovered from it without guessing.
-`company` is left out: the second line holds it.
+`company` is left out: the second line holds it. The phone number is required,
+because the carriers a merchant hands a parcel to mostly ask for one and the
+merchant cannot ask for it themselves.
 
 The shipment record takes the names ACP, UCP and WooCommerce share: `carrier`,
-`tracking_number`, `tracking_url`, `estimated_delivery` with `earliest` and
-`latest`, and ACP's `support` with `email`, `phone` and `help_center_url`. The
-moment of shipment is the gateway's to stamp, not the merchant's to write.
+`tracking_number`, `tracking_url`, and `estimated_delivery` with `earliest` and
+`latest`. The moment of shipment is the gateway's to stamp, not the merchant's
+to write. Where the buyer asks is the merchant's, named once, and not part of
+each shipment. The card's time to ship is `ship_within_seconds`, a name of its
+own, because on an asynchronous card `fulfill_deadline_seconds` means the time
+to deliver, and a number read under the wrong name tells a person their parcel
+arrives when it merely leaves.
+
+## The adversarial review
+
+Two reviewers read the first drafts of ADR-0031 and ADR-0032 against the code
+on 2026-09-28, one for the logic, the money, the personal data and the
+reliability, the other for what the buying agent and the merchant's engineer
+meet and for the charter. The decisions were revised the same day; what
+follows is what they found and what became of it.
+
+The erasure was underspecified in a way that cost money. Rewriting the queued
+envelopes instead of deleting them would let a redelivery that was already
+waiting reach the handler without an address after the merchant had taken the
+order on, and a handler that failed on it would spend its attempts into a
+refund owed while the parcel was being packed. Erasing now deletes every
+envelope of the order, waiting, drawn or failed. The merchant's reads showed
+the address of orders that were only priced, which contradicted "only in a paid
+order"; now only a paid order shows it, and an erased one says `erased_at`
+rather than going quiet. "Never written to a log" was false on today's error
+paths, where the driver's message carries the whole order; it stays a rule, and
+building it means stripping those errors and a test that fails a write of an
+order holding a sentinel address and searches the logs for it. The backup
+facts were stale (a dump every ten minutes, not nightly), and "ours for
+seconds" held only while the merchant's worker runs; both were corrected. A
+paid request that carried a different address was silently ignored, because a
+payment naming an order never reads the body; it is now refused before the
+payment is verified.
+
+The lost parcel's way back was wrong as drafted. Reopening a shipped order into
+a refund owed would put it back on the merchant's list of open orders, where a
+stale delivery of the lost parcel's record closes the debt with nothing sent,
+and the lost tracking number would be the one kept. The command of ADR-0028 now
+records a refund on a shipped order directly, and a replacement parcel is the
+merchant's business. The status word and the receipt had to come from the
+order, not the card, because a card republished from `ship` to `async` would
+otherwise change the words of orders in flight; the order records at purchase
+that it is a parcel. The receipt reads `shipped` as well.
+
+The storefront has no version (ADR-0006 §5), and its catalogue and status are
+closed lists that a client generated from the contract parses strictly. A first
+`ship` card would have broken such a client's whole catalogue, and a `shipped`
+it could not read might have sent it to buy again. ADR-0006 §5 now says those
+vocabularies are open and how an agent treats a value it does not know. The
+discovery listing an agent finds in a catalogue carries only the input schema
+built from `params` and an example output built from `result`, so it would
+have said nothing about the address or the shipment; ADR-0032 now puts both in
+it, with a real address as the example — invented ones fail the published
+examples' own test and the charter. The agent also had no way to know when to
+stop polling a parcel that had not left, so the order's status carries the
+absolute `ship_by`.
+
+Several smaller changes followed from the same reading. The ceiling on the time
+to ship moved from the deployment's configuration into the contract, beside the
+price rule, where the offline card check sees it. The time to ship took a name
+of its own. The required price check has to be the handler, because a card
+naming a price hook that nothing calls would publish and never sell. The
+contact moved from each shipment to the merchant, because a buyer needs it
+before shipment and on a refund owed too. Tracking stays required, and the
+requirement is said at the door rather than first met at `deliver` after the
+charge; the number is recorded as the merchant's claim. The phone number
+became required and `state` was named a subdivision code. The per-country table
+of required fields was dropped rather than sourced: the door checks the shape,
+and the merchant's price check judges the geography before money moves. The
+decisions that the new ones amend — ADR-0002 §3, ADR-0006 §5, ADR-0007 §5,
+ADR-0011 and ADR-0028 — were edited in the same change.
+
+One finding was kept against. The second reviewer proposed erasing at shipment,
+so that a merchant who stored only our order identifier — as the portal's
+asynchronous pattern teaches — could read the address back. That would hold
+every address through days of handling, which is what Dmitry decided against.
+The address is erased when the order is taken on, and the portal's pattern and
+its restart walk change for parcels instead. Another was recorded rather than
+fixed: a handler slow on every attempt exhausts five of them in about twenty
+seconds, and the order closes as a refund owed labelled with a passed deadline
+the agent was told was days away. That is true of the asynchronous mode today
+and is listed below.
+
+## What a merchant's engineer learns
+
+The count is the price of the mode, and it is paid once per integrator: the
+value `ship`; `ship_within_seconds`, required and under a ceiling; a price check
+that must be the handler, and receives the locality; the `ship_to` block on the
+order, present only once paid and read as `erased_at` after acceptance; the
+rule that taking an order on means the address is stored; the contact named
+once in the cabinet; the card without a `result`; `deliver` carrying the
+shipment, with the carrier and the tracking number required; the status word
+`shipped`, on orders and receipts; a contract version that moves; and the
+refusal of a `ship` card on the live channel, with its reason.
+
+## What changes when it is built
+
+The contract: the card's fulfillment values and its public projection, the
+purchase request, the order and its merchant document, the price question, the
+status vocabulary and the agent's status document with `ship_by` and the
+contact, the receipt's outcome, the descriptions of `rejected` and of the field
+that carries what the merchant handed over, and the contract version. The
+gateway: the order's record of being a parcel, the door checks, the erasure
+and its test, the stripped errors, the refusal of a changed address at payment,
+the refusal on the live channel. The SDK's types. The discovery declaration.
+The cabinet's contact. The portal: the cards page (the mode, the time to ship,
+the contact, tracking required, what the card's price means), the orders page
+(the mode's sequence, the endings table that the machine's tests read,
+acceptance storing the address, the restart walk), the quickstart's
+asynchronous pattern, the money page, and the FAQ's dispute answer, which
+promises records of what happened with the delivery that for a parcel we do
+not keep. `apps/docs/index.md`'s pilot rule, when the live gate opens.
 
 ## Open
+
 - A reason on the price check's "unavailable", so that "not to this
   destination" and "out of stock" are two answers to the agent.
-- The ceiling on the time to ship, and its number.
+- The number for the ceiling on the time to ship.
 - Whether the rest of `params` should follow the address's retention.
-- How the operator learns that a shipped parcel was lost, once the ADR-0028
-  command exists.
+- A handler that runs out of attempts closes the order as a refund owed under
+  the label of a passed deadline, in about twenty seconds; for a parcel that
+  also erases the address. Whether running out of attempts should close an
+  order at all is a question for the asynchronous mode as a whole.
+- Duties and taxes on a parcel that crosses a border: the price the agent paid
+  is not the whole cost where duties fall on the recipient, and the card has
+  nowhere to say so but its description.
+- Goods that may not be sold to everybody (alcohol, tobacco): nothing here can
+  check an age.
+- Returns, a changed or mistyped address, and pickup points: none has a route.
+- The product the demonstration sells has to come from a real catalogue, and
+  there is no merchant of parcels yet.
+- A shop connector's rate is three or four calls to the shop's Store API inside
+  the price check's five seconds, and each leaves the locality in a guest
+  session there.
