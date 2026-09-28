@@ -194,6 +194,33 @@ describe("bounded scan graph", () => {
     expect(await reasons("", 503)).toEqual(everyRobotsCheck("robots_unavailable"));
   });
 
+  it("names robots.txt when it keeps the scanner off the OAuth documents an MCP server asks for", async () => {
+    const target = transport("User-agent: *\nDisallow: /.well-known/oauth-\n");
+    const adapter: PinnedTransport = {
+      request: async (input) =>
+        input.url.pathname === "/.well-known/mcp.json"
+          ? makeArtifact(
+              input,
+              200,
+              '{"name":"MCP","endpoint":"https://example.com/mcp","authorization":"oauth2"}',
+              "application/json",
+            )
+          : target.adapter.request(input),
+    };
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(target.paths.filter((request) => request.includes("/.well-known/oauth-"))).toEqual([]);
+    expect(evaluation.checks.find((check) => check.id === 11)).toMatchObject({
+      status: "unavailable",
+      errorCode: "robots_disallowed",
+    });
+  });
+
   it("does not fetch the well-known discovery files robots.txt keeps the scanner out of", async () => {
     const target = transport("User-agent: *\nDisallow: /.well-known/\n");
     await new ScanRunner({
