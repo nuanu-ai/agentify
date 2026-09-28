@@ -55,12 +55,16 @@ describe("ScanExperience teaser actions", () => {
     // Robots.txt that disallows the whole site leaves too little to score.
     const failed = render("robots");
     expect(failed).toContain('data-robots-notice="disallowed"');
-    expect(failed).toContain("13 checks");
-    // Robots.txt that disallows only /.well-known/ leaves a scored teaser.
+    expect(failed).toContain('data-robots-headline="disallowed"');
+    expect(failed).not.toContain("data-unavailable-notice");
+    // Robots.txt that disallows /.well-known/ leaves a scored teaser, in which
+    // a check unavailable for another reason is still said to be unavailable.
     const teaser = render("robots-partial");
     expect(teaser).toContain('data-robots-notice="disallowed"');
-    expect(teaser).toContain("3 checks");
-    expect(render("partial")).not.toContain("data-robots-notice");
+    expect(teaser).toContain("data-unavailable-notice");
+    const partial = render("partial");
+    expect(partial).not.toContain("data-robots-notice");
+    expect(partial).toContain("data-unavailable-notice");
   });
 
   it("headlines the scanned host and keeps the wait expectation visible", () => {
