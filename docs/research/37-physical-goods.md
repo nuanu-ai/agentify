@@ -444,7 +444,9 @@ ADR-0032 names them as outside the mode.
 
 The revisions of the two review rounds were then put to Dmitry one at a time.
 The price question carries the locality — country, state, city and postal
-code — rather than the country and postal code alone: «да, вариант А».
+code — rather than the country and postal code alone: «да, вариант А». A lost
+parcel is a refund recorded on the shipped order, which becomes `refunded`,
+rather than a shipped order reopened into a refund owed: «Вариант А».
 
 The decisions themselves were then held to the charter's length. What left them
 is the mechanics this note already carries — which envelopes, which error
