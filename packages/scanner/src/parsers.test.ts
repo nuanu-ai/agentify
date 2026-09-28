@@ -59,6 +59,19 @@ Allow: /
     expect(isPathAllowed(specificAllow, "unmatched-bot", "/public")).toBe(false);
   });
 
+  it("lets the longest matching rule decide, and Allow win a tie", () => {
+    // The tie is Google's documented example of the least restrictive rule.
+    const tie = parseRobots("User-agent: *\nAllow: /folder\nDisallow: /folder\n");
+    expect(isPathAllowed(tie, "agentify-scanner", "/folder/page")).toBe(true);
+    // Two groups for every crawler are one group; a shorter Allow in the
+    // second does not undo a longer Disallow in the first.
+    const split = parseRobots(
+      "User-agent: *\nDisallow: /folder/private\n\nUser-agent: *\nAllow: /folder\n",
+    );
+    expect(isPathAllowed(split, "agentify-scanner", "/folder/private/page")).toBe(false);
+    expect(isPathAllowed(split, "agentify-scanner", "/folder/page")).toBe(true);
+  });
+
   it("reads * in a robots rule as any run of characters, the empty one included", () => {
     const parsed = parseRobots(`
 User-agent: *

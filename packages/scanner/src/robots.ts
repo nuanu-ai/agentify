@@ -108,13 +108,11 @@ const ruleMatches = (path: string, rule: string): boolean => {
     : path.includes(tail, position);
 };
 
-// A rule with a wildcard is searched for along the whole path, so a decision
-// costs up to the number of such rules times the path's length. Past this
-// product the decision is not made; at the edge the worst matching measured
-// under 90 ms.
-// The largest real file measured, Etsy's, applies 900 wildcard rules to every
-// crawler, which this admits against paths of up to 9,000 characters.
-const DECISION_BUDGET = 8 * 1024 * 1024;
+// A rule with a wildcard is searched for along the whole path, piece by
+// piece, so it costs up to the path's length plus its own; a rule without
+// one only compares the path's start. Past this many characters for one
+// decision it is not made.
+const DECISION_BUDGET = 4 * 1024 * 1024;
 
 // true or false for the path, or undefined when deciding would cost more
 // than DECISION_BUDGET: "robots.txt could not be assessed", never a guess.
@@ -145,15 +143,19 @@ export const isPathAllowed = (
     ...group.allow.map((rule) => ({ rule, allow: true })),
     ...group.disallow.map((rule) => ({ rule, allow: false })),
   ]);
-  const wildcardRules = rules.filter(({ rule }) => rule.includes("*")).length;
-  if (wildcardRules * path.length > DECISION_BUDGET) return undefined;
-  const matches = rules
-    .filter(({ rule }) => ruleMatches(path, rule))
-    .sort((a, b) => b.rule.length - a.rule.length);
-  const [closest] = matches;
-  if (!closest) return true;
-  const longest = closest.rule.length;
-  return matches.filter(({ rule }) => rule.length === longest).some(({ allow }) => allow);
+  let cost = 0;
+  for (const { rule } of rules) if (rule.includes("*")) cost += path.length + rule.length;
+  if (cost > DECISION_BUDGET) return undefined;
+  // The longest matching rule decides, and between an Allow and a Disallow
+  // of the same length, Allow.
+  let longest = -1;
+  let allowed = true;
+  for (const { rule, allow } of rules) {
+    if (rule.length < longest || !ruleMatches(path, rule)) continue;
+    allowed = rule.length > longest ? allow : allowed || allow;
+    longest = rule.length;
+  }
+  return allowed;
 };
 
 const PROVIDERS: ReadonlyArray<readonly [string, string[]]> = [
