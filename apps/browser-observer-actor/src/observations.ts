@@ -477,6 +477,24 @@ export const buildObservations = (runtime: ObservationRuntime): BrowserObservati
  * and this builds the rest from what the run observed, through the sanitizer
  * that stands between the Actor and the worker.
  */
+// How a run that reached its pages ended: blocked when a page stood behind a
+// challenge, partial when a page failed, a budget ran out or the run was cut
+// short, completed otherwise.
+export const observedRunStatus = (
+  runtime: ObservationRuntime,
+  cutShort: boolean,
+): BrowserObservationOutputV1["status"] =>
+  runtime.pages.length === 0
+    ? "failed"
+    : runtime.pages.some((page) => page.challengeKind)
+      ? "blocked"
+      : runtime.pageFailureCount > 0 ||
+          runtime.byteBudgetExceeded ||
+          runtime.requestBudgetExceeded ||
+          cutShort
+        ? "partial"
+        : "completed";
+
 export const buildBrowserOutput = (options: {
   operationId: string;
   actorBuild: string;

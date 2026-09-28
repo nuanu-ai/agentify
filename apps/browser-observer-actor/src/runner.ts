@@ -15,7 +15,7 @@ import {
   safeBrowserRequest,
   validateActorTarget,
 } from "./network-policy.js";
-import { buildBrowserOutput, type ObservationRuntime } from "./observations.js";
+import { buildBrowserOutput, type ObservationRuntime, observedRunStatus } from "./observations.js";
 import { discoverRepresentativeUrls } from "./representative-pages.js";
 import { installPassiveRuntimeGuards, PASSIVE_BROWSER_ARGS } from "./runtime-guards.js";
 import { OutputSanitizationError } from "./sanitize-output.js";
@@ -616,17 +616,7 @@ export const runBrowserObservation = async (options: {
       if (runtime.byteBudgetExceeded || runtime.requestBudgetExceeded) break;
     }
 
-    const status =
-      runtime.pages.length === 0
-        ? "failed"
-        : runtime.pages.some((page) => page.challengeKind)
-          ? "blocked"
-          : runtime.pageFailureCount > 0 ||
-              runtime.byteBudgetExceeded ||
-              runtime.requestBudgetExceeded ||
-              runController.signal.aborted
-            ? "partial"
-            : "completed";
+    const status = observedRunStatus(runtime, runController.signal.aborted);
     runtimeStage = "output";
     return buildBrowserOutput({
       operationId: input.operation_id,
