@@ -25,7 +25,8 @@ export const parseRobots = (body: string): RobotsParseResult => {
   let contentSignal: Record<string, "yes" | "no"> | undefined;
 
   for (const original of body.split(/\r?\n/)) {
-    const line = original.replace(/\s+#.*$/, "").trim();
+    const comment = original.indexOf("#");
+    const line = (comment === -1 ? original : original.slice(0, comment)).trim();
     if (!line) continue;
     const separator = line.indexOf(":");
     if (separator <= 0) {
