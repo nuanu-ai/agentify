@@ -2,10 +2,10 @@
 
 Date: 2026-09-28. A research note that may be rewritten. It supports ADR-0031
 (the buyer's address) and ADR-0032 (a shipped order ends at the carrier), and
-it is where their field names come from once they are fixed. The pilot has no merchant who sells
-parcels; Dmitry's word of the same day is to lay the foundation anyway, far
-enough for a demonstration, because merchants will not come to a path that
-does not exist.
+it is where their field names come from once they are fixed. The pilot has no
+merchant who sells parcels; Dmitry's word of the same day is to lay the
+foundation anyway, far enough for a demonstration, because merchants will not
+come to a path that does not exist.
 
 ## The asynchronous path as it stands
 
@@ -43,9 +43,10 @@ not designed.
 
 ## Where a parcel does not fit
 
-The machine itself needs almost nothing. What does not fit is everything that
-assumes the goods are a flat JSON object that reaches the agent the instant it
-is handed over.
+The machine itself needs little: one switch on its mode and one edge, both
+for the lost parcel (ADR-0032). What does not fit is everything that assumes
+the goods are a flat JSON object that reaches the agent the instant it is
+handed over.
 
 The address has nowhere of its own to go. The only carrier is `params`: flat
 scalar fields the merchant declares, with no format, length or sensitivity. They
@@ -142,7 +143,7 @@ the buyer's "not received" claim from the latest estimated delivery date
 The time to ship is a named, separate promise. Amazon's order carries
 `LatestShipDate` beside `LatestDeliveryDate`; eBay's handling time begins at
 payment and ends at the carrier's scan. That is the clock ADR-0032 puts on the
-card as `fulfill_deadline_seconds`.
+card as `ship_within_seconds`.
 
 On the address, every source spells the country as ISO 3166-1 alpha-2. They
 disagree on nearly everything else:
@@ -200,10 +201,11 @@ An order's shipping address has `first_name`, `last_name`, `company`,
 `address_1`, `address_2`, `city`, `state`, `postcode`, `country` and, since
 5.6, `phone`, which the order keeps and the REST schema does not document
 (`includes/class-wc-order.php`). The REST API requires none of them. Which are
-required is decided per country at checkout (`WC_Countries::get_country_locale`),
-and that table reaches a client only as settings embedded in the checkout
-page; postal-code patterns exist for thirty-three countries, and any code is
-accepted for the rest (`includes/class-wc-validation.php`).
+required is decided per country at checkout
+(`WC_Countries::get_country_locale`), and that table reaches a client only as
+settings embedded in the checkout page; postal-code patterns exist for
+thirty-three countries, and any code is accepted for the rest
+(`includes/class-wc-validation.php`).
 
 Shipping cost is drawn from a zone, and a zone matches on the country, the
 country and state, the continent, or a postal-code pattern
@@ -225,22 +227,23 @@ shop's customer emails reaches the buyer; for a parcel it also carries the
 `shipping` block and a `shipping_lines` entry, whose `method_id` is required
 (`includes/rest-api/Controllers/Version2/class-wc-rest-orders-v2-controller.php`).
 Paying moves an order with anything not both virtual and downloadable to
-`processing`, reduces stock, and does not check stock first. A shop that
-forces shipping to the billing address, or has shipping switched off, would
-drop the address from the merchant's own screens and has to be refused.
+`processing`, reduces stock, and does not check stock first. A shop that forces
+shipping to the billing address, or has shipping switched off, would drop the
+address from the merchant's own screens and has to be refused.
 
-WooCommerce has no "shipped". `processing` means paid and awaiting
-fulfilment, and `completed` means «fulfilled and complete… Requires no further
-action», which merchants use for shipped and sometimes for delivered. Tracking
-lives in two places: the core «Order Fulfillments» (a fulfilment with
+WooCommerce has no "shipped". `processing` means paid and awaiting fulfilment,
+and `completed` means «fulfilled and complete… Requires no further action»,
+which merchants use for shipped and sometimes for delivered. Tracking lives in
+two places: the core «Order Fulfillments» (a fulfilment with
 `_tracking_number`, `_shipment_provider` and `_tracking_url`, at
 `wc/v3/orders/{id}/fulfillments`), present since 10.1 and switched off by
-default in every release so far (`src/Internal/Features/FeaturesController.php`);
-and the paid Shipment Tracking extension, with `tracking_provider`,
-`tracking_number`, `tracking_link` and `date_shipped`. A connector would read
-the first where it exists and the second otherwise, and learn of shipment by
-polling the order with `_fields` that leave the address out, or from the webhook
-topic `action.woocommerce_order_status_completed`, whose payload is the order's
+default in every release so far
+(`src/Internal/Features/FeaturesController.php`); and the paid Shipment
+Tracking extension, with `tracking_provider`, `tracking_number`,
+`tracking_link` and `date_shipped`. A connector would read the first where it
+exists and the second otherwise, and learn of shipment by polling the order
+with `_fields` that leave the address out, or from the webhook topic
+`action.woocommerce_order_status_completed`, whose payload is the order's
 number and nothing else. The `order.updated` topic carries the whole order,
 address included. Returns do not exist in core; a lost parcel is a refund or a
 new order, and a refund on an order Agentify created needs `api_refund: false`.
@@ -346,6 +349,22 @@ and the merchant's price check judges the geography before money moves. The
 decisions that the new ones amend — ADR-0002 §3, ADR-0006 §5, ADR-0007 §5,
 ADR-0011 and ADR-0028 — were edited in the same change.
 
+A second round read the revisions against the code. It confirmed most of
+them and found five more things. The open vocabularies had been written only as
+words on closed schemas, so a `ship` card still broke a strict catalogue;
+ADR-0006 §5 now makes the storefront's mode and status open strings, reads the
+catalogue card by card, and says why §3's rejection of an open string does not
+reach a surface with no version. Recording a refund on a shipped order is an
+edge out of the machine's closed `delivered`, readable only if the mode knows
+the goods are a parcel; ADR-0032 now says the mode gains that switch, instead
+of claiming the machine was untouched. A refunded parcel's receipt would still
+have read `shipped`, and now reads the refund. An envelope drawn just before
+erasure could still be redelivered from the erased order; an erased order is
+now never handed out again. And a merchant admitting a lost parcel could not
+see whom to pay back, so ADR-0028's view of the payer covers a shipped order,
+and the live gate names every piece it waits for. The status lines no longer
+attribute the revisions to Dmitry's word of the morning: they await it.
+
 One finding was kept against. The second reviewer proposed erasing at shipment,
 so that a merchant who stored only our order identifier — as the portal's
 asynchronous pattern teaches — could read the address back. That would hold
@@ -362,7 +381,7 @@ and is listed below.
 The count is the price of the mode, and it is paid once per integrator: the
 value `ship`; `ship_within_seconds`, required and under a ceiling; a price check
 that must be the handler, and receives the locality; the `ship_to` block on the
-order, present only once paid and read as `erased_at` after acceptance; the
+order, present only once paid and read as `erased_at` once erased; the
 rule that taking an order on means the address is stored; the contact named
 once in the cabinet; the card without a `result`; `deliver` carrying the
 shipment, with the carrier and the tracking number required; the status word
@@ -371,14 +390,20 @@ refusal of a `ship` card on the live channel, with its reason.
 
 ## What changes when it is built
 
-The contract: the card's fulfillment values and its public projection, the
-purchase request, the order and its merchant document, the price question, the
-status vocabulary and the agent's status document with `ship_by` and the
-contact, the receipt's outcome, the descriptions of `rejected` and of the field
-that carries what the merchant handed over, and the contract version. The
-gateway: the order's record of being a parcel, the door checks, the erasure
-and its test, the stripped errors, the refusal of a changed address at payment,
-the refusal on the live channel. The SDK's types. The discovery declaration.
+The machine: a third switch on the order's mode, and the one edge from
+`delivered` to `refunded` for a parcel, with the descriptions of `refunded` —
+today every one of them says a debt was closed, and a shipped order never had
+one. The contract: the card's fulfillment values and its public projection,
+the purchase request, the order and its merchant document, the price question,
+the status vocabulary and the agent's status document with `ship_by` and the
+contact, the storefront's mode and status carried as open strings with the
+catalogue read card by card, the receipt's outcome, the descriptions of
+`rejected` and of the field that carries what the merchant handed over, and the
+contract version. The gateway: the door checks, the erasure and its test, an
+erased order never handed out again, the stripped errors, the refusal of a
+changed address at payment, the refusal on the live channel, and — when
+ADR-0028 is built — the receipt of a refunded parcel and the payer's address on
+a shipped order. The SDK's types. The discovery declaration.
 The cabinet's contact. The portal: the cards page (the mode, the time to ship,
 the contact, tracking required, what the card's price means), the orders page
 (the mode's sequence, the endings table that the machine's tests read,
