@@ -133,6 +133,20 @@ describe("18-check engine", () => {
     expect(check?.fixCode).toBeUndefined();
   });
 
+  it("does not assess content for a target whose robots decision was left open", () => {
+    const input = makeArtifacts("store");
+    input.canonicalTargetUrl = `https://example.com/${"a".repeat(1_500)}`;
+    input.robots = artifact(
+      "https://example.com/robots.txt",
+      `User-agent: *\n${"Allow: *aaaaab\n".repeat(30_000)}`,
+      { headers: { "content-type": "text/plain" } },
+    );
+    expect(evaluateScan(input).checks.find((check) => check.id === 12)).toMatchObject({
+      status: "unavailable",
+      errorCode: "robots_unavailable",
+    });
+  });
+
   it("turns unavailable checks into coverage loss, not score loss", () => {
     const input = makeArtifacts("store");
     input.base = artifact("https://example.com/", "", {

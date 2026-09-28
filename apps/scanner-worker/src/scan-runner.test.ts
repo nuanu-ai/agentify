@@ -213,6 +213,35 @@ describe("bounded scan graph", () => {
     ).toEqual(["robots_unavailable", "robots_unavailable", "robots_unavailable"]);
   });
 
+  it("fetches no sitemap or product URL whose robots decision was left open", async () => {
+    const longSitemap = `/${"a".repeat(1_500)}.xml`;
+    const longProduct = `/products/${"a".repeat(1_500)}`;
+    const target = transport(
+      `User-agent: *\n${"Allow: *aaaaab\n".repeat(30_000)}Sitemap: https://example.com/sitemap.xml\nSitemap: https://example.com${longSitemap}\n`,
+    );
+    const adapter: PinnedTransport = {
+      request: async (input) =>
+        input.url.pathname === "/sitemap.xml"
+          ? makeArtifact(
+              input,
+              200,
+              `<urlset><url><loc>https://example.com${longProduct}</loc></url></urlset>`,
+              "application/xml",
+            )
+          : target.adapter.request(input),
+    };
+    await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(target.paths.some((request) => request.startsWith("GET / "))).toBe(true);
+    expect(target.paths.some((request) => request.includes(longSitemap))).toBe(false);
+    expect(target.paths.some((request) => request.includes(longProduct))).toBe(false);
+  });
+
   it("does not fetch a disallowed representative path", async () => {
     const target = transport(
       "User-agent: agentify-scanner\nAllow: /\nDisallow: /products/\nSitemap: https://example.com/sitemap.xml\n",
