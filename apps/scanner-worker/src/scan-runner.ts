@@ -354,9 +354,12 @@ export class ScanRunner {
       const representativePromise =
         job.segment === "store" && robotsDecisionKnown && targetAllowed
           ? (async () => {
-              const candidates = productCandidates(target, sitemap, usedHttpFallback).filter(
-                robotsAllows,
-              );
+              const found = productCandidates(target, sitemap, usedHttpFallback);
+              const candidates = found.filter(robotsAllows);
+              // A product page robots.txt keeps the scanner off still tells the
+              // engine why the store's product data went unread.
+              if (!candidates.length && found[0])
+                return unavailableArtifact(found[0], blockedCodeFor(robotsVerdict(found[0])));
               const heads = await Promise.all(
                 candidates.map((candidate) =>
                   fetch(candidate, {

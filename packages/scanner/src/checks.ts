@@ -71,6 +71,20 @@ const inaccessible = (artifact?: FetchArtifact): boolean =>
 const missing = (artifact?: FetchArtifact): boolean =>
   !artifact || artifact.status === 404 || artifact.status === 410;
 
+const ROBOTS_CODES = new Set(["robots_disallowed", "robots_unavailable"]);
+const robotsCode = (artifact?: FetchArtifact): string | undefined =>
+  artifact?.errorCode && ROBOTS_CODES.has(artifact.errorCode) ? artifact.errorCode : undefined;
+// Why none of several documents could be read: robots.txt first, since the
+// owner can act on it, then whatever else stopped the first one.
+const unreadReason = (artifacts: readonly FetchArtifact[], fallback: string): string => {
+  const unread = artifacts.filter((artifact) => inaccessible(artifact));
+  return (
+    unread.map(robotsCode).find(Boolean) ??
+    unread.find((artifact) => artifact.errorCode)?.errorCode ??
+    fallback
+  );
+};
+
 // A scan evaluates its checks several times as its requests complete, all
 // over one robots.txt artifact, which the site may have filled to the fetch
 // limit: it is parsed, and each path decided, once per artifact.
@@ -239,7 +253,8 @@ const sitemapCheck = (artifacts: ScanArtifacts): CheckResult => {
     (artifact) => !inaccessible(artifact) && !missing(artifact),
   );
   if (!available.length) {
-    if (artifacts.sitemap.some((artifact) => missing(artifact)))
+    // Absent only when every sitemap asked for answered that it is not there.
+    if (artifacts.sitemap.length && artifacts.sitemap.every((artifact) => missing(artifact)))
       return result({
         id: 4,
         status: "fail",
@@ -254,7 +269,7 @@ const sitemapCheck = (artifacts: ScanArtifacts): CheckResult => {
       earnedWeight: 0,
       summaryCode: "sitemap_unavailable",
       userImpactCode: "sitemap_not_assessed",
-      errorCode: artifacts.sitemap[0]?.errorCode ?? "sitemap_unavailable",
+      errorCode: unreadReason(artifacts.sitemap, "sitemap_unavailable"),
     });
   }
   const parsed = available.map((artifact) => parseSitemap(artifact.body));
@@ -594,7 +609,7 @@ const mcpCheck = (artifacts: ScanArtifacts): CheckResult => {
         earnedWeight: 0,
         summaryCode: "mcp_unavailable",
         userImpactCode: "mcp_not_assessed",
-        errorCode: artifacts.mcp.find(inaccessible)?.errorCode ?? "mcp_unavailable",
+        errorCode: unreadReason(artifacts.mcp, "mcp_unavailable"),
       });
     return result({
       id: 9,
@@ -715,7 +730,7 @@ const oauthCheck = (artifacts: ScanArtifacts): CheckResult => {
         earnedWeight: 0,
         summaryCode: "oauth_unavailable",
         userImpactCode: "oauth_not_assessed",
-        errorCode: artifacts.oauth.find(inaccessible)?.errorCode ?? "oauth_unavailable",
+        errorCode: unreadReason(artifacts.oauth, "oauth_unavailable"),
       });
     return result({
       id: 11,
@@ -1120,5 +1135,47 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
     a2aCheck(artifacts),
     hreflangCheck(effective),
   ];
-  return checks.sort((left, right) => left.id - right.id);
+  // A store's structured data and feed may live only on its product pages.
+  // When robots.txt kept the scanner off the one it chose, a verdict that
+  // they are absent is not established, and says why instead.
+  const productWithheld = robotsCode(effective.representative);
+  return checks
+    .map((check) => {
+      const absence = PRODUCT_PAGE_ABSENCES[check.id];
+      return productWithheld && absence?.absent(check)
+        ? result({
+            id: check.id,
+            status: "unavailable",
+            earnedWeight: 0,
+            summaryCode: absence.summaryCode,
+            userImpactCode: absence.userImpactCode,
+            errorCode: productWithheld,
+          })
+        : check;
+    })
+    .sort((left, right) => left.id - right.id);
+};
+
+const PRODUCT_PAGE_ABSENCES: Record<
+  number,
+  { absent: (check: CheckResult) => boolean; summaryCode: string; userImpactCode: string }
+> = {
+  5: {
+    absent: (check) =>
+      check.summaryCode === "jsonld_absent_or_invalid" && check.evidence.script_count === 0,
+    summaryCode: "jsonld_unavailable",
+    userImpactCode: "structured_data_not_assessed",
+  },
+  6: {
+    absent: (check) =>
+      check.summaryCode === "vertical_jsonld_missing" ||
+      check.summaryCode === "vertical_jsonld_wrong_type",
+    summaryCode: "vertical_jsonld_unavailable",
+    userImpactCode: "structured_data_not_assessed",
+  },
+  15: {
+    absent: (check) => check.summaryCode === "feed_signals_absent",
+    summaryCode: "feed_unavailable",
+    userImpactCode: "feed_not_assessed",
+  },
 };

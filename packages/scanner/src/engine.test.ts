@@ -148,6 +148,25 @@ describe("18-check engine", () => {
     });
   });
 
+  it("keeps a defect the home page shows though robots.txt kept the product page out", () => {
+    const input = makeArtifacts("store");
+    input.base = artifact(
+      "https://example.com/",
+      html.replace(
+        /<script type="application\/ld\+json">.*?<\/script>/,
+        '<script type="application/ld+json">{"@type":</script>',
+      ),
+    );
+    input.representative = artifact("https://example.com/products/widget", "", {
+      status: 0,
+      errorCode: "robots_disallowed",
+    });
+    expect(evaluateScan(input).checks.find((check) => check.id === 5)).toMatchObject({
+      status: "fail",
+      summaryCode: "jsonld_absent_or_invalid",
+    });
+  });
+
   it("names robots.txt among the reasons a discovery document went unread", () => {
     const input = makeArtifacts("store");
     input.mcp = [
