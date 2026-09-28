@@ -2,8 +2,8 @@
 
 Date: 2026-08-27
 Status: accepted (autonomous mandate of 2026-08-26; revisited on Dmitry's word;
-§5's open vocabularies added 2026-09-28 with ADR-0032, awaiting Dmitry's word,
-and its open documents with ADR-0033)
+§5's open vocabularies and documents added 2026-09-28 with ADR-0032 and
+ADR-0033)
 
 ## Context
 

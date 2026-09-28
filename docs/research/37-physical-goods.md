@@ -438,8 +438,8 @@ already give sellers: Amazon's default maximum handling time is thirty days,
 longer only for a few product types
 (github.com/amzn/selling-partner-api-samples, discussion 124), and eBay's has
 been thirty business days, recently forty (eBay community, «40 days now showing
-on handling time»). The number is Dmitry's to move once a real merchant needs
-another.
+on handling time»). The number was confirmed with the other revisions,
+and moves once a real merchant needs another.
 
 A handler that runs out of attempts, and the label its order closes under, stay
 as they are: «оставляем, если что подрегулируем». Duties — where the recipient
@@ -480,5 +480,3 @@ paths, which fields and pages — and no rule or reason.
 - The connector's rate is three or four calls to the shop's Store API inside
   the price check's five seconds, and each leaves the locality in a guest
   session there.
-- Dmitry's word on the revisions of the two review rounds, which the status
-  lines of ADR-0031, ADR-0032 and the amended decisions say they await.

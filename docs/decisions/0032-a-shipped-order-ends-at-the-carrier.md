@@ -1,8 +1,7 @@
 # 0032. A shipped order ends at the carrier, and the agent is told `shipped`
 
 Date: 2026-09-28
-Status: accepted (Dmitry, 2026-09-28: «Полностью согласен»); the revisions of
-two review rounds await his word. Not built yet.
+Status: accepted, after two rounds of adversarial review. Not built yet.
 
 ## Context
 
@@ -62,7 +61,7 @@ the merchant's word, as it would on a number nobody checks. The price check's
 order is one parcel of one card, and a parcel is not safe to ship twice, so
 keying on the order identifier stops being advice. Duties, restricted goods,
 returns, a changed or mistyped address and pickup points are outside the mode
-for now (Dmitry, 2026-09-28).
+for now.
 
 Rejected: `delivered` with a caveat on the card (the status read alone would
 claim arrival); an arrival state with its own deadline (merchants rarely know

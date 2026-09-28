@@ -1,9 +1,7 @@
 # 0031. A buyer's address passes through us and is erased once the merchant holds it
 
 Date: 2026-09-28
-Status: accepted (Dmitry, 2026-09-28: «мы передаем адрес, но хранить у себя
-адрес я не вижу смысла»); the revisions of two review rounds await his word.
-Not built yet.
+Status: accepted, after two rounds of adversarial review. Not built yet.
 
 ## Context
 

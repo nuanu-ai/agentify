@@ -2,7 +2,7 @@
 
 Date: 2026-08-27
 Status: accepted for the controlled test and live launch; revisit before the first external buyer;
-the shipment paragraph added 2026-09-28 with ADR-0032, awaiting Dmitry's word
+the shipment paragraph added 2026-09-28 with ADR-0032
 
 ## Context
 

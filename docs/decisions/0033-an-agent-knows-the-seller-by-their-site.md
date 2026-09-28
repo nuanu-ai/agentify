@@ -1,8 +1,7 @@
 # 0033. An agent knows who sells by a name and the shop's own site
 
 Date: 2026-09-28
-Status: accepted (Dmitry, 2026-09-28: «давай начнем только с адреса»). Not
-built yet.
+Status: accepted. Not built yet.
 
 ## Context
 
