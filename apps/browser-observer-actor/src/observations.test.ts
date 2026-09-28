@@ -183,7 +183,6 @@ describe("the output the worker receives from the Actor", () => {
             status,
             runtime: run,
             totalMs: 9_000,
-            pageTimings: run.pages.map(() => 9_000),
           }),
         ),
       ),

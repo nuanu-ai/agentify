@@ -163,7 +163,6 @@ export const browserObservationOutputV1Schema = z
     timings: z
       .object({
         total_ms: z.number().int().nonnegative().max(120_000),
-        pages: z.array(z.number().int().nonnegative().max(60_000)).max(3),
       })
       .strict(),
   })

@@ -488,7 +488,7 @@ const contracts = [
       status: "completed",
       pages_assessed: 1,
       observations: BROWSER_OBSERVATION_IDS.map(browserFinding),
-      timings: { total_ms: 100, pages: [100] },
+      timings: { total_ms: 100 },
     },
     required: [
       "schema_version",
@@ -503,7 +503,6 @@ const contracts = [
       ["observations", 0, "evidence"],
       "timings",
       ["timings", "total_ms"],
-      ["timings", "pages"],
     ],
   },
   {

@@ -483,7 +483,6 @@ export const buildBrowserOutput = (options: {
   status: BrowserObservationOutputV1["status"];
   runtime: ObservationRuntime;
   totalMs: number;
-  pageTimings: readonly number[];
 }): BrowserObservationOutputV1 =>
   sanitizeBrowserOutput({
     schema_version: BROWSER_OBSERVATION_VERSION,
@@ -494,6 +493,5 @@ export const buildBrowserOutput = (options: {
     observations: buildObservations(options.runtime),
     timings: {
       total_ms: Math.min(120_000, options.totalMs),
-      pages: options.pageTimings.map((value) => Math.min(60_000, value)),
     },
   });

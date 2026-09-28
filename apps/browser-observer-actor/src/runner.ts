@@ -276,7 +276,6 @@ const failureOutput = (options: {
     status: "failed",
     runtime: emptyRuntime(options.input),
     totalMs: Date.now() - options.startedAt,
-    pageTimings: [],
   });
 };
 
@@ -289,10 +288,8 @@ const observePage = async (options: {
   robotsCache: Map<string, RobotsCacheValue>;
 }): Promise<{
   signals: PageSignals;
-  durationMs: number;
   representativeUrls: URL[];
 }> => {
-  const startedAt = Date.now();
   const context = await raceWithAbort(
     options.browser.newContext({
       acceptDownloads: false,
@@ -501,11 +498,7 @@ const observePage = async (options: {
       }),
     ]);
     const [signals, representativeUrls] = await raceWithAbort(extraction, options.runSignal);
-    return {
-      signals,
-      durationMs: Date.now() - startedAt,
-      representativeUrls,
-    };
+    return { signals, representativeUrls };
   } catch (error) {
     const code = safeRuntimeFailureCode(error);
     throw new BrowserNetworkPolicyError(
@@ -534,7 +527,6 @@ export const runBrowserObservation = async (options: {
     declaredDomain: input.target.registrable_domain,
   }).slice(0, input.limits.max_pages);
   const runtime = emptyRuntime(input);
-  const timings: number[] = [];
   const runController = new AbortController();
   let runtimeStage: "robots" | "launch" | "page" | "output" = "robots";
   let browser: Browser | undefined;
@@ -564,7 +556,6 @@ export const runBrowserObservation = async (options: {
           status: "blocked",
           runtime,
           totalMs: Date.now() - startedAt,
-          pageTimings: [],
         });
       } else {
         runtime.pageFailureCount += 1;
@@ -596,7 +587,6 @@ export const runBrowserObservation = async (options: {
           robotsCache,
         });
         runtime.pages.push(result.signals);
-        timings.push(result.durationMs);
         if (pageIndex === 0 && allowedUrls.length < input.limits.max_pages) {
           for (const candidate of result.representativeUrls) {
             if (allowedUrls.length >= input.limits.max_pages) break;
@@ -644,7 +634,6 @@ export const runBrowserObservation = async (options: {
       status,
       runtime,
       totalMs: Date.now() - startedAt,
-      pageTimings: timings,
     });
   } catch (error) {
     const code = safeRuntimeFailureCode(error);

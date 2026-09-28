@@ -242,7 +242,7 @@ describe("canonical contracts", () => {
         summary_code: `${id}_observed`,
         evidence: id === "accessibility_structure" ? { main_count: 1 } : {},
       })),
-      timings: { total_ms: 100, pages: [100] },
+      timings: { total_ms: 100 },
     };
     const [firstObservation] = output.observations;
     if (!firstObservation) throw new Error("the observation fixture has no observations");
@@ -298,7 +298,7 @@ describe("canonical contracts", () => {
         remediation_code: "keep_public_surface_stable",
         evidence: {},
       })),
-      timings: { total_ms: 100, pages: [100] },
+      timings: { total_ms: 100 },
     };
     const unsafeValues = [
       "https://example.com/path?token=secret",
@@ -371,7 +371,7 @@ describe("canonical contracts", () => {
         summary_code: `${id}_observed`,
         evidence: {},
       })),
-      timings: { total_ms: 100, pages: [100] },
+      timings: { total_ms: 100 },
     });
     expect(output.success).toBe(false);
     expect(output.error?.issues.map((issue) => issue.path)).toEqual([["schema_version"]]);

@@ -46,7 +46,7 @@ const output: BrowserObservationOutputV1 = {
     summary_code: "not_observed",
     evidence: {},
   })),
-  timings: { total_ms: 100, pages: [100] },
+  timings: { total_ms: 100 },
 };
 
 function repositoryFake(overrides: Partial<BrowserObservationRepository> = {}) {

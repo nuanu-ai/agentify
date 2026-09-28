@@ -249,7 +249,7 @@ describe("initial database migration", () => {
           summary_code: "browser_observation_unavailable",
           evidence: {},
         })),
-        timings: { total_ms: 1, pages: [1] },
+        timings: { total_ms: 1 },
       };
       await expect(
         browserRepository.complete(

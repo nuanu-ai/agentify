@@ -19,7 +19,7 @@ const validOutput = (): BrowserObservationOutputV1 => ({
     summary_code: "browser_observation_unavailable",
     evidence: {},
   })),
-  timings: { total_ms: 10, pages: [10] },
+  timings: { total_ms: 10 },
 });
 
 const firstObservation = (
