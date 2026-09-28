@@ -221,6 +221,25 @@ describe("bounded scan graph", () => {
     });
   });
 
+  it("reads the sitemap and llms.txt robots.txt allows though it keeps the scanner off the page", async () => {
+    const target = transport(
+      "User-agent: *\nDisallow: /checkout\nAllow: /sitemap.xml\nAllow: /llms.txt\n",
+    );
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: target.adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run({ ...job, canonical_target_url: "https://example.com/checkout" });
+    expect(target.paths.some((request) => request.startsWith("GET /checkout "))).toBe(false);
+    expect(target.paths.some((request) => request.startsWith("GET /sitemap.xml "))).toBe(true);
+    expect(target.paths.some((request) => request.startsWith("GET /llms.txt "))).toBe(true);
+    expect(
+      [4, 8].map((id) => evaluation.checks.find((check) => check.id === id)?.errorCode),
+    ).not.toContain("robots_disallowed");
+  });
+
   it("does not fetch the well-known discovery files robots.txt keeps the scanner out of", async () => {
     const target = transport("User-agent: *\nDisallow: /.well-known/\n");
     await new ScanRunner({
