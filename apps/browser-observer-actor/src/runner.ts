@@ -151,7 +151,8 @@ export const permitsSearchPurpose = (parsed: RobotsParseResult): boolean =>
   parsed.contentSignal?.search !== "no";
 
 export const permitsBrowserNavigation = (parsed: RobotsParseResult, pathname: string): boolean =>
-  permitsSearchPurpose(parsed) && isPathAllowed(parsed, "agentify-browser-observer", pathname);
+  permitsSearchPurpose(parsed) &&
+  isPathAllowed(parsed, "agentify-browser-observer", pathname) === true;
 
 export const authorizeMainFrameNavigation = async (options: {
   isNavigation: boolean;

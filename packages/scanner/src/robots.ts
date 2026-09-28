@@ -108,11 +108,21 @@ const ruleMatches = (path: string, rule: string): boolean => {
     : path.includes(tail, position);
 };
 
+// A rule with a wildcard is searched for along the whole path, so a decision
+// costs up to the number of such rules times the path's length. Past this
+// product the decision is not made; at the edge the worst matching measured
+// under 90 ms.
+// The largest real file measured, Etsy's, applies 900 wildcard rules to every
+// crawler, which this admits against paths of up to 9,000 characters.
+const DECISION_BUDGET = 8 * 1024 * 1024;
+
+// true or false for the path, or undefined when deciding would cost more
+// than DECISION_BUDGET: "robots.txt could not be assessed", never a guess.
 export const isPathAllowed = (
   parsed: RobotsParseResult,
   userAgent: string,
   path: string,
-): boolean => {
+): boolean | undefined => {
   const normalized = userAgent.toLowerCase();
   const groupsWithSpecificity = parsed.groups.map((group) => ({
     group,
@@ -135,6 +145,8 @@ export const isPathAllowed = (
     ...group.allow.map((rule) => ({ rule, allow: true })),
     ...group.disallow.map((rule) => ({ rule, allow: false })),
   ]);
+  const wildcardRules = rules.filter(({ rule }) => rule.includes("*")).length;
+  if (wildcardRules * path.length > DECISION_BUDGET) return undefined;
   const matches = rules
     .filter(({ rule }) => ruleMatches(path, rule))
     .sort((a, b) => b.rule.length - a.rule.length);

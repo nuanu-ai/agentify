@@ -199,14 +199,20 @@ export class ScanRunner {
       const robotsDecisionKnown =
         !robots.errorCode &&
         ([404, 410].includes(robots.status) || (robots.status === 200 && !parsedRobots.fatal));
-      const robotsAllows = (url: URL): boolean =>
-        robots.status === 404 ||
-        robots.status === 410 ||
-        (robots.status === 200 &&
-          !robots.errorCode &&
-          !parsedRobots.fatal &&
-          isPathAllowed(parsedRobots, "agentify-scanner", url.pathname || "/"));
-      const targetAllowed = robotsAllows(target);
+      // true or false for the URL, or undefined when robots.txt could not be
+      // read or the decision would cost more than the matcher's budget.
+      const robotsVerdict = (url: URL): boolean | undefined =>
+        robots.status === 404 || robots.status === 410
+          ? true
+          : robotsDecisionKnown
+            ? isPathAllowed(parsedRobots, "agentify-scanner", url.pathname || "/")
+            : undefined;
+      const blockedCodeFor = (verdict: boolean | undefined) =>
+        verdict === false ? "robots_disallowed" : "robots_unavailable";
+      const robotsAllows = (url: URL): boolean => robotsVerdict(url) === true;
+      const targetVerdict = robotsVerdict(target);
+      const targetAllowed = targetVerdict === true;
+      const targetBlockedCode = blockedCodeFor(targetVerdict);
       const declaredSitemaps = parsedRobots.sitemaps
         .map((value) => canonicalSameSiteUrl(value, target, usedHttpFallback))
         .filter((value): value is URL => value !== undefined)
@@ -214,14 +220,15 @@ export class ScanRunner {
       const sitemapTargets = declaredSitemaps.length
         ? declaredSitemaps
         : [discoveryUrl(target, "/sitemap.xml")];
-      const blockedCode = robotsDecisionKnown ? "robots_disallowed" : "robots_unavailable";
       const fetchIfRobotsAllowed = (
         url: URL,
         fetchOptions: Parameters<SafeFetcher["fetch"]>[1],
-      ): Promise<FetchArtifact> =>
-        robotsAllows(url)
+      ): Promise<FetchArtifact> => {
+        const verdict = robotsVerdict(url);
+        return verdict === true
           ? fetch(url, fetchOptions)
-          : Promise.resolve(unavailableArtifact(url, blockedCode));
+          : Promise.resolve(unavailableArtifact(url, blockedCodeFor(verdict)));
+      };
       const fetchExplicitDiscovery = (
         url: URL,
         fetchOptions: Parameters<SafeFetcher["fetch"]>[1],
@@ -275,14 +282,14 @@ export class ScanRunner {
             }
             return artifacts;
           })()
-        : Promise.resolve(sitemapTargets.map((url) => unavailableArtifact(url, blockedCode)));
+        : Promise.resolve(sitemapTargets.map((url) => unavailableArtifact(url, targetBlockedCode)));
       const llmsUrl = discoveryUrl(target, "/llms.txt");
       const llmsPromise = targetAllowed
         ? fetchIfRobotsAllowed(llmsUrl, {
             bodyLimit: 512 * 1024,
             accept: "text/plain,text/markdown,*/*;q=0.1",
           })
-        : Promise.resolve(unavailableArtifact(llmsUrl, blockedCode));
+        : Promise.resolve(unavailableArtifact(llmsUrl, targetBlockedCode));
       const mcpUrl = discoveryUrl(target, "/.well-known/mcp.json");
       const mcpCardUrl = discoveryUrl(target, "/.well-known/mcp/server-card.json");
       const ucpUrl = discoveryUrl(target, "/.well-known/ucp");

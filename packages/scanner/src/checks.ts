@@ -1049,11 +1049,13 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
   const robotsMissing = artifacts.robots.status === 404 || artifacts.robots.status === 410;
   const robotsReadable =
     artifacts.robots.status === 200 && !artifacts.robots.errorCode && !robotsParsed.fatal;
-  const targetContentAllowed =
-    robotsMissing ||
-    (robotsReadable && isPathAllowed(robotsParsed, "agentify-scanner", targetPath));
-  const robotsBlockedCode =
-    robotsMissing || robotsReadable ? "robots_disallowed" : "robots_unavailable";
+  const targetVerdict = robotsMissing
+    ? true
+    : robotsReadable
+      ? isPathAllowed(robotsParsed, "agentify-scanner", targetPath)
+      : undefined;
+  const targetContentAllowed = targetVerdict === true;
+  const robotsBlockedCode = targetVerdict === false ? "robots_disallowed" : "robots_unavailable";
   const effective = targetContentAllowed
     ? artifacts
     : {
