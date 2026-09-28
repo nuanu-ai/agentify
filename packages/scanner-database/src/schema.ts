@@ -211,10 +211,6 @@ export const scans = pgTable(
     level: diagnosticLevelEnum("level"),
     applicableWeight: numeric("applicable_weight", { precision: 7, scale: 3 }),
     earnedWeight: numeric("earned_weight", { precision: 7, scale: 3 }),
-    cacheHit: boolean("cache_hit").notNull().default(false),
-    sourceScanId: uuid("source_scan_id").references((): AnyPgColumn => scans.id, {
-      onDelete: "set null",
-    }),
     failureCode: text("failure_code"),
     accessTokenHash: text("access_token_hash").notNull(),
     accessTokenExpiresAt: utcTimestamp("access_token_expires_at").notNull(),
@@ -323,30 +319,6 @@ export const scanChecks = pgTable(
     primaryKey({ columns: [table.scanId, table.checkId] }),
     check("scan_checks_id_range", sql`${table.checkId} between 1 and 18`),
     index("scan_checks_scan_status_idx").on(table.scanId, table.status),
-  ],
-);
-
-export const scanSnapshots = pgTable(
-  "scan_snapshots",
-  {
-    id: uuid("id").primaryKey(),
-    cacheKey: text("cache_key").notNull(),
-    rubricVersion: text("rubric_version").notNull(),
-    segmentProfile: text("segment_profile").notNull(),
-    canonicalTargetUrl: text("canonical_target_url").notNull(),
-    checks: jsonb("checks").notNull(),
-    fingerprint: jsonb("fingerprint").notNull(),
-    score: smallint("score").notNull(),
-    coverage: numeric("coverage", { precision: 4, scale: 3 }).notNull(),
-    createdAt: utcTimestamp("created_at").notNull().defaultNow(),
-    expiresAt: utcTimestamp("expires_at").notNull(),
-    invalidatedAt: utcTimestamp("invalidated_at"),
-  },
-  (table) => [
-    check("scan_snapshots_id_uuidv7", uuidV7Check(table.id)),
-    check("scan_snapshots_score_range", sql`${table.score} between 0 and 100`),
-    check("scan_snapshots_coverage_range", sql`${table.coverage} between 0 and 1`),
-    uniqueIndex("scan_snapshots_cache_key_uidx").on(table.cacheKey),
   ],
 );
 

@@ -40,7 +40,6 @@ const TABLES = [
   "scan_checks",
   "scan_fingerprints",
   "scan_shares",
-  "scan_snapshots",
   "scans",
   "sessions",
   "waitlist_entries",
@@ -532,8 +531,6 @@ describe("initial database migration", () => {
           },
           findings: { negativeCheckIds: [] },
         },
-        cacheKey: "stale-attempt-cache-key",
-        cacheHit: false,
         finishedAt: new Date(),
       });
       expect(staleCommit).toBe("already_terminal");
@@ -542,12 +539,10 @@ describe("initial database migration", () => {
         attempt_no: number;
         summary_code: string;
         fingerprints: string;
-        snapshots: string;
         completed_events: string;
       }>(
         `select s.status, s.attempt_no, c.summary_code,
            (select count(*) from scan_fingerprints where scan_id = s.id)::text as fingerprints,
-           (select count(*) from scan_snapshots where id = s.id)::text as snapshots,
            (select count(*) from analytics_events where name = 'scan_completed' and scan_id = s.id)::text as completed_events
          from scans s
          join scan_checks c on c.scan_id = s.id and c.check_id = 1
@@ -559,7 +554,6 @@ describe("initial database migration", () => {
         attempt_no: 2,
         summary_code: "fresh_attempt_check",
         fingerprints: "0",
-        snapshots: "0",
         completed_events: "0",
       });
 

@@ -76,7 +76,6 @@ const repository = (claim: "claimed" | "terminal" | "in_progress" = "claimed") =
       state.checks.set(persisted.id, persisted);
       return true;
     },
-    findReusableSnapshot: async () => undefined,
     commitTerminal: async (input) => {
       if (!state.checks.has(check.id)) throw new Error("terminal_commit_without_persisted_check");
       state.terminal = input;
@@ -99,7 +98,6 @@ describe("scan job lifecycle", () => {
       processScanJob(job, {
         repository: repo,
         runner: runner as never,
-        cacheEnabled: false,
       }),
     ).resolves.toBe("committed");
     expect(state.checks.get(check.id)).toEqual(check);
@@ -120,37 +118,11 @@ describe("scan job lifecycle", () => {
       processScanJob(job, {
         repository: repo,
         runner: runner as never,
-        cacheEnabled: false,
       }),
     ).resolves.toBe("skipped");
     expect(state.claimed).toBe(true);
     expect(state.checks.size).toBe(0);
     expect(state.terminal).toBeUndefined();
-  });
-
-  it("uses a cache snapshot without reusing acquisition identity", async () => {
-    const { repo, state } = repository();
-    repo.findReusableSnapshot = async () => ({
-      ...evaluation,
-      sourceScanId: "source-scan",
-      expiresAt: new Date(Date.now() + 1000),
-    });
-    const runner = {
-      run: async () => {
-        throw new Error("cache hit must not acquire the target again");
-      },
-    };
-    await processScanJob(job, {
-      repository: repo,
-      runner: runner as never,
-      cacheEnabled: true,
-    });
-    expect(state.terminal).toMatchObject({
-      scanId: job.scan_id,
-      cacheHit: true,
-      sourceScanId: "source-scan",
-    });
-    expect(JSON.stringify(state.terminal)).not.toMatch(/lead|utm|token|session/i);
   });
 
   it("marks retryable system failure on first attempt", async () => {
@@ -164,7 +136,6 @@ describe("scan job lifecycle", () => {
       processScanJob(job, {
         repository: repo,
         runner: runner as never,
-        cacheEnabled: false,
       }),
     ).rejects.toThrow();
     expect(state.failure).toMatchObject({
@@ -190,7 +161,6 @@ describe("scan job lifecycle", () => {
       processScanJob(job, {
         repository: repo,
         runner: runner as never,
-        cacheEnabled: false,
       }),
     ).resolves.toBe("skipped");
     expect(state.fencedCheckId).toBe(check.id);
@@ -209,7 +179,6 @@ describe("scan job lifecycle", () => {
     const processing = processScanJob(job, {
       repository: repo,
       runner: { run: async () => await run } as never,
-      cacheEnabled: false,
       now: () => new Date(Date.now()),
     });
     await vi.advanceTimersByTimeAsync(20_000);
@@ -232,7 +201,6 @@ describe("scan job lifecycle", () => {
     await processScanJob(job, {
       repository: repo,
       runner: { run: async () => evaluation } as never,
-      cacheEnabled: false,
       browserObservation: {
         actorId: "owner/agentify-browser-observer",
         actorBuild: "1.0.42",
@@ -276,7 +244,6 @@ describe("scan job lifecycle", () => {
             ],
           }),
         } as never,
-        cacheEnabled: false,
         browserObservation: {
           actorId: "owner/agentify-browser-observer",
           actorBuild: "1.0.42",

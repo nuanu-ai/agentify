@@ -289,12 +289,12 @@ const scannerPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
     },
     {
       id: "retention",
-      title: "Cache and retention",
+      title: "Retention",
       blocks: [
         {
           kind: "paragraph",
           content:
-            "Eligible technical snapshots may be cached for 24 hours. We do not retain target raw bodies, cookies, full headers, credentials, or raw IP addresses. Structured scan facts follow the retention described in the privacy page.",
+            "Every scan reads the site afresh; no earlier result stands in for it. We do not retain target raw bodies, cookies, full headers, credentials, or raw IP addresses. Structured scan facts follow the retention described in the privacy page.",
         },
       ],
     },

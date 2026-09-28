@@ -2,14 +2,7 @@ import type { CheckResult, DiagnosticLevel, ScanJobV1 } from "@agentify/scanner-
 import { and, eq, sql } from "drizzle-orm";
 import { emitStoredBusinessEvent } from "./analytics-runtime.js";
 import type { Database } from "./client.js";
-import {
-  browserObservations,
-  scanChecks,
-  scanFingerprints,
-  scanSnapshots,
-  scans,
-  sessions,
-} from "./schema.js";
+import { browserObservations, scanChecks, scanFingerprints, scans, sessions } from "./schema.js";
 
 type ScanEvaluationData = {
   checks: CheckResult[];
@@ -49,9 +42,6 @@ type TerminalCommitData = {
   scanId: string;
   attemptNo: number;
   evaluation: ScanEvaluationData;
-  cacheKey: string;
-  cacheHit: boolean;
-  sourceScanId?: string;
   finishedAt: Date;
   browserObservation?: {
     id: string;
@@ -61,11 +51,6 @@ type TerminalCommitData = {
     actorId: string;
     actorBuild: string;
   };
-};
-
-type SnapshotData = ScanEvaluationData & {
-  sourceScanId: string;
-  expiresAt: Date;
 };
 
 export function createScanJobRepository(db: Database) {
@@ -145,29 +130,6 @@ export function createScanJobRepository(db: Database) {
       });
     },
 
-    async findReusableSnapshot(cacheKey: string, now: Date): Promise<SnapshotData | undefined> {
-      const [snapshot] = await db
-        .select()
-        .from(scanSnapshots)
-        .where(
-          and(
-            eq(scanSnapshots.cacheKey, cacheKey),
-            sql`${scanSnapshots.expiresAt} > ${now}`,
-            sql`${scanSnapshots.invalidatedAt} is null`,
-            sql`${scanSnapshots.coverage} >= 0.700`,
-          ),
-        )
-        .limit(1);
-      if (!snapshot) return undefined;
-      const stored = snapshot.checks as ScanEvaluationData;
-      return {
-        ...stored,
-        fingerprint: snapshot.fingerprint as ScanEvaluationData["fingerprint"],
-        sourceScanId: snapshot.id,
-        expiresAt: snapshot.expiresAt,
-      };
-    },
-
     async commitTerminal(input: TerminalCommitData): Promise<"committed" | "already_terminal"> {
       return await db.transaction(async (tx) => {
         const locked = await tx.execute<{
@@ -175,9 +137,8 @@ export function createScanJobRepository(db: Database) {
           attempt_no: number;
           session_id: string;
           segment: "store" | "owner" | "local";
-          canonical_target_url: string;
         }>(
-          sql`select status, attempt_no, session_id, segment, canonical_target_url from scans where id = ${input.scanId} for update`,
+          sql`select status, attempt_no, session_id, segment from scans where id = ${input.scanId} for update`,
         );
         const current = locked.rows[0];
         if (!current) throw new Error("scan_not_found");
@@ -195,8 +156,6 @@ export function createScanJobRepository(db: Database) {
             level: score.level,
             applicableWeight: String(score.applicableWeight),
             earnedWeight: String(score.earnedWeight),
-            cacheHit: input.cacheHit,
-            sourceScanId: input.sourceScanId ?? null,
             finishedAt: input.finishedAt,
             workerHeartbeatAt: input.finishedAt,
           })
@@ -234,29 +193,6 @@ export function createScanJobRepository(db: Database) {
               detectorVersion: fingerprint.detectorVersion,
             },
           });
-
-        if (
-          !input.cacheHit &&
-          score.terminalStatus !== "failed" &&
-          score.coverage >= 0.7 &&
-          score.score !== null
-        ) {
-          await tx
-            .insert(scanSnapshots)
-            .values({
-              id: input.scanId,
-              cacheKey: input.cacheKey,
-              rubricVersion: score.rubricVersion,
-              segmentProfile: current.segment,
-              canonicalTargetUrl: current.canonical_target_url,
-              checks: input.evaluation,
-              fingerprint,
-              score: score.score,
-              coverage: String(score.coverage),
-              expiresAt: new Date(input.finishedAt.getTime() + 86_400_000),
-            })
-            .onConflictDoNothing({ target: scanSnapshots.cacheKey });
-        }
 
         if (input.browserObservation && ["completed", "partial"].includes(score.terminalStatus)) {
           await tx
@@ -297,7 +233,6 @@ export function createScanJobRepository(db: Database) {
             segment: current.segment,
             landingVariant: session.landingVariant ?? "unknown",
             properties: {
-              cache_hit: input.cacheHit,
               coverage: score.coverage,
               terminal_status: score.terminalStatus,
             },

@@ -9,18 +9,10 @@ import {
 import { createUuidV7 } from "@agentify/scanner-database";
 import type { ScanRunner } from "./scan-runner.js";
 
-export type ReusableScanSnapshot = ScanEvaluation & {
-  sourceScanId: string;
-  expiresAt: Date;
-};
-
 export type TerminalCommit = {
   scanId: string;
   attemptNo: number;
   evaluation: ScanEvaluation;
-  cacheKey: string;
-  cacheHit: boolean;
-  sourceScanId?: string;
   finishedAt: Date;
   browserObservation?: {
     id: string;
@@ -37,8 +29,7 @@ export interface ScanJobRepository {
   claim(job: ScanJobV1): Promise<"claimed" | "terminal" | "in_progress">;
   heartbeat(scanId: string, attemptNo: number, at: Date): Promise<void>;
   upsertCheck(scanId: string, attemptNo: number, check: CheckResult, at: Date): Promise<boolean>;
-  findReusableSnapshot(cacheKey: string, now: Date): Promise<ReusableScanSnapshot | undefined>;
-  /** One transaction: score/fingerprint/snapshot/terminal status/scan_completed unique business event. */
+  /** One transaction: score/fingerprint/terminal status/scan_completed unique business event. */
   commitTerminal(input: TerminalCommit): Promise<"committed" | "already_terminal">;
   markSystemFailure(
     scanId: string,
@@ -52,7 +43,6 @@ export interface ScanJobRepository {
 export type ScanJobMetric = (
   | { name: "scan_job_started"; value: 1 }
   | { name: "scan_job_terminal"; value: 1; status: string }
-  | { name: "scan_job_cache_hit"; value: 1 }
   | { name: "scan_job_skipped_terminal"; value: 1 }
   | { name: "scan_job_claim_conflict"; value: 1 }
   | { name: "scan_job_failure"; value: 1; code: string }
@@ -62,7 +52,6 @@ export type ScanJobMetric = (
 export type ProcessScanJobDependencies = {
   repository: ScanJobRepository;
   runner: ScanRunner;
-  cacheEnabled: boolean;
   browserObservation?: {
     actorId: string;
     actorBuild: string;
@@ -72,11 +61,6 @@ export type ProcessScanJobDependencies = {
   emitMetric?: (metric: ScanJobMetric) => void;
   now?: () => Date;
 };
-
-const cacheKeyFor = (job: ScanJobV1): string =>
-  createHash("sha256")
-    .update(`${job.rubric_version}\0${job.segment}\0${job.canonical_target_url}`)
-    .digest("hex");
 
 const sampledForBrowserObservation = (scanId: string, sampleRate: number): boolean => {
   if (sampleRate >= 1) return true;
@@ -141,29 +125,23 @@ export const processScanJob = async (
     });
   }, 10_000);
   heartbeat.unref();
-  const cacheKey = cacheKeyFor(job);
 
   try {
-    const snapshot = dependencies.cacheEnabled
-      ? await dependencies.repository.findReusableSnapshot(cacheKey, now())
-      : undefined;
     const progressivelyWritten = new Set<number>();
-    const evaluation =
-      snapshot ??
-      (await dependencies.runner.run(job, {
-        onChecksComplete: async (checks) => {
-          for (const check of checks) {
-            const written = await dependencies.repository.upsertCheck(
-              job.scan_id,
-              job.attempt_no,
-              check,
-              now(),
-            );
-            if (!written) throw new Error("scan_attempt_fenced");
-            progressivelyWritten.add(check.id);
-          }
-        },
-      }));
+    const evaluation = await dependencies.runner.run(job, {
+      onChecksComplete: async (checks) => {
+        for (const check of checks) {
+          const written = await dependencies.repository.upsertCheck(
+            job.scan_id,
+            job.attempt_no,
+            check,
+            now(),
+          );
+          if (!written) throw new Error("scan_attempt_fenced");
+          progressivelyWritten.add(check.id);
+        }
+      },
+    });
     for (const check of evaluation.checks) {
       if (progressivelyWritten.has(check.id)) continue;
       const written = await dependencies.repository.upsertCheck(
@@ -198,9 +176,6 @@ export const processScanJob = async (
       scanId: job.scan_id,
       attemptNo: job.attempt_no,
       evaluation,
-      cacheKey,
-      cacheHit: Boolean(snapshot),
-      ...(snapshot ? { sourceScanId: snapshot.sourceScanId } : {}),
       finishedAt: now(),
       ...(browserObservation ? { browserObservation } : {}),
     });
@@ -221,13 +196,6 @@ export const processScanJob = async (
         // Reconciler will publish the transactionally-created queued row.
       }
     }
-    if (snapshot)
-      dependencies.emitMetric?.({
-        name: "scan_job_cache_hit",
-        value: 1,
-        scanId: job.scan_id,
-        attemptNo: job.attempt_no,
-      });
     dependencies.emitMetric?.({
       name: "scan_job_terminal",
       value: 1,

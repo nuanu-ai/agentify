@@ -18,7 +18,6 @@ const SAFE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
 const allowedAttributeKeys = new Set([
   "attempt_no",
   "browser_mode",
-  "cache_hit",
   "configured_concurrency",
   "database_connected",
   "destination",

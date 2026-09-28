@@ -28,7 +28,6 @@ const schema = z.object({
   TURNSTILE_SITE_KEY: optionalNonEmpty(z.string().min(1)),
   CABINET_IDENTITY_URL: optionalNonEmpty(z.url({ protocol: /^https?$/ })),
   REPORT_IDENTITY_SECRET: optionalNonEmpty(z.string().min(32)),
-  SCANNER_CACHE_ENABLED: booleanEnv,
   BENCHMARK_ENABLED: booleanEnv,
   PUBLIC_SHARE_ENABLED: booleanEnv,
   PARTNER_POSTBACK_ENABLED: booleanEnv,

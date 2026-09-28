@@ -215,7 +215,6 @@ export async function startWorkerInfrastructure(
         transport: new NodePinnedTransport(),
         appBaseUrl: env.APP_BASE_URL,
       }),
-      cacheEnabled: env.SCANNER_CACHE_ENABLED,
       emitMetric: (metric) => emitWorkerMetric(logger, metric),
       ...(browserActive
         ? {

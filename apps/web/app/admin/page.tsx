@@ -302,7 +302,6 @@ export default async function AdminPage() {
                 <tr key={scan.scanId}>
                   <td>
                     <strong>{scan.targetHost}</strong>
-                    {scan.cacheHit ? <small> cache</small> : null}
                   </td>
                   <td>{scan.segment}</td>
                   <td>
