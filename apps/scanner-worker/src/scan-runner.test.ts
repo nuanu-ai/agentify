@@ -334,6 +334,30 @@ describe("bounded scan graph", () => {
     }).run(job);
     expect(target.paths.some((request) => request.includes("/private/"))).toBe(false);
     expect(evaluation.checks.find((check) => check.id === 8)?.errorCode).toBe("robots_disallowed");
+
+    // The page itself, and each of its four requests, redirected the same way.
+    const page = transport("User-agent: *\nDisallow: /private/\n");
+    const moved: PinnedTransport = {
+      request: async (input) =>
+        input.url.pathname === "/"
+          ? {
+              ...makeArtifact(input, 302, "", "text/html"),
+              redirectLocation: "https://example.com/private/home",
+            }
+          : page.adapter.request(input),
+    };
+    const pageEvaluation = await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: moved,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(page.paths.some((request) => request.includes("/private/"))).toBe(false);
+    // Markdown and agent access read that page alone.
+    expect(
+      [7, 13].map((id) => pageEvaluation.checks.find((check) => check.id === id)?.errorCode),
+    ).toEqual(["robots_disallowed", "robots_disallowed"]);
   });
 
   it("judges an address on another host of the site by that host's own robots.txt", async () => {

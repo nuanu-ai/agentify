@@ -1085,7 +1085,8 @@ const hreflangCheck = (artifacts: ScanArtifacts): CheckResult => {
 export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
   const robotsReading = readRobots(artifacts.robots);
   const robotsParsed = robotsReading.parsed;
-  const targetPath = new URL(artifacts.canonicalTargetUrl).pathname || "/";
+  const targetUrl = new URL(artifacts.canonicalTargetUrl);
+  const targetPath = `${targetUrl.pathname || "/"}${targetUrl.search}`;
   const robotsMissing = artifacts.robots.status === 404 || artifacts.robots.status === 410;
   const robotsReadable =
     artifacts.robots.status === 200 && !artifacts.robots.errorCode && !robotsParsed.fatal;

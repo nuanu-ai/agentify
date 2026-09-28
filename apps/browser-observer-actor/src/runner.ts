@@ -145,9 +145,10 @@ type RobotsCacheValue =
 export const permitsSearchPurpose = (parsed: RobotsParseResult): boolean =>
   parsed.contentSignal?.search !== "no";
 
-export const permitsBrowserNavigation = (parsed: RobotsParseResult, pathname: string): boolean =>
+export const permitsBrowserNavigation = (parsed: RobotsParseResult, url: URL): boolean =>
   permitsSearchPurpose(parsed) &&
-  isPathAllowed(parsed, "agentify-browser-observer", pathname) === true;
+  isPathAllowed(parsed, "agentify-browser-observer", `${url.pathname || "/"}${url.search}`) ===
+    true;
 
 export const authorizeMainFrameNavigation = async (options: {
   isNavigation: boolean;
@@ -221,7 +222,7 @@ const robotsAllows = async (options: {
   }
   if (cached.kind === "blocked") return false;
   if (cached.kind === "allow_all") return true;
-  return permitsBrowserNavigation(cached.value, options.url.pathname);
+  return permitsBrowserNavigation(cached.value, options.url);
 };
 
 const safeActorBuild = (value: string): string => {

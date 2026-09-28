@@ -7,6 +7,7 @@ import {
   parseRobots,
   parseSafeJson,
   parseSitemap,
+  type RobotsParseResult,
   type ScanArtifacts,
   type ScanEvaluation,
 } from "@agentify/scanner";
@@ -204,18 +205,39 @@ export class ScanRunner {
       const robotsDecisionKnown =
         !robots.errorCode &&
         ([404, 410].includes(robots.status) || (robots.status === 200 && !parsedRobots.fatal));
-      // true or false for the URL, or undefined when robots.txt could not be
-      // read or the decision would cost more than the matcher's budget.
-      const robotsVerdict = (url: URL): boolean | undefined =>
-        robots.status === 404 || robots.status === 410
-          ? true
-          : robotsDecisionKnown
-            ? isPathAllowed(parsedRobots, "agentify-scanner", url.pathname || "/")
-            : undefined;
+      // Each host of the site answers for itself: its robots.txt is read the
+      // first time a request, or a redirect, would reach it.
+      type RobotsReading = { artifact: FetchArtifact; parsed: RobotsParseResult };
+      const robotsByOrigin = new Map<string, Promise<RobotsReading>>([
+        [target.origin, Promise.resolve({ artifact: robots, parsed: parsedRobots })],
+      ]);
+      const readRobotsOf = (origin: string): Promise<RobotsReading> => {
+        let reading = robotsByOrigin.get(origin);
+        if (!reading) {
+          reading = fetch(new URL("/robots.txt", origin), {
+            bodyLimit: 512 * 1024,
+            accept: "text/plain,*/*;q=0.1",
+          }).then((artifact) => ({ artifact, parsed: parseRobots(artifact.body) }));
+          robotsByOrigin.set(origin, reading);
+        }
+        return reading;
+      };
+      // true or false for the URL, its query included, or undefined when its
+      // host's robots.txt could not be read or the decision would cost more
+      // than the matcher's budget.
+      const robotsVerdict = async (url: URL): Promise<boolean | undefined> => {
+        const { artifact, parsed } = await readRobotsOf(url.origin);
+        if (artifact.status === 404 || artifact.status === 410) return true;
+        if (artifact.errorCode || artifact.status !== 200 || parsed.fatal) return undefined;
+        return isPathAllowed(parsed, "agentify-scanner", `${url.pathname || "/"}${url.search}`);
+      };
       const blockedCodeFor = (verdict: boolean | undefined) =>
         verdict === false ? "robots_disallowed" : "robots_unavailable";
-      const robotsAllows = (url: URL): boolean => robotsVerdict(url) === true;
-      const targetVerdict = robotsVerdict(target);
+      const admit = async (url: URL): Promise<string | undefined> => {
+        const verdict = await robotsVerdict(url);
+        return verdict === true ? undefined : blockedCodeFor(verdict);
+      };
+      const targetVerdict = await robotsVerdict(target);
       const targetAllowed = targetVerdict === true;
       const declaredSitemaps = parsedRobots.sitemaps
         .map((value) => canonicalSameSiteUrl(value, target, usedHttpFallback))
@@ -224,30 +246,33 @@ export class ScanRunner {
       const sitemapTargets = declaredSitemaps.length
         ? declaredSitemaps
         : [discoveryUrl(target, "/sitemap.xml")];
-      const fetchIfRobotsAllowed = (
+      const fetchIfRobotsAllowed = async (
         url: URL,
         fetchOptions: Parameters<SafeFetcher["fetch"]>[1],
       ): Promise<FetchArtifact> => {
-        const verdict = robotsVerdict(url);
+        const verdict = await robotsVerdict(url);
         return verdict === true
-          ? fetch(url, fetchOptions)
-          : Promise.resolve(unavailableArtifact(url, blockedCodeFor(verdict)));
+          ? fetch(url, { ...fetchOptions, admit })
+          : unavailableArtifact(url, blockedCodeFor(verdict));
       };
 
       const contentPromise = targetAllowed
         ? Promise.all([
-            fetch(target, { bodyLimit: 2 * 1024 * 1024 }),
+            fetch(target, { bodyLimit: 2 * 1024 * 1024, admit }),
             fetch(target, {
               bodyLimit: 2 * 1024 * 1024,
               accept: "text/markdown",
+              admit,
             }),
             fetch(target, {
               bodyLimit: 2 * 1024 * 1024,
               userAgent: asAgent("ChatGPT-User/1.0"),
+              admit,
             }),
             fetch(target, {
               bodyLimit: 2 * 1024 * 1024,
               userAgent: asAgent("Claude-User"),
+              admit,
             }),
           ])
         : Promise.resolve([]);
@@ -355,17 +380,19 @@ export class ScanRunner {
         job.segment === "store" && robotsDecisionKnown && targetAllowed
           ? (async () => {
               const found = productCandidates(target, sitemap, usedHttpFallback);
-              const candidates = found.filter(robotsAllows);
+              const verdicts = await Promise.all(found.map(robotsVerdict));
+              const candidates = found.filter((_, index) => verdicts[index] === true);
               // A product page robots.txt keeps the scanner off still tells the
               // engine why the store's product data went unread.
               if (!candidates.length && found[0])
-                return unavailableArtifact(found[0], blockedCodeFor(robotsVerdict(found[0])));
+                return unavailableArtifact(found[0], blockedCodeFor(verdicts[0]));
               const heads = await Promise.all(
                 candidates.map((candidate) =>
                   fetch(candidate, {
                     method: "HEAD",
                     bodyLimit: 0,
                     accept: "text/html,*/*;q=0.1",
+                    admit,
                   }),
                 ),
               );
@@ -380,6 +407,7 @@ export class ScanRunner {
               return representative
                 ? await fetch(representative, {
                     bodyLimit: 2 * 1024 * 1024,
+                    admit,
                   })
                 : undefined;
             })()

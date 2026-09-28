@@ -39,6 +39,11 @@ export type SafeFetchOptions = {
   bodyLimit?: number;
   timeoutMs?: number;
   signal?: AbortSignal;
+  /**
+   * Asked before a redirect is followed: the reason not to request the
+   * address it leads to, or undefined to follow it.
+   */
+  admit?: (url: URL) => Promise<string | undefined>;
 };
 
 export const selectPinnedAddress = (answers: readonly ResolvedAddress[]): ResolvedAddress => {
@@ -360,6 +365,19 @@ export class SafeFetcher {
         if (redirects >= 5) return { ...artifact, errorCode: "redirect_limit_exceeded" };
         redirects += 1;
         url = validateRedirect(url, location);
+        const refused = await options.admit?.(url);
+        if (refused)
+          return {
+            url: url.toString(),
+            status: 0,
+            headers: {},
+            body: "",
+            decodedBytes: 0,
+            truncated: false,
+            durationMs: artifact.durationMs,
+            ttfbMs: 0,
+            errorCode: refused,
+          };
       }
     } finally {
       options.signal?.removeEventListener("abort", relayAbort);

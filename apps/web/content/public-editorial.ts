@@ -282,11 +282,11 @@ const scannerPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
             text("We fetch "),
             code("/robots.txt"),
             text(
-              " first and follow it for every later request: the page, its sitemap, llms.txt and the ",
+              " first and follow it for every later request, its query and each redirect included: the page, its sitemap, llms.txt and the ",
             ),
             code("/.well-known"),
             text(
-              " discovery files. A check whose requests it disallows is marked not assessed, and the report names robots.txt as the reason. If robots.txt cannot be read, or its rules cannot be decided for an address, we read nothing it might forbid. We do not bypass that rule.",
+              " discovery files. An address on another host of the site is judged by that host's own robots.txt, read first. A check whose requests it disallows is marked not assessed, and the report names robots.txt as the reason. If robots.txt cannot be read, or its rules cannot be decided for an address, we read nothing it might forbid. We do not bypass that rule.",
             ),
           ],
         },
