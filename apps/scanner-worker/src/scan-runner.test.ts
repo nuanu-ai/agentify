@@ -300,6 +300,81 @@ describe("bounded scan graph", () => {
     ]);
   });
 
+  it("reads a robots.txt rule against the query as well as the path", async () => {
+    // Shopify's default robots.txt keeps crawlers off theme previews this way.
+    const target = transport("User-agent: *\nDisallow: /*preview_theme_id*\n");
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: target.adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run({ ...job, canonical_target_url: "https://example.com/?preview_theme_id=5" });
+    expect(target.paths.some((request) => request.startsWith("GET / "))).toBe(false);
+    expect(evaluation.checks.find((check) => check.id === 12)?.errorCode).toBe("robots_disallowed");
+  });
+
+  it("follows a redirect only where robots.txt allows the address it leads to", async () => {
+    const target = transport("User-agent: *\nDisallow: /private/\n");
+    const adapter: PinnedTransport = {
+      request: async (input) =>
+        input.url.pathname === "/llms.txt"
+          ? {
+              ...makeArtifact(input, 301, "", "text/plain"),
+              redirectLocation: "https://example.com/private/llms.txt",
+            }
+          : target.adapter.request(input),
+    };
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(target.paths.some((request) => request.includes("/private/"))).toBe(false);
+    expect(evaluation.checks.find((check) => check.id === 8)?.errorCode).toBe("robots_disallowed");
+  });
+
+  it("judges an address on another host of the site by that host's own robots.txt", async () => {
+    const requested: string[] = [];
+    const target = transport(
+      "User-agent: *\nAllow: /\nSitemap: https://static.example.com/sitemap.xml\n",
+    );
+    const adapter: PinnedTransport = {
+      request: async (input) => {
+        requested.push(`${input.method} ${input.url.host}${input.url.pathname}`);
+        if (input.url.host === "static.example.com")
+          return input.url.pathname === "/robots.txt"
+            ? makeArtifact(input, 200, "User-agent: *\nDisallow: /\n", "text/plain")
+            : makeArtifact(input, 200, "<urlset></urlset>", "application/xml");
+        if (input.url.host === "example.com" && input.url.pathname === "/")
+          return {
+            ...makeArtifact(input, 301, "", "text/html"),
+            redirectLocation: "https://www.example.com/",
+          };
+        if (input.url.host === "www.example.com" && input.url.pathname === "/robots.txt")
+          return makeArtifact(input, 200, "User-agent: *\nAllow: /\n", "text/plain");
+        return target.adapter.request(input);
+      },
+    };
+    await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    // The other host's robots.txt is read, once, and its sitemap is not.
+    expect(
+      requested.filter((request) => request === "GET static.example.com/robots.txt"),
+    ).toHaveLength(1);
+    expect(requested).not.toContain("GET static.example.com/sitemap.xml");
+    // A page that moved to www is read once www's robots.txt allows it.
+    expect(requested).toContain("GET www.example.com/robots.txt");
+    expect(requested).toContain("GET www.example.com/");
+  });
+
   it("does not fetch the well-known discovery files robots.txt keeps the scanner out of", async () => {
     const target = transport("User-agent: *\nDisallow: /.well-known/\n");
     await new ScanRunner({

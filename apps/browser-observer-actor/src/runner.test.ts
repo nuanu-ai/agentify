@@ -78,14 +78,26 @@ describe("search-purpose policy", () => {
     const parsed = parseRobots(
       "User-agent: agentify-browser-observer\nDisallow: /private\nAllow: /",
     );
-    expect(permitsBrowserNavigation(parsed, "/")).toBe(true);
-    expect(permitsBrowserNavigation(parsed, "/private")).toBe(false);
-    expect(permitsBrowserNavigation(parsed, "/private/js-navigation")).toBe(false);
+    expect(permitsBrowserNavigation(parsed, new URL("https://example.com/"))).toBe(true);
+    expect(permitsBrowserNavigation(parsed, new URL("https://example.com/private"))).toBe(false);
+    expect(
+      permitsBrowserNavigation(parsed, new URL("https://example.com/private/js-navigation")),
+    ).toBe(false);
+  });
+
+  it("reads a robots.txt rule against the query as well as the path", () => {
+    const parsed = parseRobots("User-agent: *\nDisallow: /*preview_theme_id*\n");
+    expect(
+      permitsBrowserNavigation(parsed, new URL("https://example.com/?preview_theme_id=5")),
+    ).toBe(false);
+    expect(permitsBrowserNavigation(parsed, new URL("https://example.com/?page=2"))).toBe(true);
   });
 
   it("does not navigate where the robots decision would cost too much to make", () => {
     const parsed = parseRobots(`User-agent: *\n${"Allow: *aaaaab\n".repeat(30_000)}`);
-    expect(permitsBrowserNavigation(parsed, `/${"a".repeat(1_500)}`)).toBe(false);
+    expect(
+      permitsBrowserNavigation(parsed, new URL(`https://example.com/${"a".repeat(1_500)}`)),
+    ).toBe(false);
   });
 
   it("checks robots before redirect or script navigation can fetch content", async () => {
