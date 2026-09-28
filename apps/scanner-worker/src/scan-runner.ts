@@ -229,13 +229,6 @@ export class ScanRunner {
           ? fetch(url, fetchOptions)
           : Promise.resolve(unavailableArtifact(url, blockedCodeFor(verdict)));
       };
-      const fetchExplicitDiscovery = (
-        url: URL,
-        fetchOptions: Parameters<SafeFetcher["fetch"]>[1],
-      ): Promise<FetchArtifact> =>
-        robotsDecisionKnown
-          ? fetch(url, fetchOptions)
-          : Promise.resolve(unavailableArtifact(url, "robots_unavailable"));
 
       const contentPromise = targetAllowed
         ? Promise.all([
@@ -295,23 +288,23 @@ export class ScanRunner {
       const ucpUrl = discoveryUrl(target, "/.well-known/ucp");
       const a2aUrl = discoveryUrl(target, "/.well-known/agent-card.json");
       const wellKnown = Promise.all([
-        fetchExplicitDiscovery(mcpUrl, {
+        fetchIfRobotsAllowed(mcpUrl, {
           bodyLimit: 1024 * 1024,
           accept: "application/json,*/*;q=0.1",
         }),
-        fetchExplicitDiscovery(mcpCardUrl, {
+        fetchIfRobotsAllowed(mcpCardUrl, {
           bodyLimit: 1024 * 1024,
           accept: "application/json,*/*;q=0.1",
         }),
         ...(job.segment === "store"
           ? [
-              fetchExplicitDiscovery(ucpUrl, {
+              fetchIfRobotsAllowed(ucpUrl, {
                 bodyLimit: 1024 * 1024,
                 accept: "application/json,*/*;q=0.1",
               }),
             ]
           : []),
-        fetchExplicitDiscovery(a2aUrl, {
+        fetchIfRobotsAllowed(a2aUrl, {
           bodyLimit: 1024 * 1024,
           accept: "application/json,*/*;q=0.1",
         }),
@@ -350,14 +343,11 @@ export class ScanRunner {
 
       const oauthPromise = authDeclared(phaseArtifacts)
         ? Promise.all([
-            fetchExplicitDiscovery(
-              discoveryUrl(target, "/.well-known/oauth-authorization-server"),
-              {
-                bodyLimit: 1024 * 1024,
-                accept: "application/json,*/*;q=0.1",
-              },
-            ),
-            fetchExplicitDiscovery(discoveryUrl(target, "/.well-known/oauth-protected-resource"), {
+            fetchIfRobotsAllowed(discoveryUrl(target, "/.well-known/oauth-authorization-server"), {
+              bodyLimit: 1024 * 1024,
+              accept: "application/json,*/*;q=0.1",
+            }),
+            fetchIfRobotsAllowed(discoveryUrl(target, "/.well-known/oauth-protected-resource"), {
               bodyLimit: 1024 * 1024,
               accept: "application/json,*/*;q=0.1",
             }),
