@@ -158,8 +158,8 @@ about worker restart. The happy purchase is a controlled live pass.
 Failure recovery is not self-service. The connector deliberately refuses blind
 remote-order retries, and its safe closure is a private operator command bound
 to one Agentify order and, where needed, one exact Woo order id. The public
-merchant flow has no recovery control. Dmitry deferred the public pilot-contact
-decision, so this report does not invent an address, CTA or claim that an
+merchant flow has no recovery control. The public pilot-contact decision was
+deferred, so this report does not invent an address, CTA or claim that an
 unassigned merchant can close refund debt alone. Even if both recovery cases
 pass, the result is a working operator-assisted pilot connector, not autonomous
 WooCommerce support.

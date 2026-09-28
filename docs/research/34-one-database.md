@@ -1,11 +1,12 @@
 # One database
 
 Date: 2026-09-23. A design note: a survey of the two databases the product
-kept on one PostgreSQL server, a proposal for making them one, Dmitry's
-decisions, and at the end how it was built. The code for it follows the branch that replaces the Ansible
-release with `deploy/activate.sh` and the `agentify-release` command, because
-both change the release path and the migrations; the release of it follows
-production's move onto that path and the off-host backup.
+kept on one PostgreSQL server, a proposal for making them one, the decisions
+taken on it, and at the end how it was built. The code for it follows the
+branch that replaces the Ansible release with `deploy/activate.sh` and the
+`agentify-release` command, because both change the release path and the
+migrations; the release of it follows production's move onto that path and
+the off-host backup.
 
 ## How to read this note
 
@@ -761,9 +762,9 @@ ADR-0016, in the form the branch that introduces `activate.sh` gives it,
 changes wherever it describes a restore point of two databases. ADR-0026,
 paragraph 3, and ADR-0024 change further only with Option 4.
 
-## Dmitry's decisions
+## Decisions of 2026-09-23
 
-Dmitry decided on 2026-09-23, choice by choice as this note put them.
+The choices were decided on 2026-09-23, one by one as this note put them.
 
 The scanner's tables join `public` (Option 1). The host rename rides with the
 move, and the project becomes `agentify` on both hosts, with the volumes

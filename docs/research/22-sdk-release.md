@@ -5,8 +5,8 @@ both. The bootstrap release, SDK `0.2.4`, was verified against the retained
 tarball digests, with a successful external install and CLI check.
 Every version under the former package names is deprecated with a replacement
 message; registry history remains available. Both Agentify packages trust
-`nuanu-ai/agentify` and `publish-sdk.yml` for GitHub Actions publishing. Dmitry
-authorized enabling that workflow on 2026-09-16, as recorded in ADR-0016.
+`nuanu-ai/agentify` and `publish-sdk.yml` for GitHub Actions publishing.
+Enabling that workflow was authorized on 2026-09-16, as recorded in ADR-0016.
 Test and production host delivery are outside this release, and the namespace
 cutover remains paused.
 

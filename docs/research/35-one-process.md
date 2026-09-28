@@ -2,9 +2,9 @@
 
 Date: 2026-09-25. A design note: a survey of how the gateway and the cabinet
 are two processes today, what that boundary costs and buys, and the design for
-making them one. Dmitry set the direction on 2026-09-25 and agreed with the
-note's recommendations the same day; the decision is ADR-0030, and this note
-holds the detail it rests on.
+making them one. The direction was set on 2026-09-25, and the note's
+recommendations were accepted the same day; the decision is ADR-0030, and this
+note holds the detail it rests on.
 
 ## How to read this note
 
@@ -394,14 +394,13 @@ cancelled, as it is not today when a request times out on the client.
 The caller is a signed-in person, not a key. `KeyOnTheCall` in `gateway.ts`
 becomes a caller that is either a key or a person in the cabinet, and a message
 about a payout wallet change names who acted: the signed-in person's address.
-A wallet is changed only in the cabinet (Dmitry, 2026-09-25, recorded in
+A wallet is changed only in the cabinet (decided on 2026-09-25, recorded in
 ADR-0019 by its own change), so no key ever asks. Today a change from the
-cabinet is named only
-as "the cabinet" (`AskedWithSchema` in `apps/gateway/src/announcements.ts`),
-because the gateway sees the cabinet's key and not the person behind it. Two
-more things follow. The cabinet's list of
-keys has no `this_call`, because a page acting for a signed-in person holds no
-key, and every key on it can be disabled from there. And a merchant can no
+cabinet is named only as "the cabinet" (`AskedWithSchema` in
+`apps/gateway/src/announcements.ts`), because the gateway sees the cabinet's
+key and not the person behind it. Two more things follow. The cabinet's list
+of keys has no `this_call`, because a page acting for a signed-in person holds
+no key, and every key on it can be disabled from there. And a merchant can no
 longer lock themselves out by disabling keys: the way back in is always the
 mailed link, which needs no key.
 

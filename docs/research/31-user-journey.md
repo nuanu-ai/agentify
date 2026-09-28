@@ -1,7 +1,7 @@
 # The path through one site: scanner, cabinet, documentation
 
 Date: 2026-09-21. A design note about screens and flows, rewritten freely;
-not a decision. Written on Dmitry's word of the same day, which accepted the
+not a decision. Written on the approval of the same day, which accepted the
 four changes below, and revised after an adversarial review of the first
 draft by an agent with a clean context.
 
@@ -298,9 +298,10 @@ pages' metadata, the social image's words and the `llms.txt`, and asks that
 none of them carries the second name, comparing words the way a reader
 meets them, with tags stripped and case ignored, so that a capitalised or
 split rendering cannot slip through. This is a check on words, which the
-charter is wary of; it is kept because the promise it guards is the one
-Dmitry made, that the site has one name, and the file already holds a test
-of the same shape for the application form that was removed.
+charter is wary of; it is kept because the promise it guards, that the site
+has one name, is one of the four changes accepted on 2026-09-21, and the file
+already holds a test of the same shape for the application form that was
+removed.
 
 ## What is not done, and why
 
@@ -329,5 +330,5 @@ registered change with its own decision rule, not a side effect of this one.
 ## Where the work is tracked
 
 The tracker did not answer this session, so no issue was opened for this
-pass; Dmitry's word of 2026-09-21 stands in for it, and the four commits
+pass; the approval of 2026-09-21 stands in for it, and the four commits
 name this note.
