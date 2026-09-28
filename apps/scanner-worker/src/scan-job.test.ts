@@ -211,7 +211,7 @@ describe("scan job lifecycle", () => {
       },
     });
     expect(state.terminal?.browserObservation).toMatchObject({
-      observationVersion: "browser-public-v1.0.0",
+      observationVersion: "browser-public-v2.0.0",
       actorId: "owner/agentify-browser-observer",
       actorBuild: "1.0.42",
     });

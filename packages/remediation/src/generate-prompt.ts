@@ -1,4 +1,7 @@
-import type { BrowserObservationId } from "@agentify/scanner-contracts";
+import {
+  BROWSER_OBSERVATION_VERSION,
+  type BrowserObservationId,
+} from "@agentify/scanner-contracts";
 import {
   canonicalCheckLabel,
   canonicalFixCopy,
@@ -101,7 +104,7 @@ export function generateRemediationPrompt(input: {
     "",
     `Site: ${host || "public site"}`,
     `Scope: ${input.scope}`,
-    "Diagnostic versions: gtm-v1.0.0 and browser-public-v1.0.0 (browser findings are non-scoring).",
+    `Diagnostic versions: gtm-v1.0.0 and ${BROWSER_OBSERVATION_VERSION} (browser findings are non-scoring).`,
     input.platform && safeCode(input.platform)
       ? `Detected platform hint: ${safeCode(input.platform)}`
       : "",

@@ -18,8 +18,8 @@
       "title": "Schema version",
       "description": "Pinned public browser-observation contract version.",
       "type": "string",
-      "enum": ["browser-public-v1.0.0"],
-      "default": "browser-public-v1.0.0",
+      "enum": ["browser-public-v2.0.0"],
+      "default": "browser-public-v2.0.0",
       "editor": "select"
     },
     "operation_id": {

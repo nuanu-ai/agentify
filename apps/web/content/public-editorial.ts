@@ -1,5 +1,9 @@
 import { canonicalCheckLabel } from "@agentify/remediation";
-import { CHECK_DEFINITIONS, SCAN_RUBRIC_VERSION } from "@agentify/scanner-contracts";
+import {
+  BROWSER_OBSERVATION_VERSION,
+  CHECK_DEFINITIONS,
+  SCAN_RUBRIC_VERSION,
+} from "@agentify/scanner-contracts";
 
 import type { PublicAppConfig } from "../lib/app-config";
 
@@ -111,7 +115,7 @@ const methodologyPage = (): PublicEditorialPageModel => ({
           kind: "paragraph",
           content: [
             text("When enabled, the separate "),
-            code("browser-public-v1.0.0"),
+            code(BROWSER_OBSERVATION_VERSION),
             text(
               " layer passively renders public pages to observe JavaScript-only content, accessibility/form semantics, runtime/network health, metadata consistency, declared agent/API surfaces, and rendering cost. These findings are shown separately and never change the 18-check ",
             ),

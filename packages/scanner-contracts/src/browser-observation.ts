@@ -3,7 +3,7 @@ import { z } from "zod";
 import { uuidV7Schema } from "./api.js";
 import { checkStatusSchema, segmentSchema } from "./enums.js";
 
-export const BROWSER_OBSERVATION_VERSION = "browser-public-v1.0.0" as const;
+export const BROWSER_OBSERVATION_VERSION = "browser-public-v2.0.0" as const;
 
 export const BROWSER_OBSERVATION_IDS = [
   "rendered_content_delta",

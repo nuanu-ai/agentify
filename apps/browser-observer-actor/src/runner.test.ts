@@ -35,7 +35,7 @@ describe("Actor build identity", () => {
       runBrowserObservation({
         actorBuild: "1",
         input: {
-          schema_version: "browser-public-v1.0.0",
+          schema_version: "browser-public-v2.0.0",
           operation_id: "019f5d64-1234-7abc-8abc-1234567890ab",
           target: {
             canonical_url: "https://example.com/",

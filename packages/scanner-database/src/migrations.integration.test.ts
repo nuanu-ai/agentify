@@ -171,7 +171,7 @@ describe("initial database migration", () => {
         `insert into browser_observations
           (id, scan_id, observation_version, operation_id, operation_key,
            actor_id, actor_build)
-         values ($1, $2, 'browser-public-v1.0.0', $3, $4, $5, $6)`,
+         values ($1, $2, 'browser-public-v2.0.0', $3, $4, $5, $6)`,
         [
           browserObservationId,
           scanValues[0],
@@ -296,7 +296,7 @@ describe("initial database migration", () => {
           `insert into browser_observations
             (id, scan_id, observation_version, operation_id, operation_key,
              actor_id, actor_build)
-           values ($1, $2, 'browser-public-v1.0.0', $3, $4, $5, $6)`,
+           values ($1, $2, 'browser-public-v2.0.0', $3, $4, $5, $6)`,
           [
             observationId,
             budgetScanId,
@@ -414,7 +414,7 @@ describe("initial database migration", () => {
           `insert into browser_observations
             (id, scan_id, observation_version, operation_id, operation_key,
              actor_id, actor_build)
-           values ($1, $2, 'browser-public-v1.0.0', $3, $4, $5, $6)`,
+           values ($1, $2, 'browser-public-v2.0.0', $3, $4, $5, $6)`,
           [
             createUuidV7(),
             scanValues[0],

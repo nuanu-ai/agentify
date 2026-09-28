@@ -8,7 +8,7 @@ function observation(
   overrides: Partial<BrowserObservationStatusResponse> = {},
 ): BrowserObservationStatusResponse {
   return {
-    version: "browser-public-v1.0.0",
+    version: "browser-public-v2.0.0",
     status: "partial",
     non_scoring: true,
     pages_assessed: 2,
