@@ -1,10 +1,13 @@
-import type {
-  BrowserObservationFinding,
-  BrowserObservationSignals,
+import {
+  BROWSER_OBSERVATION_IDS,
+  BROWSER_OBSERVATION_VERSION,
+  type BrowserObservationFinding,
+  type BrowserObservationOutputV1,
+  type BrowserObservationSignals,
 } from "@agentify/scanner-contracts";
-import { BROWSER_OBSERVATION_IDS } from "@agentify/scanner-contracts";
 
 import type { PageSignals } from "./browser-signals.js";
+import { sanitizeBrowserOutput } from "./sanitize-output.js";
 
 export type ObservationRuntime = {
   pages: readonly PageSignals[];
@@ -476,3 +479,30 @@ export const buildObservations = (runtime: ObservationRuntime): BrowserObservati
     }),
   ];
 };
+
+/**
+ * The Actor's output, for every way a run ends: the runner decides the status
+ * and this builds the rest from what the run observed, through the sanitizer
+ * that stands between the Actor and the worker.
+ */
+export const buildBrowserOutput = (options: {
+  operationId: string;
+  actorBuild: string;
+  status: BrowserObservationOutputV1["status"];
+  runtime: ObservationRuntime;
+  totalMs: number;
+  pageTimings: readonly number[];
+}): BrowserObservationOutputV1 =>
+  sanitizeBrowserOutput({
+    schema_version: BROWSER_OBSERVATION_VERSION,
+    operation_id: options.operationId,
+    actor_build: options.actorBuild,
+    status: options.status,
+    pages_assessed: options.runtime.pages.length,
+    signals: aggregateBrowserSignals(options.runtime),
+    observations: buildObservations(options.runtime),
+    timings: {
+      total_ms: Math.min(120_000, options.totalMs),
+      pages: options.pageTimings.map((value) => Math.min(60_000, value)),
+    },
+  });

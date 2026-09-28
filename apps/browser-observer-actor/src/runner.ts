@@ -1,6 +1,5 @@
 import { isPathAllowed, parseRobots, type RobotsParseResult } from "@agentify/scanner";
 import {
-  BROWSER_OBSERVATION_VERSION,
   type BrowserObservationInputV1,
   type BrowserObservationOutputV1,
   browserObservationInputV1Schema,
@@ -18,12 +17,12 @@ import {
 } from "./network-policy.js";
 import {
   aggregateBrowserSignals,
-  buildObservations,
+  buildBrowserOutput,
   type ObservationRuntime,
 } from "./observations.js";
 import { discoverRepresentativeUrls } from "./representative-pages.js";
 import { installPassiveRuntimeGuards, PASSIVE_BROWSER_ARGS } from "./runtime-guards.js";
-import { OutputSanitizationError, sanitizeBrowserOutput } from "./sanitize-output.js";
+import { OutputSanitizationError } from "./sanitize-output.js";
 
 const HONEST_USER_AGENT = "agentify-browser-observer/1.0 (+https://agentify.ad/scanner)";
 
@@ -274,19 +273,13 @@ const failureOutput = (options: {
   actorBuild: string;
   startedAt: number;
 }): BrowserObservationOutputV1 => {
-  const runtime = emptyRuntime(options.input);
-  return sanitizeBrowserOutput({
-    schema_version: BROWSER_OBSERVATION_VERSION,
-    operation_id: options.input.operation_id,
-    actor_build: safeActorBuild(options.actorBuild),
+  return buildBrowserOutput({
+    operationId: options.input.operation_id,
+    actorBuild: safeActorBuild(options.actorBuild),
     status: "failed",
-    pages_assessed: 0,
-    signals: aggregateBrowserSignals(runtime),
-    observations: buildObservations(runtime),
-    timings: {
-      total_ms: Math.min(120_000, Date.now() - options.startedAt),
-      pages: [],
-    },
+    runtime: emptyRuntime(options.input),
+    totalMs: Date.now() - options.startedAt,
+    pageTimings: [],
   });
 };
 
@@ -568,18 +561,13 @@ export const runBrowserObservation = async (options: {
       if (allowed) {
         allowedUrls.push(url);
       } else if (index === 0) {
-        return sanitizeBrowserOutput({
-          schema_version: BROWSER_OBSERVATION_VERSION,
-          operation_id: input.operation_id,
-          actor_build: actorBuild,
+        return buildBrowserOutput({
+          operationId: input.operation_id,
+          actorBuild,
           status: "blocked",
-          pages_assessed: 0,
-          signals: aggregateBrowserSignals(runtime),
-          observations: buildObservations(runtime),
-          timings: {
-            total_ms: Math.min(120_000, Date.now() - startedAt),
-            pages: [],
-          },
+          runtime,
+          totalMs: Date.now() - startedAt,
+          pageTimings: [],
         });
       } else {
         runtime.pageFailureCount += 1;
@@ -654,18 +642,13 @@ export const runBrowserObservation = async (options: {
             ? "partial"
             : "completed";
     runtimeStage = "output";
-    return sanitizeBrowserOutput({
-      schema_version: BROWSER_OBSERVATION_VERSION,
-      operation_id: input.operation_id,
-      actor_build: actorBuild,
+    return buildBrowserOutput({
+      operationId: input.operation_id,
+      actorBuild,
       status,
-      pages_assessed: runtime.pages.length,
-      signals,
-      observations: buildObservations(runtime),
-      timings: {
-        total_ms: Math.min(120_000, Date.now() - startedAt),
-        pages: timings.map((value) => Math.min(60_000, value)),
-      },
+      runtime,
+      totalMs: Date.now() - startedAt,
+      pageTimings: timings,
     });
   } catch (error) {
     const code = safeRuntimeFailureCode(error);
