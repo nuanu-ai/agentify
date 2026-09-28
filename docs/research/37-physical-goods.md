@@ -3,9 +3,8 @@
 Date: 2026-09-28. A research note that may be rewritten. It supports ADR-0031
 (the buyer's address) and ADR-0032 (a shipped order ends at the carrier), and
 it is where their field names come from once they are fixed. The pilot has no
-merchant who sells parcels; Dmitry's word of the same day is to lay the
-foundation anyway, far enough for a demonstration, because merchants will not
-come to a path that does not exist.
+merchant who sells parcels; the foundation is laid anyway, far enough for a
+demonstration, because merchants will not come to a path that does not exist.
 
 ## The asynchronous path as it stands
 
@@ -342,12 +341,12 @@ price rule, where the offline card check sees it. The time to ship took a name
 of its own. The required price check has to be the handler, because a card
 naming a price hook that nothing calls would publish and never sell. The
 contact moved from each shipment to the merchant, because a buyer needs it
-before shipment and on a refund owed too; Dmitry then took it out of our scope
+before shipment and on a refund owed too; it was then taken out of our scope
 altogether, and the agent is given the shop's own site instead (ADR-0033).
 Tracking stayed required after the review, said at the door rather than first
-met at `deliver` after the charge; Dmitry's question about a coffee sent by
-courier then showed that a local courier has no number to give, and it became
-optional (see his answers below). The phone number became required and `state`
+met at `deliver` after the charge; the case of a coffee sent by courier then
+showed that a local courier has no number to give, and it became optional (see
+the decisions below). The phone number became required and `state`
 was named a subdivision code. The per-country table of required fields was
 dropped rather than sourced: the door checks the shape, and the merchant's
 price check judges the geography before money moves. The decisions that the new
@@ -367,13 +366,13 @@ have read `shipped`, and now reads the refund. An envelope drawn just before
 erasure could still be redelivered from the erased order; an erased order is
 now never handed out again. And a merchant admitting a lost parcel could not
 see whom to pay back, so ADR-0028's view of the payer covers a shipped order,
-and the live gate names every piece it waits for. The status lines no longer
-attribute the revisions to Dmitry's word of the morning: they await it.
+and the live gate names every piece it waits for. The revisions were then put
+up for acceptance one at a time.
 
 One finding was kept against. The second reviewer proposed erasing at shipment,
 so that a merchant who stored only our order identifier — as the portal's
 asynchronous pattern teaches — could read the address back. That would hold
-every address through days of handling, which is what Dmitry decided against.
+every address through days of handling, which the decision was taken against.
 The address is erased when the order is taken on, and the portal's pattern and
 its restart walk change for parcels instead. Another was recorded rather than
 fixed: a handler slow on every attempt exhausts five of them in about twenty
@@ -418,11 +417,11 @@ dispute answer, which promises records of what happened with the delivery that
 for a parcel we do not keep. `apps/docs/index.md`'s pilot rule, when the live
 gate opens.
 
-## Dmitry's answers of the same evening
+## The decisions of the same evening
 
 The demonstration sells a product made for it in the test WooCommerce shop the
-lab keeps (`deploy/woocommerce-lab/`), and Dmitry buys it himself on the test
-channel, with his own address: a real product, a real address given with
+lab keeps (`deploy/woocommerce-lab/`), and a member of the team buys it on the
+test channel with their own address: a real product, a real address given with
 consent, and nobody hurt if something goes wrong. So the path the
 demonstration walks is the shop connector's, and the connector learns to carry
 a physical simple product as part of the build, with ADR-0023 edited in the
@@ -442,28 +441,26 @@ on handling time»). The number was confirmed with the other revisions,
 and moves once a real merchant needs another.
 
 A handler that runs out of attempts, and the label its order closes under, stay
-as they are: «оставляем, если что подрегулируем». Duties — where the recipient
-pays them, the price the agent paid is not the whole cost — restricted goods,
-which nothing here can check an age for, returns, a changed or mistyped address
-and pickup points are not worked on for now: «не работаем с этим пока».
-ADR-0032 names them as outside the mode.
+as they are, to be adjusted if they turn out to hurt. Duties — where the
+recipient pays them, the price the agent paid is not the whole cost —
+restricted goods, which nothing here can check an age for, returns, a changed
+or mistyped address and pickup points are not worked on for now. ADR-0032 names
+them as outside the mode.
 
-The revisions of the two review rounds were then put to Dmitry one at a time.
-The price question carries the locality — country, state, city and postal
-code — rather than the country and postal code alone: «да, вариант А». A lost
-parcel is a refund recorded on the shipped order, which becomes `refunded`,
-rather than a shipped order reopened into a refund owed: «Вариант А». Where a
-buyer asks is not a contact Agentify keeps: Dmitry questioned the need for one
-at all — «мне бы не хотелось тащить больше скоупа в agentify» — and the agent
-is given the shop's site and the seller's name, with nothing else about the
-merchant: «давай начнем только с адреса» (ADR-0033). A tracking number is
-not required: a coffee sent across town by the shop's courier has none, and a
-required one would shut such shops out or be filled with something made up.
-The carrier is required as a short plain-text string — «вариант А, но как я
-понимаю, там может быть свободное поле, просто строка» — and a shipment
+The revisions of the two review rounds were then accepted one at a time. The
+price question carries the locality — country, state, city and postal code —
+rather than the country and postal code alone. A lost parcel is a refund
+recorded on the shipped order, which becomes `refunded`, rather than a shipped
+order reopened into a refund owed. Where a buyer asks is not a contact Agentify
+keeps: the need for one was questioned at all, because it would bring more
+scope into the product, and the agent is given the shop's site and the seller's
+name, with nothing else about the merchant (ADR-0033). A tracking number is not
+required: a coffee sent across town by the shop's courier has none, and a
+required one would shut such shops out or be filled with something made up. The
+carrier is required as a short free string of plain text, and a shipment
 without a number says so explicitly. The storefront's vocabularies and
-documents are open to agents, the merchant's stay strict: «я за вариант А». His
-worry — «боюсь не утонуть в куче версий» at a stage this early — is met by what
+documents are open to agents, the merchant's stay strict. The worry that came
+with that choice — drowning in versions at a stage this early — is met by what
 the choice already does and by one practice: the agent's side has no version at
 all, and the SDK's contract version moves once per feature released, not once
 per field, so the whole parcel mode is a single move.
