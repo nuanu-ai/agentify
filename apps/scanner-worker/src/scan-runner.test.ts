@@ -135,6 +135,29 @@ describe("bounded scan graph", () => {
     ).toHaveLength(1);
   });
 
+  it("names itself in each request that carries an AI agent's user-agent token", async () => {
+    const target = transport();
+    await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: target.adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    const agentRequests = target.paths.filter(
+      (request) => request.startsWith("GET / ") && request.includes("-User"),
+    );
+    expect(agentRequests).toHaveLength(2);
+    for (const token of ["ChatGPT-User/1.0", "Claude-User"])
+      expect(
+        agentRequests.some((request) =>
+          request.endsWith(
+            ` ${token} (compatible; agentify-scanner/1.0; +https://agentify.ad/scanner)`,
+          ),
+        ),
+      ).toBe(true);
+  });
+
   it("is deterministic across two identical runs except transport timing evidence", async () => {
     const run = async () => {
       const target = transport();
