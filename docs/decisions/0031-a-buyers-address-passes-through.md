@@ -2,86 +2,66 @@
 
 Date: 2026-09-28
 Status: accepted (Dmitry, 2026-09-28: «мы передаем адрес, но хранить у себя
-адрес я не вижу смысла»; the first draft — «Полностью согласен»). Revised the
-same day after two rounds of adversarial review; the revisions await Dmitry's
-word. Not built yet.
+адрес я не вижу смысла»); the revisions of two review rounds await his word.
+Not built yet.
 
 ## Context
 
-A parcel needs an address, and the only thing an agent can hand a merchant
-today is the card's `params`: flat fields the merchant declares, checked for
-type and nothing else, and kept. The gateway writes them into the order at the
-unpaid request, so an order that was only priced keeps them as long as one that
-was paid, and the merchant can read them back on either. They are copied into
-every order and price-question envelope, which the queue keeps for seven days
-after the merchant draws it, and into a dump of the database every ten minutes
-whose snapshots live up to thirty days, their deleted copies thirty more
-(ADR-0029). A database driver's error carries every bound parameter of the
-statement, and most paths that fail log the error whole. Nothing deletes an
-order. For the address of somebody's home that is a store of personal data no
-process of ours reads once the merchant has it.
+A parcel needs an address, and the only thing an agent hands a merchant today
+is the card's `params`: fields the merchant declares, checked for type alone.
+They are written into the order at the unpaid request and readable by the
+merchant from then on, copied into every envelope the queue keeps for a week,
+dumped with the database every ten minutes into snapshots kept for weeks
+(ADR-0029), and carried whole in a failed statement's error, which most paths
+log. Nothing deletes an order. For somebody's home address that is a store of
+personal data no process of ours reads once the merchant has it. The survey
+behind this decision is `docs/research/37-physical-goods.md`.
 
 ## Decision
 
-The address has a shape of ours: a `ship_to` block beside `params`, asked only
-by a card that ships (ADR-0032) and refused on any other. It takes the Agentic
-Commerce Protocol's names — `name`, `line_one`, `line_two`, `city`, `state`,
-`postal_code`, `country`, `phone_number` (`docs/research/37-physical-goods.md`).
-The door checks the shape and not the geography: a name, a first line, a city
-and a phone number are present, the country is two capital letters (ISO
-3166-1), and `state` is the subdivision code without the country's prefix
-where the country has one. Whether the merchant ships there, and whether the
-region and the postal code are enough, is theirs to answer before money moves.
+A card that ships (ADR-0032) asks for a `ship_to` block beside `params`, in a
+shape of ours with the Agentic Commerce Protocol's names: `name`, `line_one`,
+`line_two`, `city`, `state`, `postal_code`, `country`, `phone_number`. Any other
+card refuses it. The door checks the shape — a name, a first line, a city and a
+phone, a country in ISO 3166-1 alpha-2, a subdivision code for the state where
+the country has one — and leaves the geography to the merchant.
 
-The merchant's price check receives where the parcel goes and not to whom:
+The merchant's price check receives where the parcel goes, not to whom:
 `country`, `state`, `city`, `postal_code`. The full block reaches the merchant
-only in a paid order, and only a paid order shows it on the merchant's reads.
-It is the block that was priced: a paid request carrying a different one is
-refused before the payment is verified, with words saying to start again, and
-one carrying none pays for the block that was priced.
+only for a paid order, in the order and in their reads of it. It is the block
+that was priced: a paid request carrying another is refused before the payment
+is verified, and one carrying none pays for the block that was priced.
 
-The address stays with us from the priced request while the order waits for the
-merchant to take it — seconds while their worker runs, up to the time to ship
-while it does not — and is erased at the first of these: the merchant takes the
-order on, records the shipment, the order closes, or it becomes a refund owed
-without having been taken on. Erasing deletes every envelope of that order the
-queue holds — the messages to the merchant's subscription, waiting, drawn or
-failed, and not the reminders that keep its deadlines, which carry no address —
-and removes the block from the order, whose `ship_to` then reads
-`{ "erased_at": … }`, never absent. An erased order is never handed to a handler
-again: no envelope is built from it or published for it once more, and a
-handler never meets `erased_at`. No error that leaves the store or the queue
-carries a bound parameter, and nothing logs the address. A handler Agentify
-runs for a merchant, such as a shop connector, keeps it no longer than the
-gateway does.
-
-Nothing of the address is kept, neither a masked fragment nor a fingerprint. A
-readable fragment is still personal data and in a small place names a person;
-the shop software most merchants run empties even the country and the postal
-code when it anonymises an order. A keyed fingerprint, which would answer "is
-this the same address", arrives with the first process that reads it.
+We hold the address from the priced request until the first of these: the
+merchant takes the order on, records the shipment, the order closes, or it
+becomes a refund owed without having been taken on. Then it leaves the order,
+every envelope of the order is deleted from the queue (the messages to the
+merchant, not the reminders that keep its deadlines), and the order reads
+`ship_to: { "erased_at": … }`, never absent, and is never handed to a handler
+again. Nothing of it is kept — neither a masked fragment nor a fingerprint —
+and no log or error carries it. A handler Agentify runs for a merchant, such as
+a shop connector, holds it no longer.
 
 ## Consequences
 
-Taking an order on means the merchant has stored the address: their handler
-holds it and writes it down before answering. A process that falls over in
-between has lost it, and that order can only be refused into a refund owed; a
-late parcel on a refund owed they never took on can come only from their own
-copy. The portal's async pattern of keeping just the order's identifier, and
-its restart walk over `orders.list`, change for parcels. What reached a
-snapshot stays until the snapshot expires. Whatever the merchant writes as free
-text — a refusal's message, a tracking address — is theirs, and the portal asks
-them to keep the address out of it. The rest of `params` keeps its present
-retention. A dispute over where a parcel went cannot be checked against us.
+The address is ours while an order waits for its merchant: seconds while their
+worker runs, at most the time to ship while it does not. Taking an order on
+means the merchant has stored the address; a process that falls over in
+between loses it, the order can only be refused into a refund owed, and a late
+parcel on a debt never taken on must come from the merchant's own copy. The
+portal's asynchronous pattern and its restart walk change for parcels. What
+merchants write as free text is theirs, and the portal asks them to keep the
+address out of it. A snapshot keeps what it caught until it expires. A dispute
+over where a parcel went cannot be checked against us. The rest of `params`
+keeps its present retention.
 
-Rejected: the address in the merchant's `params` (every shop would name it
-differently, and we could not tell what to erase); a delivery token resolved
-outside the channel (no agent runtime offers the other end); a masked address
-(still personal, and unread); erasing at shipment, which would let a merchant
-who kept only our identifier read the address back, at the price of holding
-every address through days of handling; the full address in the price
-question, as the protocols do at checkout (a price question goes out for
-purchases that never happen, and rates need only the locality); a split first
-and last name (a single name cannot be split without guessing, and many people
-have one); a per-country table of required fields at the door (data to keep in
-step with the world, where the merchant knows what their carrier needs).
+Rejected: the address in merchant-declared `params` (no common shape, and no
+telling what to erase); a delivery token resolved outside the channel (no agent
+runtime offers the other end); a masked address or a fingerprint (still
+personal — WooCommerce keeps not even the country when it anonymises — and
+nobody reads it); erasing at shipment (days of holding so that a merchant can
+read back what they did not store); the full address in the price question, as
+the protocols do at checkout (it would reach merchants for purchases never
+made, and rates need only the locality); a split first and last name (one name
+cannot be split without guessing); a per-country table of required fields (the
+merchant knows what their carrier needs).
