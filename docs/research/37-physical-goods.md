@@ -278,9 +278,11 @@ merchant cannot ask for it themselves.
 
 The shipment record takes the names ACP, UCP and WooCommerce share: `carrier`,
 `tracking_number`, `tracking_url`, and `estimated_delivery` with `earliest` and
-`latest`. The moment of shipment is the gateway's to stamp, not the merchant's
-to write. Where the buyer asks is the merchant's, named once, and not part of
-each shipment. The card's time to ship is `ship_within_seconds`, a name of its
+`latest`. Only the carrier is required, as a short plain-text string with no
+list behind it; a shipment without a tracking number says so explicitly. The
+moment of shipment is the gateway's to stamp, not the merchant's to write.
+Where the buyer asks is the shop's own site (ADR-0033), not part of each
+shipment. The card's time to ship is `ship_within_seconds`, a name of its
 own, because on an asynchronous card `fulfill_deadline_seconds` means the time
 to deliver, and a number read under the wrong name tells a person their parcel
 arrives when it merely leaves.
@@ -341,14 +343,16 @@ of its own. The required price check has to be the handler, because a card
 naming a price hook that nothing calls would publish and never sell. The
 contact moved from each shipment to the merchant, because a buyer needs it
 before shipment and on a refund owed too; Dmitry then took it out of our scope
-altogether, and the agent is given the shop's own site instead (ADR-0033). Tracking stays required, and the
-requirement is said at the door rather than first met at `deliver` after the
-charge; the number is recorded as the merchant's claim. The phone number
-became required and `state` was named a subdivision code. The per-country table
-of required fields was dropped rather than sourced: the door checks the shape,
-and the merchant's price check judges the geography before money moves. The
-decisions that the new ones amend — ADR-0002 §3, ADR-0006 §5, ADR-0007 §5,
-ADR-0011 and ADR-0028 — were edited in the same change.
+altogether, and the agent is given the shop's own site instead (ADR-0033).
+Tracking stayed required after the review, said at the door rather than first
+met at `deliver` after the charge; Dmitry's question about a coffee sent by
+courier then showed that a local courier has no number to give, and it became
+optional (see his answers below). The phone number became required and `state`
+was named a subdivision code. The per-country table of required fields was
+dropped rather than sourced: the door checks the shape, and the merchant's
+price check judges the geography before money moves. The decisions that the new
+ones amend — ADR-0002 §3, ADR-0006 §5, ADR-0007 §5, ADR-0011 and ADR-0028 —
+were edited in the same change.
 
 A second round read the revisions against the code. It confirmed most of
 them and found five more things. The open vocabularies had been written only as
@@ -380,38 +384,39 @@ and is listed below.
 ## What a merchant's engineer learns
 
 The count is the price of the mode, and it is paid once per integrator: the
-value `ship`; `ship_within_seconds`, required and under a ceiling; a price check
-that must be the handler, and receives the locality; the `ship_to` block on the
-order, present only once paid and read as `erased_at` once erased; the
-rule that taking an order on means the address is stored; the shop's site
-named once in the cabinet (ADR-0033); the card without a `result`; `deliver` carrying the
-shipment, with the carrier and the tracking number required; the status word
-`shipped`, on orders and receipts; a contract version that moves; and the
-refusal of a `ship` card on the live channel, with its reason.
+value `ship`; `ship_within_seconds`, required and under a ceiling; a price
+check that must be the handler, and receives the locality; the `ship_to` block
+on the order, present only once paid and read as `erased_at` once erased; the
+rule that taking an order on means the address is stored; the shop's site named
+once in the cabinet (ADR-0033); the card without a `result`; `deliver` carrying
+the shipment, with the carrier required and the tracking number where there is
+one; the status word `shipped`, on orders and receipts; a contract version that
+moves; and the refusal of a `ship` card on the live channel, with its reason.
 
 ## What changes when it is built
 
 The machine: a third switch on the order's mode, and the one edge from
 `delivered` to `refunded` for a parcel, with the descriptions of `refunded` —
 today every one of them says a debt was closed, and a shipped order never had
-one. The contract: the card's fulfillment values and its public projection,
-the purchase request, the order and its merchant document, the price question,
-the status vocabulary and the agent's status document with `ship_by`, the
-seller's name and site on cards and orders, the storefront's mode and status carried as open strings with the
-catalogue read card by card, the receipt's outcome, the descriptions of
-`rejected` and of the field that carries what the merchant handed over, and the
-contract version. The gateway: the door checks, the erasure and its test, an
-erased order never handed out again, the stripped errors, the refusal of a
-changed address at payment, the refusal on the live channel, and — when
-ADR-0028 is built — the receipt of a refunded parcel and the payer's address on
-a shipped order. The SDK's types. The discovery declaration.
-The cabinet's field for the site. The portal: the cards page (the mode, the
-time to ship, the site, tracking required, what the card's price means), the orders page
-(the mode's sequence, the endings table that the machine's tests read,
-acceptance storing the address, the restart walk), the quickstart's
-asynchronous pattern, the money page, and the FAQ's dispute answer, which
-promises records of what happened with the delivery that for a parcel we do
-not keep. `apps/docs/index.md`'s pilot rule, when the live gate opens.
+one. The contract: the card's fulfillment values and its public projection, the
+purchase request, the order and its merchant document, the price question, the
+status vocabulary and the agent's status document with `ship_by`, the seller's
+name and site on cards and orders, the storefront's mode and status carried as
+open strings with the catalogue read card by card, the receipt's outcome, the
+descriptions of `rejected` and of the field that carries what the merchant
+handed over, and the contract version. The gateway: the door checks, the
+erasure and its test, an erased order never handed out again, the stripped
+errors, the refusal of a changed address at payment, the refusal on the live
+channel, and — when ADR-0028 is built — the receipt of a refunded parcel and
+the payer's address on a shipped order. The SDK's types. The discovery
+declaration. The cabinet's field for the site. The portal: the cards page (the
+mode, the time to ship, the site, the carrier and optional tracking, what the
+card's price means), the orders page (the mode's sequence, the endings table
+that the machine's tests read, acceptance storing the address, the restart
+walk), the quickstart's asynchronous pattern, the money page, and the FAQ's
+dispute answer, which promises records of what happened with the delivery that
+for a parcel we do not keep. `apps/docs/index.md`'s pilot rule, when the live
+gate opens.
 
 ## Dmitry's answers of the same evening
 
@@ -451,7 +456,12 @@ rather than a shipped order reopened into a refund owed: «Вариант А». 
 buyer asks is not a contact Agentify keeps: Dmitry questioned the need for one
 at all — «мне бы не хотелось тащить больше скоупа в agentify» — and the agent
 is given the shop's site and the seller's name, with nothing else about the
-merchant: «давай начнем только с адреса» (ADR-0033).
+merchant: «давай начнем только с адреса» (ADR-0033). A tracking number is
+not required: a coffee sent across town by the shop's courier has none, and a
+required one would shut such shops out or be filled with something made up.
+The carrier is required as a short plain-text string — «вариант А, но как я
+понимаю, там может быть свободное поле, просто строка» — and a shipment
+without a number says so explicitly.
 
 The decisions themselves were then held to the charter's length. What left them
 is the mechanics this note already carries — which envelopes, which error

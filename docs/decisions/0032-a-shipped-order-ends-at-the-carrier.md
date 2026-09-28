@@ -30,17 +30,19 @@ shown on the card and as an absolute `ship_by` on the order. No `ship` card
 publishes until its merchant has named their shop's site, where the agent takes
 whatever the order cannot answer (ADR-0033).
 
-The merchant declares no result. `deliver` on a parcel records a shipment:
-`carrier` and `tracking_number`, required and taken as the merchant's claim,
-and optionally `tracking_url` and `estimated_delivery` (names, and what an
-integrator learns, in the research note). The order then reads `shipped` to
-the agent, to the merchant and on the receipt: the parcel is with the carrier,
-the money with the merchant, and this is the last word about the parcel. The
-status's description says so, because every protocol using the word goes on
-past it. The discovery listing shows
-`ship_to` and a shipment, with a real example: the company's own address and a
-carrier's published test number. `ship` and `shipped` join the storefront's
-open vocabularies (ADR-0006 §5), and the SDK's contract version moves.
+The merchant declares no result. `deliver` on a parcel records a shipment: the
+`carrier`, required, a short plain-text string — a carrier's name, or the
+shop's own courier — and, where they exist, `tracking_number`, `tracking_url`
+and `estimated_delivery` (names, and what an integrator learns, in the research
+note). A shipment without a tracking number says so, never by an empty field.
+All of it is the merchant's claim, which we do not check. The order then reads
+`shipped` to the agent, to the merchant and on the receipt: the parcel is with
+the carrier, the money with the merchant, and this is the last word about the
+parcel. The status's description says so, because every protocol using the word
+goes on past it. The discovery listing shows `ship_to` and a shipment, with a
+real example: the company's own address and a carrier's published test number.
+`ship` and `shipped` join the storefront's open vocabularies (ADR-0006 §5), and
+the SDK's contract version moves.
 
 What becomes of the parcel afterwards is between buyer and merchant. When a
 merchant admits a parcel lost, ADR-0028's command records a refund on the
@@ -53,8 +55,9 @@ shipments behind the order identifier.
 ## Consequences
 
 The agent is told what we know and no more, on money paths already tested. A
-lost parcel is invisible to us until the merchant says so. A merchant without
-tracking cannot use this mode, and learns it at publishing. The price check's
+lost parcel is invisible to us until the merchant says so. A shop's own
+courier, with no tracking, can sell through this mode; `shipped` then rests on
+the merchant's word, as it would on a number nobody checks. The price check's
 "unavailable" also means "not to this destination", and `rejected` says so. An
 order is one parcel of one card, and a parcel is not safe to ship twice, so
 keying on the order identifier stops being advice. Duties, restricted goods,
@@ -65,11 +68,13 @@ Rejected: `delivered` with a caveat on the card (the status read alone would
 claim arrival); an arrival state with its own deadline (merchants rarely know
 arrival, and debts would fall on parcels at the door); a result each merchant
 declares (no agent learns every shape); a second `deliver` to update tracking
-(the call keeps the first delivery in every mode); optional tracking (the
-merchant's word alone would stop the clock); reusing `fulfill_deadline_seconds`
-(one name, two meanings); a ceiling in deployment configuration (unseen by the
-offline check, and a lowered one strands published cards above it); a support
-contact of ours, per shipment or per merchant (ADR-0033 sends the agent to the
-shop's site instead); reopening a lost parcel into a refund owed (a stale
-delivery would close it); a "physical" flag beside `fulfillment` (two fields
-for one fact; a parcel confirmed by hand waits for ADR-0007's trigger).
+(the call keeps the first delivery in every mode); a required tracking number
+(it shuts out local couriers and invites made-up numbers, and one we cannot
+check proves no more than the word); a list of carriers (every town has its
+own); reusing `fulfill_deadline_seconds` (one name, two meanings); a ceiling in
+deployment configuration (unseen by the offline check, and a lowered one
+strands published cards above it); a support contact of ours, per shipment or
+per merchant (ADR-0033 sends the agent to the shop's site instead); reopening a
+lost parcel into a refund owed (a stale delivery would close it); a "physical"
+flag beside `fulfillment` (two fields for one fact; a parcel confirmed by hand
+waits for ADR-0007's trigger).
