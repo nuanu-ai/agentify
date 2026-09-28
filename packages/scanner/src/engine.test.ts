@@ -121,6 +121,18 @@ describe("18-check engine", () => {
     expect(checks.find((check) => check.id === 18)?.status).toBe("not_applicable");
   });
 
+  it("does not ask the owner to repair a robots.txt for its comment lines", () => {
+    const input = makeArtifacts("store");
+    input.robots = artifact(
+      "https://example.com/robots.txt",
+      `# we use Shopify as our ecommerce platform\n#\n\n${robots}`,
+      { headers: { "content-type": "text/plain" } },
+    );
+    const check = evaluateScan(input).checks.find((candidate) => candidate.id === 1);
+    expect(check).toMatchObject({ status: "pass", summaryCode: "robots_parseable" });
+    expect(check?.fixCode).toBeUndefined();
+  });
+
   it("turns unavailable checks into coverage loss, not score loss", () => {
     const input = makeArtifacts("store");
     input.base = artifact("https://example.com/", "", {
