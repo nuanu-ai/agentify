@@ -288,9 +288,9 @@ describe("bounded scan graph", () => {
       appBaseUrl: "https://agentify.ad",
     }).run({ ...job, canonical_target_url: `https://example.com${path}` });
     expect(target.paths.some((request) => request.startsWith(`GET ${path} `))).toBe(false);
-    expect(
-      [4, 8, 12].map((id) => evaluation.checks.find((check) => check.id === id)?.errorCode),
-    ).toEqual(["robots_unavailable", "robots_unavailable", "robots_unavailable"]);
+    expect(evaluation.checks.find((check) => check.id === 12)?.errorCode).toBe(
+      "robots_unavailable",
+    );
   });
 
   it("fetches no sitemap or product URL whose robots decision was left open", async () => {

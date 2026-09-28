@@ -212,7 +212,6 @@ export class ScanRunner {
       const robotsAllows = (url: URL): boolean => robotsVerdict(url) === true;
       const targetVerdict = robotsVerdict(target);
       const targetAllowed = targetVerdict === true;
-      const targetBlockedCode = blockedCodeFor(targetVerdict);
       const declaredSitemaps = parsedRobots.sitemaps
         .map((value) => canonicalSameSiteUrl(value, target, usedHttpFallback))
         .filter((value): value is URL => value !== undefined)
@@ -247,42 +246,36 @@ export class ScanRunner {
             }),
           ])
         : Promise.resolve([]);
-      const sitemapPromise = targetAllowed
-        ? (async () => {
-            const pending = [...sitemapTargets];
-            const seen = new Set<string>();
-            const artifacts: FetchArtifact[] = [];
-            while (artifacts.length < 3) {
-              const url = pending.shift();
-              if (!url) break;
-              const key = url.toString();
-              if (seen.has(key)) continue;
-              seen.add(key);
-              const artifact = await fetchIfRobotsAllowed(url, {
-                bodyLimit: 5 * 1024 * 1024,
-                accept: "application/xml,text/xml,*/*;q=0.1",
-              });
-              artifacts.push(artifact);
-              if (artifact.errorCode || artifact.status < 200 || artifact.status >= 300) continue;
-              const parsed = parseSitemap(artifact.body);
-              if (!parsed.valid || !parsed.isIndex) continue;
-              const children = parsed.urls
-                .map((value) => canonicalSameSiteUrl(value, target, usedHttpFallback))
-                .filter(
-                  (value): value is URL => value !== undefined && !seen.has(value.toString()),
-                );
-              pending.unshift(...children);
-            }
-            return artifacts;
-          })()
-        : Promise.resolve(sitemapTargets.map((url) => unavailableArtifact(url, targetBlockedCode)));
+      const sitemapPromise = (async () => {
+        const pending = [...sitemapTargets];
+        const seen = new Set<string>();
+        const artifacts: FetchArtifact[] = [];
+        while (artifacts.length < 3) {
+          const url = pending.shift();
+          if (!url) break;
+          const key = url.toString();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const artifact = await fetchIfRobotsAllowed(url, {
+            bodyLimit: 5 * 1024 * 1024,
+            accept: "application/xml,text/xml,*/*;q=0.1",
+          });
+          artifacts.push(artifact);
+          if (artifact.errorCode || artifact.status < 200 || artifact.status >= 300) continue;
+          const parsed = parseSitemap(artifact.body);
+          if (!parsed.valid || !parsed.isIndex) continue;
+          const children = parsed.urls
+            .map((value) => canonicalSameSiteUrl(value, target, usedHttpFallback))
+            .filter((value): value is URL => value !== undefined && !seen.has(value.toString()));
+          pending.unshift(...children);
+        }
+        return artifacts;
+      })();
       const llmsUrl = discoveryUrl(target, "/llms.txt");
-      const llmsPromise = targetAllowed
-        ? fetchIfRobotsAllowed(llmsUrl, {
-            bodyLimit: 512 * 1024,
-            accept: "text/plain,text/markdown,*/*;q=0.1",
-          })
-        : Promise.resolve(unavailableArtifact(llmsUrl, targetBlockedCode));
+      const llmsPromise = fetchIfRobotsAllowed(llmsUrl, {
+        bodyLimit: 512 * 1024,
+        accept: "text/plain,text/markdown,*/*;q=0.1",
+      });
       const mcpUrl = discoveryUrl(target, "/.well-known/mcp.json");
       const mcpCardUrl = discoveryUrl(target, "/.well-known/mcp/server-card.json");
       const ucpUrl = discoveryUrl(target, "/.well-known/ucp");
