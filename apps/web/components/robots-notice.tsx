@@ -6,7 +6,7 @@ const checkCount = (count: number) => (count === 1 ? "1 check was" : `${count} c
 
 const COPY: Record<RobotsReason, (count: number) => string> = {
   disallowed: (count) =>
-    `Your robots.txt keeps the Agentify scanner out, and the scanner follows it, so ${checkCount(count)} not assessed. They lower coverage, not your score. To have them assessed, allow the agentify-scanner user agent in robots.txt.`,
+    `Your robots.txt keeps the Agentify scanner out of what ${count === 1 ? "1 check reads" : `${count} checks read`}, and the scanner follows it, so ${count === 1 ? "it was" : "they were"} not assessed. They lower coverage, not your score. To have them assessed, allow the agentify-scanner user agent in robots.txt.`,
   unassessed: (count) =>
     `The scanner could not read your robots.txt, or could not decide its rules for these addresses, so it read nothing robots.txt might forbid: ${checkCount(count)} not assessed. They lower coverage, not your score.`,
 };

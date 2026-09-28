@@ -17,8 +17,8 @@ describe("RobotsNotice", () => {
       />,
     );
     expect(markup).toContain('data-robots-notice="disallowed"');
-    expect(markup).toContain("3 checks were");
+    expect(markup).toContain("3 checks");
     expect(markup).toContain('data-robots-notice="unassessed"');
-    expect(markup).toContain("1 check was");
+    expect(markup).toContain("1 check ");
   });
 });

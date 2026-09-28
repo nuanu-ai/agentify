@@ -10,7 +10,7 @@ import {
 } from "@agentify/scanner-contracts";
 import Link from "next/link";
 import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
-
+import { robotsHeadline, unexplainedUnavailable } from "../lib/robots-notice";
 import { Brand } from "./brand";
 import { BrowserObservations } from "./browser-observations";
 import { CopyRemediationPrompt } from "./copy-remediation-prompt";
@@ -350,8 +350,8 @@ function TeaserState({
   return (
     <div className={styles.teaser}>
       <RobotsNotice checks={data.checks} className={styles.partialNotice} />
-      {data.status === "partial" && data.checks.every((check) => check.robots === null) ? (
-        <div className={styles.partialNotice}>
+      {unexplainedUnavailable(data.checks).length ? (
+        <div className={styles.partialNotice} data-unavailable-notice>
           Some checks were unavailable. They reduce coverage and are not treated as confirmed
           failures.
         </div>
@@ -501,19 +501,20 @@ function FailedState({
   checks: ScanStatusResponse["checks"];
   onRetry: () => void;
 }>) {
-  const robots = checks.some((check) => check.robots !== null);
+  const headline = robotsHeadline(checks);
   return (
     <div className={styles.failed}>
-      <h1>
-        {robots
+      <h1 data-robots-headline={headline ?? undefined}>
+        {headline === "disallowed"
           ? "Your robots.txt kept the scanner out"
-          : blocked
-            ? "The site blocked our reader"
-            : "No reliable diagnostic was produced"}
+          : headline === "unassessed"
+            ? "The scanner could not assess your robots.txt"
+            : blocked
+              ? "The site blocked our reader"
+              : "No reliable diagnostic was produced"}
       </h1>
-      {robots ? (
-        <RobotsNotice checks={checks} />
-      ) : (
+      <RobotsNotice checks={checks} />
+      {headline ? null : (
         <p>
           {blocked
             ? "Public requests were blocked before enough checks could reach a verdict. No score or registration gate is shown."
@@ -665,7 +666,7 @@ function createDevFixture(name: FixtureName): ScanStatusResponse {
       label_code: check.labelCode,
       status:
         (name === "partial" && index > 13) ||
-        (wellKnownDisallowed && WELL_KNOWN_CHECK_IDS.includes(check.id))
+        (wellKnownDisallowed && [...WELL_KNOWN_CHECK_IDS, 14].includes(check.id))
           ? ("unavailable" as const)
           : index % 4 === 0
             ? ("partial" as const)
