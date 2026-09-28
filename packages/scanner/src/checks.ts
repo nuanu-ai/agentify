@@ -10,7 +10,12 @@ import {
   parseSitemap,
   visibleText,
 } from "./parsers.js";
-import { explicitAiPolicies, isPathAllowed, parseRobots } from "./robots.js";
+import {
+  explicitAiPolicies,
+  isPathAllowed,
+  parseRobots,
+  type RobotsParseResult,
+} from "./robots.js";
 
 export const CHECK_WEIGHTS: readonly number[] = CHECK_DEFINITIONS.map(
   (definition) => definition.nominalWeight,
@@ -66,9 +71,28 @@ const inaccessible = (artifact?: FetchArtifact): boolean =>
 const missing = (artifact?: FetchArtifact): boolean =>
   !artifact || artifact.status === 404 || artifact.status === 410;
 
+// A scan evaluates its checks several times as its requests complete, all
+// over one robots.txt artifact, which the site may have filled to the fetch
+// limit: it is parsed, and each path decided, once per artifact.
+type RobotsReading = { parsed: RobotsParseResult; verdicts: Map<string, boolean | undefined> };
+const robotsReadings = new WeakMap<FetchArtifact, RobotsReading>();
+const readRobots = (robots: FetchArtifact): RobotsReading => {
+  let reading = robotsReadings.get(robots);
+  if (!reading) {
+    reading = { parsed: parseRobots(robots.body), verdicts: new Map() };
+    robotsReadings.set(robots, reading);
+  }
+  return reading;
+};
+const scannerVerdict = (reading: RobotsReading, path: string): boolean | undefined => {
+  if (!reading.verdicts.has(path))
+    reading.verdicts.set(path, isPathAllowed(reading.parsed, "agentify-scanner", path));
+  return reading.verdicts.get(path);
+};
+
 const robotsChecks = (artifacts: ScanArtifacts): CheckResult[] => {
   const fetch = artifacts.robots;
-  const parsed = parseRobots(fetch.body);
+  const { parsed } = readRobots(fetch);
   const common = { durationMs: fetch.durationMs };
   let robots: CheckResult;
   if (fetch.errorCode || fetch.status === 0 || fetch.status >= 500) {
@@ -1044,7 +1068,8 @@ const hreflangCheck = (artifacts: ScanArtifacts): CheckResult => {
 };
 
 export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
-  const robotsParsed = parseRobots(artifacts.robots.body);
+  const robotsReading = readRobots(artifacts.robots);
+  const robotsParsed = robotsReading.parsed;
   const targetPath = new URL(artifacts.canonicalTargetUrl).pathname || "/";
   const robotsMissing = artifacts.robots.status === 404 || artifacts.robots.status === 410;
   const robotsReadable =
@@ -1052,7 +1077,7 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
   const targetVerdict = robotsMissing
     ? true
     : robotsReadable
-      ? isPathAllowed(robotsParsed, "agentify-scanner", targetPath)
+      ? scannerVerdict(robotsReading, targetPath)
       : undefined;
   const targetContentAllowed = targetVerdict === true;
   const robotsBlockedCode = targetVerdict === false ? "robots_disallowed" : "robots_unavailable";
