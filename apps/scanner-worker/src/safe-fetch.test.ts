@@ -59,6 +59,32 @@ describe("safe fetch policy", () => {
     }
   });
 
+  it("reports a connection that fails at once as the request's error, not the process's", async () => {
+    // Connecting to the broadcast address fails inside connect() itself, as
+    // an IPv6-only site does on a host with no IPv6 route: the error comes
+    // before the request is ready to hear it.
+    const escaped: unknown[] = [];
+    const onUncaught = (error: unknown) => escaped.push(error);
+    process.prependListener("uncaughtException", onUncaught);
+    try {
+      const artifact = await new NodePinnedTransport().request({
+        url: new URL("http://ipv6-only.example/"),
+        address: { address: "255.255.255.255", family: 4 },
+        method: "GET",
+        headers: { connection: "close" },
+        timeoutMs: 2_000,
+        connectTimeoutMs: 1_000,
+        maxDecodedBytes: 1_024,
+        signal: new AbortController().signal,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(artifact).toMatchObject({ status: 0, errorCode: "network_error" });
+      expect(escaped).toEqual([]);
+    } finally {
+      process.removeListener("uncaughtException", onUncaught);
+    }
+  });
+
   it("reports decoded payloads one byte below and above the limit without hanging", async () => {
     const limit = 1_024;
     const server = createServer((request, response) => {
