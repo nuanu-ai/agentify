@@ -89,6 +89,60 @@ const makeArtifacts = (segment: Segment): ScanArtifacts => ({
   ),
 });
 
+describe("what the checks read from the markup real sites write", () => {
+  const withBase = (page: string): ScanArtifacts => ({
+    ...makeArtifacts("store"),
+    base: artifact("https://example.com/", page),
+  });
+  const check = (input: ScanArtifacts, id: number) =>
+    evaluateScan(input).checks.find((candidate) => candidate.id === id);
+
+  it("finds a feed a page links to by its type or by its address", () => {
+    for (const link of [
+      '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/feed/" />',
+      '<link rel="alternate" type="application/atom+xml" title="Feed" href="/blogs/news.atom" />',
+      '<link href="/blog_rss.xml" rel="alternate" title="RSS" type="application/rss+xml">',
+      "<LINK REL='alternate' HREF='https://example.com/merchant/products.csv'>",
+    ])
+      expect(check(withBase(`<head>${link}</head><body>Wool</body>`), 15)?.evidence).toMatchObject({
+        feed_link: true,
+      });
+    expect(
+      check(withBase('<link rel="stylesheet" href="/assets/base.css"><p>Wool</p>'), 15)?.status,
+    ).toBe("fail");
+  });
+
+  it("recognizes a product page by its Open Graph type when it links no feed", () => {
+    const page = `<meta property="og:type" content="product"><meta property='og:title' content='Wool Runner'><p>Wool</p>`;
+    expect(check(withBase(page), 15)).toMatchObject({
+      status: "partial",
+      evidence: { feed_link: false, product_identifiers: true },
+    });
+    const website = `<meta property="og:type" content="website"><p>Wool</p>`;
+    expect(check(withBase(website), 15)?.status).toBe("fail");
+  });
+
+  it("counts an llms.txt link only when it leads to an absolute address", () => {
+    const llms = (body: string): ScanArtifacts => ({
+      ...makeArtifacts("store"),
+      llms: artifact("https://example.com/llms.txt", body, {
+        headers: { "content-type": "text/markdown" },
+      }),
+    });
+    const absolute = `# llms.txt\n\n> A proposal.\n\n## Docs\n\n- [llms.txt proposal](https://llmstxt.org/index.md): The proposal for llms.txt\n`;
+    expect(check(llms(absolute), 8)?.evidence).toEqual({ has_h1: true, has_links: true });
+    const relative = "# Example\n\n## Docs\n\n- [Catalog](/catalog.md): every product\n";
+    expect(check(llms(relative), 8)?.evidence).toEqual({ has_h1: true, has_links: false });
+  });
+
+  it("recognizes Adyen by the checkout script a page loads", () => {
+    const page = `<script src="https://checkoutshopper-live.adyen.com/checkoutshopper/sdk/5.53.2/adyen.js"></script>`;
+    expect(evaluateScan(withBase(page)).fingerprint.pspMarkers).toMatchObject([
+      { value: "Adyen", confidence: "high" },
+    ]);
+  });
+});
+
 describe("18-check engine", () => {
   it("evaluates each canonical check once and keeps nominal weights at 100", () => {
     const evaluation = evaluateScan(makeArtifacts("store"));

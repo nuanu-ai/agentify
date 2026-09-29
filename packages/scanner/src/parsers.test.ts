@@ -1,6 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { parseJsonLd, parseSafeJson, parseSitemap, visibleText } from "./parsers.js";
+import {
+  htmlSignals,
+  jsonLdTypes,
+  parseJsonLd,
+  parseSafeJson,
+  parseSitemap,
+  visibleText,
+} from "./parsers.js";
 import { explicitAiPolicies, isPathAllowed, parseRobots } from "./robots.js";
 
 describe("deterministic parsers", () => {
@@ -147,6 +154,104 @@ Disallow: /#!/admin
     });
     expect(visibleText(html)).toContain("Hello product");
     expect(visibleText(html)).not.toContain("noise");
+  });
+});
+
+describe("what the parsers read from the markup real sites write", () => {
+  // The quoting, case and attribute order below are what stores and blogs
+  // actually serve: single quotes from Allbirds' Shopify theme, Yoast's feed
+  // link and schema graph, attributes in either order. Addresses are
+  // anonymized to example.com where they are not the store's own.
+  it("reads the hreflang of every alternate link, as the site quotes and cases it", () => {
+    const head = `<head>
+<link rel='alternate' hreflang='en-US' href='https://www.allbirds.com/'>
+<link rel='alternate' hreflang='x-default' href='https://www.allbirds.com/'>
+<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/feed/" />
+<link href="https://example.com/de/" rel="alternate" hreflang="de-DE" />
+<LINK REL="Alternate" HREFLANG="fr" HREF="https://example.com/fr/">
+<link rel="canonical" href="https://example.com/">
+<link rel="stylesheet" href="/cdn/shop/t/1/assets/base.css" media="all">
+</head>`;
+    expect(htmlSignals(head).hreflangs).toEqual(["en-US", "x-default", "de-DE", "fr"]);
+  });
+
+  it("reads the text a visitor sees, without scripts, styles or navigation", () => {
+    const page = `<!doctype html><html lang="en"><head><title>Wool Runners &amp; More</title>
+<style>.card>.price{color:#212a2f}</style>
+<script>window.dataLayer=window.dataLayer||[];if(a<b&&c>d){track("view")}</script>
+<SCRIPT type="text/javascript">var badge = "<span>New</span>";</SCRIPT>
+</head><body>
+<nav class="site-nav"><a href="/collections/mens">Men</a><a href="/collections/womens">Women</a></nav>
+<!-- announcement bar -->
+<main><h1 class="product__title">Men's Wool Runners</h1>
+<p>Soft&nbsp;merino wool, $98&nbsp;USD.<br/>Free shipping &amp; returns</p></main>
+<noscript><img src="/pixel.gif" alt=""> Enable JavaScript</noscript>
+<footer>&copy; 2026 Example</footer></body></html>`;
+    expect(visibleText(page)).toBe(
+      "Wool Runners More Men's Wool Runners Soft merino wool, $98 USD. Free shipping returns Enable JavaScript &copy; 2026 Example",
+    );
+  });
+
+  it("sees a page's title and heading and counts its links to products", () => {
+    const page = `<title>Wool Runners | Example</title><h1 class="product__title">Wool Runner</h1>
+<a href="/products/wool-runner">Wool Runner</a>
+<a class="card__link" href='/collections/shop-all'>Shop all</a>
+<A HREF="https://example.com/item/123">Item</A>
+<a href="/pages/about-us">About</a><a>Menu</a>`;
+    expect(htmlSignals(page)).toMatchObject({ hasTitle: true, hasH1: true, productLinkCount: 3 });
+    expect(htmlSignals("<title></title><h1></h1>")).toMatchObject({
+      hasTitle: false,
+      hasH1: false,
+    });
+  });
+
+  it("reads every JSON-LD script, whatever its other attributes, and counts those that do not parse", () => {
+    const page = `<script type="application/ld+json" class="yoast-schema-graph">{"@context":"https://schema.org","@graph":[{"@type":"WebPage","@id":"https://example.com/#webpage"},{"@type":"Organization","@id":"https://example.com/#organization"}]}</script>
+<script nonce="cJA-mMYIUmt" id="product-jsonld" type='application/ld+json'>{"@context":"http://schema.org/","@type":"Product","name":"Wool Runner"}</script>
+<script TYPE = "application/ld+json; charset=utf-8">{"@type":"BreadcrumbList"}</script>
+<script type="application/ld+json">{"@type": "Offer",}</script>
+<script type="application/json">{"@type":"Ignored"}</script>
+<script src="https://cdn.shopify.com/s/files/1/app.js" defer></script>`;
+    const parsed = parseJsonLd(page);
+    expect(parsed).toMatchObject({ scriptCount: 4, invalidCount: 1 });
+    expect(parsed.nodes.flatMap(jsonLdTypes)).toEqual([
+      "WebPage",
+      "Organization",
+      "Product",
+      "BreadcrumbList",
+    ]);
+  });
+
+  it("reads a sitemap's page addresses and dates, and not its image addresses", () => {
+    const sitemap = `<?xml version="1.0" encoding="UTF-8"?><?xml-stylesheet type="text/xsl" href="//example.com/main-sitemap.xsl"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+\t<url>
+\t\t<loc>https://example.com/products/wool-runner</loc>
+\t\t<lastmod>2026-07-12T09:41:27+00:00</lastmod>
+\t\t<image:image><image:loc>https://example.com/wp-content/uploads/runner.jpg</image:loc></image:image>
+\t</url>
+\t<url>
+\t\t<loc>
+\t\t\thttps://example.com/search?q=wool&amp;sort=price
+\t\t</loc>
+\t</url>
+\t<url><loc>/pages/relative</loc></url>
+</urlset>`;
+    expect(parseSitemap(sitemap)).toEqual({
+      valid: true,
+      isIndex: false,
+      urls: [
+        "https://example.com/products/wool-runner",
+        "https://example.com/search?q=wool&sort=price",
+      ],
+      lastmods: ["2026-07-12T09:41:27+00:00"],
+    });
+    const index = `<?xml version="1.0" encoding="UTF-8"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>https://example.com/product-sitemap.xml</loc><lastmod>2026-07-12T09:41:27+00:00</lastmod></sitemap></sitemapindex>`;
+    expect(parseSitemap(index)).toMatchObject({
+      valid: true,
+      isIndex: true,
+      urls: ["https://example.com/product-sitemap.xml"],
+    });
   });
 });
 
