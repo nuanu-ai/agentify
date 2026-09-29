@@ -74,18 +74,11 @@ const browserObservationAllowedByRobots = (checks: readonly CheckResult[]): bool
     (check) => check.errorCode === "robots_disallowed" || check.errorCode === "robots_unavailable",
   );
 
+// The runner turns every failed or refused request into an artifact, so the
+// one failure it throws by name is a deadline already passed on arrival.
 const operationalCode = (error: unknown): string => {
   if (!(error instanceof Error)) return "unknown_system_error";
-  const known = new Set([
-    "scan_deadline_expired",
-    "request_budget_exhausted",
-    "global_deadline",
-    "dns_no_answers",
-    "redirect_limit_exceeded",
-  ]);
-  if (known.has(error.message)) return error.message;
-  if (error.message.startsWith("ssrf_blocked:")) return error.message.slice(0, 64);
-  return "scan_system_error";
+  return error.message === "scan_deadline_expired" ? error.message : "scan_system_error";
 };
 
 export const processScanJob = async (
@@ -215,8 +208,7 @@ export const processScanJob = async (
       attemptNo: job.attempt_no,
     });
     // A retry runs under the same deadline, so one that has passed fails it too.
-    const retryable =
-      job.attempt_no < 2 && code !== "scan_deadline_expired" && code !== "global_deadline";
+    const retryable = job.attempt_no < 2 && code !== "scan_deadline_expired";
     await dependencies.repository.markSystemFailure(
       job.scan_id,
       job.attempt_no,

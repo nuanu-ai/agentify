@@ -144,18 +144,16 @@ describe("scan job lifecycle", () => {
   });
 
   it("does not retry a scan whose deadline has passed, since no retry can meet it", async () => {
-    for (const code of ["scan_deadline_expired", "global_deadline"]) {
-      const { repo, state } = repository();
-      const runner = {
-        run: async () => {
-          throw new Error(code);
-        },
-      };
-      await expect(
-        processScanJob(job, { repository: repo, runner: runner as never }),
-      ).rejects.toThrow();
-      expect(state.failure).toMatchObject({ code, retryable: false });
-    }
+    const { repo, state } = repository();
+    const runner = {
+      run: async () => {
+        throw new Error("scan_deadline_expired");
+      },
+    };
+    await expect(
+      processScanJob(job, { repository: repo, runner: runner as never }),
+    ).rejects.toThrow();
+    expect(state.failure).toMatchObject({ code: "scan_deadline_expired", retryable: false });
   });
 
   it("stops a stale attempt when a progressive check write is fenced", async () => {
