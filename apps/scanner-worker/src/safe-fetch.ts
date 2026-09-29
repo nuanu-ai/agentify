@@ -142,10 +142,15 @@ export class NodePinnedTransport implements PinnedTransport {
         // The address is already resolved, validated, and pinned. Node 20+ may
         // request `all: true` for family autoselection, so return a one-element
         // array in that mode; Node still cannot select an unvalidated address.
+        // The answer comes a tick later, as a real lookup's does: answered at
+        // once, a connect() that fails at once emits its error before the
+        // request listens for it, and the error takes the process down.
         lookup: (_hostname, lookupOptions, callback) =>
-          lookupOptions.all
-            ? callback(null, [input.address])
-            : callback(null, input.address.address, input.address.family),
+          process.nextTick(() =>
+            lookupOptions.all
+              ? callback(null, [input.address])
+              : callback(null, input.address.address, input.address.family),
+          ),
         ...(input.url.protocol === "https:"
           ? { servername: input.url.hostname, rejectUnauthorized: true }
           : {}),
