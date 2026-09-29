@@ -273,8 +273,9 @@ export function createScanJobRepository(db: Database) {
      * worker's heartbeat) for lostAfterMs has lost its worker or its queue
      * job, and its deadline is long past, so no worker can finish it. It is
      * closed as failed with scan_lost, and the ids closed are returned. The
-     * database's clock measures the silence, as it is one clock for every
-     * process that wrote those times.
+     * silence is measured by the database's clock, which stamped the
+     * acceptance; the web and the worker stamp queueing and heartbeats by
+     * their own, and five minutes leaves room for the difference.
      */
     async finishLostScans(lostAfterMs: number): Promise<string[]> {
       const closed = await db
