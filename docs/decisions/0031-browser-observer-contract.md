@@ -51,12 +51,15 @@ made under the previous version keep their rows but no report shows them,
 since the routes read this version only; migration 0022 closes those that
 never reached the Actor.
 
-The adversarial review of 2026-09-28 found the boundary incomplete: Chromium
-fetches an `http://` target itself when its own https upgrade fails, outside
-the Actor's request route; robots.txt is consulted for the main frame only;
-and a navigation a script or a meta refresh makes is checked for its
-domain, not for a fall to http. These are defects against this decision,
-not exceptions to it.
+The adversarial reviews of 2026-09-28 and 2026-09-29 found the boundary
+incomplete. A redirect the site answers is handed to Chromium, which
+follows it itself, outside the Actor's request route, so the next address
+is neither pinned to a public one nor held to https; a redirect to a
+loopback address was requested. Chromium also fetches an `http://` target
+itself when its own https upgrade fails; robots.txt is consulted for the
+main frame only; and a navigation a script or a meta refresh makes is
+checked for its domain, not for a fall to http. These are defects against
+this decision, not exceptions to it.
 
 Rejected: keeping `signals` with looser limits, since every field is surface
 someone must learn and no reader justified one; and reading the output
