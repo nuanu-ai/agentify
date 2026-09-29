@@ -551,6 +551,8 @@ const observePage = async (options: {
     );
   } finally {
     options.runSignal.removeEventListener("abort", abortPage);
+    // Closing the context ends the page, not the downloads made for it here.
+    pageAbort.abort();
     await settleWithin(context.close({ reason: "observation_complete" }));
   }
 };

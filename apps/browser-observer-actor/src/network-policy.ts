@@ -271,6 +271,9 @@ export const createPinnedLookup =
   };
 
 export const safeBrowserRequest = async (options: SafeRequestOptions): Promise<SafeResponse> => {
+  // The abort listener below hears only aborts still to come; a page already
+  // aborted is refused here, before its host is resolved or a request sent.
+  if (options.signal.aborted) throw new BrowserNetworkPolicyError("request_aborted");
   const resolved = await resolvePublicHost(options.url.hostname);
   const lookup = createPinnedLookup(resolved);
   const port = options.url.port || (options.url.protocol === "https:" ? "443" : "80");
