@@ -406,19 +406,15 @@ export class ScanRunner {
               const successfulIndex = heads.findIndex(
                 (head) => head.status >= 200 && head.status < 400,
               );
-              // HEAD only chooses among the candidates, and a server may answer
-              // it worse than GET: with none answering it well, the first that
-              // does not support it, or else the first that answered at all, is
-              // read with GET. With none reached, the first failure tells the
-              // engine why, as a refused page does.
               const unsupportedHeadIndex = heads.findIndex((head) =>
                 [405, 501].includes(head.status),
               );
-              const answeredIndex = heads.findIndex((head) => !head.errorCode && head.status !== 0);
-              const index = [successfulIndex, unsupportedHeadIndex, answeredIndex].find(
-                (candidate) => candidate !== -1,
-              );
-              if (index === undefined) return heads[0];
+              const index = successfulIndex === -1 ? unsupportedHeadIndex : successfulIndex;
+              // With no candidate answering HEAD with a page, the first answer,
+              // an error status or a failure, tells the engine why none was
+              // read. It is not asked again with GET: a page gone or a rate
+              // limit answers GET the same, and the request is the scan's.
+              if (index === -1) return heads[0];
               const representative = candidates[index];
               return representative
                 ? await fetch(representative, {

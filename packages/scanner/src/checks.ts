@@ -1033,7 +1033,9 @@ const feedCheck = (artifacts: ScanArtifacts): CheckResult => {
   const product =
     declaresProduct(lower) ||
     /(?:product:price|\bsku\b|\bgtin\b)/i.test(body) ||
-    parseJsonLd(body).nodes.some((node) => jsonLdTypes(node).includes("Product"));
+    pages.some((page) =>
+      jsonLdOf(page).nodes.some((node) => jsonLdTypes(node).includes("Product")),
+    );
   const priceAvailability = /(?:price|availability|in_stock|out_of_stock)/i.test(body);
   if (feedLink)
     return result({
@@ -1205,15 +1207,27 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
     ttfbMs: 0,
     errorCode: robotsBlockedCode,
   };
-  const effective = targetContentAllowed
-    ? artifacts
-    : {
+  // A store's structured data and feed may live only on its product pages.
+  // A product page the scanner could not read, because robots.txt kept it
+  // off, the request failed or the page answered with an error status, is
+  // read by no check, and a verdict that the store's data is absent is not
+  // established: it says why instead.
+  const representative = targetContentAllowed ? artifacts.representative : undefined;
+  const productUnread =
+    representative && (inaccessible(representative) || representative.status >= 400)
+      ? (representative.errorCode ?? "product_page_unavailable")
+      : undefined;
+  const effective = !targetContentAllowed
+    ? {
         ...artifacts,
         base: withheld,
         representative: undefined,
         markdown: withheld,
         agentProbes: {},
-      };
+      }
+    : productUnread
+      ? { ...artifacts, representative: undefined }
+      : artifacts;
   const checks = [
     ...robotsChecks(artifacts),
     sitemapCheck(artifacts),
@@ -1231,30 +1245,17 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
     a2aCheck(artifacts),
     hreflangCheck(effective),
   ];
-  // A store's structured data and feed may live only on its product pages.
-  // When the scanner could not read the one it chose, because robots.txt
-  // kept it off, the request failed, or the page answered with an error or
-  // a bot challenge instead of itself, a verdict that they are absent is not
-  // established, and says why instead.
-  const representative = effective.representative;
-  const productWithheld =
-    representative &&
-    (inaccessible(representative) ||
-      representative.status >= 300 ||
-      isChallenge(representative.status, representative.body))
-      ? (representative.errorCode ?? "product_page_unavailable")
-      : undefined;
   return checks
     .map((check) => {
       const absence = PRODUCT_PAGE_ABSENCES[check.id];
-      return productWithheld && absence?.absent(check)
+      return productUnread && absence?.absent(check)
         ? result({
             id: check.id,
             status: "unavailable",
             earnedWeight: 0,
             summaryCode: absence.summaryCode,
             userImpactCode: absence.userImpactCode,
-            errorCode: productWithheld,
+            errorCode: productUnread,
           })
         : check;
     })
