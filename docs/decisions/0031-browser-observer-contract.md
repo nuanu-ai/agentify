@@ -11,9 +11,8 @@ The worker reaches it with one message each way between two builds deployed
 apart, a wire contract, and the pages it opens are the site's choice, a
 security boundary. Neither was written down, and the output grew an
 18-field `signals` object no reader used, whose limits would fail a whole
-run for a page past 1,000 requests (a constructed page of 1,200 images
-showed it) and for the observer's own `cookie_wall`. Browser observation is
-off in production.
+run for a page past 1,000 requests and for the observer's own
+`cookie_wall`. Browser observation is off in production.
 
 ## Decision
 
@@ -45,21 +44,18 @@ against the limits.
 ## Consequences
 
 One file says what crosses, and a build out of step fails aloud. Deleting
-`signals` removed two limits that failed runs and a value validated three
-times for no reader; the findings carry what a reader shows. Observations
-made under the previous version keep their rows but no report shows them,
-since the routes read this version only; migration 0022 closes those that
-never reached the Actor.
+`signals` removed two limits that failed runs. Observations made under the
+previous version keep their rows, which no report shows, and migration
+0022 closes those that never reached the Actor.
 
-The adversarial reviews of 2026-09-28 and 2026-09-29 found the boundary
-incomplete. A redirect the site answers is handed to Chromium, which
-follows it itself, outside the Actor's request route, so the next address
-is neither pinned to a public one nor held to https; a redirect to a
-loopback address was requested. Chromium also fetches an `http://` target
-itself when its own https upgrade fails; robots.txt is consulted for the
-main frame only; and a navigation a script or a meta refresh makes is
-checked for its domain, not for a fall to http. These are defects against
-this decision, not exceptions to it.
+Reviews on 2026-09-28 and 2026-09-29 found the boundary incomplete, in
+defects against this decision rather than exceptions to it. A redirect the
+site answers is followed by Chromium outside the Actor's request route,
+neither pinned to a public address nor held to https: one to a loopback
+address was requested. Chromium fetches an `http://` target itself when its
+https upgrade fails; robots.txt is consulted for the main frame only; and a
+navigation by script or meta refresh is checked for its domain, not for a
+fall to http.
 
 Rejected: keeping `signals` with looser limits, since every field is surface
 someone must learn and no reader justified one; and reading the output
