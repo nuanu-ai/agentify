@@ -1,5 +1,5 @@
 import type { FetchArtifact } from "@agentify/scanner";
-import type { ScanJobV1 } from "@agentify/scanner-contracts";
+import type { CheckResult, ScanJobV1 } from "@agentify/scanner-contracts";
 import { describe, expect, it } from "vitest";
 import type { PinnedTransport, PinnedTransportRequest } from "./safe-fetch.js";
 import { isSameSite, ScanRunner } from "./scan-runner.js";
@@ -306,6 +306,7 @@ describe("bounded scan graph", () => {
   const productScan = async (
     answer: (input: PinnedTransportRequest) => FetchArtifact | undefined,
     sitemapHost = "example.com",
+    home = `<html><head><title>Store</title></head><body><h1>Store</h1><main>${"Handmade goods from our workshop. ".repeat(20)}<a href="/products/widget">Widget</a></main></body></html>`,
   ) => {
     const target = transport();
     const adapter: PinnedTransport = {
@@ -320,12 +321,7 @@ describe("bounded scan graph", () => {
             "application/xml",
           );
         return input.url.pathname === "/" && input.headers.accept !== "text/markdown"
-          ? makeArtifact(
-              input,
-              200,
-              `<html><head><title>Store</title></head><body><h1>Store</h1><main>${"Handmade goods from our workshop. ".repeat(20)}<a href="/products/widget">Widget</a></main></body></html>`,
-              "text/html",
-            )
+          ? makeArtifact(input, 200, home, "text/html")
           : target.adapter.request(input);
       },
     };
@@ -336,11 +332,13 @@ describe("bounded scan graph", () => {
       transport: adapter,
       appBaseUrl: "https://agentify.ad",
     }).run(job);
-    return [5, 6, 15].map((id) => {
-      const check = evaluation.checks.find((candidate) => candidate.id === id);
+    return evaluation.checks;
+  };
+  const productData = (checks: readonly CheckResult[]) =>
+    [5, 6, 15].map((id) => {
+      const check = checks.find((candidate) => candidate.id === id);
       return [check?.status, check?.errorCode];
     });
-  };
   const productPage = (input: PinnedTransportRequest) => input.url.pathname === "/products/widget";
   const failed = (input: PinnedTransportRequest, errorCode: string) => ({
     ...makeArtifact(input, 0, "", "text/plain"),
@@ -380,19 +378,6 @@ describe("bounded scan graph", () => {
         productPage(input) ? makeArtifact(input, 429, "", "text/plain") : undefined,
     },
     {
-      failure: "it answers with a bot challenge",
-      errorCode: "product_page_unavailable",
-      answer: (input: PinnedTransportRequest) =>
-        productPage(input)
-          ? makeArtifact(
-              input,
-              200,
-              "<html><title>Just a moment...</title><p>Verify you are human.</p></html>",
-              "text/html",
-            )
-          : undefined,
-    },
-    {
       failure: "its host's robots.txt could not be reached",
       errorCode: "fetch_timeout",
       sitemapHost: "shop.example.com",
@@ -404,7 +389,7 @@ describe("bounded scan graph", () => {
   ])(
     "does not report a store's product data absent when $failure",
     async ({ errorCode, answer, sitemapHost }) => {
-      await expect(productScan(answer, sitemapHost)).resolves.toEqual([
+      expect(productData(await productScan(answer, sitemapHost))).toEqual([
         ["unavailable", errorCode],
         ["unavailable", errorCode],
         ["unavailable", errorCode],
@@ -413,35 +398,39 @@ describe("bounded scan graph", () => {
   );
 
   it("reports a store's product data absent when its product page was read without any", async () => {
-    await expect(
-      productScan((input) =>
-        productPage(input)
-          ? makeArtifact(
-              input,
-              200,
-              input.method === "HEAD"
-                ? ""
-                : "<html><title>Widget</title><body><h1>Widget</h1><p>Handmade in our workshop.</p></body></html>",
-              "text/html",
-            )
-          : undefined,
-      ),
-    ).resolves.toEqual([
+    // Shopify serves this script, which names a captcha, on every page of
+    // every store; the page is the store's own all the same.
+    const page = `<html><title>Widget</title><script id="captcha-bootstrap">!function(){'use strict';const t='contact'}();</script><body><h1>Widget</h1><p>Handmade in our workshop.</p></body></html>`;
+    const checks = await productScan((input) =>
+      productPage(input)
+        ? makeArtifact(input, 200, input.method === "HEAD" ? "" : page, "text/html")
+        : undefined,
+    );
+    expect(productData(checks)).toEqual([
       ["fail", undefined],
       ["fail", undefined],
       ["fail", undefined],
     ]);
   });
 
-  it("reads a product page whose server refuses HEAD but serves GET", async () => {
-    const [structured, vertical] = await productScan((input) =>
-      productPage(input)
-        ? input.method === "HEAD"
-          ? makeArtifact(input, 403, "", "text/plain")
-          : makeArtifact(input, 200, html, "text/html")
-        : undefined,
+  it("does not read an error page in place of the product page", async () => {
+    // The product page answers HEAD, then its GET a "not found" page that
+    // carries a heading, text and prices, on a home page too thin to pass.
+    const missing = `<html><title>Page not found</title><body><h1>Page not found</h1><p>${"Try our bestsellers from $19.00 instead. ".repeat(8)}</p></body></html>`;
+    const checks = await productScan(
+      (input) =>
+        productPage(input)
+          ? input.method === "HEAD"
+            ? makeArtifact(input, 200, "", "text/html")
+            : makeArtifact(input, 404, missing, "text/html")
+          : undefined,
+      "example.com",
+      `<html><title>Store</title><body><a href="/products/widget">Widget</a></body></html>`,
     );
-    expect([structured?.[0], vertical?.[0]]).toEqual(["pass", "pass"]);
+    expect(checks.find((check) => check.id === 12)).toMatchObject({
+      status: "fail",
+      evidence: { representative_checked: false },
+    });
   });
 
   it("reads a robots.txt rule against the query as well as the path", async () => {

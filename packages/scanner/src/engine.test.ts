@@ -182,11 +182,13 @@ describe("a scan of pages as large as the fetch admits", () => {
   it("reads every page of a scan once however often the worker evaluates it", () => {
     // The worker evaluates a scan's checks up to four times as its requests
     // complete, over the same artifacts. Here the page, the product page, the
-    // markdown answer and both agent probes are each 2 MiB of one-letter
-    // lines, whose every line break costs the visible-text reader a
-    // replacement: read by every check that needs them, at every evaluation,
-    // they held the worker for seconds.
-    const page = fill("a\n", pageCap);
+    // markdown answer and both agent probes are each 2 MiB: half one-letter
+    // lines, whose every break costs the visible-text reader a replacement,
+    // and half JSON-LD. Read by every check that needs them at every
+    // evaluation, they held the worker for seconds each time; read once, the
+    // later evaluations cost a small part of the first, on any machine.
+    const script = `<script type="application/ld+json">{"@type":"Product","name":"Wool Runner","offers":{"price":"98.00","priceCurrency":"USD"}}</script>\n`;
+    const page = `${fill("a\n", pageCap / 2)}${fill(script, pageCap / 2)}`;
     const input: ScanArtifacts = {
       ...makeArtifacts("store"),
       base: artifact("https://example.com/", page),
@@ -199,14 +201,15 @@ describe("a scan of pages as large as the fetch admits", () => {
         claude: artifact("https://example.com/", page),
       },
     };
+    const first = scan(input);
     const started = performance.now();
-    const evaluations = [1, 2, 3, 4].map(() => evaluateScan(input));
-    const ms = performance.now() - started;
-    expect(checkIn(evaluations[3] as ReturnType<typeof evaluateScan>, 12)?.evidence).toMatchObject({
-      visible_text_chars: page.trim().length,
-    });
-    expect(ms).toBeLessThan(4_000);
-  }, 30_000);
+    const later = [2, 3, 4].map(() => evaluateScan(input));
+    const laterMs = performance.now() - started;
+    expect(checkIn(later[2] as ReturnType<typeof evaluateScan>, 5)?.evidence).toEqual(
+      checkIn(first.evaluation, 5)?.evidence,
+    );
+    expect(laterMs).toBeLessThan(first.ms / 2);
+  }, 60_000);
 
   it("finds the feed link after link tags that run on for megabytes", () => {
     const closed = scan(
