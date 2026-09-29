@@ -22,6 +22,14 @@ import { OutputSanitizationError } from "./sanitize-output.js";
 
 const HONEST_USER_AGENT = "agentify-browser-observer/1.0 (+https://agentify.ad/scanner)";
 
+/**
+ * Fetches one resource: a robots.txt, or a request the page makes. The Actor
+ * always fetches through `safeBrowserRequest`, which holds the network
+ * policy; a test hands in a site of its own, since that policy refuses every
+ * address a test could serve from.
+ */
+export type FetchResource = typeof safeBrowserRequest;
+
 export const raceWithAbort = async <T>(operation: Promise<T>, signal: AbortSignal): Promise<T> => {
   if (signal.aborted) {
     throw new BrowserNetworkPolicyError("run_timeout");
@@ -164,6 +172,7 @@ const robotsAllows = async (options: {
   runtime: ReturnType<typeof emptyRuntime>;
   signal: AbortSignal;
   cache: Map<string, RobotsCacheValue>;
+  fetchResource: FetchResource;
 }): Promise<boolean> => {
   let cached = options.cache.get(options.url.origin);
   if (!cached) {
@@ -171,9 +180,9 @@ const robotsAllows = async (options: {
     let robotsBytes = 0;
     try {
       let robotsUrl = new URL("/robots.txt", options.url.origin);
-      let response: Awaited<ReturnType<typeof safeBrowserRequest>>;
+      let response: Awaited<ReturnType<FetchResource>>;
       for (let redirectCount = 0; ; redirectCount += 1) {
-        response = await safeBrowserRequest({
+        response = await options.fetchResource({
           url: robotsUrl,
           method: "GET",
           headers: {
@@ -286,6 +295,7 @@ const observePage = async (options: {
   runtime: ReturnType<typeof emptyRuntime>;
   runSignal: AbortSignal;
   robotsCache: Map<string, RobotsCacheValue>;
+  fetchResource: FetchResource;
 }): Promise<{
   signals: PageSignals;
   representativeUrls: URL[];
@@ -367,6 +377,7 @@ const observePage = async (options: {
             runtime: options.runtime,
             signal: pageAbort.signal,
             cache: options.robotsCache,
+            fetchResource: options.fetchResource,
           }),
       });
       if (!navigationAllowed) {
@@ -382,7 +393,7 @@ const observePage = async (options: {
       }
 
       try {
-        const response = await safeBrowserRequest({
+        const response = await options.fetchResource({
           url: decision.url,
           method: request.method() as "GET" | "HEAD",
           headers: await request.allHeaders(),
@@ -514,6 +525,7 @@ export const runBrowserObservation = async (options: {
   input: unknown;
   actorBuild: string;
   onRuntimeFailure?: (code: string) => void;
+  fetchResource?: FetchResource;
 }): Promise<BrowserObservationOutputV1> => {
   const input = browserObservationInputV1Schema.parse(options.input);
   if (input.policy.user_agent !== HONEST_USER_AGENT) {
@@ -527,6 +539,7 @@ export const runBrowserObservation = async (options: {
     declaredDomain: input.target.registrable_domain,
   }).slice(0, input.limits.max_pages);
   const runtime = emptyRuntime(input);
+  const fetchResource = options.fetchResource ?? safeBrowserRequest;
   const runController = new AbortController();
   let runtimeStage: "robots" | "launch" | "page" | "output" = "robots";
   let browser: Browser | undefined;
@@ -546,6 +559,7 @@ export const runBrowserObservation = async (options: {
         runtime,
         signal: runController.signal,
         cache: robotsCache,
+        fetchResource,
       });
       if (allowed) {
         allowedUrls.push(url);
@@ -585,6 +599,7 @@ export const runBrowserObservation = async (options: {
           runtime,
           runSignal: runController.signal,
           robotsCache,
+          fetchResource,
         });
         runtime.pages.push(result.signals);
         if (pageIndex === 0 && allowedUrls.length < input.limits.max_pages) {
@@ -601,6 +616,7 @@ export const runBrowserObservation = async (options: {
                 runtime,
                 signal: runController.signal,
                 cache: robotsCache,
+                fetchResource,
               });
               if (allowed) allowedUrls.push(candidate);
               else runtime.pageFailureCount += 1;
