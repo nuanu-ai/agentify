@@ -1,4 +1,5 @@
 import { promises as dns, type LookupAddress } from "node:dns";
+import http from "node:http";
 import { describe, expect, it, vi } from "vitest";
 
 import type { BrowserNetworkPolicyError } from "./network-policy.js";
@@ -227,6 +228,29 @@ describe("browser network policy", () => {
       await expect(request).rejects.toMatchObject({ code: "request_aborted" });
     } finally {
       lookup.mockRestore();
+    }
+  });
+
+  it("sends nothing for a page aborted just as its request's host is resolved", async () => {
+    // An address needs no lookup, so it resolves at once, and the page is
+    // aborted in the next moment, before the request would listen for that.
+    const send = vi.spyOn(http, "request").mockImplementation(() => {
+      throw new Error("a request was sent");
+    });
+    try {
+      const page = new AbortController();
+      const request = safeBrowserRequest({
+        url: new URL("http://93.184.216.34/lookbook.jpg"),
+        method: "GET",
+        headers: {},
+        signal: page.signal,
+        timeoutMs: 8_000,
+        consumeBytes: () => true,
+      });
+      queueMicrotask(() => page.abort());
+      await expect(request).rejects.toMatchObject({ code: "request_aborted" });
+    } finally {
+      send.mockRestore();
     }
   });
 
