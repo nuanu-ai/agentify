@@ -1,4 +1,5 @@
 import { CHECK_DEFINITIONS, type CheckResult, type Segment } from "@agentify/scanner-contracts";
+import { asciiLower, isQuote, nextTag, quotedValues, type Span } from "./markup.js";
 import type { FetchArtifact, ScanArtifacts } from "./model.js";
 import {
   comparableBodies,
@@ -555,6 +556,23 @@ const markdownCheck = (artifacts: ScanArtifacts): CheckResult => {
   });
 };
 
+// Whether a Markdown link leads to an absolute address: a bracketed text of
+// at least one character, then `(http://` or `(https://`.
+const linksAbsolutely = (text: string): boolean => {
+  const lower = asciiLower(text);
+  for (let open = lower.indexOf("["); open !== -1; ) {
+    const close = lower.indexOf("]", open + 1);
+    if (close === -1) return false;
+    if (
+      close > open + 1 &&
+      (lower.startsWith("(http://", close + 1) || lower.startsWith("(https://", close + 1))
+    )
+      return true;
+    open = lower.indexOf("[", close + 1);
+  }
+  return false;
+};
+
 const llmsCheck = (artifact?: FetchArtifact): CheckResult => {
   if (!artifact || missing(artifact))
     return result({
@@ -575,7 +593,7 @@ const llmsCheck = (artifact?: FetchArtifact): CheckResult => {
       errorCode: artifact.errorCode ?? "llms_unavailable",
     });
   const h1 = /^#\s+\S+/m.test(artifact.body);
-  const links = /\[[^\]]+\]\(https?:\/\//i.test(artifact.body);
+  const links = linksAbsolutely(artifact.body);
   return result({
     id: 8,
     status: h1 && links ? "pass" : "partial",
@@ -914,6 +932,45 @@ const performanceCheck = (artifacts: ScanArtifacts): CheckResult => {
   });
 };
 
+const FEED_TYPES = ["application/rss+xml", "application/atom+xml", "application/xml", "text/csv"];
+const FEED_ADDRESSES = ["feed", "merchant", "products.xml", "products.csv"];
+
+// Whether some `<link>` declares a feed, by a feed's media type or by an
+// address that names one. `lower` is the page through asciiLower.
+const linksFeed = (lower: string): boolean => {
+  const text = (span: Span): string => lower.slice(span.start, span.end);
+  for (let tag = nextTag(lower, "link", 0); tag; tag = nextTag(lower, "link", tag.end + 1)) {
+    if (quotedValues(lower, "type=", tag).some((type) => FEED_TYPES.includes(text(type))))
+      return true;
+    if (
+      quotedValues(lower, "href=", tag).some((href) =>
+        FEED_ADDRESSES.some((word) => text(href).includes(word)),
+      )
+    )
+      return true;
+  }
+  return false;
+};
+
+// Whether an Open Graph type of product is declared: `og:type` and a quote,
+// then, before the next `>`, a content attribute whose quoted value begins
+// with "product". `lower` is the page through asciiLower.
+const declaresProduct = (lower: string): boolean => {
+  for (let at = lower.indexOf("og:type"); at !== -1; ) {
+    const quote = at + "og:type".length;
+    if (!isQuote(lower.charCodeAt(quote))) {
+      at = lower.indexOf("og:type", at + 1);
+      continue;
+    }
+    const close = lower.indexOf(">", quote + 1);
+    const rest = lower.slice(quote + 1, close === -1 ? lower.length : close);
+    if (rest.includes('content="product') || rest.includes("content='product")) return true;
+    if (close === -1) return false;
+    at = lower.indexOf("og:type", close + 1);
+  }
+  return false;
+};
+
 const feedCheck = (artifacts: ScanArtifacts): CheckResult => {
   if (artifacts.segment !== "store")
     return result({
@@ -938,12 +995,11 @@ const feedCheck = (artifacts: ScanArtifacts): CheckResult => {
         artifacts.base?.errorCode ?? artifacts.representative?.errorCode ?? "base_unavailable",
     });
   const body = pages.map((page) => page.body).join("\n");
-  const feedLink =
-    /<link\b[^>]*(?:type=["'](?:application\/(?:rss\+xml|atom\+xml|xml)|text\/csv)["']|href=["'][^"']*(?:feed|merchant|products\.(?:xml|csv))[^"']*["'])/i.test(
-      body,
-    );
+  const lower = asciiLower(body);
+  const feedLink = linksFeed(lower);
   const product =
-    /(?:og:type["'][^>]*content=["']product|product:price|\bsku\b|\bgtin\b)/i.test(body) ||
+    declaresProduct(lower) ||
+    /(?:product:price|\bsku\b|\bgtin\b)/i.test(body) ||
     parseJsonLd(body).nodes.some((node) => jsonLdTypes(node).includes("Product"));
   const priceAvailability = /(?:price|availability|in_stock|out_of_stock)/i.test(body);
   if (feedLink)
