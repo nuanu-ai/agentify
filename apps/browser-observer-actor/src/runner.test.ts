@@ -1,8 +1,10 @@
 import { parseRobots } from "@agentify/scanner";
+import type { Frame } from "playwright";
 import { describe, expect, it } from "vitest";
 
 import {
   authorizeMainFrameNavigation,
+  navigationTarget,
   permitsBrowserNavigation,
   permitsSearchPurpose,
   raceWithAbort,
@@ -116,6 +118,39 @@ describe("search-purpose policy", () => {
       expect(allowed).toBe(false);
       expect(events).toEqual([`robots:/private/${source}`]);
     }
+  });
+});
+
+describe("popups", () => {
+  // What Playwright does when asked for the frame of a navigation issued
+  // before that frame exists: the first navigation of a window a page opens.
+  const frameNotYetCreated = (): never => {
+    throw new Error(
+      "Frame for this navigation request is not available, because the request\nwas issued before the frame is created.",
+    );
+  };
+
+  it("names a navigation with no frame yet a popup rather than throwing", () => {
+    expect(
+      navigationTarget({ isNavigationRequest: () => true, frame: frameNotYetCreated }, undefined),
+    ).toBe("popup");
+  });
+
+  it("tells the page's own navigation from a frame's", () => {
+    const mainFrame = {} as Frame;
+    const childFrame = {} as Frame;
+    expect(
+      navigationTarget({ isNavigationRequest: () => true, frame: () => mainFrame }, mainFrame),
+    ).toBe("main_frame");
+    expect(
+      navigationTarget({ isNavigationRequest: () => true, frame: () => childFrame }, mainFrame),
+    ).toBe("child_frame");
+  });
+
+  it("does not ask for the frame of a request that is no navigation", () => {
+    expect(
+      navigationTarget({ isNavigationRequest: () => false, frame: frameNotYetCreated }, undefined),
+    ).toBe("not_navigation");
   });
 });
 

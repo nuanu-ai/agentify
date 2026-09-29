@@ -2,10 +2,15 @@ import { createSocket } from "node:dgram";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 
+import {
+  BROWSER_OBSERVATION_VERSION,
+  type BrowserObservationOutputV1,
+} from "@agentify/scanner-contracts";
 import { chromium } from "playwright";
 import { describe, expect, it } from "vitest";
 
 import { collectPageSignals } from "./browser-signals.js";
+import { type FetchResource, runBrowserObservation } from "./runner.js";
 import {
   BLOCKED_ACTIVE_NETWORK_GLOBALS,
   installPassiveRuntimeGuards,
@@ -145,4 +150,81 @@ describe("real Chromium aggregate extraction", () => {
       await new Promise<void>((resolve) => udp.close(() => resolve()));
     }
   }, 20_000);
+});
+
+type Resource = Parameters<FetchResource>[0];
+type Answer = Awaited<ReturnType<FetchResource>>;
+
+const htmlPage = (markup: string): Answer => {
+  const body = Buffer.from(markup, "utf8");
+  return {
+    status: 200,
+    headers: { "content-type": "text/html; charset=utf-8" },
+    body,
+    decodedBytes: body.length,
+  };
+};
+
+const NOT_FOUND: Answer = { status: 404, headers: {}, body: Buffer.alloc(0), decodedBytes: 0 };
+
+/**
+ * A whole run of the observer, in a real Chromium, against a site served from
+ * this process: each path answers with its page or its handler, and every
+ * other path, robots.txt among them, is not found. The pages are named by
+ * path on www.example.com, the first one the target.
+ */
+const observeSite = async (
+  pages: Record<string, string | ((resource: Resource) => Promise<Answer>)>,
+  paths: readonly string[],
+  limits: { page_timeout_ms?: number; run_timeout_ms?: number } = {},
+) => {
+  const [target, ...representatives] = paths.map((path) => `https://www.example.com${path}`);
+  return await runBrowserObservation({
+    actorBuild: "integration",
+    fetchResource: async (resource) => {
+      const page = pages[resource.url.pathname];
+      if (page === undefined) return NOT_FOUND;
+      return typeof page === "string" ? htmlPage(page) : await page(resource);
+    },
+    input: {
+      schema_version: BROWSER_OBSERVATION_VERSION,
+      operation_id: "019f5d64-1234-7abc-8abc-1234567890ab",
+      target: { canonical_url: target, registrable_domain: "example.com", segment: "owner" },
+      representative_urls: representatives,
+      policy: {
+        user_agent: "agentify-browser-observer/1.0 (+https://agentify.ad/scanner)",
+        methods: ["GET", "HEAD"],
+        use_proxy: false,
+        respect_robots: true,
+        crawl_purpose: "search",
+      },
+      limits: {
+        max_pages: paths.length,
+        max_requests_per_page: 20,
+        max_total_bytes: 1_000_000,
+        page_timeout_ms: 5_000,
+        run_timeout_ms: 30_000,
+        ...limits,
+      },
+    },
+  });
+};
+
+const networkEvidence = (output: BrowserObservationOutputV1) =>
+  output.observations.find((finding) => finding.id === "browser_network_health")?.evidence;
+
+describe("a real Chromium run against a served site", () => {
+  it("blocks a window the page opens and finishes the run", async () => {
+    const output = await observeSite(
+      {
+        "/": `<!doctype html><title>Linen shirt</title><main><h1>Linen shirt</h1><p>Relaxed fit.</p></main>
+          <script>window.open("/newsletter");</script>`,
+        "/newsletter": "<!doctype html><title>Newsletter</title><p>Sign up</p>",
+      },
+      ["/"],
+    );
+    expect(output.status).toBe("completed");
+    expect(output.pages_assessed).toBe(1);
+    expect(networkEvidence(output)).toMatchObject({ blocked_destination_count: 1 });
+  }, 30_000);
 });
