@@ -293,4 +293,23 @@ describe("a real Chromium run against a served site", () => {
     expect(failures).toEqual([expect.stringMatching(/_page_timeout$/)]);
     expect(output.timings.total_ms).toBeLessThan(20_000);
   }, 45_000);
+
+  it("reports a page that never finishes loading as out of time, not as aborted", async () => {
+    // Its only image never finishes, so its load event never comes, and the
+    // page's deadline passes while the observer waits for it.
+    const failures: string[] = [];
+    const output = await observeSite(
+      {
+        "/": `<!doctype html><title>Linen shirt</title>
+          <main><h1>Linen shirt</h1><img src="/lookbook.jpg" alt="Lookbook"></main>`,
+        "/lookbook.jpg": async () => await new Promise<Answer>(() => {}),
+        "/pages/contact": "<!doctype html><title>Contact</title><main><h1>Contact</h1></main>",
+      },
+      ["/", "/pages/contact"],
+      { page_timeout_ms: 1_000, run_timeout_ms: 20_000 },
+      (code) => failures.push(code),
+    );
+    expect(output.pages_assessed).toBe(1);
+    expect(failures).toEqual([expect.stringMatching(/_page_timeout$/)]);
+  }, 45_000);
 });
