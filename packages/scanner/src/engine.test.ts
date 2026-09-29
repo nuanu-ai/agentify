@@ -179,6 +179,35 @@ describe("a scan of pages as large as the fetch admits", () => {
   const checkIn = (evaluation: ReturnType<typeof evaluateScan>, id: number) =>
     evaluation.checks.find((candidate) => candidate.id === id);
 
+  it("reads every page of a scan once however often the worker evaluates it", () => {
+    // The worker evaluates a scan's checks up to four times as its requests
+    // complete, over the same artifacts. Here the page, the product page, the
+    // markdown answer and both agent probes are each 2 MiB of one-letter
+    // lines, whose every line break costs the visible-text reader a
+    // replacement: read by every check that needs them, at every evaluation,
+    // they held the worker for seconds.
+    const page = fill("a\n", pageCap);
+    const input: ScanArtifacts = {
+      ...makeArtifacts("store"),
+      base: artifact("https://example.com/", page),
+      representative: artifact("https://example.com/product/widget", page),
+      markdown: artifact("https://example.com/", page, {
+        headers: { "content-type": "text/markdown", vary: "Accept" },
+      }),
+      agentProbes: {
+        chatgpt: artifact("https://example.com/", page),
+        claude: artifact("https://example.com/", page),
+      },
+    };
+    const started = performance.now();
+    const evaluations = [1, 2, 3, 4].map(() => evaluateScan(input));
+    const ms = performance.now() - started;
+    expect(checkIn(evaluations[3] as ReturnType<typeof evaluateScan>, 12)?.evidence).toMatchObject({
+      visible_text_chars: page.trim().length,
+    });
+    expect(ms).toBeLessThan(4_000);
+  }, 30_000);
+
   it("finds the feed link after link tags that run on for megabytes", () => {
     const closed = scan(
       withBase(
