@@ -190,7 +190,7 @@ export const parseJsonLd = (html: string): JsonLdResult => {
     scriptCount += 1;
     const parsed = parseSafeJson(html.slice(text.start, text.end), 524_288);
     if (parsed === undefined) invalidCount += 1;
-    else nodes.push(...flattenJsonLd(parsed));
+    else for (const node of flattenJsonLd(parsed)) nodes.push(node);
     tag = nextTag(lower, "script", text.end + SCRIPT_END.length);
   }
   return { nodes, scriptCount, invalidCount };
