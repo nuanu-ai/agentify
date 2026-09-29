@@ -230,6 +230,37 @@ describe("scan job lifecycle", () => {
     });
   });
 
+  it("still requests a browser observation when only another check went unassessed", async () => {
+    const { repo, state } = repository();
+    await processScanJob(job, {
+      repository: repo,
+      runner: {
+        run: async () => ({
+          ...evaluation,
+          checks: [
+            check,
+            {
+              ...check,
+              id: 8,
+              status: "unavailable" as const,
+              summaryCode: "mcp_unavailable",
+              userImpactCode: "mcp_not_assessed",
+              earnedWeight: 0,
+              errorCode: "fetch_timeout",
+            },
+          ],
+        }),
+      } as never,
+      browserObservation: {
+        actorId: "owner/agentify-browser-observer",
+        actorBuild: "1.0.42",
+        sampleRate: 1,
+        enqueue: async () => {},
+      },
+    });
+    expect(state.terminal?.browserObservation).toBeDefined();
+  });
+
   // The last case is a robots.txt the network kept from being read, which the
   // robots check names by that failure.
   it.each([

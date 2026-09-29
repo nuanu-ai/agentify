@@ -69,9 +69,14 @@ const sampledForBrowserObservation = (scanId: string, sampleRate: number): boole
   return sample / 0x1_0000_0000 < sampleRate;
 };
 
+// Check 1 is not assessed when robots.txt could not be read at all, whatever
+// the network failure it names.
 const browserObservationAllowedByRobots = (checks: readonly CheckResult[]): boolean =>
   !checks.some(
-    (check) => check.errorCode === "robots_disallowed" || check.errorCode === "robots_unavailable",
+    (check) =>
+      check.errorCode === "robots_disallowed" ||
+      check.errorCode === "robots_unavailable" ||
+      (check.id === 1 && check.status === "unavailable"),
   );
 
 // The runner turns every failed or refused request into an artifact, so the
