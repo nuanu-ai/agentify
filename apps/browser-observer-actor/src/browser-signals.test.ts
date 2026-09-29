@@ -324,3 +324,56 @@ describe("raw HTML signals on storefront markup", () => {
     });
   });
 });
+
+// A page's raw HTML is bounded only by the run's byte budget, and reading it
+// is synchronous work no deadline can interrupt. So every shape a hostile page
+// could repeat is read at each size up to that budget, in time that grows with
+// the size and not with its square: a fixed allowance plus a fixed cost per
+// MiB. The sizes double on the way up so that reading in quadratic time fails
+// at the first size it overruns instead of running for hours at the last.
+describe("raw HTML signals on hostile markup", () => {
+  const MIB = 1024 * 1024;
+  const BYTE_BUDGET = 8 * MIB;
+  const allowanceMs = (size: number): number => 200 + (size / MIB) * 250;
+  const NOTHING_READ = {
+    canonical: null,
+    hreflangCount: 0,
+    jsonLdCount: 0,
+    currencies: [],
+    availability: [],
+    priceCount: 0,
+    hasContact: false,
+    hasOpeningHours: false,
+  };
+  const timed = <T>(read: () => T): { value: T; ms: number } => {
+    const startedAt = performance.now();
+    const value = read();
+    return { value, ms: performance.now() - startedAt };
+  };
+
+  it.each([
+    { unit: "<!--", text: (html: string) => html.length },
+    { unit: "<", text: (html: string) => html.length },
+    { unit: "<a ", text: (html: string) => html.length - 1 },
+    { unit: "<script>", text: () => 0 },
+    { unit: "<script ", text: (html: string) => html.length - 1 },
+    { unit: "<style ", text: (html: string) => html.length - 1 },
+    { unit: "<noscript>", text: () => 0 },
+    { unit: "<template ", text: (html: string) => html.length - 1 },
+    { unit: "<link ", text: (html: string) => html.length - 1 },
+    { unit: "<script type ", text: (html: string) => html.length - 1 },
+    { unit: '<script type="application/ld+json">', text: () => 0 },
+  ])("reads $unit repeated up to the byte budget in linear time", ({ unit, text }) => {
+    for (let size = 64 * 1024; size <= BYTE_BUDGET; size *= 2) {
+      const html = unit.repeat(Math.floor(size / unit.length));
+      const count = timed(() => rawTextCharacterCount(html));
+      expect(count.value).toBe(text(html));
+      expect(count.ms, `raw text of ${html.length} characters`).toBeLessThan(allowanceMs(size));
+      const metadata = timed(() => extractRawMetadata(html, "https://example.com/"));
+      expect(metadata.value).toEqual(NOTHING_READ);
+      expect(metadata.ms, `raw metadata of ${html.length} characters`).toBeLessThan(
+        allowanceMs(size),
+      );
+    }
+  });
+});
