@@ -1143,9 +1143,14 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
     hreflangCheck(effective),
   ];
   // A store's structured data and feed may live only on its product pages.
-  // When robots.txt kept the scanner off the one it chose, a verdict that
-  // they are absent is not established, and says why instead.
-  const productWithheld = robotsCode(effective.representative);
+  // When the scanner could not read the one it chose, because robots.txt
+  // kept it off or the request failed, a verdict that they are absent is not
+  // established, and says why instead.
+  const representative = effective.representative;
+  const productWithheld =
+    representative && inaccessible(representative)
+      ? (representative.errorCode ?? "product_page_unavailable")
+      : undefined;
   return checks
     .map((check) => {
       const absence = PRODUCT_PAGE_ABSENCES[check.id];

@@ -410,7 +410,13 @@ export class ScanRunner {
                 [405, 501].includes(head.status),
               );
               const index = successfulIndex === -1 ? unsupportedHeadIndex : successfulIndex;
-              const representative = index === -1 ? undefined : candidates[index];
+              // A product page none of whose candidates could be reached tells
+              // the engine why, as a refused one does.
+              if (index === -1)
+                return heads.find(
+                  (head) => head.errorCode || head.status === 0 || head.status >= 500,
+                );
+              const representative = candidates[index];
               return representative
                 ? await fetch(representative, {
                     bodyLimit: 2 * 1024 * 1024,
