@@ -89,14 +89,20 @@ const makeArtifacts = (segment: Segment): ScanArtifacts => ({
   ),
 });
 
-describe("what the checks read from the markup real sites write", () => {
-  const withBase = (page: string): ScanArtifacts => ({
-    ...makeArtifacts("store"),
-    base: artifact("https://example.com/", page),
-  });
-  const check = (input: ScanArtifacts, id: number) =>
-    evaluateScan(input).checks.find((candidate) => candidate.id === id);
+const withBase = (page: string): ScanArtifacts => ({
+  ...makeArtifacts("store"),
+  base: artifact("https://example.com/", page),
+});
+const withLlms = (body: string): ScanArtifacts => ({
+  ...makeArtifacts("store"),
+  llms: artifact("https://example.com/llms.txt", body, {
+    headers: { "content-type": "text/markdown" },
+  }),
+});
+const check = (input: ScanArtifacts, id: number) =>
+  evaluateScan(input).checks.find((candidate) => candidate.id === id);
 
+describe("what the checks read from the markup real sites write", () => {
   it("finds a feed a page links to by its type or by its address", () => {
     for (const link of [
       '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/feed/" />',
@@ -136,20 +142,14 @@ describe("what the checks read from the markup real sites write", () => {
   });
 
   it("counts an llms.txt link only when it leads to an absolute address", () => {
-    const llms = (body: string): ScanArtifacts => ({
-      ...makeArtifacts("store"),
-      llms: artifact("https://example.com/llms.txt", body, {
-        headers: { "content-type": "text/markdown" },
-      }),
-    });
     const absolute = `# llms.txt\n\n> A proposal.\n\n## Docs\n\n- [llms.txt proposal](https://llmstxt.org/index.md): The proposal for llms.txt\n`;
-    expect(check(llms(absolute), 8)?.evidence).toEqual({ has_h1: true, has_links: true });
+    expect(check(withLlms(absolute), 8)?.evidence).toEqual({ has_h1: true, has_links: true });
     const relative = "# Example\n\n## Docs\n\n- [Catalog](/catalog.md): every product\n";
-    expect(check(llms(relative), 8)?.evidence).toEqual({ has_h1: true, has_links: false });
+    expect(check(withLlms(relative), 8)?.evidence).toEqual({ has_h1: true, has_links: false });
     const plain = "# Example\n\n- [Catalog](http://example.com/catalog.md)\n";
-    expect(check(llms(plain), 8)?.evidence).toEqual({ has_h1: true, has_links: true });
+    expect(check(withLlms(plain), 8)?.evidence).toEqual({ has_h1: true, has_links: true });
     const untitled = "# Example\n\n- [](https://example.com/catalog.md)\n";
-    expect(check(llms(untitled), 8)?.evidence).toEqual({ has_h1: true, has_links: false });
+    expect(check(withLlms(untitled), 8)?.evidence).toEqual({ has_h1: true, has_links: false });
   });
 
   it("recognizes Adyen by the checkout script a page loads", () => {
@@ -157,6 +157,71 @@ describe("what the checks read from the markup real sites write", () => {
     expect(evaluateScan(withBase(page)).fingerprint.pspMarkers).toMatchObject([
       { value: "Adyen", confidence: "high" },
     ]);
+  });
+});
+
+describe("a scan of pages as large as the fetch admits", () => {
+  // The promise of parsers.test.ts ("a page or a sitemap as large as the
+  // fetch admits") for what the checks and the fingerprint read themselves:
+  // a feed link and an Open Graph type in a page of up to 2 MiB, a link in an
+  // llms.txt of up to 512 KiB, and the Adyen script in the first 512 KiB of a
+  // page, which is as far as the fingerprint reads.
+  const pageCap = 2 * 1024 * 1024;
+  const textCap = 512 * 1024;
+  const budgetMs = 500;
+  const fill = (unit: string, room: number): string =>
+    unit.repeat(Math.floor((room - 256) / unit.length));
+  const scan = (input: ScanArtifacts) => {
+    const started = performance.now();
+    const evaluation = evaluateScan(input);
+    return { evaluation, ms: performance.now() - started };
+  };
+  const checkIn = (evaluation: ReturnType<typeof evaluateScan>, id: number) =>
+    evaluation.checks.find((candidate) => candidate.id === id);
+
+  it("finds the feed link after link tags that run on for megabytes", () => {
+    const closed = scan(
+      withBase(
+        `${fill("<link ", pageCap)}><link rel="alternate" type="application/rss+xml" href="/feed/">`,
+      ),
+    );
+    expect(checkIn(closed.evaluation, 15)?.evidence).toMatchObject({ feed_link: true });
+    expect(closed.ms).toBeLessThan(budgetMs);
+    const unclosed = scan(withBase(fill('<link href="', pageCap)));
+    expect(checkIn(unclosed.evaluation, 15)?.status).toBe("fail");
+    expect(unclosed.ms).toBeLessThan(budgetMs);
+  });
+
+  it("recognizes a product page after an Open Graph tag that runs on for megabytes", () => {
+    const page = `${fill('<meta property="og:type" ', pageCap)}><meta property="og:type" content="product">`;
+    const { evaluation, ms } = scan(withBase(page));
+    expect(checkIn(evaluation, 15)?.evidence).toMatchObject({
+      feed_link: false,
+      product_identifiers: true,
+    });
+    expect(ms).toBeLessThan(budgetMs);
+  });
+
+  it("finds the llms.txt link after brackets that never lead anywhere", () => {
+    const closed = scan(
+      withLlms(
+        `# Catalog\n\n${fill("[", textCap)}]x\n- [Catalog](https://example.com/catalog.md)\n`,
+      ),
+    );
+    expect(checkIn(closed.evaluation, 8)?.evidence).toEqual({ has_h1: true, has_links: true });
+    expect(closed.ms).toBeLessThan(budgetMs);
+    const unclosed = scan(withLlms(`# Catalog\n\n${fill("[", textCap)}`));
+    expect(checkIn(unclosed.evaluation, 8)?.evidence).toEqual({ has_h1: true, has_links: false });
+    expect(unclosed.ms).toBeLessThan(budgetMs);
+  });
+
+  it("recognizes Adyen after a line of checkout names that never reaches its address", () => {
+    const page = `${fill("checkoutshopper-", textCap)}\n<script src="https://checkoutshopper-live.adyen.com/checkoutshopper/sdk/5.53.2/adyen.js"></script>`;
+    const { evaluation, ms } = scan(withBase(page));
+    expect(evaluation.fingerprint.pspMarkers).toMatchObject([
+      { value: "Adyen", confidence: "high" },
+    ]);
+    expect(ms).toBeLessThan(budgetMs);
   });
 });
 

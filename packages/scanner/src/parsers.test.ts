@@ -427,3 +427,120 @@ describe("a robots.txt as large as the fetch admits", () => {
       expect(decide(etsy, path).allowed).not.toBeUndefined();
   });
 });
+
+describe("a page or a sitemap as large as the fetch admits", () => {
+  // The worker reads up to 2 MiB of a page and 5 MiB of a sitemap
+  // (apps/scanner-worker/src/scan-runner.ts). Reading them is synchronous:
+  // while it runs, the scan's deadline timer cannot fire and every other scan
+  // in the process waits. Each case fills that much with a shape the site
+  // controls, one that makes a reader retry from every opening it sees, and
+  // asks for what the page says around it, so a reader that gives up on a
+  // large page does not pass either.
+  const pageCap = 2 * 1024 * 1024;
+  const sitemapCap = 5 * 1024 * 1024;
+  const budgetMs = 500;
+  const fill = (unit: string, room: number): string =>
+    unit.repeat(Math.floor((room - 256) / unit.length));
+  const timed = <T>(read: () => T): { value: T; ms: number } => {
+    const started = performance.now();
+    const value = read();
+    return { value, ms: performance.now() - started };
+  };
+  // A long text is compared by its length and its two ends, so a failure
+  // prints a line rather than two megabytes.
+  const outline = (text: string) => ({
+    length: text.length,
+    start: text.slice(0, 24),
+    end: text.slice(-24),
+  });
+
+  it("reads the hreflang links around an alternate link that runs on for megabytes", () => {
+    const first = `<link rel="alternate" hreflang="de" href="/de">`;
+    const last = `<link rel="alternate" hreflang="en" href="/en">`;
+    const run = fill('<link rel="alternate" ', pageCap);
+    const closed = timed(() => htmlSignals(`${first}${run}>${last}`).hreflangs);
+    expect(closed.value).toEqual(["de", "en"]);
+    expect(closed.ms).toBeLessThan(budgetMs);
+    const unclosed = timed(() => htmlSignals(`${first}${run}`).hreflangs);
+    expect(unclosed.value).toEqual(["de"]);
+    expect(unclosed.ms).toBeLessThan(budgetMs);
+  });
+
+  it.each([
+    ["an opening bracket", "<"],
+    ["a comment", "<!--"],
+  ])("reads the visible text around %s that never closes", (_shape, unit) => {
+    const run = fill(unit, pageCap);
+    const text = timed(() => visibleText(`<p>Hello</p>${run}tail`));
+    expect(outline(text.value)).toEqual(outline(`Hello ${run}tail`));
+    expect(text.ms).toBeLessThan(budgetMs);
+  });
+
+  it.each([
+    ["a script", "<script"],
+    ["a style", "<style"],
+    ["a navigation", "<nav"],
+    ["a script whose tag closes each time", "<script>"],
+  ])("reads the visible text around %s that never ends", (_shape, unit) => {
+    const text = timed(() => visibleText(`<p>Hello</p>${fill(unit, pageCap)}<p>tail</p>`));
+    expect(text.value).toBe("Hello tail");
+    expect(text.ms).toBeLessThan(budgetMs);
+  });
+
+  it("reads the JSON-LD around script tags that never declare a type or never end", () => {
+    const script = (type: string) =>
+      `<script type="application/ld+json">{"@type":"${type}"}</script>`;
+    const read = (html: string) => {
+      const parsed = parseJsonLd(html);
+      return { scriptCount: parsed.scriptCount, types: parsed.nodes.flatMap(jsonLdTypes) };
+    };
+    const untyped = timed(() =>
+      read(`${script("Organization")}${fill("<script ", pageCap)}>${script("Product")}`),
+    );
+    expect(untyped.value).toEqual({ scriptCount: 2, types: ["Organization", "Product"] });
+    expect(untyped.ms).toBeLessThan(budgetMs);
+    const unended = timed(() =>
+      read(`${script("Organization")}${fill('<script type="application/ld+json">', pageCap)}`),
+    );
+    expect(unended.value).toEqual({ scriptCount: 1, types: ["Organization"] });
+    expect(unended.ms).toBeLessThan(budgetMs);
+  });
+
+  it("sees the title, the heading and the product link after tags that run on for megabytes", () => {
+    const third = pageCap / 3;
+    const page = `${fill("<title ", third)}>${fill("<h1 ", third)}>${fill("<a ", third)}><title>Wool Runners</title><h1>Wool Runner</h1><a href="/products/wool-runner">`;
+    const signals = timed(() => htmlSignals(page));
+    expect(signals.value).toMatchObject({ hasTitle: true, hasH1: true, productLinkCount: 1 });
+    expect(signals.ms).toBeLessThan(budgetMs);
+    const unclosed = timed(() =>
+      htmlSignals(`<a href="/products/wool-runner">${fill("<a ", pageCap)}`),
+    );
+    expect(unclosed.value.productLinkCount).toBe(1);
+    expect(unclosed.ms).toBeLessThan(budgetMs);
+  });
+
+  it.each([
+    ["a location", "<loc>"],
+    ["a location tag", "<loc "],
+  ])("reads the entries before %s that never closes", (_shape, unit) => {
+    const entry = `<urlset><url><loc>https://example.com/products/wool-runner</loc><lastmod>2026-07-12</lastmod></url>`;
+    const parsed = timed(() => parseSitemap(`${entry}${fill(unit, sitemapCap)}`));
+    expect(parsed.value).toMatchObject({
+      valid: true,
+      urls: ["https://example.com/products/wool-runner"],
+      lastmods: ["2026-07-12"],
+    });
+    expect(parsed.ms).toBeLessThan(budgetMs);
+  });
+
+  it("reads the entry after modification dates that never close", () => {
+    const sitemap = `<urlset>${fill("<lastmod>", sitemapCap)}<url><loc>https://example.com/products/wool-runner</loc></url>`;
+    const parsed = timed(() => parseSitemap(sitemap));
+    expect(parsed.value).toMatchObject({
+      valid: true,
+      urls: ["https://example.com/products/wool-runner"],
+      lastmods: [],
+    });
+    expect(parsed.ms).toBeLessThan(budgetMs);
+  });
+});
