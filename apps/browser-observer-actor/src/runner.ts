@@ -539,9 +539,10 @@ const observePage = async (options: {
         timeout: Math.min(1_500, options.input.limits.page_timeout_ms),
       })
       .catch(() => undefined);
-    if (pageAbort.signal.aborted || pageSignal.aborted) {
-      throw new BrowserNetworkPolicyError("page_aborted");
-    }
+    // Out of time while waiting for the load event is a timeout, as it is at
+    // any other stage; aborted is the page's own requests stopping it.
+    if (pageSignal.aborted) throw deadlineError(pageSignal);
+    if (pageAbort.signal.aborted) throw new BrowserNetworkPolicyError("page_aborted");
     pageStage = "extraction";
     const extraction = Promise.all([
       collectPageSignals({
