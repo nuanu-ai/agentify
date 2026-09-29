@@ -272,9 +272,8 @@ export const createPinnedLookup =
     });
   };
 
-// A page already aborted starts no work; one aborted while the work runs
-// stops waiting for it, so a request whose host was being resolved is never
-// sent.
+// A page already aborted starts no work, and one aborted while the work runs
+// stops waiting for it.
 const untilAborted = <T>(work: () => Promise<T>, signal: AbortSignal): Promise<T> =>
   new Promise<T>((resolve, reject) => {
     const onAbort = (): void => reject(new BrowserNetworkPolicyError("request_aborted"));
@@ -306,6 +305,12 @@ export const safeBrowserRequest = async (options: SafeRequestOptions): Promise<S
   const transport = options.url.protocol === "https:" ? https : http;
 
   return await new Promise<SafeResponse>((resolve, reject) => {
+    // A page aborted after its host resolved, and before the request below
+    // listens for that, sends nothing either.
+    if (options.signal.aborted) {
+      reject(new BrowserNetworkPolicyError("request_aborted"));
+      return;
+    }
     let settled = false;
     // The first outcome wins: whichever of the response, the stream and the
     // request speaks first is the one this promise answers with.
