@@ -245,4 +245,31 @@ describe("a real Chromium run against a served site", () => {
       output.observations.find((finding) => finding.id === "rendered_metadata_consistency"),
     ).toMatchObject({ status: "pass" });
   }, 30_000);
+
+  it("leaves no download of a page running once the run has returned", async () => {
+    // An image the server never finishes sending, as a slow or hostile server
+    // can: it stops only when the observer lets go of it.
+    let downloading = false;
+    const output = await observeSite(
+      {
+        "/": `<!doctype html><title>Linen shirt</title>
+          <main><h1>Linen shirt</h1><img src="/lookbook.jpg" alt="Lookbook"></main>`,
+        "/lookbook.jpg": async (resource) =>
+          await new Promise<Answer>((_resolve, reject) => {
+            downloading = true;
+            resource.signal.addEventListener(
+              "abort",
+              () => {
+                downloading = false;
+                reject(new Error("the observer let go of the download"));
+              },
+              { once: true },
+            );
+          }),
+      },
+      ["/"],
+    );
+    expect(output.pages_assessed).toBe(1);
+    expect(downloading).toBe(false);
+  }, 30_000);
 });

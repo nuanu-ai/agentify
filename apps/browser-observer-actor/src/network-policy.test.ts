@@ -7,6 +7,7 @@ import {
   inspectRequest,
   resolvePublicHost,
   resolveSafeNavigationRedirect,
+  safeBrowserRequest,
   selectPublicAddress,
   validateActorTarget,
 } from "./network-policy.js";
@@ -190,6 +191,23 @@ describe("browser network policy", () => {
         { address: "10.0.0.8", family: 4 },
       ]),
     ).toThrow(/ssrf_blocked/);
+  });
+
+  it("refuses a request once its page is aborted, before resolving its host", async () => {
+    const page = new AbortController();
+    page.abort();
+    // Resolving this host would refuse it as ssrf_blocked; an answer of
+    // request_aborted is the refusal coming first, with nothing resolved or sent.
+    await expect(
+      safeBrowserRequest({
+        url: new URL("http://127.0.0.1/"),
+        method: "GET",
+        headers: {},
+        signal: page.signal,
+        timeoutMs: 1_000,
+        consumeBytes: () => true,
+      }),
+    ).rejects.toMatchObject({ code: "request_aborted" });
   });
 
   it("returns the pinned address for both single and all-address lookups", async () => {
