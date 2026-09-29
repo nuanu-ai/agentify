@@ -228,7 +228,7 @@ export async function startWorkerInfrastructure(
     env.SCANNER_CONCURRENCY,
   );
   const stopLostScanSweeper = startLostScanSweeper({
-    finishLostScans: (now, lostAfterMs) => repository.finishLostScans(now, lostAfterMs),
+    finishLostScans: (lostAfterMs) => repository.finishLostScans(lostAfterMs),
     onFinished: (scanIds) => {
       for (const scanId of scanIds) logger.warn("scan_lost", { scan_id: scanId });
     },

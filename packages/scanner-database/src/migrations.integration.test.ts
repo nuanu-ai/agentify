@@ -610,9 +610,9 @@ describe("initial database migration", () => {
           "scan_system_error",
         ),
       };
-      const finished = (await repository.finishLostScans(new Date(), 5 * 60_000)).sort();
+      const finished = (await repository.finishLostScans(5 * 60_000)).sort();
       expect(finished).toEqual([...lost].sort());
-      await expect(repository.finishLostScans(new Date(), 5 * 60_000)).resolves.toEqual([]);
+      await expect(repository.finishLostScans(5 * 60_000)).resolves.toEqual([]);
       const aged = await pool.query<{
         id: string;
         status: string;

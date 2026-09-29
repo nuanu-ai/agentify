@@ -3,7 +3,7 @@
 // life for five minutes has lost its worker and its retry both, and the page
 // polling it would wait for ever, so each sweep closes such scans as failed.
 export function startLostScanSweeper(input: {
-  finishLostScans: (now: Date, lostAfterMs: number) => Promise<string[]>;
+  finishLostScans: (lostAfterMs: number) => Promise<string[]>;
   onFinished?: (scanIds: string[]) => void;
   onError?: (error: unknown) => void;
   intervalMs?: number;
@@ -14,7 +14,7 @@ export function startLostScanSweeper(input: {
     if (running) return;
     running = true;
     try {
-      const finished = await input.finishLostScans(new Date(), input.lostAfterMs ?? 300_000);
+      const finished = await input.finishLostScans(input.lostAfterMs ?? 300_000);
       if (finished.length) input.onFinished?.(finished);
     } catch (error) {
       input.onError?.(error);

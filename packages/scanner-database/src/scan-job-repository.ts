@@ -272,23 +272,25 @@ export function createScanJobRepository(db: Database) {
      * A scan not finished and with no sign of life (acceptance, queueing, a
      * worker's heartbeat) for lostAfterMs has lost its worker or its queue
      * job, and its deadline is long past, so no worker can finish it. It is
-     * closed as failed with scan_lost, and the ids closed are returned.
+     * closed as failed with scan_lost, and the ids closed are returned. The
+     * database's clock measures the silence, as it is one clock for every
+     * process that wrote those times.
      */
-    async finishLostScans(now: Date, lostAfterMs: number): Promise<string[]> {
-      const cutoff = new Date(now.getTime() - lostAfterMs);
+    async finishLostScans(lostAfterMs: number): Promise<string[]> {
       const closed = await db
         .update(scans)
         .set({
           status: "failed",
           failureCode: "scan_lost",
-          finishedAt: now,
+          finishedAt: sql`now()`,
           level: "incomplete",
-          workerHeartbeatAt: now,
+          workerHeartbeatAt: sql`now()`,
         })
         .where(
           and(
             inArray(scans.status, ["accepted", "queued", "running"]),
-            sql`greatest(${scans.acceptedAt}, ${scans.queuedAt}, ${scans.workerHeartbeatAt}) < ${cutoff}`,
+            sql`greatest(${scans.acceptedAt}, ${scans.queuedAt}, ${scans.workerHeartbeatAt})
+                < now() - ${lostAfterMs}::integer * interval '1 millisecond'`,
           ),
         )
         .returning({ id: scans.id });
