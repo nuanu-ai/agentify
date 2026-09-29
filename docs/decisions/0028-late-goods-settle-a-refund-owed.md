@@ -38,8 +38,8 @@ the merchant admits lost, and the order becomes `refunded`. A shipped order is
 not reopened into a refund owed: the merchant's worker walks the open orders,
 and a stale delivery of the lost parcel's record would close that debt with
 nothing sent. A replacement parcel is the merchant's to send, and it is not
-recorded here. The merchant's view below shows the payer's address on a shipped
-order as well, since that is where a lost parcel's money goes back.
+recorded here. The merchant's view below shows the payer's wallet address on a
+shipped order as well, since that is where a lost parcel's money goes back.
 
 On a `refund_due` order the merchant sees five things. The first is the
 payer's address, checksummed, wherever the payment layer named one. The second

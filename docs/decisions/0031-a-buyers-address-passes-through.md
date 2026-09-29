@@ -35,19 +35,19 @@ is refused before the payment is verified, with words to start a new purchase,
 and one carrying none pays for the block that was priced.
 
 A merchant takes an order on by answering `accepted`, from the handler or by
-the `accept` call, and the handler stores `ship_to` before it answers: that
-answer erases our copy. We hold the address from the priced request until the
-first of these: the order is taken on, its shipment is recorded, it closes, or
-it becomes a refund owed without having been taken on. Then it leaves the
-order, and every envelope carrying the order's document — its hand-overs and
-its price questions — is deleted from the queue; the events about the order,
-the refund-owed notice among them, carry no address and are kept, as are the
-reminders that keep its deadlines. The order then reads
-`ship_to: { "erased_at": … }`, never absent, and is never handed to a handler
-again. Nothing of the address is kept, neither a masked fragment nor a
-fingerprint, and nothing of ours logs it: no error leaving the store or the
-queue carries a bound parameter. A handler Agentify runs for a merchant, such
-as a shop connector, keeps it no longer than the gateway does.
+the `accept` call, and the merchant stores `ship_to` before either: that answer
+erases our copy. We hold the address from the priced request until the first of
+these: the order is taken on, its shipment is recorded, it closes, or it
+becomes a refund owed without having been taken on. Then it leaves the order,
+and every envelope carrying any of the address — the order's hand-overs and its
+price questions — is deleted from the queue; the events about the order, the
+refund-owed notice among them, carry no address and are kept, as are the
+reminders that keep its deadlines. The order then reads `ship_to: {
+"erased_at": … }`, never absent, and is never handed to a handler again.
+Nothing of the address is kept, neither a masked fragment nor a fingerprint,
+and nothing of ours logs it: no error leaving the store or the queue carries a
+bound parameter. A handler Agentify runs for a merchant, such as a shop
+connector, keeps it no longer than the gateway does.
 
 ## Consequences
 
