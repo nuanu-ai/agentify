@@ -300,89 +300,149 @@ describe("bounded scan graph", () => {
     ]);
   });
 
-  // A store's product data can live only on its product pages, so one the
-  // scanner could not read leaves that data unassessed, never absent.
+  // A store's product data can live only on its product pages. A scan of a
+  // home page with no structured data and no feed link, whose sitemap lists
+  // one product page, answered for that page by `answer` where it returns one.
+  const productScan = async (
+    answer: (input: PinnedTransportRequest) => FetchArtifact | undefined,
+    sitemapHost = "example.com",
+  ) => {
+    const target = transport();
+    const adapter: PinnedTransport = {
+      request: async (input) => {
+        const answered = answer(input);
+        if (answered) return answered;
+        if (input.url.pathname === "/sitemap.xml")
+          return makeArtifact(
+            input,
+            200,
+            `<urlset><url><loc>https://${sitemapHost}/products/widget</loc></url></urlset>`,
+            "application/xml",
+          );
+        return input.url.pathname === "/" && input.headers.accept !== "text/markdown"
+          ? makeArtifact(
+              input,
+              200,
+              `<html><head><title>Store</title></head><body><h1>Store</h1><main>${"Handmade goods from our workshop. ".repeat(20)}<a href="/products/widget">Widget</a></main></body></html>`,
+              "text/html",
+            )
+          : target.adapter.request(input);
+      },
+    };
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    return [5, 6, 15].map((id) => {
+      const check = evaluation.checks.find((candidate) => candidate.id === id);
+      return [check?.status, check?.errorCode];
+    });
+  };
+  const productPage = (input: PinnedTransportRequest) => input.url.pathname === "/products/widget";
+  const failed = (input: PinnedTransportRequest, errorCode: string) => ({
+    ...makeArtifact(input, 0, "", "text/plain"),
+    errorCode,
+  });
+
+  // One the scanner could not read leaves that data unassessed, never absent.
   it.each([
     {
       failure: "its own read times out",
       errorCode: "fetch_timeout",
-      fails: (input: PinnedTransportRequest) =>
-        input.url.pathname === "/products/widget" && input.method === "GET"
-          ? "fetch_timeout"
-          : undefined,
+      answer: (input: PinnedTransportRequest) =>
+        productPage(input) && input.method === "GET" ? failed(input, "fetch_timeout") : undefined,
     },
     {
       failure: "the connection resets on every request for it",
       errorCode: "connection_reset",
-      fails: (input: PinnedTransportRequest) =>
-        input.url.pathname === "/products/widget" ? "connection_reset" : undefined,
+      answer: (input: PinnedTransportRequest) =>
+        productPage(input) ? failed(input, "connection_reset") : undefined,
     },
     {
       failure: "it answers with a server error",
       errorCode: "product_page_unavailable",
-      status: 503,
-      fails: (input: PinnedTransportRequest) =>
-        input.url.pathname === "/products/widget" ? "" : undefined,
+      answer: (input: PinnedTransportRequest) =>
+        productPage(input) ? makeArtifact(input, 503, "", "text/plain") : undefined,
+    },
+    {
+      failure: "the sitemap lists it but it is gone",
+      errorCode: "product_page_unavailable",
+      answer: (input: PinnedTransportRequest) =>
+        productPage(input) ? makeArtifact(input, 404, "", "text/html") : undefined,
+    },
+    {
+      failure: "it turns the scanner away as too many requests",
+      errorCode: "product_page_unavailable",
+      answer: (input: PinnedTransportRequest) =>
+        productPage(input) ? makeArtifact(input, 429, "", "text/plain") : undefined,
+    },
+    {
+      failure: "it answers with a bot challenge",
+      errorCode: "product_page_unavailable",
+      answer: (input: PinnedTransportRequest) =>
+        productPage(input)
+          ? makeArtifact(
+              input,
+              200,
+              "<html><title>Just a moment...</title><p>Verify you are human.</p></html>",
+              "text/html",
+            )
+          : undefined,
     },
     {
       failure: "its host's robots.txt could not be reached",
       errorCode: "fetch_timeout",
       sitemapHost: "shop.example.com",
-      fails: (input: PinnedTransportRequest) =>
+      answer: (input: PinnedTransportRequest) =>
         input.url.hostname === "shop.example.com" && input.url.pathname === "/robots.txt"
-          ? "fetch_timeout"
+          ? failed(input, "fetch_timeout")
           : undefined,
     },
   ])(
     "does not report a store's product data absent when $failure",
-    async ({ errorCode, fails, status = 0, sitemapHost = "example.com" }) => {
-      const target = transport();
-      // A home page with no structured data and no feed link: only the product
-      // page could have shown either.
-      const adapter: PinnedTransport = {
-        request: async (input) => {
-          const failure = fails(input);
-          if (failure !== undefined)
-            return {
-              ...makeArtifact(input, status, "", "text/plain"),
-              ...(failure ? { errorCode: failure } : {}),
-            };
-          if (input.url.pathname === "/sitemap.xml")
-            return makeArtifact(
-              input,
-              200,
-              `<urlset><url><loc>https://${sitemapHost}/products/widget</loc></url></urlset>`,
-              "application/xml",
-            );
-          return input.url.pathname === "/" && input.headers.accept !== "text/markdown"
-            ? makeArtifact(
-                input,
-                200,
-                `<html><head><title>Store</title></head><body><h1>Store</h1><main>${"Handmade goods from our workshop. ".repeat(20)}<a href="/products/widget">Widget</a></main></body></html>`,
-                "text/html",
-              )
-            : target.adapter.request(input);
-        },
-      };
-      const evaluation = await new ScanRunner({
-        resolver: {
-          resolve: async () => [{ address: "93.184.216.34", family: 4 }],
-        },
-        transport: adapter,
-        appBaseUrl: "https://agentify.ad",
-      }).run(job);
-      expect(
-        [5, 6, 15].map((id) => {
-          const check = evaluation.checks.find((candidate) => candidate.id === id);
-          return [check?.status, check?.errorCode];
-        }),
-      ).toEqual([
+    async ({ errorCode, answer, sitemapHost }) => {
+      await expect(productScan(answer, sitemapHost)).resolves.toEqual([
         ["unavailable", errorCode],
         ["unavailable", errorCode],
         ["unavailable", errorCode],
       ]);
     },
   );
+
+  it("reports a store's product data absent when its product page was read without any", async () => {
+    await expect(
+      productScan((input) =>
+        productPage(input)
+          ? makeArtifact(
+              input,
+              200,
+              input.method === "HEAD"
+                ? ""
+                : "<html><title>Widget</title><body><h1>Widget</h1><p>Handmade in our workshop.</p></body></html>",
+              "text/html",
+            )
+          : undefined,
+      ),
+    ).resolves.toEqual([
+      ["fail", undefined],
+      ["fail", undefined],
+      ["fail", undefined],
+    ]);
+  });
+
+  it("reads a product page whose server refuses HEAD but serves GET", async () => {
+    const [structured, vertical] = await productScan((input) =>
+      productPage(input)
+        ? input.method === "HEAD"
+          ? makeArtifact(input, 403, "", "text/plain")
+          : makeArtifact(input, 200, html, "text/html")
+        : undefined,
+    );
+    expect([structured?.[0], vertical?.[0]]).toEqual(["pass", "pass"]);
+  });
 
   it("reads a robots.txt rule against the query as well as the path", async () => {
     // Shopify's default robots.txt keeps crawlers off theme previews this way.
