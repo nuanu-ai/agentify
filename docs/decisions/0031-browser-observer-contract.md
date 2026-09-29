@@ -45,8 +45,9 @@ against the limits.
 
 One file says what crosses, and a build out of step fails aloud. Deleting
 `signals` removed two limits that failed runs. Observations made under the
-previous version keep their rows, which no report shows, and migration
-0022 closes those that never reached the Actor.
+previous version keep their rows, which no report shows since the routes
+read this version only, and migration 0022 closes those that never
+reached the Actor.
 
 Reviews on 2026-09-28 and 2026-09-29 found the boundary incomplete, in
 defects against this decision rather than exceptions to it. A redirect the
