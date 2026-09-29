@@ -177,10 +177,12 @@ const observeSite = async (
   pages: Record<string, string | ((resource: Resource) => Promise<Answer>)>,
   paths: readonly string[],
   limits: { page_timeout_ms?: number; run_timeout_ms?: number } = {},
+  onRuntimeFailure?: (code: string) => void,
 ) => {
   const [target, ...representatives] = paths.map((path) => `https://www.example.com${path}`);
   return await runBrowserObservation({
     actorBuild: "integration",
+    onRuntimeFailure,
     fetchResource: async (resource) => {
       const page = pages[resource.url.pathname];
       if (page === undefined) return NOT_FOUND;
@@ -272,4 +274,23 @@ describe("a real Chromium run against a served site", () => {
     expect(output.pages_assessed).toBe(1);
     expect(downloading).toBe(false);
   }, 30_000);
+
+  it("gives up a page whose script never yields at its own deadline and observes the next", async () => {
+    const failures: string[] = [];
+    const output = await observeSite(
+      {
+        "/": `<!doctype html><title>Linen shirt</title><main><h1>Linen shirt</h1></main>
+          <script>addEventListener("load", () => setTimeout(() => { for (;;) {} }, 0));</script>`,
+        "/collections/shirts": "<!doctype html><title>Shirts</title><main><h1>Shirts</h1></main>",
+        "/pages/contact": "<!doctype html><title>Contact</title><main><h1>Contact</h1></main>",
+      },
+      ["/", "/collections/shirts", "/pages/contact"],
+      { page_timeout_ms: 3_000, run_timeout_ms: 20_000 },
+      (code) => failures.push(code),
+    );
+    expect(output.pages_assessed).toBe(2);
+    expect(output.status).toBe("partial");
+    expect(failures).toEqual([expect.stringMatching(/_page_timeout$/)]);
+    expect(output.timings.total_ms).toBeLessThan(20_000);
+  }, 45_000);
 });
