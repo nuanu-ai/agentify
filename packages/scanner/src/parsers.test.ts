@@ -175,6 +175,22 @@ describe("what the parsers read from the markup real sites write", () => {
     expect(htmlSignals(head).hreflangs).toEqual(["en-US", "x-default", "de-DE", "fr"]);
   });
 
+  it("reads a Turkish store's markup after a dotted capital I", () => {
+    // "İ" lowercases to two characters in JavaScript, so a reader that
+    // lowercased the whole page would find every tag after it at the wrong
+    // place in the page itself.
+    const page = `<title>İpek Şal</title>
+<link rel="alternate" hreflang="tr-TR" href="https://example.com/">
+<link rel="alternate" hreflang="en" href="https://example.com/en/">
+<script type="application/ld+json">{"@type":"Product","name":"İpek Şal"}</script>`;
+    expect(htmlSignals(page).hreflangs).toEqual(["tr-TR", "en"]);
+    expect(parseJsonLd(page)).toMatchObject({
+      scriptCount: 1,
+      invalidCount: 0,
+      nodes: [{ "@type": "Product", name: "İpek Şal" }],
+    });
+  });
+
   it("reads the text a visitor sees, without scripts, styles or navigation", () => {
     const page = `<!doctype html><html lang="en"><head><title>Wool Runners &amp; More</title>
 <style>.card>.price{color:#212a2f}</style>
