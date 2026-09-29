@@ -4,7 +4,14 @@ import {
   type BrowserObservationOutputV1,
   browserObservationInputV1Schema,
 } from "@agentify/scanner-contracts";
-import { type Browser, type ConsoleMessage, chromium, type Page, type Request } from "playwright";
+import {
+  type Browser,
+  type ConsoleMessage,
+  chromium,
+  type Frame,
+  type Page,
+  type Request,
+} from "playwright";
 
 import { collectPageSignals, type PageSignals } from "./browser-signals.js";
 import {
@@ -157,6 +164,26 @@ export const permitsBrowserNavigation = (parsed: RobotsParseResult, url: URL): b
   permitsSearchPurpose(parsed) &&
   isPathAllowed(parsed, "agentify-browser-observer", `${url.pathname || "/"}${url.search}`) ===
     true;
+
+/**
+ * What a routed request navigates. Playwright cannot name the frame of a
+ * navigation issued before that frame exists, and throws when asked: that is
+ * the first navigation of a window the page opened, which the observer never
+ * opens. Nothing but a navigation is asked for its frame.
+ */
+export const navigationTarget = (
+  request: Pick<Request, "isNavigationRequest" | "frame">,
+  mainFrame: Frame | undefined,
+): "not_navigation" | "main_frame" | "child_frame" | "popup" => {
+  if (!request.isNavigationRequest()) return "not_navigation";
+  let frame: Frame;
+  try {
+    frame = request.frame();
+  } catch {
+    return "popup";
+  }
+  return frame === mainFrame ? "main_frame" : "child_frame";
+};
 
 export const authorizeMainFrameNavigation = async (options: {
   isNavigation: boolean;
@@ -347,6 +374,14 @@ const observePage = async (options: {
         return;
       }
 
+      const target = navigationTarget(request, primaryPage?.mainFrame());
+      if (target === "popup") {
+        policyBlocked.add(request);
+        options.runtime.blockedDestinationCount += 1;
+        await route.abort("blockedbyclient");
+        return;
+      }
+
       const redirectedFrom = request.redirectedFrom();
       const decision = inspectRequest({
         url: request.url(),
@@ -367,8 +402,8 @@ const observePage = async (options: {
       }
 
       const navigationAllowed = await authorizeMainFrameNavigation({
-        isNavigation: request.isNavigationRequest(),
-        isMainFrame: request.frame() === primaryPage?.mainFrame(),
+        isNavigation: target !== "not_navigation",
+        isMainFrame: target === "main_frame",
         url: decision.url,
         checkRobots: async (url) =>
           await robotsAllows({
@@ -408,8 +443,7 @@ const observePage = async (options: {
           },
         });
         if (
-          request.isNavigationRequest() &&
-          request.frame() === primaryPage?.mainFrame() &&
+          target === "main_frame" &&
           response.status >= 200 &&
           response.status < 400 &&
           (response.headers["content-type"] ?? "").toLowerCase().includes("text/html")
