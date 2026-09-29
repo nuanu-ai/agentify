@@ -303,6 +303,16 @@ describe("raw HTML signals on storefront markup", () => {
       expected: { jsonLdCount: 0 },
     },
     {
+      shape: "the type is given with an equals sign",
+      html: '<script type:"application/ld+json">{"price":"1"}</script>',
+      expected: { jsonLdCount: 0 },
+    },
+    {
+      shape: "structured data runs to its script closer, past any other",
+      html: '<script type="application/ld+json">{"price":"1"}</style><script type="application/ld+json">{"price":"2"}</script>',
+      expected: { jsonLdCount: 1, priceCount: 0 },
+    },
+    {
       shape: "a non-ASCII letter does not fold into the structured-data type",
       html: '<script type="application/ld+j\u017fon">{"price":"1"}</script>',
       expected: { jsonLdCount: 0 },
@@ -365,15 +375,26 @@ describe("raw HTML signals on hostile markup", () => {
     { unit: '<script type="application/ld+json">', text: () => 0 },
   ])("reads $unit repeated up to the byte budget in linear time", ({ unit, text }) => {
     for (let size = 64 * 1024; size <= BYTE_BUDGET; size *= 2) {
-      const html = unit.repeat(Math.floor(size / unit.length));
-      const count = timed(() => rawTextCharacterCount(html));
-      expect(count.value).toBe(text(html));
-      expect(count.ms, `raw text of ${html.length} characters`).toBeLessThan(allowanceMs(size));
-      const metadata = timed(() => extractRawMetadata(html, "https://example.com/"));
-      expect(metadata.value).toEqual(NOTHING_READ);
-      expect(metadata.ms, `raw metadata of ${html.length} characters`).toBeLessThan(
-        allowanceMs(size),
-      );
+      readsInTime(unit.repeat(Math.floor(size / unit.length)), size, text);
     }
   });
+
+  // One `>` at the very end closes every opener at once, so each of them
+  // shares one tag as long as the page.
+  it("reads script openers one bracket closes, up to the byte budget, in linear time", () => {
+    for (let size = 64 * 1024; size <= BYTE_BUDGET; size *= 2) {
+      readsInTime(`${"<script type ".repeat(Math.floor(size / 13) - 1)}>`, size, () => 0);
+    }
+  });
+
+  const readsInTime = (html: string, size: number, text: (html: string) => number): void => {
+    const count = timed(() => rawTextCharacterCount(html));
+    expect(count.value).toBe(text(html));
+    expect(count.ms, `raw text of ${html.length} characters`).toBeLessThan(allowanceMs(size));
+    const metadata = timed(() => extractRawMetadata(html, "https://example.com/"));
+    expect(metadata.value).toEqual(NOTHING_READ);
+    expect(metadata.ms, `raw metadata of ${html.length} characters`).toBeLessThan(
+      allowanceMs(size),
+    );
+  };
 });
