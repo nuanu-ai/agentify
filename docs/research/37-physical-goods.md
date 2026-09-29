@@ -1,10 +1,12 @@
 # Physical goods: what the asynchronous path carries, and what shops do
 
 Date: 2026-09-28. A research note that may be rewritten. It supports ADR-0031
-(the buyer's address) and ADR-0032 (a shipped order ends at the carrier), and
-it is where their field names come from once they are fixed. The pilot has no
-merchant who sells parcels; the foundation is laid anyway, far enough for a
-demonstration, because merchants will not come to a path that does not exist.
+(the buyer's address), ADR-0032 (a shipped order ends at the carrier) and
+ADR-0033 (the seller's name and site), and records how their field names were
+chosen; the names themselves are fixed in the decisions. The pilot has no
+merchant who sells parcels; the product owner's word is to lay the foundation
+anyway, far enough for a demonstration, because merchants will not come to a
+path that does not exist.
 
 ## The asynchronous path as it stands
 
@@ -277,14 +279,16 @@ merchant cannot ask for it themselves.
 
 The shipment record takes the names ACP, UCP and WooCommerce share: `carrier`,
 `tracking_number`, `tracking_url`, and `estimated_delivery` with `earliest` and
-`latest`. Only the carrier is required, as a short plain-text string with no
-list behind it; a shipment without a tracking number says so explicitly. The
+`latest`. The carrier is required, as a short plain-text string with no list
+behind it; `tracking_number` is a required key whose `null` says the parcel has
+none, so "none" is never an empty field. The agent reads the record in a
+`shipment` field of its status document, beside an absolute `ship_by`. The
 moment of shipment is the gateway's to stamp, not the merchant's to write.
-Where the buyer asks is the shop's own site (ADR-0033), not part of each
-shipment. The card's time to ship is `ship_within_seconds`, a name of its
-own, because on an asynchronous card `fulfill_deadline_seconds` means the time
-to deliver, and a number read under the wrong name tells a person their parcel
-arrives when it merely leaves.
+Where the buyer asks is the shop's own site, read with the seller's name as a
+`seller` object (ADR-0033), not part of each shipment. The card's time to ship
+is `ship_within_seconds`, a name of its own, because on an asynchronous card
+`fulfill_deadline_seconds` means the time to deliver, and a number read under
+the wrong name tells a person their parcel arrives when it merely leaves.
 
 ## The adversarial review
 
@@ -341,14 +345,14 @@ price rule, where the offline card check sees it. The time to ship took a name
 of its own. The required price check has to be the handler, because a card
 naming a price hook that nothing calls would publish and never sell. The
 contact moved from each shipment to the merchant, because a buyer needs it
-before shipment and on a refund owed too; it was then taken out of our scope
-altogether, and the agent is given the shop's own site instead (ADR-0033).
-Tracking stayed required after the review, said at the door rather than first
-met at `deliver` after the charge; the case of a coffee sent by courier then
-showed that a local courier has no number to give, and it became optional (see
-the decisions below). The phone number became required and `state`
-was named a subdivision code. The per-country table of required fields was
-dropped rather than sourced: the door checks the shape, and the merchant's
+before shipment and on a refund owed too; the product owner then took it out of
+our scope altogether, and the agent is given the shop's own site instead
+(ADR-0033). Tracking stayed required after the review, said at the door rather
+than first met at `deliver` after the charge; the case of a coffee sent by
+courier then showed that a local courier has no number to give, and it became
+optional (see the decisions below). The phone number became required and
+`state` was named a subdivision code. The per-country table of required fields
+was dropped rather than sourced: the door checks the shape, and the merchant's
 price check judges the geography before money moves. The decisions that the new
 ones amend — ADR-0002 §3, ADR-0006 §5, ADR-0007 §5, ADR-0011 and ADR-0028 —
 were edited in the same change.
@@ -372,7 +376,7 @@ up for acceptance one at a time.
 One finding was kept against. The second reviewer proposed erasing at shipment,
 so that a merchant who stored only our order identifier — as the portal's
 asynchronous pattern teaches — could read the address back. That would hold
-every address through days of handling, which the decision was taken against.
+every address through days of handling, which the product owner decided against.
 The address is erased when the order is taken on, and the portal's pattern and
 its restart walk change for parcels instead. Another was recorded rather than
 fixed: a handler slow on every attempt exhausts five of them in about twenty
@@ -417,10 +421,10 @@ dispute answer, which promises records of what happened with the delivery that
 for a parcel we do not keep. `apps/docs/index.md`'s pilot rule, when the live
 gate opens.
 
-## The decisions of the same evening
+## Decisions of 2026-09-28
 
 The demonstration sells a product made for it in the test WooCommerce shop the
-lab keeps (`deploy/woocommerce-lab/`), and a member of the team buys it on the
+lab keeps (`deploy/woocommerce-lab/`), and the product owner buys it on the
 test channel with their own address: a real product, a real address given with
 consent, and nobody hurt if something goes wrong. So the path the
 demonstration walks is the shop connector's, and the connector learns to carry
@@ -437,8 +441,8 @@ already give sellers: Amazon's default maximum handling time is thirty days,
 longer only for a few product types
 (github.com/amzn/selling-partner-api-samples, discussion 124), and eBay's has
 been thirty business days, recently forty (eBay community, «40 days now showing
-on handling time»). The number was confirmed with the other revisions,
-and moves once a real merchant needs another.
+on handling time»). The product owner confirmed the number with the other
+revisions; it moves on their word once a real merchant needs another.
 
 A handler that runs out of attempts, and the label its order closes under, stay
 as they are, to be adjusted if they turn out to hurt. Duties — where the
@@ -447,27 +451,62 @@ restricted goods, which nothing here can check an age for, returns, a changed
 or mistyped address and pickup points are not worked on for now. ADR-0032 names
 them as outside the mode.
 
-The revisions of the two review rounds were then accepted one at a time. The
-price question carries the locality — country, state, city and postal code —
-rather than the country and postal code alone. A lost parcel is a refund
+The product owner then accepted the revisions of the two review rounds one at a
+time. The price question carries the locality — country, state, city and postal
+code — rather than the country and postal code alone. A lost parcel is a refund
 recorded on the shipped order, which becomes `refunded`, rather than a shipped
 order reopened into a refund owed. Where a buyer asks is not a contact Agentify
-keeps: the need for one was questioned at all, because it would bring more
-scope into the product, and the agent is given the shop's site and the seller's
-name, with nothing else about the merchant (ADR-0033). A tracking number is not
-required: a coffee sent across town by the shop's courier has none, and a
-required one would shut such shops out or be filled with something made up. The
-carrier is required as a short free string of plain text, and a shipment
-without a number says so explicitly. The storefront's vocabularies and
-documents are open to agents, the merchant's stay strict. The worry that came
-with that choice — drowning in versions at a stage this early — is met by what
-the choice already does and by one practice: the agent's side has no version at
-all, and the SDK's contract version moves once per feature released, not once
-per field, so the whole parcel mode is a single move.
+keeps: the product owner doubted that one is needed at all, since it would
+bring more scope into the product, and the agent is given the shop's site and
+the seller's name, with nothing else about the merchant (ADR-0033). A tracking
+number is not required: a coffee sent across town by the shop's courier has
+none, and a required one would shut such shops out or be filled with something
+made up. The carrier is required as a short free string of plain text, and a
+shipment without a number says so. The storefront's vocabularies and documents
+are open to agents, the merchant's stay strict. The worry that came with that
+choice — drowning in versions at a stage this early — is met by what the choice
+already does and by one practice: the agent's side has no version at all, and
+the SDK's contract version moves once per feature released, not once per field,
+so the whole parcel mode is a single move.
 
 The decisions themselves were then held to the charter's length. What left them
 is the mechanics this note already carries — which envelopes, which error
-paths, which fields and pages — and no rule or reason.
+paths, which pages — and no rule or reason.
+
+## The pull request's review
+
+The decisions went into one pull request with the pass that took a person's
+name out of the records, and two readers read it, one for the logic, the
+security, the tests and the reliability, the other for the words and the
+merchant's path. Their findings changed the decisions once more.
+
+The names an agent reads moved from this note into the decisions: the
+storefront has no version, so a name shipped there can never be renamed, and a
+name that cannot be renamed is a decision. ADR-0032 now fixes the ceiling of
+2 592 000 seconds, `ship_by`, the `shipment` field beside an empty `delivered`,
+and a `tracking_number` that is a string or `null`; ADR-0031 fixes the
+locality as a `ship_to` of four fields; ADR-0033 fixes the `seller` object.
+ADR-0031 had read as though erasure deleted the refund-owed notice, which is
+sent once and never again; it now deletes only the envelopes that carry the
+order's document. It also says as an instruction, not a consequence, that the
+handler stores the address before answering `accepted`. ADR-0032 says what a
+`ship` card may and may not carry, that the price check's answer is the whole
+price with shipping and the card's own price the goods without it, that a
+second, different shipment is refused with words rather than swallowed, what
+`rejected` can mean on a parcel, and that the contract version's move stops
+every older worker. Its live gate gained one condition: a merchant who admits a
+parcel lost had no way to reach the operator, because the operator makes
+contact only on a refund owed, and a shipped order never becomes one; the
+cabinet now has to say how. ADR-0033, written after the second review round,
+took its first review here: a merchant-written address with a path or a query
+would carry free text to every agent, so only an `https` origin is taken, and
+the seller name is held to the plain-text rule.
+
+The pass over the records had removed not only the name but, in places, who
+decided. A reader has to know which decisions rest on the product owner's word,
+because that word is what it takes to reverse them, so the records now name
+the role wherever the person had been the decider, and the charter says once
+what the role is.
 
 ## Open
 
