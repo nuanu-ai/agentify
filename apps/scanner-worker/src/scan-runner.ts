@@ -406,16 +406,19 @@ export class ScanRunner {
               const successfulIndex = heads.findIndex(
                 (head) => head.status >= 200 && head.status < 400,
               );
+              // HEAD only chooses among the candidates, and a server may answer
+              // it worse than GET: with none answering it well, the first that
+              // does not support it, or else the first that answered at all, is
+              // read with GET. With none reached, the first failure tells the
+              // engine why, as a refused page does.
               const unsupportedHeadIndex = heads.findIndex((head) =>
                 [405, 501].includes(head.status),
               );
-              const index = successfulIndex === -1 ? unsupportedHeadIndex : successfulIndex;
-              // A product page none of whose candidates could be reached tells
-              // the engine why, as a refused one does.
-              if (index === -1)
-                return heads.find(
-                  (head) => head.errorCode || head.status === 0 || head.status >= 500,
-                );
+              const answeredIndex = heads.findIndex((head) => !head.errorCode && head.status !== 0);
+              const index = [successfulIndex, unsupportedHeadIndex, answeredIndex].find(
+                (candidate) => candidate !== -1,
+              );
+              if (index === undefined) return heads[0];
               const representative = candidates[index];
               return representative
                 ? await fetch(representative, {

@@ -1233,11 +1233,15 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
   ];
   // A store's structured data and feed may live only on its product pages.
   // When the scanner could not read the one it chose, because robots.txt
-  // kept it off or the request failed, a verdict that they are absent is not
+  // kept it off, the request failed, or the page answered with an error or
+  // a bot challenge instead of itself, a verdict that they are absent is not
   // established, and says why instead.
   const representative = effective.representative;
   const productWithheld =
-    representative && inaccessible(representative)
+    representative &&
+    (inaccessible(representative) ||
+      representative.status >= 300 ||
+      isChallenge(representative.status, representative.body))
       ? (representative.errorCode ?? "product_page_unavailable")
       : undefined;
   return checks
