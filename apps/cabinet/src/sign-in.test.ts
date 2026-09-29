@@ -29,7 +29,7 @@ import { describe, expect, it, vi } from "vitest";
 import { type LinkAnswer, linkRequestedScreen, openLinkScreen } from "./sign-in.js";
 import { readable, waitingButton } from "./testing/html.js";
 
-const PERSON = "dmitry@example.com";
+const PERSON = "owner@example.com";
 
 /** The three pages, each with the wait the door computed for it. */
 const ANSWERS: readonly (readonly [string, LinkAnswer])[] = [

@@ -14,7 +14,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { isSandboxMail, type Message, postmanFor, SANDBOX_MAIL } from "./mail.js";
 
 const MESSAGE: Message = {
-  to: "dmitry@example.com",
+  to: "owner@example.com",
   subject: "Sign in to your Agentify cabinet",
   body: "Open this:\n\n    https://agentify.example/sign-in/open?token=abc\n",
   html: '<a href="https://agentify.example/sign-in/open?token=abc">Open your cabinet</a>',
@@ -101,7 +101,7 @@ describe("a cabinet with no mail provider", () => {
       await expect(postman(MESSAGE)).resolves.toBe("accepted");
     });
 
-    expect(said).toContain("dmitry@example.com");
+    expect(said).toContain("owner@example.com");
     expect(said).toContain("https://agentify.example/sign-in/open?token=abc");
     // And it says out loud that nothing was sent, so nobody reading this log
     // goes looking in a mailbox for it.
@@ -137,7 +137,7 @@ describe("a cabinet with a mail provider", () => {
       html: string;
     };
     expect(document.from).toBe("Agentify <no-reply@mail.example.com>");
-    expect(document.to).toStrictEqual(["dmitry@example.com"]);
+    expect(document.to).toStrictEqual(["owner@example.com"]);
     expect(document.subject).toBe(MESSAGE.subject);
     expect(document.text).toBe(MESSAGE.body);
     expect(document.html).toBe(MESSAGE.html);
@@ -160,7 +160,7 @@ describe("a cabinet with a mail provider", () => {
     });
 
     expect(said).toMatch(/provider accepted/i);
-    expect(said).not.toContain("dmitry@example.com");
+    expect(said).not.toContain("owner@example.com");
     expect(said).not.toContain("token=abc");
   });
 
@@ -184,7 +184,7 @@ describe("a cabinet with a mail provider", () => {
     });
 
     expect(said).toContain("422");
-    expect(said).not.toContain("dmitry@example.com");
+    expect(said).not.toContain("owner@example.com");
     expect(said).not.toContain("token=abc");
     // And the refusal is the whole of what the log says about this message. A
     // second line beside it claiming the message went out is worse than no
@@ -208,7 +208,7 @@ describe("a cabinet with a mail provider", () => {
     });
 
     expect(said).toContain("could not be reached");
-    expect(said).not.toContain("dmitry@example.com");
+    expect(said).not.toContain("owner@example.com");
     // And the link is not written down a second time by the failure. It is the
     // one thing in the message that is worth something on its own, and an
     // exception from a request that failed mid-flight carries the whole
