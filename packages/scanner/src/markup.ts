@@ -17,8 +17,11 @@
  * after it can be closed either, and the reader stops. When an opening leads
  * nowhere, the reader moves past the text that attempt covered instead of
  * retrying inside it. A regular expression is still used on site text where
- * no input can make it retry: a fixed word, or one repeated character class
- * followed by nothing the class could also match, such as `\s+`.
+ * its attempts cannot add up past the text's length: a fixed word; one
+ * repeated character class followed by nothing the class could also match,
+ * such as `\s+`; a pattern whose every attempt is a few characters long, as
+ * the price pattern's is; or one whose attempt stops where the next attempt
+ * would begin, as the Adyen pattern's does at the next `checkoutshopper-`.
  *
  * The readers find what those expressions found. One of their details is
  * kept on purpose: a quoted value the expressions read, such as an href, runs
