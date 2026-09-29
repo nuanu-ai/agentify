@@ -300,6 +300,90 @@ describe("bounded scan graph", () => {
     ]);
   });
 
+  // A store's product data can live only on its product pages, so one the
+  // scanner could not read leaves that data unassessed, never absent.
+  it.each([
+    {
+      failure: "its own read times out",
+      errorCode: "fetch_timeout",
+      fails: (input: PinnedTransportRequest) =>
+        input.url.pathname === "/products/widget" && input.method === "GET"
+          ? "fetch_timeout"
+          : undefined,
+    },
+    {
+      failure: "the connection resets on every request for it",
+      errorCode: "connection_reset",
+      fails: (input: PinnedTransportRequest) =>
+        input.url.pathname === "/products/widget" ? "connection_reset" : undefined,
+    },
+    {
+      failure: "it answers with a server error",
+      errorCode: "product_page_unavailable",
+      status: 503,
+      fails: (input: PinnedTransportRequest) =>
+        input.url.pathname === "/products/widget" ? "" : undefined,
+    },
+    {
+      failure: "its host's robots.txt could not be reached",
+      errorCode: "fetch_timeout",
+      sitemapHost: "shop.example.com",
+      fails: (input: PinnedTransportRequest) =>
+        input.url.hostname === "shop.example.com" && input.url.pathname === "/robots.txt"
+          ? "fetch_timeout"
+          : undefined,
+    },
+  ])(
+    "does not report a store's product data absent when $failure",
+    async ({ errorCode, fails, status = 0, sitemapHost = "example.com" }) => {
+      const target = transport();
+      // A home page with no structured data and no feed link: only the product
+      // page could have shown either.
+      const adapter: PinnedTransport = {
+        request: async (input) => {
+          const failure = fails(input);
+          if (failure !== undefined)
+            return {
+              ...makeArtifact(input, status, "", "text/plain"),
+              ...(failure ? { errorCode: failure } : {}),
+            };
+          if (input.url.pathname === "/sitemap.xml")
+            return makeArtifact(
+              input,
+              200,
+              `<urlset><url><loc>https://${sitemapHost}/products/widget</loc></url></urlset>`,
+              "application/xml",
+            );
+          return input.url.pathname === "/" && input.headers.accept !== "text/markdown"
+            ? makeArtifact(
+                input,
+                200,
+                `<html><head><title>Store</title></head><body><h1>Store</h1><main>${"Handmade goods from our workshop. ".repeat(20)}<a href="/products/widget">Widget</a></main></body></html>`,
+                "text/html",
+              )
+            : target.adapter.request(input);
+        },
+      };
+      const evaluation = await new ScanRunner({
+        resolver: {
+          resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+        },
+        transport: adapter,
+        appBaseUrl: "https://agentify.ad",
+      }).run(job);
+      expect(
+        [5, 6, 15].map((id) => {
+          const check = evaluation.checks.find((candidate) => candidate.id === id);
+          return [check?.status, check?.errorCode];
+        }),
+      ).toEqual([
+        ["unavailable", errorCode],
+        ["unavailable", errorCode],
+        ["unavailable", errorCode],
+      ]);
+    },
+  );
+
   it("reads a robots.txt rule against the query as well as the path", async () => {
     // Shopify's default robots.txt keeps crawlers off theme previews this way.
     const target = transport("User-agent: *\nDisallow: /*preview_theme_id*\n");
