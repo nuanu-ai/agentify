@@ -546,6 +546,41 @@ describe("initial database migration", () => {
         completed_events: "0",
       });
 
+      // A scan no worker will finish, its deadline long past, is closed as
+      // lost, once; one within the bound, and a terminal one, are left alone.
+      const insertAged = (status: string, acceptedAt: Date, key: string) => {
+        const id = createUuidV7();
+        return pool
+          .query(
+            `insert into scans
+              (id, session_id, segment, rubric_version, submitted_url_redacted, canonical_target_url,
+               target_host, target_hash, access_token_hash, access_token_expires_at,
+               idempotency_key_hash, idempotency_body_hash, status, accepted_at)
+             values ($1,$2,'store','gtm-v1.0.0','https://example.com/','https://example.com/',
+               'example.com','target-hash','token-hash',$3,$4,'idem-body-hash',$5,$6)`,
+            [id, sessionId, new Date(Date.now() + 3_600_000), key, status, acceptedAt],
+          )
+          .then(() => id);
+      };
+      const lostRunning = await insertAged("running", new Date(Date.now() - 10 * 60_000), "lost-1");
+      const lostQueued = await insertAged("queued", new Date(Date.now() - 10 * 60_000), "lost-2");
+      const recent = await insertAged("queued", new Date(Date.now() - 60_000), "recent");
+      const finished = (await repository.finishLostScans(new Date(), 5 * 60_000)).sort();
+      expect(finished).toEqual([lostRunning, lostQueued].sort());
+      await expect(repository.finishLostScans(new Date(), 5 * 60_000)).resolves.toEqual([]);
+      const aged = await pool.query<{ id: string; status: string; failure_code: string | null }>(
+        "select id, status, failure_code from scans where id = any($1)",
+        [[lostRunning, lostQueued, recent, scanJob.scan_id]],
+      );
+      expect(
+        Object.fromEntries(aged.rows.map((row) => [row.id, [row.status, row.failure_code]])),
+      ).toEqual({
+        [lostRunning]: ["failed", "scan_lost"],
+        [lostQueued]: ["failed", "scan_lost"],
+        [recent]: ["queued", null],
+        [scanJob.scan_id]: ["running", null],
+      });
+
       const eventId = createUuidV7();
       const store = createBusinessEventStore(db);
       const eventInput = {

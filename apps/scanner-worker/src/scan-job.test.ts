@@ -57,7 +57,6 @@ const repository = (claim: "claimed" | "terminal" | "in_progress" = "claimed") =
       at: Date;
     };
     heartbeatAt?: Date;
-    leaseExpiresAt?: Date;
     fencedCheckId?: number;
   } = {
     claimed: false,
@@ -70,7 +69,6 @@ const repository = (claim: "claimed" | "terminal" | "in_progress" = "claimed") =
     },
     heartbeat: async (_scanId, _attemptNo, at) => {
       state.heartbeatAt = at;
-      state.leaseExpiresAt = new Date(at.getTime() + 15_000);
     },
     upsertCheck: async (_scanId, _attemptNo, persisted) => {
       state.checks.set(persisted.id, persisted);
@@ -145,6 +143,21 @@ describe("scan job lifecycle", () => {
     });
   });
 
+  it("does not retry a scan whose deadline has passed, since no retry can meet it", async () => {
+    for (const code of ["scan_deadline_expired", "global_deadline"]) {
+      const { repo, state } = repository();
+      const runner = {
+        run: async () => {
+          throw new Error(code);
+        },
+      };
+      await expect(
+        processScanJob(job, { repository: repo, runner: runner as never }),
+      ).rejects.toThrow();
+      expect(state.failure).toMatchObject({ code, retryable: false });
+    }
+  });
+
   it("stops a stale attempt when a progressive check write is fenced", async () => {
     const { repo, state } = repository();
     repo.upsertCheck = async (_scanId, _attemptNo, rejected) => {
@@ -167,7 +180,7 @@ describe("scan job lifecycle", () => {
     expect(state.terminal).toBeUndefined();
   });
 
-  it("renews a long-running job lease and stops heartbeats after completion", async () => {
+  it("beats a running scan's heartbeat and stops once the scan is finished", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-21T12:00:00.000Z"));
     const { repo, state } = repository();
@@ -182,17 +195,14 @@ describe("scan job lifecycle", () => {
       now: () => new Date(Date.now()),
     });
     await vi.advanceTimersByTimeAsync(20_000);
-
     expect(state.heartbeatAt?.toISOString()).toBe("2026-09-21T12:00:20.000Z");
-    expect(state.leaseExpiresAt?.toISOString()).toBe("2026-09-21T12:00:35.000Z");
 
     complete(evaluation);
     await expect(processing).resolves.toBe("committed");
-    const terminalLease = state.leaseExpiresAt?.toISOString();
+    const lastBeat = state.heartbeatAt?.toISOString();
     await vi.advanceTimersByTimeAsync(30_000);
-
     expect(state.terminal).toBeDefined();
-    expect(state.leaseExpiresAt?.toISOString()).toBe(terminalLease);
+    expect(state.heartbeatAt?.toISOString()).toBe(lastBeat);
   });
 
   it("atomically requests a versioned browser row then best-effort enqueues it", async () => {
