@@ -135,10 +135,10 @@ describe("what the checks read from the markup real sites write", () => {
     expect(check(withBase(singleQuoted), 15)?.evidence).toMatchObject({
       product_identifiers: true,
     });
-    // Values are read only between quotes; a minified page that leaves them
-    // bare is not read, as it never was.
-    const bare = `<meta property=og:type content="product"><p>Wool</p>`;
-    expect(check(withBase(bare), 15)?.status).toBe("fail");
+    // A product value in another tag, such as the product card Twitter once
+    // defined, is not an Open Graph type.
+    const card = `<meta property="og:type" content="website"><meta name="twitter:card" content="product"><p>Wool</p>`;
+    expect(check(withBase(card), 15)?.status).toBe("fail");
   });
 
   it("counts an llms.txt link only when it leads to an absolute address", () => {

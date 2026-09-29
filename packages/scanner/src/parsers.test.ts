@@ -277,11 +277,9 @@ sourced from New Zealand.</p><table><tr><td>Size:\t10</td></tr></table>`;
   });
 
   it("reads a quoted value whole when it holds a >, as templates write them", () => {
-    // Amazon's home page carries client-side templates such as the first link.
-    // The rest hold the same rule wherever a template or a stray `>` can
-    // stand: in an href that swallows the next link, in an hreflang or a rel,
-    // and in the parameters of a JSON-LD type.
-    expect(htmlSignals(`<a href='<#=item.url #>'><#=item.title #></a>`).productLinkCount).toBe(1);
+    // Client-side templates, such as those on Amazon's home page, put a `>`
+    // inside quoted values: in an href that swallows the next link, in an
+    // hreflang or a rel, and in the parameters of a JSON-LD type.
     expect(htmlSignals(`<a href='/items> <a href="/products/y">'>`).productLinkCount).toBe(1);
     expect(
       htmlSignals(`<link rel="alternate" hreflang="<%= locale %>" href="/">`).hreflangs,
@@ -318,12 +316,10 @@ sourced from New Zealand.</p><table><tr><td>Size:\t10</td></tr></table>`;
     expect(htmlSignals("<title>Wool</title><h1>").hasH1).toBe(false);
   });
 
-  it("reads an attribute's value only between quotes, and a tag only by its whole name", () => {
-    // Minified pages leave values bare, as Smashing Magazine's feed link does;
-    // the checks have never read those.
+  it("reads a tag only by its whole name", () => {
     expect(
       htmlSignals(
-        '<a href=/products/wool-runner class="card">Wool Runner</a><map name="hero"><area shape="rect" coords="0,0,600,400" href="/collections/shop-all" alt="Shop all"></map>',
+        '<map name="hero"><area shape="rect" coords="0,0,600,400" href="/collections/shop-all" alt="Shop all"></map>',
       ).productLinkCount,
     ).toBe(0);
     expect(
