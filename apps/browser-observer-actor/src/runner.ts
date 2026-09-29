@@ -37,14 +37,20 @@ const HONEST_USER_AGENT = "agentify-browser-observer/1.0 (+https://agentify.ad/s
  */
 export type FetchResource = typeof safeBrowserRequest;
 
+/** What a passed deadline reports: the code it was given, or the run's. */
+const deadlineError = (signal: AbortSignal): BrowserNetworkPolicyError =>
+  signal.reason instanceof BrowserNetworkPolicyError
+    ? signal.reason
+    : new BrowserNetworkPolicyError("run_timeout");
+
 export const raceWithAbort = async <T>(operation: Promise<T>, signal: AbortSignal): Promise<T> => {
   if (signal.aborted) {
-    throw new BrowserNetworkPolicyError("run_timeout");
+    throw deadlineError(signal);
   }
   return await new Promise<T>((resolve, reject) => {
     const onAbort = (): void => {
       cleanup();
-      reject(new BrowserNetworkPolicyError("run_timeout"));
+      reject(deadlineError(signal));
     };
     const cleanup = (): void => signal.removeEventListener("abort", onAbort);
     signal.addEventListener("abort", onAbort, { once: true });
@@ -353,11 +359,20 @@ const observePage = async (options: {
   const policyBlocked = new WeakSet<Request>();
   const pageAbort = new AbortController();
   let pageStage: "setup" | "new_page" | "navigation" | "load" | "extraction" = "setup";
+  // A page has page_timeout_ms from here for all it does: its navigation, its
+  // load and the extraction after it. When the page's deadline or the run's
+  // passes, its downloads are let go and its context, and no other, is closed.
+  const pageDeadline = new AbortController();
+  const pageTimer = setTimeout(() => {
+    pageDeadline.abort(new BrowserNetworkPolicyError("page_timeout"));
+  }, options.input.limits.page_timeout_ms);
+  pageTimer.unref();
+  const pageSignal = AbortSignal.any([options.runSignal, pageDeadline.signal]);
   const abortPage = (): void => {
     pageAbort.abort();
-    void settleWithin(context.close({ reason: "run_deadline" }));
+    void settleWithin(context.close({ reason: "deadline" }));
   };
-  options.runSignal.addEventListener("abort", abortPage, { once: true });
+  pageSignal.addEventListener("abort", abortPage, { once: true });
 
   try {
     await context.route("**/*", async (route) => {
@@ -476,7 +491,7 @@ const observePage = async (options: {
       }
     });
     pageStage = "new_page";
-    primaryPage = await raceWithAbort(context.newPage(), options.runSignal);
+    primaryPage = await raceWithAbort(context.newPage(), pageSignal);
     primaryPage.on("console", (message) => {
       const category = categorizeConsole(message);
       if (category) options.runtime.consoleErrorCategories.push(category);
@@ -516,7 +531,7 @@ const observePage = async (options: {
         waitUntil: "domcontentloaded",
         timeout: options.input.limits.page_timeout_ms,
       }),
-      options.runSignal,
+      pageSignal,
     );
     pageStage = "load";
     await primaryPage
@@ -524,7 +539,7 @@ const observePage = async (options: {
         timeout: Math.min(1_500, options.input.limits.page_timeout_ms),
       })
       .catch(() => undefined);
-    if (pageAbort.signal.aborted || options.runSignal.aborted) {
+    if (pageAbort.signal.aborted || pageSignal.aborted) {
       throw new BrowserNetworkPolicyError("page_aborted");
     }
     pageStage = "extraction";
@@ -542,7 +557,7 @@ const observePage = async (options: {
         limit: 2,
       }),
     ]);
-    const [signals, representativeUrls] = await raceWithAbort(extraction, options.runSignal);
+    const [signals, representativeUrls] = await raceWithAbort(extraction, pageSignal);
     return { signals, representativeUrls };
   } catch (error) {
     const code = safeRuntimeFailureCode(error);
@@ -550,7 +565,8 @@ const observePage = async (options: {
       code === "browser_runtime_failed" ? `${pageStage}_failed` : `${pageStage}_${code}`,
     );
   } finally {
-    options.runSignal.removeEventListener("abort", abortPage);
+    clearTimeout(pageTimer);
+    pageSignal.removeEventListener("abort", abortPage);
     // Closing the context ends the page, not the downloads made for it here.
     pageAbort.abort();
     await settleWithin(context.close({ reason: "observation_complete" }));
