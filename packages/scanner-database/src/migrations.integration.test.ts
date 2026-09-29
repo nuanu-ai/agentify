@@ -547,14 +547,14 @@ describe("initial database migration", () => {
       });
 
       // A scan no worker will finish, its deadline long past, is closed as
-      // lost, once. One accepted within the bound, one accepted long ago whose
-      // worker still beats, and a terminal one are left alone.
+      // lost, once, whatever stage it stopped at. One accepted within the
+      // bound, one accepted long ago but queued again lately, one whose worker
+      // still beats, and a terminal one are left alone.
       const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000);
       const insertAged = (
         key: string,
         status: string,
-        acceptedAt: Date,
-        heartbeatAt: Date | null = null,
+        times: { acceptedAt: Date; queuedAt?: Date; heartbeatAt?: Date },
         failureCode: string | null = null,
       ) => {
         const id = createUuidV7();
@@ -563,51 +563,78 @@ describe("initial database migration", () => {
             `insert into scans
               (id, session_id, segment, rubric_version, submitted_url_redacted, canonical_target_url,
                target_host, target_hash, access_token_hash, access_token_expires_at,
-               idempotency_key_hash, idempotency_body_hash, status, accepted_at,
+               idempotency_key_hash, idempotency_body_hash, status, accepted_at, queued_at,
                worker_heartbeat_at, failure_code)
              values ($1,$2,'store','gtm-v1.0.0','https://example.com/','https://example.com/',
-               'example.com','target-hash','token-hash',$3,$4,'idem-body-hash',$5,$6,$7,$8)`,
+               'example.com','target-hash','token-hash',$3,$4,'idem-body-hash',$5,$6,$7,$8,$9)`,
             [
               id,
               sessionId,
               new Date(Date.now() + 3_600_000),
               key,
               status,
-              acceptedAt,
-              heartbeatAt,
+              times.acceptedAt,
+              times.queuedAt ?? null,
+              times.heartbeatAt ?? null,
               failureCode,
             ],
           )
           .then(() => id);
       };
-      const lostRunning = await insertAged("lost-1", "running", minutesAgo(10), minutesAgo(9));
-      const lostQueued = await insertAged("lost-2", "queued", minutesAgo(10));
-      const recent = await insertAged("recent", "queued", minutesAgo(1));
-      const beating = await insertAged("beating", "running", minutesAgo(10), minutesAgo(0));
-      const failed = await insertAged(
-        "failed",
-        "failed",
-        minutesAgo(10),
-        null,
-        "scan_system_error",
-      );
+      const lost = [
+        await insertAged("lost-1", "running", {
+          acceptedAt: minutesAgo(10),
+          queuedAt: minutesAgo(10),
+          heartbeatAt: minutesAgo(9),
+        }),
+        await insertAged("lost-2", "queued", {
+          acceptedAt: minutesAgo(10),
+          queuedAt: minutesAgo(10),
+        }),
+        await insertAged("lost-3", "accepted", { acceptedAt: minutesAgo(10) }),
+      ];
+      const alive = {
+        recent: await insertAged("recent", "queued", { acceptedAt: minutesAgo(1) }),
+        requeued: await insertAged("requeued", "queued", {
+          acceptedAt: minutesAgo(10),
+          queuedAt: minutesAgo(1),
+        }),
+        beating: await insertAged("beating", "running", {
+          acceptedAt: minutesAgo(10),
+          heartbeatAt: minutesAgo(0),
+        }),
+        failed: await insertAged(
+          "failed",
+          "failed",
+          { acceptedAt: minutesAgo(10) },
+          "scan_system_error",
+        ),
+      };
       const finished = (await repository.finishLostScans(new Date(), 5 * 60_000)).sort();
-      expect(finished).toEqual([lostRunning, lostQueued].sort());
+      expect(finished).toEqual([...lost].sort());
       await expect(repository.finishLostScans(new Date(), 5 * 60_000)).resolves.toEqual([]);
-      const aged = await pool.query<{ id: string; status: string; failure_code: string | null }>(
-        "select id, status, failure_code from scans where id = any($1)",
-        [[lostRunning, lostQueued, recent, beating, failed, scanJob.scan_id]],
+      const aged = await pool.query<{
+        id: string;
+        status: string;
+        failure_code: string | null;
+        level: string | null;
+        finished: boolean;
+      }>(
+        `select id, status, failure_code, level, finished_at is not null as finished
+         from scans where id = any($1)`,
+        [[...lost, ...Object.values(alive), scanJob.scan_id]],
       );
-      expect(
-        Object.fromEntries(aged.rows.map((row) => [row.id, [row.status, row.failure_code]])),
-      ).toEqual({
-        [lostRunning]: ["failed", "scan_lost"],
-        [lostQueued]: ["failed", "scan_lost"],
-        [recent]: ["queued", null],
-        [beating]: ["running", null],
-        [failed]: ["failed", "scan_system_error"],
-        [scanJob.scan_id]: ["running", null],
-      });
+      const state = Object.fromEntries(
+        aged.rows.map((row) => [row.id, [row.status, row.failure_code, row.level, row.finished]]),
+      );
+      for (const id of lost) expect(state[id]).toEqual(["failed", "scan_lost", "incomplete", true]);
+      expect([...Object.values(alive), scanJob.scan_id].map((id) => state[id])).toEqual([
+        ["queued", null, null, false],
+        ["queued", null, null, false],
+        ["running", null, null, false],
+        ["failed", "scan_system_error", null, false],
+        ["running", null, null, false],
+      ]);
 
       const eventId = createUuidV7();
       const store = createBusinessEventStore(db);
