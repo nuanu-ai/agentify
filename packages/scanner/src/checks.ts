@@ -943,9 +943,10 @@ const linksFeed = (lower: string): boolean => {
     if (quotedValues(lower, "type=", tag).some((type) => FEED_TYPES.includes(text(type))))
       return true;
     if (
-      quotedValues(lower, "href=", tag).some((href) =>
-        FEED_ADDRESSES.some((word) => text(href).includes(word)),
-      )
+      quotedValues(lower, "href=", tag).some((href) => {
+        const address = text(href);
+        return FEED_ADDRESSES.some((word) => address.includes(word));
+      })
     )
       return true;
   }

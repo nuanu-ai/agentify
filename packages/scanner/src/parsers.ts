@@ -241,10 +241,13 @@ const withoutTags = (text: string): string => {
   return kept.join("");
 };
 
+// Every run of whitespace becomes one space. A run that is already one space
+// is left alone rather than replaced by itself: on a page made of single
+// spaces between words, replacing each one cost forty times as much.
 export const visibleText = (html: string): string =>
   withoutTags(withoutElements(withoutElements(withoutElements(html, "script"), "style"), "nav"))
     .replace(/&(?:nbsp|amp|quot|apos|lt|gt);/gi, " ")
-    .replace(/\s+/g, " ")
+    .replace(/\s{2,}|[^\S ]/g, " ")
     .trim();
 
 // Whether some `<name>` tag is followed right after its `>` by text rather
@@ -264,9 +267,10 @@ const productLinkCount = (lower: string): number => {
   let count = 0;
   for (let tag = nextTag(lower, "a", 0); tag; ) {
     const link = quotedValues(lower, "href=", tag)
-      .filter((href) =>
-        PRODUCT_WORDS.some((word) => lower.slice(href.start, href.end).includes(word)),
-      )
+      .filter((href) => {
+        const address = lower.slice(href.start, href.end);
+        return PRODUCT_WORDS.some((word) => address.includes(word));
+      })
       .at(-1);
     if (link) count += 1;
     tag = nextTag(lower, "a", Math.max(tag.end, link?.end ?? 0) + 1);
