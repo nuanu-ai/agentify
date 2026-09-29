@@ -230,9 +230,15 @@ describe("scan job lifecycle", () => {
     });
   });
 
-  it.each(["robots_disallowed", "robots_unavailable"])(
-    "does not request a browser observation when base robots is %s",
-    async (errorCode) => {
+  // The last case is a robots.txt the network kept from being read, which the
+  // robots check names by that failure.
+  it.each([
+    ["robots_disallowed", "robots_disallowed"],
+    ["robots_unavailable", "robots_unavailable"],
+    ["robots_unavailable", "fetch_timeout"],
+  ])(
+    "does not request a browser observation when base robots is %s, by %s",
+    async (summaryCode, errorCode) => {
       const { repo, state } = repository();
       let queued = false;
       await processScanJob(job, {
@@ -244,8 +250,8 @@ describe("scan job lifecycle", () => {
               {
                 ...check,
                 status: "unavailable" as const,
-                summaryCode: errorCode,
-                userImpactCode: errorCode,
+                summaryCode,
+                userImpactCode: summaryCode,
                 earnedWeight: 0,
                 errorCode,
               },
