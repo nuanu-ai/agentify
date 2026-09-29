@@ -115,7 +115,7 @@ Unknown and placed never move backwards. Every phase keeps the order's accepted
   suppresses the committed response body; it does not simulate a TCP or header
   loss. Recovery reuses the paid Agentify order and signs no second payment.
 - Operations alone resets `woo.nuanu.ai` on `codex-vm`, running
-  `./reset-store.sh` and then `./verify.sh` in the lab's directory there.
+  `cd ~/woocommerce-lab && ./reset-store.sh` and then `./verify.sh`.
   Never use `--rebuild-baseline` or copy reset stdout, which prints credentials.
   Verify the public edge off-host.
 - Use a new email alias and distinct TEST buyer/payee wallets. Change only the
