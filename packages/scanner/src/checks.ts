@@ -2,9 +2,10 @@ import { CHECK_DEFINITIONS, type CheckResult, type Segment } from "@agentify/sca
 import { asciiLower, isQuote, nextTag, quotedValues, type Span } from "./markup.js";
 import type { FetchArtifact, ScanArtifacts } from "./model.js";
 import {
-  comparableBodies,
+  comparableTexts,
   htmlSignals,
   isChallenge,
+  type JsonLdResult,
   jsonLdTypes,
   parseJsonLd,
   parseSafeJson,
@@ -104,6 +105,35 @@ const scannerVerdict = (reading: RobotsReading, path: string): boolean | undefin
     reading.verdicts.set(path, isPathAllowed(reading.parsed, "agentify-scanner", path));
   return reading.verdicts.get(path);
 };
+
+// The same scan is evaluated several times over the same artifacts, and
+// several checks read the same page: each artifact's visible text, signals,
+// JSON-LD and sitemap are read once, since a page of up to 2 MiB can cost a
+// reader a noticeable part of a second.
+type PageReading = {
+  text?: string;
+  signals?: ReturnType<typeof htmlSignals>;
+  jsonLd?: JsonLdResult;
+  sitemap?: ReturnType<typeof parseSitemap>;
+};
+const pageReadings = new WeakMap<FetchArtifact, PageReading>();
+const readingOf = (artifact: FetchArtifact): PageReading => {
+  let reading = pageReadings.get(artifact);
+  if (!reading) {
+    reading = {};
+    pageReadings.set(artifact, reading);
+  }
+  return reading;
+};
+const textOf = (artifact: FetchArtifact): string =>
+  (readingOf(artifact).text ??= visibleText(artifact.body));
+const signalsOf = (artifact: FetchArtifact) =>
+  (readingOf(artifact).signals ??= htmlSignals(artifact.body, textOf(artifact)));
+const jsonLdOf = (artifact: FetchArtifact): JsonLdResult =>
+  (readingOf(artifact).jsonLd ??= parseJsonLd(artifact.body));
+const sitemapOf = (artifact: FetchArtifact) =>
+  (readingOf(artifact).sitemap ??= parseSitemap(artifact.body));
+const NO_SIGNALS = htmlSignals("");
 
 const robotsChecks = (artifacts: ScanArtifacts): CheckResult[] => {
   const fetch = artifacts.robots;
@@ -273,7 +303,7 @@ const sitemapCheck = (artifacts: ScanArtifacts): CheckResult => {
       errorCode: unreadReason(artifacts.sitemap, "sitemap_unavailable"),
     });
   }
-  const parsed = available.map((artifact) => parseSitemap(artifact.body));
+  const parsed = available.map(sitemapOf);
   const valid = parsed.filter((entry) => entry.valid);
   if (!valid.length)
     return result({
@@ -397,7 +427,7 @@ const jsonLdChecks = (artifacts: ScanArtifacts): CheckResult[] => {
           artifacts.base?.errorCode ?? artifacts.representative?.errorCode ?? "base_unavailable",
       }),
     ];
-  const parsedPages = pages.map((page) => parseJsonLd(page.body));
+  const parsedPages = pages.map(jsonLdOf);
   const parsed = {
     nodes: parsedPages.flatMap(({ nodes }) => nodes),
     scriptCount: parsedPages.reduce((sum, page) => sum + page.scriptCount, 0),
@@ -499,10 +529,10 @@ const markdownCheck = (artifacts: ScanArtifacts): CheckResult => {
     ? markdown.body.trim() !== artifacts.base.body.trim()
     : false;
   const semanticParity = artifacts.base
-    ? comparableBodies(markdown.body, artifacts.base.body)
+    ? comparableTexts(textOf(markdown), textOf(artifacts.base))
     : false;
   const correctType = /text\/markdown/i.test(type);
-  const nonEmpty = visibleText(markdown.body).length > 20;
+  const nonEmpty = textOf(markdown).length > 20;
   if (
     markdown.status >= 200 &&
     markdown.status < 300 &&
@@ -801,10 +831,12 @@ const ssrCheck = (artifacts: ScanArtifacts): CheckResult => {
       userImpactCode: "ssr_not_assessed",
       errorCode: base?.errorCode ?? (base ? "base_blocked" : "base_unavailable"),
     });
-  const baseSignals = htmlSignals(usableBase?.body ?? "");
-  const representativeSignals = htmlSignals(usableRepresentative?.body ?? "");
-  const baseJsonLd = parseJsonLd(usableBase?.body ?? "").nodes.length > 0;
-  const representativeJsonLd = parseJsonLd(usableRepresentative?.body ?? "").nodes.length > 0;
+  const baseSignals = usableBase ? signalsOf(usableBase) : NO_SIGNALS;
+  const representativeSignals = usableRepresentative ? signalsOf(usableRepresentative) : NO_SIGNALS;
+  const baseJsonLd = usableBase ? jsonLdOf(usableBase).nodes.length > 0 : false;
+  const representativeJsonLd = usableRepresentative
+    ? jsonLdOf(usableRepresentative).nodes.length > 0
+    : false;
   const storeHomepagePass =
     baseSignals.textLength >= 300 &&
     (baseSignals.productLinkCount > 0 || (baseSignals.hasPrice && baseJsonLd));
@@ -864,7 +896,7 @@ const agentUaCheck = (artifacts: ScanArtifacts): CheckResult => {
     probe.status >= 200 &&
     probe.status < 300 &&
     !isChallenge(probe.status, probe.body) &&
-    comparableBodies(base.body, probe.body);
+    comparableTexts(textOf(base), textOf(probe));
   const chatgptAccessible = probeAccessible(chatgpt);
   const claudeAccessible = probeAccessible(claude);
   const count = [chatgptAccessible, claudeAccessible].filter(Boolean).length;
@@ -1111,7 +1143,7 @@ const hreflangCheck = (artifacts: ScanArtifacts): CheckResult => {
       userImpactCode: "hreflang_not_assessed",
       errorCode: base?.errorCode ?? "base_unavailable",
     });
-  const tags = htmlSignals(base.body).hreflangs;
+  const tags = signalsOf(base).hreflangs;
   if (tags.length < 2)
     return result({
       id: 18,

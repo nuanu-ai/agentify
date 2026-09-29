@@ -326,10 +326,11 @@ const hreflangs = (html: string, lower: string): string[] => {
   return found;
 };
 
-export const htmlSignals = (html: string) => {
+// `text` is the page's visible text, for a caller that has read it already.
+export const htmlSignals = (html: string, text = visibleText(html)) => {
   const lower = asciiLower(html);
   return {
-    textLength: visibleText(html).length,
+    textLength: text.length,
     hasH1: opensOnText(lower, "h1"),
     hasTitle: opensOnText(lower, "title"),
     hasPrice: /(?:[$€£¥]\s?\d|\d(?:[.,]\d{2})?\s?(?:USD|EUR|GBP|AUD|CAD))/i.test(html),
@@ -344,9 +345,10 @@ export const isChallenge = (status: number, body: string): boolean =>
     body.slice(0, 64_000),
   );
 
-export const comparableBodies = (left: string, right: string): boolean => {
-  const a = visibleText(left).slice(0, 20_000).toLowerCase();
-  const b = visibleText(right).slice(0, 20_000).toLowerCase();
+// Whether two pages say much the same, given their visible text.
+export const comparableTexts = (left: string, right: string): boolean => {
+  const a = left.slice(0, 20_000).toLowerCase();
+  const b = right.slice(0, 20_000).toLowerCase();
   if (!a || !b) return false;
   const leftTokens = new Set(a.split(/\W+/).filter((token) => token.length > 3));
   const rightTokens = new Set(b.split(/\W+/).filter((token) => token.length > 3));
