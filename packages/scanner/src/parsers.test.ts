@@ -192,6 +192,12 @@ describe("what the parsers read from the markup real sites write", () => {
     );
   });
 
+  it("reads a line break or a tab between words as one space", () => {
+    const page = `<p>Made from merino wool,
+sourced from New Zealand.</p><table><tr><td>Size:\t10</td></tr></table>`;
+    expect(visibleText(page)).toBe("Made from merino wool, sourced from New Zealand. Size: 10");
+  });
+
   it("sees a page's title and heading and counts its links to products", () => {
     const page = `<title>Wool Runners | Example</title><h1 class="product__title">Wool Runner</h1>
 <a href="/products/wool-runner">Wool Runner</a>
