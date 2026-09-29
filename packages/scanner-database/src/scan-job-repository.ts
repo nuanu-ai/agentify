@@ -1,5 +1,5 @@
 import type { CheckResult, DiagnosticLevel, ScanJobV1 } from "@agentify/scanner-contracts";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { emitStoredBusinessEvent } from "./analytics-runtime.js";
 import type { Database } from "./client.js";
 import { browserObservations, scanChecks, scanFingerprints, scans, sessions } from "./schema.js";
@@ -266,6 +266,33 @@ export function createScanJobRepository(db: Database) {
         .where(
           and(eq(scans.id, scanId), eq(scans.attemptNo, attemptNo), eq(scans.status, "running")),
         );
+    },
+
+    /**
+     * A scan not finished and with no sign of life (acceptance, queueing, a
+     * worker's heartbeat) for lostAfterMs has lost its worker or its queue
+     * job, and its deadline is long past, so no worker can finish it. It is
+     * closed as failed with scan_lost, and the ids closed are returned.
+     */
+    async finishLostScans(now: Date, lostAfterMs: number): Promise<string[]> {
+      const cutoff = new Date(now.getTime() - lostAfterMs);
+      const closed = await db
+        .update(scans)
+        .set({
+          status: "failed",
+          failureCode: "scan_lost",
+          finishedAt: now,
+          level: "incomplete",
+          workerHeartbeatAt: now,
+        })
+        .where(
+          and(
+            inArray(scans.status, ["accepted", "queued", "running"]),
+            sql`greatest(${scans.acceptedAt}, ${scans.queuedAt}, ${scans.workerHeartbeatAt}) < ${cutoff}`,
+          ),
+        )
+        .returning({ id: scans.id });
+      return closed.map(({ id }) => id);
     },
   };
 }

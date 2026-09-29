@@ -214,11 +214,14 @@ export const processScanJob = async (
       scanId: job.scan_id,
       attemptNo: job.attempt_no,
     });
+    // A retry runs under the same deadline, so one that has passed fails it too.
+    const retryable =
+      job.attempt_no < 2 && code !== "scan_deadline_expired" && code !== "global_deadline";
     await dependencies.repository.markSystemFailure(
       job.scan_id,
       job.attempt_no,
       code,
-      job.attempt_no < 2,
+      retryable,
       now(),
     );
     throw error;

@@ -26,6 +26,7 @@ import { registerBrowserObservationWorker } from "./browser-observation-job.js";
 import { startBrowserObservationReconciler } from "./browser-observation-reconciler.js";
 import type { WorkerEnv } from "./env.js";
 import type { WorkerHealth } from "./health.js";
+import { startLostScanSweeper } from "./lost-scan-sweeper.js";
 import { refreshWorkerReadiness, type WorkerReadinessSnapshot } from "./readiness.js";
 import { NodePinnedTransport, systemDnsResolver } from "./safe-fetch.js";
 import { registerScanWorker, type ScanBoss } from "./scan-job.js";
@@ -229,6 +230,15 @@ export async function startWorkerInfrastructure(
     },
     env.SCANNER_CONCURRENCY,
   );
+  const stopLostScanSweeper = startLostScanSweeper({
+    finishLostScans: (now, lostAfterMs) => repository.finishLostScans(now, lostAfterMs),
+    onFinished: (scanIds) => {
+      for (const scanId of scanIds) logger.warn("scan_lost", { scan_id: scanId });
+    },
+    onError: (error) => {
+      logger.error("lost_scan_sweep_failed", { error_type: safeErrorType(error) });
+    },
+  });
   const stopAnalyticsConsumer =
     env.POSTHOG_ENABLED || env.META_CAPI_ENABLED
       ? startAnalyticsOutboxConsumer({
@@ -345,6 +355,7 @@ export async function startWorkerInfrastructure(
     clearInterval(heartbeatTimer);
     stopBrowserReconciler();
     stopBrowserJanitor();
+    stopLostScanSweeper();
     stopAnalyticsConsumer();
     stopPartnerConsumer();
     health.ready = false;
