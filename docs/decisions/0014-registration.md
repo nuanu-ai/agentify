@@ -1,8 +1,8 @@
 # 0014. Registration makes a merchant and its cabinet's key in one act
 
 Date: 2026-08-28
-Status: accepted (2026-08-28; 2026-09-25: every registration path except the
-one main path is removed)
+Status: accepted (the product owner, 2026-08-28; 2026-09-25: every registration
+path except the one main path is removed)
 
 ## Context
 

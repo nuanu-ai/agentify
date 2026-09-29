@@ -1,9 +1,9 @@
 # 0009. Signing into the cabinet is a component's job, not ours
 
 Date: 2026-08-28
-Status: accepted (2026-08-28; 2026-09-24, on a session of twelve hours: a
-defect, because money is protected another way, such as a cooldown, and signing
-in has to be convenient for the user)
+Status: accepted (the product owner, 2026-08-28; 2026-09-24, on a session of
+twelve hours: a defect — money must be protected by other means, such as a
+cooldown, and signing in has to be convenient for the user)
 
 Rewritten, not annotated: the version of 2026-08-27 described a sign-in written
 by hand, and its whole middle is the mechanism being removed. No merchant has
@@ -56,13 +56,13 @@ reads nothing, and its answer is the same for a stranger as for the owner.
 **3. The screens stay server-rendered forms.** Our handlers call the component's
 server API and pass on the cookie it makes, so the cabinet keeps working without
 JavaScript and nothing pulls in a client framework. One screen carries one
-inline script (decided 2026-09-22): the page a merchant lands on after asking
-for a link draws the resend with the wait in front of it counting down on the
-button, the way the rest of the web does it. What a script may do here is take a
-control away and give it back — the HTML is always the working page, never a
-disabled one waiting to be enabled, because a browser that ran nothing must be
-left with the button it would have had, and the door refuses the early press in
-words either way.
+inline script (the product owner, 2026-09-22): the page a merchant lands on
+after asking for a link draws the resend with the wait in front of it counting
+down on the button, the way the rest of the web does it. What a script may do
+here is take a control away and give it back — the HTML is always the working
+page, never a disabled one waiting to be enabled, because a browser that ran
+nothing must be left with the button it would have had, and the door refuses the
+early press in words either way.
 
 **4. Mail is a function we supply; with no provider it writes to the log.** Resend
 on a server, from a subdomain of its own so this product's reputation and the
@@ -138,4 +138,4 @@ and it would make signing in need JavaScript.
 
 **A short session that is never extended.** It sends a person back to the
 mailbox every time they return and protects nothing the wallet wait does not;
-it was judged a defect.
+the product owner judged it a defect.

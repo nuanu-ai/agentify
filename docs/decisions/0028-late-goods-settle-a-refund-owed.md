@@ -1,9 +1,9 @@
 # 0028. Late goods settle a refund owed until a refund is recorded
 
 Date: 2026-09-23
-Status: accepted (2026-09-23; the shipped order added 2026-09-28 with
-ADR-0032). Not built yet: the command that records a refund, the
-operator's pause, and the merchant's view of the debt.
+Status: accepted (the product owner, 2026-09-23; the shipped order added
+2026-09-28 with ADR-0032). Not built yet: the command that records a refund,
+the operator's pause, and the merchant's view of the debt.
 
 ## Context
 

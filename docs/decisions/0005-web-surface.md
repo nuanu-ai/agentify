@@ -1,16 +1,17 @@
 # 0005. The web surface: one origin, server-rendered pages, no client build
 
 Date: 2026-08-27
-Status: accepted (autonomous mandate of 2026-08-26; revisited by the product
-owner)
+Status: accepted (autonomous mandate of 2026-08-26; revisited on the product
+owner's word)
 
 ## Context
 
 The pilot needs something a merchant's engineer can be shown and can click
 through: a landing that says what this is, the documentation portal that
 already exists, and the merchant cabinet the pilot plan calls for — cards with
-a working pause, orders, receipts. The instruction of 2026-08-27 is to get that
-chain running locally first, in Docker, and only then to put it on a server.
+a working pause, orders, receipts. The product owner's instruction of
+2026-08-27 is to get that chain running locally first, in Docker, and only then
+to put it on a server.
 
 Until now the repository has had no human-facing surface at all. The gateway
 serves the contract's route table to machines; the portal is a separate
@@ -26,8 +27,8 @@ page for a person, so the shape of that is a decision rather than a detail.
    address and never reasons about ports. The same file describes the server
    later, so what is demonstrated locally is what gets deployed.
 
-   Both deployed channels have the same application routing (decided
-   2026-09-17): production at `agentify.ad`, test at `test.agentify.ad`. The scanner's application answers `/` and its own paths in
+   Both deployed channels have the same application routing (the product
+   owner, 2026-09-17): production at `agentify.ad`, test at `test.agentify.ad`. The scanner's application answers `/` and its own paths in
    place of the static landing; `/cabinet`, `/docs`, `/v0`, `/x402` and
    `/healthz` go to the commerce stack by path, as below, and nothing the
    scanner serves shares a prefix with them. `app.agentify.ad` retires. The

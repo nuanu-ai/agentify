@@ -1,8 +1,9 @@
 # 0007. The confirmation mode is built inward and closed outward
 
 Date: 2026-08-27
-Status: accepted (2026-08-27, to be provided for in the architecture but not
-built yet; the parcel line in §5 added 2026-09-28 with ADR-0032)
+Status: accepted (the product owner, 2026-08-27, to be provided for in the
+architecture but not built yet; the parcel line in §5 added 2026-09-28 with
+ADR-0032)
 
 ## Context
 

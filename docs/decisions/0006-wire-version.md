@@ -1,9 +1,9 @@
 # 0006. What the contract version promises, and when it moves
 
 Date: 2026-08-27
-Status: accepted (autonomous mandate of 2026-08-26; revisited by the product
-owner; §5's open vocabularies and documents added 2026-09-28 with ADR-0032 and
-ADR-0033)
+Status: accepted (autonomous mandate of 2026-08-26; revisited on the product
+owner's word; §5's open vocabularies and documents added 2026-09-28 with
+ADR-0032 and ADR-0033)
 
 ## Context
 
@@ -70,18 +70,20 @@ the merchant's routes and is not derived from it.
    `docs/research/04-spike-bazaar-listing.md`.
 
    So the storefront's vocabularies are open, in its schemas and not only in
-   their words. On the catalogue and the agent's status document, a card's
-   fulfillment mode and an order's status are strings whose known values are
-   listed beside them, and the catalogue is read card by card, so one card of a
-   mode an agent does not know is skipped and the rest of the page stands. An
-   agent reads a status it does not know as not an ending it knows, and asks
-   again. §3's rejection of an open string does not reach here: there it would
-   give up a version that stops an old worker with words before any order is in
-   flight, and the storefront has no version to give up — a closed list there
-   only breaks a stranger's agent without a word. For the same reason the
+   the descriptions beside them. On the catalog and the agent's status
+   document, a card's fulfillment mode and an order's status are strings whose
+   known values are listed beside them, and the catalog is read card by card,
+   so one card of a mode an agent does not know is skipped and the rest of the
+   page stands. An agent reads a status it does not know as not an ending it
+   knows, and asks again later, without buying again on its strength. §3's
+   rejection of an open string does not reach here: there it would give up a
+   version that stops an old worker with words before any order is in flight,
+   and the storefront has no version to give up — a closed list there only
+   breaks a stranger's agent without a word. For the same reason the
    storefront's documents take fields added later, which an agent ignores. The
    merchant's schemas stay closed. The first values added this way are `ship`
-   and `shipped` (ADR-0032), and the first fields the seller's site (ADR-0033).
+   and `shipped` (ADR-0032), and the first fields the seller's name and site
+   (ADR-0033).
 
    Rejected: a version segment on the storefront, on the argument that an
    incompatibly changed wire *is* a different resource to an agent and should

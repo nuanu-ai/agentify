@@ -1,11 +1,11 @@
 # 0026. One way in: an address, a one-time link and one session for the site
 
 Date: 2026-09-24
-Status: accepted (2026-09-17, on the link in a message as the one means of
-authentication; 2026-09-24, on one link signing a person in once to both the
-reports and the cabinet, with the dashboard a privilege of the account;
-2026-09-25, on §5, with one rule for every path and the refusal at publish
-being enough, with no way to ask in advance)
+Status: accepted (the product owner, 2026-09-17, on the link in a message as
+the one means of authentication; 2026-09-24, on one link signing a person in
+once to both the reports and the cabinet, with the dashboard a privilege of the
+account; 2026-09-25, on §5, with one rule for every path and the refusal at
+publish being enough, with no way to ask in advance)
 
 ## Context
 
@@ -14,9 +14,9 @@ scanner writes about their site and sells from the cabinet, and on which whoever
 runs the deployment reads the operator's dashboard at `/admin`. Whoever can read
 mail at an address is the person of that address, and a link in a message is how
 they show it. What had to be settled is how far one link reaches, and the
-answer is all of it: a person signs in once and is not asked again, and the
-dashboard is a privilege an account carries rather than a door with a password
-of its own.
+product owner's answer is all of it: a person signs in once and is not asked
+again, and the dashboard is a privilege an account carries rather than a door
+with a password of its own.
 
 ## Decision
 
@@ -73,21 +73,21 @@ not a way in.
 
 **3. The header and signing out.** When a person is signed in, the header of the
 scanner's and the cabinet's pages carries their address and a sign-out control;
-`/docs` keeps only its plain link to the cabinet (decided 2026-09-24). A
-response carrying a person's address is never stored by a shared cache, however
-the code draws the header. The cabinet draws it on the server; a scanner page
-asks for it with a small same-origin request of its own, so the page stays what
-a shared cache may keep, and a browser that runs no script sees the header's
-doors without the address. The sign-out is a same-origin POST that ends this
-session's row, clears the cookie and opens the sign-in page with an empty field,
-since people mostly sign out to come back as another address. It signs this
-browser out of everything and leaves other devices alone. The cabinet's
-Settings screen carries the other half (decided 2026-09-25): "Sign
-out every other device", a same-origin POST behind the gate that ends every
-other session of this account, keeps this one and says how many it ended. It
-reaches this account only, never another account naming the same merchant,
-and touches no key; ending every account's sessions is the wallet cancel's
-(ADR-0019).
+`/docs` keeps only its plain link to the cabinet (the product owner,
+2026-09-24). A response carrying a person's address is never stored by a shared
+cache, however the code draws the header. The cabinet draws it on the server; a
+scanner page asks for it with a small same-origin request of its own, so the
+page stays what a shared cache may keep, and a browser that runs no script sees
+the header's doors without the address. The sign-out is a same-origin POST that
+ends this session's row, clears the cookie and opens the sign-in page with an
+empty field, since people mostly sign out to come back as another address. It
+signs this browser out of everything and leaves other devices alone. The
+cabinet's Settings screen carries the other half (the product owner,
+2026-09-25): "Sign out every other device", a same-origin POST behind the gate
+that ends every other session of this account, keeps this one and says how many
+it ended. It reaches this account only, never another account naming the same
+merchant, and touches no key; ending every account's sessions is the wallet
+cancel's (ADR-0019).
 
 **4. The merchant is made on the cabinet's explicit request.** A person may own
 reports and no merchant. The cabinet offers a signed-in person without one a
@@ -120,21 +120,21 @@ named trigger for the switch becoming a paid subscription is the day the
 operator cannot keep up.
 
 **6. The operator enters through the same door.** The dashboard is entered with
-the same session as everything else, and only the account must be privileged.
-Being an operator is a flag on the account's row in `cabinet_accounts`, closed
-to input from the browser like `merchantId`, and only `pnpm account operator`
-at the server's terminal writes it, `--off` clearing it. An operator signs in
-once like anybody, writing the row, and is flagged afterwards; an address with
-no row is refused. `/admin` opens for a session whose account carries the
-flag, and everybody else, signed in or not, gets one answer: a 404 with the
-site's missing-page page. When the flag cannot be confirmed because the
-cabinet does not answer, the answer is the same: the dashboard fails closed.
-The scanner learns the flag on the question it already asks, whose session a
-cookie is, and asks it on every request, so moving the flag ends no session
-and holds from the next page; the header shows an operator the way in. The
-refusal is the page's own and not byte for byte a path no route has, since a
-route that exists refuses with its own bytes; the repository is public, so
-that the route exists is no secret. The dashboard stays read-only.
+the same session as everything else, and the account needs the operator
+privilege. Being an operator is a flag on the account's row in
+`cabinet_accounts`, closed to input from the browser like `merchantId`, and only
+`pnpm account operator` at the server's terminal writes it, `--off` clearing it.
+An operator signs in once like anybody, writing the row, and is flagged
+afterwards; an address with no row is refused. `/admin` opens for a session
+whose account carries the flag, and everybody else, signed in or not, gets one
+answer: a 404 with the site's missing-page page. When the flag cannot be
+confirmed because the cabinet does not answer, the answer is the same: the
+dashboard fails closed. The scanner learns the flag on the question it already
+asks, whose session a cookie is, and asks it on every request, so moving the
+flag ends no session and holds from the next page; the header shows an operator
+the way in. The refusal is the page's own and not byte for byte a path no route
+has, since a route that exists refuses with its own bytes; the repository is
+public, so that the route exists is no secret. The dashboard stays read-only.
 
 ## Cases the scanner's and the cabinet's suites answer for
 
@@ -174,7 +174,8 @@ session left open on a shared computer opens everything its person may see until
 somebody signs out, though it moves no money by itself, because a wallet change
 waits and is announced (ADR-0019). A second factor outside the mailbox, optional
 and not a condition of live publication, is the second stage agreed in
-principle on 2026-09-17, and until it lands none of it is assumed to exist.
+principle by the product owner on 2026-09-17, and until it lands none of it is
+assumed to exist.
 
 Rejected: **a session per application with a handoff between them** — a person
 signed in at one surface is a stranger at the next, and the cookie path between

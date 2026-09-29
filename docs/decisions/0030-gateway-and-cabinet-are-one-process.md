@@ -1,9 +1,9 @@
 # 0030. The gateway and the cabinet are one process
 
 Date: 2026-09-25
-Status: accepted (2026-09-25, on the direction, with the merger as the next
-step; 2026-09-25, on the name, the wallet message, the WooCommerce worker and
-the contract version, with the recommendations agreed)
+Status: accepted (the product owner, 2026-09-25, on the direction, with the
+merger as the next step; 2026-09-25, on the name, the wallet message, the
+WooCommerce worker and the contract version, with the recommendations agreed)
 
 ## Context
 

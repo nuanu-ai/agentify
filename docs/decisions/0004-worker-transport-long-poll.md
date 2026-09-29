@@ -1,8 +1,8 @@
 # 0004. Worker transport: HTTP long polling
 
 Date: 2026-08-26
-Status: accepted (autonomous mandate of 2026-08-26; revisited by the product
-owner)
+Status: accepted (autonomous mandate of 2026-08-26; revisited on the product
+owner's word)
 
 ## Context
 

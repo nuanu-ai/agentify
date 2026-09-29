@@ -1,7 +1,7 @@
 # 0012. The payment challenge declares the product, as a projection of its card
 
 Date: 2026-08-27
-Status: accepted (2026-08-27)
+Status: accepted (the product owner, 2026-08-27)
 
 ## Context
 
