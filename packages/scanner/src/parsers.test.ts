@@ -460,6 +460,18 @@ describe("a page or a sitemap as large as the fetch admits", () => {
     end: text.slice(-24),
   });
 
+  it("reads a JSON-LD graph of as many nodes as a script the fetch admits can hold", () => {
+    // 1,650 graphs of 100 empty nodes each, 166,651 nodes in all, fit in the
+    // 512 KiB a script is parsed up to, each array within its 10,000 entries.
+    // Passed to a call as arguments, that many throw, and the scan with them.
+    const inner = `{"@graph":[${Array(100).fill("{}").join(",")}]}`;
+    const graph = `{"@graph":[${Array(1_650).fill(inner).join(",")}]}`;
+    const page = `<script type="application/ld+json">${graph}</script>`;
+    const parsed = parseJsonLd(page);
+    expect(parsed).toMatchObject({ scriptCount: 1, invalidCount: 0 });
+    expect(parsed.nodes).toHaveLength(166_651);
+  });
+
   it("reads the hreflang links around an alternate link that runs on for megabytes", () => {
     const first = `<link rel="alternate" hreflang="de" href="/de">`;
     const last = `<link rel="alternate" hreflang="en" href="/en">`;
