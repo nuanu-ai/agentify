@@ -399,6 +399,41 @@ describe("bounded scan graph", () => {
     expect(requested).toContain("GET www.example.com/");
   });
 
+  it("finishes a scan when one of its requests fails, and says which and why", async () => {
+    // A sitemap on a host of the site that does not resolve, and an llms.txt
+    // that redirects from https to http, which the scanner does not follow.
+    const target = transport(
+      "User-agent: *\nAllow: /\nSitemap: https://cdn.example.com/sitemap.xml\n",
+    );
+    const adapter: PinnedTransport = {
+      request: async (input) =>
+        input.url.pathname === "/llms.txt"
+          ? {
+              ...makeArtifact(input, 301, "", "text/plain"),
+              redirectLocation: "http://example.com/llms.txt",
+            }
+          : target.adapter.request(input),
+    };
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async (hostname) => {
+          if (hostname === "cdn.example.com")
+            throw Object.assign(new Error(`getaddrinfo ENOTFOUND ${hostname}`), {
+              code: "ENOTFOUND",
+            });
+          return [{ address: "93.184.216.34", family: 4 }];
+        },
+      },
+      transport: adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(evaluation.checks).toHaveLength(18);
+    expect(evaluation.checks.find((check) => check.id === 12)?.status).toBe("pass");
+    expect(
+      [4, 8].map((id) => evaluation.checks.find((check) => check.id === id)?.errorCode),
+    ).toEqual(["dns_error", "redirect_downgrade_blocked"]);
+  });
+
   it("does not fetch the well-known discovery files robots.txt keeps the scanner out of", async () => {
     const target = transport("User-agent: *\nDisallow: /.well-known/\n");
     await new ScanRunner({
