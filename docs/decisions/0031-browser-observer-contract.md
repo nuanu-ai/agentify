@@ -54,9 +54,9 @@ never reached the Actor.
 The adversarial review of 2026-09-28 found the boundary incomplete: Chromium
 fetches an `http://` target itself when its own https upgrade fails, outside
 the Actor's request route; robots.txt is consulted for the main frame only;
-a navigation a script or a meta refresh makes is checked for its domain,
-not for a fall to http; and a popup crashes the run. These are defects
-against this decision, not exceptions to it.
+and a navigation a script or a meta refresh makes is checked for its
+domain, not for a fall to http. These are defects against this decision,
+not exceptions to it.
 
 Rejected: keeping `signals` with looser limits, since every field is surface
 someone must learn and no reader justified one; and reading the output
