@@ -1,7 +1,7 @@
 # 0033. An agent knows who sells by a name and the shop's own site
 
 Date: 2026-09-28
-Status: accepted. Not built yet.
+Status: accepted (the product owner, 2026-09-28). Not built yet.
 
 ## Context
 
@@ -16,27 +16,34 @@ what the merchant's site already carries.
 
 ## Decision
 
-A merchant names once, in the cabinet, the address of their shop's own site:
-an `https` address and nothing else. The agent reads it beside the seller name
-on every card of that merchant in our catalog and on the status of every
-order, under a description saying the merchant gave it and Agentify did not
-check it. How to reach the shop, its terms and its returns are for the agent to
-read there. A card that ships goods is not published without it; on any other
-card it appears where the merchant has named one. Nothing else about the
+A merchant gives, in the one place where they set their seller name, the
+address of their shop's own site: an `https` origin, the scheme and the host
+with no path, query, fragment or credentials, refused at the door in any other
+form. The agent reads both on every card of that merchant in our catalog and on
+the status of every order, as a `seller` object of `name` and `site`, under a
+description saying the merchant gave them and Agentify did not check them. The
+name keeps its rule of at most 32 printable characters and, like every word a
+merchant writes for agents, is plain text (ADR-0017). How to reach the shop,
+its terms and its returns are for the agent to read on the site. A card that
+ships is not published without a site: the refusal is a finding,
+`no_seller_site`, beside `no_seller_name`, naming where to set it. On any other
+card the site appears where the merchant has given one. Nothing else about the
 merchant is kept for the agent. The storefront's documents gaining these fields
 is what ADR-0006 §5 allows.
 
 ## Consequences
 
 Agentify takes on no support channel and no profile to keep true: the agent is
-sent where the rest of the web would send it. An address we did not check can
-be anybody's, which is why the agent is told whose word it is; checking it, for
-instance by a file the site serves, is a later decision. The seller's name,
-until now a discovery catalog's field, becomes what our own catalog shows too.
+sent where the rest of the web would send it. A name and a site we did not
+check can be anybody's — "Amazon" with `https://www.amazon.com` passes — which
+is why the agent is told whose word they are; checking the site, for instance
+by a file it serves, is a later decision. The seller's name, until now a
+discovery catalog's field, becomes what our own catalog shows too.
 
 Rejected: a support contact, per merchant or per shipment (a channel we would
 have to keep true, and absent where a merchant never gave one); free text about
 the shop (the site already says it, and text written for agents is a way to
-hand them instructions); nothing (an agent with a lost parcel would have
-nowhere to go); verifying the address now (a mechanism before anybody has
-asked for it, where marking the word costs nothing).
+hand them instructions); a full address with a path or a query (the same free
+text by another name); nothing (an agent with a lost parcel would have nowhere
+to go); verifying the site now (a mechanism before anybody has asked for it,
+where marking the word costs nothing).

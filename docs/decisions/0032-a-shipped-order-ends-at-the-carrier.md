@@ -1,7 +1,8 @@
 # 0032. A shipped order ends at the carrier, and the agent is told `shipped`
 
 Date: 2026-09-28
-Status: accepted, after two rounds of adversarial review. Not built yet.
+Status: accepted (the product owner, 2026-09-28, after two rounds of
+adversarial review). Not built yet.
 
 ## Context
 
@@ -18,62 +19,78 @@ does not.
 
 ## Decision
 
-A card for shipped goods says `fulfillment: 'ship'`. Until the shipment it is
-the asynchronous mode for money. The machine gains no state; its mode gains a
-switch saying the goods are a parcel, which the order takes at purchase, so a
-republished card changes no order in flight. The card asks for `ship_to`
-(ADR-0031), has a price check answered by the merchant's handler, and names
-`ship_within_seconds`: the time to hand the parcel to a carrier, counted from
-the charge, under a ceiling written in the contract and checked at publishing,
-shown on the card and as an absolute `ship_by` on the order. No `ship` card
-publishes until its merchant has named their shop's site, where the agent takes
-whatever the order cannot answer (ADR-0033).
+A card for shipped goods says `fulfillment: 'ship'`. Until the parcel ships,
+money moves as in the asynchronous mode. The order records at purchase that it
+is a parcel, so a republished card changes no order in flight, and the order
+machine gains no state. Such a card declares neither `ship_to`, which the mode
+implies (ADR-0031), nor a `result`, which the mode fixes, and a card carrying
+either, or `fulfill_deadline_seconds`, is refused. It must name
+`ship_within_seconds`, the time to hand the parcel to a carrier counted from
+the charge, at most 2 592 000 (thirty days), a limit written in the contract
+and checked at publishing; the agent reads it on the card and as the absolute
+`ship_by` on the order's status. It must have a price check answered by the
+merchant's price handler, whose answer is the whole price with shipping; the
+card's own price is the goods without shipping, and its description says so.
+And its merchant must have given their shop's site (ADR-0033).
 
-The merchant declares no result. `deliver` on a parcel records a shipment: the
-`carrier`, required, a short plain-text string — a carrier's name, or the
-shop's own courier — and, where they exist, `tracking_number`, `tracking_url`
-and `estimated_delivery` (names, and what an integrator learns, in the research
-note). A shipment without a tracking number says so, never by an empty field.
-All of it is the merchant's claim, which we do not check. The order then reads
-`shipped` to the agent, to the merchant and on the receipt: the parcel is with
-the carrier, the money with the merchant, and this is the last word about the
-parcel. The status's description says so, because every protocol using the word
-goes on past it. The discovery listing shows `ship_to` and a shipment, with a
-real example: the company's own address and a carrier's published test number.
-`ship` and `shipped` join the storefront's open vocabularies (ADR-0006 §5), and
-the SDK's contract version moves once, for the whole of this mode.
+`deliver` on a parcel records a shipment: a `carrier`, required, a short
+plain-text string — a carrier's name, or the shop's own courier — and a
+`tracking_number`, a required key holding the number, or `null` for a parcel
+that has none, never an empty string; `tracking_url` and `estimated_delivery`
+with `earliest` and `latest` are optional. All of it is the merchant's claim,
+which we do not check. The same shipment sent again is answered as already
+recorded; a different one is refused with words saying that a shipment is
+recorded and cannot be changed. The merchant deduplicates shipping on the order
+identifier, because a parcel cannot be sent twice safely.
+
+The order's internal state stays `delivered`, and it reads `shipped` to the
+agent, to the merchant and on the receipt: the parcel is with the carrier and
+the money with the merchant. That is the last word Agentify has about the
+parcel, and the status's description says so, since every protocol using the
+word goes on past it. The agent's status document carries the shipment in a
+`shipment` field, while `delivered` stays empty: nothing reached the agent. On
+a parcel, `rejected` names what an unavailable price answer can mean: out of
+stock, not shipped to that place, or an address missing what the merchant
+needs. The discovery listing shows `ship_to` in its input schema and a shipment
+in its example output, with Agentify's own office address and a carrier's
+published test number. `ship` and `shipped` join the storefront's open
+vocabularies (ADR-0006 §5), and the SDK's contract version moves once for the
+whole mode.
 
 What becomes of the parcel afterwards is between buyer and merchant. When a
 merchant admits a parcel lost, ADR-0028's command records a refund on the
-shipped order — the machine's one edge out of `delivered`, for parcels only —
-and the receipt then reads the refund. A `ship` card publishes on the test
-channel and is refused on the live one, with words, until that command and
-ADR-0028's view of the payer run there and ADR-0011 carries its verdict on
-shipments behind the order identifier.
+shipped order, which moves from `delivered` to `refunded` — the only way out
+of `delivered`, and for parcels only — and the receipt reads the refund. A
+`ship` card publishes on the test channel and is refused on the live one, with
+words, until that command and ADR-0028's view of the payer run there, the
+cabinet tells a merchant how to report a refund to the operator, and ADR-0011
+records whether whoever holds an order identifier may read its tracking.
 
 ## Consequences
 
 The agent is told what we know and no more, on money paths already tested. A
 lost parcel is invisible to us until the merchant says so. A shop's own
-courier, with no tracking, can sell through this mode; `shipped` then rests on
-the merchant's word, as it would on a number nobody checks. The price check's
-"unavailable" also means "not to this destination", and `rejected` says so. An
-order is one parcel of one card, and a parcel is not safe to ship twice, so
-keying on the order identifier stops being advice. Duties, restricted goods,
-returns, a changed or mistyped address and pickup points are outside the mode
-for now.
+courier, with no tracking, can sell through this mode, and `shipped` then
+rests on the merchant's word, as it would on a number nobody checks; a
+mistyped number stays on the order. An order is one parcel of one card. The
+contract version's move stops every worker on an older SDK at start-up,
+whether it sells parcels or not. Duties, restricted goods, returns, a changed
+or mistyped address and pickup points have no handling in this mode for now:
+nothing refuses them, and the price an agent pays does not cover duties the
+recipient may owe at the border, which the portal asks merchants to say in the
+card's description.
 
 Rejected: `delivered` with a caveat on the card (the status read alone would
 claim arrival); an arrival state with its own deadline (merchants rarely know
 arrival, and debts would fall on parcels at the door); a result each merchant
-declares (no agent learns every shape); a second `deliver` to update tracking
-(the call keeps the first delivery in every mode); a required tracking number
+declares (no agent learns every shape); a second shipment accepted in silence
+(a corrected number would vanish without a word); a required tracking number
 (it shuts out local couriers and invites made-up numbers, and one we cannot
 check proves no more than the word); a list of carriers (every town has its
 own); reusing `fulfill_deadline_seconds` (one name, two meanings); a ceiling in
 deployment configuration (unseen by the offline check, and a lowered one
 strands published cards above it); a support contact of ours, per shipment or
-per merchant (ADR-0033 sends the agent to the shop's site instead); reopening a
-lost parcel into a refund owed (a stale delivery would close it); a "physical"
-flag beside `fulfillment` (two fields for one fact; a parcel confirmed by hand
-waits for ADR-0007's trigger).
+per merchant (ADR-0033 sends the agent to the shop's site instead); reopening
+a lost parcel into a refund owed (a stale delivery would close it); a
+"physical" flag beside `fulfillment` (two fields for one fact; a parcel
+confirmed by hand waits for ADR-0007's trigger).
