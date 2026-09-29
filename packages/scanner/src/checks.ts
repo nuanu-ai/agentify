@@ -1096,7 +1096,13 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
       ? scannerVerdict(robotsReading, targetPath)
       : undefined;
   const targetContentAllowed = targetVerdict === true;
-  const robotsBlockedCode = targetVerdict === false ? "robots_disallowed" : "robots_unavailable";
+  // A robots.txt the network kept from being read names that failure.
+  const robotsBlockedCode =
+    targetVerdict === false
+      ? "robots_disallowed"
+      : artifacts.robots.status === 0 && artifacts.robots.errorCode
+        ? artifacts.robots.errorCode
+        : "robots_unavailable";
   // Content robots.txt kept the scanner from reads as a request that never
   // happened, carrying the reason, so every check that needed it names it.
   const withheld: FetchArtifact = {

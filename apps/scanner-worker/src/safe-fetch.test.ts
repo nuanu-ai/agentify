@@ -343,7 +343,10 @@ describe("safe fetch policy", () => {
       new RequestBudget(),
       "scanner",
     );
-    await expect(fetcher.fetch("https://example.com/")).rejects.toThrow(`ssrf_blocked:${reason}`);
+    await expect(fetcher.fetch("https://example.com/")).resolves.toMatchObject({
+      status: 0,
+      errorCode: `ssrf_blocked:${reason}`,
+    });
     expect(calls).toBe(0);
   });
 

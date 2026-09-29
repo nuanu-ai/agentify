@@ -225,17 +225,24 @@ export class ScanRunner {
       // true or false for the URL, its query included, or undefined when its
       // host's robots.txt could not be read or the decision would cost more
       // than the matcher's budget.
-      const robotsVerdict = async (url: URL): Promise<boolean | undefined> => {
-        const { artifact, parsed } = await readRobotsOf(url.origin);
+      const verdictOf = ({ artifact, parsed }: RobotsReading, url: URL) => {
         if (artifact.status === 404 || artifact.status === 410) return true;
         if (artifact.errorCode || artifact.status !== 200 || parsed.fatal) return undefined;
         return isPathAllowed(parsed, "agentify-scanner", `${url.pathname || "/"}${url.search}`);
       };
-      const blockedCodeFor = (verdict: boolean | undefined) =>
-        verdict === false ? "robots_disallowed" : "robots_unavailable";
+      const robotsVerdict = async (url: URL): Promise<boolean | undefined> =>
+        verdictOf(await readRobotsOf(url.origin), url);
+      // Why a URL is not read, or undefined when robots.txt lets it be. A
+      // robots.txt the network kept from being read names that failure: the
+      // host is what could not be reached, not its rules.
       const admit = async (url: URL): Promise<string | undefined> => {
-        const verdict = await robotsVerdict(url);
-        return verdict === true ? undefined : blockedCodeFor(verdict);
+        const reading = await readRobotsOf(url.origin);
+        const verdict = verdictOf(reading, url);
+        if (verdict === true) return undefined;
+        if (verdict === false) return "robots_disallowed";
+        return reading.artifact.status === 0 && reading.artifact.errorCode
+          ? reading.artifact.errorCode
+          : "robots_unavailable";
       };
       const targetVerdict = await robotsVerdict(target);
       const targetAllowed = targetVerdict === true;
@@ -250,10 +257,8 @@ export class ScanRunner {
         url: URL,
         fetchOptions: Parameters<SafeFetcher["fetch"]>[1],
       ): Promise<FetchArtifact> => {
-        const verdict = await robotsVerdict(url);
-        return verdict === true
-          ? fetch(url, { ...fetchOptions, admit })
-          : unavailableArtifact(url, blockedCodeFor(verdict));
+        const refusal = await admit(url);
+        return refusal ? unavailableArtifact(url, refusal) : fetch(url, { ...fetchOptions, admit });
       };
 
       const contentPromise = targetAllowed
@@ -380,12 +385,14 @@ export class ScanRunner {
         job.segment === "store" && robotsDecisionKnown && targetAllowed
           ? (async () => {
               const found = productCandidates(target, sitemap, usedHttpFallback);
-              const verdicts = await Promise.all(found.map(robotsVerdict));
-              const candidates = found.filter((_, index) => verdicts[index] === true);
+              const refusals = await Promise.all(found.map(admit));
+              const candidates = found.filter((_, index) => !refusals[index]);
               // A product page robots.txt keeps the scanner off still tells the
               // engine why the store's product data went unread.
-              if (!candidates.length && found[0])
-                return unavailableArtifact(found[0], blockedCodeFor(verdicts[0]));
+              const [firstFound] = found;
+              const [firstRefusal] = refusals;
+              if (!candidates.length && firstFound && firstRefusal)
+                return unavailableArtifact(firstFound, firstRefusal);
               const heads = await Promise.all(
                 candidates.map((candidate) =>
                   fetch(candidate, {

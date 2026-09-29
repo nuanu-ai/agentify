@@ -133,6 +133,17 @@ describe("18-check engine", () => {
     expect(check?.fixCode).toBeUndefined();
   });
 
+  it("names the network failure that kept robots.txt from being read, not robots.txt", () => {
+    const input = makeArtifacts("store");
+    input.robots = artifact("https://example.com/robots.txt", "", {
+      status: 0,
+      errorCode: "fetch_timeout",
+    });
+    expect(evaluateScan(input).checks.find((check) => check.id === 12)?.errorCode).toBe(
+      "fetch_timeout",
+    );
+  });
+
   it("does not call a sitemap missing when robots.txt kept the scanner off a declared one", () => {
     const input = makeArtifacts("store");
     input.sitemap = [
