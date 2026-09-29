@@ -253,6 +253,91 @@ describe("what the parsers read from the markup real sites write", () => {
       urls: ["https://example.com/product-sitemap.xml"],
     });
   });
+
+  it("reads a quoted value whole when it holds a >, as templates write them", () => {
+    // Amazon's home page carries client-side templates such as the first link.
+    // The rest hold the same rule wherever a template or a stray `>` can
+    // stand: in an href that swallows the next link, in an hreflang or a rel,
+    // and in the parameters of a JSON-LD type.
+    expect(htmlSignals(`<a href='<#=item.url #>'><#=item.title #></a>`).productLinkCount).toBe(1);
+    expect(htmlSignals(`<a href='/items> <a href="/products/y">'>`).productLinkCount).toBe(1);
+    expect(
+      htmlSignals(`<link rel="alternate" hreflang="<%= locale %>" href="/">`).hreflangs,
+    ).toEqual(["<%= locale %>"]);
+    expect(
+      htmlSignals(`<link rel="alternate" hreflang="<%= l %><link rel="alternate" hreflang="de">`)
+        .hreflangs,
+    ).toEqual(["<%= l %><link rel="]);
+    expect(htmlSignals(`<link rel="alternate>x" hreflang="en">`).hreflangs).toEqual(["en"]);
+    expect(
+      parseJsonLd(`<script type="application/ld+json; x=>" >{"@type":"Product"}</script>`),
+    ).toMatchObject({ scriptCount: 1, invalidCount: 0 });
+    expect(parseJsonLd(`<script type='application/ld+json;a>[]</script>'`).scriptCount).toBe(0);
+  });
+
+  it("reads the last hreflang after an alternate rel, and none that is empty", () => {
+    expect(
+      htmlSignals('<link rel="alternate" hreflang="" href="https://example.com/">').hreflangs,
+    ).toEqual([]);
+    expect(
+      htmlSignals('<link rel="alternate" hreflang="en" data-rel="alternate" href="/en">').hreflangs,
+    ).toEqual(["en"]);
+    expect(
+      htmlSignals('<link rel="alternate" hreflang="en" hreflang="<%= l %>"').hreflangs,
+    ).toEqual(["en"]);
+  });
+
+  it("reads nothing from a tag or a value the page ends inside, as a page cut at the fetch limit does", () => {
+    const signals = htmlSignals(
+      '<title>Wool</title><link rel="alternate" hreflang="de" href="/de"><a href="/products/wool-runner">Wool Runner</a><a href="/products/tree-run',
+    );
+    expect(signals).toMatchObject({ hasTitle: true, productLinkCount: 1, hreflangs: ["de"] });
+    expect(htmlSignals('<link rel="alternate" hreflang="en" href="/en"').hreflangs).toEqual([]);
+    expect(htmlSignals("<title>Wool</title><h1>").hasH1).toBe(false);
+  });
+
+  it("reads an attribute's value only between quotes, and a tag only by its whole name", () => {
+    // Minified pages leave values bare, as Smashing Magazine's feed link does;
+    // the checks have never read those.
+    expect(
+      htmlSignals(
+        '<a href=/products/wool-runner class="card">Wool Runner</a><map name="hero"><area shape="rect" coords="0,0,600,400" href="/collections/shop-all" alt="Shop all"></map>',
+      ).productLinkCount,
+    ).toBe(0);
+    expect(
+      visibleText(
+        '<navigation-drawer>Free shipping</navigation-drawer><nav><a href="/">Home</a></nav>',
+      ),
+    ).toBe("Free shipping");
+  });
+
+  it("keeps a script's text from hiding the page, and a bare <> as text", () => {
+    expect(
+      visibleText(
+        '<script>menu.innerHTML = "<nav>";</script><p>Wool Runner</p></nav><p>1 <> 2</p>',
+      ),
+    ).toBe("Wool Runner 1 <> 2");
+    expect(
+      parseJsonLd(
+        `<script type="application/ld+json">{"text":"<script type='application/ld+json'>"}</script>`,
+      ),
+    ).toMatchObject({ scriptCount: 1, invalidCount: 0 });
+  });
+
+  it("reads at most 5,000 addresses from a sitemap, and only its loc elements", () => {
+    const entries = Array.from(
+      { length: 5_001 },
+      (_, index) => `<url><loc>https://example.com/products/${index}</loc></url>`,
+    ).join("");
+    const parsed = parseSitemap(`<urlset>${entries}</urlset>`);
+    expect(parsed.urls).toHaveLength(5_000);
+    expect(parsed.urls.at(-1)).toBe("https://example.com/products/4999");
+    expect(
+      parseSitemap(
+        '<urlset><url><location>Berlin</location><loc xml:lang="de">https://example.com/de</loc></url></urlset>',
+      ).urls,
+    ).toEqual(["https://example.com/de"]);
+  });
 });
 
 describe("a robots.txt as large as the fetch admits", () => {

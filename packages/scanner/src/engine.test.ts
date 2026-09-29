@@ -103,6 +103,11 @@ describe("what the checks read from the markup real sites write", () => {
       '<link rel="alternate" type="application/atom+xml" title="Feed" href="/blogs/news.atom" />',
       '<link href="/blog_rss.xml" rel="alternate" title="RSS" type="application/rss+xml">',
       "<LINK REL='alternate' HREF='https://example.com/merchant/products.csv'>",
+      '<link rel="alternate" type="text/csv" title="Catalog" href="/catalog">',
+      '<link rel="alternate" type="application/xml" title="Catalog" href="/catalog">',
+      '<link rel="alternate" href="https://example.com/feed/">',
+      '<link rel="alternate" href="https://example.com/google-merchant-center">',
+      '<link rel="alternate" href="https://example.com/products.xml">',
     ])
       expect(check(withBase(`<head>${link}</head><body>Wool</body>`), 15)?.evidence).toMatchObject({
         feed_link: true,
@@ -120,6 +125,14 @@ describe("what the checks read from the markup real sites write", () => {
     });
     const website = `<meta property="og:type" content="website"><p>Wool</p>`;
     expect(check(withBase(website), 15)?.status).toBe("fail");
+    const singleQuoted = `<meta property='og:type' content='product'><p>Wool</p>`;
+    expect(check(withBase(singleQuoted), 15)?.evidence).toMatchObject({
+      product_identifiers: true,
+    });
+    // Values are read only between quotes; a minified page that leaves them
+    // bare is not read, as it never was.
+    const bare = `<meta property=og:type content="product"><p>Wool</p>`;
+    expect(check(withBase(bare), 15)?.status).toBe("fail");
   });
 
   it("counts an llms.txt link only when it leads to an absolute address", () => {
@@ -133,6 +146,10 @@ describe("what the checks read from the markup real sites write", () => {
     expect(check(llms(absolute), 8)?.evidence).toEqual({ has_h1: true, has_links: true });
     const relative = "# Example\n\n## Docs\n\n- [Catalog](/catalog.md): every product\n";
     expect(check(llms(relative), 8)?.evidence).toEqual({ has_h1: true, has_links: false });
+    const plain = "# Example\n\n- [Catalog](http://example.com/catalog.md)\n";
+    expect(check(llms(plain), 8)?.evidence).toEqual({ has_h1: true, has_links: true });
+    const untitled = "# Example\n\n- [](https://example.com/catalog.md)\n";
+    expect(check(llms(untitled), 8)?.evidence).toEqual({ has_h1: true, has_links: false });
   });
 
   it("recognizes Adyen by the checkout script a page loads", () => {
