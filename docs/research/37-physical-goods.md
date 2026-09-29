@@ -283,7 +283,8 @@ The shipment record takes the names ACP, UCP and WooCommerce share: `carrier`,
 behind it; `tracking_number` is a required key whose `null` says the parcel has
 none, so "none" is never an empty field. The agent reads the record in a
 `shipment` field of its status document, beside an absolute `ship_by`. The
-moment of shipment is the gateway's to stamp, not the merchant's to write.
+moment of shipment is the gateway's to stamp, as the shipment's `shipped_at`,
+not the merchant's to write.
 Where the buyer asks is the shop's own site, read with the seller's name as a
 `seller` object (ADR-0033), not part of each shipment. The card's time to ship
 is `ship_within_seconds`, a name of its own, because on an asynchronous card
@@ -303,7 +304,8 @@ envelopes instead of deleting them would let a redelivery that was already
 waiting reach the handler without an address after the merchant had taken the
 order on, and a handler that failed on it would spend its attempts into a
 refund owed while the parcel was being packed. Erasing now deletes every
-envelope of the order, waiting, drawn or failed. The merchant's reads showed
+envelope that carries any of the address, waiting, drawn or failed, and keeps
+the events, which carry none. The merchant's reads showed
 the address of orders that were only priced, which contradicted "only in a paid
 order"; now only a paid order shows it, and an erased one says `erased_at`
 rather than going quiet. "Never written to a log" was false on today's error
@@ -388,13 +390,14 @@ and is listed below.
 
 The count is the price of the mode, and it is paid once per integrator: the
 value `ship`; `ship_within_seconds`, required and under a ceiling; a price
-check that must be the handler, and receives the locality; the `ship_to` block
-on the order, present only once paid and read as `erased_at` once erased; the
-rule that taking an order on means the address is stored; the shop's site named
-once in the cabinet (ADR-0033); the card without a `result`; `deliver` carrying
-the shipment, with the carrier required and the tracking number where there is
-one; the status word `shipped`, on orders and receipts; a contract version that
-moves; and the refusal of a `ship` card on the live channel, with its reason.
+check that must be the price handler, and receives the locality; the `ship_to`
+block on the order, present only once paid and read as `erased_at` once erased;
+the rule that the address is stored before the order is taken on; the shop's
+site, given wherever the seller name is set (ADR-0033); the card without a
+`result`; `deliver` carrying the shipment, with the carrier required and a
+`tracking_number` that is the number or `null`; the status word `shipped`, on
+orders and receipts; a contract version that moves; and the refusal of a `ship`
+card on the live channel, with its reason.
 
 ## What changes when it is built
 
@@ -412,14 +415,14 @@ erasure and its test, an erased order never handed out again, the stripped
 errors, the refusal of a changed address at payment, the refusal on the live
 channel, and — when ADR-0028 is built — the receipt of a refunded parcel and
 the payer's address on a shipped order. The SDK's types. The discovery
-declaration. The cabinet's field for the site. The portal: the cards page (the
-mode, the time to ship, the site, the carrier and optional tracking, what the
-card's price means), the orders page (the mode's sequence, the endings table
-that the machine's tests read, acceptance storing the address, the restart
-walk), the quickstart's asynchronous pattern, the money page, and the FAQ's
-dispute answer, which promises records of what happened with the delivery that
-for a parcel we do not keep. `apps/docs/index.md`'s pilot rule, when the live
-gate opens.
+declaration. A field for the site wherever the seller name is set. The portal:
+the cards page (the mode, the time to ship, the site, the carrier and a
+tracking number that may be `null`, what the card's price means), the orders
+page (the mode's sequence, the endings table that the machine's tests read,
+acceptance storing the address, the restart walk), the quickstart's
+asynchronous pattern, the money page, and the FAQ's dispute answer, which
+promises records of what happened with the delivery that for a parcel we do not
+keep. `apps/docs/index.md`'s pilot rule, when the live gate opens.
 
 ## Decisions of 2026-09-28
 
