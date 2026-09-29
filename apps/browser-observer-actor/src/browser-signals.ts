@@ -50,18 +50,142 @@ const decodeEntities = (value: string): string =>
       return Number.isFinite(value) ? String.fromCodePoint(value) : " ";
     });
 
+// The raw HTML is bounded only by the run's byte budget, and reading it is
+// synchronous work no deadline can interrupt. A regular expression that looks
+// for a closer from every opener is quadratic on a page of openers that never
+// close — `<!--` repeated for 256 KiB took ten seconds — so the markup is
+// walked with indexOf instead, and a construct left open ends the walk: once
+// one opener finds no closer, none after it can either. Names are compared
+// with ASCII letters folded, as the case-insensitive expressions this
+// replaces did, and nothing else is folded.
+
+const RAW_TEXT_ELEMENTS = ["script", "style", "noscript", "template"] as const;
+const STRUCTURED_DATA_TYPE = "application/ld+json";
+
+/** What `\s` matches, and `trim` removes: white space and line terminators. */
+const isWhitespaceCode = (code: number): boolean =>
+  code === 32 ||
+  (code >= 9 && code <= 13) ||
+  code === 0xa0 ||
+  code === 0x1680 ||
+  (code >= 0x2000 && code <= 0x200a) ||
+  code === 0x2028 ||
+  code === 0x2029 ||
+  code === 0x202f ||
+  code === 0x205f ||
+  code === 0x3000 ||
+  code === 0xfeff;
+
+const isWordCode = (code: number): boolean =>
+  (code >= 48 && code <= 57) ||
+  (code >= 65 && code <= 90) ||
+  (code >= 97 && code <= 122) ||
+  code === 95;
+
+/** Whether the lowercase ASCII `word` is at `index`, ASCII letters compared without case. */
+const hasWordAt = (text: string, index: number, word: string): boolean => {
+  if (index < 0 || index + word.length > text.length) return false;
+  for (let offset = 0; offset < word.length; offset += 1) {
+    const code = text.charCodeAt(index + offset);
+    if ((code >= 65 && code <= 90 ? code + 32 : code) !== word.charCodeAt(offset)) return false;
+  }
+  return true;
+};
+
+/** Whether `name` is at `index` and ends there as a word does. */
+const hasNameAt = (text: string, index: number, name: string): boolean =>
+  hasWordAt(text, index, name) &&
+  (index + name.length >= text.length || !isWordCode(text.charCodeAt(index + name.length)));
+
+/** Where the first `</name>` of one of `names` at or after `from` ends, or -1. */
+const closerEnd = (text: string, from: number, names: readonly string[]): number => {
+  for (let at = text.indexOf("</", from); at !== -1; at = text.indexOf("</", at + 1)) {
+    for (const name of names) {
+      if (hasWordAt(text, at + 2, name) && text.charCodeAt(at + 2 + name.length) === 62) {
+        return at + 3 + name.length;
+      }
+    }
+  }
+  return -1;
+};
+
+/** Each comment replaced by a space. */
+const withoutComments = (html: string): string => {
+  const parts: string[] = [];
+  let position = 0;
+  for (let open = html.indexOf("<!--"); open !== -1; open = html.indexOf("<!--", position)) {
+    const close = html.indexOf("-->", open + 4);
+    if (close === -1) break;
+    parts.push(html.slice(position, open), " ");
+    position = close + 3;
+  }
+  parts.push(html.slice(position));
+  return parts.join("");
+};
+
+const rawTextElementAt = (text: string, index: number): string | undefined => {
+  // Most brackets open something else: `s`, `n` and `t`, in either case, are
+  // the only letters a raw-text element's name starts with.
+  const first = text.charCodeAt(index) | 0x20;
+  if (first !== 115 && first !== 110 && first !== 116) return undefined;
+  for (const name of RAW_TEXT_ELEMENTS) {
+    if (hasNameAt(text, index, name)) return name;
+  }
+  return undefined;
+};
+
+/** Each script, style, noscript and template element, with its content, replaced by a space. */
+const withoutRawTextElements = (html: string): string => {
+  const parts: string[] = [];
+  let position = 0;
+  for (let open = html.indexOf("<"); open !== -1; open = html.indexOf("<", open + 1)) {
+    const name = rawTextElementAt(html, open + 1);
+    if (name === undefined) continue;
+    const tagEnd = html.indexOf(">", open + 1 + name.length);
+    if (tagEnd === -1) break;
+    const end = closerEnd(html, tagEnd + 1, RAW_TEXT_ELEMENTS);
+    if (end === -1) break;
+    parts.push(html.slice(position, open), " ");
+    position = end;
+    open = end - 1;
+  }
+  parts.push(html.slice(position));
+  return parts.join("");
+};
+
+/** Each tag replaced by a space; `<>` is not a tag. */
+const withoutTags = (html: string): string => {
+  const parts: string[] = [];
+  let position = 0;
+  for (let open = html.indexOf("<"); open !== -1; open = html.indexOf("<", open + 1)) {
+    const close = html.indexOf(">", open + 1);
+    if (close === -1) break;
+    if (close === open + 1) continue;
+    parts.push(html.slice(position, open), " ");
+    position = close + 1;
+    open = close;
+  }
+  parts.push(html.slice(position));
+  return parts.join("");
+};
+
+/** The length of `text` with each run of white space made one space, and trimmed. */
+const collapsedLength = (text: string): number => {
+  let length = 0;
+  let spaceBefore = false;
+  for (let index = 0; index < text.length; index += 1) {
+    if (isWhitespaceCode(text.charCodeAt(index))) {
+      spaceBefore = length > 0;
+    } else {
+      length += spaceBefore ? 2 : 1;
+      spaceBefore = false;
+    }
+  }
+  return length;
+};
+
 export const rawTextCharacterCount = (html: string): number =>
-  decodeEntities(
-    html
-      .replace(/<!--[\s\S]*?-->/g, " ")
-      .replace(
-        /<(?:script|style|noscript|template)\b[^>]*>[\s\S]*?<\/(?:script|style|noscript|template)>/gi,
-        " ",
-      )
-      .replace(/<[^>]+>/g, " "),
-  )
-    .replace(/\s+/g, " ")
-    .trim().length;
+  collapsedLength(decodeEntities(withoutTags(withoutRawTextElements(withoutComments(html)))));
 
 const attribute = (tag: string, name: string): string | null => {
   const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i"));
@@ -145,11 +269,78 @@ const metadataFromJsonLd = (
   };
 };
 
+/** The first `limit` `<link …>` tags, whole. */
+const linkTags = (html: string, limit: number): string[] => {
+  const tags: string[] = [];
+  for (let open = html.indexOf("<"); open !== -1 && tags.length < limit; ) {
+    if (hasNameAt(html, open + 1, "link")) {
+      const close = html.indexOf(">", open + 5);
+      if (close === -1) break;
+      tags.push(html.slice(open, close + 1));
+      open = html.indexOf("<", close + 1);
+    } else {
+      open = html.indexOf("<", open + 1);
+    }
+  }
+  return tags;
+};
+
+/**
+ * Whether the opening tag between `from` and its `>` at `to` says, anywhere
+ * in it, `type = application/ld+json`, bare or in either quotes.
+ */
+const declaresStructuredData = (html: string, from: number, to: number): boolean => {
+  const skipWhitespace = (index: number): number => {
+    let cursor = index;
+    while (cursor < to && isWhitespaceCode(html.charCodeAt(cursor))) cursor += 1;
+    return cursor;
+  };
+  for (let at = from; at < to; at += 1) {
+    if (!hasWordAt(html, at, "type")) continue;
+    const equals = skipWhitespace(at + 4);
+    if (html.charAt(equals) !== "=") continue;
+    const value = skipWhitespace(equals + 1);
+    const quote = html.charAt(value);
+    if (quote === '"' || quote === "'") {
+      const valueEnd = value + 1 + STRUCTURED_DATA_TYPE.length;
+      if (hasWordAt(html, value + 1, STRUCTURED_DATA_TYPE) && html.charAt(valueEnd) === quote) {
+        return true;
+      }
+    } else if (hasWordAt(html, value, STRUCTURED_DATA_TYPE)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+/** The contents of the first `limit` structured-data scripts. */
+const structuredDataBlocks = (html: string, limit: number): string[] => {
+  const blocks: string[] = [];
+  for (let open = html.indexOf("<"); open !== -1 && blocks.length < limit; ) {
+    if (!hasNameAt(html, open + 1, "script")) {
+      open = html.indexOf("<", open + 1);
+      continue;
+    }
+    const tagEnd = html.indexOf(">", open + 7);
+    if (tagEnd === -1) break;
+    // Every opener inside this tag shares its `>`, so none of them can say
+    // more than it does.
+    if (!declaresStructuredData(html, open + 7, tagEnd)) {
+      open = html.indexOf("<", tagEnd + 1);
+      continue;
+    }
+    const end = closerEnd(html, tagEnd + 1, ["script"]);
+    if (end === -1) break;
+    blocks.push(html.slice(tagEnd + 1, end - "</script>".length));
+    open = html.indexOf("<", end);
+  }
+  return blocks;
+};
+
 export const extractRawMetadata = (html: string, baseUrl: string): MetadataSnapshot => {
-  const linkTags = html.match(/<link\b[^>]*>/gi) ?? [];
   let canonical: string | null = null;
   let hreflangCount = 0;
-  for (const tag of linkTags.slice(0, 2_000)) {
+  for (const tag of linkTags(html, 2_000)) {
     const rel = (attribute(tag, "rel") ?? "").toLowerCase().split(/\s+/);
     if (rel.includes("alternate") && attribute(tag, "hreflang")) {
       hreflangCount += 1;
@@ -166,14 +357,7 @@ export const extractRawMetadata = (html: string, baseUrl: string): MetadataSnaps
       }
     }
   }
-  const jsonLdValues: string[] = [];
-  const pattern =
-    /<script\b[^>]*type\s*=\s*(?:"application\/ld\+json"|'application\/ld\+json'|application\/ld\+json)[^>]*>([\s\S]*?)<\/script>/gi;
-  let match = pattern.exec(html);
-  while (match && jsonLdValues.length < 50) {
-    jsonLdValues.push(match[1] ?? "");
-    match = pattern.exec(html);
-  }
+  const jsonLdValues = structuredDataBlocks(html, 50);
   return {
     canonical,
     hreflangCount,
