@@ -13,8 +13,8 @@
 # What the script deliberately does not check: that decisions already taken
 # stay unchanged. By the charter decisions remain living documents — the edit
 # goes straight into the file, and the history lives in git. Going back to
-# append-only is named as a separate trigger, and that is Dmitry's decision,
-# not a default of this script.
+# append-only is named as a separate trigger, and that is the product owner's
+# decision, not a default of this script.
 #
 # Why bash: the check reads file names in a single directory. The tool that
 # would have to be installed for that would cost more than the check.

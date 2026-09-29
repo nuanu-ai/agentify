@@ -1,9 +1,10 @@
 # How the portal is written
 
-In force since 2026-08-26, agreed with Dmitry; calibrated on his feedback. The
-requirements it comes from: docs/research/19-portal-requirements.md.
+In force since 2026-08-26, agreed with the product owner and calibrated on
+their feedback. The requirements it comes from:
+docs/research/19-portal-requirements.md.
 
-The portal is written in English (Dmitry, 2026-08-27), the same language as the
+The portal is written in English (decided 2026-08-27), the same language as the
 landing the pages sit behind.
 
 ## Readers, and who each page speaks to
@@ -102,7 +103,7 @@ used. The headings of one page do not all start with the same word. The note
 about the public contract being versioned is one line in the header, identical
 everywhere.
 
-Plain and unnarrated (Dmitry's rule, 2026-08-26; the specimen defect was "the
+Plain and unnarrated (a rule of 2026-08-26; the specimen defect was "the
 code enters the conversation only on the first path"):
 
 - Abstractions do not act like characters: code does not "enter a

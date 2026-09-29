@@ -562,9 +562,9 @@ loss is gone, and nothing sooner can be recovered. A snapshot holds a dump of
 the channel's database, the server's roles, the row count of every
 table, `production.env` and `release.json`. It never holds
 `/etc/agentify/backup.env`, which holds the repository's password and the S3
-key; the password is also in Dmitry's 1Password, and the key can be issued
-again in the Hetzner console. Snapshots are kept for the last day, one an hour
-for two days and one a day for thirty days.
+key; the password is also in the product owner's password manager, and the
+key can be issued again in the Hetzner console. Snapshots are kept for the last
+day, one an hour for two days and one a day for thirty days.
 
 A restore is rehearsed by a person, never on a schedule: the rehearsal restores
 the latest snapshot into scratch databases `check_<database>` beside the live
