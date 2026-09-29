@@ -227,4 +227,22 @@ describe("a real Chromium run against a served site", () => {
     expect(output.pages_assessed).toBe(1);
     expect(networkEvidence(output)).toMatchObject({ blocked_destination_count: 1 });
   }, 30_000);
+
+  it("compares the page's own raw HTML with its rendering, not a frame's", async () => {
+    const output = await observeSite(
+      {
+        "/": `<!doctype html><html><head><title>Linen shirt</title>
+          <link rel="canonical" href="https://www.example.com/"></head>
+          <body><main><h1>Linen shirt</h1><iframe src="/reviews" title="Reviews"></iframe></main></body></html>`,
+        "/reviews": `<!doctype html><html><head>
+          <link rel="canonical" href="https://www.example.com/reviews"></head>
+          <body><p>Rated 4.8 by 120 customers</p></body></html>`,
+      },
+      ["/"],
+    );
+    expect(output.pages_assessed).toBe(1);
+    expect(
+      output.observations.find((finding) => finding.id === "rendered_metadata_consistency"),
+    ).toMatchObject({ status: "pass" });
+  }, 30_000);
 });
