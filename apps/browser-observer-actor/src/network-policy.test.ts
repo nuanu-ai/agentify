@@ -1,5 +1,5 @@
-import type { LookupAddress } from "node:dns";
-import { describe, expect, it } from "vitest";
+import { promises as dns, type LookupAddress } from "node:dns";
+import { describe, expect, it, vi } from "vitest";
 
 import type { BrowserNetworkPolicyError } from "./network-policy.js";
 import {
@@ -208,6 +208,42 @@ describe("browser network policy", () => {
         consumeBytes: () => true,
       }),
     ).rejects.toMatchObject({ code: "request_aborted" });
+  });
+
+  it("stops waiting for a host's address once its page is aborted", async () => {
+    // A resolver that never answers: the page's end must end its request too.
+    const lookup = vi.spyOn(dns, "lookup").mockReturnValue(new Promise(() => {}) as never);
+    try {
+      const page = new AbortController();
+      const request = safeBrowserRequest({
+        url: new URL("http://slow-dns.example.com/lookbook.jpg"),
+        method: "GET",
+        headers: {},
+        signal: page.signal,
+        timeoutMs: 8_000,
+        consumeBytes: () => true,
+      });
+      setTimeout(() => page.abort(), 20);
+      await expect(request).rejects.toMatchObject({ code: "request_aborted" });
+    } finally {
+      lookup.mockRestore();
+    }
+  });
+
+  it("answers a connection's lookup only after it returns, as a real lookup does", async () => {
+    // A connection listens for its socket's errors once the lookup returns.
+    // Answered sooner, a connect() that fails at once, as it does for an
+    // IPv6-only site on a host with no IPv6, throws out of the Actor instead
+    // of failing its request.
+    const lookup = createPinnedLookup({ address: "93.184.216.34", family: 4 });
+    const answeredAfterReturn: boolean[] = [];
+    for (const all of [false, true]) {
+      let returned = false;
+      lookup("example.com", { all }, () => answeredAfterReturn.push(returned));
+      returned = true;
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(answeredAfterReturn).toEqual([true, true]);
   });
 
   it("returns the pinned address for both single and all-address lookups", async () => {
