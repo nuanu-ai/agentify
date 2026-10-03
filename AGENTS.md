@@ -71,10 +71,6 @@ operator.
   from the code stage onward.
 - Remote: `github.com/nuanu-ai/agentify` (public). We push the branch when we
   commit.
-- Nothing keeps the main checkout current. Before reading code or docs,
-  `git fetch` and look at `git status -sb`; on a `main` that is behind,
-  `git pull --ff-only` first. In Claude Code a session-start hook
-  (`.claude/hooks/checkout-freshness.sh`) reports this on its own.
 - Delivery (ADR-0016): a branch is tried on the test channel by moving the
   `deploy-test` tag to it, and there is one test channel, so ask the other
   person before moving it; the test host's timer picks the tag up. The SDK
