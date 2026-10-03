@@ -54,9 +54,15 @@ const scannerSources = [
  * What both projects share. The setup file is named absolutely because the
  * mutation runner reads this config with the package under test as its root,
  * and a relative path would be looked for inside that package.
+ *
+ * CI and the images run the Node in `.nvmrc`; a machine may run a newer one.
+ * From Node 25 the runtime has a `localStorage` of its own, and in a jsdom
+ * suite it stands where jsdom's should be, without its methods. The flag takes
+ * it away, so `window.localStorage` is jsdom's on 24 and on 25 alike.
  */
 const shared: TestOptions = {
   environment: "node",
+  execArgv: ["--no-experimental-webstorage"],
   setupFiles: [source("./vitest.setup.ts")],
   passWithNoTests: false,
   testTimeout: 30_000,
