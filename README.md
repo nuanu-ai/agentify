@@ -58,10 +58,10 @@ merchant's own calls at `/v0` and the storefront an agent buys from under
 
 ## Prerequisites
 
-Node.js 24.21 — the exact version is in `.nvmrc`, and `pnpm install` refuses
-another one because `.npmrc` sets `engine-strict`. pnpm 11.12 arrives through
-Corepack from the `packageManager` field of the root `package.json`, the same
-way CI gets it:
+Node.js 24.21 or newer. CI and every image run exactly the version in
+`.nvmrc`, so a difference between it and a newer local Node shows up in CI.
+pnpm 11.12 arrives through Corepack from the `packageManager` field of the
+root `package.json`, the same way CI gets it:
 
 ```sh
 corepack enable
