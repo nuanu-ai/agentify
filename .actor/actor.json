@@ -3,7 +3,7 @@
   "name": "agentify-browser-observer",
   "title": "Agentify Browser Observer",
   "version": "1.0",
-  "buildTag": "browser-public-v1.0.0",
+  "buildTag": "browser-public-v2.0.0",
   "meta": {
     "templateId": "ts-playwright-chrome"
   },

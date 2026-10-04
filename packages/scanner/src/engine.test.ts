@@ -89,6 +89,174 @@ const makeArtifacts = (segment: Segment): ScanArtifacts => ({
   ),
 });
 
+const withBase = (page: string): ScanArtifacts => ({
+  ...makeArtifacts("store"),
+  base: artifact("https://example.com/", page),
+});
+const withLlms = (body: string): ScanArtifacts => ({
+  ...makeArtifacts("store"),
+  llms: artifact("https://example.com/llms.txt", body, {
+    headers: { "content-type": "text/markdown" },
+  }),
+});
+const check = (input: ScanArtifacts, id: number) =>
+  evaluateScan(input).checks.find((candidate) => candidate.id === id);
+
+describe("what the checks read from the markup real sites write", () => {
+  it("finds a feed a page links to by its type or by its address", () => {
+    for (const link of [
+      '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/feed/" />',
+      '<link rel="alternate" type="application/atom+xml" title="Feed" href="/blogs/news.atom" />',
+      '<link href="/blog_rss.xml" rel="alternate" title="RSS" type="application/rss+xml">',
+      "<LINK REL='alternate' HREF='https://example.com/merchant/products.csv'>",
+      '<link rel="alternate" type="text/csv" title="Catalog" href="/catalog">',
+      '<link rel="alternate" type="application/xml" title="Catalog" href="/catalog">',
+      '<link rel="alternate" href="https://example.com/feed/">',
+      '<link rel="alternate" href="https://example.com/google-merchant-center">',
+      '<link rel="alternate" href="https://example.com/products.xml">',
+    ])
+      expect(check(withBase(`<head>${link}</head><body>Wool</body>`), 15)?.evidence).toMatchObject({
+        feed_link: true,
+      });
+    expect(
+      check(withBase('<link rel="stylesheet" href="/assets/base.css"><p>Wool</p>'), 15)?.status,
+    ).toBe("fail");
+  });
+
+  it("recognizes a product page by its Open Graph type when it links no feed", () => {
+    const page = `<meta property="og:type" content="product"><meta property='og:title' content='Wool Runner'><p>Wool</p>`;
+    expect(check(withBase(page), 15)).toMatchObject({
+      status: "partial",
+      evidence: { feed_link: false, product_identifiers: true },
+    });
+    const website = `<meta property="og:type" content="website"><p>Wool</p>`;
+    expect(check(withBase(website), 15)?.status).toBe("fail");
+    const singleQuoted = `<meta property='og:type' content='product'><p>Wool</p>`;
+    expect(check(withBase(singleQuoted), 15)?.evidence).toMatchObject({
+      product_identifiers: true,
+    });
+    // A product value in another tag, such as the product card Twitter once
+    // defined, is not an Open Graph type.
+    const card = `<meta property="og:type" content="website"><meta name="twitter:card" content="product"><p>Wool</p>`;
+    expect(check(withBase(card), 15)?.status).toBe("fail");
+  });
+
+  it("counts an llms.txt link only when it leads to an absolute address", () => {
+    const absolute = `# llms.txt\n\n> A proposal.\n\n## Docs\n\n- [llms.txt proposal](https://llmstxt.org/index.md): The proposal for llms.txt\n`;
+    expect(check(withLlms(absolute), 8)?.evidence).toEqual({ has_h1: true, has_links: true });
+    const relative = "# Example\n\n## Docs\n\n- [Catalog](/catalog.md): every product\n";
+    expect(check(withLlms(relative), 8)?.evidence).toEqual({ has_h1: true, has_links: false });
+    const plain = "# Example\n\n- [Catalog](http://example.com/catalog.md)\n";
+    expect(check(withLlms(plain), 8)?.evidence).toEqual({ has_h1: true, has_links: true });
+    const untitled = "# Example\n\n- [](https://example.com/catalog.md)\n";
+    expect(check(withLlms(untitled), 8)?.evidence).toEqual({ has_h1: true, has_links: false });
+  });
+
+  it("recognizes Adyen by the checkout script a page loads", () => {
+    const page = `<script src="https://checkoutshopper-live.adyen.com/checkoutshopper/sdk/5.53.2/adyen.js"></script>`;
+    expect(evaluateScan(withBase(page)).fingerprint.pspMarkers).toMatchObject([
+      { value: "Adyen", confidence: "high" },
+    ]);
+  });
+});
+
+describe("a scan of pages as large as the fetch admits", () => {
+  // The promise of parsers.test.ts ("a page or a sitemap as large as the
+  // fetch admits") for what the checks and the fingerprint read themselves:
+  // a feed link and an Open Graph type in a page of up to 2 MiB, a link in an
+  // llms.txt of up to 512 KiB, and the Adyen script in the first 512 KiB of a
+  // page, which is as far as the fingerprint reads.
+  const pageCap = 2 * 1024 * 1024;
+  const textCap = 512 * 1024;
+  const budgetMs = 500;
+  const fill = (unit: string, room: number): string =>
+    unit.repeat(Math.floor((room - 256) / unit.length));
+  const scan = (input: ScanArtifacts) => {
+    const started = performance.now();
+    const evaluation = evaluateScan(input);
+    return { evaluation, ms: performance.now() - started };
+  };
+  const checkIn = (evaluation: ReturnType<typeof evaluateScan>, id: number) =>
+    evaluation.checks.find((candidate) => candidate.id === id);
+
+  it("reads every page of a scan once however often the worker evaluates it", () => {
+    // The worker evaluates a scan's checks up to four times as its requests
+    // complete, over the same artifacts. Here the page, the product page, the
+    // markdown answer and both agent probes are each 2 MiB: half one-letter
+    // lines, whose every break costs the visible-text reader a replacement,
+    // and half JSON-LD. Read by every check that needs them at every
+    // evaluation, they held the worker for seconds each time; read once, the
+    // later evaluations cost a small part of the first, on any machine.
+    const script = `<script type="application/ld+json">{"@type":"Product","name":"Wool Runner","offers":{"price":"98.00","priceCurrency":"USD"}}</script>\n`;
+    const page = `${fill("a\n", pageCap / 2)}${fill(script, pageCap / 2)}`;
+    const input: ScanArtifacts = {
+      ...makeArtifacts("store"),
+      base: artifact("https://example.com/", page),
+      representative: artifact("https://example.com/product/widget", page),
+      markdown: artifact("https://example.com/", page, {
+        headers: { "content-type": "text/markdown", vary: "Accept" },
+      }),
+      agentProbes: {
+        chatgpt: artifact("https://example.com/", page),
+        claude: artifact("https://example.com/", page),
+      },
+    };
+    const first = scan(input);
+    const started = performance.now();
+    const later = [2, 3, 4].map(() => evaluateScan(input));
+    const laterMs = performance.now() - started;
+    expect(checkIn(later[2] as ReturnType<typeof evaluateScan>, 5)?.evidence).toEqual(
+      checkIn(first.evaluation, 5)?.evidence,
+    );
+    expect(laterMs).toBeLessThan(first.ms / 2);
+  }, 60_000);
+
+  it("finds the feed link after link tags that run on for megabytes", () => {
+    const closed = scan(
+      withBase(
+        `${fill("<link ", pageCap)}><link rel="alternate" type="application/rss+xml" href="/feed/">`,
+      ),
+    );
+    expect(checkIn(closed.evaluation, 15)?.evidence).toMatchObject({ feed_link: true });
+    expect(closed.ms).toBeLessThan(budgetMs);
+    const unclosed = scan(withBase(fill('<link href="', pageCap)));
+    expect(checkIn(unclosed.evaluation, 15)?.status).toBe("fail");
+    expect(unclosed.ms).toBeLessThan(budgetMs);
+  });
+
+  it("recognizes a product page after an Open Graph tag that runs on for megabytes", () => {
+    const page = `${fill('<meta property="og:type" ', pageCap)}><meta property="og:type" content="product">`;
+    const { evaluation, ms } = scan(withBase(page));
+    expect(checkIn(evaluation, 15)?.evidence).toMatchObject({
+      feed_link: false,
+      product_identifiers: true,
+    });
+    expect(ms).toBeLessThan(budgetMs);
+  });
+
+  it("finds the llms.txt link after brackets that never lead anywhere", () => {
+    const closed = scan(
+      withLlms(
+        `# Catalog\n\n${fill("[", textCap)}]x\n- [Catalog](https://example.com/catalog.md)\n`,
+      ),
+    );
+    expect(checkIn(closed.evaluation, 8)?.evidence).toEqual({ has_h1: true, has_links: true });
+    expect(closed.ms).toBeLessThan(budgetMs);
+    const unclosed = scan(withLlms(`# Catalog\n\n${fill("[", textCap)}`));
+    expect(checkIn(unclosed.evaluation, 8)?.evidence).toEqual({ has_h1: true, has_links: false });
+    expect(unclosed.ms).toBeLessThan(budgetMs);
+  });
+
+  it("recognizes Adyen after a line of checkout names that never reaches its address", () => {
+    const page = `${fill("checkoutshopper-", textCap)}\n<script src="https://checkoutshopper-live.adyen.com/checkoutshopper/sdk/5.53.2/adyen.js"></script>`;
+    const { evaluation, ms } = scan(withBase(page));
+    expect(evaluation.fingerprint.pspMarkers).toMatchObject([
+      { value: "Adyen", confidence: "high" },
+    ]);
+    expect(ms).toBeLessThan(budgetMs);
+  });
+});
+
 describe("18-check engine", () => {
   it("evaluates each canonical check once and keeps nominal weights at 100", () => {
     const evaluation = evaluateScan(makeArtifacts("store"));
@@ -119,6 +287,94 @@ describe("18-check engine", () => {
     expect(checks.find((check) => check.id === 8)?.status).toBe("not_applicable");
     expect(checks.find((check) => check.id === 17)?.status).toBe("not_applicable");
     expect(checks.find((check) => check.id === 18)?.status).toBe("not_applicable");
+  });
+
+  it("does not ask the owner to repair a robots.txt for its comment lines", () => {
+    const input = makeArtifacts("store");
+    input.robots = artifact(
+      "https://example.com/robots.txt",
+      `# we use Shopify as our ecommerce platform\n#\n\n${robots}`,
+      { headers: { "content-type": "text/plain" } },
+    );
+    const check = evaluateScan(input).checks.find((candidate) => candidate.id === 1);
+    expect(check).toMatchObject({ status: "pass", summaryCode: "robots_parseable" });
+    expect(check?.fixCode).toBeUndefined();
+  });
+
+  it("names the network failure that kept robots.txt from being read, not robots.txt", () => {
+    const input = makeArtifacts("store");
+    input.robots = artifact("https://example.com/robots.txt", "", {
+      status: 0,
+      errorCode: "fetch_timeout",
+    });
+    expect(evaluateScan(input).checks.find((check) => check.id === 12)?.errorCode).toBe(
+      "fetch_timeout",
+    );
+  });
+
+  it("does not call a sitemap missing when robots.txt kept the scanner off a declared one", () => {
+    const input = makeArtifacts("store");
+    input.sitemap = [
+      artifact("https://example.com/feeds/sitemap.xml", "", {
+        status: 0,
+        errorCode: "robots_disallowed",
+      }),
+      artifact("https://example.com/sitemap.xml", "not found", { status: 404 }),
+    ];
+    expect(evaluateScan(input).checks.find((check) => check.id === 4)).toMatchObject({
+      status: "unavailable",
+      errorCode: "robots_disallowed",
+    });
+  });
+
+  it("keeps a defect the home page shows though robots.txt kept the product page out", () => {
+    const input = makeArtifacts("store");
+    input.base = artifact(
+      "https://example.com/",
+      html.replace(
+        /<script type="application\/ld\+json">.*?<\/script>/,
+        '<script type="application/ld+json">{"@type":</script>',
+      ),
+    );
+    input.representative = artifact("https://example.com/products/widget", "", {
+      status: 0,
+      errorCode: "robots_disallowed",
+    });
+    expect(evaluateScan(input).checks.find((check) => check.id === 5)).toMatchObject({
+      status: "fail",
+      summaryCode: "jsonld_absent_or_invalid",
+    });
+  });
+
+  it("names robots.txt among the reasons a discovery document went unread", () => {
+    const input = makeArtifacts("store");
+    input.mcp = [
+      artifact("https://example.com/.well-known/mcp.json", "", {
+        status: 0,
+        errorCode: "fetch_timeout",
+      }),
+      artifact("https://example.com/.well-known/mcp/server-card.json", "", {
+        status: 0,
+        errorCode: "robots_disallowed",
+      }),
+    ];
+    expect(evaluateScan(input).checks.find((check) => check.id === 9)?.errorCode).toBe(
+      "robots_disallowed",
+    );
+  });
+
+  it("does not assess content for a target whose robots decision was left open", () => {
+    const input = makeArtifacts("store");
+    input.canonicalTargetUrl = `https://example.com/${"a".repeat(1_500)}`;
+    input.robots = artifact(
+      "https://example.com/robots.txt",
+      `User-agent: *\n${"Allow: *aaaaab\n".repeat(30_000)}`,
+      { headers: { "content-type": "text/plain" } },
+    );
+    expect(evaluateScan(input).checks.find((check) => check.id === 12)).toMatchObject({
+      status: "unavailable",
+      errorCode: "robots_unavailable",
+    });
   });
 
   it("turns unavailable checks into coverage loss, not score loss", () => {

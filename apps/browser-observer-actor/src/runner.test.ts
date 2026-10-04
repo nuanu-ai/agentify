@@ -1,8 +1,10 @@
 import { parseRobots } from "@agentify/scanner";
+import type { Frame } from "playwright";
 import { describe, expect, it } from "vitest";
 
 import {
   authorizeMainFrameNavigation,
+  navigationTarget,
   permitsBrowserNavigation,
   permitsSearchPurpose,
   raceWithAbort,
@@ -35,7 +37,7 @@ describe("Actor build identity", () => {
       runBrowserObservation({
         actorBuild: "1",
         input: {
-          schema_version: "browser-public-v1.0.0",
+          schema_version: "browser-public-v2.0.0",
           operation_id: "019f5d64-1234-7abc-8abc-1234567890ab",
           target: {
             canonical_url: "https://example.com/",
@@ -78,9 +80,26 @@ describe("search-purpose policy", () => {
     const parsed = parseRobots(
       "User-agent: agentify-browser-observer\nDisallow: /private\nAllow: /",
     );
-    expect(permitsBrowserNavigation(parsed, "/")).toBe(true);
-    expect(permitsBrowserNavigation(parsed, "/private")).toBe(false);
-    expect(permitsBrowserNavigation(parsed, "/private/js-navigation")).toBe(false);
+    expect(permitsBrowserNavigation(parsed, new URL("https://example.com/"))).toBe(true);
+    expect(permitsBrowserNavigation(parsed, new URL("https://example.com/private"))).toBe(false);
+    expect(
+      permitsBrowserNavigation(parsed, new URL("https://example.com/private/js-navigation")),
+    ).toBe(false);
+  });
+
+  it("reads a robots.txt rule against the query as well as the path", () => {
+    const parsed = parseRobots("User-agent: *\nDisallow: /*preview_theme_id*\n");
+    expect(
+      permitsBrowserNavigation(parsed, new URL("https://example.com/?preview_theme_id=5")),
+    ).toBe(false);
+    expect(permitsBrowserNavigation(parsed, new URL("https://example.com/?page=2"))).toBe(true);
+  });
+
+  it("does not navigate where the robots decision would cost too much to make", () => {
+    const parsed = parseRobots(`User-agent: *\n${"Allow: *aaaaab\n".repeat(30_000)}`);
+    expect(
+      permitsBrowserNavigation(parsed, new URL(`https://example.com/${"a".repeat(1_500)}`)),
+    ).toBe(false);
   });
 
   it("checks robots before redirect or script navigation can fetch content", async () => {
@@ -99,6 +118,39 @@ describe("search-purpose policy", () => {
       expect(allowed).toBe(false);
       expect(events).toEqual([`robots:/private/${source}`]);
     }
+  });
+});
+
+describe("popups", () => {
+  // What Playwright does when asked for the frame of a navigation issued
+  // before that frame exists: the first navigation of a window a page opens.
+  const frameNotYetCreated = (): never => {
+    throw new Error(
+      "Frame for this navigation request is not available, because the request\nwas issued before the frame is created.",
+    );
+  };
+
+  it("names a navigation with no frame yet a popup rather than throwing", () => {
+    expect(
+      navigationTarget({ isNavigationRequest: () => true, frame: frameNotYetCreated }, undefined),
+    ).toBe("popup");
+  });
+
+  it("tells the page's own navigation from a frame's", () => {
+    const mainFrame = {} as Frame;
+    const childFrame = {} as Frame;
+    expect(
+      navigationTarget({ isNavigationRequest: () => true, frame: () => mainFrame }, mainFrame),
+    ).toBe("main_frame");
+    expect(
+      navigationTarget({ isNavigationRequest: () => true, frame: () => childFrame }, mainFrame),
+    ).toBe("child_frame");
+  });
+
+  it("does not ask for the frame of a request that is no navigation", () => {
+    expect(
+      navigationTarget({ isNavigationRequest: () => false, frame: frameNotYetCreated }, undefined),
+    ).toBe("not_navigation");
   });
 });
 

@@ -52,7 +52,7 @@ import {
 } from "./reporting";
 import { requestScannerIdentityDeletion } from "./scanner-identity-deletion";
 import { createScannerRegistrationIntent } from "./scanner-registration";
-import { authorizeScan, createOrReplayScan } from "./scans";
+import { authorizeScan, createOrReplayScan, getScanStatus } from "./scans";
 
 const connectionString = process.env.MIGRATION_TEST_DATABASE_URL;
 if (!connectionString?.includes("_migration_test")) {
@@ -1265,6 +1265,32 @@ describe("P4 cabinet-owned scanner identity", () => {
     const owner = signedInAs("owner@example.com");
     const report = await reportFor(scanId, owner);
     expect(report?.checks).toHaveLength(18);
+    // The reason robots.txt kept a check from being assessed reaches the
+    // status and the report from the error code the worker stored.
+    const withheld = (checkId: number, errorCode: string | null) =>
+      getDatabase()
+        .db.update(scanChecks)
+        .set({ status: errorCode ? "unavailable" : "pass", errorCode })
+        .where(and(eq(scanChecks.scanId, scanId), eq(scanChecks.checkId, checkId)));
+    await withheld(9, "robots_disallowed");
+    await withheld(10, "robots_unavailable");
+    await withheld(11, "fetch_timeout");
+    try {
+      const reasons = (checks: ReadonlyArray<{ id: number; robots: string | null }> = []) =>
+        checks.filter((check) => [9, 10, 11].includes(check.id)).map((check) => check.robots);
+      expect(reasons((await reportFor(scanId, owner))?.checks)).toEqual([
+        "disallowed",
+        "unassessed",
+        null,
+      ]);
+      expect(reasons((await getScanStatus(scanId, scanAccessToken))?.checks)).toEqual([
+        "disallowed",
+        "unassessed",
+        null,
+      ]);
+    } finally {
+      for (const checkId of [9, 10, 11]) await withheld(checkId, null);
+    }
     expect(JSON.stringify(report)).not.toContain("private.example");
     expect(report?.benchmark).toBeNull();
     // Somebody else, signed in, does not own it: neither an address with no

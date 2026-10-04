@@ -16,7 +16,6 @@ import {
   registrationIntents,
   scanChecks,
   scanShares,
-  scanSnapshots,
   scans,
   sessions,
   waitlistEntries,
@@ -115,18 +114,6 @@ export async function anonymizeLeadData(
       .from(scans)
       .where(eq(scans.leadId, leadId));
     const scanIds = [...new Set([...linkedRows, ...directRows].map(({ scanId }) => scanId))];
-    const ownedScans = scanIds.length
-      ? await tx
-          .select({
-            id: scans.id,
-            canonicalTargetUrl: scans.canonicalTargetUrl,
-          })
-          .from(scans)
-          .where(inArray(scans.id, scanIds))
-      : [];
-    const ownedTargetUrls = [
-      ...new Set(ownedScans.map(({ canonicalTargetUrl }) => canonicalTargetUrl)),
-    ];
     const anonymizedSessionId = createUuidV7();
     await tx.insert(sessions).values({
       id: anonymizedSessionId,
@@ -169,18 +156,8 @@ export async function anonymizeLeadData(
         .where(inArray(browserObservationFindings.observationId, observationIds));
       await tx
         .update(browserObservations)
-        .set({ signals: null, failureCode: "data_anonymized", updatedAt: now })
+        .set({ failureCode: "data_anonymized", updatedAt: now })
         .where(inArray(browserObservations.scanId, scanIds));
-      await tx
-        .delete(scanSnapshots)
-        .where(
-          ownedTargetUrls.length
-            ? or(
-                inArray(scanSnapshots.id, scanIds),
-                inArray(scanSnapshots.canonicalTargetUrl, ownedTargetUrls),
-              )
-            : inArray(scanSnapshots.id, scanIds),
-        );
       await tx
         .update(scanShares)
         .set({

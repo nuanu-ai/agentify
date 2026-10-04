@@ -1,5 +1,5 @@
 import type { FetchArtifact } from "@agentify/scanner";
-import type { ScanJobV1 } from "@agentify/scanner-contracts";
+import type { CheckResult, ScanJobV1 } from "@agentify/scanner-contracts";
 import { describe, expect, it } from "vitest";
 import type { PinnedTransport, PinnedTransportRequest } from "./safe-fetch.js";
 import { isSameSite, ScanRunner } from "./scan-runner.js";
@@ -42,7 +42,7 @@ const makeArtifact = (
   ttfbMs: 5,
 });
 
-const transport = (robotsBody = robots) => {
+const transport = (robotsBody = robots, robotsStatus = 200) => {
   const paths: string[] = [];
   let active = 0;
   let maxActive = 0;
@@ -56,7 +56,8 @@ const transport = (robotsBody = robots) => {
       await new Promise((resolve) => setTimeout(resolve, 1));
       active -= 1;
       const path = input.url.pathname;
-      if (path === "/robots.txt") return makeArtifact(input, 200, robotsBody, "text/plain");
+      if (path === "/robots.txt")
+        return makeArtifact(input, robotsStatus, robotsBody, "text/plain");
       if (path === "/") {
         if (input.headers.accept === "text/markdown")
           return makeArtifact(
@@ -134,6 +135,29 @@ describe("bounded scan graph", () => {
     ).toHaveLength(1);
   });
 
+  it("names itself in each request that carries an AI agent's user-agent token", async () => {
+    const target = transport();
+    await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: target.adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    const agentRequests = target.paths.filter(
+      (request) => request.startsWith("GET / ") && request.includes("-User"),
+    );
+    expect(agentRequests).toHaveLength(2);
+    for (const token of ["ChatGPT-User/1.0", "Claude-User"])
+      expect(
+        agentRequests.some((request) =>
+          request.endsWith(
+            ` ${token} (compatible; agentify-scanner/1.0; +https://agentify.ad/scanner)`,
+          ),
+        ),
+      ).toBe(true);
+  });
+
   it("is deterministic across two identical runs except transport timing evidence", async () => {
     const run = async () => {
       const target = transport();
@@ -153,7 +177,7 @@ describe("bounded scan graph", () => {
     );
   });
 
-  it("limits a target-disallowed scan to robots and explicit well-known discovery", async () => {
+  it("fetches nothing but robots.txt when robots.txt keeps the scanner out of the site", async () => {
     const target = transport("User-agent: agentify-scanner\nDisallow: /\n");
     const runner = new ScanRunner({
       resolver: {
@@ -163,13 +187,466 @@ describe("bounded scan graph", () => {
       appBaseUrl: "https://agentify.ad",
     });
     const evaluation = await runner.run(job);
-    expect(target.paths.some((request) => request.startsWith("GET / text/html"))).toBe(false);
-    expect(target.paths.some((request) => request.includes("/.well-known/mcp.json"))).toBe(true);
-    expect(target.paths.some((request) => request.includes("/sitemap.xml"))).toBe(false);
-    expect(target.paths.some((request) => request.includes("/llms.txt"))).toBe(false);
-    expect(target.paths.some((request) => request.includes("/products/widget"))).toBe(false);
+    expect(target.paths.map((request) => request.split(" ").slice(0, 2).join(" "))).toEqual([
+      "GET /robots.txt",
+    ]);
     expect(evaluation.checks.find((check) => check.id === 12)?.status).toBe("unavailable");
     expect(evaluation.checks.find((check) => check.id === 13)?.status).toBe("unavailable");
+  });
+
+  it("names robots.txt as the reason for every check it kept from being assessed", async () => {
+    const reasons = async (robotsBody: string, robotsStatus: number) => {
+      const evaluation = await new ScanRunner({
+        resolver: {
+          resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+        },
+        transport: transport(robotsBody, robotsStatus).adapter,
+        appBaseUrl: "https://agentify.ad",
+      }).run(job);
+      // Checks 1 to 3 read robots.txt itself; every other check needs a
+      // request robots.txt rules on.
+      return evaluation.checks
+        .filter((check) => check.id > 3 && check.status === "unavailable")
+        .map((check) => [check.id, check.errorCode]);
+    };
+    const everyRobotsCheck = (code: string) =>
+      [4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 17, 18].map((id) => [id, code]);
+    expect(await reasons("User-agent: agentify-scanner\nDisallow: /\n", 200)).toEqual(
+      everyRobotsCheck("robots_disallowed"),
+    );
+    expect(await reasons("", 503)).toEqual(everyRobotsCheck("robots_unavailable"));
+  });
+
+  it("names robots.txt when it keeps the scanner off the OAuth documents an MCP server asks for", async () => {
+    const target = transport("User-agent: *\nDisallow: /.well-known/oauth-\n");
+    const adapter: PinnedTransport = {
+      request: async (input) =>
+        input.url.pathname === "/.well-known/mcp.json"
+          ? makeArtifact(
+              input,
+              200,
+              '{"name":"MCP","endpoint":"https://example.com/mcp","authorization":"oauth2"}',
+              "application/json",
+            )
+          : target.adapter.request(input),
+    };
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(target.paths.filter((request) => request.includes("/.well-known/oauth-"))).toEqual([]);
+    expect(evaluation.checks.find((check) => check.id === 11)).toMatchObject({
+      status: "unavailable",
+      errorCode: "robots_disallowed",
+    });
+  });
+
+  it("reads the sitemap and llms.txt robots.txt allows though it keeps the scanner off the page", async () => {
+    const target = transport(
+      "User-agent: *\nDisallow: /checkout\nAllow: /sitemap.xml\nAllow: /llms.txt\n",
+    );
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: target.adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run({ ...job, canonical_target_url: "https://example.com/checkout" });
+    expect(target.paths.some((request) => request.startsWith("GET /checkout "))).toBe(false);
+    expect(target.paths.some((request) => request.startsWith("GET /sitemap.xml "))).toBe(true);
+    expect(target.paths.some((request) => request.startsWith("GET /llms.txt "))).toBe(true);
+    expect(
+      [4, 8].map((id) => evaluation.checks.find((check) => check.id === id)?.errorCode),
+    ).not.toContain("robots_disallowed");
+  });
+
+  it("does not report a store's product data absent when robots.txt kept its product pages out", async () => {
+    const target = transport(
+      "User-agent: *\nDisallow: /products/\nSitemap: https://example.com/sitemap.xml\n",
+    );
+    // A home page with no structured data and no feed link: only the product
+    // page robots.txt disallows could have shown either.
+    const adapter: PinnedTransport = {
+      request: async (input) =>
+        input.url.pathname === "/" && input.headers.accept !== "text/markdown"
+          ? makeArtifact(
+              input,
+              200,
+              `<html><head><title>Store</title></head><body><h1>Store</h1><main>${"Handmade goods from our workshop. ".repeat(20)}<a href="/products/widget">Widget</a></main></body></html>`,
+              "text/html",
+            )
+          : target.adapter.request(input),
+    };
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(target.paths.some((request) => request.includes("/products/"))).toBe(false);
+    expect(
+      [5, 6, 15].map((id) => {
+        const check = evaluation.checks.find((candidate) => candidate.id === id);
+        return [check?.status, check?.errorCode];
+      }),
+    ).toEqual([
+      ["unavailable", "robots_disallowed"],
+      ["unavailable", "robots_disallowed"],
+      ["unavailable", "robots_disallowed"],
+    ]);
+  });
+
+  // A store's product data can live only on its product pages. A scan of a
+  // home page with no structured data and no feed link, whose sitemap lists
+  // one product page, answered for that page by `answer` where it returns one.
+  const productScan = async (
+    answer: (input: PinnedTransportRequest) => FetchArtifact | undefined,
+    sitemapHost = "example.com",
+    home = `<html><head><title>Store</title></head><body><h1>Store</h1><main>${"Handmade goods from our workshop. ".repeat(20)}<a href="/products/widget">Widget</a></main></body></html>`,
+  ) => {
+    const target = transport();
+    const adapter: PinnedTransport = {
+      request: async (input) => {
+        const answered = answer(input);
+        if (answered) return answered;
+        if (input.url.pathname === "/sitemap.xml")
+          return makeArtifact(
+            input,
+            200,
+            `<urlset><url><loc>https://${sitemapHost}/products/widget</loc></url></urlset>`,
+            "application/xml",
+          );
+        return input.url.pathname === "/" && input.headers.accept !== "text/markdown"
+          ? makeArtifact(input, 200, home, "text/html")
+          : target.adapter.request(input);
+      },
+    };
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    return evaluation.checks;
+  };
+  const productData = (checks: readonly CheckResult[]) =>
+    [5, 6, 15].map((id) => {
+      const check = checks.find((candidate) => candidate.id === id);
+      return [check?.status, check?.errorCode];
+    });
+  const productPage = (input: PinnedTransportRequest) => input.url.pathname === "/products/widget";
+  const failed = (input: PinnedTransportRequest, errorCode: string) => ({
+    ...makeArtifact(input, 0, "", "text/plain"),
+    errorCode,
+  });
+
+  // One the scanner could not read leaves that data unassessed, never absent.
+  it.each([
+    {
+      failure: "its own read times out",
+      errorCode: "fetch_timeout",
+      answer: (input: PinnedTransportRequest) =>
+        productPage(input) && input.method === "GET" ? failed(input, "fetch_timeout") : undefined,
+    },
+    {
+      failure: "the connection resets on every request for it",
+      errorCode: "connection_reset",
+      answer: (input: PinnedTransportRequest) =>
+        productPage(input) ? failed(input, "connection_reset") : undefined,
+    },
+    {
+      failure: "it answers with a server error",
+      errorCode: "product_page_unavailable",
+      answer: (input: PinnedTransportRequest) =>
+        productPage(input) ? makeArtifact(input, 503, "", "text/plain") : undefined,
+    },
+    {
+      failure: "the sitemap lists it but it is gone",
+      errorCode: "product_page_unavailable",
+      answer: (input: PinnedTransportRequest) =>
+        productPage(input) ? makeArtifact(input, 404, "", "text/html") : undefined,
+    },
+    {
+      failure: "it turns the scanner away as too many requests",
+      errorCode: "product_page_unavailable",
+      answer: (input: PinnedTransportRequest) =>
+        productPage(input) ? makeArtifact(input, 429, "", "text/plain") : undefined,
+    },
+    {
+      failure: "its host's robots.txt could not be reached",
+      errorCode: "fetch_timeout",
+      sitemapHost: "shop.example.com",
+      answer: (input: PinnedTransportRequest) =>
+        input.url.hostname === "shop.example.com" && input.url.pathname === "/robots.txt"
+          ? failed(input, "fetch_timeout")
+          : undefined,
+    },
+  ])(
+    "does not report a store's product data absent when $failure",
+    async ({ errorCode, answer, sitemapHost }) => {
+      expect(productData(await productScan(answer, sitemapHost))).toEqual([
+        ["unavailable", errorCode],
+        ["unavailable", errorCode],
+        ["unavailable", errorCode],
+      ]);
+    },
+  );
+
+  it("reports a store's product data absent when its product page was read without any", async () => {
+    // Shopify serves this script, which names a captcha, on every page of
+    // every store; the page is the store's own all the same.
+    const page = `<html><title>Widget</title><script id="captcha-bootstrap">!function(){'use strict';const t='contact'}();</script><body><h1>Widget</h1><p>Handmade in our workshop.</p></body></html>`;
+    const checks = await productScan((input) =>
+      productPage(input)
+        ? makeArtifact(input, 200, input.method === "HEAD" ? "" : page, "text/html")
+        : undefined,
+    );
+    expect(productData(checks)).toEqual([
+      ["fail", undefined],
+      ["fail", undefined],
+      ["fail", undefined],
+    ]);
+  });
+
+  it("does not read an error page in place of the product page", async () => {
+    // The product page answers HEAD, then its GET a "not found" page that
+    // carries a heading, text and prices, on a home page too thin to pass.
+    const missing = `<html><title>Page not found</title><body><h1>Page not found</h1><p>${"Try our bestsellers from $19.00 instead. ".repeat(8)}</p></body></html>`;
+    const checks = await productScan(
+      (input) =>
+        productPage(input)
+          ? input.method === "HEAD"
+            ? makeArtifact(input, 200, "", "text/html")
+            : makeArtifact(input, 404, missing, "text/html")
+          : undefined,
+      "example.com",
+      `<html><title>Store</title><body><a href="/products/widget">Widget</a></body></html>`,
+    );
+    expect(checks.find((check) => check.id === 12)).toMatchObject({
+      status: "fail",
+      evidence: { representative_checked: false },
+    });
+  });
+
+  it("reads a robots.txt rule against the query as well as the path", async () => {
+    // Shopify's default robots.txt keeps crawlers off theme previews this way.
+    const target = transport("User-agent: *\nDisallow: /*preview_theme_id*\n");
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: target.adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run({ ...job, canonical_target_url: "https://example.com/?preview_theme_id=5" });
+    expect(target.paths.some((request) => request.startsWith("GET / "))).toBe(false);
+    expect(evaluation.checks.find((check) => check.id === 12)?.errorCode).toBe("robots_disallowed");
+  });
+
+  it("follows a redirect only where robots.txt allows the address it leads to", async () => {
+    const target = transport("User-agent: *\nDisallow: /private/\n");
+    const adapter: PinnedTransport = {
+      request: async (input) =>
+        input.url.pathname === "/llms.txt"
+          ? {
+              ...makeArtifact(input, 301, "", "text/plain"),
+              redirectLocation: "https://example.com/private/llms.txt",
+            }
+          : target.adapter.request(input),
+    };
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(target.paths.some((request) => request.includes("/private/"))).toBe(false);
+    expect(evaluation.checks.find((check) => check.id === 8)?.errorCode).toBe("robots_disallowed");
+
+    // The page itself, and each of its four requests, redirected the same way.
+    const page = transport("User-agent: *\nDisallow: /private/\n");
+    const moved: PinnedTransport = {
+      request: async (input) =>
+        input.url.pathname === "/"
+          ? {
+              ...makeArtifact(input, 302, "", "text/html"),
+              redirectLocation: "https://example.com/private/home",
+            }
+          : page.adapter.request(input),
+    };
+    const pageEvaluation = await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: moved,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(page.paths.some((request) => request.includes("/private/"))).toBe(false);
+    // Markdown and agent access read that page alone.
+    expect(
+      [7, 13].map((id) => pageEvaluation.checks.find((check) => check.id === id)?.errorCode),
+    ).toEqual(["robots_disallowed", "robots_disallowed"]);
+  });
+
+  it("judges an address on another host of the site by that host's own robots.txt", async () => {
+    const requested: string[] = [];
+    const target = transport(
+      "User-agent: *\nAllow: /\nSitemap: https://static.example.com/sitemap.xml\n",
+    );
+    const adapter: PinnedTransport = {
+      request: async (input) => {
+        requested.push(`${input.method} ${input.url.host}${input.url.pathname}`);
+        if (input.url.host === "static.example.com")
+          return input.url.pathname === "/robots.txt"
+            ? makeArtifact(input, 200, "User-agent: *\nDisallow: /\n", "text/plain")
+            : makeArtifact(input, 200, "<urlset></urlset>", "application/xml");
+        if (input.url.host === "example.com" && input.url.pathname === "/")
+          return {
+            ...makeArtifact(input, 301, "", "text/html"),
+            redirectLocation: "https://www.example.com/",
+          };
+        if (input.url.host === "www.example.com" && input.url.pathname === "/robots.txt")
+          return makeArtifact(input, 200, "User-agent: *\nAllow: /\n", "text/plain");
+        return target.adapter.request(input);
+      },
+    };
+    await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    // The other host's robots.txt is read, once, and its sitemap is not.
+    expect(
+      requested.filter((request) => request === "GET static.example.com/robots.txt"),
+    ).toHaveLength(1);
+    expect(requested).not.toContain("GET static.example.com/sitemap.xml");
+    // A page that moved to www is read once www's robots.txt allows it.
+    expect(requested).toContain("GET www.example.com/robots.txt");
+    expect(requested).toContain("GET www.example.com/");
+  });
+
+  it("finishes a scan when one of its requests fails, and says which and why", async () => {
+    // A sitemap on a host of the site that does not resolve, and an llms.txt
+    // that redirects from https to http, which the scanner does not follow.
+    const target = transport(
+      "User-agent: *\nAllow: /\nSitemap: https://cdn.example.com/sitemap.xml\n",
+    );
+    const adapter: PinnedTransport = {
+      request: async (input) =>
+        input.url.pathname === "/llms.txt"
+          ? {
+              ...makeArtifact(input, 301, "", "text/plain"),
+              redirectLocation: "http://example.com/llms.txt",
+            }
+          : target.adapter.request(input),
+    };
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async (hostname) => {
+          if (hostname === "cdn.example.com")
+            throw Object.assign(new Error(`getaddrinfo ENOTFOUND ${hostname}`), {
+              code: "ENOTFOUND",
+            });
+          return [{ address: "93.184.216.34", family: 4 }];
+        },
+      },
+      transport: adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(evaluation.checks).toHaveLength(18);
+    expect(evaluation.checks.find((check) => check.id === 12)?.status).toBe("pass");
+    expect(
+      [4, 8].map((id) => evaluation.checks.find((check) => check.id === id)?.errorCode),
+    ).toEqual(["dns_error", "redirect_downgrade_blocked"]);
+  });
+
+  it("does not fetch the well-known discovery files robots.txt keeps the scanner out of", async () => {
+    const target = transport("User-agent: *\nDisallow: /.well-known/\n");
+    await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: target.adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(target.paths.some((request) => request.startsWith("GET / "))).toBe(true);
+    expect(target.paths.filter((request) => request.includes("/.well-known/"))).toEqual([]);
+  });
+
+  it("does not report an unreadable robots.txt as a rule that keeps the scanner out", async () => {
+    // Checks 4, 8 and 12 read the sitemap, llms.txt and the page's HTML.
+    const blockedBy = async (robotsBody: string, robotsStatus: number) => {
+      const evaluation = await new ScanRunner({
+        resolver: {
+          resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+        },
+        transport: transport(robotsBody, robotsStatus).adapter,
+        appBaseUrl: "https://agentify.ad",
+      }).run(job);
+      return [4, 8, 12].map((id) => evaluation.checks.find((check) => check.id === id)?.errorCode);
+    };
+    expect(await blockedBy("", 503)).toEqual([
+      "robots_unavailable",
+      "robots_unavailable",
+      "robots_unavailable",
+    ]);
+    expect(await blockedBy("User-agent: *\nDisallow: /\n", 200)).toEqual([
+      "robots_disallowed",
+      "robots_disallowed",
+      "robots_disallowed",
+    ]);
+  });
+
+  it("does not fetch a page whose robots decision would cost too much, and says so", async () => {
+    const path = `/${"a".repeat(1_500)}`;
+    const target = transport(`User-agent: *\n${"Allow: *aaaaab\n".repeat(30_000)}`);
+    const evaluation = await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: target.adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run({ ...job, canonical_target_url: `https://example.com${path}` });
+    expect(target.paths.some((request) => request.startsWith(`GET ${path} `))).toBe(false);
+    expect(evaluation.checks.find((check) => check.id === 12)?.errorCode).toBe(
+      "robots_unavailable",
+    );
+  });
+
+  it("fetches no sitemap or product URL whose robots decision was left open", async () => {
+    const longSitemap = `/${"a".repeat(1_500)}.xml`;
+    const longProduct = `/products/${"a".repeat(1_500)}`;
+    const target = transport(
+      `User-agent: *\n${"Allow: *aaaaab\n".repeat(30_000)}Sitemap: https://example.com/sitemap.xml\nSitemap: https://example.com${longSitemap}\n`,
+    );
+    const adapter: PinnedTransport = {
+      request: async (input) =>
+        input.url.pathname === "/sitemap.xml"
+          ? makeArtifact(
+              input,
+              200,
+              `<urlset><url><loc>https://example.com${longProduct}</loc></url></urlset>`,
+              "application/xml",
+            )
+          : target.adapter.request(input),
+    };
+    await new ScanRunner({
+      resolver: {
+        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+      transport: adapter,
+      appBaseUrl: "https://agentify.ad",
+    }).run(job);
+    expect(target.paths.some((request) => request.startsWith("GET / "))).toBe(true);
+    expect(target.paths.some((request) => request.includes(longSitemap))).toBe(false);
+    expect(target.paths.some((request) => request.includes(longProduct))).toBe(false);
   });
 
   it("does not fetch a disallowed representative path", async () => {

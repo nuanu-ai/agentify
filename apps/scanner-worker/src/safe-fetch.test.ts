@@ -59,6 +59,32 @@ describe("safe fetch policy", () => {
     }
   });
 
+  it("reports a connection that fails at once as the request's error, not the process's", async () => {
+    // Connecting to the broadcast address fails inside connect() itself, as
+    // an IPv6-only site does on a host with no IPv6 route: the error comes
+    // before the request is ready to hear it.
+    const escaped: unknown[] = [];
+    const onUncaught = (error: unknown) => escaped.push(error);
+    process.prependListener("uncaughtException", onUncaught);
+    try {
+      const artifact = await new NodePinnedTransport().request({
+        url: new URL("http://ipv6-only.example/"),
+        address: { address: "255.255.255.255", family: 4 },
+        method: "GET",
+        headers: { connection: "close" },
+        timeoutMs: 2_000,
+        connectTimeoutMs: 1_000,
+        maxDecodedBytes: 1_024,
+        signal: new AbortController().signal,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(artifact).toMatchObject({ status: 0, errorCode: "network_error" });
+      expect(escaped).toEqual([]);
+    } finally {
+      process.removeListener("uncaughtException", onUncaught);
+    }
+  });
+
   it("reports decoded payloads one byte below and above the limit without hanging", async () => {
     const limit = 1_024;
     const server = createServer((request, response) => {
@@ -317,7 +343,10 @@ describe("safe fetch policy", () => {
       new RequestBudget(),
       "scanner",
     );
-    await expect(fetcher.fetch("https://example.com/")).rejects.toThrow(`ssrf_blocked:${reason}`);
+    await expect(fetcher.fetch("https://example.com/")).resolves.toMatchObject({
+      status: 0,
+      errorCode: `ssrf_blocked:${reason}`,
+    });
     expect(calls).toBe(0);
   });
 
@@ -340,7 +369,10 @@ describe("safe fetch policy", () => {
       new RequestBudget(),
       "scanner",
     );
-    await expect(fetcher.fetch("https://example.com/")).rejects.toThrow("ssrf_blocked:private");
+    await expect(fetcher.fetch("https://example.com/")).resolves.toMatchObject({
+      status: 0,
+      errorCode: "ssrf_blocked:private",
+    });
     expect(calls).toBe(0);
   });
 
@@ -362,7 +394,10 @@ describe("safe fetch policy", () => {
       },
     };
     const fetcher = new SafeFetcher(resolver, transport, new RequestBudget(), "scanner");
-    await expect(fetcher.fetch("https://example.com/")).rejects.toThrow("ssrf_blocked:loopback");
+    await expect(fetcher.fetch("https://example.com/")).resolves.toMatchObject({
+      status: 0,
+      errorCode: "ssrf_blocked:loopback",
+    });
     expect(calls).toBe(1);
     expect(resolutions).toBe(2);
   });
@@ -379,8 +414,49 @@ describe("safe fetch policy", () => {
       },
     };
     const fetcher = new SafeFetcher(publicResolver, transport, new RequestBudget(), "scanner");
-    await expect(fetcher.fetch("https://example.com/")).rejects.toThrow("hostname_blocked");
+    await expect(fetcher.fetch("https://example.com/")).resolves.toMatchObject({
+      status: 0,
+      errorCode: "hostname_blocked",
+    });
     expect(calls).toBe(1);
+  });
+
+  it("answers a name that does not resolve with the request's own error", async () => {
+    const fetcher = new SafeFetcher(
+      {
+        resolve: async () => {
+          throw Object.assign(new Error("getaddrinfo ENOTFOUND cdn.example.com"), {
+            code: "ENOTFOUND",
+          });
+        },
+      },
+      { request: async (input) => response(input) },
+      new RequestBudget(),
+      "scanner",
+    );
+    await expect(fetcher.fetch("https://cdn.example.com/sitemap.xml")).resolves.toMatchObject({
+      status: 0,
+      errorCode: "dns_error",
+    });
+  });
+
+  it("stops waiting for a name that never resolves when the scan is cut short", async () => {
+    const fetcher = new SafeFetcher(
+      { resolve: () => new Promise(() => undefined) },
+      { request: async (input) => response(input) },
+      new RequestBudget(),
+      "scanner",
+    );
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 50);
+    const settled = await Promise.race([
+      fetcher.fetch("https://example.com/", { signal: controller.signal }).then(
+        () => "resolved",
+        (error: Error) => error.name,
+      ),
+      new Promise((resolve) => setTimeout(() => resolve("still waiting"), 1_000)),
+    ]);
+    expect(settled).toBe("AbortError");
   });
 
   it("enforces at most two simultaneous requests per origin", async () => {

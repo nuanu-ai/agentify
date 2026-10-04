@@ -17,7 +17,7 @@ import {
   sessions,
 } from "@agentify/scanner-database";
 import { and, eq, sql } from "drizzle-orm";
-
+import { robotsReasonFor } from "../robots-notice";
 import { ownedLead, type Visitor } from "./auth";
 import { getServerConfig } from "./config";
 import { deriveCapability, hmacHex, sha256 } from "./crypto";
@@ -305,6 +305,7 @@ async function buildScanStatus(scan: typeof scans.$inferSelect): Promise<ScanSta
       id: definition.id,
       label_code: definition.labelCode,
       status: row?.status ?? "pending",
+      robots: robotsReasonFor(row?.errorCode),
     };
   });
   const completed = checks.filter(({ status }) => !["pending", "running"].includes(status)).length;

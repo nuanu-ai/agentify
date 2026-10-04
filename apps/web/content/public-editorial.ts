@@ -1,5 +1,9 @@
 import { canonicalCheckLabel } from "@agentify/remediation";
-import { CHECK_DEFINITIONS, SCAN_RUBRIC_VERSION } from "@agentify/scanner-contracts";
+import {
+  BROWSER_OBSERVATION_VERSION,
+  CHECK_DEFINITIONS,
+  SCAN_RUBRIC_VERSION,
+} from "@agentify/scanner-contracts";
 
 import type { PublicAppConfig } from "../lib/app-config";
 
@@ -111,7 +115,7 @@ const methodologyPage = (): PublicEditorialPageModel => ({
           kind: "paragraph",
           content: [
             text("When enabled, the separate "),
-            code("browser-public-v1.0.0"),
+            code(BROWSER_OBSERVATION_VERSION),
             text(
               " layer passively renders public pages to observe JavaScript-only content, accessibility/form semantics, runtime/network health, metadata consistency, declared agent/API surfaces, and rendering cost. These findings are shown separately and never change the 18-check ",
             ),
@@ -197,6 +201,18 @@ const scannerPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
         {
           kind: "paragraph",
           content: [
+            text(
+              "One check asks for your page twice more with the tokens ChatGPT and Claude agents send, followed by the scanner's own name, for example ",
+            ),
+            code(`ChatGPT-User/1.0 (compatible; agentify-scanner/1.0; +${config.baseUrl}/scanner)`),
+            text(
+              ", to see whether your site answers AI agents differently. It never presents itself as OpenAI or Anthropic without its own name.",
+            ),
+          ],
+        },
+        {
+          kind: "paragraph",
+          content: [
             text(`Operator: ${config.legalOperator}. Abuse and opt-out contact: `),
             link(config.abuseEmail, `mailto:${config.abuseEmail}`),
             text("."),
@@ -251,7 +267,7 @@ const scannerPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
             "GET and HEAD only; public ports 80 and 443 only.",
             "No clicks, form entry/submission, login, checkout, CAPTCHA solving, proxy rotation, or access-control bypass.",
             "Fresh browser context for every run; downloads, popups, permissions, service workers, WebSockets, and mutating requests are blocked.",
-            "We retain sanitized aggregate signals and finding codes, not raw HTML, screenshots, cookies, storage state, console text, full accessibility trees, or provider run IDs.",
+            "We retain finding codes and the sanitized aggregate counts they rest on, not raw HTML, screenshots, cookies, storage state, console text, full accessibility trees, or provider run IDs.",
           ],
         },
       ],
@@ -266,7 +282,11 @@ const scannerPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
             text("We fetch "),
             code("/robots.txt"),
             text(
-              " first. If the scanner or wildcard group disallows the submitted path, content checks are marked unavailable. We do not bypass that rule.",
+              " first and follow it for every later request, its query and each redirect included: the page, its sitemap, llms.txt and the ",
+            ),
+            code("/.well-known"),
+            text(
+              " discovery files. An address on another host of the site is judged by that host's own robots.txt, read first. A check whose requests it disallows is marked not assessed, and the report names robots.txt as the reason. If robots.txt cannot be read, or its rules cannot be decided for an address, we read nothing it might forbid. We do not bypass that rule.",
             ),
           ],
         },
@@ -285,12 +305,12 @@ const scannerPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
     },
     {
       id: "retention",
-      title: "Cache and retention",
+      title: "Retention",
       blocks: [
         {
           kind: "paragraph",
           content:
-            "Eligible technical snapshots may be cached for 24 hours. We do not retain target raw bodies, cookies, full headers, credentials, or raw IP addresses. Structured scan facts follow the retention described in the privacy page.",
+            "Every scan reads the site afresh; no earlier result stands in for it. We do not retain target raw bodies, cookies, full headers, credentials, or raw IP addresses. Structured scan facts follow the retention described in the privacy page.",
         },
       ],
     },

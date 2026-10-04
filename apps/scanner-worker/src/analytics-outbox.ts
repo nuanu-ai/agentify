@@ -439,14 +439,17 @@ export const startAnalyticsOutboxConsumer = (input: {
   intervalMs?: number;
   claimLimit?: number;
   emitMetric?: (metric: OutboxMetric) => void;
+  onError?: (error: unknown) => void;
 }): (() => void) => {
   let running = false;
   const tick = () => {
     if (running) return;
     running = true;
-    void runOutboxCycle(input).finally(() => {
-      running = false;
-    });
+    void runOutboxCycle(input)
+      .catch((error: unknown) => input.onError?.(error))
+      .finally(() => {
+        running = false;
+      });
   };
   const timer = setInterval(tick, input.intervalMs ?? 1_000);
   timer.unref();

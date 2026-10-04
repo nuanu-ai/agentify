@@ -1,8 +1,12 @@
 # Agentify Browser Observer
 
 This private Actor performs the passive browser observations defined by its
-input and output schemas. Its public identity and build tag remain unchanged
-during repository consolidation.
+input and output schemas. Its build tag names the version of the browser
+observation contract it implements, the same version its input and output
+carry, so a build of another version is refused at that version. The worker
+names the build it runs by its number, not its tag: `APIFY_BROWSER_ACTOR_BUILD`
+holds a build number such as `1.0.42`, which is what the Actor reports as its
+own, and a tag there fails every run as a build mismatch.
 
 Run Actor CLI commands from the repository root. The root `.actor` metadata and
 `.actorignore` make the shared workspace lockfile part of the upload context while

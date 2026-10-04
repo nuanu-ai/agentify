@@ -25,7 +25,8 @@ export const parseRobots = (body: string): RobotsParseResult => {
   let contentSignal: Record<string, "yes" | "no"> | undefined;
 
   for (const original of body.split(/\r?\n/)) {
-    const line = original.replace(/\s+#.*$/, "").trim();
+    const comment = original.indexOf("#");
+    const line = (comment === -1 ? original : original.slice(0, comment)).trim();
     if (!line) continue;
     const separator = line.indexOf(":");
     if (separator <= 0) {
@@ -54,7 +55,7 @@ export const parseRobots = (body: string): RobotsParseResult => {
     } else if (field === "content-signal") {
       const parsed: Record<string, "yes" | "no"> = {};
       for (const token of value.split(/[;,]/)) {
-        const [rawKey, rawValue, ...rest] = token.trim().split(/\s*=\s*/);
+        const [rawKey, rawValue, ...rest] = token.split("=").map((part) => part.trim());
         const key = rawKey?.toLowerCase();
         const setting = rawValue?.toLowerCase();
         if (
@@ -82,20 +83,44 @@ export const parseRobots = (body: string): RobotsParseResult => {
   };
 };
 
+// RFC 9309: a rule matches from the start of the path, "*" stands for any run
+// of characters, the empty one included, and "$" at the end of the rule for
+// the end of the path. The site writes the rule, so it is not compiled into a
+// RegExp, which backtracks without bound over a run of wildcards and throws
+// on a rule longer than its size limit. Taking each piece between wildcards
+// at its first occurrence after the previous one never misses a match that
+// exists, so the path is searched once per piece.
 const ruleMatches = (path: string, rule: string): boolean => {
   if (!rule) return false;
-  const escaped = rule
-    .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*/g, ".*")
-    .replace(/\$$/, "$");
-  return new RegExp(`^${escaped}`).test(path);
+  const anchored = rule.endsWith("$");
+  const [head = "", ...pieces] = (anchored ? rule.slice(0, -1) : rule).split("*");
+  if (!path.startsWith(head)) return false;
+  const tail = pieces.pop();
+  if (tail === undefined) return !anchored || path.length === head.length;
+  let position = head.length;
+  for (const piece of pieces) {
+    const found = path.indexOf(piece, position);
+    if (found === -1) return false;
+    position = found + piece.length;
+  }
+  return anchored
+    ? path.length - tail.length >= position && path.endsWith(tail)
+    : path.includes(tail, position);
 };
 
+// A rule with a wildcard is searched for along the whole path, piece by
+// piece, so it costs up to the path's length plus its own; a rule without
+// one only compares the path's start. Past this many characters for one
+// decision it is not made.
+const DECISION_BUDGET = 4 * 1024 * 1024;
+
+// true or false for the path, or undefined when deciding would cost more
+// than DECISION_BUDGET: "robots.txt could not be assessed", never a guess.
 export const isPathAllowed = (
   parsed: RobotsParseResult,
   userAgent: string,
   path: string,
-): boolean => {
+): boolean | undefined => {
   const normalized = userAgent.toLowerCase();
   const groupsWithSpecificity = parsed.groups.map((group) => ({
     group,
@@ -118,13 +143,19 @@ export const isPathAllowed = (
     ...group.allow.map((rule) => ({ rule, allow: true })),
     ...group.disallow.map((rule) => ({ rule, allow: false })),
   ]);
-  const matches = rules
-    .filter(({ rule }) => ruleMatches(path, rule))
-    .sort((a, b) => b.rule.length - a.rule.length);
-  const [closest] = matches;
-  if (!closest) return true;
-  const longest = closest.rule.length;
-  return matches.filter(({ rule }) => rule.length === longest).some(({ allow }) => allow);
+  let cost = 0;
+  for (const { rule } of rules) if (rule.includes("*")) cost += path.length + rule.length;
+  if (cost > DECISION_BUDGET) return undefined;
+  // The longest matching rule decides, and between an Allow and a Disallow
+  // of the same length, Allow.
+  let longest = -1;
+  let allowed = true;
+  for (const { rule, allow } of rules) {
+    if (rule.length < longest || !ruleMatches(path, rule)) continue;
+    allowed = rule.length > longest ? allow : allowed || allow;
+    longest = rule.length;
+  }
+  return allowed;
 };
 
 const PROVIDERS: ReadonlyArray<readonly [string, string[]]> = [

@@ -40,7 +40,6 @@ const TABLES = [
   "scan_checks",
   "scan_fingerprints",
   "scan_shares",
-  "scan_snapshots",
   "scans",
   "sessions",
   "waitlist_entries",
@@ -100,6 +99,15 @@ describe("initial database migration", () => {
       );
       expect(tableRows.rows.map(({ tablename }) => tablename)).toEqual([...TABLES].sort());
       expect(tableRows.rows.every(({ rowsecurity }) => rowsecurity)).toBe(true);
+      // What the product decided to stop keeping is gone, not only unread.
+      const deletedColumns = await pool.query(
+        `select table_name, column_name from information_schema.columns
+         where table_schema = 'public'
+           and ((table_name = 'scans' and column_name in ('cache_hit', 'source_scan_id'))
+             or (table_name = 'browser_observations'
+                 and column_name in ('signals', 'request_count', 'transferred_bytes')))`,
+      );
+      expect(deletedColumns.rows).toEqual([]);
 
       const oldWorkerStart = new Date("2026-07-12T10:00:00.000Z");
       const newWorkerStart = new Date("2026-07-12T11:00:00.000Z");
@@ -172,7 +180,7 @@ describe("initial database migration", () => {
         `insert into browser_observations
           (id, scan_id, observation_version, operation_id, operation_key,
            actor_id, actor_build)
-         values ($1, $2, 'browser-public-v1.0.0', $3, $4, $5, $6)`,
+         values ($1, $2, 'browser-public-v2.0.0', $3, $4, $5, $6)`,
         [
           browserObservationId,
           scanValues[0],
@@ -235,33 +243,13 @@ describe("initial database migration", () => {
         actor_build: "1.0.42",
         status: "completed" as const,
         pages_assessed: 1,
-        signals: {
-          rendered_text_chars: 1,
-          raw_to_rendered_ratio: 1,
-          landmark_counts: {},
-          heading_level_counts: {},
-          interactive_control_count: 0,
-          unnamed_control_count: 0,
-          form_control_count: 0,
-          unlabeled_form_control_count: 0,
-          webmcp_present: false,
-          webmcp_tool_count: 0,
-          console_error_categories: [],
-          failed_resource_categories: [],
-          mixed_content_count: 0,
-          dom_node_count: 1,
-          script_count: 0,
-          request_count: 1,
-          transferred_bytes: 1,
-          challenge_kind: null,
-        },
         observations: BROWSER_OBSERVATION_IDS.map((id) => ({
           id,
           status: "unavailable" as const,
           summary_code: "browser_observation_unavailable",
           evidence: {},
         })),
-        timings: { total_ms: 1, pages: [1] },
+        timings: { total_ms: 1 },
       };
       await expect(
         browserRepository.complete(
@@ -317,7 +305,7 @@ describe("initial database migration", () => {
           `insert into browser_observations
             (id, scan_id, observation_version, operation_id, operation_key,
              actor_id, actor_build)
-           values ($1, $2, 'browser-public-v1.0.0', $3, $4, $5, $6)`,
+           values ($1, $2, 'browser-public-v2.0.0', $3, $4, $5, $6)`,
           [
             observationId,
             budgetScanId,
@@ -435,7 +423,7 @@ describe("initial database migration", () => {
           `insert into browser_observations
             (id, scan_id, observation_version, operation_id, operation_key,
              actor_id, actor_build)
-           values ($1, $2, 'browser-public-v1.0.0', $3, $4, $5, $6)`,
+           values ($1, $2, 'browser-public-v2.0.0', $3, $4, $5, $6)`,
           [
             createUuidV7(),
             scanValues[0],
@@ -532,8 +520,6 @@ describe("initial database migration", () => {
           },
           findings: { negativeCheckIds: [] },
         },
-        cacheKey: "stale-attempt-cache-key",
-        cacheHit: false,
         finishedAt: new Date(),
       });
       expect(staleCommit).toBe("already_terminal");
@@ -542,12 +528,10 @@ describe("initial database migration", () => {
         attempt_no: number;
         summary_code: string;
         fingerprints: string;
-        snapshots: string;
         completed_events: string;
       }>(
         `select s.status, s.attempt_no, c.summary_code,
            (select count(*) from scan_fingerprints where scan_id = s.id)::text as fingerprints,
-           (select count(*) from scan_snapshots where id = s.id)::text as snapshots,
            (select count(*) from analytics_events where name = 'scan_completed' and scan_id = s.id)::text as completed_events
          from scans s
          join scan_checks c on c.scan_id = s.id and c.check_id = 1
@@ -559,9 +543,98 @@ describe("initial database migration", () => {
         attempt_no: 2,
         summary_code: "fresh_attempt_check",
         fingerprints: "0",
-        snapshots: "0",
         completed_events: "0",
       });
+
+      // A scan no worker will finish, its deadline long past, is closed as
+      // lost, once, whatever stage it stopped at. One accepted within the
+      // bound, one accepted long ago but queued again lately, one whose worker
+      // still beats, and a terminal one are left alone.
+      const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000);
+      const insertAged = (
+        key: string,
+        status: string,
+        times: { acceptedAt: Date; queuedAt?: Date; heartbeatAt?: Date },
+        failureCode: string | null = null,
+      ) => {
+        const id = createUuidV7();
+        return pool
+          .query(
+            `insert into scans
+              (id, session_id, segment, rubric_version, submitted_url_redacted, canonical_target_url,
+               target_host, target_hash, access_token_hash, access_token_expires_at,
+               idempotency_key_hash, idempotency_body_hash, status, accepted_at, queued_at,
+               worker_heartbeat_at, failure_code)
+             values ($1,$2,'store','gtm-v1.0.0','https://example.com/','https://example.com/',
+               'example.com','target-hash','token-hash',$3,$4,'idem-body-hash',$5,$6,$7,$8,$9)`,
+            [
+              id,
+              sessionId,
+              new Date(Date.now() + 3_600_000),
+              key,
+              status,
+              times.acceptedAt,
+              times.queuedAt ?? null,
+              times.heartbeatAt ?? null,
+              failureCode,
+            ],
+          )
+          .then(() => id);
+      };
+      const lost = [
+        await insertAged("lost-1", "running", {
+          acceptedAt: minutesAgo(10),
+          queuedAt: minutesAgo(10),
+          heartbeatAt: minutesAgo(9),
+        }),
+        await insertAged("lost-2", "queued", {
+          acceptedAt: minutesAgo(10),
+          queuedAt: minutesAgo(10),
+        }),
+        await insertAged("lost-3", "accepted", { acceptedAt: minutesAgo(10) }),
+      ];
+      const alive = {
+        recent: await insertAged("recent", "queued", { acceptedAt: minutesAgo(1) }),
+        requeued: await insertAged("requeued", "queued", {
+          acceptedAt: minutesAgo(10),
+          queuedAt: minutesAgo(1),
+        }),
+        beating: await insertAged("beating", "running", {
+          acceptedAt: minutesAgo(10),
+          heartbeatAt: minutesAgo(0),
+        }),
+        failed: await insertAged(
+          "failed",
+          "failed",
+          { acceptedAt: minutesAgo(10) },
+          "scan_system_error",
+        ),
+      };
+      const finished = (await repository.finishLostScans(5 * 60_000)).sort();
+      expect(finished).toEqual([...lost].sort());
+      await expect(repository.finishLostScans(5 * 60_000)).resolves.toEqual([]);
+      const aged = await pool.query<{
+        id: string;
+        status: string;
+        failure_code: string | null;
+        level: string | null;
+        finished: boolean;
+      }>(
+        `select id, status, failure_code, level, finished_at is not null as finished
+         from scans where id = any($1)`,
+        [[...lost, ...Object.values(alive), scanJob.scan_id]],
+      );
+      const state = Object.fromEntries(
+        aged.rows.map((row) => [row.id, [row.status, row.failure_code, row.level, row.finished]]),
+      );
+      for (const id of lost) expect(state[id]).toEqual(["failed", "scan_lost", "incomplete", true]);
+      expect([...Object.values(alive), scanJob.scan_id].map((id) => state[id])).toEqual([
+        ["queued", null, null, false],
+        ["queued", null, null, false],
+        ["running", null, null, false],
+        ["failed", "scan_system_error", null, false],
+        ["running", null, null, false],
+      ]);
 
       const eventId = createUuidV7();
       const store = createBusinessEventStore(db);

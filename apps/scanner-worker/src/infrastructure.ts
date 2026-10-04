@@ -26,6 +26,7 @@ import { registerBrowserObservationWorker } from "./browser-observation-job.js";
 import { startBrowserObservationReconciler } from "./browser-observation-reconciler.js";
 import type { WorkerEnv } from "./env.js";
 import type { WorkerHealth } from "./health.js";
+import { startLostScanSweeper } from "./lost-scan-sweeper.js";
 import { refreshWorkerReadiness, type WorkerReadinessSnapshot } from "./readiness.js";
 import { NodePinnedTransport, systemDnsResolver } from "./safe-fetch.js";
 import { registerScanWorker, type ScanBoss } from "./scan-job.js";
@@ -56,6 +57,32 @@ const emitWorkerMetric = (logger: StructuredLogger, metric: WorkerMetric): void 
   else logger.info("worker_metric", attributes);
 };
 
+// A failure repeated every second while a dependency is down is logged once
+// a minute, with the count of those left out.
+const throttledErrorLog = (
+  logger: StructuredLogger,
+  event: string,
+  onEach: () => void = () => {},
+): ((error: unknown) => void) => {
+  let lastLoggedAt = 0;
+  let suppressed = 0;
+  return (error) => {
+    onEach();
+    const now = Date.now();
+    if (now - lastLoggedAt < 60_000) {
+      suppressed += 1;
+      return;
+    }
+    logger.error(event, {
+      error_type: safeErrorType(error),
+      error_code: safeErrorCode(error),
+      ...(suppressed ? { suppressed_count: suppressed } : {}),
+    });
+    lastLoggedAt = now;
+    suppressed = 0;
+  };
+};
+
 export async function startWorkerInfrastructure(
   env: WorkerEnv,
   health: WorkerHealth,
@@ -74,43 +101,14 @@ export async function startWorkerInfrastructure(
   await pool.query("select 1");
   health.databaseConnected = true;
 
-  let lastQueueErrorAt = 0;
-  let suppressedQueueErrors = 0;
-  const logQueueError = (error: unknown) => {
+  const logQueueError = throttledErrorLog(logger, "worker_queue_error", () => {
     health.queueConnected = false;
     health.ready = false;
-    const now = Date.now();
-    if (now - lastQueueErrorAt < 60_000) {
-      suppressedQueueErrors += 1;
-      return;
-    }
-    logger.error("worker_queue_error", {
-      error_type: safeErrorType(error),
-      error_code: safeErrorCode(error),
-      ...(suppressedQueueErrors ? { suppressed_count: suppressedQueueErrors } : {}),
-    });
-    lastQueueErrorAt = now;
-    suppressedQueueErrors = 0;
-  };
-
-  let lastDatabaseErrorAt = 0;
-  let suppressedDatabaseErrors = 0;
-  const logDatabaseError = (error: unknown) => {
+  });
+  const logDatabaseError = throttledErrorLog(logger, "worker_database_error", () => {
     health.databaseConnected = false;
     health.ready = false;
-    const now = Date.now();
-    if (now - lastDatabaseErrorAt < 60_000) {
-      suppressedDatabaseErrors += 1;
-      return;
-    }
-    logger.error("worker_database_error", {
-      error_type: safeErrorType(error),
-      error_code: safeErrorCode(error),
-      ...(suppressedDatabaseErrors ? { suppressed_count: suppressedDatabaseErrors } : {}),
-    });
-    lastDatabaseErrorAt = now;
-    suppressedDatabaseErrors = 0;
-  };
+  });
   pool.on("error", logDatabaseError);
 
   // The one `pgboss` schema the gateway's queue uses too (queue-schema.test.ts).
@@ -215,7 +213,6 @@ export async function startWorkerInfrastructure(
         transport: new NodePinnedTransport(),
         appBaseUrl: env.APP_BASE_URL,
       }),
-      cacheEnabled: env.SCANNER_CACHE_ENABLED,
       emitMetric: (metric) => emitWorkerMetric(logger, metric),
       ...(browserActive
         ? {
@@ -230,6 +227,15 @@ export async function startWorkerInfrastructure(
     },
     env.SCANNER_CONCURRENCY,
   );
+  const stopLostScanSweeper = startLostScanSweeper({
+    finishLostScans: (lostAfterMs) => repository.finishLostScans(lostAfterMs),
+    onFinished: (scanIds) => {
+      for (const scanId of scanIds) logger.warn("scan_lost", { scan_id: scanId });
+    },
+    onError: (error) => {
+      logger.error("lost_scan_sweep_failed", { error_type: safeErrorType(error) });
+    },
+  });
   const stopAnalyticsConsumer =
     env.POSTHOG_ENABLED || env.META_CAPI_ENABLED
       ? startAnalyticsOutboxConsumer({
@@ -254,6 +260,7 @@ export async function startWorkerInfrastructure(
             },
           }),
           emitMetric: (metric) => emitWorkerMetric(logger, metric),
+          onError: throttledErrorLog(logger, "analytics_outbox_cycle_failed"),
         })
       : () => {};
   const stopPartnerConsumer = env.PARTNER_POSTBACK_ENABLED
@@ -273,6 +280,7 @@ export async function startWorkerInfrastructure(
         claimLimit: 1,
         intervalMs: 1_100,
         emitMetric: (metric) => emitWorkerMetric(logger, metric),
+        onError: throttledErrorLog(logger, "partner_outbox_cycle_failed"),
       })
     : () => {};
 
@@ -346,6 +354,7 @@ export async function startWorkerInfrastructure(
     clearInterval(heartbeatTimer);
     stopBrowserReconciler();
     stopBrowserJanitor();
+    stopLostScanSweeper();
     stopAnalyticsConsumer();
     stopPartnerConsumer();
     health.ready = false;
