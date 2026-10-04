@@ -1,11 +1,11 @@
 # 0019. The money goes straight to the merchant's own wallet
 
 Date: 2026-08-28
-Status: accepted (Dmitry, 2026-09-24, on the wait before a change: "деньги
-защищать нужно другим способом (cooldown например)"; on the message: "думаю что
-обязательно. для gateway же не должно быть разницы как сменили. это api вызов";
-on where the wait holds: "да, только prod"; 2026-09-25, on the cabinet
-alone setting it: "делаем")
+Status: accepted (the product owner, 2026-09-24, on the wait before a change,
+as the way the money is protected; on the message, which is required and
+announces every change whichever way it is made, since to the gateway every
+change is the same API call; on where the wait holds, on production only;
+2026-09-25, on the cabinet alone setting it)
 
 ## Context
 
@@ -89,7 +89,7 @@ pending address and the moment it takes effect, always present and null
 when nothing is pending, so a caller that reads the old address back does
 not take it for a failed write. These fields, and the refusals this route
 answers with, are added without moving `CONTRACT_VERSION`
-(ADR-0006 §2; Dmitry: "не надо поднимать согласен"): no SDK worker reads this
+(ADR-0006 §2), as the product owner agreed: no SDK worker reads this
 route's answers or refusals, and moving the version would stop every
 installed worker for words no worker sees. The price is that a merchant's
 own code validating this answer with the strict `PayoutWalletSchema` of an
@@ -227,8 +227,8 @@ case as the canon — cheaper to compute and impossible to check by eye,
 which trades the one safeguard a person has for nothing. Storing what
 was sent and normalizing on read — every reader becomes a parser, and
 the one that misses serves the second spelling (ADR-0017). A confirmation
-by mail in place of the wait (Dmitry: "нет, ожидание все равно пусть будет")
-— it goes to the mailbox a session opens from (ADR-0009). A short session in
-place of it — it narrows the window without closing it. Any key of the
-merchant's setting the wallet — every copy of a key could redirect the
-takings, held back only by an owner answering each message in time.
+by mail in place of the wait (the product owner keeps the wait in any
+case) — it goes to the mailbox a session opens from (ADR-0009). A short
+session in place of it — it narrows the window without closing it. Any key
+of the merchant's setting the wallet — every copy of a key could redirect
+the takings, held back only by an owner answering each message in time.

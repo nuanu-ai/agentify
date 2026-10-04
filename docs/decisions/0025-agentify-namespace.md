@@ -1,7 +1,7 @@
 # 0025. One Agentify namespace, with an explicit state cutover
 
 Date: 2026-09-16
-Status: accepted (Dmitry's live instruction)
+Status: accepted (the product owner's live instruction)
 
 ## Context
 

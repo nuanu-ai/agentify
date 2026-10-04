@@ -93,7 +93,7 @@ const LATEST_REPORT = "/report/latest";
 const SESSION_ENDED_UNSAVED = "/sign-in?reason=session-ended-unsaved";
 
 /** The person whose account every test in this file signs in as. */
-const PERSON = "dmitry@example.com";
+const PERSON = "owner@example.com";
 /**
  * A second person with an account on the same cabinet.
  *

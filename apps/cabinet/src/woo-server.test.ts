@@ -33,7 +33,7 @@ import type { WooRequest } from "./woo-request.js";
 import { type CatalogueRead, inspectProductInTheShop, type ProductInspection } from "./woo-shop.js";
 import { memoryWooShops, type WooShops } from "./woo-shops.js";
 
-const PERSON = "dmitry@example.com";
+const PERSON = "owner@example.com";
 const SHOP = "https://shop.example.com";
 const PUBLIC = "https://cabinet.example.com";
 

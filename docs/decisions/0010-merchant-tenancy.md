@@ -1,7 +1,8 @@
 # 0010. Every merchant is a row, and a key names its merchant
 
 Date: 2026-08-27
-Status: accepted (Dmitry's word of 2026-08-27: the product is self-service)
+Status: accepted (the product owner's word of 2026-08-27: the product is
+self-service)
 
 ## Context
 
@@ -12,10 +13,11 @@ request, and the routes that say "this merchant's cards" and "this merchant's
 receipts" return the whole store — their own descriptions admit it. For a pilot
 with one merchant that was the honest minimum.
 
-Dmitry has now settled the product's shape: self-service. A merchant registers
-with an email address, comes to the cabinet, creates a key, integrates against
-the SDK themselves and starts selling. "We write the cards" means a generator
-writes them from the merchant's own site, not that a person does.
+The product owner has now settled the product's shape: self-service. A
+merchant registers with an email address, comes to the cabinet, creates a
+key, integrates against the SDK themselves and starts selling. "We write
+the cards" means a generator writes them from the merchant's own site, not
+that a person does.
 
 Registration is the last step of that road, not the first. Registration
 without tenancy means the second merchant to register sees the first one's
