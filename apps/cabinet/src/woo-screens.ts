@@ -335,7 +335,7 @@ const theConnection = (
   <form class="issue" method="post" action="${escaped(base)}/woocommerce/import">
     <div>
       <label>Import the catalog</label>
-      <p class="quiet">Reads up to ${PRODUCTS_AT_MOST} products and publishes only the product configuration currently supported by this connector, described above. Other products stay in your shop and can be connected through the SDK. If the shop has more than ${PRODUCTS_AT_MOST} products, the whole import is refused. Running it again updates the same cards.</p>
+      <p class="quiet">Reads up to ${PRODUCTS_AT_MOST} products and publishes only the product configuration currently supported by this connector, described above. Other products stay in your shop. If the shop has more than ${PRODUCTS_AT_MOST} products, the whole import is refused. Running it again updates the same cards.</p>
       <p class="quiet">If a product is later deleted from the shop, runs out, or stops being supported, its card stays listed, but the price check refuses the purchase before payment. Pause cards you no longer want agents to see.</p>
       ${beforeImporting(base, view)}
     </div>
@@ -641,13 +641,13 @@ export const wooSettingsBlock = (base: string, state: ShopTile): string => {
       }
       <div class="connect-actions"><a class="button button-secondary" href="${escaped(base)}/woocommerce">Your shop</a></div>`
         : state.kind === "none"
-          ? `<p>This experimental connector currently imports one narrow WooCommerce configuration, described on the shop screen; other catalogs connect through the SDK.</p>
+          ? `<p>This experimental connector imports one narrow WooCommerce configuration, which the shop screen describes.</p>
       <div class="connect-actions"><a class="button button-primary" href="${escaped(base)}/woocommerce">Connect a WooCommerce shop</a></div>`
           : `${noKeysYet(state)}
       <div class="connect-actions"><a class="button button-primary" href="${escaped(base)}/woocommerce">${state.kind === "waiting" ? "Check the connection" : "Connect again"}</a></div>`;
 
   return `
-      <h3>WooCommerce — for WordPress shops</h3>
+      <h3>WooCommerce (experimental)</h3>
       ${said}
 `;
 };

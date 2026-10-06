@@ -210,8 +210,9 @@ export const settingsScreen = (viewer: Viewer, problem?: string, typedName?: str
 };
 
 /**
- * The ways a catalogue reaches Agentify: a WooCommerce shop, or the merchant's
- * own code through the SDK. A tab of its own, because they are integrations,
+ * The ways a catalogue reaches Agentify: the merchant's own code through the
+ * SDK, which is the product's path and comes first, or a WooCommerce shop
+ * through the experimental connector, where this cabinet has one. A tab of its own, because they are integrations,
  * and halfway down the settings, under the name and the wallet, is not where
  * anybody looks for one.
  */
@@ -224,26 +225,26 @@ export const integrationsScreen = (viewer: Viewer): string => {
       <p>${
         viewer.shop === undefined
           ? "Your products reach Agentify from your own code through the SDK."
-          : "Choose how your products reach Agentify: from a WooCommerce shop or from your own code through the SDK."
+          : "Your products reach Agentify from your own code through the SDK, or from a WooCommerce shop through the experimental connector."
       }</p>
     </div>
   </div>
   <div class="settings-grid">
   <section class="settings-panel settings-wide settings-connect">
     <div class="connect-ways">
-      ${
-        viewer.shop === undefined
-          ? ""
-          : `<div class="connect-way">${wooSettingsBlock(base, viewer.shop)}</div>`
-      }
       <div class="connect-way">
-        <h3>SDK — for any store, site, or service</h3>
+        <h3>The SDK</h3>
         <p class="quiet">Your developer installs the <code>@nuanu-ai/agentify</code> package in a Node.js service, publishes cards with an API key, and handles paid orders in your own code.</p>
         <div class="connect-actions">
           <a class="button button-primary" href="/docs/quickstart">Open the connection guide</a>
           <a class="button button-secondary" href="${escaped(base)}/keys?new=key">Create an API key</a>
         </div>
       </div>
+      ${
+        viewer.shop === undefined
+          ? ""
+          : `<div class="connect-way">${wooSettingsBlock(base, viewer.shop)}</div>`
+      }
     </div>
   </section>
   </div>`;

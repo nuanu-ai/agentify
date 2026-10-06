@@ -305,19 +305,26 @@ const wrappable = (address: string): string => {
 };
 
 /**
- * What an empty catalogue shows: why it is empty, the two ways to fill it as
- * buttons, and three example rows — clearly marked as an example — so a new
- * merchant sees what their cards will look like before the first one exists.
+ * What an empty catalogue shows: why it is empty, and the ways to fill it as
+ * buttons. The SDK comes first, because it is the product's path; the
+ * WooCommerce connector comes after it, named as the experiment it is, and
+ * only where this cabinet has one.
+ *
+ * An empty catalogue has two readings the merchant cannot tell apart from
+ * here: nobody has published anything yet, or something published was
+ * refused. While no name is set, the second one is what happens to everything,
+ * so the line says it rather than leaving a merchant to work out why their
+ * code's card never arrived.
  */
 const emptyCatalogue = (viewer: Viewer, wooAvailable: boolean): string => {
   const why = refusedForNoName(viewer)
     ? "You haven't published any cards yet. Choose your seller name in Settings first. Cards can't be published without it."
-    : "You haven't published any cards yet. Connect your catalog below, and your cards will appear here.";
+    : "You haven't published any cards yet. Your code publishes them through the SDK, and each card it publishes appears here.";
   return `<div class="empty-start">
     <p>${escaped(why)}</p>
     <div class="connect-actions">
-      ${wooAvailable ? `<a class="button button-primary" href="${escaped(viewer.base)}/woocommerce">Connect WooCommerce</a>` : ""}
-      <a class="button ${wooAvailable ? "button-secondary" : "button-primary"}" href="/docs/quickstart">Connect through the SDK</a>
+      <a class="button button-primary" href="/docs/quickstart">Publish your first card through the SDK</a>
+      ${wooAvailable ? `<a class="button button-secondary" href="${escaped(viewer.base)}/woocommerce">Try the experimental WooCommerce connector</a>` : ""}
     </div>
   </div>`;
 };
