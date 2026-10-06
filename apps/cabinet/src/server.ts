@@ -67,6 +67,7 @@ import { printable } from "./printable.js";
 import { cardsScreen, ordersScreen, receiptsScreen, unsetIn, type Viewer } from "./screens.js";
 import {
   chooseNameScreen,
+  integrationsScreen,
   NAME_CANNOT_BE_TAKEN_AWAY,
   NAME_NEEDED,
   settingsScreen,
@@ -1067,6 +1068,16 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     response.type("html").send(settingsScreen(viewingSettings(request, base, settings.document)));
   });
 
+  app.get(`${base}/integrations`, async (request, response) => {
+    const settings = await settingsOf(request);
+    if (!settings.ok) {
+      return trouble(response, base, settings);
+    }
+    response
+      .type("html")
+      .send(integrationsScreen(viewingSettings(request, base, settings.document)));
+  });
+
   app.post(`${base}/settings`, async (request, response) => {
     const typed = nameIn(request);
     // Empty is a merchant trying to stop being listed, and the sentence names
@@ -1632,7 +1643,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
           return {
             ...product,
             qualification_problem:
-              "The public catalogue price does not match the protected WooCommerce product price.",
+              "The public catalog price does not match the protected WooCommerce product price.",
           };
         }
         return {
@@ -1822,7 +1833,11 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     if (!keys.ok) {
       return trouble(response, base, keys);
     }
-    response.type("html").send(keysScreen(viewing(request, base), keys.document));
+    response
+      .type("html")
+      .send(
+        keysScreen(viewing(request, base), keys.document, undefined, request.query.new === "key"),
+      );
   });
 
   // The key page rewrites its POST history entry to this target. Reloading can

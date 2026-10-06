@@ -16,6 +16,7 @@
 
 import { ServiceNameSchema } from "@nuanu-ai/agentify-contracts";
 import { accountSettings } from "./account-settings.js";
+import { STOP_ALL_SELLING } from "./control-labels.js";
 import { bare, brandLockup, escaped, page } from "./html.js";
 import { payoutWalletBlock } from "./payout-wallet.js";
 import { refusedForNoName, type Viewer } from "./screens.js";
@@ -35,8 +36,8 @@ import { wooSettingsBlock } from "./woo-screens.js";
  * so that the common case is a name that fits.
  */
 export const NAME_RULE =
-  "Use 1 to 32 characters of printable ASCII: Latin letters, numbers, spaces or common punctuation," +
-  " with no space at either end.";
+  "Use 1 to 32 characters of printable ASCII: Latin letters, numbers, spaces or common punctuation." +
+  " Spaces at either end are removed.";
 
 /**
  * What somebody is told whose name the catalogue would not carry.
@@ -53,7 +54,7 @@ export const NAME_RULE =
  */
 export const NAME_REFUSED =
   "Use 1 to 32 characters of printable ASCII (Latin letters, numbers, spaces or common punctuation)" +
-  " with no space at either end. Your name was not saved.";
+  ". Your name was not saved.";
 
 /** What somebody who pressed the button with an empty box is told, first time. */
 export const NAME_NEEDED =
@@ -71,8 +72,8 @@ export const NAME_NEEDED =
  * it leaves the cards where they are, so a merchant can put them back.
  */
 export const NAME_CANNOT_BE_TAKEN_AWAY =
-  "This name cannot be empty while you have a merchant. To come off sale, stop your selling on the" +
-  " Cards screen; your cards stay there until you resume.";
+  `The seller name cannot be empty once you have an account. To stop selling, use ${STOP_ALL_SELLING}` +
+  " on the Cards screen; your cards stay there until you resume.";
 
 /** What is wrong with a name somebody typed, in a sentence, or null. */
 export const whatIsWrongWithTheName = (name: string): string | null =>
@@ -121,32 +122,30 @@ ${brandLockup("/")}
   <button class="button button-primary" type="submit">Use this name</button>
   ${WHAT_IT_IS_FOR}
   <p class="quiet">You can change it in <a href="${escaped(base)}/settings">Settings</a>; until it is set, nothing you publish goes on sale.</p>
-  <p class="quiet">Not decided yet? <a href="${escaped(base)}/cards">Leave it for now</a>.</p>
+  <p class="quiet gate-skip">Not decided yet? <a href="${escaped(base)}/cards">Leave it for now</a>.</p>
 </form>
 </div>`,
     mode,
   );
 
 /**
- * The cabinet's settings, which hold four subjects.
+ * The cabinet's settings, which hold three account subjects.
  *
  * A page of its own rather than controls tucked onto the cards screen: none of
  * these is about a card, all of them are about the merchant. The name buyers
- * read is here; under it the address the merchant's money arrives at, which
- * lives in `payout-wallet.ts`; under that the WooCommerce shop a merchant can
- * sell the catalogue of, which is drawn by `woo-screens.ts` from the connection
- * this page was handed; and last the merchant's own account, which lives in
- * `account-settings.ts`. That one arrived because the address in the corner of
+ * read is here; beside it is the address the merchant's money arrives at,
+ * which lives in `payout-wallet.ts`; and last is the merchant's own account,
+ * which lives in `account-settings.ts`. Integrations and plan and billing have
+ * their own navigation sections. The account block arrived because the address in the corner of
  * every page is the one thing on a screen that says "this is you" — pressing it
  * has to lead somewhere that answers that, and the answer is a page with the
  * account on it.
  *
  * The order is the things about selling first and the account last, because a
  * merchant setting themselves up works down the page: what they are called,
- * where they are paid, where their products come from, and only then how they
- * get back in.
+ * where they are paid, and then how they get back in.
  *
- * The four are not the same kind of thing, so each is under a heading that
+ * The three are not the same kind of thing, so each is under a heading that
  * names which it is. Somebody landing here should be able to tell which part
  * they came for without reading the others.
  *
@@ -170,36 +169,33 @@ export const settingsScreen = (viewer: Viewer, problem?: string, typedName?: str
         // section is added, and one more line between somebody and the box
         // they came to fill in.
         name === null
-          ? `You have not chosen the name your products are sold under.${refusedForNoName(viewer) ? " Until you do, publishing a card is refused." : ""}`
+          ? `You have not set a seller name yet.${refusedForNoName(viewer) ? " Until you do, cards cannot be published." : ""}`
           : `Your products are sold under ${name}.`,
       )}</p>
     </div>
   </div>
   <div class="settings-grid">
-  <section class="settings-panel">
+  <section class="settings-panel settings-pair">
+  <div class="panel-top">
   <div class="lede">
     <div>
-      <h2>The name your products are sold under</h2>
+      <h2>Seller name</h2>
       <p class="quiet">${escaped(NAME_RULE)}</p>
-      <p class="quiet">${escaped(NAME_CANNOT_BE_TAKEN_AWAY)}</p>
+      ${problem === NAME_CANNOT_BE_TAKEN_AWAY ? "" : `<p class="quiet">${escaped(NAME_CANNOT_BE_TAKEN_AWAY)}</p>`}
     </div>
   </div>
-  <form class="issue" method="post" action="${escaped(base)}/settings">
+  </div>
+  <form class="issue" id="seller-name-form" method="post" action="${escaped(base)}/settings">
     <div>
-      <label for="seller_name">The name buyers read</label>
+      <label for="seller_name">Your seller name</label>
       <input id="seller_name" name="seller_name" type="text" autocomplete="organization" maxlength="32" value="${escaped(typedName ?? name ?? "")}" required>
     </div>
-    <button class="button button-primary" type="submit">Save it</button>
-    ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
+    <button class="button button-primary" type="submit">Save</button>
   </form>
+  <div class="panel-messages">${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}</div>
   </section>
-  <section class="settings-panel">${payoutWalletBlock(viewer)}</section>
-  ${
-    viewer.shop === undefined
-      ? ""
-      : `<section class="settings-panel">${wooSettingsBlock(base, viewer.shop)}</section>`
-  }
-  <section class="settings-panel">${accountSettings(viewer)}</section>
+  <section class="settings-panel settings-pair">${payoutWalletBlock(viewer)}</section>
+  <section class="settings-panel settings-wide settings-account">${accountSettings(viewer)}</section>
   </div>`;
 
   return page({
@@ -209,6 +205,56 @@ export const settingsScreen = (viewer: Viewer, problem?: string, typedName?: str
     confirmed: viewer.confirmed,
     tab: "settings",
     title: "Settings",
+    body,
+  });
+};
+
+/**
+ * The ways a catalogue reaches Agentify: a WooCommerce shop, or the merchant's
+ * own code through the SDK. A tab of its own, because they are integrations,
+ * and halfway down the settings, under the name and the wallet, is not where
+ * anybody looks for one.
+ */
+export const integrationsScreen = (viewer: Viewer): string => {
+  const { base } = viewer;
+  const body = `
+  <div class="lede">
+    <div>
+      <h1>Integrations</h1>
+      <p>${
+        viewer.shop === undefined
+          ? "Your products reach Agentify from your own code through the SDK."
+          : "Choose how your products reach Agentify: from a WooCommerce shop or from your own code through the SDK."
+      }</p>
+    </div>
+  </div>
+  <div class="settings-grid">
+  <section class="settings-panel settings-wide settings-connect">
+    <div class="connect-ways">
+      ${
+        viewer.shop === undefined
+          ? ""
+          : `<div class="connect-way">${wooSettingsBlock(base, viewer.shop)}</div>`
+      }
+      <div class="connect-way">
+        <h3>SDK — for any store, site, or service</h3>
+        <p class="quiet">Your developer installs the <code>@nuanu-ai/agentify</code> package in a Node.js service, publishes cards with an API key, and handles paid orders in your own code.</p>
+        <div class="connect-actions">
+          <a class="button button-primary" href="/docs/quickstart">Open the connection guide</a>
+          <a class="button button-secondary" href="${escaped(base)}/keys?new=key">Create an API key</a>
+        </div>
+      </div>
+    </div>
+  </section>
+  </div>`;
+
+  return page({
+    mode: viewer.mode,
+    base,
+    who: viewer.who,
+    confirmed: viewer.confirmed,
+    tab: "integrations",
+    title: "Integrations",
     body,
   });
 };
