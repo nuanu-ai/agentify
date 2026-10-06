@@ -718,6 +718,18 @@ describe("the passwordless cabinet door", () => {
     expect(withoutMerchant.to).toBe("/merchant");
   });
 
+  it("tells somebody new that this same form is their way in", async () => {
+    // There is no separate sign-up page (ADR-0026 §1), and a newcomer who
+    // reads only "Sign in" goes looking for one. The page says the form is
+    // theirs too, and what follows the link.
+    const { browser } = await started();
+
+    const form = readable((await browser.get("/sign-in")).html);
+
+    expect(form).toMatch(/new to agentify\?/i);
+    expect(form).toMatch(/merchant cabinet/i);
+  });
+
   it("asks only for an address and answers known and unknown people identically", async () => {
     const { browser, rows, mails } = await started();
 
