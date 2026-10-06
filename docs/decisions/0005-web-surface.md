@@ -28,7 +28,8 @@ page for a person, so the shape of that is a decision rather than a detail.
    later, so what is demonstrated locally is what gets deployed. `/cabinet`,
    the address the dashboard had before (the product owner, 2026-10-06),
    answers with a redirect to the same path under `/dashboard`, so a bookmark
-   or a link already sent still arrives.
+   or a link already sent still arrives. The redirect is removed on
+   2026-11-06, a month after the move, on the same word.
 
    Both deployed channels have the same application routing (the product owner,
    2026-09-17): production at `agentify.ad`, test at `test.agentify.ad`. The
