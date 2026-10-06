@@ -1,7 +1,7 @@
 # 0031. The browser observer answers one versioned contract and stays on the target's site
 
 Date: 2026-09-28
-Status: accepted (Dmitry, 2026-09-28)
+Status: accepted (the product owner, 2026-09-28)
 
 ## Context
 
