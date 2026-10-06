@@ -1,7 +1,8 @@
 # Agentify experimental WooCommerce TEST acceptance protocol
 
-**Pre-registered:** 2026-09-18. Execute under COIN-25 from the deployed
-COIN-41 SDK baseline, after the Woo implementation is reviewed and deployed.
+**Pre-registered:** 2026-09-18. Execute from the SDK baseline deployed for the
+controlled external SDK rehearsal, after the Woo implementation is reviewed and
+deployed.
 WooCommerce remains experimental. This run does not gate or close Stage 4.
 
 **Later change to the lab (2026-09-25):** the lab's seed now builds a baseline
@@ -49,7 +50,7 @@ email stays on the Woo order.
 This URL is a bearer secret, not wallet-bound. A clean unauthenticated client
 that possesses the exact URL can fetch the file. The order key and `uid` are
 therefore buyer data: the URL appears only in that order's delivery, never in a
-card, catalogue, cabinet list, ordinary log, screenshot, tracker comment or
+card, catalogue, cabinet list, ordinary log, screenshot, work comment or
 report. The API keys, merchant email and raw file URL never appear in it.
 
 ## Implementation invariants before any paid Woo run
@@ -164,13 +165,13 @@ and `LA` a deployed live acceptance step.
 | 19 | CB/IT/LA | First prove revocation before quote is unavailable with zero payment. For the separately capped recovery case, obtain the valid quote, revoke the key before the settled order reaches Cabinet, then sign once. | The pre-quote case refuses before payment. In the post-quote case payment settles, authenticated preflight records `precreate_refused`, Woo creates nothing, buyer/Cabinet show `refund_due`, event/warning is visible, and no receipt/goods are claimed. |
 | 20 | CB/IT/LA | Recover row 19 after same-origin reconnect; separately recover live row 16 with operator-supplied exact Woo id | Known pre-create path requires a newer connection revision, exact accepted product/price and atomically claims one POST before sending it. If that one POST becomes ambiguous, phase becomes `create_unknown`, it is never posted again and only exact-id recovery may continue. Wrong/same revision, changed origin or newly unsupported product keeps debt and makes zero POST. Unknown path performs GET-by-id only and binds only an exact correlation. Both successful paths deliver the same Agentify order, return actual bytes, close debt, issue one receipt, and cause no second authorization, charge or order. Rerun is idempotent. |
 | 21 | IT/LA | Permission from clean unauthenticated client; missing/tampered order key, product id, download id and `uid`; another clean client uses intact URL | Intact bearer URL works for either possessor; every mutation fails. It contains no raw email/API key/raw file URL. Boundary is stated, not called wallet-bound. |
-| 22 | IT/LA | Request product raw file URL and inspect catalogue, Cabinet pages, logs and tracker-safe output | Actual Caddy-served raw URL is denied even if Woo settings say Force Downloads. If public, product is unsupported until merchant server protection is fixed. Full permission/order key/uid appears only in authorized order delivery/status. |
+| 22 | IT/LA | Request product raw file URL and inspect catalogue, Cabinet pages, logs and secret-safe run output | Actual Caddy-served raw URL is denied even if Woo settings say Force Downloads. If public, product is unsupported until merchant server protection is fixed. Full permission/order key/uid appears only in authorized order delivery/status. |
 | 23 | IT | Woo readback has wrong transaction/meta, product, total, currency, billing email, paid status or permission marker | Cabinet refuses to construct/deliver permission and leaves honest refund debt; it never substitutes current product data for sold order. |
 | 24 | LA | Pause the acceptance card if required; remove the one-shot MU hook, its option and private acceptance artifacts; revoke or disconnect only credentials proven to belong to the dedicated acceptance merchant, if chosen | Preserve the shared Woo shop, its admin, order evidence and all user activity. The initial authorized reset is the only reset: no second reset is required or performed. |
 
 ## Small implementation order and ownership
 
-One COIN-25 writer owns the Cabinet delta so money/order invariants do not split
+One writer owns the Cabinet delta so money/order invariants do not split
 across concurrent branches:
 
 1. Update ADR-0023 and this protocol with the native-permission class, bearer
@@ -209,10 +210,10 @@ across concurrent branches:
    immutable SHA, reset fixture, create owned download product, and run live rows.
 
 Operations owns fixture reset, TEST deployment, chain/database evidence and
-secret-safe tracker output. A separate engineer owns adversarial review and
+secret-safe run output. A separate engineer owns adversarial review and
 makes no branch writes during review. The product owner owns the cold browser,
-capped buyer and final verdict. Nobody else mutates the COIN-25 worktree while
-its writer is active.
+capped buyer and final verdict. Nobody else mutates the acceptance worktree
+while its writer is active.
 
 ## Verdict and explicit limits
 
@@ -227,8 +228,8 @@ external prerequisite and blocks only dependent rows.
 
 Managed stock, physical goods, variables, gift/voucher semantics, multiple
 files, finite permission limits/expiry, arbitrary external file stores and
-automatic catalogue removal are unsupported initially. COIN-23 still owns
-ongoing catalogue synchronization. A change between quote and fulfillment can
+automatic catalogue removal are unsupported initially. Ongoing catalogue
+synchronization is separate work. A change between quote and fulfillment can
 create honest refund debt; it is tested and not described as pre-payment refusal.
 Woo installations below a URL subpath are refused at Connect; every accepted
 shop is bound to the root of one public HTTPS origin.
@@ -236,9 +237,9 @@ An unknown create with no exact Woo id remains debt because the command never
 guesses that no remote order exists; that is a named support prerequisite, not
 permission to POST again.
 
-COIN-22 remains open but does not block this agent-first result. No buyer email
-is requested. COIN-34/35 cover Import visibility and its 200-product boundary;
-COIN-36–40 retain their Connect/import failure scopes. COIN-25 records this run.
+No buyer email is requested. Import visibility and its 200-product boundary,
+and the Connect and import failure cases, are scoped outside this run.
+`30-woo-product-acceptance-report.md` records this run.
 
 ## Prospective amendment after an unsigned runner failure
 

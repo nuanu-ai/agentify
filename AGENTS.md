@@ -1,18 +1,16 @@
 # Agentify — working discipline
 
 ## Stage
-Stage 4 of the pilot plan, whose stages are the tracker's initiatives: an
-external merchant integrates through the SDK, publishes their own products,
-and fulfills an agent's purchase through Agentify. The SDK is the primary
-product path. WooCommerce is an experimental, unproven connector; it is not
-the product's acceptance gate or a prerequisite for SDK delivery. The Freeland
-pilot passed on Dmitry's word, 2026-09-14. The first merchant we do not control
-is this charter's compatibility boundary. Product code is being written, so the
-"Code" section is in force. Decisions live in `docs/decisions/`.
+Stage 4 of the pilot plan: an external merchant integrates through the SDK,
+publishes their own products, and fulfills an agent's purchase through
+Agentify. The SDK is the primary product path. WooCommerce is an experimental,
+unproven connector; it is not the product's acceptance gate or a prerequisite
+for SDK delivery. The Freeland pilot passed on Dmitry's word, 2026-09-14. The
+first merchant we do not control is this charter's compatibility boundary.
+Product code is being written, so the "Code" section is in force. Decisions
+live in `docs/decisions/`.
 
-A stage opens on Dmitry's word. The architect then changes this paragraph and
-the status of the stage's initiative in the tracker in one commit, so the two
-do not disagree.
+A stage opens on Dmitry's word, and the architect then changes this paragraph.
 
 The size of a solution is set by the current stage of the plan — not by the
 genre of the task, and not by the density of what is already written around
@@ -85,24 +83,6 @@ operator.
   rest (`pnpm worktrees` lists without removing). A worktree that outlives
   its merge is litter.
 - Never commit: secrets, `.env`, `.claude/settings.local.json`.
-
-## Tracker
-- The work state lives in the tracker (itsaplan, project `COIN`): what is
-  being done, by whom, in what order, what "done" means for each piece, and
-  the record of the hand-over. The repository stays the truth for what the
-  system is and why: code, tests, decisions, research, this charter. Nothing
-  is copied across that line; an issue names the file it rests on.
-- The rules of the tracker are one document there, "Working agreement", and
-  this charter outranks it. An engineer reads it once before the first issue.
-- A branch begins with an issue and an issue ends with the merge:
-  `agent/<topic>` is opened for an issue in Todo, and the issue is Done when
-  the commit is on `main` and the worktree is gone. The hand-over ritual is
-  the issue's checklist, and an item is ticked only after the output that
-  proves it is in the thread.
-- The stages of the pilot plan are the initiatives and the weeks are the
-  cycles; the architect plans both. A question only Dmitry can answer is an
-  issue titled `Decision: …` assigned to him, and the work it blocks says so
-  with a link.
 
 ## Decisions
 - An ADR records a decision that is expensive to reverse: a dependency in a
