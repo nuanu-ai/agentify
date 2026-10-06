@@ -1327,8 +1327,7 @@ describe("importing the catalogue", () => {
 describe("what the integrations screen says about a shop", () => {
   // The promise, and it is the whole reason this block reads rows at all: the
   // integrations screen is where a merchant looks for their shop, and it has to
-  // be able to tell them apart the four things that can have
-  // happened. Three of them are not "connected", and a merchant told "connect a
+  // tell apart the four things that can have happened. Three of them are not "connected", and a merchant told "connect a
   // WooCommerce shop" in any of the other three is being told their Connect
   // failed when two of those are not a failure and one has a different cure.
   const approve = async (running: Running, permissions = "read_write"): Promise<void> => {
@@ -1355,6 +1354,21 @@ describe("what the integrations screen says about a shop", () => {
 
   const settings = async (running: Running): Promise<string> =>
     readable((await running.get("/integrations")).html);
+
+  it("puts the SDK before the shop, and calls the shop connector experimental once it is connected", async () => {
+    const running = await started();
+    await running.signIn();
+    await approve(running);
+
+    const html = (await running.get("/integrations")).html;
+
+    expect(html.indexOf('href="/docs/quickstart"')).toBeGreaterThan(-1);
+    expect(html.indexOf('href="/woocommerce"')).toBeGreaterThan(
+      html.indexOf('href="/docs/quickstart"'),
+    );
+    expect(readable(html)).toContain(SHOP);
+    expect(readable(html)).toMatch(/experimental/i);
+  });
 
   it("offers to connect one where nothing was ever started", async () => {
     const running = await started();
@@ -1449,13 +1463,23 @@ describe("what the integrations screen says about a shop", () => {
     expect(screen.html).toContain(`value="${SHOP}"`);
   });
 
-  it("offers the experimental shop path from an empty catalogue", async () => {
+  it("offers the SDK first and the experimental shop path after it, from an empty catalogue", async () => {
+    // The SDK is the product's path and the shop connector is an experiment
+    // (AGENTS.md, "Stage"), so the button a new merchant is led to press first
+    // is the SDK guide, and the shop path says what it is.
     const running = await started();
     await running.signIn();
 
-    const screen = await running.get("/cards");
+    const html = (await running.get("/cards")).html;
+    const empty = html.slice(html.indexOf('class="empty-start"'));
 
-    expect(screen.html).toContain(`href="/woocommerce"`);
+    expect(/<a class="button button-primary" href="([^"]*)"/.exec(empty)?.[1]).toBe(
+      "/docs/quickstart",
+    );
+    expect(empty.indexOf('href="/woocommerce"')).toBeGreaterThan(
+      empty.indexOf('href="/docs/quickstart"'),
+    );
+    expect(readable(empty)).toMatch(/experimental/i);
   });
 
   it("says a connected shop granted less than it needs to sell anything", async () => {
