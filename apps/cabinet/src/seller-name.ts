@@ -185,7 +185,7 @@ export const settingsScreen = (viewer: Viewer, problem?: string, typedName?: str
     </div>
   </div>
   </div>
-  <form class="issue" id="seller-name-form" method="post" action="${escaped(base)}/settings">
+  <form class="issue" method="post" action="${escaped(base)}/settings">
     <div>
       <label for="seller_name">Your seller name</label>
       <input id="seller_name" name="seller_name" type="text" autocomplete="organization" maxlength="32" value="${escaped(typedName ?? name ?? "")}" required>

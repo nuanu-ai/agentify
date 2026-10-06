@@ -130,20 +130,6 @@ const FOOT = `  <footer class="foot">
 `;
 
 /**
- * One whole page.
- *
- * The stylesheet is linked rather than inlined so that a merchant moving
- * between the four screens fetches it once, and so that the one visual
- * language ADR-0005 §6 asks for is one file rather than four copies.
- *
- * The faces are linked separately, from the shared origin, because they are
- * woff2 files Caddy serves out of the visual package and their addresses are
- * relative to that directory. Behind Caddy this resolves and the pages are set in Schibsted Grotesk;
- * run on its own the cabinet has no /styles, the link 404s and the fallback
- * stack in the tokens carries the page — which is what a fallback stack is for,
- * and why every family here names a full one.
- */
-/**
  * The numbered sections, the same list in the sidebar and in the narrow menu.
  */
 const sections = (chrome: Chrome): string =>
@@ -173,6 +159,20 @@ const narrowMenu = (chrome: Chrome): string => `<details class="app-menu">
         </div>
       </details>`;
 
+/**
+ * One whole page.
+ *
+ * The stylesheet is linked rather than inlined so that a merchant moving
+ * between the screens fetches it once, and so that the one visual
+ * language ADR-0005 §6 asks for is one file rather than four copies.
+ *
+ * The faces are linked separately, from the shared origin, because they are
+ * woff2 files Caddy serves out of the visual package and their addresses are
+ * relative to that directory. Behind Caddy this resolves and the pages are set in Schibsted Grotesk;
+ * run on its own the cabinet has no /styles, the link 404s and the fallback
+ * stack in the tokens carries the page — which is what a fallback stack is for,
+ * and why every family here names a full one.
+ */
 export const page = (chrome: Chrome): string => {
   // The screen's own heading is drawn once, in the bar at the top, rather than
   // a second time above the content.

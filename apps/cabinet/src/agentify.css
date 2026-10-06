@@ -1278,21 +1278,6 @@ h2 {
   font-weight: 650;
 }
 
-.app-sidebar .who b,
-.app-sidebar .who small {
-  display: block;
-}
-.app-sidebar .who b {
-  color: var(--fg);
-  font-size: 0.75rem;
-}
-/* The address wraps rather than ending in an ellipsis: it is the one line
-   that says whose dashboard this is, so it is shown whole. */
-.app-sidebar .who small {
-  font-size: 0.6875rem;
-  overflow-wrap: anywhere;
-}
-
 .app-workspace {
   min-width: 0;
 }
@@ -1312,14 +1297,6 @@ h2 {
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-}
-
-.app-workspace .top-inner > div:first-child {
-  display: grid;
-}
-.app-workspace .top-inner strong {
-  margin-top: 2px;
-  font-size: 0.9375rem;
 }
 
 .app-content {
@@ -1524,8 +1501,8 @@ h2 {
   }
 }
 
-/* The card counts as pills, the empty catalogue as a panel with its two ways
-   in as buttons, and the example rows under it clearly set apart. */
+/* The card counts as pills, and the empty catalogue as a panel with its ways
+   in as buttons. */
 .stat-pills {
   display: flex;
   flex-wrap: wrap;
@@ -1573,22 +1550,17 @@ h2 {
   }
 }
 
-/* On a phone and a tablet the sidebar is a bar, and the account is the round
-   button at the right end of its top row: pressing it opens the settings, the
-   documentation and sign-out underneath. */
+/* On a phone and a tablet the sidebar is a bar that takes the height it
+   needs; on a short page the rest of the screen belongs to the content, not to
+   a stretched empty bar. */
 @media (max-width: 900px) {
-  /* The bar takes the height it needs; on a short page the rest of the screen
-     belongs to the content, not to a stretched empty bar. */
   .app-shell {
     grid-template-rows: auto 1fr;
-  }
-  .app-sidebar-brand {
-    padding-right: 66px;
   }
 }
 
 /* On a phone the ways into an empty catalogue stand one under another at one
-   width, rather than as a ladder of three buttons each as wide as its words. */
+   width, rather than side by side, each as wide as its words. */
 @media (max-width: 560px) {
   .empty-start .connect-actions {
     flex-direction: column;

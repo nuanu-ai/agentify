@@ -37,7 +37,6 @@ import {
   SELLING_WORDS,
   UNSET_WORDS,
   type Unset,
-  type Word,
 } from "./words.js";
 
 /**
@@ -83,8 +82,6 @@ export interface Viewer {
    * not ask the gateway must not tell a merchant they have set no address.
    */
   readonly payout?: PayoutWallet;
-  /** The selling word, where the screen does not draw the card list itself. */
-  readonly selling?: Word;
   /**
    * Where this account's WooCommerce channel has got to, where the screen
    * asked.
