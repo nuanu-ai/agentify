@@ -162,7 +162,7 @@ case $path in
     printf 'HTTP/2 402\r\npayment-required: %s\r\n\r\n' "$(printf '%s' "$challenge" | base64 -w0)" ;;
   *)
     if [[ -n $code ]]; then
-      case $path in /owner) printf 308 ;; /admin) printf 404 ;; *) printf 200 ;; esac
+      case $path in /owner) printf 308 ;; /cabinet/sign-in) printf 307 ;; /admin) printf 404 ;; *) printf 200 ;; esac
     else
       printf '{"items": [%s]}' "$(tr ' ' '\n' < /h/world/cards | sed '/^$/d; s/.*/{"id": "&"}/' | paste -sd, -)"
     fi ;;

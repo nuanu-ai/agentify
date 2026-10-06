@@ -484,14 +484,15 @@ try {
     await expectProxy(innerBase, encodedEdge, role);
   }
   // The address the cabinet had before /dashboard answers with the same path
-  // under the new prefix, query kept, and 308 so a posted form is posted again.
+  // under the new prefix, query kept, and 307 so a posted form is posted again.
   for (const [from, to] of [
     ["/cabinet", "/dashboard"],
     ["/cabinet/sign-in/open?token=a%2Bb", "/dashboard/sign-in/open?token=a%2Bb"],
     ["/cabinet%2Fsign-in", "/dashboard/sign-in"],
+    ["/CABINET/sign-in", "/dashboard/sign-in"],
   ]) {
     const moved = await fetch(`${innerBase}${from}`, { redirect: "manual" });
-    assert.equal(moved.status, 308, from);
+    assert.equal(moved.status, 307, from);
     assert.equal(moved.headers.get("location"), to, from);
   }
   response = await fetch(`${innerBase}/docs%2Fguide`);

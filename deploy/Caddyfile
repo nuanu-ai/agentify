@@ -251,12 +251,16 @@
 	# The address the cabinet had before it was called the dashboard, on the
 	# product owner's word (2026-10-06): a bookmark, a link in a message already
 	# sent, or a shop returning from a Connect started under the old address
-	# still arrives. The same path, under the new prefix, with the query kept;
-	# 308 rather than 301 so a form posted to the old address is posted again,
-	# body and method intact, rather than turned into a GET that loses it.
-	@cabinet_moved path_regexp cabinet_moved ^/cabinet(/.*)?$
+	# still arrives. The same path, under the new prefix, with the query kept,
+	# and in any case, as the cabinet itself never minded case. 307 rather than
+	# 301 or 302 so a form posted to the old address is posted again, body and
+	# method intact, rather than turned into a GET that loses it; and not 308,
+	# for the reason /docs below is not permanent either: a browser keeps a
+	# permanent redirect, so after a rollback to a revision with no /dashboard
+	# it would keep sending somebody to a page that is not there.
+	@cabinet_moved path_regexp cabinet_moved (?i)^/cabinet(/.*)?$
 	handle @cabinet_moved {
-		redir * /dashboard{re.cabinet_moved.1}{?query} 308
+		redir * /dashboard{re.cabinet_moved.1}{?query} 307
 	}
 
 	# The portal. Here the prefix IS stripped, because the other side is a
