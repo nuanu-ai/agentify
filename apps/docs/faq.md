@@ -29,7 +29,7 @@ path is described in [Your hands or ours](/).
 A card can describe a table, a room night or a pass, as long as your own system
 can hold the booking and your handler can answer for it when the order arrives.
 Local rules on payment and availability decide what the card may promise, and
-those are yours to set. Opening a cabinet is not a commitment from us to build
+those are yours to set. Opening a dashboard is not a commitment from us to build
 a booking connection for your case: the test channel comes first, and live
 publication waits for our approval. What a card has to say is
 in the [card reference](/cards).
@@ -63,14 +63,14 @@ The SDK carries the order to your handler, and your integration fulfills it
 through your API. The WooCommerce connector is experimental; delivery by a
 message is not available. The payment arrives as its own transfer into your
 wallet, before your delivery or after it depending on the product:
-[Money](/money). Orders are visible in the cabinet, which also holds your cards
+[Money](/money). Orders are visible in the dashboard, which also holds your cards
 and the switch that stops selling. A receipt is written when the goods are
 delivered, so an order paid for but not yet delivered appears under Orders and
 not Receipts. Matching those records to wallet transfers remains yours to do.
 
 ### Can I pause the selling?
 
-Yes, at any moment and with your own hands: the cabinet has a pause on each
+Yes, at any moment and with your own hands: the dashboard has a pause on each
 card and one button that stops selling altogether. Paused, a card stops selling
 and disappears from the catalogues, while the orders already taken on play out
 in the ordinary way. Stopping it without you, when your side goes quiet, is

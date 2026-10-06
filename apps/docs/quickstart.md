@@ -43,15 +43,15 @@ version before the gateway speaks them.
 
 ## 1. Make the merchant account ready
 
-Open the [test cabinet](https://test.agentify.ad/cabinet/sign-in) and enter
+Open the [test dashboard](https://test.agentify.ad/cabinet/sign-in) and enter
 your email address. Open the link in the message and press the confirmation
-button. The cabinet then offers one button, "Open my merchant cabinet"; its
+button. The dashboard then offers one button, "Open my seller dashboard"; its
 press creates your merchant and asks for the seller name buyers will see.
 That is the only way to get a merchant. Returning merchants reach their
-existing cabinet with the same email-and-link flow.
+existing dashboard with the same email-and-link flow.
 
 The test channel settles test USDC on Base Sepolia. Save the Base wallet where
-those payments should arrive in Cabinet settings before publishing. The live
+those payments should arrive in the dashboard's Settings before publishing. The live
 channel is a separate account at `https://agentify.ad`: it uses Base
 mainnet and real USDC, and likewise refuses to publish a card until that
 account has a payout wallet and the operator has approved that merchant for
@@ -60,15 +60,15 @@ merchant's products cannot start new live purchases. Operator approval is not
 required on the test channel. A local scripted sandbox moves no funds, so it
 does not require a merchant wallet either.
 
-The payout wallet is set in the cabinet, on the Settings screen, and nowhere
+The payout wallet is set in the dashboard, on the Settings screen, and nowhere
 else. The keys you issue operate your shop, but none of them can change where
 its money goes, so a copy of a key in a server's environment cannot send your
 sales anywhere else: no call your code can reach sets the wallet. Your code
 can still read it with `GET /v0/payout-wallet`.
 
-On the live channel a wallet already saved is not replaced at once. Every
-cabinet account of your merchant is sent a message first, saying the change
-was asked for in the cabinet, and the new address takes effect forty-eight
+On the live channel a wallet already saved is not replaced at once. Everybody
+who signs in to your merchant's dashboard is sent a message first, saying the change
+was asked for in the dashboard, and the new address takes effect forty-eight
 hours after the message went out. Until then every payment request names the
 address still paid, and the Settings screen shows the waiting address, the
 moment it takes effect and a control to cancel it. Your code reading the
@@ -80,9 +80,9 @@ is sent and `pending` is always null, so the first time your code meets a
 waiting change is on the live channel.
 
 A change that cannot be announced to every account is not recorded, the
-cabinet says why, and your sales keep arriving where they did. A message
+dashboard says why, and your sales keep arriving where they did. A message
 about a change that was then refused is safe to ignore: every message says the
-change takes effect only if the Settings screen of your cabinet shows it
+change takes effect only if the Settings screen of your dashboard shows it
 waiting.
 
 Once the seller name and wallet are set, open API Keys, press "Issue a key",
@@ -91,7 +91,7 @@ characters — and copy it. The secret is shown once. Keep it with your other
 secrets; do not put it in source control.
 
 Every key on that page is one you asked for, and your code is what calls with
-it. The cabinet uses none of them. It holds a key of its own, which the list
+it. The dashboard uses none of them. It holds a key of its own, which the list
 does not carry and which the gateway will not revoke, so revoking a key on that
 page stops a caller and never closes the browser session you are reading it in.
 
@@ -183,8 +183,8 @@ round trip at a time. These three have codes of their own for a program to
 branch on — `no_seller_name`, `no_payout_wallet` and `no_operator_approval`,
 each with an empty path, because no field of the card is at fault — and the
 package exports them as `MERCHANT_FINDINGS`. The first two you set yourself:
-the name with `POST /v0/seller-name` or in the cabinet's settings, and the
-wallet in the cabinet's settings alone, since no call your code can make sets
+the name with `POST /v0/seller-name` or in the dashboard's settings, and the
+wallet in the dashboard's settings alone, since no call your code can make sets
 it; the third is the operator's decision. The error's `message` names
 the missing settings in words as well. No call answers this in advance: the
 publish is where your code learns what your merchant still lacks. Sending the
