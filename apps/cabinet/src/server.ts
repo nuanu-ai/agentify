@@ -64,7 +64,14 @@ import {
   whatIsWrongWithTheWallet,
 } from "./payout-wallet.js";
 import { printable } from "./printable.js";
-import { cardsScreen, ordersScreen, receiptsScreen, unsetIn, type Viewer } from "./screens.js";
+import {
+  cardsScreen,
+  notFoundScreen,
+  ordersScreen,
+  receiptsScreen,
+  unsetIn,
+  type Viewer,
+} from "./screens.js";
 import {
   chooseNameScreen,
   integrationsScreen,
@@ -1932,8 +1939,11 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     response.redirect(303, `${base}/keys`);
   });
 
-  app.use((_request, response) => {
-    response.status(404).type("html").send(problemPage(base, "There is no such page."));
+  app.use((request, response) => {
+    response
+      .status(404)
+      .type("html")
+      .send(notFoundScreen(viewing(request, base)));
   });
 
   app.use(

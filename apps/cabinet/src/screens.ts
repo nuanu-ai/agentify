@@ -672,3 +672,32 @@ const testWarning = (receipts: ReceiptList, mode: Viewer["mode"]): string => {
 };
 
 const countOf = (many: number, thing: string): string => `${many} ${thing}${many === 1 ? "" : "s"}`;
+
+/**
+ * An address inside the cabinet that leads nowhere, for somebody signed in.
+ *
+ * Drawn in the cabinet's own frame rather than as a bare error card: the person
+ * is still in their cabinet, the menu is where it always is, and the logo and
+ * the one button lead back to the cards rather than out to the site.
+ */
+export const notFoundScreen = (viewer: Viewer): string =>
+  page({
+    mode: viewer.mode,
+    base: viewer.base,
+    who: viewer.who,
+    confirmed: viewer.confirmed,
+    tab: null,
+    title: "There is no such page",
+    home: `${viewer.base}/cards`,
+    body: `
+  <div class="lede">
+    <div>
+      <h1>There is no such page</h1>
+      <p>The link may have a typo or be out of date. Every section of your dashboard is in the menu.</p>
+    </div>
+  </div>
+  <div class="connect-actions">
+    <a class="button button-primary" href="${escaped(viewer.base)}/cards">Back to the dashboard</a>
+  </div>
+`,
+  });
