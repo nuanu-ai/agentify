@@ -572,7 +572,6 @@ services:
       # six other containers has better uses for its cores, and a scan is
       # mostly waiting on somebody else's site.
       SCANNER_CONCURRENCY: "${SCANNER_CONCURRENCY:-2}"
-      SCANNER_CACHE_ENABLED: "${SCANNER_CACHE_ENABLED:-false}"
       # Which datasets the analytics may name. The release holds the test
       # channel to this exact set of answers, so a test stack cannot write into
       # a production dataset by inheriting a variable somebody forgot.
@@ -654,7 +653,6 @@ services:
       TURNSTILE_SECRET_KEY: "${TURNSTILE_SECRET_KEY:-}"
       # Surfaces that cost money, reach another company or are not finished.
       # Off here and off unless a deployment names them.
-      SCANNER_CACHE_ENABLED: "${SCANNER_CACHE_ENABLED:-false}"
       BENCHMARK_ENABLED: "${BENCHMARK_ENABLED:-false}"
       PUBLIC_SHARE_ENABLED: "${PUBLIC_SHARE_ENABLED:-false}"
       PARTNER_POSTBACK_ENABLED: "${PARTNER_POSTBACK_ENABLED:-false}"

@@ -57,7 +57,6 @@ const repository = (claim: "claimed" | "terminal" | "in_progress" = "claimed") =
       at: Date;
     };
     heartbeatAt?: Date;
-    leaseExpiresAt?: Date;
     fencedCheckId?: number;
   } = {
     claimed: false,
@@ -70,13 +69,11 @@ const repository = (claim: "claimed" | "terminal" | "in_progress" = "claimed") =
     },
     heartbeat: async (_scanId, _attemptNo, at) => {
       state.heartbeatAt = at;
-      state.leaseExpiresAt = new Date(at.getTime() + 15_000);
     },
     upsertCheck: async (_scanId, _attemptNo, persisted) => {
       state.checks.set(persisted.id, persisted);
       return true;
     },
-    findReusableSnapshot: async () => undefined,
     commitTerminal: async (input) => {
       if (!state.checks.has(check.id)) throw new Error("terminal_commit_without_persisted_check");
       state.terminal = input;
@@ -99,7 +96,6 @@ describe("scan job lifecycle", () => {
       processScanJob(job, {
         repository: repo,
         runner: runner as never,
-        cacheEnabled: false,
       }),
     ).resolves.toBe("committed");
     expect(state.checks.get(check.id)).toEqual(check);
@@ -120,37 +116,11 @@ describe("scan job lifecycle", () => {
       processScanJob(job, {
         repository: repo,
         runner: runner as never,
-        cacheEnabled: false,
       }),
     ).resolves.toBe("skipped");
     expect(state.claimed).toBe(true);
     expect(state.checks.size).toBe(0);
     expect(state.terminal).toBeUndefined();
-  });
-
-  it("uses a cache snapshot without reusing acquisition identity", async () => {
-    const { repo, state } = repository();
-    repo.findReusableSnapshot = async () => ({
-      ...evaluation,
-      sourceScanId: "source-scan",
-      expiresAt: new Date(Date.now() + 1000),
-    });
-    const runner = {
-      run: async () => {
-        throw new Error("cache hit must not acquire the target again");
-      },
-    };
-    await processScanJob(job, {
-      repository: repo,
-      runner: runner as never,
-      cacheEnabled: true,
-    });
-    expect(state.terminal).toMatchObject({
-      scanId: job.scan_id,
-      cacheHit: true,
-      sourceScanId: "source-scan",
-    });
-    expect(JSON.stringify(state.terminal)).not.toMatch(/lead|utm|token|session/i);
   });
 
   it("marks retryable system failure on first attempt", async () => {
@@ -164,7 +134,6 @@ describe("scan job lifecycle", () => {
       processScanJob(job, {
         repository: repo,
         runner: runner as never,
-        cacheEnabled: false,
       }),
     ).rejects.toThrow();
     expect(state.failure).toMatchObject({
@@ -172,6 +141,19 @@ describe("scan job lifecycle", () => {
       retryable: true,
       at: expect.any(Date),
     });
+  });
+
+  it("does not retry a scan whose deadline has passed, since no retry can meet it", async () => {
+    const { repo, state } = repository();
+    const runner = {
+      run: async () => {
+        throw new Error("scan_deadline_expired");
+      },
+    };
+    await expect(
+      processScanJob(job, { repository: repo, runner: runner as never }),
+    ).rejects.toThrow();
+    expect(state.failure).toMatchObject({ code: "scan_deadline_expired", retryable: false });
   });
 
   it("stops a stale attempt when a progressive check write is fenced", async () => {
@@ -190,14 +172,13 @@ describe("scan job lifecycle", () => {
       processScanJob(job, {
         repository: repo,
         runner: runner as never,
-        cacheEnabled: false,
       }),
     ).resolves.toBe("skipped");
     expect(state.fencedCheckId).toBe(check.id);
     expect(state.terminal).toBeUndefined();
   });
 
-  it("renews a long-running job lease and stops heartbeats after completion", async () => {
+  it("beats a running scan's heartbeat and stops once the scan is finished", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-21T12:00:00.000Z"));
     const { repo, state } = repository();
@@ -209,21 +190,17 @@ describe("scan job lifecycle", () => {
     const processing = processScanJob(job, {
       repository: repo,
       runner: { run: async () => await run } as never,
-      cacheEnabled: false,
       now: () => new Date(Date.now()),
     });
     await vi.advanceTimersByTimeAsync(20_000);
-
     expect(state.heartbeatAt?.toISOString()).toBe("2026-09-21T12:00:20.000Z");
-    expect(state.leaseExpiresAt?.toISOString()).toBe("2026-09-21T12:00:35.000Z");
 
     complete(evaluation);
     await expect(processing).resolves.toBe("committed");
-    const terminalLease = state.leaseExpiresAt?.toISOString();
+    const lastBeat = state.heartbeatAt?.toISOString();
     await vi.advanceTimersByTimeAsync(30_000);
-
     expect(state.terminal).toBeDefined();
-    expect(state.leaseExpiresAt?.toISOString()).toBe(terminalLease);
+    expect(state.heartbeatAt?.toISOString()).toBe(lastBeat);
   });
 
   it("atomically requests a versioned browser row then best-effort enqueues it", async () => {
@@ -232,7 +209,6 @@ describe("scan job lifecycle", () => {
     await processScanJob(job, {
       repository: repo,
       runner: { run: async () => evaluation } as never,
-      cacheEnabled: false,
       browserObservation: {
         actorId: "owner/agentify-browser-observer",
         actorBuild: "1.0.42",
@@ -243,7 +219,7 @@ describe("scan job lifecycle", () => {
       },
     });
     expect(state.terminal?.browserObservation).toMatchObject({
-      observationVersion: "browser-public-v1.0.0",
+      observationVersion: "browser-public-v2.0.0",
       actorId: "owner/agentify-browser-observer",
       actorBuild: "1.0.42",
     });
@@ -254,9 +230,46 @@ describe("scan job lifecycle", () => {
     });
   });
 
-  it.each(["robots_disallowed", "robots_unavailable"])(
-    "does not request a browser observation when base robots is %s",
-    async (errorCode) => {
+  it("still requests a browser observation when only another check went unassessed", async () => {
+    const { repo, state } = repository();
+    await processScanJob(job, {
+      repository: repo,
+      runner: {
+        run: async () => ({
+          ...evaluation,
+          checks: [
+            check,
+            {
+              ...check,
+              id: 8,
+              status: "unavailable" as const,
+              summaryCode: "mcp_unavailable",
+              userImpactCode: "mcp_not_assessed",
+              earnedWeight: 0,
+              errorCode: "fetch_timeout",
+            },
+          ],
+        }),
+      } as never,
+      browserObservation: {
+        actorId: "owner/agentify-browser-observer",
+        actorBuild: "1.0.42",
+        sampleRate: 1,
+        enqueue: async () => {},
+      },
+    });
+    expect(state.terminal?.browserObservation).toBeDefined();
+  });
+
+  // The last case is a robots.txt the network kept from being read, which the
+  // robots check names by that failure.
+  it.each([
+    ["robots_disallowed", "robots_disallowed"],
+    ["robots_unavailable", "robots_unavailable"],
+    ["robots_unavailable", "fetch_timeout"],
+  ])(
+    "does not request a browser observation when base robots is %s, by %s",
+    async (summaryCode, errorCode) => {
       const { repo, state } = repository();
       let queued = false;
       await processScanJob(job, {
@@ -268,15 +281,14 @@ describe("scan job lifecycle", () => {
               {
                 ...check,
                 status: "unavailable" as const,
-                summaryCode: errorCode,
-                userImpactCode: errorCode,
+                summaryCode,
+                userImpactCode: summaryCode,
                 earnedWeight: 0,
                 errorCode,
               },
             ],
           }),
         } as never,
-        cacheEnabled: false,
         browserObservation: {
           actorId: "owner/agentify-browser-observer",
           actorBuild: "1.0.42",

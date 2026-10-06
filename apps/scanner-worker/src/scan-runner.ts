@@ -7,6 +7,7 @@ import {
   parseRobots,
   parseSafeJson,
   parseSitemap,
+  type RobotsParseResult,
   type ScanArtifacts,
   type ScanEvaluation,
 } from "@agentify/scanner";
@@ -140,11 +141,16 @@ export class ScanRunner {
       deadline - startedAt,
     );
     const budget = new RequestBudget(18, 2);
+    const scannerPage = `${this.dependencies.appBaseUrl.replace(/\/$/, "")}/scanner`;
+    // Check 13 carries an AI agent's token, which is what a CDN's AI-bot rule
+    // matches, and names the scanner after it: it never passes for the agent.
+    const asAgent = (token: string) =>
+      `${token} (compatible; agentify-scanner/1.0; +${scannerPage})`;
     const fetcher = new SafeFetcher(
       this.dependencies.resolver,
       this.dependencies.transport,
       budget,
-      `agentify-scanner/1.0 (+${this.dependencies.appBaseUrl.replace(/\/$/, "")}/scanner)`,
+      `agentify-scanner/1.0 (+${scannerPage})`,
     );
     const fetch = async (
       input: string | URL,
@@ -199,14 +205,47 @@ export class ScanRunner {
       const robotsDecisionKnown =
         !robots.errorCode &&
         ([404, 410].includes(robots.status) || (robots.status === 200 && !parsedRobots.fatal));
-      const robotsAllows = (url: URL): boolean =>
-        robots.status === 404 ||
-        robots.status === 410 ||
-        (robots.status === 200 &&
-          !robots.errorCode &&
-          !parsedRobots.fatal &&
-          isPathAllowed(parsedRobots, "agentify-scanner", url.pathname || "/"));
-      const targetAllowed = robotsAllows(target);
+      // Each host of the site answers for itself: its robots.txt is read the
+      // first time a request, or a redirect, would reach it.
+      type RobotsReading = { artifact: FetchArtifact; parsed: RobotsParseResult };
+      const robotsByOrigin = new Map<string, Promise<RobotsReading>>([
+        [target.origin, Promise.resolve({ artifact: robots, parsed: parsedRobots })],
+      ]);
+      const readRobotsOf = (origin: string): Promise<RobotsReading> => {
+        let reading = robotsByOrigin.get(origin);
+        if (!reading) {
+          reading = fetch(new URL("/robots.txt", origin), {
+            bodyLimit: 512 * 1024,
+            accept: "text/plain,*/*;q=0.1",
+          }).then((artifact) => ({ artifact, parsed: parseRobots(artifact.body) }));
+          robotsByOrigin.set(origin, reading);
+        }
+        return reading;
+      };
+      // true or false for the URL, its query included, or undefined when its
+      // host's robots.txt could not be read or the decision would cost more
+      // than the matcher's budget.
+      const verdictOf = ({ artifact, parsed }: RobotsReading, url: URL) => {
+        if (artifact.status === 404 || artifact.status === 410) return true;
+        if (artifact.errorCode || artifact.status !== 200 || parsed.fatal) return undefined;
+        return isPathAllowed(parsed, "agentify-scanner", `${url.pathname || "/"}${url.search}`);
+      };
+      const robotsVerdict = async (url: URL): Promise<boolean | undefined> =>
+        verdictOf(await readRobotsOf(url.origin), url);
+      // Why a URL is not read, or undefined when robots.txt lets it be. A
+      // robots.txt the network kept from being read names that failure: the
+      // host is what could not be reached, not its rules.
+      const admit = async (url: URL): Promise<string | undefined> => {
+        const reading = await readRobotsOf(url.origin);
+        const verdict = verdictOf(reading, url);
+        if (verdict === true) return undefined;
+        if (verdict === false) return "robots_disallowed";
+        return reading.artifact.status === 0 && reading.artifact.errorCode
+          ? reading.artifact.errorCode
+          : "robots_unavailable";
+      };
+      const targetVerdict = await robotsVerdict(target);
+      const targetAllowed = targetVerdict === true;
       const declaredSitemaps = parsedRobots.sitemaps
         .map((value) => canonicalSameSiteUrl(value, target, usedHttpFallback))
         .filter((value): value is URL => value !== undefined)
@@ -214,99 +253,86 @@ export class ScanRunner {
       const sitemapTargets = declaredSitemaps.length
         ? declaredSitemaps
         : [discoveryUrl(target, "/sitemap.xml")];
-      const blockedCode = robotsDecisionKnown ? "robots_disallowed" : "robots_unavailable";
-      const fetchIfRobotsAllowed = (
+      const fetchIfRobotsAllowed = async (
         url: URL,
         fetchOptions: Parameters<SafeFetcher["fetch"]>[1],
-      ): Promise<FetchArtifact> =>
-        robotsAllows(url)
-          ? fetch(url, fetchOptions)
-          : Promise.resolve(unavailableArtifact(url, blockedCode));
-      const fetchExplicitDiscovery = (
-        url: URL,
-        fetchOptions: Parameters<SafeFetcher["fetch"]>[1],
-      ): Promise<FetchArtifact> =>
-        robotsDecisionKnown
-          ? fetch(url, fetchOptions)
-          : Promise.resolve(unavailableArtifact(url, "robots_unavailable"));
+      ): Promise<FetchArtifact> => {
+        const refusal = await admit(url);
+        return refusal ? unavailableArtifact(url, refusal) : fetch(url, { ...fetchOptions, admit });
+      };
 
       const contentPromise = targetAllowed
         ? Promise.all([
-            fetch(target, { bodyLimit: 2 * 1024 * 1024 }),
+            fetch(target, { bodyLimit: 2 * 1024 * 1024, admit }),
             fetch(target, {
               bodyLimit: 2 * 1024 * 1024,
               accept: "text/markdown",
+              admit,
             }),
             fetch(target, {
               bodyLimit: 2 * 1024 * 1024,
-              userAgent: "ChatGPT-User/1.0",
+              userAgent: asAgent("ChatGPT-User/1.0"),
+              admit,
             }),
             fetch(target, {
               bodyLimit: 2 * 1024 * 1024,
-              userAgent: "Claude-User",
+              userAgent: asAgent("Claude-User"),
+              admit,
             }),
           ])
         : Promise.resolve([]);
-      const sitemapPromise = targetAllowed
-        ? (async () => {
-            const pending = [...sitemapTargets];
-            const seen = new Set<string>();
-            const artifacts: FetchArtifact[] = [];
-            while (artifacts.length < 3) {
-              const url = pending.shift();
-              if (!url) break;
-              const key = url.toString();
-              if (seen.has(key)) continue;
-              seen.add(key);
-              const artifact = await fetchIfRobotsAllowed(url, {
-                bodyLimit: 5 * 1024 * 1024,
-                accept: "application/xml,text/xml,*/*;q=0.1",
-              });
-              artifacts.push(artifact);
-              if (artifact.errorCode || artifact.status < 200 || artifact.status >= 300) continue;
-              const parsed = parseSitemap(artifact.body);
-              if (!parsed.valid || !parsed.isIndex) continue;
-              const children = parsed.urls
-                .map((value) => canonicalSameSiteUrl(value, target, usedHttpFallback))
-                .filter(
-                  (value): value is URL => value !== undefined && !seen.has(value.toString()),
-                );
-              pending.unshift(...children);
-            }
-            return artifacts;
-          })()
-        : Promise.resolve(
-            sitemapTargets.map((url) => unavailableArtifact(url, "robots_disallowed")),
-          );
+      const sitemapPromise = (async () => {
+        const pending = [...sitemapTargets];
+        const seen = new Set<string>();
+        const artifacts: FetchArtifact[] = [];
+        while (artifacts.length < 3) {
+          const url = pending.shift();
+          if (!url) break;
+          const key = url.toString();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const artifact = await fetchIfRobotsAllowed(url, {
+            bodyLimit: 5 * 1024 * 1024,
+            accept: "application/xml,text/xml,*/*;q=0.1",
+          });
+          artifacts.push(artifact);
+          if (artifact.errorCode || artifact.status < 200 || artifact.status >= 300) continue;
+          const parsed = parseSitemap(artifact.body);
+          if (!parsed.valid || !parsed.isIndex) continue;
+          const children = parsed.urls
+            .map((value) => canonicalSameSiteUrl(value, target, usedHttpFallback))
+            .filter((value): value is URL => value !== undefined && !seen.has(value.toString()));
+          pending.unshift(...children);
+        }
+        return artifacts;
+      })();
       const llmsUrl = discoveryUrl(target, "/llms.txt");
-      const llmsPromise = targetAllowed
-        ? fetchIfRobotsAllowed(llmsUrl, {
-            bodyLimit: 512 * 1024,
-            accept: "text/plain,text/markdown,*/*;q=0.1",
-          })
-        : Promise.resolve(unavailableArtifact(llmsUrl, "robots_disallowed"));
+      const llmsPromise = fetchIfRobotsAllowed(llmsUrl, {
+        bodyLimit: 512 * 1024,
+        accept: "text/plain,text/markdown,*/*;q=0.1",
+      });
       const mcpUrl = discoveryUrl(target, "/.well-known/mcp.json");
       const mcpCardUrl = discoveryUrl(target, "/.well-known/mcp/server-card.json");
       const ucpUrl = discoveryUrl(target, "/.well-known/ucp");
       const a2aUrl = discoveryUrl(target, "/.well-known/agent-card.json");
       const wellKnown = Promise.all([
-        fetchExplicitDiscovery(mcpUrl, {
+        fetchIfRobotsAllowed(mcpUrl, {
           bodyLimit: 1024 * 1024,
           accept: "application/json,*/*;q=0.1",
         }),
-        fetchExplicitDiscovery(mcpCardUrl, {
+        fetchIfRobotsAllowed(mcpCardUrl, {
           bodyLimit: 1024 * 1024,
           accept: "application/json,*/*;q=0.1",
         }),
         ...(job.segment === "store"
           ? [
-              fetchExplicitDiscovery(ucpUrl, {
+              fetchIfRobotsAllowed(ucpUrl, {
                 bodyLimit: 1024 * 1024,
                 accept: "application/json,*/*;q=0.1",
               }),
             ]
           : []),
-        fetchExplicitDiscovery(a2aUrl, {
+        fetchIfRobotsAllowed(a2aUrl, {
           bodyLimit: 1024 * 1024,
           accept: "application/json,*/*;q=0.1",
         }),
@@ -345,14 +371,11 @@ export class ScanRunner {
 
       const oauthPromise = authDeclared(phaseArtifacts)
         ? Promise.all([
-            fetchExplicitDiscovery(
-              discoveryUrl(target, "/.well-known/oauth-authorization-server"),
-              {
-                bodyLimit: 1024 * 1024,
-                accept: "application/json,*/*;q=0.1",
-              },
-            ),
-            fetchExplicitDiscovery(discoveryUrl(target, "/.well-known/oauth-protected-resource"), {
+            fetchIfRobotsAllowed(discoveryUrl(target, "/.well-known/oauth-authorization-server"), {
+              bodyLimit: 1024 * 1024,
+              accept: "application/json,*/*;q=0.1",
+            }),
+            fetchIfRobotsAllowed(discoveryUrl(target, "/.well-known/oauth-protected-resource"), {
               bodyLimit: 1024 * 1024,
               accept: "application/json,*/*;q=0.1",
             }),
@@ -361,15 +384,22 @@ export class ScanRunner {
       const representativePromise =
         job.segment === "store" && robotsDecisionKnown && targetAllowed
           ? (async () => {
-              const candidates = productCandidates(target, sitemap, usedHttpFallback).filter(
-                robotsAllows,
-              );
+              const found = productCandidates(target, sitemap, usedHttpFallback);
+              const refusals = await Promise.all(found.map(admit));
+              const candidates = found.filter((_, index) => !refusals[index]);
+              // A product page robots.txt keeps the scanner off still tells the
+              // engine why the store's product data went unread.
+              const [firstFound] = found;
+              const [firstRefusal] = refusals;
+              if (!candidates.length && firstFound && firstRefusal)
+                return unavailableArtifact(firstFound, firstRefusal);
               const heads = await Promise.all(
                 candidates.map((candidate) =>
                   fetch(candidate, {
                     method: "HEAD",
                     bodyLimit: 0,
                     accept: "text/html,*/*;q=0.1",
+                    admit,
                   }),
                 ),
               );
@@ -380,10 +410,16 @@ export class ScanRunner {
                 [405, 501].includes(head.status),
               );
               const index = successfulIndex === -1 ? unsupportedHeadIndex : successfulIndex;
-              const representative = index === -1 ? undefined : candidates[index];
+              // With no candidate answering HEAD with a page, the first answer,
+              // an error status or a failure, tells the engine why none was
+              // read. It is not asked again with GET: a page gone or a rate
+              // limit answers GET the same, and the request is the scan's.
+              if (index === -1) return heads[0];
+              const representative = candidates[index];
               return representative
                 ? await fetch(representative, {
                     bodyLimit: 2 * 1024 * 1024,
+                    admit,
                   })
                 : undefined;
             })()

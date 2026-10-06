@@ -148,6 +148,20 @@
       "when": 1790262052271,
       "tag": "0020_the_scanner_keeps_no_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1790565342281,
+      "tag": "0021_the_scanner_caches_no_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1790566337223,
+      "tag": "0022_the_browser_observation_keeps_no_signals",
+      "breakpoints": true
     }
   ]
 }

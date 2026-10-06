@@ -80,7 +80,6 @@ const RECENT_SCANS = `
     s.score,
     s.coverage,
     s.level,
-    s.cache_hit,
     s.accepted_at,
     s.finished_at,
     case
@@ -172,7 +171,6 @@ export type OperatorRecentScan = {
   score: number | null;
   coverage: number | null;
   level: string | null;
-  cacheHit: boolean;
   acceptedAt: string;
   finishedAt: string | null;
   durationSeconds: number | null;
@@ -249,7 +247,6 @@ export async function getOperatorDashboard(): Promise<OperatorDashboard> {
       score: asNullableNumber(row.score),
       coverage: asNullableNumber(row.coverage),
       level: row.level === null ? null : String(row.level),
-      cacheHit: Boolean(row.cache_hit),
       acceptedAt: asIso(row.accepted_at),
       finishedAt: row.finished_at === null ? null : asIso(row.finished_at),
       durationSeconds: asNullableNumber(row.duration_seconds),

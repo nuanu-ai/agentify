@@ -1,4 +1,5 @@
 import {
+  BROWSER_OBSERVATION_IDS,
   BROWSER_OBSERVATION_VERSION,
   type BrowserObservationOutputV1,
 } from "@agentify/scanner-contracts";
@@ -39,28 +40,13 @@ const output: BrowserObservationOutputV1 = {
   actor_build: observation.actorBuild,
   status: "completed",
   pages_assessed: 1,
-  signals: {
-    rendered_text_chars: 100,
-    raw_to_rendered_ratio: 1,
-    landmark_counts: { main: 1 },
-    heading_level_counts: { h1: 1 },
-    interactive_control_count: 0,
-    unnamed_control_count: 0,
-    form_control_count: 0,
-    unlabeled_form_control_count: 0,
-    webmcp_present: false,
-    webmcp_tool_count: 0,
-    console_error_categories: [],
-    failed_resource_categories: [],
-    mixed_content_count: 0,
-    dom_node_count: 10,
-    script_count: 1,
-    request_count: 2,
-    transferred_bytes: 1_024,
-    challenge_kind: null,
-  },
-  observations: [],
-  timings: { total_ms: 100, pages: [100] },
+  observations: BROWSER_OBSERVATION_IDS.map((id) => ({
+    id,
+    status: "not_applicable",
+    summary_code: "not_observed",
+    evidence: {},
+  })),
+  timings: { total_ms: 100 },
 };
 
 function repositoryFake(overrides: Partial<BrowserObservationRepository> = {}) {
@@ -264,6 +250,32 @@ describe("browser observation job", () => {
       reason: "actor_build_mismatch",
       usageUsd: 0.01,
     });
+  });
+
+  it("names the contract version when a build answers in another one", async () => {
+    const answer = async (value: unknown) => {
+      const { repo, state: repositoryState } = repositoryFake();
+      const { provider: apify } = providerFake({ getOutput: async () => value as never });
+      await processBrowserObservationJob(
+        {
+          observation_id: observation.id,
+          operation_id: observation.operationId,
+          attempt_no: 1,
+        },
+        { repository: repo, provider: apify, config },
+      );
+      return repositoryState.terminal?.reason;
+    };
+    // The shape an Actor build of the previous contract answers with.
+    expect(
+      await answer({
+        ...output,
+        schema_version: "browser-public-v1.0.0",
+        signals: { request_count: 1 },
+      }),
+    ).toBe("browser_contract_version_mismatch");
+    // An answer in this version that breaks it is refused in words of its own.
+    expect(await answer({ ...output, pages_assessed: 9 })).toBe("browser_output_invalid");
   });
 
   it("does not create a duplicate paid run when stale state is unknown", async () => {

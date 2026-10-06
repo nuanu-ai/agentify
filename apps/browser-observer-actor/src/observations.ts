@@ -1,10 +1,12 @@
-import type {
-  BrowserObservationFinding,
-  BrowserObservationSignals,
+import {
+  BROWSER_OBSERVATION_IDS,
+  BROWSER_OBSERVATION_VERSION,
+  type BrowserObservationFinding,
+  type BrowserObservationOutputV1,
 } from "@agentify/scanner-contracts";
-import { BROWSER_OBSERVATION_IDS } from "@agentify/scanner-contracts";
 
 import type { PageSignals } from "./browser-signals.js";
+import { sanitizeBrowserOutput } from "./sanitize-output.js";
 
 export type ObservationRuntime = {
   pages: readonly PageSignals[];
@@ -46,38 +48,31 @@ const sum = (
     | "unnamedControlCount"
     | "formControlCount"
     | "unlabeledFormControlCount"
-    | "webmcpToolCount"
-    | "domNodeCount"
-    | "scriptCount",
+    | "webmcpToolCount",
 ): number => pages.reduce((total, page) => total + page[field], 0);
 
-export const aggregateBrowserSignals = (runtime: ObservationRuntime): BrowserObservationSignals => {
-  const renderedTextChars = Math.min(5_000_000, sum(runtime.pages, "renderedTextChars"));
+/**
+ * What the findings read, summed over the pages observed. It stays inside the
+ * Actor: the output carries the findings built from it, not the sums.
+ */
+const aggregateBrowserSignals = (runtime: ObservationRuntime) => {
+  const renderedTextChars = sum(runtime.pages, "renderedTextChars");
   const rawTextChars = sum(runtime.pages, "rawTextChars");
   return {
     rendered_text_chars: renderedTextChars,
     raw_to_rendered_ratio:
-      renderedTextChars > 0
-        ? Math.min(100, Number((rawTextChars / renderedTextChars).toFixed(4)))
-        : null,
+      renderedTextChars > 0 ? Number((rawTextChars / renderedTextChars).toFixed(4)) : null,
     landmark_counts: addCounts(runtime.pages, "landmarkCounts"),
     heading_level_counts: addCounts(runtime.pages, "headingLevelCounts"),
-    interactive_control_count: Math.min(100_000, sum(runtime.pages, "interactiveControlCount")),
-    unnamed_control_count: Math.min(100_000, sum(runtime.pages, "unnamedControlCount")),
-    form_control_count: Math.min(100_000, sum(runtime.pages, "formControlCount")),
-    unlabeled_form_control_count: Math.min(
-      100_000,
-      sum(runtime.pages, "unlabeledFormControlCount"),
-    ),
+    interactive_control_count: sum(runtime.pages, "interactiveControlCount"),
+    unnamed_control_count: sum(runtime.pages, "unnamedControlCount"),
+    form_control_count: sum(runtime.pages, "formControlCount"),
+    unlabeled_form_control_count: sum(runtime.pages, "unlabeledFormControlCount"),
     webmcp_present: runtime.pages.some((page) => page.webmcpPresent),
-    webmcp_tool_count: Math.min(10_000, sum(runtime.pages, "webmcpToolCount")),
+    webmcp_tool_count: sum(runtime.pages, "webmcpToolCount"),
     console_error_categories: [...new Set(runtime.consoleErrorCategories)].sort().slice(0, 20),
     failed_resource_categories: [...new Set(runtime.failedResourceCategories)].sort().slice(0, 20),
     mixed_content_count: runtime.mixedContentCount,
-    dom_node_count: Math.min(5_000_000, sum(runtime.pages, "domNodeCount")),
-    script_count: Math.min(100_000, sum(runtime.pages, "scriptCount")),
-    request_count: runtime.requestCount,
-    transferred_bytes: runtime.transferredBytes,
     challenge_kind: runtime.pages.find((page) => page.challengeKind)?.challengeKind ?? null,
   };
 };
@@ -476,3 +471,45 @@ export const buildObservations = (runtime: ObservationRuntime): BrowserObservati
     }),
   ];
 };
+
+/**
+ * The Actor's output, for every way a run ends: the runner decides the status
+ * and this builds the rest from what the run observed, through the sanitizer
+ * that stands between the Actor and the worker.
+ */
+// How a run that reached its pages ended: blocked when a page stood behind a
+// challenge, partial when a page failed, a budget ran out or the run was cut
+// short, completed otherwise.
+export const observedRunStatus = (
+  runtime: ObservationRuntime,
+  cutShort: boolean,
+): BrowserObservationOutputV1["status"] =>
+  runtime.pages.length === 0
+    ? "failed"
+    : runtime.pages.some((page) => page.challengeKind)
+      ? "blocked"
+      : runtime.pageFailureCount > 0 ||
+          runtime.byteBudgetExceeded ||
+          runtime.requestBudgetExceeded ||
+          cutShort
+        ? "partial"
+        : "completed";
+
+export const buildBrowserOutput = (options: {
+  operationId: string;
+  actorBuild: string;
+  status: BrowserObservationOutputV1["status"];
+  runtime: ObservationRuntime;
+  totalMs: number;
+}): BrowserObservationOutputV1 =>
+  sanitizeBrowserOutput({
+    schema_version: BROWSER_OBSERVATION_VERSION,
+    operation_id: options.operationId,
+    actor_build: options.actorBuild,
+    status: options.status,
+    pages_assessed: options.runtime.pages.length,
+    observations: buildObservations(options.runtime),
+    timings: {
+      total_ms: Math.min(120_000, options.totalMs),
+    },
+  });

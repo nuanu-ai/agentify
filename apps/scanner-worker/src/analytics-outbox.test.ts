@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   type AdvisoryLockClient,
@@ -7,6 +7,7 @@ import {
   createPartnerRateLimitedDeliverer,
   type OutboxRow,
   PARTNER_POSTBACK_ENDPOINT,
+  startAnalyticsOutboxConsumer,
 } from "./analytics-outbox.js";
 
 const row = (overrides: Partial<OutboxRow> = {}): OutboxRow => ({
@@ -287,5 +288,35 @@ describe("analytics destination delivery", () => {
       code: `partner_tracker_http_${status}`,
       retryable,
     });
+  });
+});
+
+describe("analytics outbox consumer", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("keeps delivering after a cycle fails, and reports the failure", async () => {
+    vi.useFakeTimers();
+    let claims = 0;
+    const delivered: string[] = [];
+    const errors: unknown[] = [];
+    const stop = startAnalyticsOutboxConsumer({
+      repository: {
+        claim: async () => {
+          claims += 1;
+          if (claims === 1) throw new Error("connection terminated");
+          return claims === 2 ? [row()] : [];
+        },
+        delivered: async (id: string) => {
+          delivered.push(id);
+        },
+      } as never,
+      deliver: async () => ({ ok: true }),
+      onError: (error) => errors.push(error),
+    });
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    stop();
+    expect(errors).toHaveLength(1);
+    expect(delivered).toEqual([row().id]);
   });
 });

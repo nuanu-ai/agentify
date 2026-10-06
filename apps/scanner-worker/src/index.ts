@@ -57,6 +57,8 @@ try {
     error_type: safeErrorType(error),
     error_code: safeErrorCode(error),
   });
-  process.exitCode = 1;
-  healthServer.close();
+  // A start that failed past the queue's start leaves pg-boss and the pool
+  // holding the process open, alive and doing nothing, so its supervisor
+  // would never restart it; it exits instead.
+  process.exit(1);
 }

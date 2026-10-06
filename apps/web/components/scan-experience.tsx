@@ -10,13 +10,14 @@ import {
 } from "@agentify/scanner-contracts";
 import Link from "next/link";
 import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
-
+import { robotsHeadline, unexplainedUnavailable } from "../lib/robots-notice";
 import { Brand } from "./brand";
 import { BrowserObservations } from "./browser-observations";
 import { CopyRemediationPrompt } from "./copy-remediation-prompt";
 import { PrivacyChoicesButton } from "./privacy-choices-button";
 import { PublicShareActions } from "./public-share-actions";
 import { RegistrationForm } from "./registration-form";
+import { RobotsNotice } from "./robots-notice";
 import styles from "./scan-experience.module.css";
 import { SiteDoors } from "./site-chrome";
 import { StatusBadge } from "./status-badge";
@@ -42,7 +43,14 @@ const CHECK_LABELS = {
   hreflang_locales: "Language alternatives",
 } as const;
 
-type FixtureName = "running" | "partial" | "failed" | "blocked" | "teaser";
+type FixtureName =
+  | "running"
+  | "partial"
+  | "failed"
+  | "blocked"
+  | "teaser"
+  | "robots"
+  | "robots-partial";
 
 export function ScanExperience({
   browserObservationsEnabled,
@@ -172,6 +180,7 @@ export function ScanExperience({
         {data?.status === "failed" ? (
           <FailedState
             blocked={fixtureName === "blocked"}
+            checks={data.checks}
             onRetry={() => window.location.assign("/")}
           />
         ) : null}
@@ -185,7 +194,7 @@ export function ScanExperience({
               scanId={scanId}
             />
           ) : (
-            <FailedState blocked={false} onRetry={() => void poll()} />
+            <FailedState blocked={false} checks={data.checks} onRetry={() => void poll()} />
           )
         ) : null}
 
@@ -340,8 +349,9 @@ function TeaserState({
 
   return (
     <div className={styles.teaser}>
-      {data.status === "partial" ? (
-        <div className={styles.partialNotice}>
+      <RobotsNotice checks={data.checks} className={styles.partialNotice} />
+      {unexplainedUnavailable(data.checks).length ? (
+        <div className={styles.partialNotice} data-unavailable-notice>
           Some checks were unavailable. They reduce coverage and are not treated as confirmed
           failures.
         </div>
@@ -482,15 +492,35 @@ function ScoreScale({ score }: Readonly<{ score: number }>) {
   );
 }
 
-function FailedState({ blocked, onRetry }: Readonly<{ blocked: boolean; onRetry: () => void }>) {
+function FailedState({
+  blocked,
+  checks,
+  onRetry,
+}: Readonly<{
+  blocked: boolean;
+  checks: ScanStatusResponse["checks"];
+  onRetry: () => void;
+}>) {
+  const headline = robotsHeadline(checks);
   return (
     <div className={styles.failed}>
-      <h1>{blocked ? "The site blocked our reader" : "No reliable diagnostic was produced"}</h1>
-      <p>
-        {blocked
-          ? "Public requests were blocked before enough checks could reach a verdict. No score or registration gate is shown."
-          : "Coverage stayed below the minimum for an honest result. This can happen after a timeout, access block, or scanner failure."}
-      </p>
+      <h1 data-robots-headline={headline ?? undefined}>
+        {headline === "disallowed"
+          ? "Your robots.txt kept the scanner out"
+          : headline === "unassessed"
+            ? "The scanner could not assess your robots.txt"
+            : blocked
+              ? "The site blocked our reader"
+              : "No reliable diagnostic was produced"}
+      </h1>
+      <RobotsNotice checks={checks} />
+      {headline ? null : (
+        <p>
+          {blocked
+            ? "Public requests were blocked before enough checks could reach a verdict. No score or registration gate is shown."
+            : "Coverage stayed below the minimum for an honest result. This can happen after a timeout, access block, or scanner failure."}
+        </p>
+      )}
       <button className="button button-primary" onClick={onRetry} type="button">
         Try again
       </button>
@@ -566,13 +596,38 @@ function getStoredToken(scanId: string) {
 
 function parseFixtureName(value?: string): FixtureName | undefined {
   if (process.env.NODE_ENV === "production") return undefined;
-  return value && ["running", "partial", "failed", "blocked", "teaser"].includes(value)
+  return value &&
+    ["running", "partial", "failed", "blocked", "teaser", "robots", "robots-partial"].includes(
+      value,
+    )
     ? (value as FixtureName)
     : undefined;
 }
 
+// The checks robots.txt rules on: every check but the three that read
+// robots.txt itself and the platform fingerprint.
+const ROBOTS_CHECK_IDS = [4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 17, 18];
+const WELL_KNOWN_CHECK_IDS = [9, 10, 17];
+
 function createDevFixture(name: FixtureName): ScanStatusResponse {
   const now = new Date().toISOString();
+  if (name === "robots") {
+    return {
+      status: "failed",
+      progress: { completed: 18, total: 18 },
+      checks: CHECK_DEFINITIONS.map((check) => {
+        const robots = ROBOTS_CHECK_IDS.includes(check.id);
+        return {
+          id: check.id,
+          label_code: check.labelCode,
+          status: robots ? ("unavailable" as const) : ("pass" as const),
+          robots: robots ? ("disallowed" as const) : null,
+        };
+      }),
+      updated_at: now,
+      target_host: "example.com",
+    };
+  }
   if (name === "failed" || name === "blocked") {
     return {
       status: "failed",
@@ -581,6 +636,7 @@ function createDevFixture(name: FixtureName): ScanStatusResponse {
         id: check.id,
         label_code: check.labelCode,
         status: "unavailable" as const,
+        robots: null,
       })),
       updated_at: now,
       target_host: "example.com",
@@ -595,23 +651,30 @@ function createDevFixture(name: FixtureName): ScanStatusResponse {
         label_code: check.labelCode,
         status:
           index < 7 ? ("pass" as const) : index === 7 ? ("running" as const) : ("pending" as const),
+        robots: null,
       })),
       updated_at: now,
       target_host: "example.com",
     };
   }
+  const wellKnownDisallowed = name === "robots-partial";
   return {
-    status: name === "partial" ? "partial" : "completed",
+    status: name === "partial" || wellKnownDisallowed ? "partial" : "completed",
     progress: { completed: 18, total: 18 },
     checks: CHECK_DEFINITIONS.map((check, index) => ({
       id: check.id,
       label_code: check.labelCode,
       status:
-        name === "partial" && index > 13
+        (name === "partial" && index > 13) ||
+        (wellKnownDisallowed && [...WELL_KNOWN_CHECK_IDS, 14].includes(check.id))
           ? ("unavailable" as const)
           : index % 4 === 0
             ? ("partial" as const)
             : ("pass" as const),
+      robots:
+        wellKnownDisallowed && WELL_KNOWN_CHECK_IDS.includes(check.id)
+          ? ("disallowed" as const)
+          : null,
     })),
     updated_at: now,
     target_host: "example.com",

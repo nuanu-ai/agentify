@@ -5,7 +5,6 @@ import {
   type BrowserObservationOutputV1,
   browserObservationFindingSchema,
   browserObservationOutputV1Schema,
-  browserObservationSignalsSchema,
 } from "@agentify/scanner-contracts";
 import { and, asc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 
@@ -56,7 +55,6 @@ export type BrowserObservationRecord = {
   actorBuild: string;
   status: BrowserObservationLifecycleStatus;
   pagesAssessed: number;
-  signals: BrowserObservationOutputV1["signals"] | null;
   findings: BrowserObservationOutputV1["observations"];
   updatedAt: Date;
 };
@@ -345,13 +343,10 @@ export function createBrowserObservationRepository(db: Database) {
             status: output.status,
             actorBuild: output.actor_build,
             pagesAssessed: output.pages_assessed,
-            requestCount: output.signals.request_count,
-            transferredBytes: output.signals.transferred_bytes,
             durationMs: output.timings.total_ms,
             usageUsd: String(usageUsd),
             budgetReservedUsd: String(remainingReservationUsd),
             usageReconciledAt: remainingReservationUsd > 0 ? null : finishedAt,
-            signals: output.signals,
             failureCode: output.status === "failed" ? "actor_failed" : null,
             finishedAt,
             lastPolledAt: finishedAt,
@@ -677,7 +672,6 @@ export function createBrowserObservationRepository(db: Database) {
         actorBuild: row.actorBuild,
         status: row.status,
         pagesAssessed: row.pagesAssessed,
-        signals: row.signals ? browserObservationSignalsSchema.parse(row.signals) : null,
         findings: findings.map((finding) =>
           browserObservationFindingSchema.parse({
             id: finding.findingId,

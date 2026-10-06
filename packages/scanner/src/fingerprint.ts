@@ -72,7 +72,11 @@ const PSP_DETECTORS: Detector[] = [
   { value: "PayPal", strong: [/paypal\.com\/sdk\/js/i], weak: [/paypal/i] },
   {
     value: "Adyen",
-    strong: [/checkoutshopper-.*\.adyen\.com/i, /adyen-checkout/i],
+    // A checkout name and, later on its line, the Adyen domain. Each attempt
+    // stops at the next checkout name, which the attempt from there covers:
+    // `checkoutshopper-.*` walked the rest of the line from every name, and
+    // 512 KiB of the name on one line held the scan for twenty seconds.
+    strong: [/checkoutshopper-(?:(?!checkoutshopper-).)*\.adyen\.com/i, /adyen-checkout/i],
     weak: [/adyen/i],
   },
   {

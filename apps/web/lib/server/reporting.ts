@@ -20,7 +20,7 @@ import {
   waitlistEntries,
 } from "@agentify/scanner-database";
 import { and, avg, count, eq, sql } from "drizzle-orm";
-
+import { robotsReasonFor } from "../robots-notice";
 import { ownedLead, type Visitor, visitorOf } from "./auth";
 import { getServerConfig } from "./config";
 import { deriveCapability, hmacHex } from "./crypto";
@@ -115,6 +115,7 @@ export async function getFullReport(
       summary_code: row?.summaryCode ?? null,
       user_impact_code: row?.userImpactCode ?? null,
       fix_code: row?.fixCode ?? null,
+      robots: robotsReasonFor(row?.errorCode),
       evidence: sanitizeEvidence(row?.evidence),
     };
   });

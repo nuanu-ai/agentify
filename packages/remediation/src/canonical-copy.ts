@@ -28,12 +28,14 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
   a2a_unavailable: "The A2A agent-card surface could not be assessed during this scan.",
   a2a_valid: "A valid A2A agent card was found at the canonical public location.",
   agent_ua_blocked:
-    "The site served a blocked or unusable response to the declared Agentify user agent.",
+    "The site answered requests carrying the ChatGPT-User and Claude-User tokens with a blocked or unusable page, where a plain request was answered.",
   agent_ua_compatible:
-    "The site remained publicly readable when requested with the declared Agentify user agent.",
-  agent_ua_neutral_unavailable: "The neutral comparison request could not be assessed.",
-  agent_ua_partial: "Only part of the agent user-agent comparison remained publicly readable.",
-  agent_ua_probe_unavailable: "The agent user-agent request could not be assessed.",
+    "The site answered requests carrying the ChatGPT-User and Claude-User tokens as it answered a plain request.",
+  agent_ua_neutral_unavailable: "The plain comparison request could not be assessed.",
+  agent_ua_partial:
+    "The site answered a request carrying one of the ChatGPT-User and Claude-User tokens with a blocked or unusable page, and the other as a plain request.",
+  agent_ua_probe_unavailable:
+    "A request carrying the ChatGPT-User or Claude-User token could not be assessed.",
   ai_policy_absent: "robots.txt does not state a clear policy for the supported AI crawler groups.",
   ai_policy_explicit: "robots.txt states an explicit policy for every supported AI crawler group.",
   ai_policy_partial:
@@ -141,8 +143,8 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
 const FINDING_HEADLINE_COPY: Readonly<Record<string, string>> = {
   a2a_malformed: "Your declared A2A card cannot be used reliably",
   a2a_noncanonical_or_malformed: "Your A2A declaration is misplaced or unreadable",
-  agent_ua_blocked: "Your site blocks a declared automated reader",
-  agent_ua_partial: "Agents receive only part of your public content",
+  agent_ua_blocked: "Your site turns away requests that carry AI agents' tokens",
+  agent_ua_partial: "Your site answers one AI agent's token differently",
   ai_policy_absent: "Supported AI crawler groups have no clear robots.txt policy",
   ai_policy_partial: "Some supported AI crawler groups have no clear policy",
   content_signal_absent: "No Content-Signal policy is declared",
@@ -185,7 +187,8 @@ const IMPACT_COPY: Readonly<Record<string, string>> = {
     "A2A is optional for ordinary websites and should not be added unless a real agent endpoint exists.",
   agent_ua_accessibility:
     "An agent-specific block can hide otherwise public facts from automated readers.",
-  agent_ua_not_assessed: "The scan could not compare neutral and declared-agent access reliably.",
+  agent_ua_not_assessed:
+    "The scan could not compare a plain request with requests carrying AI agents' tokens.",
   ai_policy_ambiguity:
     "Ambiguous crawler policy makes permitted use unclear to site operators and compliant crawlers.",
   ai_policy_not_assessed:
@@ -273,7 +276,7 @@ const FIX_COPY: Readonly<Record<string, string>> = {
   add_markdown_negotiation:
     "Add standards-based HTTP content negotiation for a fact-equivalent Markdown representation.",
   allow_agent_user_agents:
-    "Review CDN and WAF rules so the declared scanner user agent can read the same public facts as a neutral client.",
+    "If AI agents are meant to read this site, look for a rule that treats their tokens differently; a common one is a CDN's or firewall's setting that blocks AI bots. The scanner's requests come from its own addresses, so a rule that lets the real agents through by address can still turn it away. If the difference is intended, nothing needs to change.",
   complete_mcp_card:
     "Complete the MCP server card with valid discovery fields, and label the convention experimental.",
   complete_oauth_metadata:

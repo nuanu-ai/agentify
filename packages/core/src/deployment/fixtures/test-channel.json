@@ -219,7 +219,6 @@
         "REGISTRATION_ENABLED": "true",
         "REMEDIATION_PROMPT_ENABLED": "true",
         "REPORT_IDENTITY_SECRET": "fixture-report-identity-secret-of-64-hexish-characters-0000000000",
-        "SCANNER_CACHE_ENABLED": "false",
         "SCAN_ACCEPTANCE_ENABLED": "true",
         "STRIPE_PUBLISHABLE_KEY": "",
         "TOKEN_HMAC_SECRET": "fixture-token-hmac-secret-with-enough-characters",
@@ -320,7 +319,6 @@
         "PARTNER_POSTBACK_SECRET": "",
         "POSTHOG_DESTINATION_ENV": "local",
         "POSTHOG_ENABLED": "false",
-        "SCANNER_CACHE_ENABLED": "false",
         "SCANNER_CONCURRENCY": "2",
         "WORKER_ID": "agentify-test-1"
       },

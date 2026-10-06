@@ -10,7 +10,7 @@ export type AnalyticsProperties = Record<string, AnalyticsScalar>;
 const PROPERTY_ALLOWLIST: Record<AnalyticsEventName, ReadonlySet<string>> = {
   landing_view: new Set(["day", "device", "country"]),
   scan_started: new Set(["challenge_used"]),
-  scan_completed: new Set(["cache_hit", "coverage", "terminal_status"]),
+  scan_completed: new Set(["coverage", "terminal_status"]),
   results_viewed: new Set(["coverage_band"]),
   registration_started: new Set([]),
   registration_completed: new Set(["role"]),

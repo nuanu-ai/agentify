@@ -15,6 +15,7 @@ import { PrivacyChoicesButton } from "../../../components/privacy-choices-button
 import { ReportActionPanel } from "../../../components/report-action-panel";
 import { ReportBenchmark } from "../../../components/report-benchmark";
 import { ReportCabinetControl } from "../../../components/report-cabinet-control";
+import { RobotsNotice } from "../../../components/robots-notice";
 import { SiteDoors } from "../../../components/site-chrome";
 import { StatusBadge } from "../../../components/status-badge";
 import { getPublicAppConfig } from "../../../lib/app-config";
@@ -156,6 +157,7 @@ export default async function ReportPage({ params }: { params: Promise<{ scanId:
         <div className={styles.sectionHeading}>
           <h2>All 18 checks</h2>
         </div>
+        <RobotsNotice checks={report.checks} className={styles.scopeNote} />
         {REPORT_GROUPS.map((group) => (
           <section className={styles.checkGroup} key={group.title}>
             <h3>{group.title}</h3>
@@ -171,9 +173,13 @@ export default async function ReportPage({ params }: { params: Promise<{ scanId:
                   <div>
                     <p>{canonicalSummaryCopy(check.summary_code)}</p>
                     <p>
-                      {check.status === "unavailable"
-                        ? "This public surface could not be assessed, so no defect is inferred."
-                        : canonicalImpactCopy(check.user_impact_code)}
+                      {check.robots === "disallowed"
+                        ? "Not assessed: your robots.txt keeps the scanner out of what this check reads, and the scanner follows it. No defect is inferred."
+                        : check.robots === "unassessed"
+                          ? "Not assessed: robots.txt could not be read or decided for what this check reads, so the scanner did not read it. No defect is inferred."
+                          : check.status === "unavailable"
+                            ? "This public surface could not be assessed, so no defect is inferred."
+                            : canonicalImpactCopy(check.user_impact_code)}
                     </p>
                     {checkScopeNote(check.id) ? (
                       <p className={styles.scopeNote}>

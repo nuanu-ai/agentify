@@ -211,10 +211,6 @@ export const scans = pgTable(
     level: diagnosticLevelEnum("level"),
     applicableWeight: numeric("applicable_weight", { precision: 7, scale: 3 }),
     earnedWeight: numeric("earned_weight", { precision: 7, scale: 3 }),
-    cacheHit: boolean("cache_hit").notNull().default(false),
-    sourceScanId: uuid("source_scan_id").references((): AnyPgColumn => scans.id, {
-      onDelete: "set null",
-    }),
     failureCode: text("failure_code"),
     accessTokenHash: text("access_token_hash").notNull(),
     accessTokenExpiresAt: utcTimestamp("access_token_expires_at").notNull(),
@@ -326,30 +322,6 @@ export const scanChecks = pgTable(
   ],
 );
 
-export const scanSnapshots = pgTable(
-  "scan_snapshots",
-  {
-    id: uuid("id").primaryKey(),
-    cacheKey: text("cache_key").notNull(),
-    rubricVersion: text("rubric_version").notNull(),
-    segmentProfile: text("segment_profile").notNull(),
-    canonicalTargetUrl: text("canonical_target_url").notNull(),
-    checks: jsonb("checks").notNull(),
-    fingerprint: jsonb("fingerprint").notNull(),
-    score: smallint("score").notNull(),
-    coverage: numeric("coverage", { precision: 4, scale: 3 }).notNull(),
-    createdAt: utcTimestamp("created_at").notNull().defaultNow(),
-    expiresAt: utcTimestamp("expires_at").notNull(),
-    invalidatedAt: utcTimestamp("invalidated_at"),
-  },
-  (table) => [
-    check("scan_snapshots_id_uuidv7", uuidV7Check(table.id)),
-    check("scan_snapshots_score_range", sql`${table.score} between 0 and 100`),
-    check("scan_snapshots_coverage_range", sql`${table.coverage} between 0 and 1`),
-    uniqueIndex("scan_snapshots_cache_key_uidx").on(table.cacheKey),
-  ],
-);
-
 export const scanFingerprints = pgTable("scan_fingerprints", {
   scanId: uuid("scan_id")
     .primaryKey()
@@ -388,8 +360,6 @@ export const browserObservations = pgTable(
     finishedAt: utcTimestamp("finished_at"),
     lastPolledAt: utcTimestamp("last_polled_at"),
     pagesAssessed: smallint("pages_assessed").notNull().default(0),
-    requestCount: integer("request_count").notNull().default(0),
-    transferredBytes: integer("transferred_bytes").notNull().default(0),
     durationMs: integer("duration_ms"),
     usageUsd: numeric("usage_usd", { precision: 10, scale: 6 }),
     budgetDay: date("budget_day", { mode: "string" }),
@@ -402,7 +372,6 @@ export const browserObservations = pgTable(
     usageReconciledAt: utcTimestamp("usage_reconciled_at"),
     storageCleanedAt: utcTimestamp("storage_cleaned_at"),
     failureCode: text("failure_code"),
-    signals: jsonb("signals"),
     updatedAt: utcTimestamp("updated_at").notNull().defaultNow(),
   },
   (table) => [
