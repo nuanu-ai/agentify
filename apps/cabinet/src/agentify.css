@@ -1642,6 +1642,26 @@ h2 {
   }
 }
 
+/* Revoking a key is two presses: the first opens the question under the
+   button, inside the row, the second answers it (keys.ts). Inside the row
+   rather than floating over it, because the table's rounded frame clips
+   anything that hangs out of its last row. */
+.confirm-open {
+  list-style: none;
+  cursor: pointer;
+}
+.confirm-open::-webkit-details-marker {
+  display: none;
+}
+.confirm-pop {
+  margin-top: 8px;
+  text-align: right;
+}
+.confirm-pop > p {
+  margin: 0 0 8px;
+  font-size: 0.875rem;
+}
+
 /* The burger menu (html.ts, narrowMenu). Where there is no room for the
    sidebar, the bar at the top is one row — the lockup and the burger — and the
    sections, the documentation and the account open over the page from it,

@@ -107,10 +107,14 @@ const keyControl = (base: string, entry: MerchantKey): string => {
   }
   // Named "Revoke" rather than "Disable", because it does not come back and the
   // word people already use for a credential that does not come back is this
-  // one. The page says so in words above the table as well; a control with no
-  // confirmation behind it should not be the only place that is said.
-  return `<form class="inline" method="post" action="${escaped(base)}/keys/${encodeURIComponent(entry.id)}/disable">
-<button class="button button-compact button-secondary" type="submit">Revoke</button></form>`;
+  // one, and the page says so in words beside the table as well.
+  //
+  // Two presses, and the first one only opens the second. A details element
+  // does that without a script, so a stray tap on a phone or a page whose
+  // script did not load cannot revoke anything on its own.
+  return `<details class="confirm-revoke"><summary class="confirm-open button button-compact button-secondary">Revoke</summary>
+<div class="confirm-pop"><p>This key will stop working for good.</p><form class="inline" method="post" action="${escaped(base)}/keys/${encodeURIComponent(entry.id)}/disable">
+<button class="button button-compact button-primary" type="submit">Yes, revoke</button></form></div></details>`;
 };
 
 /**
