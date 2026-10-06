@@ -339,9 +339,16 @@ export const htmlSignals = (html: string, text = visibleText(html)) => {
   };
 };
 
+// A bot challenge served in place of the page. Most come with 401, 403 or
+// 429; one served with another status is known by what its vendor's
+// interstitial carries and an ordinary page does not: PerimeterX's
+// px-captcha, DataDome's captcha-delivery.com and Cloudflare's _cf_chl_opt.
+// A page merely naming a captcha, as every Shopify page does for its forms,
+// or loading Cloudflare's background detection from
+// /cdn-cgi/challenge-platform/scripts/, is the page itself.
 export const isChallenge = (status: number, body: string): boolean =>
   [401, 403, 429].includes(status) ||
-  /captcha|cf-chl-|challenge-platform|access denied|verify you are human/i.test(
+  /px-captcha|captcha-delivery\.com|_cf_chl_opt|access denied|verify you are human/i.test(
     body.slice(0, 64_000),
   );
 
