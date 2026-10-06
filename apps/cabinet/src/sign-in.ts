@@ -48,6 +48,7 @@ ${brandLockup("/")}
   ${destinationInput(destination)}
   <button class="button button-primary" type="submit">Send me a sign-in link</button>
   <p class="quiet">Every sign-in gets its own link. It opens once and expires an hour after it is sent, so there is nothing to keep and no password to remember.</p>
+  <p class="quiet">New to Agentify? Use this same form. Once the link signs you in, one button opens your merchant cabinet.</p>
 </form>
 </div>`,
     mode,
