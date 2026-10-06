@@ -21,16 +21,19 @@ page for a person, so the shape of that is a decision rather than a detail.
 ## Decision
 
 1. **One origin locally.** Caddy, in Docker, is the only door: `/` is the
-   landing, `/docs` the portal, `/cabinet` the cabinet, `/v0/*` the merchant's
+   landing, `/docs` the portal, `/dashboard` the cabinet, `/v0/*` the merchant's
    API and `/x402/*` the storefront an agent buys at — both of them the gateway
    — and `/healthz` the gateway's own probe. A merchant's engineer sees one
    address and never reasons about ports. The same file describes the server
-   later, so what is demonstrated locally is what gets deployed.
+   later, so what is demonstrated locally is what gets deployed. `/cabinet`,
+   the address the dashboard had before (the product owner, 2026-10-06),
+   answers with a permanent redirect to the same path under `/dashboard`, so a
+   bookmark or a link already sent still arrives.
 
    Both deployed channels have the same application routing (the product owner,
    2026-09-17): production at `agentify.ad`, test at `test.agentify.ad`. The
    scanner's application answers `/` and its own paths in place of the static
-   landing; `/cabinet`, `/docs`, `/v0`, `/x402` and `/healthz` go to the
+   landing; `/dashboard`, `/docs`, `/v0`, `/x402` and `/healthz` go to the
    commerce stack by path, as below, and nothing the scanner serves shares a
    prefix with them. `app.agentify.ad` retires. The resource address in every
    challenge and every listing is pinned from the public origin (ADR-0012), so
@@ -50,7 +53,7 @@ page for a person, so the shape of that is a decision rather than a detail.
    sits outside both of the gateway's prefixes because those are the contract,
    and an operational probe is not part of what a merchant's code calls. It
    answers for the gateway alone: not for the cabinet, which reports itself at
-   `/cabinet/healthz`, and not for Postgres. There is deliberately no aggregate
+   `/dashboard/healthz`, and not for Postgres. There is deliberately no aggregate
    health document — a single verdict over several services is read as one and
    is wrong the first time one of them goes down by itself.
 

@@ -37,7 +37,7 @@
 		~^/api/v2/session$ api_v2_session
 		~^/api/v2/scans/[^/]+/.*$ api_v2_scan_action
 		~^/_next/ asset_next
-		~^/(cabinet|v0|x402)(?:/.*)?$ commerce
+		~^/(dashboard|cabinet|v0|x402)(?:/.*)?$ commerce
 		default other
 	}
 

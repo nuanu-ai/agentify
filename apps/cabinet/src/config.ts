@@ -134,7 +134,7 @@ const environmentSchema = z.object({
     // link to another host — with a merchant's session riding along on the
     // redirect they follow. A backslash is refused anywhere in the value for
     // the same reason: nothing in a mount point needs one.
-    .regex(/^(?:|\/(?![/\\])[^\s?#\\]*[^\s?#/\\])$/, 'must be empty or a path such as "/cabinet"')
+    .regex(/^(?:|\/(?![/\\])[^\s?#\\]*[^\s?#/\\])$/, 'must be empty or a path such as "/dashboard"')
     .default(""),
 
   /**

@@ -76,7 +76,7 @@ if (databaseUrl === null) {
       FACILITATOR_URL: "sandbox:scripted",
       REGISTRATION_INVITATION: "the-existing-gateway-invitation",
       PUBLIC_BASE_URL: "https://agentify.ad",
-      BASE_PATH: "/cabinet",
+      BASE_PATH: "/dashboard",
       COOKIE_SECURE: "true",
     });
   }

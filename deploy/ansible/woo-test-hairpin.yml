@@ -152,7 +152,7 @@
             set -eu
             addresses="$(docker exec agentify-woo-lab-wordpress-1 getent ahosts test.agentify.ad | awk '{print $1}' | sort -u)"
             test "$addresses" = '{{ woo_hairpin_public_ip }}'
-            status="$(docker exec agentify-woo-lab-wordpress-1 curl -sS --connect-timeout 5 --max-time 10 --output /dev/null --write-out '%{http_code}' https://test.agentify.ad/cabinet/healthz)"
+            status="$(docker exec agentify-woo-lab-wordpress-1 curl -sS --connect-timeout 5 --max-time 10 --output /dev/null --write-out '%{http_code}' https://test.agentify.ad/dashboard/healthz)"
             test "$status" = 200
             printf '{"dns":"public","cabinet_health":%s}\n' "$status"
           args:

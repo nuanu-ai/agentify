@@ -55,7 +55,7 @@
 # (ADR-0026). The message goes to the cabinet's log here, like every other one,
 # and the door the reader walks through afterwards is the cabinet's own.
 #
-# Open http://localhost:8080/cabinet/sign-in and request a link for your email.
+# Open http://localhost:8080/dashboard/sign-in and request a link for your email.
 # This local sandbox writes the message to the cabinet log. Open the link and
 # press its confirmation button, which makes your account; then press the one
 # control the cabinet offers, "Open my merchant cabinet", which makes your
@@ -404,10 +404,10 @@ services:
       # Registration is an internal cabinet-to-gateway operation. The same
       # secret protects that wire; a person signing in never types it.
       REGISTRATION_INVITATION: "${AGENTIFY_INVITATION-register-on-this-laptop}"
-      # Caddy passes /cabinet through without stripping it, so the process sees
+      # Caddy passes /dashboard through without stripping it, so the process sees
       # the path the browser asked for and builds its links from the same string
       # (deploy/Caddyfile).
-      BASE_PATH: /cabinet
+      BASE_PATH: /dashboard
     depends_on:
       postgres:
         condition: service_healthy
@@ -606,7 +606,7 @@ services:
         condition: service_completed_successfully
 
   # The page a visitor lands on. Deployed, the scanner answers `/` and its own
-  # paths while /cabinet, /docs, /v0, /x402 and /healthz go to the commerce
+  # paths while /dashboard, /docs, /v0, /x402 and /healthz go to the commerce
   # services by path (ADR-0005 §1) — so it answers `/` here too, and the route
   # table in front of it is the one both channels run.
   scanner:
@@ -776,7 +776,7 @@ services:
     #
     # What that costs is larger than it used to be, and worth saying plainly.
     # A dead scanner takes the front page with it, because the front page is
-    # the scanner; /cabinet, /v0 and /x402 go with their own processes. What
+    # the scanner; /dashboard, /v0 and /x402 go with their own processes. What
     # survives any of them is /docs, which this server reads off its own disk.
     # Each comes back by itself when its process does, because Caddy resolves
     # the service name per request rather than at startup.

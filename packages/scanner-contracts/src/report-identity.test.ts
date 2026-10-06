@@ -68,7 +68,7 @@ describe("the internal route between the scanner and the cabinet", () => {
     // set does not hold is refused at the door rather than carried into mail.
     for (const destination of [
       { report: "not-a-scan" },
-      { report: scanId, next: "/cabinet/settings" },
+      { report: scanId, next: "/dashboard/settings" },
       { url: "https://evil.example/" },
       "https://evil.example/",
       "/report/anything",

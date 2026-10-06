@@ -30,7 +30,7 @@ const PATH = "/internal/gateway";
 const MERCHANT = "mch_the_shop";
 const FROM = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 const TO = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
-const THE_SETTINGS_SCREEN = "https://agentify.ad/cabinet/settings";
+const THE_SETTINGS_SCREEN = "https://agentify.ad/dashboard/settings";
 
 const config = () =>
   loadConfig({
@@ -42,7 +42,7 @@ const config = () =>
     FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
     REGISTRATION_INVITATION: "the-existing-gateway-invitation",
     PUBLIC_BASE_URL: "https://agentify.ad",
-    BASE_PATH: "/cabinet",
+    BASE_PATH: "/dashboard",
   });
 
 const aWalletChange: GatewayRequest = {

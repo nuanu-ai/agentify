@@ -30,7 +30,7 @@ function config() {
     FACILITATOR_URL: "sandbox:scripted",
     REGISTRATION_INVITATION: "the-existing-gateway-invitation",
     PUBLIC_BASE_URL: "https://agentify.ad",
-    BASE_PATH: "/cabinet",
+    BASE_PATH: "/dashboard",
     COOKIE_SECURE: "true",
   });
 }
@@ -146,7 +146,11 @@ describe("the cabinet's internal route for the scanner", () => {
         "application/json",
         400,
       ],
-      [JSON.stringify({ ...sendBody, destination: "/cabinet/settings" }), "application/json", 400],
+      [
+        JSON.stringify({ ...sendBody, destination: "/dashboard/settings" }),
+        "application/json",
+        400,
+      ],
       // The question about a session reads the flag and has no way to carry one.
       [
         JSON.stringify({ operation: "session", cookie: "", renew: false, operator: true }),

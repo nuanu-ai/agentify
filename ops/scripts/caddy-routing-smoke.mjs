@@ -425,9 +425,9 @@ try {
     ["/", "scanner"],
     ["/owner", "scanner"],
     ["/api/health", "scanner"],
-    ["/cabinet", "cabinet"],
-    ["/cabinet/sign-in", "cabinet"],
-    ["/cabinet/healthz", "cabinet"],
+    ["/dashboard", "cabinet"],
+    ["/dashboard/sign-in", "cabinet"],
+    ["/dashboard/healthz", "cabinet"],
     ["/v0", "gateway"],
     ["/v0/cards", "gateway"],
     ["/x402", "gateway"],
@@ -435,6 +435,7 @@ try {
     ["/healthz", "gateway"],
     ["/admin", "scanner"],
     ["/admin/users", "scanner"],
+    ["/dashboard-other", "scanner"],
     ["/cabinet-other", "scanner"],
     ["/v0-other", "scanner"],
     ["/x402-other", "scanner"],
@@ -469,18 +470,29 @@ try {
 
   for (const [requestPath, role] of [
     ["/missing", "scanner"],
-    ["/cabinet/missing", "cabinet"],
+    ["/dashboard/missing", "cabinet"],
     ["/x402/missing", "gateway"],
   ]) {
     await expectUpstreamMissing(innerBase, requestPath, role);
   }
 
   for (const [encodedEdge, role] of [
-    ["/cabinet%2Fsign-in", "cabinet"],
+    ["/dashboard%2Fsign-in", "cabinet"],
     ["/v0%2Fcards", "gateway"],
     ["/x402%2Fcatalog", "gateway"],
   ]) {
     await expectProxy(innerBase, encodedEdge, role);
+  }
+  // The address the cabinet had before /dashboard answers with the same path
+  // under the new prefix, query kept, and 308 so a posted form is posted again.
+  for (const [from, to] of [
+    ["/cabinet", "/dashboard"],
+    ["/cabinet/sign-in/open?token=a%2Bb", "/dashboard/sign-in/open?token=a%2Bb"],
+    ["/cabinet%2Fsign-in", "/dashboard/sign-in"],
+  ]) {
+    const moved = await fetch(`${innerBase}${from}`, { redirect: "manual" });
+    assert.equal(moved.status, 308, from);
+    assert.equal(moved.headers.get("location"), to, from);
   }
   response = await fetch(`${innerBase}/docs%2Fguide`);
   assert.equal(response.status, 200);
