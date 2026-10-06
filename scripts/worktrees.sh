@@ -5,9 +5,9 @@
 # Why this file exists. Agents work in worktrees and finish; the merge does
 # not remove the worktree or its branch, so within one day the repository
 # accumulated four 132 MB copies of itself and a thicket of dead branches
-# (Dmitry's rule, 2026-08-26: acceptance of an agent branch ends with the
-# worktree removed and the branch deleted). This script is that final step
-# of acceptance, made safe to run at any moment.
+# (the product owner's rule, 2026-08-26: acceptance of an agent branch ends
+# with the worktree removed and the branch deleted). This script is that
+# final step of acceptance, made safe to run at any moment.
 #
 # What it will never touch: the primary checkout (it is not under
 # .claude/worktrees); locked worktrees (the agent harness locks a worktree

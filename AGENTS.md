@@ -5,23 +5,26 @@ Stage 4 of the pilot plan: an external merchant integrates through the SDK,
 publishes their own products, and fulfills an agent's purchase through
 Agentify. The SDK is the primary product path. WooCommerce is an experimental,
 unproven connector; it is not the product's acceptance gate or a prerequisite
-for SDK delivery. The Freeland pilot passed on Dmitry's word, 2026-09-14. The
-first merchant we do not control is this charter's compatibility boundary.
-Product code is being written, so the "Code" section is in force. Decisions
-live in `docs/decisions/`.
+for SDK delivery. The Freeland pilot passed on the product owner's word,
+2026-09-14. The first merchant we do not control is this charter's
+compatibility boundary. Product code is being written, so the "Code" section
+is in force. Decisions live in `docs/decisions/`.
 
-A stage opens on Dmitry's word, and the architect then changes this paragraph.
+A stage opens on the product owner's word, and the architect then changes this
+paragraph.
 
 The size of a solution is set by the current stage of the plan — not by the
 genre of the task, and not by the density of what is already written around
 it. When in doubt, build the smaller variant.
 
 ## Hierarchy of instructions
-Conflicts are resolved in this order: Dmitry's live word → a decision in
-`docs/decisions/` → this file → general considerations. The live word
-outranks the written one, but a conflict with a written decision is entered
-the same day as an edit to the decision itself — decisions do not drift
-silently.
+The product owner is the one person who holds the final word on the product;
+this charter and the documents under it name the role, not the person.
+Conflicts are resolved in this order: the product owner's live word → a
+decision in `docs/decisions/` → this file → general considerations. The live
+word outranks the written one, but a conflict with a written decision is
+entered the same day as an edit to the decision itself — decisions do not
+drift silently.
 
 ## Skepticism
 Doubt is voiced before implementation; "great idea, on it" in answer to a
@@ -113,7 +116,8 @@ operator.
   Research and product documents are written in the language of their
   audience, and the research notes and ADRs already written in Russian stay as
   they are — they are the historical record, not a translation backlog. The
-  language of the portal is an open question, and Dmitry decides it.
+  language of the portal is an open question, and the product owner decides
+  it.
 - Product and architecture documents are written clean and self-contained:
   present tense, no version comparisons in the body (the history is in git),
   no internal jargon and no cryptic shorthand. A term may be used only if it

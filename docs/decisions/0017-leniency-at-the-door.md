@@ -32,9 +32,10 @@ second shape for the same fact, and two shapes drift.
 
 A spelling opens out without loss; a reading does not, and the door does
 no readings. A card's words — its title, its description and each
-declared field's title — are plain text (Dmitry, 2026-09-25), and the
-door refuses markup, character references and control characters in
-them, naming what it found and where, instead of turning them into
+declared field's title — are plain text (the product owner, 2026-09-25), and so
+are the seller's name (ADR-0034) and a shipment's carrier (ADR-0033),
+and the door refuses markup, character references and control characters
+in them, naming what it found and where, instead of turning them into
 text. A shop connector whose source is HTML reads it as text on its own
 side, through the one converter every connector shares, which asks the
 door's own rule of its output and names a product it cannot make plain.

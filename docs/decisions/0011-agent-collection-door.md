@@ -1,7 +1,8 @@
 # 0011. The order identifier is the agent's proof, for now
 
 Date: 2026-08-27
-Status: accepted for the controlled test and live launch; revisit before the first external buyer
+Status: accepted for the controlled test and live launch; revisit before the first external buyer;
+the shipment paragraph added 2026-09-28 with ADR-0033
 
 ## Context
 
@@ -38,11 +39,17 @@ Asynchronous purchases have a collection path. The weakness is explicit:
 anyone who obtains an identifier through a log, proxy or agent store can read
 that order. They cannot change it, act as its payer or enumerate other orders.
 
-Dmitry accepts this bearer-link risk for the first controlled live launch. No
-external users exist yet, so wallet login would delay running the two
-environments without protecting a public audience. Before the first buyer or
-agent outside Dmitry's controlled launch, this decision is revisited and the
-door is either narrowed or explicitly accepted for that new audience.
+The product owner accepts this bearer-link risk for the first controlled
+live launch. No external users exist yet, so wallet login would delay
+running the two environments without protecting a public audience. Before
+the first buyer or agent outside the product owner's controlled launch, this
+decision is revisited and the door is either narrowed or explicitly accepted
+for that new audience.
+
+Since ADR-0033 the same door hands out a parcel's shipment: a tracking number
+and a tracking link, whose carrier's page may show the buyer's city or who
+signed for it. The revisit weighs that too and writes its verdict here, and
+selling parcels on the live channel waits for it.
 
 ## Alternatives rejected
 

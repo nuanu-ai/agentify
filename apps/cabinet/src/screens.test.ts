@@ -28,7 +28,7 @@ import { signInScreen } from "./sign-in.js";
 import { readable } from "./testing/html.js";
 
 /** A page is drawn for somebody now, and every screen says who (ADR-0009). */
-const SEEN_BY: Viewer = { base: "", mode: "sandbox", who: "dmitry@example.com", confirmed: true };
+const SEEN_BY: Viewer = { base: "", mode: "sandbox", who: "owner@example.com", confirmed: true };
 
 describe("what a page says about the stack it belongs to", () => {
   it("says nothing settles here on the laptop", () => {
@@ -66,7 +66,7 @@ describe("what a page says about the stack it belongs to", () => {
     // Production break: authenticated pages could silently lose the stack label.
     const html = page({
       base: "",
-      who: "dmitry@example.com",
+      who: "owner@example.com",
       confirmed: true,
       tab: "cards",
       title: "Cards",

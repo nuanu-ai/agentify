@@ -17,7 +17,7 @@ import type { Viewer } from "./screens.js";
 import { readable } from "./testing/html.js";
 import { wooImportScreen } from "./woo-screens.js";
 
-const SEEN_BY: Viewer = { base: "", mode: "sandbox", who: "dmitry@example.com", confirmed: true };
+const SEEN_BY: Viewer = { base: "", mode: "sandbox", who: "owner@example.com", confirmed: true };
 
 /**
  * The invitation to go and repair something, found by its shape rather than by

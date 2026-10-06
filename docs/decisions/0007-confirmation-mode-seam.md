@@ -1,7 +1,9 @@
 # 0007. The confirmation mode is built inward and closed outward
 
 Date: 2026-08-27
-Status: accepted (Dmitry, 2026-08-27: "нужно архитектурно предусмотреть, но делать пока не нужно")
+Status: accepted (the product owner, 2026-08-27, to be provided for in the
+architecture but not built yet; the parcel line in §5 added 2026-09-28 with
+ADR-0033)
 
 ## Context
 
@@ -58,7 +60,10 @@ quietly, putting the pilot into a mode nobody chose.
    for, and the pilot plan already says so. A merchant reached through a
    messaging channel rather than through code is the same trigger wearing
    different clothes — the design backlog holds that idea, and if it is taken
-   up, the confirmation mode is completed with it rather than twice.
+   up, the confirmation mode is completed with it rather than twice. The same
+   holds for parcels (ADR-0033): a shop that confirms stock by hand before a
+   parcel is paid for is this trigger, and `ship` with confirmation is
+   completed together with the mode rather than on its own.
 
 ## Consequences
 
