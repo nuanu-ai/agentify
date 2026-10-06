@@ -1,5 +1,46 @@
 # Contracts release history
 
+## 0.6.0
+
+### Minor Changes
+
+- dcf7ec1: `CardSchema` now refuses a card whose title, description or declared field
+  title is not plain text: one carrying HTML markup (a tag, or the opening of a
+  comment), an HTML character reference such as `&amp;` or `&#8217;`, or a
+  control character. A description may still carry line feeds, and an
+  ampersand, a comparison or an arrow written as text still passes. Each finding
+  names what was found and the character it begins at; nothing is cleaned or
+  rewritten on the way in. The rule is the publish door's alone: a card already
+  stored is read back exactly as it was, and neither `MerchantCardSchema` nor
+  `PublicCardSchema` holds a card to it. `notPlainTextIn` is the rule itself,
+  exported for a connector that turns a shop's HTML into text before it
+  publishes.
+- 0dac361: `MERCHANT_FINDINGS` and the `MerchantFinding` type name the three findings a
+  refused publish carries about the merchant rather than the card:
+  `no_seller_name`, `no_payout_wallet` and `no_operator_approval`. The gateway
+  already sent these codes, each with an empty path in the error's `problems`;
+  the constants let a program tell "fix the card" from "fix the merchant"
+  without spelling the words itself. The SDK re-exports both beside
+  `CARD_REJECTED`. The exported JSON Schema of a finding now describes its
+  `code` and names the three, and the description of a refusal's `problems`
+  says that its `message` names the merchant's missing settings plainly rather
+  than quoting the first finding. The description of a merchant's card list
+  now counts the live approval among the reasons a card reads paused, which it
+  already was. Nothing on the wire changes shape, so the contract version stays
+  where it is.
+- 350d222: `priceProblemsOf`, `PAYABLE_CURRENCIES` and `PAYABLE_DECIMALS` are the rule a
+  price a merchant sets is held to: an amount above zero, written in dollars with
+  at least two and at most six digits after the dot (the places of USDC, which a
+  buyer pays in), in USD or USDC. The gateway applies it to a card's price
+  at publication and to a price check's answer, and refuses a price that breaks
+  it with a finding on `price.amount` or `price.currency` naming what it found.
+  A price of zero is refused by design: a free item is offered from the
+  merchant's own site, without a payment. The JSON Schema export states the
+  rule on the card's `price` and on a price answer's `price`, and the
+  `answer_quote` route says how an answer that breaks it is refused. No schema's
+  shape changed, so cards, orders and receipts already written are read back as
+  they were.
+
 ## 0.5.0
 
 ### Minor Changes
