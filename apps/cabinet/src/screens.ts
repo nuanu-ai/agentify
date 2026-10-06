@@ -415,9 +415,9 @@ const sellingNote = (selling: MerchantCardList["selling"]): string => {
     case "departed":
       return "You have left. The orders that were open closed with you, and the money for anything paid for and not delivered is yours to return. Selling does not start again from this page.";
     case "paused":
-      return "All sales are paused: no new orders are accepted, and orders you have already accepted are still fulfilled. Cards you paused yourself stay paused when you resume.";
+      return "All sales are paused: no new orders are accepted, and the orders you have already accepted play out as usual. Cards you paused yourself stay paused when you resume.";
     case "open":
-      return "A pause takes the card off sale. Orders you have already accepted are still fulfilled.";
+      return "A pause takes the card off sale without abandoning orders: the ones you have already accepted play out as usual.";
   }
 };
 
