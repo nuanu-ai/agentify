@@ -216,7 +216,7 @@ async function main() {
       JSON.stringify({
         scanUrl: `${baseUrl}/scan/${scanId}?segment=owner#access_token=${accessToken}`,
         reportUrl: `${baseUrl}/report/${scanId}`,
-        signInUrl: `${baseUrl}/cabinet/sign-in/open?token=${signInToken}`,
+        signInUrl: `${baseUrl}/dashboard/sign-in/open?token=${signInToken}`,
         email,
       }),
       { mode: 0o600 },

@@ -43,7 +43,7 @@ describe("the sell-to-agents page", () => {
   it("opens the cabinet directly instead of collecting a merchant application", () => {
     const { html, links } = rendered();
 
-    expect(links).toContain("/cabinet/sign-in");
+    expect(links).toContain("/dashboard/sign-in");
     expect(links).toContain("/docs/");
     expect(links).not.toContain("#apply");
     expect(html).not.toMatch(/<form\b/);

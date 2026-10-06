@@ -88,7 +88,7 @@ export default async function ReportPage({ params }: { params: Promise<{ scanId:
                 This report opens for the address it is filed under. Sign in with that address and
                 open this page again; the link that was sent after the scan does both.
               </p>
-              <a className="button button-primary" href="/cabinet/sign-in">
+              <a className="button button-primary" href="/dashboard/sign-in">
                 Sign in
               </a>
             </>

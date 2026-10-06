@@ -29,7 +29,7 @@ describe("the header's doors", () => {
     const { container } = render(<SiteDoors />);
 
     expect(await screen.findByText("owner@example.com")).toBeTruthy();
-    const form = container.querySelector('form[action="/cabinet/sign-out"]');
+    const form = container.querySelector('form[action="/dashboard/sign-out"]');
     expect(form?.getAttribute("method")).toBe("post");
     expect(form?.querySelector("button")?.textContent).toMatch(/sign out/i);
   });
@@ -68,7 +68,7 @@ describe("the header's doors", () => {
     const { container } = render(<SiteDoors />);
 
     expect(await screen.findByText(/cannot tell who is visiting/i)).toBeTruthy();
-    expect(container.querySelector('form[action="/cabinet/sign-out"]')).toBeNull();
+    expect(container.querySelector('form[action="/dashboard/sign-out"]')).toBeNull();
   });
 
   it("says the same when the question itself fails on the way", async () => {
@@ -88,8 +88,8 @@ describe("the header's doors", () => {
     // is what a screen reader announces and what the doors below settle on.
     await vi.waitFor(() => expect(container.querySelector('[aria-busy="false"]')).toBeTruthy());
     expect(container.querySelector('a[href="/docs/"]')).toBeTruthy();
-    expect(container.querySelector('a[href="/cabinet/sign-in"]')).toBeTruthy();
-    expect(container.querySelector('form[action="/cabinet/sign-out"]')).toBeNull();
+    expect(container.querySelector('a[href="/dashboard/sign-in"]')).toBeTruthy();
+    expect(container.querySelector('form[action="/dashboard/sign-out"]')).toBeNull();
     expect(screen.queryByText(/cannot tell/i)).toBeNull();
   });
 

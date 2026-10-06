@@ -28,7 +28,7 @@ export function VisitorDoor() {
           <span className={styles.who} title={visitor.email}>
             {visitor.email}
           </span>
-          <form action="/cabinet/sign-out" className={styles.signOut} method="post">
+          <form action="/dashboard/sign-out" className={styles.signOut} method="post">
             <button type="submit">Sign out</button>
           </form>
         </>
