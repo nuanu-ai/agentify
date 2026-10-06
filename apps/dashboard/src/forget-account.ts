@@ -1,16 +1,16 @@
 /**
  * What `pnpm forget <email>` does on the test deployment: it removes one
- * address's cabinet account and the merchant that account names, in one
+ * address's dashboard account and the merchant that account names, in one
  * transaction, so that the address signs in next time as a newcomer.
  *
- * The account row takes with it, through the cascades the cabinet's schema
+ * The account row takes with it, through the cascades the dashboard's schema
  * declares, the address's sessions, its component credentials and every
  * WooCommerce row that hangs off it: the connected shop, a Connect still
  * waiting, the quotes and the shop orders. The operator flag is a column on
  * that row and goes with it. The merchant row takes its keys by cascade, and
  * its payout wallet, with any change waiting on it, is on the row itself; its
  * cards are deleted first, because the gateway's schema does not let a
- * merchant with cards go. The link sends the cabinet counts against an
+ * merchant with cards go. The link sends the dashboard counts against an
  * address, for its own sign-in and for the report links it sends on the
  * scanner's behalf, are cleared under the keys it writes them with, so the next
  * link can be asked for at once. The scanner's own limit on registrations per
@@ -130,7 +130,7 @@ async function forgetIn(client: PoolClient, email: string, authSecret: string): 
     ).rows[0]?.shopUrl ?? null;
   await client.query("delete from cabinet_accounts where id = $1", [account.id]);
 
-  // The sign-in door keys its sends with the cabinet's own secret and the
+  // The sign-in door keys its sends with the dashboard's own secret and the
   // report door with the digest key it keeps in the database; a database whose
   // report door never sent anything has no digest key and no such rows.
   const digestKeys = (

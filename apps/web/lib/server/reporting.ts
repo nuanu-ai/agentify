@@ -53,7 +53,7 @@ function sanitizeEvidence(value: unknown): Record<string, string | number | bool
 /**
  * What a report page draws, from one reading of who is visiting.
  *
- * The cabinet's silence, a stranger, a person the report is not filed under,
+ * The dashboard's silence, a stranger, a person the report is not filed under,
  * and the report itself are four different pages, and the reading that tells
  * them apart is made once here so that nothing later on the page can be told
  * a different story.

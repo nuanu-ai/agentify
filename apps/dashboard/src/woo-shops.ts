@@ -159,7 +159,7 @@ export interface WooShops {
   /**
    * Forgets the connected shop and every Connect intent for this account.
    *
-   * The public shop URL is returned only so the cabinet can leave the fresh
+   * The public shop URL is returned only so the dashboard can leave the fresh
    * form filled in. Cards and accepted orders belong to different stores and
    * are deliberately untouched.
    */
@@ -545,7 +545,7 @@ export const postgresWooShops = (pool: Pool): WooShops => {
 };
 
 /**
- * The store the cabinet's own tests run on.
+ * The store the dashboard's own tests run on.
  *
  * It is in the product tree rather than under `testing/` because the contract
  * it satisfies is the product's, and because the two implementations have to be

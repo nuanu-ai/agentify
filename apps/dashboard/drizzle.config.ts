@@ -1,7 +1,7 @@
 import { defineConfig } from "drizzle-kit";
 
 /**
- * Where the cabinet's migrations come from and where they go.
+ * Where the dashboard's migrations come from and where they go.
  *
  * The generated SQL is checked in, so what a deployment applies is a file
  * somebody read rather than whatever a tool works out at the time. Applying it

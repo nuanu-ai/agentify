@@ -1,5 +1,5 @@
 /**
- * The cabinet's listener for the gateway: the gateway asks, the cabinet tells
+ * The dashboard's listener for the gateway: the gateway asks, the dashboard tells
  * every account that names the merchant (ADR-0019).
  *
  * The promises are the gateway's to rely on and the merchant's to read. The
@@ -9,7 +9,7 @@
  * answer says whether every message was handed over, whether there was nobody
  * to tell, or whether a message could not be. And each message carries the
  * facts a person needs to act — what changes, from what to what, when at the
- * earliest, that it was asked for in the cabinet, and where the screen is that
+ * earliest, that it was asked for in the dashboard, and where the screen is that
  * decides it — and nothing that opens anything.
  */
 
@@ -105,7 +105,7 @@ const post = async (url: string, body: unknown, secret: string | null = SECRET) 
   });
 
 describe("who may ask", () => {
-  it("opens no listener for a cabinet that holds no gateway secret", () => {
+  it("opens no listener for a dashboard that holds no gateway secret", () => {
     expect(startGatewayServer(null, async () => "handed_over")).toBeNull();
   });
 
@@ -155,7 +155,7 @@ describe("a wallet change", () => {
     ]);
   });
 
-  it("says what changes, not before when, that it was asked in the cabinet, and where it is decided, with no token", async () => {
+  it("says what changes, not before when, that it was asked in the dashboard, and where it is decided, with no token", async () => {
     const { url, sent } = await listening([["owner@example.com", MERCHANT]]);
 
     await post(url, aWalletChange);
@@ -165,8 +165,8 @@ describe("a wallet change", () => {
       expect(text).toContain(FROM);
       expect(text).toContain(TO);
       expect(text).toContain("2026-09-26 12:00:00 UTC");
-      // Only a cabinet's key changes a wallet, so where it was asked for is
-      // the cabinet, and a person who did not ask knows a session did.
+      // Only a dashboard's key changes a wallet, so where it was asked for is
+      // the dashboard, and a person who did not ask knows a session did.
       expect(text).toMatch(/asked for in the dashboard/i);
       expect(text).toContain(THE_SETTINGS_SCREEN);
       expect(text).not.toMatch(/token/i);
@@ -299,7 +299,7 @@ describe("what a message advises and claims", () => {
         asked_with: { kind: "cabinet" },
       },
     ],
-  ] as const)("claims no person signed in for %s, only the cabinet", async (_what, request) => {
+  ] as const)("claims no person signed in for %s, only the dashboard", async (_what, request) => {
     const { url, sent } = await listening([["owner@example.com", MERCHANT]]);
 
     await post(url, request satisfies GatewayRequest);

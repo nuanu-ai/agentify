@@ -1,14 +1,14 @@
 /**
- * The cabinet's second internal listener: the gateway's route, where the
+ * The dashboard's second internal listener: the gateway's route, where the
  * gateway asks it to tell a merchant of a change to their payout wallet or
  * their keys (ADR-0019). Each request names its `operation`; announcing is the
- * only one, and anything else the gateway ever asks the cabinet is another
+ * only one, and anything else the gateway ever asks the dashboard is another
  * operation here, behind the same secret.
  *
  * It is its own listener, on its own port and behind its own secret, rather
  * than another operation on the scanner's report identity route. The two
  * callers are different processes with different powers: the scanner may ask
- * the cabinet to send a sign-in link, name a session and remove a person, and
+ * the dashboard to send a sign-in link, name a session and remove a person, and
  * the gateway may ask it to send a message and nothing else. One route with
  * one secret would hand each of them the other's door, and the money path the
  * power to look up sessions and remove people.
@@ -33,7 +33,7 @@ import {
 } from "@agentify/gateway/announcements";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { announcementMessage } from "./announcement-mail.js";
-import type { CabinetConfig } from "./config.js";
+import type { DashboardConfig } from "./config.js";
 import type { Identity } from "./identity.js";
 import type { Postman } from "./mail.js";
 
@@ -46,7 +46,7 @@ const KEEP_ALIVE_TIMEOUT_MS = 5_000;
 export type Teller = (announcement: Announcement) => Promise<AnnouncementAnswer["outcome"]>;
 
 /**
- * The teller this cabinet runs: the accounts naming the merchant, a message
+ * The teller this dashboard runs: the accounts naming the merchant, a message
  * each, handed to the mail provider one after another.
  *
  * Every account is sent a message even after one is refused, because the
@@ -55,7 +55,7 @@ export type Teller = (announcement: Announcement) => Promise<AnnouncementAnswer[
  * a refusal that says a message may still have reached somebody.
  */
 export function tellerFor(
-  config: CabinetConfig,
+  config: DashboardConfig,
   identity: Pick<Identity, "emailsNaming">,
   postman: Postman,
 ): Teller {
@@ -64,7 +64,7 @@ export function tellerFor(
   return async (announcement) => {
     const addresses = await identity.emailsNaming(announcement.merchant_id);
     if (addresses.length === 0) {
-      console.log(`[cabinet] ${announcement.kind}: no account names the merchant, nobody told`);
+      console.log(`[dashboard] ${announcement.kind}: no account names the merchant, nobody told`);
       return "nobody_to_tell";
     }
     let refused = 0;
@@ -75,7 +75,7 @@ export function tellerFor(
     }
     // Counts and nothing else: the addresses stay out of a process log.
     console.log(
-      `[cabinet] ${announcement.kind}: ${addresses.length - refused} of ${addresses.length} messages handed over`,
+      `[dashboard] ${announcement.kind}: ${addresses.length - refused} of ${addresses.length} messages handed over`,
     );
     return refused === 0 ? "handed_over" : "not_handed_over";
   };
@@ -109,7 +109,7 @@ export function buildGatewayApp(secret: string, tell: Teller) {
   return app;
 }
 
-/** Opens the listener where this cabinet holds the secret, and nowhere else. */
+/** Opens the listener where this dashboard holds the secret, and nowhere else. */
 export function startGatewayServer(secret: string | null, tell: Teller): Server | null {
   if (secret === null) return null;
   const server = buildGatewayApp(secret, tell).listen(GATEWAY_ROUTE_PORT);

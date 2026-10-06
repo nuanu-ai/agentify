@@ -23,7 +23,7 @@
  * here exactly as the Postgres adapter filters in SQL, and for the same reason:
  * this is the adapter the two-merchant tests run against, so a filter missing
  * here is a filter nothing would catch until somebody's catalog turned up in
- * somebody else's cabinet.
+ * somebody else's dashboard.
  */
 
 import { isOpen, type MerchantSelling } from "@agentify/core";
@@ -348,7 +348,7 @@ export class MemoryStore implements Store {
     return (await this.keysOf(merchantId)).filter((key) => key.purpose === "merchant_code");
   }
 
-  async forgetCabinetKey(keyId: string): Promise<boolean> {
+  async forgetDashboardKey(keyId: string): Promise<boolean> {
     const going = this.#keys.get(keyId);
     if (going === undefined || going.purpose !== "cabinet") {
       return false;
@@ -385,7 +385,7 @@ export class MemoryStore implements Store {
     }
     // Their own key, and not one they made. Told apart from the null above
     // because this one is a fact about their own row, and because revoking it
-    // would sign somebody out of the cabinet they are standing in.
+    // would sign somebody out of the dashboard they are standing in.
     if (found.purpose !== "merchant_code") {
       return "made_for_a_cabinet";
     }

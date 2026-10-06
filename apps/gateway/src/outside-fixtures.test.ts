@@ -567,9 +567,9 @@ describe("a purchase from the outside", () => {
         door_code: "8812",
       });
 
-      // Their keys, as their own cabinet would read them: none at all. This
+      // Their keys, as their own dashboard would read them: none at all. This
       // merchant has written no code and asked for no key of their own, and
-      // the key registering handed over is the one their cabinet calls with,
+      // the key registering handed over is the one their dashboard calls with,
       // which this list does not carry. `this_call` names it all the same, and
       // that identifier reaches this walk through no answer at all — it is
       // simply what the field says.
@@ -607,16 +607,16 @@ describe("a purchase from the outside", () => {
       );
       expect(itself.status).toBe(409);
 
-      // And the key their cabinet is signed in with is not this call's to
+      // And the key their dashboard is signed in with is not this call's to
       // touch, whichever key asks. The identifier comes from the field above,
       // which is the only place on this surface it appears at all.
-      const theCabinets = await gateway.call(
+      const theDashboards = await gateway.call(
         "POST",
         `/v0/keys/${encodeURIComponent(theKeys.this_call)}/disable`,
         { headers: { authorization: `Bearer ${other.secret}` } },
       );
-      expect(theCabinets.status).toBe(409);
-      expect((theCabinets.body as { error: { code: string } }).error.code).toBe(
+      expect(theDashboards.status).toBe(409);
+      expect((theDashboards.body as { error: { code: string } }).error.code).toBe(
         "key_made_for_a_cabinet",
       );
 

@@ -272,11 +272,11 @@ const catalogueTab = (state: PageState): string => {
   return `<section class="panel">
   <header>
     <h2>What this merchant sells</h2>
-    <div class="side">${word === null ? "Not read yet." : dot(word.tone, `this merchant is ${word.text}`)}${route("list_merchant_cards")}${form("read_cards", "", "Read again")}${switching}<span class="tag">cabinet, not SDK</span></div>
+    <div class="side">${word === null ? "Not read yet." : dot(word.tone, `this merchant is ${word.text}`)}${route("list_merchant_cards")}${form("read_cards", "", "Read again")}${switching}<span class="tag">dashboard, not SDK</span></div>
   </header>
   ${table}
   <div class="body">
-    <p>Publishing is <code>catalog.publish</code> on the SDK. Reading this list back, pausing a card and stopping all selling are not on it — the SDK does not carry them because they are the merchant's cabinet operations — so this console makes those over HTTP with the merchant key, and says so where the buttons are.</p>
+    <p>Publishing is <code>catalog.publish</code> on the SDK. Reading this list back, pausing a card and stopping all selling are not on it — the SDK does not carry them because they are the merchant's dashboard operations — so this console makes those over HTTP with the merchant key, and says so where the buttons are.</p>
   </div>
 </section>
 <section class="panel">

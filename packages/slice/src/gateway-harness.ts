@@ -103,7 +103,7 @@ export function sliceEnv(overrides: Record<string, string> = {}): Record<string,
     // QUOTE_RESPONSE_MS close to a second would make that test price from the
     // snapshot intermittently and fail.
     WORKER_POLL_WAIT_MS: "500",
-    // A live gateway does not start without a cabinet to announce a wallet
+    // A live gateway does not start without a dashboard to announce a wallet
     // change through (ADR-0019), and the slice has none: its one merchant is
     // paid at the address this environment names, written straight into the
     // store below, and no wallet change is ever asked for over the route. So

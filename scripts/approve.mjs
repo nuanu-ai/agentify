@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 
 /**
- * PRODUCTION live approval for one merchant, granted inside the cabinet
+ * PRODUCTION live approval for one merchant, granted inside the dashboard
  * container that is already running on the host.
  *
  * Usage: pnpm approve <email>
  *
- * The filter names the cabinet by its directory and not by its package name
+ * The filter names the dashboard by its directory and not by its package name
  * because pnpm resolves it inside that container, against the revision that
  * was deployed last rather than against this checkout. A rename of the package
  * would otherwise break approval from every laptop until the next deployment

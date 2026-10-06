@@ -515,7 +515,7 @@ describe("the whole way through, against a real gateway", () => {
   });
 
   it("draws a quote and an order from the merchant stream and answers both", async () => {
-    // The same thing again, this time with the cabinet doing the drawing —
+    // The same thing again, this time with the dashboard doing the drawing —
     // which is the part a deployment runs and the part that has to speak the
     // contract's own poll and answer routes.
     open = await harness();
@@ -566,7 +566,7 @@ describe("the whole way through, against a real gateway", () => {
     });
     expect(shop.orders).toHaveLength(1);
 
-    // The cabinet client exposes the same two reply routes its real loop uses.
+    // The dashboard client exposes the same two reply routes its real loop uses.
     expect(typeof gateway.answerQuote).toBe("function");
     expect(typeof gateway.answerOrder).toBe("function");
   });
@@ -724,7 +724,7 @@ describe("the worker that keeps every connected shop served", () => {
   it("keeps serving a shop that was disconnected and connected again", async () => {
     // The loop for one account is started once and kept in a map keyed by the
     // account. A loop that ended by itself while its entry stayed would leave
-    // that merchant's orders drawn by nobody until the cabinet was restarted —
+    // that merchant's orders drawn by nobody until the dashboard was restarted —
     // and a merchant who disconnects and reconnects is an ordinary afternoon.
     const shops = memoryWooShops();
     const gateway = countingGateway();

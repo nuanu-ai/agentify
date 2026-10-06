@@ -1,7 +1,7 @@
 /**
- * The two ways a message leaves the cabinet.
+ * The two ways a message leaves the dashboard.
  *
- * Both are driven the way the cabinet drives them: one message in, and then the
+ * Both are driven the way the dashboard drives them: one message in, and then the
  * question of where it came out. The provider is a real HTTP server on a
  * loopback port rather than a stubbed `fetch`, because what this file is about
  * is the document that goes over the wire and a stub cannot be wrong about it
@@ -86,9 +86,9 @@ const provider = async (status = 200, answerAfterMs = 0): Promise<Provider> => {
   };
 };
 
-describe("a cabinet with no mail provider", () => {
+describe("a dashboard with no mail provider", () => {
   it("writes the whole message down, with the address it was for and the link in it", async () => {
-    // This is the entire flow on a laptop: whoever is developing the cabinet
+    // This is the entire flow on a laptop: whoever is developing the dashboard
     // reads the link out of their own terminal and follows it. A log line that
     // said a message had been sent, without saying where or what, would leave
     // them with a flow that cannot be walked at all.
@@ -108,13 +108,13 @@ describe("a cabinet with no mail provider", () => {
     expect(said).toMatch(/not sent|no mail provider/i);
   });
 
-  it("is what the cabinet is in without a provider, and is told apart by name", () => {
+  it("is what the dashboard is in without a provider, and is told apart by name", () => {
     expect(isSandboxMail(SANDBOX_MAIL)).toBe(true);
     expect(isSandboxMail("https://api.resend.com")).toBe(false);
   });
 });
 
-describe("a cabinet with a mail provider", () => {
+describe("a dashboard with a mail provider", () => {
   it("sends one message, with the sender, recipient, plaintext and HTML on it", async () => {
     const sending = await provider();
     const postman = postmanFor({
@@ -165,7 +165,7 @@ describe("a cabinet with a mail provider", () => {
   });
 
   it("does not throw when the provider refuses, because somebody is mid-registration", async () => {
-    // Every send in this cabinet happens beside something a person just did
+    // Every send in this dashboard happens beside something a person just did
     // successfully. A provider's bad afternoon must not become a red page on
     // top of a registration that worked, because that tells the person the
     // wrong thing about their own account.

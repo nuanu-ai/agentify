@@ -619,8 +619,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect((await store.workingKey("digest-a"))?.id).toBe("mk_a");
       });
 
-      it("is registered with a key made for a cabinet and none of their own", async () => {
-        // Registering is a cabinet's act: the caller is the cabinet, and what
+      it("is registered with a key made for a dashboard and none of their own", async () => {
+        // Registering is a dashboard's act: the caller is the dashboard, and what
         // it walks away with is the credential it will call as this merchant
         // with. So the key it writes is one of those, and the merchant's own
         // list starts empty — which is the state a screen has to draw, and the
@@ -628,13 +628,13 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         //
         // A key of the merchant's own written here instead would be a row in
         // that list on the first visit: one they never asked for, cannot
-        // recognise, and cannot revoke, since revoking it is the cabinet going
+        // recognise, and cannot revoke, since revoking it is the dashboard going
         // dark.
         const store = await fresh();
 
         const made = await store.registerMerchant(
           { id: A, name: "Merchant A" },
-          { id: "mk_a", label: "the key the cabinet calls with", digest: "digest-a" },
+          { id: "mk_a", label: "the key the dashboard calls with", digest: "digest-a" },
           1_000,
         );
 
@@ -813,7 +813,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           1_000,
         );
         await store.addKey(
-          { id: "mk_cab", merchantId: A, label: "a cabinet's", digest: "d2", purpose: "cabinet" },
+          { id: "mk_cab", merchantId: A, label: "a dashboard's", digest: "d2", purpose: "cabinet" },
           2_000,
         );
 
@@ -825,7 +825,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // behind the screen they revoke keys on, so the filtering is the
         // store's rather than something every caller has to remember.
         expect((await store.codeKeysOf(A)).map((key) => key.id)).toStrictEqual(["mk_code"]);
-        // Both open the door: a cabinet's key is a key, and hiding it from a
+        // Both open the door: a dashboard's key is a key, and hiding it from a
         // list is not the same as it being less of one.
         expect((await store.workingKey("d2"))?.id).toBe("mk_cab");
       });
@@ -834,7 +834,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // The narrower list keeps both promises the wide one makes: revoked
         // keys stay on it, because "which key did I turn off, and when" is
         // asked on exactly this screen, and it is ordered rather than left to
-        // storage. A cabinet's key between two of the merchant's own is what
+        // storage. A dashboard's key between two of the merchant's own is what
         // would break an implementation that sliced rather than filtered.
         const store = await twoMerchants();
         await store.addKey(
@@ -842,7 +842,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           1_000,
         );
         await store.addKey(
-          { id: "mk_cab", merchantId: A, label: "a cabinet's", digest: "d2", purpose: "cabinet" },
+          { id: "mk_cab", merchantId: A, label: "a dashboard's", digest: "d2", purpose: "cabinet" },
           2_000,
         );
         await store.addKey(
@@ -953,7 +953,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
 
       it("is disabled by the merchant it belongs to and by nobody else", async () => {
-        // This is what the cabinet's own button calls, rather than the unscoped
+        // This is what the dashboard's own button calls, rather than the unscoped
         // verb beside it. A merchant's call must never move a stranger's key,
         // and "not yours" and "not there" are one answer on purpose: told apart,
         // a refusal would count somebody else's keys, and a merchant walking
@@ -981,8 +981,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(await store.disableKeyOf(A, "mk_a", 9_000)).toMatchObject({ disabledAt: 2_000 });
       });
 
-      it("is not disabled by the merchant when it was made for their cabinet", async () => {
-        // A merchant switches off what they issued. The key their cabinet calls
+      it("is not disabled by the merchant when it was made for their dashboard", async () => {
+        // A merchant switches off what they issued. The key their dashboard calls
         // with is not that, and this is the call behind the button on their own
         // screen — so it refuses, and says which of the two silences this is
         // rather than folding it into "no such key".
@@ -991,13 +991,13 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // names a key of the caller's own merchant, so the answer is about
         // their own row and not a way of counting anybody else's. What it
         // replaces is not a silence at all — before this rule the key was
-        // simply revoked, and whoever was signed into that cabinet was out.
+        // simply revoked, and whoever was signed into that dashboard was out.
         const store = await twoMerchants();
         await store.addKey(
           {
             id: "mk_cab",
             merchantId: A,
-            label: "a cabinet's",
+            label: "a dashboard's",
             digest: "digest-cab",
             purpose: "cabinet",
           },
@@ -1007,7 +1007,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           {
             id: "mk_theirs",
             merchantId: B,
-            label: "B's cabinet's",
+            label: "B's dashboard's",
             digest: "digest-b",
             purpose: "cabinet",
           },
@@ -1020,14 +1020,14 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect((await store.workingKey("digest-cab"))?.id).toBe("mk_cab");
         expect((await store.keysOf(A))[0]?.disabledAt).toBeNull();
 
-        // Another merchant's cabinet key is still "not there" — the kind of a
+        // Another merchant's dashboard key is still "not there" — the kind of a
         // stranger's key is not a thing this call tells anybody.
         expect(await store.disableKeyOf(A, "mk_theirs", 2_000)).toBeNull();
         expect((await store.workingKey("digest-b"))?.id).toBe("mk_theirs");
       });
 
       it("is forgotten one key at a time, and reaches nothing else", async () => {
-        // What a cabinet does once it has moved an account row onto a fresh
+        // What a dashboard does once it has moved an account row onto a fresh
         // key: it forgets the key it has just stopped using, and that one key
         // only. Removed rather than revoked, because a merchant never issued
         // one, never saw one and will never read one back — a row kept for the
@@ -1063,11 +1063,17 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           3_000,
         );
         await store.addKey(
-          { id: "mk_b", merchantId: B, label: "their cabinet's", digest: "d4", purpose: "cabinet" },
+          {
+            id: "mk_b",
+            merchantId: B,
+            label: "their dashboard's",
+            digest: "d4",
+            purpose: "cabinet",
+          },
           4_000,
         );
 
-        expect(await store.forgetCabinetKey("mk_old")).toBe(true);
+        expect(await store.forgetDashboardKey("mk_old")).toBe(true);
 
         // The named one is gone rather than off: nothing answers for its digest
         // in either of the two reads, which is what tells a removal from a
@@ -1075,7 +1081,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(await store.keyByDigest("d1")).toBeNull();
         expect((await store.keysOf(A)).map((key) => key.id)).toStrictEqual(["mk_now", "mk_code"]);
         // Every other key is where it was, including the merchant's own and the
-        // one another merchant's cabinet is signed in on.
+        // one another merchant's dashboard is signed in on.
         expect((await store.workingKey("d2"))?.id).toBe("mk_now");
         expect((await store.workingKey("d3"))?.id).toBe("mk_code");
         expect((await store.workingKey("d4"))?.id).toBe("mk_b");
@@ -1099,7 +1105,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           1_000,
         );
 
-        expect(await store.forgetCabinetKey("mk_code")).toBe(false);
+        expect(await store.forgetDashboardKey("mk_code")).toBe(false);
         expect((await store.workingKey("d1"))?.id).toBe("mk_code");
       });
 
@@ -1114,9 +1120,9 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           1_000,
         );
 
-        expect(await store.forgetCabinetKey("mk_now")).toBe(true);
-        expect(await store.forgetCabinetKey("mk_now")).toBe(false);
-        expect(await store.forgetCabinetKey("mk_never_existed")).toBe(false);
+        expect(await store.forgetDashboardKey("mk_now")).toBe(true);
+        expect(await store.forgetDashboardKey("mk_now")).toBe(false);
+        expect(await store.forgetDashboardKey("mk_never_existed")).toBe(false);
         expect(await store.keyByDigest("d1")).toBeNull();
       });
 
@@ -1155,7 +1161,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         );
         await store.disableKey("mk_off", 4_000);
 
-        await store.forgetCabinetKey("mk_gone");
+        await store.forgetDashboardKey("mk_gone");
 
         // The swept key's digest is nobody's, so the same secret can be written
         // again and it opens the door as the new key it now is.

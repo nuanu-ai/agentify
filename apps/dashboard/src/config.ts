@@ -1,19 +1,19 @@
 /**
- * What the cabinet has no right to start without.
+ * What the dashboard has no right to start without.
  *
  * The environment is an external boundary like any other, so it goes through a
  * zod schema (ADR-0003 §5) and the process names every problem at once rather
  * than one per restart.
  *
  * There is a database address here and there is exactly one thing it is for:
- * the people who sign into the cabinet, their sessions, their merchant binding,
+ * the people who sign into the dashboard, their sessions, their merchant binding,
  * and the one-time links they are sent (ADR-0009). ADR-0005 §3 still holds for
  * everything else — every card, order and receipt on every screen comes from
  * the public API, because the reason that section gives is dogfooding: a screen
- * the cabinet cannot draw is API the merchant does not have either.
+ * the dashboard cannot draw is API the merchant does not have either.
  *
  * There is no merchant key here, and its absence is the point rather than an
- * omission. The cabinet used to read one at start-up and use it for the life of
+ * omission. The dashboard used to read one at start-up and use it for the life of
  * the process, which made every screen show that one merchant's money whoever
  * was signed in. The key is on the row of the person signed in now (ADR-0014
  * §2), so a deployment has one less thing to set and one more thing to back up.
@@ -48,7 +48,7 @@ function isHttpUrl(value: string): boolean {
 }
 
 /**
- * The shortest secret the cabinet will sign a session with.
+ * The shortest secret the dashboard will sign a session with.
  *
  * Thirty-two characters is what `openssl rand -base64 32` produces and it is
  * the length the sentence below tells an operator to make. The floor is on what
@@ -64,7 +64,7 @@ const SHORTEST_SECRET = 32;
  * A message goes to somebody else's machine, and a link on this list is an
  * address that means "this machine" wherever it is read. It is a real mistake
  * and not a theoretical one: the public address defaults to localhost so that
- * the cabinet runs on a laptop with nothing set, and a deployment that turns
+ * the dashboard runs on a laptop with nothing set, and a deployment that turns
  * mail on without setting it would send every merchant a link into their own
  * computer.
  */
@@ -81,18 +81,18 @@ const environmentSchema = z.object({
   }),
   FACILITATOR_URL: z.string({ error: absentOrWrong("must be a string") }),
   /**
-   * Where the cabinet's own accounts and sessions live.
+   * Where the dashboard's own accounts and sessions live.
    *
    * The same Postgres as everything else (ADR-0003 §6), with the identity
    * component's own rows in it. Without one there is nowhere to look a session up, so
-   * every visitor would be a stranger — a cabinet that draws a sign-in form and
+   * every visitor would be a stranger — a dashboard that draws a sign-in form and
    * can never accept one.
    */
   DATABASE_URL: z
     .string({ error: absentOrWrong("must be a string") })
     .refine(isPostgresUrl, "must be an address of the form postgres://user@host:port/database"),
 
-  /** The port the cabinet answers on; from outside it is behind Caddy. */
+  /** The port the dashboard answers on; from outside it is behind Caddy. */
   PORT: z
     .string({ error: absentOrWrong("must be a string") })
     .regex(/^\d+$/, "must be a whole number")
@@ -102,14 +102,14 @@ const environmentSchema = z.object({
 
   /**
    * Where the gateway answers. Every screen is drawn from calls to this, so a
-   * cabinet pointed at nothing draws nothing and says so.
+   * dashboard pointed at nothing draws nothing and says so.
    */
   GATEWAY_URL: z.url().default("http://localhost:3000"),
 
   /**
-   * The existing shared secret that lets this cabinet make a merchant.
+   * The existing shared secret that lets this dashboard make a merchant.
    *
-   * It no longer appears in a person's form. The cabinet presents it to the
+   * It no longer appears in a person's form. The dashboard presents it to the
    * gateway only after a one-time link has opened an authenticated P1 session.
    */
   REGISTRATION_INVITATION: z
@@ -117,10 +117,10 @@ const environmentSchema = z.object({
     .min(1, "must not be empty"),
 
   /**
-   * Where the cabinet is mounted, when it is not at the root of its origin.
+   * Where the dashboard is mounted, when it is not at the root of its origin.
    *
    * ADR-0005 §1 puts it at `/dashboard` behind Caddy, and every link and form on
-   * every page is built from this. Without it the cabinet works at the root and
+   * every page is built from this. Without it the dashboard works at the root and
    * sends a merchant to `/cards` from `/dashboard/cards`, which is a different
    * place and answers nothing.
    */
@@ -140,9 +140,9 @@ const environmentSchema = z.object({
   /**
    * Whether the session cookie is marked Secure.
    *
-   * It defaults to off because the cabinet is developed over plain http on
+   * It defaults to off because the dashboard is developed over plain http on
    * localhost, where a Secure cookie is simply never sent back and nobody can
-   * sign in at all. Anywhere the cabinet is reachable over https this is on,
+   * sign in at all. Anywhere the dashboard is reachable over https this is on,
    * and the deployment that forgets it is handing a merchant's session to
    * anybody on the path.
    */
@@ -152,12 +152,12 @@ const environmentSchema = z.object({
     .transform((value) => value === "true"),
 
   /**
-   * What the cabinet signs a session cookie with.
+   * What the dashboard signs a session cookie with.
    *
    * There is no default and there deliberately is not one. The component that
    * signs in for us has its own fallback, and a deployment that leaned on it
    * would be running on a secret written in somebody else's public source — so
-   * the cabinet asks for one rather than accepting whatever is there, and stops
+   * the dashboard asks for one rather than accepting whatever is there, and stops
    * when there is none.
    *
    * Changing it signs everybody out and nothing worse: a session is still a row
@@ -184,8 +184,8 @@ const environmentSchema = z.object({
   ),
 
   /**
-   * What the gateway presents on the cabinet's listener for the gateway, the
-   * route it asks the cabinet over to tell a merchant of a change to their
+   * What the gateway presents on the dashboard's listener for the gateway, the
+   * route it asks the dashboard over to tell a merchant of a change to their
    * payout wallet or their keys (ADR-0019). Held by the gateway and this
    * process alone, and apart from every other secret either holds: the
    * scanner's route is a different door with a different holder, and the
@@ -201,15 +201,15 @@ const environmentSchema = z.object({
   ),
 
   /**
-   * The address a merchant reaches this cabinet at, from their own machine.
+   * The address a merchant reaches this dashboard at, from their own machine.
    *
    * It is what the one-time links in mail are built on, and that is its only
-   * use — nothing else in the cabinet needs to know its own address, because
+   * use — nothing else in the dashboard needs to know its own address, because
    * every link on every page is relative. Behind a reverse proxy the address
    * this process sees is not the address the merchant typed, so it is
    * configuration rather than something read off a request.
    *
-   * The default is a laptop, which is where the cabinet is developed and where
+   * The default is a laptop, which is where the dashboard is developed and where
    * `sandbox:log` prints the link into the terminal of the person who is about
    * to click it. A deployment that sends real mail is refused with this
    * unchanged, below, because every link it sent would point at the reader's own
@@ -234,7 +234,7 @@ const environmentSchema = z.object({
     .string({ error: absentOrWrong("must be a string") })
     .refine(
       (value) => isSandboxMail(value) || isHttpUrl(value),
-      `must be the address of a mail provider, or "${SANDBOX_MAIL}" for a cabinet that sends nothing`,
+      `must be the address of a mail provider, or "${SANDBOX_MAIL}" for a dashboard that sends nothing`,
     )
     .default(SANDBOX_MAIL),
 
@@ -245,7 +245,7 @@ const environmentSchema = z.object({
    * deployment actually uses: a compose file hands every service a fixed list
    * of names, so "no provider here" is written as the name with nothing after
    * it rather than by deleting the line. Read as a key of length zero it is
-   * refused and the cabinet does not start, which is a stack that will not come
+   * refused and the dashboard does not start, which is a stack that will not come
    * up for a variable nobody meant to set. The gateway's seed key learned the
    * same lesson this morning.
    */
@@ -279,7 +279,7 @@ function emptyIsAbsent(rule: z.ZodType<string, string>) {
     .pipe(z.union([z.undefined(), rule]));
 }
 
-export interface CabinetConfig {
+export interface DashboardConfig {
   readonly surfaceMode: SurfaceMode;
   readonly port: number;
   readonly gatewayUrl: string;
@@ -293,8 +293,8 @@ export interface CabinetConfig {
   /** Dedicated bearer for the optional private report identity listener. */
   readonly reportIdentitySecret: string | null;
   /** Dedicated bearer for the gateway's listener, or none. */
-  readonly gatewayCabinetSecret: string | null;
-  /** What the cabinet's one-time links are built on. */
+  readonly gatewayDashboardSecret: string | null;
+  /** What the dashboard's one-time links are built on. */
   readonly publicBaseUrl: string;
   readonly mailUrl: string;
   readonly mailApiKey: string | null;
@@ -310,7 +310,7 @@ export interface CabinetConfig {
  */
 const NOBODY_READS_THIS = "Agentify <no-reply@localhost>";
 
-export function loadConfig(environment: Record<string, string | undefined>): CabinetConfig {
+export function loadConfig(environment: Record<string, string | undefined>): DashboardConfig {
   const parsed = environmentSchema.safeParse(environment);
 
   if (!parsed.success) {
@@ -319,7 +319,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Cab
       return variable === "" ? issue.message : `${variable}: ${issue.message}`;
     });
     throw new Error(
-      `The cabinet cannot start, the configuration is incomplete — ${problems.join("; ")}`,
+      `The dashboard cannot start, the configuration is incomplete — ${problems.join("; ")}`,
     );
   }
 
@@ -343,13 +343,13 @@ export function loadConfig(environment: Record<string, string | undefined>): Cab
   }
 
   // And the door the other way. A provider address with nothing to authenticate
-  // against it is a cabinet that appears to send mail and silently does not,
+  // against it is a dashboard that appears to send mail and silently does not,
   // which is the shape of failure a merchant discovers only when the sign-in
   // link they are waiting for never arrives.
   if (!sandboxMail && values.MAIL_API_KEY === undefined) {
     problems.push(
       `MAIL_URL names a mail provider and MAIL_API_KEY is not set, so nothing would be accepted` +
-        ` by it; set MAIL_URL to ${JSON.stringify(SANDBOX_MAIL)} for a cabinet that sends nothing`,
+        ` by it; set MAIL_URL to ${JSON.stringify(SANDBOX_MAIL)} for a dashboard that sends nothing`,
     );
   }
 
@@ -378,7 +378,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Cab
     )
   ) {
     throw new Error(
-      "The cabinet cannot start, REPORT_IDENTITY_SECRET must be dedicated to the private" +
+      "The dashboard cannot start, REPORT_IDENTITY_SECRET must be dedicated to the private" +
         " report identity listener",
     );
   }
@@ -393,13 +393,13 @@ export function loadConfig(environment: Record<string, string | undefined>): Cab
     ].includes(values.GATEWAY_CABINET_SECRET)
   ) {
     throw new Error(
-      "The cabinet cannot start, GATEWAY_CABINET_SECRET must be dedicated to the gateway's" +
+      "The dashboard cannot start, GATEWAY_CABINET_SECRET must be dedicated to the gateway's" +
         " listener",
     );
   }
 
   if (problems.length > 0) {
-    throw new Error(`The cabinet cannot start, the mail is not set up — ${problems.join("; ")}`);
+    throw new Error(`The dashboard cannot start, the mail is not set up — ${problems.join("; ")}`);
   }
 
   return {
@@ -415,7 +415,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Cab
     databaseUrl: values.DATABASE_URL,
     authSecret: values.AUTH_SECRET,
     reportIdentitySecret: values.REPORT_IDENTITY_SECRET ?? null,
-    gatewayCabinetSecret: values.GATEWAY_CABINET_SECRET ?? null,
+    gatewayDashboardSecret: values.GATEWAY_CABINET_SECRET ?? null,
     publicBaseUrl: values.PUBLIC_BASE_URL,
     mailUrl: values.MAIL_URL,
     mailApiKey: values.MAIL_API_KEY ?? null,

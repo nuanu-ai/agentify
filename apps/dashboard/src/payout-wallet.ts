@@ -6,7 +6,7 @@
  * merchant's own address, and nothing of the merchant's ever sits with us. That
  * is the whole reason this field exists, and it is also why it is one field.
  * The address is enough to be paid with; a private key or a recovery phrase
- * would be enough to spend with, and there is nowhere in this cabinet to type
+ * would be enough to spend with, and there is nowhere in this dashboard to type
  * either. The screen says so out loud, because somebody who has been asked for
  * a recovery phrase once by a page that looked like this one has no other way
  * to tell the two apart.
@@ -55,7 +55,7 @@ import { readinessSeenBy, type Viewer } from "./screens.js";
  * filling in a box is better served by the whole rule once.
  *
  * The second half is the part it would be easy to leave off. Nothing in the
- * cabinet looks an address up anywhere — there is no chain call on this path
+ * dashboard looks an address up anywhere — there is no chain call on this path
  * and no balance read — so a box that turned green would be promising something
  * nobody checked. Said plainly, a merchant knows the check they still have to
  * do themselves is the only one there is.
@@ -77,9 +77,9 @@ export const LIVE_CHANGE_WAITS =
  * What an account whose key cannot set the wallet is told.
  *
  * An account made before accounts were checked can hold a key made for the
- * merchant's own code rather than one made for the cabinet (ADR-0014 §5). The
- * gateway will not let such a key change where the money goes, the cabinet
- * cannot replace it, and the cabinet has no screen that could; so the page
+ * merchant's own code rather than one made for the dashboard (ADR-0014 §5). The
+ * gateway will not let such a key change where the money goes, the dashboard
+ * cannot replace it, and the dashboard has no screen that could; so the page
  * says what happened and that nothing here mends it, and offers nothing to
  * press again.
  */

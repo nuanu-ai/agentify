@@ -3,13 +3,13 @@
  *
  * It lists the accounts there are, ends a person's sessions and moves the
  * operator flag; it makes no account, since an account is made when its person
- * opens the link the cabinet mails to their address (ADR-0026 §1). In the
- * local stack it is one line, run against the cabinet that is already up:
+ * opens the link the dashboard mails to their address (ADR-0026 §1). In the
+ * local stack it is one line, run against the dashboard that is already up:
  *
- *   docker compose exec cabinet \
+ *   docker compose exec dashboard \
  *     pnpm --filter @agentify/dashboard account list
  *
- * Outside Docker it needs the same configuration the cabinet itself is given,
+ * Outside Docker it needs the same configuration the dashboard itself is given,
  * because the identity component reads the same secret and public address.
  *
  * What the file itself does is only the wiring. The commands are in
@@ -22,7 +22,7 @@ import { connect } from "./database.js";
 import { identityFor } from "./identity.js";
 
 // The whole configuration, not the database address alone. The identity
-// component needs the same secret and public address as the cabinet process.
+// component needs the same secret and public address as the dashboard process.
 // Reading them here produces the same refusal, in the same words, before
 // anything is written.
 let config: ReturnType<typeof loadConfig>;

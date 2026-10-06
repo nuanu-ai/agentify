@@ -4,7 +4,7 @@ import { transactionalEmailHtml } from "./mail-template.js";
 /**
  * The message for a link the scanner asked for: the full report of one scan.
  *
- * Like every link, it lands on the cabinet's page with one control, and that
+ * Like every link, it lands on the dashboard's page with one control, and that
  * press signs the address in on this browser before it opens the report.
  */
 export function reportLinkMessage(to: string, url: string): Message {

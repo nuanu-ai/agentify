@@ -1,5 +1,5 @@
 /**
- * The server-side half of `pnpm forget <email>`, run inside the cabinet's
+ * The server-side half of `pnpm forget <email>`, run inside the dashboard's
  * container on the test deployment.
  *
  * It reads the address from standard input and refuses before it opens a

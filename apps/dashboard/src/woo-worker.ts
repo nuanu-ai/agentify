@@ -4,7 +4,7 @@
  *
  * A merchant who connected a shop wrote no code. Their products are on sale,
  * agents buy them, and something has to turn a paid order here into an order
- * there — so the cabinet stands in as their handler, drawing their own stream
+ * there — so the dashboard stands in as their handler, drawing their own stream
  * with their own key and answering on the routes any merchant's worker would
  * use. Nothing about that is a private arrangement with the gateway: it is the
  * public merchant API, called the way ADR-0004 says a worker calls it, which is
@@ -189,7 +189,7 @@ export const fillFromTheShop = async (
     // because who granted what to whom is the merchant's business and nothing
     // an agent could act on.
     console.error(
-      `[cabinet] the shop at ${connection.shopUrl} granted ${JSON.stringify(connection.permissions)}` +
+      `[dashboard] the shop at ${connection.shopUrl} granted ${JSON.stringify(connection.permissions)}` +
         " access, which cannot create an order, so every sale on it is refused",
     );
     await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
@@ -265,7 +265,7 @@ export const fillFromTheShop = async (
       return { delivered: deliveryFromWooPermission(durable.permission) };
     }
     console.error(
-      `[cabinet] ${order.id} was created in WooCommerce but its delivery was not durably bound`,
+      `[dashboard] ${order.id} was created in WooCommerce but its delivery was not durably bound`,
     );
     return null;
   }
@@ -274,14 +274,14 @@ export const fillFromTheShop = async (
     // Nothing is answered and the claim stays: the request may have reached the
     // shop, so the next attempt has to meet "we do not know" rather than a
     // clean slate.
-    console.error(`[cabinet] ${order.id} has no usable WooCommerce creation result`);
+    console.error(`[dashboard] ${order.id} has no usable WooCommerce creation result`);
     return null;
   }
 
   // A response after POST is not proof that the remote side did not commit.
   // Keep the create_unknown obligation and require exact-id recovery rather
   // than turning a proxy/plugin-rewritten 4xx into a second POST.
-  console.error(`[cabinet] ${order.id} has no verifiable WooCommerce creation result`);
+  console.error(`[dashboard] ${order.id} has no verifiable WooCommerce creation result`);
   return unknownCreation(order.id, connection.shopUrl, parts.now());
 };
 
@@ -296,7 +296,7 @@ const samePermission = (left: WooPermission, right: WooPermission): boolean =>
 
 const unknownCreation = (orderId: string, shopUrl: string, attemptedAt: Date): HandlerAnswer => {
   console.error(
-    `[cabinet] ${orderId} was already being placed in the shop at ${shopUrl} at` +
+    `[dashboard] ${orderId} was already being placed in the shop at ${shopUrl} at` +
       ` ${attemptedAt.toISOString()} and that attempt never reported back. It is refused` +
       " rather than placed again; look for an order carrying this identifier as its" +
       " transaction id before deciding nothing happened.",
@@ -349,7 +349,7 @@ export interface WorkingParts extends Filling {
 /**
  * How long one poll waits.
  *
- * Short enough that a merchant stopping the cabinet does not wait on it, and
+ * Short enough that a merchant stopping the dashboard does not wait on it, and
  * long enough that a synchronous order is picked up the moment it is written
  * rather than on the next turn — which matters, because a synchronous purchase
  * is an agent holding a request open while this happens.
@@ -371,7 +371,7 @@ export const turnOnce = async (connection: WooConnection, parts: WorkingParts): 
     // The account behind this connection is gone, or has no merchant on it.
     // Nothing can be drawn as somebody who does not exist.
     console.error(
-      `[cabinet] the WooCommerce connection for ${connection.accountId} names an account with no` +
+      `[dashboard] the WooCommerce connection for ${connection.accountId} names an account with no` +
         " merchant on it, so its orders cannot be drawn",
     );
     return 0;
@@ -380,7 +380,7 @@ export const turnOnce = async (connection: WooConnection, parts: WorkingParts): 
   const gateway = parts.clientFor(person.merchant.key);
   const drawn = await gateway.pollWorker(parts.waitSeconds ?? WAIT_SECONDS, parts.max ?? AT_MOST);
   if (!drawn.ok) {
-    console.error(`[cabinet] the WooCommerce worker could not draw its stream: ${drawn.why}`);
+    console.error(`[dashboard] the WooCommerce worker could not draw its stream: ${drawn.why}`);
     return 0;
   }
 
@@ -397,7 +397,7 @@ export const turnOnce = async (connection: WooConnection, parts: WorkingParts): 
       const said = await gateway.answerQuote(envelope.payload.price_id, answer);
       if (!said.ok) {
         console.error(
-          `[cabinet] the price answer for ${envelope.payload.price_id} was not accepted: ${said.why}`,
+          `[dashboard] the price answer for ${envelope.payload.price_id} was not accepted: ${said.why}`,
         );
       }
       continue;
@@ -414,7 +414,7 @@ export const turnOnce = async (connection: WooConnection, parts: WorkingParts): 
     const said = await gateway.answerOrder(envelope.payload.id, answer);
     if (!said.ok) {
       console.error(
-        `[cabinet] the answer for ${envelope.payload.id} was not accepted: ${said.why}`,
+        `[dashboard] the answer for ${envelope.payload.id} was not accepted: ${said.why}`,
       );
     }
   }
@@ -451,7 +451,7 @@ export interface WooWorker {
 const BETWEEN_TURNS_MS = 1_000;
 
 /**
- * Keeps every connected shop's orders being filled, for as long as the cabinet
+ * Keeps every connected shop's orders being filled, for as long as the dashboard
  * is running.
  *
  * One loop per connected shop rather than one loop walking them all, because
@@ -463,7 +463,7 @@ const BETWEEN_TURNS_MS = 1_000;
  * The list of connections is read again every second, so a shop connected while
  * this is running starts being served without a restart and one disconnected
  * stops. Nothing here is a schedule anything depends on: an order nobody draws
- * is handed over again by the order machine, so a cabinet that was down comes
+ * is handed over again by the order machine, so a dashboard that was down comes
  * back to work that is still waiting.
  */
 export const startWooWorker = (
@@ -485,7 +485,7 @@ export const startWooWorker = (
             // that ended on its own would leave an entry nothing is running
             // behind, and a merchant who disconnected and connected again
             // inside one pass would have their orders filled by nobody until
-            // the cabinet was restarted. Ending a loop is the watcher's, and
+            // the dashboard was restarted. Ending a loop is the watcher's, and
             // it is the only thing that takes the entry away with it.
             await new Promise((resolve) =>
               setTimeout(resolve, parts.betweenTurnsMs ?? BETWEEN_TURNS_MS),
@@ -499,7 +499,7 @@ export const startWooWorker = (
             // usually zero extra waiting — but a gateway that answers a poll
             // at once, because it refused it or because the wait was asked for
             // as nothing, would otherwise be asked again as fast as this
-            // process can ask, which is a cabinet hammering a gateway that is
+            // process can ask, which is a dashboard hammering a gateway that is
             // already having a bad afternoon. A turn that did fill something
             // comes straight back, because there may be more waiting.
             await new Promise((resolve) =>
@@ -509,7 +509,7 @@ export const startWooWorker = (
         } catch (thrown) {
           // A turn that threw must not take the loop with it: what is on the
           // other end is somebody else's shop and somebody else's network.
-          console.error(`[cabinet] a WooCommerce turn failed for ${accountId}`, thrown);
+          console.error(`[dashboard] a WooCommerce turn failed for ${accountId}`, thrown);
           await new Promise((resolve) =>
             setTimeout(resolve, parts.betweenTurnsMs ?? BETWEEN_TURNS_MS),
           );
@@ -541,7 +541,7 @@ export const startWooWorker = (
           }
         }
       } catch (thrown) {
-        console.error("[cabinet] the WooCommerce worker could not read its connections", thrown);
+        console.error("[dashboard] the WooCommerce worker could not read its connections", thrown);
       }
       await new Promise((resolve) => setTimeout(resolve, parts.betweenTurnsMs ?? BETWEEN_TURNS_MS));
     }

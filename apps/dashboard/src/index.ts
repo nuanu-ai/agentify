@@ -1,5 +1,5 @@
 /**
- * The Agentify merchant cabinet: the cards with their pause, the orders, the
+ * The Agentify merchant dashboard: the cards with their pause, the orders, the
  * receipts and the keys, rendered on the server, behind a sign-in that knows
  * who a person is — and a registration that makes the merchant behind it.
  *
@@ -7,7 +7,7 @@
  * gateway through the same public API a merchant's own tooling uses (ADR-0005
  * §2). Pages for people change for reasons that have nothing to do with money,
  * and the deal is that the money path never pays for that churn — while the
- * cabinet, by being an ordinary consumer of the API, cannot draw a screen the
+ * dashboard, by being an ordinary consumer of the API, cannot draw a screen the
  * merchant could not have built themselves.
  *
  * Its identity tables are its own: the people who sign in, their sessions,
@@ -19,7 +19,7 @@
  */
 
 export { runAccount, type Terminal } from "./account-command.js";
-export { type CabinetConfig, loadConfig } from "./config.js";
+export { type DashboardConfig, loadConfig } from "./config.js";
 export { connect, migrateAccounts } from "./database.js";
 export {
   type Answer,
@@ -32,9 +32,9 @@ export {
   type AccountMerchant,
   type AccountSummary,
   type AttachMerchantResult,
-  type CabinetDestination,
-  type CabinetIdentity,
-  type CabinetLinkResult,
+  type DashboardDestination,
+  type DashboardIdentity,
+  type DashboardLinkResult,
   emailAs,
   type Identity,
   type IdentityParts,
@@ -54,7 +54,7 @@ export {
 } from "./mail.js";
 export { cardsScreen, ordersScreen, receiptsScreen, type Viewer } from "./screens.js";
 export { chooseNameScreen, settingsScreen } from "./seller-name.js";
-export { buildApp, type CabinetParts } from "./server.js";
+export { buildApp, type DashboardParts } from "./server.js";
 export {
   FULFILLMENT_WORDS,
   moment,

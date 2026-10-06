@@ -1,8 +1,8 @@
 /**
- * The cabinet side of production approval identity.
+ * The dashboard side of production approval identity.
  *
  * Email stays here. The gateway receives only the merchant identifier already
- * bound to exactly one cabinet account, and the merchant key is reduced to a
+ * bound to exactly one dashboard account, and the merchant key is reduced to a
  * presence bit inside the query so this operator can never print or use it as
  * authority.
  */

@@ -62,7 +62,7 @@ merchant admits a parcel lost, ADR-0028's command records a refund on the
 shipped order, which moves from `delivered` to `refunded` — the only way out of
 `delivered`, and for parcels only — and the receipt reads the refund. A `ship`
 card publishes on the test channel and is refused on the live one, with words,
-until that command and ADR-0028's view of the payer run there, the cabinet
+until that command and ADR-0028's view of the payer run there, the dashboard
 tells a merchant how to report a refund to the operator, and ADR-0011 records
 whether whoever holds an order identifier may read its tracking.
 

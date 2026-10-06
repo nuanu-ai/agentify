@@ -1,7 +1,7 @@
 /**
  * One line with nothing left in it that a terminal will act on.
  *
- * Two things in this cabinet write lines somebody reads in a terminal: the
+ * Two things in this dashboard write lines somebody reads in a terminal: the
  * account command, whose whole output is read there, and the process log, which
  * is the only record of who stopped a merchant's selling. Both
  * put text into those lines that somebody else wrote — an address out of a
@@ -14,7 +14,7 @@
  * as a line of its own, an override that reverses the direction text reads in.
  * A merchant who names a key with a newline and a plausible sentence after it
  * would otherwise write a second line into the record that answers "who stopped
- * the selling", in the cabinet's own voice and under somebody else's name.
+ * the selling", in the dashboard's own voice and under somebody else's name.
  *
  * Shown rather than removed, so that a value with something odd in it looks
  * odd: text nobody can read is still better information than text that silently

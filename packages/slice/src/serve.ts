@@ -12,7 +12,7 @@
  * and cannot claim.
  *
  * What it is for: the local stack (ADR-0005 §7) comes up with a catalogue and
- * somewhere for an order to go, so the cabinet has something to show and a
+ * somewhere for an order to go, so the dashboard has something to show and a
  * purchase can be walked end to end. It is not a fixture of anything —
  * `pnpm test` never runs it.
  *

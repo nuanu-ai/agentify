@@ -80,14 +80,14 @@ describe("what the import screen says about a product the door never answered ab
         {
           id: "12",
           title: "Monthly membership",
-          problems: ["seller name: choose one in the cabinet", finding],
+          problems: ["seller name: choose one in the dashboard", finding],
         },
       ],
       skipped: [],
     });
     const text = readable(html);
 
-    expect(text).toContain("seller name: choose one in the cabinet");
+    expect(text).toContain("seller name: choose one in the dashboard");
     expect(text).toContain(finding);
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).not.toContain("<script>alert(1)</script>");

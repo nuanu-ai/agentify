@@ -26,7 +26,7 @@
  *
  * Disabling a key comes in a scoped and an unscoped form, and which is which
  * matters. `disableKeyOf` takes the merchant and serves the button a merchant
- * presses in their cabinet; `disableKey` names a key alone and serves the
+ * presses in their dashboard; `disableKey` names a key alone and serves the
  * command somebody types, where one identifier is the whole of what they have.
  *
  * Reading a merchant's keys comes in two forms for a related reason. `keysOf`
@@ -385,7 +385,7 @@ export interface StoredMerchant {
  *
  * `merchant_code` is a key the merchant asked for and holds: it goes into their
  * own worker, it is on the one screen they revoke keys from, and everything
- * about it is theirs. `cabinet` is the credential a cabinet calls the gateway
+ * about it is theirs. `cabinet` is the credential a dashboard calls the gateway
  * with on their behalf — made when somebody signs in, never shown to anybody,
  * and in no list the merchant reads.
  *
@@ -415,7 +415,7 @@ export interface StoredKey {
    * What it is called, so one of several can be told from the others.
    *
    * Its owner chose it where the key is one of the merchant's own. A key made
-   * for a cabinet is labelled by whoever made it, because nobody typed
+   * for a dashboard is labelled by whoever made it, because nobody typed
    * anything: the merchant never sees it, and what reads the text is a person
    * at a terminal looking at every key a merchant has.
    */
@@ -498,7 +498,7 @@ export interface Store {
   ): Promise<StoredMerchant | null>;
 
   /**
-   * Writes down a merchant and their cabinet's key, together or not at all. Null
+   * Writes down a merchant and their dashboard's key, together or not at all. Null
    * where that identifier is taken, and then nothing was written.
    *
    * The two in one write is ADR-0014 §1, and what it buys is worth stating
@@ -509,13 +509,13 @@ export interface Store {
    * on it — cards, orders and receipts all reference merchants, so the row
    * cannot simply be swept.
    *
-   * The key is made for a cabinet, and that is fixed here rather than asked of
-   * the caller. Whoever registers is a cabinet — the route takes no key, and
+   * The key is made for a dashboard, and that is fixed here rather than asked of
+   * the caller. Whoever registers is a dashboard — the route takes no key, and
    * what it walks away with is the credential it will call as this merchant
    * with — so a caller who could ask for the other kind could only ever be
    * asking by mistake, and the mistake is a row in the merchant's own list of
    * keys on their first visit: one they never asked for, cannot recognise, and
-   * cannot revoke, since revoking it is their cabinet going dark.
+   * cannot revoke, since revoking it is their dashboard going dark.
    *
    * No listing name goes down with them, because registering does not ask for
    * one: the name buyers read is chosen afterwards, through `setServiceName`.
@@ -602,7 +602,7 @@ export interface Store {
    * key.
    *
    * What the key is for is said rather than defaulted. A default would be a
-   * caller who forgot, and what forgetting produces is a key made for a cabinet
+   * caller who forgot, and what forgetting produces is a key made for a dashboard
    * standing in a merchant's own list — the one row on that screen they cannot
    * be allowed to press the button beside.
    */
@@ -687,7 +687,7 @@ export interface Store {
    *
    * This is the wide read and its caller is the terminal, where the person
    * looking is the operator and hiding a working key from them would make the
-   * count beside a merchant a lie — "no working key left" while a cabinet's own
+   * count beside a merchant a lie — "no working key left" while a dashboard's own
    * still opens the door. What a merchant reads is {@link codeKeysOf}.
    */
   keysOf(merchantId: string): Promise<readonly StoredKey[]>;
@@ -695,7 +695,7 @@ export interface Store {
   /**
    * The keys one merchant made for their own code, disabled ones included.
    *
-   * The same promise about order, and one thing left out: the keys a cabinet
+   * The same promise about order, and one thing left out: the keys a dashboard
    * calls with. This is the read behind the list a merchant is shown, and a
    * list is a place somebody acts — so a row they did not make, cannot
    * recognise and cannot revoke has no business on it.
@@ -703,7 +703,7 @@ export interface Store {
    * The narrowing is here rather than in whoever calls, because a filter every
    * caller has to remember is a filter one of them will not. What that costs
    * the day it is forgotten is not a wrong number on a screen: it is a merchant
-   * pressing the button beside a row and taking their own cabinet down.
+   * pressing the button beside a row and taking their own dashboard down.
    */
   codeKeysOf(merchantId: string): Promise<readonly StoredKey[]>;
 
@@ -718,7 +718,7 @@ export interface Store {
    * It names a key and no merchant, and that is safe only because nothing
    * reachable from a request calls it — the callers are the command somebody
    * types, where one identifier already names the row, and the test harness.
-   * What the cabinet's own button calls is {@link disableKeyOf}, which takes the
+   * What the dashboard's own button calls is {@link disableKeyOf}, which takes the
    * merchant the way every other scoped write here does.
    */
   disableKey(id: string, at: number): Promise<StoredKey | null>;
@@ -735,8 +735,8 @@ export interface Store {
    * identifiers of a merchant's keys are not secrets.
    *
    * `"made_for_a_cabinet"` is a key of this merchant's that they did not issue.
-   * A merchant switches off what they made; the credential their cabinet calls
-   * with is not that, and revoking it signs somebody out of the cabinet they
+   * A merchant switches off what they made; the credential their dashboard calls
+   * with is not that, and revoking it signs somebody out of the dashboard they
    * are standing in. It is told apart from the null because it is a fact about
    * the caller's own row rather than about a stranger's, so saying it counts
    * nothing that was hidden — and because the caller is owed the reason, which
@@ -764,7 +764,7 @@ export interface Store {
   ): Promise<StoredKey | "made_for_a_cabinet" | null>;
 
   /**
-   * Removes one key made for a cabinet, and answers whether a row went.
+   * Removes one key made for a dashboard, and answers whether a row went.
    *
    * The only place in this port where something is deleted rather than marked,
    * and the reason is who would read it. A revoked key stays because a merchant
@@ -774,7 +774,7 @@ export interface Store {
    *
    * One key by name and no rule about which others to keep. Any such rule is
    * decided when the call is made and can be stale by the time it lands: "every
-   * cabinet key but this one" removes a key written in between by a caller that
+   * dashboard key but this one" removes a key written in between by a caller that
    * had never heard of it, and two sign-ins overlapping then leave an account
    * naming a key that is gone. What is above this passes the identifier of the
    * key its own call was made with, so the only key anybody can remove is one
@@ -788,7 +788,7 @@ export interface Store {
    * a caller retrying after a dropped connection needs neither of them to be a
    * failure.
    */
-  forgetCabinetKey(keyId: string): Promise<boolean>;
+  forgetDashboardKey(keyId: string): Promise<boolean>;
 
   // --- the catalog ----------------------------------------------------------
 

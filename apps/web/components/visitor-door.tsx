@@ -9,7 +9,7 @@ import styles from "./site-chrome.module.css";
  * Drawn in the browser from the site's one session, so the page it sits on
  * stays the same page for everybody and may be cached as one. A browser that
  * runs no script sees the doors beside it and no address (ADR-0026 §3). The
- * sign-out is the cabinet's own same-origin form, which ends this browser's
+ * sign-out is the dashboard's own same-origin form, which ends this browser's
  * session everywhere on the site and opens the sign-in with an empty field.
  * An operator also finds the dashboard here: the flag arrives on the same
  * answer as the address, and it is theirs to know (ADR-0026 §6).

@@ -194,7 +194,7 @@ describe("the passwordless account command", () => {
 
   it("makes no account: an account is made when its person opens the mailed link", async () => {
     // One way in (ADR-0014, ADR-0026 §1): a person types an address, opens the
-    // link mailed to it, and the cabinet makes the account. The terminal looks
+    // link mailed to it, and the dashboard makes the account. The terminal looks
     // after accounts that exist and makes none, for a merchant or otherwise.
     const { identity, rows } = store();
 

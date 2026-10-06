@@ -57,7 +57,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     );
   // Who is asking decides what the ask is. A signed-in person's own ask is
   // filed under the session's address at once and sends nothing; anybody
-  // else's waits for the link sent to the address they typed. A cabinet that
+  // else's waits for the link sent to the address they typed. A dashboard that
   // does not answer is neither, and nothing is asked on a guess (ADR-0026 §2).
   const visitor = await visitorOf(request.headers.get("cookie"));
   if (visitor.kind === "unknown")

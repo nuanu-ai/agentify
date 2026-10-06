@@ -1,4 +1,4 @@
-/** PostgreSQL authority for cabinet identity transactions and cutover. */
+/** PostgreSQL authority for dashboard identity transactions and cutover. */
 
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -32,7 +32,7 @@ async function statementsOf(file: string): Promise<string[]> {
 
 if (databaseUrl === null) {
   console.log(noDatabaseHere(wanted));
-  describe("the cabinet identity on PostgreSQL", () => {
+  describe("the dashboard identity on PostgreSQL", () => {
     it.skip("is skipped: there is no PostgreSQL to run it against", () => {});
   });
 } else {
@@ -122,9 +122,9 @@ if (databaseUrl === null) {
 
   function tokenIn(message: Message): string {
     const raw = message.body.match(/https?:\/\/\S+/)?.[0];
-    if (raw === undefined) throw new Error("the message has no cabinet link");
+    if (raw === undefined) throw new Error("the message has no dashboard link");
     const token = new URL(raw).searchParams.get("token");
-    if (token === null) throw new Error("the cabinet link has no token");
+    if (token === null) throw new Error("the dashboard link has no token");
     return token;
   }
 
@@ -333,7 +333,7 @@ if (databaseUrl === null) {
       expect(first).toMatchObject({ status: "opened", destination: "default" });
       expect(second).toMatchObject({ status: "opened", destination: "settings" });
       if (first.status !== "opened" || second.status !== "opened") {
-        throw new Error("both independent cabinet links should open");
+        throw new Error("both independent dashboard links should open");
       }
       expect(second.person.id).toBe(first.person.id);
       expect(

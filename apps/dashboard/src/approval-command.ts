@@ -26,7 +26,7 @@ export interface ApprovalTerminal {
 }
 
 /**
- * Resolves one cabinet identity and grants its existing gateway merchant.
+ * Resolves one dashboard identity and grants its existing gateway merchant.
  *
  * Every refusal before `grant` is a known no-write result. Once `grant` has
  * been called, an exception is uncertain: the database may have committed the
@@ -46,7 +46,7 @@ export async function runApproval(
     matches = await directory.resolve(rawEmail);
   } catch {
     say(
-      "PRODUCTION approval could not inspect the cabinet accounts. No gateway write was requested.",
+      "PRODUCTION approval could not inspect the dashboard accounts. No gateway write was requested.",
     );
     return 1;
   }
@@ -86,7 +86,7 @@ export async function runApproval(
 
   if (granted === null) {
     say(
-      `PRODUCTION approval refused: cabinet merchant ${match.merchantId} does not exist in the gateway.`,
+      `PRODUCTION approval refused: dashboard merchant ${match.merchantId} does not exist in the gateway.`,
     );
     return 1;
   }

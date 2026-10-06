@@ -1,5 +1,5 @@
 /**
- * What the cabinet actually sends the gateway, and what it does with what comes
+ * What the dashboard actually sends the gateway, and what it does with what comes
  * back.
  *
  * Two things are held here. The first is that a call ends: a gateway that
@@ -10,15 +10,15 @@
  * their selling, so a call with no deadline is a merchant who cannot stop.
  *
  * The second is the six calls ADR-0014 adds: registering, listing keys,
- * issuing one and revoking one, and the two the cabinet makes about the key it
+ * issuing one and revoking one, and the two the dashboard makes about the key it
  * signs in with. The screens above them are driven in `server.test.ts` against
  * a client the test supplies, so nothing there ever sends a request — what a
- * `POST /v0/keys` actually puts on the wire, and what the cabinet does with an
+ * `POST /v0/keys` actually puts on the wire, and what the dashboard does with an
  * answer the contract refuses, is held here instead.
  *
  * The server on the other end records what arrived and answers what the test
  * says. What it is not is a gateway: it agrees with whatever is sent, so these
- * hold the cabinet's half of the call — the address, the method, the key header
+ * hold the dashboard's half of the call — the address, the method, the key header
  * or its absence, the body — and, on the way back, that an answer the contract
  * would not recognise stops here rather than reaching a page.
  */
@@ -180,7 +180,7 @@ describe("the call that makes a merchant", () => {
   });
 
   it("refuses an answer with no secret in it rather than writing an account with none", async () => {
-    // The one field the cabinet cannot do without: it is what goes on the row,
+    // The one field the dashboard cannot do without: it is what goes on the row,
     // and an account carrying an empty key is an account that signs in and then
     // meets a 401 on every screen, with nothing on the page to say why. Held to
     // the contract's shape here, so it fails at the call rather than three
@@ -230,7 +230,7 @@ describe("the calls behind the name buyers read", () => {
   });
 
   it("reads a merchant who has chosen no name as null rather than as an absence", async () => {
-    // Null is the state every screen in this cabinet exists to get somebody out
+    // Null is the state every screen in this dashboard exists to get somebody out
     // of, so it has to arrive as an answer and not as a missing field. A client
     // that folded the two would leave the screens unable to tell "no name" from
     // "the call went wrong".
@@ -390,7 +390,7 @@ describe("the calls a merchant makes about their keys", () => {
   it("refuses a list that does not say which key the call was made with", async () => {
     // Without it the screen cannot tell which row to leave without a control,
     // and a screen that guessed would offer the one click that costs a merchant
-    // the way back into their own cabinet (ADR-0014 §5).
+    // the way back into their own dashboard (ADR-0014 §5).
     const { url } = await recordingServer(200, { keys: [aKey()] });
 
     await expect(gatewayFor(url, KEY).keys()).rejects.toThrow();
@@ -480,14 +480,14 @@ describe("the calls a merchant makes about their keys", () => {
   });
 });
 
-describe("the two calls about the key the cabinet itself holds", () => {
-  it("asks for a fresh one at the cabinet's own address, with the key it is holding now", async () => {
+describe("the two calls about the key the dashboard itself holds", () => {
+  it("asks for a fresh one at the dashboard's own address, with the key it is holding now", async () => {
     // Made with the key on the account row rather than with anything else,
     // because the gateway answers this only to a key of that kind — and
     // because the whole point is a merchant asking for another of their own.
     const { url, arrived } = await recordingServer(200, { secret: "the-next-one" });
 
-    const asked = await gatewayFor(url, KEY).issueCabinetKey();
+    const asked = await gatewayFor(url, KEY).issueDashboardKey();
 
     expect(arrived[0]?.method).toBe("POST");
     expect(arrived[0]?.path).toBe("/v0/keys/cabinet");
@@ -508,7 +508,7 @@ describe("the two calls about the key the cabinet itself holds", () => {
     // say why.
     const { url } = await recordingServer(200, {});
 
-    await expect(gatewayFor(url, KEY).issueCabinetKey()).rejects.toThrow();
+    await expect(gatewayFor(url, KEY).issueDashboardKey()).rejects.toThrow();
   });
 
   it("forgets a key by making the call with it, and names no key at all", async () => {
@@ -518,7 +518,7 @@ describe("the two calls about the key the cabinet itself holds", () => {
     // not holding.
     const { url, arrived } = await recordingServer(200, { forgotten: true });
 
-    const gone = await gatewayFor(url, KEY).forgetCabinetKey();
+    const gone = await gatewayFor(url, KEY).forgetDashboardKey();
 
     expect(arrived[0]?.method).toBe("DELETE");
     expect(arrived[0]?.path).toBe("/v0/keys/cabinet");
@@ -528,11 +528,11 @@ describe("the two calls about the key the cabinet itself holds", () => {
   });
 
   it("refuses an answer that does not say the key is gone", async () => {
-    // The one field the document has. Taken as done on a silence, a cabinet
+    // The one field the document has. Taken as done on a silence, a dashboard
     // would believe it had put a key beyond use while the key went on working.
     const { url } = await recordingServer(200, {});
 
-    await expect(gatewayFor(url, KEY).forgetCabinetKey()).rejects.toThrow();
+    await expect(gatewayFor(url, KEY).forgetDashboardKey()).rejects.toThrow();
   });
 
   it("carries through the gateway's refusal to make one of these for a merchant's own key", async () => {
@@ -543,11 +543,11 @@ describe("the two calls about the key the cabinet itself holds", () => {
     const { url } = await recordingServer(403, {
       error: {
         code: "not_a_cabinet_key",
-        message: "this call is made with the key a cabinet signs in with, and that is not one",
+        message: "this call is made with the key a dashboard signs in with, and that is not one",
       },
     });
 
-    const refused = await gatewayFor(url, KEY).issueCabinetKey();
+    const refused = await gatewayFor(url, KEY).issueDashboardKey();
 
     expect(refused.ok).toBe(false);
     if (refused.ok) {

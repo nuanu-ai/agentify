@@ -1,10 +1,10 @@
 /**
- * Asking the cabinet to tell a merchant of a change, over a real socket.
+ * Asking the dashboard to tell a merchant of a change, over a real socket.
  *
- * The promise this adapter keeps is the fourth outcome. A cabinet that took
+ * The promise this adapter keeps is the fourth outcome. A dashboard that took
  * every message answers so, and so does one that had nobody to tell or could
  * not hand a message over; everything else — a status that is not an answer,
- * a body that is not one, a cabinet that is not there, one slower than the
+ * a body that is not one, a dashboard that is not there, one slower than the
  * deadline — is `unconfirmed`, because a message may have gone out and nothing
  * here can say it did not. A wallet change recorded on the strength of a guess
  * in either direction is the failure ADR-0019 is written against.
@@ -14,7 +14,7 @@ import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Announcement, GATEWAY_ROUTE_PATH } from "../../announcements.js";
-import { CabinetAnnouncer } from "./announcer.js";
+import { DashboardAnnouncer } from "./announcer.js";
 
 const SECRET = "the-gateway-cabinet-secret-this-suite-presents";
 
@@ -51,8 +51,8 @@ const readBody = async (request: IncomingMessage): Promise<unknown> => {
   return text === "" ? null : JSON.parse(text);
 };
 
-/** A cabinet that answers every request the same way, and remembers what came. */
-const aCabinet = async (
+/** A dashboard that answers every request the same way, and remembers what came. */
+const aDashboard = async (
   status: number,
   body: string,
   delayMs = 0,
@@ -76,11 +76,11 @@ const aCabinet = async (
   return { url: `http://127.0.0.1:${port}`, arrived };
 };
 
-describe("asking the cabinet", () => {
+describe("asking the dashboard", () => {
   it("sends the announcement to its route, with the secret, and reads its answer", async () => {
-    const { url, arrived } = await aCabinet(200, JSON.stringify({ outcome: "handed_over" }));
+    const { url, arrived } = await aDashboard(200, JSON.stringify({ outcome: "handed_over" }));
 
-    const outcome = await new CabinetAnnouncer({ url, secret: SECRET }).announce(ANNOUNCEMENT);
+    const outcome = await new DashboardAnnouncer({ url, secret: SECRET }).announce(ANNOUNCEMENT);
 
     expect(outcome).toBe("handed_over");
     expect(arrived).toStrictEqual([
@@ -94,18 +94,20 @@ describe("asking the cabinet", () => {
   });
 
   it.each(["nobody_to_tell", "not_handed_over"] as const)(
-    "passes on the cabinet's own %s",
+    "passes on the dashboard's own %s",
     async (said) => {
-      const { url } = await aCabinet(200, JSON.stringify({ outcome: said }));
+      const { url } = await aDashboard(200, JSON.stringify({ outcome: said }));
 
-      expect(await new CabinetAnnouncer({ url, secret: SECRET }).announce(ANNOUNCEMENT)).toBe(said);
+      expect(await new DashboardAnnouncer({ url, secret: SECRET }).announce(ANNOUNCEMENT)).toBe(
+        said,
+      );
     },
   );
 });
 
-describe("a cabinet that turned the request away", () => {
+describe("a dashboard that turned the request away", () => {
   // Its listener answers these before it reads an announcement or tells
-  // anybody, so nothing was sent — which is a different fact from a cabinet
+  // anybody, so nothing was sent — which is a different fact from a dashboard
   // that did not answer, and the refusal a merchant reads depends on it.
   it.each([
     ["the wrong secret", 401],
@@ -113,21 +115,21 @@ describe("a cabinet that turned the request away", () => {
     ["a body too large", 413],
     ["an address it does not answer on", 404],
   ])("reads %s as refused, with nothing sent", async (_what, status) => {
-    const { url } = await aCabinet(status, "");
+    const { url } = await aDashboard(status, "");
 
-    expect(await new CabinetAnnouncer({ url, secret: SECRET }).announce(ANNOUNCEMENT)).toBe(
+    expect(await new DashboardAnnouncer({ url, secret: SECRET }).announce(ANNOUNCEMENT)).toBe(
       "refused_by_cabinet",
     );
   });
 
   it("says in the log that the two halves hold different secrets, without either", async () => {
-    const { url } = await aCabinet(401, "");
+    const { url } = await aDashboard(401, "");
     const said: string[] = [];
     const error = vi.spyOn(console, "error").mockImplementation((...parts) => {
       said.push(parts.map(String).join(" "));
     });
     try {
-      await new CabinetAnnouncer({ url, secret: SECRET }).announce(ANNOUNCEMENT);
+      await new DashboardAnnouncer({ url, secret: SECRET }).announce(ANNOUNCEMENT);
     } finally {
       error.mockRestore();
     }
@@ -137,33 +139,33 @@ describe("a cabinet that turned the request away", () => {
   });
 });
 
-describe("a cabinet that did not answer", () => {
+describe("a dashboard that did not answer", () => {
   it.each([
     ["a failure", 500, JSON.stringify({ outcome: "handed_over" })],
     ["a body that is not an answer", 200, JSON.stringify({ outcome: "sent" })],
     ["a body that is not JSON", 200, "<html>"],
   ])("is unconfirmed when it sends %s", async (_what, status, body) => {
-    const { url } = await aCabinet(status, body);
+    const { url } = await aDashboard(status, body);
 
-    expect(await new CabinetAnnouncer({ url, secret: SECRET }).announce(ANNOUNCEMENT)).toBe(
+    expect(await new DashboardAnnouncer({ url, secret: SECRET }).announce(ANNOUNCEMENT)).toBe(
       "unconfirmed",
     );
   });
 
   it("is unconfirmed when nothing listens where it is asked", async () => {
-    const { url } = await aCabinet(200, "{}");
+    const { url } = await aDashboard(200, "{}");
     await new Promise<void>((resolve) => running?.close(() => resolve()));
     running = null;
 
-    expect(await new CabinetAnnouncer({ url, secret: SECRET }).announce(ANNOUNCEMENT)).toBe(
+    expect(await new DashboardAnnouncer({ url, secret: SECRET }).announce(ANNOUNCEMENT)).toBe(
       "unconfirmed",
     );
   });
 
   it("is unconfirmed when it answers after the deadline, however it answers", async () => {
-    const { url } = await aCabinet(200, JSON.stringify({ outcome: "handed_over" }), 200);
+    const { url } = await aDashboard(200, JSON.stringify({ outcome: "handed_over" }), 200);
 
-    expect(await new CabinetAnnouncer({ url, secret: SECRET }, 50).announce(ANNOUNCEMENT)).toBe(
+    expect(await new DashboardAnnouncer({ url, secret: SECRET }, 50).announce(ANNOUNCEMENT)).toBe(
       "unconfirmed",
     );
   });

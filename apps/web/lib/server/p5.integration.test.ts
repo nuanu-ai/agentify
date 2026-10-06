@@ -71,22 +71,22 @@ const migrationsFolder = fileURLToPath(
 );
 const admin = createDatabase(connectionString, { max: 1 });
 const provider = new LocalStripeCardSignalProvider("p5-webhook-secret");
-let cabinetServer: Server | undefined;
-let cabinetMode: "unavailable" | "retained" | "deleted" = "retained";
-let cabinetDelayMs = 0;
-let cabinetDeleteRequests = 0;
+let dashboardServer: Server | undefined;
+let dashboardMode: "unavailable" | "retained" | "deleted" = "retained";
+let dashboardDelayMs = 0;
+let dashboardDeleteRequests = 0;
 
 /**
- * The sessions the stand-in cabinet answers for, by cookie value. A privacy
+ * The sessions the stand-in dashboard answers for, by cookie value. A privacy
  * deletion of a person who owns no merchant takes theirs with them.
  */
 const SESSION_COOKIE = "__Host-agentify.session_token";
-const cabinetSessions = new Map<string, string>();
+const dashboardSessions = new Map<string, string>();
 
-/** A browser signed in as this address, as the cabinet would answer for it. */
+/** A browser signed in as this address, as the dashboard would answer for it. */
 function signedInAs(email: string): string {
-  const value = `p5-session-${cabinetSessions.size + 1}`;
-  cabinetSessions.set(value, email);
+  const value = `p5-session-${dashboardSessions.size + 1}`;
+  dashboardSessions.set(value, email);
   return `${SESSION_COOKIE}=${value}`;
 }
 
@@ -192,7 +192,7 @@ beforeAll(async () => {
     };
     if (body.operation === "session") {
       const value = (body.cookie ?? "").split(`${SESSION_COOKIE}=`)[1]?.split(";")[0] ?? "";
-      const email = cabinetSessions.get(value);
+      const email = dashboardSessions.get(value);
       respondJson(
         response,
         200,
@@ -206,17 +206,17 @@ beforeAll(async () => {
       respondJson(response, 200, { status: "refused" });
       return;
     }
-    cabinetDeleteRequests += 1;
-    if (cabinetDelayMs) {
-      await new Promise((resolve) => setTimeout(resolve, cabinetDelayMs));
+    dashboardDeleteRequests += 1;
+    if (dashboardDelayMs) {
+      await new Promise((resolve) => setTimeout(resolve, dashboardDelayMs));
     }
-    if (cabinetMode === "unavailable") {
+    if (dashboardMode === "unavailable") {
       respondJson(response, 503, { status: "unavailable" });
     } else {
-      respondJson(response, 200, { status: cabinetMode });
+      respondJson(response, 200, { status: dashboardMode });
     }
   });
-  cabinetServer = server;
+  dashboardServer = server;
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("server_address");
@@ -224,7 +224,7 @@ beforeAll(async () => {
 }, 30_000);
 
 afterAll(async () => {
-  const server = cabinetServer;
+  const server = dashboardServer;
   if (server?.listening) {
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),
@@ -318,7 +318,7 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
     });
   });
 
-  it("revokes locally during cabinet outage, then completes retained-person deletion", async () => {
+  it("revokes locally during dashboard outage, then completes retained-person deletion", async () => {
     const fixture = await createLeadFixture("deletion-outage");
     await getDatabase()
       .db.insert(scanShares)
@@ -355,7 +355,7 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
     const cookieHeader = signedInAs(fixture.email);
     await expect(visitorOf(cookieHeader)).resolves.toMatchObject({ leadId: fixture.leadId });
 
-    cabinetMode = "unavailable";
+    dashboardMode = "unavailable";
     await expect(
       requestScannerIdentityDeletion({ leadId: fixture.leadId, provider }),
     ).resolves.toBe("requested");
@@ -365,7 +365,7 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
     expect(blockedLead.deletionRequestedAt).toBeInstanceOf(Date);
     expect(blockedLead.anonymizedAt).toBeNull();
     // The reports close the moment the deletion is asked for, whether or not
-    // the cabinet has answered yet: the session still reads, and it owns
+    // the dashboard has answered yet: the session still reads, and it owns
     // nothing any more.
     await expect(visitorOf(cookieHeader)).resolves.toMatchObject({
       kind: "person",
@@ -383,7 +383,7 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
       .db.update(scannerIdentityDeletionOperations)
       .set({ leaseExpiresAt: new Date(Date.now() - 1) })
       .where(eq(scannerIdentityDeletionOperations.operationId, operation.operationId));
-    cabinetMode = "retained";
+    dashboardMode = "retained";
     await expect(
       runScannerIdentityDeletionOperation({
         operationId: operation.operationId,
@@ -440,14 +440,14 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
           .where(eq(scannerIdentityDeletionOperations.operationId, operation.operationId))
       )[0],
     ).toMatchObject({
-      cabinetResult: "retained",
+      dashboardResult: "retained",
       completedAt: expect.any(Date),
     });
   });
 
   it("uses the database lease so concurrent resident retries delete once", async () => {
     const fixture = await createLeadFixture("deletion-lease");
-    cabinetMode = "unavailable";
+    dashboardMode = "unavailable";
     await requestScannerIdentityDeletion({ leadId: fixture.leadId });
     const operation = onlyRow(
       await getDatabase()
@@ -460,9 +460,9 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
       .set({ leaseExpiresAt: new Date(Date.now() - 1) })
       .where(eq(scannerIdentityDeletionOperations.operationId, operation.operationId));
 
-    cabinetMode = "deleted";
-    cabinetDelayMs = 75;
-    const before = cabinetDeleteRequests;
+    dashboardMode = "deleted";
+    dashboardDelayMs = 75;
+    const before = dashboardDeleteRequests;
     const results = await Promise.all([
       runScannerIdentityDeletionOperation({
         operationId: operation.operationId,
@@ -471,13 +471,13 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
         operationId: operation.operationId,
       }),
     ]);
-    cabinetDelayMs = 0;
+    dashboardDelayMs = 0;
     expect(results.sort()).toEqual(["completed", "not_found"]);
-    expect(cabinetDeleteRequests - before).toBe(1);
+    expect(dashboardDeleteRequests - before).toBe(1);
     await expect(retryPendingScannerIdentityDeletions()).resolves.toBe(0);
   });
 
-  it("refuses cabinet deletion when encrypted email and lookup hash disagree", async () => {
+  it("refuses dashboard deletion when encrypted email and lookup hash disagree", async () => {
     const fixture = await createLeadFixture("deletion-mismatch");
     await getDatabase()
       .db.update(leads)
@@ -485,11 +485,11 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
         emailNormalizedCiphertext: encryptEmail("different-owner@example.com", Buffer.alloc(32, 7)),
       })
       .where(eq(leads.id, fixture.leadId));
-    const beforeRequests = cabinetDeleteRequests;
+    const beforeRequests = dashboardDeleteRequests;
     await expect(requestScannerIdentityDeletion({ leadId: fixture.leadId })).resolves.toBe(
       "requested",
     );
-    expect(cabinetDeleteRequests).toBe(beforeRequests);
+    expect(dashboardDeleteRequests).toBe(beforeRequests);
     const lead = onlyRow(
       await getDatabase().db.select().from(leads).where(eq(leads.id, fixture.leadId)),
     );

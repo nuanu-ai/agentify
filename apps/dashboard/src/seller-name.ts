@@ -97,7 +97,7 @@ const WHAT_IT_IS_FOR = `<p>Buyers see this seller name beside your products and 
  * The screen a merchant lands on the moment their account exists.
  *
  * Drawn with no navigation because it is the last step of first-time setup
- * rather than a page inside the cabinet. The way out
+ * rather than a page inside the dashboard. The way out
  * is a link and not a hidden field: whoever skips goes to their cards, which is
  * where the same fact is waiting for them with the page that fixes it.
  */
@@ -129,7 +129,7 @@ ${brandLockup("/")}
   );
 
 /**
- * The cabinet's settings, which hold three account subjects.
+ * The dashboard's settings, which hold three account subjects.
  *
  * A page of its own rather than controls tucked onto the cards screen: none of
  * these is about a card, all of them are about the merchant. The name buyers
@@ -212,7 +212,7 @@ export const settingsScreen = (viewer: Viewer, problem?: string, typedName?: str
 /**
  * The ways a catalogue reaches Agentify: the merchant's own code through the
  * SDK, which is the product's path and comes first, or a WooCommerce shop
- * through the experimental connector, where this cabinet has one. A tab of its own, because they are integrations,
+ * through the experimental connector, where this dashboard has one. A tab of its own, because they are integrations,
  * and halfway down the settings, under the name and the wallet, is not where
  * anybody looks for one.
  */

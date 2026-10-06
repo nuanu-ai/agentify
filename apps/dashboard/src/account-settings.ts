@@ -1,5 +1,5 @@
 /**
- * The account half of settings under passwordless cabinet identity.
+ * The account half of settings under passwordless dashboard identity.
  *
  * It carries the one control that reaches this account's other sessions:
  * signing out every other device (ADR-0026 §3). The header's sign-out ends

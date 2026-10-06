@@ -1,5 +1,5 @@
 /**
- * The cabinet's own HTTP surface: the one-field sign-in, its one-time-link
+ * The dashboard's own HTTP surface: the one-field sign-in, its one-time-link
  * landing, the screens with navigation on them, the settings, and the switches
  * that stop and start selling.
  *
@@ -20,7 +20,7 @@
  * ADR-0009 §2. The gate sits above every route below it, so a page added later
  * is guarded because it is a page rather than because somebody remembered — and
  * a visitor with no session is answered identically at every address, including
- * the ones that do not exist, so the cabinet's inventory of pages is not
+ * the ones that do not exist, so the dashboard's inventory of pages is not
  * something a stranger can read off it.
  *
  * What stands above the gate is written out in that decision and is short: the
@@ -40,10 +40,10 @@ import {
   type PayoutWallet as PayoutWalletDocument,
 } from "@nuanu-ai/agentify-contracts";
 import express, { type Express, type Request, type Response } from "express";
-import type { CabinetConfig } from "./config.js";
+import type { DashboardConfig } from "./config.js";
 import type {
-  CabinetDestination,
-  CabinetIdentity,
+  DashboardDestination,
+  DashboardIdentity,
   LinkDestination,
   Person,
 } from "./dashboard-entry.js";
@@ -144,12 +144,12 @@ const mapAtMost = async <Input, Output>(
 };
 
 /**
- * How long the cabinet waits on the gateway for a payout wallet change.
+ * How long the dashboard waits on the gateway for a payout wallet change.
  *
  * Longer than a screen's ten seconds, because on the live deployment the
- * gateway does not answer until this cabinet's own listener for the gateway has
+ * gateway does not answer until this dashboard's own listener for the gateway has
  * handed every message to the mail provider, and it gives that twenty seconds
- * (ADR-0019). A cabinet that stopped waiting first would tell a person the
+ * (ADR-0019). A dashboard that stopped waiting first would tell a person the
  * gateway did not answer while their change was being recorded.
  */
 const WALLET_CHANGE_MS = 30_000;
@@ -159,9 +159,9 @@ const WALLET_CHANGE_MS = 30_000;
  *
  * There is one such account and it is on a deployed server: it was made before
  * an account named its merchant, so there is no key on its row and not one
- * screen in this cabinet can be drawn for it. The two things it must not be
- * answered with are an empty cabinet, which reads as a catalogue somebody
- * emptied, and an exception, which reads as a broken cabinet.
+ * screen in this dashboard can be drawn for it. The two things it must not be
+ * answered with are an empty dashboard, which reads as a catalogue somebody
+ * emptied, and an exception, which reads as a broken dashboard.
  *
  * So it is told what it is and what the two ways out are. The person reading it
  * is whoever set the deployment up, because this account is one of ours and not
@@ -191,7 +191,7 @@ const SESSION_ENDED =
   `Your session ended; a session lasts ${SESSION_DAYS} days from your last visit. ` +
   `Send yourself a new link to carry on.`;
 
-const cabinetDestinationIn = (value: unknown): CabinetDestination =>
+const dashboardDestinationIn = (value: unknown): DashboardDestination =>
   value === "settings" || value === "woocommerce" ? value : "default";
 
 /**
@@ -199,13 +199,13 @@ const cabinetDestinationIn = (value: unknown): CabinetDestination =>
  *
  * The scanner's page, because the scanner is what knows whether this person
  * owns a report: it answers with the latest of them, and sends somebody who
- * owns none back to the cabinet, whose first screen offers the one control
+ * owns none back to the dashboard, whose first screen offers the one control
  * that makes a merchant. Never that screen for a person with reports, and
  * never the merchant itself, which only the explicit press makes (§4).
  */
 export const LATEST_REPORT = "/report/latest";
 
-const cabinetPathFor = (base: string, destination: CabinetDestination): string =>
+const dashboardPathFor = (base: string, destination: DashboardDestination): string =>
   destination === "settings"
     ? `${base}/settings`
     : destination === "woocommerce"
@@ -213,15 +213,15 @@ const cabinetPathFor = (base: string, destination: CabinetDestination): string =
       : `${base}/cards`;
 
 /**
- * The stylesheet the cabinet serves: the shared visual language, then the
- * cabinet's own layout. Read once at startup — neither changes while we run.
+ * The stylesheet the dashboard serves: the shared visual language, then the
+ * dashboard's own layout. Read once at startup — neither changes while we run.
  *
  * ADR-0005 §6 wants one visual language across the surfaces, held in one
  * stylesheet rather than repeated per page, and that file is
  * `packages/visual/tokens.css`. Nothing serves it over HTTP on the deployed
- * origin, so every reader takes it at build time or off disk; the cabinet reads
+ * origin, so every reader takes it at build time or off disk; the dashboard reads
  * it off disk and serves it inside its own response. That also suits how the
- * cabinet is run: it has to render correctly on its own, without Caddy in front
+ * dashboard is run: it has to render correctly on its own, without Caddy in front
  * of it, which is how it is developed and how every one of its tests drives it.
  *
  * What matters is that it is one file on disk and not a copy. This branch did
@@ -241,53 +241,53 @@ function readTokens(): string {
     // lengths to name every problem at once; this is the same courtesy for the
     // one file it does not read.
     throw new Error(
-      `The cabinet cannot start: it serves the shared visual language from ${TOKENS_AT.pathname},` +
+      `The dashboard cannot start: it serves the shared visual language from ${TOKENS_AT.pathname},` +
         " which is not there. That file is packages/visual/tokens.css, and ADR-0005 §6 makes" +
-        " it the one place every surface takes its palette from — so the cabinet ships" +
+        " it the one place every surface takes its palette from — so the dashboard ships" +
         ` beside it rather than carrying a copy. ${String(thrown)}`,
     );
   }
 }
 const STYLESHEET = `${TOKENS}\n${readFileSync(new URL("./agentify.css", import.meta.url), "utf8")}`;
 
-/** What the cabinet is built out of, beyond its configuration. */
-export interface CabinetParts {
+/** What the dashboard is built out of, beyond its configuration. */
+export interface DashboardParts {
   /**
    * Who is signed in, and everything that follows from that.
    *
    * The component and the store behind it, wrapped in `identity.ts`. A
-   * deployment gives it Postgres; the cabinet's own tests give it the
+   * deployment gives it Postgres; the dashboard's own tests give it the
    * component's memory store, so the suite drives the real component offline.
    */
-  readonly identity: CabinetIdentity;
+  readonly identity: DashboardIdentity;
   /**
    * How the gateway is reached on behalf of one merchant, with the real client
    * as the default.
    *
    * A function of the key rather than a client, because the key is not the
-   * cabinet's any more: it is on the row of whoever is signed in, so a client is
-   * built per request and two people signed into one cabinet are two merchants
+   * dashboard's any more: it is on the row of whoever is signed in, so a client is
+   * built per request and two people signed into one dashboard are two merchants
    * (ADR-0014 §2). Only a test ever passes anything else, and what a deployment
    * runs is the client that speaks the contract's route table.
    *
    * The deadline is the caller's because not every call is made in front of a
    * person: a screen is worth waiting on, and the two calls that replace this
-   * cabinet's own key while somebody signs in are not. Left out, the client's
+   * dashboard's own key while somebody signs in are not. Left out, the client's
    * own is used.
    */
   readonly gatewayFor?: (key: string, answerWithinMs?: number) => GatewayClient;
   /**
-   * How a merchant is made, which is the one call the cabinet makes with no key.
+   * How a merchant is made, which is the one call the dashboard makes with no key.
    *
    * Its own part rather than a method on the client above, because somebody
    * opening a first link is not a merchant yet and there is no key to bind a client to.
    */
   readonly registrar?: Registrar;
   /**
-   * Where a merchant's connected WooCommerce shop is kept, for the cabinet that
+   * Where a merchant's connected WooCommerce shop is kept, for the dashboard that
    * has one.
    *
-   * Optional, and absent is a cabinet with no WooCommerce screens at all rather
+   * Optional, and absent is a dashboard with no WooCommerce screens at all rather
    * than screens that fail: a deployment without the tables has nothing to draw
    * them from, and a page offering to connect a shop it cannot write down would
    * be a button that loses somebody's keys.
@@ -333,7 +333,7 @@ export interface CabinetParts {
  * A map keyed by the request rather than a field written onto it: express hands
  * every middleware the same object and a property added to it is a property no
  * type knows about, so the next reader of this file would have to take the
- * cabinet's word for who is signed in.
+ * dashboard's word for who is signed in.
  */
 const people = new WeakMap<Request, Person>();
 
@@ -341,8 +341,8 @@ const people = new WeakMap<Request, Person>();
  * The three answers the settings screen is drawn from.
  *
  * The shop is optional and the other two are not, because the first two are
- * always asked for and the third exists only where this cabinet has somewhere
- * to keep a connection. Absent means a cabinet with no store for connections,
+ * always asked for and the third exists only where this dashboard has somewhere
+ * to keep a connection. Absent means a dashboard with no store for connections,
  * and no block about a shop. The four states of a shop that is there are
  * `ShopState`, and the fifth, `unread`, is a store that did not answer.
  */
@@ -351,8 +351,8 @@ interface Settings {
   readonly payoutWallet: PayoutWalletDocument;
 }
 
-/** The whole cabinet on an express app. */
-export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
+/** The whole dashboard on an express app. */
+export function buildApp(config: DashboardConfig, parts: DashboardParts): Express {
   const app = express();
   const base = config.basePath;
   const viewing = (request: Request, pageBase: string, sellerName?: string | null): Viewer =>
@@ -388,7 +388,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    * Only ever called below the gate, which is what makes the merchant's absence
    * a defect here rather than a case: the gate refuses an account that has no
    * key on it, with a sentence saying what to do, precisely so that no handler
-   * below has to hold an opinion about a cabinet with nothing to draw.
+   * below has to hold an opinion about a dashboard with nothing to draw.
    */
   const gatewayAs = (request: Request, answerWithinMs?: number): GatewayClient => {
     const merchant = whoIs(request).merchant;
@@ -424,7 +424,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   };
 
   /**
-   * Where this person starts when nothing else says where to go: the cabinet
+   * Where this person starts when nothing else says where to go: the dashboard
    * for somebody who owns a merchant, and the scanner's latest-report page
    * for anybody else (ADR-0026 §1).
    */
@@ -453,7 +453,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   };
 
   app.disable("x-powered-by");
-  // No `trust proxy` here: nothing in the cabinet reads the client's address,
+  // No `trust proxy` here: nothing in the dashboard reads the client's address,
   // and express's own handling of the forwarding headers would put a spoofable
   // value behind `request.ip` and `request.secure` where nobody reading a
   // handler would think to doubt it. The forms are the only thing a browser
@@ -461,7 +461,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   app.use(express.urlencoded({ extended: false, limit: "16kb" }));
   app.use(sameOriginUnder(base, config.surfaceMode));
 
-  // Under one origin the cabinet is reached at BASE_PATH, so that is where a
+  // Under one origin the dashboard is reached at BASE_PATH, so that is where a
   // probe looks; at the bare root it is what a container health check asks for.
   // Both, because a probe answering 404 reads as a dead process.
   for (const path of new Set(["/healthz", `${base}/healthz`])) {
@@ -493,7 +493,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    * do not recognise, and the reason nothing below answers 200 out of
    * politeness.
    *
-   * It parses its own body. Everything else in this cabinet is a form and the
+   * It parses its own body. Everything else in this dashboard is a form and the
    * body parser above reads forms; this one arrives as JSON from WordPress, and
    * a JSON parser mounted at the top would be a second parser on every form
    * post the merchant makes.
@@ -512,7 +512,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       const permissions = typeof body.key_permissions === "string" ? body.key_permissions : "";
 
       if (token === "" || consumerKey === "" || consumerSecret === "") {
-        console.log("[cabinet] a WooCommerce callback arrived without the keys it has to carry");
+        console.log("[dashboard] a WooCommerce callback arrived without the keys it has to carry");
         response.status(400).json({ ok: false });
         return;
       }
@@ -531,7 +531,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
         // One answer for a token nobody issued, one already spent and one whose
         // fifteen minutes are up. Telling them apart here would be answering
         // questions about somebody else's account to whoever asked.
-        console.log("[cabinet] a WooCommerce callback arrived with a token we do not hold");
+        console.log("[dashboard] a WooCommerce callback arrived with a token we do not hold");
         response.status(401).json({ ok: false });
         return;
       }
@@ -540,14 +540,14 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       // database does not.
       console.log(
         printable(
-          `[cabinet] a WooCommerce shop was connected for an account: ${connection.shopUrl}, ${permissions}`,
+          `[dashboard] a WooCommerce shop was connected for an account: ${connection.shopUrl}, ${permissions}`,
         ),
       );
       response.json({ ok: true });
     })().catch((thrown) => {
       // Answered as a failure so the shop takes its key back rather than
       // leaving one nothing here knows about.
-      console.error("[cabinet] a WooCommerce callback could not be written down", thrown);
+      console.error("[dashboard] a WooCommerce callback could not be written down", thrown);
       if (!response.headersSent) {
         response.status(500).json({ ok: false });
       }
@@ -566,7 +566,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    * failed. It did, twice, when this flow was walked by hand, back when the
    * cookie was `Strict` and no return carried it (ADR-0009 §2). A browser that
    * does carry a session, which under `Lax` is the ordinary case, is sent on
-   * into the cabinet.
+   * into the dashboard.
    *
    * Taking the address out from behind the gate costs nothing because there is
    * nothing behind it to take: with no session this route reads no row, asks the
@@ -586,7 +586,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    * spending or expiry ends that. A return that arrives with no session is
    * the one this page is drawn for, so it is the path that has to do the
    * stripping: a redirect to this same address with the query gone, rather
-   * than the redirect into the cabinet that a signed-in visitor gets.
+   * than the redirect into the dashboard that a signed-in visitor gets.
    */
   if (parts.wooShops !== undefined) {
     const returnPath = `${base}/woocommerce/return`;
@@ -615,7 +615,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       );
       return;
     }
-    const destination = cabinetDestinationIn(request.query.destination);
+    const destination = dashboardDestinationIn(request.query.destination);
     // A session that ran its course is why the person is here, not something
     // they got wrong, so it is the page's first line rather than a refusal.
     // A change lost with it is a refusal: something they did was not kept.
@@ -632,7 +632,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   app.post(`${base}/sign-in`, async (request, response) => {
     const form = (request.body ?? {}) as { email?: unknown; destination?: unknown };
     const email = typeof form.email === "string" ? form.email.trim() : "";
-    const destination = cabinetDestinationIn(form.destination);
+    const destination = dashboardDestinationIn(form.destination);
     if (!LOOKS_LIKE_AN_ADDRESS.test(email)) {
       response
         .status(400)
@@ -673,7 +673,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   const registerMerchant = async (): Promise<{ id: string; key: string } | null> => {
     const made = await registrar.register(config.gatewayInvitation);
     if (!made.ok) {
-      console.error(`[cabinet] merchant registration unavailable (${made.status})`);
+      console.error(`[dashboard] merchant registration unavailable (${made.status})`);
       return null;
     }
     return { id: made.document.merchant_id, key: made.document.secret };
@@ -687,12 +687,12 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    *
    * Opening a link makes nothing (ADR-0026 §4): under Lax a link from another
    * site arrives signed in, so a navigation that could make a merchant is one
-   * anybody could start. What a sign-in does do is renew the cabinet's key
+   * anybody could start. What a sign-in does do is renew the dashboard's key
    * for somebody who owns a merchant (ADR-0014 §2), before the cookie is
    * handed over. A link the scanner asked for goes to the report it was asked
    * for, where the scanner finishes the request the session now names. A link
    * with no destination of its own goes to the person's start; one asked for
-   * from a cabinet screen goes to that screen, or, for somebody with no
+   * from a dashboard screen goes to that screen, or, for somebody with no
    * merchant yet, to the one control that makes it.
    */
   const sendOpenedPerson = async (
@@ -711,7 +711,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
           ? startOf(person)
           : person.merchant === null
             ? `${base}/merchant`
-            : cabinetPathFor(base, destination),
+            : dashboardPathFor(base, destination),
     );
   };
 
@@ -791,7 +791,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   // tab whose session has already gone can still clear its cookie.
   app.post(`${base}/sign-out`, async (request, response) => {
     await identity.signOut(request.headers.cookie);
-    console.log("[cabinet] a session was signed out");
+    console.log("[dashboard] a session was signed out");
     forget(response);
     response.redirect(303, `${base}/sign-in`);
   });
@@ -805,7 +805,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    * A visitor without one is answered the same way at every address, which is
    * why this is a middleware and not a check inside each handler: a page added
    * below is guarded by being below, and a stranger cannot tell which addresses
-   * this cabinet serves from which it does not.
+   * this dashboard serves from which it does not.
    */
   app.use((request, response, next) => {
     void (async () => {
@@ -925,7 +925,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    *
    * It asks the gateway for nothing. A merchant arrives here in the second
    * after their merchant was attached, so there is no name to draw, and a call whose
-   * answer is known would be one more thing between opening the cabinet and the box
+   * answer is known would be one more thing between opening the dashboard and the box
    * they came here to fill in. Somebody who comes back to this address later
    * gets the same form, and using it sets the name the same way the settings
    * page does.
@@ -971,7 +971,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    * the new keys arrive, and saying otherwise would tell them their working
    * channel had stopped.
    *
-   * `undefined` is a cabinet with nowhere to keep a connection, which draws no
+   * `undefined` is a dashboard with nowhere to keep a connection, which draws no
    * block at all rather than an empty one.
    */
   const shopStateFor = async (accountId: string): Promise<ShopState | undefined> => {
@@ -1058,11 +1058,11 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   // is logged and drawn as the block saying it could not be read rather than as
   // no block: a block that vanishes reads as no connection to a merchant who
   // has one, and "we could not read it" has a different next move from "there
-  // is none". A cabinet with no store for connections draws no block at all.
+  // is none". A dashboard with no store for connections draws no block at all.
   app.get(`${base}/integrations`, async (request, response) => {
     const shop = await shopStateFor(whoIs(request).id).catch((thrown: unknown): ShopTile => {
       console.error(
-        "[cabinet] the WooCommerce connection could not be read for the integrations screen",
+        "[dashboard] the WooCommerce connection could not be read for the integrations screen",
         thrown,
       );
       return { kind: "unread" };
@@ -1185,7 +1185,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    * One refusal is worded here rather than passed through: an account whose
    * key was made for the merchant's own code, which the gateway will not let
    * set the wallet. Its sentence under "Try again" would send somebody round
-   * a loop nothing in the cabinet can end, so the settings screen is drawn as
+   * a loop nothing in the dashboard can end, so the settings screen is drawn as
    * it stands and says why, and that nothing here mends it. Everything else is
    * the usual page.
    */
@@ -1367,7 +1367,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    *
    * Cancelling is asking the gateway for the address that applies now, which
    * is what the gateway reads as a cancel, and like every change of the wallet
-   * it is made with the cabinet's own key: a key of the merchant's own code
+   * it is made with the dashboard's own key: a key of the merchant's own code
    * cannot set the wallet at all. It reads the wallet first rather than
    * trusting a page that may be a day old.
    *
@@ -1412,7 +1412,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   /**
    * The shop screens, and the one thing they all need.
    *
-   * A cabinet built without a place to keep connections has no WooCommerce
+   * A dashboard built without a place to keep connections has no WooCommerce
    * screens at all: the routes below are mounted only where there is a store,
    * so a deployment whose tables are not there answers "there is no such page"
    * rather than drawing a form whose button loses somebody's keys.
@@ -1428,11 +1428,11 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     /**
      * The merchant as the publish door will judge them before it looks at any
      * card: the name they are listed under, which of the things the door asks
-     * of a merchant are still unset, and which it asks that this cabinet cannot
+     * of a merchant are still unset, and which it asks that this dashboard cannot
      * read.
      *
      * The rule is the door's own (`readinessOf` in the core), asked with what
-     * the gateway answers for this merchant. This cabinet is given the same
+     * the gateway answers for this merchant. This dashboard is given the same
      * chain and facilitator as its gateway, so its surface mode is the door's.
      * The operator's approval goes in as unknown, since no route tells a
      * merchant's key whether it holds one; where the door asks for it, the
@@ -1489,7 +1489,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
         // Unreachable: these routes are mounted only where there is a store,
         // and that is the one thing `shopStateFor` answers `undefined` for.
         throw new Error(
-          "the shop screens ran on a cabinet with no store for connections, which means the" +
+          "the shop screens ran on a dashboard with no store for connections, which means the" +
             " routes were mounted where they should not have been",
         );
       }
@@ -1909,7 +1909,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     // the merchant's own hands.
     noted(whoIs(request), `issued a key, ${issued.document.key.id}, named "${label}"`);
     // Answered with a page rather than a redirect, which is the one place this
-    // cabinet does that. `keys.ts` says why: a redirect cannot carry the secret
+    // dashboard does that. `keys.ts` says why: a redirect cannot carry the secret
     // anywhere it would be safe to read it back from.
     response.type("html").send(newKeyScreen(viewing(request, base), label, issued.document.secret));
   });
@@ -1943,7 +1943,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       }
       // A body larger than any of these forms. It arrives from a visitor and
       // not from a defect, so it is answered as what it is rather than as a
-      // broken cabinet — and without a stack, because a stranger who can post
+      // broken dashboard — and without a stack, because a stranger who can post
       // at this address must not be able to fill the log with them. The body
       // parser runs above the gate, which is why a visitor with no session
       // reaches this at all.
@@ -1965,7 +1965,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       // Driver and provider exceptions can carry bound values, including
       // session tokens and merchant keys. The response already tells an
       // operator where the failure occurred; the exception is not logged.
-      console.error("[cabinet] a request failed");
+      console.error("[dashboard] a request failed");
       response
         .status(500)
         .type("html")
@@ -1999,7 +1999,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
  * The component that signs people in brings a check of its own, and it does not
  * replace this one. What it brings is the same idea — compare the `Origin`
  * against a list the deployment configures — and it brings it only for its own
- * endpoints, which are not mounted here at all: every call the cabinet makes is
+ * endpoints, which are not mounted here at all: every call the dashboard makes is
  * from a handler, with no request behind it, so the component's middleware has
  * nothing to inspect and returns at once. Nothing in it puts a value in our
  * forms that a page on another site could not guess, so the switches, the keys
@@ -2026,7 +2026,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
  * Dropping it costs the distinction between a page served over http and one
  * served over https on the same host, and that distinction is already made
  * where it can be made without trusting anybody: the session cookie is
- * `Secure` wherever the cabinet is served over https (ADR-0009 §6), so a page
+ * `Secure` wherever the dashboard is served over https (ADR-0009 §6), so a page
  * on the http origin has no session to forge a post with. A guard cannot be
  * the reason a merchant is locked out.
  */
@@ -2059,7 +2059,7 @@ const sameHost = (origin: string, host: string): boolean => {
   return here !== null && hostOf(origin) === here;
 };
 
-function sameOriginUnder(base: string, mode: CabinetConfig["surfaceMode"]) {
+function sameOriginUnder(base: string, mode: DashboardConfig["surfaceMode"]) {
   return (request: Request, response: Response, next: () => void): void => {
     const origin = request.headers.origin;
     if (request.method !== "POST" || origin === undefined) {
@@ -2083,7 +2083,7 @@ function sameOriginUnder(base: string, mode: CabinetConfig["surfaceMode"]) {
     // both arrive from outside, so both go through the same rendering that
     // strips what a terminal would obey instead of show.
     console.log(
-      `[cabinet] a form post was refused: its origin is ${printable(origin)},` +
+      `[dashboard] a form post was refused: its origin is ${printable(origin)},` +
         ` and it was addressed to ${printable(asked ?? "nothing at all")}`,
     );
     response
@@ -2113,7 +2113,7 @@ function whoIs(request: Request): Person {
 }
 
 /**
- * Who is looking at this page, where the cabinet is mounted, and what buyers
+ * Who is looking at this page, where the dashboard is mounted, and what buyers
  * are told this merchant is called.
  *
  * The name is passed by the screens that asked the gateway for it and left out
@@ -2229,20 +2229,20 @@ const walletIn = (request: Request): string => {
  * merchant gives a key, which the contract deliberately leaves unbounded and
  * open to any alphabet — a name carrying a newline and a plausible sentence
  * would write a second line into the one record of who stopped the selling,
- * in this cabinet's voice and under a name of the writer's choosing. Doing it
+ * in this dashboard's voice and under a name of the writer's choosing. Doing it
  * here rather than at that call site means the next thing somebody
  * interpolates is covered by being here, which is the failure the account
  * command's own rendering was written against.
  */
 const noted = (person: Person, did: string): void => {
-  console.log(printable(`[cabinet] ${person.email} ${did}`));
+  console.log(printable(`[dashboard] ${person.email} ${did}`));
 };
 
 /** What a merchant is shown when the gateway would not answer. */
 function troubleAt(
   response: Response,
   base: string,
-  mode: CabinetConfig["surfaceMode"],
+  mode: DashboardConfig["surfaceMode"],
   answer: Answer<unknown>,
 ): void {
   if (answer.ok) {
@@ -2256,7 +2256,7 @@ function troubleAt(
     // land them straight back on this page, with nothing said about the fault.
     //
     // What is said instead is the whole truth, including the part that is
-    // uncomfortable. The cabinet does replace this key, at every sign-in — and
+    // uncomfortable. The dashboard does replace this key, at every sign-in — and
     // it asks for the replacement with the key it is already holding, which is
     // the one being refused here. So signing in again is not the way out
     // either, and saying "try signing in again" would be sending somebody
@@ -2312,7 +2312,7 @@ function tooLarge(thrown: unknown): boolean {
   );
 }
 
-function problemPageAt(base: string, mode: CabinetConfig["surfaceMode"], said: string): string {
+function problemPageAt(base: string, mode: DashboardConfig["surfaceMode"], said: string): string {
   return bare(
     base,
     "Something went wrong",

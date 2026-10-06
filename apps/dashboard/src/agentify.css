@@ -1,19 +1,19 @@
 /*
- * What the cabinet needs on top of the shared visual language.
+ * What the dashboard needs on top of the shared visual language.
  *
  * ADR-0005 §6 asks for one visual language across the surfaces, held in one
  * stylesheet rather than repeated per page. That file is
  * `packages/visual/tokens.css`, and it is the one this branch
  * used to carry a second copy of — with the pre-contrast-fix values, which is
  * exactly how "one visual language" becomes two that look almost alike. The
- * copy is gone: the cabinet serves the shared file itself, ahead of this one,
+ * copy is gone: the dashboard serves the shared file itself, ahead of this one,
  * so there is a single set of tokens on disk and no way for the two surfaces to
  * drift without somebody editing the shared file.
  *
  * So nothing here declares a colour, a family, a radius or a base element rule.
- * What is here is the cabinet's own layout — its frame, its tables, its state
+ * What is here is the dashboard's own layout — its frame, its tables, its state
  * dots and its controls — which is what tokens.css means by "a rule that only
- * the cabinet needs lives with the cabinet".
+ * the dashboard needs lives with the dashboard".
  */
 
 /* Text runs the full width of its block: no balanced or "pretty" early
@@ -26,7 +26,7 @@ p {
 }
 
 /*
- * The cabinet takes the shared base whole: 16 pixels at 1.6.
+ * The dashboard takes the shared base whole: 16 pixels at 1.6.
  *
  * It used to take 14 back, and the argument written here was that this is a
  * console with six-column tables a merchant scans rather than reads. The tables
@@ -59,7 +59,7 @@ textarea {
 /*
  * One frame for every screen, and it is the shared `.container`: the tables,
  * the settings panels and the shop screen all sit inside the same width the
- * scanner lays its report out in. The cabinet used to have three — an unbounded
+ * scanner lays its report out in. The dashboard used to have three — an unbounded
  * page with a fixed 32-pixel gutter repeated at twelve blocks, a 1180-pixel
  * settings grid and a shop panel that borrowed it — so on a wide monitor the
  * cards table ran edge to edge while the settings page stayed centred, which is
@@ -77,7 +77,7 @@ textarea {
 }
 
 /*
- * The bar is the scanner's, and the tabs are the cabinet's.
+ * The bar is the scanner's, and the tabs are the dashboard's.
  *
  * Everything around them comes from apps/web/components/site-chrome.module.css:
  * 68 pixels tall, stuck to the top, a translucent page colour with the content
@@ -156,7 +156,7 @@ textarea {
 /*
  * The one band on these screens that is ink rather than paper, in the colours
  * the shared file names for the scanner's footer. One row: the lockup with the
- * word in paper, the three places outside the cabinet, and the copyright in the
+ * word in paper, the three places outside the dashboard, and the copyright in the
  * monospaced face. `margin-top: auto` is what holds it against the bottom of a
  * short page — the page is a flex column of full height, so the last child
  * taking the slack puts the band under the content rather than halfway up a
@@ -233,13 +233,13 @@ textarea {
 
 /* Explanatory copy uses all space left by an action or filter. Do not force
    desktop text into an arbitrary reading column: it creates needless line
-   breaks while half of the cabinet panel stays empty. */
+   breaks while half of the dashboard panel stays empty. */
 .lede > div:first-child {
   flex: 1 1 320px;
   min-width: 0;
 }
 
-/* The title of a screen inside the cabinet, which is a section heading rather
+/* The title of a screen inside the dashboard, which is a section heading rather
    than the hero a gate page opens with, so it is calm: the scanner's report
    uses the same size over the block it names. */
 .lede h1 {
@@ -505,7 +505,7 @@ tbody td::before {
 
 /*
  * The scanner's badge (apps/web/components/status-badge.module.css), on the
- * cabinet's four tones. The label is the monospaced face at 0.75rem, which is
+ * dashboard's four tones. The label is the monospaced face at 0.75rem, which is
  * what tells a state apart from the sentence beside it without a colour having
  * to do the work, and the dot is 8 pixels rather than 6.
  *
@@ -646,7 +646,7 @@ td.control {
 /* --- notes and summaries ------------------------------------------------ */
 
 /* Secondary notes stay part of the reading flow instead of looking like an
-   alert. Actionable notices use a complete panel; no cabinet message uses the
+   alert. Actionable notices use a complete panel; no dashboard message uses the
    one-sided-border callout pattern. */
 .note {
   margin: 0 0 32px;
@@ -790,7 +790,7 @@ td.control {
 /* --- signing in --------------------------------------------------------- */
 
 /*
- * The pages outside the cabinet: sign in, check your mail, open the link,
+ * The pages outside the dashboard: sign in, check your mail, open the link,
  * choose a name, come back from a shop, and every error page.
  *
  * One card on the page colour, at the measures of the scanner's own
@@ -804,7 +804,7 @@ td.control {
  * arrangement and also an accessibility fix: every one of these pages had a
  * logo as its only heading, so each has a real `h1` now saying which page it
  * is. The heading is a hero here and not a section title, so it takes the
- * larger step; inside the cabinet `.lede h1` is the calmer one.
+ * larger step; inside the dashboard `.lede h1` is the calmer one.
  */
 .gate {
   min-height: 100vh;
@@ -885,7 +885,7 @@ p.problem {
 /* Who is signed in, at the end of the header bar, as the scanner's header
    carries it (site-chrome.module.css `.doors`): behind a rule, in the muted
    weight of a label, so the address does not read as a tab. Until ADR-0009
-   there was nobody to name: the cabinet held a merchant key and the screen
+   there was nobody to name: the dashboard held a merchant key and the screen
    could not say whose hand was on the control that stops all selling. */
 .account {
   display: flex;
@@ -973,7 +973,7 @@ h2 {
 }
 
 /* The form that issues a key: one box and one button, side by side, sitting
-   where a table would. The same row carries every form in the cabinet, and its
+   where a table would. The same row carries every form in the dashboard, and its
    button is the full-height one: the box is 48 pixels and so is the button, so
    the two stand on one line the way the scanner's address box and its button
    do. The compact button is a table row's, and beside a box it hung a third

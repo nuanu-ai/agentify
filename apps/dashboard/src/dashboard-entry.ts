@@ -1,5 +1,5 @@
 /**
- * The one cabinet identity surface used by its server-rendered pages.
+ * The one dashboard identity surface used by its server-rendered pages.
  *
  * Better Auth, verification rows and database locks stay behind this port. A
  * page can ask for or open a link, read or end a session, and finish the one
@@ -13,7 +13,7 @@ export interface AccountMerchant {
   readonly key: string;
 }
 
-/** A cabinet person. A null merchant is the authenticated P1 state. */
+/** A dashboard person. A null merchant is the authenticated P1 state. */
 export interface Person {
   readonly id: string;
   readonly email: string;
@@ -21,15 +21,15 @@ export interface Person {
   readonly merchant: AccountMerchant | null;
 }
 
-/** The cabinet screens a link asked for on the sign-in page may lead to. */
-export type CabinetDestination = "default" | "settings" | "woocommerce";
+/** The dashboard screens a link asked for on the sign-in page may lead to. */
+export type DashboardDestination = "default" | "settings" | "woocommerce";
 
 /**
- * Every place a link may lead once it is opened: a cabinet screen, or the full
+ * Every place a link may lead once it is opened: a dashboard screen, or the full
  * report of one named scan for a link the scanner asked for. A closed set,
  * recorded with the token when the link is asked for (ADR-0026 §1).
  */
-export type LinkDestination = CabinetDestination | Readonly<{ report: string }>;
+export type LinkDestination = DashboardDestination | Readonly<{ report: string }>;
 
 /**
  * Which of the two walls in front of a link refused this request.
@@ -56,7 +56,7 @@ export type LinkRequestResult =
   | Readonly<{ status: "cooldown"; wall: LinkWall; retryAt: Date }>
   | Readonly<{ status: "unavailable" }>;
 
-export type CabinetLinkResult =
+export type DashboardLinkResult =
   | Readonly<{
       status: "opened";
       person: Person;
@@ -104,16 +104,16 @@ export type LiveSession = Readonly<{
  */
 export type SessionReading = Readonly<{ renew?: boolean }>;
 
-export interface CabinetIdentity {
+export interface DashboardIdentity {
   readonly cookieNames: readonly string[];
 
-  requestLink(email: string, destination: CabinetDestination): Promise<LinkRequestResult>;
+  requestLink(email: string, destination: DashboardDestination): Promise<LinkRequestResult>;
   /**
    * The address a live link would sign in, read without spending it, or null
    * for a link that no longer opens anything.
    */
   addressOfLink(token: string): Promise<string | null>;
-  openLink(token: string): Promise<CabinetLinkResult>;
+  openLink(token: string): Promise<DashboardLinkResult>;
 
   whoIs(cookieHeader: string | undefined, reading?: SessionReading): Promise<LiveSession | null>;
   signOut(cookieHeader: string | undefined): Promise<number>;

@@ -2,9 +2,9 @@
  * The operations that keep the accounts there are.
  *
  * None of them makes an account. An account comes into being one way: a person
- * types their address, opens the link the cabinet mails to it, and the cabinet
+ * types their address, opens the link the dashboard mails to it, and the dashboard
  * makes the account when the link is consumed (ADR-0026 §1); a merchant is made
- * when that person presses the cabinet's one control (ADR-0014). What is left
+ * when that person presses the dashboard's one control (ADR-0014). What is left
  * here is what a signed-in person cannot do for themselves: listing who can
  * sign in, ending every session a person has, and the flag that opens the
  * operator's dashboard (ADR-0026 §6).
@@ -34,15 +34,15 @@ const USAGE = [
   "                            sessions are open, and who is an operator",
   "",
   "None of them makes an account: an account is made when its person opens the",
-  "link the cabinet mails to their address, and a merchant when they press the",
-  "cabinet's one control.",
+  "link the dashboard mails to their address, and a merchant when they press the",
+  "dashboard's one control.",
 ];
 
 /** Postgres's own answer for "there is no table by that name". */
 const NO_SUCH_TABLE = "42P01";
 
 /**
- * Whether this is the database saying the cabinet's tables are not there.
+ * Whether this is the database saying the dashboard's tables are not there.
  *
  * The store never lets the driver's own exception out — its message is the SQL
  * it tried followed by every bound parameter — so what arrives here is a
@@ -75,7 +75,7 @@ export interface Terminal {
  * Runs one command. The answer is the exit code.
  *
  * One failure is answered here rather than thrown: a database that has never
- * had the cabinet's migrations run against it. It is the first thing a person
+ * had the dashboard's migrations run against it. It is the first thing a person
  * meets on a new machine, and the database's own sentence for it names a table
  * they have never heard of and does not say what to run. Everything else goes
  * up as it is — an unfamiliar failure with a sentence invented over it is worse
@@ -96,7 +96,7 @@ export async function runAccount(
   // direction text reads in. An address carrying one arrives either from
   // somebody's shell or from a row written by hand, and a list of accounts
   // where one row can hide another cannot answer "who can sign into this
-  // cabinet", which is the only question it is for.
+  // dashboard", which is the only question it is for.
   const say = (line: string): void => print(printable(line));
   try {
     return await dispatch(argv, identity, say, now);
@@ -104,7 +104,7 @@ export async function runAccount(
     if (!missingTables(thrown)) {
       throw thrown;
     }
-    say("The cabinet's tables are not in this database yet.");
+    say("The dashboard's tables are not in this database yet.");
     say("Run: pnpm --filter @agentify/dashboard db:migrate");
     return 1;
   }
@@ -214,8 +214,8 @@ async function listAccounts(
 ): Promise<number> {
   const listed = await identity.list(now());
   if (listed.length === 0) {
-    say("There are no accounts. Nobody can sign into this cabinet yet.");
-    say("An account is made when its person opens the link the cabinet mails to their address.");
+    say("There are no accounts. Nobody can sign into this dashboard yet.");
+    say("An account is made when its person opens the link the dashboard mails to their address.");
     return 0;
   }
 

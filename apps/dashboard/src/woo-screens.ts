@@ -251,7 +251,7 @@ const KEYS_ARRIVED = `  <div class="callout done">
  *
  * The session cookie is `SameSite=Lax` (ADR-0009 §6), so the navigation back
  * from the merchant's own shop carries it, and a signed-in browser is sent on
- * into the cabinet before this is drawn. What arrives here is a browser that
+ * into the dashboard before this is drawn. What arrives here is a browser that
  * came back without one: the session ended while the merchant was in their
  * shop, or the shop was opened in another browser. Behind the sign-in gate
  * that ends a working flow on a sign-in form, and a merchant reads the form as
@@ -264,11 +264,11 @@ const KEYS_ARRIVED = `  <div class="callout done">
  * happened, because for whoever typed the address in by hand none did, and
  * because what the shop's `success=1` claims is not something we have seen. It
  * names no account, no shop and no key, and the same page is served whether
- * this cabinet holds a connection or holds nothing — a stranger who walks up to
+ * this dashboard holds a connection or holds nothing — a stranger who walks up to
  * this address learns that the address exists, and that is all there is here to
  * learn.
  *
- * The next click goes to the cabinet, whose ordinary sign-in gate meets a
+ * The next click goes to the dashboard, whose ordinary sign-in gate meets a
  * browser without a session. The page does not ask for another email or
  * interpret the untrusted redirect query.
  */
@@ -365,7 +365,7 @@ const theConnection = (
  * visit would make the one announcement that matters indistinguishable.
  *
  * Where the door also waits for the operator's approval of the merchant, which
- * no route tells this cabinet about, those are not all it asks. So there the
+ * no route tells this dashboard about, those are not all it asks. So there the
  * line says approval is needed too and that this page cannot see it, and does
  * not send the merchant back to Import as though Settings were the whole of it.
  */
@@ -428,7 +428,7 @@ export interface ImportView {
 /**
  * What an import came to, answered as a page rather than as a redirect.
  *
- * The one screen in this cabinet besides the new-key page that answers a form
+ * The one screen in this dashboard besides the new-key page that answers a form
  * post with a page, and for the same kind of reason: a redirect can carry a
  * flag and this has to carry a list. Every refusal here is the publish door's
  * own sentence about one field of one card, which is the only thing that tells
@@ -581,7 +581,7 @@ const notAttemptedBlock = (outcomes: readonly NotAttempted[]): string => `  <div
  *
  * A different list from the one above and deliberately not folded into it. A
  * refused card is a product we could describe and our own door would not take;
- * these are products this cabinet could not read as a card in the first place,
+ * these are products this dashboard could not read as a card in the first place,
  * and the merchant's move is different in each case.
  */
 const skippedBlock = (skipped: readonly SkippedProduct[]): string => `  <div class="lede">

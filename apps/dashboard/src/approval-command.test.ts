@@ -79,7 +79,7 @@ const run = async (
 };
 
 describe("the private production approval command", () => {
-  it("grants the one merchant bound to the normalized cabinet address", async () => {
+  it("grants the one merchant bound to the normalized dashboard address", async () => {
     const found = directoryReturning([bound()]);
     const granted = gatewayReturning({
       changed: true,
@@ -159,7 +159,7 @@ describe("the private production approval command", () => {
     expect(granted.granted).toStrictEqual([]);
   });
 
-  it("refuses a cabinet binding whose merchant is absent from the gateway", async () => {
+  it("refuses a dashboard binding whose merchant is absent from the gateway", async () => {
     const found = directoryReturning([bound()]);
     const granted = gatewayReturning(null);
 

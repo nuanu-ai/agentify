@@ -407,7 +407,7 @@ export class PostgresStore implements Store {
 
   async codeKeysOf(merchantId: string): Promise<readonly StoredKey[]> {
     // The narrowing is a second column in the predicate rather than a filter
-    // over what the wide read answered, so a merchant with a cabinet signing in
+    // over what the wide read answered, so a merchant with a dashboard signing in
     // twice a day is not read out of the database to be thrown away here.
     const rows = await this.#db
       .select()
@@ -419,7 +419,7 @@ export class PostgresStore implements Store {
     return rows.map(storedKeyOf);
   }
 
-  async forgetCabinetKey(keyId: string): Promise<boolean> {
+  async forgetDashboardKey(keyId: string): Promise<boolean> {
     // One row by its own identifier, and the kind carried in the predicate
     // rather than read first and checked here: a merchant's own key is revoked
     // and never removed, and a read followed by a delete is a gap where the row
@@ -1158,7 +1158,7 @@ function storedKeyOf(row: {
  * value from a version of this code that is not this one. Guessing here would
  * be guessing whether this row belongs in the list a merchant revokes keys
  * from, and both guesses are bad: one hides a key its owner needs to turn off,
- * the other offers them the button that takes their own cabinet down.
+ * the other offers them the button that takes their own dashboard down.
  */
 function keyPurposeOf(word: string): KeyPurpose {
   if (word !== "merchant_code" && word !== "cabinet") {

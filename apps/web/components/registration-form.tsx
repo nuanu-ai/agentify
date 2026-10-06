@@ -11,7 +11,7 @@ type RegistrationState = "idle" | "sending" | "sent" | "opening" | "error";
 
 /**
  * The wait is the server's to name. This button used to count sixty seconds
- * of its own after a send, which was a guess at the cabinet's minute and told
+ * of its own after a send, which was a guess at the dashboard's minute and told
  * a person nothing about the wall actually in front of them.
  */
 export function registrationSubmitLabel(state: RegistrationState, resendWait: number) {

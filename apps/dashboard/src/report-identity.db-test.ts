@@ -119,14 +119,14 @@ if (databaseUrl === null) {
     ]);
   }
 
-  /** A link from the cabinet's sign-in page, on an address already written to. */
-  async function cabinetLink(
+  /** A link from the dashboard's sign-in page, on an address already written to. */
+  async function dashboardLink(
     identity: ReturnType<typeof identityFor>,
     messages: Message[],
   ): Promise<string> {
     await rewindSends();
     const asked = await identity.requestLink(EMAIL, "default");
-    if (asked.status !== "accepted") throw new Error("the cabinet link was not accepted");
+    if (asked.status !== "accepted") throw new Error("the dashboard link was not accepted");
     return tokenIn(messages.at(-1) as Message);
   }
 
@@ -150,7 +150,7 @@ if (databaseUrl === null) {
       await migrate();
     });
 
-    it("keeps the same minute between two report links that the cabinet's door keeps", async () => {
+    it("keeps the same minute between two report links that the dashboard's door keeps", async () => {
       const messages: Message[] = [];
       const identity = identityOn(messages);
       await expect(identity.sendReportLink(sendBody)).resolves.toMatchObject({
@@ -302,10 +302,10 @@ if (databaseUrl === null) {
          values ($1, 'https://shop.example', 'ck_preserved', 'cs_preserved', 'read_write', now())`,
         [p2.id],
       );
-      await expect(identity.openLink(await cabinetLink(identity, messages))).resolves.toMatchObject(
-        { status: "opened" },
-      );
-      const p2CabinetToken = await cabinetLink(identity, messages);
+      await expect(
+        identity.openLink(await dashboardLink(identity, messages)),
+      ).resolves.toMatchObject({ status: "opened" });
+      const p2DashboardToken = await dashboardLink(identity, messages);
       const p2ReportToken = await sendReport(identity, messages);
       await expect(
         identity.deleteUnattachedPerson({
@@ -327,7 +327,9 @@ if (databaseUrl === null) {
           )
         ).rows[0],
       ).toStrictEqual({ sessions: 1, shops: 1 });
-      await expect(identity.openLink(p2CabinetToken)).resolves.toMatchObject({ status: "opened" });
+      await expect(identity.openLink(p2DashboardToken)).resolves.toMatchObject({
+        status: "opened",
+      });
       await expect(identity.openLink(p2ReportToken)).resolves.toStrictEqual({ status: "refused" });
     });
 
@@ -444,7 +446,7 @@ if (databaseUrl === null) {
 
       const replacement = await first.make(EMAIL, MERCHANT);
       if (replacement === null) throw new Error("the replacement person was not made");
-      const replacementLink = await cabinetLink(first, messages);
+      const replacementLink = await dashboardLink(first, messages);
       const restarted = identityOn(
         [],
         undefined,
@@ -473,7 +475,7 @@ if (databaseUrl === null) {
       await expect(first.deleteUnattachedPerson(request)).resolves.toStrictEqual({
         status: "retained",
       });
-      const newLink = await cabinetLink(first, messages);
+      const newLink = await dashboardLink(first, messages);
       const restarted = identityOn(
         [],
         undefined,
@@ -496,7 +498,7 @@ if (databaseUrl === null) {
       });
       const made = await identity.make(EMAIL, MERCHANT);
       if (made === null) throw new Error("the replacement person was not made");
-      const cabinetToken = await cabinetLink(identity, messages);
+      const dashboardToken = await dashboardLink(identity, messages);
 
       await expect(identity.deleteUnattachedPerson(request)).resolves.toStrictEqual({
         status: "already_absent",
@@ -505,7 +507,7 @@ if (databaseUrl === null) {
         identity.deleteUnattachedPerson({ ...request, email: "other@example.com" }),
       ).resolves.toStrictEqual({ status: "refused" });
       expect(await identity.byId(made.id)).toMatchObject({ merchant: MERCHANT });
-      await expect(identity.openLink(cabinetToken)).resolves.toMatchObject({ status: "opened" });
+      await expect(identity.openLink(dashboardToken)).resolves.toMatchObject({ status: "opened" });
       expect(
         (
           await pool.query(`

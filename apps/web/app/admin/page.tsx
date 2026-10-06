@@ -2,8 +2,8 @@
  * The operator's dashboard: read-only numbers about the scanner, for a session
  * whose account carries the operator flag (ADR-0026 §6).
  *
- * Nothing stands in front of it. The page asks the cabinet on every request,
- * and anybody it does not confirm, everybody while the cabinet cannot say
+ * Nothing stands in front of it. The page asks the dashboard on every request,
+ * and anybody it does not confirm, everybody while the dashboard cannot say
  * included, gets the site's 404 page. The refusal happens in the metadata as
  * well as in the page: metadata is resolved on its own, and a title resolved
  * for a visitor who is then refused would tell them what this page is.

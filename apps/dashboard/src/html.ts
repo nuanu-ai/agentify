@@ -28,7 +28,7 @@ export type Tab = "cards" | "orders" | "receipts" | "integrations" | "keys" | "s
 export interface Chrome {
   /** Which of the three things this stack is, so every page names it. */
   readonly mode: SurfaceMode;
-  /** Where the cabinet is mounted, "" when it is at the root of its origin. */
+  /** Where the dashboard is mounted, "" when it is at the root of its origin. */
   readonly base: string;
   /**
    * The address of the person signed in.
@@ -92,7 +92,7 @@ const surface = (mode: SurfaceMode): string => {
     : `<div class="stack-note" ${SURFACE_MARKER_ATTRIBUTE}="${escaped(mode)}"><div class="container"><p class="surface-words">${escaped(words)}</p></div></div>`;
 };
 
-/** The same compact lockup on the public site, the cabinet and every auth page. */
+/** The same compact lockup on the public site, the dashboard and every auth page. */
 export const brandLockup = (home = "/"): string =>
   `<a class="brand" href="${escaped(home)}" aria-label="Agentify home"><img class="brand-mark" src="/assets/agentify-mark.svg" alt="" width="30" height="30"><span>Agentify</span></a>`;
 
@@ -100,7 +100,7 @@ export const brandLockup = (home = "/"): string =>
  * The band at the foot of every working screen.
  *
  * One row and three things in it: the lockup, the three places outside the
- * cabinet a signed-in merchant has the same need for as any visitor, and the
+ * dashboard a signed-in merchant has the same need for as any visitor, and the
  * copyright. It is the scanner's footer in colour and in type — ink rather than
  * paper, the mark inverse, the small print in the monospaced face — and not in
  * shape: the scanner's four columns of link groups carry a marketing site, and
@@ -112,7 +112,7 @@ export const brandLockup = (home = "/"): string =>
  *
  * The three addresses are absolute and carry no base path: ADR-0005 §1 puts the
  * documentation at /docs and the scanner's own pages at the root of the same
- * origin, beside the cabinet rather than under it. Run on its own the cabinet
+ * origin, beside the dashboard rather than under it. Run on its own the dashboard
  * has none of them and all three 404, exactly as /styles/fonts.css does, and
  * for the same reason: the shared origin is Caddy's to assemble.
  */
@@ -169,7 +169,7 @@ const narrowMenu = (chrome: Chrome): string => `<details class="app-menu">
  * The faces are linked separately, from the shared origin, because they are
  * woff2 files Caddy serves out of the visual package and their addresses are
  * relative to that directory. Behind Caddy this resolves and the pages are set in Schibsted Grotesk;
- * run on its own the cabinet has no /styles, the link 404s and the fallback
+ * run on its own the dashboard has no /styles, the link 404s and the fallback
  * stack in the tokens carries the page — which is what a fallback stack is for,
  * and why every family here names a full one.
  */
@@ -248,7 +248,7 @@ const accountRow = (base: string, who: string): string => `      <div class="acc
  * It says the consequence rather than the setting, because the consequence is
  * the part a merchant can feel: a card their code publishes is refused, and
  * without this line the refusal arrives in their own logs with nothing in the
- * cabinet to explain it. The refusal they would read there ends by naming the
+ * dashboard to explain it. The refusal they would read there ends by naming the
  * route that lifts it, which is the right sentence for whoever is holding an
  * API response and the wrong one for somebody looking at a page — so this says
  * the same thing and points at the page that does it instead.

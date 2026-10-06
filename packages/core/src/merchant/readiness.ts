@@ -3,12 +3,12 @@
  *
  * One rule, asked by every path that decides or says whether a merchant can
  * sell: the gateway's publish door and its check at every later sale, the
- * cabinet's screens and its WooCommerce import, and any shop connector after
+ * dashboard's screens and its WooCommerce import, and any shop connector after
  * them. Two copies of a rule are two rules the day one of them is edited, and
  * that has happened here: the door refused a missing name on every surface
  * while a decision and two public pages said the name was asked for live
  * publication alone. The rule lives in this package rather than in the gateway
- * because the cabinet needs the same answer about the same merchant, the reason
+ * because the dashboard needs the same answer about the same merchant, the reason
  * `deployment/environment.ts` gives for itself, and it is pure, which is what
  * this package is for.
  *
@@ -30,7 +30,7 @@ import type { SurfaceMode } from "../deployment/environment.js";
 /**
  * A fact the caller did not read.
  *
- * The cabinet reads no approval, since no route tells it whether a merchant
+ * The dashboard reads no approval, since no route tells it whether a merchant
  * holds one, and a screen that did not ask the gateway for the wallet cannot
  * say anything about it. A symbol rather than `undefined`, so a caller cannot
  * leave a fact out by accident and have it read as unknown, and rather than a

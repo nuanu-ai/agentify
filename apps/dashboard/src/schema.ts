@@ -1,5 +1,5 @@
 /**
- * The cabinet-owned identity and WooCommerce tables.
+ * The dashboard-owned identity and WooCommerce tables.
  *
  * They share a database with the gateway's (ADR-0003 §6, one Postgres), so the
  * names say whose they are. Nothing here is a merchant's data: a card, an order
@@ -7,7 +7,7 @@
  * from a query in this process.
  *
  * Better Auth keeps people, sessions, its empty account model and one-time
- * links in separate places. Cabinet code adds bounded link-send evidence,
+ * links in separate places. Dashboard code adds bounded link-send evidence,
  * permanent deletion-operation tombstones, and the WooCommerce channel tables. The names are prefixed so a person reading this
  * shared database can see which process owns them.
  *
@@ -27,7 +27,7 @@ const moment = (column: string) =>
   timestamp(column, { withTimezone: true, mode: "date" }).notNull();
 
 /**
- * A person who can sign into the cabinet.
+ * A person who can sign into the dashboard.
  *
  * The address is unique because that is the promise the sign-in rests on, and
  * the database is where it is actually kept: a check in the process ahead of an
@@ -93,7 +93,7 @@ export const accounts = pgTable(
  * not the token alone: the component signs it, and a value with no signature
  * over it is refused before this table is read at all. That is a different
  * bargain from the one this table used to make and it is worth knowing which
- * one is in force — the secret that makes those signatures is in the cabinet's
+ * one is in force — the secret that makes those signatures is in the dashboard's
  * configuration, so a copy of this table and a copy of that configuration
  * together are what the fingerprint used to rule out on its own.
  *
@@ -115,7 +115,7 @@ export const sessions = pgTable(
     /**
      * Where the request came from and what it said it was.
      *
-     * Better Auth may fill these from its server API context. Cabinet product
+     * Better Auth may fill these from its server API context. Dashboard product
      * behavior does not interpret or expose them.
      */
     ipAddress: text("ip_address"),
@@ -140,7 +140,7 @@ export const sessions = pgTable(
  * Component account storage retained empty for Better Auth's schema.
  *
  * The stopped one-way-in migration deletes every password credential. Better
- * Auth still knows this model as part of its complete schema, but no cabinet
+ * Auth still knows this model as part of its complete schema, but no dashboard
  * operation creates a row here and no accepted sign-in path reads one.
  */
 export const credentials = pgTable(
@@ -178,7 +178,7 @@ export const credentials = pgTable(
 /**
  * A one-time link that has been handed out and not yet spent.
  *
- * Cabinet and report links share this table with an explicit door purpose in
+ * Dashboard and report links share this table with an explicit door purpose in
  * the claim. `identifier` is the SHA-256 base64url token hash; the raw token
  * appears only in the delivered action URL. The component spends the row once.
  *
@@ -228,7 +228,7 @@ export const linkSends = pgTable(
  * and lives for the lifetime of this database. Session-signing and internal
  * HTTP credentials may rotate without changing the rate rows or permanent
  * deletion replay. The key has no operator setting and never leaves the
- * cabinet identity component.
+ * dashboard identity component.
  */
 export const reportIdentitySecrets = pgTable(
   "cabinet_report_identity_secrets",

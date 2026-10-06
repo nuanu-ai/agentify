@@ -70,7 +70,7 @@ import type {
 import { orderCallResponseOf } from "./answers.js";
 import {
   invitationAccepted,
-  issueCabinetKey,
+  issueDashboardKey,
   issueKey,
   keyDigest,
   payoutWalletFrom,
@@ -123,8 +123,8 @@ export const WALLET_CHANGE_WAITS_MS = 48 * 60 * 60 * 1_000;
  *
  * `nobody_to_tell`: no account names the merchant. `not_announced`: a message
  * could not be handed to the mail provider — though others may have been.
- * `refused_by_cabinet`: the cabinet turned the request away before telling
- * anybody. `unconfirmed`: the cabinet did not answer, so a message may have
+ * `refused_by_cabinet`: the dashboard turned the request away before telling
+ * anybody. `unconfirmed`: the dashboard did not answer, so a message may have
  * gone out. `raced`: another write landed between reading the wallet and
  * writing it, on a change nothing had announced; `raced_after_announcing`:
  * the same, after this change's own message went out.
@@ -615,7 +615,7 @@ export class Gateway {
   // --- merchants and their keys ---------------------------------------------
 
   /**
-   * Registers a merchant: the merchant and their cabinet's key, in one act. Null
+   * Registers a merchant: the merchant and their dashboard's key, in one act. Null
    * where the invitation is not the one this gateway holds, or where it holds
    * none.
    *
@@ -650,7 +650,7 @@ export class Gateway {
       );
     }
 
-    // The key's own row stays here. It is a cabinet's, which is in no list and
+    // The key's own row stays here. It is a dashboard's, which is in no list and
     // is not disabled through the merchant's calls, so an identifier for it is
     // a value with nothing to do — and the caller already holds the one thing
     // it needs, which is the key.
@@ -736,8 +736,8 @@ export class Gateway {
    * wait — and answers with the wallet as it then stands, or with why it was
    * refused.
    *
-   * Only a cabinet's own key reaches it: keys operate the shop, and where its
-   * money goes is set through the cabinet, whose calls come from inside the
+   * Only a dashboard's own key reaches it: keys operate the shop, and where its
+   * money goes is set through the dashboard, whose calls come from inside the
    * stack; the public door does not route this call at all (ADR-0019). A key
    * of the merchant's own code is refused here too, before anything is read or
    * announced, the first address included, so a copy of one can neither move
@@ -751,7 +751,7 @@ export class Gateway {
    * applies at once and nobody is told. The first address a merchant sets on
    * the live deployment applies at once too, because it replaces nothing and a
    * new merchant has to be able to start selling, and it is announced
-   * afterwards without being waited on: somebody signed in to the cabinet on
+   * afterwards without being waited on: somebody signed in to the dashboard on
    * a session that is not the owner's could set it, and the message is how
    * the owner hears of it.
    *
@@ -764,7 +764,7 @@ export class Gateway {
    * reverse of ADR-0013 and on purpose: a change nobody was told of is the
    * dangerous failure, and a message about a change that then did not land is
    * the safe one, because the message says the change takes effect only if the
-   * cabinet's wallet screen shows it.
+   * dashboard's wallet screen shows it.
    *
    * Three asks change nothing new. The address already waiting is a retry after
    * a dropped connection, and it answers with the waiting change and sends
@@ -898,7 +898,7 @@ export class Gateway {
     // Another write landed between the read and this one. What it wrote may
     // be exactly what this call asked for — a retry after a dropped connection
     // that reached the gateway while the first was still waiting on the
-    // cabinet — and then the answer is that change, not a refusal of it:
+    // dashboard — and then the answer is that change, not a refusal of it:
     // "asking again is safe" is the promise the retry was made on.
     const merchant = await this.runtime.store.merchantById(merchantId);
     const standing =
@@ -912,7 +912,7 @@ export class Gateway {
   }
 
   /**
-   * Asks the cabinet to tell the merchant, and reads a cabinet that threw the
+   * Asks the dashboard to tell the merchant, and reads a dashboard that threw the
    * way the adapter reads one that did not answer: a message may have gone out.
    */
   async #announce(announcement: Announcement): Promise<AnnouncementOutcome> {
@@ -941,7 +941,7 @@ export class Gateway {
 
   /**
    * The key a call was made with, named the way the merchant's list of keys
-   * names it — or as the cabinet's, which is on no list.
+   * names it — or as the dashboard's, which is on no list.
    */
   async #named(merchantId: string, askedBy: KeyOnTheCall): Promise<AskedWith> {
     if (askedBy.purpose === "cabinet") {
@@ -962,12 +962,12 @@ export class Gateway {
    * The keys this merchant made for their own code, and the one the call was
    * made with.
    *
-   * The keys a cabinet holds are not in the list, and the read that leaves them
+   * The keys a dashboard holds are not in the list, and the read that leaves them
    * out is the store's rather than a filter here: a merchant's list is a place
    * they act, and a row they did not make and cannot revoke does not belong on
    * it.
    *
-   * So `this_call` is not always one of the keys beside it — a cabinet calls
+   * So `this_call` is not always one of the keys beside it — a dashboard calls
    * with a key of its own — and it is answered all the same, because the field
    * means the same thing on every call: which key opened this one. The caller's
    * own key travels through rather than being looked up again: the door
@@ -1012,8 +1012,8 @@ export class Gateway {
   }
 
   /**
-   * Makes a key for a cabinet to go on calling as this merchant with, and hands
-   * it back once. Refused to anything but a cabinet's own key.
+   * Makes a key for a dashboard to go on calling as this merchant with, and hands
+   * it back once. Refused to anything but a dashboard's own key.
    *
    * The refusal is here rather than at the route because it is a judgement
    * about who may make this call rather than a status code, and it is a word
@@ -1021,20 +1021,20 @@ export class Gateway {
    * contract's own envelope.
    *
    * What it protects is not this call — a key one merchant made for their own
-   * code could ask for a cabinet key of their own merchant and gain nothing
+   * code could ask for a dashboard key of their own merchant and gain nothing
    * they did not already have. It is the pair: the sweep beside this one is
    * reachable with whatever key reaches this one, and made with a key of the
-   * merchant's own it would take away the credential a cabinet is signed in on.
+   * merchant's own it would take away the credential a dashboard is signed in on.
    * One door for the two of them is a door somebody can reason about.
    */
-  async issueCabinetKey(
+  async issueDashboardKey(
     merchantId: string,
     madeWith: KeyPurpose,
   ): Promise<CabinetKey | "not_a_cabinet_key"> {
     if (madeWith !== "cabinet") {
       return "not_a_cabinet_key";
     }
-    const issued = await issueCabinetKey(
+    const issued = await issueDashboardKey(
       this.runtime.store,
       this.runtime.ids,
       merchantId,
@@ -1045,18 +1045,18 @@ export class Gateway {
   }
 
   /**
-   * Removes every key this merchant has for a cabinet except the one this call
-   * was made with. Refused to anything but a cabinet's own key.
+   * Removes every key this merchant has for a dashboard except the one this call
+   * was made with. Refused to anything but a dashboard's own key.
    *
    * The refusal is the reason the call is safe at all. Made with a key of the
-   * merchant's own code, "all but mine" would name no cabinet key at all — so
-   * every one of them would go, and whoever is signed into a cabinet would be
+   * merchant's own code, "all but mine" would name no dashboard key at all — so
+   * every one of them would go, and whoever is signed into a dashboard would be
    * holding a credential the gateway no longer knows.
    *
    * There is no parameter and there is nothing to choose: the key removed is
    * the key the call was made with. That is not a convenience — it is what
    * makes the call safe to run beside another of itself. A rule of the form
-   * "every cabinet key but this one" is decided when the call is sent and can
+   * "every dashboard key but this one" is decided when the call is sent and can
    * be stale by the time it lands, so a key written in between is removed by a
    * caller that never heard of it, and two overlapping sign-ins leave an
    * account naming a key the gateway has forgotten. Reaching only the key in
@@ -1073,14 +1073,14 @@ export class Gateway {
    * them from the side that knows which keys are still in use, which is not
    * this one.
    */
-  async forgetCabinetKey(
+  async forgetDashboardKey(
     thisCall: string,
     madeWith: KeyPurpose,
   ): Promise<ForgottenCabinetKey | "not_a_cabinet_key"> {
     if (madeWith !== "cabinet") {
       return "not_a_cabinet_key";
     }
-    await this.runtime.store.forgetCabinetKey(thisCall);
+    await this.runtime.store.forgetDashboardKey(thisCall);
     // Whether a row went is not carried out. The call authenticated as this
     // key, so it was there a moment ago; false means another call of the same
     // shape got to it first, and the answer to "is that key gone" is yes either
@@ -1098,7 +1098,7 @@ export class Gateway {
    * also means it can never half-happen — and it is asked first for that reason
    * rather than for any other, since every answer below it costs a write or a
    * read. `made_for_a_cabinet` is a key of theirs they did not issue: a
-   * merchant switches off what they made, and this one is a cabinet's way in.
+   * merchant switches off what they made, and this one is a dashboard's way in.
    * `null` is every other key that is not this merchant's to disable — one that
    * does not exist and one belonging to somebody else, told apart nowhere, so a
    * refusal is not a way of counting another merchant's keys.
@@ -1111,7 +1111,7 @@ export class Gateway {
    * refusing a merchant their own last working key, which takes something away
    * from them and is a decision rather than a fix; §5 of ADR-0014 says as much
    * and says nobody has taken it. What it costs them is their own code going
-   * quiet, and not the way back in — their cabinet signs in on a key of a kind
+   * quiet, and not the way back in — their dashboard signs in on a key of a kind
    * this call does not touch, and issuing another is a page away.
    */
   async disableMerchantKey(
@@ -2362,7 +2362,7 @@ function whatStands(merchant: readonly MerchantFinding[], card: readonly Problem
  * nothing, which is why each message names what fixes it instead. Where a
  * call of the merchant's own fixes it, its address is written out rather than
  * described, so that the sentence works for whoever is reading it — a person
- * in a cabinet, and an engineer with a terminal and this response. Which of
+ * in a dashboard, and an engineer with a terminal and this response. Which of
  * them a merchant meets on which surface is the rule's business (`readinessOf`
  * in the core); what each says is this.
  *
@@ -2372,7 +2372,7 @@ function whatStands(merchant: readonly MerchantFinding[], card: readonly Problem
  * from here once, silently.
  *
  * The wallet: the money from the card's sales would have nowhere to go. It is
- * set in the cabinet alone, so the sentence names the cabinet's Settings screen
+ * set in the dashboard alone, so the sentence names the dashboard's Settings screen
  * rather than a call no merchant key may make. Nothing here offers to stand an
  * address of ours in for theirs, and the silence is the decision (ADR-0019):
  * the gateway is configured with an address, it is the operator's, and a card
@@ -2400,7 +2400,7 @@ const MERCHANT_PROBLEMS: Readonly<Record<MerchantFinding, Problem>> = {
     message:
       "this merchant has not set a wallet to be paid at, so the money from sales of this card" +
       " would have nowhere to go — a buyer's agent pays the merchant's own address directly and" +
-      " nothing of it is held here; a person signed in to the merchant's cabinet sets one on its" +
+      " nothing of it is held here; a person signed in to the merchant's dashboard sets one on its" +
       " Settings screen, and then this card can be published again",
   },
   no_operator_approval: {

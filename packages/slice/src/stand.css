@@ -5,13 +5,13 @@
  * stylesheet rather than repeated per page. That file is
  * `packages/visual/tokens.css`, and the stand serves it — and the faces that
  * sit beside it — straight out of the repository rather than keeping a copy,
- * for the reason the cabinet gives above its own stylesheet: two copies of one
+ * for the reason the dashboard gives above its own stylesheet: two copies of one
  * palette is how a single visual language quietly becomes two that look almost
  * alike. So nothing here declares a colour, a family or a radius.
  *
  * What is here is the stand's own layout. It is a console rather than a page
- * somebody reads, so it takes back the cabinet's 14px, and it does one thing
- * the cabinet does not: it keeps the log beside the work at all times. The
+ * somebody reads, so it takes back the dashboard's 14px, and it does one thing
+ * the dashboard does not: it keeps the log beside the work at all times. The
  * three tabs are three seats at one purchase, and the log is the thread between
  * them — put underneath the controls it would be a thread nobody follows.
  */
@@ -92,7 +92,7 @@ h2 {
   overflow-wrap: anywhere;
 }
 
-/* The three seats. The tab bar is the cabinet's own, which is fair: this is a
+/* The three seats. The tab bar is the dashboard's own, which is fair: this is a
    console for the same product. */
 .tabs {
   display: flex;

@@ -5,7 +5,7 @@
  * page, and none of them fetches anything or decides anything. That is what
  * lets the tests read the page a merchant would actually be looking at, and it
  * is why every claim on these screens can be traced to a field in a document
- * rather than to something the cabinet worked out on its own.
+ * rather than to something the dashboard worked out on its own.
  *
  * Where a screen would like to say more than the API can support, it says the
  * weaker thing. `words.ts` carries those cases and the reasons.
@@ -40,7 +40,7 @@ import {
 } from "./words.js";
 
 /**
- * Who is looking at a page, and where the cabinet is mounted.
+ * Who is looking at a page, and where the dashboard is mounted.
  *
  * The person is here rather than at the edge because every page says who is
  * signed in. That is not decoration: until ADR-0009 there was no person in the
@@ -50,7 +50,7 @@ import {
 export interface Viewer {
   /** Which stack this person is looking at, as derived from its gateway. */
   readonly mode: SurfaceMode;
-  /** Where the cabinet is mounted, "" when it is at the root of its origin. */
+  /** Where the dashboard is mounted, "" when it is at the root of its origin. */
   readonly base: string;
   /** The address of the person signed in. */
   readonly who: string;
@@ -86,7 +86,7 @@ export interface Viewer {
    * Where this account's WooCommerce channel has got to, where the screen
    * asked.
    *
-   * Absent is only a cabinet built with nowhere to keep a connection — it
+   * Absent is only a dashboard built with nowhere to keep a connection — it
    * mounts none of those routes, which is a deliberate absence rather than a
    * failure, and a link into them would be the settings screen offering
    * something that answers "there is no such page". That is the one case that
@@ -115,7 +115,7 @@ export interface Viewer {
  * The rule is the door's own, `readinessOf` in the core, so no screen holds an
  * opinion of its own about which setting publishing needs where. What the
  * screen did not ask the gateway for goes in as unknown, and so does the
- * operator's approval on every screen, because no route tells the cabinet
+ * operator's approval on every screen, because no route tells the dashboard
  * whether a merchant holds it: a page that did not read something must not say
  * anything either way about it.
  */
@@ -268,9 +268,9 @@ const cardControl = (
  * The address an agent buys one card at.
  *
  * Built from the route table rather than written out here, for the reason the
- * cabinet's client gives: a second transcription of the surface is a second
+ * dashboard's client gives: a second transcription of the surface is a second
  * chance for it to come apart. What goes in front of it is the origin the
- * deployment is reached at, which is not the gateway address the cabinet itself
+ * deployment is reached at, which is not the gateway address the dashboard itself
  * calls — that one is inside the compose network and means nothing to anybody
  * outside it.
  *
@@ -305,7 +305,7 @@ const wrappable = (address: string): string => {
  * What an empty catalogue shows: why it is empty, and the ways to fill it as
  * buttons. The SDK comes first, because it is the product's path; the
  * WooCommerce connector comes after it, named as the experiment it is, and
- * only where this cabinet has one.
+ * only where this dashboard has one.
  *
  * An empty catalogue has two readings the merchant cannot tell apart from
  * here: nobody has published anything yet, or something published was
@@ -678,10 +678,10 @@ const testWarning = (receipts: ReceiptList, mode: Viewer["mode"]): string => {
 const countOf = (many: number, thing: string): string => `${many} ${thing}${many === 1 ? "" : "s"}`;
 
 /**
- * An address inside the cabinet that leads nowhere, for somebody signed in.
+ * An address inside the dashboard that leads nowhere, for somebody signed in.
  *
- * Drawn in the cabinet's own frame rather than as a bare error card: the person
- * is still in their cabinet, the menu is where it always is, and the logo and
+ * Drawn in the dashboard's own frame rather than as a bare error card: the person
+ * is still in their dashboard, the menu is where it always is, and the logo and
  * the one button lead back to the cards rather than out to the site.
  */
 export const notFoundScreen = (viewer: Viewer): string =>

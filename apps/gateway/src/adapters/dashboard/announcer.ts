@@ -1,13 +1,13 @@
 /**
- * Asking the cabinet to tell a merchant of a change, over its internal route
+ * Asking the dashboard to tell a merchant of a change, over its internal route
  * (ADR-0019).
  *
  * One call, made synchronously by the flow that is about to record a wallet
- * change, and read strictly: the cabinet's three answers pass through, a 4xx
+ * change, and read strictly: the dashboard's three answers pass through, a 4xx
  * is `refused_by_cabinet` because the listener answers those before telling
  * anybody, and every other way the call can end — a 5xx, a body the wire does
  * not recognise, nothing listening, nothing back before the deadline — is
- * `unconfirmed`. The last of those is the one worth naming. A cabinet
+ * `unconfirmed`. The last of those is the one worth naming. A dashboard
  * that answers after the gateway stopped waiting may well have handed every
  * message over, and a merchant who reads one was told of a change the gateway
  * then refused; the refusal says exactly that, which is only possible because
@@ -15,7 +15,7 @@
  *
  * The secret is presented as a bearer and never written anywhere else, the
  * log included. What the log gets is which of the failures it was, because an
- * operator looking at a refused change needs to know whether the cabinet was
+ * operator looking at a refused change needs to know whether the dashboard was
  * down or answered something odd.
  */
 
@@ -25,28 +25,28 @@ import {
   GATEWAY_ROUTE_PATH,
   type GatewayRequest,
 } from "../../announcements.js";
-import type { CabinetRouteConfig } from "../../config.js";
+import type { DashboardRouteConfig } from "../../config.js";
 import type { AnnouncementOutcome, Announcer } from "../../ports/announcer.js";
 
 /**
- * How long the gateway waits for the cabinet to hand every message over.
+ * How long the gateway waits for the dashboard to hand every message over.
  *
- * The cabinet gives the mail provider ten seconds a message, and a merchant is
+ * The dashboard gives the mail provider ten seconds a message, and a merchant is
  * named by one account today and by a few at most, so twenty seconds covers
  * the ordinary case with room and ends a call that is going nowhere well
  * inside the half minute a person pressing a button will wait. It is a
  * constant rather than a setting: what a knob here could do is make every
- * wallet change on the live site wait on a dead cabinet for as long as
+ * wallet change on the live site wait on a dead dashboard for as long as
  * somebody typed.
  */
 const ANSWER_WITHIN_MS = 20_000;
 
-export class CabinetAnnouncer implements Announcer {
+export class DashboardAnnouncer implements Announcer {
   readonly #endpoint: string;
   readonly #secret: string;
   readonly #answerWithinMs: number;
 
-  constructor(config: CabinetRouteConfig, answerWithinMs: number = ANSWER_WITHIN_MS) {
+  constructor(config: DashboardRouteConfig, answerWithinMs: number = ANSWER_WITHIN_MS) {
     this.#endpoint = `${config.url}${GATEWAY_ROUTE_PATH}`;
     this.#secret = config.secret;
     this.#answerWithinMs = answerWithinMs;
@@ -68,27 +68,27 @@ export class CabinetAnnouncer implements Announcer {
       // Not printed: the exception can carry the request, and the request
       // carries the secret.
       console.error(
-        `[gateway] the cabinet did not answer an announcement (${announcement.kind}) in time or at all`,
+        `[gateway] the dashboard did not answer an announcement (${announcement.kind}) in time or at all`,
       );
       return "unconfirmed";
     }
 
     const text = await answered.text().catch(() => "");
     if (answered.status >= 400 && answered.status < 500) {
-      // The cabinet's listener answers these before it reads an announcement,
+      // The dashboard's listener answers these before it reads an announcement,
       // and so before it tells anybody: nothing was sent. The one worth its
       // own sentence is the secret, because it means every change on this
       // deployment is being refused until somebody makes the two agree.
       console.error(
         answered.status === 401
-          ? `[gateway] the cabinet refused the gateway's secret (${announcement.kind}): GATEWAY_CABINET_SECRET on the gateway and on the cabinet are not the same value, and nothing was announced`
-          : `[gateway] the cabinet refused an announcement (${announcement.kind}) with ${answered.status} before telling anybody`,
+          ? `[gateway] the dashboard refused the gateway's secret (${announcement.kind}): GATEWAY_CABINET_SECRET on the gateway and on the dashboard are not the same value, and nothing was announced`
+          : `[gateway] the dashboard refused an announcement (${announcement.kind}) with ${answered.status} before telling anybody`,
       );
       return "refused_by_cabinet";
     }
     if (answered.status !== 200) {
       console.error(
-        `[gateway] the cabinet answered an announcement (${announcement.kind}) with ${answered.status}`,
+        `[gateway] the dashboard answered an announcement (${announcement.kind}) with ${answered.status}`,
       );
       return "unconfirmed";
     }
@@ -101,7 +101,7 @@ export class CabinetAnnouncer implements Announcer {
     const read = AnnouncementAnswerSchema.safeParse(body);
     if (!read.success) {
       console.error(
-        `[gateway] the cabinet answered an announcement (${announcement.kind}) with something that is not an answer`,
+        `[gateway] the dashboard answered an announcement (${announcement.kind}) with something that is not an answer`,
       );
       return "unconfirmed";
     }

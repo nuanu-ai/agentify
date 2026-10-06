@@ -2,15 +2,15 @@
  * The configuration, which is an external boundary like any other.
  *
  * Only the values that decide where a merchant's browser is sent, or that the
- * cabinet cannot work at all without, are checked here. A wrong port fails
+ * dashboard cannot work at all without, are checked here. A wrong port fails
  * loudly on the first request; a wrong mount point fails quietly, by pointing
- * every link and every redirect at somewhere the cabinet is not.
+ * every link and every redirect at somewhere the dashboard is not.
  */
 
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
 
-/** What a deployment has to set for the cabinet to be able to do anything. */
+/** What a deployment has to set for the dashboard to be able to do anything. */
 const REQUIRED = {
   DATABASE_URL: "postgres://agentify:agentify@postgres:5432/agentify",
   AUTH_SECRET: "a-secret-that-is-at-least-32-characters-long",
@@ -24,7 +24,7 @@ const given = (environment: Record<string, string> = {}): Record<string, string>
   ...environment,
 });
 
-describe("what the cabinet will not start without", () => {
+describe("what the dashboard will not start without", () => {
   it("starts the private report listener only with its own complete secret", () => {
     expect(loadConfig(given()).reportIdentitySecret).toBeNull();
     expect(loadConfig(given({ REPORT_IDENTITY_SECRET: "" })).reportIdentitySecret).toBeNull();
@@ -42,15 +42,15 @@ describe("what the cabinet will not start without", () => {
   });
 
   it("opens the gateway's listener only with its own secret, apart from every other", () => {
-    // The gateway presents this secret to ask the cabinet to mail a merchant
+    // The gateway presents this secret to ask the dashboard to mail a merchant
     // about their money (ADR-0019). Shared with any other door, the holder of
     // that door could send such mail, or the gateway could reach that door.
     const dedicated = "a-dedicated-gateway-cabinet-secret-nobody-else-holds";
     const report = "a-dedicated-private-secret-at-least-32-characters";
 
-    expect(loadConfig(given()).gatewayCabinetSecret).toBeNull();
-    expect(loadConfig(given({ GATEWAY_CABINET_SECRET: "" })).gatewayCabinetSecret).toBeNull();
-    expect(loadConfig(given({ GATEWAY_CABINET_SECRET: dedicated })).gatewayCabinetSecret).toBe(
+    expect(loadConfig(given()).gatewayDashboardSecret).toBeNull();
+    expect(loadConfig(given({ GATEWAY_CABINET_SECRET: "" })).gatewayDashboardSecret).toBeNull();
+    expect(loadConfig(given({ GATEWAY_CABINET_SECRET: dedicated })).gatewayDashboardSecret).toBe(
       dedicated,
     );
     expect(() => loadConfig(given({ GATEWAY_CABINET_SECRET: "x".repeat(31) }))).toThrow(
@@ -78,7 +78,7 @@ describe("what the cabinet will not start without", () => {
   it("refuses to start with nothing to sign a session with", () => {
     // The component that signs people in has a fallback of its own, and a
     // deployment that leaned on it would be running on a value written in
-    // somebody else's public source. So the cabinet asks for one rather than
+    // somebody else's public source. So the dashboard asks for one rather than
     // taking whatever is there, and stops when there is none.
     const { AUTH_SECRET: _absent, ...withoutSecret } = given();
 
@@ -89,7 +89,7 @@ describe("what the cabinet will not start without", () => {
   it("refuses to start with no database to keep its accounts and sessions in", async () => {
     // ADR-0009 puts the people who sign in, and their sessions, in rows. With
     // no database there is nowhere to look one up, so every visitor would be a
-    // stranger — a cabinet that renders a sign-in form and can never accept one.
+    // stranger — a dashboard that renders a sign-in form and can never accept one.
     const { DATABASE_URL: _absent, ...withoutDatabase } = given();
 
     expect(() => loadConfig(withoutDatabase)).toThrow(/DATABASE_URL/);
@@ -97,7 +97,7 @@ describe("what the cabinet will not start without", () => {
 
   it("starts with no merchant key anywhere in its environment", () => {
     // ADR-0014 §2: the key comes off the row of whoever is signed in, so there
-    // is no key in the configuration at all. A cabinet that still refused to
+    // is no key in the configuration at all. A dashboard that still refused to
     // start without one would be a deployment that cannot be brought up until
     // somebody sets a variable nothing reads — and, worse, one whose operator
     // reasonably believes that variable is what the screens are drawn with.
@@ -114,7 +114,7 @@ describe("what the cabinet will not start without", () => {
   });
 });
 
-describe("the cabinet is told which stack it is in front of", () => {
+describe("the dashboard is told which stack it is in front of", () => {
   const required = {
     DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
     AUTH_SECRET: "a-secret-that-is-at-least-thirty-two-characters",
@@ -124,7 +124,7 @@ describe("the cabinet is told which stack it is in front of", () => {
   };
 
   it("runs the same derivation its gateway runs", () => {
-    // Production break: the cabinet could label a stack differently from its
+    // Production break: the dashboard could label a stack differently from its
     // gateway, so a merchant would read a false statement about their money.
     expect(loadConfig(required).surfaceMode).toBe("sandbox");
     expect(
@@ -140,20 +140,20 @@ describe("the cabinet is told which stack it is in front of", () => {
   });
 
   it("refuses to start when it was handed no chain", () => {
-    // Production break: a cabinet could start without the chain it describes.
+    // Production break: a dashboard could start without the chain it describes.
     const { PAYMENT_NETWORK, ...withoutChain } = required;
     expect(() => loadConfig(withoutChain)).toThrowError(/PAYMENT_NETWORK.*not set/s);
   });
 
   it("refuses to start when it was handed no facilitator", () => {
-    // Production break: a cabinet could start without the facilitator it describes.
+    // Production break: a dashboard could start without the facilitator it describes.
     const { FACILITATOR_URL, ...withoutFacilitator } = required;
     expect(() => loadConfig(withoutFacilitator)).toThrowError(/FACILITATOR_URL.*not set/s);
   });
 
   it("gives neither a default, unlike the gateway", () => {
     // The gateway defaulting towards play money is the safe direction for a
-    // process that moves it. A live cabinet falling back to a test chain would
+    // process that moves it. A live dashboard falling back to a test chain would
     // print, over a merchant's real receipts, that none of this money is real.
     expect(() =>
       loadConfig({ DATABASE_URL: required.DATABASE_URL, AUTH_SECRET: required.AUTH_SECRET }),
@@ -166,7 +166,7 @@ describe("the cabinet is told which stack it is in front of", () => {
   });
 });
 
-describe("where the cabinet thinks it is mounted", () => {
+describe("where the dashboard thinks it is mounted", () => {
   it("takes a path, and takes being at the root of its origin", () => {
     expect(loadConfig(given()).basePath).toBe("");
     expect(loadConfig(given({ BASE_PATH: "/dashboard" })).basePath).toBe("/dashboard");
@@ -203,7 +203,7 @@ describe("where the cabinet thinks it is mounted", () => {
   });
 
   it("names every problem at once rather than one per restart", () => {
-    // The engineer bringing the cabinet up learns the whole list in one go.
+    // The engineer bringing the dashboard up learns the whole list in one go.
     const thrown = (): string => {
       try {
         loadConfig({ BASE_PATH: "//evil.com", PORT: "no", GATEWAY_URL: "not a url" });
@@ -230,7 +230,7 @@ describe("where the cabinet thinks it is mounted", () => {
   });
 });
 
-describe("where the cabinet's two messages go", () => {
+describe("where the dashboard's two messages go", () => {
   it("sends nothing anywhere unless a deployment says where", () => {
     // The whole flow — registering, confirming, losing a password — walks on a
     // laptop with no provider account, no domain and no network, because the
@@ -264,7 +264,7 @@ describe("where the cabinet's two messages go", () => {
   });
 
   it("refuses a provider it could not authenticate against, or send from", () => {
-    // A cabinet that appears to send mail and silently does not is discovered
+    // A dashboard that appears to send mail and silently does not is discovered
     // by a merchant who has lost a password and is waiting for a link that was
     // never accepted.
     expect(() =>
@@ -288,7 +288,7 @@ describe("where the cabinet's two messages go", () => {
   });
 
   it("refuses to send real mail whose links point at the reader's own computer", () => {
-    // The public address defaults to a laptop so that the cabinet runs with
+    // The public address defaults to a laptop so that the dashboard runs with
     // nothing set. A deployment that turns mail on and leaves it there would
     // send every merchant a link into their own machine, and the merchant
     // reading it would have no way of knowing that is what happened.

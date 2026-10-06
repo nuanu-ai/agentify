@@ -187,7 +187,7 @@ describe("pnpm forget's local TEST wrapper", () => {
       words: /DATABASE_URL is not set/i,
     },
     {
-      case: "no cabinet secret",
+      case: "no dashboard secret",
       set: { PAYMENT_NETWORK: TEST, DATABASE_URL: DATABASE },
       words: /AUTH_SECRET is not set/i,
     },

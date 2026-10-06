@@ -20,7 +20,7 @@
  * are published and belongs with the deployment step rather than here.
  */
 
-import { CabinetAnnouncer } from "./adapters/dashboard/announcer.js";
+import { DashboardAnnouncer } from "./adapters/dashboard/announcer.js";
 import { ScriptedFacilitator } from "./adapters/memory/facilitator.js";
 import { queueOn } from "./adapters/pgboss/queue.js";
 import { connect, PostgresStore } from "./adapters/postgres/store.js";
@@ -142,11 +142,13 @@ const runtime: Runtime = {
   facilitator: await paymentLayer(),
   clock: systemClock,
   ids: randomIds,
-  // The gateway's route into the cabinet on the live deployment, and nothing at
+  // The gateway's route into the dashboard on the live deployment, and nothing at
   // all anywhere else: the configuration is null exactly where a change
   // applies at once and nobody is told (ADR-0019).
   announcer:
-    config.cabinetRoute === null ? nobodyAnnounces : new CabinetAnnouncer(config.cabinetRoute),
+    config.dashboardRoute === null
+      ? nobodyAnnounces
+      : new DashboardAnnouncer(config.dashboardRoute),
 };
 
 const gateway = new Gateway(runtime);
@@ -183,7 +185,7 @@ const gateway = new Gateway(runtime);
  * It is the laptop's stack that seeds. A deployed channel hands this process
  * nothing to seed, and its release refuses one that would (ADR-0014): a
  * merchant there comes into being only through the link mailed to a person
- * and the cabinet's one control.
+ * and the dashboard's one control.
  */
 async function seedTheSandbox(secret: string | null): Promise<void> {
   const surface = config.surfaceMode.toUpperCase();

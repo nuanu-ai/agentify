@@ -39,7 +39,7 @@ import { GET as readVisitor } from "../../app/api/v2/session/route";
 import { latestReportOf, visitorOf } from "./auth";
 import { getServerConfig } from "./config";
 import { encryptEmail, hmacHex, sha256 } from "./crypto";
-import { getCabinetReportIdentityClient } from "./dashboard-report-identity";
+import { getDashboardReportIdentityClient } from "./dashboard-report-identity";
 import { getDatabase } from "./database";
 import { enqueueScanInTransaction, stopScanQueue } from "./queue";
 import { consumeRateLimitsAtomically, consumeScanRateLimits, readRateCount } from "./rate-limit";
@@ -76,32 +76,32 @@ const migrationsFolder = fileURLToPath(
 const admin = createDatabase(connectionString, { max: 1 });
 
 /**
- * The cabinet's side of the internal route, as the scanner meets it.
+ * The dashboard's side of the internal route, as the scanner meets it.
  *
- * It keeps what the real cabinet keeps for these questions and nothing else:
+ * It keeps what the real dashboard keeps for these questions and nothing else:
  * the links it was asked to send, with their destination and request, and the
  * sessions those links opened. Pressing a link here stands for the press on
- * the cabinet's one-control page, which the cabinet's own suites cover; what
+ * the dashboard's one-control page, which the dashboard's own suites cover; what
  * this suite is about is what the scanner does with the answers.
  */
 type SentLink = { email: string; scanId: string; request: string };
 
-/** The name the stand-in cabinet's session cookie travels under. */
+/** The name the stand-in dashboard's session cookie travels under. */
 const SESSION_COOKIE = "__Host-agentify.session_token";
 
 const sentLinks: SentLink[] = [];
-const cabinetSessions = new Map<
+const dashboardSessions = new Map<
   string,
   { email: string; request: string | null; operator?: boolean }
 >();
 let sessionSequence = 0;
 let sendCooldownUntil: Date | undefined;
-let cabinetDown = false;
+let dashboardDown = false;
 /** How many more session questions the stand-in answers before it stops answering. */
 let sessionAnswersLeft = Number.POSITIVE_INFINITY;
-/** Every cookie header the stand-in cabinet was shown, newest last. */
+/** Every cookie header the stand-in dashboard was shown, newest last. */
 const cookiesSeen: string[] = [];
-let cabinetServer: Server;
+let dashboardServer: Server;
 let scanId = "";
 let scanAccessToken = "";
 const anonymousToken = "p4-attribution-anonymous-token";
@@ -113,22 +113,22 @@ function latestLink(email: string): SentLink {
 }
 
 /**
- * Presses a link as the cabinet's one-control page would: a session opens for
+ * Presses a link as the dashboard's one-control page would: a session opens for
  * its address, naming the request it was asked for, and the browser holds its
  * cookie. Returns that browser's cookie header.
  */
 function pressLink(link: SentLink): string {
   sessionSequence += 1;
   const value = `session-${sessionSequence}`;
-  cabinetSessions.set(value, { email: link.email, request: link.request });
+  dashboardSessions.set(value, { email: link.email, request: link.request });
   return `agentify_anonymous=${anonymousToken}; ${SESSION_COOKIE}=${value}`;
 }
 
-/** A browser signed in from the cabinet's sign-in page: its session names no request. */
+/** A browser signed in from the dashboard's sign-in page: its session names no request. */
 function signedInAs(email: string, { operator = false } = {}): string {
   sessionSequence += 1;
   const value = `session-${sessionSequence}`;
-  cabinetSessions.set(value, { email, request: null, operator });
+  dashboardSessions.set(value, { email, request: null, operator });
   return `${SESSION_COOKIE}=${value}`;
 }
 
@@ -289,7 +289,7 @@ beforeAll(async () => {
       },
     })),
   );
-  cabinetServer = createServer(async (request, response) => {
+  dashboardServer = createServer(async (request, response) => {
     if (
       request.url !== "/internal/report-identity" ||
       request.method !== "POST" ||
@@ -298,7 +298,7 @@ beforeAll(async () => {
       respondJson(response, 404, { error: "not_found" });
       return;
     }
-    if (cabinetDown) {
+    if (dashboardDown) {
       respondJson(response, 503, { status: "unavailable" });
       return;
     }
@@ -331,9 +331,9 @@ beforeAll(async () => {
         .split(";")
         .map((pair) => pair.trim().split("="));
       const held = cookies.find(
-        ([name, value]) => name === SESSION_COOKIE && cabinetSessions.has(value ?? ""),
+        ([name, value]) => name === SESSION_COOKIE && dashboardSessions.has(value ?? ""),
       );
-      const session = held ? cabinetSessions.get(held[1] ?? "") : undefined;
+      const session = held ? dashboardSessions.get(held[1] ?? "") : undefined;
       respondJson(
         response,
         200,
@@ -357,8 +357,8 @@ beforeAll(async () => {
     }
     respondJson(response, 400, { status: "refused" });
   });
-  await new Promise<void>((resolve) => cabinetServer.listen(0, "127.0.0.1", resolve));
-  const address = cabinetServer.address();
+  await new Promise<void>((resolve) => dashboardServer.listen(0, "127.0.0.1", resolve));
+  const address = dashboardServer.address();
   if (!address || typeof address === "string") throw new Error("server_address");
   process.env.CABINET_IDENTITY_URL = `http://127.0.0.1:${address.port}`;
 }, 30_000);
@@ -366,7 +366,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await stopScanQueue();
   await new Promise<void>((resolve, reject) =>
-    cabinetServer.close((error) => (error ? reject(error) : resolve())),
+    dashboardServer.close((error) => (error ? reject(error) : resolve())),
   );
   await getDatabase().pool.end();
   await admin.pool.query(
@@ -375,7 +375,7 @@ afterAll(async () => {
   await admin.pool.end();
 });
 
-describe("P4 cabinet-owned scanner identity", () => {
+describe("P4 dashboard-owned scanner identity", () => {
   it("derives scheme omission in the route and ignores the legacy header", async () => {
     const submit = async (
       url: string,
@@ -576,7 +576,7 @@ describe("P4 cabinet-owned scanner identity", () => {
     expect(intents).toHaveLength(2);
     expect(intents.filter((intent) => intent.consumedAt === null)).toHaveLength(2);
     expect(JSON.stringify(intents)).not.toContain("Owner@Example.com");
-    // The link carries the scan and the scanner's request to the cabinet, and
+    // The link carries the scan and the scanner's request to the dashboard, and
     // nothing else: the address was normalized before it left.
     expect(firstLink).toEqual({ email: "owner@example.com", scanId, request: intents[0]?.id });
     expect(secondLink.request).toBe(intents[1]?.id);
@@ -796,10 +796,10 @@ describe("P4 cabinet-owned scanner identity", () => {
     }
   });
 
-  it("says it cannot tell who is visiting when the cabinet does not answer, and never that nobody is", async () => {
-    const { scan, accessToken } = await createFreshCompletedScan("cabinet-down");
-    const cookie = signedInAs("cabinet-down@example.com");
-    cabinetDown = true;
+  it("says it cannot tell who is visiting when the dashboard does not answer, and never that nobody is", async () => {
+    const { scan, accessToken } = await createFreshCompletedScan("dashboard-down");
+    const cookie = signedInAs("dashboard-down@example.com");
+    dashboardDown = true;
     process.env.REGISTRATION_ENABLED = "true";
     try {
       await expect(visitorOf(cookie)).resolves.toEqual({ kind: "unknown" });
@@ -811,11 +811,11 @@ describe("P4 cabinet-owned scanner identity", () => {
       const asked = await registrationRequest(
         scan.id,
         accessToken,
-        registrationBody("cabinet-down@example.com"),
+        registrationBody("dashboard-down@example.com"),
         { cookie },
       );
       expect(asked.status).toBe(503);
-      expect(sentLinks.some((link) => link.email === "cabinet-down@example.com")).toBe(false);
+      expect(sentLinks.some((link) => link.email === "dashboard-down@example.com")).toBe(false);
       // Every answer that depends on who is asking says it cannot tell, rather
       // than that there is nothing here for them.
       const unknownAnswers = [
@@ -858,12 +858,12 @@ describe("P4 cabinet-owned scanner identity", () => {
       }
       await expect(loadReportPage(scan.id, cookie)).resolves.toEqual({ kind: "unknown" });
     } finally {
-      cabinetDown = false;
+      dashboardDown = false;
       process.env.REGISTRATION_ENABLED = "false";
     }
   });
 
-  it("reads who is visiting once for a report page, so a cabinet failing partway does not say the report is not theirs", async () => {
+  it("reads who is visiting once for a report page, so a dashboard failing partway does not say the report is not theirs", async () => {
     // A page that asked twice could be told "signed in" and then nothing, and
     // draw "this report is not filed under you" for its owner. One reading
     // decides the whole page.
@@ -986,7 +986,7 @@ describe("P4 cabinet-owned scanner identity", () => {
     expect((await reportFor(scan.id, cookie))?.checks).toHaveLength(18);
   });
 
-  it("shows the cabinet only the session's cookie, however many others the browser carries", async () => {
+  it("shows the dashboard only the session's cookie, however many others the browser carries", async () => {
     const { scan } = await createFreshCompletedScan("only-session-cookie");
     const email = "only-session-cookie@example.com";
     await createScannerRegistrationIntent(scan, registrationBody(email));
@@ -1103,7 +1103,7 @@ describe("P4 cabinet-owned scanner identity", () => {
       .set({ consentSnapshotId: partnerConsentId })
       .where(eq(sessions.id, scan.sessionId));
 
-    const email = "cabinet-new@example.com";
+    const email = "dashboard-new@example.com";
     const partnerClickId = "Xk8sJ2QpR4vN7bL0aZ9wQg";
     await createScannerRegistrationIntent(scan, registrationBody(email), {
       partnerClickId,
@@ -1822,7 +1822,7 @@ describe("P4 cabinet-owned scanner identity", () => {
       sendReportLink: async (address, request) => {
         markSending();
         await continueSending;
-        return await getCabinetReportIdentityClient().sendReportLink({
+        return await getDashboardReportIdentityClient().sendReportLink({
           email: address,
           scanId: scan.id,
           request,
@@ -1852,7 +1852,7 @@ describe("P4 cabinet-owned scanner identity", () => {
     const email = "scanner-bearer-expiry@example.com";
     const result = await createScannerRegistrationIntent(scan, registrationBody(email), {
       sendReportLink: async (address, request) => {
-        const sent = await getCabinetReportIdentityClient().sendReportLink({
+        const sent = await getDashboardReportIdentityClient().sendReportLink({
           email: address,
           scanId: scan.id,
           request,
@@ -2116,9 +2116,9 @@ describe("P4 cabinet-owned scanner identity", () => {
     expect(await readRateCount(addressWall, "registration_email_hour")).toBe(1);
   });
 
-  it("passes the cabinet's own wait through the registration door untouched", async () => {
-    const { scan, accessToken } = await createFreshCompletedScan("cabinet-cooldown");
-    const body = registrationBody("scanner-cabinet-cooldown@example.com");
+  it("passes the dashboard's own wait through the registration door untouched", async () => {
+    const { scan, accessToken } = await createFreshCompletedScan("dashboard-cooldown");
+    const body = registrationBody("scanner-dashboard-cooldown@example.com");
     process.env.REGISTRATION_ENABLED = "true";
     sendCooldownUntil = new Date(Date.now() + 40_000);
     try {

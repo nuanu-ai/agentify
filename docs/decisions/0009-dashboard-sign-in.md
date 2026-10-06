@@ -1,4 +1,4 @@
-# 0009. Signing into the cabinet is a component's job, not ours
+# 0009. Signing into the dashboard is a component's job, not ours
 
 Date: 2026-08-28
 Status: accepted (the product owner, 2026-08-28; 2026-09-24, on a session of
@@ -11,13 +11,13 @@ built on it; the history is in git.
 
 ## Context
 
-The cabinet has to sign a person in, keep them signed in, confirm the address
+The dashboard has to sign a person in, keep them signed in, confirm the address
 they typed, let a lost password be recovered, and refuse a form posted from
 somewhere else. All of it was ours, and three things ended that.
 
-Self-service registration made the cabinet multi-tenant, which inverts the
+Self-service registration made the dashboard multi-tenant, which inverts the
 original argument: a component's user and session model no longer has to be bent
-around a cabinet with one merchant, it fits one with many. The hand-written
+around a dashboard with one merchant, it fits one with many. The hand-written
 form-origin check had already cost a live outage — it built the origin it
 expected out of a forwarded header, so an honest browser was told its form came
 from somewhere else, exactly as the comment beside it had predicted. And the
@@ -48,13 +48,13 @@ shop posts its keys to, and the address that shop sends the merchant's browser
 back to. The last of those is above the gate because a browser can come back
 from the shop without a live session, and behind the gate a connection that
 worked would end on a sign-in form and read as a failure; a browser that does
-carry one is sent on into the cabinet. It is safe there because without a
+carry one is sent on into the dashboard. It is safe there because without a
 session it reads nothing and answers every visitor the same page. That is the
 test for anything else proposed for this list: without a session the route
 reads nothing, and its answer is the same for a stranger as for the owner.
 
 **3. The screens stay server-rendered forms.** Our handlers call the component's
-server API and pass on the cookie it makes, so the cabinet keeps working without
+server API and pass on the cookie it makes, so the dashboard keeps working without
 JavaScript and nothing pulls in a client framework. One screen carries one
 inline script (the product owner, 2026-09-22): the page a merchant lands on
 after asking for a link draws the resend with the wait in front of it counting
@@ -90,7 +90,7 @@ the edge configuration say, and `Path=/` is what makes the prefix available.
 The prefix closes what a path-scoped cookie leaves open: a cookie carrying it
 cannot name a `Domain`, so another host under the same registrable domain, as
 `test.agentify.ad` is beside `agentify.ad`, can neither plant a session here
-nor overwrite one. `Lax` lets a link to a report or to the cabinet, opened from
+nor overwrite one. `Lax` lets a link to a report or to the dashboard, opened from
 chat or from mail, arrive signed in. A cross-site POST carries no `Lax` cookie,
 exactly as it carries no `Strict` one, so every form keeps its protection. That
 holds only while nothing a page on another site can start changes a person's
@@ -130,8 +130,8 @@ availability in front of the worst possible screen with merchant identities in
 their database rather than ours.
 
 **A separate auth service — Kratos, Keycloak, Zitadel.** Each is a second
-deployment, database and backup, for a cabinet with one merchant. Worth
-revisiting the day there are identities outside the cabinet to federate.
+deployment, database and backup, for a dashboard with one merchant. Worth
+revisiting the day there are identities outside the dashboard to federate.
 
 **Letting the browser call the component directly.** The usual way it is used,
 and it would make signing in need JavaScript.

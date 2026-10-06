@@ -6,7 +6,7 @@
  * card, and it is the name that travels: a payment challenge carries it, and a
  * discovery catalogue lists the seller under it. Everything here goes through
  * `serve`, so the door, the mounting loop and the flows all run, and what is
- * asserted is the answer a merchant's own cabinet would receive.
+ * asserted is the answer a merchant's own dashboard would receive.
  *
  * The rule these tests exist for most is the one that costs somebody else
  * money: a card published by a merchant who has set no name would reach a
@@ -198,7 +198,7 @@ describe("the name a merchant is listed under", () => {
 
   it("refuses a call that leaves the field out, rather than reading it as none", async () => {
     // An absent field and a null one would otherwise be one thing, and they are
-    // opposites: a cabinet with a bug that drops the field would quietly
+    // opposites: a dashboard with a bug that drops the field would quietly
     // delist the merchant.
     const { served, harnessed } = await started();
     await setSellerName(served, harnessed.merchant.key, "Someone's shop");
@@ -384,7 +384,7 @@ describe("a card whose merchant is listed under no name", () => {
   it("opens no order against a sale the request could not describe", async () => {
     // The half that costs more than a status code: an order written first and
     // refused afterwards leaves a row on the merchant's own stream, in their
-    // cabinet, against a deadline, for a sale that could never have been made.
+    // dashboard, against a deadline, for a sale that could never have been made.
     const { served, harnessed } = await started();
     const { itemId, merchantId } = await soldUnderNoName(harnessed, served);
 
@@ -415,7 +415,7 @@ describe("a card whose merchant is listed under no name", () => {
 
   it("says the same thing to its own merchant as it says to a buyer", async () => {
     // One word about whether a card sells, and everybody who asks gets it. A
-    // cabinet showing a card as selling while every purchase of it came back
+    // dashboard showing a card as selling while every purchase of it came back
     // refused would send its merchant looking at the card for the fault.
     const { served, harnessed } = await started();
     const { itemId, key } = await soldUnderNoName(harnessed, served);

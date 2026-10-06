@@ -1,13 +1,13 @@
 /**
- * Who is visiting a scanner page, asked of the cabinet.
+ * Who is visiting a scanner page, asked of the dashboard.
  *
- * The scanner keeps no session of its own (ADR-0026 §2). The cabinet holds the
+ * The scanner keeps no session of its own (ADR-0026 §2). The dashboard holds the
  * one session the site has, and the scanner asks it over the internal route
  * whose session a request's cookies are, then reads its own tables for what
  * that address owns: a report opens for a session whose address owns it,
  * meaning the lead with that address is linked to the scan.
  *
- * Three answers and not two. A cabinet that cannot be reached is not a
+ * Three answers and not two. A dashboard that cannot be reached is not a
  * stranger: a page that cannot tell who is visiting says so, because not
  * knowing who somebody is must not look like knowing they are nobody.
  */
@@ -18,7 +18,7 @@ import { leadScans, leads, scans, waitlistEntries } from "@agentify/scanner-data
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { getServerConfig } from "./config";
 import { hmacHex, normalizeEmail } from "./crypto";
-import { getCabinetReportIdentityClient } from "./dashboard-report-identity";
+import { getDashboardReportIdentityClient } from "./dashboard-report-identity";
 import { getDatabase } from "./database";
 import { finishWaitingRequest } from "./scanner-registration";
 
@@ -35,7 +35,7 @@ export type Visitor =
       operator: boolean;
       /** The lead this address owns reports through, or null for an address with none. */
       leadId: string | null;
-      /** The cabinet's renewed cookie, for an answer that asked to renew and can pass it on. */
+      /** The dashboard's renewed cookie, for an answer that asked to renew and can pass it on. */
       setCookies: readonly string[];
     }>
   | Readonly<{ kind: "stranger" }>
@@ -55,22 +55,24 @@ export type Visitor =
  * next visit finishes it, which is better than a page that does not draw.
  *
  * A page reads this once and passes it down, so that everything it draws is
- * about one answer: a cabinet that stops answering between two questions could
+ * about one answer: a dashboard that stops answering between two questions could
  * otherwise turn a report's owner into somebody it is not filed under.
  */
 export async function visitorOf(
   cookieHeader: string | undefined | null,
   options: Readonly<{ renew?: boolean }> = {},
 ): Promise<Visitor> {
-  // Only the session's cookie goes to the cabinet: it is told whose session
+  // Only the session's cookie goes to the dashboard: it is told whose session
   // this is and nothing about the visitor's other cookies. None at all is
-  // nobody's session, and asking the cabinet about it would put a call to it
+  // nobody's session, and asking the dashboard about it would put a call to it
   // in front of every first visit to the site.
   const cookie = sessionCookiePairs(cookieHeader ?? "");
   if (cookie === "") return { kind: "stranger" };
-  let answer: Awaited<ReturnType<ReturnType<typeof getCabinetReportIdentityClient>["readSession"]>>;
+  let answer: Awaited<
+    ReturnType<ReturnType<typeof getDashboardReportIdentityClient>["readSession"]>
+  >;
   try {
-    answer = await getCabinetReportIdentityClient().readSession({
+    answer = await getDashboardReportIdentityClient().readSession({
       cookie,
       renew: options.renew ?? false,
     });
@@ -97,7 +99,7 @@ export async function visitorOf(
 /**
  * The lead a visitor already read owns reports through, and, when a scan is
  * named, only if that lead is linked to it: undefined for a stranger and for a
- * person whose address owns nothing here. A visitor the cabinet could not name
+ * person whose address owns nothing here. A visitor the dashboard could not name
  * never reaches this; whoever read it answers that it cannot tell.
  */
 export async function ownedLead(visitor: Visitor, scanId?: string): Promise<string | undefined> {
@@ -142,7 +144,7 @@ export async function latestReportOf(leadId: string): Promise<string | undefined
 /**
  * The lead for an address, unless its deletion has been asked for: the moment
  * somebody asks for their data to go, their reports stop opening, whether or
- * not the cabinet has answered yet.
+ * not the dashboard has answered yet.
  */
 async function leadOf(email: string): Promise<string | null> {
   const lead = (

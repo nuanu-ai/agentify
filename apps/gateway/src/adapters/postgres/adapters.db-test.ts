@@ -623,7 +623,7 @@ if (databaseUrl === null) {
       // answers from. The in-memory adapter has no such column — it works the
       // answer out from the state each time it is asked — so nothing offline
       // can catch the two disagreeing, and a column that fell behind would
-      // quietly drop a live order out of the list the cabinet works from.
+      // quietly drop a live order out of the list the dashboard works from.
       const published = await store.publishCard(
         A,
         { ...syncCard, merchant_item_id: "listed" },

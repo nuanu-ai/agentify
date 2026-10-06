@@ -78,8 +78,8 @@ async function sendReport(one: ReturnType<typeof fixture>, email = EMAIL) {
 }
 
 describe("a report link asked for by the scanner", () => {
-  it("lands on the cabinet's one-control page and makes nobody until it is pressed", async () => {
-    // Every link lands on the cabinet's page, and nothing in it but the token
+  it("lands on the dashboard's one-control page and makes nobody until it is pressed", async () => {
+    // Every link lands on the dashboard's page, and nothing in it but the token
     // is read: the destination and the request were recorded with the token
     // when the link was asked for (ADR-0026 §1).
     const one = fixture();
@@ -150,7 +150,7 @@ describe("a report link asked for by the scanner", () => {
     expect(renewed?.setCookies.some((line) => line.startsWith(`${COOKIE}=`))).toBe(true);
   });
 
-  it("keeps the same minute between two report links that the cabinet's door keeps", async () => {
+  it("keeps the same minute between two report links that the dashboard's door keeps", async () => {
     const one = fixture();
     const ask = async () =>
       await one.identity.sendReportLink({

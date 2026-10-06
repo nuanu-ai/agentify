@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
-import type { CabinetIdentity } from "./dashboard-entry.js";
+import type { DashboardIdentity } from "./dashboard-entry.js";
 import { identityFor, LINK_MIN_INTERVAL_MS, LINK_RATE_WINDOW_MS } from "./identity.js";
 import type { Message } from "./mail.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
@@ -30,22 +30,22 @@ function memoryIdentity(handed: "accepted" | "refused" = "accepted") {
       return handed;
     },
   });
-  return { identity: store as unknown as CabinetIdentity, messages, rows, store };
+  return { identity: store as unknown as DashboardIdentity, messages, rows, store };
 }
 
 function tokenIn(message: Message): string {
   const found = /https?:\/\/\S+\/sign-in\/open\?token=([^\s]+)/.exec(message.body)?.[1];
-  if (found === undefined) throw new Error("the cabinet link was not in the message");
+  if (found === undefined) throw new Error("the dashboard link was not in the message");
   return decodeURIComponent(found);
 }
 
 function linkIn(message: Message): string {
   const found = /https?:\/\/\S+\/sign-in\/open\?token=[^\s]+/.exec(message.body)?.[0];
-  if (found === undefined) throw new Error("the cabinet link was not in the message");
+  if (found === undefined) throw new Error("the dashboard link was not in the message");
   return found;
 }
 
-describe("cabinet magic links", () => {
+describe("dashboard magic links", () => {
   it("tells the person what the link does, how long it lasts, and carries it on a line of its own", async () => {
     const { identity, messages } = memoryIdentity();
 
@@ -197,7 +197,7 @@ describe("cabinet magic links", () => {
     expect(refused.retryAt.getTime() - Date.now()).toBeGreaterThan(LINK_MIN_INTERVAL_MS);
   });
 
-  it("keeps the Woo destination inside the one-time cabinet claim", async () => {
+  it("keeps the Woo destination inside the one-time dashboard claim", async () => {
     const { identity, messages } = memoryIdentity();
     await identity.requestLink("person@example.com", "woocommerce");
 
@@ -207,7 +207,7 @@ describe("cabinet magic links", () => {
   });
 
   it("refuses a token whose recorded destination is outside the closed set, spending nothing", async () => {
-    // Where a link leads is one of the cabinet's screens or one scan's report,
+    // Where a link leads is one of the dashboard's screens or one scan's report,
     // and a row naming anything else was not written by the door: it opens
     // nothing rather than sending somebody to where it says (ADR-0026 §1).
     const { identity, messages, rows } = memoryIdentity();

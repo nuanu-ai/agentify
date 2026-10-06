@@ -1,5 +1,5 @@
 /**
- * The two ways a message leaves the cabinet, and the one value that picks
+ * The two ways a message leaves the dashboard, and the one value that picks
  * between them.
  *
  * There are two kinds of message. One is a one-time link that proves its reader
@@ -19,7 +19,7 @@
  *
  * Nothing waits for delivery. A caller learns only whether the provider took
  * the message. Refusal is returned so the identity transaction can remove the
- * unusable token and the cabinet can answer with an honest retryable 503.
+ * unusable token and the dashboard can answer with an honest retryable 503.
  * Delivery is a different question and this file cannot answer it: there is no
  * inbox here and no bounce handler.
  */
@@ -33,7 +33,7 @@
  */
 export const SANDBOX_MAIL = "sandbox:log";
 
-/** Whether this cabinet writes its messages to the log instead of sending them. */
+/** Whether this dashboard writes its messages to the log instead of sending them. */
 export const isSandboxMail = (mailUrl: string): boolean => mailUrl === SANDBOX_MAIL;
 
 /** One message, already written, with nothing left to decide about it. */
@@ -78,7 +78,7 @@ export interface MailConfig {
  * The sender this configuration asks for.
  *
  * One function either way, so nothing above this file has a branch in it about
- * whether mail is real here. The cabinet's identity flow is the same code on a
+ * whether mail is real here. The dashboard's identity flow is the same code on a
  * laptop and on a server; only the sink that accepts the message changes.
  */
 export function postmanFor(config: MailConfig): Postman {
@@ -89,7 +89,7 @@ export function postmanFor(config: MailConfig): Postman {
  * The sandbox sender: every message, whole, in the log.
  *
  * The link is printed as it stands rather than described, because the only
- * reason to read this is to follow it. Whoever is developing the cabinet copies
+ * reason to read this is to follow it. Whoever is developing the dashboard copies
  * it out of their terminal, and that is the entire flow with no account
  * anywhere.
  *
@@ -100,7 +100,7 @@ export function postmanFor(config: MailConfig): Postman {
  */
 const toTheLog: Postman = async (message) => {
   console.log(
-    `[cabinet] no mail provider is configured, so this message was not sent.` +
+    `[dashboard] no mail provider is configured, so this message was not sent.` +
       ` To: ${message.to}. Subject: ${message.subject}.\n${message.body}`,
   );
   return "accepted";
@@ -110,7 +110,7 @@ const toTheLog: Postman = async (message) => {
  * The provider sender.
  *
  * One call, one JSON document, and no reading of what comes back beyond whether
- * it worked. Nothing in the cabinet receives mail — there is no inbox, no bounce
+ * it worked. Nothing in the dashboard receives mail — there is no inbox, no bounce
  * handler and no reply address that reaches anybody — so the answer to this call
  * is only ever a line in a log.
  *
@@ -140,7 +140,7 @@ function throughResend(config: MailConfig): Postman {
       if (!answered.ok) {
         // The status and nothing else. What comes back can carry the address it
         // was refused for, and a log goes places the database does not.
-        console.error(`[cabinet] mail provider refused a message (${answered.status})`);
+        console.error(`[dashboard] mail provider refused a message (${answered.status})`);
         return "refused";
       }
       // The other half of the same sentence, and the reason it is here: every
@@ -150,12 +150,12 @@ function throughResend(config: MailConfig): Postman {
       // nobody ever asked about. "Handed to" and not "sent": there is no inbox
       // here and no bounce handler, so what the provider did with it after
       // this is not something this process ever learns.
-      console.log("[cabinet] mail provider accepted a message");
+      console.log("[dashboard] mail provider accepted a message");
       return "accepted";
     } catch {
       // The exception is deliberately not printed. A fetch implementation may
       // attach its request body, including the recipient and action URL.
-      console.error("[cabinet] mail provider could not be reached");
+      console.error("[dashboard] mail provider could not be reached");
       return "refused";
     }
   };

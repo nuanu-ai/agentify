@@ -1,5 +1,5 @@
 /**
- * The part of jsdom the cabinet's one browser test touches.
+ * The part of jsdom the dashboard's one browser test touches.
  *
  * jsdom ships no type declarations of its own and `@types/jsdom` is a package
  * this repository does not have, so importing it is an implicit `any` and the

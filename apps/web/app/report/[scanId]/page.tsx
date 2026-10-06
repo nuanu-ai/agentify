@@ -14,7 +14,7 @@ import { CopyRemediationPrompt } from "../../../components/copy-remediation-prom
 import { PrivacyChoicesButton } from "../../../components/privacy-choices-button";
 import { ReportActionPanel } from "../../../components/report-action-panel";
 import { ReportBenchmark } from "../../../components/report-benchmark";
-import { ReportCabinetControl } from "../../../components/report-dashboard-control";
+import { ReportDashboardControl } from "../../../components/report-dashboard-control";
 import { RobotsNotice } from "../../../components/robots-notice";
 import { SiteDoors } from "../../../components/site-chrome";
 import { StatusBadge } from "../../../components/status-badge";
@@ -142,7 +142,7 @@ export default async function ReportPage({ params }: { params: Promise<{ scanId:
         scanId={report.scan_id}
         shareEnabled={serverConfig.PUBLIC_SHARE_ENABLED}
       />
-      <section className={styles.cabinet}>
+      <section className={styles.dashboard}>
         <h2>Selling to agents</h2>
         <p>
           If what you sell can be sent a second time without loss, an access, a key, a link, a
@@ -151,7 +151,7 @@ export default async function ReportPage({ params }: { params: Promise<{ scanId:
           selling live also needs our switch. If not, this report is the whole result, and you can
           scan the site again whenever it changes.
         </p>
-        <ReportCabinetControl />
+        <ReportDashboardControl />
       </section>
       <section className={styles.checks}>
         <div className={styles.sectionHeading}>

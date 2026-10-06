@@ -13,8 +13,8 @@ goods to the buying agent. An order number is not a product.
 
 ## Decision
 
-**Cabinet keeps the shop key and secret as Woo issued them.** They live on the
-merchant account under the same host boundary as the cabinet key. Woo can
+**Dashboard keeps the shop key and secret as Woo issued them.** They live on the
+merchant account under the same host boundary as the dashboard key. Woo can
 revoke them. The database is a boundary against the network, not the host.
 
 **The callback spends one random grant row and writes the connection atomically.** It is bound to the account and
@@ -43,8 +43,8 @@ origin, product, amount/currency, download id/name, protected source address and
 supported settings. The paid order must carry that price id and the fresh
 authoritative product must match. The protected address is never stored.
 
-**Cabinet fills the order as the merchant's worker.** After Agentify settles,
-Cabinet rechecks the product and settings, claims the Agentify order, creates
+**Dashboard fills the order as the merchant's worker.** After Agentify settles,
+Dashboard rechecks the product and settings, claims the Agentify order, creates
 one paid Woo order and durably records the permission ingredients before
 answering. Redelivery returns the stored result and never creates a second Woo
 order. The ledger phase is `precreate_refused`, `create_unknown` or `placed`;

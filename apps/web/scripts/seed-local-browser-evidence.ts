@@ -2,10 +2,10 @@
  * A deterministic local report for the browser smoke, and a way to sign in to it.
  *
  * The scanner keeps no session (ADR-0026 §2), so the smoke signs in the way a
- * person does: through the cabinet's page with one control. What this plants
- * in the cabinet's database is exactly what the cabinet writes when the scanner
+ * person does: through the dashboard's page with one control. What this plants
+ * in the dashboard's database is exactly what the dashboard writes when the scanner
  * asks it for a link, a hashed one-time token with its address and
- * destination, because the message itself goes to the cabinet's log and a
+ * destination, because the message itself goes to the dashboard's log and a
  * browser script cannot read that. Local databases only.
  */
 
@@ -44,18 +44,18 @@ const outputFileInput = process.env.LOCAL_E2E_VERIFICATION_FILE;
 if (!outputFileInput?.startsWith("/tmp/"))
   throw new Error("LOCAL_E2E_VERIFICATION_FILE must be under /tmp");
 const outputFile = outputFileInput;
-const cabinetDatabaseUrl = new URL(process.env.CABINET_DATABASE_URL ?? "");
-if (!["localhost", "127.0.0.1"].includes(cabinetDatabaseUrl.hostname))
+const dashboardDatabaseUrl = new URL(process.env.CABINET_DATABASE_URL ?? "");
+if (!["localhost", "127.0.0.1"].includes(dashboardDatabaseUrl.hostname))
   throw new Error("Local E2E fixture refuses a non-local CABINET_DATABASE_URL");
 
-/** A one-time link for this address to this report, written the way the cabinet writes one. */
+/** A one-time link for this address to this report, written the way the dashboard writes one. */
 async function plantSignInLink(email: string, scanId: string): Promise<string> {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   const token = [...randomBytes(32)].map((byte) => alphabet[byte % alphabet.length]).join("");
-  const cabinet = createDatabase(cabinetDatabaseUrl.toString(), { max: 1 });
+  const dashboard = createDatabase(dashboardDatabaseUrl.toString(), { max: 1 });
   try {
     const now = new Date();
-    await cabinet.pool.query(
+    await dashboard.pool.query(
       `insert into cabinet_verifications (id, identifier, value, expires_at, created_at, updated_at)
        values ($1, $2, $3, $4, $5, $5)`,
       [
@@ -67,7 +67,7 @@ async function plantSignInLink(email: string, scanId: string): Promise<string> {
       ],
     );
   } finally {
-    await cabinet.pool.end();
+    await dashboard.pool.end();
   }
   return token;
 }

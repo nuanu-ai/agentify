@@ -29,7 +29,7 @@ setup opened under the former metadata keys is not reconciled after the
 switch. Deployment variables, resource names and page markers change with
 their producers, consumers and checks.
 
-The cookie prefix change requires cabinet users to sign in again; accounts
+The cookie prefix change requires dashboard users to sign in again; accounts
 and credentials are retained. Cleanup for the pre-component credential cookies
 is removed: their issuers used a twelve-hour maximum age and were retired
 on 2026-08-28. Broad origin cookie clearing would disturb unrelated sessions.

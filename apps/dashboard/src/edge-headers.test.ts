@@ -1,10 +1,10 @@
 /**
- * The one header at the edge that can stop every form in this cabinet working.
+ * The one header at the edge that can stop every form in this dashboard working.
  *
- * This is a test about a file the cabinet does not read, which needs saying.
- * `deploy/Caddyfile` is what serves the cabinet's pages on a deployment, and one
+ * This is a test about a file the dashboard does not read, which needs saying.
+ * `deploy/Caddyfile` is what serves the dashboard's pages on a deployment, and one
  * of the headers it sets decides whether the browser will tell us where a form
- * came from. The cabinet then refuses forms that came from somewhere else. Those
+ * came from. The dashboard then refuses forms that came from somewhere else. Those
  * two facts live in two repositoriesworth of distance from each other — a header
  * block in a web server's configuration and a middleware in an express app — and
  * nothing connected them until this file.
@@ -14,7 +14,7 @@
  * "cannot break a page". By the fetch specification a request whose method is
  * not GET or HEAD and whose referrer policy is `no-referrer` carries
  * `Origin: null` rather than the page's own origin. Every form post in the
- * cabinet therefore arrived claiming to come from nowhere, the check refused it,
+ * dashboard therefore arrived claiming to come from nowhere, the check refused it,
  * and a merchant could not sign into the live site at all. It cost the better
  * part of a day, and the reason it cost that much is that nothing about it
  * looked like a header: the identical request from a command line, which
@@ -45,7 +45,7 @@ const caddyfile = resolve(
  */
 const POLICIES_THAT_NULL_THE_ORIGIN = ["no-referrer"];
 
-describe("the headers the edge puts on the cabinet's pages", () => {
+describe("the headers the edge puts on the dashboard's pages", () => {
   it("does not use a referrer policy that makes a browser hide the origin", () => {
     const configuration = readFileSync(caddyfile, "utf8");
     // A search that found nothing to search would pass for the wrong reason.
@@ -56,14 +56,14 @@ describe("the headers the edge puts on the cabinet's pages", () => {
     expect(
       POLICIES_THAT_NULL_THE_ORIGIN,
       `Referrer-Policy is "${said}", and a browser then posts every form with Origin: null,` +
-        " which the cabinet refuses — nobody can sign in. Use same-origin.",
+        " which the dashboard refuses — nobody can sign in. Use same-origin.",
     ).not.toContain(said);
   });
 
   it("still keeps a referrer off other people's sites", () => {
     // The reason the line exists at all. Dropping the header entirely would
     // also fix the sign-in, and it would send the address of a merchant's
-    // cabinet page to whatever they click through to.
+    // dashboard page to whatever they click through to.
     const said = /^\s*Referrer-Policy\s+(\S+)\s*$/m.exec(readFileSync(caddyfile, "utf8"))?.[1];
     expect(["same-origin", "strict-origin", "strict-origin-when-cross-origin"]).toContain(said);
   });

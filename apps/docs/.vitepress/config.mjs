@@ -17,7 +17,7 @@ export default withMermaid(
     lang: "en",
     title: "Agentify",
     // The origin has one palette and it is light (ADR-0005 §6). Left on, the
-    // theme would offer a dark portal in front of a scanner and a cabinet that
+    // theme would offer a dark portal in front of a scanner and a dashboard that
     // have none, which is the seam this setting used to widen rather than close.
     appearance: false,
     description:
@@ -83,7 +83,7 @@ export default withMermaid(
      * The words are written out here rather than imported because this site
      * declares no dependency on the workspace packages;
      * `packages/core/src/deployment/surface-markers.test.ts` reads this file and
-     * holds these strings against the module the cabinet renders from.
+     * holds these strings against the module the dashboard renders from.
      */
     // Mermaid is registered once for the whole site, so every page's preload list
     // gets its chunks — including the pages with no diagram on them. Measured on

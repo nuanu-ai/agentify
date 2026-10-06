@@ -17,7 +17,7 @@ import { defineConfig } from "vitest/config";
  *
  * Nothing needs to be set on a laptop. The suite runs against `agentify_test`,
  * which is its own database on that server and not the `agentify` the
- * gateway and the cabinet use, and it makes that database if it is not there. A host
+ * gateway and the dashboard use, and it makes that database if it is not there. A host
  * that keeps its Postgres somewhere other than the 5432 `compose.yaml`
  * publishes on a laptop — a deployment binds `127.0.0.1:55432` — has one thing
  * to say, and says it to the command:

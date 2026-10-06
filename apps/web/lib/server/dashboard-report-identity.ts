@@ -16,16 +16,16 @@ const REPORT_IDENTITY_TIMEOUT_MS = 15_000;
 /**
  * Whose session a cookie is, asked while a page waits on the answer.
  *
- * Every scanner page that shows who is visiting asks this, so a cabinet that
+ * Every scanner page that shows who is visiting asks this, so a dashboard that
  * hangs has to become "we cannot tell who is visiting" in seconds rather than
  * a page that never draws (ADR-0026 §2).
  */
 const SESSION_QUESTION_TIMEOUT_MS = 3_000;
 
-export class CabinetIdentityUnavailableError extends Error {
+export class DashboardIdentityUnavailableError extends Error {
   constructor() {
     super("cabinet_identity_unavailable");
-    this.name = "CabinetIdentityUnavailableError";
+    this.name = "DashboardIdentityUnavailableError";
   }
 }
 
@@ -38,7 +38,7 @@ type ClientOptions = Readonly<{
 }>;
 
 /**
- * The three things the scanner asks the cabinet over the internal route
+ * The three things the scanner asks the dashboard over the internal route
  * (ADR-0026 §2). The scanner never handles a token and mints no session.
  */
 type Client = Readonly<{
@@ -57,7 +57,7 @@ type Client = Readonly<{
   }): Promise<DeleteUnattachedPersonResponse>;
 }>;
 
-export function createCabinetReportIdentityClient(options: ClientOptions): Client {
+export function createDashboardReportIdentityClient(options: ClientOptions): Client {
   const fetchImpl = options.fetchImpl ?? fetch;
   const endpoint = new URL(REPORT_IDENTITY_PATH, options.baseUrl);
 
@@ -82,14 +82,14 @@ export function createCabinetReportIdentityClient(options: ClientOptions): Clien
         response.status !== 200 ||
         !response.headers.get("content-type")?.startsWith("application/json")
       ) {
-        throw new CabinetIdentityUnavailableError();
+        throw new DashboardIdentityUnavailableError();
       }
       const parsed = responseSchema.safeParse(await response.json());
-      if (!parsed.success) throw new CabinetIdentityUnavailableError();
+      if (!parsed.success) throw new DashboardIdentityUnavailableError();
       return parsed.data;
     } catch (error) {
-      if (error instanceof CabinetIdentityUnavailableError) throw error;
-      throw new CabinetIdentityUnavailableError();
+      if (error instanceof DashboardIdentityUnavailableError) throw error;
+      throw new DashboardIdentityUnavailableError();
     } finally {
       clearTimeout(timeout);
     }
@@ -115,12 +115,12 @@ export function createCabinetReportIdentityClient(options: ClientOptions): Clien
   };
 }
 
-export function getCabinetReportIdentityClient(): Client {
+export function getDashboardReportIdentityClient(): Client {
   const config = getServerConfig();
   if (!config.CABINET_IDENTITY_URL || !config.REPORT_IDENTITY_SECRET) {
-    throw new CabinetIdentityUnavailableError();
+    throw new DashboardIdentityUnavailableError();
   }
-  return createCabinetReportIdentityClient({
+  return createDashboardReportIdentityClient({
     baseUrl: config.CABINET_IDENTITY_URL,
     secret: config.REPORT_IDENTITY_SECRET,
   });

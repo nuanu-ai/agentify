@@ -20,7 +20,7 @@ type word alone (`'string'` for `{ type: 'string' }`), and a price may
 be the one string `'5.00 USD'`. Every such leniency is opened out into
 the canonical shape at the parse boundary, inside the schema itself,
 and nothing behind the door ever meets it: storage holds the canon,
-internal code reads the canon, and what an agent or the cabinet is
+internal code reads the canon, and what an agent or the dashboard is
 served is the canon. A finding about a short-written field still points
 at what the merchant wrote.
 

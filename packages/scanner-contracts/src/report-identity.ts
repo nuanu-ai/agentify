@@ -1,7 +1,7 @@
 /**
- * The internal route between the scanner and the cabinet (ADR-0026 §2).
+ * The internal route between the scanner and the dashboard (ADR-0026 §2).
  *
- * The cabinet holds every identity and every session on the site, and the
+ * The dashboard holds every identity and every session on the site, and the
  * scanner never handles a token or mints a session. Over this route, reachable
  * only on the compose network and authenticated by a secret the two processes
  * share, the scanner asks three things: send a link for this address with this
@@ -24,7 +24,7 @@ const normalizedEmailSchema = z
 
 /**
  * The request a full-report link was asked for: the scanner's own identifier
- * for it, which the cabinet records with the token and then with the session
+ * for it, which the dashboard records with the token and then with the session
  * the link opens, and never reads.
  */
 const reportRequestSchema = z.uuid();
@@ -42,7 +42,7 @@ const reportDestinationSchema = z.object({ report: z.uuid() }).strict();
  *
  * With the `__Host-` prefix wherever the site is served over https and without
  * it on the plain-http local origin, because the prefix requires `Secure` and
- * a Secure cookie is never sent back over http. The cabinet sets it; the
+ * a Secure cookie is never sent back over http. The dashboard sets it; the
  * scanner reads the names to pass on the session's cookie and no other.
  */
 export const sessionCookieName = (secure: boolean): string =>
@@ -52,7 +52,7 @@ const SESSION_COOKIE_NAMES = new Set([sessionCookieName(true), sessionCookieName
 
 /**
  * The pairs of a cookie header that are the site's session cookie, and none of
- * the others: the cabinet is told whose session this is and nothing about the
+ * the others: the dashboard is told whose session this is and nothing about the
  * visitor's other cookies, and a browser carrying many of them cannot push the
  * question past the size this route reads.
  */

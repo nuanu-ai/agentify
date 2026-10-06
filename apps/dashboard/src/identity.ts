@@ -1,8 +1,8 @@
 /**
- * Cabinet identity behind one emailed-link door, for the whole site.
+ * Dashboard identity behind one emailed-link door, for the whole site.
  *
  * Better Auth owns token consumption, people and sessions. Its generated HTTP
- * routes stay unmounted: the cabinet sends every link itself, the ones the
+ * routes stay unmounted: the dashboard sends every link itself, the ones the
  * scanner asks for included, and calls the component only from the same-origin
  * POST owned by the SSR server. Production verification runs on a
  * transaction-bound Drizzle adapter; the deterministic memory store runs the
@@ -27,13 +27,13 @@ import { magicLink } from "better-auth/plugins/magic-link";
 import { and, asc, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
-import type { CabinetConfig } from "./config.js";
+import type { DashboardConfig } from "./config.js";
 import type {
   AccountMerchant,
   AttachMerchantResult,
-  CabinetDestination,
-  CabinetIdentity,
-  CabinetLinkResult,
+  DashboardDestination,
+  DashboardIdentity,
+  DashboardLinkResult,
   LinkDestination,
   LinkRequestResult,
   LinkWall,
@@ -58,9 +58,9 @@ import {
 export type {
   AccountMerchant,
   AttachMerchantResult,
-  CabinetDestination,
-  CabinetIdentity,
-  CabinetLinkResult,
+  DashboardDestination,
+  DashboardIdentity,
+  DashboardLinkResult,
   LinkDestination,
   LinkRequestResult,
   LiveSession,
@@ -80,7 +80,7 @@ export interface AccountSummary {
 }
 
 /** Operator-only operations kept out of the page-facing identity port. */
-export interface Identity extends CabinetIdentity {
+export interface Identity extends DashboardIdentity {
   /**
    * Writes an unconfirmed account naming a merchant that already exists, or
    * null where the address has one. No command and no route calls it: an
@@ -185,7 +185,7 @@ class VerificationRefused extends Error {}
 /** How a one-time token is written at rest, the way the component hashes it. */
 const tokenHash = (token: string): string => createHash("sha256").update(token).digest("base64url");
 
-export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): Identity {
+export function identityFor(config: DashboardConfig, parts: IdentityParts = {}): Identity {
   const postman = parts.postman ?? postmanFor(config);
   const base = `${config.publicBaseUrl}${config.basePath}`;
   const originHeaders = new Headers({ origin: new URL(config.publicBaseUrl).origin });
@@ -271,13 +271,13 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
             if (stored === null || stored === undefined) {
               throw new Error("cabinet_link_storage_missing");
             }
-            // Every link lands on the cabinet's page with one control, whoever
+            // Every link lands on the dashboard's page with one control, whoever
             // asked for it; only the token rides in it (ADR-0026 §1).
             const action = new URL(`${base}/sign-in/open`);
             action.searchParams.set("token", token);
             active.handed = await postman(
               typeof claim.destination === "string"
-                ? cabinetLinkMessage(email, action.toString())
+                ? dashboardLinkMessage(email, action.toString())
                 : reportLinkMessage(email, action.toString()),
             );
           },
@@ -321,7 +321,7 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
   const requestWith = async (
     bound: typeof auth,
     email: string,
-    destination: CabinetDestination,
+    destination: DashboardDestination,
     retryAt: Date,
   ): Promise<LinkRequestResult> => {
     const active: LinkSend = {
@@ -362,7 +362,7 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
     bound: typeof auth,
     token: string,
     lockEmail?: (email: string) => Promise<void>,
-  ): Promise<CabinetLinkResult> => {
+  ): Promise<DashboardLinkResult> => {
     if (!RAW_TOKEN.test(token)) return { status: "refused" };
     const context = await bound.$context;
     const stored = await context.adapter.findOne<StoredVerification>({
@@ -741,7 +741,7 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
       }
       for (const one of live) await endSession(one.token);
       console.log(
-        `[cabinet] a request carried live sessions of ${owners.size} different people;` +
+        `[dashboard] a request carried live sessions of ${owners.size} different people;` +
           " every one of them was ended and nobody was signed in",
       );
       return null;
@@ -831,7 +831,7 @@ export function identityFor(config: CabinetConfig, parts: IdentityParts = {}): I
         // A connection can fail after PostgreSQL commits the update. The caller
         // must keep both keys when it cannot know which one the row holds.
         console.error(
-          "[cabinet] the database could not establish whether a fresh gateway key was written",
+          "[dashboard] the database could not establish whether a fresh gateway key was written",
         );
         return "unknown";
       }
@@ -1007,7 +1007,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /**
  * A claim read back, held to the closed set it was written from.
  *
- * A destination is one of the cabinet's three screens or the report of one
+ * A destination is one of the dashboard's three screens or the report of one
  * named scan, and a request is the scanner's identifier or nothing. A row
  * holding anything else was not written by this file and opens nothing.
  */
@@ -1041,7 +1041,7 @@ function sameClaim(one: LinkClaim, other: LinkClaim): boolean {
  * deleted at the scanner.
  *
  * A link to a report always goes, because the reports it led to are being
- * deleted. A link into the cabinet goes with the person, and stays for a
+ * deleted. A link into the dashboard goes with the person, and stays for a
  * person who owns a merchant and is kept.
  */
 function goesWithTheDeletion(
@@ -1088,8 +1088,8 @@ type LinkRate =
  * is still refused, which is the kind of claim ADR-0026's door exists to keep
  * off the screen.
  *
- * Both doors stand on this, the cabinet's and the report's, because both count
- * the same rows. They do not say the same thing about it. The cabinet's own
+ * Both doors stand on this, the dashboard's and the report's, because both count
+ * the same rows. They do not say the same thing about it. The dashboard's own
  * pages are ours to write, so its answer names the wall and the screen has a
  * sentence for each. The report answer crosses a contract the scanner reads,
  * and that contract carries the moment and no wall — so the scanner cannot
@@ -1200,9 +1200,9 @@ async function postgresRate(
   return { sent: true, retryAt: waitAfter([...sentAt, now], now) };
 }
 
-type CabinetTransaction = Parameters<Parameters<ReturnType<typeof drizzle>["transaction"]>[0]>[0];
+type DashboardTransaction = Parameters<Parameters<ReturnType<typeof drizzle>["transaction"]>[0]>[0];
 
-async function lockEmail(tx: CabinetTransaction, email: string): Promise<void> {
+async function lockEmail(tx: DashboardTransaction, email: string): Promise<void> {
   await tx.execute(
     sql`select pg_advisory_xact_lock(hashtextextended(${`cabinet-email:${email}`}, 0))`,
   );
@@ -1218,7 +1218,7 @@ function reportDigestKeyInMemory(rows: MemoryRows, now: Date): string {
   return digestKey;
 }
 
-async function reportDigestKeyInPostgres(tx: CabinetTransaction, now: Date): Promise<string> {
+async function reportDigestKeyInPostgres(tx: DashboardTransaction, now: Date): Promise<string> {
   const existing = (
     await tx
       .select({ digestKey: reportIdentitySecrets.digestKey })
@@ -1264,7 +1264,7 @@ function cleanupOldLinksInMemory(rows: MemoryRows, now: Date): void {
   });
 }
 
-async function cleanupOldLinksInPostgres(tx: CabinetTransaction, now: Date): Promise<void> {
+async function cleanupOldLinksInPostgres(tx: DashboardTransaction, now: Date): Promise<void> {
   const old = await tx
     .select({ id: verifications.id })
     .from(verifications)
@@ -1314,7 +1314,7 @@ function deleteFromMemory(rows: MemoryRows, email: string): DeleteResult {
   return result;
 }
 
-function cabinetLinkMessage(to: string, link: string): Message {
+function dashboardLinkMessage(to: string, link: string): Message {
   const title = "Open your dashboard";
   const lifetime =
     "This link opens once and expires an hour after it was sent. There is nothing here to keep:" +

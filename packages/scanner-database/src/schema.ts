@@ -458,7 +458,7 @@ export const scannerIdentityDeletionOperations = pgTable(
     leadId: uuid("lead_id")
       .notNull()
       .references(() => leads.id, { onDelete: "cascade" }),
-    cabinetResult: text("cabinet_result"),
+    dashboardResult: text("cabinet_result"),
     leaseToken: uuid("lease_token"),
     leaseExpiresAt: utcTimestamp("lease_expires_at"),
     createdAt: utcTimestamp("created_at").notNull().defaultNow(),
@@ -468,11 +468,11 @@ export const scannerIdentityDeletionOperations = pgTable(
     check("scanner_identity_deletion_operations_id_uuidv7", uuidV7Check(table.operationId)),
     check(
       "scanner_identity_deletion_operations_result",
-      sql`${table.cabinetResult} is null or ${table.cabinetResult} in ('deleted', 'already_absent', 'retained')`,
+      sql`${table.dashboardResult} is null or ${table.dashboardResult} in ('deleted', 'already_absent', 'retained')`,
     ),
     check(
       "scanner_identity_deletion_operations_completion",
-      sql`${table.completedAt} is null or ${table.cabinetResult} is not null`,
+      sql`${table.completedAt} is null or ${table.dashboardResult} is not null`,
     ),
     uniqueIndex("scanner_identity_deletion_operations_lead_uidx").on(table.leadId),
     index("scanner_identity_deletion_operations_pending_idx")

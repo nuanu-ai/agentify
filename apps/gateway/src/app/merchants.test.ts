@@ -15,10 +15,10 @@ import { describe, expect, it } from "vitest";
 import { MemoryStore } from "../adapters/memory/store.js";
 import { countedIds } from "../testing/harness.js";
 import {
-  CABINET_KEY_LABEL,
+  DASHBOARD_KEY_LABEL,
   grantLiveApproval,
   invitationAccepted,
-  issueCabinetKey,
+  issueDashboardKey,
   issueKey,
   keyDigest,
   newKeySecret,
@@ -122,10 +122,10 @@ describe("a key", () => {
     expect(await store.workingKey(issued.secret)).toBeNull();
   });
 
-  it("is made for the merchant's own code unless a cabinet asked for it", async () => {
+  it("is made for the merchant's own code unless a dashboard asked for it", async () => {
     // The two verbs are two verbs rather than one with a word in it, because
     // what separates them is not a setting: one makes a key the merchant sees,
-    // names and revokes, and the other makes the credential a cabinet calls
+    // names and revokes, and the other makes the credential a dashboard calls
     // with, which the merchant never asked for and never sees. A caller reaching
     // for the wrong one is reaching for a different act.
     const store = aStore();
@@ -133,25 +133,25 @@ describe("a key", () => {
     await store.addMerchant({ id: "mch_1", name: "A merchant" }, 1_000);
 
     const theirs = await issueKey(store, ids, "mch_1", "the worker's", 1_000, "test");
-    const cabinet = await issueCabinetKey(store, ids, "mch_1", 2_000, "test");
+    const dashboard = await issueDashboardKey(store, ids, "mch_1", 2_000, "test");
 
     expect((await store.codeKeysOf("mch_1")).map((key) => key.id)).toStrictEqual([theirs.key.id]);
-    expect(cabinet.key.purpose).toBe("cabinet");
+    expect(dashboard.key.purpose).toBe("cabinet");
     // Both open the door. What differs is whose list they are in.
-    expect((await store.workingKey(keyDigest(cabinet.secret)))?.id).toBe(cabinet.key.id);
+    expect((await store.workingKey(keyDigest(dashboard.secret)))?.id).toBe(dashboard.key.id);
   });
 
-  it("is labelled by whoever made it, and a cabinet's says what it is", async () => {
-    // A cabinet's key is made at every sign-in and shown to nobody, so nobody
+  it("is labelled by whoever made it, and a dashboard's says what it is", async () => {
+    // A dashboard's key is made at every sign-in and shown to nobody, so nobody
     // types its label. It still needs one, because a person at a terminal
     // reading the whole of a merchant's keys sees this text and has to be able
     // to tell what the row is without knowing this design.
     const store = aStore();
     await store.addMerchant({ id: "mch_1", name: "A merchant" }, 1_000);
 
-    const cabinet = await issueCabinetKey(store, countedIds(), "mch_1", 1_000, "test");
+    const dashboard = await issueDashboardKey(store, countedIds(), "mch_1", 1_000, "test");
 
-    expect(cabinet.key.label).toBe(CABINET_KEY_LABEL);
+    expect(dashboard.key.label).toBe(DASHBOARD_KEY_LABEL);
   });
 
   it("hashes the same secret the same way every time, and two secrets differently", () => {
@@ -459,8 +459,8 @@ describe("registering a merchant", () => {
     expect(await store.keysOf(made?.merchant.id ?? "")).toHaveLength(1);
   });
 
-  it("gives the cabinet its own key and the merchant no keys of their own", async () => {
-    // Whoever registers is a cabinet, and what it walks away with is the
+  it("gives the dashboard its own key and the merchant no keys of their own", async () => {
+    // Whoever registers is a dashboard, and what it walks away with is the
     // credential it will call as this merchant with — not the first of the
     // merchant's own keys. So the new merchant's own list is empty, which is
     // the first thing their keys screen ever draws.

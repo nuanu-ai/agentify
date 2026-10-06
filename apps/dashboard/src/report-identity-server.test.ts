@@ -93,8 +93,8 @@ afterEach(async () => {
   );
 });
 
-describe("the cabinet's internal route for the scanner", () => {
-  it("opens no listener for a standalone cabinet without the private secret", () => {
+describe("the dashboard's internal route for the scanner", () => {
+  it("opens no listener for a standalone dashboard without the private secret", () => {
     const { identity } = identityWith(async () => "accepted");
     expect(startReportIdentityServer(null, identity, noKeyToRenew)).toBeNull();
   });
@@ -228,7 +228,7 @@ describe("the cabinet's internal route for the scanner", () => {
 
   it("passes the renewed cookie on when asked to renew a day-old session, and only then", async () => {
     // A visit to a report counts toward the thirty days only if the cookie the
-    // cabinet renews reaches the browser, and the scanner can pass a line on
+    // dashboard renews reaches the browser, and the scanner can pass a line on
     // from some of its answers and not from others (ADR-0026 §2).
     const messages: Message[] = [];
     const { identity, rows, url } = await serve(async (message) => {

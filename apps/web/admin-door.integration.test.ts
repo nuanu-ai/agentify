@@ -3,7 +3,7 @@
  * build.
  *
  * ADR-0026 §6: `/admin` opens for a session whose account carries the operator
- * flag. Everybody else, signed in or not, and everybody while the cabinet
+ * flag. Everybody else, signed in or not, and everybody while the dashboard
  * cannot confirm the flag, gets the site's 404 page, the one a path no route
  * answers gets. The answer is Next's, drawn from the page's refusal, so this
  * runs the standalone build rather than importing the page. It compares the
@@ -44,32 +44,32 @@ if (!existsSync(built)) {
 
 const SESSION = "agentify.session_token";
 const HEADING = "Agentify operating dashboard";
-/** The cookie values the stand-in cabinet knows, and which of them are operators. */
+/** The cookie values the stand-in dashboard knows, and which of them are operators. */
 const people = new Set(["operator", "person"]);
 const operators = new Set(["operator"]);
-let cabinetFails = false;
+let dashboardFails = false;
 
 const migrationsFolder = fileURLToPath(
   new URL("../../packages/scanner-database/migrations", import.meta.url),
 );
 const database = createDatabase(connectionString, { max: 1 });
-let cabinet: Server;
+let dashboard: Server;
 let scanner: ChildProcess;
 let scannerOutput = "";
 let base = "";
 
 /**
- * The cabinet's side of the question the scanner asks about every visitor
+ * The dashboard's side of the question the scanner asks about every visitor
  * (ADR-0026 §2), answering from the two sets above.
  */
-function standInCabinet(): Server {
+function standInDashboard(): Server {
   return createServer((request, response) => {
     let body = "";
     request.setEncoding("utf8");
     request.on("data", (chunk: string) => (body += chunk));
     request.on("end", () => {
       const asked = JSON.parse(body || "{}") as { operation?: string; cookie?: string };
-      if (cabinetFails || asked.operation !== "session") {
+      if (dashboardFails || asked.operation !== "session") {
         response.statusCode = 503;
         response.end();
         return;
@@ -187,9 +187,9 @@ beforeAll(async () => {
   );
   await migrateDatabase(database.db, migrationsFolder);
 
-  cabinet = standInCabinet();
-  await new Promise<void>((resolve) => cabinet.listen(0, "127.0.0.1", resolve));
-  const cabinetPort = (cabinet.address() as AddressInfo).port;
+  dashboard = standInDashboard();
+  await new Promise<void>((resolve) => dashboard.listen(0, "127.0.0.1", resolve));
+  const dashboardPort = (dashboard.address() as AddressInfo).port;
 
   const port = 42_000 + (process.pid % 1_000);
   base = `http://127.0.0.1:${port}`;
@@ -202,7 +202,7 @@ beforeAll(async () => {
       PORT: String(port),
       DATABASE_URL: connectionString,
       TOKEN_HMAC_SECRET: "t".repeat(32),
-      CABINET_IDENTITY_URL: `http://127.0.0.1:${cabinetPort}`,
+      CABINET_IDENTITY_URL: `http://127.0.0.1:${dashboardPort}`,
       REPORT_IDENTITY_SECRET: "r".repeat(32),
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -238,7 +238,7 @@ afterAll(async () => {
       new Promise((resolve) => setTimeout(resolve, 5_000)),
     ]);
   }
-  if (cabinet?.listening) await new Promise<void>((resolve) => cabinet.close(() => resolve()));
+  if (dashboard?.listening) await new Promise<void>((resolve) => dashboard.close(() => resolve()));
   await database.pool.end();
 });
 
@@ -281,18 +281,18 @@ describe("the operator's dashboard at /admin", () => {
     expect(answered.body).not.toContain(HEADING);
   });
 
-  it("fails closed: while the cabinet cannot say, an operator gets the 404 page too", async () => {
+  it("fails closed: while the dashboard cannot say, an operator gets the 404 page too", async () => {
     const operator = { cookie: `${SESSION}=operator` };
 
-    cabinetFails = true;
+    dashboardFails = true;
     try {
-      await expectMissingPages(operator, "cabinet answering 503");
+      await expectMissingPages(operator, "dashboard answering 503");
     } finally {
-      cabinetFails = false;
+      dashboardFails = false;
     }
 
     // Last, because it does not come back: nothing is listening any more.
-    await new Promise<void>((resolve) => cabinet.close(() => resolve()));
-    await expectMissingPages(operator, "cabinet unreachable");
+    await new Promise<void>((resolve) => dashboard.close(() => resolve()));
+    await expectMissingPages(operator, "dashboard unreachable");
   });
 });

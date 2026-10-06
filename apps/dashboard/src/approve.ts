@@ -2,7 +2,7 @@
  * The server-side half of `pnpm approve <email>`.
  *
  * It reads the address from standard input, shares one database pool between
- * the cabinet resolver and gateway store, and refuses every payment network
+ * the dashboard resolver and gateway store, and refuses every payment network
  * except the existing live network classification. There is no HTTP route and
  * no merchant credential involved.
  */

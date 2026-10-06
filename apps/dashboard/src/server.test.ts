@@ -1,13 +1,13 @@
 /**
- * The cabinet, driven the way a merchant drives it: over HTTP, against a real
+ * The dashboard, driven the way a merchant drives it: over HTTP, against a real
  * gateway.
  *
  * Nothing between the browser and the order machine is stubbed. The gateway on
  * the other end is the real one on in-memory adapters — the same harness its
  * own HTTP tests use — so every screen here is drawn from documents the real
- * API produced, and a cabinet that drifted from the contract fails here rather
+ * API produced, and a dashboard that drifted from the contract fails here rather
  * than in front of a merchant. That is ADR-0005 §3 held by a test: if the
- * cabinet cannot show something, the API is missing it.
+ * dashboard cannot show something, the API is missing it.
  *
  * Signing in is not stubbed either. The component ADR-0009 hands identity to is
  * the real one, doing the real deriving and the real signing; what is swapped
@@ -42,7 +42,7 @@ import {
   type MerchantKeyList,
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type CabinetConfig, loadConfig } from "./config.js";
+import { type DashboardConfig, loadConfig } from "./config.js";
 import { keyRenewal } from "./dashboard-key.js";
 import { type Answer, type GatewayClient, gatewayFor, type Registrar } from "./gateway.js";
 import {
@@ -74,7 +74,7 @@ const COOKIE = "agentify.session_token";
 /**
  * The name it travels under wherever the site is served over https.
  *
- * The prefix is a promise the browser keeps rather than one this cabinet makes:
+ * The prefix is a promise the browser keeps rather than one this dashboard makes:
  * a cookie carrying it is refused unless it is Secure, set for the whole origin
  * and names no Domain, so another host under the same registrable domain can
  * neither plant a session here nor overwrite one (ADR-0009 §6).
@@ -85,8 +85,8 @@ const THIRTY_DAYS_SECONDS = 30 * 24 * 60 * 60;
 const SESSION_ENDED = "/sign-in?reason=session-ended";
 /**
  * Where a person who owns no merchant starts: the scanner's answer for their
- * latest report, which sends somebody with no report back to the cabinet
- * (ADR-0026 §1). It is not the cabinet's page, so these tests read the
+ * latest report, which sends somebody with no report back to the dashboard
+ * (ADR-0026 §1). It is not the dashboard's page, so these tests read the
  * redirect and do not follow it.
  */
 const LATEST_REPORT = "/report/latest";
@@ -95,7 +95,7 @@ const SESSION_ENDED_UNSAVED = "/sign-in?reason=session-ended-unsaved";
 /** The person whose account every test in this file signs in as. */
 const PERSON = "owner@example.com";
 /**
- * A second person with an account on the same cabinet.
+ * A second person with an account on the same dashboard.
  *
  * The fixture for the case nobody plans for: a request can carry a session that
  * belongs to somebody else, and "somebody else" cannot be tested with one
@@ -107,10 +107,10 @@ const OTHER = "someone@example.com";
  *
  * Almost every test here signs in as an account the harness seeded, whose key
  * is one of the merchant's own — a shape no way in makes, since an account's
- * key comes from the cabinet's own press. The tests about the key a cabinet
+ * key comes from the dashboard's own press. The tests about the key a dashboard
  * holds cannot use it: the two calls about that key are refused to any other
  * kind. So they sign in and press against the real gateway, which is where a
- * real cabinet key comes from, and this is what stands in the door.
+ * real dashboard key comes from, and this is what stands in the door.
  */
 const INVITATION = "the-invitation-the-gateway-accepts";
 
@@ -129,7 +129,7 @@ const FRESH = { email: "fresh-merchant@example.com" };
 const THE_MERCHANT = { id: "mer_the_merchant", key: KEY };
 
 /**
- * The cabinet's identity under test: the real component on its memory store,
+ * The dashboard's identity under test: the real component on its memory store,
  * with the account almost every test signs in as already in it.
  *
  * The rows are handed in rather than kept inside so that a test can put an
@@ -138,7 +138,7 @@ const THE_MERCHANT = { id: "mer_the_merchant", key: KEY };
  * themselves instead of making every test derive three passwords.
  */
 const withIdentity = async (
-  config: CabinetConfig,
+  config: DashboardConfig,
   postman: Postman,
 ): Promise<{
   identity: Identity;
@@ -187,7 +187,7 @@ const esimCard: Card = {
   fulfill_deadline_seconds: 14_400,
 };
 
-/** One answer from the cabinet, as a browser would have it. */
+/** One answer from the dashboard, as a browser would have it. */
 interface Visit {
   readonly status: number;
   readonly headers: Headers;
@@ -199,7 +199,7 @@ interface Visit {
 interface Browser {
   get(path: string): Promise<Visit>;
   post(path: string, form?: Record<string, string>): Promise<Visit>;
-  /** A post of a body this cabinet's forms never send, as a scanner would. */
+  /** A post of a body this dashboard's forms never send, as a scanner would. */
   postRaw(path: string, contentType: string, body: string): Promise<Visit>;
   /**
    * Signs in as a person and follows the redirect, the way a browser does.
@@ -225,7 +225,7 @@ interface Browser {
   /**
    * The same browser behind something that adds headers of its own.
    *
-   * A terminator in front of the cabinet is not a browser and cannot be driven
+   * A terminator in front of the dashboard is not a browser and cannot be driven
    * as one, so the headers it would add are put on the request here.
    */
   sending(headers: Record<string, string>): Browser;
@@ -237,20 +237,20 @@ interface Running {
   readonly gateway: Served;
   readonly browser: Browser;
   /**
-   * Where the cabinet under test is listening.
+   * Where the dashboard under test is listening.
    *
-   * A test that has to name an origin needs the host and the port the cabinet
+   * A test that has to name an origin needs the host and the port the dashboard
    * is actually answering on, because an origin the browser claims is compared
    * against the `Host` header of the same request.
    */
   readonly url: string;
-  /** The component the cabinet under test signs people in against. */
+  /** The component the dashboard under test signs people in against. */
   readonly identity: Identity;
   /**
    * Empties the two merchant columns on one account.
    *
    * What it makes is the row on the deployed server: an account written before
-   * an account named the merchant it signs in for. No door in the cabinet
+   * an account named the merchant it signs in for. No door in the dashboard
    * produces one, because every one of them writes the merchant in the same act
    * that writes the account.
    */
@@ -260,15 +260,15 @@ interface Running {
   /**
    * The payout address the stand-in for that route is holding.
    *
-   * The route itself is being added on another branch, so what this cabinet
+   * The route itself is being added on another branch, so what this dashboard
    * talks to for it is not the real gateway. What these tests can hold is the
-   * cabinet's half — that an address a merchant typed was sent, and that one
+   * dashboard's half — that an address a merchant typed was sent, and that one
    * refused on the page never was. What actually goes on the wire is held in
    * `gateway.test.ts` against a server that records it.
    */
-  /** Every message the cabinet handed over while this test ran. */
+  /** Every message the dashboard handed over while this test ran. */
   readonly mails: Message[];
-  /** A second browser on the same cabinet, for two people or two devices. */
+  /** A second browser on the same dashboard, for two people or two devices. */
   another(): Promise<Browser>;
   /** Takes the gateway away, once. One test does this on purpose. */
   stopGateway(): Promise<void>;
@@ -276,17 +276,17 @@ interface Running {
 
 let open: Running | null = null;
 
-/** What one test asks of the cabinet it stands up. */
+/** What one test asks of the dashboard it stands up. */
 interface Starting {
   readonly base?: string;
   readonly gateway?: Record<string, string>;
-  readonly cabinet?: Record<string, string>;
+  readonly dashboard?: Record<string, string>;
   /**
    * How the route that makes a merchant answers.
    *
-   * Stubbed rather than real for the tests that are about what the cabinet does
+   * Stubbed rather than real for the tests that are about what the dashboard does
    * with an answer of each shape. Left alone, the real registrar goes to the
-   * real gateway — which is where a real key made for a cabinet comes from, and
+   * real gateway — which is where a real key made for a dashboard comes from, and
    * the only way to get an account row that holds one.
    */
   readonly registrar?: Registrar;
@@ -303,13 +303,13 @@ interface Starting {
    * The real component, with some of its calls answered by the test instead.
    *
    * The same shape as the client above and for the same reason. One thing the
-   * store cannot be asked for is a write that fails, and what the cabinet does
+   * store cannot be asked for is a write that fails, and what the dashboard does
    * when the fresh key cannot be written onto a row is the case that decides
-   * whether somebody is locked out of their own cabinet.
+   * whether somebody is locked out of their own dashboard.
    */
   readonly identity?: (real: Identity) => Identity;
   /**
-   * What the mail provider does with a message this cabinet hands it.
+   * What the mail provider does with a message this dashboard hands it.
    *
    * Taken by default, which is what the sandbox postman answers and what a
    * provider that is up answers. A test asking for `"refused"` gets the other
@@ -361,7 +361,7 @@ const started = async (options: Starting = {}): Promise<Running> => {
  *
  * The worst shape a gateway fails in, and the only one that costs wall time: a
  * refused connection comes back at once, while this holds the caller until the
- * caller gives up. One test points a cabinet at it to find out how long that is.
+ * caller gives up. One test points a dashboard at it to find out how long that is.
  */
 let silent: Server | null = null;
 const silentGateway = async (): Promise<string> => {
@@ -388,7 +388,7 @@ afterEach(async () => {
   silent = null;
 });
 
-/** The cabinet on a port, and a cookie jar of one. */
+/** The dashboard on a port, and a cookie jar of one. */
 async function visiting(
   gatewayUrl: string,
   basePath: string,
@@ -401,14 +401,14 @@ async function visiting(
   forgetMerchant: (email: string) => void;
   rows: Record<string, Record<string, unknown>[]>;
 }> {
-  // No merchant key in the environment, which is the point: the cabinet builds
+  // No merchant key in the environment, which is the point: the dashboard builds
   // its client from the key on the row of whoever is signed in, so what these
   // tests drive is the real client against the real gateway with the key the
   // harness seeded (ADR-0014 §2).
   //
   // The database address is one nothing connects to, and nothing does: the
   // component under test keeps its rows in memory here. It is still required,
-  // because a cabinet started without one is a cabinet that can draw a sign-in
+  // because a dashboard started without one is a dashboard that can draw a sign-in
   // form and never accept one.
   const config = loadConfig({
     GATEWAY_URL: gatewayUrl,
@@ -419,7 +419,7 @@ async function visiting(
     REGISTRATION_INVITATION:
       options.gateway?.REGISTRATION_INVITATION ?? "the-invitation-the-gateway-accepts",
     ...(basePath === "" ? {} : { BASE_PATH: basePath }),
-    ...(options.cabinet ?? {}),
+    ...(options.dashboard ?? {}),
   });
   const { identity, forgetMerchant, rows } = await withIdentity(config, async (message) => {
     mails.push(message);
@@ -430,9 +430,9 @@ async function visiting(
     ...(options.registrar === undefined ? {} : { registrar: options.registrar }),
     ...(options.wooShops === undefined ? {} : { wooShops: options.wooShops }),
     // Built from the configured address and given the deadline it was asked
-    // for, so that a test which points the cabinet somewhere else — at nothing
+    // for, so that a test which points the dashboard somewhere else — at nothing
     // at all, or at a server that never answers — is answered the way a
-    // deployment would be, and so that how long the cabinet is willing to wait
+    // deployment would be, and so that how long the dashboard is willing to wait
     // is its own decision and not this seam's.
     gatewayFor: (key: string, answerWithinMs?: number) => {
       const real = gatewayFor(config.gatewayUrl, key, answerWithinMs);
@@ -440,7 +440,7 @@ async function visiting(
     },
   });
   // On the address it is called at, rather than on the wildcard: the gateway's
-  // own harness says at length what a wildcard bind costs, and this cabinet is
+  // own harness says at length what a wildcard bind costs, and this dashboard is
   // called the same way from the same worker.
   const server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
@@ -456,7 +456,7 @@ async function visiting(
     browser: {
       ...browser,
       // Closing one that is already closed is not an error. A test that stands
-      // several cabinets up and takes each down as it finishes still meets the
+      // several dashboards up and takes each down as it finishes still meets the
       // sweep afterwards, and a second close that threw would fail the test for
       // tidying up after itself.
       close: () =>
@@ -473,10 +473,10 @@ async function visiting(
 }
 
 /**
- * A browser pointed at a cabinet that is already listening, with a cookie jar
+ * A browser pointed at a dashboard that is already listening, with a cookie jar
  * of its own.
  *
- * Separate from `visiting` because two of the tests build their own cabinet —
+ * Separate from `visiting` because two of the tests build their own dashboard —
  * one whose gateway client answers as the test says — and everything about
  * being a browser is the same for both.
  */
@@ -630,7 +630,7 @@ const purchasable = async (gateway: Served, itemId: string): Promise<boolean> =>
  * as.
  *
  * Through the store rather than through the route, and that is not a shortcut:
- * the route refuses to take a name away on purpose, so no door in the cabinet
+ * the route refuses to take a name away on purpose, so no door in the dashboard
  * leads back to this state. What it makes is the merchant a person has in the
  * minute after they register, which is the state the screens below exist for.
  */
@@ -652,19 +652,19 @@ const paidInto = async (running: Running): Promise<string | null> =>
     .address ?? null;
 
 /**
- * Puts a key made for a cabinet on every account row of the merchant this file
+ * Puts a key made for a dashboard on every account row of the merchant this file
  * signs in as, one key per row.
  *
  * The rows this file seeds hold the harness's own key, which is one of the
- * merchant's own code, and the payout wallet is set with a cabinet's key and no
+ * merchant's own code, and the payout wallet is set with a dashboard's key and no
  * other (ADR-0019). One per row, because a sign-in renews the key on its row
  * and forgets the one it replaced, which would leave a second row holding a
  * key the gateway no longer knows.
  */
-const onACabinetKey = async (running: Running): Promise<void> => {
+const onADashboardKey = async (running: Running): Promise<void> => {
   for (const row of running.rows.cabinet_accounts ?? []) {
     if (row.merchantId === THE_MERCHANT.id) {
-      row.merchantKey = await running.harnessed.addCabinetKey(running.harnessed.merchant.id);
+      row.merchantKey = await running.harnessed.addDashboardKey(running.harnessed.merchant.id);
     }
   }
 };
@@ -703,7 +703,7 @@ const actionIn = (message: Message | undefined): URL => {
   return new URL(found);
 };
 
-describe("the passwordless cabinet door", () => {
+describe("the passwordless dashboard door", () => {
   it("sends a person with a live session on without asking for an address: to the cards, or to the name screen without a merchant", async () => {
     const running = await started();
     await running.browser.signIn();
@@ -844,7 +844,7 @@ describe("the passwordless cabinet door", () => {
   });
 
   it("does not spend a query token on GET and opens it once on an explicit same-origin POST", async () => {
-    const running = await started({ base: "/dashboard", cabinet: { COOKIE_SECURE: "true" } });
+    const running = await started({ base: "/dashboard", dashboard: { COOKIE_SECURE: "true" } });
     const requested = await running.browser.post("/dashboard/sign-in", { email: PERSON });
     expect(requested.status).toBe(202);
     const action = actionIn(running.mails.at(-1));
@@ -925,7 +925,7 @@ describe("the passwordless cabinet door", () => {
     // Under Lax a link from another site arrives signed in, so opening a link
     // must not be able to make anything (ADR-0026 §4). A person who owns
     // reports and no merchant starts at the latest of them, and the scanner
-    // sends somebody who owns none back to the cabinet (§1).
+    // sends somebody who owns none back to the dashboard (§1).
     const registered: string[] = [];
     const registrar: Registrar = {
       register: async () => {
@@ -943,7 +943,7 @@ describe("the passwordless cabinet door", () => {
     const person = await running.identity.byEmail(FRESH.email);
     expect(person?.confirmed).toBe(true);
     expect(person?.merchant).toBeNull();
-    // Opening the cabinet by a plain navigation makes nothing either: it draws
+    // Opening the dashboard by a plain navigation makes nothing either: it draws
     // the one control and names who is signed in, privately.
     const screen = await running.browser.get("/merchant");
     expect(screen.status).toBe(200);
@@ -1129,11 +1129,11 @@ describe("the passwordless cabinet door", () => {
 
 describe("one session for the whole site", () => {
   it("sets one cookie for the whole origin over https: prefixed, Secure, HttpOnly and Lax", async () => {
-    // A report and the cabinet are two applications on one origin, and one
+    // A report and the dashboard are two applications on one origin, and one
     // session serves both (ADR-0009 §6, ADR-0026 §2). A cookie scoped to the
-    // cabinet's path would leave a person a stranger at the report, and the
+    // dashboard's path would leave a person a stranger at the report, and the
     // prefix is what stops a sibling host from planting or replacing it.
-    const running = await started({ base: "/dashboard", cabinet: { COOKIE_SECURE: "true" } });
+    const running = await started({ base: "/dashboard", dashboard: { COOKIE_SECURE: "true" } });
     await running.browser.post("/dashboard/sign-in", { email: PERSON });
     const action = actionIn(running.mails.at(-1));
 
@@ -1152,8 +1152,8 @@ describe("one session for the whole site", () => {
     expect(Number(attributes.get("max-age"))).toBe(THIRTY_DAYS_SECONDS);
     // Nothing under the unprefixed name goes out on the https origin.
     expect(sessionCookieIn(opened, COOKIE)).toBeUndefined();
-    // And the cookie opens a page that is not under the cabinet's mount point
-    // as far as the cabinet is concerned: it is the same session at the root.
+    // And the cookie opens a page that is not under the dashboard's mount point
+    // as far as the dashboard is concerned: it is the same session at the root.
     expect((await running.browser.get("/dashboard/cards")).status).toBe(200);
   });
 
@@ -1162,7 +1162,7 @@ describe("one session for the whole site", () => {
     // plain http, so the laptop's origin gets neither rather than a session
     // nobody can use. Mounted where the stack mounts it, under /dashboard, so a
     // cookie scoped to the mount point would show here: on https the prefix
-    // forces the root path whatever the cabinet asks for.
+    // forces the root path whatever the dashboard asks for.
     const running = await started({ base: "/dashboard" });
     await running.browser.post("/dashboard/sign-in", { email: PERSON });
     const action = actionIn(running.mails.at(-1));
@@ -1225,7 +1225,7 @@ describe("one session for the whole site", () => {
     // A clearing line the browser refuses leaves the session cookie in place:
     // a prefixed cookie is only replaced by a line that is Secure and for the
     // whole origin, and a path-scoped clear would miss a cookie set at the root.
-    const running = await started({ base: "/dashboard", cabinet: { COOKIE_SECURE: "true" } });
+    const running = await started({ base: "/dashboard", dashboard: { COOKIE_SECURE: "true" } });
     await running.browser.signIn();
 
     const out = await running.browser.from(running.url).post("/dashboard/sign-out");
@@ -1242,11 +1242,11 @@ describe("one session for the whole site", () => {
 });
 
 describe("the operator flag", () => {
-  it("is moved by no request a browser can send to the cabinet", async () => {
+  it("is moved by no request a browser can send to the dashboard", async () => {
     // Being an operator opens the operator's dashboard, and only the terminal's
     // command grants it (ADR-0026 §6). So a signed-in person sends every route
-    // the cabinet has a flag of its own, as a form, as JSON and in the query,
-    // and is no operator afterwards. The routes are read off the cabinet's own
+    // the dashboard has a flag of its own, as a form, as JSON and in the query,
+    // and is no operator afterwards. The routes are read off the dashboard's own
     // router rather than listed here, so a route added later is asked too.
     //
     // Every handler runs with what it is sent, and most stop early: a form
@@ -1394,7 +1394,7 @@ describe("choosing the name buyers read", () => {
     // Skipping is allowed because a name demanded before somebody can answer it
     // is a name nobody means. What is not allowed is skipping it silently: a
     // merchant whose code then publishes a card meets a refusal, and the
-    // cabinet says so before that happens.
+    // dashboard says so before that happens.
     const running = await started();
     await unname(running);
     await running.browser.signIn();
@@ -1461,7 +1461,7 @@ describe("choosing the name buyers read", () => {
     expect(await listedAs(running)).toBe("Bright Data Plans");
   });
 
-  it("is behind the gate, like every other screen in the cabinet", async () => {
+  it("is behind the gate, like every other screen in the dashboard", async () => {
     const running = await started();
 
     const screen = await running.browser.get("/choose-name");
@@ -1683,7 +1683,7 @@ describe("the address a merchant's money arrives at", () => {
 
   it("is saved, and the whole of it is on the page afterwards", async () => {
     const running = await started();
-    await onACabinetKey(running);
+    await onADashboardKey(running);
     await running.browser.signIn();
 
     const saved = await running.browser.post("/settings/payout-wallet", {
@@ -1707,7 +1707,7 @@ describe("the address a merchant's money arrives at", () => {
     // reads their own wallet's spelling back, and the page never asks anybody
     // to believe that two strings are one address.
     const running = await started();
-    await onACabinetKey(running);
+    await onADashboardKey(running);
     await running.browser.signIn();
 
     const saved = await running.browser.post("/settings/payout-wallet", { payout_wallet: LOWER });
@@ -1753,7 +1753,7 @@ describe("the address a merchant's money arrives at", () => {
     // newline on the end about as often as not. Refusing that is refusing a
     // merchant who did exactly the right thing.
     const running = await started();
-    await onACabinetKey(running);
+    await onADashboardKey(running);
     await running.browser.signIn();
 
     const saved = await running.browser.post("/settings/payout-wallet", {
@@ -1766,7 +1766,7 @@ describe("the address a merchant's money arrives at", () => {
 
   it("refuses an address of the wrong shape and sends nothing", async () => {
     const running = await started();
-    await onACabinetKey(running);
+    await onADashboardKey(running);
     await running.browser.signIn();
     await running.browser.post("/settings/payout-wallet", {
       payout_wallet: AS_A_WALLET_SHOWS_IT,
@@ -1788,7 +1788,7 @@ describe("the address a merchant's money arrives at", () => {
     // The row of the account every test here signs in as holds the harness's
     // own key, which is one of the merchant's own code: the shape an account
     // made before accounts were checked is left in. The gateway will not let
-    // that key set the wallet, nothing in the cabinet can replace it, and a
+    // that key set the wallet, nothing in the dashboard can replace it, and a
     // page saying "try again" would send the person round a loop.
     const running = await started();
     await running.browser.signIn();
@@ -1867,9 +1867,9 @@ describe("a merchant who has chosen no name", () => {
     }
   });
 
-  it("reads the refusal their own code meets in the cabinet's words, not the gateway's", async () => {
+  it("reads the refusal their own code meets in the dashboard's words, not the gateway's", async () => {
     // The refusal a merchant's code gets names the route that fixes it, because
-    // it is written for whoever is holding the response. A person in a cabinet
+    // it is written for whoever is holding the response. A person in a dashboard
     // cannot make that call and should not be told to: the screen says what the
     // missing thing is and points at the page that sets it.
     const running = await started();
@@ -1889,7 +1889,7 @@ describe("a merchant who has chosen no name", () => {
     expect(refused.status).toBe(422);
     expect(finding?.code).toBe("no_seller_name");
     expect(finding?.message).toContain("POST /v0/seller-name");
-    // And the cabinet says the same thing without sending anybody to a route.
+    // And the dashboard says the same thing without sending anybody to a route.
     expect(text).toMatch(/cannot publish products until you choose the seller name/i);
     expect(cards.html).toContain('href="/settings"');
     expect(text).not.toContain("POST /v0/seller-name");
@@ -1897,10 +1897,10 @@ describe("a merchant who has chosen no name", () => {
 });
 
 describe("the way out to the documentation", () => {
-  it("is on every screen a merchant works on, and leaves the cabinet's mount point", async () => {
+  it("is on every screen a merchant works on, and leaves the dashboard's mount point", async () => {
     // The documentation was linked from the landing and from nowhere else, so a
-    // merchant already inside the cabinet had to leave it by hand to read a
-    // line of it. And it is beside the cabinet on one origin rather than under
+    // merchant already inside the dashboard had to leave it by hand to read a
+    // line of it. And it is beside the dashboard on one origin rather than under
     // it (deploy/Caddyfile): a link that took the mount point along would send
     // them to /dashboard/docs/, which is an address nothing answers.
     const { browser, gateway } = await started({ base: "/dashboard" });
@@ -1929,7 +1929,7 @@ describe("the cards screen", () => {
     // rather than the merchant's own — the two are different strings, and a
     // merchant who pasted theirs into it would be handed a 404 by a gateway
     // that is working perfectly.
-    const running = await started({ cabinet: { PUBLIC_BASE_URL: "https://shop.example.com" } });
+    const running = await started({ dashboard: { PUBLIC_BASE_URL: "https://shop.example.com" } });
     const itemId = await publish(running.gateway, roomCard);
     await running.browser.signIn();
 
@@ -2127,10 +2127,10 @@ describe("a card held off sale by what its merchant lacks", () => {
   // "All selling is stopped" there is a claim about a switch nobody pressed,
   // and it sends the merchant looking for a control that changes nothing. The
   // settings the merchant sets are named and the page that sets them is
-  // linked; the operator's approval, which this cabinet cannot read, is said
+  // linked; the operator's approval, which this dashboard cannot read, is said
   // to be unread exactly where the door asks for it.
   //
-  // Each merchant is registered through the cabinet's own press and never
+  // Each merchant is registered through the dashboard's own press and never
   // approved, and its card is written straight into the gateway's store: the
   // door would refuse to publish it for the very reason the test is about,
   // and a merchant reaches this state when something is taken away or asked
@@ -2186,7 +2186,7 @@ describe("a card held off sale by what its merchant lacks", () => {
             ...CHANNELS[channel],
             ...(channel === "live" ? LIVE_GATEWAY_ONLY : {}),
           },
-          cabinet: CHANNELS[channel],
+          dashboard: CHANNELS[channel],
         });
         await running.browser.signIn(FRESH.email);
         expect((await running.browser.makeMerchant()).status).toBe(200);
@@ -2201,7 +2201,7 @@ describe("a card held off sale by what its merchant lacks", () => {
           expect(listed.status, JSON.stringify(listed.body)).toBe(200);
         }
         if (hasWallet) {
-          // Where a wallet is set: in the cabinet's Settings, by the person
+          // Where a wallet is set: in the dashboard's Settings, by the person
           // signed in, since no key of the merchant's own code may set one.
           const saved = await running.browser.post("/settings/payout-wallet", {
             payout_wallet: A_WALLET,
@@ -2460,7 +2460,7 @@ describe("the receipts screen", () => {
     // screen. A ledger of payments that never happened, laid out as a ledger of
     // payments, is the worst thing this page could be.
     const { browser, gateway, harnessed } = await started({
-      cabinet: { FACILITATOR_URL: "https://x402.org/facilitator" },
+      dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
     });
     const itemId = await publish(gateway, roomCard);
     await buyOverHttp(harnessed, gateway, itemId, {
@@ -2567,14 +2567,14 @@ describe("the receipts screen", () => {
 
 describe("the keys screen", () => {
   /**
-   * The key the cabinet's own calls are made with, which is on no row here.
+   * The key the dashboard's own calls are made with, which is on no row here.
    *
-   * The gateway answers a cabinet's `GET /v0/keys` with the keys the merchant
+   * The gateway answers a dashboard's `GET /v0/keys` with the keys the merchant
    * issued for their own code and names this one as `this_call` beside them —
    * an identifier that matches nothing in the list. So it is an identifier
    * here and not a row, which is what the screen is drawn against.
    */
-  const CABINET_KEY = "key_the_cabinet_is_using";
+  const DASHBOARD_KEY = "key_the_cabinet_is_using";
   /** A key something is calling with, which is the ordinary row. */
   const NIGHTLY: MerchantKey = {
     id: "key_the_nightly_job",
@@ -2610,7 +2610,7 @@ describe("the keys screen", () => {
   } => {
     const disabled: string[] = [];
     const issued: string[] = [];
-    const keys: MerchantKeyList = { keys: [...listed], this_call: CABINET_KEY };
+    const keys: MerchantKeyList = { keys: [...listed], this_call: DASHBOARD_KEY };
     return {
       disabled,
       issued,
@@ -2661,7 +2661,7 @@ describe("the keys screen", () => {
 
   it("offers the control against every key on the list that still works", async () => {
     // Every row here is a key the merchant issued for their own code, and the
-    // key this cabinet calls with is not one of them — the gateway lists it
+    // key this dashboard calls with is not one of them — the gateway lists it
     // nowhere and names it beside the list instead. So there is no row this
     // screen has to leave a blank against: a control missing from one of them
     // would be a key the merchant could not revoke from the only page that
@@ -2675,7 +2675,7 @@ describe("the keys screen", () => {
     expect(page).toContain(`/keys/${ANOTHER.id}/disable`);
     // And the identifier the gateway named beside the list is not treated as a
     // row: nothing on the page is drawn from it.
-    expect(page).not.toContain(CABINET_KEY);
+    expect(page).not.toContain(DASHBOARD_KEY);
   });
 
   it("offers no control at all against a key that is already revoked", async () => {
@@ -2860,9 +2860,9 @@ describe("the keys screen", () => {
 
   it("does not let the name of a key write a line of its own in the log", async () => {
     // A key's name is one line — the contract refuses a line break in it, and
-    // the cabinet asks that rule before it logs or sends anything — so a name
+    // the dashboard asks that rule before it logs or sends anything — so a name
     // carrying a newline and a plausible sentence after it is refused rather
-    // than put into the one record of who did what, in this cabinet's voice.
+    // than put into the one record of who did what, in this dashboard's voice.
     // What a name may still carry is a character that changes how the line
     // around it is drawn, such as a right-to-left override, and that is shown
     // rather than obeyed.
@@ -2876,7 +2876,7 @@ describe("the keys screen", () => {
       await browser.signIn();
 
       const refused = await browser.post("/keys", {
-        label: "a worker\n[cabinet] someone.else@example.com stopped all selling",
+        label: "a worker\n[dashboard] someone.else@example.com stopped all selling",
       });
       expect(refused.status).toBe(400);
       expect(said.join("\n")).not.toContain("issued a key");
@@ -2914,7 +2914,7 @@ describe("the keys screen", () => {
 
   it("draws a working screen for a merchant who has issued no keys of their own", async () => {
     // The first screen every merchant registered through the form sees. The
-    // cabinet does not sign in with a key from this list and never has one
+    // dashboard does not sign in with a key from this list and never has one
     // here, so an empty list is the ordinary state of somebody who has not put
     // Agentify into their own code yet — and a page telling them their own
     // starting state cannot happen is a page that has lied to every new
@@ -2940,7 +2940,7 @@ describe("the keys screen", () => {
 
 describe("what every screen says about the address", () => {
   it("carries the signed-in address and a sign-out in the header bar of every working screen", async () => {
-    // ADR-0026 §3: when a person is signed in, the header of the cabinet's
+    // ADR-0026 §3: when a person is signed in, the header of the dashboard's
     // pages carries their address and a sign-out, as the scanner's header
     // does, so the site reads as one product with one session.
     const { browser } = await started();
@@ -2972,7 +2972,7 @@ describe("what every screen says about the address", () => {
 
 describe("when something goes wrong that the merchant has to get out of", () => {
   /**
-   * A cabinet whose gateway answers however this test says.
+   * A dashboard whose gateway answers however this test says.
    *
    * The three paths below cannot be reached through a real gateway: it cannot
    * be made to turn away a key it has just accepted, and it cannot be made to
@@ -2980,7 +2980,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
    * a parameter for exactly this, and what is asserted is the page the merchant
    * lands on — the seam is scaffolding, not the subject.
    */
-  const cabinetAnswering = async (
+  const dashboardAnswering = async (
     reply: () => Promise<Answer<never>>,
   ): Promise<{ browser: Browser; close: () => Promise<void> }> => {
     const answer = async () => await reply();
@@ -3009,13 +3009,13 @@ describe("when something goes wrong that the merchant has to get out of", () => 
           sellerName: answer,
           setSellerName: answer,
           payoutWallet: answer,
-          // The two the sign-in makes about this cabinet's own key answer the
+          // The two the sign-in makes about this dashboard's own key answer the
           // same way as everything else here. A merchant whose gateway is
           // refusing every call is refused these too, and what the tests below
           // are about is the page they land on afterwards — so the sign-in that
           // gets them there has to survive it.
-          issueCabinetKey: answer,
-          forgetCabinetKey: answer,
+          issueDashboardKey: answer,
+          forgetDashboardKey: answer,
         }) as never,
     });
     const server = app.listen(0, "127.0.0.1");
@@ -3032,12 +3032,12 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     };
   };
 
-  it("does not sign a person out when it is the cabinet's own key the gateway refuses", async () => {
-    // The key is the cabinet's configuration now, not the person's password
+  it("does not sign a person out when it is the dashboard's own key the gateway refuses", async () => {
+    // The key is the dashboard's configuration now, not the person's password
     // (ADR-0014 §2). Signing them out over a 401 would send them to type a
     // password that cannot fix it, and they would land straight back here — a
     // loop with no way out and nothing said about the actual fault.
-    const { browser, close } = await cabinetAnswering(async () => ({
+    const { browser, close } = await dashboardAnswering(async () => ({
       ok: false,
       status: 401,
       why: "this call is behind the merchant's key",
@@ -3049,7 +3049,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
       const text = readable(met.html);
       expect(text).toMatch(/key/i);
       expect(text).not.toContain("Sign in");
-      // Still signed in: the person is fine, the cabinet is not.
+      // Still signed in: the person is fine, the dashboard is not.
       expect(browser.sessionToken()).not.toBeNull();
       expect(met.headers.getSetCookie().join(" ")).not.toContain(`${COOKIE}=;`);
     } finally {
@@ -3060,7 +3060,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
   it("opens Integrations while the gateway refuses everything, since nothing on it comes from there", async () => {
     // The page is the way to connect a catalogue, and the guide and the key it
     // leads to are what a merchant reaches for when their integration fails.
-    const { browser, close } = await cabinetAnswering(async () => ({
+    const { browser, close } = await dashboardAnswering(async () => ({
       ok: false,
       status: 503,
       why: "the gateway is refusing every call",
@@ -3082,7 +3082,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     // shape the contract does not recognise lands on the error page. The pause
     // has already happened; a page saying otherwise would send the merchant to
     // press it again.
-    const { browser, close } = await cabinetAnswering(async () => {
+    const { browser, close } = await dashboardAnswering(async () => {
       throw new Error("the answer was not a document this contract knows");
     });
     try {
@@ -3135,7 +3135,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
 
   it("cannot be signed out by a second cookie somebody planted", async () => {
     // A page on a sibling subdomain can set a cookie of this name on a broader
-    // path, and the browser then sends two of them. The cabinet can only clear
+    // path, and the browser then sends two of them. The dashboard can only clear
     // the one on its own path, so a rule that refused on the mere presence of a
     // second would lock the merchant out for good — every redirect and every
     // fresh sign-in would meet the planted cookie again, and anybody able to
@@ -3177,7 +3177,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     // database about every value at once, in one query; the component looks a
     // session up one identifier at a time, and there is no batch to ask. What
     // stands in front of that is its signature: a value under this name that
-    // was not signed with this cabinet's secret is refused before the store is
+    // was not signed with this dashboard's secret is refused before the store is
     // read at all, so a pile of planted junk is a pile of comparisons and not a
     // pile of queries. `identity.db-test.ts` measures that against a real
     // database, which is the only place a query can be counted honestly.
@@ -3201,14 +3201,14 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     expect(most.status).toBe(200);
     expect(most.body).toContain(PERSON);
 
-    // And one more than that is not the cabinet's problem: the runtime refuses
+    // And one more than that is not the dashboard's problem: the runtime refuses
     // to read the headers at all, so nothing here ever sees it.
     const tooMany = await overASocket(url, "/cards", carrying(162));
 
     expect(tooMany.status).toBe(431);
   });
 
-  it("is one person's cabinet when both live cookies are that person's", async () => {
+  it("is one person's dashboard when both live cookies are that person's", async () => {
     // What a change of mount point leaves in a browser: the cookie from the old
     // path and the cookie from the new one, both this person's and both alive.
     // There is no ambiguity in that to refuse, and refusing it would end a
@@ -3238,7 +3238,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     // stopped the selling. Nobody is signed in.
     //
     // And the sessions are ended, which is the half that decides whether this
-    // rule is safe to have. The cabinet cannot take a cookie out of a browser —
+    // rule is safe to have. The dashboard cannot take a cookie out of a browser —
     // a cookie set for a broader domain or a broader path survives everything
     // this process can send — so a rule that only refused would meet the
     // planted session again on every redirect and every fresh sign-in, and the
@@ -3297,7 +3297,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     // origin it expected out of `X-Forwarded-Proto`, so whatever is in front
     // decided whether a merchant could sign in, and when that header did not
     // say what the browser said, every form post on the site was refused — the
-    // sign-in included, which is a cabinet nobody can get into.
+    // sign-in included, which is a dashboard nobody can get into.
     //
     // The sign-in is what this drives for exactly that reason: it is the post
     // that has to work before any other one can. Each case below is a shape
@@ -3335,7 +3335,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     // And the scheme disagreeing outright, which the earlier version refused
     // and this one does not. What that costs is written where the check is: a
     // page on the http origin of the same host cannot carry a session anyway,
-    // because the cookie is Secure wherever the cabinet is served over https.
+    // because the cookie is Secure wherever the dashboard is served over https.
     const overHttp = await browser
       .sending({ origin: `http://${new URL(url).host}`, "x-forwarded-proto": "https" })
       .post("/sign-in", credentials);
@@ -3483,7 +3483,7 @@ describe("a session that is ended while somebody is looking at a page", () => {
   });
 });
 
-describe("what the cabinet writes down about entry", () => {
+describe("what the dashboard writes down about entry", () => {
   it("does not log the address, token, action URL, session, or merchant key", async () => {
     const running = await started();
     const lines: string[] = [];
@@ -3510,10 +3510,10 @@ describe("what the cabinet writes down about entry", () => {
   });
 });
 
-describe("the key the cabinet signs in with", () => {
+describe("the key the dashboard signs in with", () => {
   /**
    * A merchant who registered for themselves, whose row holds a real key made
-   * for a cabinet.
+   * for a dashboard.
    *
    * Every other account in this file was seeded with the harness's own key,
    * which is one of the merchant's own — a shape no way in makes, and one the
@@ -3534,7 +3534,7 @@ describe("the key the cabinet signs in with", () => {
     return running;
   };
 
-  /** The key the cabinet would call as this person with, off their row. */
+  /** The key the dashboard would call as this person with, off their row. */
   const keyOnTheRowOf = (email: string): string => {
     const row = (open?.rows.cabinet_accounts ?? []).find((one) => one.email === email);
     const key = row?.merchantKey;
@@ -3547,7 +3547,7 @@ describe("the key the cabinet signs in with", () => {
   /**
    * Whether the gateway still takes that key, asked of the gateway itself.
    *
-   * Not "is it on a row" and not "did the cabinet think it worked": a key is
+   * Not "is it on a row" and not "did the dashboard think it worked": a key is
    * alive or dead at the gateway, and that is the fact both halves of this turn
    * on — the one that got somebody in has to work, and the one before it has to
    * have stopped.
@@ -3571,7 +3571,7 @@ describe("the key the cabinet signs in with", () => {
   };
 
   it("writes a key made a moment ago onto the row, over the one that was there", async () => {
-    // ADR-0014 §2. A copy of this cabinet's database is a set of keys, and this
+    // ADR-0014 §2. A copy of this dashboard's database is a set of keys, and this
     // is what decides how long they are worth having: until the person they
     // belong to signs in again.
     const { another } = await aRegisteredMerchant();
@@ -3710,7 +3710,7 @@ describe("the key the cabinet signs in with", () => {
     const { another } = await aRegisteredMerchant({
       client: (real) => ({
         ...real,
-        issueCabinetKey: async () => ({ ok: false, status: 0, why: "nothing answered" }),
+        issueDashboardKey: async () => ({ ok: false, status: 0, why: "nothing answered" }),
       }),
     });
     const before = keyOnTheRowOf(FRESH.email);
@@ -3735,8 +3735,8 @@ describe("the key the cabinet signs in with", () => {
       identity: (real) => ({ ...real, replaceMerchantKey: async () => "not-matched" }),
       client: (real) => ({
         ...real,
-        issueCabinetKey: async () => {
-          const made = await real.issueCabinetKey();
+        issueDashboardKey: async () => {
+          const made = await real.issueDashboardKey();
           if (made.ok) {
             madeHere.push(made.document);
           }
@@ -3757,7 +3757,7 @@ describe("the key the cabinet signs in with", () => {
     expect(madeHere).toHaveLength(1);
     expect(await theGatewayTakes(madeHere[0] ?? "")).toBe(false);
     // The screens really are drawn, which is the same fact from the other side:
-    // the cabinet reaches the gateway with what is on the row.
+    // the dashboard reaches the gateway with what is on the row.
     expect((await device.get("/keys")).status).toBe(200);
   });
 
@@ -3769,7 +3769,7 @@ describe("the key the cabinet signs in with", () => {
     const { another } = await aRegisteredMerchant({
       client: (real) => ({
         ...real,
-        forgetCabinetKey: async () => ({ ok: false, status: 0, why: "nothing answered" }),
+        forgetDashboardKey: async () => ({ ok: false, status: 0, why: "nothing answered" }),
       }),
     });
     const before = keyOnTheRowOf(FRESH.email);
@@ -3795,8 +3795,8 @@ describe("the key the cabinet signs in with", () => {
       }),
       client: (real) => ({
         ...real,
-        issueCabinetKey: async () => {
-          const made = await real.issueCabinetKey();
+        issueDashboardKey: async () => {
+          const made = await real.issueDashboardKey();
           if (made.ok) issued.push(made.document);
           return made;
         },
@@ -3842,12 +3842,12 @@ describe("the key the cabinet signs in with", () => {
 
   it("signs a person in with the gateway not there at all, and writes down why", async () => {
     // Nothing about signing in belongs to the gateway: the link, the session
-    // and the row are all this cabinet's. A person shut out of their
+    // and the row are all this dashboard's. A person shut out of their
     // own account because a service they never asked about is down would be
     // this replacement costing more than it buys. The line in the log is how
     // anybody finds out the key has stopped being replaced.
     const { browser, mails, url } = await started({
-      cabinet: { GATEWAY_URL: "http://127.0.0.1:1" },
+      dashboard: { GATEWAY_URL: "http://127.0.0.1:1" },
     });
 
     const posted: Visit[] = [];
@@ -3915,13 +3915,13 @@ describe("the key the cabinet signs in with", () => {
     const { another } = await aRegisteredMerchant({
       client: (real) => ({
         ...real,
-        forgetCabinetKey: async () => {
+        forgetDashboardKey: async () => {
           if (!held) {
             held = true;
             first.arrive();
             await first.go;
           }
-          return await real.forgetCabinetKey();
+          return await real.forgetDashboardKey();
         },
       }),
     });
@@ -4047,7 +4047,7 @@ describe("the key the cabinet signs in with", () => {
     const { another } = await aRegisteredMerchant({
       client: (real) => ({
         ...real,
-        issueCabinetKey: async () => {
+        issueDashboardKey: async () => {
           throw new Error("the answer was not a document this contract knows");
         },
       }),
@@ -4064,12 +4064,12 @@ describe("the key the cabinet signs in with", () => {
 
   it("does not spend a screen's worth of waiting on a gateway that says nothing", async () => {
     // The worst case: the connection is accepted and then held open. A screen
-    // gets ten seconds before the cabinet gives up, because somebody is looking
+    // gets ten seconds before the dashboard gives up, because somebody is looking
     // at it and would rather wait than reload. A sign-in is not that — the two
-    // calls behind it are the cabinet looking after its own credential, and
+    // calls behind it are the dashboard looking after its own credential, and
     // nobody asked for them — so the wait is its own, and shorter.
     const { browser, mails, url } = await started({
-      cabinet: { GATEWAY_URL: await silentGateway() },
+      dashboard: { GATEWAY_URL: await silentGateway() },
     });
 
     await browser.post("/sign-in", { email: PERSON });
@@ -4107,12 +4107,12 @@ describe("a wallet change waiting on the live deployment", () => {
   // screen has to show it — the address that waits and the moment — and has
   // to be where the change is cancelled, by a person signed in, with one
   // press.
-  const LIVE_CABINET = {
+  const LIVE_DASHBOARD = {
     PAYMENT_NETWORK: "eip155:8453",
     FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
   };
   const LIVE_GATEWAY = {
-    ...LIVE_CABINET,
+    ...LIVE_DASHBOARD,
     CDP_API_KEY_ID: "key-id",
     CDP_API_KEY_SECRET: "key-secret",
     ...ANNOUNCING,
@@ -4151,19 +4151,19 @@ describe("a wallet change waiting on the live deployment", () => {
   };
 
   /**
-   * A cabinet in front of a live gateway. A live door refuses a key carrying
+   * A dashboard in front of a live gateway. A live door refuses a key carrying
    * the test prefix, which is what this file's accounts hold, so every test
-   * here puts a cabinet key that gateway made on the rows before signing in.
+   * here puts a dashboard key that gateway made on the rows before signing in.
    */
   const live = async (options: Starting = {}): Promise<Running> =>
-    await started({ ...options, gateway: LIVE_GATEWAY, cabinet: LIVE_CABINET });
+    await started({ ...options, gateway: LIVE_GATEWAY, dashboard: LIVE_DASHBOARD });
 
   /**
-   * A replacement asked for from another session of the cabinet, on a key of
+   * A replacement asked for from another session of the dashboard, on a key of
    * its own: the session somebody forgot to sign out of, or never owned.
    */
   const aChangeWaits = async (running: Running): Promise<void> => {
-    const elsewhere = await running.harnessed.addCabinetKey(running.harnessed.merchant.id);
+    const elsewhere = await running.harnessed.addDashboardKey(running.harnessed.merchant.id);
     const asked = await running.gateway.call("POST", "/v0/payout-wallet", {
       body: { payout_wallet: WAITING },
       headers: { authorization: `Bearer ${elsewhere}` },
@@ -4192,7 +4192,7 @@ describe("a wallet change waiting on the live deployment", () => {
 
   it("shows the address waiting, the moment it takes effect, and a control to cancel it", async () => {
     const running = await live();
-    await onACabinetKey(running);
+    await onADashboardKey(running);
     await running.browser.signIn();
     await aChangeWaits(running);
 
@@ -4210,7 +4210,7 @@ describe("a wallet change waiting on the live deployment", () => {
 
   it("shows no cancel control where nothing is waiting", async () => {
     const running = await live();
-    await onACabinetKey(running);
+    await onADashboardKey(running);
     await running.browser.signIn();
 
     const screen = await running.browser.get("/settings");
@@ -4221,7 +4221,7 @@ describe("a wallet change waiting on the live deployment", () => {
   it("cancels with one press, keeps the session that pressed, and signs every other session of the merchant out", async () => {
     const running = await live();
     await running.identity.make(OTHER, THE_MERCHANT);
-    await onACabinetKey(running);
+    await onADashboardKey(running);
     await running.browser.signIn();
     const otherDevice = await running.another();
     await otherDevice.signIn();
@@ -4247,7 +4247,7 @@ describe("a wallet change waiting on the live deployment", () => {
     // the gateway reading the wallet for this cancel and writing it, so the
     // cancel is refused as raced and nothing it asked for is written.
     const running = await live();
-    await onACabinetKey(running);
+    await onADashboardKey(running);
     await running.browser.signIn();
     const otherDevice = await running.another();
     await otherDevice.signIn();
@@ -4292,7 +4292,7 @@ describe("a wallet change waiting on the live deployment", () => {
       .mockImplementation((...parts) => said.push(parts.map(String).join(" ")));
     try {
       const running = await live();
-      await onACabinetKey(running);
+      await onADashboardKey(running);
       await running.browser.signIn();
       const otherDevice = await running.another();
       await otherDevice.signIn();
@@ -4320,7 +4320,7 @@ describe("a wallet change waiting on the live deployment", () => {
   });
 
   it("does not call a change back a cancel when the change took effect as it was pressed", async () => {
-    // The narrower race: the cabinet read the change as waiting, and it took
+    // The narrower race: the dashboard read the change as waiting, and it took
     // effect before the gateway got the cancel. Asking for the old address is
     // then a change back, which waits and is announced — and the page and the
     // log say that rather than that anything was cancelled.
@@ -4340,7 +4340,7 @@ describe("a wallet change waiting on the live deployment", () => {
         }),
       });
       holder.running = running;
-      await onACabinetKey(running);
+      await onADashboardKey(running);
       await running.browser.signIn();
       const otherDevice = await running.another();
       await otherDevice.signIn();
@@ -4366,7 +4366,7 @@ describe("a wallet change waiting on the live deployment", () => {
 
   it("is refused from a page on another site", async () => {
     const running = await live();
-    await onACabinetKey(running);
+    await onADashboardKey(running);
     await running.browser.signIn();
     await aChangeWaits(running);
 
@@ -4403,7 +4403,7 @@ describe("a wallet change waiting on the live deployment", () => {
         { address: PAID, pending: null },
         running.harnessed.now(),
       );
-      await onACabinetKey(running);
+      await onADashboardKey(running);
       await running.browser.signIn();
       const otherDevice = await running.another();
       await otherDevice.signIn();
@@ -4454,7 +4454,7 @@ describe("a wallet change waiting on the live deployment", () => {
       .mockImplementation((...parts) => said.push(parts.map(String).join(" ")));
     try {
       const running = await live();
-      await onACabinetKey(running);
+      await onADashboardKey(running);
       await running.browser.signIn();
       const otherDevice = await running.another();
       await otherDevice.signIn();
@@ -4480,7 +4480,7 @@ describe("a wallet change waiting on the live deployment", () => {
 
   it("signs nobody out when there was nothing to cancel", async () => {
     const running = await live();
-    await onACabinetKey(running);
+    await onADashboardKey(running);
     await running.browser.signIn();
     const otherDevice = await running.another();
     await otherDevice.signIn();

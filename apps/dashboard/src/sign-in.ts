@@ -1,5 +1,5 @@
 /**
- * The cabinet's one public door: an address and a one-time link.
+ * The dashboard's one public door: an address and a one-time link.
  *
  * Asking for a link never says whether the address is new or already belongs
  * to a merchant. Opening the URL only draws a form. The token is spent by the
@@ -7,10 +7,10 @@
  */
 
 import type { SurfaceMode } from "@agentify/core";
-import type { CabinetDestination, LinkWall } from "./dashboard-entry.js";
+import type { DashboardDestination, LinkWall } from "./dashboard-entry.js";
 import { bare, brandLockup, escaped } from "./html.js";
 
-const destinationInput = (destination: CabinetDestination): string =>
+const destinationInput = (destination: DashboardDestination): string =>
   destination === "default"
     ? ""
     : `<input type="hidden" name="destination" value="${escaped(destination)}">`;
@@ -28,7 +28,7 @@ const destinationInput = (destination: CabinetDestination): string =>
 export const signInScreen = (
   base: string,
   mode: SurfaceMode,
-  destination: CabinetDestination = "default",
+  destination: DashboardDestination = "default",
   problem?: string,
   email = "",
   reason?: string,
@@ -102,7 +102,7 @@ const waitInWords = (seconds: number): string =>
     : counted(Math.max(1, Math.ceil(seconds)), "second");
 
 /**
- * The cabinet's one script: the resend button waiting its wait out.
+ * The dashboard's one script: the resend button waiting its wait out.
  *
  * ADR-0009 §3 — the page works without it. The button is served pressable and
  * this takes it away; a browser that runs nothing is left with exactly the
@@ -110,7 +110,7 @@ const waitInWords = (seconds: number): string =>
  * refuses it in words. It cannot be the other way round: nothing on a page
  * whose script did not run can lift a `disabled` attribute, so a button served
  * disabled would be dead in the browser of the one person who most needs it —
- * somebody who cannot get into their cabinet and has just been told to wait.
+ * somebody who cannot get into their dashboard and has just been told to wait.
  *
  * So the whole of it is taking a button away and giving it back. It reads the
  * wait from the button's own attribute rather than being written per request,
@@ -167,7 +167,7 @@ const COUNTDOWN = `<script>
  *
  * What the interval page may say is bounded by what the rate row holds, which
  * is an address hash, a purpose and a time. Not the destination: the link
- * already gone out may have been asked for somewhere else in the cabinet and
+ * already gone out may have been asked for somewhere else in the dashboard and
  * opens where it was asked for, so this page cannot tell somebody it is the
  * link they just asked for. And not delivery: the door hands a message to a
  * provider and learns nothing after that, so "on its way" is a claim about
@@ -178,7 +178,7 @@ export const linkRequestedScreen = (
   base: string,
   mode: SurfaceMode,
   email: string,
-  destination: CabinetDestination,
+  destination: DashboardDestination,
   answer: LinkAnswer,
 ): string => {
   const wall = "wall" in answer ? answer.wall : null;
@@ -231,7 +231,7 @@ ${COUNTDOWN}
  *
  * The postman answers "refused" both for a provider that rejected the message
  * and for one that never answered inside the timeout, and a message of the
- * second kind may well have been delivered. What this cabinet does know is
+ * second kind may well have been delivered. What this dashboard does know is
  * that it cannot confirm the send and that the attempt wrote nothing down.
  */
 export const mailUnavailableScreen = (base: string, mode: SurfaceMode): string =>
@@ -307,7 +307,7 @@ ${brandLockup("/")}
  * The screen a signed-in person without a merchant is offered (ADR-0026 §4).
  *
  * One control, and only its same-origin press makes the merchant and the key
- * the cabinet calls with. A gateway that did not answer leaves the person here,
+ * the dashboard calls with. A gateway that did not answer leaves the person here,
  * signed in, to press again.
  */
 export const merchantSetupScreen = (

@@ -91,7 +91,7 @@ describe("the wire vocabulary and the machine speak one language", () => {
 
   it("the words for whether a merchant is selling match, exactly", () => {
     // The pause switch a merchant presses ends up as this input to
-    // `createOrder`, and the cabinet shows the same word back. Two lists would
+    // `createOrder`, and the dashboard shows the same word back. Two lists would
     // mean a screen that says one thing and a machine that does another, with
     // the gateway translating in between and neither package failing.
     expect(asSet(MERCHANT_SELLING)).toStrictEqual(asSet(SELLING_STATES));

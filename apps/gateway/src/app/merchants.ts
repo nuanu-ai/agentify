@@ -4,7 +4,7 @@
  *
  * It is one small module rather than a copy per caller because there are three
  * and they must not drift: the seed the sandbox comes up with, the routes a
- * merchant reaches from their cabinet, and the test harness. A second way of
+ * merchant reaches from their dashboard, and the test harness. A second way of
  * turning a secret into a digest would be a key that works in one of them and
  * not the others, and the failure would look like a wrong key rather than like
  * two hashes.
@@ -178,7 +178,7 @@ export interface LiveApprovalGrant {
  * Admits one merchant to live publication, once.
  *
  * This is an application function rather than an HTTP capability. The caller
- * is the protected operator command, which resolves a cabinet identity before
+ * is the protected operator command, which resolves a dashboard identity before
  * it gets here; the gateway stores no address and exposes no merchant-key route
  * that can make this decision. Null means the exact merchant is absent, while
  * `changed:false` is the idempotent answer for one already admitted.
@@ -201,9 +201,9 @@ export async function grantLiveApproval(
  * refuses it either way.
  *
  * It makes one kind of key and takes no word for which. The other kind is
- * {@link issueCabinetKey}, and the two are two functions rather than one with a
+ * {@link issueDashboardKey}, and the two are two functions rather than one with a
  * parameter because they are two acts: this one answers a merchant asking for
- * something to put in their worker, and that one is a cabinet taking a
+ * something to put in their worker, and that one is a dashboard taking a
  * credential of its own. A parameter would make them look like one act done
  * twice, and the wrong value would put a row in a list its owner cannot touch.
  */
@@ -224,13 +224,13 @@ export async function issueKey(
 }
 
 /**
- * Issues one key for a cabinet to call as this merchant with, once.
+ * Issues one key for a dashboard to call as this merchant with, once.
  *
- * There is no label to pass, because there is nobody to type one: a cabinet
+ * There is no label to pass, because there is nobody to type one: a dashboard
  * asks for this every time somebody signs in, and the merchant never sees the
  * key or hears that it exists.
  */
-export async function issueCabinetKey(
+export async function issueDashboardKey(
   store: Store,
   ids: Ids,
   merchantId: string,
@@ -242,7 +242,7 @@ export async function issueCabinetKey(
     {
       id: ids("mk"),
       merchantId,
-      label: CABINET_KEY_LABEL,
+      label: DASHBOARD_KEY_LABEL,
       digest: keyDigest(secret),
       purpose: "cabinet",
     },
@@ -252,7 +252,7 @@ export async function issueCabinetKey(
 }
 
 /**
- * What a key made for a cabinet from here on is called.
+ * What a key made for a dashboard from here on is called.
  *
  * One sentence for all of them, and no attempt to tell one sign-in from
  * another: the row already carries the instant it was made, and a label that
@@ -261,14 +261,14 @@ export async function issueCabinetKey(
  * It is not chosen by anybody and is shown to nobody — the merchant's own list
  * leaves these keys out entirely. The one reader is a person at a terminal
  * looking at every key one merchant has, and what this gives them is a sentence
- * that says what the row is without their knowing how a cabinet works.
+ * that says what the row is without their knowing how a dashboard works.
  *
  * What it is not is how anything tells the two kinds apart. The keys that
  * existed before a key said what it was for keep the label they were given —
  * registration's old one, which no code writes any more — so what the terminal
  * prints beside a key is the column, and this is a hint for a person reading.
  */
-export const CABINET_KEY_LABEL = "the key a cabinet signs this merchant in with";
+export const DASHBOARD_KEY_LABEL = "the key a dashboard signs this merchant in with";
 
 /**
  * A value nothing presented can ever equal, used where registration is closed.
@@ -313,7 +313,7 @@ export function invitationAccepted(expected: string | null, presented: string): 
 }
 
 /**
- * A merchant that has just been registered, with the key their cabinet will
+ * A merchant that has just been registered, with the key their dashboard will
  * call as them with, once.
  */
 export interface Registration {
@@ -341,12 +341,12 @@ export interface Registration {
 export const REGISTERED_MERCHANT_NAME = "registered with an invitation";
 
 /**
- * Makes a merchant and the key a cabinet calls as them with — both or neither
+ * Makes a merchant and the key a dashboard calls as them with — both or neither
  * (ADR-0014 §1). Null where the identifier is taken, which a generated one
  * never is.
  *
  * The key is not the first of the merchant's own, and that is the whole of what
- * registering hands over: whoever made this call is a cabinet, and what it
+ * registering hands over: whoever made this call is a dashboard, and what it
  * needs is a credential to act as this merchant with. A merchant made this way
  * has no keys of their own at all until they ask for one, and their own list of
  * keys is empty on the first visit — which is the truth about a merchant who
@@ -367,7 +367,7 @@ export async function registerMerchant(
   const secret = newKeySecret(environment);
   const written = await store.registerMerchant(
     { id: ids("mch"), name: REGISTERED_MERCHANT_NAME },
-    { id: ids("mk"), label: CABINET_KEY_LABEL, digest: keyDigest(secret) },
+    { id: ids("mk"), label: DASHBOARD_KEY_LABEL, digest: keyDigest(secret) },
     at,
   );
 

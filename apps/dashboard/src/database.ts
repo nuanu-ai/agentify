@@ -1,5 +1,5 @@
 /**
- * The connection the cabinet's own identity tables live behind, and the step
+ * The connection the dashboard's own identity tables live behind, and the step
  * that brings them up to date.
  *
  * Nothing here reads or writes a row. The component that signs people in does
@@ -14,7 +14,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 
 /**
- * Where the cabinet's migrations keep their own history.
+ * Where the dashboard's migrations keep their own history.
  *
  * Not the default, which is the gateway's. Two independent sets of migrations
  * sharing one journal would each read the other's entries as its own and
@@ -29,7 +29,7 @@ const MIGRATIONS_TABLE = "cabinet_migrations";
  * restart, a failover, an idle reaper — as an `error` event on itself, and an
  * `error` event with no listener is an uncaught exception and a dead process.
  * Every other kind of database trouble arrives at a caller; this one arrives at
- * nobody, so without this the cabinet exits and the merchant cannot reach the
+ * nobody, so without this the dashboard exits and the merchant cannot reach the
  * control that stops their selling until somebody starts the process again.
  *
  * The gateway's store has carried the same three lines and the same reasoning
@@ -43,7 +43,7 @@ const MIGRATIONS_TABLE = "cabinet_migrations";
 export function connect(databaseUrl: string): Pool {
   const pool = new Pool({ connectionString: databaseUrl });
   const noticeTheFailure = (failed: unknown): void => {
-    console.error(`[cabinet] a database connection failed: ${String(failed)}`);
+    console.error(`[dashboard] a database connection failed: ${String(failed)}`);
   };
 
   // The pool's own listener covers a connection sitting idle in the pool. It
@@ -63,7 +63,7 @@ export function connect(databaseUrl: string): Pool {
   return pool;
 }
 
-/** Brings the cabinet's identity tables up to date. A step somebody takes. */
+/** Brings the dashboard's identity tables up to date. A step somebody takes. */
 export async function migrateAccounts(pool: Pool, migrationsFolder: string): Promise<void> {
   await migrate(drizzle(pool), { migrationsFolder, migrationsTable: MIGRATIONS_TABLE });
 }

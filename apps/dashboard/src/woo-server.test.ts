@@ -88,7 +88,7 @@ interface Running {
    * shop was opened in another browser.
    *
    * The session cookie is `SameSite=Lax` (ADR-0009 §6), so a browser that is
-   * signed in carries it back and is sent on into the cabinet; the page the
+   * signed in carries it back and is sent on into the dashboard; the page the
    * return address draws is for the browser that does not.
    */
   getWithoutCookie(path: string): Promise<Visit>;
@@ -132,20 +132,20 @@ interface Standing {
    */
   readonly breakTheShopsRead?: () => never;
   /**
-   * Where the cabinet is told the gateway is, instead of the one this harness
+   * Where the dashboard is told the gateway is, instead of the one this harness
    * serves. Pointed at an address nothing answers at, it is the one way this
    * suite can ask what an import says when the gateway is not there at all.
    */
   readonly gatewayAt?: string;
   /**
-   * Where the cabinet sends a card to be published, while every other call
+   * Where the dashboard sends a card to be published, while every other call
    * still reaches the gateway this harness serves. Pointed at an address
    * nothing answers at, it is a gateway that went away in the middle of an
    * import, after it had answered what the merchant has set.
    */
   readonly publishingAt?: string;
   /**
-   * The channel the cabinet and its gateway are both on: the sandbox, where
+   * The channel the dashboard and its gateway are both on: the sandbox, where
    * nothing settles; the test channel, where test money settles on a chain;
    * or live, where real money does and the operator admits each merchant. The
    * sandbox where a test does not say.
@@ -154,13 +154,13 @@ interface Standing {
   /**
    * Signs in as a merchant just registered through the gateway's own door
    * instead of the harness's ready seller, which is the merchant a person
-   * holds in the minutes after making one in the cabinet: no wallet, and a
+   * holds in the minutes after making one in the dashboard: no wallet, and a
    * seller name only where the test asks for one.
    */
   readonly fresh?: "named" | "unnamed";
 }
 
-/** What each channel is configured with, told to both the cabinet and the gateway. */
+/** What each channel is configured with, told to both the dashboard and the gateway. */
 const CHANNELS = {
   sandbox: { PAYMENT_NETWORK: "eip155:84532", FACILITATOR_URL: "sandbox:scripted" },
   test: { PAYMENT_NETWORK: "eip155:84532", FACILITATOR_URL: "https://x402.org/facilitator" },
@@ -183,7 +183,7 @@ const INVITATION = "i".repeat(24);
 
 /**
  * A merchant made through the gateway's registration door, the way the
- * cabinet makes one, and named or not. Nothing else is set on them.
+ * dashboard makes one, and named or not. Nothing else is set on them.
  */
 const registered = async (
   gateway: Served,
@@ -920,7 +920,7 @@ describe("importing the catalogue", () => {
     // The door refuses every card of a merchant with no wallet on a channel
     // where money settles, in a sentence written for an engineer holding an
     // API response. A WooCommerce merchant wrote no code: what they can act on
-    // is the cabinet's own screen where the wallet is set, and they learn it
+    // is the dashboard's own screen where the wallet is set, and they learn it
     // before their shop is read product by product for nothing.
     const running = await started({
       channel: "test",
@@ -942,7 +942,7 @@ describe("importing the catalogue", () => {
 
   it("imports once the merchant has set a wallet in Settings", async () => {
     // The road out of the refusal, walked through the screen it links to. A
-    // refusal a merchant cannot get past from the cabinet is a wall.
+    // refusal a merchant cannot get past from the dashboard is a wall.
     const running = await started({
       channel: "test",
       fresh: "named",
@@ -962,7 +962,7 @@ describe("importing the catalogue", () => {
   it("asks for no wallet in the sandbox, where the door takes a card without one", async () => {
     // Nothing settles in the sandbox, the settings screen says the address is
     // optional there, and the door agrees. An import refused for it would be
-    // this cabinet stricter than its own gateway.
+    // this dashboard stricter than its own gateway.
     const running = await started({
       channel: "sandbox",
       fresh: "named",
@@ -1230,16 +1230,16 @@ describe("importing the catalogue", () => {
   });
 
   describe("agrees with the publish door about what the merchant lacks", () => {
-    // The promise: a merchant is told the same thing by the cabinet as by the
-    // door their cards go through, on every channel. The cabinet stops an
+    // The promise: a merchant is told the same thing by the dashboard as by the
+    // door their cards go through, on every channel. The dashboard stops an
     // import before the shop is read for exactly the settings the door would
     // refuse every card for, names them, and names nothing the door would not
-    // ask for. The operator's approval is the one fact the cabinet cannot
+    // ask for. The operator's approval is the one fact the dashboard cannot
     // read, so it agrees about approval by never claiming it either way. Where
     // the line is drawn because a setting is missing, it says this page cannot
     // tell exactly where the door asks for approval. Where no setting is
     // missing no line is drawn, and on live the import goes ahead and the door
-    // answers card by card: the cabinet saying nothing there is a limit of
+    // answers card by card: the dashboard saying nothing there is a limit of
     // what it can read, not a claim that nothing is missing.
     //
     // Each merchant here is made through the gateway's registration door and
@@ -1289,7 +1289,7 @@ describe("importing the catalogue", () => {
           const running = await started({ channel, fresh: hasName ? "named" : "unnamed" });
           await connected(running);
           if (hasWallet) {
-            // Where a wallet is set: in the cabinet's Settings, by the person
+            // Where a wallet is set: in the dashboard's Settings, by the person
             // signed in, since no key of the merchant's own code may set one.
             const saved = await running.post("/settings/payout-wallet", {
               payout_wallet: A_WALLET,
@@ -1635,7 +1635,7 @@ describe("coming back from the shop with no session on the request", () => {
     expect(after.html).toBe(before.html);
   });
 
-  it("continues into the cabinet with the session the browser already holds", async () => {
+  it("continues into the dashboard with the session the browser already holds", async () => {
     // A return that arrived without the cookie is followed by a click that
     // carries it. Asking for another email in between turned a successful
     // Connect into a loop even though the browser was still signed in.
@@ -1712,7 +1712,7 @@ describe("coming back from the shop with no session on the request", () => {
     expect(back.html).toBe(reloaded.html);
   });
 
-  it("leaves every other cabinet address behind the sign-in", async () => {
+  it("leaves every other dashboard address behind the sign-in", async () => {
     // The narrowing is one address. A gate that had been opened a crack wider
     // than that is the defect this test exists to catch.
     const running = await started();

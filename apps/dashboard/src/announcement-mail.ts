@@ -1,13 +1,13 @@
 /**
- * The messages the cabinet sends when the gateway asks it to tell a merchant
+ * The messages the dashboard sends when the gateway asks it to tell a merchant
  * of a change (ADR-0019).
  *
  * Four kinds: a first payout wallet set, a replacement that is waiting, a
  * waiting change that was cancelled, and a new key for the merchant's own
  * code. Each says what happened, where it was asked for, and where in the
- * cabinet to look. A wallet is changed only through the cabinet, whose calls
+ * dashboard to look. A wallet is changed only through the dashboard, whose calls
  * come from inside the stack (ADR-0019), so the three about the wallet say it
- * was asked for in the cabinet; a new key may be issued with any key of the
+ * was asked for in the dashboard; a new key may be issued with any key of the
  * merchant's, so that message names the one. None of them claims a person:
  * what the gateway knows is the key a call came with, not who held it. The
  * one the rest exist around is the replacement, and it has three things to get
@@ -27,12 +27,12 @@
  * anything: no token, no sign-in link. A person who is signed out signs in the
  * ordinary way and lands on that screen. A message that could open a session
  * would turn every forwarded or intercepted copy of it into a way into the
- * merchant's cabinet, on the one day somebody is trying to move their money.
+ * merchant's dashboard, on the one day somebody is trying to move their money.
  *
  * A key that issued a new one is named the way the merchant's list of keys
  * names it: its label, with its identifier beside it, so the row can be found
- * and disabled. The key the cabinet calls with is on no list, so it is named
- * as the cabinet's.
+ * and disabled. The key the dashboard calls with is on no list, so it is named
+ * as the dashboard's.
  *
  * What a message advises has to work in the state it describes. A waiting
  * change can be cancelled, and the cancel signs every other session out. After
@@ -68,7 +68,7 @@ export interface Screens {
  */
 const inert = (label: string): string => label.replace(/[.:/@]/g, (mark) => `${mark}\u200B`);
 
-/** A key, the way a person reading the message finds it in the cabinet. */
+/** A key, the way a person reading the message finds it in the dashboard. */
 const named = (key: AskedWith): string =>
   key.kind === "cabinet"
     ? "the key your dashboard calls with"

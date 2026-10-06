@@ -28,9 +28,9 @@
 .browserSection {
   margin-top: 28px;
 }
-/* The bridge to the cabinet: the one section on this page that had no class of
+/* The bridge to the dashboard: the one section on this page that had no class of
    its own and rendered as bare HTML between two designed blocks. */
-.cabinet {
+.dashboard {
   display: grid;
   justify-items: start;
   gap: 10px;
@@ -40,7 +40,7 @@
   padding: clamp(20px, 4vw, 28px);
   background: var(--surface);
 }
-.cabinet p {
+.dashboard p {
   color: var(--muted);
 }
 .hero {

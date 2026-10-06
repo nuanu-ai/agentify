@@ -10,7 +10,7 @@
 //
 // The one exception is the link below, and it is here because the theme cannot
 // express it. The documentation is mounted at /docs on an origin it shares with
-// the landing, the cabinet and the gateway, and every internal link VitePress
+// the landing, the dashboard and the gateway, and every internal link VitePress
 // writes is resolved against that mount point — so the site title in the corner,
 // which normally takes a reader home, takes them to the front page of the
 // documentation they are already in. There was no way out at all: a reader who

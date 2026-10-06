@@ -1,5 +1,5 @@
 /**
- * The cabinet's second listener: the internal route the scanner asks over.
+ * The dashboard's second listener: the internal route the scanner asks over.
  *
  * It publishes no port and is reached by service name on the compose network,
  * behind a secret only the two processes hold (ADR-0024). The scanner asks it
@@ -50,8 +50,8 @@ type ReportIdentityOperations = Pick<
  * up on this question in seconds, a renewal may wait on the gateway for longer,
  * and an answer held for it would lose the browser its renewed cookie until the
  * next day; the scanner does not call the gateway, so it needs no key from the
- * renewal. What that costs is the window the cabinet's own pages already live
- * with: a cabinet request in flight on another tab, made with the key the
+ * renewal. What that costs is the window the dashboard's own pages already live
+ * with: a dashboard request in flight on another tab, made with the key the
  * renewal is about to forget, is refused once and works on a reload.
  */
 export function buildReportIdentityApp(
@@ -102,7 +102,7 @@ export function buildReportIdentityApp(
         response.json(readSessionResponseSchema.parse(answer));
         if (session !== null && session.setCookies.length > 0 && session.person.merchant !== null) {
           void renewKey(session.person).catch(() => {
-            console.error("[cabinet] the key was not renewed after a reading of the day");
+            console.error("[dashboard] the key was not renewed after a reading of the day");
           });
         }
         return;

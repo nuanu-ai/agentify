@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createCabinetReportIdentityClient } from "./dashboard-report-identity";
+import { createDashboardReportIdentityClient } from "./dashboard-report-identity";
 
 const secret = "s".repeat(32);
 const scanId = "019b41a0-7c51-7d63-84bd-a5a20faef497";
@@ -29,7 +29,7 @@ afterEach(async () => {
   vi.useRealTimers();
 });
 
-describe("cabinet report identity client", () => {
+describe("dashboard report identity client", () => {
   it("sends one authenticated strict request and parses its operation response", async () => {
     const received: Array<{
       url?: string;
@@ -52,7 +52,7 @@ describe("cabinet report identity client", () => {
     });
     servers.push(running.server);
 
-    const client = createCabinetReportIdentityClient({
+    const client = createDashboardReportIdentityClient({
       baseUrl: running.url,
       secret,
     });
@@ -77,7 +77,7 @@ describe("cabinet report identity client", () => {
     ]);
   });
 
-  it("asks whose session a cookie header is and reads the cabinet's answer", async () => {
+  it("asks whose session a cookie header is and reads the dashboard's answer", async () => {
     const bodies: string[] = [];
     const renewed = "__Host-agentify.session_token=v.s; Max-Age=2592000; Path=/; Secure";
     const running = await listen((request, response) => {
@@ -99,7 +99,7 @@ describe("cabinet report identity client", () => {
       });
     });
     servers.push(running.server);
-    const client = createCabinetReportIdentityClient({ baseUrl: running.url, secret });
+    const client = createDashboardReportIdentityClient({ baseUrl: running.url, secret });
 
     await expect(
       client.readSession({ cookie: "a=1; __Host-agentify.session_token=v.s", renew: true }),
@@ -132,7 +132,7 @@ describe("cabinet report identity client", () => {
       }
     });
     servers.push(running.server);
-    const client = createCabinetReportIdentityClient({
+    const client = createDashboardReportIdentityClient({
       baseUrl: running.url,
       secret,
     });
@@ -154,7 +154,7 @@ describe("cabinet report identity client", () => {
           reject(new DOMException("Aborted", "AbortError")),
         );
       });
-    const client = createCabinetReportIdentityClient({
+    const client = createDashboardReportIdentityClient({
       baseUrl: "http://cabinet.internal:3002",
       secret,
       fetchImpl,
@@ -174,7 +174,7 @@ describe("cabinet report identity client", () => {
   });
 
   it("gives up on a session question sooner, because a page is waiting on it", async () => {
-    // Every scanner page that shows who is visiting asks this, and a cabinet
+    // Every scanner page that shows who is visiting asks this, and a dashboard
     // that hangs must turn into "we cannot tell who is visiting" in seconds,
     // not into a page that never draws (ADR-0026 §2).
     vi.useFakeTimers();
@@ -186,7 +186,7 @@ describe("cabinet report identity client", () => {
           reject(new DOMException("Aborted", "AbortError")),
         );
       });
-    const client = createCabinetReportIdentityClient({
+    const client = createDashboardReportIdentityClient({
       baseUrl: "http://cabinet.internal:3002",
       secret,
       fetchImpl,
@@ -202,7 +202,7 @@ describe("cabinet report identity client", () => {
   });
 
   it("fails closed on connection refusal", async () => {
-    const client = createCabinetReportIdentityClient({
+    const client = createDashboardReportIdentityClient({
       baseUrl: "http://127.0.0.1:1",
       secret,
     });

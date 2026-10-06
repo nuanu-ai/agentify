@@ -2,8 +2,8 @@
  * A request for the full report of one scan, from asking to finished.
  *
  * A stranger's request waits for its own link: the scanner writes it down, asks
- * the cabinet to send a link for the address to the report of this scan, and
- * names the request, which the cabinet records with the token and then with
+ * the dashboard to send a link for the address to the report of this scan, and
+ * names the request, which the dashboard records with the token and then with
  * the session the link opens. The scanner finishes it at that session's first
  * visit, whichever page it is (ADR-0026 §2). A signed-in person's own ask is
  * made and finished at once, under the session's address, with no message.
@@ -35,7 +35,7 @@ import {
   hmacHex,
   normalizeEmail,
 } from "./crypto";
-import { getCabinetReportIdentityClient } from "./dashboard-report-identity";
+import { getDashboardReportIdentityClient } from "./dashboard-report-identity";
 import { getDatabase } from "./database";
 import type { LinkSendOutcome } from "./link-wait";
 import { consumeRateLimitsAtomically, refundRateLimitEvent } from "./rate-limit";
@@ -93,9 +93,9 @@ async function refuseDeletingAddress(tx: DatabaseTransaction, emailLookupHash: s
 }
 
 /**
- * A stranger's request: written down, then a link asked of the cabinet.
+ * A stranger's request: written down, then a link asked of the dashboard.
  *
- * The request is inactive until the cabinet says the link went out, so a
+ * The request is inactive until the dashboard says the link went out, so a
  * request whose message never left cannot be finished by anybody.
  */
 export async function createScannerRegistrationIntent(
@@ -150,7 +150,7 @@ export async function createScannerRegistrationIntent(
   try {
     handover = options.sendReportLink
       ? await options.sendReportLink(normalizedEmail, intent.id)
-      : await getCabinetReportIdentityClient().sendReportLink({
+      : await getDashboardReportIdentityClient().sendReportLink({
           email: normalizedEmail,
           scanId: scan.id,
           request: intent.id,
@@ -158,7 +158,7 @@ export async function createScannerRegistrationIntent(
   } catch {
     throw new Error("cabinet_identity_unavailable");
   }
-  // The cabinet's walls are the ones that know when they fall; `retry_at` is
+  // The dashboard's walls are the ones that know when they fall; `retry_at` is
   // that moment, and it reaches the caller instead of being thrown away. No
   // letter went out, so the address gets its link back — see the refund in
   // `rate-limit.ts` for why the session's hour does not.

@@ -40,7 +40,7 @@ describe("the sell-to-agents page", () => {
       expect(asRead(surface)).not.toContain("agentic shop");
   });
 
-  it("opens the cabinet directly instead of collecting a merchant application", () => {
+  it("opens the dashboard directly instead of collecting a merchant application", () => {
     const { html, links } = rendered();
 
     expect(links).toContain("/dashboard/sign-in");

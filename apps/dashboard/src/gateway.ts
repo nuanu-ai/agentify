@@ -1,13 +1,13 @@
 /**
- * How the cabinet talks to the gateway: over the public API, with a merchant's
+ * How the dashboard talks to the gateway: over the public API, with a merchant's
  * key, holding no database of its own (ADR-0005 §3).
  *
  * Every address and every document comes out of the contract's route table
  * rather than being written here. That is the same rule the gateway and the
- * SDK already follow, and the cabinet is the third reader of that table — a
+ * SDK already follow, and the dashboard is the third reader of that table — a
  * third transcription of the surface is a third chance for the addresses to
  * come apart. It is also the dogfooding the decision asks for: a screen the
- * cabinet cannot draw is API the merchant does not have either.
+ * dashboard cannot draw is API the merchant does not have either.
  *
  * Answers are held to the schema the table names before anything is rendered.
  * A gateway that sent a document the contract would not recognise is a gateway
@@ -88,13 +88,13 @@ export interface GatewayClient {
   issueKey(label: string): Promise<Answer<IssuedKey>>;
   disableKey(keyId: string): Promise<Answer<MerchantKey>>;
   /**
-   * Another key of the kind this cabinet signs in with, readable once.
+   * Another key of the kind this dashboard signs in with, readable once.
    *
    * Made with the key already on the account row, because the gateway answers
    * this to no other kind — and the pair of it below is what makes a stolen
-   * copy of this cabinet's database a set of keys that stops working.
+   * copy of this dashboard's database a set of keys that stops working.
    */
-  issueCabinetKey(): Promise<Answer<string>>;
+  issueDashboardKey(): Promise<Answer<string>>;
   /**
    * Puts the key this client is holding beyond use, and nothing else.
    *
@@ -105,7 +105,7 @@ export interface GatewayClient {
    * stopped being the one an account signs in with, never before: a row left
    * naming a key this removed is somebody locked out.
    */
-  forgetCabinetKey(): Promise<Answer<ForgottenCabinetKey>>;
+  forgetDashboardKey(): Promise<Answer<ForgottenCabinetKey>>;
   /** The name buyers read beside this merchant's products, or null for none. */
   sellerName(): Promise<Answer<string | null>>;
   setSellerName(name: string): Promise<Answer<string | null>>;
@@ -128,10 +128,10 @@ export interface GatewayClient {
   /**
    * Draws the next batch off this merchant's stream.
    *
-   * The cabinet is not ordinarily a worker, and this exists for the one thing
+   * The dashboard is not ordinarily a worker, and this exists for the one thing
    * that makes it one: a merchant whose catalogue came from a WooCommerce shop
    * has no code of their own to fill orders with, so their orders are filled
-   * here, from the shop. Every other screen in the cabinet draws and does not
+   * here, from the shop. Every other screen in the dashboard draws and does not
    * wait.
    */
   pollWorker(waitSeconds: number, max: number): Promise<Answer<WorkerPollResponse>>;
@@ -146,7 +146,7 @@ export interface GatewayClient {
 }
 
 /**
- * The one call the cabinet makes with no key at all.
+ * The one call the dashboard makes with no key at all.
  *
  * Separate from the client above rather than a method on it, because it is a
  * different thing: every other call is made as some merchant, and this one is
@@ -159,7 +159,7 @@ export interface Registrar {
 }
 
 /**
- * How long the cabinet waits for the gateway before giving up on one call.
+ * How long the dashboard waits for the gateway before giving up on one call.
  *
  * A number here rather than in the configuration on purpose: this is not the
  * kind of waiting the order machine takes from an environment, where the value
@@ -168,7 +168,7 @@ export interface Registrar {
  *
  * It is an argument with this as its default so that the promise can be tested
  * against a server that never answers without the suite waiting ten seconds to
- * find out. Nothing in the cabinet passes it.
+ * find out. Nothing in the dashboard passes it.
  */
 const ANSWER_WITHIN_MS = 10_000;
 
@@ -220,7 +220,7 @@ const caller =
       // that stops their selling.
       const late = thrown instanceof Error && thrown.name === "TimeoutError";
       const why = late ? "the gateway did not answer in time" : "the gateway could not be reached";
-      console.error(`[cabinet] ${why}`, thrown);
+      console.error(`[dashboard] ${why}`, thrown);
       return { ok: false, status: 0, why };
     }
 
@@ -236,8 +236,8 @@ const caller =
  * A client bound to one merchant's key.
  *
  * The key is a parameter rather than something this module reads, and the
- * cabinet builds one of these per request from the key on the row of whoever is
- * signed in (ADR-0014 §2). Two people signed into one cabinet are therefore two
+ * dashboard builds one of these per request from the key on the row of whoever is
+ * signed in (ADR-0014 §2). Two people signed into one dashboard are therefore two
  * merchants, which is what a client held for the life of the process could
  * never be.
  */
@@ -275,13 +275,13 @@ export const gatewayFor = (
     // Unwrapped like the key above, and for a second reason as well: what the
     // caller does with this is write it onto a row, and a row written from
     // `document.secret` is a row to edit the day the answer grows a field.
-    issueCabinetKey: async () => {
+    issueDashboardKey: async () => {
       const answered = await call(API_ROUTES.issue_cabinet_key, CabinetKeySchema);
       return answered.ok ? { ok: true, document: answered.document.secret } : answered;
     },
     // Not unwrapped, unlike the answers above: the document says the one thing
     // this call has to say, and there is no field under it a screen wants.
-    forgetCabinetKey: () => call(API_ROUTES.forget_cabinet_key, ForgottenCabinetKeySchema),
+    forgetDashboardKey: () => call(API_ROUTES.forget_cabinet_key, ForgottenCabinetKeySchema),
     // Unwrapped here for the same reason the key above is: the contract carries
     // the name inside an object so the answer can grow a field beside it, and a
     // screen that reaches through the wrapper is a screen to edit the day it
@@ -370,7 +370,7 @@ const answering = async <T>(
   } catch (thrown) {
     const late = thrown instanceof Error && thrown.name === "TimeoutError";
     const why = late ? "the gateway did not answer in time" : "the gateway could not be reached";
-    console.error(`[cabinet] ${why}`, thrown);
+    console.error(`[dashboard] ${why}`, thrown);
     return { ok: false, status: 0, why };
   }
 
@@ -384,7 +384,7 @@ const answering = async <T>(
   const read = schema.safeParse(document);
   if (!read.success || read.data === undefined) {
     // Not this route's own answer. A proxy's page, a 401 from the door, a
-    // gateway speaking a dialect this cabinet does not: all of them arrive here,
+    // gateway speaking a dialect this dashboard does not: all of them arrive here,
     // and none of them is a refused card.
     return { ok: false, status: answered.status, why: reasonWritten(document, answered.status) };
   }
@@ -395,7 +395,7 @@ const answering = async <T>(
  * A caller with no key, which can do exactly one thing.
  *
  * The invitation is the existing process secret shared with the gateway. It is
- * read from cabinet configuration and never accepted from a person. The
+ * read from dashboard configuration and never accepted from a person. The
  * gateway remains the only component that decides whether the exact value is
  * accepted.
  */

@@ -142,7 +142,7 @@ type MerchantStanding = Pick<StoredMerchant, "payoutWallet" | "serviceName" | "l
 /**
  * What this merchant lacks on this deployment, read off their row.
  *
- * The rule is not here. It is `readinessOf` in the core, the one the cabinet
+ * The rule is not here. It is `readinessOf` in the core, the one the dashboard
  * asks as well, so the publish door, every later sale and the merchant's own
  * screens cannot come to disagree about what a merchant must have. What is
  * here is the gateway's reading of the row, and the gateway reads every fact,

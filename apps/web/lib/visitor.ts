@@ -8,7 +8,7 @@
  * cache stores. That answer is also where the session's renewed cookie reaches
  * the browser (ADR-0026 §2, §3).
  *
- * Four states and not three. "Unknown" is a cabinet that did not answer, and it
+ * Four states and not three. "Unknown" is a dashboard that did not answer, and it
  * is kept apart from a stranger on purpose: not knowing who somebody is must
  * not look like knowing they are nobody.
  */

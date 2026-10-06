@@ -1,7 +1,7 @@
 /**
  * A page read the way a person reads it, with the markup taken out.
  *
- * The cabinet's tests are about what a merchant can see and do, not about
+ * The dashboard's tests are about what a merchant can see and do, not about
  * class names, so what they assert against is the text of the page rather than
  * its tags. This is how that text is got, and it lives here because two test
  * files wanted the same thing and each had written it out — two copies of one
@@ -22,7 +22,7 @@
  * A script goes out whole, element and source together, because a script's
  * source is not text anybody reads and this function's whole promise is the
  * text somebody reads. No test turns on it: every assertion about a page's
- * words happens to ask about words the one script on the cabinet's pages does
+ * words happens to ask about words the one script on the dashboard's pages does
  * not contain. It is here so that the promise holds for the next question
  * asked, not because it is holding anything up today.
  */
@@ -53,7 +53,7 @@ export interface ServedButton {
  * HTML says `disabled`. It must not, on any of these pages, because nothing on
  * a page whose script did not run can lift that attribute — the one control
  * that asks for a new link would be dead in the browser of somebody who is
- * already locked out of their cabinet. The wait is an attribute for the same
+ * already locked out of their dashboard. The wait is an attribute for the same
  * reason: read by the script, ignored by everything else.
  *
  * Two test files ask, the one that renders the screen and the one that drives

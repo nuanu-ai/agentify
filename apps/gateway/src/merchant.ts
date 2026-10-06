@@ -3,7 +3,7 @@
  *
  * It lists the merchants there are and their keys, disables a key and takes a
  * listing name away; it makes no merchant and issues no key, since a merchant
- * comes into being only through the link mailed to a person and the cabinet's
+ * comes into being only through the link mailed to a person and the dashboard's
  * one control (ADR-0014). Against the local stack it is one line, run on the
  * gateway that is already up:
  *

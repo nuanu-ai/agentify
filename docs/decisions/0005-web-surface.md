@@ -8,20 +8,20 @@ owner's word)
 
 The pilot needs something a merchant's engineer can be shown and can click
 through: a landing that says what this is, the documentation portal that
-already exists, and the merchant cabinet the pilot plan calls for — cards with
+already exists, and the merchant dashboard the pilot plan calls for — cards with
 a working pause, orders, receipts. The product owner's instruction of
 2026-08-27 is to get that chain running locally first, in Docker, and only then
 to put it on a server.
 
 Until now the repository has had no human-facing surface at all. The gateway
 serves the contract's route table to machines; the portal is a separate
-VitePress project. Adding a cabinet is the first time this project renders a
+VitePress project. Adding a dashboard is the first time this project renders a
 page for a person, so the shape of that is a decision rather than a detail.
 
 ## Decision
 
 1. **One origin locally.** Caddy, in Docker, is the only door: `/` is the
-   landing, `/docs` the portal, `/dashboard` the cabinet, `/v0/*` the merchant's
+   landing, `/docs` the portal, `/dashboard` the dashboard, `/v0/*` the merchant's
    API and `/x402/*` the storefront an agent buys at — both of them the gateway
    — and `/healthz` the gateway's own probe. A merchant's engineer sees one
    address and never reasons about ports. The same file describes the server
@@ -53,35 +53,35 @@ page for a person, so the shape of that is a decision rather than a detail.
    outside it, and this endpoint reports only the gateway's own readiness. It
    sits outside both of the gateway's prefixes because those are the contract,
    and an operational probe is not part of what a merchant's code calls. It
-   answers for the gateway alone: not for the cabinet, which reports itself at
+   answers for the gateway alone: not for the dashboard, which reports itself at
    `/dashboard/healthz`, and not for Postgres. There is deliberately no aggregate
    health document — a single verdict over several services is read as one and
    is wrong the first time one of them goes down by itself.
 
-2. **The cabinet is its own process (`apps/dashboard`), not a part of the
+2. **The dashboard is its own process (`apps/dashboard`), not a part of the
    gateway.** The gateway is the money path: a resident process whose surface
    is the contract's route table, mounted in one generic loop. Pages for people
    change for reasons that have nothing to do with money, and mixing the two
    audiences in one process puts that churn on the payment path.
 
-3. **The cabinet reaches the gateway through the public API with a merchant
+3. **The dashboard reaches the gateway through the public API with a merchant
    key** — the same door a merchant's own tooling uses. It holds no database
-   connection of its own. This is deliberate dogfooding: if the cabinet cannot
+   connection of its own. This is deliberate dogfooding: if the dashboard cannot
    show something, the API is missing it, and the merchant would have hit the
    same wall.
 
-   Narrowed by ADR-0009: the cabinet owns two tables of its own, accounts and
+   Narrowed by ADR-0009: the dashboard owns two tables of its own, accounts and
    sessions, which are the people who sign into it and hold nothing about a
    merchant's data. Everything on every screen still comes from the public API,
-   and no query in the cabinet can reach the gateway's tables — that is the
+   and no query in the dashboard can reach the gateway's tables — that is the
    part of this section the dogfooding argument is about, and it is unchanged.
-   One route goes the other way: the gateway asks the cabinet, over an internal
+   One route goes the other way: the gateway asks the dashboard, over an internal
    route of its own, to announce a payout wallet change before recording it,
    and a cancelled change or a new merchant key once it is done, and asks it
-   anything else it ever needs from the cabinet over the same route (ADR-0019).
+   anything else it ever needs from the dashboard over the same route (ADR-0019).
 
 4. **Server-rendered HTML, no client-side framework and no client build step.**
-   The cabinet v0 shows three lists and offers one real action. A single-page
+   The dashboard v0 shows three lists and offers one real action. A single-page
    application would add a build pipeline, a dependency tree and a second
    surface to keep in step, for nothing the pilot needs. Pages are rendered on
    the server and tested with the same HTTP harness the gateway's routes are.
@@ -95,13 +95,13 @@ page for a person, so the shape of that is a decision rather than a detail.
    separate stack to bring up; it is deleted, because a fixture that renders
    what the product does not is a page nobody keeps true. The scanner is a
    Next.js application by inheritance (ADR-0024)
-   and is not the cabinet, so §4 stands for the cabinet as written.
+   and is not the dashboard, so §4 stands for the dashboard as written.
 
 6. **One visual language, held in `packages/visual`.** One file carries the
    colour, the type, the radius and the border weight, the base element rules
    that follow from them, and the few primitives every surface draws — the
    page width, the button, the focus ring, the lockup. It covers the scanner,
-   the cabinet and the documentation portal. Nothing serves it over HTTP on
+   the dashboard and the documentation portal. Nothing serves it over HTTP on
    the deployed origin, because the shared-asset route names each path and
    this is not one of them; every reader takes it at build time or off disk
    instead. The mark and the font files are a different matter — a browser
@@ -125,35 +125,35 @@ page for a person, so the shape of that is a decision rather than a detail.
 
 ## Consequences
 
-- Gained: a chain a person can click through end to end; the cabinet proves
+- Gained: a chain a person can click through end to end; the dashboard proves
   the API is usable by construction; no build step to keep green; the local
   arrangement is the deployment rehearsal.
 - Paid: server-rendered pages make rich interactivity awkward, and the day a
   screen genuinely needs it, that screen argues for a client framework on its
   own merits — a named trigger, not a slide.
-- The cabinet needs API surface the contract does not yet carry: a merchant's
+- The dashboard needs API surface the contract does not yet carry: a merchant's
   own cards, a pause and its release, and receipts. Those are contract
-  additions with the ordinary ceremony, not cabinet-private endpoints.
+  additions with the ordinary ceremony, not dashboard-private endpoints.
 
 ## Rejected alternatives
 
-- **The cabinet inside the gateway** — fewer processes, but it mixes the
+- **The dashboard inside the gateway** — fewer processes, but it mixes the
   machine contract with human pages and puts UI churn on the money path.
 - **A single-page application (React or similar)** — a build pipeline and a
   dependency tree bought before any screen needs them. The trigger to revisit
   is named above.
-- **The cabinet talking to Postgres directly** — faster to write, and it would
-  have hidden exactly the API gaps this cabinet exists to expose.
+- **The dashboard talking to Postgres directly** — faster to write, and it would
+  have hidden exactly the API gaps this dashboard exists to expose.
 - **A dark theme across the origin** — three of the four surfaces had one and
   the scanner did not, so a merchant whose machine is dark crossed from a paper
-  front page into a dark cabinet. Closing that by giving the scanner a dark set
+  front page into a dark dashboard. Closing that by giving the scanner a dark set
   meant inventing twenty-two colours and redesigning a footer that is a dark
   band on a light page; dropping it was a few hundred lines deleted. The cost
   is real: readers of technical documentation expect the portal to have one,
   and the way back is to do the expensive half.
-- **The portal keeps its dark set while the scanner and the cabinet stay
+- **The portal keeps its dark set while the scanner and the dashboard stay
   light** — nothing to build, and it leaves one address with two behaviours:
-  a reader who crosses from the documentation into the cabinet changes
+  a reader who crosses from the documentation into the dashboard changes
   palette at the click, which is the seam this section exists to close. If
   the portal's readers turn out to miss it, the way back is the expensive
   half above, not a switch on one surface of three.

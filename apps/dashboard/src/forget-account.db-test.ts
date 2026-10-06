@@ -1,5 +1,5 @@
 /**
- * `pnpm forget <email>` on the real cabinet and gateway tables.
+ * `pnpm forget <email>` on the real dashboard and gateway tables.
  *
  * Everything an address owns is made here through the code that makes it in a
  * deployment — a sign-in link, the scanner's report link, the merchant and its
@@ -37,7 +37,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..", "..", "..");
 const tsx = join(root, "apps", "dashboard", "node_modules", "tsx", "dist", "loader.mjs");
 const gatewayMigrations = join(here, "..", "..", "gateway", "drizzle");
-const cabinetMigrations = join(here, "..", "drizzle");
+const dashboardMigrations = join(here, "..", "drizzle");
 
 const EMAIL = "merchant@example.com";
 const BYSTANDER = "bystander@example.com";
@@ -92,7 +92,7 @@ if (databaseUrl === null) {
     await pool.query("drop schema if exists drizzle cascade");
     await pool.query("create schema public");
     await migrate(drizzle(pool), { migrationsFolder: gatewayMigrations });
-    await migrateAccounts(pool, cabinetMigrations);
+    await migrateAccounts(pool, dashboardMigrations);
   });
 
   const tokenIn = (message: Message | undefined): string => {

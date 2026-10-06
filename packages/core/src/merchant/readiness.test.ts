@@ -1,12 +1,12 @@
 /**
  * The one rule about what a merchant must have before their cards are sold.
  *
- * The publish door, the sale-time check and the cabinet each ask it, and each
+ * The publish door, the sale-time check and the dashboard each ask it, and each
  * is tested through its own surface: the door over HTTP in the gateway, the
- * screens over HTTP in the cabinet. What is here is what only this function
+ * screens over HTTP in the dashboard. What is here is what only this function
  * decides, and which no single caller shows whole: the table of what each
  * surface asks for, and the difference between a fact that is absent and a
- * fact the caller could not read. The cabinet reads no approval, and a rule
+ * fact the caller could not read. The dashboard reads no approval, and a rule
  * that turned its "I don't know" into "there is none" would tell a merchant
  * they are refused for something they may hold, while one that turned it into
  * "there is one" would send them to press a button that fails.
@@ -87,10 +87,14 @@ describe("a fact the caller could not read", () => {
   });
 
   it("leaves what was read to be judged as it stands", () => {
-    // The cabinet reads the name and the wallet and never the approval; what
+    // The dashboard reads the name and the wallet and never the approval; what
     // it read still decides what is missing.
-    const cabinet: MerchantFacts = { sellerName: null, payoutWallet: null, liveApproval: UNKNOWN };
-    expect(readinessOf(cabinet, "live")).toMatchObject({
+    const dashboard: MerchantFacts = {
+      sellerName: null,
+      payoutWallet: null,
+      liveApproval: UNKNOWN,
+    };
+    expect(readinessOf(dashboard, "live")).toMatchObject({
       missing: ["no_seller_name", "no_payout_wallet"],
       unknown: ["no_operator_approval"],
     });

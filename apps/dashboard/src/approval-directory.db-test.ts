@@ -1,8 +1,8 @@
 /**
- * The production approval seam over the real cabinet and gateway tables.
+ * The production approval seam over the real dashboard and gateway tables.
  *
  * This file owns a database no other suite uses. It proves the targeted
- * cabinet lookup and the gateway's atomic one-way grant compose through one
+ * dashboard lookup and the gateway's atomic one-way grant compose through one
  * pool, including preservation of the first timestamp on a repeated command.
  */
 
@@ -28,7 +28,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..", "..", "..");
 const tsx = join(root, "apps", "dashboard", "node_modules", "tsx", "dist", "loader.mjs");
 const gatewayMigrations = join(here, "..", "..", "gateway", "drizzle");
-const cabinetMigrations = join(here, "..", "drizzle");
+const dashboardMigrations = join(here, "..", "drizzle");
 
 const MERCHANT = "mch_approval_operator";
 const EMAIL = "merchant@example.com";
@@ -54,7 +54,7 @@ if (databaseUrl === null) {
     await connected.pool.query("drop schema if exists drizzle cascade");
     await connected.pool.query("create schema public");
     await migrate(drizzle(connected.pool), { migrationsFolder: gatewayMigrations });
-    await migrateAccounts(connected.pool, cabinetMigrations);
+    await migrateAccounts(connected.pool, dashboardMigrations);
   });
 
   const account = async (
@@ -122,7 +122,7 @@ if (databaseUrl === null) {
       expect((await store.merchantById(MERCHANT))?.liveApprovedAt).not.toBeNull();
     });
 
-    it("resolves one normalized cabinet binding and preserves the first gateway timestamp", async () => {
+    it("resolves one normalized dashboard binding and preserves the first gateway timestamp", async () => {
       const made = await store.addMerchant(
         { id: MERCHANT, name: "The account holder's merchant" },
         FIRST_GRANT - 2_000,

@@ -20,7 +20,7 @@
  * delivery"; a single order read by its identifier cannot tell an order the
  * merchant has taken on from one that was priced and never paid, because
  * `in_progress` folds them on purpose (`order-status.ts` argues it), so the
- * cabinet says the weaker thing it can stand behind. The open list does not
+ * dashboard says the weaker thing it can stand behind. The open list does not
  * mix those two: an unpaid quote that never reached the handler is not on it.
  * "Awaiting fulfilment" stood here first and was not weak enough: it names a
  * duty, and the order it named one for was a purchase
@@ -124,7 +124,7 @@ export const UNSET_WORDS: Readonly<Record<Unset, string>> = Object.freeze({
 
 /**
  * What a screen says where the door asks for the operator's approval: what
- * this cabinet cannot check, and that it cannot. No route tells it whether a
+ * this dashboard cannot check, and that it cannot. No route tells it whether a
  * merchant holds one, so "I don't know" is said as that and never as "there is
  * none".
  */

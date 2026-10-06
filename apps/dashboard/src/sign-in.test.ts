@@ -2,17 +2,17 @@
  * The three answers the door gives to a request for a link, and the one script.
  *
  * All three carry the resend, and none of them carries it `disabled`. That is
- * the promise this file exists for: the cabinet serves a button that works and
+ * the promise this file exists for: the dashboard serves a button that works and
  * a script takes it away for the length of the wait, never the other way
  * round. Rendered `disabled`, the button could not be given back — nothing on
  * a page whose script did not run can lift the attribute — and the one control
  * that asks for a new link would be dead in the browser of somebody who has no
- * other way into their cabinet.
+ * other way into their dashboard.
  *
  * The script is tested by being run, twice over and never from a copy. Once
  * against a stand-in for the two properties it touches, which is cheap enough
  * to walk a forty-seven-minute countdown through every unit it changes into.
- * And once in jsdom, which parses the page the cabinet serves and runs the
+ * And once in jsdom, which parses the page the dashboard serves and runs the
  * script inside it.
  *
  * The second is there because the first was green while the feature was dead.
@@ -83,7 +83,7 @@ describe("what a merchant is served after asking for a link", () => {
     const minute = readable(screenFor({ wall: "interval", seconds: 43 }));
 
     // The row is an address hash, a purpose and a time. Not the destination:
-    // the earlier link may have been asked for elsewhere in the cabinet and
+    // the earlier link may have been asked for elsewhere in the dashboard and
     // opens there, so a merchant coming back from their shop cannot be told
     // that the link in flight is the one they just asked for. And not
     // delivery: the door hands a message to a provider and hears no more.
@@ -208,7 +208,7 @@ describe("the script that waits the wait out", () => {
 /**
  * The page in a browser, on a clock this test holds.
  *
- * jsdom parses the HTML the cabinet serves and runs the script inside it, so
+ * jsdom parses the HTML the dashboard serves and runs the script inside it, so
  * what is under test includes the two things a stand-in cannot see: that the
  * script is placed where it can find the button at all — moved above the card
  * it finds nothing, and the countdown is silently gone — and that a real DOM
