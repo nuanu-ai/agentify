@@ -3,7 +3,7 @@
  *
  * Four of them: before the shop knows anything about us, the moment the
  * merchant's browser comes back through the return address, the import, and
- * the block on the settings screen that says which of those the account is
+ * the block on the integrations screen that says which of those the account is
  * in. None of them fetches anything or decides anything, which is what lets a
  * test read the page a merchant would be looking at.
  *
@@ -84,10 +84,9 @@ export type ShopState =
  * out of `ShopState` because the shop screen is never drawn without a read. A
  * read that fails there is the page failing, and a type that let the shop
  * screen be handed "unread" would be a state it has no honest sentence for.
- * The settings screen is different: three of its four subjects are the
- * merchant's name, their money and their account, and our own shops table
- * being down must not stand between a merchant and the box for their payout
- * address. So the block is drawn with the fifth case, saying so, rather than
+ * The integrations screen is different: its other subject is the SDK, and our
+ * own shops table being down must not stand between a merchant and the guide
+ * and the key for that. So the block is drawn with the fifth case, saying so, rather than
  * dropped — a block that simply vanishes reads as "no shop is connected" to a
  * merchant who connected one yesterday, and "I don't know" has to be
  * distinguishable from "there is none".
@@ -239,7 +238,7 @@ ${view.cameBack === true && view.state.kind === "connected" ? KEYS_ARRIVED : ""}
  * redirect at all — and its honest replacement, "your browser arrived through
  * the return address", was a sentence the page had to disclaim in the next
  * one, and said nothing the block below does not. That block is drawn off our
- * rows and is the same sentence on a reload and on the settings screen, so
+ * rows and is the same sentence on a reload and on the integrations screen, so
  * what a merchant reads on coming back is what they read tomorrow.
  */
 const KEYS_ARRIVED = `  <div class="callout done">
@@ -600,11 +599,11 @@ const skippedBlock = (skipped: readonly SkippedProduct[]): string => `  <div cla
 `;
 
 /**
- * The block on the settings screen that says where the channel has got to.
+ * The block on the integrations screen that says where the channel has got to.
  *
  * It draws the state rather than a standing invitation, and that is the whole
  * of why it reads rows. A merchant comes back from approving in their own shop,
- * opens Settings, and finds out there whether it took; a block that says
+ * opens Integrations, and finds out there whether it took; a block that says
  * "connect a WooCommerce shop" over a shop that is already connected is not
  * merely out of date, it is this page telling them the Connect failed and
  * sending them round the loop again.
@@ -627,7 +626,7 @@ const skippedBlock = (skipped: readonly SkippedProduct[]): string => `  <div cla
 export const wooSettingsBlock = (base: string, state: ShopTile): string => {
   // The unread state is the one with no link to the shop screen. That page
   // needs the same read and would answer with an error page, so a link would
-  // be the settings screen offering something that cannot be drawn.
+  // be the integrations screen offering something that cannot be drawn.
   const said =
     state.kind === "unread"
       ? `<p>Whether a shop is connected to this account could not be read just now.</p>
