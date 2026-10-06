@@ -2051,6 +2051,19 @@ describe("the cards screen", () => {
     expect(readable((await browser.get("/cards")).html)).toContain("Pause all sales");
   });
 
+  it("does not promise a merchant that the orders they accepted get fulfilled", async () => {
+    // Agentify fulfils nothing on the SDK path: the merchant's own code does,
+    // and an accepted order nobody delivers ends owing a refund. A merchant
+    // told a pause leaves their orders "fulfilled" may switch that code off.
+    const { browser, gateway } = await started();
+    await publish(gateway, roomCard);
+    await browser.signIn();
+
+    expect(readable((await browser.get("/cards")).html)).not.toMatch(/fulfil/i);
+    await browser.post("/selling/pause");
+    expect(readable((await browser.get("/cards")).html)).not.toMatch(/fulfil/i);
+  });
+
   it("tells a merchant which switch is holding a card off sale", async () => {
     // With everything stopped, a card the merchant did not pause themselves
     // reads paused too, and pressing resume on it would change nothing a
