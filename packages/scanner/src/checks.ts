@@ -1,16 +1,23 @@
 import { CHECK_DEFINITIONS, type CheckResult, type Segment } from "@agentify/scanner-contracts";
+import { asciiLower, isQuote, nextTag, quotedValues, type Span } from "./markup.js";
 import type { FetchArtifact, ScanArtifacts } from "./model.js";
 import {
-  comparableBodies,
+  comparableTexts,
   htmlSignals,
   isChallenge,
+  type JsonLdResult,
   jsonLdTypes,
   parseJsonLd,
   parseSafeJson,
   parseSitemap,
   visibleText,
 } from "./parsers.js";
-import { explicitAiPolicies, isPathAllowed, parseRobots } from "./robots.js";
+import {
+  explicitAiPolicies,
+  isPathAllowed,
+  parseRobots,
+  type RobotsParseResult,
+} from "./robots.js";
 
 export const CHECK_WEIGHTS: readonly number[] = CHECK_DEFINITIONS.map(
   (definition) => definition.nominalWeight,
@@ -66,9 +73,71 @@ const inaccessible = (artifact?: FetchArtifact): boolean =>
 const missing = (artifact?: FetchArtifact): boolean =>
   !artifact || artifact.status === 404 || artifact.status === 410;
 
+const ROBOTS_CODES = new Set(["robots_disallowed", "robots_unavailable"]);
+const robotsCode = (artifact?: FetchArtifact): string | undefined =>
+  artifact?.errorCode && ROBOTS_CODES.has(artifact.errorCode) ? artifact.errorCode : undefined;
+// Why none of several documents could be read: robots.txt first, since the
+// owner can act on it, then whatever else stopped the first one.
+const unreadReason = (artifacts: readonly FetchArtifact[], fallback: string): string => {
+  const unread = artifacts.filter((artifact) => inaccessible(artifact));
+  return (
+    unread.map(robotsCode).find(Boolean) ??
+    unread.find((artifact) => artifact.errorCode)?.errorCode ??
+    fallback
+  );
+};
+
+// A scan evaluates its checks several times as its requests complete, all
+// over one robots.txt artifact, which the site may have filled to the fetch
+// limit: it is parsed, and each path decided, once per artifact.
+type RobotsReading = { parsed: RobotsParseResult; verdicts: Map<string, boolean | undefined> };
+const robotsReadings = new WeakMap<FetchArtifact, RobotsReading>();
+const readRobots = (robots: FetchArtifact): RobotsReading => {
+  let reading = robotsReadings.get(robots);
+  if (!reading) {
+    reading = { parsed: parseRobots(robots.body), verdicts: new Map() };
+    robotsReadings.set(robots, reading);
+  }
+  return reading;
+};
+const scannerVerdict = (reading: RobotsReading, path: string): boolean | undefined => {
+  if (!reading.verdicts.has(path))
+    reading.verdicts.set(path, isPathAllowed(reading.parsed, "agentify-scanner", path));
+  return reading.verdicts.get(path);
+};
+
+// The same scan is evaluated several times over the same artifacts, and
+// several checks read the same page: each artifact's visible text, signals,
+// JSON-LD and sitemap are read once, since a page of up to 2 MiB can cost a
+// reader a noticeable part of a second.
+type PageReading = {
+  text?: string;
+  signals?: ReturnType<typeof htmlSignals>;
+  jsonLd?: JsonLdResult;
+  sitemap?: ReturnType<typeof parseSitemap>;
+};
+const pageReadings = new WeakMap<FetchArtifact, PageReading>();
+const readingOf = (artifact: FetchArtifact): PageReading => {
+  let reading = pageReadings.get(artifact);
+  if (!reading) {
+    reading = {};
+    pageReadings.set(artifact, reading);
+  }
+  return reading;
+};
+const textOf = (artifact: FetchArtifact): string =>
+  (readingOf(artifact).text ??= visibleText(artifact.body));
+const signalsOf = (artifact: FetchArtifact) =>
+  (readingOf(artifact).signals ??= htmlSignals(artifact.body, textOf(artifact)));
+const jsonLdOf = (artifact: FetchArtifact): JsonLdResult =>
+  (readingOf(artifact).jsonLd ??= parseJsonLd(artifact.body));
+const sitemapOf = (artifact: FetchArtifact) =>
+  (readingOf(artifact).sitemap ??= parseSitemap(artifact.body));
+const NO_SIGNALS = htmlSignals("");
+
 const robotsChecks = (artifacts: ScanArtifacts): CheckResult[] => {
   const fetch = artifacts.robots;
-  const parsed = parseRobots(fetch.body);
+  const { parsed } = readRobots(fetch);
   const common = { durationMs: fetch.durationMs };
   let robots: CheckResult;
   if (fetch.errorCode || fetch.status === 0 || fetch.status >= 500) {
@@ -215,7 +284,8 @@ const sitemapCheck = (artifacts: ScanArtifacts): CheckResult => {
     (artifact) => !inaccessible(artifact) && !missing(artifact),
   );
   if (!available.length) {
-    if (artifacts.sitemap.some((artifact) => missing(artifact)))
+    // Absent only when every sitemap asked for answered that it is not there.
+    if (artifacts.sitemap.length && artifacts.sitemap.every((artifact) => missing(artifact)))
       return result({
         id: 4,
         status: "fail",
@@ -230,10 +300,10 @@ const sitemapCheck = (artifacts: ScanArtifacts): CheckResult => {
       earnedWeight: 0,
       summaryCode: "sitemap_unavailable",
       userImpactCode: "sitemap_not_assessed",
-      errorCode: artifacts.sitemap[0]?.errorCode ?? "sitemap_unavailable",
+      errorCode: unreadReason(artifacts.sitemap, "sitemap_unavailable"),
     });
   }
-  const parsed = available.map((artifact) => parseSitemap(artifact.body));
+  const parsed = available.map(sitemapOf);
   const valid = parsed.filter((entry) => entry.valid);
   if (!valid.length)
     return result({
@@ -357,7 +427,7 @@ const jsonLdChecks = (artifacts: ScanArtifacts): CheckResult[] => {
           artifacts.base?.errorCode ?? artifacts.representative?.errorCode ?? "base_unavailable",
       }),
     ];
-  const parsedPages = pages.map((page) => parseJsonLd(page.body));
+  const parsedPages = pages.map(jsonLdOf);
   const parsed = {
     nodes: parsedPages.flatMap(({ nodes }) => nodes),
     scriptCount: parsedPages.reduce((sum, page) => sum + page.scriptCount, 0),
@@ -459,10 +529,10 @@ const markdownCheck = (artifacts: ScanArtifacts): CheckResult => {
     ? markdown.body.trim() !== artifacts.base.body.trim()
     : false;
   const semanticParity = artifacts.base
-    ? comparableBodies(markdown.body, artifacts.base.body)
+    ? comparableTexts(textOf(markdown), textOf(artifacts.base))
     : false;
   const correctType = /text\/markdown/i.test(type);
-  const nonEmpty = visibleText(markdown.body).length > 20;
+  const nonEmpty = textOf(markdown).length > 20;
   if (
     markdown.status >= 200 &&
     markdown.status < 300 &&
@@ -516,6 +586,23 @@ const markdownCheck = (artifacts: ScanArtifacts): CheckResult => {
   });
 };
 
+// Whether a Markdown link leads to an absolute address: a bracketed text of
+// at least one character, then `(http://` or `(https://`.
+const linksAbsolutely = (text: string): boolean => {
+  const lower = asciiLower(text);
+  for (let open = lower.indexOf("["); open !== -1; ) {
+    const close = lower.indexOf("]", open + 1);
+    if (close === -1) return false;
+    if (
+      close > open + 1 &&
+      (lower.startsWith("(http://", close + 1) || lower.startsWith("(https://", close + 1))
+    )
+      return true;
+    open = lower.indexOf("[", close + 1);
+  }
+  return false;
+};
+
 const llmsCheck = (artifact?: FetchArtifact): CheckResult => {
   if (!artifact || missing(artifact))
     return result({
@@ -536,7 +623,7 @@ const llmsCheck = (artifact?: FetchArtifact): CheckResult => {
       errorCode: artifact.errorCode ?? "llms_unavailable",
     });
   const h1 = /^#\s+\S+/m.test(artifact.body);
-  const links = /\[[^\]]+\]\(https?:\/\//i.test(artifact.body);
+  const links = linksAbsolutely(artifact.body);
   return result({
     id: 8,
     status: h1 && links ? "pass" : "partial",
@@ -570,7 +657,7 @@ const mcpCheck = (artifacts: ScanArtifacts): CheckResult => {
         earnedWeight: 0,
         summaryCode: "mcp_unavailable",
         userImpactCode: "mcp_not_assessed",
-        errorCode: "mcp_unavailable",
+        errorCode: unreadReason(artifacts.mcp, "mcp_unavailable"),
       });
     return result({
       id: 9,
@@ -691,7 +778,7 @@ const oauthCheck = (artifacts: ScanArtifacts): CheckResult => {
         earnedWeight: 0,
         summaryCode: "oauth_unavailable",
         userImpactCode: "oauth_not_assessed",
-        errorCode: "oauth_unavailable",
+        errorCode: unreadReason(artifacts.oauth, "oauth_unavailable"),
       });
     return result({
       id: 11,
@@ -742,12 +829,14 @@ const ssrCheck = (artifacts: ScanArtifacts): CheckResult => {
       earnedWeight: 0,
       summaryCode: "ssr_unavailable",
       userImpactCode: "ssr_not_assessed",
-      errorCode: base?.errorCode ?? (base ? "base_blocked" : "robots_disallowed"),
+      errorCode: base?.errorCode ?? (base ? "base_blocked" : "base_unavailable"),
     });
-  const baseSignals = htmlSignals(usableBase?.body ?? "");
-  const representativeSignals = htmlSignals(usableRepresentative?.body ?? "");
-  const baseJsonLd = parseJsonLd(usableBase?.body ?? "").nodes.length > 0;
-  const representativeJsonLd = parseJsonLd(usableRepresentative?.body ?? "").nodes.length > 0;
+  const baseSignals = usableBase ? signalsOf(usableBase) : NO_SIGNALS;
+  const representativeSignals = usableRepresentative ? signalsOf(usableRepresentative) : NO_SIGNALS;
+  const baseJsonLd = usableBase ? jsonLdOf(usableBase).nodes.length > 0 : false;
+  const representativeJsonLd = usableRepresentative
+    ? jsonLdOf(usableRepresentative).nodes.length > 0
+    : false;
   const storeHomepagePass =
     baseSignals.textLength >= 300 &&
     (baseSignals.productLinkCount > 0 || (baseSignals.hasPrice && baseJsonLd));
@@ -807,7 +896,7 @@ const agentUaCheck = (artifacts: ScanArtifacts): CheckResult => {
     probe.status >= 200 &&
     probe.status < 300 &&
     !isChallenge(probe.status, probe.body) &&
-    comparableBodies(base.body, probe.body);
+    comparableTexts(textOf(base), textOf(probe));
   const chatgptAccessible = probeAccessible(chatgpt);
   const claudeAccessible = probeAccessible(claude);
   const count = [chatgptAccessible, claudeAccessible].filter(Boolean).length;
@@ -875,6 +964,46 @@ const performanceCheck = (artifacts: ScanArtifacts): CheckResult => {
   });
 };
 
+const FEED_TYPES = ["application/rss+xml", "application/atom+xml", "application/xml", "text/csv"];
+const FEED_ADDRESSES = ["feed", "merchant", "products.xml", "products.csv"];
+
+// Whether some `<link>` declares a feed, by a feed's media type or by an
+// address that names one. `lower` is the page through asciiLower.
+const linksFeed = (lower: string): boolean => {
+  const text = (span: Span): string => lower.slice(span.start, span.end);
+  for (let tag = nextTag(lower, "link", 0); tag; tag = nextTag(lower, "link", tag.end + 1)) {
+    if (quotedValues(lower, "type=", tag).some((type) => FEED_TYPES.includes(text(type))))
+      return true;
+    if (
+      quotedValues(lower, "href=", tag).some((href) => {
+        const address = text(href);
+        return FEED_ADDRESSES.some((word) => address.includes(word));
+      })
+    )
+      return true;
+  }
+  return false;
+};
+
+// Whether an Open Graph type of product is declared: `og:type` and a quote,
+// then, before the next `>`, a content attribute whose quoted value begins
+// with "product". `lower` is the page through asciiLower.
+const declaresProduct = (lower: string): boolean => {
+  for (let at = lower.indexOf("og:type"); at !== -1; ) {
+    const quote = at + "og:type".length;
+    if (!isQuote(lower.charCodeAt(quote))) {
+      at = lower.indexOf("og:type", at + 1);
+      continue;
+    }
+    const close = lower.indexOf(">", quote + 1);
+    const rest = lower.slice(quote + 1, close === -1 ? lower.length : close);
+    if (rest.includes('content="product') || rest.includes("content='product")) return true;
+    if (close === -1) return false;
+    at = lower.indexOf("og:type", close + 1);
+  }
+  return false;
+};
+
 const feedCheck = (artifacts: ScanArtifacts): CheckResult => {
   if (artifacts.segment !== "store")
     return result({
@@ -899,13 +1028,14 @@ const feedCheck = (artifacts: ScanArtifacts): CheckResult => {
         artifacts.base?.errorCode ?? artifacts.representative?.errorCode ?? "base_unavailable",
     });
   const body = pages.map((page) => page.body).join("\n");
-  const feedLink =
-    /<link\b[^>]*(?:type=["'](?:application\/(?:rss\+xml|atom\+xml|xml)|text\/csv)["']|href=["'][^"']*(?:feed|merchant|products\.(?:xml|csv))[^"']*["'])/i.test(
-      body,
-    );
+  const lower = asciiLower(body);
+  const feedLink = linksFeed(lower);
   const product =
-    /(?:og:type["'][^>]*content=["']product|product:price|\bsku\b|\bgtin\b)/i.test(body) ||
-    parseJsonLd(body).nodes.some((node) => jsonLdTypes(node).includes("Product"));
+    declaresProduct(lower) ||
+    /(?:product:price|\bsku\b|\bgtin\b)/i.test(body) ||
+    pages.some((page) =>
+      jsonLdOf(page).nodes.some((node) => jsonLdTypes(node).includes("Product")),
+    );
   const priceAvailability = /(?:price|availability|in_stock|out_of_stock)/i.test(body);
   if (feedLink)
     return result({
@@ -1015,7 +1145,7 @@ const hreflangCheck = (artifacts: ScanArtifacts): CheckResult => {
       userImpactCode: "hreflang_not_assessed",
       errorCode: base?.errorCode ?? "base_unavailable",
     });
-  const tags = htmlSignals(base.body).hreflangs;
+  const tags = signalsOf(base).hreflangs;
   if (tags.length < 2)
     return result({
       id: 18,
@@ -1044,24 +1174,60 @@ const hreflangCheck = (artifacts: ScanArtifacts): CheckResult => {
 };
 
 export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
-  const robotsParsed = parseRobots(artifacts.robots.body);
-  const targetPath = new URL(artifacts.canonicalTargetUrl).pathname || "/";
-  const targetContentAllowed =
-    artifacts.robots.status === 404 ||
-    artifacts.robots.status === 410 ||
-    (artifacts.robots.status === 200 &&
-      !artifacts.robots.errorCode &&
-      !robotsParsed.fatal &&
-      isPathAllowed(robotsParsed, "agentify-scanner", targetPath));
-  const effective = targetContentAllowed
-    ? artifacts
-    : {
+  const robotsReading = readRobots(artifacts.robots);
+  const robotsParsed = robotsReading.parsed;
+  const targetUrl = new URL(artifacts.canonicalTargetUrl);
+  const targetPath = `${targetUrl.pathname || "/"}${targetUrl.search}`;
+  const robotsMissing = artifacts.robots.status === 404 || artifacts.robots.status === 410;
+  const robotsReadable =
+    artifacts.robots.status === 200 && !artifacts.robots.errorCode && !robotsParsed.fatal;
+  const targetVerdict = robotsMissing
+    ? true
+    : robotsReadable
+      ? scannerVerdict(robotsReading, targetPath)
+      : undefined;
+  const targetContentAllowed = targetVerdict === true;
+  // A robots.txt the network kept from being read names that failure.
+  const robotsBlockedCode =
+    targetVerdict === false
+      ? "robots_disallowed"
+      : artifacts.robots.status === 0 && artifacts.robots.errorCode
+        ? artifacts.robots.errorCode
+        : "robots_unavailable";
+  // Content robots.txt kept the scanner from reads as a request that never
+  // happened, carrying the reason, so every check that needed it names it.
+  const withheld: FetchArtifact = {
+    url: artifacts.canonicalTargetUrl,
+    status: 0,
+    headers: {},
+    body: "",
+    decodedBytes: 0,
+    truncated: false,
+    durationMs: 0,
+    ttfbMs: 0,
+    errorCode: robotsBlockedCode,
+  };
+  // A store's structured data and feed may live only on its product pages.
+  // A product page the scanner could not read, because robots.txt kept it
+  // off, the request failed or the page answered with an error status, is
+  // read by no check, and a verdict that the store's data is absent is not
+  // established: it says why instead.
+  const representative = targetContentAllowed ? artifacts.representative : undefined;
+  const productUnread =
+    representative && (inaccessible(representative) || representative.status >= 400)
+      ? (representative.errorCode ?? "product_page_unavailable")
+      : undefined;
+  const effective = !targetContentAllowed
+    ? {
         ...artifacts,
-        base: undefined,
+        base: withheld,
         representative: undefined,
-        markdown: undefined,
+        markdown: withheld,
         agentProbes: {},
-      };
+      }
+    : productUnread
+      ? { ...artifacts, representative: undefined }
+      : artifacts;
   const checks = [
     ...robotsChecks(artifacts),
     sitemapCheck(artifacts),
@@ -1079,5 +1245,43 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
     a2aCheck(artifacts),
     hreflangCheck(effective),
   ];
-  return checks.sort((left, right) => left.id - right.id);
+  return checks
+    .map((check) => {
+      const absence = PRODUCT_PAGE_ABSENCES[check.id];
+      return productUnread && absence?.absent(check)
+        ? result({
+            id: check.id,
+            status: "unavailable",
+            earnedWeight: 0,
+            summaryCode: absence.summaryCode,
+            userImpactCode: absence.userImpactCode,
+            errorCode: productUnread,
+          })
+        : check;
+    })
+    .sort((left, right) => left.id - right.id);
+};
+
+const PRODUCT_PAGE_ABSENCES: Record<
+  number,
+  { absent: (check: CheckResult) => boolean; summaryCode: string; userImpactCode: string }
+> = {
+  5: {
+    absent: (check) =>
+      check.summaryCode === "jsonld_absent_or_invalid" && check.evidence.script_count === 0,
+    summaryCode: "jsonld_unavailable",
+    userImpactCode: "structured_data_not_assessed",
+  },
+  6: {
+    absent: (check) =>
+      check.summaryCode === "vertical_jsonld_missing" ||
+      check.summaryCode === "vertical_jsonld_wrong_type",
+    summaryCode: "vertical_jsonld_unavailable",
+    userImpactCode: "structured_data_not_assessed",
+  },
+  15: {
+    absent: (check) => check.summaryCode === "feed_signals_absent",
+    summaryCode: "feed_unavailable",
+    userImpactCode: "feed_not_assessed",
+  },
 };

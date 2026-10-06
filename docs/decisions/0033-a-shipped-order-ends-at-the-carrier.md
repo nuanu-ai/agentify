@@ -1,4 +1,4 @@
-# 0032. A shipped order ends at the carrier, and the agent is told `shipped`
+# 0033. A shipped order ends at the carrier, and the agent is told `shipped`
 
 Date: 2026-09-28
 Status: accepted (the product owner, 2026-09-28, after two rounds of
@@ -21,7 +21,7 @@ A card for shipped goods says `fulfillment: 'ship'`. Until the parcel ships,
 money moves as in the asynchronous mode. The order records at purchase that it
 is a parcel, so a republished card changes no order in flight, and the order
 state machine gains no state. Such a card declares neither `ship_to`, which the
-mode implies (ADR-0031), nor a `result`, which the mode fixes, and a card
+mode implies (ADR-0032), nor a `result`, which the mode fixes, and a card
 carrying either, or `fulfill_deadline_seconds`, is refused. It must name
 `ship_within_seconds`, the time to hand the parcel to a carrier counted from
 the charge, at most 2 592 000 (thirty days), a limit written in the contract
@@ -30,7 +30,7 @@ and checked at publishing; the agent reads it on the card and as the absolute
 merchant's price handler, whose answer is the whole price with shipping; the
 card's own price is the goods without shipping, and the contract's description
 of that price says so. And its merchant must have given their shop's site
-(ADR-0033).
+(ADR-0034).
 
 `deliver` on a parcel records a shipment: a `carrier`, required, a short
 plain-text string — a carrier's name, or the shop's own courier — and a

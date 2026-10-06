@@ -2,7 +2,7 @@
 
 Date: 2026-09-23
 Status: accepted (the product owner, 2026-09-23; the shipped order added
-2026-09-28 with ADR-0032). Not built yet: the command that records a refund,
+2026-09-28 with ADR-0033). Not built yet: the command that records a refund,
 the operator's pause, and the merchant's view of the debt.
 
 ## Context
@@ -33,7 +33,7 @@ in a field of its own. It is marked as a report, not a reading of the chain,
 and it records who paid: the merchant, or Agentify where Agentify paid the buyer
 back and then settles with the merchant outside the system.
 
-The same command records a refund on a shipped order (ADR-0032) whose parcel
+The same command records a refund on a shipped order (ADR-0033) whose parcel
 the merchant admits lost, and the order becomes `refunded`. A shipped order is
 not reopened into a refund owed: the merchant's worker walks the open orders,
 and a stale delivery of the lost parcel's record would close that debt with

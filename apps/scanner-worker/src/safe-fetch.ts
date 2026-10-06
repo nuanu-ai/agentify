@@ -39,6 +39,11 @@ export type SafeFetchOptions = {
   bodyLimit?: number;
   timeoutMs?: number;
   signal?: AbortSignal;
+  /**
+   * Asked before a redirect is followed: the reason not to request the
+   * address it leads to, or undefined to follow it.
+   */
+  admit?: (url: URL) => Promise<string | undefined>;
 };
 
 export const selectPinnedAddress = (answers: readonly ResolvedAddress[]): ResolvedAddress => {
@@ -137,10 +142,15 @@ export class NodePinnedTransport implements PinnedTransport {
         // The address is already resolved, validated, and pinned. Node 20+ may
         // request `all: true` for family autoselection, so return a one-element
         // array in that mode; Node still cannot select an unvalidated address.
+        // The answer comes a tick later, as a real lookup's does: answered at
+        // once, a connect() that fails at once emits its error before the
+        // request listens for it, and the error takes the process down.
         lookup: (_hostname, lookupOptions, callback) =>
-          lookupOptions.all
-            ? callback(null, [input.address])
-            : callback(null, input.address.address, input.address.family),
+          process.nextTick(() =>
+            lookupOptions.all
+              ? callback(null, [input.address])
+              : callback(null, input.address.address, input.address.family),
+          ),
         ...(input.url.protocol === "https:"
           ? { servername: input.url.hostname, rejectUnauthorized: true }
           : {}),
@@ -292,6 +302,42 @@ export class RequestBudget {
   }
 }
 
+const abortError = () => Object.assign(new Error("aborted"), { name: "AbortError" });
+
+// A promise the signal can cut short: a name that never resolves would
+// otherwise hold the scan past its deadline.
+const untilAborted = <T>(work: Promise<T>, signal: AbortSignal): Promise<T> =>
+  signal.aborted
+    ? Promise.reject(abortError())
+    : new Promise<T>((resolve, reject) => {
+        const onAbort = () => reject(abortError());
+        signal.addEventListener("abort", onAbort, { once: true });
+        work.then(
+          (value) => {
+            signal.removeEventListener("abort", onAbort);
+            resolve(value);
+          },
+          (error: unknown) => {
+            signal.removeEventListener("abort", onAbort);
+            reject(error);
+          },
+        );
+      });
+
+// A request that was never made, or stopped on the way, with the reason: one
+// such request is that request's failure, never the scan's.
+const refused = (url: URL, errorCode: string, durationMs = 0): FetchArtifact => ({
+  url: url.toString(),
+  status: 0,
+  headers: {},
+  body: "",
+  decodedBytes: 0,
+  truncated: false,
+  durationMs,
+  ttfbMs: 0,
+  errorCode,
+});
+
 export class SafeFetcher {
   constructor(
     private readonly resolver: DnsResolver,
@@ -313,12 +359,22 @@ export class SafeFetcher {
       let redirects = 0;
       let usedHttpFallback = false;
       while (true) {
-        if (controller.signal.aborted)
-          throw Object.assign(new Error("aborted"), { name: "AbortError" });
+        if (controller.signal.aborted) throw abortError();
         this.budget.consume();
-        const answers = await this.resolver.resolve(url.hostname);
-        assertPublicAddresses(answers.map((answer) => answer.address));
-        const pinnedAddress = selectPinnedAddress(answers);
+        let answers: ResolvedAddress[];
+        try {
+          answers = await untilAborted(this.resolver.resolve(url.hostname), controller.signal);
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") throw error;
+          return refused(url, "dns_error");
+        }
+        let pinnedAddress: ResolvedAddress;
+        try {
+          assertPublicAddresses(answers.map((answer) => answer.address));
+          pinnedAddress = selectPinnedAddress(answers);
+        } catch (error) {
+          return refused(url, error instanceof Error ? error.message : "address_blocked");
+        }
         const release = await this.budget.acquire(url.origin, controller.signal);
         let artifact: FetchArtifact;
         try {
@@ -359,7 +415,14 @@ export class SafeFetcher {
         if (artifact.status < 300 || artifact.status >= 400 || !location) return artifact;
         if (redirects >= 5) return { ...artifact, errorCode: "redirect_limit_exceeded" };
         redirects += 1;
-        url = validateRedirect(url, location);
+        try {
+          url = validateRedirect(url, location);
+        } catch (error) {
+          if (!(error instanceof UrlPolicyError)) throw error;
+          return refused(url, error.code, artifact.durationMs);
+        }
+        const inadmissible = await options.admit?.(url);
+        if (inadmissible) return refused(url, inadmissible, artifact.durationMs);
       }
     } finally {
       options.signal?.removeEventListener("abort", relayAbort);

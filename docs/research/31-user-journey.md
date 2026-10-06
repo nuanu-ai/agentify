@@ -327,8 +327,7 @@ the press. The argument between a funnel and a soft entry is settled by
 those two numbers, not by taste, and measuring them is a later, pre-
 registered change with its own decision rule, not a side effect of this one.
 
-## Where the work is tracked
+## Where the work is recorded
 
-The tracker did not answer this session, so no issue was opened for this
-pass; the product owner's approval of 2026-09-21 stands in for it, and the
-four commits name this note.
+The product owner's approval of 2026-09-21 accepted this pass, and the four
+commits name this note.

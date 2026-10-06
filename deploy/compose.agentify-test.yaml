@@ -22,7 +22,6 @@ services:
       REGISTRATION_ENABLED: "true"
       SCAN_ACCEPTANCE_ENABLED: "true"
       TURNSTILE_ENFORCED: "false"
-      SCANNER_CACHE_ENABLED: "false"
       BENCHMARK_ENABLED: "false"
       PUBLIC_SHARE_ENABLED: "false"
       PARTNER_POSTBACK_ENABLED: "false"
@@ -35,7 +34,6 @@ services:
       # One worker, named for the channel it runs in: heartbeats are keyed on
       # this, and two workers answering to one name read as one restarting.
       WORKER_ID: "${WORKER_ID:-agentify-test-1}"
-      SCANNER_CACHE_ENABLED: "false"
       ANALYTICS_ENV: "test"
       ANALYTICS_RUNTIME_ENV: "test"
       POSTHOG_ENABLED: "false"

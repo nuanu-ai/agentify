@@ -3,7 +3,7 @@ import { z } from "zod";
 import { uuidV7Schema } from "./api.js";
 import { checkStatusSchema, segmentSchema } from "./enums.js";
 
-export const BROWSER_OBSERVATION_VERSION = "browser-public-v1.0.0" as const;
+export const BROWSER_OBSERVATION_VERSION = "browser-public-v2.0.0" as const;
 
 export const BROWSER_OBSERVATION_IDS = [
   "rendered_content_delta",
@@ -102,32 +102,6 @@ const safeBrowserCodeSchema = (maxLength: number) =>
       message: "Private or secret-bearing browser codes are forbidden",
     });
 
-const categorySchema = safeBrowserCodeSchema(100);
-
-export const browserObservationSignalsSchema = z
-  .object({
-    rendered_text_chars: z.number().int().nonnegative().max(5_000_000),
-    raw_to_rendered_ratio: z.number().finite().nonnegative().max(100).nullable(),
-    landmark_counts: z.record(categorySchema, z.number().int().nonnegative()),
-    heading_level_counts: z.record(categorySchema, z.number().int().nonnegative()),
-    interactive_control_count: z.number().int().nonnegative().max(100_000),
-    unnamed_control_count: z.number().int().nonnegative().max(100_000),
-    form_control_count: z.number().int().nonnegative().max(100_000),
-    unlabeled_form_control_count: z.number().int().nonnegative().max(100_000),
-    webmcp_present: z.boolean(),
-    webmcp_tool_count: z.number().int().nonnegative().max(10_000),
-    console_error_categories: z.array(categorySchema).max(20),
-    failed_resource_categories: z.array(categorySchema).max(20),
-    mixed_content_count: z.number().int().nonnegative().max(100_000),
-    dom_node_count: z.number().int().nonnegative().max(5_000_000),
-    script_count: z.number().int().nonnegative().max(100_000),
-    request_count: z.number().int().nonnegative().max(1_000),
-    transferred_bytes: z.number().int().nonnegative().max(100_000_000),
-    challenge_kind: categorySchema.nullable(),
-  })
-  .strict();
-export type BrowserObservationSignals = z.infer<typeof browserObservationSignalsSchema>;
-
 export const browserObservationFindingSchema = z
   .object({
     id: browserObservationIdSchema,
@@ -185,12 +159,10 @@ export const browserObservationOutputV1Schema = z
     actor_build: z.string().min(1).max(200),
     status: z.enum(["completed", "partial", "blocked", "failed"]),
     pages_assessed: z.number().int().min(0).max(3),
-    signals: browserObservationSignalsSchema,
     observations: z.array(browserObservationFindingSchema).length(BROWSER_OBSERVATION_IDS.length),
     timings: z
       .object({
         total_ms: z.number().int().nonnegative().max(120_000),
-        pages: z.array(z.number().int().nonnegative().max(60_000)).max(3),
       })
       .strict(),
   })

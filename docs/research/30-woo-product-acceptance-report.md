@@ -1,6 +1,6 @@
 # WooCommerce TEST product acceptance report
 
-**Execution checkpoint:** 2026-09-18. COIN-25 remains in progress. TEST runs
+**Execution checkpoint:** 2026-09-18. The acceptance remains in progress. TEST runs
 application revision `c77dd57fa0e80a245728e005412cb992f5a9b526`. All four
 authorized signed slots are consumed. Three settled and delivered; the fourth
 failed during facilitator settlement before Woo was called. The ordinary
@@ -12,7 +12,7 @@ closeout completed without another fixture reset.
 
 Production and real funds are outside this run and were never used.
 
-COIN-41 completed the controlled external SDK rehearsal. Stage 4 remains active
+The controlled external SDK rehearsal is complete. Stage 4 remains active
 because that controlled run is not the first uncontrolled merchant. The SDK is
 the primary product path. WooCommerce is an experimental connector and neither
 gates Stage 4 nor changes the SDK result.
@@ -102,8 +102,8 @@ three delivered paid Agentify orders, three receipts, three Woo orders and
 three native permissions. The upstream sender logs were not retained, so the
 exact external nonce or fee cause is unknown; no Agentify settlement retry or
 concrete local source defect was found. No paid request was retried or
-authorized twice. COIN-43 tracks
-revalidation of this remaining settlement failure.
+authorized twice. Revalidation of this remaining settlement failure is still
+open.
 
 Paid case 2 completed the exact registered sequence: one valid quote, exact-key
 revocation before dispatch, one signature, visible `refund_due` with no Woo
@@ -171,8 +171,7 @@ truthfully said money was taken, nothing shipped and late delivery can clear
 the debt, but its only stated action was for the owner to return funds from
 their own wallet. It did not direct the owner to reconnect the shop or request
 operator recovery for that exact order. With the public pilot-contact decision
-deferred in COIN-42, the safe
-late-delivery path remains discoverable only to the operator.
+deferred, the safe late-delivery path remains discoverable only to the operator.
 
 ## Verdict and product boundary
 
@@ -185,8 +184,8 @@ unsigned expired priced order and the terminal settlement-failed replacement;
 neither is a delivered purchase or merchant obligation. The private ledger
 retains five preparation rows and exactly four execution reservations and
 signatures. Only three settled. The one-shot fault is absent, the authorization
-ceiling is exhausted, and no further live payment is authorized. COIN-43 tracks
-the external settlement failure and its revalidation. No refund settlement was
+ceiling is exhausted, and no further live payment is authorized. The external
+settlement failure and its revalidation are still open. No refund settlement was
 executed or proved in this run; the paid failure that closed did so through
 late delivery of the promised goods.
 

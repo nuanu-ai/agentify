@@ -1,14 +1,16 @@
 import {
   BROWSER_OBSERVATION_IDS,
   type BrowserObservationInputV1,
+  browserObservationOutputV1Schema,
 } from "@agentify/scanner-contracts";
 import { describe, expect, it } from "vitest";
 
 import type { PageSignals } from "./browser-signals.js";
 import {
-  aggregateBrowserSignals,
+  buildBrowserOutput,
   buildObservations,
   type ObservationRuntime,
+  observedRunStatus,
 } from "./observations.js";
 
 const page = (overrides: Partial<PageSignals> = {}): PageSignals => ({
@@ -23,8 +25,6 @@ const page = (overrides: Partial<PageSignals> = {}): PageSignals => ({
   formSemanticIssueCount: 0,
   webmcpPresent: false,
   webmcpToolCount: 0,
-  domNodeCount: 100,
-  scriptCount: 3,
   challengeKind: null,
   hiddenInstructionCount: 0,
   apiDiscoveryCount: 1,
@@ -105,26 +105,6 @@ describe("browser observation evaluator", () => {
     expect(unavailable.every((item) => item.status === "unavailable")).toBe(true);
   });
 
-  it("caps aggregate signals to the strict output contract", () => {
-    const signals = aggregateBrowserSignals(
-      runtime([
-        page({
-          renderedTextChars: 5_000_000,
-          interactiveControlCount: 100_000,
-          domNodeCount: 5_000_000,
-        }),
-        page({
-          renderedTextChars: 5_000_000,
-          interactiveControlCount: 100_000,
-          domNodeCount: 5_000_000,
-        }),
-      ]),
-    );
-    expect(signals.rendered_text_chars).toBe(5_000_000);
-    expect(signals.interactive_control_count).toBe(100_000);
-    expect(signals.dom_node_count).toBe(5_000_000);
-  });
-
   it("compares a bounded visible-fact sample instead of raw versus rendered JSON-LD", () => {
     const mismatched = buildObservations(
       runtime([
@@ -191,6 +171,55 @@ describe("browser observation evaluator", () => {
     expect(findings.find((item) => item.id === "representative_page_consistency")?.status).toBe(
       "pass",
     );
+  });
+});
+
+describe("the output the worker receives from the Actor", () => {
+  // The worker reads the output as JSON from the run's key-value store and
+  // parses it with the contract schema before anything is stored.
+  const received = (run: ObservationRuntime) =>
+    browserObservationOutputV1Schema.parse(
+      JSON.parse(
+        JSON.stringify(
+          buildBrowserOutput({
+            operationId: "019f5d64-1234-7abc-8abc-1234567890ab",
+            actorBuild: "1.0.42",
+            status: observedRunStatus(run, false),
+            runtime: run,
+            totalMs: 9_000,
+          }),
+        ),
+      ),
+    );
+
+  it("reports a page that made more than 1,000 requests instead of failing the run", () => {
+    // A category page with 1,200 product images: the runner counts every
+    // request the page makes, the ones it aborts past the budget included,
+    // so robots.txt, the document and the images come to 1,202.
+    const output = received({
+      ...runtime([page()]),
+      requestCount: 1_202,
+      requestBudgetExceeded: true,
+      maxRequests: 243,
+    });
+    expect(output).toMatchObject({ status: "partial", pages_assessed: 1 });
+    expect(output.observations.find((item) => item.id === "browser_runtime_cost")).toMatchObject({
+      status: "fail",
+      summary_code: "browser_runtime_request_budget_exceeded",
+      evidence: { request_count: 1_202 },
+    });
+  });
+
+  it("reports a page behind a cookie wall instead of failing the run", () => {
+    const output = received(runtime([page({ challengeKind: "cookie_wall" })]));
+    expect(output).toMatchObject({ status: "blocked", pages_assessed: 1 });
+    expect(
+      output.observations.find((item) => item.id === "session_or_challenge_wall"),
+    ).toMatchObject({
+      status: "fail",
+      summary_code: "public_page_challenge_observed",
+      evidence: { challenge_present: true, challenge_kind: "cookie_wall" },
+    });
   });
 });
 

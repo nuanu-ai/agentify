@@ -1,11 +1,17 @@
 import { isPathAllowed, parseRobots, type RobotsParseResult } from "@agentify/scanner";
 import {
-  BROWSER_OBSERVATION_VERSION,
   type BrowserObservationInputV1,
   type BrowserObservationOutputV1,
   browserObservationInputV1Schema,
 } from "@agentify/scanner-contracts";
-import { type Browser, type ConsoleMessage, chromium, type Page, type Request } from "playwright";
+import {
+  type Browser,
+  type ConsoleMessage,
+  chromium,
+  type Frame,
+  type Page,
+  type Request,
+} from "playwright";
 
 import { collectPageSignals, type PageSignals } from "./browser-signals.js";
 import {
@@ -16,25 +22,35 @@ import {
   safeBrowserRequest,
   validateActorTarget,
 } from "./network-policy.js";
-import {
-  aggregateBrowserSignals,
-  buildObservations,
-  type ObservationRuntime,
-} from "./observations.js";
+import { buildBrowserOutput, type ObservationRuntime, observedRunStatus } from "./observations.js";
 import { discoverRepresentativeUrls } from "./representative-pages.js";
 import { installPassiveRuntimeGuards, PASSIVE_BROWSER_ARGS } from "./runtime-guards.js";
-import { OutputSanitizationError, sanitizeBrowserOutput } from "./sanitize-output.js";
+import { OutputSanitizationError } from "./sanitize-output.js";
 
 const HONEST_USER_AGENT = "agentify-browser-observer/1.0 (+https://agentify.ad/scanner)";
 
+/**
+ * Fetches one resource: a robots.txt, or a request the page makes. The Actor
+ * always fetches through `safeBrowserRequest`, which holds the network
+ * policy; a test hands in a site of its own, since that policy refuses every
+ * address a test could serve from.
+ */
+export type FetchResource = typeof safeBrowserRequest;
+
+/** What a passed deadline reports: the code it was given, or the run's. */
+const deadlineError = (signal: AbortSignal): BrowserNetworkPolicyError =>
+  signal.reason instanceof BrowserNetworkPolicyError
+    ? signal.reason
+    : new BrowserNetworkPolicyError("run_timeout");
+
 export const raceWithAbort = async <T>(operation: Promise<T>, signal: AbortSignal): Promise<T> => {
   if (signal.aborted) {
-    throw new BrowserNetworkPolicyError("run_timeout");
+    throw deadlineError(signal);
   }
   return await new Promise<T>((resolve, reject) => {
     const onAbort = (): void => {
       cleanup();
-      reject(new BrowserNetworkPolicyError("run_timeout"));
+      reject(deadlineError(signal));
     };
     const cleanup = (): void => signal.removeEventListener("abort", onAbort);
     signal.addEventListener("abort", onAbort, { once: true });
@@ -150,8 +166,30 @@ type RobotsCacheValue =
 export const permitsSearchPurpose = (parsed: RobotsParseResult): boolean =>
   parsed.contentSignal?.search !== "no";
 
-export const permitsBrowserNavigation = (parsed: RobotsParseResult, pathname: string): boolean =>
-  permitsSearchPurpose(parsed) && isPathAllowed(parsed, "agentify-browser-observer", pathname);
+export const permitsBrowserNavigation = (parsed: RobotsParseResult, url: URL): boolean =>
+  permitsSearchPurpose(parsed) &&
+  isPathAllowed(parsed, "agentify-browser-observer", `${url.pathname || "/"}${url.search}`) ===
+    true;
+
+/**
+ * What a routed request navigates. Playwright cannot name the frame of a
+ * navigation issued before that frame exists, and throws when asked: that is
+ * the first navigation of a window the page opened, which the observer never
+ * opens. Nothing but a navigation is asked for its frame.
+ */
+export const navigationTarget = (
+  request: Pick<Request, "isNavigationRequest" | "frame">,
+  mainFrame: Frame | undefined,
+): "not_navigation" | "main_frame" | "child_frame" | "popup" => {
+  if (!request.isNavigationRequest()) return "not_navigation";
+  let frame: Frame;
+  try {
+    frame = request.frame();
+  } catch {
+    return "popup";
+  }
+  return frame === mainFrame ? "main_frame" : "child_frame";
+};
 
 export const authorizeMainFrameNavigation = async (options: {
   isNavigation: boolean;
@@ -167,6 +205,7 @@ const robotsAllows = async (options: {
   runtime: ReturnType<typeof emptyRuntime>;
   signal: AbortSignal;
   cache: Map<string, RobotsCacheValue>;
+  fetchResource: FetchResource;
 }): Promise<boolean> => {
   let cached = options.cache.get(options.url.origin);
   if (!cached) {
@@ -174,9 +213,9 @@ const robotsAllows = async (options: {
     let robotsBytes = 0;
     try {
       let robotsUrl = new URL("/robots.txt", options.url.origin);
-      let response: Awaited<ReturnType<typeof safeBrowserRequest>>;
+      let response: Awaited<ReturnType<FetchResource>>;
       for (let redirectCount = 0; ; redirectCount += 1) {
-        response = await safeBrowserRequest({
+        response = await options.fetchResource({
           url: robotsUrl,
           method: "GET",
           headers: {
@@ -225,7 +264,7 @@ const robotsAllows = async (options: {
   }
   if (cached.kind === "blocked") return false;
   if (cached.kind === "allow_all") return true;
-  return permitsBrowserNavigation(cached.value, options.url.pathname);
+  return permitsBrowserNavigation(cached.value, options.url);
 };
 
 const safeActorBuild = (value: string): string => {
@@ -273,19 +312,12 @@ const failureOutput = (options: {
   actorBuild: string;
   startedAt: number;
 }): BrowserObservationOutputV1 => {
-  const runtime = emptyRuntime(options.input);
-  return sanitizeBrowserOutput({
-    schema_version: BROWSER_OBSERVATION_VERSION,
-    operation_id: options.input.operation_id,
-    actor_build: safeActorBuild(options.actorBuild),
+  return buildBrowserOutput({
+    operationId: options.input.operation_id,
+    actorBuild: safeActorBuild(options.actorBuild),
     status: "failed",
-    pages_assessed: 0,
-    signals: aggregateBrowserSignals(runtime),
-    observations: buildObservations(runtime),
-    timings: {
-      total_ms: Math.min(120_000, Date.now() - options.startedAt),
-      pages: [],
-    },
+    runtime: emptyRuntime(options.input),
+    totalMs: Date.now() - options.startedAt,
   });
 };
 
@@ -296,12 +328,11 @@ const observePage = async (options: {
   runtime: ReturnType<typeof emptyRuntime>;
   runSignal: AbortSignal;
   robotsCache: Map<string, RobotsCacheValue>;
+  fetchResource: FetchResource;
 }): Promise<{
   signals: PageSignals;
-  durationMs: number;
   representativeUrls: URL[];
 }> => {
-  const startedAt = Date.now();
   const context = await raceWithAbort(
     options.browser.newContext({
       acceptDownloads: false,
@@ -328,11 +359,20 @@ const observePage = async (options: {
   const policyBlocked = new WeakSet<Request>();
   const pageAbort = new AbortController();
   let pageStage: "setup" | "new_page" | "navigation" | "load" | "extraction" = "setup";
+  // A page has page_timeout_ms from here for all it does: its navigation, its
+  // load and the extraction after it. When the page's deadline or the run's
+  // passes, its downloads are let go and its context, and no other, is closed.
+  const pageDeadline = new AbortController();
+  const pageTimer = setTimeout(() => {
+    pageDeadline.abort(new BrowserNetworkPolicyError("page_timeout"));
+  }, options.input.limits.page_timeout_ms);
+  pageTimer.unref();
+  const pageSignal = AbortSignal.any([options.runSignal, pageDeadline.signal]);
   const abortPage = (): void => {
     pageAbort.abort();
-    void settleWithin(context.close({ reason: "run_deadline" }));
+    void settleWithin(context.close({ reason: "deadline" }));
   };
-  options.runSignal.addEventListener("abort", abortPage, { once: true });
+  pageSignal.addEventListener("abort", abortPage, { once: true });
 
   try {
     await context.route("**/*", async (route) => {
@@ -345,6 +385,14 @@ const observePage = async (options: {
       ) {
         options.runtime.requestBudgetExceeded = true;
         policyBlocked.add(request);
+        await route.abort("blockedbyclient");
+        return;
+      }
+
+      const target = navigationTarget(request, primaryPage?.mainFrame());
+      if (target === "popup") {
+        policyBlocked.add(request);
+        options.runtime.blockedDestinationCount += 1;
         await route.abort("blockedbyclient");
         return;
       }
@@ -369,8 +417,8 @@ const observePage = async (options: {
       }
 
       const navigationAllowed = await authorizeMainFrameNavigation({
-        isNavigation: request.isNavigationRequest(),
-        isMainFrame: request.frame() === primaryPage?.mainFrame(),
+        isNavigation: target !== "not_navigation",
+        isMainFrame: target === "main_frame",
         url: decision.url,
         checkRobots: async (url) =>
           await robotsAllows({
@@ -379,6 +427,7 @@ const observePage = async (options: {
             runtime: options.runtime,
             signal: pageAbort.signal,
             cache: options.robotsCache,
+            fetchResource: options.fetchResource,
           }),
       });
       if (!navigationAllowed) {
@@ -394,7 +443,7 @@ const observePage = async (options: {
       }
 
       try {
-        const response = await safeBrowserRequest({
+        const response = await options.fetchResource({
           url: decision.url,
           method: request.method() as "GET" | "HEAD",
           headers: await request.allHeaders(),
@@ -409,8 +458,7 @@ const observePage = async (options: {
           },
         });
         if (
-          request.isNavigationRequest() &&
-          request.frame() === primaryPage?.mainFrame() &&
+          target === "main_frame" &&
           response.status >= 200 &&
           response.status < 400 &&
           (response.headers["content-type"] ?? "").toLowerCase().includes("text/html")
@@ -443,7 +491,7 @@ const observePage = async (options: {
       }
     });
     pageStage = "new_page";
-    primaryPage = await raceWithAbort(context.newPage(), options.runSignal);
+    primaryPage = await raceWithAbort(context.newPage(), pageSignal);
     primaryPage.on("console", (message) => {
       const category = categorizeConsole(message);
       if (category) options.runtime.consoleErrorCategories.push(category);
@@ -483,7 +531,7 @@ const observePage = async (options: {
         waitUntil: "domcontentloaded",
         timeout: options.input.limits.page_timeout_ms,
       }),
-      options.runSignal,
+      pageSignal,
     );
     pageStage = "load";
     await primaryPage
@@ -491,9 +539,10 @@ const observePage = async (options: {
         timeout: Math.min(1_500, options.input.limits.page_timeout_ms),
       })
       .catch(() => undefined);
-    if (pageAbort.signal.aborted || options.runSignal.aborted) {
-      throw new BrowserNetworkPolicyError("page_aborted");
-    }
+    // Out of time while waiting for the load event is a timeout, as it is at
+    // any other stage; aborted is the page's own requests stopping it.
+    if (pageSignal.aborted) throw deadlineError(pageSignal);
+    if (pageAbort.signal.aborted) throw new BrowserNetworkPolicyError("page_aborted");
     pageStage = "extraction";
     const extraction = Promise.all([
       collectPageSignals({
@@ -509,19 +558,18 @@ const observePage = async (options: {
         limit: 2,
       }),
     ]);
-    const [signals, representativeUrls] = await raceWithAbort(extraction, options.runSignal);
-    return {
-      signals,
-      durationMs: Date.now() - startedAt,
-      representativeUrls,
-    };
+    const [signals, representativeUrls] = await raceWithAbort(extraction, pageSignal);
+    return { signals, representativeUrls };
   } catch (error) {
     const code = safeRuntimeFailureCode(error);
     throw new BrowserNetworkPolicyError(
       code === "browser_runtime_failed" ? `${pageStage}_failed` : `${pageStage}_${code}`,
     );
   } finally {
-    options.runSignal.removeEventListener("abort", abortPage);
+    clearTimeout(pageTimer);
+    pageSignal.removeEventListener("abort", abortPage);
+    // Closing the context ends the page, not the downloads made for it here.
+    pageAbort.abort();
     await settleWithin(context.close({ reason: "observation_complete" }));
   }
 };
@@ -530,6 +578,7 @@ export const runBrowserObservation = async (options: {
   input: unknown;
   actorBuild: string;
   onRuntimeFailure?: (code: string) => void;
+  fetchResource?: FetchResource;
 }): Promise<BrowserObservationOutputV1> => {
   const input = browserObservationInputV1Schema.parse(options.input);
   if (input.policy.user_agent !== HONEST_USER_AGENT) {
@@ -543,7 +592,7 @@ export const runBrowserObservation = async (options: {
     declaredDomain: input.target.registrable_domain,
   }).slice(0, input.limits.max_pages);
   const runtime = emptyRuntime(input);
-  const timings: number[] = [];
+  const fetchResource = options.fetchResource ?? safeBrowserRequest;
   const runController = new AbortController();
   let runtimeStage: "robots" | "launch" | "page" | "output" = "robots";
   let browser: Browser | undefined;
@@ -563,22 +612,17 @@ export const runBrowserObservation = async (options: {
         runtime,
         signal: runController.signal,
         cache: robotsCache,
+        fetchResource,
       });
       if (allowed) {
         allowedUrls.push(url);
       } else if (index === 0) {
-        return sanitizeBrowserOutput({
-          schema_version: BROWSER_OBSERVATION_VERSION,
-          operation_id: input.operation_id,
-          actor_build: actorBuild,
+        return buildBrowserOutput({
+          operationId: input.operation_id,
+          actorBuild,
           status: "blocked",
-          pages_assessed: 0,
-          signals: aggregateBrowserSignals(runtime),
-          observations: buildObservations(runtime),
-          timings: {
-            total_ms: Math.min(120_000, Date.now() - startedAt),
-            pages: [],
-          },
+          runtime,
+          totalMs: Date.now() - startedAt,
         });
       } else {
         runtime.pageFailureCount += 1;
@@ -608,9 +652,9 @@ export const runBrowserObservation = async (options: {
           runtime,
           runSignal: runController.signal,
           robotsCache,
+          fetchResource,
         });
         runtime.pages.push(result.signals);
-        timings.push(result.durationMs);
         if (pageIndex === 0 && allowedUrls.length < input.limits.max_pages) {
           for (const candidate of result.representativeUrls) {
             if (allowedUrls.length >= input.limits.max_pages) break;
@@ -625,6 +669,7 @@ export const runBrowserObservation = async (options: {
                 runtime,
                 signal: runController.signal,
                 cache: robotsCache,
+                fetchResource,
               });
               if (allowed) allowedUrls.push(candidate);
               else runtime.pageFailureCount += 1;
@@ -640,31 +685,14 @@ export const runBrowserObservation = async (options: {
       if (runtime.byteBudgetExceeded || runtime.requestBudgetExceeded) break;
     }
 
-    const signals = aggregateBrowserSignals(runtime);
-    const status =
-      runtime.pages.length === 0
-        ? "failed"
-        : signals.challenge_kind
-          ? "blocked"
-          : runtime.pageFailureCount > 0 ||
-              runtime.byteBudgetExceeded ||
-              runtime.requestBudgetExceeded ||
-              runController.signal.aborted
-            ? "partial"
-            : "completed";
+    const status = observedRunStatus(runtime, runController.signal.aborted);
     runtimeStage = "output";
-    return sanitizeBrowserOutput({
-      schema_version: BROWSER_OBSERVATION_VERSION,
-      operation_id: input.operation_id,
-      actor_build: actorBuild,
+    return buildBrowserOutput({
+      operationId: input.operation_id,
+      actorBuild,
       status,
-      pages_assessed: runtime.pages.length,
-      signals,
-      observations: buildObservations(runtime),
-      timings: {
-        total_ms: Math.min(120_000, Date.now() - startedAt),
-        pages: timings.map((value) => Math.min(60_000, value)),
-      },
+      runtime,
+      totalMs: Date.now() - startedAt,
     });
   } catch (error) {
     const code = safeRuntimeFailureCode(error);

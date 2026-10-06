@@ -1,4 +1,4 @@
-# 0033. An agent knows who sells by a name and the shop's own site
+# 0034. An agent knows who sells by a name and the shop's own site
 
 Date: 2026-09-28
 Status: accepted (the product owner, 2026-09-28). Not built yet.
@@ -10,7 +10,7 @@ much, not by whom; the public card's own description says that who the
 merchant is to the buyer was left open (`packages/contracts/src/card.ts`). The
 one name a merchant has is the one a discovery catalog lists them under. An
 agent with a question the order cannot answer — a parcel that did not arrive
-(ADR-0032), a return, the terms of what it bought — has nowhere to take it.
+(ADR-0033), a return, the terms of what it bought — has nowhere to take it.
 A support channel or a merchant profile of our own would bring into Agentify
 what the merchant's site already carries.
 

@@ -1,5 +1,6 @@
-import type { LookupAddress } from "node:dns";
-import { describe, expect, it } from "vitest";
+import { promises as dns, type LookupAddress } from "node:dns";
+import http from "node:http";
+import { describe, expect, it, vi } from "vitest";
 
 import type { BrowserNetworkPolicyError } from "./network-policy.js";
 import {
@@ -7,6 +8,7 @@ import {
   inspectRequest,
   resolvePublicHost,
   resolveSafeNavigationRedirect,
+  safeBrowserRequest,
   selectPublicAddress,
   validateActorTarget,
 } from "./network-policy.js";
@@ -190,6 +192,82 @@ describe("browser network policy", () => {
         { address: "10.0.0.8", family: 4 },
       ]),
     ).toThrow(/ssrf_blocked/);
+  });
+
+  it("refuses a request once its page is aborted, before resolving its host", async () => {
+    const page = new AbortController();
+    page.abort();
+    // Resolving this host would refuse it as ssrf_blocked; an answer of
+    // request_aborted is the refusal coming first, with nothing resolved or sent.
+    await expect(
+      safeBrowserRequest({
+        url: new URL("http://127.0.0.1/"),
+        method: "GET",
+        headers: {},
+        signal: page.signal,
+        timeoutMs: 1_000,
+        consumeBytes: () => true,
+      }),
+    ).rejects.toMatchObject({ code: "request_aborted" });
+  });
+
+  it("stops waiting for a host's address once its page is aborted", async () => {
+    // A resolver that never answers: the page's end must end its request too.
+    const lookup = vi.spyOn(dns, "lookup").mockReturnValue(new Promise(() => {}) as never);
+    try {
+      const page = new AbortController();
+      const request = safeBrowserRequest({
+        url: new URL("http://slow-dns.example.com/lookbook.jpg"),
+        method: "GET",
+        headers: {},
+        signal: page.signal,
+        timeoutMs: 8_000,
+        consumeBytes: () => true,
+      });
+      setTimeout(() => page.abort(), 20);
+      await expect(request).rejects.toMatchObject({ code: "request_aborted" });
+    } finally {
+      lookup.mockRestore();
+    }
+  });
+
+  it("sends nothing for a page aborted just as its request's host is resolved", async () => {
+    // An address needs no lookup, so it resolves at once, and the page is
+    // aborted in the next moment, before the request would listen for that.
+    const send = vi.spyOn(http, "request").mockImplementation(() => {
+      throw new Error("a request was sent");
+    });
+    try {
+      const page = new AbortController();
+      const request = safeBrowserRequest({
+        url: new URL("http://93.184.216.34/lookbook.jpg"),
+        method: "GET",
+        headers: {},
+        signal: page.signal,
+        timeoutMs: 8_000,
+        consumeBytes: () => true,
+      });
+      queueMicrotask(() => page.abort());
+      await expect(request).rejects.toMatchObject({ code: "request_aborted" });
+    } finally {
+      send.mockRestore();
+    }
+  });
+
+  it("answers a connection's lookup only after it returns, as a real lookup does", async () => {
+    // A connection listens for its socket's errors once the lookup returns.
+    // Answered sooner, a connect() that fails at once, as it does for an
+    // IPv6-only site on a host with no IPv6, throws out of the Actor instead
+    // of failing its request.
+    const lookup = createPinnedLookup({ address: "93.184.216.34", family: 4 });
+    const answeredAfterReturn: boolean[] = [];
+    for (const all of [false, true]) {
+      let returned = false;
+      lookup("example.com", { all }, () => answeredAfterReturn.push(returned));
+      returned = true;
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(answeredAfterReturn).toEqual([true, true]);
   });
 
   it("returns the pinned address for both single and all-address lookups", async () => {

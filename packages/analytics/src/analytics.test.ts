@@ -56,7 +56,6 @@ describe("analytics privacy and dedup contracts", () => {
   it("removes email, scanned URL/domain/query and free text from destination properties", () => {
     const properties = sanitizeEventProperties("scan_completed", {
       coverage: 0.8,
-      cache_hit: false,
       terminal_status: "partial",
       email: "owner@example.com",
       scanned_url: "https://secret.example/?token=x",
@@ -66,7 +65,6 @@ describe("analytics privacy and dedup contracts", () => {
     });
     expect(properties).toEqual({
       coverage: 0.8,
-      cache_hit: false,
       terminal_status: "partial",
     });
     const event = createAnalyticsEvent({

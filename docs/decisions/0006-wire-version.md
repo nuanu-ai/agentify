@@ -3,7 +3,7 @@
 Date: 2026-08-27
 Status: accepted (autonomous mandate of 2026-08-26; revisited on the product
 owner's word; §5's open vocabularies and documents added 2026-09-28 with
-ADR-0032 and ADR-0033)
+ADR-0033 and ADR-0034)
 
 ## Context
 
@@ -82,8 +82,8 @@ the merchant's routes and is not derived from it.
    breaks a stranger's agent without a word. For the same reason the
    storefront's documents take fields added later, which an agent ignores. The
    merchant's schemas stay closed. The first values added this way are `ship`
-   and `shipped` (ADR-0032), and the first fields the seller's name and site
-   (ADR-0033).
+   and `shipped` (ADR-0033), and the first fields the seller's name and site
+   (ADR-0034).
 
    Rejected: a version segment on the storefront, on the argument that an
    incompatibly changed wire *is* a different resource to an agent and should

@@ -1,4 +1,4 @@
-# 0031. A buyer's address passes through us and is erased once the merchant holds it
+# 0032. A buyer's address passes through us and is erased once the merchant holds it
 
 Date: 2026-09-28
 Status: accepted (the product owner, 2026-09-28, after two rounds of
@@ -18,7 +18,7 @@ behind this decision is `docs/research/37-physical-goods.md`.
 
 ## Decision
 
-A card that ships (ADR-0032) takes a `ship_to` block beside `params`, in a
+A card that ships (ADR-0033) takes a `ship_to` block beside `params`, in a
 shape of ours with the Agentic Commerce Protocol's names: `name`, `line_one`,
 `line_two`, `city`, `state`, `postal_code`, `country`, `phone_number`. Any other
 card refuses it. The door checks the shape: a name, a first line, a city and a

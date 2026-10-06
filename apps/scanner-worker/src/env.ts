@@ -4,10 +4,6 @@ const workerEnvSchema = z
   .object({
     DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
     APP_BASE_URL: z.url({ protocol: /^https?$/ }),
-    SCANNER_CACHE_ENABLED: z
-      .enum(["true", "false"])
-      .default("false")
-      .transform((value) => value === "true"),
     SCANNER_CONCURRENCY: z.coerce.number().int().min(1).max(50).default(10),
     ANALYTICS_ENV: z.enum(["local", "test", "preview", "production"]).default("local"),
     POSTHOG_ENABLED: z

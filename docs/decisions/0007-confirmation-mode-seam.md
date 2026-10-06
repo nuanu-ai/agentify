@@ -3,7 +3,7 @@
 Date: 2026-08-27
 Status: accepted (the product owner, 2026-08-27, to be provided for in the
 architecture but not built yet; the parcel line in §5 added 2026-09-28 with
-ADR-0032)
+ADR-0033)
 
 ## Context
 
@@ -61,7 +61,7 @@ quietly, putting the pilot into a mode nobody chose.
    messaging channel rather than through code is the same trigger wearing
    different clothes — the design backlog holds that idea, and if it is taken
    up, the confirmation mode is completed with it rather than twice. The same
-   holds for parcels (ADR-0032): a shop that confirms stock by hand before a
+   holds for parcels (ADR-0033): a shop that confirms stock by hand before a
    parcel is paid for is this trigger, and `ship` with confirmation is
    completed together with the mode rather than on its own.
 

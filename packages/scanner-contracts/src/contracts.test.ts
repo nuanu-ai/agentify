@@ -4,6 +4,7 @@ import {
   ANALYTICS_EVENT_NAMES,
   BROWSER_OBSERVATION_IDS,
   BROWSER_OBSERVATION_VERSION,
+  browserObservationFindingSchema,
   browserObservationInputV1Schema,
   browserObservationOutputV1Schema,
   browserObservationStatusResponseSchema,
@@ -46,6 +47,7 @@ describe("canonical contracts", () => {
         summary_code: null,
         user_impact_code: null,
         fix_code: null,
+        robots: null,
         evidence: {},
       })),
       benchmark: null,
@@ -235,33 +237,13 @@ describe("canonical contracts", () => {
       actor_build: "1.0.42",
       status: "completed",
       pages_assessed: 1,
-      signals: {
-        rendered_text_chars: 10,
-        raw_to_rendered_ratio: 1,
-        landmark_counts: { main: 1 },
-        heading_level_counts: { h1: 1 },
-        interactive_control_count: 0,
-        unnamed_control_count: 0,
-        form_control_count: 0,
-        unlabeled_form_control_count: 0,
-        webmcp_present: false,
-        webmcp_tool_count: 0,
-        console_error_categories: [],
-        failed_resource_categories: [],
-        mixed_content_count: 0,
-        dom_node_count: 5,
-        script_count: 0,
-        request_count: 1,
-        transferred_bytes: 100,
-        challenge_kind: null,
-      },
       observations: BROWSER_OBSERVATION_IDS.map((id) => ({
         id,
         status: "pass",
         summary_code: `${id}_observed`,
         evidence: id === "accessibility_structure" ? { main_count: 1 } : {},
       })),
-      timings: { total_ms: 100, pages: [100] },
+      timings: { total_ms: 100 },
     };
     const [firstObservation] = output.observations;
     if (!firstObservation) throw new Error("the observation fixture has no observations");
@@ -301,7 +283,7 @@ describe("canonical contracts", () => {
     ).toBe(false);
   });
 
-  it("rejects unsafe browser code and category strings at worker ingestion", () => {
+  it("rejects unsafe browser finding codes at worker ingestion", () => {
     const operationId = "019b41a0-7c51-7d63-84bd-a5a20faef497";
     const output = {
       schema_version: BROWSER_OBSERVATION_VERSION,
@@ -309,26 +291,6 @@ describe("canonical contracts", () => {
       actor_build: "1.0.42",
       status: "completed",
       pages_assessed: 1,
-      signals: {
-        rendered_text_chars: 10,
-        raw_to_rendered_ratio: 1,
-        landmark_counts: { main: 1 },
-        heading_level_counts: { h1: 1 },
-        interactive_control_count: 0,
-        unnamed_control_count: 0,
-        form_control_count: 0,
-        unlabeled_form_control_count: 0,
-        webmcp_present: false,
-        webmcp_tool_count: 0,
-        console_error_categories: [],
-        failed_resource_categories: [],
-        mixed_content_count: 0,
-        dom_node_count: 5,
-        script_count: 0,
-        request_count: 1,
-        transferred_bytes: 100,
-        challenge_kind: null,
-      },
       observations: BROWSER_OBSERVATION_IDS.map((id) => ({
         id,
         status: "pass",
@@ -337,7 +299,7 @@ describe("canonical contracts", () => {
         remediation_code: "keep_public_surface_stable",
         evidence: {},
       })),
-      timings: { total_ms: 100, pages: [100] },
+      timings: { total_ms: 100 },
     };
     const unsafeValues = [
       "https://example.com/path?token=secret",
@@ -363,22 +325,58 @@ describe("canonical contracts", () => {
       }
     }
 
-    for (const unsafe of unsafeValues) {
-      const unsafeSignalVariants = [
-        { ...output.signals, landmark_counts: { [unsafe]: 1 } },
-        { ...output.signals, heading_level_counts: { [unsafe]: 1 } },
-        { ...output.signals, console_error_categories: [unsafe] },
-        { ...output.signals, failed_resource_categories: [unsafe] },
-        { ...output.signals, challenge_kind: unsafe },
-      ];
-      for (const signals of unsafeSignalVariants) {
-        expect(browserObservationOutputV1Schema.safeParse({ ...output, signals }).success).toBe(
-          false,
-        );
-      }
-    }
-
     expect(browserObservationOutputV1Schema.safeParse(output).success).toBe(true);
+  });
+
+  it("refuses an input in the previous browser contract by the version it names", () => {
+    // browser-public-v1.0.0 carried a signals object. An Actor build of this
+    // version handed an input of that one is told so at its version.
+    const previous = "browser-public-v1.0.0";
+    const operationId = "019b41a0-7c51-7d63-84bd-a5a20faef497";
+    const input = browserObservationInputV1Schema.safeParse({
+      schema_version: previous,
+      operation_id: operationId,
+      target: {
+        canonical_url: "https://example.com/",
+        registrable_domain: "example.com",
+        segment: "store",
+      },
+      representative_urls: [],
+      policy: {
+        user_agent: "agentify-browser-observer/1.0",
+        methods: ["GET", "HEAD"],
+        use_proxy: false,
+        respect_robots: true,
+        crawl_purpose: "search",
+      },
+      limits: {
+        max_pages: 3,
+        max_requests_per_page: 80,
+        max_total_bytes: 8 * 1024 * 1024,
+        page_timeout_ms: 12_000,
+        run_timeout_ms: 45_000,
+      },
+    });
+    expect(input.success).toBe(false);
+    expect(input.error?.issues.map((issue) => issue.path)).toEqual([["schema_version"]]);
+    // An Actor's answer in the previous version is the worker's to refuse, by
+    // name, before its shape is read (browser-observation-job.test.ts).
+  });
+
+  it("refuses a finding whose evidence list carries a raw address", () => {
+    const finding = {
+      id: "browser_network_health",
+      status: "fail",
+      summary_code: "required_resources_failed",
+      evidence: { failed_resource_categories: ["script", "https://cdn.example.com/app.js"] },
+    };
+    expect(browserObservationFindingSchema.safeParse(finding).success).toBe(false);
+    expect(
+      browserObservationFindingSchema.safeParse({
+        ...finding,
+        evidence: { failed_resource_categories: ["script"] },
+      }).success,
+    ).toBe(true);
   });
 
   it("keeps Actor build metadata out of the public browser response", () => {

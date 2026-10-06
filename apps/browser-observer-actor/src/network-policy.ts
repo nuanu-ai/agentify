@@ -260,18 +260,35 @@ export const selectPublicAddress = (
   return { address: first.address, family: first.family };
 };
 
+// Answered a tick later, as dns.lookup answers: a connection listens for its
+// socket's errors once the lookup returns, so a connect() that fails at once
+// must fail after that, as the request's error.
 export const createPinnedLookup =
   (resolved: { address: string; family: 4 | 6 }): LookupFunction =>
   (_hostname, lookupOptions, callback) => {
-    if (lookupOptions.all) {
-      callback(null, [resolved]);
-      return;
-    }
-    callback(null, resolved.address, resolved.family);
+    process.nextTick(() => {
+      if (lookupOptions.all) callback(null, [resolved]);
+      else callback(null, resolved.address, resolved.family);
+    });
   };
 
+// A page already aborted starts no work, and one aborted while the work runs
+// stops waiting for it.
+const untilAborted = <T>(work: () => Promise<T>, signal: AbortSignal): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(new BrowserNetworkPolicyError("request_aborted"));
+    if (signal.aborted) return onAbort();
+    signal.addEventListener("abort", onAbort, { once: true });
+    work()
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener("abort", onAbort));
+  });
+
 export const safeBrowserRequest = async (options: SafeRequestOptions): Promise<SafeResponse> => {
-  const resolved = await resolvePublicHost(options.url.hostname);
+  const resolved = await untilAborted(
+    () => resolvePublicHost(options.url.hostname),
+    options.signal,
+  );
   const lookup = createPinnedLookup(resolved);
   const port = options.url.port || (options.url.protocol === "https:" ? "443" : "80");
   const requestOptions: RequestOptions = {
@@ -288,6 +305,12 @@ export const safeBrowserRequest = async (options: SafeRequestOptions): Promise<S
   const transport = options.url.protocol === "https:" ? https : http;
 
   return await new Promise<SafeResponse>((resolve, reject) => {
+    // A page aborted after its host resolved, and before the request below
+    // listens for that, sends nothing either.
+    if (options.signal.aborted) {
+      reject(new BrowserNetworkPolicyError("request_aborted"));
+      return;
+    }
     let settled = false;
     // The first outcome wins: whichever of the response, the stream and the
     // request speaks first is the one this promise answers with.
