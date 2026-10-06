@@ -15,8 +15,6 @@
 /.local/
 docs/superpowers/
 .superpowers/
-# The tracker connection is one operator's local configuration, not source.
-.mcp.json
 
 # Secrets and environment
 .env

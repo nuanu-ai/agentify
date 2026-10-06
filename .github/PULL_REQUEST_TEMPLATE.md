@@ -1,4 +1,4 @@
-<!-- What changes and why, in a few sentences. Name the issue it rests on. -->
+<!-- What changes and why, in a few sentences. -->
 
 ## Review
 
