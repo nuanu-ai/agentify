@@ -1078,6 +1078,13 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       .send(integrationsScreen(viewingSettings(request, base, settings.document)));
   });
 
+  // The address the wallet form posts to, opened again from the history or the
+  // address bar after a refusal. There is nothing to show at it on its own, so
+  // it leads to the page the form lives on.
+  app.get(`${base}/settings/payout-wallet`, (_request, response) => {
+    response.redirect(303, `${base}/settings`);
+  });
+
   app.post(`${base}/settings`, async (request, response) => {
     const typed = nameIn(request);
     // Empty is a merchant trying to stop being listed, and the sentence names
