@@ -24,9 +24,9 @@ import { VisitorDoor } from "./visitor-door";
  */
 export function SiteDoors() {
   return (
-    <nav aria-label="Docs, cabinet and your session" className={styles.doors}>
+    <nav aria-label="Docs, dashboard and your session" className={styles.doors}>
       <a href="/docs/">Docs</a>
-      <a href="/cabinet/sign-in">Cabinet</a>
+      <a href="/cabinet/sign-in">Dashboard</a>
       <VisitorDoor />
     </nav>
   );
