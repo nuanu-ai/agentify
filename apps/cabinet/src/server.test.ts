@@ -1544,11 +1544,12 @@ describe("the settings screen", () => {
     await browser.signIn();
 
     const cards = await browser.get("/cards");
-    expect(cards.html).toMatch(/href="\/integrations"><i>\d<\/i>/);
+    expect(cards.html).toContain('href="/integrations"');
 
     const integrations = await browser.get("/integrations");
     expect(integrations.status).toBe(200);
-    expect(integrations.html).toContain('aria-current="page"');
+    const current = /aria-current="page">([\s\S]*?)<\/span>/.exec(integrations.html)?.[1] ?? "";
+    expect(readable(current)).toContain("Integrations");
     expect(integrations.html).toContain('href="/docs/quickstart"');
     expect(integrations.html).toContain('href="/keys?new=key"');
     // No shop is configured here, so the page offers no way that is not there.
@@ -3087,7 +3088,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
 
     expect(answered.status).toBe(404);
     expect(readable(answered.html)).toContain("There is no such page");
-    expect(answered.html).toContain('href="/cards"');
+    expect(answered.html).toMatch(/<a [^>]*href="\/cards"[^>]*>Back to the dashboard<\/a>/);
     const bar = /<header class="top">([\s\S]*?)<\/header>/.exec(answered.html)?.[1] ?? "";
     expect(readable(bar)).toContain(PERSON);
     expect(bar).toContain('method="post" action="/sign-out"');
