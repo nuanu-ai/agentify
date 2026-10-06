@@ -12,7 +12,7 @@ export function generateMetadata(): Metadata {
   return {
     title: "Sell to agents",
     description:
-      "Open your Agentify cabinet with an email link, integrate through the SDK and test agent-ready offers. Live publication requires operator approval.",
+      "Open your Agentify dashboard with an email link, integrate through the SDK and test agent-ready offers. Live publication requires operator approval.",
     alternates: { canonical: url },
     openGraph: {
       title: "Your next customer sends an agent. Be ready.",
@@ -77,7 +77,7 @@ export default function AgenticShopPage() {
             </p>
             <div className={styles.heroActions}>
               <a className={styles.primary} href="/cabinet/sign-in">
-                Open your cabinet <Arrow diagonal />
+                Open your dashboard <Arrow diagonal />
               </a>
               <a className={styles.textLink} href="#how-it-works">
                 See how it works <Arrow />
@@ -129,7 +129,7 @@ export default function AgenticShopPage() {
                   your business easier for their agents to order from.
                 </p>
                 <a href="/cabinet/sign-in" className={styles.lightLink}>
-                  Open your cabinet <Arrow diagonal />
+                  Open your dashboard <Arrow diagonal />
                 </a>
               </div>
               <div className={styles.chartCard}>
@@ -206,7 +206,7 @@ export default function AgenticShopPage() {
               <br />A familiar business.
             </h2>
             <p>
-              One email link opens the cabinet. Your SDK integration publishes the offers and the
+              One email link opens the dashboard. Your SDK integration publishes the offers and the
               rules an order follows.
             </p>
           </div>
@@ -216,7 +216,7 @@ export default function AgenticShopPage() {
               <div className={styles.stepSymbol} aria-hidden="true">
                 ↗
               </div>
-              <h3>Open your cabinet.</h3>
+              <h3>Open your dashboard.</h3>
               <p>
                 Enter your email and use the one-time link. The first visit creates your merchant
                 and asks for the name buyers will see.
@@ -256,13 +256,13 @@ export default function AgenticShopPage() {
                 <span>Keep test and live distinct.</span>
               </h2>
               <p>
-                Buyers pay in USDC and the money goes straight to the wallet in your cabinet. There
-                is no payout from us and no settlement period. Test publication stays open while
-                live waits for approval.
+                Buyers pay in USDC and the money goes straight to the wallet in your dashboard.
+                There is no payout from us and no settlement period. Test publication stays open
+                while live waits for approval.
               </p>
               <div className={styles.settlementLinks}>
                 <a className={styles.textLink} href="/cabinet/sign-in">
-                  Open your cabinet <Arrow />
+                  Open your dashboard <Arrow />
                 </a>
                 <a
                   className={styles.textLink}
@@ -300,13 +300,13 @@ export default function AgenticShopPage() {
                 <span className={styles.nodeIcon}>03</span>
                 <div>
                   <strong>Your payout wallet</strong>
-                  <span>The address set in your cabinet</span>
+                  <span>The address set in your dashboard</span>
                 </div>
                 <span aria-hidden="true">✓</span>
               </div>
               <p>
                 Publishing needs a seller name and a payout wallet, on the test channel as well as
-                live, and live publication also needs the operator’s approval. Opening a cabinet
+                live, and live publication also needs the operator’s approval. Opening a dashboard
                 grants none of them.
               </p>
             </div>
@@ -364,7 +364,7 @@ export default function AgenticShopPage() {
               before activation.
             </p>
             <a href="/cabinet/sign-in">
-              Open your cabinet <Arrow diagonal />
+              Open your dashboard <Arrow diagonal />
             </a>
           </div>
         </section>
@@ -402,7 +402,7 @@ export default function AgenticShopPage() {
                 your email.
               </h2>
               <p>
-                The one-time link signs you in or creates your cabinet. No password, no invitation
+                The one-time link signs you in or creates your dashboard. No password, no invitation
                 code, no review to pass before the test channel.
               </p>
               <ul>
@@ -420,13 +420,14 @@ export default function AgenticShopPage() {
             <div className={styles.entryCard}>
               <h3>Open the door from your inbox.</h3>
               <p>
-                Enter your email in the cabinet. The message works once and expires after one hour.
+                Enter your email in the dashboard. The message works once and expires after one
+                hour.
               </p>
               <a className={styles.primary} href="/cabinet/sign-in">
-                Open your cabinet <Arrow diagonal />
+                Open your dashboard <Arrow diagonal />
               </a>
               <p className={styles.entryFootnote}>
-                The mailbox is the key to the cabinet. A shared mailbox means a shared cabinet.
+                The mailbox is the key to the dashboard. A shared mailbox means a shared dashboard.
               </p>
             </div>
           </div>

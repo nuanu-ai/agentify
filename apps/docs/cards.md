@@ -559,7 +559,7 @@ Updating is the call that created it. Publishing again under the same
 one: the key is yours, and we find what is already published by it. So a card
 can be uploaded from a script without checking first whether we have it.
 
-Taking a card off sale is the pause in the cabinet rather than a call. Paused,
+Taking a card off sale is the pause in the dashboard rather than a call. Paused,
 the card stops being visible in the catalogues, and the orders still open
 against it play out in the ordinary way. Nothing removes a card altogether, and
 what that ought to be is not settled.

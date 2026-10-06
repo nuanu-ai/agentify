@@ -167,7 +167,7 @@ describe("a wallet change", () => {
       expect(text).toContain("2026-09-26 12:00:00 UTC");
       // Only a cabinet's key changes a wallet, so where it was asked for is
       // the cabinet, and a person who did not ask knows a session did.
-      expect(text).toMatch(/asked for in the cabinet/i);
+      expect(text).toMatch(/asked for in the dashboard/i);
       expect(text).toContain(THE_SETTINGS_SCREEN);
       expect(text).not.toMatch(/token/i);
     }
@@ -324,7 +324,7 @@ describe("what is announced once it is done", () => {
     expect(await answered.json()).toStrictEqual({ outcome: "handed_over" });
     for (const text of [sent[0]?.body ?? "", sent[0]?.html ?? ""]) {
       expect(text).toContain(TO);
-      expect(text).toMatch(/in the cabinet/i);
+      expect(text).toMatch(/in the dashboard/i);
       expect(text).toContain(THE_SETTINGS_SCREEN);
     }
   });

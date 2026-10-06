@@ -1972,7 +1972,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
         .send(
           problemPage(
             base,
-            "Something in the cabinet is broken. Check the page you were on before deciding whether it went through.",
+            "Something in the dashboard is broken. Check the page you were on before deciding whether it went through.",
           ),
         );
     },
@@ -2089,7 +2089,7 @@ function sameOriginUnder(base: string, mode: CabinetConfig["surfaceMode"]) {
     response
       .status(403)
       .type("html")
-      .send(problemPageAt(base, mode, "This form did not come from the cabinet."));
+      .send(problemPageAt(base, mode, "This form did not come from the dashboard."));
   };
 }
 
@@ -2269,7 +2269,7 @@ function troubleAt(
           base,
           mode,
           "The gateway will not accept the key stored for this account, so none of these" +
-            " screens can be drawn. Signing in again does not help: the cabinet asks for a" +
+            " screens can be drawn. Signing in again does not help: the dashboard asks for a" +
             " fresh key with the one it is holding, and that is the key being refused. A new" +
             " account has to be made for this merchant, by somebody holding a key the gateway" +
             " still accepts. Your sign-in itself is unaffected.",

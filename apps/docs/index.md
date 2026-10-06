@@ -75,7 +75,7 @@ Agentify publishes it in its own catalogue and carries paid orders to your
 handler. Listing in an external discovery catalogue is measured separately and
 is not guaranteed by publication or by a completed purchase.
 
-You can stop the sales yourself at any moment. The cabinet is a page on our
+You can stop the sales yourself at any moment. The dashboard is a page on our
 side that you sign in to through a one-time link sent to your email, and it
 shows your cards, your orders and the receipts for the sales that went through.
 That account is not the key your code sends us, so ending someone's session
@@ -99,9 +99,9 @@ dispute — are collected in the [common questions](/faq).
 
 ## How to start
 
-<a href="/cabinet/sign-in" target="_self">Open the cabinet</a>, enter your email address and
+<a href="/cabinet/sign-in" target="_self">Open the dashboard</a>, enter your email address and
 follow the one-time link in the message. Pressing its confirmation button
-opens your cabinet. On your first visit, it asks for the seller name that the
+opens your dashboard. On your first visit, it asks for the seller name that the
 buyer's payment request will show. You can then issue an API key and integrate
 against the test channel.
 
@@ -111,14 +111,14 @@ and does not require a wallet. Live sales also require the operator's one-time
 approval of your merchant; test sales do not. Publication lists every missing
 prerequisite. [The first test sale](/quickstart) walks through the setup.
 
-The wallet is set on the Settings screen of your cabinet and nowhere else: the
+The wallet is set on the Settings screen of your dashboard and nowhere else: the
 API keys you issue operate your shop, and none of them can change where its
 money goes. On the live channel, replacing a wallet you have already saved
-takes two days. Every cabinet account of your merchant is sent a message about
+takes two days. Everybody who signs in to your merchant's dashboard is sent a message about
 the change first, and the new address takes effect forty-eight hours later;
 until then your sales keep arriving at the address you had. The wait is there
 because the wallet is the one setting that sends your money somewhere else,
-and a cabinet session left open on another device, or taken by somebody else,
+and a dashboard session left open on another device, or taken by somebody else,
 could ask for a change: you hear about it, and cancelling it on the Settings
 screen also signs every other session out. If you have lost access to the old
 wallet, pause selling for those two days. The first wallet you save applies at
@@ -135,7 +135,7 @@ review.
 ## What is not settled yet
 
 - What the subscription costs and what it covers.
-- Reconciling the money. Orders are visible in the cabinet, but we write a
+- Reconciling the money. Orders are visible in the dashboard, but we write a
   receipt at the moment the goods are delivered, so an order that is paid for
   and not yet delivered appears among the orders and not among the receipts.
   The money arrives straight in your wallet, and putting the two together is

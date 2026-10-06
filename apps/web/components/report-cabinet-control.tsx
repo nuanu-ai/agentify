@@ -10,7 +10,7 @@
 export function ReportCabinetControl() {
   return (
     <a className="button button-primary" href="/cabinet/">
-      Open your cabinet
+      Open your dashboard
     </a>
   );
 }

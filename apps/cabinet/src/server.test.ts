@@ -727,7 +727,7 @@ describe("the passwordless cabinet door", () => {
     const form = readable((await browser.get("/sign-in")).html);
 
     expect(form).toMatch(/new to agentify\?/i);
-    expect(form).toMatch(/merchant cabinet/i);
+    expect(form).toMatch(/seller dashboard/i);
   });
 
   it("asks only for an address and answers known and unknown people identically", async () => {
@@ -3083,7 +3083,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
 
       expect(answered.status).toBe(500);
       const text = readable(answered.html);
-      expect(text).toContain("Something in the cabinet is broken");
+      expect(text).toContain("Something in the dashboard is broken");
       expect(text).not.toContain("Nothing was changed");
     } finally {
       await close();
@@ -3353,7 +3353,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     ]) {
       const forged = await browser.sending({ origin }).post("/sign-in", credentials);
       expect(forged.status, origin).toBe(403);
-      expect(readable(forged.html), origin).toContain("did not come from the cabinet");
+      expect(readable(forged.html), origin).toContain("did not come from the dashboard");
     }
   });
 

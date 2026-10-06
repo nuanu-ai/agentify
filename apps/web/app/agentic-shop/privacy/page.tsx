@@ -30,8 +30,9 @@ export default function MerchantPrivacyPage() {
         </h1>
         <p>
           This notice covers information sent through the former merchant application form. Agentify
-          no longer accepts applications at that path. A new merchant now opens the cabinet with an
-          email link instead; that action does not add anything to the historical application data.
+          no longer accepts applications at that path. A new merchant now opens the dashboard with
+          an email link instead; that action does not add anything to the historical application
+          data.
         </p>
         <h2>What was collected and why</h2>
         <p>

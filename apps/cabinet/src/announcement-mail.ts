@@ -71,15 +71,15 @@ const inert = (label: string): string => label.replace(/[.:/@]/g, (mark) => `${m
 /** A key, the way a person reading the message finds it in the cabinet. */
 const named = (key: AskedWith): string =>
   key.kind === "cabinet"
-    ? "the key your cabinet calls with"
+    ? "the key your dashboard calls with"
     : `the key ${key.id}, named "${inert(key.label)}", one of the keys issued for your own code`;
 
 /** Where every wallet change is asked for, and the only place it can be. */
-const IN_THE_CABINET = "in the cabinet";
+const IN_THE_DASHBOARD = "in the dashboard";
 
 /** What to do about a waiting change, if the reader did not ask for it. */
 const IF_NOT_YOU =
-  "If nobody at your business did this, somebody else may be signed in to your cabinet: cancelling the change on the wallet screen signs every other session out.";
+  "If nobody at your business did this, somebody else may be signed in to your dashboard: cancelling the change on the wallet screen signs every other session out.";
 
 /**
  * What works when nothing waits, in the order it works: the stop, which is
@@ -88,7 +88,7 @@ const IF_NOT_YOU =
  * waits and is announced. The two controls are named as the screens name them.
  */
 const PAUSE_THEN_SET = (settings: string): string =>
-  `Somebody else may be signed in to your cabinet. First press ${STOP_ALL_SELLING} on the Cards screen, which stops new sales at once. Then press ${SIGN_OUT_EVERY_OTHER_DEVICE} in Settings, which ends every other session of your account: ${settings}. Then set your own address there; that waits forty-eight hours and is announced, so keep selling stopped until it applies.`;
+  `Somebody else may be signed in to your dashboard. First press ${STOP_ALL_SELLING} on the Cards screen, which stops new sales at once. Then press ${SIGN_OUT_EVERY_OTHER_DEVICE} in Settings, which ends every other session of your account: ${settings}. Then set your own address there; that waits forty-eight hours and is announced, so keep selling stopped until it applies.`;
 
 export function announcementMessage(
   to: string,
@@ -99,12 +99,12 @@ export function announcementMessage(
     case "wallet_change": {
       const notBefore = moment(announcement.not_before);
       const lead =
-        `A change of the wallet your sales are paid into was asked for ${IN_THE_CABINET}.` +
+        `A change of the wallet your sales are paid into was asked for ${IN_THE_DASHBOARD}.` +
         ` From ${announcement.from} to ${announcement.to}.`;
       const paragraphs = [
-        `It takes effect not before ${notBefore}, and only if the wallet screen of your cabinet shows it waiting: ${screens.wallet}. Until then every sale is paid into ${announcement.from}.`,
+        `It takes effect not before ${notBefore}, and only if the wallet screen of your dashboard shows it waiting: ${screens.wallet}. Until then every sale is paid into ${announcement.from}.`,
         `If you did not ask for this, cancel it on that screen. ${IF_NOT_YOU}`,
-        "This message opens nothing by itself: sign in to your cabinet the usual way.",
+        "This message opens nothing by itself: sign in to your dashboard the usual way.",
       ];
       return written(to, {
         subject: "Your payout wallet is set to change",
@@ -118,7 +118,7 @@ export function announcementMessage(
     }
     case "wallet_set": {
       const lead =
-        `The wallet your sales are paid into was set to ${announcement.to} ${IN_THE_CABINET}.` +
+        `The wallet your sales are paid into was set to ${announcement.to} ${IN_THE_DASHBOARD}.` +
         " It is the first address your merchant has had, so it applies now.";
       return written(to, {
         subject: "A payout wallet was set for your merchant",
@@ -129,13 +129,13 @@ export function announcementMessage(
         link: screens.wallet,
         paragraphs: [
           `If nobody at your business set it, act now. ${PAUSE_THEN_SET(screens.wallet)}`,
-          "This message opens nothing by itself: sign in to your cabinet the usual way.",
+          "This message opens nothing by itself: sign in to your dashboard the usual way.",
         ],
       });
     }
     case "wallet_change_cancelled": {
       const lead =
-        `The waiting change of your payout wallet to ${announcement.cancelled} was cancelled ${IN_THE_CABINET}.` +
+        `The waiting change of your payout wallet to ${announcement.cancelled} was cancelled ${IN_THE_DASHBOARD}.` +
         ` Your sales are still paid into ${announcement.kept}.`;
       return written(to, {
         subject: "A payout wallet change was cancelled",
@@ -146,14 +146,14 @@ export function announcementMessage(
         link: screens.wallet,
         paragraphs: [
           `If you did not cancel it, the cancel may have signed you out too, with every other session of your merchant, so sign in again. ${PAUSE_THEN_SET(screens.wallet)}`,
-          "This message opens nothing by itself: sign in to your cabinet the usual way.",
+          "This message opens nothing by itself: sign in to your dashboard the usual way.",
         ],
       });
     }
     case "key_issued": {
       const lead =
         `A new key, ${announcement.key.id}, named "${inert(announcement.key.label)}", was issued for your own code with ${named(announcement.asked_with)}.` +
-        " A key can call everything your code can, except changing where your money goes, which only the cabinet does.";
+        " A key can call everything your code can, except changing where your money goes, which only the dashboard does.";
       return written(to, {
         subject: "A new key was issued for your merchant",
         eyebrow: "Keys",
@@ -163,7 +163,7 @@ export function announcementMessage(
         link: screens.keys,
         paragraphs: [
           `If nobody at your business issued it, disable it on the keys screen: ${screens.keys}.`,
-          "This message opens nothing by itself: sign in to your cabinet the usual way.",
+          "This message opens nothing by itself: sign in to your dashboard the usual way.",
         ],
       });
     }
@@ -200,7 +200,7 @@ function written(
       action: content.action,
       link: content.link,
       paragraphs: content.paragraphs,
-      reason: "This message was sent to every cabinet account of your merchant.",
+      reason: "This message was sent to everybody who signs in to your merchant's dashboard.",
     }),
   };
 }
