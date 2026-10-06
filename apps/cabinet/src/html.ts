@@ -155,15 +155,18 @@ const sections = (chrome: Chrome): string =>
 
 /**
  * The menu behind the burger on a phone and a tablet, where there is no room
- * for the sidebar. A details element, so it opens without a script; the script
- * below adds closing from outside and on Escape and swaps the button's label.
+ * for the sidebar. A details element, so it opens and closes on its button
+ * with no script at all (ADR-0009 §3), and every link in it leads to another
+ * page, which closes it. Its button says "Menu" in both states, because a
+ * details element already tells a screen reader whether it is open.
+ *
  * The sidebar's own list and help box are hidden at these widths, so only one
  * of the two navigations is ever on the screen. Who is signed in, and the way
  * out, stay in the bar at the top at every width (ADR-0026 §3), so the menu
  * does not repeat them.
  */
 const narrowMenu = (chrome: Chrome): string => `<details class="app-menu">
-        <summary aria-label="Open menu" data-label="Close menu"><span></span><span></span><span></span></summary>
+        <summary aria-label="Menu"><span></span><span></span><span></span></summary>
         <div class="app-menu-panel">
           <nav class="app-menu-sections" aria-label="Dashboard sections">${sections(chrome)}</nav>
           <a class="app-menu-docs" href="/docs/">Open the docs →</a>
@@ -212,7 +215,6 @@ ${accountRow(chrome.base, chrome.who)}      </div></header>
     </div>
   </div>
 ${FOOT}</div>
-${MENU_CLOSES}
 </body>
 </html>
 `;
@@ -239,36 +241,6 @@ const accountRow = (base: string, who: string): string => `      <div class="acc
         </form>
       </div>
 `;
-
-/**
- * A details element opens and closes only on its own summary, so a menu left
- * open stays open over the page. A press anywhere outside it and the Escape key
- * close it, the way every other menu a person has used behaves.
- */
-const MENU_CLOSES = `<script>
-(() => {
-  const menus = document.querySelectorAll("details.app-menu");
-  document.addEventListener("click", (event) => {
-    for (const menu of menus) {
-      if (menu.open && !menu.contains(event.target)) menu.open = false;
-    }
-  });
-  document.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape") return;
-    for (const menu of menus) {
-      if (!menu.open) continue;
-      menu.open = false;
-      menu.querySelector("summary").focus();
-    }
-  });
-  const burger = document.querySelector("details.app-menu > summary");
-  if (burger === null) return;
-  const labels = [burger.getAttribute("aria-label"), burger.dataset.label];
-  burger.parentElement.addEventListener("toggle", (event) => {
-    burger.setAttribute("aria-label", labels[event.target.open ? 1 : 0]);
-  });
-})();
-</script>`;
 
 /**
  * The line at the top of every working screen while no name is set.
