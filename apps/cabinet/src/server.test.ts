@@ -1573,6 +1573,16 @@ describe("the settings screen", () => {
     expect((await browser.get("/keys")).html).not.toMatch(/<input id="label"[^>]*autofocus/);
   });
 
+  it("leads the wallet form's address, opened again, to the settings it lives on", async () => {
+    const { browser } = await started();
+    await browser.signIn();
+
+    const answered = await browser.get("/settings/payout-wallet");
+
+    expect(answered.status).toBe(303);
+    expect(answered.to).toBe("/settings");
+  });
+
   it("answers an emptied box with the control that does what they meant", async () => {
     // Emptying this box is a merchant trying to stop being listed. The route
     // refuses it either way, so the question is which sentence they read: the
