@@ -40,14 +40,14 @@ import {
   type PayoutWallet as PayoutWalletDocument,
 } from "@nuanu-ai/agentify-contracts";
 import express, { type Express, type Request, type Response } from "express";
+import type { CabinetConfig } from "./config.js";
 import type {
   CabinetDestination,
   CabinetIdentity,
   LinkDestination,
   Person,
-} from "./cabinet-entry.js";
-import { keyRenewal, sessionReader } from "./cabinet-key.js";
-import type { CabinetConfig } from "./config.js";
+} from "./dashboard-entry.js";
+import { keyRenewal, sessionReader } from "./dashboard-key.js";
 import {
   type Answer,
   type GatewayClient,

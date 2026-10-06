@@ -8,7 +8,7 @@
 
 import { createHash } from "node:crypto";
 import type { Delivery, OrderCallResponse, OrderWithStatus } from "@nuanu-ai/agentify-contracts";
-import type { Person } from "./cabinet-entry.js";
+import type { Person } from "./dashboard-entry.js";
 import type { Answer } from "./gateway.js";
 import {
   createTheOrderInTheShop,

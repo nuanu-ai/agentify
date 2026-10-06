@@ -55,7 +55,7 @@ if ((email === "--help" || email === "-h") && extra.length === 0) {
       "agentify-cabinet-1",
       "pnpm",
       "--filter",
-      "./apps/cabinet",
+      "./apps/dashboard",
       "--fail-if-no-match",
       "forget",
     ],

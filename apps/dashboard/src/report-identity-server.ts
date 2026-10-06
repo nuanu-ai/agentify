@@ -21,7 +21,7 @@ import {
   sendReportLinkResponseSchema,
 } from "@agentify/scanner-contracts/report-identity";
 import express, { type NextFunction, type Request, type Response } from "express";
-import type { Person } from "./cabinet-entry.js";
+import type { Person } from "./dashboard-entry.js";
 import type { Identity } from "./identity.js";
 
 export const REPORT_IDENTITY_PATH = "/internal/report-identity";

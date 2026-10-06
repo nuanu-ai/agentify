@@ -125,7 +125,7 @@ and derive the variant name from the segment a second time, beside the
 variant the landing configuration already carries.
 
 The cabinet's only way out is "Docs →" and the brand mark, which leads to
-`/` (`apps/cabinet/src/html.ts`). The documentation links the cabinet's door
+`/` (`apps/dashboard/src/html.ts`). The documentation links the cabinet's door
 from its front page and from the quickstart.
 
 ## The journey

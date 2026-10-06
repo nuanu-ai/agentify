@@ -35,7 +35,7 @@ const WANTED = (() => {
 const databaseUrl = await readyDatabase(WANTED);
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..", "..", "..");
-const tsx = join(root, "apps", "cabinet", "node_modules", "tsx", "dist", "loader.mjs");
+const tsx = join(root, "apps", "dashboard", "node_modules", "tsx", "dist", "loader.mjs");
 const gatewayMigrations = join(here, "..", "..", "gateway", "drizzle");
 const cabinetMigrations = join(here, "..", "drizzle");
 
@@ -152,7 +152,7 @@ if (databaseUrl === null) {
   ): { readonly status: number | null; readonly output: string } => {
     const result = spawnSync(
       process.execPath,
-      ["--import", tsx, join(root, "apps", "cabinet", "src", "forget.ts")],
+      ["--import", tsx, join(root, "apps", "dashboard", "src", "forget.ts")],
       {
         cwd: root,
         encoding: "utf8",

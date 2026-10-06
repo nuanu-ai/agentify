@@ -24,7 +24,7 @@ import { printable } from "./printable.js";
 const LOOKS_LIKE_AN_ADDRESS = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
 
 const USAGE = [
-  "Usage: pnpm --filter @agentify/cabinet account <command>",
+  "Usage: pnpm --filter @agentify/dashboard account <command>",
   "",
   "  revoke <address>          end every session that person has, keeping the account",
   "  operator <address>        let that person read the operator's dashboard at",
@@ -105,7 +105,7 @@ export async function runAccount(
       throw thrown;
     }
     say("The cabinet's tables are not in this database yet.");
-    say("Run: pnpm --filter @agentify/cabinet db:migrate");
+    say("Run: pnpm --filter @agentify/dashboard db:migrate");
     return 1;
   }
 }

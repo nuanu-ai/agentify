@@ -110,7 +110,7 @@
 - [x] Переход идентичности сканера в кабинет завершён на обоих каналах:
       2026-09-23 таблицы `public.scanner_auth_users` в `agentify_scanner` не
       оказалось ни на TEST, ни на PRODUCTION. Его машинерия удалена — импортёр
-      в `apps/cabinet`, `prepare-identity-cutover.py`, `--identity-preflight`,
+      в `apps/dashboard`, `prepare-identity-cutover.py`, `--identity-preflight`,
       `release-identity-target-fingerprint.sql` и шаги активации, — и миграции
       сканера при активации идут одним обычным прогоном.
 - [x] PRODUCTION не может перейти на слитый граф этой машинерией. Стейджинг

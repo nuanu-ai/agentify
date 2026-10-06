@@ -12,7 +12,7 @@
  * it too, after its answer (`report-identity-server.ts`).
  */
 
-import type { CabinetIdentity, LiveSession, Person, SessionReading } from "./cabinet-entry.js";
+import type { CabinetIdentity, LiveSession, Person, SessionReading } from "./dashboard-entry.js";
 import type { GatewayClient } from "./gateway.js";
 
 /**

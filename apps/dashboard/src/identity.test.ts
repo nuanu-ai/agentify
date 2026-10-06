@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import type { CabinetIdentity } from "./cabinet-entry.js";
 import { loadConfig } from "./config.js";
+import type { CabinetIdentity } from "./dashboard-entry.js";
 import { identityFor, LINK_MIN_INTERVAL_MS, LINK_RATE_WINDOW_MS } from "./identity.js";
 import type { Message } from "./mail.js";
 import { rewindLinkSends } from "./testing/link-sends.js";

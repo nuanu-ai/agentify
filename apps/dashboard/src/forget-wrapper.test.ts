@@ -1,4 +1,4 @@
-/** The Mac-side production wrapper as a process, with a fake local ssh binary. */
+/** The Mac-side TEST wrapper of `pnpm forget` as a process, with a fake local ssh binary. */
 
 import { execFile, spawnSync } from "node:child_process";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -10,8 +10,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const execute = promisify(execFile);
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-const wrapper = join(root, "scripts", "approve.mjs");
-const tsx = join(root, "apps", "cabinet", "node_modules", "tsx", "dist", "loader.mjs");
+const wrapper = join(root, "scripts", "forget.mjs");
+const tsx = join(root, "apps", "dashboard", "node_modules", "tsx", "dist", "loader.mjs");
 const temporary: string[] = [];
 
 afterEach(async () => {
@@ -28,7 +28,7 @@ async function fakeSsh(
   readonly argumentsFile: string;
   readonly inputFile: string;
 }> {
-  const path = await mkdtemp(join(tmpdir(), "agentify-approve-"));
+  const path = await mkdtemp(join(tmpdir(), "agentify-forget-"));
   temporary.push(path);
   const argumentsFile = join(path, "arguments");
   const inputFile = join(path, "input");
@@ -74,13 +74,13 @@ async function invoked(
   }
 }
 
-describe("pnpm approve's local production wrapper", () => {
-  it("shows production help locally without opening ssh", async () => {
+describe("pnpm forget's local TEST wrapper", () => {
+  it("shows help locally without opening ssh", async () => {
     const result = await invoked(["--help"]);
 
     expect(result.code).toBe(0);
-    expect(`${result.stdout}\n${result.stderr}`).toMatch(/production/i);
-    expect(`${result.stdout}\n${result.stderr}`).toMatch(/pnpm approve <email>/i);
+    expect(`${result.stdout}\n${result.stderr}`).toMatch(/test/i);
+    expect(`${result.stdout}\n${result.stderr}`).toMatch(/pnpm forget <email>/i);
     await expect(readFile(result.ssh.argumentsFile, "utf8")).rejects.toMatchObject({
       code: "ENOENT",
     });
@@ -90,13 +90,13 @@ describe("pnpm approve's local production wrapper", () => {
     const result = await invoked([]);
 
     expect(result.code).not.toBe(0);
-    expect(`${result.stdout}\n${result.stderr}`).toMatch(/production/i);
+    expect(`${result.stdout}\n${result.stderr}`).toMatch(/pnpm forget <email>/i);
     await expect(readFile(result.ssh.argumentsFile, "utf8")).rejects.toMatchObject({
       code: "ENOENT",
     });
   });
 
-  it("passes arbitrary email text only on stdin to one fixed production command", async () => {
+  it("passes arbitrary email text only on stdin to one fixed command on the TEST host", async () => {
     const email = "merchant@example.com; touch /tmp/this-must-not-run";
     const result = await invoked([email]);
 
@@ -109,7 +109,7 @@ describe("pnpm approve's local production wrapper", () => {
         "-o",
         "ControlPersist=60",
         "-o",
-        "ControlPath=~/.ssh/agentify-approve-%C",
+        "ControlPath=~/.ssh/agentify-forget-%C",
         "-o",
         "BatchMode=yes",
         "-o",
@@ -118,7 +118,7 @@ describe("pnpm approve's local production wrapper", () => {
         "ServerAliveInterval=10",
         "-o",
         "ServerAliveCountMax=3",
-        "agentify",
+        "agentify-test",
         "sudo",
         "-n",
         "docker",
@@ -127,9 +127,9 @@ describe("pnpm approve's local production wrapper", () => {
         "agentify-cabinet-1",
         "pnpm",
         "--filter",
-        "./apps/cabinet",
+        "./apps/dashboard",
         "--fail-if-no-match",
-        "approve",
+        "forget",
       ].join("\n")}\n`,
     );
   });
@@ -140,53 +140,79 @@ describe("pnpm approve's local production wrapper", () => {
 
     expect(result.code).toBe(1);
     expect(output).not.toMatch(/unknown|uncertain/i);
-    expect(output).not.toMatch(/retry/i);
+    expect(output).not.toMatch(/again/i);
   });
 
-  it("describes an interrupted ssh result as unknown and safe to inspect by retrying", async () => {
+  it("describes an interrupted ssh result as unknown and safe to run again", async () => {
     const result = await invoked([EMAIL], 255);
     const output = `${result.stdout}\n${result.stderr}`;
 
     expect(result.code).not.toBe(0);
-    expect(output).toMatch(/production/i);
-    expect(output).toMatch(/unknown|uncertain/i);
-    expect(output).toMatch(/retry/i);
-    expect(output).not.toMatch(/approval failed|was not approved/i);
+    expect(output).toMatch(/unknown/i);
+    expect(output).toMatch(/again/i);
   });
 
-  it("treats a terminated ssh process as an unknown one-way outcome", async () => {
+  it("treats a terminated ssh process as an unknown outcome", async () => {
     const result = await invoked([EMAIL], 0, true);
     const output = `${result.stdout}\n${result.stderr}`;
 
     expect(result.code).not.toBe(0);
-    expect(output).toMatch(/production/i);
-    expect(output).toMatch(/unknown|uncertain/i);
-    expect(output).toMatch(/retry/i);
-    expect(output).not.toMatch(/approval failed|was not approved/i);
+    expect(output).toMatch(/unknown/i);
+    expect(output).toMatch(/again/i);
   });
 
-  it("the server command refuses a test payment network before reading a production database", () => {
-    const secret = "postgresql://operator:password-must-stay-secret@127.0.0.1/production";
+  const DATABASE = `postgresql://operator:${"p".repeat(24)}@127.0.0.1/agentify`;
+  const TEST = "eip155:84532";
+  const SECRET = "x".repeat(40);
+
+  it.each([
+    {
+      case: "no payment network",
+      set: { DATABASE_URL: DATABASE, AUTH_SECRET: SECRET },
+      words: /PAYMENT_NETWORK is not set/i,
+    },
+    {
+      case: "an unrecognised network",
+      set: { PAYMENT_NETWORK: "eip155:1", DATABASE_URL: DATABASE, AUTH_SECRET: SECRET },
+      words: /not a recogni[sz]ed network/i,
+    },
+    {
+      case: "the live network",
+      set: { PAYMENT_NETWORK: "eip155:8453", DATABASE_URL: DATABASE, AUTH_SECRET: SECRET },
+      words: /live network/i,
+    },
+    {
+      case: "no database address",
+      set: { PAYMENT_NETWORK: TEST, AUTH_SECRET: SECRET },
+      words: /DATABASE_URL is not set/i,
+    },
+    {
+      case: "no cabinet secret",
+      set: { PAYMENT_NETWORK: TEST, DATABASE_URL: DATABASE },
+      words: /AUTH_SECRET is not set/i,
+    },
+  ])("the server command refuses $case before reading a database", ({ set, words }) => {
+    const unset = new Set(["PAYMENT_NETWORK", "DATABASE_URL", "AUTH_SECRET"]);
     const result = spawnSync(
       process.execPath,
-      ["--import", tsx, join(root, "apps", "cabinet", "src", "approve.ts")],
+      ["--import", tsx, join(root, "apps", "dashboard", "src", "forget.ts")],
       {
         cwd: root,
         encoding: "utf8",
         env: {
-          ...process.env,
-          DATABASE_URL: secret,
-          PAYMENT_NETWORK: "eip155:84532",
+          ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !unset.has(name))),
+          ...set,
         },
         input: `${EMAIL}\n`,
+        // A command that hangs fails here instead of holding the suite.
+        timeout: 20_000,
       },
     );
     const output = `${result.stdout}\n${result.stderr}`;
 
     expect(result.status).not.toBe(0);
-    expect(output).toMatch(/production/i);
-    expect(output).toMatch(/not the live network/i);
-    expect(output).not.toContain(secret);
+    expect(output).toMatch(words);
+    expect(output).not.toContain(DATABASE);
   });
 });
 

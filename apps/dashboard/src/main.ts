@@ -15,13 +15,13 @@
  * same public API any merchant's worker uses. A cabinet with no connected shop
  * does nothing at all in it.
  *
- * There is nothing to migrate here. `pnpm --filter @agentify/cabinet db:migrate`
+ * There is nothing to migrate here. `pnpm --filter @agentify/dashboard db:migrate`
  * is a step somebody takes before this starts, because a process that migrates
  * on boot migrates once per replica and races itself.
  */
 
-import { keyRenewal } from "./cabinet-key.js";
 import { loadConfig } from "./config.js";
+import { keyRenewal } from "./dashboard-key.js";
 import { connect } from "./database.js";
 import { gatewayFor } from "./gateway.js";
 import { startGatewayServer, tellerFor } from "./gateway-server.js";

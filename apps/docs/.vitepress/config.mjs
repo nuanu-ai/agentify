@@ -134,7 +134,7 @@ const KEPT_CHUNK = /\/(framework|theme)\.[^/]+\.js$|\.md\.[^/]+\.js$/;
 /** What every built page says about the stack serving it (deploy/Caddyfile). */
 const SURFACE_MARKER = [
   // The attribute on the outer element and the band on the paragraph, so a
-  // live page carries a marker and no empty box (apps/cabinet/src/html.ts says
+  // live page carries a marker and no empty box (apps/dashboard/src/html.ts says
   // why). Style .surface-words in theme/agentify.css, never this div.
   '<div data-agentify-surface="<!--{{env `AGENTIFY_SURFACE_MODE`}}-->">',
   '<!--{{if eq (env "AGENTIFY_SURFACE_MODE") "test"}}-->',

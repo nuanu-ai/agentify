@@ -225,7 +225,7 @@ export async function runForget(
       if (outcome.operator) {
         say(
           "Operator flag: removed with the account; after the next sign-in," +
-            ` \`pnpm --filter @agentify/cabinet account operator ${email}\` sets it again`,
+            ` \`pnpm --filter @agentify/dashboard account operator ${email}\` sets it again`,
         );
       }
       say("The address can ask for a sign-in link now, and signs in as a newcomer.");

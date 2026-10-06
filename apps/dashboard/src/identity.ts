@@ -27,6 +27,7 @@ import { magicLink } from "better-auth/plugins/magic-link";
 import { and, asc, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
+import type { CabinetConfig } from "./config.js";
 import type {
   AccountMerchant,
   AttachMerchantResult,
@@ -40,8 +41,7 @@ import type {
   MerchantPerson,
   Person,
   UnattachedPerson,
-} from "./cabinet-entry.js";
-import type { CabinetConfig } from "./config.js";
+} from "./dashboard-entry.js";
 import { type Message, type Postman, postmanFor } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
 import { reportLinkMessage } from "./report-mail.js";
@@ -68,7 +68,7 @@ export type {
   MerchantPerson,
   Person,
   UnattachedPerson,
-} from "./cabinet-entry.js";
+} from "./dashboard-entry.js";
 
 export interface AccountSummary {
   readonly email: string;

@@ -862,14 +862,14 @@ describe("initial database migration", () => {
  * nothing else. So each set keeps a history of its own: sharing one, a set
  * would skip the other's older files as though they had run. The gateway's
  * and the cabinet's are applied the way their own commands apply them
- * (apps/gateway/src/migrate.ts, apps/cabinet/src/database.ts).
+ * (apps/gateway/src/migrate.ts, apps/dashboard/src/database.ts).
  */
 describe("the scanner's migrations in the one database", () => {
   const gatewayMigrations = fileURLToPath(
     new URL("../../../apps/gateway/drizzle", import.meta.url),
   );
   const cabinetMigrations = fileURLToPath(
-    new URL("../../../apps/cabinet/drizzle", import.meta.url),
+    new URL("../../../apps/dashboard/drizzle", import.meta.url),
   );
   const entries = async (folder: string): Promise<number> =>
     JSON.parse(await readFile(join(folder, "meta", "_journal.json"), "utf8")).entries.length;

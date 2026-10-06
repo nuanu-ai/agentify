@@ -27,7 +27,6 @@ import {
   waitlistEntries,
 } from "@agentify/scanner-database";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
-import { getCabinetReportIdentityClient } from "./cabinet-report-identity";
 import { getServerConfig } from "./config";
 import {
   decryptSensitiveValue,
@@ -36,6 +35,7 @@ import {
   hmacHex,
   normalizeEmail,
 } from "./crypto";
+import { getCabinetReportIdentityClient } from "./dashboard-report-identity";
 import { getDatabase } from "./database";
 import type { LinkSendOutcome } from "./link-wait";
 import { consumeRateLimitsAtomically, refundRateLimitEvent } from "./rate-limit";

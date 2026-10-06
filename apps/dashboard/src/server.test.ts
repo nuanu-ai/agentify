@@ -42,8 +42,8 @@ import {
   type MerchantKeyList,
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { keyRenewal } from "./cabinet-key.js";
 import { type CabinetConfig, loadConfig } from "./config.js";
+import { keyRenewal } from "./dashboard-key.js";
 import { type Answer, type GatewayClient, gatewayFor, type Registrar } from "./gateway.js";
 import {
   type Identity,

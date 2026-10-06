@@ -14,7 +14,7 @@ import { CopyRemediationPrompt } from "../../../components/copy-remediation-prom
 import { PrivacyChoicesButton } from "../../../components/privacy-choices-button";
 import { ReportActionPanel } from "../../../components/report-action-panel";
 import { ReportBenchmark } from "../../../components/report-benchmark";
-import { ReportCabinetControl } from "../../../components/report-cabinet-control";
+import { ReportCabinetControl } from "../../../components/report-dashboard-control";
 import { RobotsNotice } from "../../../components/robots-notice";
 import { SiteDoors } from "../../../components/site-chrome";
 import { StatusBadge } from "../../../components/status-badge";

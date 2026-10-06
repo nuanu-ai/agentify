@@ -211,7 +211,7 @@ its own.
 | `apps/web` | The scanner: the public site, the checks, the report. |
 | `apps/scanner-worker`, `apps/browser-observer-actor` | The scanner's background process and its passive browser observation. |
 | `apps/gateway` | The payment edge, the order runner and the queue. Ports in `src/ports`, their implementations in `src/adapters`. |
-| `apps/cabinet` | The merchant's screens: sign-in, cards, orders, receipts, keys, and the identity route the scanner calls. Server-rendered, no client build (ADR-0005). |
+| `apps/dashboard` | The merchant's screens: sign-in, cards, orders, receipts, keys, and the identity route the scanner calls. Server-rendered, no client build (ADR-0005). |
 | `apps/docs` | The merchant documentation, a VitePress site served at `/docs`. Its JSON examples are test fixtures (see below). |
 | `packages/contracts` | `@nuanu-ai/agentify-contracts`: every shape that crosses a boundary, as zod schemas, and the route table both sides import instead of transcribing. |
 | `packages/core` | The order state machine: pure logic, zero IO, zero runtime dependencies. |

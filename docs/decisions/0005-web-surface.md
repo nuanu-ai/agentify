@@ -58,7 +58,7 @@ page for a person, so the shape of that is a decision rather than a detail.
    health document — a single verdict over several services is read as one and
    is wrong the first time one of them goes down by itself.
 
-2. **The cabinet is its own process (`apps/cabinet`), not a part of the
+2. **The cabinet is its own process (`apps/dashboard`), not a part of the
    gateway.** The gateway is the money path: a resident process whose surface
    is the contract's route table, mounted in one generic loop. Pages for people
    change for reasons that have nothing to do with money, and mixing the two

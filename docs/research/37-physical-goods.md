@@ -102,7 +102,7 @@ all (`09-adversarial-review.md`); the second vision moved physical goods behind
 (`00-open-questions.md`) until ADR-0032. The WooCommerce connector imports only
 virtual, downloadable products and refuses the rest with «Only virtual products
 can be delivered to an agent without a shipping address»
-(`apps/cabinet/src/woo-catalog.ts`, ADR-0023).
+(`apps/dashboard/src/woo-catalog.ts`, ADR-0023).
 
 ## Protocols and marketplaces
 

@@ -15,7 +15,7 @@
 
 import { sessionCookiePairs } from "@agentify/scanner-contracts/report-identity";
 
-import { getCabinetReportIdentityClient } from "./cabinet-report-identity";
+import { getCabinetReportIdentityClient } from "./dashboard-report-identity";
 
 export async function isOperator(cookieHeader: string | null | undefined): Promise<boolean> {
   // Only the session's cookie goes to the cabinet, and the reading moves

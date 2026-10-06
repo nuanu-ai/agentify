@@ -7,7 +7,7 @@
  * local stack it is one line, run against the cabinet that is already up:
  *
  *   docker compose exec cabinet \
- *     pnpm --filter @agentify/cabinet account list
+ *     pnpm --filter @agentify/dashboard account list
  *
  * Outside Docker it needs the same configuration the cabinet itself is given,
  * because the identity component reads the same secret and public address.

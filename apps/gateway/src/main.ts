@@ -20,7 +20,7 @@
  * are published and belongs with the deployment step rather than here.
  */
 
-import { CabinetAnnouncer } from "./adapters/cabinet/announcer.js";
+import { CabinetAnnouncer } from "./adapters/dashboard/announcer.js";
 import { ScriptedFacilitator } from "./adapters/memory/facilitator.js";
 import { queueOn } from "./adapters/pgboss/queue.js";
 import { connect, PostgresStore } from "./adapters/postgres/store.js";

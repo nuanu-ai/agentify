@@ -16,7 +16,7 @@
       "command": [
         "pnpm",
         "--filter",
-        "@agentify/cabinet",
+        "@agentify/dashboard",
         "start"
       ],
       "depends_on": {

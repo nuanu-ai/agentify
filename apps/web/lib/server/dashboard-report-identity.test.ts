@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createCabinetReportIdentityClient } from "./cabinet-report-identity";
+import { createCabinetReportIdentityClient } from "./dashboard-report-identity";
 
 const secret = "s".repeat(32);
 const scanId = "019b41a0-7c51-7d63-84bd-a5a20faef497";

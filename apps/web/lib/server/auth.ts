@@ -16,10 +16,9 @@ import { createLogger, safeErrorType } from "@agentify/observability";
 import { sessionCookiePairs } from "@agentify/scanner-contracts/report-identity";
 import { leadScans, leads, scans, waitlistEntries } from "@agentify/scanner-database";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
-
-import { getCabinetReportIdentityClient } from "./cabinet-report-identity";
 import { getServerConfig } from "./config";
 import { hmacHex, normalizeEmail } from "./crypto";
+import { getCabinetReportIdentityClient } from "./dashboard-report-identity";
 import { getDatabase } from "./database";
 import { finishWaitingRequest } from "./scanner-registration";
 

@@ -26,7 +26,7 @@ output
 /02-meetings
 *.log
 *.tsbuildinfo
-/apps/cabinet
+/apps/dashboard
 /apps/gateway
 /apps/browser-observer-actor
 /apps/scanner-worker

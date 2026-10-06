@@ -37,9 +37,9 @@ import { GET as getContactAccess } from "../../app/api/v2/scans/[id]/contact-acc
 import { POST as requestScannerRegistration } from "../../app/api/v2/scans/[id]/registrations/route";
 import { GET as readVisitor } from "../../app/api/v2/session/route";
 import { latestReportOf, visitorOf } from "./auth";
-import { getCabinetReportIdentityClient } from "./cabinet-report-identity";
 import { getServerConfig } from "./config";
 import { encryptEmail, hmacHex, sha256 } from "./crypto";
+import { getCabinetReportIdentityClient } from "./dashboard-report-identity";
 import { getDatabase } from "./database";
 import { enqueueScanInTransaction, stopScanQueue } from "./queue";
 import { consumeRateLimitsAtomically, consumeScanRateLimits, readRateCount } from "./rate-limit";

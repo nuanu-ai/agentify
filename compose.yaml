@@ -65,7 +65,7 @@
 # The operator's commands look after the accounts there are:
 #
 #   docker compose exec cabinet \
-#     pnpm --filter @agentify/cabinet account list
+#     pnpm --filter @agentify/dashboard account list
 #
 # `list` inspects accounts and `revoke` ends their sessions.
 # `operator you@example.com` lets an address that has signed in once read the
@@ -329,7 +329,7 @@ services:
 
   cabinet:
     <<: *app
-    command: ["pnpm", "--filter", "@agentify/cabinet", "start"]
+    command: ["pnpm", "--filter", "@agentify/dashboard", "start"]
     environment:
       PORT: "3001"
       # The cabinet's own two tables: the people who sign in and their sessions

@@ -7,7 +7,7 @@
  */
 
 import type { SurfaceMode } from "@agentify/core";
-import type { CabinetDestination, LinkWall } from "./cabinet-entry.js";
+import type { CabinetDestination, LinkWall } from "./dashboard-entry.js";
 import { bare, brandLockup, escaped } from "./html.js";
 
 const destinationInput = (destination: CabinetDestination): string =>
