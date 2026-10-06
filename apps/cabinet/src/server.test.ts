@@ -3044,7 +3044,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     }
   });
 
-  it("says there is no such page rather than answering an address with nothing", async () => {
+  it("says there is no such page inside the dashboard, with its menu and a way back", async () => {
     // Only to somebody who is signed in. A stranger is told nothing about which
     // addresses exist here (ADR-0009 §2), which is the test above this one.
     const { browser } = await started();
@@ -3054,6 +3054,10 @@ describe("when something goes wrong that the merchant has to get out of", () => 
 
     expect(answered.status).toBe(404);
     expect(readable(answered.html)).toContain("There is no such page");
+    expect(answered.html).toContain('href="/cards"');
+    const bar = /<header class="top">([\s\S]*?)<\/header>/.exec(answered.html)?.[1] ?? "";
+    expect(readable(bar)).toContain(PERSON);
+    expect(bar).toContain('method="post" action="/sign-out"');
   });
 
   it("treats a cookie it cannot read as nobody being signed in", async () => {
