@@ -21,7 +21,7 @@ import {
   type OrderList,
   type ReceiptList,
 } from "@nuanu-ai/agentify-contracts";
-import { STOP_ALL_SELLING } from "./control-labels.js";
+import { RESUME_ALL_SELLING, STOP_ALL_SELLING } from "./control-labels.js";
 import { escaped, momentCell, page, type Row, state, type Tab, table, when } from "./html.js";
 import type { PayoutWallet } from "./payout-wallet.js";
 // A type and nothing else, so this leaves no import behind once it is compiled
@@ -301,6 +301,31 @@ const wrappable = (address: string): string => {
     .join("");
 };
 
+/**
+ * What an empty catalogue shows: why it is empty, and the ways to fill it as
+ * buttons. The SDK comes first, because it is the product's path; the
+ * WooCommerce connector comes after it, named as the experiment it is, and
+ * only where this cabinet has one.
+ *
+ * An empty catalogue has two readings the merchant cannot tell apart from
+ * here: nobody has published anything yet, or something published was
+ * refused. While no name is set, the second one is what happens to everything,
+ * so the line says it rather than leaving a merchant to work out why their
+ * code's card never arrived.
+ */
+const emptyCatalogue = (viewer: Viewer, wooAvailable: boolean): string => {
+  const why = refusedForNoName(viewer)
+    ? "You haven't published any cards yet. Choose your seller name in Settings first. Cards can't be published without it."
+    : "You haven't published any cards yet. Your code publishes them through the SDK, and each card it publishes appears here.";
+  return `<div class="empty-start">
+    <p>${escaped(why)}</p>
+    <div class="connect-actions">
+      <a class="button button-primary" href="/docs/quickstart">Publish your first card through the SDK</a>
+      ${wooAvailable ? `<a class="button button-secondary" href="${escaped(viewer.base)}/woocommerce">Try the experimental WooCommerce connector</a>` : ""}
+    </div>
+  </div>`;
+};
+
 export const cardsScreen = (
   viewer: Viewer,
   cards: MerchantCardList,
@@ -338,41 +363,25 @@ export const cardsScreen = (
   <div class="lede">
     <div>
       <h1>Product cards</h1>
-      <p>${escaped(`${countOf(cards.cards.length, "card")} published, ${paused} paused by you.`)}${restOf(
-        "/docs/quickstart#_3-describe-the-product-with-a-card",
-        "How your code publishes one",
-      )}</p>
+      <div class="stat-pills">
+        <span class="stat-pill">Published <b>${cards.cards.length}</b></span>
+        <span class="stat-pill">Paused by you <b>${paused}</b></span>
+      </div>
     </div>
     <div class="actions">
       ${
         gone
           ? ""
           : `<form class="inline" method="post" action="${escaped(base)}/selling/${stopped ? "resume" : "pause"}">
-        <button class="button ${stopped ? "button-primary" : "button-secondary"}" type="submit">${stopped ? "Start selling again" : STOP_ALL_SELLING}</button>
+        <button class="button ${stopped ? "button-primary" : "button-secondary"}" type="submit">${stopped ? RESUME_ALL_SELLING : STOP_ALL_SELLING}</button>
       </form>`
       }
     </div>
   </div>
-${table(
-  ["Product", "Your key", "Price", "Delivery", "State", ""],
-  rows,
-  // An empty catalogue has two readings and the merchant cannot tell them
-  // apart from here: nobody has published anything yet, or something published
-  // was refused. While no name is set, the second one is what happens to
-  // everything, so the line says it rather than leaving a merchant to work out
-  // why their code's card never arrived.
-  refusedForNoName(viewer)
-    ? "You have not published a card yet, and until you choose the name buyers see, publishing one is refused. Choose it in your settings and publish again."
-    : "You have not published a card yet. Your code publishes them; they appear here.",
-)}
 ${
   cards.cards.length === 0
-    ? `<p class="onward"><a href="/docs/quickstart">Publish your first card with the test-sale guide →</a>${
-        wooAvailable
-          ? ` <a href="${escaped(base)}/woocommerce">Or try the experimental WooCommerce download path →</a>`
-          : ""
-      }</p>`
-    : ""
+    ? emptyCatalogue(viewer, wooAvailable)
+    : table(["Product", "Product code", "Price", "Delivery", "State", ""], rows, "")
 }
   <p class="note">${escaped(sellingNote(cards.selling))}${sellingRest(cards.selling)}</p>
   <p class="note">${escaped(
@@ -380,10 +389,9 @@ ${
     // Asking for this address without paying is answered with a demand for
     // payment that travels in a header, so a browser is handed a blank page
     // and a merchant who clicked reads that as their card being broken.
-    "The line under each product is the address an agent buys it at. Asking for it without paying" +
-      " answers with a demand for payment rather than a page, so it is for handing to an agent or" +
-      " trying from a terminal, not for opening here. A card that is off sale is refused at that" +
-      " address instead of being offered.",
+    "The line under each product is the address an agent buys it at. It is meant for an agent or a" +
+      " test from a terminal: without payment it returns a payment request, not a web page. A card" +
+      " that is off sale cannot be bought there.",
   )}</p>
 `;
 
@@ -404,9 +412,9 @@ const sellingNote = (selling: MerchantCardList["selling"]): string => {
     case "departed":
       return "You have left. The orders that were open closed with you, and the money for anything paid for and not delivered is yours to return. Selling does not start again from this page.";
     case "paused":
-      return "All selling is stopped: no new order is taken for any card, and the orders you have already accepted play out as usual. Resuming leaves the cards you paused yourself paused.";
+      return "All sales are paused: no new orders are accepted, and the orders you have already accepted play out as usual. Cards you paused yourself stay paused when you resume.";
     case "open":
-      return "A pause takes the card off sale without abandoning orders: the ones you already accepted play out as usual.";
+      return "A pause takes the card off sale without abandoning orders: the ones you have already accepted play out as usual.";
   }
 };
 
@@ -447,7 +455,7 @@ export const ordersScreen = (
   <div class="lede">
     <div>
       <h1>Orders</h1>
-      <p>${escaped(ordersLede(orders, open))}</p>
+      ${orders.orders.length === 0 ? "" : `<p>${escaped(ordersLede(orders, open))}</p>`}
       ${testOrders(orders)}
     </div>
     <div class="filter">
@@ -465,7 +473,7 @@ ${table(
   open ? "Nothing is open. Every order you have is finished." : "No orders yet.",
 )}
   <p class="note">${escaped(
-    "One kind of order cannot appear here: a purchase that closed before anybody named a price for it — a product you said was gone, or a price question you did not answer. The row every order is drawn in carries the price it sold at, and those have none. Nothing was charged for them.",
+    "Purchases that closed before they had a price do not appear here: for example, you said the product was out of stock, or you did not answer a price request. No money was charged for them.",
   )}</p>
 ${wanting
   .map(
@@ -503,7 +511,7 @@ const ordersLede = (orders: OrderList, open: boolean): string => {
   const listed = `${countOf(orders.orders.length, `${scope} order`.trim())} listed.`;
 
   if (wanting === 0) {
-    return `${listed} None of them owes a refund, and none was delivered against a payment that did not execute.`;
+    return `${listed} No refunds are due, and nothing was delivered without payment.`;
   }
   return `${listed} ${countOf(wanting, "order")} ${wanting === 1 ? "needs" : "need"} you, and each one is set out below.`;
 };
@@ -528,8 +536,8 @@ const testOrders = (orders: OrderList): string => {
 
 const whyItNeedsYou = (status: OrderList["orders"][number]["status"]): string =>
   status === "refund_due"
-    ? "The money was taken, the delivery window ran out and nothing shipped. You return it from your own wallet — we recorded the amount and the order. A late delivery still clears the debt."
-    : "Your integration returned the goods, but payment did not settle, so the goods were not released to the buyer. The order stays open.";
+    ? "The payment was received, the delivery window ran out, and the product was not delivered. You return it from your own wallet — we recorded the amount and the order. A late delivery still clears the debt."
+    : "Your integration returned the product, but the payment did not go through, so the product was not released to the buyer. The order stays open.";
 
 /**
  * Where the rest of it is written, for the one of the two that has a rest.
@@ -575,11 +583,6 @@ export const receiptsScreen = (
   <div class="lede">
     <div>
       <h1>Receipts</h1>
-      <p>A receipt is written when the goods for an order are released: the amount, the moment the money moved, the moment we set that price for the sale, and the instant the price behind it was true. Those three are three different moments, and on a product whose price is asked for at the purchase they can be minutes apart.${restOf(
-        "/docs/money#what-proves-a-sale-happened",
-        "What a receipt records, and which moment each column is",
-      )}</p>
-      <p>This is not the whole of the money. A purchase whose goods have not gone out has no receipt yet, and in the mode where the money moves at the purchase that means a payment you have already been sent is not on this page. Neither is a refund you owe. Both are on Orders, and until they end there the list below is short of them. A purchase that ended before any payment leaves no receipt at all, and none is written while it is unknown whether the buyer was charged.</p>
       ${testWarning(receipts, viewer.mode)}
     </div>
   </div>
@@ -601,10 +604,17 @@ export const receiptsScreen = (
       <div class="aside">of ${countOf(receipts.receipts.length, "receipt")}</div>
     </div>
   </div>
+  <div class="summary-text">
+    <p>A receipt appears when the product is released to the buyer. It shows the amount and three times: Paid, Price set, and Price as of. When the price is checked at the purchase, these times can be a few minutes apart.${restOf(
+      "/docs/money#what-proves-a-sale-happened",
+      "What a receipt records, and which moment each column is",
+    )}</p>
+    <p>This page does not show all of your money. Payments for products not yet delivered and refunds you owe are on Orders. A purchase that was never paid leaves no receipt, and no receipt appears while it is unknown whether the buyer was charged.</p>
+  </div>
 ${table(
-  ["Receipt", "Order", "Product", "Amount", "Outcome", "Paid", "Price set", "Price true as of"],
+  ["Receipt", "Order", "Product", "Amount", "Outcome", "Paid", "Price set", "Price as of"],
   rows,
-  "No receipts yet. One is written when the goods for an order are released.",
+  "No receipts yet. One appears when a product is released to the buyer.",
 )}
 `;
 
@@ -666,3 +676,32 @@ const testWarning = (receipts: ReceiptList, mode: Viewer["mode"]): string => {
 };
 
 const countOf = (many: number, thing: string): string => `${many} ${thing}${many === 1 ? "" : "s"}`;
+
+/**
+ * An address inside the cabinet that leads nowhere, for somebody signed in.
+ *
+ * Drawn in the cabinet's own frame rather than as a bare error card: the person
+ * is still in their cabinet, the menu is where it always is, and the logo and
+ * the one button lead back to the cards rather than out to the site.
+ */
+export const notFoundScreen = (viewer: Viewer): string =>
+  page({
+    mode: viewer.mode,
+    base: viewer.base,
+    who: viewer.who,
+    confirmed: viewer.confirmed,
+    tab: null,
+    title: "There is no such page",
+    home: `${viewer.base}/cards`,
+    body: `
+  <div class="lede">
+    <div>
+      <h1>There is no such page</h1>
+      <p>The link may have a typo or be out of date. Every section of your dashboard is in the menu.</p>
+    </div>
+  </div>
+  <div class="connect-actions">
+    <a class="button button-primary" href="${escaped(viewer.base)}/cards">Back to the dashboard</a>
+  </div>
+`,
+  });

@@ -197,7 +197,7 @@ export const linkRequestedScreen = (
   <p class="quiet">${afterTheSend}</p>`
       : wall === "interval"
         ? `<p>No new link was sent to <strong>${escaped(email)}</strong>. A sign-in link went to this address less than a minute ago.</p>
-  <p class="quiet">Look for it in your inbox and your spam folder. It opens wherever it was asked for, which may not be here; one address gets one link a minute, so you can ask for another as soon as that minute is up.</p>`
+  <p class="quiet">Look for it in your inbox and your spam folder. The link opens wherever it was requested, which may not be this page. One address gets one link a minute, so you can ask for another as soon as the minute is up.</p>`
         : `<p>No new link was sent to <strong>${escaped(email)}</strong>. One email address gets three links an hour, and this one has had its three.</p>
   <p class="problem">Try again in ${waitInWords(answer.seconds)}.</p>`;
 
@@ -241,7 +241,7 @@ export const mailUnavailableScreen = (base: string, mode: SurfaceMode): string =
 ${brandLockup("/")}
 <form class="gate-card" method="get" action="${escaped(base)}/sign-in">
   <h1>We could not confirm your sign-in link went out</h1>
-  <p>Something failed while the message was going out, and we cannot tell whether it reached you. Nothing was created on this attempt — no account and no session. Try again in a moment, and if nothing arrives, check that the email address is spelled right.</p>
+  <p>Something went wrong while sending the email, so we do not know whether it was delivered. No account or session was created. Try again, and check that the email address is correct.</p>
   <button class="button button-primary" type="submit">Try again</button>
 </form>
 </div>`,

@@ -23,7 +23,7 @@ export const escaped = (value: string): string =>
     .replaceAll("'", "&#39;");
 
 /** Which of the screens with navigation on them is being looked at. */
-export type Tab = "cards" | "orders" | "receipts" | "keys" | "settings";
+export type Tab = "cards" | "orders" | "receipts" | "integrations" | "keys" | "settings";
 
 export interface Chrome {
   /** Which of the three things this stack is, so every page names it. */
@@ -47,8 +47,11 @@ export interface Chrome {
    * passwordless session is confirmed by the link that opened it.
    */
   readonly confirmed: boolean;
-  readonly tab: Tab;
+  /** The tab to mark as the current one; null on a page that is none of them. */
+  readonly tab: Tab | null;
   readonly title: string;
+  /** Where the logo in the sidebar leads; the site's front page unless named. */
+  readonly home?: string;
   /**
    * The merchant's own selling word, for the light in the corner.
    *
@@ -76,7 +79,8 @@ const TABS: readonly [Tab, string][] = [
   ["cards", "Cards"],
   ["orders", "Orders"],
   ["receipts", "Receipts"],
-  ["keys", "API Keys"],
+  ["integrations", "Integrations"],
+  ["keys", "API keys"],
   ["settings", "Settings"],
 ];
 
@@ -126,10 +130,40 @@ const FOOT = `  <footer class="foot">
 `;
 
 /**
+ * The numbered sections, the same list in the sidebar and in the narrow menu.
+ */
+const sections = (chrome: Chrome): string =>
+  `${TABS.map(([tab, label], index) =>
+    tab === chrome.tab
+      ? `<span class="here" aria-current="page"><i>${index + 1}</i>${label}</span>`
+      : `<a href="${escaped(chrome.base)}/${tab}"><i>${index + 1}</i>${label}</a>`,
+  ).join("")}`;
+
+/**
+ * The menu behind the burger on a phone and a tablet, where there is no room
+ * for the sidebar. A details element, so it opens and closes on its button
+ * with no script at all (ADR-0009 §3), and every link in it leads to another
+ * page, which closes it. Its button says "Menu" in both states, because a
+ * details element already tells a screen reader whether it is open.
+ *
+ * The sidebar's own list and help box are hidden at these widths, so only one
+ * of the two navigations is ever on the screen. Who is signed in, and the way
+ * out, stay in the bar at the top at every width (ADR-0026 §3), so the menu
+ * does not repeat them.
+ */
+const narrowMenu = (chrome: Chrome): string => `<details class="app-menu">
+        <summary aria-label="Menu"><span></span><span></span><span></span></summary>
+        <div class="app-menu-panel">
+          <nav class="app-menu-sections" aria-label="Dashboard sections">${sections(chrome)}</nav>
+          <a class="app-menu-docs" href="/docs/">Open the docs →</a>
+        </div>
+      </details>`;
+
+/**
  * One whole page.
  *
  * The stylesheet is linked rather than inlined so that a merchant moving
- * between the four screens fetches it once, and so that the one visual
+ * between the screens fetches it once, and so that the one visual
  * language ADR-0005 §6 asks for is one file rather than four copies.
  *
  * The faces are linked separately, from the shared origin, because they are
@@ -139,7 +173,13 @@ const FOOT = `  <footer class="foot">
  * stack in the tokens carries the page — which is what a fallback stack is for,
  * and why every family here names a full one.
  */
-export const page = (chrome: Chrome): string => `<!doctype html>
+export const page = (chrome: Chrome): string => {
+  // The screen's own heading is drawn once, in the bar at the top, rather than
+  // a second time above the content.
+  const heading = /<h1>([\s\S]*?)<\/h1>/.exec(chrome.body);
+  const body = heading === null ? chrome.body : chrome.body.replace(heading[0], "");
+  const title = heading?.[1] ?? escaped(chrome.title);
+  return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -151,25 +191,34 @@ export const page = (chrome: Chrome): string => `<!doctype html>
 </head>
 <body>
 <div class="page">
-${surface(chrome.mode)}
-  <header class="top">
-    <div class="top-inner container">
-      ${brandLockup("/")}
-      <nav class="tabs" aria-label="Your cabinet">${TABS.map(([tab, label]) =>
-        tab === chrome.tab
-          ? `<span class="here" aria-current="page">${label}</span>`
-          : `<a href="${escaped(chrome.base)}/${tab}">${label}</a>`,
-      ).join("")}</nav>
-      ${chrome.selling === undefined ? "" : state(chrome.selling)}
-${accountRow(chrome.base, chrome.who)}    </div>
-  </header>
-  <div class="container">
-${chrome.unnamed === true ? unnamedNote(chrome.base) : ""}${chrome.body}
+  <div class="app-shell">
+    <aside class="app-sidebar">
+      <div class="app-sidebar-brand">${brandLockup(chrome.home ?? "/")}<span>SELLER DASHBOARD</span></div>
+      <nav class="tabs" aria-label="Dashboard sections">${sections(chrome)}</nav>
+      <div class="sidebar-help"><span>Need help?</span><a href="/docs/">Open the docs →</a></div>
+      ${narrowMenu(chrome)}
+    </aside>
+    <div class="app-workspace">
+      ${
+        // The stack notice heads the workspace rather than the window: the
+        // sidebar is a full-height sticky column, and a band above it would
+        // push its foot below the first screen.
+        surface(chrome.mode)
+      }
+      <header class="top"><div class="top-inner">
+        <h1 class="top-title">${title}</h1>
+        ${chrome.selling === undefined ? "" : state(chrome.selling)}
+${accountRow(chrome.base, chrome.who)}      </div></header>
+      <main class="app-content">
+        ${chrome.unnamed === true ? unnamedNote(chrome.base) : ""}${body}
+      </main>
+    </div>
   </div>
 ${FOOT}</div>
 </body>
 </html>
 `;
+};
 
 /**
  * Who is signed in, and how to stop being them, at the end of the bar.
@@ -208,8 +257,8 @@ const accountRow = (base: string, who: string): string => `      <div class="acc
  * reads, and this one is about a state one form post ends.
  */
 const unnamedNote = (base: string): string => `  <div class="callout">
-    <div class="what">Your products cannot go on sale until you choose the name buyers see beside them.</div>
-    <div class="why">A card published while this is unset is refused, because it would be offered for sale with no seller on it. <a href="${escaped(base)}/settings">Choose the name in your settings</a>.</div>
+    <div class="what">You cannot publish products until you choose the seller name buyers will see.</div>
+    <div class="why">A card without a seller name is refused. <a href="${escaped(base)}/settings">Choose a seller name in Settings</a>.</div>
   </div>
 `;
 
@@ -221,12 +270,8 @@ const unnamedNote = (base: string): string => `  <div class="callout">
  * gone there is no script on any of them, so the two were the same page written
  * twice.
  */
-export const bare = (
-  base: string,
-  title: string,
-  body: string,
-  mode: SurfaceMode,
-): string => `<!doctype html>
+export const bare = (base: string, title: string, body: string, mode: SurfaceMode): string =>
+  `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">

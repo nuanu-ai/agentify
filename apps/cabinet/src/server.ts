@@ -64,9 +64,17 @@ import {
   whatIsWrongWithTheWallet,
 } from "./payout-wallet.js";
 import { printable } from "./printable.js";
-import { cardsScreen, ordersScreen, receiptsScreen, unsetIn, type Viewer } from "./screens.js";
+import {
+  cardsScreen,
+  notFoundScreen,
+  ordersScreen,
+  receiptsScreen,
+  unsetIn,
+  type Viewer,
+} from "./screens.js";
 import {
   chooseNameScreen,
+  integrationsScreen,
   NAME_CANNOT_BE_TAKEN_AWAY,
   NAME_NEEDED,
   settingsScreen,
@@ -341,7 +349,6 @@ const people = new WeakMap<Request, Person>();
 interface Settings {
   readonly sellerName: string | null;
   readonly payoutWallet: PayoutWalletDocument;
-  readonly shop?: ShopTile;
 }
 
 /** The whole cabinet on an express app. */
@@ -1008,7 +1015,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
   /**
    * Everything the settings screen is drawn from, asked for in one place.
    *
-   * The screen shows three things a merchant has set, and it is reached three
+   * The screen shows two things a merchant has set, and it is reached three
    * ways: opened, and redrawn after either of its two forms was refused. Asking
    * for each of them in each of those by hand is how one comes to be forgotten
    * in one — and the page that results does not look broken, it looks like a
@@ -1019,30 +1026,10 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
    * sum. Either of the gateway's failing is the whole page failing: a settings
    * screen drawn without one of its answers would be claiming something about a
    * field nobody asked about.
-   *
-   * The shop is the exception and does not take the page down with it. It is our
-   * own table, it holds one block on a page whose other three subjects are the
-   * merchant's name, their money and their account, and a merchant whose payout
-   * address is wrong must be able to reach the box for it while our shops table
-   * is unreachable. So a read that throws is logged and drawn as the block
-   * saying it could not be read, rather than as no block: a block that vanishes
-   * reads as no connection to a merchant who has one, and "we could not read
-   * it" has a different next move from "there is none".
    */
   const settingsOf = async (request: Request): Promise<Answer<Settings>> => {
     const gateway = gatewayAs(request);
-    const person = whoIs(request);
-    const [name, wallet, shop] = await Promise.all([
-      gateway.sellerName(),
-      gateway.payoutWallet(),
-      shopStateFor(person.id).catch((thrown: unknown): ShopTile => {
-        console.error(
-          "[cabinet] the WooCommerce connection could not be read for a settings screen",
-          thrown,
-        );
-        return { kind: "unread" };
-      }),
-    ]);
+    const [name, wallet] = await Promise.all([gateway.sellerName(), gateway.payoutWallet()]);
     if (!name.ok) {
       return name;
     }
@@ -1054,7 +1041,6 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       document: {
         sellerName: name.document,
         payoutWallet: wallet.document,
-        ...(shop === undefined ? {} : { shop }),
       },
     };
   };
@@ -1065,6 +1051,34 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
       return trouble(response, base, settings);
     }
     response.type("html").send(settingsScreen(viewingSettings(request, base, settings.document)));
+  });
+
+  // Nothing on this page comes from the gateway, so nothing the gateway says
+  // can take it down. The shop is our own table, and a read of it that throws
+  // is logged and drawn as the block saying it could not be read rather than as
+  // no block: a block that vanishes reads as no connection to a merchant who
+  // has one, and "we could not read it" has a different next move from "there
+  // is none". A cabinet with no store for connections draws no block at all.
+  app.get(`${base}/integrations`, async (request, response) => {
+    const shop = await shopStateFor(whoIs(request).id).catch((thrown: unknown): ShopTile => {
+      console.error(
+        "[cabinet] the WooCommerce connection could not be read for the integrations screen",
+        thrown,
+      );
+      return { kind: "unread" };
+    });
+    response
+      .type("html")
+      .send(
+        integrationsScreen({ ...viewing(request, base), ...(shop === undefined ? {} : { shop }) }),
+      );
+  });
+
+  // The address the wallet form posts to, opened again from the history or the
+  // address bar after a refusal. There is nothing to show at it on its own, so
+  // it leads to the page the form lives on.
+  app.get(`${base}/settings/payout-wallet`, (_request, response) => {
+    response.redirect(303, `${base}/settings`);
   });
 
   app.post(`${base}/settings`, async (request, response) => {
@@ -1632,7 +1646,7 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
           return {
             ...product,
             qualification_problem:
-              "The public catalogue price does not match the protected WooCommerce product price.",
+              "The public catalog price does not match the protected WooCommerce product price.",
           };
         }
         return {
@@ -1822,7 +1836,11 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     if (!keys.ok) {
       return trouble(response, base, keys);
     }
-    response.type("html").send(keysScreen(viewing(request, base), keys.document));
+    response
+      .type("html")
+      .send(
+        keysScreen(viewing(request, base), keys.document, undefined, request.query.new === "key"),
+      );
   });
 
   // The key page rewrites its POST history entry to this target. Reloading can
@@ -1910,8 +1928,11 @@ export function buildApp(config: CabinetConfig, parts: CabinetParts): Express {
     response.redirect(303, `${base}/keys`);
   });
 
-  app.use((_request, response) => {
-    response.status(404).type("html").send(problemPage(base, "There is no such page."));
+  app.use((request, response) => {
+    response
+      .status(404)
+      .type("html")
+      .send(notFoundScreen(viewing(request, base)));
   });
 
   app.use(
@@ -2139,9 +2160,6 @@ const viewingSettingsAt = (
     ...(walletProblem === undefined ? {} : { problem: walletProblem }),
     ...(walletTyped === undefined ? {} : { typed: walletTyped }),
   },
-  // Carried straight through, absence included: a cabinet with no store for
-  // connections hands no shop here and the screen draws no block about one.
-  ...(settings.shop === undefined ? {} : { shop: settings.shop }),
 });
 
 /**

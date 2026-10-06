@@ -61,9 +61,9 @@ import { readinessSeenBy, type Viewer } from "./screens.js";
  * do themselves is the only one there is.
  */
 export const WALLET_RULE =
-  "Paste an EVM address: 0x followed by 40 hexadecimal characters. Use the mixed-case spelling" +
-  " from your wallet or all lower case. This checks its shape and checksum, not the network or" +
-  " who owns it, so copy it from your wallet rather than typing it.";
+  "Paste an EVM address: 0x followed by 40 hexadecimal characters. Use the spelling from your" +
+  " wallet or all lowercase. We check the format and checksum, not the network or the owner, so" +
+  " copy the address from your wallet instead of typing it.";
 
 /**
  * What a merchant on the live deployment is told before replacing an address,
@@ -173,7 +173,7 @@ const savedAddress = (address: string): string => `
   <div class="saved">
     <div class="label">Saved here</div>
     <div class="address">${inFours(address)}</div>
-    <p class="under">This is the spelling your own wallet shows, so read it against your wallet group by group. Two addresses that differ only in the middle look the same when the middle is left out, so the whole of it is here.</p>
+    <p class="under">The full address, spelled the way your wallet shows it. Check it against your wallet, one group of characters at a time.</p>
   </div>`;
 
 /**
@@ -254,10 +254,11 @@ export const payoutWalletBlock = (viewer: Viewer): string => {
       : settles;
 
   return `
+  <div class="panel-top">
   <div class="lede">
     <div>
-      <h2>Where your money arrives</h2>
-      <p>${purpose} <a href="/docs/money#where-the-money-arrives">Where the money arrives, and when</a>.</p>
+      <h2>Payout wallet</h2>
+      <p>${purpose} <a href="/docs/money#where-the-money-arrives">How and when you get paid</a>.</p>
       <p class="quiet">Enter only the public address. Never enter a private key or recovery phrase; Agentify will never ask for either.</p>
     </div>
   </div>${wallet === null ? "" : savedAddress(wallet)}${pending === undefined || pending === null ? "" : pendingAddress(base, wallet, pending)}${
@@ -276,6 +277,7 @@ export const payoutWalletBlock = (viewer: Viewer): string => {
       }
     </div>
   </div>
+  </div>
   <form class="issue" method="post" action="${escaped(base)}/settings/payout-wallet">${
     pending === undefined || pending === null
       ? ""
@@ -284,13 +286,15 @@ export const payoutWalletBlock = (viewer: Viewer): string => {
     <input type="hidden" name="waiting_from" value="${escaped(pending.takesEffectAt)}">
     <input type="hidden" name="paid" value="${escaped(wallet ?? "")}">`
   }
-    <div>
-      <label for="payout_wallet">${wallet === null ? "The address your money arrives at" : "Change it to a different address"}</label>
+    <div class="wallet-box">
+      <label for="payout_wallet">${wallet === null ? "Payout wallet address" : "New payout wallet address"}</label>
       <input id="payout_wallet" name="payout_wallet" type="text" autocomplete="off" spellcheck="false" maxlength="42" size="42" value="${escaped(typed ?? "")}" required>
     </div>
-    <button class="button button-primary" type="submit">${wallet === null ? "Save it" : "Change the address"}</button>
+    <button class="button button-primary" type="submit">${wallet === null ? "Save" : "Change the address"}</button>
+  </form>
+  <div class="panel-messages">
     ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
     ${problem === undefined || typed === undefined || typed === "" ? "" : `<p class="address">${inFours(typed)}</p>`}
-  </form>
+  </div>
 `;
 };

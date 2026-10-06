@@ -897,7 +897,7 @@ describe("the passwordless cabinet door", () => {
     // that nothing was sent. What it can claim is that nothing was written.
     expect(readable(answered.html)).toMatch(/could not confirm/i);
     expect(readable(answered.html)).not.toMatch(/no link was sent|nothing was sent/i);
-    expect(readable(answered.html)).toMatch(/no account and no session/i);
+    expect(readable(answered.html)).toMatch(/no account or session was created/i);
     expect(answered.headers.getSetCookie()).toStrictEqual([]);
     expect(await identity.byEmail("new@example.com")).toBeNull();
     expect(rows.cabinet_sessions).toStrictEqual([]);
@@ -1382,7 +1382,7 @@ describe("choosing the name buyers read", () => {
     const text = readable(cards.html);
 
     expect(cards.status).toBe(200);
-    expect(text).toMatch(/cannot go on sale/i);
+    expect(text).toMatch(/cannot publish products until you choose the seller name/i);
     expect(cards.html).toContain('href="/settings"');
     expect(await listedAs(running)).toBeNull();
   });
@@ -1537,6 +1537,53 @@ describe("the settings screen", () => {
     expect(await listedAs(running)).toBe(running.harnessed.merchant.name);
   });
 
+  it("keeps the ways to connect a catalogue under Integrations, a tab of their own", async () => {
+    // WooCommerce and the SDK are integrations, and halfway down the settings,
+    // under the name and the wallet, is not where anybody looks for one.
+    const { browser } = await started();
+    await browser.signIn();
+
+    const cards = await browser.get("/cards");
+    expect(cards.html).toContain('href="/integrations"');
+
+    const integrations = await browser.get("/integrations");
+    expect(integrations.status).toBe(200);
+    const current = /aria-current="page">([\s\S]*?)<\/span>/.exec(integrations.html)?.[1] ?? "";
+    expect(readable(current)).toContain("Integrations");
+    expect(integrations.html).toContain('href="/docs/quickstart"');
+    expect(integrations.html).toContain('href="/keys?new=key"');
+    // No shop is configured here, so the page offers no way that is not there.
+    expect(readable(integrations.html)).not.toMatch(/WooCommerce/);
+
+    const settings = await browser.get("/settings");
+    expect(settings.html).not.toContain('href="/docs/quickstart"');
+    expect(settings.html).not.toContain('href="/keys?new=key"');
+  });
+
+  it("opens the keys screen on the new-key form when asked from the integrations", async () => {
+    // "Create an API key" would otherwise land at the top of the key list.
+    const { browser } = await started();
+    await browser.signIn();
+
+    const integrations = await browser.get("/integrations");
+    const href = /href="([^"]*)"[^>]*>Create an API key</.exec(integrations.html)?.[1];
+    expect(href).toBe("/keys?new=key");
+
+    const keys = await browser.get("/keys?new=key");
+    expect(keys.html).toMatch(/<input id="label"[^>]*autofocus/);
+    expect((await browser.get("/keys")).html).not.toMatch(/<input id="label"[^>]*autofocus/);
+  });
+
+  it("leads the wallet form's address, opened again, to the settings it lives on", async () => {
+    const { browser } = await started();
+    await browser.signIn();
+
+    const answered = await browser.get("/settings/payout-wallet");
+
+    expect(answered.status).toBe(303);
+    expect(answered.to).toBe("/settings");
+  });
+
   it("answers an emptied box with the control that does what they meant", async () => {
     // Emptying this box is a merchant trying to stop being listed. The route
     // refuses it either way, so the question is which sentence they read: the
@@ -1550,7 +1597,7 @@ describe("the settings screen", () => {
     const answered = await running.browser.post("/settings", { seller_name: "   " });
 
     expect(answered.status).toBe(400);
-    expect(readable(answered.html)).toMatch(/stop your selling/i);
+    expect(readable(answered.html)).toMatch(/to stop selling, use pause all sales/i);
     // And not the other sentence, which is the one the mutation that found this
     // gap swapped in: both refuse, and only one of them is an answer.
     expect(readable(answered.html)).not.toMatch(/not a name the catalogue will carry/i);
@@ -1610,7 +1657,7 @@ describe("the address a merchant's money arrives at", () => {
 
     expect(screen.status).toBe(200);
     expect(screen.html).toContain('name="payout_wallet"');
-    expect(readable(screen.html)).toMatch(/where your money arrives/i);
+    expect(readable(screen.html)).toMatch(/payout wallet/i);
   });
 
   it("is saved, and the whole of it is on the page afterwards", async () => {
@@ -1777,7 +1824,7 @@ describe("a merchant who has chosen no name", () => {
       const screen = await running.browser.get(path);
       const text = readable(screen.html);
       expect(screen.status, path).toBe(200);
-      expect(text, path).toMatch(/cannot go on sale/i);
+      expect(text, path).toMatch(/cannot publish products until you choose the seller name/i);
     }
     // And the page it sends them to is the one that fixes it: a sentence with
     // nowhere to go is a sentence that leaves a merchant hunting.
@@ -1795,7 +1842,7 @@ describe("a merchant who has chosen no name", () => {
 
     for (const path of ["/cards", "/orders", "/receipts"]) {
       const text = readable((await running.browser.get(path)).html);
-      expect(text, path).not.toMatch(/cannot go on sale/i);
+      expect(text, path).not.toMatch(/cannot publish products until you choose the seller name/i);
     }
   });
 
@@ -1822,7 +1869,7 @@ describe("a merchant who has chosen no name", () => {
     expect(finding?.code).toBe("no_seller_name");
     expect(finding?.message).toContain("POST /v0/seller-name");
     // And the cabinet says the same thing without sending anybody to a route.
-    expect(text).toMatch(/cannot go on sale/i);
+    expect(text).toMatch(/cannot publish products until you choose the seller name/i);
     expect(cards.html).toContain('href="/settings"');
     expect(text).not.toContain("POST /v0/seller-name");
   });
@@ -1895,7 +1942,7 @@ describe("the cards screen", () => {
     expect(text).toContain("8.00 USD");
     expect(text).toContain("later");
     expect(text).toContain("Delivery within 4 hours");
-    expect(text).toContain("selling");
+    expect(text).toContain("sales enabled");
   });
 
   it("shows every promise a card makes, not the first one it finds", async () => {
@@ -1922,7 +1969,7 @@ describe("the cards screen", () => {
     const screen = await browser.signIn();
     const text = readable(screen.html);
 
-    expect(text).toContain("not published a card yet");
+    expect(text).toContain("haven't published any cards yet");
     expect(screen.html).toContain('href="/docs/quickstart"');
   });
 
@@ -1996,13 +2043,26 @@ describe("the cards screen", () => {
     const stopped = readable((await browser.get("/cards")).html);
 
     expect(stopped).toContain("All selling is stopped");
-    expect(stopped).toContain("Start selling again");
+    expect(stopped).toContain("Resume all sales");
     expect(await purchasable(gateway, itemId)).toBe(false);
 
     await browser.post("/selling/resume");
 
     expect(await purchasable(gateway, itemId)).toBe(true);
-    expect(readable((await browser.get("/cards")).html)).toContain("Stop all selling");
+    expect(readable((await browser.get("/cards")).html)).toContain("Pause all sales");
+  });
+
+  it("does not promise a merchant that the orders they accepted get fulfilled", async () => {
+    // Agentify fulfils nothing on the SDK path: the merchant's own code does,
+    // and an accepted order nobody delivers ends owing a refund. A merchant
+    // told a pause leaves their orders "fulfilled" may switch that code off.
+    const { browser, gateway } = await started();
+    await publish(gateway, roomCard);
+    await browser.signIn();
+
+    expect(readable((await browser.get("/cards")).html)).not.toMatch(/fulfil/i);
+    await browser.post("/selling/pause");
+    expect(readable((await browser.get("/cards")).html)).not.toMatch(/fulfil/i);
   });
 
   it("tells a merchant which switch is holding a card off sale", async () => {
@@ -2179,8 +2239,8 @@ describe("a merchant who has left", () => {
     // confusion wearing the other label, and both were reachable from one fold.
     expect(page).not.toContain("/selling/resume");
     expect(page).not.toContain("/selling/pause");
-    expect(text).not.toContain("Start selling again");
-    expect(text).not.toContain("Stop all selling");
+    expect(text).not.toContain("Resume all sales");
+    expect(text).not.toContain("Pause all sales");
     // And it does not tell them their accepted orders are playing out, which is
     // what a pause means and a departure does not.
     expect(text).not.toContain("play out as usual");
@@ -2256,7 +2316,7 @@ describe("the orders screen", () => {
 
     expect(text).toContain("in progress");
     expect(text).not.toContain("owed money or goods");
-    expect(text).toContain("None of them owes a refund");
+    expect(text).toContain("No refunds are due");
   });
 
   it("says which orders it cannot show at all", async () => {
@@ -2270,8 +2330,8 @@ describe("the orders screen", () => {
 
     const text = readable((await browser.get("/orders")).html);
 
-    expect(text).toContain("closed before anybody named a price");
-    expect(text).toContain("Nothing was charged for them");
+    expect(text).toContain("closed before they had a price");
+    expect(text).toContain("No money was charged for them");
   });
 
   it("says there are no orders rather than showing an empty table", async () => {
@@ -2329,7 +2389,7 @@ describe("the orders screen", () => {
 
     const text = readable((await browser.get("/orders?open=true")).html);
 
-    expect(text).toContain("goods were not released to the buyer");
+    expect(text).toContain("product was not released to the buyer");
     // The order is still open, which is the whole of what a merchant has to
     // know here: nothing is owed and nothing is theirs to do. What can still
     // happen to it — a fresh authorization on the same purchase, and the stored
@@ -2360,7 +2420,7 @@ describe("the receipts screen", () => {
     // the sale, and on a card whose price is checked at the purchase the buyer
     // pays some time after that.
     expect(text).toContain("Price set");
-    expect(text).toContain("Price true as of");
+    expect(text).toContain("Price as of");
     expect(text).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC/);
     // And the moment the money actually moved, which is neither of those two
     // and is the column a merchant matches wallet transfers against.
@@ -2422,9 +2482,9 @@ describe("the receipts screen", () => {
     // The sentence itself, not only the explanation under it. A page that says
     // nothing is missing and then explains what is missing has still told a
     // merchant, in the line they will actually read, that this is the money.
-    expect(text).toContain("This is not the whole of the money");
-    expect(text).toContain("has no receipt yet");
-    expect(text).toContain("Both are on Orders");
+    expect(text).toContain("This page does not show all of your money");
+    expect(text).toContain("Payments for products not yet delivered");
+    expect(text).toContain("refunds you owe are on Orders");
   });
 
   it("does not claim a receipt appears when the money moves", async () => {
@@ -2655,7 +2715,7 @@ describe("the keys screen", () => {
     // the one instant the screen has to hand when it has no call to show, and
     // putting it here would be a date a merchant reads as a call — the exact
     // lie the migration refused to write into the row.
-    expect(quiet).not.toBe(inColumn(page, ANOTHER.id, /made/i));
+    expect(quiet).not.toBe(inColumn(page, ANOTHER.id, /created/i));
   });
 
   it("says under the table that an empty last call is two situations", async () => {
@@ -2697,6 +2757,29 @@ describe("the keys screen", () => {
     // And it is gone from every page after it: the list is drawn from documents
     // that do not carry a secret at all.
     expect((await browser.get("/keys")).html).not.toContain(SECRET);
+  });
+
+  it("revokes a key only on a second, deliberate press", async () => {
+    // A revoked key does not come back, so a stray tap on a phone must not end
+    // one. The first press opens the question under the button, and only its
+    // answer posts — to the same address a single press used to.
+    const keys = withKeys();
+    const { browser } = await started({ client: keys.client });
+    await browser.signIn();
+
+    const page = (await browser.get("/keys")).html;
+    const action = `action="/keys/${NIGHTLY.id}/disable"`;
+    const question =
+      /<details class="confirm-revoke">[\s\S]*?<\/details>/g.exec(
+        page.slice(page.indexOf(NIGHTLY.label)),
+      )?.[0] ?? "";
+    expect(question).toMatch(/<summary[^>]*>Revoke<\/summary>/);
+    expect(question).toContain(action);
+    expect(question).toContain("Yes, revoke");
+    expect(page.split(action)).toHaveLength(2);
+
+    await browser.post(`/keys/${NIGHTLY.id}/disable`);
+    expect(keys.disabled).toStrictEqual([NIGHTLY.id]);
   });
 
   it("refuses to issue a key with no name, without asking the gateway", async () => {
@@ -2953,6 +3036,26 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     }
   });
 
+  it("opens Integrations while the gateway refuses everything, since nothing on it comes from there", async () => {
+    // The page is the way to connect a catalogue, and the guide and the key it
+    // leads to are what a merchant reaches for when their integration fails.
+    const { browser, close } = await cabinetAnswering(async () => ({
+      ok: false,
+      status: 503,
+      why: "the gateway is refusing every call",
+    }));
+    try {
+      await browser.signIn();
+
+      const answered = await browser.get("/integrations");
+
+      expect(answered.status).toBe(200);
+      expect(answered.html).toContain('href="/docs/quickstart"');
+    } finally {
+      await close();
+    }
+  });
+
   it("does not tell a merchant nothing was changed when it cannot know that", async () => {
     // A call that reached the gateway, did what it was asked, and answered in a
     // shape the contract does not recognise lands on the error page. The pause
@@ -2975,7 +3078,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     }
   });
 
-  it("says there is no such page rather than answering an address with nothing", async () => {
+  it("says there is no such page inside the dashboard, with its menu and a way back", async () => {
     // Only to somebody who is signed in. A stranger is told nothing about which
     // addresses exist here (ADR-0009 §2), which is the test above this one.
     const { browser } = await started();
@@ -2985,6 +3088,10 @@ describe("when something goes wrong that the merchant has to get out of", () => 
 
     expect(answered.status).toBe(404);
     expect(readable(answered.html)).toContain("There is no such page");
+    expect(answered.html).toMatch(/<a [^>]*href="\/cards"[^>]*>Back to the dashboard<\/a>/);
+    const bar = /<header class="top">([\s\S]*?)<\/header>/.exec(answered.html)?.[1] ?? "";
+    expect(readable(bar)).toContain(PERSON);
+    expect(bar).toContain('method="post" action="/sign-out"');
   });
 
   it("treats a cookie it cannot read as nobody being signed in", async () => {

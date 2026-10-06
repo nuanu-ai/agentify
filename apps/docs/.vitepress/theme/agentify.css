@@ -81,6 +81,8 @@
   --vp-button-brand-text: var(--agentify-on-accent);
 
   --vp-code-block-bg: var(--agentify-raised);
+
+  --docs-surface-band-height: 66px;
 }
 
 /* The paragraph is the band rather than its marker div. Caddy removes the
@@ -88,6 +90,9 @@
 .surface-words {
   margin: 0;
   padding: 12px max(24px, calc((100vw - 1152px) / 2));
+  min-height: var(--docs-surface-band-height);
+  display: flex;
+  align-items: center;
   border-bottom: 1px solid var(--vp-c-divider);
   background: var(--vp-c-bg-alt);
   color: var(--vp-c-text-2);
@@ -137,6 +142,11 @@ body {
 
   .surface-words {
     padding-left: calc(var(--vp-sidebar-width) + 24px);
+    padding-right: calc(var(--vp-aside-width, 268px) + 40px);
+  }
+
+  .way-out {
+    margin-left: 24px;
   }
 }
 
@@ -268,7 +278,7 @@ body {
   margin-right: 16px;
   font-size: 14px;
   font-weight: 500;
-  color: var(--vp-c-text-2);
+  color: var(--vp-c-text-1);
   white-space: nowrap;
   transition: color 0.25s;
   gap: 7px;
@@ -282,7 +292,73 @@ body {
 }
 
 .way-out:hover {
+  color: var(--vp-c-brand-1);
+}
+
+/* The surface notice lives above the VitePress application. Its fixed right
+   outline therefore does not know that the notice exists and otherwise starts
+   underneath it. Move only that outline down, and only on pages where the
+   notice is actually rendered; production removes .surface-words entirely. */
+@media (min-width: 1280px) {
+  body:has(.surface-words) .VPDoc .aside-container {
+    padding-top: calc(112px + var(--docs-surface-band-height));
+  }
+}
+
+/* Previous/next is part of the reading flow, not small-print metadata. Give
+   both destinations the same visual weight and make direction unmistakable. */
+.VPDocFooter {
+  margin-top: 64px;
+}
+
+.VPDocFooter .prev-next {
+  gap: 16px;
+}
+
+.VPDocFooter .pager-link {
+  min-height: 94px;
+  padding: 18px 20px;
+  border-color: var(--vp-c-divider);
+  border-radius: 14px;
+  background: var(--agentify-surface);
+  box-shadow: 0 8px 24px rgb(26 25 23 / 4%);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.VPDocFooter .pager-link:hover {
+  border-color: color-mix(in oklch, var(--agentify-accent) 45%, var(--vp-c-divider));
+  box-shadow: 0 12px 30px rgb(26 25 23 / 8%);
+  transform: translateY(-1px);
+}
+
+.VPDocFooter .pager-link .desc {
+  color: var(--vp-c-text-2);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.VPDocFooter .pager-link .title {
+  margin-top: 7px;
   color: var(--vp-c-text-1);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.VPDocFooter .pager-link.prev .desc::before {
+  content: "←";
+  margin-right: 7px;
+}
+
+.VPDocFooter .pager-link.next .desc::after {
+  content: "→";
+  margin-left: 7px;
 }
 
 /* "Docs" and the way out are two things. Where the sidebar's column holds
@@ -299,10 +375,34 @@ body {
    the whole defect and a phone is where somebody is most likely to have
    arrived from a search. */
 @media (max-width: 767px) {
+  :root {
+    --docs-surface-band-height: auto;
+  }
+
+  .surface-words {
+    min-height: 0;
+    padding: 12px 22px;
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+
   .way-out {
     display: inline-flex;
     margin-right: 12px;
     font-size: 13px;
+  }
+
+  .VPDocFooter {
+    margin-top: 48px;
+  }
+
+  .VPDocFooter .prev-next {
+    gap: 12px;
+  }
+
+  .VPDocFooter .pager-link {
+    min-height: 86px;
+    padding: 16px 18px;
   }
 }
 

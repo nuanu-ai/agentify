@@ -9,7 +9,10 @@
  */
 
 /** The merchant-wide pause on the Cards screen. */
-export const STOP_ALL_SELLING = "Stop all selling";
+export const STOP_ALL_SELLING = "Pause all sales";
+
+/** The same control once selling is paused. */
+export const RESUME_ALL_SELLING = "Resume all sales";
 
 /** The account's other sessions ended, on the Settings screen. */
 export const SIGN_OUT_EVERY_OTHER_DEVICE = "Sign out every other device";
