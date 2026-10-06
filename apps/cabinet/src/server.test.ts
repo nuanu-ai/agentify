@@ -3035,6 +3035,26 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     }
   });
 
+  it("opens Integrations while the gateway refuses everything, since nothing on it comes from there", async () => {
+    // The page is the way to connect a catalogue, and the guide and the key it
+    // leads to are what a merchant reaches for when their integration fails.
+    const { browser, close } = await cabinetAnswering(async () => ({
+      ok: false,
+      status: 503,
+      why: "the gateway is refusing every call",
+    }));
+    try {
+      await browser.signIn();
+
+      const answered = await browser.get("/integrations");
+
+      expect(answered.status).toBe(200);
+      expect(answered.html).toContain('href="/docs/quickstart"');
+    } finally {
+      await close();
+    }
+  });
+
   it("does not tell a merchant nothing was changed when it cannot know that", async () => {
     // A call that reached the gateway, did what it was asked, and answered in a
     // shape the contract does not recognise lands on the error page. The pause
