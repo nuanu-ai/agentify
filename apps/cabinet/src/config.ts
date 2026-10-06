@@ -119,9 +119,9 @@ const environmentSchema = z.object({
   /**
    * Where the cabinet is mounted, when it is not at the root of its origin.
    *
-   * ADR-0005 §1 puts it at `/cabinet` behind Caddy, and every link and form on
+   * ADR-0005 §1 puts it at `/dashboard` behind Caddy, and every link and form on
    * every page is built from this. Without it the cabinet works at the root and
-   * sends a merchant to `/cards` from `/cabinet/cards`, which is a different
+   * sends a merchant to `/cards` from `/dashboard/cards`, which is a different
    * place and answers nothing.
    */
   BASE_PATH: z

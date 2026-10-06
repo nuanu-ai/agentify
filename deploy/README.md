@@ -93,7 +93,7 @@ to pass its own start-up checks and its configuration check at
 writes the channel's transition record, stops the gateway, the cabinet, the
 scanner and its worker, takes a restore point of the database, runs the
 migrations, starts everything again, on PRODUCTION installs the edge's route
-table, which the edge's own Caddy has validated before the stop, checks ten
+table, which the edge's own Caddy has validated before the stop, checks eleven
 public routes, checks that every card on sale before the stop is still on sale
 and answers its payment challenge on the channel's network, schedules the
 nightly privacy job, writes `current`, removes the record, and drops the

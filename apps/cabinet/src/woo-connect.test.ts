@@ -96,8 +96,8 @@ describe("the authorize URL", () => {
       authorizeUrlFor("https://shop.example.com/store", {
         appName: "Agentify",
         userId: "a-state-token",
-        returnUrl: "https://agentify.example/cabinet/woocommerce/return",
-        callbackUrl: "https://agentify.example/cabinet/woocommerce/callback",
+        returnUrl: "https://agentify.example/dashboard/woocommerce/return",
+        callbackUrl: "https://agentify.example/dashboard/woocommerce/callback",
       }),
     );
 
@@ -111,8 +111,10 @@ describe("the authorize URL", () => {
     const query = url().searchParams;
     expect(query.get("app_name")).toBe("Agentify");
     expect(query.get("user_id")).toBe("a-state-token");
-    expect(query.get("return_url")).toBe("https://agentify.example/cabinet/woocommerce/return");
-    expect(query.get("callback_url")).toBe("https://agentify.example/cabinet/woocommerce/callback");
+    expect(query.get("return_url")).toBe("https://agentify.example/dashboard/woocommerce/return");
+    expect(query.get("callback_url")).toBe(
+      "https://agentify.example/dashboard/woocommerce/callback",
+    );
     expect(query.get("scope")).toBe("read_write");
   });
 });

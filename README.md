@@ -100,7 +100,7 @@ The gateway settles against nothing locally (ADR-0008): a purchase completes
 with no wallet, no network and no faucet, and the first line of its log says so.
 
 The cabinet is where a merchant sets the name buyers see and issues the keys
-their own code calls with. Open `http://localhost:8080/cabinet/sign-in`, enter
+their own code calls with. Open `http://localhost:8080/dashboard/sign-in`, enter
 an email address, and take the one-time link from the cabinet's log — the
 local sandbox writes the message there instead of sending it. Pressing the
 link's confirmation button signs you in, and the cabinet then offers one
