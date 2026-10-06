@@ -26,7 +26,7 @@ export function SiteDoors() {
   return (
     <nav aria-label="Docs, dashboard and your session" className={styles.doors}>
       <a href="/docs/">Docs</a>
-      <a href="/cabinet/sign-in">Dashboard</a>
+      <a href="/dashboard/sign-in">Dashboard</a>
       <VisitorDoor />
     </nav>
   );

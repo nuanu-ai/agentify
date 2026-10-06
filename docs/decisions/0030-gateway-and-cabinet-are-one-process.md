@@ -26,7 +26,7 @@ image and are released together (`deploy/activate.sh`). The survey is
 **One process**, the `app` service, named after the image it runs from. Two
 public listeners let each surface keep its middleware and Caddy change only
 host names: port 3000 serves `/v0`, `/x402` and `/healthz`, port 3001 serves
-`/cabinet` and `/cabinet/healthz`, and the health check asks both. Port 3002
+`/dashboard` and `/dashboard/healthz`, and the health check asks both. Port 3002
 stays the scanner's route to the cabinet (ADR-0026 §2); the scanner stays
 apart, and Caddy the one door.
 

@@ -28,7 +28,7 @@ describe("the front page", () => {
 
     expect(html).toContain("<form");
     expect(links).toContain("/docs/");
-    expect(links).toContain("/cabinet/sign-in");
+    expect(links).toContain("/dashboard/sign-in");
     expect(underTheForm).toContain('href="/agentic-shop"');
   });
 

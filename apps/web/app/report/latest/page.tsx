@@ -23,10 +23,10 @@ export const metadata: Metadata = {
  */
 export default async function LatestReportPage() {
   const visitor = await visitorOf((await headers()).get("cookie"));
-  if (visitor.kind === "stranger") redirect("/cabinet/sign-in");
+  if (visitor.kind === "stranger") redirect("/dashboard/sign-in");
   if (visitor.kind === "person") {
     const latest = visitor.leadId === null ? undefined : await latestReportOf(visitor.leadId);
-    redirect(latest === undefined ? "/cabinet/" : `/report/${encodeURIComponent(latest)}`);
+    redirect(latest === undefined ? "/dashboard/" : `/report/${encodeURIComponent(latest)}`);
   }
   return (
     <main className={styles.page}>

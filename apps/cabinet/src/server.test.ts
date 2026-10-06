@@ -844,8 +844,8 @@ describe("the passwordless cabinet door", () => {
   });
 
   it("does not spend a query token on GET and opens it once on an explicit same-origin POST", async () => {
-    const running = await started({ base: "/cabinet", cabinet: { COOKIE_SECURE: "true" } });
-    const requested = await running.browser.post("/cabinet/sign-in", { email: PERSON });
+    const running = await started({ base: "/dashboard", cabinet: { COOKIE_SECURE: "true" } });
+    const requested = await running.browser.post("/dashboard/sign-in", { email: PERSON });
     expect(requested.status).toBe(202);
     const action = actionIn(running.mails.at(-1));
     const token = action.searchParams.get("token") ?? "";
@@ -863,22 +863,26 @@ describe("the passwordless cabinet door", () => {
     expect(readable(landing.html)).toContain(PERSON);
     expect(running.rows.cabinet_sessions).toStrictEqual([]);
 
-    const opened = await running.browser.from(running.url).post("/cabinet/sign-in/open", { token });
+    const opened = await running.browser
+      .from(running.url)
+      .post("/dashboard/sign-in/open", { token });
     expect(opened.status).toBe(303);
-    expect(opened.to).toBe("/cabinet/cards");
+    expect(opened.to).toBe("/dashboard/cards");
     expect(opened.headers.get("cache-control")).toBe("private, no-store");
     expect(opened.headers.get("referrer-policy")).toBe("strict-origin");
     expect(sessionCookieIn(opened, SECURE_COOKIE)).toBeDefined();
 
     // Pressed twice in a browser that is now signed in: the person's start,
     // not a page about the link (ADR-0026 §1).
-    const replay = await running.browser.from(running.url).post("/cabinet/sign-in/open", { token });
+    const replay = await running.browser
+      .from(running.url)
+      .post("/dashboard/sign-in/open", { token });
     expect(replay.status).toBe(303);
-    expect(replay.to).toBe("/cabinet/cards");
+    expect(replay.to).toBe("/dashboard/cards");
 
-    const switching = await running.browser.from(running.url).post("/cabinet/sign-out");
+    const switching = await running.browser.from(running.url).post("/dashboard/sign-out");
     expect(switching.status).toBe(303);
-    expect(switching.to).toBe("/cabinet/sign-in");
+    expect(switching.to).toBe("/dashboard/sign-in");
     expect(running.rows.cabinet_sessions).toStrictEqual([]);
   });
 
@@ -1129,13 +1133,13 @@ describe("one session for the whole site", () => {
     // session serves both (ADR-0009 §6, ADR-0026 §2). A cookie scoped to the
     // cabinet's path would leave a person a stranger at the report, and the
     // prefix is what stops a sibling host from planting or replacing it.
-    const running = await started({ base: "/cabinet", cabinet: { COOKIE_SECURE: "true" } });
-    await running.browser.post("/cabinet/sign-in", { email: PERSON });
+    const running = await started({ base: "/dashboard", cabinet: { COOKIE_SECURE: "true" } });
+    await running.browser.post("/dashboard/sign-in", { email: PERSON });
     const action = actionIn(running.mails.at(-1));
 
     const opened = await running.browser
       .from(running.url)
-      .post("/cabinet/sign-in/open", { token: action.searchParams.get("token") ?? "" });
+      .post("/dashboard/sign-in/open", { token: action.searchParams.get("token") ?? "" });
 
     const line = sessionCookieIn(opened, SECURE_COOKIE);
     expect(line).toBeDefined();
@@ -1150,22 +1154,22 @@ describe("one session for the whole site", () => {
     expect(sessionCookieIn(opened, COOKIE)).toBeUndefined();
     // And the cookie opens a page that is not under the cabinet's mount point
     // as far as the cabinet is concerned: it is the same session at the root.
-    expect((await running.browser.get("/cabinet/cards")).status).toBe(200);
+    expect((await running.browser.get("/dashboard/cards")).status).toBe(200);
   });
 
   it("sets the same cookie without the prefix or Secure on the plain-http local origin", async () => {
     // The prefix requires Secure, and a Secure cookie is never sent back over
     // plain http, so the laptop's origin gets neither rather than a session
-    // nobody can use. Mounted where the stack mounts it, under /cabinet, so a
+    // nobody can use. Mounted where the stack mounts it, under /dashboard, so a
     // cookie scoped to the mount point would show here: on https the prefix
     // forces the root path whatever the cabinet asks for.
-    const running = await started({ base: "/cabinet" });
-    await running.browser.post("/cabinet/sign-in", { email: PERSON });
+    const running = await started({ base: "/dashboard" });
+    await running.browser.post("/dashboard/sign-in", { email: PERSON });
     const action = actionIn(running.mails.at(-1));
 
     const opened = await running.browser
       .from(running.url)
-      .post("/cabinet/sign-in/open", { token: action.searchParams.get("token") ?? "" });
+      .post("/dashboard/sign-in/open", { token: action.searchParams.get("token") ?? "" });
 
     const line = sessionCookieIn(opened, COOKIE);
     expect(line).toBeDefined();
@@ -1221,10 +1225,10 @@ describe("one session for the whole site", () => {
     // A clearing line the browser refuses leaves the session cookie in place:
     // a prefixed cookie is only replaced by a line that is Secure and for the
     // whole origin, and a path-scoped clear would miss a cookie set at the root.
-    const running = await started({ base: "/cabinet", cabinet: { COOKIE_SECURE: "true" } });
+    const running = await started({ base: "/dashboard", cabinet: { COOKIE_SECURE: "true" } });
     await running.browser.signIn();
 
-    const out = await running.browser.from(running.url).post("/cabinet/sign-out");
+    const out = await running.browser.from(running.url).post("/dashboard/sign-out");
 
     expect(out.status).toBe(303);
     const line = sessionCookieIn(out, SECURE_COOKIE);
@@ -1300,7 +1304,7 @@ describe("the gate", () => {
     // the routing, and this is where it is held: every route on it answers a
     // stranger without the sign-in redirect, and a route that is not on it —
     // including the report handoff that is gone — is behind the gate.
-    const running = await started({ base: "/cabinet", wooShops: memoryWooShops() });
+    const running = await started({ base: "/dashboard", wooShops: memoryWooShops() });
     // A browser carrying a session cookie that no longer opens anything, so
     // that the gate's answer is its own: the sign-in with the reason the
     // session ended, which no route above the gate ever answers with.
@@ -1309,21 +1313,21 @@ describe("the gate", () => {
       answer.status === 303 && (answer.to ?? "").includes("reason=session-ended");
 
     const above: readonly [string, () => Promise<Visit>][] = [
-      ["the sign-in", () => stranger.get("/cabinet/sign-in")],
-      ["asking for a link", () => stranger.post("/cabinet/sign-in", { email: "" })],
-      ["the sign-out", () => stranger.post("/cabinet/sign-out")],
+      ["the sign-in", () => stranger.get("/dashboard/sign-in")],
+      ["asking for a link", () => stranger.post("/dashboard/sign-in", { email: "" })],
+      ["the sign-out", () => stranger.post("/dashboard/sign-out")],
       [
         "the page a link lands on",
-        () => stranger.get(`/cabinet/sign-in/open?token=${"C".repeat(32)}`),
+        () => stranger.get(`/dashboard/sign-in/open?token=${"C".repeat(32)}`),
       ],
-      ["pressing it", () => stranger.post("/cabinet/sign-in/open", { token: "C".repeat(32) })],
-      ["the stylesheet", () => stranger.get("/cabinet/agentify.css")],
-      ["the health probe", () => stranger.get("/cabinet/healthz")],
+      ["pressing it", () => stranger.post("/dashboard/sign-in/open", { token: "C".repeat(32) })],
+      ["the stylesheet", () => stranger.get("/dashboard/agentify.css")],
+      ["the health probe", () => stranger.get("/dashboard/healthz")],
       [
         "the shop's callback",
-        () => running.browser.postRaw("/cabinet/woocommerce/callback", "application/json", "{}"),
+        () => running.browser.postRaw("/dashboard/woocommerce/callback", "application/json", "{}"),
       ],
-      ["the shop's return", () => stranger.get("/cabinet/woocommerce/return")],
+      ["the shop's return", () => stranger.get("/dashboard/woocommerce/return")],
     ];
     for (const [name, visit] of above) {
       const answer = await visit();
@@ -1331,10 +1335,15 @@ describe("the gate", () => {
       expect(answer.status, name).toBeLessThan(500);
     }
 
-    for (const path of ["/cabinet/", "/cabinet/cards", "/cabinet/merchant", "/cabinet/settings"]) {
+    for (const path of [
+      "/dashboard/",
+      "/dashboard/cards",
+      "/dashboard/merchant",
+      "/dashboard/settings",
+    ]) {
       expect(gate(await stranger.get(path)), path).toBe(true);
     }
-    for (const path of ["/cabinet/merchant", "/cabinet/report-handoff", "/cabinet/keys"]) {
+    for (const path of ["/dashboard/merchant", "/dashboard/report-handoff", "/dashboard/keys"]) {
       expect(gate(await stranger.post(path)), path).toBe(true);
     }
   });
@@ -1893,13 +1902,13 @@ describe("the way out to the documentation", () => {
     // merchant already inside the cabinet had to leave it by hand to read a
     // line of it. And it is beside the cabinet on one origin rather than under
     // it (deploy/Caddyfile): a link that took the mount point along would send
-    // them to /cabinet/docs/, which is an address nothing answers.
-    const { browser, gateway } = await started({ base: "/cabinet" });
+    // them to /dashboard/docs/, which is an address nothing answers.
+    const { browser, gateway } = await started({ base: "/dashboard" });
     await publish(gateway, roomCard);
     await browser.signIn();
 
     for (const path of ["/cards", "/orders", "/receipts", "/keys", "/settings"]) {
-      const screen = await browser.get(`/cabinet${path}`);
+      const screen = await browser.get(`/dashboard${path}`);
       expect(screen.status, path).toBe(200);
 
       // Found by where it goes rather than by what it is called, and read for

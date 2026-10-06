@@ -52,7 +52,7 @@ whole integration, from an empty project to a test sale, is the portal's
 [quickstart](apps/docs/quickstart.md).
 
 One origin serves all of it, on a laptop and on a server alike: the scanner at
-`/`, the merchant documentation at `/docs`, the cabinet at `/cabinet`, the
+`/`, the merchant documentation at `/docs`, the cabinet at `/dashboard`, the
 merchant's own calls at `/v0` and the storefront an agent buys from under
 `/x402`.
 
@@ -82,7 +82,7 @@ open http://localhost:8080
 ```
 
 One origin, one port: the scanner at `/`, the merchant documentation at
-`/docs`, the cabinet at `/cabinet`, the merchant's own calls at `/v0`, the
+`/docs`, the cabinet at `/dashboard`, the merchant's own calls at `/v0`, the
 storefront an agent buys from under `/x402`, one Postgres behind them holding
 a database for the commerce side and a database for the scanner. A merchant
 process comes up beside it and publishes two cards — a rented phone number
@@ -100,7 +100,7 @@ The gateway settles against nothing locally (ADR-0008): a purchase completes
 with no wallet, no network and no faucet, and the first line of its log says so.
 
 The cabinet is where a merchant sets the name buyers see and issues the keys
-their own code calls with. Open `http://localhost:8080/cabinet/sign-in`, enter
+their own code calls with. Open `http://localhost:8080/dashboard/sign-in`, enter
 an email address, and take the one-time link from the cabinet's log — the
 local sandbox writes the message there instead of sending it. Pressing the
 link's confirmation button signs you in, and the cabinet then offers one

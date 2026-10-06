@@ -9,7 +9,7 @@
  */
 export function ReportCabinetControl() {
   return (
-    <a className="button button-primary" href="/cabinet/">
+    <a className="button button-primary" href="/dashboard/">
       Open your dashboard
     </a>
   );

@@ -93,7 +93,7 @@ to pass its own start-up checks and its configuration check at
 writes the channel's transition record, stops the gateway, the cabinet, the
 scanner and its worker, takes a restore point of the database, runs the
 migrations, starts everything again, on PRODUCTION installs the edge's route
-table, which the edge's own Caddy has validated before the stop, checks ten
+table, which the edge's own Caddy has validated before the stop, checks eleven
 public routes, checks that every card on sale before the stop is still on sale
 and answers its payment challenge on the channel's network, schedules the
 nightly privacy job, writes `current`, removes the record, and drops the
@@ -156,7 +156,7 @@ has to be there): it asks for neither of the two old settings,
 and its own check of the public routes expects `/admin` to answer 404.
 
 After it, the dashboard opens for nobody until somebody is flagged. The person
-who is to read it signs in once at `/cabinet/sign-in`, which makes their
+who is to read it signs in once at `/dashboard/sign-in`, which makes their
 account; on TEST the cabinet writes its mail to its log rather than sending
 it, so the link is read with `deploy/stack.sh test logs cabinet` from the
 newest checkout. They are then flagged on the host of that channel:
@@ -196,7 +196,7 @@ the edge depends on them.
 ## The release that stops seeding
 
 A merchant comes into being one way on either channel: a person asks for a
-link at `/cabinet/sign-in`, opens it from their mailbox, and presses the one
+link at `/dashboard/sign-in`, opens it from their mailbox, and presses the one
 control the cabinet then offers, which makes the merchant (ADR-0014). The
 gateway of a deployed channel used to write a merchant key of its own at every
 start, from `AGENTIFY_SEED_KEY` in the host's environment file, onto the

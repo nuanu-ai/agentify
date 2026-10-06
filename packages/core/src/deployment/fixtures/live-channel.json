@@ -37,7 +37,7 @@
       "environment": {
         "GATEWAY_CABINET_SECRET": "fixture-gateway-cabinet-secret-of-more-than-thirty-two-characters",
         "AUTH_SECRET": "fixture-auth-secret",
-        "BASE_PATH": "/cabinet",
+        "BASE_PATH": "/dashboard",
         "COOKIE_SECURE": "true",
         "DATABASE_URL": "postgres://agentify:synthetic-new-database-password@postgres:5432/agentify",
         "FACILITATOR_URL": "https://api.cdp.coinbase.com/platform/v2/x402",

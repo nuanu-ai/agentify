@@ -581,7 +581,7 @@ describe("the private identity route belongs to the cabinet and the scanner alon
   });
 
   it("refuses a scanner that asks anybody but the cabinet on its own network", () => {
-    for (const url of [null, "https://agentify.ad/cabinet", "http://cabinet:3001"]) {
+    for (const url of [null, "https://agentify.ad/dashboard", "http://cabinet:3001"]) {
       expect(
         problemsWith(
           "production",
@@ -708,7 +708,7 @@ describe("the gateway's route belongs to the gateway and the cabinet alone", () 
   });
 
   it("refuses a gateway that asks anybody but the cabinet's own listener", () => {
-    for (const url of [null, "https://agentify.ad/cabinet", "http://cabinet:3002"]) {
+    for (const url of [null, "https://agentify.ad/dashboard", "http://cabinet:3002"]) {
       expect(
         problemsWith(
           "production",

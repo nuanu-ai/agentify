@@ -10,6 +10,6 @@ describe("a trust page", () => {
     const markup = renderToStaticMarkup(<MethodologyPage />);
 
     expect(markup).toContain('href="/docs/"');
-    expect(markup).toContain('href="/cabinet/sign-in"');
+    expect(markup).toContain('href="/dashboard/sign-in"');
   });
 });

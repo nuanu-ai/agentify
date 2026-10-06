@@ -169,7 +169,7 @@ describe("the cabinet is told which stack it is in front of", () => {
 describe("where the cabinet thinks it is mounted", () => {
   it("takes a path, and takes being at the root of its origin", () => {
     expect(loadConfig(given()).basePath).toBe("");
-    expect(loadConfig(given({ BASE_PATH: "/cabinet" })).basePath).toBe("/cabinet");
+    expect(loadConfig(given({ BASE_PATH: "/dashboard" })).basePath).toBe("/dashboard");
   });
 
   it("refuses a value that would send every link to another host", () => {
@@ -181,7 +181,7 @@ describe("where the cabinet thinks it is mounted", () => {
     // slash exactly as a second slash, so `new URL("/\\evil.com", origin)`
     // resolves to https://evil.com/ in every browser — a lookahead that only
     // covered "/" left the same hole open under a different character.
-    for (const bad of ["//evil.com", "//evil.com/cabinet", "/\\evil.com", "/\\\\evil.com"]) {
+    for (const bad of ["//evil.com", "//evil.com/dashboard", "/\\evil.com", "/\\\\evil.com"]) {
       expect(() => loadConfig(given({ BASE_PATH: bad })), bad).toThrow(/BASE_PATH/);
     }
     expect(new URL("/\\evil.com", "https://cabinet.example/").host).toBe("evil.com");
@@ -191,7 +191,13 @@ describe("where the cabinet thinks it is mounted", () => {
     // A trailing slash would double up against every path built from it, a
     // query or a fragment is not a mount point at all, and a bare word is a
     // relative path that means something different on every page.
-    for (const bad of ["/cabinet/", "cabinet", "/cab inet", "/cabinet?x=1", "/cabinet#top"]) {
+    for (const bad of [
+      "/dashboard/",
+      "dashboard",
+      "/dash board",
+      "/dashboard?x=1",
+      "/dashboard#top",
+    ]) {
       expect(() => loadConfig(given({ BASE_PATH: bad })), bad).toThrow(/BASE_PATH/);
     }
   });

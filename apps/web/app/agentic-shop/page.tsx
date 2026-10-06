@@ -76,7 +76,7 @@ export default function AgenticShopPage() {
               orders it and pays.
             </p>
             <div className={styles.heroActions}>
-              <a className={styles.primary} href="/cabinet/sign-in">
+              <a className={styles.primary} href="/dashboard/sign-in">
                 Open your dashboard <Arrow diagonal />
               </a>
               <a className={styles.textLink} href="#how-it-works">
@@ -128,7 +128,7 @@ export default function AgenticShopPage() {
                   Customers are already using AI to find what to buy. The next opportunity is making
                   your business easier for their agents to order from.
                 </p>
-                <a href="/cabinet/sign-in" className={styles.lightLink}>
+                <a href="/dashboard/sign-in" className={styles.lightLink}>
                   Open your dashboard <Arrow diagonal />
                 </a>
               </div>
@@ -261,7 +261,7 @@ export default function AgenticShopPage() {
                 while live waits for approval.
               </p>
               <div className={styles.settlementLinks}>
-                <a className={styles.textLink} href="/cabinet/sign-in">
+                <a className={styles.textLink} href="/dashboard/sign-in">
                   Open your dashboard <Arrow />
                 </a>
                 <a
@@ -363,7 +363,7 @@ export default function AgenticShopPage() {
               would be accounted for separately. Program terms and availability must be agreed
               before activation.
             </p>
-            <a href="/cabinet/sign-in">
+            <a href="/dashboard/sign-in">
               Open your dashboard <Arrow diagonal />
             </a>
           </div>
@@ -423,7 +423,7 @@ export default function AgenticShopPage() {
                 Enter your email in the dashboard. The message works once and expires after one
                 hour.
               </p>
-              <a className={styles.primary} href="/cabinet/sign-in">
+              <a className={styles.primary} href="/dashboard/sign-in">
                 Open your dashboard <Arrow diagonal />
               </a>
               <p className={styles.entryFootnote}>

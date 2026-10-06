@@ -1,7 +1,7 @@
 # The one door.
 #
 # ADR-0005 §1: Caddy is the only address anybody types. `/` is the scanner,
-# `/docs` the portal, `/cabinet` the cabinet, and `/v0/*` and `/x402/*`
+# `/docs` the portal, `/dashboard` the cabinet, and `/v0/*` and `/x402/*`
 # are both the gateway — the merchant's API and the storefront an agent buys at,
 # less the calls only the cabinet makes from inside the stack, setting the
 # payout wallet among them — so a merchant's engineer sees one origin and never
@@ -137,7 +137,7 @@
 	# The mail-link form keeps its token out of Referer, including requests to
 	# this origin. Unlike no-referrer, strict-origin preserves the Origin of a
 	# native form POST, so the cabinet can keep rejecting cross-origin submits.
-	@cabinet_link path /cabinet/sign-in/open
+	@cabinet_link path /dashboard/sign-in/open
 
 	import shared_assets
 
@@ -189,8 +189,8 @@
 	# belongs.
 	#
 	# The cabinet is the second process and needs no line of its own. It answers
-	# the same probe under its own prefix, and the block below passes /cabinet/*
-	# through untouched, so /cabinet/healthz already arrives.
+	# the same probe under its own prefix, and the block below passes /dashboard/*
+	# through untouched, so /dashboard/healthz already arrives.
 	#
 	# Three of the gateway's calls are not on this door at all: registering a
 	# merchant, and making and forgetting the key a cabinet calls with. Only the
@@ -237,15 +237,31 @@
 	# cabinet then reads its own mount point off the request it is answering
 	# and builds its links from the same string, instead of being told the
 	# prefix out of band and having to prepend it to every href. So the cabinet
-	# routes on /cabinet, /cabinet/orders, /cabinet/receipts as written.
+	# routes on /dashboard, /dashboard/orders, /dashboard/receipts as written.
 	#
-	# The prefix is spelled as two exact paths rather than one /cabinet* glob so
-	# that it claims the cabinet and its pages and nothing else: a scanner page
-	# at /cabinets-we-have-known would otherwise disappear into the proxy.
-	@cabinet path /cabinet /cabinet/*
+	# The prefix is spelled as two exact paths rather than one /dashboard* glob
+	# so that it claims the cabinet and its pages and nothing else: a scanner
+	# page at /dashboards-we-have-known would otherwise disappear into the proxy.
+	@cabinet path /dashboard /dashboard/*
 	handle @cabinet {
 		header @cabinet_link Referrer-Policy strict-origin
 		reverse_proxy {$AGENTIFY_CABINET_UPSTREAM:cabinet:3001}
+	}
+
+	# The address the cabinet had before it was called the dashboard, on the
+	# product owner's word (2026-10-06): a bookmark, a link in a message already
+	# sent, or a shop returning from a Connect started under the old address
+	# still arrives. The same path, under the new prefix, with the query kept,
+	# and in any case, as the cabinet itself never minded case. 307 rather than
+	# 301 or 302 so a form posted to the old address is posted again, body and
+	# method intact, rather than turned into a GET that loses it; and not 308,
+	# for the reason /docs below is not permanent either: a browser keeps a
+	# permanent redirect, so after a rollback to a revision with no /dashboard
+	# it would keep sending somebody to a page that is not there. This block is
+	# removed on 2026-11-06, a month after the move (ADR-0005 §1).
+	@cabinet_moved path_regexp cabinet_moved (?i)^/cabinet(/.*)?$
+	handle @cabinet_moved {
+		redir * /dashboard{re.cabinet_moved.1}{?query} 307
 	}
 
 	# The portal. Here the prefix IS stripped, because the other side is a

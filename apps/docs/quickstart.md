@@ -43,7 +43,7 @@ version before the gateway speaks them.
 
 ## 1. Make the merchant account ready
 
-Open the [test dashboard](https://test.agentify.ad/cabinet/sign-in) and enter
+Open the [test dashboard](https://test.agentify.ad/dashboard/sign-in) and enter
 your email address. Open the link in the message and press the confirmation
 button. The dashboard then offers one button, "Open my seller dashboard"; its
 press creates your merchant and asks for the seller name buyers will see.

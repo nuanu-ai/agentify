@@ -59,13 +59,13 @@ describe("the start of a signed-in person with no merchant", () => {
   it("sends a person whose address owns no reports back to the cabinet's start", async () => {
     world.visitor = person(null);
 
-    expect(await sentTo()).toBe("/cabinet/");
+    expect(await sentTo()).toBe("/dashboard/");
   });
 
   it("sends a person whose lead has no report back to the cabinet's start as well", async () => {
     world.visitor = person("lead_without_reports");
 
-    expect(await sentTo()).toBe("/cabinet/");
+    expect(await sentTo()).toBe("/dashboard/");
   });
 
   it("sends a person who owns a report to the latest of them, never to the cabinet", async () => {
