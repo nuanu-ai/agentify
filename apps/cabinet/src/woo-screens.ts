@@ -280,9 +280,9 @@ export const wooReturnScreen = (base: string, mode: SurfaceMode): string =>
   ${brandLockup("/")}
   <form class="gate-card" method="get" action="${escaped(base)}/woocommerce">
     <h1>Back from your shop</h1>
-    <p>Continue to your cabinet to see whether access reached Agentify. If you chose not to connect, you can try again there.</p>
+    <p>Continue to your dashboard to see whether access reached Agentify. If you chose not to connect, you can try again there.</p>
     <input type="hidden" name="from" value="shop">
-    <button class="button button-primary" type="submit">Continue to your cabinet</button>
+    <button class="button button-primary" type="submit">Continue to your dashboard</button>
   </form>
 </div>`,
     mode,

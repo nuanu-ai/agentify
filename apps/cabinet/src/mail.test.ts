@@ -15,9 +15,9 @@ import { isSandboxMail, type Message, postmanFor, SANDBOX_MAIL } from "./mail.js
 
 const MESSAGE: Message = {
   to: "owner@example.com",
-  subject: "Sign in to your Agentify cabinet",
+  subject: "Sign in to your Agentify dashboard",
   body: "Open this:\n\n    https://agentify.example/sign-in/open?token=abc\n",
-  html: '<a href="https://agentify.example/sign-in/open?token=abc">Open your cabinet</a>',
+  html: '<a href="https://agentify.example/sign-in/open?token=abc">Open your dashboard</a>',
 };
 
 /** Everything the process said while `during` ran. */

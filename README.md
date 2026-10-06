@@ -104,7 +104,7 @@ their own code calls with. Open `http://localhost:8080/cabinet/sign-in`, enter
 an email address, and take the one-time link from the cabinet's log — the
 local sandbox writes the message there instead of sending it. Pressing the
 link's confirmation button signs you in, and the cabinet then offers one
-button, "Open my merchant cabinet", whose press creates your merchant and asks
+button, "Open my seller dashboard", whose press creates your merchant and asks
 for the seller name. That merchant is a new one, and it is not `the_merchant` —
 the merchant this laptop's stack seeds at start-up, whose two cards the
 merchant process publishes and `pnpm buy` buys. A deployed channel seeds

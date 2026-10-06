@@ -48,7 +48,7 @@ ${brandLockup("/")}
   ${destinationInput(destination)}
   <button class="button button-primary" type="submit">Send me a sign-in link</button>
   <p class="quiet">Every sign-in gets its own link. It opens once and expires an hour after it is sent, so there is nothing to keep and no password to remember.</p>
-  <p class="quiet">New to Agentify? Use this same form. Once the link signs you in, one button opens your merchant cabinet.</p>
+  <p class="quiet">New to Agentify? Use this same form. Once the link signs you in, one button opens your seller dashboard.</p>
 </form>
 </div>`,
     mode,
@@ -318,19 +318,19 @@ export const merchantSetupScreen = (
 ): string =>
   bare(
     base,
-    "Open a merchant cabinet",
+    "Open a seller dashboard",
     `<div class="gate">
 ${brandLockup("/")}
 <div class="gate-card">
-  <h1>Open a merchant cabinet</h1>
+  <h1>Open a seller dashboard</h1>
   <p>You are signed in as <strong>${escaped(email)}</strong>.</p>
   ${
     unavailable
       ? `<p class="problem">The merchant could not be made because of a fault on our side. Nothing is lost, and you are still signed in, so pressing again needs no new link.</p>`
-      : `<p>A merchant cabinet is where your engineer publishes what you sell to agents and where the orders arrive. Nothing is made until you press the button.</p>`
+      : `<p>A seller dashboard is where your engineer publishes what you sell to agents and where the orders arrive. Nothing is made until you press the button.</p>`
   }
   <form method="post" action="${escaped(base)}/merchant">
-    <button class="button button-primary" type="submit">Open my merchant cabinet</button>
+    <button class="button button-primary" type="submit">Open my seller dashboard</button>
   </form>
   <form method="post" action="${escaped(base)}/sign-out">
     <button class="button button-secondary" type="submit">Sign out</button>

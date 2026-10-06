@@ -1315,7 +1315,7 @@ function deleteFromMemory(rows: MemoryRows, email: string): DeleteResult {
 }
 
 function cabinetLinkMessage(to: string, link: string): Message {
-  const title = "Open your cabinet";
+  const title = "Open your dashboard";
   const lifetime =
     "This link opens once and expires an hour after it was sent. There is nothing here to keep:" +
     " the next time you sign in, ask for a new link.";
@@ -1324,16 +1324,16 @@ function cabinetLinkMessage(to: string, link: string): Message {
     " nothing happens unless the button on it is pressed.";
   return {
     to,
-    subject: "Sign in to your Agentify cabinet",
+    subject: "Sign in to your Agentify dashboard",
     // The URL stands on a line of its own, so that a client that draws no
     // button and a person copying it by hand both get the whole of it.
     body: `Agentify\n\n${title}\n\nSign in with this link:\n\n${link}\n\n${lifetime}\n\n${unasked}`,
     html: transactionalEmailHtml({
-      preview: "Press the button to sign in to your cabinet.",
-      eyebrow: "Cabinet sign-in",
+      preview: "Press the button to sign in to your dashboard.",
+      eyebrow: "Dashboard sign-in",
       title,
-      lead: "Press the button below to sign in to your cabinet.",
-      action: "Open my cabinet",
+      lead: "Press the button below to sign in to your dashboard.",
+      action: "Open my dashboard",
       link,
       paragraphs: [lifetime, unasked],
     }),

@@ -84,9 +84,9 @@ export const LIVE_CHANGE_WAITS =
  * press again.
  */
 export const ACCOUNT_KEY_CANNOT_SET_THE_WALLET =
-  "Nothing was changed. The key this account's cabinet calls Agentify with is of the wrong" +
+  "Nothing was changed. The key this account's dashboard calls Agentify with is of the wrong" +
   " kind: it was made for your merchant's own code, and a key of that kind cannot change where" +
-  " your money goes. Nothing in the cabinet can replace it.";
+  " your money goes. Nothing in the dashboard can replace it.";
 
 /** What somebody who pressed the button with an empty box is told. */
 export const WALLET_NEEDED =

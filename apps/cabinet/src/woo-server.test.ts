@@ -1574,7 +1574,7 @@ describe("coming back from the shop with no session on the request", () => {
 
     expect(stripped.to).not.toBe("/sign-in");
     expect(seen.status).toBe(200);
-    expect(readable(seen.html)).toContain("Continue to your cabinet");
+    expect(readable(seen.html)).toContain("Continue to your dashboard");
   });
 
   it("still takes the state token out of the address bar", async () => {
@@ -1609,7 +1609,7 @@ describe("coming back from the shop with no session on the request", () => {
     const seen = await running.getWithoutCookie(stripped.to ?? "/woocommerce/return");
 
     expect(seen.status).toBe(200);
-    expect(readable(seen.html)).toContain("Continue to your cabinet");
+    expect(readable(seen.html)).toContain("Continue to your dashboard");
   });
 
   it("says the same thing whether or not a shop is connected", async () => {
@@ -1645,7 +1645,7 @@ describe("coming back from the shop with no session on the request", () => {
 
     const stripped = await cameBack(running);
     const landed = await running.getWithoutCookie(stripped.to ?? "/woocommerce/return");
-    expect(readable(landed.html)).toContain("Continue to your cabinet");
+    expect(readable(landed.html)).toContain("Continue to your dashboard");
     expect(landed.html).toContain(`action="/woocommerce"`);
     expect(landed.html).not.toContain("Sign in");
 
