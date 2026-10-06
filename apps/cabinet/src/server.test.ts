@@ -2735,6 +2735,29 @@ describe("the keys screen", () => {
     expect((await browser.get("/keys")).html).not.toContain(SECRET);
   });
 
+  it("revokes a key only on a second, deliberate press", async () => {
+    // A revoked key does not come back, so a stray tap on a phone must not end
+    // one. The first press opens the question under the button, and only its
+    // answer posts — to the same address a single press used to.
+    const keys = withKeys();
+    const { browser } = await started({ client: keys.client });
+    await browser.signIn();
+
+    const page = (await browser.get("/keys")).html;
+    const action = `action="/keys/${NIGHTLY.id}/disable"`;
+    const question =
+      /<details class="confirm-revoke">[\s\S]*?<\/details>/g.exec(
+        page.slice(page.indexOf(NIGHTLY.label)),
+      )?.[0] ?? "";
+    expect(question).toMatch(/<summary[^>]*>Revoke<\/summary>/);
+    expect(question).toContain(action);
+    expect(question).toContain("Yes, revoke");
+    expect(page.split(action)).toHaveLength(2);
+
+    await browser.post(`/keys/${NIGHTLY.id}/disable`);
+    expect(keys.disabled).toStrictEqual([NIGHTLY.id]);
+  });
+
   it("refuses to issue a key with no name, without asking the gateway", async () => {
     // A key with no name is a key nobody can tell from another, on the screen
     // whose whole job is telling them apart before revoking one.
