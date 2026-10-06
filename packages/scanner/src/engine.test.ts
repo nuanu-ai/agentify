@@ -103,6 +103,45 @@ const check = (input: ScanArtifacts, id: number) =>
   evaluateScan(input).checks.find((candidate) => candidate.id === id);
 
 describe("what the checks read from the markup real sites write", () => {
+  // A page that is the site's own: the same page as the base and as both
+  // agent probes, so checks 12 and 13 read only it.
+  const asEverywhere = (page: string, status = 200): ScanArtifacts => ({
+    ...makeArtifacts("store"),
+    base: artifact("https://example.com/", page, { status }),
+    agentProbes: {
+      chatgpt: artifact("https://example.com/", page, { status }),
+      claude: artifact("https://example.com/", page, { status }),
+    },
+  });
+  const assessed = (input: ScanArtifacts) =>
+    [12, 13].map((id) => check(input, id)?.status === "unavailable");
+
+  it("reads a page that only mentions a captcha or carries Cloudflare's bot detection", () => {
+    // Shopify puts the first script on every page of every store, for the
+    // captcha its forms may show; Cloudflare puts the second at the end of the
+    // pages it serves, to tell bots from browsers in the background. Both are
+    // the page itself, not a challenge in its place.
+    const shopify = `<script id="captcha-bootstrap">!function(){'use strict';const t='contact',e='account',n='new_comment'}();</script>`;
+    const cloudflare = `<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}})();</script>`;
+    for (const script of [shopify, cloudflare])
+      expect(assessed(asEverywhere(html.replace("</body>", `${script}</body>`)))).toEqual([
+        false,
+        false,
+      ]);
+  });
+
+  it("takes a challenge served in place of the page for one, by the marks its vendor leaves", () => {
+    // Walmart's PerimeterX page, Etsy's DataDome page and Glassdoor's Cloudflare
+    // page, as each served them, cut to the marks that name them.
+    for (const page of [
+      `<html><head><title>Robot or human?</title></head><body><div class="re-captcha"><div id="px-captcha"></div></div></body></html>`,
+      `<html><head><title>etsy.com</title></head><body><script data-cfasync="false">var dd={'rt':'c','host':'geo.captcha-delivery.com'}</script><script data-cfasync="false" src="https://ct.captcha-delivery.com/c.js"></script></body></html>`,
+      `<html><head><title>Just a moment...</title></head><body><script>(function(){window._cf_chl_opt = {cType: 'managed'};var a = document.createElement('script');a.src = '/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1?ray=a462393f6927d7aa';}());</script></body></html>`,
+    ])
+      for (const status of [200, 403])
+        expect(assessed(asEverywhere(page, status))).toEqual([true, true]);
+  });
+
   it("finds a feed a page links to by its type or by its address", () => {
     for (const link of [
       '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/feed/" />',
