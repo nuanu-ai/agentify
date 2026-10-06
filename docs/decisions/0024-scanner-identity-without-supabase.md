@@ -16,7 +16,7 @@ our PostgreSQL, and the people it confirmed are in the dashboard.
 ## Decision
 
 The scanner's tables live in the product's one database, `agentify`, beside
-the gateway's and the dashboard's (ADR-0003), and every process reaches it with
+the gateway's and the seller dashboard's (ADR-0003), and every process reaches it with
 the one account, `agentify`. The scanner's four service roles — web, worker,
 privacy and dashboard — their reconcile, finalize and verify jobs, the
 policies and grants that named them and the Metabase views the fourth read

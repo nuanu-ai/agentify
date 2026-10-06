@@ -118,7 +118,7 @@ describe("a dashboard that turned the request away", () => {
     const { url } = await aDashboard(status, "");
 
     expect(await new DashboardAnnouncer({ url, secret: SECRET }).announce(ANNOUNCEMENT)).toBe(
-      "refused_by_cabinet",
+      "refused_by_dashboard",
     );
   });
 

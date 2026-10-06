@@ -116,7 +116,7 @@ describe("the internal route between the scanner and the dashboard", () => {
     expect(readSessionResponseSchema.safeParse(signedIn).success).toBe(true);
     expect(readSessionResponseSchema.safeParse({ ...signedIn, operator: true }).success).toBe(true);
     // The flag opens the operator's dashboard (ADR-0026 §6), so only a stored
-    // yes or no is an answer; anything else is a dashboard the scanner cannot read.
+    // yes or no is an answer; anything else is a seller dashboard the scanner cannot read.
     for (const operator of ["true", 1, null])
       expect(
         readSessionResponseSchema.safeParse({ ...signedIn, operator }).success,

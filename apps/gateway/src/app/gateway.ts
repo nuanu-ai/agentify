@@ -123,7 +123,7 @@ export const WALLET_CHANGE_WAITS_MS = 48 * 60 * 60 * 1_000;
  *
  * `nobody_to_tell`: no account names the merchant. `not_announced`: a message
  * could not be handed to the mail provider — though others may have been.
- * `refused_by_cabinet`: the dashboard turned the request away before telling
+ * `refused_by_dashboard`: the dashboard turned the request away before telling
  * anybody. `unconfirmed`: the dashboard did not answer, so a message may have
  * gone out. `raced`: another write landed between reading the wallet and
  * writing it, on a change nothing had announced; `raced_after_announcing`:
@@ -132,7 +132,7 @@ export const WALLET_CHANGE_WAITS_MS = 48 * 60 * 60 * 1_000;
 export type WalletChangeRefusal =
   | "nobody_to_tell"
   | "not_announced"
-  | "refused_by_cabinet"
+  | "refused_by_dashboard"
   | "unconfirmed"
   | "raced"
   | "raced_after_announcing";

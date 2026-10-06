@@ -3,7 +3,7 @@
 Date: 2026-09-24
 Status: accepted (the product owner, 2026-09-17, on the link in a message as
 the one means of authentication; 2026-09-24, on one link signing a person in
-once to both the reports and the dashboard, with the dashboard a privilege of the
+once to both the reports and the seller dashboard, with the operator's dashboard a privilege of the
 account; 2026-09-25, on §5, with one rule for every path and the refusal at
 publish being enough, with no way to ask in advance)
 
@@ -15,7 +15,7 @@ runs the deployment reads the operator's dashboard at `/admin`. Whoever can read
 mail at an address is the person of that address, and a link in a message is how
 they show it. What had to be settled is how far one link reaches, and the
 product owner's answer is all of it: a person signs in once and is not asked
-again, and the dashboard is a privilege an account carries rather than a door
+again, and the operator's dashboard is a privilege an account carries rather than a door
 with a password of its own.
 
 ## Decision
@@ -44,7 +44,7 @@ the address the report will be filed under, and the header always shows it.
 
 **2. One identity and one session, held by the dashboard.** The person of an
 address is one row in the dashboard's Better Auth, and the session a link opens
-serves the whole site, reports, the dashboard and, for an operator, the dashboard,
+serves the whole site, reports, the seller dashboard and, for an operator, the operator's dashboard,
 with the cookie and lifetime of ADR-0009 §6. The scanner never handles a token
 and mints no session. Over the internal route, reachable only on the compose
 network and authenticated by a secret the two processes share, it asks the
@@ -119,7 +119,7 @@ or `no_operator_approval` among its findings, which the contracts export as
 named trigger for the switch becoming a paid subscription is the day the
 operator cannot keep up.
 
-**6. The operator enters through the same door.** The dashboard is entered with
+**6. The operator enters through the same door.** The operator's dashboard is entered with
 the same session as everything else, and the account needs the operator
 privilege. Being an operator is a flag on the account's row in
 `cabinet_accounts`, closed to input from the browser like `merchantId`, and only
@@ -128,13 +128,13 @@ An operator signs in once like anybody, writing the row, and is flagged
 afterwards; an address with no row is refused. `/admin` opens for a session
 whose account carries the flag, and everybody else, signed in or not, gets one
 answer: a 404 with the site's missing-page page. When the flag cannot be
-confirmed because the dashboard does not answer, the answer is the same: the
-dashboard fails closed. The scanner learns the flag on the question it already
+confirmed because the seller dashboard does not answer, the answer is the same: the
+operator's dashboard fails closed. The scanner learns the flag on the question it already
 asks, whose session a cookie is, and asks it on every request, so moving the
 flag ends no session and holds from the next page; the header shows an operator
 the way in. The refusal is the page's own and not byte for byte a path no route
 has, since a route that exists refuses with its own bytes; the repository is
-public, so that the route exists is no secret. The dashboard stays read-only.
+public, so that the route exists is no secret. The operator's dashboard stays read-only.
 
 ## Cases the scanner's and the dashboard's suites answer for
 
@@ -154,7 +154,7 @@ Out: the scanner's report sessions, their cookie and its landing page for links;
 the handoff from a report into the dashboard and the receipt the two processes
 passed between them; and the whole `/admin` block of the edge configuration,
 basic auth and headers alike, with its `ADMIN_BASIC_AUTH_*` values. The
-dashboard has no protection of its own, so the refusal lives in the application:
+operator's dashboard has no protection of its own, so the refusal lives in the application:
 a routing test on the scanner's build proves that `/admin` and a path under it
 answer a visitor without the flag, and everybody while the dashboard cannot say,
 with a 404 and the site's missing-page page, and the edge's routing test proves
@@ -169,7 +169,7 @@ whoever reads a merchant's mail is that merchant. A refused request says when
 the next link may be asked for, which reveals the timing of an address's last
 link, never whether it has an account or a report. Delivery is the single point
 of failure of the way in, measured, with the resend on the same screen, and the
-dashboard's absence stops every sign-in, every full report and the dashboard. A
+seller dashboard's absence stops every sign-in, every full report and the operator's dashboard. A
 session left open on a shared computer opens everything its person may see until
 somebody signs out, though it moves no money by itself, because a wallet change
 waits and is announced (ADR-0019). A second factor outside the mailbox, optional

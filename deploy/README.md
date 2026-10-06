@@ -162,8 +162,8 @@ it, so the link is read with `deploy/stack.sh test logs cabinet` from the
 newest checkout. They are then flagged on the host of that channel:
 
 ```sh
-ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T cabinet pnpm --filter @agentify/dashboard account operator you@example.com'
-ssh -t agentify 'sudo "$(ls -dt /var/lib/agentify/production/checkouts/*/ | head -n 1)deploy/stack.sh" production exec -T cabinet pnpm --filter @agentify/dashboard account operator you@example.com'
+ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T cabinet pnpm --filter ./apps/dashboard --filter ./apps/cabinet --fail-if-no-match account operator you@example.com'
+ssh -t agentify 'sudo "$(ls -dt /var/lib/agentify/production/checkouts/*/ | head -n 1)deploy/stack.sh" production exec -T cabinet pnpm --filter ./apps/dashboard --filter ./apps/cabinet --fail-if-no-match account operator you@example.com'
 ```
 
 The scanner's header then shows them an Admin link, on the next page they

@@ -128,6 +128,8 @@ describe("pnpm approve's local production wrapper", () => {
         "pnpm",
         "--filter",
         "./apps/dashboard",
+        "--filter",
+        "./apps/cabinet",
         "--fail-if-no-match",
         "approve",
       ].join("\n")}\n`,

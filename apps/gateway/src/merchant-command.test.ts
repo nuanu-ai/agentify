@@ -136,8 +136,16 @@ describe("listing a merchant's keys", () => {
 
     expect(await terminal.run("keys", merchantId)).toBe(0);
 
-    expect(terminal.text()).toContain("own code");
-    expect(terminal.text()).toContain("dashboard");
+    // The column, not the label: the dashboard key's label says "dashboard"
+    // too, so a word anywhere in the line would prove nothing. And one width
+    // for both words, or the columns after it no longer line up.
+    const rows = terminal
+      .text()
+      .split("\n")
+      .filter((line) => line.startsWith("mk_"));
+    const madeFor = rows.map((row) => row.split(/ {2,}/)[3]?.trim());
+    expect(madeFor.sort()).toStrictEqual(["dashboard", "own code"]);
+    expect(new Set(rows.map((row) => row.indexOf("no calls recorded"))).size).toBe(1);
   });
 
   it("says which of a merchant's keys anything is still calling with", async () => {

@@ -3,7 +3,7 @@
  * (ADR-0019).
  *
  * Five outcomes rather than the dashboard's three, and the last two are the
- * ones that matter. `refused_by_cabinet` is a listener that turned the request
+ * ones that matter. `refused_by_dashboard` is a listener that turned the request
  * away before reading it — the wrong secret, a body it would not take, an
  * address it does not answer on — so nobody was told. `unconfirmed` is a
  * dashboard that did not answer — gone, slow past the deadline, failing, or
@@ -23,7 +23,7 @@ import type { Announcement, AnnouncementAnswer } from "../announcements.js";
 
 export type AnnouncementOutcome =
   | AnnouncementAnswer["outcome"]
-  | "refused_by_cabinet"
+  | "refused_by_dashboard"
   | "unconfirmed";
 
 export interface Announcer {

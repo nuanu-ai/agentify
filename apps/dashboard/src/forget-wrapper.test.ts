@@ -128,6 +128,8 @@ describe("pnpm forget's local TEST wrapper", () => {
         "pnpm",
         "--filter",
         "./apps/dashboard",
+        "--filter",
+        "./apps/cabinet",
         "--fail-if-no-match",
         "forget",
       ].join("\n")}\n`,

@@ -12,8 +12,8 @@ export const runtime = "nodejs";
  * `s-maxage=3600`) and the one answer that carries an address is this one,
  * which no shared cache stores. The address comes with the person's own
  * operator flag, which is how the header shows an operator the way to the
- * dashboard (ADR-0026 §6). It is also the one scanner answer that asks the
- * dashboard to renew the session and passes the renewed cookie on, since a page
+ * operator's dashboard (ADR-0026 §6). It is also the one scanner answer that asks the
+ * seller dashboard to renew the session and passes the renewed cookie on, since a page
  * drawn on the server cannot set a cookie: every visit to a page with a header
  * counts toward the thirty days (ADR-0026 §2, §3).
  */

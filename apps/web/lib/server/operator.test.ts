@@ -13,7 +13,7 @@ type Asked = { operation?: string; cookie?: string; renew?: boolean };
  * The dashboard's side of the question, as the scanner meets it: one session
  * whose account is an operator, one whose account is not, and nobody else.
  */
-async function dashboard(
+async function sellerDashboard(
   answer: (asked: Asked) => { status: number; body?: unknown } = (asked) => {
     const value = (asked.cookie ?? "").split(`${SESSION}=`)[1]?.split(";")[0];
     if (value === "operator" || value === "person") {
@@ -78,14 +78,14 @@ afterEach(async () => {
 
 describe("whether the operator's dashboard opens for a request", () => {
   it("opens for a session whose account the dashboard says is an operator", async () => {
-    const { url } = await dashboard();
+    const { url } = await sellerDashboard();
     askingAt(url);
 
     await expect(isOperator(`theme=dark; ${SESSION}=operator`)).resolves.toBe(true);
   });
 
   it("stays shut for a session whose account is not an operator", async () => {
-    const { url } = await dashboard();
+    const { url } = await sellerDashboard();
     askingAt(url);
 
     await expect(isOperator(`${SESSION}=person`)).resolves.toBe(false);
@@ -93,7 +93,7 @@ describe("whether the operator's dashboard opens for a request", () => {
   });
 
   it("stays shut for a browser with no session, without asking the dashboard", async () => {
-    const { url, asked } = await dashboard();
+    const { url, asked } = await sellerDashboard();
     askingAt(url);
 
     for (const header of [null, undefined, "", "theme=dark"]) {
@@ -110,7 +110,7 @@ describe("whether the operator's dashboard opens for a request", () => {
       () => ({ status: 200, body: { status: "maybe" } }),
       () => ({ status: 200, body: { status: "signed_in", email: "operator@example.com" } }),
     ]) {
-      const { url } = await dashboard(failing);
+      const { url } = await sellerDashboard(failing);
       askingAt(url);
       await expect(isOperator(`${SESSION}=operator`)).resolves.toBe(false);
     }
@@ -126,7 +126,7 @@ describe("whether the operator's dashboard opens for a request", () => {
   it("asks about the session's cookie alone, and moves nothing", async () => {
     // A page drawn on the server cannot hand the browser a renewed cookie, so
     // the question it asks must not move the session's end (ADR-0026 §2).
-    const { url, asked } = await dashboard();
+    const { url, asked } = await sellerDashboard();
     askingAt(url);
 
     await isOperator(`theme=dark; ${SESSION}=operator; other=1`);

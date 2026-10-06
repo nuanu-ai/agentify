@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Agentify merchant cabinet — cards, orders and receipts, server-rendered",
+  "description": "Agentify seller dashboard — cards, orders and receipts, server-rendered",
   "exports": {
     ".": "./src/index.ts"
   },

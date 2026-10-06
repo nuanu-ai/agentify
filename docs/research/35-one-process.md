@@ -152,9 +152,9 @@ scanner's question about a cookie, which renews after it answers
 (`report-identity-server.ts`, lines 103-106). A renewal is three calls: ask
 for a fresh key with the one on the row, move the row to it on the condition
 that it still holds the old one, and forget the old one with itself
-(`keyRenewal`, `cabinet-key.ts`, line 93). An interruption between the second
+(`keyRenewal`, `dashboard-key.ts`, line 93). An interruption between the second
 and the third leaves a working key nobody holds, and nothing sweeps those
-(`cabinet-key.ts`, lines 65-71; ADR-0014 §5).
+(`dashboard-key.ts`, lines 65-71; ADR-0014 §5).
 
 The gateway treats the kind specially in six places. The `purpose` column
 tells the two kinds apart (`apps/gateway/src/adapters/postgres/schema.ts`,

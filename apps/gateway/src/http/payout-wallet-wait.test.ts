@@ -458,7 +458,7 @@ describe("a change that could not be announced", () => {
     const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
     await ask(served, dashboard, A_WALLET);
     const before = await walletOf(served, harnessed.merchant.key);
-    harnessed.announcer.answer = "refused_by_cabinet";
+    harnessed.announcer.answer = "refused_by_dashboard";
 
     const refused = await asking(served, dashboard, ANOTHER_WALLET);
 

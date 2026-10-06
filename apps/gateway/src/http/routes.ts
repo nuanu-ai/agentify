@@ -202,7 +202,7 @@ function walletChangeRefused(
           "the message about this change could not be handed to the mail provider for every account that names this merchant, so nothing was recorded and sales are paid where they were; an account may still have received it, and it says the change takes effect only if the dashboard's wallet screen shows it, which it does not",
         ),
       );
-    case "refused_by_cabinet":
+    case "refused_by_dashboard":
       return written(
         response,
         UNAVAILABLE,

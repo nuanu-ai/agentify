@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Forgets one address on the TEST deployment, inside the dashboard container
+ * Forgets one address on the TEST deployment, inside the dashboard's container (`agentify-cabinet-1`)
  * that is already running on the test host: its dashboard account and its
  * merchant go, so the address signs in again as a newcomer.
  *
@@ -56,6 +56,8 @@ if ((email === "--help" || email === "-h") && extra.length === 0) {
       "pnpm",
       "--filter",
       "./apps/dashboard",
+      "--filter",
+      "./apps/cabinet",
       "--fail-if-no-match",
       "forget",
     ],

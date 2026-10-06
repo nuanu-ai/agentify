@@ -4,7 +4,7 @@
  *
  * One call, made synchronously by the flow that is about to record a wallet
  * change, and read strictly: the dashboard's three answers pass through, a 4xx
- * is `refused_by_cabinet` because the listener answers those before telling
+ * is `refused_by_dashboard` because the listener answers those before telling
  * anybody, and every other way the call can end — a 5xx, a body the wire does
  * not recognise, nothing listening, nothing back before the deadline — is
  * `unconfirmed`. The last of those is the one worth naming. A dashboard
@@ -84,7 +84,7 @@ export class DashboardAnnouncer implements Announcer {
           ? `[gateway] the dashboard refused the gateway's secret (${announcement.kind}): GATEWAY_CABINET_SECRET on the gateway and on the dashboard are not the same value, and nothing was announced`
           : `[gateway] the dashboard refused an announcement (${announcement.kind}) with ${answered.status} before telling anybody`,
       );
-      return "refused_by_cabinet";
+      return "refused_by_dashboard";
     }
     if (answered.status !== 200) {
       console.error(

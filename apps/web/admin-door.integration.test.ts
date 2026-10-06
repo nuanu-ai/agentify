@@ -3,15 +3,15 @@
  * build.
  *
  * ADR-0026 §6: `/admin` opens for a session whose account carries the operator
- * flag. Everybody else, signed in or not, and everybody while the dashboard
+ * flag. Everybody else, signed in or not, and everybody while the seller dashboard
  * cannot confirm the flag, gets the site's 404 page, the one a path no route
  * answers gets. The answer is Next's, drawn from the page's refusal, so this
  * runs the standalone build rather than importing the page. It compares the
  * refusal with the answer at `/nimda`, a path of the same shape that no route
  * has: the same status, the same page title and heading, none of the
- * dashboard, and no header of a door with a password of its own.
+ * operator's dashboard, and no header of a door with a password of its own.
  *
- * The dashboard reads the scanner's own tables, so it is asked of a database
+ * The operator's dashboard reads the scanner's own tables, so it is asked of a database
  * the migrations alone built: the test empties the `*_migration_test`
  * database it is told about and migrates it, the way the scanner's other
  * integration suites do, and puts nothing beside what the migrations made.
@@ -44,32 +44,32 @@ if (!existsSync(built)) {
 
 const SESSION = "agentify.session_token";
 const HEADING = "Agentify operating dashboard";
-/** The cookie values the stand-in dashboard knows, and which of them are operators. */
+/** The cookie values the stand-in seller dashboard knows, and which of them are operators. */
 const people = new Set(["operator", "person"]);
 const operators = new Set(["operator"]);
-let dashboardFails = false;
+let sellerDashboardFails = false;
 
 const migrationsFolder = fileURLToPath(
   new URL("../../packages/scanner-database/migrations", import.meta.url),
 );
 const database = createDatabase(connectionString, { max: 1 });
-let dashboard: Server;
+let sellerDashboard: Server;
 let scanner: ChildProcess;
 let scannerOutput = "";
 let base = "";
 
 /**
- * The dashboard's side of the question the scanner asks about every visitor
+ * The seller dashboard's side of the question the scanner asks about every visitor
  * (ADR-0026 §2), answering from the two sets above.
  */
-function standInDashboard(): Server {
+function standInSellerDashboard(): Server {
   return createServer((request, response) => {
     let body = "";
     request.setEncoding("utf8");
     request.on("data", (chunk: string) => (body += chunk));
     request.on("end", () => {
       const asked = JSON.parse(body || "{}") as { operation?: string; cookie?: string };
-      if (dashboardFails || asked.operation !== "session") {
+      if (sellerDashboardFails || asked.operation !== "session") {
         response.statusCode = 503;
         response.end();
         return;
@@ -149,7 +149,7 @@ const DOORS = ["/admin", "/admin/users"] as const;
  * A client navigation is the one way of asking whose status says nothing: Next
  * carries a page's refusal inside the answer to it and the browser draws the
  * 404 page from that. What is held there is that the payload is the 404 page
- * and none of the dashboard.
+ * and none of the operator's dashboard.
  */
 async function expectMissingPages(visitor: Asking, who: string): Promise<void> {
   for (const door of DOORS) {
@@ -187,9 +187,9 @@ beforeAll(async () => {
   );
   await migrateDatabase(database.db, migrationsFolder);
 
-  dashboard = standInDashboard();
-  await new Promise<void>((resolve) => dashboard.listen(0, "127.0.0.1", resolve));
-  const dashboardPort = (dashboard.address() as AddressInfo).port;
+  sellerDashboard = standInSellerDashboard();
+  await new Promise<void>((resolve) => sellerDashboard.listen(0, "127.0.0.1", resolve));
+  const sellerDashboardPort = (sellerDashboard.address() as AddressInfo).port;
 
   const port = 42_000 + (process.pid % 1_000);
   base = `http://127.0.0.1:${port}`;
@@ -202,7 +202,7 @@ beforeAll(async () => {
       PORT: String(port),
       DATABASE_URL: connectionString,
       TOKEN_HMAC_SECRET: "t".repeat(32),
-      CABINET_IDENTITY_URL: `http://127.0.0.1:${dashboardPort}`,
+      CABINET_IDENTITY_URL: `http://127.0.0.1:${sellerDashboardPort}`,
       REPORT_IDENTITY_SECRET: "r".repeat(32),
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -238,7 +238,8 @@ afterAll(async () => {
       new Promise((resolve) => setTimeout(resolve, 5_000)),
     ]);
   }
-  if (dashboard?.listening) await new Promise<void>((resolve) => dashboard.close(() => resolve()));
+  if (sellerDashboard?.listening)
+    await new Promise<void>((resolve) => sellerDashboard.close(() => resolve()));
   await database.pool.end();
 });
 
@@ -281,18 +282,18 @@ describe("the operator's dashboard at /admin", () => {
     expect(answered.body).not.toContain(HEADING);
   });
 
-  it("fails closed: while the dashboard cannot say, an operator gets the 404 page too", async () => {
+  it("fails closed: while the seller dashboard cannot say, an operator gets the 404 page too", async () => {
     const operator = { cookie: `${SESSION}=operator` };
 
-    dashboardFails = true;
+    sellerDashboardFails = true;
     try {
-      await expectMissingPages(operator, "dashboard answering 503");
+      await expectMissingPages(operator, "seller dashboard answering 503");
     } finally {
-      dashboardFails = false;
+      sellerDashboardFails = false;
     }
 
     // Last, because it does not come back: nothing is listening any more.
-    await new Promise<void>((resolve) => dashboard.close(() => resolve()));
-    await expectMissingPages(operator, "dashboard unreachable");
+    await new Promise<void>((resolve) => sellerDashboard.close(() => resolve()));
+    await expectMissingPages(operator, "seller dashboard unreachable");
   });
 });

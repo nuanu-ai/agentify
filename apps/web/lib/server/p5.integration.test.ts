@@ -72,9 +72,9 @@ const migrationsFolder = fileURLToPath(
 const admin = createDatabase(connectionString, { max: 1 });
 const provider = new LocalStripeCardSignalProvider("p5-webhook-secret");
 let dashboardServer: Server | undefined;
-let dashboardMode: "unavailable" | "retained" | "deleted" = "retained";
+let sellerDashboardMode: "unavailable" | "retained" | "deleted" = "retained";
 let dashboardDelayMs = 0;
-let dashboardDeleteRequests = 0;
+let sellerDashboardDeleteRequests = 0;
 
 /**
  * The sessions the stand-in dashboard answers for, by cookie value. A privacy
@@ -206,14 +206,14 @@ beforeAll(async () => {
       respondJson(response, 200, { status: "refused" });
       return;
     }
-    dashboardDeleteRequests += 1;
+    sellerDashboardDeleteRequests += 1;
     if (dashboardDelayMs) {
       await new Promise((resolve) => setTimeout(resolve, dashboardDelayMs));
     }
-    if (dashboardMode === "unavailable") {
+    if (sellerDashboardMode === "unavailable") {
       respondJson(response, 503, { status: "unavailable" });
     } else {
-      respondJson(response, 200, { status: dashboardMode });
+      respondJson(response, 200, { status: sellerDashboardMode });
     }
   });
   dashboardServer = server;
@@ -355,7 +355,7 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
     const cookieHeader = signedInAs(fixture.email);
     await expect(visitorOf(cookieHeader)).resolves.toMatchObject({ leadId: fixture.leadId });
 
-    dashboardMode = "unavailable";
+    sellerDashboardMode = "unavailable";
     await expect(
       requestScannerIdentityDeletion({ leadId: fixture.leadId, provider }),
     ).resolves.toBe("requested");
@@ -383,7 +383,7 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
       .db.update(scannerIdentityDeletionOperations)
       .set({ leaseExpiresAt: new Date(Date.now() - 1) })
       .where(eq(scannerIdentityDeletionOperations.operationId, operation.operationId));
-    dashboardMode = "retained";
+    sellerDashboardMode = "retained";
     await expect(
       runScannerIdentityDeletionOperation({
         operationId: operation.operationId,
@@ -447,7 +447,7 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
 
   it("uses the database lease so concurrent resident retries delete once", async () => {
     const fixture = await createLeadFixture("deletion-lease");
-    dashboardMode = "unavailable";
+    sellerDashboardMode = "unavailable";
     await requestScannerIdentityDeletion({ leadId: fixture.leadId });
     const operation = onlyRow(
       await getDatabase()
@@ -460,9 +460,9 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
       .set({ leaseExpiresAt: new Date(Date.now() - 1) })
       .where(eq(scannerIdentityDeletionOperations.operationId, operation.operationId));
 
-    dashboardMode = "deleted";
+    sellerDashboardMode = "deleted";
     dashboardDelayMs = 75;
-    const before = dashboardDeleteRequests;
+    const before = sellerDashboardDeleteRequests;
     const results = await Promise.all([
       runScannerIdentityDeletionOperation({
         operationId: operation.operationId,
@@ -473,7 +473,7 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
     ]);
     dashboardDelayMs = 0;
     expect(results.sort()).toEqual(["completed", "not_found"]);
-    expect(dashboardDeleteRequests - before).toBe(1);
+    expect(sellerDashboardDeleteRequests - before).toBe(1);
     await expect(retryPendingScannerIdentityDeletions()).resolves.toBe(0);
   });
 
@@ -485,11 +485,11 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
         emailNormalizedCiphertext: encryptEmail("different-owner@example.com", Buffer.alloc(32, 7)),
       })
       .where(eq(leads.id, fixture.leadId));
-    const beforeRequests = dashboardDeleteRequests;
+    const beforeRequests = sellerDashboardDeleteRequests;
     await expect(requestScannerIdentityDeletion({ leadId: fixture.leadId })).resolves.toBe(
       "requested",
     );
-    expect(dashboardDeleteRequests).toBe(beforeRequests);
+    expect(sellerDashboardDeleteRequests).toBe(beforeRequests);
     const lead = onlyRow(
       await getDatabase().db.select().from(leads).where(eq(leads.id, fixture.leadId)),
     );
