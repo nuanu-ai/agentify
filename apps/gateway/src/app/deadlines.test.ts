@@ -518,24 +518,39 @@ describe("when a delivery goes unanswered", () => {
     await harnessed.gateway.answerOrder(merchantId, orderId, { accepted: {} });
     expect((await harnessed.gateway.poll(merchantId, 10, 1_000)).envelopes).toHaveLength(1);
 
-    // The silence after the repeat. The hand-over it names stops being open
-    // once it has been dealt with, whatever was decided, which is how this
-    // knows the silence has been and gone.
+    // The silence after the repeat, and then the goods. The merchant cannot
+    // see a silence being weighed, so the test asks what he can see: what his
+    // delivery is told, and what reaches his stream.
+    //
+    // The order of the two is the in-memory adapters' and is relied on here.
+    // The reminder is due at once and fires on the next turn of the event
+    // loop, and it takes the order's hold as it does; the delivery made after
+    // that turn waits behind it. Were the delivery ever to go first, the order
+    // would be closed by the goods before the silence was weighed, and this
+    // would pass on the old machine as well — it cannot fail a sound one.
     await harnessed.queue.remind(
       { kind: "delivery_unanswered", orderId, handOver: await openHandOver() },
       0,
     );
-    await vi.waitFor(
-      async () => expect((await harnessed.store.orderById(orderId))?.openDeliveryId).toBeNull(),
-      { timeout: 2_000, interval: 5 },
-    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const delivered = await harnessed.gateway.deliverOrder(merchantId, orderId, {
+      activation_code: "LPA:1$smdp.example$K2-1A2B3C",
+    });
 
-    // Still his, the money still with him, and nothing more on the way.
-    const held = await state(harnessed, orderId);
-    expect(held?.state).toBe("dispatched");
-    expect(held?.payment).toBe("settled");
-    expect(held?.dispatch).toStrictEqual({ attempts: 2, accepted: true });
-    expect(await harnessed.queue.holdsOrder(merchantId, orderId)).toBe(false);
+    // His goods close an order that was still his. Counted, the silence would
+    // have closed it into a refund owed first, and he would be told his
+    // delivery paid a debt off rather than made a sale.
+    expect(delivered).toStrictEqual({ ok: true, result: "delivered" });
+    // And nothing on his stream says otherwise. An event goes out once and is
+    // never taken back, so a refund notice sent here in error would stand in
+    // his records whatever happened to the order afterwards.
+    expect((await harnessed.queue.draw(merchantId, 10, 0)).map((d) => d.envelope)).toStrictEqual(
+      [],
+    );
+    expect((await state(harnessed, orderId))?.dispatch).toStrictEqual({
+      attempts: 2,
+      accepted: true,
+    });
   });
 
   it("spends one delivery on one silence, though the same reminder arrives twice", async () => {
