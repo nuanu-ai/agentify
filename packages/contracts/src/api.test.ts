@@ -954,15 +954,23 @@ describe("the route table", () => {
     ["list_keys", "GET", "/v0/keys", "merchant_key", "-", "-", "merchant_key_list"],
     ["issue_key", "POST", "/v0/keys", "merchant_key", "-", "issue_key_request", "issued_key"],
     ["disable_key", "POST", "/v0/keys/:key_id/disable", "merchant_key", "-", "-", "disabled_key"],
-    ["issue_cabinet_key", "POST", "/v0/keys/cabinet", "merchant_key", "-", "-", "cabinet_key"],
     [
-      "forget_cabinet_key",
-      "DELETE",
-      "/v0/keys/cabinet",
+      "issue_dashboard_key",
+      "POST",
+      "/v0/keys/dashboard",
       "merchant_key",
       "-",
       "-",
-      "forgotten_cabinet_key",
+      "dashboard_key",
+    ],
+    [
+      "forget_dashboard_key",
+      "DELETE",
+      "/v0/keys/dashboard",
+      "merchant_key",
+      "-",
+      "-",
+      "forgotten_dashboard_key",
     ],
     ["get_order", "GET", "/v0/orders/:order_id", "merchant_key", "-", "-", "order_with_status"],
     ["list_orders", "GET", "/v0/orders", "merchant_key", "order_list_query", "-", "order_list"],
@@ -1245,10 +1253,10 @@ describe("the route table", () => {
   // them. What the table cannot hold is the prose, and the rules below reach an
   // SDK author only through it.
 
-  it("warns whoever writes a cabinet that one key cannot be disabled from it", () => {
+  it("warns whoever writes a dashboard that one key cannot be disabled from it", () => {
     // The rule lives in the route rather than on a screen, so the table is
     // where somebody building against it finds out. What it costs to learn the
-    // hard way is a merchant one click away from a cabinet that answers every
+    // hard way is a merchant one click away from a dashboard that answers every
     // page with "the gateway will not take this key", and no terminal to undo
     // it with. This pins that the sentence is there, not what it says.
     expect(API_ROUTES.disable_key.description).toContain("this call was made with");
@@ -1258,43 +1266,43 @@ describe("the route table", () => {
   it("warns that the key a call was made with is not always among the keys listed", () => {
     // The one thing about this list that a reader would otherwise get wrong,
     // and it fails silently: `this_call` names the key on the call, and a
-    // cabinet's key is in nobody's list — so a screen matching that identifier
+    // dashboard's key is in nobody's list — so a screen matching that identifier
     // against the rows finds nothing, and a client that took the match for
     // granted would either draw a row it invented or throw on the one page a
     // merchant reaches their keys through.
     expect(API_ROUTES.list_keys.description).toContain("not among");
   });
 
-  it("says a key made for a cabinet is not disabled through the merchant's call", () => {
-    // The rule a cabinet author has to know before drawing a keys screen, and
+  it("says a key made for a dashboard is not disabled through the merchant's call", () => {
+    // The rule a dashboard author has to know before drawing a keys screen, and
     // the one a merchant meets if they ever aim at such an identifier: this
     // call reaches what they issued and refuses the rest by name.
-    expect(API_ROUTES.disable_key.description).toContain("key_made_for_a_cabinet");
+    expect(API_ROUTES.disable_key.description).toContain("key_made_for_a_dashboard");
   });
 
-  it("says the two cabinet calls are refused to a merchant's own key", () => {
+  it("says the two dashboard calls are refused to a merchant's own key", () => {
     // The refusal is not hygiene and a reader has to know which key to make
     // these with: a sweep made with a key of the merchant's own code would take
-    // away the credential a cabinet is signed in on and lock its owner out.
-    for (const route of [API_ROUTES.issue_cabinet_key, API_ROUTES.forget_cabinet_key]) {
-      expect(route.description).toContain("not_a_cabinet_key");
+    // away the credential a dashboard is signed in on and lock its owner out.
+    for (const route of [API_ROUTES.issue_dashboard_key, API_ROUTES.forget_dashboard_key]) {
+      expect(route.description).toContain("not_a_dashboard_key");
     }
   });
 
   it("says the forgetting reaches only the key the call was made with", () => {
-    // The fact a cabinet author builds on and the fact that makes the call
+    // The fact a dashboard author builds on and the fact that makes the call
     // safe: there are no parameters and the only key it can remove is the one
     // in the caller's hand, so no call of anybody's can take away a key written
     // after it was sent. A reader who took this for the older rule — every key
     // but this one — would build the sweep that locks people out.
-    expect(API_ROUTES.forget_cabinet_key.description).toContain("no other");
+    expect(API_ROUTES.forget_dashboard_key.description).toContain("no other");
   });
 
   it("says how far the refusal that protects a merchant from themselves reaches", () => {
     // The half that is easy to leave out and expensive to leave out. The rule
-    // is about the key on the call and not about the key a cabinet signed in
+    // is about the key on the call and not about the key a dashboard signed in
     // with, which the gateway has no way of knowing — so a merchant with two
-    // keys can still be left with a cabinet the gateway will not take. A reader
+    // keys can still be left with a dashboard the gateway will not take. A reader
     // who took the first sentence for the whole promise would build on a
     // protection that is not there.
     expect(API_ROUTES.disable_key.description).toContain("two keys");
@@ -1310,7 +1318,7 @@ describe("the route table", () => {
   it("sends whoever registers on to the call that names their seller", () => {
     // Registering leaves a merchant listed under nothing, and a merchant listed
     // under nothing cannot publish. Somebody reading only this row would build a
-    // cabinet that registers a person and takes them straight to a publish call
+    // dashboard that registers a person and takes them straight to a publish call
     // the gateway refuses, so the road on is named where they are already
     // reading.
     expect(API_ROUTES.register_merchant.description).toContain("/v0/seller-name");

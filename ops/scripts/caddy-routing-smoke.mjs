@@ -206,9 +206,9 @@ const CABINET_ONLY = [
   ["POST", "/v0/./merchants"],
   ["POST", "/v0/keys/../merchants"],
   ["POST", "/v0/merchants?invitation=x"],
-  ["POST", "/v0/keys/cabinet"],
-  ["DELETE", "/v0/keys/cabinet"],
-  ["POST", "/v0/keys/cabinet/"],
+  ["POST", "/v0/keys/dashboard"],
+  ["DELETE", "/v0/keys/dashboard"],
+  ["POST", "/v0/keys/dashboard/"],
   ["POST", "/V0/KEYS/CABINET"],
   ["DELETE", "/v0/keys%2Fcabinet"],
   ["POST", "/v0/keys/./cabinet"],
@@ -221,7 +221,7 @@ const MERCHANT_KEY_CALLS = [
   ["POST", "/v0/keys/mk_1/disable"],
   ["GET", "/v0/seller-name"],
   ["POST", "/v0/merchants-list"],
-  ["POST", "/v0/keys/cabinets"],
+  ["POST", "/v0/keys/dashboards"],
 ];
 
 async function expectDashboardOnlyCallsClosed(baseUrl) {

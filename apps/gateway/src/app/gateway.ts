@@ -22,15 +22,15 @@ import {
 import {
   type Acceptance,
   CARD_REJECTED,
-  type CabinetKey,
   type CallError,
   CardSchema,
   type CatalogPage,
   CONTRACT_VERSION,
+  type DashboardKey,
   type Delivery,
   type DisabledKey,
   deliveryCheckFor,
-  type ForgottenCabinetKey,
+  type ForgottenDashboardKey,
   type HandlerAnswer,
   type IssuedKey,
   MERCHANT_FINDINGS,
@@ -830,9 +830,9 @@ export class Gateway {
     merchantId: string,
     wallet: string,
     madeWith: KeyPurpose,
-  ): Promise<PayoutWallet | WalletChangeRefusal | "not_a_cabinet_key"> {
-    if (madeWith !== "cabinet") {
-      return "not_a_cabinet_key";
+  ): Promise<PayoutWallet | WalletChangeRefusal | "not_a_dashboard_key"> {
+    if (madeWith !== "dashboard") {
+      return "not_a_dashboard_key";
     }
     // The route holds the same rule on the way in, so a throw from here is a
     // caller that skipped it.
@@ -985,8 +985,8 @@ export class Gateway {
    * names it — or as the dashboard's, which is on no list.
    */
   async #named(merchantId: string, askedBy: KeyOnTheCall): Promise<AskedWith> {
-    if (askedBy.purpose === "cabinet") {
-      return { kind: "cabinet" };
+    if (askedBy.purpose === "dashboard") {
+      return { kind: "dashboard" };
     }
     const key = (await this.runtime.store.keysOf(merchantId)).find(
       (one) => one.id === askedBy.keyId,
@@ -1071,9 +1071,9 @@ export class Gateway {
   async issueDashboardKey(
     merchantId: string,
     madeWith: KeyPurpose,
-  ): Promise<CabinetKey | "not_a_cabinet_key"> {
-    if (madeWith !== "cabinet") {
-      return "not_a_cabinet_key";
+  ): Promise<DashboardKey | "not_a_dashboard_key"> {
+    if (madeWith !== "dashboard") {
+      return "not_a_dashboard_key";
     }
     const issued = await issueDashboardKey(
       this.runtime.store,
@@ -1117,9 +1117,9 @@ export class Gateway {
   async forgetDashboardKey(
     thisCall: string,
     madeWith: KeyPurpose,
-  ): Promise<ForgottenCabinetKey | "not_a_cabinet_key"> {
-    if (madeWith !== "cabinet") {
-      return "not_a_cabinet_key";
+  ): Promise<ForgottenDashboardKey | "not_a_dashboard_key"> {
+    if (madeWith !== "dashboard") {
+      return "not_a_dashboard_key";
     }
     await this.runtime.store.forgetDashboardKey(thisCall);
     // Whether a row went is not carried out. The call authenticated as this
@@ -1138,7 +1138,7 @@ export class Gateway {
    * longer takes (ADR-0014 §5), so it is refused before anything is read, which
    * also means it can never half-happen — and it is asked first for that reason
    * rather than for any other, since every answer below it costs a write or a
-   * read. `made_for_a_cabinet` is a key of theirs they did not issue: a
+   * read. `made_for_a_dashboard` is a key of theirs they did not issue: a
    * merchant switches off what they made, and this one is a dashboard's way in.
    * `null` is every other key that is not this merchant's to disable — one that
    * does not exist and one belonging to somebody else, told apart nowhere, so a
@@ -1159,7 +1159,7 @@ export class Gateway {
     merchantId: string,
     keyId: string,
     thisCall: string,
-  ): Promise<DisabledKey | "locked_out" | "made_for_a_cabinet" | null> {
+  ): Promise<DisabledKey | "locked_out" | "made_for_a_dashboard" | null> {
     if (keyId === thisCall) {
       return "locked_out";
     }

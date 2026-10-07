@@ -391,7 +391,7 @@ export interface StoredMerchant {
  *
  * `merchant_code` is a key the merchant asked for and holds: it goes into their
  * own worker, it is on the one screen they revoke keys from, and everything
- * about it is theirs. `cabinet` is the credential a dashboard calls the gateway
+ * about it is theirs. `dashboard` is the credential a dashboard calls the gateway
  * with on their behalf — made when somebody signs in, never shown to anybody,
  * and in no list the merchant reads.
  *
@@ -400,7 +400,7 @@ export interface StoredMerchant {
  * and which calls can reach it. A list assembled by reading text a person can
  * type is a list a person can type their way into.
  */
-export type KeyPurpose = "merchant_code" | "cabinet";
+export type KeyPurpose = "merchant_code" | "dashboard";
 
 /**
  * One key a merchant opens the door with.
@@ -754,7 +754,7 @@ export interface Store {
    * merchant walking identifiers would learn which of them are real, and the
    * identifiers of a merchant's keys are not secrets.
    *
-   * `"made_for_a_cabinet"` is a key of this merchant's that they did not issue.
+   * `"made_for_a_dashboard"` is a key of this merchant's that they did not issue.
    * A merchant switches off what they made; the credential their dashboard calls
    * with is not that, and revoking it signs somebody out of the dashboard they
    * are standing in. It is told apart from the null because it is a fact about
@@ -781,7 +781,7 @@ export interface Store {
     merchantId: string,
     id: string,
     at: number,
-  ): Promise<StoredKey | "made_for_a_cabinet" | null>;
+  ): Promise<StoredKey | "made_for_a_dashboard" | null>;
 
   /**
    * Removes one key made for a dashboard, and answers whether a row went.

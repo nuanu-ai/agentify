@@ -136,7 +136,7 @@ describe("a key", () => {
     const dashboard = await issueDashboardKey(store, ids, "mch_1", 2_000, "test");
 
     expect((await store.codeKeysOf("mch_1")).map((key) => key.id)).toStrictEqual([theirs.key.id]);
-    expect(dashboard.key.purpose).toBe("cabinet");
+    expect(dashboard.key.purpose).toBe("dashboard");
     // Both open the door. What differs is whose list they are in.
     expect((await store.workingKey(keyDigest(dashboard.secret)))?.id).toBe(dashboard.key.id);
   });
@@ -468,7 +468,7 @@ describe("registering a merchant", () => {
 
     const made = await registerMerchant(store, countedIds(), 1_000, "test");
 
-    expect(made?.key.purpose).toBe("cabinet");
+    expect(made?.key.purpose).toBe("dashboard");
     expect(await store.codeKeysOf(made?.merchant.id ?? "")).toStrictEqual([]);
   });
 

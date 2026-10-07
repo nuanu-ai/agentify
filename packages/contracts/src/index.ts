@@ -61,9 +61,9 @@ import {
   RefusalSchema,
 } from "./handler.js";
 import {
-  CabinetKeySchema,
+  DashboardKeySchema,
   DisabledKeySchema,
-  ForgottenCabinetKeySchema,
+  ForgottenDashboardKeySchema,
   IssuedKeySchema,
   IssueKeyRequestSchema,
   MerchantKeyListSchema,
@@ -195,9 +195,9 @@ export {
   RefusalSchema,
 } from "./handler.js";
 export type {
-  CabinetKey,
+  DashboardKey,
   DisabledKey,
-  ForgottenCabinetKey,
+  ForgottenDashboardKey,
   IssuedKey,
   IssueKeyRequest,
   MerchantKey,
@@ -211,9 +211,9 @@ export type {
   SellerNameRequest,
 } from "./merchant.js";
 export {
-  CabinetKeySchema,
+  DashboardKeySchema,
   DisabledKeySchema,
-  ForgottenCabinetKeySchema,
+  ForgottenDashboardKeySchema,
   IssuedKeySchema,
   IssueKeyRequestSchema,
   MerchantKeyListSchema,
@@ -313,7 +313,7 @@ export const schemas = Object.freeze({
   acceptance: AcceptanceSchema,
   agent_order_status: AgentOrderStatusSchema,
   amount: AmountSchema,
-  cabinet_key: CabinetKeySchema,
+  dashboard_key: DashboardKeySchema,
   call_error: CallErrorSchema,
   card: CardSchema,
   catalog_page: CatalogPageSchema,
@@ -323,7 +323,7 @@ export const schemas = Object.freeze({
   error_envelope: ErrorEnvelopeSchema,
   evm_address: EvmAddressSchema,
   field_spec: FieldSpecSchema,
-  forgotten_cabinet_key: ForgottenCabinetKeySchema,
+  forgotten_dashboard_key: ForgottenDashboardKeySchema,
   fulfillment: FulfillmentSchema,
   handler_answer: HandlerAnswerSchema,
   identifier: IdentifierSchema,

@@ -673,7 +673,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           1_000,
         );
 
-        expect(made?.key.purpose).toBe("cabinet");
+        expect(made?.key.purpose).toBe("dashboard");
         expect(await store.codeKeysOf(A)).toStrictEqual([]);
         // It is a key all the same: it is theirs, it opens the door, and the
         // whole-list read a terminal makes has it.
@@ -848,13 +848,19 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           1_000,
         );
         await store.addKey(
-          { id: "mk_cab", merchantId: A, label: "a dashboard's", digest: "d2", purpose: "cabinet" },
+          {
+            id: "mk_cab",
+            merchantId: A,
+            label: "a dashboard's",
+            digest: "d2",
+            purpose: "dashboard",
+          },
           2_000,
         );
 
         expect((await store.keysOf(A)).map((key) => [key.id, key.purpose])).toStrictEqual([
           ["mk_code", "merchant_code"],
-          ["mk_cab", "cabinet"],
+          ["mk_cab", "dashboard"],
         ]);
         // And the merchant's own list has the one they made. This is the read
         // behind the screen they revoke keys on, so the filtering is the
@@ -877,7 +883,13 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           1_000,
         );
         await store.addKey(
-          { id: "mk_cab", merchantId: A, label: "a dashboard's", digest: "d2", purpose: "cabinet" },
+          {
+            id: "mk_cab",
+            merchantId: A,
+            label: "a dashboard's",
+            digest: "d2",
+            purpose: "dashboard",
+          },
           2_000,
         );
         await store.addKey(
@@ -1034,7 +1046,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
             merchantId: A,
             label: "a dashboard's",
             digest: "digest-cab",
-            purpose: "cabinet",
+            purpose: "dashboard",
           },
           1_000,
         );
@@ -1044,12 +1056,12 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
             merchantId: B,
             label: "B's dashboard's",
             digest: "digest-b",
-            purpose: "cabinet",
+            purpose: "dashboard",
           },
           1_000,
         );
 
-        expect(await store.disableKeyOf(A, "mk_cab", 2_000)).toBe("made_for_a_cabinet");
+        expect(await store.disableKeyOf(A, "mk_cab", 2_000)).toBe("made_for_a_dashboard");
         // Nothing was written, which is the half that matters: a refusal that
         // had already revoked the key would be worse than no rule at all.
         expect((await store.workingKey("digest-cab"))?.id).toBe("mk_cab");
@@ -1079,12 +1091,18 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
             merchantId: A,
             label: "an older sign-in",
             digest: "d1",
-            purpose: "cabinet",
+            purpose: "dashboard",
           },
           1_000,
         );
         await store.addKey(
-          { id: "mk_now", merchantId: A, label: "this sign-in", digest: "d2", purpose: "cabinet" },
+          {
+            id: "mk_now",
+            merchantId: A,
+            label: "this sign-in",
+            digest: "d2",
+            purpose: "dashboard",
+          },
           2_000,
         );
         await store.addKey(
@@ -1103,7 +1121,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
             merchantId: B,
             label: "their dashboard's",
             digest: "d4",
-            purpose: "cabinet",
+            purpose: "dashboard",
           },
           4_000,
         );
@@ -1151,7 +1169,13 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // is answered the same way, because by then the two are the same fact.
         const store = await twoMerchants();
         await store.addKey(
-          { id: "mk_now", merchantId: A, label: "this sign-in", digest: "d1", purpose: "cabinet" },
+          {
+            id: "mk_now",
+            merchantId: A,
+            label: "this sign-in",
+            digest: "d1",
+            purpose: "dashboard",
+          },
           1_000,
         );
 
@@ -1176,7 +1200,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
             merchantId: A,
             label: "an older sign-in",
             digest: "d1",
-            purpose: "cabinet",
+            purpose: "dashboard",
           },
           1_000,
         );
@@ -1191,7 +1215,13 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           2_000,
         );
         await store.addKey(
-          { id: "mk_now", merchantId: A, label: "this sign-in", digest: "d3", purpose: "cabinet" },
+          {
+            id: "mk_now",
+            merchantId: A,
+            label: "this sign-in",
+            digest: "d3",
+            purpose: "dashboard",
+          },
           3_000,
         );
         await store.disableKey("mk_off", 4_000);

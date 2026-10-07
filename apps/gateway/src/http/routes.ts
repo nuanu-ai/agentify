@@ -132,7 +132,7 @@ const notTheDashboards = (response: RouteCall["response"]): RouteAnswer =>
     response,
     FORBIDDEN,
     refusal(
-      "not_a_cabinet_key",
+      "not_a_dashboard_key",
       "this call is one a dashboard makes with a key of its own, and the key it was made with is one of the merchant's own code",
     ),
   );
@@ -155,7 +155,7 @@ const walletIsSetInTheDashboard = (response: RouteCall["response"]): RouteAnswer
     response,
     FORBIDDEN,
     refusal(
-      "not_a_cabinet_key",
+      "not_a_dashboard_key",
       "the payout wallet is set only through the dashboard, on its Settings screen, with the key the dashboard holds, and the key this call was made with was made for the merchant's own code: a key of that kind operates the shop and cannot change where its money goes. Nothing was changed",
     ),
   );
@@ -345,7 +345,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
           (call.body as PayoutWalletRequest).payout_wallet,
           callersPurpose(call),
         );
-        if (set === "not_a_cabinet_key") {
+        if (set === "not_a_dashboard_key") {
           return walletIsSetInTheDashboard(call.response);
         }
         return typeof set === "string"
@@ -372,22 +372,22 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
       }),
     },
 
-    issue_cabinet_key: {
+    issue_dashboard_key: {
       serve: async (call) => {
         const made = await gateway.issueDashboardKey(merchantOf(call), callersPurpose(call));
-        return made === "not_a_cabinet_key"
+        return made === "not_a_dashboard_key"
           ? notTheDashboards(call.response)
           : { status: OK, document: made };
       },
     },
 
-    forget_cabinet_key: {
+    forget_dashboard_key: {
       serve: async (call) => {
         // No merchant is passed and none is needed: the only key this can
         // remove is the one the call was made with, and that key already says
         // whose it is.
         const gone = await gateway.forgetDashboardKey(callersKey(call), callersPurpose(call));
-        return gone === "not_a_cabinet_key"
+        return gone === "not_a_dashboard_key"
           ? notTheDashboards(call.response)
           : { status: OK, document: gone };
       },
@@ -417,7 +417,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
             ),
           );
         }
-        if (disabled === "made_for_a_cabinet") {
+        if (disabled === "made_for_a_dashboard") {
           // Their own key, and not one they made. A merchant switches off what
           // they issued; this one is how a dashboard reaches the gateway for
           // them, and revoking it signs somebody out of the page they are
@@ -428,7 +428,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
             call.response,
             CONFLICT,
             refusal(
-              "key_made_for_a_cabinet",
+              "key_made_for_a_dashboard",
               "this key was made for a dashboard to call as this merchant with, and only the keys the merchant issued for their own code are disabled here",
             ),
           );

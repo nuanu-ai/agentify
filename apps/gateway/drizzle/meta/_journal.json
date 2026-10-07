@@ -85,6 +85,13 @@
       "when": 1791367732030,
       "tag": "0011_merchant_seller_site",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791375484815,
+      "tag": "0012_dashboard_keys",
+      "breakpoints": true
     }
   ]
 }
