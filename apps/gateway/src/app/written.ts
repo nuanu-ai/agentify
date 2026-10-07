@@ -6,10 +6,18 @@
  * (ADR-0006 §5): the storefront has no version, and a reader built before an
  * addition has to read past it rather than refuse. What goes out is held to
  * the opposite rule — the fields this version names and no others, and only
- * the words it knows — because the outbound check is the last place a
+ * the words it knows — because the outbound check is the last place one of
+ * these documents is seen before every agent reads it, and so the last place a
  * merchant's own key, the address of their price check or a buyer's parameters
- * could be stopped before every agent reads them. It used to be the contract's
- * own schema, and when the reader opened, that check opened with it.
+ * could be stopped in one. It used to be the contract's own schema, and when
+ * the reader opened, that check opened with it. The payment challenge is not
+ * one of these documents: it is built field by field from the merchant's
+ * closed card, and goes out without this check.
+ *
+ * One thing no check here can see is a key named `__proto__`, which zod skips
+ * rather than refuses. It is safe only because nothing stored carries one:
+ * every door that takes a document drops it first (`PROTOTYPE_KEY_IS_DROPPED`
+ * in the contracts).
  *
  * Each closed document is the open one with its words narrowed, its fields
  * shut and its parts swapped for the merchant's own closed shapes of them, so
@@ -22,8 +30,10 @@
 import {
   AgentOrderStatusSchema,
   CatalogPageSchema,
+  type Delivery,
   MoneySchema,
   OrderStatusSchema,
+  ParamNameSchema,
   ParamSpecSchema,
   PublicCardSchema,
   RefusalSchema,
@@ -70,15 +80,48 @@ const WrittenCardSchema = z
     }
   });
 
+/**
+ * Goods as this gateway hands them over: the names are the card's and cannot
+ * be listed here, but each value is what a declared field carries — a string,
+ * a number or a boolean — so nothing else rides out under one of those names.
+ */
+const WrittenDeliverySchema = z.record(
+  ParamNameSchema,
+  z.union([z.string(), z.number(), z.boolean()]),
+);
+
+/**
+ * An order's status as this gateway writes it, and its goods only where the
+ * status says they are the buyer's: on any other word there is nothing here to
+ * hand over, and something in that field would be whatever a mistake put there.
+ */
 const WrittenOrderStatusSchema = AgentOrderStatusSchema.extend({
   status: OrderStatusSchema,
   price: SalePriceSchema.nullable(),
+  delivered: WrittenDeliverySchema.nullable(),
   refusal: RefusalSchema.optional(),
   seller: SellerSchema,
-}).strict();
+})
+  .strict()
+  .superRefine((written, context) => {
+    if (written.delivered !== null && written.status !== "delivered") {
+      context.addIssue({
+        code: "custom",
+        path: ["delivered"],
+        message: `an order whose status is "${written.status}" hands over no goods`,
+      });
+    }
+  });
 
-/** An order's status as this gateway answers with it. */
-export type WrittenOrderStatus = z.infer<typeof WrittenOrderStatusSchema>;
+/**
+ * An order's status as this gateway answers with it. The goods are typed as
+ * they are stored, since what the merchant handed over was held to the card's
+ * result when it arrived; that each value is one a declared field carries is
+ * checked again before sending.
+ */
+export type WrittenOrderStatus = Omit<z.infer<typeof WrittenOrderStatusSchema>, "delivered"> & {
+  readonly delivered: Delivery | null;
+};
 
 const WRITTEN_AS: ReadonlyMap<ZodType, ZodType> = new Map<ZodType, ZodType>([
   [CatalogPageSchema, z.strictObject({ items: z.array(WrittenCardSchema) })],
