@@ -66,7 +66,7 @@ import {
 import { printable } from "./printable.js";
 import {
   cardsScreen,
-  drawnForSomebodyElseScreen,
+  notDrawnForYouScreen,
   notFoundScreen,
   ordersScreen,
   receiptsScreen,
@@ -862,17 +862,25 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         // cache (ADR-0026 §3).
         response.setHeader("cache-control", "private, no-store");
         people.set(request, session.person);
-        // A form whose page was drawn for another address is refused before
-        // any handler reads it (DRAWN_FOR). One without the field goes on: no
-        // page drawn now sends one, a tab drawn before the field existed is
-        // the only thing that does, and a stranger's page is already stopped
-        // by the same-origin rule above.
+        // A form whose page was not drawn for this person is refused before
+        // any handler reads it (DRAWN_FOR): one drawn for another address, and
+        // one that says nothing, which a form the marking missed would be, or
+        // a tab drawn before forms were marked. Refusing the silent one is
+        // what makes a miss a form that does not work rather than a form that
+        // works for whoever is signed in.
         const drawnFor = (request.body as Record<string, unknown> | undefined)?.[DRAWN_FOR];
-        if (!reading && drawnFor !== undefined && drawnFor !== session.person.email) {
+        if (!reading && drawnFor !== session.person.email) {
           response
             .status(409)
             .type("html")
-            .send(drawnForSomebodyElseScreen(viewing(request, base)));
+            .send(
+              notDrawnForYouScreen(
+                base,
+                config.surfaceMode,
+                session.person.email,
+                startOf(session.person),
+              ),
+            );
           return;
         }
         next();
@@ -2343,5 +2351,6 @@ ${brandLockup("/")}
 </form>
 </div>`,
     mode,
+    null,
   );
 }

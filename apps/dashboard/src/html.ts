@@ -38,12 +38,20 @@ export const DRAWN_FOR = "signed_in_as";
  * A page with every form that posts saying whom it was drawn for.
  *
  * Done to the whole page rather than written into each form, so a form added
- * later carries it without anybody remembering to.
+ * later carries it without anybody remembering to, however its tag is spelled.
+ * A form that ends up without it anyway is refused by the gate rather than let
+ * through, so a miss shows as a form that does not work instead of a form that
+ * works for whoever is signed in.
+ *
+ * `autocomplete="off"` because Firefox restores a hidden field's old value
+ * when a page is reloaded, which would put the address the tab was first drawn
+ * for back into a page just redrawn for somebody else.
  */
 const drawnFor = (who: string, html: string): string =>
-  html.replaceAll(
-    /<form\b[^>]*\bmethod="post"[^>]*>/g,
-    (tag) => `${tag}<input type="hidden" name="${DRAWN_FOR}" value="${escaped(who)}">`,
+  html.replaceAll(/<form\b[^>]*>/gi, (tag) =>
+    /\smethod\s*=\s*["']?post\b/i.test(tag)
+      ? `${tag}<input type="hidden" name="${DRAWN_FOR}" value="${escaped(who)}" autocomplete="off">`
+      : tag,
   );
 
 /** Which of the screens with navigation on them is being looked at. */
@@ -302,7 +310,7 @@ export const bare = (
   title: string,
   body: string,
   mode: SurfaceMode,
-  who?: string,
+  who: string | null,
 ): string => {
   const drawn = `<!doctype html>
 <html lang="en">
@@ -320,9 +328,10 @@ ${body}
 </body>
 </html>
 `;
-  // Only a page behind the gate knows whom it is drawn for; the sign-in pages
-  // in front of it post to addresses the gate never sees.
-  return who === undefined ? drawn : drawnFor(who, drawn);
+  // Asked of every caller, so a screen behind the gate cannot forget to say
+  // whom it is drawn for: null only for the pages in front of the gate, whose
+  // forms post to addresses the gate never sees.
+  return who === null ? drawn : drawnFor(who, drawn);
 };
 
 /**
