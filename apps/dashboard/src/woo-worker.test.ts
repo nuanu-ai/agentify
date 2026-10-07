@@ -30,8 +30,10 @@ import { gatewayFor } from "./gateway.js";
 import { cardsFromTheShop, merchantItemIdFor, type StoreProduct } from "./woo-catalog.js";
 import {
   createTheOrderInTheShop,
+  type EligibleWooProduct,
   inspectProductInTheShop,
   type OrderMade,
+  type ProductInspection,
   type ShopKeys,
   type SoldItem,
 } from "./woo-shop.js";
@@ -39,6 +41,16 @@ import { memoryWooShops, type WooConnection, type WooShops } from "./woo-shops.j
 import { fillFromTheShop, startWooWorker, turnOnce } from "./woo-worker.js";
 
 const KEY = theMerchantKey("test");
+
+/** The shop showing this product as the one download it sells. */
+const showing = (product: EligibleWooProduct): ProductInspection => ({ ok: true, product });
+
+/** The shop answering, and ruling the product out. */
+const RULED_OUT: ProductInspection = {
+  ok: false,
+  why: "This product cannot be imported: it is out of stock.",
+  again: false,
+};
 const MERCHANT_EMAIL = "merchant@example.com";
 
 const aProduct = (overrides: Partial<StoreProduct> = {}): StoreProduct => ({
@@ -116,13 +128,14 @@ const filling = (
   shops,
   now: () => new Date("2026-09-14T12:00:00.000Z"),
   placeOrder: place,
-  eligibleProduct: async (_connection: WooConnection, merchantItemId: string) => ({
-    productId: merchantItemId.split("_").at(-1) ?? "",
-    downloadId: "dl_guide",
-    fileName: "Guide",
-    price: { amount: "25.00", currency: "USD" },
-    fingerprint: "accepted-download-fingerprint",
-  }),
+  inspectProduct: async (_connection: WooConnection, merchantItemId: string) =>
+    showing({
+      productId: merchantItemId.split("_").at(-1) ?? "",
+      downloadId: "dl_guide",
+      fileName: "Guide",
+      price: { amount: "25.00", currency: "USD" },
+      fingerprint: "accepted-download-fingerprint",
+    }),
   quotedProduct: async () => "accepted-download-fingerprint",
 });
 
@@ -169,6 +182,46 @@ describe("one paid order, in the merchant's own shop", () => {
     expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
     expect(shop.placed).toHaveLength(0);
     expect((await shops.knownOrder("ord_1"))?.kind).toBe("precreate_refused");
+  });
+
+  it("refuses an order the shop said nothing about, and says the shop did not answer", async () => {
+    // The refusal is what makes the buyer's refund due, and its words reach the
+    // buyer's agent. A shop that timed out has said nothing about the product,
+    // so the reason is that the shop did not answer and not that the product
+    // stopped being sold. The refusal is recorded like any other, so the
+    // existing recovery can still finish the sale later.
+    const shops = memoryWooShops();
+    const shop = aShopThatAccepts();
+
+    const answer = await fillFromTheShop(anOrder(), connection(), MERCHANT_EMAIL, {
+      ...filling(shops, shop.place),
+      inspectProduct: async () => ({
+        ok: false,
+        why: "The shop did not answer the protected product check.",
+        again: true,
+      }),
+    });
+
+    expect(answer).toMatchObject({
+      refused: { code: "cannot_fulfill", message: expect.stringMatching(/did not answer/) },
+    });
+    expect(JSON.stringify(answer)).not.toMatch(/no longer/);
+    expect(shop.placed).toHaveLength(0);
+    expect((await shops.knownOrder("ord_1"))?.kind).toBe("precreate_refused");
+  });
+
+  it("refuses an order the shop ruled out, and does not say the shop was silent", async () => {
+    const shops = memoryWooShops();
+    const shop = aShopThatAccepts();
+
+    const answer = await fillFromTheShop(anOrder(), connection(), MERCHANT_EMAIL, {
+      ...filling(shops, shop.place),
+      inspectProduct: async () => RULED_OUT,
+    });
+
+    expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
+    expect(JSON.stringify(answer)).not.toMatch(/did not answer/);
+    expect(shop.placed).toHaveLength(0);
   });
 
   it("places one order for a sale handed over twice", async () => {
@@ -312,13 +365,14 @@ describe("one paid order, in the merchant's own shop", () => {
       {
         ...filling(shops, shop.place),
         quotedProduct: async () => "quoted-download-fingerprint",
-        eligibleProduct: async () => ({
-          productId: "11",
-          downloadId: "dl_replaced",
-          fileName: "Replacement",
-          fingerprint: "replacement-download-fingerprint",
-          price: { amount: "25.00", currency: "USD" },
-        }),
+        inspectProduct: async () =>
+          showing({
+            productId: "11",
+            downloadId: "dl_replaced",
+            fileName: "Replacement",
+            fingerprint: "replacement-download-fingerprint",
+            price: { amount: "25.00", currency: "USD" },
+          }),
       },
     );
 
@@ -335,16 +389,16 @@ describe("one paid order, in the merchant's own shop", () => {
     let supported = false;
     const parts = {
       ...filling(shops, shop.place),
-      eligibleProduct: async () =>
+      inspectProduct: async () =>
         supported
-          ? {
+          ? showing({
               productId: "11",
               downloadId: "dl_guide",
               fileName: "Guide",
               fingerprint: "accepted-download-fingerprint",
               price: { amount: "25.00", currency: "USD" },
-            }
-          : null,
+            })
+          : RULED_OUT,
     };
 
     const refused = await fillFromTheShop(anOrder(), connection(), MERCHANT_EMAIL, parts);
@@ -453,13 +507,14 @@ describe("the whole way through, against a real gateway", () => {
         keys: Parameters<typeof createTheOrderInTheShop>[0],
         sold: Parameters<typeof createTheOrderInTheShop>[1],
       ) => createTheOrderInTheShop(keys, sold, fetch),
-      eligibleProduct: async () => ({
-        productId: "11",
-        downloadId: "dl_guide",
-        fileName: "Guide",
-        price: { amount: "25.00", currency: "USD" },
-        fingerprint: "accepted-download-fingerprint",
-      }),
+      inspectProduct: async () =>
+        showing({
+          productId: "11",
+          downloadId: "dl_guide",
+          fileName: "Guide",
+          price: { amount: "25.00", currency: "USD" },
+          fingerprint: "accepted-download-fingerprint",
+        }),
       quotedProduct: async () => "accepted-download-fingerprint",
     };
     const connected: WooConnection = { ...connection(), shopUrl: shop.url };
@@ -516,13 +571,14 @@ describe("the whole way through, against a real gateway", () => {
         keys: Parameters<typeof createTheOrderInTheShop>[0],
         sold: Parameters<typeof createTheOrderInTheShop>[1],
       ) => createTheOrderInTheShop(keys, sold, fetch),
-      eligibleProduct: async () => ({
-        productId: "11",
-        downloadId: "dl_guide",
-        fileName: "Guide",
-        price: { amount: "25.00", currency: "USD" },
-        fingerprint: "accepted-download-fingerprint",
-      }),
+      inspectProduct: async () =>
+        showing({
+          productId: "11",
+          downloadId: "dl_guide",
+          fileName: "Guide",
+          price: { amount: "25.00", currency: "USD" },
+          fingerprint: "accepted-download-fingerprint",
+        }),
       quotedProduct: async () => "accepted-download-fingerprint",
     };
 
@@ -622,7 +678,7 @@ describe("the whole way through, against a real gateway", () => {
         },
         clientFor: () => gateway,
         now: () => new Date("2026-09-14T12:00:00.000Z"),
-        eligibleProduct: async () => {
+        inspectProduct: async () => {
           throw new Error("a connection that cannot write must be refused before the shop is read");
         },
       },
@@ -655,8 +711,13 @@ describe("a price question off the merchant's stream", () => {
 
   /** The shop's answer for the item and account it was asked about, and nothing for any other. */
   const shopShowing =
-    (product: typeof inTheShop | null) => async (asked: WooConnection, merchantItemId: string) =>
-      asked.accountId === "acc_1" && merchantItemId === question.merchant_item_id ? product : null;
+    (product: typeof inTheShop | null) =>
+    async (asked: WooConnection, merchantItemId: string): Promise<ProductInspection> =>
+      asked.accountId === "acc_1" &&
+      merchantItemId === question.merchant_item_id &&
+      product !== null
+        ? showing(product)
+        : RULED_OUT;
 
   const answering = async (shops: WooShops, product: typeof inTheShop | null): Promise<unknown> => {
     let answer: unknown;
@@ -691,7 +752,7 @@ describe("a price question off the merchant's stream", () => {
       },
       clientFor: () => gateway,
       now: () => new Date(NOW),
-      eligibleProduct: shopShowing(product),
+      inspectProduct: shopShowing(product),
     });
     return answer;
   };
@@ -774,7 +835,7 @@ describe("a price question off the merchant's stream", () => {
         clientFor: () => gateway,
         now: () => new Date(NOW),
         placeOrder: shop.place,
-        eligibleProduct: async (asked: WooConnection, merchantItemId: string) =>
+        inspectProduct: async (asked: WooConnection, merchantItemId: string) =>
           shopShowing(product)(asked, merchantItemId),
       };
 
@@ -1028,10 +1089,8 @@ describe("a shop whose Number of decimals changed after the quote", () => {
     shops,
     now: () => new Date("2026-09-14T12:00:00.000Z"),
     placeOrder: (keys: ShopKeys, sold: SoldItem) => createTheOrderInTheShop(keys, sold, fetch),
-    eligibleProduct: async (connected: WooConnection, merchantItemId: string) => {
-      const read = await inspectProductInTheShop(connected, merchantItemId, fetch);
-      return read.ok ? read.product : null;
-    },
+    inspectProduct: (connected: WooConnection, merchantItemId: string) =>
+      inspectProductInTheShop(connected, merchantItemId, fetch),
     quotedProduct: async () => quotedFingerprint,
   });
 

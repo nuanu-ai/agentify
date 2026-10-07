@@ -433,6 +433,42 @@ describe("the protected product check", () => {
     return "no";
   };
 
+  it("says a shop that would not answer the product check is worth asking again", async () => {
+    // The order this check stands in front of is still live while the shop is
+    // down or busy, and a refusal read off a timeout would close it for good
+    // with a reason that is not true.
+    const down = await inspectProduct(
+      connectionTo("http://127.0.0.1:1"),
+      merchantItemIdFor("http://127.0.0.1:1", "11"),
+    );
+    expect(down).toMatchObject({ ok: false, again: true });
+
+    for (const status of [408, 429, 503]) {
+      stand = await shopAnswering(() => ({ status, body: { message: "later" } }));
+      const busy = await inspectProduct(
+        connectionTo(stand.url),
+        merchantItemIdFor(stand.url, "11"),
+      );
+      expect(busy, String(status)).toMatchObject({ ok: false, again: true });
+      await stand.close();
+      stand = null;
+    }
+  });
+
+  it("treats a shop that refused the product check as having answered", async () => {
+    stand = await shopAnswering(() => ({
+      status: 401,
+      body: {
+        code: "woocommerce_rest_cannot_view",
+        message: "Sorry, you cannot view this resource.",
+      },
+    }));
+
+    const read = await inspectProduct(connectionTo(stand.url), merchantItemIdFor(stand.url, "11"));
+
+    expect(read).toMatchObject({ ok: false, again: false });
+  });
+
   it("accepts only the one protected native download the agent can receive", async () => {
     stand = await shopAnswering((asked) => {
       if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
@@ -459,6 +495,22 @@ describe("the protected product check", () => {
     expect(
       stand.asked.find((asked) => asked.url === "/protected/guide.txt")?.authorization,
     ).toBeUndefined();
+  });
+
+  it("does not call a download public when the shop was too busy to say", async () => {
+    // The raw file is asked for without keys, and a refusal is what proves it
+    // protected. A shop answering 503 there has proved nothing either way.
+    stand = await shopAnswering((asked) => {
+      if (asked.url === "/protected/guide.txt") return { status: 503, body: {} };
+      if (asked.url.includes("/settings/")) {
+        return { status: 200, body: { value: settingFor(asked.url) } };
+      }
+      return { status: 200, body: productDocument() };
+    });
+
+    const read = await inspectProduct(connectionTo(stand.url), merchantItemIdFor(stand.url, "11"));
+
+    expect(read).toMatchObject({ ok: false, again: true });
   });
 
   it("refuses public raw bytes and finite or stock-managed products", async () => {
