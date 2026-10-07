@@ -138,23 +138,29 @@ export type SettleTiming = (typeof SETTLE_TIMINGS)[number];
  * The two switches of a card. The fourth combination — confirmation with the
  * settle after fulfillment — is not forbidden by the machine and is not
  * published either, because no product has been found that needs it.
+ *
+ * A parcel the merchant hands to a carrier (ADR-0033) is a third switch,
+ * recorded at purchase so a card republished in another mode changes no order
+ * in flight. What it adds is the buyer's address, which the order holds only
+ * until the merchant has it (`holdsShipTo`). Its money moves as the
+ * asynchronous mode's does, and the type allows it nowhere else: a
+ * synchronous order keeps finished goods for a repeat of the purchase, and
+ * that repeat would bring an erased address back to an order that had let it
+ * go. The field is present only on a parcel. An order stored before the switch
+ * existed has no such field, and reading its absence as "not a parcel" is true
+ * of every one of them, so no stored order has to be rewritten for it.
  */
-export type OrderMode = {
-  readonly needsConfirmation: boolean;
-  readonly settle: SettleTiming;
-  /**
-   * The third switch: the goods are a parcel the merchant hands to a carrier
-   * (ADR-0033), recorded at purchase so a card republished in another mode
-   * changes no order in flight. A parcel's money moves as the asynchronous
-   * mode's does; what the switch adds is the buyer's address, which the order
-   * holds only until the merchant has it (`holdsShipTo`).
-   *
-   * Present only on a parcel. An order stored before the switch existed has
-   * no such field, and reading its absence as "not a parcel" is true of every
-   * one of them, so no stored order has to be rewritten for it.
-   */
-  readonly parcel?: true;
-};
+export type OrderMode =
+  | {
+      readonly needsConfirmation: boolean;
+      readonly settle: SettleTiming;
+      readonly parcel?: never;
+    }
+  | {
+      readonly needsConfirmation: false;
+      readonly settle: "on_purchase";
+      readonly parcel: true;
+    };
 
 /** The modes a card can declare. */
 export const FULFILLMENT_MODES = ["sync", "async", "confirm"] as const;
@@ -431,8 +437,10 @@ export type Effect =
  * address before answering `accepted`), its shipment is recorded, it closes,
  * or it becomes a refund owed without having been taken on. Every one of
  * those leaves the order closed, owing a refund or taken on, so the rule is
- * read off the order rather than kept beside it, and it only ever goes from
- * true to false.
+ * read off the order rather than kept beside it. It only ever goes from true
+ * to false because a parcel's money moves first (`OrderMode`), so no repeat of
+ * the purchase reopens such an order, and because the one hand-over that would
+ * clear its acceptance is refused once the address is gone (`transition`).
  */
 export function holdsShipTo(order: Order): boolean {
   return (
@@ -584,8 +592,9 @@ export type Order = {
    * how the two are told apart. Once it is true a silence noticed about the
    * order spends no delivery, because the merchant has answered — later,
    * perhaps, than we waited for him. A repeat already on his stream by then is
-   * still handed over and counted, as every hand-over is; it is only the
-   * silence after it that no longer costs him anything.
+   * still handed over and counted, as every hand-over is, except on a parcel,
+   * whose address went with the acceptance; it is only the silence after it
+   * that no longer costs him anything.
    *
    * Taking an order on is the asynchronous mode's answer, where the goods
    * follow through the `deliver` call. A synchronous handler that gives it is

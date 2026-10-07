@@ -1696,7 +1696,8 @@ export class Gateway {
         }
         // The machine will not record the hand-over, so nobody is given the
         // order. One ending does not refuse it — an order that owes a refund is
-        // handed over again, because late goods still close the debt — but
+        // handed over again, because late goods still close the debt, unless
+        // it is a parcel whose buyer's address is already gone — but
         // everywhere else passing it on would ask a merchant to work on a
         // purchase that is over. A delivered order is refused here for that
         // reason and reaches this line, which is where the second delivery seen

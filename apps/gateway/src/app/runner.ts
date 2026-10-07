@@ -191,11 +191,13 @@ export interface Swept {
  * that, and nothing else, is what this line decides.
  *
  * Whether the sweep may write one again is a second question with a different
- * answer, and the two are easy to run together. Of the four written down here,
- * three have receivers that are promised a repeat and one does not: a merchant
- * event is delivered at most once, so it is written where the state is and is
- * never re-sent. `sweep` carries that distinction, and no arm may be added
- * there for an effect whose receiver was not promised a repeat.
+ * answer, and the two are easy to run together. Of the four written down here
+ * that this gateway carries out — a parcel's erasure is a fifth, refused until
+ * it takes parcels — three have receivers that are promised a repeat and one
+ * does not: a merchant event is delivered at most once, so it is written where
+ * the state is and is never re-sent. `sweep` carries that distinction, and no
+ * arm may be added there for an effect whose receiver was not promised a
+ * repeat.
  */
 function carriedOutAfterwards(effect: Effect): boolean {
   switch (effect.kind) {
@@ -203,6 +205,9 @@ function carriedOutAfterwards(effect: Effect): boolean {
     case "redeliver_order":
     case "emit_merchant_event":
     case "issue_receipt":
+    // A parcel's address leaving us cannot be asked for again once the order
+    // has moved past it (ADR-0032), so it is written where the state is.
+    case "erase_ship_to":
       return false;
     case "request_quote":
     case "verify_payment":
@@ -213,9 +218,6 @@ function carriedOutAfterwards(effect: Effect): boolean {
     case "hold_fulfillment":
     case "mark_refund_due":
     case "answer_merchant":
-    // On this side only until the parcel mode is taken here, which is when it
-    // is built as a write beside the state it follows (ADR-0032, ADR-0033).
-    case "erase_ship_to":
       return true;
     default:
       return assertNever(effect, "effect");
@@ -792,6 +794,16 @@ export class OrderRunner {
           });
           break;
 
+        case "erase_ship_to":
+          // No card here sells a parcel yet, so no order of this gateway's is
+          // one and nothing asks for this. Reaching it means an order was made
+          // a parcel without the erasure that mode promises its buyer, and it
+          // stops here, before the order is written past the moment the
+          // erasure belongs to.
+          throw new Error(
+            `${effect.kind} on ${record.order.id}: this gateway does not take parcels yet, so it cannot erase a buyer's address`,
+          );
+
         default:
           // Everything else is carried out after the order is written, and
           // `carriedOutAfterwards` is asked rather than assumed. The two lists
@@ -848,6 +860,7 @@ export class OrderRunner {
         case "redeliver_order":
         case "emit_merchant_event":
         case "issue_receipt":
+        case "erase_ship_to":
           // These were written down with the state that implies them and are
           // not carried out again here (ADR-0013). Reaching this means a caller
           // handed them over without taking them out first, and doing them a
@@ -897,16 +910,6 @@ export class OrderRunner {
           // describes.
           throw new Error(
             `${effect.kind} belongs to the confirmation mode, which has no shape on the wire yet`,
-          );
-
-        case "erase_ship_to":
-          // A parcel's address leaving us (ADR-0032). No card here sells a
-          // parcel yet, so no order of this gateway's is one and nothing asks
-          // for this; reaching it means an order was made a parcel without the
-          // erasure that mode promises its buyer, which is not something to
-          // carry on past in silence.
-          throw new Error(
-            `${effect.kind} on ${record.order.id}: this gateway does not take parcels yet, so it cannot erase a buyer's address`,
           );
 
         default:

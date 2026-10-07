@@ -43,7 +43,8 @@
  * honest answer is that it has no meaning here. The one closed state that
  * still takes a hand-over is `refund_due`, and there it is not a no-op at all:
  * late goods close the debt, so the order is worth putting in front of the
- * merchant again.
+ * merchant again — unless it is a parcel, whose buyer's address is gone by
+ * then (`transition`).
  */
 
 import { assertNever } from "../index.js";
@@ -112,6 +113,11 @@ export function transition(order: Order, event: OrderEvent): TransitionResult {
     );
   }
 
+  // An acceptance can arrive through the `accept` call before the hand-over
+  // it answers is recorded. That record is then refused like any other
+  // repeat, and the order never says when it was handed over: an honest gap,
+  // since the merchant already has it.
+  //
   // And the moment the address stops being needed is said once, on the one
   // transition where it stops, so the gateway erases its copy then.
   const result = transitionIn(order, event);
@@ -884,7 +890,8 @@ function fromDispatched(order: Order, event: StateEvent): TransitionResult {
       // already on the merchant's stream when it lands. That repeat is still
       // handed over — delivery is at least once, and the merchant tells it
       // apart by the order's identifier — but the silence after it must not
-      // count.
+      // count. A parcel's repeat is the exception: its address was let go with
+      // this acceptance, and `transition` refuses to hand it over empty.
       return ok({ ...order, dispatch: { ...order.dispatch, accepted: true } }, [ACCEPTANCE_LANDED]);
     case "handler_delivered":
       return deliverGoods(order, event.at);
