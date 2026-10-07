@@ -390,12 +390,16 @@ out](/orders).
 
 We wait five seconds for an answer, and a question unanswered by then counts as
 silence, which costs different things in different modes ([What can go
-wrong](/failures)). Nothing on our side holds down how often these questions go
-out: one purchase asks one question and that question is put on your stream
-once, so the rate your price handler meets is the rate agents buy at, and that
-is the number to size it against. The thresholds that would hold the rate down
-are among what is not settled below; until they exist there is nothing between a
-burst of purchases and your handler.
+wrong](/failures)). The seconds run from the moment we ask, not from the moment
+your worker takes the question, and the question shares the stream with
+everything else: while your worker is busy with what is ahead of it — orders,
+other questions, events — the question waits, and more instances shorten that
+wait. Nothing on our side holds down how often these questions go out: one
+purchase asks one question and that question is put on your stream once, so the
+rate your price handler meets is the rate agents buy at, and that is the number
+to size it against. The thresholds that would hold the rate down are among what
+is not settled below; until they exist there is nothing between a burst of
+purchases and your handler.
 
 Agentify keeps no stock counts: only you know how much of anything there is. So
 a product that can run out is worth listing with a check, because without one

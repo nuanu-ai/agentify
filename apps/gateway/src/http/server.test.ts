@@ -1275,6 +1275,42 @@ describe("the worker's calls over HTTP", () => {
     expect(answered.body).toStrictEqual({ ok: true, result: "delivered" });
   });
 
+  it("answers a poll with one envelope, whatever the worker asks for", async () => {
+    // The wait for a handler's answer starts when an order is handed over, and
+    // a worker works what it is handed one at a time; handed several, the ones
+    // at the back would be waiting out the calls ahead of them. So a worker
+    // asking for a thousand is answered with one, as the contract leaves the
+    // gateway free to do, and the next one waits for the next poll.
+    const { served, harnessed } = await started();
+    const itemId = await publish(served, {
+      ...syncCard,
+      merchant_item_id: "esim-burst",
+      fulfillment: "async",
+    });
+    for (const nth of [0, 1, 2]) {
+      const offered = await harnessed.gateway.beginPurchase(itemId, {});
+      if (offered.step !== "pay") throw new Error("no price was offered");
+      // One payment buys one order, so each purchase brings its own; reusing
+      // one would leave two orders unpaid and nothing on the stream for them.
+      await harnessed.gateway.payPurchase(
+        offered.order.order.id,
+        `PAYMENT-${nth}`,
+        `PAYMENT-${nth}`,
+      );
+    }
+
+    const sizes: number[] = [];
+    for (const _ of [0, 1, 2, 3]) {
+      const drawn = await served.call("POST", "/v0/worker/poll", {
+        body: { wait_seconds: 0, max: 1_000 },
+        headers: asMerchant,
+      });
+      sizes.push((drawn.body as { envelopes: unknown[] }).envelopes.length);
+    }
+
+    expect(sizes).toStrictEqual([1, 1, 1, 0]);
+  });
+
   it("answers a recorded acceptance as a success, in the body and in the status", async () => {
     // Both halves matter and they have to agree. An SDK reads the body and
     // reports anything but a success to the merchant; a client library reads

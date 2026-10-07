@@ -509,8 +509,6 @@ const environmentSchema = z.object({
       `the ceiling keeps that below the ${SDK_WORKER_POLL_DEADLINE_MS}ms at which this project's own ` +
       "worker abandons a poll, which is the only published figure for what a worker here sits through",
   ),
-  /** The most envelopes one poll answers with, whatever the worker asked for. */
-  WORKER_POLL_MAX_ENVELOPES: countAbove(32),
 
   /**
    * Where this gateway answers from, which is what a payment challenge names as
@@ -694,7 +692,6 @@ export interface RedeliveryConfig {
 
 export interface WorkerConfig {
   readonly pollWaitMs: number;
-  readonly pollMaxEnvelopes: number;
 }
 
 /** Where and with what a live gateway asks the dashboard, to tell a merchant of a change. */
@@ -1012,7 +1009,6 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
     },
     worker: {
       pollWaitMs: environmentValues.WORKER_POLL_WAIT_MS,
-      pollMaxEnvelopes: environmentValues.WORKER_POLL_MAX_ENVELOPES,
     },
     payment: {
       facilitatorUrl: environmentValues.FACILITATOR_URL,

@@ -187,10 +187,10 @@ that did not answer within five seconds is not worth a refusal: throw instead.
 Silence does not count as an answer: every wait has a deadline, and an order
 that runs past its deadline closes without you.
 
-We wait three seconds for a handler's answer, counted from the moment your
-worker takes the order off the subscription. A worker takes several orders off
-at once and works through them one at a time, so for an order further down a
-batch the wait also covers the handler calls ahead of it.
+We wait three seconds for a handler's answer, counted from the moment we hand
+the order to your worker. A worker is handed one order or question at a time, so
+the wait covers your handler and the trip to it and back, and never another
+order's turn.
 
 An answer that comes later still counts, as long as the mode's deadline has not
 run out, but by then we have taken the silence for a failed delivery and the
@@ -455,10 +455,10 @@ rule for orders on the same subscription. Your answer is what acknowledges an
 order — any of the three, including taking it on — so we can tell whether it
 arrived and send it out again when it did not. An event is the price of asking
 for no answer: nothing on our side is waiting for a reply to it, so one that
-went into a batch your process never received is simply gone. Nothing brings it
-back, and nothing afterwards announces that one went missing. So the guard an
-order needs is against a repeat, and the guard an event needs is against a
-silence; a handler written for one of those rules and pointed at the other gets
+went into a poll response your process never received is simply gone. Nothing
+brings it back, and nothing afterwards announces that one went missing. So the
+guard an order needs is against a repeat, and the guard an event needs is
+against a silence; a handler written for one of those rules and pointed at the other gets
 that one wrong.
 
 The silence that costs money is the notice that an order needs a refund. The
@@ -642,8 +642,12 @@ second case the same order is in two processes at once: the first is still
 working on it while the second receives the repeat. That is ordinary behaviour,
 and it is what the handler's idempotency by the order's identifier is for.
 
-Within one instance the orders are worked through one at a time. A parameter
-for taking several at once is among the things [not settled](/quickstart).
+Within one instance the orders are worked through one at a time, and the
+instance is handed the next order or question only once it has answered the one
+before, so each costs it a handler call and two trips: its answer coming back to
+us and the poll for the next one. Running more instances is how to get through
+more of them at once. A parameter for taking several at once within one instance
+is among the things [not settled](/quickstart).
 
 ## Test orders
 

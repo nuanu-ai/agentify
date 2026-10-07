@@ -207,7 +207,7 @@ describe("an existing card before operator approval", () => {
     expect(purchase.status).toBe(409);
     expect(purchase.body).toMatchObject({ error: { code: "not_selling" } });
     expect(await harnessed.gateway.orders(merchantId, undefined)).toStrictEqual([]);
-    expect((await harnessed.gateway.poll(merchantId, 10, 0)).envelopes).toStrictEqual([]);
+    expect((await harnessed.gateway.poll(merchantId, 0)).envelopes).toStrictEqual([]);
   });
 
   it("cannot be reopened by either resume switch or changed by republishing", async () => {

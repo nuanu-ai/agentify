@@ -518,10 +518,11 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
           // A worker draws its own merchant's stream. It is not a filter over
           // what came back: the stream is named by the merchant the key
           // resolved to, so a stranger's envelope is never drawn and so never
-          // held out of reach of the worker it was meant for.
+          // held out of reach of the worker it was meant for. What it asks for
+          // as `max` is not read: the contract leaves the size of the answer
+          // to the gateway, and `Gateway#poll` says why it is always one.
           document: await gateway.poll(
             merchantOf(call),
-            asked.max ?? gateway.runtime.config.worker.pollMaxEnvelopes,
             asked.wait_seconds === undefined
               ? gateway.runtime.config.worker.pollWaitMs
               : asked.wait_seconds * 1_000,

@@ -631,6 +631,48 @@ describe("the whole way through, against a real gateway", () => {
     expect(answered).toEqual(["quote"]);
   });
 
+  it("counts an event it drew, so the loop comes straight back for what follows", async () => {
+    // The gateway hands out one envelope a poll, so an event is often all a
+    // turn draws. Counted as nothing, it would send the loop to rest between
+    // turns as though the stream were quiet, with orders waiting behind it.
+    const gateway = {
+      pollWorker: async () => ({
+        ok: true as const,
+        document: {
+          envelopes: [
+            {
+              kind: "order_event" as const,
+              id: "msg_1f77a0",
+              sent_at: "2026-09-14T12:00:00.000Z",
+              payload: {
+                type: "order.refund_due" as const,
+                order_id: "ord_7c1e05",
+                at: "2026-09-14T12:00:00.000Z",
+                price: { amount: "25.00", currency: "USD" },
+                reason: "deadline_passed" as const,
+              },
+            },
+          ],
+        },
+      }),
+    } as never;
+    const turned = await turnOnce(connection(), {
+      shops: memoryWooShops(),
+      identity: {
+        byId: async () => ({
+          id: "p",
+          email: MERCHANT_EMAIL,
+          confirmed: true,
+          merchant: { id: open?.merchant.id ?? "", key: KEY },
+        }),
+      },
+      clientFor: () => gateway,
+      now: () => new Date("2026-09-14T12:00:00.000Z"),
+      waitSeconds: 1,
+    });
+    expect(turned).toBe(1);
+  });
+
   it("refuses a fresh quote before payment when the shop did not grant write access", async () => {
     let answer: unknown;
     const gateway = {

@@ -297,7 +297,7 @@ describe("an event held to the hand-over the order is waiting on", () => {
     await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
 
     // Drawn by a worker that answers nothing, which is what records a hand-over.
-    const drawn = await harnessed.gateway.poll(harnessed.merchant.id, 10, 1_000);
+    const drawn = await harnessed.gateway.poll(harnessed.merchant.id, 1_000);
     if (drawn.envelopes.length !== 1) throw new Error("the order did not reach the stream");
     const handOver = (await harnessed.store.orderById(orderId))?.openDeliveryId ?? null;
     if (handOver === null) throw new Error("the hand-over was not recorded");

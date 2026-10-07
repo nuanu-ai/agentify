@@ -11,6 +11,7 @@ import { asTimestamp } from "../ports/clock.js";
 import {
   ANNOUNCING,
   authorisation,
+  drawEverything,
   type Harness,
   harness,
   paymentNamingNoPayer,
@@ -426,7 +427,7 @@ describe("a synchronous purchase", () => {
     if (bought.step !== "settled") throw new Error("the purchase did not settle");
     expect(bought.order.order.state).toBe("delivered_unpaid");
 
-    const told = await harnessed.gateway.poll(harnessed.merchant.id, 10, 0);
+    const told = await harnessed.gateway.poll(harnessed.merchant.id, 0);
     expect(told.envelopes.map((e) => e.kind === "order_event" && e.payload.type)).toContain(
       "order.payment_failed_after_delivery",
     );
@@ -862,7 +863,7 @@ describe("an asynchronous purchase", () => {
     // never released any has none to carry that word.
     expect(await harnessed.store.receiptForOrder(offered.order.order.id)).toBeNull();
 
-    const told = await harnessed.gateway.poll(harnessed.merchant.id, 10, 0);
+    const told = await harnessed.gateway.poll(harnessed.merchant.id, 0);
     const events = told.envelopes.flatMap((e) => (e.kind === "order_event" ? [e.payload] : []));
     expect(events.map((e) => e.type)).toContain("order.refund_due");
   });
@@ -1136,9 +1137,7 @@ describe("the goods against the card that sold them", () => {
     const orderId = offered.order.order.id;
 
     const buying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
-    expect((await harnessed.gateway.poll(harnessed.merchant.id, 10, 200)).envelopes).toHaveLength(
-      1,
-    );
+    expect((await harnessed.gateway.poll(harnessed.merchant.id, 200)).envelopes).toHaveLength(1);
 
     const answered = await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, {
       delivered: {},
@@ -1740,7 +1739,7 @@ describe("the price question", () => {
 
     // The question is still on the stream. The merchant draws it and answers,
     // too late to have priced anything.
-    const drawn = await harnessed.gateway.poll(harnessed.merchant.id, 10, 0);
+    const drawn = await harnessed.gateway.poll(harnessed.merchant.id, 0);
     const question = drawn.envelopes.find((envelope) => envelope.kind === "quote_request");
     if (question?.kind !== "quote_request") throw new Error("nobody was asked the price");
 
@@ -1776,7 +1775,7 @@ describe("the price question", () => {
     const itemId = await published(harnessed, livePriced(asyncCard));
 
     const buying = harnessed.gateway.beginPurchase(itemId, {});
-    const drawn = await harnessed.gateway.poll(harnessed.merchant.id, 10, 200);
+    const drawn = await harnessed.gateway.poll(harnessed.merchant.id, 200);
     const question = drawn.envelopes.find((envelope) => envelope.kind === "quote_request");
     if (question?.kind !== "quote_request") throw new Error("nobody was asked the price");
 
@@ -1806,7 +1805,7 @@ describe("the price question", () => {
     const itemId = await published(harnessed, livePriced(asyncCard));
 
     const buying = harnessed.gateway.beginPurchase(itemId, {});
-    const drawn = await harnessed.gateway.poll(harnessed.merchant.id, 10, 200);
+    const drawn = await harnessed.gateway.poll(harnessed.merchant.id, 200);
     const question = drawn.envelopes.find((envelope) => envelope.kind === "quote_request");
     if (question?.kind !== "quote_request") throw new Error("nobody was asked the price");
 
@@ -1963,7 +1962,7 @@ describe("the worker's stream", () => {
     // which is the difference between failing at startup and failing on
     // somebody's first order.
     const harnessed = await started();
-    const answered = await harnessed.gateway.poll(harnessed.merchant.id, 10, 0);
+    const answered = await harnessed.gateway.poll(harnessed.merchant.id, 0);
 
     expect(WorkerPollResponseSchema.safeParse(answered).success).toBe(true);
     expect(answered.envelopes).toStrictEqual([]);
@@ -1976,7 +1975,7 @@ describe("the worker's stream", () => {
     if (offered.step !== "pay") throw new Error("no price was offered");
     await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
 
-    const drawn = await harnessed.gateway.poll(harnessed.merchant.id, 10, 0);
+    const drawn = await harnessed.gateway.poll(harnessed.merchant.id, 0);
 
     expect(drawn.envelopes).toHaveLength(1);
     const record = await harnessed.store.orderById(offered.order.order.id);
@@ -1999,7 +1998,7 @@ describe("the worker's stream", () => {
     });
     await harnessed.gateway.runner.apply(orderId, { kind: "refund_settled", at: harnessed.now() });
 
-    const drawn = await harnessed.gateway.poll(harnessed.merchant.id, 10, 0);
+    const drawn = await harnessed.gateway.poll(harnessed.merchant.id, 0);
 
     expect(drawn.envelopes.filter((e) => e.kind === "order")).toStrictEqual([]);
   });
@@ -2007,7 +2006,7 @@ describe("the worker's stream", () => {
   it("holds a poll open until something arrives", async () => {
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
-    const parked = harnessed.gateway.poll(harnessed.merchant.id, 10, 1_000);
+    const parked = harnessed.gateway.poll(harnessed.merchant.id, 1_000);
 
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
@@ -2039,44 +2038,20 @@ describe("the worker's stream", () => {
       message: "the supplier has none",
     });
 
-    // This batch stands for the poll response that was drawn and never
-    // arrived — it is answered by nobody, which is all an event ever gets.
-    const drawn = await harnessed.gateway.poll(harnessed.merchant.id, 10, 0);
+    // These polls stand for the poll responses that were drawn and never
+    // arrived — answered by nobody, which is all an event ever gets.
+    const drawn = await drawEverything(harnessed);
     expect(
-      drawn.envelopes.flatMap((each) => (each.kind === "order_event" ? [each.payload.type] : [])),
+      drawn.flatMap((each) => (each.kind === "order_event" ? [each.payload.type] : [])),
     ).toStrictEqual(["order.refund_due"]);
 
     harnessed.advance(60_000);
-    expect((await harnessed.gateway.poll(harnessed.merchant.id, 10, 50)).envelopes).toStrictEqual(
-      [],
-    );
+    expect((await harnessed.gateway.poll(harnessed.merchant.id, 50)).envelopes).toStrictEqual([]);
 
     // What the merchant can still find out for himself.
     const owing = await harnessed.gateway.orders(harnessed.merchant.id, true);
     expect(owing.map((held) => held.order.id)).toStrictEqual([orderId]);
     expect(owing[0]?.order.state).toBe("refund_due");
-  });
-
-  it("never hands out more than the gateway's own batch, whatever is asked for", async () => {
-    const harnessed = await started({ WORKER_POLL_MAX_ENVELOPES: "1" });
-    const itemId = await published(harnessed, asyncCard);
-    for (const nth of [0, 1, 2]) {
-      const offered = await harnessed.gateway.beginPurchase(itemId, {});
-      if (offered.step !== "pay") throw new Error("no price was offered");
-      // Three purchases means three payments. One payment buys one order, so
-      // reusing a fingerprint here would leave two of them unpaid and this test
-      // would pass for a reason that has nothing to do with batch size.
-      const bought = await harnessed.gateway.payPurchase(
-        offered.order.order.id,
-        `PAYMENT-${nth}`,
-        `PAYMENT-${nth}`,
-      );
-      expect(bought.step).toBe("under_way");
-    }
-
-    expect((await harnessed.gateway.poll(harnessed.merchant.id, 1_000, 0)).envelopes).toHaveLength(
-      1,
-    );
   });
 
   it("hands nobody an order the late answer already closed", async () => {
@@ -2106,7 +2081,7 @@ describe("the worker's stream", () => {
     // The agent's call parks while the merchant works, as it does on the stand.
     const buying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
 
-    const handed = await harnessed.gateway.poll(harnessed.merchant.id, 10, 1_000);
+    const handed = await harnessed.gateway.poll(harnessed.merchant.id, 1_000);
     expect(handed.envelopes.filter((each) => each.kind === "order")).toHaveLength(1);
 
     // We give up on that hand-over and put a fresh delivery on the stream.
@@ -2130,7 +2105,7 @@ describe("the worker's stream", () => {
 
     // The redelivery's turn. Nobody is handed a purchase that is over, and the
     // envelope is finished rather than left circling.
-    const again = await harnessed.gateway.poll(harnessed.merchant.id, 10, 200);
+    const again = await harnessed.gateway.poll(harnessed.merchant.id, 200);
 
     expect(again.envelopes.filter((each) => each.kind === "order")).toStrictEqual([]);
     expect(await harnessed.queue.holdsOrder(harnessed.merchant.id, orderId)).toBe(false);
@@ -2148,9 +2123,7 @@ describe("the merchant's calls", () => {
     // The purchase is left open on purpose: the separate call only means
     // anything while the order is still with the merchant.
     const buying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
-    expect((await harnessed.gateway.poll(harnessed.merchant.id, 10, 200)).envelopes).toHaveLength(
-      1,
-    );
+    expect((await harnessed.gateway.poll(harnessed.merchant.id, 200)).envelopes).toHaveLength(1);
 
     const refused = await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, {
       access_code: "X",
@@ -2186,9 +2159,7 @@ describe("the merchant's calls", () => {
     const orderId = offered.order.order.id;
 
     const buying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
-    expect((await harnessed.gateway.poll(harnessed.merchant.id, 10, 200)).envelopes).toHaveLength(
-      1,
-    );
+    expect((await harnessed.gateway.poll(harnessed.merchant.id, 200)).envelopes).toHaveLength(1);
 
     const refused = await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, {
       accepted: {},
@@ -2267,7 +2238,7 @@ describe("the merchant's calls", () => {
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
     await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
-    await harnessed.gateway.poll(harnessed.merchant.id, 10, 0);
+    await harnessed.gateway.poll(harnessed.merchant.id, 0);
 
     const answered = await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, {
       accepted: { eta_seconds: 30 },
@@ -2296,7 +2267,7 @@ describe("the merchant's calls", () => {
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
     await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
-    await harnessed.gateway.poll(harnessed.merchant.id, 10, 0);
+    await harnessed.gateway.poll(harnessed.merchant.id, 0);
     await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, { accepted: {} });
     await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, { activation_code: "A" });
     expect((await harnessed.store.orderById(orderId))?.order.state).toBe("delivered");
@@ -2429,9 +2400,7 @@ describe("an order sent out again", () => {
 
     // The poll hands it to nobody — the machine will not take the hand-over
     // yet — and puts it back on the stream instead of dropping it.
-    expect((await harnessed.gateway.poll(harnessed.merchant.id, 10, 0)).envelopes).toStrictEqual(
-      [],
-    );
+    expect((await harnessed.gateway.poll(harnessed.merchant.id, 0)).envelopes).toStrictEqual([]);
 
     harnessed.advance(60_000);
     const back = await harnessed.queue.draw(harnessed.merchant.id, 10, 500);

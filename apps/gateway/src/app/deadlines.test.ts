@@ -1,7 +1,13 @@
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Reminder } from "../ports/queue.js";
-import { authorisation, type Harness, harness, workUntilStopped } from "../testing/harness.js";
+import {
+  authorisation,
+  drawEverything,
+  type Harness,
+  harness,
+  workUntilStopped,
+} from "../testing/harness.js";
 
 /** The buyer, for the one test here that turns on which wallet signed. */
 const BUYER = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -188,8 +194,8 @@ describe("when the time runs out", () => {
       deadline: "async_fulfillment",
     });
 
-    const told = await harnessed.gateway.poll(harnessed.merchant.id, 10, 0);
-    const events = told.envelopes.flatMap((e) => (e.kind === "order_event" ? [e.payload] : []));
+    const told = await drawEverything(harnessed);
+    const events = told.flatMap((e) => (e.kind === "order_event" ? [e.payload] : []));
     expect(events.map((e) => e.type)).toContain("order.refund_due");
   });
 
@@ -383,7 +389,7 @@ describe("when a delivery goes unanswered", () => {
     let running = true;
     const drawing = (async () => {
       while (running) {
-        const { envelopes } = await harnessed.gateway.poll(harnessed.merchant.id, 10, 20);
+        const { envelopes } = await harnessed.gateway.poll(harnessed.merchant.id, 20);
         for (const envelope of envelopes) {
           if (envelope.kind === "order") {
             seen.push({ message: envelope.id, order: envelope.payload.id });
@@ -503,7 +509,7 @@ describe("when a delivery goes unanswered", () => {
 
     // The first hand-over goes quiet for longer than we wait, and the repeat
     // is decided on.
-    expect((await harnessed.gateway.poll(merchantId, 10, 1_000)).envelopes).toHaveLength(1);
+    expect((await harnessed.gateway.poll(merchantId, 1_000)).envelopes).toHaveLength(1);
     await harnessed.queue.remind(
       { kind: "delivery_unanswered", orderId, handOver: await openHandOver() },
       0,
@@ -516,7 +522,7 @@ describe("when a delivery goes unanswered", () => {
     // Then the acceptance lands, with the repeat already on the stream, and
     // the repeat still reaches him.
     await harnessed.gateway.answerOrder(merchantId, orderId, { accepted: {} });
-    expect((await harnessed.gateway.poll(merchantId, 10, 1_000)).envelopes).toHaveLength(1);
+    expect((await harnessed.gateway.poll(merchantId, 1_000)).envelopes).toHaveLength(1);
 
     // The silence after the repeat, and then the goods. The merchant cannot
     // see a silence being weighed, so the test asks what he can see: what his
@@ -578,7 +584,7 @@ describe("when a delivery goes unanswered", () => {
     await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
 
     // One hand-over, drawn and answered by nobody.
-    const handed = await harnessed.gateway.poll(harnessed.merchant.id, 10, 1_000);
+    const handed = await harnessed.gateway.poll(harnessed.merchant.id, 1_000);
     expect(handed.envelopes).toHaveLength(1);
     const handOver = (await harnessed.store.orderById(orderId))?.openDeliveryId ?? null;
     if (handOver === null) {
@@ -605,7 +611,7 @@ describe("when a delivery goes unanswered", () => {
 
     // One silence, one repeat. Two envelopes here is the merchant being asked
     // twice for goods he was asked for once, and two of his five attempts gone.
-    const again = await harnessed.gateway.poll(harnessed.merchant.id, 10, 100);
+    const again = await harnessed.gateway.poll(harnessed.merchant.id, 100);
     expect(again.envelopes).toHaveLength(1);
     expect((await state(harnessed, orderId))?.dispatch.attempts).toBe(2);
   });
@@ -635,6 +641,140 @@ describe("when a delivery goes unanswered", () => {
     await silent.stop();
 
     expect((await state(harnessed, orderId))?.state).toBe("dispatched");
+  });
+});
+
+describe("a burst of orders", () => {
+  it("waits for each answer from the moment that order was handed over, not the burst", async () => {
+    // The wait for a handler's answer starts when an order is handed to the
+    // worker, and a worker works its orders one at a time. Handed a burst all
+    // at once, the orders at the back of it would be waiting out the handler
+    // calls ahead of them, and taken for silences while their own handler had
+    // not even started. A repeat sent for that costs the order one of its
+    // deliveries — and a synchronous order, which cannot be taken on, can
+    // run out of them — although every handler here answers at once.
+    const harnessed = await started({
+      // Eight times what one handler call takes, so only a wait that also
+      // covers the calls ahead of an order can run out.
+      HANDLER_ANSWER_MS: "200",
+      REDELIVERY_BASE_DELAY_MS: "5",
+      DEFAULT_ASYNC_FULFILLMENT_MS: "60000",
+    });
+    const published = await harnessed.gateway.publishCard(harnessed.merchant.id, asyncCard);
+    if (!published.ok) throw new Error("the card would not publish");
+    const orderIds: string[] = [];
+    for (let nth = 0; nth < 12; nth += 1) {
+      const offered = await harnessed.gateway.beginPurchase(published.id, {});
+      if (offered.step !== "pay") throw new Error("no price was offered");
+      // One payment buys one order, so each purchase brings its own.
+      await harnessed.gateway.payPurchase(
+        offered.order.order.id,
+        `PAYMENT-${nth}`,
+        `PAYMENT-${nth}`,
+      );
+      orderIds.push(offered.order.order.id);
+    }
+
+    const quick = workUntilStopped(harnessed, {
+      onOrder: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        return { accepted: {} };
+      },
+    });
+    // Every order taken on and nothing more on its way to anybody. A repeat
+    // decided on for any of them sits on the stream until it is drawn, so
+    // this is not reached until every repeat there was has been handed over
+    // and counted below.
+    await vi.waitFor(
+      async () => {
+        for (const orderId of orderIds) {
+          expect((await state(harnessed, orderId))?.dispatch.accepted).toBe(true);
+          expect(await harnessed.queue.holdsOrder(harnessed.merchant.id, orderId)).toBe(false);
+        }
+      },
+      { timeout: 5_000, interval: 10 },
+    );
+    await quick.stop();
+
+    const handed: Record<string, number | undefined> = {};
+    for (const orderId of orderIds) {
+      handed[orderId] = (await state(harnessed, orderId))?.dispatch.attempts;
+    }
+    expect(handed).toStrictEqual(Object.fromEntries(orderIds.map((orderId) => [orderId, 1])));
+  });
+
+  it("answers with what is live behind an envelope that has gone stale, rather than nothing", async () => {
+    // One envelope a poll has a cost a batch did not. An order that closed
+    // while its envelope waited in the queue is not handed out, and a poll that
+    // answered with nothing for it would send the worker to rest as though the
+    // stream were quiet — a second, in the SDK — while live orders and price
+    // questions waited behind it. After an outage that is a second for every
+    // order that closed in the meantime.
+    const harnessed = await started();
+    // A synchronous purchase nobody draws in time: it closes at its deadline,
+    // and its envelope stays at the head of the stream.
+    const closed = await bought(harnessed, syncCard);
+    await harnessed.gateway.payPurchase(closed, "PAYMENT-0", "PAYMENT-0");
+    expect((await state(harnessed, closed))?.state).toBe("expired");
+    const live = await bought(harnessed, asyncCard);
+    await harnessed.gateway.payPurchase(live, "PAYMENT-1", "PAYMENT-1");
+
+    // A drain: whatever is there right now. Something is, and it comes back.
+    const first = await harnessed.gateway.poll(harnessed.merchant.id, 0);
+    expect(first.envelopes).toHaveLength(1);
+    const handed = [...first.envelopes, ...(await drawEverything(harnessed))].flatMap((each) =>
+      each.kind === "order" ? [each.payload.id] : [],
+    );
+    expect(handed).toStrictEqual([live]);
+  });
+
+  describe("when no hand-over can be recorded", () => {
+    // The poll draws past what it cannot hand out, and that has to end. Here
+    // the store fails every write, and slowly, the way a database that is
+    // struggling does: every envelope drawn goes back on the stream behind a
+    // delay shorter than it takes to get through the others, so there is
+    // always one to draw. A poll that drew until something was handed out
+    // would draw for ever, and the worker behind it would give up and poll
+    // again beside it.
+    const failing = async () => {
+      const harnessed = await started({ SETTLE_IN_FLIGHT_RETRY_MS: "50" });
+      for (const nth of [0, 1, 2]) {
+        const orderId = await bought(harnessed, asyncCard);
+        await harnessed.gateway.payPurchase(orderId, `PAYMENT-${nth}`, `PAYMENT-${nth}`);
+      }
+      vi.spyOn(harnessed.store, "withOrder").mockImplementation(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        throw new Error("the database timed out");
+      });
+      return harnessed;
+    };
+    const stillDrawing = (ms: number) =>
+      new Promise<"still drawing">((resolve) => setTimeout(() => resolve("still drawing"), ms));
+
+    it("answers a held poll once its window is over", async () => {
+      const harnessed = await failing();
+      const startedAt = performance.now();
+      const answered = await Promise.race([
+        harnessed.gateway.poll(harnessed.merchant.id, 100),
+        stillDrawing(2_000),
+      ]);
+      const took = performance.now() - startedAt;
+
+      expect(answered).toStrictEqual({ contract_version: expect.any(String), envelopes: [] });
+      // The window and at most one more pass, nowhere near the time the same
+      // envelopes would take to come round again and again.
+      expect(took).toBeLessThan(500);
+    });
+
+    it("answers a drain after a bounded number of envelopes", async () => {
+      const harnessed = await failing();
+      const answered = await Promise.race([
+        harnessed.gateway.poll(harnessed.merchant.id, 0),
+        stillDrawing(3_000),
+      ]);
+
+      expect(answered).toStrictEqual({ contract_version: expect.any(String), envelopes: [] });
+    });
   });
 });
 

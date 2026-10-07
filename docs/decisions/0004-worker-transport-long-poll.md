@@ -16,11 +16,26 @@ three on one subscription.
 
 ## Decision
 
-1. The worker channel is HTTP long polling against the gateway. The SDK
-   worker calls a poll endpoint with a wait window (~25 s); the gateway holds
-   the request until something arrives or the window closes, then returns a
-   batch of envelopes or an empty batch. Auth is the merchant API key
-   (stage 1 minimum per the pilot plan).
+1. The worker channel is HTTP long polling against the gateway. The SDK worker
+   calls a poll endpoint with a wait window (~25 s); the gateway holds the
+   request until something arrives or the window closes, then answers with one
+   envelope or with none, whatever number the worker asks for. The wait for a
+   handler's answer starts when an order is handed over, and a worker works
+   what it is handed one at a time, so in a batch the orders at the back would
+   be taken for silences while the calls ahead of them ran, and every repeat
+   sent for that spends one of the order's deliveries; one envelope a poll
+   makes the wait measure the handler. A poll draws past an envelope it may
+   not hand out, such as an order that closed while queued, rather than
+   answering empty, because an empty answer sends a worker to rest; it stops
+   at the end of its window or after a fixed number of them, and a worker
+   answered empty before its window is over rests as it would on a quiet
+   stream, so a long run of them costs about a second per fixed number, as a
+   full batch of them once did. The cost is a round trip per envelope: one
+   instance gets through fewer of them a second, and a price question, whose
+   clock runs from the moment it is asked, waits for what is ahead of it. More
+   instances are the remedy, and a throughput need they cannot meet is the
+   revisit trigger named below. Auth is the merchant API key (stage 1 minimum
+   per the pilot plan).
 2. One envelope stream carries three kinds — order, quote question, order
    event — each carrying its kind marker. Quote questions answered over the
    same HTTP surface (a reply call referencing `price_id`); orders are acked
@@ -45,6 +60,10 @@ three on one subscription.
   infrastructure we do not build. Named trigger to revisit: a measured
   latency or throughput need long polling cannot meet, or fan-out to many
   concurrent workers per merchant.
+- **A batch a poll, with each order's answer wait started later by its place
+  in the batch** — it guesses at how long handlers take and delays noticing a
+  worker that died. **A call by which a worker says when it starts each
+  order** — a new call on the wire for what one envelope a poll already gives.
 - **Server-Sent Events** — one-directional, so quote answers and acks need a
   second surface anyway; at that point it is long polling with an extra moving
   part.

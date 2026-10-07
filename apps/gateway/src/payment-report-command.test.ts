@@ -159,7 +159,7 @@ describe("recording what a silent charge came to", () => {
       "refund_due",
     );
     expect(harnessed.facilitator.settles).toHaveLength(before + 1);
-    const drawn = await harnessed.gateway.poll(harnessed.merchant.id, 10, 0);
+    const drawn = await harnessed.gateway.poll(harnessed.merchant.id, 0);
     expect(
       drawn.envelopes.flatMap((each) => (each.kind === "order_event" ? [each.payload.type] : [])),
     ).toContain("order.refund_due");

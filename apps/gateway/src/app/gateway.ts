@@ -59,7 +59,7 @@ import {
 import { type Announcement, type AskedWith, announcedLabel } from "../announcements.js";
 import type { AnnouncementOutcome } from "../ports/announcer.js";
 import { asTimestamp } from "../ports/clock.js";
-import type { Reminder } from "../ports/queue.js";
+import type { DrawnEnvelope, Reminder } from "../ports/queue.js";
 import type {
   KeyPurpose,
   StoredCard,
@@ -213,6 +213,15 @@ export type PurchaseAttempt =
   | { readonly step: "payment_not_verified"; readonly why: string; readonly retryable: boolean }
   /** This order is somebody else's purchase, and this payment is not its own. */
   | { readonly step: "not_this_purchase" };
+
+/**
+ * How many envelopes one poll draws past without handing anything out before
+ * it answers empty. It is the batch a poll used to answer with, so one poll
+ * gets past as many closed orders as it once carried at a time; and it is few
+ * enough that a poll which can record nothing, because every write is
+ * failing, answers in a bounded time.
+ */
+const PASSED_AT_MOST = 32;
 
 export class Gateway {
   readonly runtime: Runtime;
@@ -1506,21 +1515,73 @@ export class Gateway {
   // --- the merchant's stream ------------------------------------------------
 
   /**
-   * Draws the next batch off the merchant's stream and records the hand-over of
-   * every order in it.
+   * Draws the next envelope off the merchant's stream and records the
+   * hand-over if it is an order.
+   *
+   * One envelope a poll, and the reason is the clock on the answer. The wait
+   * for a handler's answer starts here, when the order is handed over, and a
+   * worker works what it is handed one at a time. Handed a batch, the orders
+   * at the back of it waited out the handler calls ahead of them and were
+   * taken for silences before their own handler had started; each repeat sent
+   * for that cost the order a delivery, and a burst of quick answers could
+   * spend a synchronous order's last one. A price question is different: its
+   * clock runs from the moment it is asked, so it gains nothing here, and on a
+   * single worker it waits for whatever is ahead of it on the stream either
+   * way. The contract leaves the size of an answer to the gateway
+   * whatever a worker asks for, and this one answers with one, so the wait
+   * measures the merchant's handler and the trip to it and back, and nothing
+   * else. It was a setting once; any number above one brought the fault
+   * back, so there is nothing left to set.
    *
    * An order that has moved on since it was queued is not handed out: the
    * machine refuses the hand-over, and passing it to a handler anyway would ask
    * a merchant to work on a purchase that is over.
    */
-  async poll(merchantId: string, max: number, waitMs: number): Promise<WorkerPollResponse> {
-    const { config, queue, clock } = this.runtime;
-    const drawn = await queue.draw(
-      merchantId,
-      Math.min(max, config.worker.pollMaxEnvelopes),
-      Math.min(waitMs, config.worker.pollWaitMs),
-    );
+  async poll(merchantId: string, waitMs: number): Promise<WorkerPollResponse> {
+    const { config, queue } = this.runtime;
+    // The window is real time, as the queue's own wait is: it bounds how long a
+    // worker's request is held, and the order clock has nothing to do with it.
+    const window = Math.min(waitMs, config.worker.pollWaitMs);
+    const until = performance.now() + window;
+    const nothing = { contract_version: CONTRACT_VERSION, envelopes: [] };
 
+    // An envelope turned away is drawn past rather than answered with nothing.
+    // An empty answer is what a quiet stream looks like, and a worker rests on
+    // one — the SDK for a second — so answering an order that closed in the
+    // queue with nothing would hold everything live behind it for that long,
+    // and after an outage that is a second for every order that closed in the
+    // meantime.
+    //
+    // Drawing past has to end, though, and it does not end by itself. An
+    // envelope whose hand-over could not be recorded goes back on the stream
+    // behind a delay, and when every write is failing slowly that delay runs
+    // out before the others have been got through, so there is always one to
+    // draw. So a held poll stops at the end of its window, as it would have
+    // stopped on a quiet stream, and any poll stops after `PASSED_AT_MOST`
+    // envelopes turned away — the only bound a drain, whose window is nothing,
+    // has. Answered empty after its whole window, the SDK's worker does not rest
+    // before it polls again.
+    for (let passed = 1; ; passed += 1) {
+      const drawn = await queue.draw(merchantId, 1, Math.max(0, until - performance.now()));
+      if (drawn.length === 0) {
+        return nothing;
+      }
+      const handing = await this.#handOut(merchantId, drawn);
+      if (handing.length > 0) {
+        return { contract_version: CONTRACT_VERSION, envelopes: handing };
+      }
+      if (passed >= PASSED_AT_MOST || (window > 0 && performance.now() >= until)) {
+        return nothing;
+      }
+    }
+  }
+
+  /** Records the hand-over of what was drawn, and returns what may go to the worker. */
+  async #handOut(
+    merchantId: string,
+    drawn: readonly DrawnEnvelope[],
+  ): Promise<WorkerPollResponse["envelopes"]> {
+    const { config, queue, clock } = this.runtime;
     const handing: WorkerPollResponse["envelopes"] = [];
     const finished: string[] = [];
 
@@ -1563,11 +1624,9 @@ export class Gateway {
           { merchantId },
         );
       } catch (thrown) {
-        // Recording this one hand-over failed. The rest of the batch is not
-        // taken down with it — an envelope already in this answer would
-        // otherwise be drawn, discarded with the failed response, and never
-        // seen again — and this one goes back on the stream rather than being
-        // lost with it.
+        // Recording the hand-over failed. The envelope goes back on the
+        // stream rather than being lost with a failed response, and the poll
+        // draws past it to whatever is next.
         console.error(`[gateway] could not record the hand-over of ${orderId}`, thrown);
         await queue.publish(
           merchantId,
@@ -1622,14 +1681,14 @@ export class Gateway {
       finished.push(delivery.handle);
     }
 
-    // The queue is told last, once every hand-over in the batch has been
-    // recorded. Told first, a throw part way through the batch would leave
-    // envelopes finished that nobody was ever handed.
+    // The queue is told last, once the hand-over has been recorded. Told
+    // first, a throw part way through would leave an envelope finished that
+    // nobody was ever handed.
     for (const handle of finished) {
       await queue.finish(merchantId, handle);
     }
 
-    return { contract_version: CONTRACT_VERSION, envelopes: handing };
+    return handing;
   }
 
   /**
