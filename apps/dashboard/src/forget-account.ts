@@ -66,7 +66,7 @@ const plural = (count: number, word: string): string => `${count} ${word}${count
 
 function only<T>(rows: readonly T[]): T {
   const [row] = rows;
-  if (row === undefined) throw new Error("cabinet_forget_count_missing");
+  if (row === undefined) throw new Error("dashboard_forget_count_missing");
   return row;
 }
 
@@ -74,12 +74,12 @@ async function forgetIn(client: PoolClient, email: string, authSecret: string): 
   // The lock a link request and a sign-in for this address take first, so
   // neither lands between the reads below and the deletes after them.
   await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [
-    `cabinet-email:${email}`,
+    `dashboard-email:${email}`,
   ]);
   const account = (
     await client.query<{ id: string; merchantId: string | null; operator: boolean }>(
       `select id, merchant_id as "merchantId", operator
-         from cabinet_accounts where email = $1 for update`,
+         from dashboard_accounts where email = $1 for update`,
       [email],
     )
   ).rows[0];
@@ -109,7 +109,7 @@ async function forgetIn(client: PoolClient, email: string, authSecret: string): 
       (
         await client.query<{ count: number }>(
           `select count(*)::int as count
-             from cabinet_accounts where merchant_id = $1 and id <> $2`,
+             from dashboard_accounts where merchant_id = $1 and id <> $2`,
           [id, account.id],
         )
       ).rows,
@@ -124,21 +124,21 @@ async function forgetIn(client: PoolClient, email: string, authSecret: string): 
   const shop =
     (
       await client.query<{ shopUrl: string }>(
-        `select shop_url as "shopUrl" from cabinet_woo_shops where account_id = $1`,
+        `select shop_url as "shopUrl" from dashboard_woo_shops where account_id = $1`,
         [account.id],
       )
     ).rows[0]?.shopUrl ?? null;
-  await client.query("delete from cabinet_accounts where id = $1", [account.id]);
+  await client.query("delete from dashboard_accounts where id = $1", [account.id]);
 
   // The sign-in door keys its sends with the dashboard's own secret and the
   // report door with the digest key it keeps in the database; a database whose
   // report door never sent anything has no digest key and no such rows.
   const digestKeys = (
     await client.query<{ digestKey: string }>(
-      `select digest_key as "digestKey" from cabinet_report_identity_secrets`,
+      `select digest_key as "digestKey" from dashboard_report_identity_secrets`,
     )
   ).rows.map((row) => row.digestKey);
-  await client.query("delete from cabinet_link_sends where email_hash = any($1)", [
+  await client.query("delete from dashboard_link_sends where email_hash = any($1)", [
     [authSecret, ...digestKeys].map((secret) => rateKey(secret, email)),
   ]);
 

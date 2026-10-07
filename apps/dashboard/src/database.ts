@@ -20,7 +20,22 @@ import { Pool } from "pg";
  * sharing one journal would each read the other's entries as its own and
  * conclude there was nothing to apply.
  */
-const MIGRATIONS_TABLE = "cabinet_migrations";
+const MIGRATIONS_TABLE = "dashboard_migrations";
+
+/**
+ * Where that history was kept before the dashboard was called the dashboard.
+ *
+ * A database migrated then keeps its history under this name, and a migration
+ * cannot rename it: the migrator reads the history before it applies anything,
+ * and one that found none under the new name would apply every file again from
+ * the first, against tables that are already there. So the dashboard renames it
+ * itself, once, before the migrator runs. Two histories at once means something
+ * ran the new migrator against a database the old one had migrated; which of
+ * the two is true cannot be read off either, so that is refused, not guessed.
+ *
+ * This goes once both channels have been migrated past 0013.
+ */
+const OLD_MIGRATIONS_TABLE = "cabinet_migrations";
 
 /**
  * One pool for the process, with the one listener it cannot run without.
@@ -65,5 +80,16 @@ export function connect(databaseUrl: string): Pool {
 
 /** Brings the dashboard's identity tables up to date. A step somebody takes. */
 export async function migrateAccounts(pool: Pool, migrationsFolder: string): Promise<void> {
+  await pool.query(`do $$
+    begin
+      if to_regclass('drizzle.${OLD_MIGRATIONS_TABLE}') is not null then
+        if to_regclass('drizzle.${MIGRATIONS_TABLE}') is not null then
+          raise exception 'both drizzle.${OLD_MIGRATIONS_TABLE} and drizzle.${MIGRATIONS_TABLE} exist, so which history is true cannot be told; nothing was migrated';
+        end if;
+        alter table drizzle.${OLD_MIGRATIONS_TABLE} rename to ${MIGRATIONS_TABLE};
+        alter sequence drizzle.${OLD_MIGRATIONS_TABLE}_id_seq rename to ${MIGRATIONS_TABLE}_id_seq;
+        alter index drizzle.${OLD_MIGRATIONS_TABLE}_pkey rename to ${MIGRATIONS_TABLE}_pkey;
+      end if;
+    end $$`);
   await migrate(drizzle(pool), { migrationsFolder, migrationsTable: MIGRATIONS_TABLE });
 }

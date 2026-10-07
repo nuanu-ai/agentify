@@ -225,11 +225,11 @@ const started = async (standing: Standing = {}): Promise<Running> => {
   });
   const messages: Message[] = [];
   const rows: Record<string, Record<string, unknown>[]> = {
-    cabinet_accounts: [],
-    cabinet_sessions: [],
-    cabinet_credentials: [],
-    cabinet_verifications: [],
-    cabinet_link_sends: [],
+    dashboard_accounts: [],
+    dashboard_sessions: [],
+    dashboard_credentials: [],
+    dashboard_verifications: [],
+    dashboard_link_sends: [],
   };
   const identity = identityFor(config, {
     rows,

@@ -888,7 +888,7 @@ describe("the scanner's migrations in the one database", () => {
       const dashboard = async () =>
         migrate(drizzle(pool), {
           migrationsFolder: dashboardMigrations,
-          migrationsTable: "cabinet_migrations",
+          migrationsTable: "dashboard_migrations",
         });
       await gateway(gatewayMigrations);
       await dashboard();
@@ -898,19 +898,19 @@ describe("the scanner's migrations in the one database", () => {
         "select tablename from pg_tables where schemaname = 'public'",
       );
       expect(tables.rows.map(({ tablename }) => tablename)).toEqual(
-        expect.arrayContaining([...TABLES, "orders", "cabinet_accounts"]),
+        expect.arrayContaining([...TABLES, "orders", "dashboard_accounts"]),
       );
       const histories = async () =>
         (
           await pool.query<{ table_name: string; count: string }>(
             `select 'gateway' as table_name, count(*)::text from drizzle.__drizzle_migrations
-             union all select 'cabinet', count(*)::text from drizzle.cabinet_migrations
+             union all select 'dashboard', count(*)::text from drizzle.dashboard_migrations
              union all select 'scanner', count(*)::text from drizzle.scanner_migrations`,
           )
         ).rows;
       expect(await histories()).toEqual([
         { table_name: "gateway", count: String(await entries(gatewayMigrations)) },
-        { table_name: "cabinet", count: String(await entries(dashboardMigrations)) },
+        { table_name: "dashboard", count: String(await entries(dashboardMigrations)) },
         { table_name: "scanner", count: String(await entries(migrationsFolder)) },
       ]);
 

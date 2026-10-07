@@ -16,11 +16,11 @@ const config = loadConfig({
 
 function memoryIdentity(handed: "accepted" | "refused" = "accepted") {
   const rows: Record<string, Record<string, unknown>[]> = {
-    cabinet_accounts: [],
-    cabinet_sessions: [],
-    cabinet_credentials: [],
-    cabinet_verifications: [],
-    cabinet_link_sends: [],
+    dashboard_accounts: [],
+    dashboard_sessions: [],
+    dashboard_credentials: [],
+    dashboard_verifications: [],
+    dashboard_link_sends: [],
   };
   const messages: Message[] = [];
   const store = identityFor(config, {
@@ -75,13 +75,13 @@ describe("dashboard magic links", () => {
       retryAt: expect.any(Date),
     });
 
-    expect(rows.cabinet_accounts).toHaveLength(0);
-    expect(rows.cabinet_sessions).toHaveLength(0);
+    expect(rows.dashboard_accounts).toHaveLength(0);
+    expect(rows.dashboard_sessions).toHaveLength(0);
     expect(messages).toHaveLength(2);
     const firstToken = tokenIn(messages[0] as Message);
     const secondToken = tokenIn(messages[1] as Message);
     expect(firstToken).not.toBe(secondToken);
-    expect(rows.cabinet_verifications?.map((row) => row.identifier)).toStrictEqual([
+    expect(rows.dashboard_verifications?.map((row) => row.identifier)).toStrictEqual([
       createHash("sha256").update(firstToken).digest("base64url"),
       createHash("sha256").update(secondToken).digest("base64url"),
     ]);
@@ -92,8 +92,8 @@ describe("dashboard magic links", () => {
       destination: "default",
       person: { email: "person@example.com", confirmed: true, merchant: null },
     });
-    expect(rows.cabinet_accounts).toHaveLength(1);
-    expect(rows.cabinet_sessions).toHaveLength(1);
+    expect(rows.dashboard_accounts).toHaveLength(1);
+    expect(rows.dashboard_sessions).toHaveLength(1);
 
     await expect(identity.openLink(firstToken)).resolves.toStrictEqual({ status: "refused" });
 
@@ -103,8 +103,8 @@ describe("dashboard magic links", () => {
       destination: "settings",
       person: { id: first.status === "opened" ? first.person.id : "wrong person" },
     });
-    expect(rows.cabinet_accounts).toHaveLength(1);
-    expect(rows.cabinet_sessions).toHaveLength(2);
+    expect(rows.dashboard_accounts).toHaveLength(1);
+    expect(rows.dashboard_sessions).toHaveLength(2);
   });
 
   it("sends nothing and spends nothing when a second link is asked for inside the minute", async () => {
@@ -113,7 +113,7 @@ describe("dashboard magic links", () => {
       status: "accepted",
       retryAt: expect.any(Date),
     });
-    const sentAt = new Date(rows.cabinet_link_sends?.[0]?.sentAt as Date);
+    const sentAt = new Date(rows.dashboard_link_sends?.[0]?.sentAt as Date);
 
     const refused = await identity.requestLink("person@example.com", "default");
 
@@ -125,14 +125,14 @@ describe("dashboard magic links", () => {
     expect(messages).toHaveLength(1);
     // A request the interval refused was never a send, so it may not take one
     // of the three the hour allows: the row count is what that costs.
-    expect(rows.cabinet_link_sends).toHaveLength(1);
+    expect(rows.dashboard_link_sends).toHaveLength(1);
   });
 
   it("answers an accepted link with the wait in front of the next one, which after the third is the hour", async () => {
     const { identity, rows } = memoryIdentity();
 
     const first = await identity.requestLink("person@example.com", "default");
-    const firstSentAt = new Date(rows.cabinet_link_sends?.[0]?.sentAt as Date);
+    const firstSentAt = new Date(rows.dashboard_link_sends?.[0]?.sentAt as Date);
     expect(first).toStrictEqual({
       status: "accepted",
       retryAt: new Date(firstSentAt.getTime() + LINK_MIN_INTERVAL_MS),
@@ -148,7 +148,7 @@ describe("dashboard magic links", () => {
     // resend for sixty seconds, hands it back, and buys the person a refusal
     // for the rest of the hour. The wait behind a link is the wait in front of
     // the next one, whichever wall that is.
-    const oldest = new Date(rows.cabinet_link_sends?.[0]?.sentAt as Date);
+    const oldest = new Date(rows.dashboard_link_sends?.[0]?.sentAt as Date);
     expect(third).toStrictEqual({
       status: "accepted",
       retryAt: new Date(oldest.getTime() + LINK_RATE_WINDOW_MS),
@@ -169,14 +169,14 @@ describe("dashboard magic links", () => {
     }
 
     expect(messages).toHaveLength(3);
-    const oldest = new Date(rows.cabinet_link_sends?.[0]?.sentAt as Date);
+    const oldest = new Date(rows.dashboard_link_sends?.[0]?.sentAt as Date);
     await expect(identity.requestLink("person@example.com", "default")).resolves.toStrictEqual({
       status: "cooldown",
       wall: "hourly",
       retryAt: new Date(oldest.getTime() + LINK_RATE_WINDOW_MS),
     });
     expect(messages).toHaveLength(3);
-    expect(rows.cabinet_link_sends).toHaveLength(3);
+    expect(rows.dashboard_link_sends).toHaveLength(3);
   });
 
   it("names the hourly wall, not the minute, when waiting out the minute would change nothing", async () => {
@@ -213,7 +213,7 @@ describe("dashboard magic links", () => {
     const { identity, messages, rows } = memoryIdentity();
     await identity.requestLink("person@example.com", "default");
     const token = tokenIn(messages[0] as Message);
-    const verification = rows.cabinet_verifications?.[0];
+    const verification = rows.dashboard_verifications?.[0];
     if (verification === undefined) throw new Error("the link was not stored");
 
     for (const destination of [
@@ -226,9 +226,9 @@ describe("dashboard magic links", () => {
 
       await expect(identity.openLink(token)).resolves.toStrictEqual({ status: "refused" });
       expect(await identity.addressOfLink(token)).toBeNull();
-      expect(rows.cabinet_verifications).toHaveLength(1);
-      expect(rows.cabinet_accounts).toHaveLength(0);
-      expect(rows.cabinet_sessions).toHaveLength(0);
+      expect(rows.dashboard_verifications).toHaveLength(1);
+      expect(rows.dashboard_accounts).toHaveLength(0);
+      expect(rows.dashboard_sessions).toHaveLength(0);
     }
   });
 
@@ -238,14 +238,14 @@ describe("dashboard magic links", () => {
     await expect(identity.requestLink("person@example.com", "default")).resolves.toStrictEqual({
       status: "unavailable",
     });
-    expect(rows.cabinet_verifications).toHaveLength(0);
-    expect(rows.cabinet_link_sends).toHaveLength(0);
-    expect(rows.cabinet_accounts).toHaveLength(0);
+    expect(rows.dashboard_verifications).toHaveLength(0);
+    expect(rows.dashboard_link_sends).toHaveLength(0);
+    expect(rows.dashboard_accounts).toHaveLength(0);
   });
 
   it("refuses an empty merchant pair instead of hiding corrupt data as P1", async () => {
     const { store, rows } = memoryIdentity();
-    rows.cabinet_accounts?.push({
+    rows.dashboard_accounts?.push({
       id: "person_corrupt",
       email: "person@example.com",
       emailVerified: true,
@@ -257,7 +257,7 @@ describe("dashboard magic links", () => {
     });
 
     await expect(store.byEmail("person@example.com")).rejects.toThrow(
-      "cabinet_account_partial_merchant_binding",
+      "dashboard_account_partial_merchant_binding",
     );
   });
 });

@@ -18,6 +18,6 @@ export default defineConfig({
   schema: "./src/schema.ts",
   out: "./drizzle",
   dbCredentials: { url: process.env.DATABASE_URL ?? "" },
-  migrations: { table: "cabinet_migrations" },
+  migrations: { table: "dashboard_migrations" },
   strict: true,
 });

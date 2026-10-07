@@ -56,7 +56,7 @@ async function plantSignInLink(email: string, scanId: string): Promise<string> {
   try {
     const now = new Date();
     await dashboard.pool.query(
-      `insert into cabinet_verifications (id, identifier, value, expires_at, created_at, updated_at)
+      `insert into dashboard_verifications (id, identifier, value, expires_at, created_at, updated_at)
        values ($1, $2, $3, $4, $5, $5)`,
       [
         randomUUID(),

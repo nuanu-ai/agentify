@@ -27,12 +27,12 @@ function config() {
 
 function fixture(
   rows: Record<string, Record<string, unknown>[]> = {
-    cabinet_accounts: [],
-    cabinet_sessions: [],
-    cabinet_credentials: [],
-    cabinet_verifications: [],
-    cabinet_link_sends: [],
-    cabinet_report_deletion_tombstones: [],
+    dashboard_accounts: [],
+    dashboard_sessions: [],
+    dashboard_credentials: [],
+    dashboard_verifications: [],
+    dashboard_link_sends: [],
+    dashboard_report_deletion_tombstones: [],
   },
 ) {
   const messages: Message[] = [];
@@ -135,16 +135,16 @@ describe("a report link asked for by the scanner", () => {
     const opened = await one.identity.openLink(token);
     if (opened.status !== "opened") throw new Error("the report link did not open");
     const aDayAndAnHourAgo = Date.now() - 25 * 60 * 60 * 1_000;
-    for (const session of one.rows.cabinet_sessions ?? []) {
+    for (const session of one.rows.dashboard_sessions ?? []) {
       session.expiresAt = new Date(aDayAndAnHourAgo + 30 * 24 * 60 * 60 * 1_000);
     }
-    const before = structuredClone(one.rows.cabinet_sessions);
+    const before = structuredClone(one.rows.dashboard_sessions);
 
     const read = await one.identity.whoIs(cookieFrom(opened.setCookies), { renew: false });
 
     expect(read?.person.email).toBe(EMAIL);
     expect(read?.setCookies).toStrictEqual([]);
-    expect(one.rows.cabinet_sessions).toStrictEqual(before);
+    expect(one.rows.dashboard_sessions).toStrictEqual(before);
 
     const renewed = await one.identity.whoIs(cookieFrom(opened.setCookies));
     expect(renewed?.setCookies.some((line) => line.startsWith(`${COOKIE}=`))).toBe(true);
@@ -167,7 +167,7 @@ describe("a report link asked for by the scanner", () => {
     // nothing, and spends none of the three the hour allows.
     expect(again).toMatchObject({ status: "cooldown", retry_at: expect.any(String) });
     expect(one.messages).toHaveLength(1);
-    expect(one.rows.cabinet_link_sends).toHaveLength(1);
+    expect(one.rows.dashboard_link_sends).toHaveLength(1);
     if (again.status !== "cooldown") throw new Error("the second report link should be refused");
     const owed = new Date(again.retry_at).getTime() - Date.now();
     expect(owed).toBeGreaterThan(0);
@@ -192,7 +192,7 @@ describe("a report link asked for by the scanner", () => {
       status: "accepted",
       retryAt: expect.any(Date),
     });
-    expect(JSON.stringify(one.rows.cabinet_link_sends)).not.toContain(EMAIL);
+    expect(JSON.stringify(one.rows.dashboard_link_sends)).not.toContain(EMAIL);
   });
 });
 
@@ -242,7 +242,7 @@ describe("a privacy deletion asked for by the scanner", () => {
       status: "already_absent",
     });
     expect(await one.identity.byEmail(EMAIL)).toMatchObject({ merchant: MERCHANT });
-    expect(one.rows.cabinet_verifications).toHaveLength(1);
+    expect(one.rows.dashboard_verifications).toHaveLength(1);
     await expect(
       one.identity.deleteUnattachedPerson({ ...request, email: "other@example.com" }),
     ).resolves.toStrictEqual({ status: "refused" });

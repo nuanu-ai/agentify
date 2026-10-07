@@ -152,16 +152,16 @@ const withIdentity = async (
   rows: Record<string, Record<string, unknown>[]>;
 }> => {
   const rows: Record<string, Record<string, unknown>[]> = {
-    cabinet_accounts: [],
-    cabinet_sessions: [],
-    cabinet_credentials: [],
-    cabinet_verifications: [],
-    cabinet_link_sends: [],
+    dashboard_accounts: [],
+    dashboard_sessions: [],
+    dashboard_credentials: [],
+    dashboard_verifications: [],
+    dashboard_link_sends: [],
   };
   const identity = identityFor(config, { rows, postman });
   await identity.make(PERSON, THE_MERCHANT);
   const forgetMerchant = (email: string): void => {
-    for (const row of rows.cabinet_accounts ?? []) {
+    for (const row of rows.dashboard_accounts ?? []) {
       if (row.email === email) {
         row.merchantId = null;
         row.merchantKey = null;
@@ -172,7 +172,7 @@ const withIdentity = async (
 };
 
 /** Session rows exposed only by the deterministic memory adapter. */
-const sessionRows = (): Record<string, unknown>[] => open?.rows.cabinet_sessions ?? [];
+const sessionRows = (): Record<string, unknown>[] => open?.rows.dashboard_sessions ?? [];
 
 const roomCard: Card = {
   merchant_item_id: "SKU 100/1",
@@ -681,7 +681,7 @@ const paidInto = async (running: Running): Promise<string | null> =>
  * key the gateway no longer knows.
  */
 const onADashboardKey = async (running: Running): Promise<void> => {
-  for (const row of running.rows.cabinet_accounts ?? []) {
+  for (const row of running.rows.dashboard_accounts ?? []) {
     if (row.merchantId === THE_MERCHANT.id) {
       row.merchantKey = await running.harnessed.addDashboardKey(running.harnessed.merchant.id);
     }
@@ -769,7 +769,7 @@ describe("the passwordless dashboard door", () => {
     );
     expect(known.headers.getSetCookie()).toStrictEqual([]);
     expect(unknown.headers.getSetCookie()).toStrictEqual([]);
-    expect(rows.cabinet_sessions).toStrictEqual([]);
+    expect(rows.dashboard_sessions).toStrictEqual([]);
     expect(mails).toHaveLength(2);
     expect(known.html).toContain('method="post" action="/sign-in"');
     expect(known.html).toContain('method="get" action="/sign-in"');
@@ -797,7 +797,7 @@ describe("the passwordless dashboard door", () => {
     // Production break: the third link spends the hour, and a page that greys
     // its resend for sixty seconds hands the button back, invites the press in
     // words, and buys the person "try again in fifty-seven minutes".
-    const oldest = new Date(rows.cabinet_link_sends?.[0]?.sentAt as Date).getTime();
+    const oldest = new Date(rows.dashboard_link_sends?.[0]?.sentAt as Date).getTime();
     const owed = Math.ceil((oldest + LINK_RATE_WINDOW_MS - Date.now()) / 1_000);
     const said = Number(waitingButton(page.html).attributes.get("data-link-wait"));
     expect(said).toBeGreaterThan(LINK_MIN_INTERVAL_MS / 1_000);
@@ -880,7 +880,7 @@ describe("the passwordless dashboard door", () => {
     // a link for somebody else's address, sent to a victim, from signing them
     // in as that somebody without their noticing (ADR-0026 §1).
     expect(readable(landing.html)).toContain(PERSON);
-    expect(running.rows.cabinet_sessions).toStrictEqual([]);
+    expect(running.rows.dashboard_sessions).toStrictEqual([]);
 
     const opened = await running.browser
       .from(running.url)
@@ -902,7 +902,7 @@ describe("the passwordless dashboard door", () => {
     const switching = await running.browser.from(running.url).post("/dashboard/sign-out");
     expect(switching.status).toBe(303);
     expect(switching.to).toBe("/dashboard/sign-in");
-    expect(running.rows.cabinet_sessions).toStrictEqual([]);
+    expect(running.rows.dashboard_sessions).toStrictEqual([]);
   });
 
   it("refuses a cross-origin POST without consuming the link", async () => {
@@ -915,7 +915,7 @@ describe("the passwordless dashboard door", () => {
       .from("https://evil.example")
       .post("/sign-in/open", { token });
     expect(forged.status).toBe(403);
-    expect(running.rows.cabinet_sessions).toStrictEqual([]);
+    expect(running.rows.dashboard_sessions).toStrictEqual([]);
 
     const honest = await running.browser.from(running.url).post("/sign-in/open", { token });
     expect(honest.status).toBe(303);
@@ -935,9 +935,9 @@ describe("the passwordless dashboard door", () => {
     expect(readable(answered.html)).toMatch(/no account or session was created/i);
     expect(answered.headers.getSetCookie()).toStrictEqual([]);
     expect(await identity.byEmail("new@example.com")).toBeNull();
-    expect(rows.cabinet_sessions).toStrictEqual([]);
-    expect(rows.cabinet_verifications).toStrictEqual([]);
-    expect(rows.cabinet_link_sends).toStrictEqual([]);
+    expect(rows.dashboard_sessions).toStrictEqual([]);
+    expect(rows.dashboard_verifications).toStrictEqual([]);
+    expect(rows.dashboard_link_sends).toStrictEqual([]);
   });
 
   it("never makes a merchant by opening a link: a person without one starts at their latest report", async () => {
@@ -1008,7 +1008,7 @@ describe("the passwordless dashboard door", () => {
     await running.browser.get("/merchant");
     const first = await running.browser.from(running.url).post("/merchant");
     expect(first.status).toBe(503);
-    expect(running.rows.cabinet_sessions).toHaveLength(1);
+    expect(running.rows.dashboard_sessions).toHaveLength(1);
     expect((await running.identity.byEmail(FRESH.email))?.merchant).toBeNull();
     expect(running.mails).toHaveLength(1);
 
@@ -1061,7 +1061,7 @@ describe("the passwordless dashboard door", () => {
     await stranger.from(running.url).post("/sign-in/open", { token: theirs });
     await running.browser.signIn();
     const expired = (): string => {
-      for (const row of running.rows.cabinet_verifications ?? []) {
+      for (const row of running.rows.dashboard_verifications ?? []) {
         row.expiresAt = new Date(Date.now() - 1_000);
       }
       return "";
@@ -1257,7 +1257,7 @@ describe("one session for the whole site", () => {
     expect(attributes.get("path")).toBe("/");
     expect(attributes.has("secure")).toBe(true);
     expect(new Date(attributes.get("expires") ?? "").getTime()).toBeLessThan(Date.now());
-    expect(running.rows.cabinet_sessions).toStrictEqual([]);
+    expect(running.rows.dashboard_sessions).toStrictEqual([]);
   });
 });
 
@@ -3795,7 +3795,7 @@ describe("the key the dashboard signs in with", () => {
 
   /** The key the dashboard would call as this person with, off their row. */
   const keyOnTheRowOf = (email: string): string => {
-    const row = (open?.rows.cabinet_accounts ?? []).find((one) => one.email === email);
+    const row = (open?.rows.dashboard_accounts ?? []).find((one) => one.email === email);
     const key = row?.merchantKey;
     if (typeof key !== "string" || key === "") {
       throw new Error(`there is no account for ${email} with a key on it`);
@@ -4685,7 +4685,7 @@ describe("a wallet change waiting on the live deployment", () => {
 
   it("tells an account holding a key of the merchant's own code that its key is of the wrong kind to cancel", async () => {
     const running = await live();
-    for (const row of running.rows.cabinet_accounts ?? []) {
+    for (const row of running.rows.dashboard_accounts ?? []) {
       if (row.merchantId === THE_MERCHANT.id) row.merchantKey = theMerchantKey("live");
     }
     await running.browser.signIn();

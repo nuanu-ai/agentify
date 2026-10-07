@@ -64,7 +64,7 @@ if (databaseUrl === null) {
     merchantKey: string | null,
   ): Promise<void> => {
     await connected.pool.query(
-      `insert into cabinet_accounts
+      `insert into dashboard_accounts
          (id, email, email_verified, name, created_at, updated_at, merchant_id, merchant_key)
        values ($1, $2, false, '', now(), now(), $3, $4)`,
       [id, email, merchantId, merchantKey],
@@ -177,7 +177,7 @@ if (databaseUrl === null) {
         account("acc_partial", "partial@example.com", MERCHANT, null),
       ).rejects.toMatchObject({
         code: "23514",
-        constraint: "cabinet_accounts_complete_merchant",
+        constraint: "dashboard_accounts_complete_merchant",
       });
       await expect(directory.resolve("partial@example.com")).resolves.toStrictEqual([]);
     });
@@ -187,7 +187,7 @@ if (databaseUrl === null) {
       // on that: a row that got past the constraint is reported as it is
       // rather than fixed by guessing the missing half.
       await connected.pool.query(
-        "alter table cabinet_accounts drop constraint cabinet_accounts_complete_merchant",
+        "alter table dashboard_accounts drop constraint dashboard_accounts_complete_merchant",
       );
       await account("acc_unbound", "unbound@example.com", null, null);
       await account("acc_partial", "partial@example.com", MERCHANT, null);
