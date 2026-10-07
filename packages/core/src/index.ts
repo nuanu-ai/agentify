@@ -119,5 +119,3 @@ export {
 export { moneyInvariantViolations } from "./orders/money.js";
 export type { OrderOutcome } from "./orders/outcome.js";
 export { ORDER_OUTCOMES, onTheMerchantsOpenList, outcomeFor } from "./orders/outcome.js";
-export type { RedeliveryDecision, RedeliveryQuestion } from "./orders/redelivery.js";
-export { nextRedelivery } from "./orders/redelivery.js";

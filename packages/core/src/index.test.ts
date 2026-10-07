@@ -42,7 +42,6 @@ describe("@agentify/core", () => {
       // Read by the gateway when it decides whether another delivery attempt
       // could still land in time.
       "fulfillmentDeadline",
-      "nextRedelivery",
       "outcomeFor",
       // The merchant's open list is narrower than the machine's open states.
       "onTheMerchantsOpenList",
@@ -53,13 +52,9 @@ describe("@agentify/core", () => {
       // What a merchant must have before their cards are sold: asked by the
       // gateway's publish door and sale-time check and by the dashboard.
       "readinessOf",
-      // `./deployment/environment.ts` is a foundation module: its own header
-      // says its callers are the keys a deployment issues and the mark its
-      // pages write, none of which this task touches yet. Its full contract
-      // is exported now rather than grown export by export, so only
-      // `isTestnetChain` is actually reached from outside the package today
-      // — by the two smoke commands in `packages/slice` — and the rest
-      // become load-bearing as the tasks that need them land.
+      // What a deployment is: read by the configuration of the gateway and
+      // the dashboard, by the keys they issue, and by the slice's smoke
+      // commands.
       "isSandboxFacilitator",
       "isTestnetChain",
       "environmentOf",
