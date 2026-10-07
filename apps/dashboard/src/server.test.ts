@@ -3585,7 +3585,13 @@ describe("a page left open while another address signs in", () => {
     const refused = await running.browser.post("/selling/pause", leftOpen);
 
     expect(refused.status).toBe(409);
-    expect(readable(refused.html)).toContain("Nothing was changed");
+    const said = readable(refused.html);
+    expect(said).toContain("Nothing was changed");
+    // It names who is signed in now, and never what the form said about
+    // itself, and it leads to where that person starts.
+    expect(said).toContain(OTHER);
+    expect(said).not.toContain(PERSON);
+    expect(refused.html).toContain('href="/cards"');
     expect(await purchasable(running.gateway, itemId)).toBe(true);
 
     const drawnNow = hiddenIn((await running.browser.get("/cards")).html, "/selling/pause");
@@ -3612,10 +3618,17 @@ describe("a page left open while another address signs in", () => {
       ({ method, path }) => method === "post" && !above.has(path),
     );
     expect(behind.length).toBeGreaterThan(10);
+    const silently = async (path: string): Promise<Visit> =>
+      await running.browser.postRaw(path, "application/x-www-form-urlencoded", "");
+    const refusal = await silently("/selling/pause");
+    expect(refusal.status).toBe(409);
     for (const { path } of behind) {
-      expect((await running.browser.post(path, leftOpen)).status, path).toBe(409);
-      const silent = await running.browser.postRaw(path, "application/x-www-form-urlencoded", "");
-      expect(silent.status, path).toBe(409);
+      for (const answer of [await running.browser.post(path, leftOpen), await silently(path)]) {
+        expect({ status: answer.status, html: answer.html }, path).toStrictEqual({
+          status: 409,
+          html: refusal.html,
+        });
+      }
     }
   });
 
@@ -3664,7 +3677,15 @@ describe("a page left open while another address signs in", () => {
       const answer = await asDrawn(running.browser, action, fields);
       expect(answer.status === 409 && answer.html === refusal.html, action).toBe(false);
     }
+    // Still signed in: a form above that ended the session would have turned
+    // every later answer into the sign-in, which is not the refusal either.
+    expect((await running.browser.get("/cards")).status).toBe(200);
+
     const freshRefusal = await asDrawn(fresh, "/selling/pause", {});
+    // Somebody with no merchant is not offered the seller dashboard's screens
+    // on the way out of it, only the way to where they start.
+    expect(freshRefusal.html).toContain(`href="${LATEST_REPORT}"`);
+    expect(freshRefusal.html).not.toContain('href="/cards"');
     for (const { action, fields } of offered.filter(({ action }) => action !== "/sign-out")) {
       const answer = await asDrawn(fresh, action, fields);
       expect(answer.status === 409 && answer.html === freshRefusal.html, action).toBe(false);
