@@ -27,12 +27,15 @@ three on one subscription.
    makes the wait measure the handler. A poll draws past an envelope it may
    not hand out, such as an order that closed while queued, rather than
    answering empty, because an empty answer sends a worker to rest; it stops
-   at the end of its window or after a fixed number of them. The cost is a
-   round trip per envelope: one instance gets through fewer of them a second,
-   and a price question, whose clock runs from the moment it is asked, waits
-   for what is ahead of it. More instances are the remedy, and a throughput
-   need they cannot meet is the revisit trigger named below. Auth is the
-   merchant API key (stage 1 minimum per the pilot plan).
+   at the end of its window or after a fixed number of them, and a worker
+   answered empty before its window is over rests as it would on a quiet
+   stream, so a long run of them costs about a second per fixed number, as a
+   full batch of them once did. The cost is a round trip per envelope: one
+   instance gets through fewer of them a second, and a price question, whose
+   clock runs from the moment it is asked, waits for what is ahead of it. More
+   instances are the remedy, and a throughput need they cannot meet is the
+   revisit trigger named below. Auth is the merchant API key (stage 1 minimum
+   per the pilot plan).
 2. One envelope stream carries three kinds — order, quote question, order
    event — each carrying its kind marker. Quote questions answered over the
    same HTTP surface (a reply call referencing `price_id`); orders are acked
