@@ -144,7 +144,7 @@ describe("dashboard report identity client", () => {
     );
   });
 
-  it("aborts at its fixed boundary and does not log sensitive values", async () => {
+  it("aborts at its fixed boundary", async () => {
     vi.useFakeTimers();
     let requestSignal: AbortSignal | null | undefined;
     const fetchImpl = (_input: string | URL | Request, init?: RequestInit) =>

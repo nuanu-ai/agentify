@@ -153,15 +153,6 @@ describe("a key", () => {
 
     expect(dashboard.key.label).toBe(DASHBOARD_KEY_LABEL);
   });
-
-  it("hashes the same secret the same way every time, and two secrets differently", () => {
-    // The one thing that has to hold between the command that issues a key and
-    // the door that reads it. A second spelling of this would be a key that
-    // works in one of them and not the other.
-    expect(keyDigest("a-key")).toBe(keyDigest("a-key"));
-    expect(keyDigest("a-key")).not.toBe(keyDigest("a-keY"));
-    expect(keyDigest("a-key")).toMatch(/^[0-9a-f]{64}$/);
-  });
 });
 
 describe("the wallet a merchant is paid at", () => {

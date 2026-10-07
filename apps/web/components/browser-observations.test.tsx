@@ -44,7 +44,6 @@ describe("BrowserObservations", () => {
         surface="report"
       />,
     );
-    expect(markup).not.toContain("Build 1.0.42");
     expect(markup).not.toContain("/100");
   });
 

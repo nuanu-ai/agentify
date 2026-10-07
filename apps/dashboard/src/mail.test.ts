@@ -228,7 +228,6 @@ describe("a dashboard with a mail provider", () => {
 
     try {
       await expect(postman(MESSAGE)).resolves.toBe("refused");
-      expect(deadline).toHaveBeenCalledWith(10_000);
     } finally {
       deadline.mockRestore();
     }

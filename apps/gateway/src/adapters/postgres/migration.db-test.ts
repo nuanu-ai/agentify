@@ -235,17 +235,40 @@ if (databaseUrl === null) {
       // that cannot exist without an owner.
       await run("0003_merchant_tenancy.sql");
 
-      await expect(
-        pool.query(
-          "insert into cards (id, merchant_item_id, card, as_of) values ('itm_x', 'sku-x', '{}', now())",
-        ),
-      ).rejects.toThrow();
-      await expect(
-        pool.query(
-          `insert into cards (id, merchant_id, merchant_item_id, card, as_of)
-           values ('itm_x', 'mch_nobody', 'sku-x', '{}', now())`,
-        ),
-      ).rejects.toThrow();
+      // Every other column is given, so what is refused is the merchant and
+      // nothing else: no merchant at all, and then a merchant who is not there.
+      const rows = [
+        {
+          table: "cards",
+          columns: "id, merchant_item_id, card, as_of",
+          values: "'itm_x', 'sku-x', '{}', now()",
+        },
+        {
+          table: "orders",
+          columns: "id, state, open, item_id, merchant_item_id, record, created_at, updated_at",
+          values: "'ord_x', 'created', true, 'itm_x', 'sku-x', '{}', now(), now()",
+        },
+        {
+          table: "receipts",
+          columns: "order_id, receipt, updated_at",
+          values: "'ord_x', '{}', now()",
+        },
+      ];
+      for (const { table, columns, values } of rows) {
+        await expect(
+          pool.query(`insert into ${table} (${columns}) values (${values})`),
+          table,
+        ).rejects.toMatchObject({ code: "23502", column: "merchant_id" });
+        await expect(
+          pool.query(
+            `insert into ${table} (merchant_id, ${columns}) values ('mch_nobody', ${values})`,
+          ),
+          table,
+        ).rejects.toMatchObject({
+          code: "23503",
+          constraint: `${table}_merchant_id_merchants_id_fk`,
+        });
+      }
     });
   });
 

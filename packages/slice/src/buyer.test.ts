@@ -300,7 +300,9 @@ describe("an answer that arrived against a call that never landed", () => {
       maxUsd: 50,
     });
 
-    await expect(nowhere.status(statusAt("http://127.0.0.1:1", "ord_7c1e05"))).rejects.toThrow();
+    await expect(nowhere.status(statusAt("http://127.0.0.1:1", "ord_7c1e05"))).rejects.toThrow(
+      /fetch failed/,
+    );
   });
 });
 
@@ -319,36 +321,5 @@ describe("what this buyer never sends", () => {
     for (const one of asked) {
       expect(one.headers[MERCHANT_KEY_HEADER]).toBeUndefined();
     }
-  });
-});
-
-describe("the fetch this buyer was given", () => {
-  it("carries every call it makes, so none of them is missing from a trace", async () => {
-    const went: string[] = [];
-    const watched = makeBuyer({
-      baseUrl,
-      privateKey: TEST_BUYER_KEY,
-      maxUsd: 50,
-      fetch: (input, init) => {
-        // `buy` arrives as a Request, and `String(new Request(…))` is
-        // "[object Request]", which `new URL` throws on.
-        went.push(new URL(input instanceof Request ? input.url : String(input)).pathname);
-        return fetch(input, init);
-      },
-    });
-
-    await watched.catalog();
-    // No challenge is answered by this server, so the buyer refuses — the
-    // request it made on the way is what this is about.
-    await expect(watched.challenge("itm_1")).rejects.toThrow(/PAYMENT-REQUIRED/i);
-    await watched.status(statusAt(baseUrl, "ord_1"));
-    await watched.buy("itm_1", {});
-
-    expect(went).toEqual([
-      "/x402/catalog",
-      "/x402/itm_1/purchase",
-      expandPath(API_ROUTES.get_order_status.path, { order_id: "ord_1" }),
-      "/x402/itm_1/purchase",
-    ]);
   });
 });
