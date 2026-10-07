@@ -702,6 +702,31 @@ describe("a burst of orders", () => {
     }
     expect(handed).toStrictEqual(Object.fromEntries(orderIds.map((orderId) => [orderId, 1])));
   });
+
+  it("answers with what is live behind an envelope that has gone stale, rather than nothing", async () => {
+    // One envelope a poll has a cost a batch did not. An order that closed
+    // while its envelope waited in the queue is not handed out, and a poll that
+    // answered with nothing for it would send the worker to rest as though the
+    // stream were quiet — a second, in the SDK — while live orders and price
+    // questions waited behind it. After an outage that is a second for every
+    // order that closed in the meantime.
+    const harnessed = await started();
+    // A synchronous purchase nobody draws in time: it closes at its deadline,
+    // and its envelope stays at the head of the stream.
+    const closed = await bought(harnessed, syncCard);
+    await harnessed.gateway.payPurchase(closed, "PAYMENT-0", "PAYMENT-0");
+    expect((await state(harnessed, closed))?.state).toBe("expired");
+    const live = await bought(harnessed, asyncCard);
+    await harnessed.gateway.payPurchase(live, "PAYMENT-1", "PAYMENT-1");
+
+    // A drain: whatever is there right now. Something is, and it comes back.
+    const first = await harnessed.gateway.poll(harnessed.merchant.id, 0);
+    expect(first.envelopes).toHaveLength(1);
+    const handed = [...first.envelopes, ...(await drawEverything(harnessed))].flatMap((each) =>
+      each.kind === "order" ? [each.payload.id] : [],
+    );
+    expect(handed).toStrictEqual([live]);
+  });
 });
 
 describe("a timer that fires at the wrong moment", () => {
