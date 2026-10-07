@@ -727,6 +727,55 @@ describe("a burst of orders", () => {
     );
     expect(handed).toStrictEqual([live]);
   });
+
+  describe("when no hand-over can be recorded", () => {
+    // The poll draws past what it cannot hand out, and that has to end. Here
+    // the store fails every write, and slowly, the way a database that is
+    // struggling does: every envelope drawn goes back on the stream behind a
+    // delay shorter than it takes to get through the others, so there is
+    // always one to draw. A poll that drew until something was handed out
+    // would draw for ever, and the worker behind it would give up and poll
+    // again beside it.
+    const failing = async () => {
+      const harnessed = await started({ SETTLE_IN_FLIGHT_RETRY_MS: "50" });
+      for (const nth of [0, 1, 2]) {
+        const orderId = await bought(harnessed, asyncCard);
+        await harnessed.gateway.payPurchase(orderId, `PAYMENT-${nth}`, `PAYMENT-${nth}`);
+      }
+      vi.spyOn(harnessed.store, "withOrder").mockImplementation(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        throw new Error("the database timed out");
+      });
+      return harnessed;
+    };
+    const stillDrawing = (ms: number) =>
+      new Promise<"still drawing">((resolve) => setTimeout(() => resolve("still drawing"), ms));
+
+    it("answers a held poll once its window is over", async () => {
+      const harnessed = await failing();
+      const startedAt = performance.now();
+      const answered = await Promise.race([
+        harnessed.gateway.poll(harnessed.merchant.id, 100),
+        stillDrawing(2_000),
+      ]);
+      const took = performance.now() - startedAt;
+
+      expect(answered).toStrictEqual({ contract_version: expect.any(String), envelopes: [] });
+      // The window and at most one more pass, nowhere near the time the same
+      // envelopes would take to come round again and again.
+      expect(took).toBeLessThan(500);
+    });
+
+    it("answers a drain after a bounded number of envelopes", async () => {
+      const harnessed = await failing();
+      const answered = await Promise.race([
+        harnessed.gateway.poll(harnessed.merchant.id, 0),
+        stillDrawing(3_000),
+      ]);
+
+      expect(answered).toStrictEqual({ contract_version: expect.any(String), envelopes: [] });
+    });
+  });
 });
 
 describe("a timer that fires at the wrong moment", () => {
