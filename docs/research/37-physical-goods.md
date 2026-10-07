@@ -500,7 +500,7 @@ second, different shipment is refused with words rather than swallowed, what
 every older worker. Its live gate gained one condition: a merchant who admits a
 parcel lost had no way to reach the operator, because the operator makes
 contact only on a refund owed, and a shipped order never becomes one; the
-cabinet now has to say how. ADR-0034, written after the second review round,
+dashboard now has to say how. ADR-0034, written after the second review round,
 took its first review here: a merchant-written address with a path or a query
 would carry free text to every agent, so only an `https` origin is taken, and
 the seller name is held to the plain-text rule.
