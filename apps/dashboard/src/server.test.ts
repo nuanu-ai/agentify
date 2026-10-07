@@ -1312,10 +1312,12 @@ describe("the gate", () => {
     const running = await started({ base: "/dashboard", wooShops: memoryWooShops() });
     // A browser carrying a session cookie that no longer opens anything, so
     // that the gate's answer is its own: the sign-in with the reason the
-    // session ended, which no route above the gate ever answers with.
+    // session ended, which no route above the gate ever answers with. The
+    // shop's callback comes from the shop's server with no cookie at all, and
+    // the gate tells that apart by saying what was sent was not kept.
     const stranger = running.browser.withRawCookie(`${COOKIE}=made-up-identifier`);
     const gate = (answer: Visit): boolean =>
-      answer.status === 303 && (answer.to ?? "").includes("reason=session-ended");
+      answer.status === 303 && /reason=(session-ended|unsaved)/.test(answer.to ?? "");
 
     const above: readonly [string, () => Promise<Visit>][] = [
       ["the sign-in", () => stranger.get("/dashboard/sign-in")],
@@ -3453,11 +3455,14 @@ describe("a session that is ended while somebody is looking at a page", () => {
 
     expect(refused.status).toBe(303);
     expect(refused.to).toBe(UNSAVED);
-    const recovery = readable((await browser.get(refused.to ?? "")).html);
-    expect(recovery).toContain("not saved");
+    const recovery = (await browser.get(refused.to ?? "")).html;
+    // Something the person did was not kept, so it is said as a refusal, in
+    // the line the form keeps for one, not as the page's quiet first line.
+    const refusal = readable(/<p class="problem">[\s\S]*?<\/p>/.exec(recovery)?.[0] ?? "");
+    expect(refusal).toContain("not saved");
     // The gate cannot tell a sign-out from a session that ran out, so it does
     // not name either.
-    expect(recovery).not.toContain("Your session ended");
+    expect(readable(recovery)).not.toContain("Your session ended");
     expect(await purchasable(gateway, itemId)).toBe(true);
   });
 
