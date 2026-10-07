@@ -2650,7 +2650,7 @@ describe("the keys screen", () => {
    * an identifier that matches nothing in the list. So it is an identifier
    * here and not a row, which is what the screen is drawn against.
    */
-  const DASHBOARD_KEY = "key_the_cabinet_is_using";
+  const DASHBOARD_KEY = "key_the_dashboard_is_using";
   /** A key something is calling with, which is the ordinary row. */
   const NIGHTLY: MerchantKey = {
     id: "key_the_nightly_job",

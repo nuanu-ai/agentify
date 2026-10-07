@@ -111,8 +111,8 @@ export function sliceEnv(overrides: Record<string, string> = {}): Record<string,
     // secret nothing checks, and announces through nothing — a change asked
     // for on a live slice would fail loudly rather than go untold. Off a live
     // chain the gateway reads neither.
-    CABINET_INTERNAL_URL: "http://127.0.0.1:9",
-    GATEWAY_CABINET_SECRET: "the-slice-has-no-cabinet-to-announce-through",
+    DASHBOARD_INTERNAL_URL: "http://127.0.0.1:9",
+    GATEWAY_DASHBOARD_SECRET: "the-slice-has-no-dashboard-to-announce-through",
     ...overrides,
   };
 

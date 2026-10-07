@@ -20,14 +20,14 @@ function runEntrypoint(overrides = {}) {
       APP_BASE_URL: "https://agentify.ad",
       DATABASE_URL: "postgresql://agentify:synthetic@postgres:5432/agentify",
       TOKEN_HMAC_SECRET: "synthetic-hmac-key-000000000000000000000000",
-      CABINET_IDENTITY_URL: "http://cabinet:3002",
+      DASHBOARD_IDENTITY_URL: "http://dashboard:3002",
       REPORT_IDENTITY_SECRET: "synthetic-report-identity-secret-32-bytes",
       ...overrides,
     },
   });
 }
 
-test("web entrypoint starts registration with its private cabinet identity route and without a mail credential", () => {
+test("web entrypoint starts registration with its private dashboard identity route and without a mail credential", () => {
   const result = runEntrypoint();
   assert.equal(result.status, 0, result.stderr);
 });
@@ -69,10 +69,10 @@ test("web entrypoint refuses to start without a database, open or closed", () =>
   }
 });
 
-test("web entrypoint refuses enabled registration without its cabinet identity route", () => {
-  const result = runEntrypoint({ CABINET_IDENTITY_URL: "" });
+test("web entrypoint refuses enabled registration without its dashboard identity route", () => {
+  const result = runEntrypoint({ DASHBOARD_IDENTITY_URL: "" });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /CABINET_IDENTITY_URL/);
+  assert.match(result.stderr, /DASHBOARD_IDENTITY_URL/);
 });
 
 test("web entrypoint refuses enabled registration without its dedicated identity credential", () => {

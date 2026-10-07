@@ -2,11 +2,11 @@
 #
 # ADR-0005 §7: `docker compose up` brings up everything a merchant's engineer
 # would look at — the scanner at the front page, the documentation, the
-# cabinet and the gateway, all on http://localhost:8080, with one Postgres
+# dashboard and the gateway, all on http://localhost:8080, with one Postgres
 # behind them (ADR-0003 §6) holding one database, `agentify`.
 # Nothing here needs a build on the host first: the documentation is built
 # inside its image, and the four services that share one image — the
-# migration, the gateway, the cabinet and the mock merchant — run their
+# migration, the gateway, the dashboard and the mock merchant — run their
 # TypeScript through tsx, the same way `pnpm --filter @agentify/gateway start`
 # does on a laptop. The scanner is a Next.js build and its worker is compiled,
 # so those two come out of images of their own.
@@ -18,7 +18,7 @@
 # nothing. Migrations run as their own service before the gateway, so an
 # existing database is brought up to date rather than found to be a version
 # behind on the first query. There are two of those services, one for the
-# gateway's and the cabinet's migrations and one for the scanner's, because
+# gateway's and the dashboard's migrations and one for the scanner's, because
 # the scanner's are built into another image; all three sets go into the one
 # database, each with a history of its own.
 #
@@ -41,7 +41,7 @@
 # 5432 this file publishes it on. A host that publishes it somewhere else names it in
 # AGENTIFY_TEST_DATABASE_URL, which the suite reads from the command rather than
 # from the `.env` below. Pointing either that or DATABASE_URL at `agentify` is
-# refused rather than obeyed, because that is the database the cabinet is
+# refused rather than obeyed, because that is the database the dashboard is
 # showing and this suite empties what it is given.
 #
 # Two runs of the suite at once still interfere: they share the names of the
@@ -51,20 +51,20 @@
 # The front page is the scanner, the same way it is on both deployed channels.
 # Submit an address there and the worker behind it runs the scan; the report it
 # writes asks for an email before it opens in full, and that link is answered by
-# the cabinet's private identity route rather than by a second account system
-# (ADR-0026). The message goes to the cabinet's log here, like every other one,
-# and the door the reader walks through afterwards is the cabinet's own.
+# the dashboard's private identity route rather than by a second account system
+# (ADR-0026). The message goes to the dashboard's log here, like every other one,
+# and the door the reader walks through afterwards is the dashboard's own.
 #
 # Open http://localhost:8080/dashboard/sign-in and request a link for your email.
-# This local sandbox writes the message to the cabinet log. Open the link and
+# This local sandbox writes the message to the dashboard log. Open the link and
 # press its confirmation button, which makes your account; then press the one
-# control the cabinet offers, "Open my merchant cabinet", which makes your
+# control the dashboard offers, "Open my merchant dashboard", which makes your
 # merchant. That is the one way in, here and on both deployed channels
 # (ADR-0014): no command makes an account or a merchant.
 #
 # The operator's commands look after the accounts there are:
 #
-#   docker compose exec cabinet \
+#   docker compose exec dashboard \
 #     pnpm --filter @agentify/dashboard account list
 #
 # `list` inspects accounts and `revoke` ends their sessions.
@@ -72,7 +72,7 @@
 # operator's dashboard at /admin, and `--off` takes that away (ADR-0026 §6).
 #
 # Nothing is bought by itself. The merchant publishes its catalogue and waits;
-# a purchase is an explicit command, so a sale in the cabinet is one somebody
+# a purchase is an explicit command, so a sale in the dashboard is one somebody
 # made:
 #
 #   pnpm buy                      # the first card in the catalogue
@@ -98,15 +98,15 @@
 #   CDP_API_KEY_ID             Coinbase facilitator key ID   absent
 #   CDP_API_KEY_SECRET         Coinbase facilitator secret   absent
 #   AGENTIFY_SURFACE_MODE     what the static pages say       sandbox
-#   AGENTIFY_INVITATION     the private cabinet-to-gateway   register-on-this-laptop
+#   AGENTIFY_INVITATION     the private dashboard-to-gateway   register-on-this-laptop
 #                           registration secret
 #   AGENTIFY_POSTGRES_PUBLISH  the published port of the     5432:5432
 #                           database, or a narrower bind
 #   TOKEN_HMAC_SECRET       what signs a report link         a sandbox value
 #   REPORT_IDENTITY_SECRET  what the scanner shows the       a sandbox value
-#                           cabinet's private route
-#   GATEWAY_CABINET_SECRET  what the gateway shows the       a sandbox value
-#                           cabinet's route for the gateway
+#                           dashboard's private route
+#   GATEWAY_DASHBOARD_SECRET  what the gateway shows the       a sandbox value
+#                           dashboard's route for the gateway
 #
 # The scanner's remaining settings — who the operator is, which analytics
 # datasets may be named, the bot check, the paid surfaces — are the names its
@@ -136,17 +136,17 @@
 # A deployed channel does neither. deploy/compose.public.yaml puts nothing in
 # place of the seed and runs no mock merchant, because a merchant there comes
 # into being one way: a person opens the link mailed to their address and
-# presses the cabinet's one control (ADR-0014). A key kept in a host's file
+# presses the dashboard's one control (ADR-0014). A key kept in a host's file
 # would be a second way, and one that cannot go away: disabling its row stops
 # it opening anything, but the string is handed to the gateway at every start,
 # and a database brought up from nothing is seeded off that same line again.
 # The public overlay gives the seed nothing whatever a channel's file says, and
 # the release's preflight refuses a rendered one.
 #
-# AGENTIFY_INVITATION protects registration between the cabinet and gateway
+# AGENTIFY_INVITATION protects registration between the dashboard and gateway
 # (ADR-0014). People never type it. On a laptop it defaults to a local value;
-# a deployment supplies its own nonempty secret to both processes. The cabinet
-# refuses to start without it, because the cabinet's one control must be able
+# a deployment supplies its own nonempty secret to both processes. The dashboard
+# refuses to start without it, because the dashboard's one control must be able
 # to create the merchant. Admission to live sales is a separate operator
 # approval.
 
@@ -184,7 +184,7 @@ services:
     ports:
       # Published so that `pnpm test:db` and a psql from the terminal reach this
       # server. They reach a different database on it: the suite empties what it
-      # is given, and `agentify` is what the cabinet is showing.
+      # is given, and `agentify` is what the dashboard is showing.
       #
       # A deployment binds it to the loopback instead — `127.0.0.1:55432:5432`
       # — because the password above is in a repository and nothing off the host
@@ -214,7 +214,7 @@ services:
   # that runs inside the process it is migrating for runs once per replica and
   # races itself. Here it runs to completion, and both processes wait for it.
   #
-  # Two sets of migrations run here, the gateway's tables and the cabinet's.
+  # Two sets of migrations run here, the gateway's tables and the dashboard's.
   # They are separate because they belong to separate processes and keep
   # separate histories (ADR-0009 §1); they are one service because they are one
   # image and one thing to wait for.
@@ -242,7 +242,7 @@ services:
       # A second boot writes nothing, and a key disabled at a terminal stays
       # disabled. It is the laptop's alone: deploy/compose.public.yaml puts
       # nothing in its place, because on a deployed channel a merchant comes
-      # into being only through the link mailed to a person and the cabinet's
+      # into being only through the link mailed to a person and the dashboard's
       # one control (ADR-0014). Set to nothing, this process writes no key and
       # every key is one somebody issued.
       #
@@ -250,10 +250,10 @@ services:
       # only when nobody named the variable, so a deployment naming it with
       # nothing after it gets nothing rather than the sandbox's key back.
       SANDBOX_MERCHANT_KEY: "${AGENTIFY_SEED_KEY-csk_test_local-sandbox-merchant-key}"
-      # The cabinet keeps this registration secret; people prove their email
+      # The dashboard keeps this registration secret; people prove their email
       # instead. Live publication has its own one-time operator approval.
       # A deliberately empty gateway value disables this private registration
-      # route; the cabinet requires a nonempty matching value to start.
+      # route; the dashboard requires a nonempty matching value to start.
       REGISTRATION_INVITATION: "${AGENTIFY_INVITATION-register-on-this-laptop}"
       # The address an agent is sent back to in order to pay, which is the door
       # Caddy answers and not the port this process listens on. Given the
@@ -287,14 +287,14 @@ services:
       # hands this service.
       CDP_API_KEY_ID: "${CDP_API_KEY_ID-}"
       CDP_API_KEY_SECRET: "${CDP_API_KEY_SECRET-}"
-      # Where a live gateway asks the cabinet to tell a merchant of a payout
+      # Where a live gateway asks the dashboard to tell a merchant of a payout
       # wallet change, a cancelled one or a new key, and the secret it asks
-      # with (ADR-0019). The cabinet's own listener on this stack's network,
+      # with (ADR-0019). The dashboard's own listener on this stack's network,
       # never the scanner's route on 3002 or its secret. A test stack and the
       # sandbox read neither, since they apply a change at once and announce
       # nothing; a live gateway will not start without both.
-      CABINET_INTERNAL_URL: http://cabinet:3003
-      GATEWAY_CABINET_SECRET: "${GATEWAY_CABINET_SECRET:-a-sandbox-gateway-cabinet-secret-nobody-should-reuse}"
+      DASHBOARD_INTERNAL_URL: http://dashboard:3003
+      GATEWAY_DASHBOARD_SECRET: "${GATEWAY_DASHBOARD_SECRET:-a-sandbox-gateway-dashboard-secret-nobody-should-reuse}"
       # A challenge has to name somewhere for the money to go or it cannot be
       # built at all, so this is here to give the document a shape where the
       # merchant selling has set no address of their own — which is what a stack
@@ -327,45 +327,45 @@ services:
       retries: 15
       start_period: 15s
 
-  cabinet:
+  dashboard:
     <<: *app
     command: ["pnpm", "--filter", "@agentify/dashboard", "start"]
     environment:
       PORT: "3001"
-      # The cabinet's own two tables: the people who sign in and their sessions
+      # The dashboard's own two tables: the people who sign in and their sessions
       # (ADR-0009). The same server and the same database as the gateway's, and
       # nothing about a merchant's data — every card, order and receipt on every
       # screen still comes from the API.
       DATABASE_URL: postgres://agentify:agentify@postgres:5432/agentify
       # What the scanner presents on the private identity route, and the reason
-      # the cabinet opens a second listener on 3002 at all (ADR-0026). The two
+      # the dashboard opens a second listener on 3002 at all (ADR-0026). The two
       # processes are the only ones that hold it, and it is theirs alone: a
-      # cabinet handed the session secret or the registration invitation here
+      # dashboard handed the session secret or the registration invitation here
       # refuses to start rather than sharing one credential between two doors.
       # Nothing publishes 3002, so the route is reachable from this stack's own
       # network and from nowhere else.
       REPORT_IDENTITY_SECRET: "${REPORT_IDENTITY_SECRET:-a-sandbox-report-identity-secret-nobody-should-reuse}"
-      # What the gateway presents on the cabinet's third listener, on 3003,
+      # What the gateway presents on the dashboard's third listener, on 3003,
       # where it asks for a merchant to be told of a change to their payout
-      # wallet or their keys (ADR-0019). The gateway and the cabinet hold it and
-      # nothing else does; a cabinet handed its session secret, the invitation
+      # wallet or their keys (ADR-0019). The gateway and the dashboard hold it and
+      # nothing else does; a dashboard handed its session secret, the invitation
       # or the scanner's secret here refuses to start. Nothing publishes 3003.
-      GATEWAY_CABINET_SECRET: "${GATEWAY_CABINET_SECRET:-a-sandbox-gateway-cabinet-secret-nobody-should-reuse}"
+      GATEWAY_DASHBOARD_SECRET: "${GATEWAY_DASHBOARD_SECRET:-a-sandbox-gateway-dashboard-secret-nobody-should-reuse}"
       # What signs a merchant's session cookie. The component behind the sign-in
       # ships a fallback of its own, and a deployment that leans on it signs
       # sessions with a value out of somebody else's public source — so the
-      # cabinet refuses to start without this one rather than quietly taking
+      # dashboard refuses to start without this one rather than quietly taking
       # theirs. The value below is this sandbox's, in this file, for the reason
       # every other secret here is in this file; a deployment sets its own.
       # Changing it signs everybody out and does nothing worse: an account is
       # reached again by signing in.
       AUTH_SECRET: "${AGENTIFY_AUTH_SECRET:-a-sandbox-secret-nobody-should-reuse-anywhere}"
-      # The address a merchant reaches this cabinet at, which is what the links
-      # in a cabinet sign-in message are built on. Nothing else needs
+      # The address a merchant reaches this dashboard at, which is what the links
+      # in a dashboard sign-in message are built on. Nothing else needs
       # it — every link on every page is relative — but a message is read on
       # another machine, so those two have to be absolute.
       #
-      # It is the origin and not the mount point: the cabinet appends its own
+      # It is the origin and not the mount point: the dashboard appends its own
       # base path. A deployment that sends real mail and leaves this at the
       # laptop's answer is refused at startup, because every link it sent would
       # point at the reader's own computer.
@@ -379,13 +379,13 @@ services:
       MAIL_URL: "${MAIL_URL:-sandbox:log}"
       MAIL_API_KEY: "${MAIL_API_KEY:-}"
       MAIL_FROM: "${MAIL_FROM:-Agentify <no-reply@localhost>}"
-      # The same two its gateway reads. The cabinet gives them no defaults of
+      # The same two its gateway reads. The dashboard gives them no defaults of
       # its own and refuses to start without them; these lines are what a
       # compose deployment hands it.
       FACILITATOR_URL: "${AGENTIFY_FACILITATOR_URL:-sandbox:scripted}"
       PAYMENT_NETWORK: "${AGENTIFY_PAYMENT_NETWORK:-eip155:84532}"
       # There is no merchant key here, and its absence is the point rather than
-      # an omission. The cabinet used to be given one and use it for the life of
+      # an omission. The dashboard used to be given one and use it for the life of
       # the process, so every screen showed that merchant's money whoever was
       # signed in; the key is on the row of the person signed in now (ADR-0014
       # §2), which is what makes two accounts here two merchants. A stack that
@@ -394,14 +394,14 @@ services:
       #
       # Off by default, because this stack is plain http on localhost, where a
       # Secure cookie is never sent back and nobody can sign in at all. Anywhere
-      # the cabinet is reached over https this is "true", and a server that
+      # the dashboard is reached over https this is "true", and a server that
       # leaves it off is handing a merchant's session to anybody on the path.
       COOKIE_SECURE: "${AGENTIFY_COOKIE_SECURE:-false}"
       # Its own process, reaching the gateway over the same public API a
       # merchant's own code uses (ADR-0005 §2) — this is the service name on the
       # internal network, not the origin a browser types.
       GATEWAY_URL: http://gateway:3000
-      # Registration is an internal cabinet-to-gateway operation. The same
+      # Registration is an internal dashboard-to-gateway operation. The same
       # secret protects that wire; a person signing in never types it.
       REGISTRATION_INVITATION: "${AGENTIFY_INVITATION-register-on-this-laptop}"
       # Caddy passes /dashboard through without stripping it, so the process sees
@@ -416,7 +416,7 @@ services:
       gateway:
         condition: service_started
     healthcheck:
-      # The cabinet answers a probe at the bare root as well as under its mount
+      # The dashboard answers a probe at the bare root as well as under its mount
       # point, and this is the thing that was supposed to be asking. Without it
       # the code carried a route for a caller that did not exist, and Caddy went
       # up in front of a process that had not finished starting.
@@ -532,7 +532,7 @@ services:
       start_period: 15s
 
   # The scanner's tables, in the one database beside the gateway's and the
-  # cabinet's, with their history in `drizzle.scanner_migrations`. Its own
+  # dashboard's, with their history in `drizzle.scanner_migrations`. Its own
   # service for the reason the commerce migration is one: a migration that runs
   # inside the process it is migrating for runs once per replica and races
   # itself. It is a service apart from `migrate` because the scanner's
@@ -626,8 +626,8 @@ services:
       TOKEN_HMAC_SECRET: "${TOKEN_HMAC_SECRET:-a-sandbox-token-hmac-secret-nobody-should-reuse}"
       EMAIL_ENCRYPTION_KEY: "${EMAIL_ENCRYPTION_KEY:-}"
       # On, so that the whole path a reader walks works from this one command:
-      # a scan, a report, an address confirmed through the cabinet's private
-      # route, and the cabinet door opening for the person who confirmed it.
+      # a scan, a report, an address confirmed through the dashboard's private
+      # route, and the dashboard door opening for the person who confirmed it.
       # Both halves of that route are below and neither is a port anybody
       # outside this network can reach.
       #
@@ -636,7 +636,7 @@ services:
       # stack is packaged, so deploy/compose.public.yaml turns this off again
       # and a channel whose environment file says nothing stays closed.
       REGISTRATION_ENABLED: "${REGISTRATION_ENABLED:-true}"
-      CABINET_IDENTITY_URL: http://cabinet:3002
+      DASHBOARD_IDENTITY_URL: http://dashboard:3002
       REPORT_IDENTITY_SECRET: "${REPORT_IDENTITY_SECRET:-a-sandbox-report-identity-secret-nobody-should-reuse}"
       SCAN_ACCEPTANCE_ENABLED: "${SCAN_ACCEPTANCE_ENABLED:-true}"
       REMEDIATION_PROMPT_ENABLED: "${REMEDIATION_PROMPT_ENABLED:-true}"
@@ -671,7 +671,7 @@ services:
         condition: service_healthy
       scanner-migrate:
         condition: service_completed_successfully
-      cabinet:
+      dashboard:
         condition: service_started
 
   # What deletes what the retention policy says is over. It runs on a schedule
@@ -734,7 +734,7 @@ services:
       # The mapping moves the door and not the address the stack names itself
       # by, which follows AGENTIFY_PUBLIC_ORIGIN or AGENTIFY_HOST_PORT and cannot
       # be read out of a mapping. Set AGENTIFY_PUBLIC_ORIGIN beside it, or every
-      # status_url, payment challenge and cabinet link keeps naming localhost on
+      # status_url, payment challenge and dashboard link keeps naming localhost on
       # AGENTIFY_HOST_PORT, 8080 by default — on a laptop, possibly a stack that
       # is not this one.
       - "${AGENTIFY_WEB_PUBLISH:-${AGENTIFY_HOST_PORT:-8080}:8080}"
@@ -784,7 +784,7 @@ services:
       gateway:
         condition: service_healthy
         required: false
-      cabinet:
+      dashboard:
         condition: service_healthy
         required: false
       scanner:

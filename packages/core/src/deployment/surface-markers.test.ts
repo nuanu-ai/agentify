@@ -1,10 +1,10 @@
 /**
  * One sentence, two renderers.
  *
- * The cabinet imports its wording; the portal cannot, because its banner is
+ * The dashboard imports its wording; the portal cannot, because its banner is
  * written by a build hook, so the words are spelled out in that file. This is
  * what stops the two copies drifting: the file itself is read here and held
- * against the module the cabinet reads.
+ * against the module the dashboard reads.
  */
 
 import { readFileSync } from "node:fs";

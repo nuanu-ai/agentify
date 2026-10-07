@@ -32,7 +32,7 @@ const dashboardMigrations = join(here, "..", "drizzle");
 
 const MERCHANT = "mch_approval_operator";
 const EMAIL = "merchant@example.com";
-const KEY = "cabinet-secret-that-must-never-be-printed";
+const KEY = "dashboard-secret-that-must-never-be-printed";
 const FIRST_GRANT = Date.parse("2026-09-17T10:00:00.000Z");
 
 if (databaseUrl === null) {

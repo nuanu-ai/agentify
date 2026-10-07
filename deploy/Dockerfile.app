@@ -1,4 +1,4 @@
-# The image four of compose.yaml's services run from: the gateway, the cabinet,
+# The image four of compose.yaml's services run from: the gateway, the dashboard,
 # the mock merchant, and the migration that runs to completion before them.
 #
 # One image rather than four, because they are four entry points into one

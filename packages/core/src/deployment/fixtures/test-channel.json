@@ -12,7 +12,7 @@
     }
   },
   "services": {
-    "cabinet": {
+    "dashboard": {
       "command": [
         "pnpm",
         "--filter",
@@ -35,7 +35,7 @@
       },
       "entrypoint": null,
       "environment": {
-        "GATEWAY_CABINET_SECRET": "fixture-gateway-cabinet-secret-of-more-than-thirty-two-characters",
+        "GATEWAY_DASHBOARD_SECRET": "fixture-gateway-dashboard-secret-of-more-than-thirty-two-characters",
         "AUTH_SECRET": "fixture-auth-secret",
         "BASE_PATH": "/dashboard",
         "COOKIE_SECURE": "true",
@@ -88,8 +88,8 @@
       },
       "entrypoint": null,
       "environment": {
-        "GATEWAY_CABINET_SECRET": "fixture-gateway-cabinet-secret-of-more-than-thirty-two-characters",
-        "CABINET_INTERNAL_URL": "http://cabinet:3003",
+        "GATEWAY_DASHBOARD_SECRET": "fixture-gateway-dashboard-secret-of-more-than-thirty-two-characters",
+        "DASHBOARD_INTERNAL_URL": "http://dashboard:3003",
         "CDP_API_KEY_ID": "",
         "CDP_API_KEY_SECRET": "",
         "DATABASE_URL": "postgres://agentify:agentify@postgres:5432/agentify",
@@ -181,7 +181,7 @@
     "scanner": {
       "command": null,
       "depends_on": {
-        "cabinet": {
+        "dashboard": {
           "condition": "service_started",
           "required": true
         },
@@ -202,7 +202,7 @@
         "APIFY_BROWSER_MODE": "off",
         "APP_BASE_URL": "https://test.agentify.ad",
         "BENCHMARK_ENABLED": "false",
-        "CABINET_IDENTITY_URL": "http://cabinet:3002",
+        "DASHBOARD_IDENTITY_URL": "http://dashboard:3002",
         "CARD_SIGNAL_ENABLED": "false",
         "DATABASE_URL": "postgres://agentify:agentify@postgres:5432/agentify",
         "EMAIL_ENCRYPTION_KEY": "ZmluZS1zeW50aGV0aWMtZml4dHVyZS1lbmNyeXB0aW9u",
@@ -331,7 +331,7 @@
     "web": {
       "command": null,
       "depends_on": {
-        "cabinet": {
+        "dashboard": {
           "condition": "service_healthy",
           "required": false
         },

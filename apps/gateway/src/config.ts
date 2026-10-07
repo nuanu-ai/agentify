@@ -637,12 +637,12 @@ const environmentSchema = z.object({
    * give. The secret is held to the length the dashboard's other internal secret
    * is, and a refusal names the variable and never the value.
    */
-  CABINET_INTERNAL_URL: emptyIsAbsent(
+  DASHBOARD_INTERNAL_URL: emptyIsAbsent(
     z
       .string()
       .refine(isHttpUrl, "must be an http address of the gateway's route into the dashboard"),
   ),
-  GATEWAY_CABINET_SECRET: emptyIsAbsent(
+  GATEWAY_DASHBOARD_SECRET: emptyIsAbsent(
     z
       .string()
       .refine(
@@ -965,8 +965,10 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
   // two is missing is the whole of what an operator needs to fix it.
   if (chainEnvironment === "live") {
     const missing = [
-      ...(environmentValues.CABINET_INTERNAL_URL === undefined ? ["CABINET_INTERNAL_URL"] : []),
-      ...(environmentValues.GATEWAY_CABINET_SECRET === undefined ? ["GATEWAY_CABINET_SECRET"] : []),
+      ...(environmentValues.DASHBOARD_INTERNAL_URL === undefined ? ["DASHBOARD_INTERNAL_URL"] : []),
+      ...(environmentValues.GATEWAY_DASHBOARD_SECRET === undefined
+        ? ["GATEWAY_DASHBOARD_SECRET"]
+        : []),
     ];
     if (missing.length > 0) {
       problems.push(
@@ -1024,11 +1026,11 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
     // is whether this deployment announces at all.
     dashboardRoute:
       derivedEnvironment === "live" &&
-      environmentValues.CABINET_INTERNAL_URL !== undefined &&
-      environmentValues.GATEWAY_CABINET_SECRET !== undefined
+      environmentValues.DASHBOARD_INTERNAL_URL !== undefined &&
+      environmentValues.GATEWAY_DASHBOARD_SECRET !== undefined
         ? {
-            url: environmentValues.CABINET_INTERNAL_URL.replace(/\/+$/, ""),
-            secret: environmentValues.GATEWAY_CABINET_SECRET,
+            url: environmentValues.DASHBOARD_INTERNAL_URL.replace(/\/+$/, ""),
+            secret: environmentValues.GATEWAY_DASHBOARD_SECRET,
           }
         : null,
   };

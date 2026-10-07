@@ -2,7 +2,7 @@
 
 /**
  * PRODUCTION live approval for one merchant, granted inside the dashboard's
- * container (`agentify-cabinet-1`) that is already running on the host.
+ * container (`agentify-dashboard-1`) that is already running on the host.
  *
  * Usage: pnpm approve <email>
  *
@@ -10,9 +10,7 @@
  * because pnpm resolves it inside that container, against the revision that
  * was deployed last rather than against this checkout. A rename of the package
  * would otherwise break approval from every laptop until the next deployment
- * caught up. The directory itself moved once, from apps/cabinet to
- * apps/dashboard, so both are named and whichever the container has matches;
- * ./apps/cabinet goes once both channels run a revision with apps/dashboard.
+ * caught up.
  *
  * `--fail-if-no-match` is what makes that safe to rely on: a filter matching
  * nothing — a layout the container does not have, a working directory that is
@@ -56,12 +54,10 @@ if ((email === "--help" || email === "-h") && extra.length === 0) {
       "docker",
       "exec",
       "-i",
-      "agentify-cabinet-1",
+      "agentify-dashboard-1",
       "pnpm",
       "--filter",
       "./apps/dashboard",
-      "--filter",
-      "./apps/cabinet",
       "--fail-if-no-match",
       "approve",
     ],

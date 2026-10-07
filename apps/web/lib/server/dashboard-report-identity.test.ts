@@ -138,9 +138,9 @@ describe("dashboard report identity client", () => {
     });
     await expect(
       client.sendReportLink({ email: "owner@example.com", scanId, request: requestId }),
-    ).rejects.toThrow("cabinet_identity_unavailable");
+    ).rejects.toThrow("dashboard_identity_unavailable");
     await expect(client.readSession({ cookie: "a=1", renew: false })).rejects.toThrow(
-      "cabinet_identity_unavailable",
+      "dashboard_identity_unavailable",
     );
   });
 
@@ -155,7 +155,7 @@ describe("dashboard report identity client", () => {
         );
       });
     const client = createDashboardReportIdentityClient({
-      baseUrl: "http://cabinet.internal:3002",
+      baseUrl: "http://dashboard.internal:3002",
       secret,
       fetchImpl,
     });
@@ -164,7 +164,7 @@ describe("dashboard report identity client", () => {
       scanId,
       request: requestId,
     });
-    const rejection = expect(result).rejects.toThrow("cabinet_identity_unavailable");
+    const rejection = expect(result).rejects.toThrow("dashboard_identity_unavailable");
     await vi.advanceTimersByTimeAsync(14_999);
     expect(requestSignal?.aborted).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
@@ -187,12 +187,12 @@ describe("dashboard report identity client", () => {
         );
       });
     const client = createDashboardReportIdentityClient({
-      baseUrl: "http://cabinet.internal:3002",
+      baseUrl: "http://dashboard.internal:3002",
       secret,
       fetchImpl,
     });
     const result = client.readSession({ cookie: "sensitive-cookie-value", renew: false });
-    const rejection = expect(result).rejects.toThrow("cabinet_identity_unavailable");
+    const rejection = expect(result).rejects.toThrow("dashboard_identity_unavailable");
     await vi.advanceTimersByTimeAsync(2_999);
     expect(requestSignal?.aborted).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
@@ -211,6 +211,6 @@ describe("dashboard report identity client", () => {
         operationId: "018f5e6f-7a5d-7c0b-8f58-a6b2fe16ca01",
         email: "owner@example.com",
       }),
-    ).rejects.toThrow("cabinet_identity_unavailable");
+    ).rejects.toThrow("dashboard_identity_unavailable");
   });
 });

@@ -1,6 +1,6 @@
 # The one door: Caddy, with everything static it serves already inside it.
 #
-# ADR-0005 §1 puts the scanner, the portal, the cabinet and the gateway on one
+# ADR-0005 §1 puts the scanner, the portal, the dashboard and the gateway on one
 # origin. One of those four is a directory of files rather than a process, and
 # this image is where it comes from — so the image can be run on its own and
 # the compose file does not have to make a host build the documentation first.
@@ -26,7 +26,7 @@ RUN pnpm --filter @agentify/docs exec vitepress build --base /docs/
 FROM caddy:2.10.0-alpine@sha256:ae4458638da8e1a91aafffb231c5f8778e964bca650c8a8cb23a7e8ac557aa3c
 
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
-# The mark and the faces the cabinet's pages ask for. They live in the visual
+# The mark and the faces the dashboard's pages ask for. They live in the visual
 # package with the stylesheet they belong to; this image is what puts them at
 # the addresses the route table names.
 COPY packages/visual/public /srv/assets

@@ -44,9 +44,9 @@ const outputFileInput = process.env.LOCAL_E2E_VERIFICATION_FILE;
 if (!outputFileInput?.startsWith("/tmp/"))
   throw new Error("LOCAL_E2E_VERIFICATION_FILE must be under /tmp");
 const outputFile = outputFileInput;
-const dashboardDatabaseUrl = new URL(process.env.CABINET_DATABASE_URL ?? "");
+const dashboardDatabaseUrl = new URL(process.env.DASHBOARD_DATABASE_URL ?? "");
 if (!["localhost", "127.0.0.1"].includes(dashboardDatabaseUrl.hostname))
-  throw new Error("Local E2E fixture refuses a non-local CABINET_DATABASE_URL");
+  throw new Error("Local E2E fixture refuses a non-local DASHBOARD_DATABASE_URL");
 
 /** A one-time link for this address to this report, written the way the dashboard writes one. */
 async function plantSignInLink(email: string, scanId: string): Promise<string> {

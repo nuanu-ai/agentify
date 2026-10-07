@@ -90,7 +90,7 @@ release's own preflight over the channel's rendered configuration, then the
 scanner image started alone with that configuration and no network, which has
 to pass its own start-up checks and its configuration check at
 `/api/health/live` — the very code the scanner runs when it starts. Then it
-writes the channel's transition record, stops the gateway, the cabinet, the
+writes the channel's transition record, stops the gateway, the dashboard, the
 scanner and its worker, takes a restore point of the database, runs the
 migrations, starts everything again, on PRODUCTION installs the edge's route
 table, which the edge's own Caddy has validated before the stop, checks eleven
@@ -112,37 +112,48 @@ commit has to move forward from the one the host runs. TEST takes a tag, a
 branch or a full commit SHA, as long as exactly one image build of it
 succeeded.
 
-## A secret a host's file may still lack
+## The release that renames the dashboard's service and its secret
 
-Every channel's environment file names `GATEWAY_CABINET_SECRET` ("Setting up a
-host"): the gateway presents it to the cabinet to have a merchant told of a
-payout wallet change, and the cabinet refuses every other secret on that
-route. A file written before the variable existed does not have it, and the
-first release that carries it refuses such a channel in its preflight, before
-anything stops, so the running release keeps running. On TEST that refusal is
-recorded as the revision's failure, and the timer does not try that revision
-again; after the secret is added, a person releases it
-(`ssh -t agentify-test sudo agentify-release <name>`) or moves `deploy-test`
-to a newer commit.
+From this release the dashboard runs as the Compose service `dashboard`, in the
+container `agentify-dashboard-1`, and the secret the gateway presents to it is
+`GATEWAY_DASHBOARD_SECRET`. Until it, they were `cabinet`,
+`agentify-cabinet-1` and `GATEWAY_CABINET_SECRET`. Nothing in the release
+carries the old names over, so two things are done by hand on each host, in
+this order, just before releasing it there, and the dashboard is down from the
+second until the release has started it again.
 
-So the secret has to be in `/etc/agentify/test.env` before `deploy-test` moves
-to such a commit, and in `/etc/agentify/production.env` before the next
-`agentify-release` on PRODUCTION, which has already made its one-time move to
-one database. Add it to each host's file,
-with a value made on that host for that channel alone — the channels share no
-secret, and one value serves both the gateway and the cabinet of a channel,
-since both read the same file:
+First, the secret's line in the host's file takes the new name and keeps its
+value. The running containers are not touched: they read the file when they
+were made. The last two lines print `1` and `0`, and the file keeps its owner
+and mode, `root 600`:
 
 ```sh
-ssh agentify-test "sudo sh -c 'umask 077; printf \"GATEWAY_CABINET_SECRET=%s\\n\" \"\$(openssl rand -base64 32)\" >> /etc/agentify/test.env'"
-ssh agentify "sudo sh -c 'umask 077; printf \"GATEWAY_CABINET_SECRET=%s\\n\" \"\$(openssl rand -base64 32)\" >> /etc/agentify/production.env'"
+ssh agentify-test "sudo sed -i 's/^GATEWAY_CABINET_SECRET=/GATEWAY_DASHBOARD_SECRET=/' /etc/agentify/test.env"
+ssh agentify-test "sudo stat -c '%U %a' /etc/agentify/test.env"
+ssh agentify-test sudo grep -c '^GATEWAY_DASHBOARD_SECRET=' /etc/agentify/test.env
 ssh agentify-test sudo grep -c '^GATEWAY_CABINET_SECRET=' /etc/agentify/test.env
-ssh agentify sudo grep -c '^GATEWAY_CABINET_SECRET=' /etc/agentify/production.env
 ```
 
-Each of the last two prints `1`. The value is made on the host and never
-passes through the terminal it was asked from; the file keeps its owner and
-mode.
+Second, the old container goes. The release stops the services it knows by
+their new names, so left in place, the old one would go on running beside the
+new one, through the dump and the migrations as well:
+
+```sh
+ssh agentify-test "sudo sh -c 'docker ps -aq --filter label=com.docker.compose.project=agentify --filter label=com.docker.compose.service=cabinet | xargs -r docker rm -f'"
+ssh agentify-test "sudo docker ps -a --filter label=com.docker.compose.service=cabinet --format '{{.Names}}'"
+```
+
+The last line prints nothing. Then release ("Releasing to test"). On
+PRODUCTION the same commands run over `ssh agentify`, with `production.env` in
+place of `test.env`, just before `agentify-release`.
+
+A release of this revision on a host whose file still says
+`GATEWAY_CABINET_SECRET` is refused in its preflight, before anything stops.
+On TEST that refusal is recorded as the revision's failure and the timer does
+not try it again; once the line is renamed, a person releases it
+(`ssh -t agentify-test sudo agentify-release <name>`). Afterwards the same
+refusal meets any older revision released on TEST, since it asks for the old
+name, so going back is refused rather than half done.
 
 ## The release that takes the password off /admin
 
@@ -157,13 +168,13 @@ and its own check of the public routes expects `/admin` to answer 404.
 
 After it, the dashboard opens for nobody until somebody is flagged. The person
 who is to read it signs in once at `/dashboard/sign-in`, which makes their
-account; on TEST the cabinet writes its mail to its log rather than sending
-it, so the link is read with `deploy/stack.sh test logs cabinet` from the
+account; on TEST the dashboard writes its mail to its log rather than sending
+it, so the link is read with `deploy/stack.sh test logs dashboard` from the
 newest checkout. They are then flagged on the host of that channel:
 
 ```sh
-ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T cabinet pnpm --filter ./apps/dashboard --filter ./apps/cabinet --fail-if-no-match account operator you@example.com'
-ssh -t agentify 'sudo "$(ls -dt /var/lib/agentify/production/checkouts/*/ | head -n 1)deploy/stack.sh" production exec -T cabinet pnpm --filter ./apps/dashboard --filter ./apps/cabinet --fail-if-no-match account operator you@example.com'
+ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T dashboard pnpm --filter ./apps/dashboard --filter ./apps/cabinet --fail-if-no-match account operator you@example.com'
+ssh -t agentify 'sudo "$(ls -dt /var/lib/agentify/production/checkouts/*/ | head -n 1)deploy/stack.sh" production exec -T dashboard pnpm --filter ./apps/dashboard --filter ./apps/cabinet --fail-if-no-match account operator you@example.com'
 ```
 
 The scanner's header then shows them an Admin link, on the next page they
@@ -197,7 +208,7 @@ the edge depends on them.
 
 A merchant comes into being one way on either channel: a person asks for a
 link at `/dashboard/sign-in`, opens it from their mailbox, and presses the one
-control the cabinet then offers, which makes the merchant (ADR-0014). The
+control the dashboard then offers, which makes the merchant (ADR-0014). The
 gateway of a deployed channel used to write a merchant key of its own at every
 start, from `AGENTIFY_SEED_KEY` in the host's environment file, onto the
 merchant the database was created with, `the_merchant`. From the first release
@@ -237,8 +248,8 @@ held is a row on `the_merchant` and still opens that merchant for whoever
 presents it, until it is disabled; the release disables nothing. Disabling it
 cannot be undone, and nothing takes its place: no command issues a key or
 makes an account, so unless an account already names `the_merchant` — the
-cabinet's `account list` says whether one does — nobody can sign in and have
-the cabinet ask for a new one, and once its keys are disabled nothing can act
+dashboard's `account list` says whether one does — nobody can sign in and have
+the dashboard ask for a new one, and once its keys are disabled nothing can act
 as that merchant again. So look before disabling. The first line below lists that merchant's keys, the seeded
 one under the label "the sandbox key from the compose file", each with the day
 a call was last recorded on it; the second lists every merchant with its
@@ -746,9 +757,9 @@ image: activation records the images per checkout. On both channels it names
 `AGENTIFY_PUBLIC_ORIGIN`, `AGENTIFY_COOKIE_SECURE`, `AGENTIFY_SURFACE_MODE`,
 `AGENTIFY_PAYMENT_NETWORK`, `AGENTIFY_FACILITATOR_URL`,
 `AGENTIFY_AUTH_SECRET`, `AGENTIFY_INVITATION`, `TOKEN_HMAC_SECRET`,
-`EMAIL_ENCRYPTION_KEY`, `REPORT_IDENTITY_SECRET` and `GATEWAY_CABINET_SECRET`, the last two each at
+`EMAIL_ENCRYPTION_KEY`, `REPORT_IDENTITY_SECRET` and `GATEWAY_DASHBOARD_SECRET`, the last two each at
 least 32 characters of their own (`openssl rand -base64 32`): the gateway
-presents `GATEWAY_CABINET_SECRET` to the cabinet to have a merchant told of a
+presents `GATEWAY_DASHBOARD_SECRET` to the dashboard to have a merchant told of a
 payout wallet change, and the preflight refuses a channel where any other
 service holds it or it opens any other door. TEST adds
 `AGENTIFY_TEST_LISTEN_ADDRESS`, the private address its door binds on.

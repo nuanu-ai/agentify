@@ -666,8 +666,8 @@ describe("the environment is derived from the chain", () => {
 
 /** Where a live gateway asks the dashboard to tell a merchant of a change, and with what. */
 const DASHBOARD_ROUTE = {
-  CABINET_INTERNAL_URL: "http://cabinet:3003",
-  GATEWAY_CABINET_SECRET: "a".repeat(48),
+  DASHBOARD_INTERNAL_URL: "http://dashboard:3003",
+  GATEWAY_DASHBOARD_SECRET: "a".repeat(48),
 };
 
 describe("a live chain is allowed exactly one facilitator", () => {
@@ -803,36 +803,36 @@ describe("a live gateway can tell a merchant of a wallet change", () => {
 
   it("carries where the dashboard is asked and the secret it is asked with", () => {
     expect(loadConfig({ ...live, ...DASHBOARD_ROUTE }).dashboardRoute).toStrictEqual({
-      url: "http://cabinet:3003",
-      secret: DASHBOARD_ROUTE.GATEWAY_CABINET_SECRET,
+      url: "http://dashboard:3003",
+      secret: DASHBOARD_ROUTE.GATEWAY_DASHBOARD_SECRET,
     });
   });
 
   it("does not start without either, and names the one that is missing", () => {
-    const { GATEWAY_CABINET_SECRET, ...noSecret } = DASHBOARD_ROUTE;
-    const { CABINET_INTERNAL_URL, ...noAddress } = DASHBOARD_ROUTE;
+    const { GATEWAY_DASHBOARD_SECRET, ...noSecret } = DASHBOARD_ROUTE;
+    const { DASHBOARD_INTERNAL_URL, ...noAddress } = DASHBOARD_ROUTE;
 
-    expect(refusalFor({ ...live, ...noSecret })).toMatch(/GATEWAY_CABINET_SECRET/);
-    expect(refusalFor({ ...live, ...noAddress })).toMatch(/CABINET_INTERNAL_URL/);
+    expect(refusalFor({ ...live, ...noSecret })).toMatch(/GATEWAY_DASHBOARD_SECRET/);
+    expect(refusalFor({ ...live, ...noAddress })).toMatch(/DASHBOARD_INTERNAL_URL/);
     // Set to nothing is how a compose file says "not here", and it reads the
     // same as never set rather than as a secret of length zero.
-    expect(refusalFor({ ...live, ...DASHBOARD_ROUTE, GATEWAY_CABINET_SECRET: "" })).toMatch(
-      /GATEWAY_CABINET_SECRET/,
+    expect(refusalFor({ ...live, ...DASHBOARD_ROUTE, GATEWAY_DASHBOARD_SECRET: "" })).toMatch(
+      /GATEWAY_DASHBOARD_SECRET/,
     );
   });
 
   it("refuses a secret too short to be one, without printing it", () => {
     const short = "x".repeat(31);
-    const refused = refusalFor({ ...live, ...DASHBOARD_ROUTE, GATEWAY_CABINET_SECRET: short });
+    const refused = refusalFor({ ...live, ...DASHBOARD_ROUTE, GATEWAY_DASHBOARD_SECRET: short });
 
-    expect(refused).toMatch(/GATEWAY_CABINET_SECRET/);
+    expect(refused).toMatch(/GATEWAY_DASHBOARD_SECRET/);
     expect(refused).not.toContain(short);
   });
 
   it("refuses an address the dashboard cannot be asked at", () => {
     expect(
-      refusalFor({ ...live, ...DASHBOARD_ROUTE, CABINET_INTERNAL_URL: "cabinet:3003" }),
-    ).toMatch(/CABINET_INTERNAL_URL/);
+      refusalFor({ ...live, ...DASHBOARD_ROUTE, DASHBOARD_INTERNAL_URL: "dashboard:3003" }),
+    ).toMatch(/DASHBOARD_INTERNAL_URL/);
   });
 
   it("asks nothing of a test deployment or a sandbox, which announce nothing", () => {

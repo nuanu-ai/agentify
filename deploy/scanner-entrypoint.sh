@@ -17,10 +17,10 @@ esac
   echo "TOKEN_HMAC_SECRET must contain at least 32 characters." >&2
   exit 1
 }
-# The cabinet's private route is only asked anything when an address is being
+# The dashboard's private route is only asked anything when an address is being
 # confirmed, which is what registration is.
 if [ "$REGISTRATION_ENABLED" = "true" ]; then
-  : "${CABINET_IDENTITY_URL:?CABINET_IDENTITY_URL is required when registration is enabled}"
+  : "${DASHBOARD_IDENTITY_URL:?DASHBOARD_IDENTITY_URL is required when registration is enabled}"
   : "${REPORT_IDENTITY_SECRET:?REPORT_IDENTITY_SECRET is required when registration is enabled}"
   [ "${#REPORT_IDENTITY_SECRET}" -ge 32 ] || {
     echo "REPORT_IDENTITY_SECRET must contain at least 32 characters." >&2

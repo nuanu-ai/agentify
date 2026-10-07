@@ -81,7 +81,7 @@ export class DashboardAnnouncer implements Announcer {
       // deployment is being refused until somebody makes the two agree.
       console.error(
         answered.status === 401
-          ? `[gateway] the dashboard refused the gateway's secret (${announcement.kind}): GATEWAY_CABINET_SECRET on the gateway and on the dashboard are not the same value, and nothing was announced`
+          ? `[gateway] the dashboard refused the gateway's secret (${announcement.kind}): GATEWAY_DASHBOARD_SECRET on the gateway and on the dashboard are not the same value, and nothing was announced`
           : `[gateway] the dashboard refused an announcement (${announcement.kind}) with ${answered.status} before telling anybody`,
       );
       return "refused_by_dashboard";

@@ -20,7 +20,7 @@ export async function register() {
   if (
     process.env.NEXT_RUNTIME !== "nodejs" ||
     scannerInstrumentation.scannerDeletionRetryStarted ||
-    !process.env.CABINET_IDENTITY_URL ||
+    !process.env.DASHBOARD_IDENTITY_URL ||
     !process.env.REPORT_IDENTITY_SECRET
   ) {
     return;

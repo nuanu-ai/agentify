@@ -23,7 +23,7 @@ services:
     environment:
       DATABASE_URL: "postgres://agentify:${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}@postgres:5432/agentify"
 
-  cabinet:
+  dashboard:
     environment:
       DATABASE_URL: "postgres://agentify:${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}@postgres:5432/agentify"
 

@@ -51,7 +51,7 @@ export const LIVE_CHAINS: ReadonlySet<string> = new Set([
  * The address that selects the scripted facilitator: verify and settle against
  * nothing, and every payment accepted is pretend (ADR-0008).
  *
- * It lives here rather than in the gateway because the cabinet needs the same
+ * It lives here rather than in the gateway because the dashboard needs the same
  * answer about the same string, and two spellings of one distinguished value
  * is exactly the disagreement this module exists to remove.
  */

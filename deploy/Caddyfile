@@ -1,9 +1,9 @@
 # The one door.
 #
 # ADR-0005 §1: Caddy is the only address anybody types. `/` is the scanner,
-# `/docs` the portal, `/dashboard` the cabinet, and `/v0/*` and `/x402/*`
+# `/docs` the portal, `/dashboard` the dashboard, and `/v0/*` and `/x402/*`
 # are both the gateway — the merchant's API and the storefront an agent buys at,
-# less the calls only the cabinet makes from inside the stack, setting the
+# less the calls only the dashboard makes from inside the stack, setting the
 # payout wallet among them — so a merchant's engineer sees one origin and never
 # reasons about ports. The
 # same file describes the server later, which is why nothing below is written
@@ -16,7 +16,7 @@
 #   AGENTIFY_ASSET_ROOT        the shared browser assets          /srv/assets
 #   AGENTIFY_PORTAL_ROOT       the portal's built output          /srv/docs
 #   AGENTIFY_SELL_ROOT         the merchant landing's files       /srv/sell
-#   AGENTIFY_CABINET_UPSTREAM  host:port of the cabinet process   cabinet:3001
+#   AGENTIFY_DASHBOARD_UPSTREAM  host:port of the dashboard process   dashboard:3001
 #   AGENTIFY_GATEWAY_UPSTREAM  host:port of the gateway process   gateway:3000
 #   AGENTIFY_SCANNER_UPSTREAM  host:port of the scanner process   scanner:3000
 #   AGENTIFY_SURFACE_MODE      what the static pages say           sandbox
@@ -30,7 +30,7 @@
 #   AGENTIFY_FRONT_PAGE=scanner_front_page \
 #   AGENTIFY_ASSET_ROOT=packages/visual/public \
 #   AGENTIFY_PORTAL_ROOT=apps/docs/.vitepress/dist \
-#   AGENTIFY_CABINET_UPSTREAM=127.0.0.1:3001 \
+#   AGENTIFY_DASHBOARD_UPSTREAM=127.0.0.1:3001 \
 #   AGENTIFY_GATEWAY_UPSTREAM=127.0.0.1:3000 \
 #   AGENTIFY_SCANNER_UPSTREAM=127.0.0.1:3000 \
 #     caddy run --config deploy/Caddyfile
@@ -87,11 +87,11 @@
 	}
 }
 
-# The mark and the faces the cabinet's HTML asks for. The scanner owns the
+# The mark and the faces the dashboard's HTML asks for. The scanner owns the
 # front page and bundles its own copies, so these are Caddy's to serve from the
 # visual package. Naming the two marks and the font subtree is deliberate: a
 # broad /assets or /styles route would silently reserve scanner namespaces that
-# the cabinet does not use.
+# the dashboard does not use.
 (shared_assets) {
 	@shared_assets path /assets/agentify-mark.svg /assets/agentify-mark-heavy.svg /styles/fonts.css /styles/fonts/*.woff2
 	handle @shared_assets {
@@ -105,15 +105,15 @@
 
 	# The web surface decision puts four things on one origin, and same-origin is
 	# then the whole of the boundary between them: the scanner and the reports it
-	# writes, a static portal build, a cabinet that holds a merchant's session,
+	# writes, a static portal build, a dashboard that holds a merchant's session,
 	# and the money path at /v0. These three headers are the part of the
 	# hardening that costs nothing.
 	#
 	# It said "and cannot break a page", and one of them broke every form in the
-	# cabinet. `Referrer-Policy: no-referrer` does more than hide the referrer:
+	# dashboard. `Referrer-Policy: no-referrer` does more than hide the referrer:
 	# by the fetch specification, a request whose method is not GET or HEAD and
 	# whose referrer policy is `no-referrer` carries `Origin: null` instead of
-	# the page's own origin. So every form post from the cabinet arrived claiming
+	# the page's own origin. So every form post from the dashboard arrived claiming
 	# to come from nowhere, the check that a form came from this host refused it,
 	# and a merchant on the live site could not sign in at all. Nothing about it
 	# looked like a header problem: the same request from a command line, which
@@ -125,7 +125,7 @@
 	#
 	# What is deliberately not here: HSTS, because on a plain-HTTP local origin
 	# it would pin localhost in every developer's browser for its max-age; and a
-	# Content-Security-Policy, because the portal's build and the cabinet's
+	# Content-Security-Policy, because the portal's build and the dashboard's
 	# inline scripts have not been surveyed and a policy written blind either
 	# breaks pages or is loose enough to be decoration. Both belong with the
 	# first deployment to a real host, and neither should be guessed here.
@@ -137,8 +137,8 @@
 
 	# The mail-link form keeps its token out of Referer, including requests to
 	# this origin. Unlike no-referrer, strict-origin preserves the Origin of a
-	# native form POST, so the cabinet can keep rejecting cross-origin submits.
-	@cabinet_link path /dashboard/sign-in/open
+	# native form POST, so the dashboard can keep rejecting cross-origin submits.
+	@dashboard_link path /dashboard/sign-in/open
 
 	import shared_assets
 
@@ -181,7 +181,7 @@
 	# says.
 	#
 	# What comes back is the gateway's own answer and nothing more. No verdict
-	# here stands for the cabinet, and none stands for Postgres — a gateway
+	# here stands for the dashboard, and none stands for Postgres — a gateway
 	# answering this route has not been asked whether its database is reachable,
 	# so `{"ok":true}` here is compatible with a stack that cannot serve a single
 	# order. A document that averaged them would be read as one and would be
@@ -189,18 +189,18 @@
 	# their own state report it to compose, which is where a per-service verdict
 	# belongs.
 	#
-	# The cabinet is the second process and needs no line of its own. It answers
+	# The dashboard is the second process and needs no line of its own. It answers
 	# the same probe under its own prefix, and the block below passes /dashboard/*
 	# through untouched, so /dashboard/healthz already arrives.
 	#
 	# Three of the gateway's calls are not on this door at all: registering a
-	# merchant, and making and forgetting the key a cabinet calls with. Only the
-	# cabinet makes them, and it makes them over the stack's own network, at the
+	# merchant, and making and forgetting the key a dashboard calls with. Only the
+	# dashboard makes them, and it makes them over the stack's own network, at the
 	# gateway's service name, never through here. A merchant comes into being
-	# one way, when a signed-in person presses the cabinet's one control
+	# one way, when a signed-in person presses the dashboard's one control
 	# (ADR-0014), and the registration call behind that press asks for nothing
 	# but the invitation, which lives in configuration files; reachable from
-	# outside, it would make a merchant and its cabinet's key for whoever holds
+	# outside, it would make a merchant and its dashboard's key for whoever holds
 	# a copy, with no address and no person. So these paths are left out of the
 	# gateway's matcher and fall through to the front page, which answers them
 	# as it answers any path this site does not have, with its missing page.
@@ -208,10 +208,10 @@
 	# another case, encoded, or with a dot segment or a doubled slash is left
 	# out exactly when the gateway's line would have taken it.
 	#
-	# Setting the payout wallet is not on this door. Only the cabinet sets it,
+	# Setting the payout wallet is not on this door. Only the dashboard sets it,
 	# for a person signed in to it, and it calls the gateway over the stack's own
 	# network at the gateway's service name, never through here (ADR-0019). A
-	# copy of the key a cabinet calls with — its database holds them as issued —
+	# copy of the key a dashboard calls with — its database holds them as issued —
 	# must not be a way to move a merchant's money from anywhere on the internet.
 	# So every request to that path but a read is left out of the gateway's
 	# matcher and falls through to the front page, which answers it as any path
@@ -233,27 +233,27 @@
 		reverse_proxy {$AGENTIFY_GATEWAY_UPSTREAM:gateway:3000}
 	}
 
-	# The cabinet, its own process rather than part of the gateway (ADR-0005
+	# The dashboard, its own process rather than part of the gateway (ADR-0005
 	# §2). The prefix is passed through rather than stripped, deliberately: the
-	# cabinet then reads its own mount point off the request it is answering
+	# dashboard then reads its own mount point off the request it is answering
 	# and builds its links from the same string, instead of being told the
-	# prefix out of band and having to prepend it to every href. So the cabinet
+	# prefix out of band and having to prepend it to every href. So the dashboard
 	# routes on /dashboard, /dashboard/orders, /dashboard/receipts as written.
 	#
 	# The prefix is spelled as two exact paths rather than one /dashboard* glob
-	# so that it claims the cabinet and its pages and nothing else: a scanner
+	# so that it claims the dashboard and its pages and nothing else: a scanner
 	# page at /dashboards-we-have-known would otherwise disappear into the proxy.
-	@cabinet path /dashboard /dashboard/*
-	handle @cabinet {
-		header @cabinet_link Referrer-Policy strict-origin
-		reverse_proxy {$AGENTIFY_CABINET_UPSTREAM:cabinet:3001}
+	@dashboard path /dashboard /dashboard/*
+	handle @dashboard {
+		header @dashboard_link Referrer-Policy strict-origin
+		reverse_proxy {$AGENTIFY_DASHBOARD_UPSTREAM:dashboard:3001}
 	}
 
-	# The address the cabinet had before it was called the dashboard, on the
+	# The address the dashboard had before it was called the dashboard, on the
 	# product owner's word (2026-10-06): a bookmark, a link in a message already
 	# sent, or a shop returning from a Connect started under the old address
 	# still arrives. The same path, under the new prefix, with the query kept,
-	# and in any case, as the cabinet itself never minded case. 307 rather than
+	# and in any case, as the dashboard itself never minded case. 307 rather than
 	# 301 or 302 so a form posted to the old address is posted again, body and
 	# method intact, rather than turned into a GET that loses it; and not 308,
 	# for the reason /docs below is not permanent either: a browser keeps a
@@ -311,7 +311,7 @@
 	# The portal is a directory of files, so a page that is not there would be
 	# Caddy's bare, empty 404. VitePress builds its own 404 page under the same
 	# base, and this serves it with the status kept. The scanner and the
-	# cabinet answer their own missing pages, so nothing here touches theirs.
+	# dashboard answer their own missing pages, so nothing here touches theirs.
 	#
 	# The 404 page is a portal page like any other, so it is templated the same
 	# way. Served without it, the page carries every mode's notice at once, and

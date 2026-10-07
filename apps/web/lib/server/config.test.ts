@@ -13,7 +13,7 @@ const keys = [
   "TURNSTILE_ENFORCED",
   "TURNSTILE_SECRET_KEY",
   "TURNSTILE_SITE_KEY",
-  "CABINET_IDENTITY_URL",
+  "DASHBOARD_IDENTITY_URL",
   "REPORT_IDENTITY_SECRET",
   "BENCHMARK_ENABLED",
   "PUBLIC_SHARE_ENABLED",
@@ -47,7 +47,7 @@ describe("clean-clone environment", () => {
       TURNSTILE_ENFORCED: "false",
       TURNSTILE_SECRET_KEY: "",
       TURNSTILE_SITE_KEY: "",
-      CABINET_IDENTITY_URL: "",
+      DASHBOARD_IDENTITY_URL: "",
       REPORT_IDENTITY_SECRET: "",
       BENCHMARK_ENABLED: "false",
       PUBLIC_SHARE_ENABLED: "false",
@@ -82,7 +82,7 @@ describe("clean-clone environment", () => {
     Object.assign(process.env, {
       DATABASE_URL: "postgresql://agentify:agentify@localhost:5432/agentify",
       REGISTRATION_ENABLED: "true",
-      CABINET_IDENTITY_URL: "http://cabinet.internal:3002",
+      DASHBOARD_IDENTITY_URL: "http://dashboard.internal:3002",
       REPORT_IDENTITY_SECRET: "r".repeat(32),
     });
     expect(getServerConfig().REGISTRATION_ENABLED).toBe(true);
@@ -103,13 +103,13 @@ describe("clean-clone environment", () => {
       DATABASE_URL: "postgresql://agentify:agentify@localhost:5432/agentify",
       TOKEN_HMAC_SECRET: "h".repeat(32),
       REGISTRATION_ENABLED: "false",
-      CABINET_IDENTITY_URL: "",
+      DASHBOARD_IDENTITY_URL: "",
       REPORT_IDENTITY_SECRET: "",
     });
     expect(getServerConfig()).toMatchObject({
       production: true,
       REGISTRATION_ENABLED: false,
-      CABINET_IDENTITY_URL: undefined,
+      DASHBOARD_IDENTITY_URL: undefined,
       REPORT_IDENTITY_SECRET: undefined,
     });
   });
@@ -120,10 +120,10 @@ describe("clean-clone environment", () => {
       DATABASE_URL: "postgresql://agentify:agentify@localhost:5432/agentify",
       TOKEN_HMAC_SECRET: "h".repeat(32),
       REGISTRATION_ENABLED: "true",
-      CABINET_IDENTITY_URL: "",
+      DASHBOARD_IDENTITY_URL: "",
       REPORT_IDENTITY_SECRET: "",
     });
-    expect(() => getServerConfig()).toThrow("cabinet_identity_configuration_missing");
+    expect(() => getServerConfig()).toThrow("dashboard_identity_configuration_missing");
   });
 
   it("rejects incomplete enforced Turnstile configuration", () => {
@@ -140,9 +140,9 @@ describe("clean-clone environment", () => {
   it("requires the dashboard identity URL and dedicated secret together", () => {
     Object.assign(process.env, {
       DATABASE_URL: "postgresql://agentify:agentify@localhost:5432/agentify",
-      CABINET_IDENTITY_URL: "http://cabinet.internal:3002",
+      DASHBOARD_IDENTITY_URL: "http://dashboard.internal:3002",
       REPORT_IDENTITY_SECRET: "",
     });
-    expect(() => getServerConfig()).toThrow("cabinet_identity_url_and_secret_required_together");
+    expect(() => getServerConfig()).toThrow("dashboard_identity_url_and_secret_required_together");
   });
 });

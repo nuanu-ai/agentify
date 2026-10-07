@@ -202,7 +202,7 @@ beforeAll(async () => {
       PORT: String(port),
       DATABASE_URL: connectionString,
       TOKEN_HMAC_SECRET: "t".repeat(32),
-      CABINET_IDENTITY_URL: `http://127.0.0.1:${sellerDashboardPort}`,
+      DASHBOARD_IDENTITY_URL: `http://127.0.0.1:${sellerDashboardPort}`,
       REPORT_IDENTITY_SECRET: "r".repeat(32),
     },
     stdio: ["ignore", "pipe", "pipe"],
