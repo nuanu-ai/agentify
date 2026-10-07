@@ -24,6 +24,7 @@ import type {
   PurchaseRequest,
   RegistrationRequest,
   RouteName,
+  Seller,
   SellerNameRequest,
   WorkerPollRequest,
 } from "@nuanu-ai/agentify-contracts";
@@ -872,6 +873,10 @@ async function purchase(
   if (presented !== null && presented !== "unreadable" && presented.orderId !== null) {
     const named = await gateway.orderById(presented.orderId);
     if (named !== null) {
+      // Who sold it, read before the payment is: the answer to a paid purchase
+      // carries it, and a read that failed after the money moved would leave a
+      // paid agent with an error and no address to come back to.
+      const seller = await gateway.sellerOf(named.merchantId);
       return answerPurchase(
         gateway,
         edge,
@@ -881,6 +886,7 @@ async function purchase(
           presented.raw,
           paymentFingerprint(presented.payload, edge.token()),
         ),
+        seller,
       );
     }
   }
@@ -903,6 +909,9 @@ async function purchase(
     edge,
     response,
     attempt,
+    // Nothing is paid on this path, so no answer below carries an order's
+    // status and nobody needs to have been read.
+    null,
     // Why this call did not return the resource, in the shortest words that are
     // true (ADR-0021). Three cases arrive here and they are not one: nothing was
     // presented, which needs no explaining; something was presented and could
@@ -924,6 +933,7 @@ async function answerPurchase(
   edge: PaymentEdge,
   response: RouteCall["response"],
   attempt: PurchaseAttempt,
+  seller: Seller | null,
   why?: string,
 ): Promise<RouteAnswer> {
   switch (attempt.step) {
@@ -1069,7 +1079,7 @@ async function answerPurchase(
         status: attempt.order.order.mode.settle === "after_fulfillment" ? CONFLICT : OK,
         document: agentOrderStatusOf(
           attempt.order,
-          await gateway.sellerOf(attempt.order.merchantId),
+          seller ?? (await gateway.sellerOf(attempt.order.merchantId)),
           gateway.runtime.config,
         ),
       };
@@ -1095,7 +1105,7 @@ async function answerPurchase(
         status: outcomeFor(attempt.order.order) === "delivered" ? OK : CONFLICT,
         document: agentOrderStatusOf(
           attempt.order,
-          await gateway.sellerOf(attempt.order.merchantId),
+          seller ?? (await gateway.sellerOf(attempt.order.merchantId)),
           gateway.runtime.config,
         ),
       };

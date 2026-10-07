@@ -699,13 +699,17 @@ export class Gateway {
    * the name and site the merchant gave, read as they stand now rather than
    * as they stood at the sale, the way the catalog reads them.
    *
-   * A merchant who is gone reads as nobody rather than failing the order's
-   * whole status: the agent still has its purchase to read, and a seller
-   * with no name and no site is the honest answer about whom to ask.
+   * A merchant who is not there throws rather than reading as nobody. Orders
+   * hold their merchant by a key the database will not let go, so it cannot
+   * happen; and if it ever did, "we do not know who sold this" told as "the
+   * seller gave no name and no site" would be a claim we cannot make.
    */
   async sellerOf(merchantId: string): Promise<Seller> {
     const merchant = await this.runtime.store.merchantById(merchantId);
-    return { name: merchant?.serviceName ?? null, site: merchant?.sellerSite ?? null };
+    if (merchant === null) {
+      throw new Error(`an order names the merchant ${merchantId}, and there is no such merchant`);
+    }
+    return { name: merchant.serviceName, site: merchant.sellerSite };
   }
 
   /**
