@@ -747,6 +747,22 @@ describe("the status an agent reads", () => {
       AgentOrderStatusSchema.safeParse({ ...status, estimated_at: "2026-09-30T00:00:00Z" }).success,
     ).toBe(true);
   });
+
+  it("takes a field added later inside any of its parts, not only beside them", () => {
+    for (const [part, grown] of [
+      ["price", { price: { ...price, tax_included: true } }],
+      ["seller", { seller: { ...status.seller, verified_by: "nobody" } }],
+      [
+        "refusal",
+        {
+          status: "rejected",
+          refusal: { code: "out_of_stock", message: "none left", retry_after: "P1D" },
+        },
+      ],
+    ] as const) {
+      expect(AgentOrderStatusSchema.safeParse({ ...status, ...grown }).success, part).toBe(true);
+    }
+  });
 });
 
 describe("the catalog an agent reads", () => {

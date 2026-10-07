@@ -535,6 +535,28 @@ describe("the card an agent reads", () => {
     expect(PublicCardSchema.safeParse({ ...publicCard, warranty_days: 30 }).success).toBe(true);
   });
 
+  it("takes a field added later inside any of its parts, not only beside them", () => {
+    // A field added to the seller, the price or one declared field would
+    // otherwise make every card unreadable to an agent built before it, and
+    // the whole catalog would be passed over for one addition.
+    const params = publicCard.params ?? {};
+    const [name, spec] = Object.entries(params)[0] ?? [];
+    if (name === undefined || spec === undefined) throw new Error("the card declares no input");
+    const [resultName, resultSpec] = Object.entries(publicCard.result)[0] ?? [];
+    if (resultName === undefined || resultSpec === undefined) {
+      throw new Error("the card declares no result");
+    }
+
+    for (const [part, grown] of [
+      ["seller", { seller: { ...publicCard.seller, verified_by: "nobody" } }],
+      ["price", { price: { ...publicCard.price, tax_included: true } }],
+      ["params", { params: { ...params, [name]: { ...spec, pattern: "^\\S+$" } } }],
+      ["result", { result: { [resultName]: { ...resultSpec, format: "uri" } } }],
+    ] as const) {
+      expect(PublicCardSchema.safeParse({ ...publicCard, ...grown }).success, part).toBe(true);
+    }
+  });
+
   it("carries its own caveats into the exported document, where the reader has nothing else", () => {
     // Everything below is argued in the file's prose, and the reader this
     // matters most to has the document and no TypeScript — and is about to
