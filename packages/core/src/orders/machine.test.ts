@@ -1200,34 +1200,36 @@ describe("an order the merchant has taken on", () => {
   // order is not a delivery he failed: counting it spends one he never missed,
   // and enough of those close a paid order into a refund owed while he is
   // filling it.
-  it("does not spend a delivery on a silence noticed after it", () => {
-    const takenOn = walk(newOrder("async"), [
+  //
+  // Both orders below are on the last delivery the cap allows, so a silence
+  // that counted would not just cost a delivery but close the order, and they
+  // differ in nothing but whether the merchant has taken the order on.
+  const onTheLastDelivery = (accepted: boolean): Order => ({
+    ...walk(newOrder("async"), [
       { kind: "payment_verified", at: T0 + 1 },
       { kind: "payment_settled", at: T0 + 2 },
       { kind: "order_dispatched", at: T0 + 3 },
-      { kind: "handler_accepted", at: T0 + 4 },
-    ]);
-    // The last delivery the cap allows, so that counting this silence would
-    // not just cost a delivery but close the order.
-    const lastAttempt = { ...takenOn, dispatch: { attempts: 5, accepted: true } };
-    const refused = transition(lastAttempt, { kind: "handler_undelivered", at: T0 + 10 });
-
-    expect(refused.ok).toBe(false);
-    if (refused.ok) throw new Error("a silence after the acceptance was counted");
-    expect(refused.rejection.code).toBe("event_not_applicable");
-    expect(refused.rejection.retryable).toBe(false);
+    ]),
+    dispatch: { attempts: 5, accepted },
   });
 
-  it("still repeats an order nobody has taken on", () => {
-    // The negative control: the rule above is about an acceptance, not about
-    // repeats in general.
-    const handedOver = walk(newOrder("async"), [
-      { kind: "payment_verified", at: T0 + 1 },
-      { kind: "payment_settled", at: T0 + 2 },
-      { kind: "order_dispatched", at: T0 + 3 },
-    ]);
-    const { effects } = must(handedOver, { kind: "handler_undelivered", at: T0 + 10 });
-    expect(effects).toStrictEqual([{ kind: "redeliver_order", attempt: 2, delayMs: 1_000 }]);
+  it("is left as it was by a silence noticed after it", () => {
+    const held = onTheLastDelivery(true);
+    const { order, effects } = must(held, { kind: "handler_undelivered", at: T0 + 10 });
+
+    expect(effects).toStrictEqual([]);
+    expect(order).toStrictEqual(held);
+  });
+
+  it("is what keeps the same silence from closing it", () => {
+    // The negative control: the same order, the same silence, nobody holding
+    // it — and the last delivery is spent and the money is owed back.
+    const { order } = must(onTheLastDelivery(false), {
+      kind: "handler_undelivered",
+      at: T0 + 10,
+    });
+
+    expect(order.state).toBe("refund_due");
   });
 });
 

@@ -470,51 +470,72 @@ describe("when a delivery goes unanswered", () => {
     });
   });
 
-  it("does not run out the attempts of a merchant whose acceptance came after our wait", async () => {
+  it("does not close an order on the silence after a repeat its merchant had already taken on", async () => {
     // Our wait for a handler's answer is a few seconds, and a merchant's handler
     // can take longer than that to say it has taken the order on. The silence
     // noticed in the meantime sends the order out again, and that repeat is
     // ordinary — delivery is at least once. What must not follow is the silence
     // after the repeat being counted as well: the merchant has answered, and a
-    // slow but willing one would otherwise run out of attempts in seconds and
+    // slow but willing one would otherwise run out of deliveries in seconds and
     // see a paid order close into a refund while he is filling it.
+    //
+    // Each step is taken by hand rather than raced on timers, so the order of
+    // the silence, the acceptance and the repeat is the one written here on
+    // every run, however loaded the machine is.
     const harnessed = await started({
-      HANDLER_ANSWER_MS: "20",
+      // Long enough that the gateway's own reminders do not fire inside the
+      // test: the two silences below are the whole of the input.
+      HANDLER_ANSWER_MS: "60000",
       REDELIVERY_BASE_DELAY_MS: "5",
-      REDELIVERY_MAX_ATTEMPTS: "3",
-      // Far behind every repeat the cap allows, so an ending reached before it
-      // could only be the cap, and reaching it means the repeats have had their
-      // whole life.
-      DEFAULT_ASYNC_FULFILLMENT_MS: "400",
+      // Two deliveries, so the silence after the repeat is the one that would
+      // spend the last of them and close the order.
+      REDELIVERY_MAX_ATTEMPTS: "2",
+      DEFAULT_ASYNC_FULFILLMENT_MS: "60000",
     });
+    const merchantId = harnessed.merchant.id;
     const orderId = await bought(harnessed, asyncCard);
     await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    const openHandOver = async (): Promise<string> => {
+      const handOver = (await harnessed.store.orderById(orderId))?.openDeliveryId ?? null;
+      if (handOver === null) throw new Error("no hand-over is open to go quiet");
+      return handOver;
+    };
 
-    // Three times the wait, every time: each hand-over goes quiet before its
-    // acceptance lands. The worker takes one order at a time, as one process of
-    // the merchant's would.
-    let handed = 0;
-    const slow = workUntilStopped(harnessed, {
-      onOrder: async () => {
-        handed += 1;
-        await new Promise((resolve) => setTimeout(resolve, 60));
-        return { accepted: {} };
-      },
-    });
-    await vi.waitFor(
-      async () => expect((await state(harnessed, orderId))?.state).toBe("refund_due"),
-      { timeout: 4_000, interval: 10 },
+    // The first hand-over goes quiet for longer than we wait, and the repeat
+    // is decided on.
+    expect((await harnessed.gateway.poll(merchantId, 10, 1_000)).envelopes).toHaveLength(1);
+    await harnessed.queue.remind(
+      { kind: "delivery_unanswered", orderId, handOver: await openHandOver() },
+      0,
     );
-    await slow.stop();
+    await vi.waitFor(
+      async () => expect(await harnessed.queue.holdsOrder(merchantId, orderId)).toBe(true),
+      { timeout: 2_000, interval: 5 },
+    );
 
-    // The first hand-over and the one repeat that was on its way before the
-    // acceptance landed. A third is a silence counted against an order the
-    // merchant already held, and with the cap at three it is the cap, not the
-    // merchant's deadline, that closed the order.
-    const owed = await state(harnessed, orderId);
-    expect(owed?.dispatch.attempts).toBeLessThanOrEqual(2);
-    expect(handed).toBeLessThanOrEqual(2);
-    expect(owed?.dispatch.accepted).toBe(true);
+    // Then the acceptance lands, with the repeat already on the stream, and
+    // the repeat still reaches him.
+    await harnessed.gateway.answerOrder(merchantId, orderId, { accepted: {} });
+    expect((await harnessed.gateway.poll(merchantId, 10, 1_000)).envelopes).toHaveLength(1);
+
+    // The silence after the repeat. The hand-over it names stops being open
+    // once it has been dealt with, whatever was decided, which is how this
+    // knows the silence has been and gone.
+    await harnessed.queue.remind(
+      { kind: "delivery_unanswered", orderId, handOver: await openHandOver() },
+      0,
+    );
+    await vi.waitFor(
+      async () => expect((await harnessed.store.orderById(orderId))?.openDeliveryId).toBeNull(),
+      { timeout: 2_000, interval: 5 },
+    );
+
+    // Still his, the money still with him, and nothing more on the way.
+    const held = await state(harnessed, orderId);
+    expect(held?.state).toBe("dispatched");
+    expect(held?.payment).toBe("settled");
+    expect(held?.dispatch).toStrictEqual({ attempts: 2, accepted: true });
+    expect(await harnessed.queue.holdsOrder(merchantId, orderId)).toBe(false);
   });
 
   it("spends one delivery on one silence, though the same reminder arrives twice", async () => {
