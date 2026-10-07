@@ -29,14 +29,6 @@ export const buildPosthogPayload = (event: AnalyticsEvent, projectKey: string) =
   timestamp: event.occurredAt,
 });
 
-export const POSTHOG_BROWSER_OPTIONS = {
-  autocapture: false,
-  disable_session_recording: true,
-  capture_pageview: false,
-  capture_pageleave: false,
-  person_profiles: "never",
-} as const;
-
 export type MetaUserContext = {
   externalId: string;
   emailSha256?: string;

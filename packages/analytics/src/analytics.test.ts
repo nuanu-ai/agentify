@@ -1,5 +1,6 @@
 import { ANALYTICS_EVENT_NAMES, type AnalyticsEventName } from "@agentify/scanner-contracts";
 import { describe, expect, it } from "vitest";
+import { POSTHOG_BROWSER_OPTIONS } from "./browser-entry.js";
 import {
   assertDestinationIsolation,
   buildMetaPayload,
@@ -12,7 +13,6 @@ import {
   eventOnceKey,
   loadConsentedAnalytics,
   META_EVENT_MAPPING,
-  POSTHOG_BROWSER_OPTIONS,
   readAttributionTouch,
   retryDelayMs,
   sanitizeEventProperties,
@@ -83,6 +83,8 @@ describe("analytics privacy and dedup contracts", () => {
   });
 
   it("never enables PostHog autocapture or replay", () => {
+    // The options the browser runtime starts PostHog with, read through the
+    // entry the web app imports them from.
     expect(POSTHOG_BROWSER_OPTIONS).toMatchObject({
       autocapture: false,
       disable_session_recording: true,
