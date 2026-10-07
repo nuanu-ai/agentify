@@ -13,7 +13,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createBusinessEventStore, insertBusinessEventOnce } from "./analytics-event-store.js";
+import { type BusinessEventInput, insertBusinessEventOnce } from "./analytics-event-store.js";
 import { emitStoredBusinessEvent } from "./analytics-runtime.js";
 import { createBrowserObservationRepository } from "./browser-observation-repository.js";
 import { createDatabase } from "./client.js";
@@ -637,7 +637,8 @@ describe("initial database migration", () => {
       ]);
 
       const eventId = createUuidV7();
-      const store = createBusinessEventStore(db);
+      const insertOnce = (input: BusinessEventInput) =>
+        db.transaction(async (tx) => insertBusinessEventOnce(tx, input));
       const eventInput = {
         onceKey: `landing_view:${sessionId}:store-v1:2026-07-12`,
         event: {
@@ -659,12 +660,12 @@ describe("initial database migration", () => {
           { eventId, destination: "meta" as const, payload: { data: [] } },
         ],
       };
-      await expect(store.insertOnce(eventInput)).resolves.toEqual({
+      await expect(insertOnce(eventInput)).resolves.toEqual({
         inserted: true,
         eventId,
       });
       await expect(
-        store.insertOnce({
+        insertOnce({
           ...eventInput,
           event: { ...eventInput.event, eventId: createUuidV7() },
         }),
@@ -715,7 +716,7 @@ describe("initial database migration", () => {
       const concurrentResults = await Promise.all(
         Array.from({ length: 6 }, async () => {
           const candidateEventId = createUuidV7();
-          return await store.insertOnce({
+          return await insertOnce({
             ...eventInput,
             onceKey: concurrentOnceKey,
             event: {

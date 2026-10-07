@@ -27,14 +27,3 @@ export const saveConsentDecision = async (input: {
   await input.persistAppendOnly(input.snapshot);
   input.storage.setItem(CONSENT_STORAGE_KEY, JSON.stringify(input.snapshot));
 };
-
-export const loadConsentedAnalytics = async (input: {
-  snapshot: ConsentSnapshot;
-  loadPosthog: () => Promise<void>;
-  loadMetaPixel: () => Promise<void>;
-}): Promise<void> => {
-  const tasks: Promise<void>[] = [];
-  if (input.snapshot.categories.product_analytics) tasks.push(input.loadPosthog());
-  if (input.snapshot.categories.ads_measurement) tasks.push(input.loadMetaPixel());
-  await Promise.all(tasks);
-};

@@ -1,6 +1,10 @@
 "use client";
 
-import { type ConsentSnapshot, readCurrentConsent } from "@agentify/analytics/browser";
+import {
+  type ConsentSnapshot,
+  POSTHOG_BROWSER_OPTIONS,
+  readCurrentConsent,
+} from "@agentify/analytics/browser";
 import type { AnalyticsEventName, Segment } from "@agentify/scanner-contracts";
 import { usePathname } from "next/navigation";
 import type { PostHog } from "posthog-js";
@@ -184,14 +188,7 @@ async function sendPosthog(
   const { key, host, destinationEnvironment } = config.posthog;
   if (!key || !host || destinationEnvironment !== config.runtimeEnvironment) return;
   posthogPromise ??= import("posthog-js").then(({ default: posthog }) => {
-    posthog.init(key, {
-      api_host: host,
-      autocapture: false,
-      capture_pageview: false,
-      capture_pageleave: false,
-      disable_session_recording: true,
-      person_profiles: "never",
-    });
+    posthog.init(key, { api_host: host, ...POSTHOG_BROWSER_OPTIONS });
     return posthog;
   });
   const posthog = await posthogPromise;

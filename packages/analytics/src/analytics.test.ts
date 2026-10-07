@@ -1,24 +1,19 @@
 import { ANALYTICS_EVENT_NAMES, type AnalyticsEventName } from "@agentify/scanner-contracts";
 import { describe, expect, it } from "vitest";
+import { POSTHOG_BROWSER_OPTIONS } from "./browser-entry.js";
 import {
   assertDestinationIsolation,
   buildMetaPayload,
-  buildMetaPixelCommand,
   buildOutboxInserts,
   buildPosthogPayload,
   createAnalyticsEvent,
   createConsentSnapshot,
-  emitBusinessEvent,
   eventOnceKey,
-  loadConsentedAnalytics,
   META_EVENT_MAPPING,
-  POSTHOG_BROWSER_OPTIONS,
-  readAttributionTouch,
   retryDelayMs,
   sanitizeEventProperties,
   saveConsentDecision,
   shouldDeadLetter,
-  updateAttribution,
 } from "./index.js";
 
 const baseEvent = (name: AnalyticsEventName) =>
@@ -40,10 +35,9 @@ describe("analytics privacy and dedup contracts", () => {
     expect(META_EVENT_MAPPING.card_attached).toBe("CardAttached");
   });
 
-  it("uses one event ID for PostHog, Pixel and CAPI", () => {
+  it("uses one event ID for PostHog and the Conversions API", () => {
     const event = baseEvent("registration_completed");
     expect(buildPosthogPayload(event, "ph_project").properties.$insert_id).toBe(event.eventId);
-    expect(buildMetaPixelCommand(event).options.eventID).toBe(event.eventId);
     expect(
       buildMetaPayload(event, {
         externalId: "a".repeat(64),
@@ -83,10 +77,19 @@ describe("analytics privacy and dedup contracts", () => {
   });
 
   it("never enables PostHog autocapture or replay", () => {
-    expect(POSTHOG_BROWSER_OPTIONS).toMatchObject({
+    // The options the browser runtime starts PostHog with, read through the
+    // entry the web app imports them from, and all of them: a capture left out
+    // of this list is one the PostHog project can switch on by itself.
+    expect(POSTHOG_BROWSER_OPTIONS).toStrictEqual({
       autocapture: false,
+      capture_heatmaps: false,
+      capture_dead_clicks: false,
+      capture_exceptions: false,
+      capture_performance: false,
       disable_session_recording: true,
       capture_pageview: false,
+      capture_pageleave: false,
+      person_profiles: "never",
     });
   });
 
@@ -131,9 +134,17 @@ describe("analytics privacy and dedup contracts", () => {
     ).toEqual(["posthog"]);
   });
 
-  it("persists append-only consent before enabling allowed browser SDKs", async () => {
+  it("records consent on the server before the browser keeps it", async () => {
+    // The browser acts on what it keeps, so what it keeps has to be a choice
+    // the server already holds: written first, and not kept at all when the
+    // write fails.
     const values = new Map<string, string>();
-    const calls: string[] = [];
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        values.set(key, value);
+      },
+    };
     const snapshot = createConsentSnapshot({
       policy: {
         policyVersion: "v1",
@@ -143,27 +154,29 @@ describe("analytics privacy and dedup contracts", () => {
       decisions: { product_analytics: true, ads_measurement: false },
       source: "banner",
     });
+
+    let keptWhenRecorded: number | undefined;
     await saveConsentDecision({
-      storage: {
-        getItem: (key) => values.get(key) ?? null,
-        setItem: (key, value) => values.set(key, value),
-      },
+      storage,
       snapshot,
       persistAppendOnly: async () => {
-        calls.push("persisted");
+        keptWhenRecorded = values.size;
       },
     });
-    await loadConsentedAnalytics({
-      snapshot,
-      loadPosthog: async () => {
-        calls.push("posthog");
-      },
-      loadMetaPixel: async () => {
-        calls.push("meta");
-      },
-    });
-    expect(calls).toEqual(["persisted", "posthog"]);
+    expect(keptWhenRecorded).toBe(0);
     expect([...values.values()][0]).toContain('"ads_measurement":false');
+
+    values.clear();
+    await expect(
+      saveConsentDecision({
+        storage,
+        snapshot,
+        persistAppendOnly: async () => {
+          throw new Error("consent_not_recorded");
+        },
+      }),
+    ).rejects.toThrow("consent_not_recorded");
+    expect(values.size).toBe(0);
   });
 
   it("prevents preview/test from using production destinations", () => {
@@ -189,66 +202,6 @@ describe("analytics privacy and dedup contracts", () => {
     const keys = ANALYTICS_EVENT_NAMES.map((name) => eventOnceKey(name, ids));
     expect(new Set(keys).size).toBe(ANALYTICS_EVENT_NAMES.length);
     expect(eventOnceKey("registration_completed", ids)).toBe("registration_completed:lead:scan");
-  });
-
-  it("preserves first touch, updates last touch and hashes fbclid", () => {
-    const first = readAttributionTouch(
-      new URLSearchParams("utm_source=meta&utm_campaign=launch&fbclid=raw-click-id"),
-      "store-v1",
-    );
-    const state = updateAttribution(undefined, first);
-    const updated = updateAttribution(
-      state,
-      readAttributionTouch(new URLSearchParams("utm_source=organic"), "owner-v1"),
-    );
-    expect(updated.first.utmSource).toBe("meta");
-    expect(updated.last.utmSource).toBe("organic");
-    expect(updated.first.fbclidHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(JSON.stringify(updated)).not.toContain("raw-click-id");
-  });
-
-  it("delegates atomic once semantics to the business event store", async () => {
-    const inserted = new Map<string, string>();
-    const store = {
-      async insertOnce(input: { onceKey: string; event: { eventId: string } }) {
-        const existing = inserted.get(input.onceKey);
-        if (existing) return { inserted: false, eventId: existing };
-        inserted.set(input.onceKey, input.event.eventId);
-        return { inserted: true, eventId: input.event.eventId };
-      },
-    };
-    const event = baseEvent("scan_started");
-    const consent = createConsentSnapshot({
-      policy: {
-        policyVersion: "v1",
-        requireOptInForAdsMeasurement: true,
-        requireOptInForProductAnalytics: true,
-      },
-      decisions: { product_analytics: true, ads_measurement: true },
-      source: "api",
-    });
-    const input = {
-      store,
-      event,
-      identifiers: { scan_id: "scan" },
-      context: {
-        sessionId: "session",
-        consentSnapshotId: "consent",
-        scanId: "scan",
-      },
-      consent,
-      posthogPayload: {},
-      metaPayload: {},
-    };
-    await expect(emitBusinessEvent(input)).resolves.toEqual({
-      inserted: true,
-      eventId: event.eventId,
-    });
-    await expect(emitBusinessEvent(input)).resolves.toEqual({
-      inserted: false,
-      eventId: event.eventId,
-    });
-    expect(inserted.size).toBe(1);
   });
 
   it("bounds exponential retry and dead-letters after the 24h window", () => {

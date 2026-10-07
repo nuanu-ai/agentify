@@ -1,11 +1,26 @@
-import type { BusinessEventStore } from "@agentify/analytics";
+import type { AnalyticsEvent, OutboxInsert } from "@agentify/analytics";
 import { eq } from "drizzle-orm";
 
 import type { Database } from "./client.js";
 import { createUuidV7 } from "./ids.js";
 import { analyticsEvents, deliveryOutbox } from "./schema.js";
 
-export type BusinessEventInput = Parameters<BusinessEventStore["insertOnce"]>[0];
+/**
+ * One business event and the outbox rows it carries, written once. The event
+ * and its rows land together only when the executor is a transaction, and
+ * every caller passes one.
+ */
+export type BusinessEventInput = {
+  onceKey: string;
+  event: AnalyticsEvent;
+  context: {
+    sessionId: string;
+    consentSnapshotId: string;
+    leadId?: string;
+    scanId?: string;
+  };
+  outbox: OutboxInsert[];
+};
 export type BusinessEventExecutor = Pick<Database, "select" | "insert">;
 
 export const insertBusinessEventOnce = async (
@@ -60,9 +75,3 @@ export const insertBusinessEventOnce = async (
   }
   return { inserted: true, eventId: insertedEvent.eventId };
 };
-
-export const createBusinessEventStore = (db: Database): BusinessEventStore => ({
-  async insertOnce(input) {
-    return await db.transaction(async (tx) => insertBusinessEventOnce(tx, input));
-  },
-});
