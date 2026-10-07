@@ -300,7 +300,9 @@ describe("an answer that arrived against a call that never landed", () => {
       maxUsd: 50,
     });
 
-    await expect(nowhere.status(statusAt("http://127.0.0.1:1", "ord_7c1e05"))).rejects.toThrow();
+    await expect(nowhere.status(statusAt("http://127.0.0.1:1", "ord_7c1e05"))).rejects.toThrow(
+      /fetch failed/,
+    );
   });
 });
 
