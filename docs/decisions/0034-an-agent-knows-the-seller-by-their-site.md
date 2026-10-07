@@ -20,19 +20,19 @@ what the merchant's site already carries.
 
 A merchant gives, beside their seller name in the dashboard's settings and
 through the call that sets the name, the address of their shop's own site: an
-`https` origin, the scheme and a public domain name with no path, query,
-fragment, port or credentials, refused at the door in any other form. The
-agent reads both on every card of that merchant in our catalog and on the
-status of every order, as a `seller` object of `name` and `site`, under a
-description saying the merchant gave them and Agentify did not check them;
-`site` is `null` where the merchant has given none. The name keeps its rule of
-at most 32 characters of printable ASCII, and this decision holds it to the
-plain-text rule of ADR-0017 as well. How to reach the shop, its terms and its
-returns are for the agent to read on the site. A card that ships is not
-published without a site: the refusal is a finding, `no_seller_site`, beside
-`no_seller_name`, naming where to set it. Nothing else about the merchant is
-kept for the agent. The storefront's documents gaining these fields is what
-ADR-0006 §5 allows.
+`https` origin, the scheme and a domain name — not an IP address or a single
+word — with no path, query, fragment, port or credentials, refused at the door
+in any other form. The agent reads both on every card of that merchant in our
+catalog and on the status of every order, as a `seller` object of `name` and
+`site`, under a description saying the merchant gave them and Agentify did not
+check them; `site` is `null` where the merchant has given none. The name keeps
+its rule of at most 32 characters of printable ASCII, and this decision holds
+it to the plain-text rule of ADR-0017 as well. How to reach the shop, its
+terms and its returns are for the agent to read on the site. A card that ships
+is not published without a site: the refusal is a finding, `no_seller_site`,
+beside `no_seller_name`, naming where to set it. Nothing else about the
+merchant is kept for the agent. The storefront's documents gaining these
+fields is what ADR-0006 §5 allows.
 
 ## Consequences
 

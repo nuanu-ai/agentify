@@ -909,8 +909,10 @@ async function purchase(
     edge,
     response,
     attempt,
-    // Nothing is paid on this path, so no answer below carries an order's
-    // status and nobody needs to have been read.
+    // No payment is presented on this path. An answer below can still carry
+    // an order's status — an order that closed at its price question, or one
+    // already under way — and then the seller is read there, with no money
+    // having moved on this call.
     null,
     // Why this call did not return the resource, in the shortest words that are
     // true (ADR-0021). Three cases arrive here and they are not one: nothing was

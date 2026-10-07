@@ -95,7 +95,7 @@ export const SITE_RULE =
 
 /** What somebody is told whose address is not a site's bare https address. */
 export const SITE_REFUSED =
-  "Write the address as https:// and your shop's public domain, with nothing after it:" +
+  "Write the address as https:// and your shop's domain name, with nothing after it:" +
   " https://yourshop.com, in lower case, with no page, query, port or slash at the end." +
   " Your site was not saved.";
 

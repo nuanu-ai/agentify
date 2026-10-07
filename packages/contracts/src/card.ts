@@ -164,7 +164,7 @@ const StoredServiceNameSchema = listedText("service name");
 
 /** What a seller's site is held to, said once for the refusal and the description. */
 const SITE_FORM =
-  "a seller's site is https:// and the domain name of their shop, with nothing after it — https://shop.example: in lower case, a public domain name rather than an address on a local network, with no path, query, fragment, port, credentials or trailing slash";
+  "a seller's site is https:// and the domain name of their shop, with nothing after it — https://shop.example: in lower case, a domain name rather than an IP address or a single word, with no path, query, fragment, port, credentials or trailing slash";
 
 /**
  * The address of a seller's own shop on the web, where an agent takes what an
@@ -177,8 +177,12 @@ const SITE_FORM =
  * letters, digits and hyphens, at most 253 characters, ending in a zone of
  * letters or a punycode one. Anything a URL parser keeps as written would
  * otherwise pass — a sentence of instructions, a quote, a host of any length —
- * and so would a name with no zone or an address, which points other people's
- * agents into somebody's own network.
+ * and so would a single word or an IP address, which point other people's
+ * agents into somebody's own network. What the pattern cannot do is tell a
+ * public name from a private one: a name in a zone kept for local networks,
+ * or a public one whose address leads into one, passes, and so does a
+ * hyphenated sentence of up to 253 characters that is a valid name. That is
+ * why an agent is told, beside every site, that nobody checked it.
  *
  * The pattern says all that in a form the JSON Schema export keeps, and it
  * stops the check where it fails, so an address copied with a slash at the end

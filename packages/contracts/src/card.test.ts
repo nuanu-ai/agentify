@@ -769,6 +769,17 @@ describe("the address of a seller's own site", () => {
     }
   });
 
+  it("takes a host of up to 253 characters and refuses a longer one", () => {
+    // The longest name the domain system has, so nothing a real shop uses is
+    // refused, and the bound that keeps a site from carrying a page of text.
+    const host = (last: number) =>
+      `${"a".repeat(63)}.${"b".repeat(63)}.${"c".repeat(63)}.${"d".repeat(last)}.com`;
+
+    expect(host(57)).toHaveLength(253);
+    expect(SellerSiteSchema.safeParse(`https://${host(57)}`).success).toBe(true);
+    expect(SellerSiteSchema.safeParse(`https://${host(58)}`).success).toBe(false);
+  });
+
   it("says once what is wrong with an address copied with a slash at the end", () => {
     expect(SellerSiteSchema.safeParse("https://freeland.example/").error?.issues).toHaveLength(1);
   });
