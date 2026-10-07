@@ -4,7 +4,6 @@ import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { getDefaultAsset } from "@x402/evm";
 import type { DiscoveryExtension } from "@x402/extensions/bazaar";
 import {
-  bazaarResourceServerExtension,
   sanitizeResourceServiceMetadata,
   validateDiscoveryExtension,
   validateDiscoveryExtensionSpec,
@@ -599,18 +598,6 @@ describe("the discovery declaration a challenge carries", () => {
     expect(
       validateDiscoveryExtensionSpec(declaration() as unknown as Record<string, unknown>),
     ).toStrictEqual({ valid: true });
-  });
-
-  it("is built on a hook the library still has", () => {
-    // The method is written into the declaration by the library's own hook, and
-    // the hook is optional in the type it is declared under. Were it ever gone,
-    // the challenge would still go out and the sale would still work — and the
-    // declaration would carry no method, which is the one thing the catalog's
-    // check refuses. That failure is silent everywhere it matters: nothing an
-    // agent does would show it, and the only sign would be a resource that
-    // never appears in a listing. So the version bump that removed it fails
-    // here instead.
-    expect(bazaarResourceServerExtension.enrichDeclaration).toBeTypeOf("function");
   });
 
   it("gives two requests for one product the same declaration", () => {

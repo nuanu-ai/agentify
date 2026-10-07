@@ -77,7 +77,7 @@ interface Registered {
  */
 const dashboardKeysOf = async (harnessed: Harness, merchantId: string): Promise<string[]> =>
   (await harnessed.store.keysOf(merchantId))
-    .filter((key) => key.purpose === "cabinet")
+    .filter((key) => key.purpose === "dashboard")
     .map((key) => key.id);
 
 /** The one key a merchant's dashboard is calling with, where there is one. */
@@ -492,7 +492,7 @@ describe("disabling a key", () => {
 
     expect(answered.status).toBe(409);
     expect((answered.body as { error: { code: string } }).error.code).toBe(
-      "key_made_for_a_cabinet",
+      "key_made_for_a_dashboard",
     );
     // Nothing was written: the dashboard is still signed in, which is the whole
     // of what this refusal is protecting.
@@ -514,7 +514,7 @@ describe("disabling a key", () => {
 
     expect(answered.status).toBe(409);
     expect((answered.body as { error: { code: string } }).error.code).toBe(
-      "key_made_for_a_cabinet",
+      "key_made_for_a_dashboard",
     );
     expect(await opensTheDoor(served, made.secret)).toBe(true);
   });
@@ -572,14 +572,14 @@ describe("disabling a key", () => {
     expect((await served.call("GET", "/v0/keys")).status).toBe(401);
     expect((await served.call("POST", "/v0/keys", { body: { label: "x" } })).status).toBe(401);
     expect((await served.call("POST", "/v0/keys/mk_whichever/disable")).status).toBe(401);
-    expect((await served.call("POST", "/v0/keys/cabinet")).status).toBe(401);
-    expect((await served.call("DELETE", "/v0/keys/cabinet")).status).toBe(401);
+    expect((await served.call("POST", "/v0/keys/dashboard")).status).toBe(401);
+    expect((await served.call("DELETE", "/v0/keys/dashboard")).status).toBe(401);
   });
 });
 
 /** One key made for a dashboard through the route, with the secret read back. */
 const dashboardKey = async (served: Served, key: string): Promise<string> => {
-  const answered = await served.call("POST", "/v0/keys/cabinet", { headers: bearer(key) });
+  const answered = await served.call("POST", "/v0/keys/dashboard", { headers: bearer(key) });
   expect(answered.status, JSON.stringify(answered.body)).toBe(200);
   return (answered.body as { secret: string }).secret;
 };
@@ -628,12 +628,12 @@ describe("the key a dashboard calls with", () => {
     const worker = await issued(served, made.secret, "the worker on the small box");
     const before = await keysInAll(harnessed, made.merchant_id);
 
-    const refused = await served.call("POST", "/v0/keys/cabinet", {
+    const refused = await served.call("POST", "/v0/keys/dashboard", {
       headers: bearer(worker.secret),
     });
 
     expect(refused.status).toBe(403);
-    expect((refused.body as { error: { code: string } }).error.code).toBe("not_a_cabinet_key");
+    expect((refused.body as { error: { code: string } }).error.code).toBe("not_a_dashboard_key");
     // Nothing was written: the count over both kinds is the only read that
     // could see a key made for a dashboard, and it has not moved.
     expect(await keysInAll(harnessed, made.merchant_id)).toBe(before);
@@ -650,7 +650,9 @@ describe("forgetting the key a call was made with", () => {
     const made = await registered(served);
     const fresh = await dashboardKey(served, made.secret);
 
-    const gone = await served.call("DELETE", "/v0/keys/cabinet", { headers: bearer(made.secret) });
+    const gone = await served.call("DELETE", "/v0/keys/dashboard", {
+      headers: bearer(made.secret),
+    });
 
     expect(gone.status, JSON.stringify(gone.body)).toBe(200);
     expect(gone.body).toStrictEqual({ forgotten: true });
@@ -674,7 +676,7 @@ describe("forgetting the key a call was made with", () => {
     const older = await dashboardKey(served, made.secret);
     const newer = await dashboardKey(served, made.secret);
 
-    const gone = await served.call("DELETE", "/v0/keys/cabinet", { headers: bearer(older) });
+    const gone = await served.call("DELETE", "/v0/keys/dashboard", { headers: bearer(older) });
 
     expect(gone.status).toBe(200);
     expect(await opensTheDoor(served, older)).toBe(false);
@@ -692,7 +694,9 @@ describe("forgetting the key a call was made with", () => {
     const worker = await issued(served, made.secret, "the worker on the small box");
     const fresh = await dashboardKey(served, made.secret);
 
-    const gone = await served.call("DELETE", "/v0/keys/cabinet", { headers: bearer(made.secret) });
+    const gone = await served.call("DELETE", "/v0/keys/dashboard", {
+      headers: bearer(made.secret),
+    });
 
     expect(gone.status).toBe(200);
     expect(await opensTheDoor(served, worker.secret)).toBe(true);
@@ -712,7 +716,7 @@ describe("forgetting the key a call was made with", () => {
     const second = await registered(served);
     const fresh = await dashboardKey(served, first.secret);
 
-    await served.call("DELETE", "/v0/keys/cabinet", { headers: bearer(fresh) });
+    await served.call("DELETE", "/v0/keys/dashboard", { headers: bearer(fresh) });
 
     expect(await opensTheDoor(served, second.secret)).toBe(true);
     expect(await opensTheDoor(served, first.secret)).toBe(true);
@@ -727,12 +731,12 @@ describe("forgetting the key a call was made with", () => {
     const made = await registered(served);
     const worker = await issued(served, made.secret, "the worker on the small box");
 
-    const refused = await served.call("DELETE", "/v0/keys/cabinet", {
+    const refused = await served.call("DELETE", "/v0/keys/dashboard", {
       headers: bearer(worker.secret),
     });
 
     expect(refused.status).toBe(403);
-    expect((refused.body as { error: { code: string } }).error.code).toBe("not_a_cabinet_key");
+    expect((refused.body as { error: { code: string } }).error.code).toBe("not_a_dashboard_key");
     expect(await opensTheDoor(served, worker.secret)).toBe(true);
     expect(await opensTheDoor(served, made.secret)).toBe(true);
   });
@@ -748,8 +752,12 @@ describe("forgetting the key a call was made with", () => {
     const fresh = await dashboardKey(served, made.secret);
     const before = await keysInAll(harnessed, made.merchant_id);
 
-    const first = await served.call("DELETE", "/v0/keys/cabinet", { headers: bearer(made.secret) });
-    const again = await served.call("DELETE", "/v0/keys/cabinet", { headers: bearer(made.secret) });
+    const first = await served.call("DELETE", "/v0/keys/dashboard", {
+      headers: bearer(made.secret),
+    });
+    const again = await served.call("DELETE", "/v0/keys/dashboard", {
+      headers: bearer(made.secret),
+    });
 
     expect(first.body).toStrictEqual({ forgotten: true });
     expect(again.status).toBe(401);
@@ -996,7 +1004,13 @@ describe("the mark a call leaves on the key it was made with", () => {
     });
 
     expect(answered.status).toBe(200);
-    expect(said).toHaveBeenCalled();
+    // The line names the key and what was not written, not just any error.
+    expect(said).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `the last use of the key ${harnessed.merchant.keyId} was not written down`,
+      ),
+      expect.objectContaining({ message: "the database would not take it" }),
+    );
   });
 });
 

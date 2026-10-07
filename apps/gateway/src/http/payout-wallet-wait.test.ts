@@ -214,7 +214,7 @@ describe("a replacement on the live deployment", () => {
     const refused = await asking(served, harnessed.merchant.key, A_WALLET);
 
     expect(refused.status, JSON.stringify(refused.body)).toBe(403);
-    expect(refusalOf(refused.body).code).toBe("not_a_cabinet_key");
+    expect(refusalOf(refused.body).code).toBe("not_a_dashboard_key");
     expect(harnessed.announcer.announced).toStrictEqual([]);
     expect(await walletOf(served, harnessed.merchant.key)).toStrictEqual(before);
   });
@@ -396,7 +396,7 @@ describe("asking again", () => {
     const refused = await asking(served, harnessed.merchant.key, harnessed.merchant.wallet);
 
     expect(refused.status, JSON.stringify(refused.body)).toBe(403);
-    expect(refusalOf(refused.body).code).toBe("not_a_cabinet_key");
+    expect(refusalOf(refused.body).code).toBe("not_a_dashboard_key");
     expect(await walletOf(served, harnessed.merchant.key)).toStrictEqual(waiting);
     expect(harnessed.announcer.announced.map((one) => one.kind)).toStrictEqual(["wallet_change"]);
   });
@@ -748,7 +748,7 @@ describe("a new key on the live deployment", () => {
     });
     const dashboardKey = (registered.body as { secret: string }).secret;
 
-    const renewed = await served.call("POST", "/v0/keys/cabinet", {
+    const renewed = await served.call("POST", "/v0/keys/dashboard", {
       headers: bearer(dashboardKey),
     });
 

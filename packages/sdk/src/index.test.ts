@@ -149,7 +149,8 @@ describe("@nuanu-ai/agentify", () => {
     expect(manifest.license).toBe("Apache-2.0");
     expect(manifest.repository).toBeDefined();
     expect(manifest.engines?.node).toBeDefined();
-    expect(manifest.scripts?.prepack).toBeDefined();
+    // Defined is not enough: it is the build that puts `dist` in the tarball.
+    expect(manifest.scripts?.prepack).toBe("pnpm run build");
     expect(manifest.publishConfig?.access).toBe("public");
     expect(existsSync(new URL("../README.md", import.meta.url))).toBe(true);
     expect(existsSync(new URL("../LICENSE", import.meta.url))).toBe(true);

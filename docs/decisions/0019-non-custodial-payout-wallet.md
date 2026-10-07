@@ -45,7 +45,7 @@ merchant's reads the address, and only the dashboard sets it, with its own key,
 from inside the stack. The public door does not route a write to
 `/v0/payout-wallet`, so a copy of a dashboard's key, which its database holds as
 issued, sets nothing from outside; and the gateway refuses a key made for the
-merchant's own code under `not_a_cabinet_key`, the first address too. The
+merchant's own code under `not_a_dashboard_key`, the first address too. The
 dashboard's key ends with ADR-0030, and with it this route's place on `/v0`.
 
 The address is a nullable column on the merchant, set and read through

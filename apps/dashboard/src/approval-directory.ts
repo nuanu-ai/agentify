@@ -28,7 +28,7 @@ export class PostgresApprovalDirectory implements ApprovalDirectory {
     const found = await this.#pool.query<AccountBindingRow>(
       `select merchant_id as "merchantId",
               merchant_key is not null and merchant_key <> '' as "hasMerchantKey"
-         from cabinet_accounts
+         from dashboard_accounts
         where lower(btrim(email)) = $1
         limit 2`,
       [email],

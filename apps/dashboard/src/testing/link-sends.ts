@@ -20,7 +20,7 @@ export const rewindLinkSends = (
   rows: Record<string, Record<string, unknown>[]>,
   by: number = LINK_MIN_INTERVAL_MS,
 ): void => {
-  for (const row of rows.cabinet_link_sends ?? []) {
+  for (const row of rows.dashboard_link_sends ?? []) {
     row.sentAt = new Date(new Date(row.sentAt as Date).getTime() - by);
   }
 };

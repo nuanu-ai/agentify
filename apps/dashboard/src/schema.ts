@@ -34,12 +34,12 @@ const moment = (column: string) =>
  * insert is two statements with a gap between them, and two commands run at once
  * fit inside that gap.
  *
- * There is no password here. `cabinet_credentials` remains only because it is
+ * There is no password here. `dashboard_credentials` remains only because it is
  * part of Better Auth's complete schema and is empty after cutover. The two
  * merchant columns are ours rather than the component's.
  */
 export const accounts = pgTable(
-  "cabinet_accounts",
+  "dashboard_accounts",
   {
     id: text("id").primaryKey(),
     /** Lower case and trimmed, which is how it is written and how it is read. */
@@ -73,7 +73,7 @@ export const accounts = pgTable(
   },
   (table) => [
     check(
-      "cabinet_accounts_complete_merchant",
+      "dashboard_accounts_complete_merchant",
       sql`(
         (${table.merchantId} is null and ${table.merchantKey} is null)
         or
@@ -102,7 +102,7 @@ export const accounts = pgTable(
  * happened to delete it.
  */
 export const sessions = pgTable(
-  "cabinet_sessions",
+  "dashboard_sessions",
   {
     id: text("id").primaryKey(),
     token: text("token").notNull().unique(),
@@ -131,8 +131,8 @@ export const sessions = pgTable(
   (table) => [
     // Ending every session one person has reads by the first, and the sweep of
     // sessions whose time is up reads by the second.
-    index("cabinet_sessions_account_idx").on(table.userId),
-    index("cabinet_sessions_expires_idx").on(table.expiresAt),
+    index("dashboard_sessions_account_idx").on(table.userId),
+    index("dashboard_sessions_expires_idx").on(table.expiresAt),
   ],
 );
 
@@ -144,7 +144,7 @@ export const sessions = pgTable(
  * operation creates a row here and no accepted sign-in path reads one.
  */
 export const credentials = pgTable(
-  "cabinet_credentials",
+  "dashboard_credentials",
   {
     id: text("id").primaryKey(),
     userId: text("user_id")
@@ -172,7 +172,7 @@ export const credentials = pgTable(
     createdAt: moment("created_at"),
     updatedAt: moment("updated_at"),
   },
-  (table) => [index("cabinet_credentials_account_idx").on(table.userId)],
+  (table) => [index("dashboard_credentials_account_idx").on(table.userId)],
 );
 
 /**
@@ -186,7 +186,7 @@ export const credentials = pgTable(
  * that no account has, which is how asking for a link creates no person.
  */
 export const verifications = pgTable(
-  "cabinet_verifications",
+  "dashboard_verifications",
   {
     id: text("id").primaryKey(),
     identifier: text("identifier").notNull(),
@@ -195,7 +195,7 @@ export const verifications = pgTable(
     createdAt: moment("created_at"),
     updatedAt: moment("updated_at"),
   },
-  (table) => [index("cabinet_verifications_identifier_idx").on(table.identifier)],
+  (table) => [index("dashboard_verifications_identifier_idx").on(table.identifier)],
 );
 
 /**
@@ -206,7 +206,7 @@ export const verifications = pgTable(
  * decision reads by the compound index below.
  */
 export const linkSends = pgTable(
-  "cabinet_link_sends",
+  "dashboard_link_sends",
   {
     id: text("id").primaryKey(),
     emailHash: text("email_hash").notNull(),
@@ -215,9 +215,9 @@ export const linkSends = pgTable(
     expiresAt: moment("expires_at"),
   },
   (table) => [
-    index("cabinet_link_sends_address_idx").on(table.emailHash, table.purpose, table.sentAt),
-    index("cabinet_link_sends_expires_idx").on(table.expiresAt),
-    check("cabinet_link_sends_purpose", sql`${table.purpose} in ('cabinet', 'report')`),
+    index("dashboard_link_sends_address_idx").on(table.emailHash, table.purpose, table.sentAt),
+    index("dashboard_link_sends_expires_idx").on(table.expiresAt),
+    check("dashboard_link_sends_purpose", sql`${table.purpose} in ('dashboard', 'report')`),
   ],
 );
 
@@ -231,15 +231,15 @@ export const linkSends = pgTable(
  * dashboard identity component.
  */
 export const reportIdentitySecrets = pgTable(
-  "cabinet_report_identity_secrets",
+  "dashboard_report_identity_secrets",
   {
     id: text("id").primaryKey(),
     digestKey: text("digest_key").notNull(),
     createdAt: moment("created_at"),
   },
   (table) => [
-    check("cabinet_report_identity_secrets_singleton", sql`${table.id} = 'digest-v1'`),
-    check("cabinet_report_identity_secrets_key_length", sql`length(${table.digestKey}) = 43`),
+    check("dashboard_report_identity_secrets_singleton", sql`${table.id} = 'digest-v1'`),
+    check("dashboard_report_identity_secrets_key_length", sql`length(${table.digestKey}) = 43`),
   ],
 );
 
@@ -252,7 +252,7 @@ export const reportIdentitySecrets = pgTable(
  * resolving today's owner or deleting data created later.
  */
 export const reportDeletionTombstones = pgTable(
-  "cabinet_report_deletion_tombstones",
+  "dashboard_report_deletion_tombstones",
   {
     operationId: text("operation_id").primaryKey(),
     operationDigest: text("operation_digest").notNull(),
@@ -262,7 +262,7 @@ export const reportDeletionTombstones = pgTable(
   },
   (table) => [
     check(
-      "cabinet_report_deletion_tombstones_result",
+      "dashboard_report_deletion_tombstones_result",
       sql`${table.result} in ('deleted', 'already_absent', 'retained')`,
     ),
   ],
@@ -288,7 +288,7 @@ export const reportDeletionTombstones = pgTable(
  * choosing.
  */
 export const wooGrants = pgTable(
-  "cabinet_woo_grants",
+  "dashboard_woo_grants",
   {
     /** The token itself, as it travelled. Unguessable, and spent once. */
     token: text("token").primaryKey(),
@@ -300,7 +300,7 @@ export const wooGrants = pgTable(
     createdAt: moment("created_at"),
   },
   // Kept for deployments that inspect expired attempts while reconciling old data.
-  (table) => [index("cabinet_woo_grants_expires_idx").on(table.expiresAt)],
+  (table) => [index("dashboard_woo_grants_expires_idx").on(table.expiresAt)],
 );
 
 /**
@@ -322,7 +322,7 @@ export const wooGrants = pgTable(
  * the account is what the Connect was pressed from and what the callback's
  * token is bound to.
  */
-export const wooShops = pgTable("cabinet_woo_shops", {
+export const wooShops = pgTable("dashboard_woo_shops", {
   accountId: text("account_id")
     .primaryKey()
     .references(() => accounts.id, { onDelete: "cascade" }),
@@ -345,7 +345,7 @@ export const wooShops = pgTable("cabinet_woo_shops", {
 
 /** Delivery-critical Woo facts accepted under one gateway price question. */
 export const wooQuotes = pgTable(
-  "cabinet_woo_quotes",
+  "dashboard_woo_quotes",
   {
     priceId: text("price_id").primaryKey(),
     accountId: text("account_id")
@@ -357,7 +357,7 @@ export const wooQuotes = pgTable(
     expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
     createdAt: moment("created_at"),
   },
-  (table) => [index("cabinet_woo_quotes_account_idx").on(table.accountId)],
+  (table) => [index("dashboard_woo_quotes_account_idx").on(table.accountId)],
 );
 
 /**
@@ -376,7 +376,7 @@ export const wooQuotes = pgTable(
  * second order in a merchant's shop is a second thing they pick, pack and post.
  */
 export const wooOrders = pgTable(
-  "cabinet_woo_orders",
+  "dashboard_woo_orders",
   {
     /** Our own order identifier, which is what a repeat arrives carrying. */
     orderId: text("order_id").primaryKey(),
@@ -395,5 +395,5 @@ export const wooOrders = pgTable(
     attemptedAt: moment("attempted_at"),
     placedAt: timestamp("placed_at", { withTimezone: true, mode: "date" }),
   },
-  (table) => [index("cabinet_woo_orders_account_idx").on(table.accountId)],
+  (table) => [index("dashboard_woo_orders_account_idx").on(table.accountId)],
 );

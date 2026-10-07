@@ -265,7 +265,7 @@ export async function issueDashboardKey(
       merchantId,
       label: DASHBOARD_KEY_LABEL,
       digest: keyDigest(secret),
-      purpose: "cabinet",
+      purpose: "dashboard",
     },
     at,
   );

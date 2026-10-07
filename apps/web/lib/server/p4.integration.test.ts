@@ -109,7 +109,7 @@ const anonymousToken = "p4-attribution-anonymous-token";
 
 function latestLink(email: string): SentLink {
   const record = sentLinks.findLast((candidate) => candidate.email === email);
-  if (!record) throw new Error("cabinet_test_link_missing");
+  if (!record) throw new Error("dashboard_test_link_missing");
   return record;
 }
 

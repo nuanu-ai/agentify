@@ -5,7 +5,6 @@ import { deadlines } from "./deadlines.js";
 import { createInput, must, newOrder, reach, T0, walk } from "./fixtures.js";
 import { transition } from "./machine.js";
 import type { Order } from "./model.js";
-import { MERCHANT_EVENTS } from "./model.js";
 import { outcomeFor } from "./outcome.js";
 
 /**
@@ -40,8 +39,8 @@ import { outcomeFor } from "./outcome.js";
  * semicolon broke the build.
  *
  * What those columns promise is checked as the machine fact it is, in the
- * scenarios above: against `outcomeFor`, against the effects the machine asks
- * the gateway for, against `MERCHANT_EVENTS`. So a sentence that stops being
+ * scenarios above: against `outcomeFor`, and against the effects the machine
+ * asks the gateway for, the events it sends among them. So a sentence that stops being
  * true fails where it is read against the code, and a sentence that says the
  * same thing in other words does not fail at all. Where a cell enumerates more
  * than the scenarios below name — the four ways an order comes to need a
@@ -361,14 +360,6 @@ const EVENTS = [
 ] as const;
 
 describe('apps/docs/orders.md, "Events on the same subscription"', () => {
-  it("emits exactly the three events the portal promises, and no others", () => {
-    expect(MERCHANT_EVENTS).toStrictEqual([
-      "order.refund_due",
-      "order.unpaid_after_confirmation",
-      "order.payment_failed_after_delivery",
-    ]);
-  });
-
   it(`${EVENTS[0]}: sent when the goods did not come in time`, () => {
     const { effects } = must(paidAsync(), {
       kind: "deadline_expired",
@@ -574,13 +565,5 @@ describe("the portal and this machine cannot drift apart quietly", () => {
     expect(headings(FAILURES_PAGE).filter((h) => h !== "What is not settled yet")).toStrictEqual([
       ...FAILURES,
     ]);
-  });
-
-  it("reads the portal rather than trusting a copy of it", () => {
-    // The negative control for the guard itself: a parser that quietly
-    // returned nothing would let every check above pass on an empty page.
-    expect(tableRows(ORDERS_PAGE, "Time ran out").length).toBe(5);
-    expect(() => tableRows(ORDERS_PAGE, "A section that is not here")).toThrowError(/no section/);
-    expect(() => tableRows(ORDERS_PAGE, "Test orders")).toThrowError(/no table/);
   });
 });

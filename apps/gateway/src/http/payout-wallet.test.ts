@@ -308,7 +308,7 @@ describe("who may set it", () => {
 
     expect(refused.status, JSON.stringify(refused.body)).toBe(403);
     const error = refusalOf(refused.body);
-    expect(error.code).toBe("not_a_cabinet_key");
+    expect(error.code).toBe("not_a_dashboard_key");
     expect(error.retryable).toBe(false);
     // Where the caller goes instead, which is the whole use of the refusal.
     expect(error.message).toMatch(/dashboard/i);
@@ -330,7 +330,7 @@ describe("who may set it", () => {
     const refused = await setPayoutWallet(served, own, A_WALLET);
 
     expect(refused.status, JSON.stringify(refused.body)).toBe(403);
-    expect(refusalOf(refused.body).code).toBe("not_a_cabinet_key");
+    expect(refusalOf(refused.body).code).toBe("not_a_dashboard_key");
     // There is no wallet yet, so the refusal must not say sales are being paid
     // anywhere.
     expect(refusalOf(refused.body).message).not.toMatch(/paid where/i);

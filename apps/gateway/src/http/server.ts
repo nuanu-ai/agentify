@@ -682,8 +682,8 @@ const RETRYABLE: Readonly<Record<ErrorCode, boolean>> = {
   not_authorised: false,
   no_such_key: false,
   not_invited: false,
-  not_a_cabinet_key: false,
-  key_made_for_a_cabinet: false,
+  not_a_dashboard_key: false,
+  key_made_for_a_dashboard: false,
   key_opened_this_call: false,
 
   // What is being asked about, and whether it is there. A route that does not

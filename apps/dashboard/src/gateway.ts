@@ -17,13 +17,13 @@
 
 import {
   API_ROUTES,
-  CabinetKeySchema,
   type CardInput,
+  DashboardKeySchema,
   type Delivery,
   DisabledKeySchema,
   expandPath,
-  type ForgottenCabinetKey,
-  ForgottenCabinetKeySchema,
+  type ForgottenDashboardKey,
+  ForgottenDashboardKeySchema,
   type HandlerAnswer,
   type IssuedKey,
   IssuedKeySchema,
@@ -105,7 +105,7 @@ export interface GatewayClient {
    * stopped being the one an account signs in with, never before: a row left
    * naming a key this removed is somebody locked out.
    */
-  forgetDashboardKey(): Promise<Answer<ForgottenCabinetKey>>;
+  forgetDashboardKey(): Promise<Answer<ForgottenDashboardKey>>;
   /** The name buyers read beside this merchant's products, or null for none. */
   sellerName(): Promise<Answer<string | null>>;
   setSellerName(name: string): Promise<Answer<string | null>>;
@@ -284,12 +284,12 @@ export const gatewayFor = (
     // caller does with this is write it onto a row, and a row written from
     // `document.secret` is a row to edit the day the answer grows a field.
     issueDashboardKey: async () => {
-      const answered = await call(API_ROUTES.issue_cabinet_key, CabinetKeySchema);
+      const answered = await call(API_ROUTES.issue_dashboard_key, DashboardKeySchema);
       return answered.ok ? { ok: true, document: answered.document.secret } : answered;
     },
     // Not unwrapped, unlike the answers above: the document says the one thing
     // this call has to say, and there is no field under it a screen wants.
-    forgetDashboardKey: () => call(API_ROUTES.forget_cabinet_key, ForgottenCabinetKeySchema),
+    forgetDashboardKey: () => call(API_ROUTES.forget_dashboard_key, ForgottenDashboardKeySchema),
     // Unwrapped here for the same reason the key above is: the contract carries
     // the name inside an object so the answer can grow a field beside it, and a
     // screen that reaches through the wrapper is a screen to edit the day it

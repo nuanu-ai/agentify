@@ -70,7 +70,7 @@ const inert = (label: string): string => label.replace(/[.:/@]/g, (mark) => `${m
 
 /** A key, the way a person reading the message finds it in the dashboard. */
 const named = (key: AskedWith): string =>
-  key.kind === "cabinet"
+  key.kind === "dashboard"
     ? "the key your dashboard calls with"
     : `the key ${key.id}, named "${inert(key.label)}", one of the keys issued for your own code`;
 

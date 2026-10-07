@@ -29,7 +29,7 @@ import { postgresWooShops } from "./woo-shops.js";
 
 const WANTED = (() => {
   const url = new URL(testDatabaseUrl());
-  url.pathname = "/agentify_test_cabinet_forget";
+  url.pathname = "/agentify_test_dashboard_forget";
   return url.toString();
 })();
 const databaseUrl = await readyDatabase(WANTED);
@@ -208,17 +208,17 @@ if (databaseUrl === null) {
       expect(forgotten.output).not.toContain(AUTH_SECRET);
       expect(forgotten.output).not.toContain(databaseUrl);
 
-      expect(await countOf("cabinet_accounts", "email", EMAIL)).toBe(0);
+      expect(await countOf("dashboard_accounts", "email", EMAIL)).toBe(0);
       expect(await countOf("merchants", "id", merchantId)).toBe(0);
       expect(await countOf("merchant_keys", "merchant_id", merchantId)).toBe(0);
       expect(await countOf("cards", "merchant_id", merchantId)).toBe(0);
-      expect(await countOf("cabinet_sessions", "user_id", person.id)).toBe(0);
-      expect(await countOf("cabinet_woo_shops", "account_id", person.id)).toBe(0);
-      expect(await countOf("cabinet_woo_grants", "account_id", person.id)).toBe(0);
-      expect(await countOf("cabinet_woo_quotes", "account_id", person.id)).toBe(0);
+      expect(await countOf("dashboard_sessions", "user_id", person.id)).toBe(0);
+      expect(await countOf("dashboard_woo_shops", "account_id", person.id)).toBe(0);
+      expect(await countOf("dashboard_woo_grants", "account_id", person.id)).toBe(0);
+      expect(await countOf("dashboard_woo_quotes", "account_id", person.id)).toBe(0);
 
       // The bystander keeps everything, the wait before their next link included.
-      expect(await countOf("cabinet_accounts", "email", BYSTANDER)).toBe(1);
+      expect(await countOf("dashboard_accounts", "email", BYSTANDER)).toBe(1);
       expect(await countOf("merchants", "id", bystander.merchantId)).toBe(1);
       expect(await countOf("cards", "merchant_id", bystander.merchantId)).toBe(1);
       expect((await identity.requestLink(BYSTANDER, "default")).status).toBe("cooldown");
@@ -265,7 +265,7 @@ if (databaseUrl === null) {
       expect(refused.output).toMatch(words);
       expect(refused.output).toMatch(/money/i);
       expect(refused.output).toMatch(/nothing was removed/i);
-      expect(await countOf("cabinet_accounts", "id", person.id)).toBe(1);
+      expect(await countOf("dashboard_accounts", "id", person.id)).toBe(1);
       expect(await countOf("merchants", "id", merchantId)).toBe(1);
       expect(await countOf("cards", "merchant_id", merchantId)).toBe(1);
       expect((await identity.requestLink(EMAIL, "default")).status).toBe("cooldown");
@@ -285,8 +285,8 @@ if (databaseUrl === null) {
       expect(refused.output).toContain(merchantId);
       expect(refused.output).toMatch(/other account/i);
       expect(refused.output).toMatch(/nothing was removed/i);
-      expect(await countOf("cabinet_accounts", "id", person.id)).toBe(1);
-      expect(await countOf("cabinet_accounts", "id", colleague.id)).toBe(1);
+      expect(await countOf("dashboard_accounts", "id", person.id)).toBe(1);
+      expect(await countOf("dashboard_accounts", "id", colleague.id)).toBe(1);
       expect(await countOf("merchants", "id", merchantId)).toBe(1);
     });
 
@@ -301,7 +301,7 @@ if (databaseUrl === null) {
       expect(refused.output).toContain("nobody@example.com");
       expect(refused.output).toMatch(/no account/i);
       expect(refused.output).not.toContain("\u001b");
-      expect(await countOf("cabinet_accounts", "id", bystander.person.id)).toBe(1);
+      expect(await countOf("dashboard_accounts", "id", bystander.person.id)).toBe(1);
       expect(await countOf("merchants", "id", bystander.merchantId)).toBe(1);
     });
 
@@ -313,7 +313,7 @@ if (databaseUrl === null) {
       expect(refused.status).not.toBe(0);
       expect(refused.output).toMatch(/live network/i);
       expect(refused.output).not.toContain(databaseUrl);
-      expect(await countOf("cabinet_accounts", "id", person.id)).toBe(1);
+      expect(await countOf("dashboard_accounts", "id", person.id)).toBe(1);
       expect(await countOf("merchants", "id", merchantId)).toBe(1);
       expect(await countOf("cards", "merchant_id", merchantId)).toBe(1);
     });
@@ -326,13 +326,13 @@ if (databaseUrl === null) {
       expect(forgotten.code, forgotten.output).toBe(0);
       expect(forgotten.output).toMatch(/merchant[^\n]*none/i);
       expect(forgotten.output).not.toMatch(/operator/i);
-      expect(await countOf("cabinet_accounts", "id", person.id)).toBe(0);
+      expect(await countOf("dashboard_accounts", "id", person.id)).toBe(0);
       expect((await identity.requestLink(EMAIL, "default")).status).toBe("accepted");
     });
 
     it("says a merchant the gateway no longer holds was already absent, not removed", async () => {
       await pool.query(
-        `insert into cabinet_accounts
+        `insert into dashboard_accounts
            (id, email, email_verified, name, created_at, updated_at, merchant_id, merchant_key)
          values ('acc_orphan', $1, true, '', now(), now(), 'mch_gone', $2)`,
         [EMAIL, "k".repeat(40)],
@@ -343,7 +343,7 @@ if (databaseUrl === null) {
       expect(forgotten.code, forgotten.output).toBe(0);
       expect(forgotten.output).toContain("mch_gone");
       expect(forgotten.output).toMatch(/already absent/i);
-      expect(await countOf("cabinet_accounts", "id", "acc_orphan")).toBe(0);
+      expect(await countOf("dashboard_accounts", "id", "acc_orphan")).toBe(0);
     });
 
     it("says a database failure before the commit removed nothing, and prints no detail", async () => {
@@ -360,7 +360,7 @@ if (databaseUrl === null) {
       expect(failed.code).not.toBe(0);
       expect(failed.output).toMatch(/removed nothing/i);
       expect(failed.output).not.toMatch(/detail that must stay/i);
-      expect(await countOf("cabinet_accounts", "id", person.id)).toBe(1);
+      expect(await countOf("dashboard_accounts", "id", person.id)).toBe(1);
       expect(await countOf("cards", "merchant_id", merchantId)).toBe(1);
     });
 
@@ -370,7 +370,7 @@ if (databaseUrl === null) {
         create function refuse_at_commit() returns trigger language plpgsql as $$
         begin raise exception 'the commit failed'; end $$`);
       await pool.query(`
-        create constraint trigger refuse_at_commit after delete on cabinet_accounts
+        create constraint trigger refuse_at_commit after delete on dashboard_accounts
         deferrable initially deferred for each row execute function refuse_at_commit()`);
 
       const failed = await forget(EMAIL);

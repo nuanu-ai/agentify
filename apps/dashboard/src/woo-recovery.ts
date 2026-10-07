@@ -98,6 +98,11 @@ export const recoverWooOrder = async (
     keysOf(connection),
     record.facts.merchantItemId,
   );
+  if (!inspected.ok && inspected.again) {
+    return unresolved(
+      "The shop did not answer the product check. Nothing was changed, and the recovery can be run again.",
+    );
+  }
   if (!inspected.ok || !sameProduct(inspected.product, record.facts)) {
     return refused("The product no longer matches the accepted WooCommerce sale.");
   }

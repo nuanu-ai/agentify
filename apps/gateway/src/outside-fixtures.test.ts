@@ -617,7 +617,7 @@ describe("a purchase from the outside", () => {
       );
       expect(theDashboards.status).toBe(409);
       expect((theDashboards.body as { error: { code: string } }).error.code).toBe(
-        "key_made_for_a_cabinet",
+        "key_made_for_a_dashboard",
       );
 
       const revoked = await gateway.call(

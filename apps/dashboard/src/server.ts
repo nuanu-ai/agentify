@@ -1256,7 +1256,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     response: Response,
     refused: Answer<unknown>,
   ): Promise<void> =>
-    !refused.ok && refused.code === "not_a_cabinet_key"
+    !refused.ok && refused.code === "not_a_dashboard_key"
       ? await withNotice(request, response, ACCOUNT_KEY_CANNOT_SET_THE_WALLET, 403)
       : trouble(response, base, refused);
 

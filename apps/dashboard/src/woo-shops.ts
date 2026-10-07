@@ -114,25 +114,19 @@ export interface WooShops {
   /** Writes down a Connect that is under way. */
   beginGrant(grant: WooGrant): Promise<void>;
   /**
-   * Spends a token and hands back the Connect it named, or null.
+   * Consumes the still-current grant and writes its connection as one
+   * account-serialised operation, or answers null.
+   *
+   * A callback is unauthenticated and may arrive after the merchant has begun
+   * another Connect. Splitting consume from connect would let that older
+   * callback overwrite the newer intent in between the two writes.
    *
    * Null covers every way of not being a live Connect and does not distinguish
    * them: a token nobody issued, a token already spent, a token whose fifteen
    * minutes are up. The caller has the same answer for all three, and telling
    * them apart on a route anybody can post to would be answering questions
-   * about somebody else's account.
-   *
-   * A live row goes atomically. An expired row stays so the owner can still see
-   * the attempt that ended; beginning their next Connect replaces it.
-   */
-  spendGrant(token: string, now: Date): Promise<WooGrant | null>;
-  /**
-   * Consumes the still-current grant and writes its connection as one
-   * account-serialised operation.
-   *
-   * A callback is unauthenticated and may arrive after the merchant has begun
-   * another Connect. Splitting consume from connect would let that older
-   * callback overwrite the newer intent in between the two writes.
+   * about somebody else's account. An expired row stays so the owner can still
+   * see the attempt that ended; beginning their next Connect replaces it.
    */
   connectFromGrant(
     token: string,
@@ -248,25 +242,6 @@ export const postgresWooShops = (pool: Pool): WooShops => {
           createdAt: grant.startedAt,
         });
       });
-    },
-
-    async spendGrant(token, now) {
-      // One statement, so that two callbacks carrying one token cannot both
-      // find a row: the delete is the claim, and only one of them deletes it.
-      const [row] = await db
-        .delete(wooGrants)
-        .where(and(eq(wooGrants.token, token), gt(wooGrants.expiresAt, now)))
-        .returning();
-      if (row === undefined) {
-        return null;
-      }
-      return {
-        token: row.token,
-        accountId: row.accountId,
-        shopUrl: row.shopUrl,
-        startedAt: row.createdAt,
-        expiresAt: row.expiresAt,
-      };
     },
 
     async connectFromGrant(token, keys, now) {
@@ -583,15 +558,6 @@ export const memoryWooShops = (): WooShops => {
         }
       }
       grants.set(grant.token, grant);
-    },
-
-    async spendGrant(token, now) {
-      const found = grants.get(token);
-      if (found === undefined || found.expiresAt.getTime() <= now.getTime()) {
-        return null;
-      }
-      grants.delete(token);
-      return found;
     },
 
     async connectFromGrant(token, keys, now) {

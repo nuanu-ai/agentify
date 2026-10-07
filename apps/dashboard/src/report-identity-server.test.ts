@@ -37,12 +37,12 @@ function config() {
 
 function identityWith(postman: Postman) {
   const rows: Record<string, Record<string, unknown>[]> = {
-    cabinet_accounts: [],
-    cabinet_sessions: [],
-    cabinet_credentials: [],
-    cabinet_verifications: [],
-    cabinet_link_sends: [],
-    cabinet_report_deletion_tombstones: [],
+    dashboard_accounts: [],
+    dashboard_sessions: [],
+    dashboard_credentials: [],
+    dashboard_verifications: [],
+    dashboard_link_sends: [],
+    dashboard_report_deletion_tombstones: [],
   };
   return { identity: identityFor(config(), { rows, postman }), rows };
 }
@@ -240,23 +240,23 @@ describe("the dashboard's internal route for the scanner", () => {
     if (opened.status !== "opened") throw new Error("the report link did not open");
     const cookie = opened.setCookies.map((line) => line.split(";")[0]).join("; ");
     const aDayAndAnHourAgo = Date.now() - 25 * 60 * 60 * 1_000;
-    for (const session of rows.cabinet_sessions ?? []) {
+    for (const session of rows.dashboard_sessions ?? []) {
       session.expiresAt = new Date(aDayAndAnHourAgo + 30 * 24 * 60 * 60 * 1_000);
     }
-    const before = structuredClone(rows.cabinet_sessions);
+    const before = structuredClone(rows.dashboard_sessions);
 
     const quiet = readSessionResponseSchema.parse(
       await (await post(url, { operation: "session", cookie, renew: false })).json(),
     );
     expect(quiet).toMatchObject({ status: "signed_in", set_cookie: [] });
-    expect(rows.cabinet_sessions).toStrictEqual(before);
+    expect(rows.dashboard_sessions).toStrictEqual(before);
 
     const renewed = readSessionResponseSchema.parse(
       await (await post(url, { operation: "session", cookie, renew: true })).json(),
     );
     if (renewed.status !== "signed_in") throw new Error("the session was not read");
     expect(renewed.set_cookie.some((line) => line.startsWith(`${COOKIE}=`))).toBe(true);
-    expect(new Date(rows.cabinet_sessions?.[0]?.expiresAt as Date).getTime()).toBeGreaterThan(
+    expect(new Date(rows.dashboard_sessions?.[0]?.expiresAt as Date).getTime()).toBeGreaterThan(
       Date.now() + 29 * 24 * 60 * 60 * 1_000,
     );
   });
@@ -284,7 +284,7 @@ describe("the dashboard's internal route for the scanner", () => {
     if (opened.status !== "opened") throw new Error("the sign-in link did not open");
     const cookie = opened.setCookies.map((line) => line.split(";")[0]).join("; ");
     const aDayAndAnHourAgo = Date.now() - 25 * 60 * 60 * 1_000;
-    for (const session of rows.cabinet_sessions ?? []) {
+    for (const session of rows.dashboard_sessions ?? []) {
       session.expiresAt = new Date(aDayAndAnHourAgo + 30 * 24 * 60 * 60 * 1_000);
     }
     const server = buildReportIdentityApp(SECRET, identity, slowRenewal).listen(0, "127.0.0.1");

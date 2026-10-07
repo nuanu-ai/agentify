@@ -3,7 +3,7 @@
  * wallet their sales are paid into, and the keys they open the door with.
  *
  * The first two belong together because registering is the act that produces
- * both: one call makes the merchant and the key its cabinet will call as them
+ * both: one call makes the merchant and the key its dashboard will call as them
  * with, and what comes back carries that key once. Split across two files, a
  * reader working out what registering leaves a merchant holding would have to
  * read both to find that it is a key of a kind no list here carries. The name is here for the same reason read the other way round — it is a
@@ -180,8 +180,8 @@ export const MerchantKeySchema = z
  * broken.
  *
  * It is not always one of the keys beside it, and that is the thing a reader is
- * likeliest to assume and be wrong about. A cabinet calls with a key made for a
- * cabinet, and those are in nobody's list, so a client that looked this
+ * likeliest to assume and be wrong about. A dashboard calls with a key made for a
+ * dashboard, and those are in nobody's list, so a client that looked this
  * identifier up among the rows would find nothing — which is an answer rather
  * than an error, and a screen has to be built for it.
  *
@@ -194,7 +194,7 @@ export const MerchantKeyListSchema = z
      * The keys this merchant made for their own code, the revoked ones among
      * them.
      *
-     * The keys a cabinet holds are not here and never will be: the merchant did
+     * The keys a dashboard holds are not here and never will be: the merchant did
      * not issue one and has nothing to do with one. A list is what somebody
      * acts on, and a row nobody has any business acting on is a row that only
      * raises the question of why it will not go away.
@@ -206,7 +206,7 @@ export const MerchantKeyListSchema = z
   })
   .meta({
     description:
-      "The keys one merchant made for their own code, working and revoked together, and the identifier of the key this very call was made with. That last field is here because a merchant cannot disable the key they are holding: without it a screen would offer a button the gateway refuses. It is not always among the keys listed — a cabinet calls with a key of its own, and those are in no list here — so a client matching it against the rows has to be built for finding none. The keys a cabinet holds are left out entirely: they are not issued by the merchant and cannot be revoked by them. This document does not say whether it is the whole list either — paging is not designed, and the absence of a field about it is not a promise that there is no more.",
+      "The keys one merchant made for their own code, working and revoked together, and the identifier of the key this very call was made with. That last field is here because a merchant cannot disable the key they are holding: without it a screen would offer a button the gateway refuses. It is not always among the keys listed — a dashboard calls with a key of its own, and those are in no list here — so a client matching it against the rows has to be built for finding none. The keys a dashboard holds are left out entirely: they are not issued by the merchant and cannot be revoked by them. This document does not say whether it is the whole list either — paging is not designed, and the absence of a field about it is not a promise that there is no more.",
   });
 
 /** What a merchant sends to have a key made. */
@@ -235,7 +235,7 @@ export const IssuedKeySchema = z
   })
   .meta({
     description:
-      "A key as it comes back from being issued: the row a merchant will see in their list from now on, and the key itself. It carries the key once. Three answers in this contract carry one — this, what registering gives back, and the key a cabinet asks for — and nothing else does, because what is written down on our side is a digest. A key that is lost is replaced by a new one rather than read back.",
+      "A key as it comes back from being issued: the row a merchant will see in their list from now on, and the key itself. It carries the key once. Three answers in this contract carry one — this, what registering gives back, and the key a dashboard asks for — and nothing else does, because what is written down on our side is a digest. A key that is lost is replaced by a new one rather than read back.",
   });
 
 /**
@@ -255,10 +255,10 @@ export const DisabledKeySchema = z
   });
 
 /**
- * A key made for a cabinet, which is the secret and nothing else.
+ * A key made for a dashboard, which is the secret and nothing else.
  *
  * Every other answer that makes a key carries the row beside it, and this one
- * cannot. A key made for a cabinet is in no merchant's list — they did not
+ * cannot. A key made for a dashboard is in no merchant's list — they did not
  * issue it and have no reason to know it exists — so an identifier here would
  * name a row that no screen of theirs draws and no call of theirs reaches: not
  * the list it is absent from, and not the revoking, which takes the keys a
@@ -266,14 +266,14 @@ export const DisabledKeySchema = z
  * is put it on the row of whoever just signed in, and that is the whole of what
  * it needs.
  */
-export const CabinetKeySchema = z
+export const DashboardKeySchema = z
   .strictObject({
     /** The only moment this is readable. Nothing on our side keeps it. */
     secret: KeySecretSchema,
   })
   .meta({
     description:
-      "A key made for a cabinet to call as one merchant, carried once and readable nowhere afterwards. There is no row beside it and there is nothing to put one: a key made this way is in no merchant's list of keys, and the call that revokes a key refuses this kind by name — so an identifier for it would name something no answer shows and no call acts on. Whoever asked for this holds it until they ask for another.",
+      "A key made for a dashboard to call as one merchant, carried once and readable nowhere afterwards. There is no row beside it and there is nothing to put one: a key made this way is in no merchant's list of keys, and the call that revokes a key refuses this kind by name — so an identifier for it would name something no answer shows and no call acts on. Whoever asked for this holds it until they ask for another.",
   });
 
 /**
@@ -286,7 +286,7 @@ export const CabinetKeySchema = z
  * is done, and it is said in a field rather than left to a status code so that
  * a client reads one document and not two kinds of evidence.
  */
-export const ForgottenCabinetKeySchema = z
+export const ForgottenDashboardKeySchema = z
   .strictObject({
     /** The key this call was made with no longer exists. */
     forgotten: z.literal(true),
@@ -345,7 +345,7 @@ export const SellerNameSchema = z
  * which is this same call, or an end to selling, which is the pause — and the
  * pause leaves their cards where they can find them again.
  *
- * So it is two documents rather than one, and a cabinet still reads back the
+ * So it is two documents rather than one, and a dashboard still reads back the
  * shape it sent. The message on a null is written here rather than left to a
  * type error, because "expected string, received null" describes the shape and
  * says nothing about which act the sender was reaching for.
@@ -405,7 +405,7 @@ export const SellerNameRequestSchema = z
  *
  * It exists because a replacement does not apply at once where the money is
  * real (ADR-0019). The address a merchant is paid at is the one setting whose
- * change redirects money, and any key of theirs reaches it — the cabinet's, or
+ * change redirects money, and any key of theirs reaches it — the dashboard's, or
  * one sitting in their own server's environment — so on the live deployment a
  * replacement is told to every account of the merchant first and takes effect
  * forty-eight hours after that. What this document says is the two facts a
@@ -550,10 +550,10 @@ export const RegistrationRequestSchema = z
   });
 
 /**
- * What registering answers with: a merchant and the key their cabinet will call
+ * What registering answers with: a merchant and the key their dashboard will call
  * as them with.
  *
- * The key is made for a cabinet rather than for the merchant's own code, and
+ * The key is made for a dashboard rather than for the merchant's own code, and
  * that is what the caller of this route is. So it is in no list: a merchant who
  * has just registered has no keys of their own at all, and the first one they
  * do have is one they ask for. No row travels beside the secret for the same
@@ -574,7 +574,7 @@ export const RegisteredMerchantSchema = z
   })
   .meta({
     description:
-      "What registering produced: the merchant, and the key whoever registered them will call as them with. The key is readable here and nowhere afterwards, so whoever made this call is the only party that can keep it. It is a key made for a cabinet rather than one of the merchant's own: it appears in no list of their keys and the call that revokes a key refuses its kind by name, so no row for it comes back here either. A merchant who has just registered has no keys of their own until they ask for one. The merchant is listed under no name yet and this answer carries none — the name their products are sold under is chosen afterwards, and until it is, publishing a card is refused. What this answer does not carry either is any notion of an account or a session: registering makes a merchant and a key, and whatever signs a person in is on the other side of this call.",
+      "What registering produced: the merchant, and the key whoever registered them will call as them with. The key is readable here and nowhere afterwards, so whoever made this call is the only party that can keep it. It is a key made for a dashboard rather than one of the merchant's own: it appears in no list of their keys and the call that revokes a key refuses its kind by name, so no row for it comes back here either. A merchant who has just registered has no keys of their own until they ask for one. The merchant is listed under no name yet and this answer carries none — the name their products are sold under is chosen afterwards, and until it is, publishing a card is refused. What this answer does not carry either is any notion of an account or a session: registering makes a merchant and a key, and whatever signs a person in is on the other side of this call.",
   });
 
 export type SellerName = z.infer<typeof SellerNameSchema>;
@@ -587,7 +587,7 @@ export type MerchantKeyList = z.infer<typeof MerchantKeyListSchema>;
 export type IssueKeyRequest = z.infer<typeof IssueKeyRequestSchema>;
 export type IssuedKey = z.infer<typeof IssuedKeySchema>;
 export type DisabledKey = z.infer<typeof DisabledKeySchema>;
-export type CabinetKey = z.infer<typeof CabinetKeySchema>;
-export type ForgottenCabinetKey = z.infer<typeof ForgottenCabinetKeySchema>;
+export type DashboardKey = z.infer<typeof DashboardKeySchema>;
+export type ForgottenDashboardKey = z.infer<typeof ForgottenDashboardKeySchema>;
 export type RegistrationRequest = z.infer<typeof RegistrationRequestSchema>;
 export type RegisteredMerchant = z.infer<typeof RegisteredMerchantSchema>;

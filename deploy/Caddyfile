@@ -223,7 +223,7 @@
 	# any key of the merchant's.
 	@gateway {
 		path /v0 /v0/* /x402 /x402/* /healthz
-		not path /v0/merchants /v0/merchants/* /v0/keys/cabinet /v0/keys/cabinet/*
+		not path /v0/merchants /v0/merchants/* /v0/keys/dashboard /v0/keys/dashboard/*
 		not {
 			path /v0/payout-wallet /v0/payout-wallet/*
 			not method GET HEAD

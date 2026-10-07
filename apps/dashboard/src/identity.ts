@@ -173,10 +173,10 @@ type StoredVerification = {
 };
 
 const schema = {
-  cabinet_accounts: accounts,
-  cabinet_sessions: sessions,
-  cabinet_credentials: credentials,
-  cabinet_verifications: verifications,
+  dashboard_accounts: accounts,
+  dashboard_sessions: sessions,
+  dashboard_credentials: credentials,
+  dashboard_verifications: verifications,
 };
 
 class DeliveryRefused extends Error {}
@@ -193,13 +193,13 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
   const memoryRows =
     parts.rows ??
     ({
-      cabinet_accounts: [],
-      cabinet_sessions: [],
-      cabinet_credentials: [],
-      cabinet_verifications: [],
-      cabinet_link_sends: [],
-      cabinet_report_identity_secrets: [],
-      cabinet_report_deletion_tombstones: [],
+      dashboard_accounts: [],
+      dashboard_sessions: [],
+      dashboard_credentials: [],
+      dashboard_verifications: [],
+      dashboard_link_sends: [],
+      dashboard_report_identity_secrets: [],
+      dashboard_report_deletion_tombstones: [],
     } satisfies MemoryRows);
 
   const optionsFor = (database: BetterAuthOptions["database"]) =>
@@ -209,7 +209,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       telemetry: { enabled: false },
       database,
       user: {
-        modelName: "cabinet_accounts",
+        modelName: "dashboard_accounts",
         additionalFields: {
           merchantId: { type: "string", required: false, input: false },
           merchantKey: { type: "string", required: false, input: false },
@@ -220,7 +220,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         },
       },
       session: {
-        modelName: "cabinet_sessions",
+        modelName: "dashboard_sessions",
         expiresIn: SESSION_DAYS * 24 * 60 * 60,
         updateAge: SESSION_RENEWAL_SECONDS,
         additionalFields: {
@@ -230,8 +230,8 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           reportRequest: { type: "string", required: false, input: false },
         },
       },
-      account: { modelName: "cabinet_credentials" },
-      verification: { modelName: "cabinet_verifications" },
+      account: { modelName: "dashboard_credentials" },
+      verification: { modelName: "dashboard_verifications" },
       advanced: {
         cookiePrefix: "agentify",
         // The prefix is chosen here and not by the component. Left to itself it
@@ -261,7 +261,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
               claim.email !== email ||
               !sameClaim(claim, active.claim)
             ) {
-              throw new Error("cabinet_link_claim_missing");
+              throw new Error("dashboard_link_claim_missing");
             }
             const stored = await context?.context.adapter.update<StoredVerification>({
               model: "verification",
@@ -269,7 +269,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
               update: { value: JSON.stringify(claim) },
             });
             if (stored === null || stored === undefined) {
-              throw new Error("cabinet_link_storage_missing");
+              throw new Error("dashboard_link_storage_missing");
             }
             // Every link lands on the dashboard's page with one control, whoever
             // asked for it; only the token rides in it (ADR-0026 §1).
@@ -523,7 +523,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       try {
         if (parts.pool === undefined) {
           return await inMemoryTransaction(async (bound, rows) => {
-            const rated = memoryRate(rows, rateKey(config.authSecret, email), "cabinet");
+            const rated = memoryRate(rows, rateKey(config.authSecret, email), "dashboard");
             if (!rated.sent)
               return { status: "cooldown", wall: rated.wall, retryAt: rated.retryAt };
             return await requestWith(bound, email, destination, rated.retryAt);
@@ -534,7 +534,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         });
         return await db.transaction(async (tx) => {
           await lockEmail(tx, email);
-          const rated = await postgresRate(tx, rateKey(config.authSecret, email), "cabinet");
+          const rated = await postgresRate(tx, rateKey(config.authSecret, email), "dashboard");
           if (!rated.sent) return { status: "cooldown", wall: rated.wall, retryAt: rated.retryAt };
           return await requestWith(
             authFor(drizzleAdapter(tx, { provider: "pg", schema })),
@@ -613,7 +613,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           const bound = authFor(drizzleAdapter(tx, { provider: "pg", schema }));
           return await openWith(bound, token, async (email) => {
             await tx.execute(
-              sql`select pg_advisory_xact_lock(hashtextextended(${`cabinet-email:${email}`}, 0))`,
+              sql`select pg_advisory_xact_lock(hashtextextended(${`dashboard-email:${email}`}, 0))`,
             );
           });
         });
@@ -633,7 +633,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             request.operation_id,
             request.email,
           );
-          const prior = (rows.cabinet_report_deletion_tombstones ?? []).find(
+          const prior = (rows.dashboard_report_deletion_tombstones ?? []).find(
             (row) => row.operationId === request.operation_id,
           ) as { operationDigest: string; result: DeleteResult } | undefined;
           if (prior !== undefined) {
@@ -643,8 +643,8 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           }
           cleanupOldLinksInMemory(rows, now);
           const result = deleteFromMemory(rows, request.email);
-          const tombstones = rows.cabinet_report_deletion_tombstones ?? [];
-          rows.cabinet_report_deletion_tombstones = tombstones;
+          const tombstones = rows.dashboard_report_deletion_tombstones ?? [];
+          rows.dashboard_report_deletion_tombstones = tombstones;
           tombstones.push({
             operationId: request.operation_id,
             operationDigest,
@@ -666,7 +666,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       });
       return await db.transaction(async (tx) => {
         await tx.execute(
-          sql`select pg_advisory_xact_lock(hashtextextended(${`cabinet-report-delete:${request.operation_id}`}, 0))`,
+          sql`select pg_advisory_xact_lock(hashtextextended(${`dashboard-report-delete:${request.operation_id}`}, 0))`,
         );
         const now = new Date();
         const digestKey = await reportDigestKeyInPostgres(tx, now);
@@ -692,7 +692,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
         )[0];
         if (candidate !== undefined) {
           await tx.execute(
-            sql`select pg_advisory_xact_lock(hashtextextended(${`cabinet-person:${candidate.id}`}, 0))`,
+            sql`select pg_advisory_xact_lock(hashtextextended(${`dashboard-person:${candidate.id}`}, 0))`,
           );
         }
         const row = (
@@ -756,7 +756,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     async attachMerchant(personId, register) {
       if (parts.pool === undefined) {
         return await inMemoryTransaction(async (_bound, rows) => {
-          const row = rows.cabinet_accounts?.find((one) => one.id === personId);
+          const row = rows.dashboard_accounts?.find((one) => one.id === personId);
           if (row === undefined) return { status: "person-missing" };
           const person = personFrom(row as PersonRow);
           if (person.merchant !== null) {
@@ -779,13 +779,13 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       const db = drizzle(parts.pool, { schema: { accounts } });
       return await db.transaction(async (tx): Promise<AttachMerchantResult> => {
         await tx.execute(
-          sql`select pg_advisory_xact_lock(hashtextextended(${`cabinet-person:${personId}`}, 0))`,
+          sql`select pg_advisory_xact_lock(hashtextextended(${`dashboard-person:${personId}`}, 0))`,
         );
         const row = (
           await tx.execute<PersonRow>(sql`
             select id, email, email_verified as "emailVerified", merchant_id as "merchantId",
                    merchant_key as "merchantKey"
-            from cabinet_accounts where id = ${personId} for update
+            from dashboard_accounts where id = ${personId} for update
           `)
         ).rows[0];
         if (row === undefined) return { status: "person-missing" };
@@ -808,7 +808,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             ),
           )
           .returning({ id: accounts.id });
-        if (written.length !== 1) throw new Error("cabinet_merchant_attachment_lost_lock");
+        if (written.length !== 1) throw new Error("dashboard_merchant_attachment_lost_lock");
         return {
           status: "attached",
           person: asMerchantPerson({ ...person, merchant }),
@@ -845,7 +845,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       const db = drizzle(parts.pool);
       return await db.transaction(async (tx) => {
         await tx.execute(
-          sql`select pg_advisory_xact_lock(hashtextextended(${`cabinet-email:${email}`}, 0))`,
+          sql`select pg_advisory_xact_lock(hashtextextended(${`dashboard-email:${email}`}, 0))`,
         );
         return await makeWith(
           authFor(drizzleAdapter(tx, { provider: "pg", schema })),
@@ -964,7 +964,7 @@ function personFrom(user: PersonRow): Person {
     user.merchantId === "" ||
     user.merchantKey === ""
   ) {
-    throw new Error("cabinet_account_partial_merchant_binding");
+    throw new Error("dashboard_account_partial_merchant_binding");
   }
   return {
     id: user.id,
@@ -983,12 +983,12 @@ function operatorOn(user: object): boolean {
 }
 
 function asMerchantPerson(person: Person): MerchantPerson {
-  if (person.merchant === null) throw new Error("cabinet_person_has_no_merchant");
+  if (person.merchant === null) throw new Error("dashboard_person_has_no_merchant");
   return person as MerchantPerson;
 }
 
 function asUnattachedPerson(person: Person): UnattachedPerson {
-  if (person.merchant !== null) throw new Error("cabinet_person_has_a_merchant");
+  if (person.merchant !== null) throw new Error("dashboard_person_has_a_merchant");
   return person as UnattachedPerson;
 }
 
@@ -1054,7 +1054,7 @@ function goesWithTheDeletion(
 
 /** How one address's link sends are keyed; `pnpm forget` clears them by the same key. */
 export const rateKey = (secret: string, email: string): string =>
-  createHmac("sha256", secret).update(`cabinet-link:${email}`).digest("hex");
+  createHmac("sha256", secret).update(`dashboard-link:${email}`).digest("hex");
 
 type LinkRefusal = Readonly<{ wall: LinkWall; retryAt: Date }>;
 
@@ -1116,7 +1116,7 @@ function refusalIn(sentAt: readonly Date[], now: Date): LinkRefusal | null {
     // today, and the direction is what the line is for: a wall that meets
     // something it cannot explain refuses loudly rather than standing aside
     // quietly, which is how a rate limit becomes no rate limit for one caller.
-    if (firstCounted === undefined) throw new Error("cabinet_link_rate_count_inconsistent");
+    if (firstCounted === undefined) throw new Error("dashboard_link_rate_count_inconsistent");
     hourly = { wall: "hourly", retryAt: new Date(firstCounted.getTime() + LINK_RATE_WINDOW_MS) };
   }
   if (interval === null) return hourly;
@@ -1135,16 +1135,20 @@ function refusalIn(sentAt: readonly Date[], now: Date): LinkRefusal | null {
  */
 function waitAfter(sentAt: readonly Date[], now: Date): Date {
   const next = refusalIn(sentAt, now);
-  if (next === null) throw new Error("cabinet_link_rate_interval_missing");
+  if (next === null) throw new Error("dashboard_link_rate_interval_missing");
   return next.retryAt;
 }
 
-function memoryRate(rows: MemoryRows, emailHash: string, purpose: "cabinet" | "report"): LinkRate {
+function memoryRate(
+  rows: MemoryRows,
+  emailHash: string,
+  purpose: "dashboard" | "report",
+): LinkRate {
   const now = new Date();
-  const all = (rows.cabinet_link_sends ?? []).filter(
+  const all = (rows.dashboard_link_sends ?? []).filter(
     (row) => new Date(row.expiresAt as Date).getTime() > now.getTime(),
   );
-  rows.cabinet_link_sends = all;
+  rows.dashboard_link_sends = all;
   const recent = all
     .filter(
       (row) =>
@@ -1156,7 +1160,7 @@ function memoryRate(rows: MemoryRows, emailHash: string, purpose: "cabinet" | "r
     .sort((one, other) => one.getTime() - other.getTime());
   const refused = refusalIn(recent, now);
   if (refused !== null) return { sent: false, ...refused };
-  rows.cabinet_link_sends.push({
+  rows.dashboard_link_sends.push({
     id: randomUUID(),
     emailHash,
     purpose,
@@ -1169,11 +1173,11 @@ function memoryRate(rows: MemoryRows, emailHash: string, purpose: "cabinet" | "r
 async function postgresRate(
   tx: Parameters<Parameters<ReturnType<typeof drizzle>["transaction"]>[0]>[0],
   emailHash: string,
-  purpose: "cabinet" | "report",
+  purpose: "dashboard" | "report",
 ): Promise<LinkRate> {
   const now = new Date();
   await tx.execute(
-    sql`select pg_advisory_xact_lock(hashtextextended(${`cabinet-link-rate:${purpose}:${emailHash}`}, 0))`,
+    sql`select pg_advisory_xact_lock(hashtextextended(${`dashboard-link-rate:${purpose}:${emailHash}`}, 0))`,
   );
   await tx.delete(linkSends).where(lte(linkSends.expiresAt, now));
   const recent = await tx
@@ -1204,13 +1208,13 @@ type DashboardTransaction = Parameters<Parameters<ReturnType<typeof drizzle>["tr
 
 async function lockEmail(tx: DashboardTransaction, email: string): Promise<void> {
   await tx.execute(
-    sql`select pg_advisory_xact_lock(hashtextextended(${`cabinet-email:${email}`}, 0))`,
+    sql`select pg_advisory_xact_lock(hashtextextended(${`dashboard-email:${email}`}, 0))`,
   );
 }
 
 function reportDigestKeyInMemory(rows: MemoryRows, now: Date): string {
-  const secrets = (rows.cabinet_report_identity_secrets ?? []) as ReportIdentitySecretRow[];
-  rows.cabinet_report_identity_secrets = secrets;
+  const secrets = (rows.dashboard_report_identity_secrets ?? []) as ReportIdentitySecretRow[];
+  rows.dashboard_report_identity_secrets = secrets;
   const existing = secrets.find((row) => row.id === REPORT_DIGEST_KEY_ID);
   if (existing !== undefined) return existing.digestKey;
   const digestKey = randomBytes(32).toString("base64url");
@@ -1241,7 +1245,7 @@ async function reportDigestKeyInPostgres(tx: DashboardTransaction, now: Date): P
       .from(reportIdentitySecrets)
       .where(eq(reportIdentitySecrets.id, REPORT_DIGEST_KEY_ID))
   )[0];
-  if (stored === undefined) throw new Error("cabinet_report_digest_key_missing");
+  if (stored === undefined) throw new Error("dashboard_report_digest_key_missing");
   return stored.digestKey;
 }
 
@@ -1255,7 +1259,7 @@ async function reportDigestKeyInPostgres(tx: DashboardTransaction, now: Date): P
 function cleanupOldLinksInMemory(rows: MemoryRows, now: Date): void {
   const cutoff = now.getTime() - LINK_PROOF_RETENTION_MS;
   let removed = 0;
-  rows.cabinet_verifications = (rows.cabinet_verifications ?? []).filter((row) => {
+  rows.dashboard_verifications = (rows.dashboard_verifications ?? []).filter((row) => {
     if (removed < LINK_CLEANUP_BATCH && new Date(row.expiresAt as Date).getTime() <= cutoff) {
       removed += 1;
       return false;
@@ -1284,30 +1288,32 @@ const reportDeleteDigest = (secret: string, operationId: string, email: string):
 type DeleteResult = "deleted" | "already_absent" | "retained";
 
 function deleteFromMemory(rows: MemoryRows, email: string): DeleteResult {
-  const account = (rows.cabinet_accounts ?? []).find((row) => row.email === email);
+  const account = (rows.dashboard_accounts ?? []).find((row) => row.email === email);
   let result: DeleteResult;
   if (account === undefined) result = "already_absent";
   else {
     const person = personFrom(account as PersonRow);
     result = person.merchant === null ? "deleted" : "retained";
   }
-  rows.cabinet_verifications = (rows.cabinet_verifications ?? []).filter(
+  rows.dashboard_verifications = (rows.dashboard_verifications ?? []).filter(
     (proof) => !goesWithTheDeletion(claimFrom(String(proof.value)), email, result),
   );
   if (result === "deleted" && account !== undefined) {
     const personId = String(account.id);
-    rows.cabinet_accounts = (rows.cabinet_accounts ?? []).filter((row) => row.id !== personId);
-    rows.cabinet_sessions = (rows.cabinet_sessions ?? []).filter((row) => row.userId !== personId);
-    rows.cabinet_credentials = (rows.cabinet_credentials ?? []).filter(
+    rows.dashboard_accounts = (rows.dashboard_accounts ?? []).filter((row) => row.id !== personId);
+    rows.dashboard_sessions = (rows.dashboard_sessions ?? []).filter(
       (row) => row.userId !== personId,
     );
-    rows.cabinet_woo_grants = (rows.cabinet_woo_grants ?? []).filter(
+    rows.dashboard_credentials = (rows.dashboard_credentials ?? []).filter(
+      (row) => row.userId !== personId,
+    );
+    rows.dashboard_woo_grants = (rows.dashboard_woo_grants ?? []).filter(
       (row) => row.accountId !== personId,
     );
-    rows.cabinet_woo_orders = (rows.cabinet_woo_orders ?? []).filter(
+    rows.dashboard_woo_orders = (rows.dashboard_woo_orders ?? []).filter(
       (row) => row.accountId !== personId,
     );
-    rows.cabinet_woo_shops = (rows.cabinet_woo_shops ?? []).filter(
+    rows.dashboard_woo_shops = (rows.dashboard_woo_shops ?? []).filter(
       (row) => row.accountId !== personId,
     );
   }

@@ -174,6 +174,25 @@ describe("exact Woo order recovery", () => {
     expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
   });
 
+  it("leaves a recovery unresolved while the shop does not answer, rather than refused", async () => {
+    // Refused says the product no longer matches, which nobody knows of a shop
+    // that timed out. Unresolved is what lets the same recovery be asked again.
+    const shops = await setup("precreate_refused");
+    const test = parts(shops, {
+      inspectProduct: async () => ({
+        ok: false,
+        why: "The shop did not answer the protected product check.",
+        again: true,
+      }),
+    });
+
+    expect(await recoverWooOrder({ orderId: "ord_1" }, test.value)).toMatchObject({
+      ok: false,
+      state: "unresolved",
+    });
+    expect(test.counts()).toEqual({ delivered: 0, created: 0, read: 0 });
+  });
+
   it("does not recover a changed download that no longer matches the accepted quote", async () => {
     const shops = await setup("precreate_refused");
     const test = parts(shops, {

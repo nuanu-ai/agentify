@@ -12,7 +12,7 @@ import type { Message } from "./mail.js";
 
 const wanted = (() => {
   const url = new URL(testDatabaseUrl());
-  url.pathname = "/agentify_test_cabinet_identity";
+  url.pathname = "/agentify_test_dashboard_identity";
   return url.toString();
 })();
 const databaseUrl = await readyDatabase(wanted);
@@ -55,18 +55,15 @@ if (databaseUrl === null) {
     for (const statement of await statementsOf(file)) await pool.query(statement);
   }
 
+  /**
+   * The whole database emptied, whatever the last test left in it. Some tests
+   * stop at a migration from before the tables took the dashboard's name, so a
+   * list of tables would miss either those or these; the database is this
+   * suite's own, so the schema goes whole.
+   */
   async function emptyEverything(): Promise<void> {
-    await pool.query("drop function if exists fail_cabinet_session() cascade");
-    await pool.query("drop function if exists slow_cabinet_person() cascade");
-    await pool.query("drop function if exists fail_cabinet_key_update() cascade");
-    await pool.query(`
-      drop table if exists
-        cabinet_report_deletion_tombstones, cabinet_report_identity_secrets,
-        cabinet_report_receipts, cabinet_link_sends, cabinet_woo_quotes, cabinet_woo_orders,
-        cabinet_woo_shops, cabinet_woo_grants, cabinet_verifications, cabinet_credentials,
-        cabinet_sessions, cabinet_accounts
-      cascade
-    `);
+    await pool.query("drop schema public cascade");
+    await pool.query("create schema public");
   }
 
   /**
@@ -115,7 +112,7 @@ if (databaseUrl === null) {
    * links, or three, says so here rather than sleeping through the minute.
    */
   async function rewindLinkSends(): Promise<void> {
-    await pool.query("update cabinet_link_sends set sent_at = sent_at - $1::interval", [
+    await pool.query("update dashboard_link_sends set sent_at = sent_at - $1::interval", [
       "1 minute",
     ]);
   }
@@ -239,7 +236,9 @@ if (databaseUrl === null) {
          values ('person_before', 'before@example.com', true, '', now(), now(), null, null)`,
       );
 
-      for (const file of files.slice(flag)) await run(file);
+      // The flag's own migration and nothing after it: the tables still carry
+      // the names they had then.
+      await run(files[flag] ?? "");
 
       expect(
         (await pool.query(`select email, "operator" from cabinet_accounts`)).rows,
@@ -293,7 +292,7 @@ if (databaseUrl === null) {
         },
       );
       expect(
-        (await pool.query("select count(*)::int as count from cabinet_accounts")).rows[0],
+        (await pool.query("select count(*)::int as count from dashboard_accounts")).rows[0],
       ).toStrictEqual({ count: 0 });
 
       const token = tokenIn(messages[0] as Message);
@@ -304,7 +303,7 @@ if (databaseUrl === null) {
         person: { email: "person@example.com", confirmed: true, merchant: null },
       });
       expect(
-        (await pool.query("select count(*)::int as count from cabinet_sessions")).rows[0],
+        (await pool.query("select count(*)::int as count from dashboard_sessions")).rows[0],
       ).toStrictEqual({ count: 1 });
       await expect(identity.openLink(token)).resolves.toStrictEqual({ status: "refused" });
     });
@@ -317,12 +316,12 @@ if (databaseUrl === null) {
       await rewindLinkSends();
       await two.requestLink("person@example.com", "settings");
       await pool.query(`
-        create function slow_cabinet_person() returns trigger language plpgsql as $$
+        create function slow_dashboard_person() returns trigger language plpgsql as $$
         begin perform pg_sleep(0.05); return new; end $$
       `);
       await pool.query(`
-        create trigger slow_cabinet_person before insert on cabinet_accounts
-        for each row execute function slow_cabinet_person()
+        create trigger slow_dashboard_person before insert on dashboard_accounts
+        for each row execute function slow_dashboard_person()
       `);
 
       const [first, second] = await Promise.all([
@@ -337,10 +336,10 @@ if (databaseUrl === null) {
       }
       expect(second.person.id).toBe(first.person.id);
       expect(
-        (await pool.query("select count(*)::int as count from cabinet_accounts")).rows[0],
+        (await pool.query("select count(*)::int as count from dashboard_accounts")).rows[0],
       ).toStrictEqual({ count: 1 });
       expect(
-        (await pool.query("select count(*)::int as count from cabinet_sessions")).rows[0],
+        (await pool.query("select count(*)::int as count from dashboard_sessions")).rows[0],
       ).toStrictEqual({ count: 2 });
     });
 
@@ -350,27 +349,27 @@ if (databaseUrl === null) {
       await identity.requestLink("person@example.com", "default");
       const token = tokenIn(messages[0] as Message);
       await pool.query(`
-        create function fail_cabinet_session() returns trigger language plpgsql as $$
+        create function fail_dashboard_session() returns trigger language plpgsql as $$
         begin raise exception 'injected session failure'; end $$
       `);
       await pool.query(`
-        create trigger fail_cabinet_session before insert on cabinet_sessions
-        for each row execute function fail_cabinet_session()
+        create trigger fail_dashboard_session before insert on dashboard_sessions
+        for each row execute function fail_dashboard_session()
       `);
 
-      await expect(identity.openLink(token)).rejects.toThrow(/insert into "cabinet_sessions"/i);
+      await expect(identity.openLink(token)).rejects.toThrow(/insert into "dashboard_sessions"/i);
 
       expect(
-        (await pool.query("select count(*)::int as count from cabinet_accounts")).rows[0],
+        (await pool.query("select count(*)::int as count from dashboard_accounts")).rows[0],
       ).toStrictEqual({ count: 0 });
       expect(
-        (await pool.query("select count(*)::int as count from cabinet_sessions")).rows[0],
+        (await pool.query("select count(*)::int as count from dashboard_sessions")).rows[0],
       ).toStrictEqual({ count: 0 });
       expect(
-        (await pool.query("select count(*)::int as count from cabinet_verifications")).rows[0],
+        (await pool.query("select count(*)::int as count from dashboard_verifications")).rows[0],
       ).toStrictEqual({ count: 1 });
-      await pool.query("drop trigger fail_cabinet_session on cabinet_sessions");
-      await pool.query("drop function fail_cabinet_session()");
+      await pool.query("drop trigger fail_dashboard_session on dashboard_sessions");
+      await pool.query("drop function fail_dashboard_session()");
       await expect(identity.openLink(token)).resolves.toMatchObject({ status: "opened" });
     });
 
@@ -383,13 +382,13 @@ if (databaseUrl === null) {
       });
 
       expect(
-        (await pool.query("select count(*)::int as count from cabinet_verifications")).rows[0],
+        (await pool.query("select count(*)::int as count from dashboard_verifications")).rows[0],
       ).toStrictEqual({ count: 0 });
       expect(
-        (await pool.query("select count(*)::int as count from cabinet_link_sends")).rows[0],
+        (await pool.query("select count(*)::int as count from dashboard_link_sends")).rows[0],
       ).toStrictEqual({ count: 0 });
       expect(
-        (await pool.query("select count(*)::int as count from cabinet_accounts")).rows[0],
+        (await pool.query("select count(*)::int as count from dashboard_accounts")).rows[0],
       ).toStrictEqual({ count: 0 });
     });
 
@@ -400,10 +399,10 @@ if (databaseUrl === null) {
 
       expect(seeded).toMatchObject({ confirmed: false, merchant: MERCHANT });
       expect(
-        (await pool.query("select count(*)::int as count from cabinet_credentials")).rows[0],
+        (await pool.query("select count(*)::int as count from dashboard_credentials")).rows[0],
       ).toStrictEqual({ count: 0 });
       expect(
-        (await pool.query("select count(*)::int as count from cabinet_sessions")).rows[0],
+        (await pool.query("select count(*)::int as count from dashboard_sessions")).rows[0],
       ).toStrictEqual({ count: 0 });
 
       await identity.requestLink("person@example.com", "default");
@@ -427,7 +426,7 @@ if (databaseUrl === null) {
         expect(
           (
             await pool.query(
-              "select count(*)::int as count from cabinet_sessions where user_id = $1",
+              "select count(*)::int as count from dashboard_sessions where user_id = $1",
               [opened.person.id],
             )
           ).rows[0],
@@ -445,9 +444,10 @@ if (databaseUrl === null) {
       expect([first.status, second.status].sort()).toStrictEqual(["already-attached", "attached"]);
       expect(
         (
-          await pool.query("select merchant_id, merchant_key from cabinet_accounts where id = $1", [
-            opened.person.id,
-          ])
+          await pool.query(
+            "select merchant_id, merchant_key from dashboard_accounts where id = $1",
+            [opened.person.id],
+          )
         ).rows,
       ).toStrictEqual([{ merchant_id: MERCHANT.id, merchant_key: MERCHANT.key }]);
     });
@@ -525,7 +525,7 @@ if (databaseUrl === null) {
         if (owner === null) throw new Error("the owner's account was not made");
         const laptop = await signedIn("owner@example.com");
         await pool.query(
-          `insert into cabinet_sessions (id, token, user_id, expires_at, created_at, updated_at)
+          `insert into dashboard_sessions (id, token, user_id, expires_at, created_at, updated_at)
              select 'expired_' || n, 'expired-token-' || n, $1,
                     now() - interval '60 days', now() - interval '90 days', now() - interval '90 days'
                from generate_series(1, 120) as n`,
@@ -534,7 +534,7 @@ if (databaseUrl === null) {
         // Rewriting the live row moves it behind the expired ones in the
         // table, where a read that stops at a hundred rows never reaches it.
         await pool.query(
-          "update cabinet_sessions set updated_at = updated_at where user_id = $1 and expires_at > now()",
+          "update dashboard_sessions set updated_at = updated_at where user_id = $1 and expires_at > now()",
           [owner.id],
         );
         const pressed = await signedIn("owner@example.com");
@@ -560,7 +560,7 @@ if (databaseUrl === null) {
       if (opened.status !== "opened") throw new Error("the owner could not sign in");
       const pressed = opened.setCookies.map((line) => line.split(";")[0]).join("; ");
       await pool.query(
-        `insert into cabinet_sessions (id, token, user_id, expires_at, created_at, updated_at)
+        `insert into dashboard_sessions (id, token, user_id, expires_at, created_at, updated_at)
            select 'live_' || n, 'live-token-' || n, $1,
                   now() + interval '20 days', now(), now()
              from generate_series(1, 150) as n`,
@@ -570,7 +570,7 @@ if (databaseUrl === null) {
       expect(await identity.endOtherSessionsOfPerson(owner.id, pressed)).toBe(150);
       expect(
         (
-          await pool.query("select count(*)::int as n from cabinet_sessions where user_id = $1", [
+          await pool.query("select count(*)::int as n from dashboard_sessions where user_id = $1", [
             owner.id,
           ])
         ).rows[0],
@@ -631,7 +631,7 @@ if (databaseUrl === null) {
       if (opened.status !== "opened") throw new Error("the link should have opened");
       const cookie = cookieHeader(opened.setCookies);
 
-      expect((await pool.query(`select "operator" from cabinet_accounts`)).rows).toStrictEqual([
+      expect((await pool.query(`select "operator" from dashboard_accounts`)).rows).toStrictEqual([
         { operator: false },
       ]);
       expect((await identity.whoIs(cookie, { renew: false }))?.operator).toBe(false);
@@ -647,10 +647,10 @@ if (databaseUrl === null) {
 
       await expect(identity.setOperator("nobody@example.com", true)).resolves.toBe(false);
       expect(
-        (await pool.query("select count(*)::int as count from cabinet_sessions")).rows[0],
+        (await pool.query("select count(*)::int as count from dashboard_sessions")).rows[0],
       ).toStrictEqual({ count: 1 });
       expect(
-        (await pool.query("select count(*)::int as count from cabinet_accounts")).rows[0],
+        (await pool.query("select count(*)::int as count from dashboard_accounts")).rows[0],
       ).toStrictEqual({ count: 1 });
     });
 
@@ -660,12 +660,12 @@ if (databaseUrl === null) {
       if (person === null) throw new Error("the seed account was not made");
       const fresh = "the-sensitive-fresh-key";
       await pool.query(`
-        create function fail_cabinet_key_update() returns trigger language plpgsql as $$
+        create function fail_dashboard_key_update() returns trigger language plpgsql as $$
         begin raise exception 'injected failure carrying %', new.merchant_key; end $$
       `);
       await pool.query(`
-        create trigger fail_cabinet_key_update before update on cabinet_accounts
-        for each row execute function fail_cabinet_key_update()
+        create trigger fail_dashboard_key_update before update on dashboard_accounts
+        for each row execute function fail_dashboard_key_update()
       `);
       const lines: string[] = [];
       const error = vi.spyOn(console, "error").mockImplementation((...parts) => {
@@ -684,7 +684,7 @@ if (databaseUrl === null) {
       expect(written).toMatch(/could not establish whether/i);
       expect(written).not.toContain(MERCHANT.key);
       expect(written).not.toContain(fresh);
-      expect(written).not.toContain('update "cabinet_accounts"');
+      expect(written).not.toContain('update "dashboard_accounts"');
     });
 
     it("enforces a minute between links and three sends per rolling hour without storing the raw address", async () => {
@@ -702,7 +702,7 @@ if (databaseUrl === null) {
       // The refused request sent nothing, so it took nothing: the row count is
       // what the three an hour are counted from.
       expect(
-        (await pool.query("select count(*)::int as count from cabinet_link_sends")).rows[0],
+        (await pool.query("select count(*)::int as count from dashboard_link_sends")).rows[0],
       ).toStrictEqual({ count: 1 });
       expect(messages).toHaveLength(1);
 
@@ -716,7 +716,7 @@ if (databaseUrl === null) {
       // the wait in front of the next link. The third of the hour spent the
       // allowance, so that wait is the hour and not the minute — a page told
       // the minute hands its resend back sixty seconds later to be refused.
-      const oldest = (await pool.query("select min(sent_at) as at from cabinet_link_sends"))
+      const oldest = (await pool.query("select min(sent_at) as at from dashboard_link_sends"))
         .rows[0] as { at: Date };
       if (latest?.status !== "accepted") throw new Error("the third link should have gone out");
       expect(latest.retryAt).toStrictEqual(new Date(oldest.at.getTime() + LINK_RATE_WINDOW_MS));
@@ -727,7 +727,7 @@ if (databaseUrl === null) {
         wall: "hourly",
         retryAt: expect.any(Date),
       });
-      const evidence = await pool.query("select email_hash from cabinet_link_sends");
+      const evidence = await pool.query("select email_hash from dashboard_link_sends");
       expect(evidence.rows).toHaveLength(3);
       expect(JSON.stringify(evidence.rows)).not.toContain("person@example.com");
     });

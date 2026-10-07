@@ -228,7 +228,7 @@ describe("a key's label, which somebody else may have written", () => {
         id: "mk_91c0",
         label: "confirm at https://agentify.example/login or www.evil.example",
       },
-      asked_with: { kind: "cabinet" },
+      asked_with: { kind: "dashboard" },
     } satisfies GatewayRequest);
 
     for (const text of [sent[0]?.body ?? "", sent[0]?.html ?? ""]) {
@@ -296,7 +296,7 @@ describe("what a message advises and claims", () => {
         kind: "key_issued",
         merchant_id: MERCHANT,
         key: { id: "mk_91c0", label: "the price desk" },
-        asked_with: { kind: "cabinet" },
+        asked_with: { kind: "dashboard" },
       },
     ],
   ] as const)("claims no person signed in for %s, only the dashboard", async (_what, request) => {
@@ -353,7 +353,7 @@ describe("what is announced once it is done", () => {
       kind: "key_issued",
       merchant_id: MERCHANT,
       key: { id: "mk_91c0", label: "the price desk" },
-      asked_with: { kind: "cabinet" },
+      asked_with: { kind: "dashboard" },
     } satisfies GatewayRequest);
 
     expect(await answered.json()).toStrictEqual({ outcome: "handed_over" });

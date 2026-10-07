@@ -235,17 +235,40 @@ if (databaseUrl === null) {
       // that cannot exist without an owner.
       await run("0003_merchant_tenancy.sql");
 
-      await expect(
-        pool.query(
-          "insert into cards (id, merchant_item_id, card, as_of) values ('itm_x', 'sku-x', '{}', now())",
-        ),
-      ).rejects.toThrow();
-      await expect(
-        pool.query(
-          `insert into cards (id, merchant_id, merchant_item_id, card, as_of)
-           values ('itm_x', 'mch_nobody', 'sku-x', '{}', now())`,
-        ),
-      ).rejects.toThrow();
+      // Every other column is given, so what is refused is the merchant and
+      // nothing else: no merchant at all, and then a merchant who is not there.
+      const rows = [
+        {
+          table: "cards",
+          columns: "id, merchant_item_id, card, as_of",
+          values: "'itm_x', 'sku-x', '{}', now()",
+        },
+        {
+          table: "orders",
+          columns: "id, state, open, item_id, merchant_item_id, record, created_at, updated_at",
+          values: "'ord_x', 'created', true, 'itm_x', 'sku-x', '{}', now(), now()",
+        },
+        {
+          table: "receipts",
+          columns: "order_id, receipt, updated_at",
+          values: "'ord_x', '{}', now()",
+        },
+      ];
+      for (const { table, columns, values } of rows) {
+        await expect(
+          pool.query(`insert into ${table} (${columns}) values (${values})`),
+          table,
+        ).rejects.toMatchObject({ code: "23502", column: "merchant_id" });
+        await expect(
+          pool.query(
+            `insert into ${table} (merchant_id, ${columns}) values ('mch_nobody', ${values})`,
+          ),
+          table,
+        ).rejects.toMatchObject({
+          code: "23503",
+          constraint: `${table}_merchant_id_merchants_id_fk`,
+        });
+      }
     });
   });
 
@@ -569,6 +592,28 @@ if (databaseUrl === null) {
       await run("0007_cabinet_keys.sql");
 
       expect(await purposeOf("mk_same_instant")).toBe("merchant_code");
+    });
+
+    it("calls the keys registration made the dashboard's once the later rename runs, and leaves the rest alone", async () => {
+      // The keys 0007 marked as the cabinet's are the dashboard's: the same
+      // credential under the product's own word, which the code reads and
+      // writes from then on. A merchant's own keys are not touched.
+      await writeKeyAsRegistrationDoes("mk_registered", AS_REGISTRATION_WROTE_IT);
+      await writeKey("mk_worker", "the worker on the small box");
+
+      for (const file of [
+        "0007_cabinet_keys.sql",
+        "0008_key_last_use.sql",
+        "0009_live_approval.sql",
+        "0010_pending_payout_wallet.sql",
+        "0011_merchant_seller_site.sql",
+        "0012_dashboard_keys.sql",
+      ]) {
+        await run(file);
+      }
+
+      expect(await purposeOf("mk_registered")).toBe("dashboard");
+      expect(await purposeOf("mk_worker")).toBe("merchant_code");
     });
 
     it("refuses a key written afterwards that does not say what it is for", async () => {

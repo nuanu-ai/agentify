@@ -29,7 +29,7 @@ import { postgresWooShops } from "./woo-shops.js";
  */
 const wanted = (() => {
   const url = new URL(testDatabaseUrl());
-  url.pathname = "/agentify_test_cabinet_woo";
+  url.pathname = "/agentify_test_dashboard_woo";
   return url.toString();
 })();
 const databaseUrl = await readyDatabase(wanted);
@@ -104,7 +104,7 @@ if (databaseUrl === null) {
     issued += 1;
     const id = `acc_woo_${issued}`;
     await pool.query(
-      "insert into cabinet_accounts (id, email, email_verified, name, created_at, updated_at)" +
+      "insert into dashboard_accounts (id, email, email_verified, name, created_at, updated_at)" +
         " values ($1, $2, false, '', now(), now())",
       [id, `${id}@example.com`],
     );
@@ -114,11 +114,11 @@ if (databaseUrl === null) {
   wooShopsContract("on postgres", async () => {
     // Everything these tables hold, gone, so that one case cannot read a row
     // another one wrote. The accounts go with them: they are made per case.
-    await pool.query("delete from cabinet_woo_orders");
-    await pool.query("delete from cabinet_woo_quotes");
-    await pool.query("delete from cabinet_woo_shops");
-    await pool.query("delete from cabinet_woo_grants");
-    await pool.query("delete from cabinet_accounts");
+    await pool.query("delete from dashboard_woo_orders");
+    await pool.query("delete from dashboard_woo_quotes");
+    await pool.query("delete from dashboard_woo_shops");
+    await pool.query("delete from dashboard_woo_grants");
+    await pool.query("delete from dashboard_accounts");
     return {
       shops: postgresWooShops(pool),
       accounts: { one: await anAccount(), other: await anAccount() },

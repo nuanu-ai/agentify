@@ -3,8 +3,8 @@ import { toJsonSchemas } from "./index.js";
 import { SELLING_STATES, SellingStateSchema } from "./selling.js";
 
 describe("whether a merchant is taking new orders", () => {
-  // The promise: the merchant's cabinet, the merchant's own tooling and the
-  // order machine use one word for the same situation. A cabinet that showed
+  // The promise: the merchant's dashboard, the merchant's own tooling and the
+  // order machine use one word for the same situation. A dashboard that showed
   // "off" where the machine said "paused" would be a second vocabulary for one
   // switch, and the merchant would have to learn both.
   it("carries the three words the order machine is given, and no others", () => {

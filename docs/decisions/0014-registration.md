@@ -59,7 +59,7 @@ that stops being enough the fix is one, not a cleverer column.
 **3. The registration route is internal, behind an invitation code.** Only
 the dashboard calls it, at the gateway's name on the stack's own network, and
 the site answers it from outside as a path it does not have, as it answers the
-two calls at `/v0/keys/cabinet` (§5): the code is a value in the dashboard's and
+two calls at `/v0/keys/dashboard` (§5): the code is a value in the dashboard's and
 the gateway's configuration guarding the wire between two processes of ours,
 and a copy of that configuration must not be a way to make a merchant. People
 never type it; ADR-0026 retired it for them, and the door stands at live
@@ -78,7 +78,7 @@ seller reaches an agent inside a payment challenge that names nobody.
 
 **5. Keys are made and disabled from the dashboard, and a key says what it is
 for.** Three merchant-scoped routes over the keys a merchant made for their own
-code — list, issue, disable — and two at `/v0/keys/cabinet` that make a key for
+code — list, issue, disable — and two at `/v0/keys/dashboard` that make a key for
 a dashboard and forget one, refused to any other key and reachable only inside
 the stack, so that a copied dashboard key cannot mint another from outside that
 no renewal ever forgets. That kind is in no

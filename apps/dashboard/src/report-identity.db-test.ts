@@ -10,7 +10,7 @@ import type { Message } from "./mail.js";
 
 const wanted = (() => {
   const url = new URL(testDatabaseUrl());
-  url.pathname = "/agentify_cabinet_report_test";
+  url.pathname = "/agentify_dashboard_report_test";
   return url.toString();
 })();
 const databaseUrl = await readyDatabase(wanted);
@@ -52,10 +52,10 @@ if (databaseUrl === null) {
     await pool.query("drop function if exists wait_report_tombstone() cascade");
     await pool.query(`
       drop table if exists
-        cabinet_report_deletion_tombstones, cabinet_report_identity_secrets,
-        cabinet_report_receipts, cabinet_link_sends, cabinet_woo_quotes,
-        cabinet_woo_orders, cabinet_woo_shops, cabinet_woo_grants, cabinet_verifications,
-        cabinet_credentials, cabinet_sessions, cabinet_accounts
+        dashboard_report_deletion_tombstones, dashboard_report_identity_secrets,
+        dashboard_link_sends, dashboard_woo_quotes,
+        dashboard_woo_orders, dashboard_woo_shops, dashboard_woo_grants, dashboard_verifications,
+        dashboard_credentials, dashboard_sessions, dashboard_accounts
       cascade
     `);
   }
@@ -114,7 +114,7 @@ if (databaseUrl === null) {
    * rolling hour, so the three an hour still count the links that went out.
    */
   async function rewindSends(): Promise<void> {
-    await pool.query("update cabinet_link_sends set sent_at = sent_at - $1::interval", [
+    await pool.query("update dashboard_link_sends set sent_at = sent_at - $1::interval", [
       "1 minute",
     ]);
   }
@@ -162,7 +162,7 @@ if (databaseUrl === null) {
       expect(again).toMatchObject({ status: "cooldown", retry_at: expect.any(String) });
       expect(messages).toHaveLength(1);
       expect(
-        (await pool.query("select count(*)::int as count from cabinet_link_sends")).rows[0],
+        (await pool.query("select count(*)::int as count from dashboard_link_sends")).rows[0],
       ).toStrictEqual({ count: 1 });
       if (again.status !== "cooldown") throw new Error("the second report link should be refused");
       const owed = new Date(again.retry_at).getTime() - Date.now();
@@ -179,9 +179,9 @@ if (databaseUrl === null) {
         (
           await pool.query(`
             select
-              (select count(*)::int from cabinet_verifications) as verifications,
-              (select count(*)::int from cabinet_link_sends) as sends,
-              (select count(*)::int from cabinet_accounts) as people
+              (select count(*)::int from dashboard_verifications) as verifications,
+              (select count(*)::int from dashboard_link_sends) as sends,
+              (select count(*)::int from dashboard_accounts) as people
           `)
         ).rows[0],
       ).toStrictEqual({ verifications: 0, sends: 0, people: 0 });
@@ -196,9 +196,9 @@ if (databaseUrl === null) {
 
       if (opened.status !== "opened") throw new Error("the report link did not open");
       expect(opened.destination).toStrictEqual({ report: SCAN });
-      expect((await pool.query("select report_request from cabinet_sessions")).rows).toStrictEqual([
-        { report_request: REQUEST },
-      ]);
+      expect(
+        (await pool.query("select report_request from dashboard_sessions")).rows,
+      ).toStrictEqual([{ report_request: REQUEST }]);
       const session = await identity.whoIs(cookieFrom(opened.setCookies), { renew: false });
       expect(session?.request).toBe(REQUEST);
       expect(session?.person.email).toBe(EMAIL);
@@ -221,7 +221,7 @@ if (databaseUrl === null) {
         end $$
       `);
       await pool.query(`
-        create trigger fail_report_request before update on cabinet_sessions
+        create trigger fail_report_request before update on dashboard_sessions
         for each row execute function fail_report_request()
       `);
 
@@ -230,14 +230,14 @@ if (databaseUrl === null) {
         (
           await pool.query(`
             select
-              (select count(*)::int from cabinet_accounts) as people,
-              (select count(*)::int from cabinet_sessions) as sessions,
-              (select count(*)::int from cabinet_verifications) as verifications
+              (select count(*)::int from dashboard_accounts) as people,
+              (select count(*)::int from dashboard_sessions) as sessions,
+              (select count(*)::int from dashboard_verifications) as verifications
           `)
         ).rows[0],
       ).toStrictEqual({ people: 0, sessions: 0, verifications: 1 });
 
-      await pool.query("drop trigger fail_report_request on cabinet_sessions");
+      await pool.query("drop trigger fail_report_request on dashboard_sessions");
       await expect(identity.openLink(token)).resolves.toMatchObject({ status: "opened" });
     });
 
@@ -246,7 +246,7 @@ if (databaseUrl === null) {
       const identity = identityOn([]);
       const aWeek = 7 * 24 * 60 * 60 * 1000;
       await pool.query(
-        `insert into cabinet_verifications
+        `insert into dashboard_verifications
            (id, identifier, value, expires_at, created_at, updated_at)
          values
            ('younger', 'younger', $1, $2, $4, $4),
@@ -266,7 +266,7 @@ if (databaseUrl === null) {
       });
 
       expect(
-        (await pool.query("select id from cabinet_verifications order by id")).rows,
+        (await pool.query("select id from dashboard_verifications order by id")).rows,
       ).toStrictEqual([{ id: "younger" }]);
     });
 
@@ -287,9 +287,9 @@ if (databaseUrl === null) {
         (
           await pool.query(`
             select
-              (select count(*)::int from cabinet_accounts) as people,
-              (select count(*)::int from cabinet_sessions) as sessions,
-              (select count(*)::int from cabinet_verifications) as verifications
+              (select count(*)::int from dashboard_accounts) as people,
+              (select count(*)::int from dashboard_sessions) as sessions,
+              (select count(*)::int from dashboard_verifications) as verifications
           `)
         ).rows[0],
       ).toStrictEqual({ people: 0, sessions: 0, verifications: 0 });
@@ -297,7 +297,7 @@ if (databaseUrl === null) {
       const p2 = await identity.make(EMAIL, MERCHANT);
       if (p2 === null) throw new Error("the P2 account was not made");
       await pool.query(
-        `insert into cabinet_woo_shops
+        `insert into dashboard_woo_shops
            (account_id, shop_url, consumer_key, consumer_secret, permissions, connected_at)
          values ($1, 'https://shop.example', 'ck_preserved', 'cs_preserved', 'read_write', now())`,
         [p2.id],
@@ -320,8 +320,8 @@ if (databaseUrl === null) {
           await pool.query(
             `
             select
-              (select count(*)::int from cabinet_sessions where user_id = $1) as sessions,
-              (select count(*)::int from cabinet_woo_shops where account_id = $1) as shops
+              (select count(*)::int from dashboard_sessions where user_id = $1) as sessions,
+              (select count(*)::int from dashboard_woo_shops where account_id = $1) as shops
           `,
             [p2.id],
           )
@@ -342,7 +342,7 @@ if (databaseUrl === null) {
           begin perform pg_advisory_xact_lock(424242); return new; end $$
         `);
         await pool.query(`
-          create trigger wait_report_tombstone before insert on cabinet_report_deletion_tombstones
+          create trigger wait_report_tombstone before insert on dashboard_report_deletion_tombstones
           for each row execute function wait_report_tombstone()
         `);
         const messages: Message[] = [];
@@ -512,13 +512,13 @@ if (databaseUrl === null) {
         (
           await pool.query(`
             select column_name from information_schema.columns
-            where table_name = 'cabinet_report_deletion_tombstones'
+            where table_name = 'dashboard_report_deletion_tombstones'
             order by column_name
           `)
         ).rows.map((row) => row.column_name),
       ).toStrictEqual(["completed_at", "created_at", "operation_digest", "operation_id", "result"]);
       expect(
-        JSON.stringify(await pool.query("select * from cabinet_report_deletion_tombstones")),
+        JSON.stringify(await pool.query("select * from dashboard_report_deletion_tombstones")),
       ).not.toContain(EMAIL);
     });
   });

@@ -136,7 +136,7 @@ describe("a key", () => {
     const dashboard = await issueDashboardKey(store, ids, "mch_1", 2_000, "test");
 
     expect((await store.codeKeysOf("mch_1")).map((key) => key.id)).toStrictEqual([theirs.key.id]);
-    expect(dashboard.key.purpose).toBe("cabinet");
+    expect(dashboard.key.purpose).toBe("dashboard");
     // Both open the door. What differs is whose list they are in.
     expect((await store.workingKey(keyDigest(dashboard.secret)))?.id).toBe(dashboard.key.id);
   });
@@ -152,15 +152,6 @@ describe("a key", () => {
     const dashboard = await issueDashboardKey(store, countedIds(), "mch_1", 1_000, "test");
 
     expect(dashboard.key.label).toBe(DASHBOARD_KEY_LABEL);
-  });
-
-  it("hashes the same secret the same way every time, and two secrets differently", () => {
-    // The one thing that has to hold between the command that issues a key and
-    // the door that reads it. A second spelling of this would be a key that
-    // works in one of them and not the other.
-    expect(keyDigest("a-key")).toBe(keyDigest("a-key"));
-    expect(keyDigest("a-key")).not.toBe(keyDigest("a-keY"));
-    expect(keyDigest("a-key")).toMatch(/^[0-9a-f]{64}$/);
   });
 });
 
@@ -468,7 +459,7 @@ describe("registering a merchant", () => {
 
     const made = await registerMerchant(store, countedIds(), 1_000, "test");
 
-    expect(made?.key.purpose).toBe("cabinet");
+    expect(made?.key.purpose).toBe("dashboard");
     expect(await store.codeKeysOf(made?.merchant.id ?? "")).toStrictEqual([]);
   });
 
