@@ -524,6 +524,40 @@ describe("the synchronous mode: refusal before the charge", () => {
     });
   });
 
+  it("does not take an order on", () => {
+    // The goods of this mode travel in the handler's answer and nowhere else,
+    // so a promise of goods later has nothing to be kept with: there is no
+    // `deliver` call here to keep it. Told his acceptance landed, the merchant
+    // would write the order down as under way while it ran out its seconds and
+    // closed with nothing sold.
+    const dispatched = reach("dispatched");
+    const { order, effects } = must(dispatched, { kind: "handler_accepted", at: T0 + 4 });
+
+    expect(effects).toStrictEqual([
+      {
+        kind: "answer_merchant",
+        answer: { ok: false, error: "not_applicable_in_mode", retryable: false },
+      },
+    ]);
+    expect(order).toStrictEqual(dispatched);
+  });
+
+  it("does not take one on before our record of handing it over, either", () => {
+    // The same answer arriving ahead of our own record of the hand-over. It
+    // is answered the same way, and leaves no record of a hand-over behind
+    // on the strength of an answer it refused.
+    const paid = walk(newOrder("sync"), [{ kind: "payment_verified", at: T0 + 1 }]);
+    const { order, effects } = must(paid, { kind: "handler_accepted", at: T0 + 2 });
+
+    expect(effects).toStrictEqual([
+      {
+        kind: "answer_merchant",
+        answer: { ok: false, error: "not_applicable_in_mode", retryable: false },
+      },
+    ]);
+    expect(order).toStrictEqual(paid);
+  });
+
   it("has no separate deliver call at all", () => {
     // Portal: in the synchronous mode the handler answers with the goods
     // themselves. A `deliver` call there is a typed answer, not an exception.
