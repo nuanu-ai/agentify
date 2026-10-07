@@ -458,7 +458,7 @@ export const scannerIdentityDeletionOperations = pgTable(
     leadId: uuid("lead_id")
       .notNull()
       .references(() => leads.id, { onDelete: "cascade" }),
-    dashboardResult: text("cabinet_result"),
+    dashboardResult: text("dashboard_result"),
     leaseToken: uuid("lease_token"),
     leaseExpiresAt: utcTimestamp("lease_expires_at"),
     createdAt: utcTimestamp("created_at").notNull().defaultNow(),
