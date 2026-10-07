@@ -152,6 +152,25 @@ describe("one paid order, in the merchant's own shop", () => {
     ]);
   });
 
+  it("refuses an order whose price is not the shop's price, and places nothing", async () => {
+    // The download can be the one the price was bound to and the money still
+    // be wrong: a sale charged at a price the shop does not ask any more is
+    // not one to put in somebody's shop on their behalf.
+    const shops = memoryWooShops();
+    const shop = aShopThatAccepts();
+
+    const answer = await fillFromTheShop(
+      anOrder({ price: { ...anOrder().price, amount: "30.00" } }),
+      connection(),
+      MERCHANT_EMAIL,
+      filling(shops, shop.place),
+    );
+
+    expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
+    expect(shop.placed).toHaveLength(0);
+    expect((await shops.knownOrder("ord_1"))?.kind).toBe("precreate_refused");
+  });
+
   it("places one order for a sale handed over twice", async () => {
     // Delivery is at least once and this is the whole reason the ledger
     // exists: a second hand-over must not become a second thing the merchant
@@ -610,6 +629,187 @@ describe("the whole way through, against a real gateway", () => {
     );
 
     expect(answer).toMatchObject({ available: false });
+  });
+});
+
+describe("a price question off the merchant's stream", () => {
+  // What the dashboard answers for the shop it stands in for when an agent
+  // asks for a price. Everything here is the code a deployment runs except the
+  // read of the product, which is the shop's answer handed in; the gateway,
+  // which records what it was told; and the store, which is the in-memory one
+  // held to the same contract as the Postgres one a deployment writes to.
+  const question = {
+    merchant_item_id: merchantItemIdFor("https://shop.example.com", "11"),
+    price_id: "prc_1",
+    purpose: "purchase" as const,
+    expires_at: "2026-09-14T12:01:00.000Z",
+  };
+  const NOW = "2026-09-14T12:00:00.000Z";
+  const inTheShop = {
+    productId: "11",
+    downloadId: "dl_guide",
+    fileName: "Guide",
+    price: { amount: "25.00", currency: "USD" },
+    fingerprint: "accepted-download-fingerprint",
+  };
+
+  /** The shop's answer for the item and account it was asked about, and nothing for any other. */
+  const shopShowing =
+    (product: typeof inTheShop | null) => async (asked: WooConnection, merchantItemId: string) =>
+      asked.accountId === "acc_1" && merchantItemId === question.merchant_item_id ? product : null;
+
+  const answering = async (shops: WooShops, product: typeof inTheShop | null): Promise<unknown> => {
+    let answer: unknown;
+    const gateway = {
+      pollWorker: async () => ({
+        ok: true as const,
+        document: {
+          envelopes: [
+            { id: "env_quote", kind: "quote_request" as const, sent_at: NOW, payload: question },
+          ],
+        },
+      }),
+      answerQuote: async (priceId: string, said: unknown) => {
+        // Answered under the price the question named, which is the only
+        // thing the gateway files a price answer against.
+        answer = priceId === question.price_id ? said : `answered under ${priceId}`;
+        return { ok: true as const, document: { used: true } };
+      },
+      answerOrder: async () => {
+        throw new Error("no order was drawn, so none is answered");
+      },
+    } as never;
+    await turnOnce(connection(), {
+      shops,
+      identity: {
+        byId: async () => ({
+          id: "p",
+          email: MERCHANT_EMAIL,
+          confirmed: true,
+          merchant: { id: "mer_1", key: KEY },
+        }),
+      },
+      clientFor: () => gateway,
+      now: () => new Date(NOW),
+      eligibleProduct: shopShowing(product),
+    });
+    return answer;
+  };
+
+  it("answers with the shop's own price and binds the price to the product it read", async () => {
+    // The binding is what the order is held to later: an order paying this
+    // price is filled only against the download the agent was offered.
+    const shops = memoryWooShops();
+
+    expect(await answering(shops, inTheShop)).toStrictEqual({
+      available: true,
+      price: { amount: "25.00", currency: "USD" },
+      as_of: NOW,
+    });
+    expect(await shops.quotedProduct("acc_1", "prc_1", question.merchant_item_id)).toBe(
+      "accepted-download-fingerprint",
+    );
+  });
+
+  it("names no price when the shop does not show the product as one download", async () => {
+    const shops = memoryWooShops();
+
+    expect(await answering(shops, null)).toStrictEqual({ available: false, as_of: NOW });
+    expect(await shops.quotedProduct("acc_1", "prc_1", question.merchant_item_id)).toBeNull();
+  });
+
+  for (const { title, atTheOrder, delivered } of [
+    {
+      title: "fills the order that pays a price against the download the price was bound to",
+      atTheOrder: inTheShop,
+      delivered: true,
+    },
+    {
+      title: "refuses the order that pays a price when the download changed after it was quoted",
+      atTheOrder: { ...inTheShop, fingerprint: "a-different-download" },
+      delivered: false,
+    },
+  ]) {
+    it(title, async () => {
+      // One store, two turns: the price question and then the order paying
+      // it, with nothing handed in for the binding. What the fill holds the
+      // order to is what the quote wrote.
+      const shops = memoryWooShops();
+      const shop = aShopThatAccepts();
+      const turns = [
+        { id: "env_quote", kind: "quote_request" as const, sent_at: NOW, payload: question },
+        {
+          id: "env_order",
+          kind: "order" as const,
+          sent_at: NOW,
+          payload: anOrder({ price_id: "prc_1" }),
+        },
+      ];
+      let answered: unknown;
+      const gateway = {
+        pollWorker: async () => ({
+          ok: true as const,
+          document: { envelopes: [turns.shift()].filter((envelope) => envelope !== undefined) },
+        }),
+        answerQuote: async () => ({ ok: true as const, document: { used: true } }),
+        answerOrder: async (_orderId: string, answer: unknown) => {
+          answered = answer;
+          return {
+            ok: true as const,
+            document: { ok: true as const, result: "delivered" as const },
+          };
+        },
+      } as never;
+      let product: typeof inTheShop = inTheShop;
+      const parts = {
+        shops,
+        identity: {
+          byId: async () => ({
+            id: "p",
+            email: MERCHANT_EMAIL,
+            confirmed: true,
+            merchant: { id: "mer_1", key: KEY },
+          }),
+        },
+        clientFor: () => gateway,
+        now: () => new Date(NOW),
+        placeOrder: shop.place,
+        eligibleProduct: async (asked: WooConnection, merchantItemId: string) =>
+          shopShowing(product)(asked, merchantItemId),
+      };
+
+      await turnOnce(connection(), parts);
+      product = atTheOrder;
+      await turnOnce(connection(), parts);
+
+      if (delivered) {
+        expect(answered).toMatchObject({ delivered: { file_name: "Guide" } });
+        expect(shop.placed).toHaveLength(1);
+      } else {
+        expect(answered).toMatchObject({ refused: { code: "cannot_fulfill" } });
+        expect(shop.placed).toHaveLength(0);
+      }
+    });
+  }
+
+  it("names no price when that price was already bound to another product", async () => {
+    // The shop changed the download between two answers for one price. The
+    // order comes back held to the first, so a price for the second is a price
+    // no order could be filled against.
+    const shops = memoryWooShops();
+    await shops.recordQuote(
+      "acc_1",
+      "prc_1",
+      question.merchant_item_id,
+      "an-earlier-download",
+      new Date(question.expires_at),
+      new Date(NOW),
+    );
+
+    expect(await answering(shops, inTheShop)).toStrictEqual({ available: false, as_of: NOW });
+    expect(await shops.quotedProduct("acc_1", "prc_1", question.merchant_item_id)).toBe(
+      "an-earlier-download",
+    );
   });
 });
 
