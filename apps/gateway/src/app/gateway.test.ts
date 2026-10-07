@@ -2167,6 +2167,45 @@ describe("the merchant's calls", () => {
     expect((await buying).step).toBe("settled");
   });
 
+  it("tells a synchronous merchant that taking the order on is not an answer of his mode", async () => {
+    // What his SDK posts when a synchronous handler returns `accepted`. A
+    // success here is a sale the merchant writes down as under way while the
+    // order runs out its seconds with nothing sold; the refusal is what his
+    // problem handler shows him instead.
+    const harnessed = await started({
+      // Short enough that the purchase ends inside the test, and a silence
+      // would be noticed long before it does.
+      HANDLER_ANSWER_MS: "20",
+      SYNC_RESPONSE_MS: "200",
+      SETTLE_RESPONSE_MS: "100",
+      SYNC_BUDGET_MS: "2000",
+    });
+    const itemId = await published(harnessed, syncCard);
+    const offered = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    const orderId = offered.order.order.id;
+
+    const buying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    expect((await harnessed.gateway.poll(harnessed.merchant.id, 10, 200)).envelopes).toHaveLength(
+      1,
+    );
+
+    const refused = await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, {
+      accepted: {},
+    });
+    expect(refused?.ok).toBe(false);
+    if (refused?.ok !== false) throw new Error("the acceptance was taken");
+    expect(refused.error.code).toBe("not_applicable_in_mode");
+    expect(refused.error.retryable).toBe(false);
+
+    // What the agent sees: the purchase ends at its deadline and nothing is
+    // charged, which is what the portal tells the merchant will happen.
+    const bought = await buying;
+    if (bought.step !== "settled") throw new Error(`the purchase came back ${bought.step}`);
+    expect(bought.order.order.state).toBe("expired");
+    expect(harnessed.facilitator.settles).toHaveLength(0);
+  });
+
   it("does not tell a merchant a live order is closed", async () => {
     // The contract promises "order_already_closed" means the order reached an
     // ending that no call reopens. A merchant walking their own list of open

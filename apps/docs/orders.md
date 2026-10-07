@@ -165,7 +165,10 @@ A handler has three answers:
 - a refusal — a short code and a reason a person can read, with the codes
   collected in the [vocabulary of refusal codes](/cards);
 - taking the order on, where the goods leave later: you confirm the delivery
-  itself with a separate call.
+  itself with a separate call. That call does not exist in the synchronous mode,
+  so a synchronous handler that answers this way is refused with
+  `not_applicable_in_mode`. The order is not sent to it again for that answer,
+  and it ends when its seconds run out, with the buyer charged nothing.
 
 Those three are what a handler returns. The same three exist as calls you make
 from outside a handler — `deliver`, `refuse` and `accept` — and the two that
@@ -281,7 +284,7 @@ own words instead of being flattened into the nearest of these.
 | --- | --- | --- |
 | `refund_already_settled` | the buyer has their money back for this order, so there is nothing left to deliver against | no |
 | `order_already_closed` | the order reached an ending that no call reopens | no |
-| `not_applicable_in_mode` | the call does not exist for this card's mode: in the synchronous one the handler's own answer is the delivery and the refusal | no |
+| `not_applicable_in_mode` | the call or the answer does not exist for this card's mode: in the synchronous one the handler's own answer is the delivery or the refusal, so there is no delivering or refusing separately and no taking the order on | no |
 | `delivery_does_not_match_card` | the goods are not the ones the card declares, so nothing was written down | while the order still stands, yes — with different goods; once it has ended, no |
 | `call_did_not_reach_us` | the call never got to us, so it did nothing | yes |
 | `answer_not_understood` | it reached us and came back in words these tools cannot read, so it may well have done its work | yes |

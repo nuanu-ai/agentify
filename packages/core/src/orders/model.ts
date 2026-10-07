@@ -550,10 +550,8 @@ export type Order = {
    * silence after it that no longer costs him anything.
    *
    * Taking an order on is the asynchronous mode's answer, where the goods
-   * follow through the `deliver` call. A synchronous handler can give it too
-   * and is answered the same way, but there the call does not apply, and the
-   * order is closed only by the goods in a handler's answer or by its
-   * deadline.
+   * follow through the `deliver` call. A synchronous handler that gives it is
+   * refused for its mode, so the flag is never set on a synchronous order.
    *
    * It is written false on the way into each round — the confirmation, the
    * order once paid, the order once handed over from `paid` — and set only by
