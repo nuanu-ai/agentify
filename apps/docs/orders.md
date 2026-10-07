@@ -185,18 +185,22 @@ Silence does not count as an answer: every wait has a deadline, and an order
 that runs past its deadline closes without you.
 
 We wait three seconds for a handler's answer, counted from the moment your
-worker takes the order off the subscription. An answer that comes later still
-counts, as long as the mode's deadline has not run out, but by then we have
-taken the silence for a failed delivery and the order goes out again, to the
-same process or to another instance of your handler, and that repeat is answered
-the way every repeat is ([Telling a repeat apart](#telling-a-repeat-apart)). In
-the asynchronous mode this is a reason to take the order on at once and do the
-work outside the handler. Once your acceptance has reached us, a silence no
-longer counts against the order — what holds you to it is the delivery deadline
-on your card — though a repeat that was already on its way still arrives. In the
-synchronous mode a handler slower than our wait should expect the same order
-again, in another instance while it is still working on the first or in the same
-one after it, and the buyer gets whichever answer reaches us first.
+worker takes the order off the subscription. A worker takes several orders off
+at once and works through them one at a time, so for an order further down a
+batch the wait also covers the handler calls ahead of it.
+
+An answer that comes later still counts, as long as the mode's deadline has not
+run out, but by then we have taken the silence for a failed delivery and the
+order goes out again, to the same process or to another instance of your
+handler, and that repeat is answered the way every repeat is ([Telling a repeat
+apart](#telling-a-repeat-apart)). In the asynchronous mode this is a reason to
+take the order on at once and do the work outside the handler. Once your
+acceptance has reached us, a silence no longer counts against the order — what
+holds you to it is the delivery deadline on your card — though a repeat that was
+already on its way still arrives. In the synchronous mode a handler slower than
+our wait should expect the same order again, in another instance while it is
+still working on the first or in the same one after it, and the buyer gets
+whichever answer reaches us first.
 
 ### The confirmation mode
 
