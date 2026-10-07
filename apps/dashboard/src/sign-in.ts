@@ -52,6 +52,7 @@ ${brandLockup("/")}
 </form>
 </div>`,
     mode,
+    null,
   );
 
 /**
@@ -223,6 +224,7 @@ ${brandLockup("/")}
 ${COUNTDOWN}
 </div>`,
     mode,
+    null,
   );
 };
 
@@ -247,6 +249,7 @@ ${brandLockup("/")}
 </form>
 </div>`,
     mode,
+    null,
   );
 
 /**
@@ -276,6 +279,7 @@ ${brandLockup("/")}
 </form>
 </div>`,
     mode,
+    null,
   );
 
 /**
@@ -301,6 +305,7 @@ ${brandLockup("/")}
 </div>
 </div>`,
     mode,
+    null,
   );
 
 /**
@@ -338,4 +343,5 @@ ${brandLockup("/")}
 </div>
 </div>`,
     mode,
+    email,
   );

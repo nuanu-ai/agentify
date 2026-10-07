@@ -26,6 +26,8 @@
  * not contain. It is here so that the promise holds for the next question
  * asked, not because it is holding anything up today.
  */
+import { DRAWN_FOR } from "../html.js";
+
 export const readable = (html: string): string =>
   html
     .replaceAll(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
@@ -83,3 +85,16 @@ export const waitingButton = (html: string): ServedButton => {
  */
 export const importFormOf = (html: string): string =>
   /<form[^>]*action="[^"]*\/woocommerce\/import"[^>]*>[\s\S]*?<\/form>/.exec(html)?.[0] ?? "";
+
+/**
+ * The address a page's forms say they were drawn for, or undefined on a page
+ * with no such form.
+ *
+ * A browser presses a form on the page it is showing, and that form carries
+ * the address the page was drawn for (DRAWN_FOR in ../html.ts). A test's
+ * browser that posts without a page in front of it does the same by sending
+ * the mark of the last page it was shown, which is what the browser in either
+ * test file does when a test leaves the field out.
+ */
+export const shownMarkIn = (html: string): string | undefined =>
+  new RegExp(`name="${DRAWN_FOR}" value="([^"]*)"`).exec(html)?.[1];

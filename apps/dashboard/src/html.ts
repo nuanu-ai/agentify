@@ -22,6 +22,38 @@ export const escaped = (value: string): string =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 
+/**
+ * The field every form behind the gate carries: the address its page was
+ * drawn for.
+ *
+ * People mostly sign out to come back as another address (ADR-0026 §3), and
+ * a tab drawn for the first is often still open when the second signs in. The
+ * browser then sends the second one's cookie with the first one's form, so the
+ * cookie alone cannot say whose page was pressed; this field can, and the gate
+ * refuses a form whose page was drawn for somebody else.
+ */
+export const DRAWN_FOR = "signed_in_as";
+
+/**
+ * A page with every form that posts saying whom it was drawn for.
+ *
+ * Done to the whole page rather than written into each form, so a form added
+ * later carries it without anybody remembering to, however its tag is spelled.
+ * A form that ends up without it anyway is refused by the gate rather than let
+ * through, so a miss shows as a form that does not work instead of a form that
+ * works for whoever is signed in.
+ *
+ * `autocomplete="off"` because Firefox restores a hidden field's old value
+ * when a page is reloaded, which would put the address the tab was first drawn
+ * for back into a page just redrawn for somebody else.
+ */
+const drawnFor = (who: string, html: string): string =>
+  html.replaceAll(/<form\b[^>]*>/gi, (tag) =>
+    /\smethod\s*=\s*["']?post\b/i.test(tag)
+      ? `${tag}<input type="hidden" name="${DRAWN_FOR}" value="${escaped(who)}" autocomplete="off">`
+      : tag,
+  );
+
 /** Which of the screens with navigation on them is being looked at. */
 export type Tab = "cards" | "orders" | "receipts" | "integrations" | "keys" | "settings";
 
@@ -179,7 +211,9 @@ export const page = (chrome: Chrome): string => {
   const heading = /<h1>([\s\S]*?)<\/h1>/.exec(chrome.body);
   const body = heading === null ? chrome.body : chrome.body.replace(heading[0], "");
   const title = heading?.[1] ?? escaped(chrome.title);
-  return `<!doctype html>
+  return drawnFor(
+    chrome.who,
+    `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -217,7 +251,8 @@ ${accountRow(chrome.base, chrome.who)}      </div></header>
 ${FOOT}</div>
 </body>
 </html>
-`;
+`,
+  );
 };
 
 /**
@@ -263,15 +298,22 @@ const unnamedNote = (base: string): string => `  <div class="callout">
 `;
 
 /**
- * A page with no navigation, for a merchant who is not signed in yet.
+ * A page with no navigation: the pages in front of the gate, and the few behind
+ * it that stand outside the dashboard's frame.
  *
  * There were two of these: one that carried the theme script and one for the
  * pages whose behaviour has to be complete without JavaScript. With the theme
  * gone there is no script on any of them, so the two were the same page written
  * twice.
  */
-export const bare = (base: string, title: string, body: string, mode: SurfaceMode): string =>
-  `<!doctype html>
+export const bare = (
+  base: string,
+  title: string,
+  body: string,
+  mode: SurfaceMode,
+  who: string | null,
+): string => {
+  const drawn = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -287,6 +329,12 @@ ${body}
 </body>
 </html>
 `;
+  // Asked of every caller, so a screen behind the gate cannot forget to say
+  // whom it is drawn for: null for the pages in front of the gate, whose forms
+  // post to addresses the gate never sees, and for pages with no form that
+  // posts.
+  return who === null ? drawn : drawnFor(who, drawn);
+};
 
 /**
  * An instant as a page prints it, and the only way a page prints one.

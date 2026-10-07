@@ -286,6 +286,7 @@ export const wooReturnScreen = (base: string, mode: SurfaceMode): string =>
   </form>
 </div>`,
     mode,
+    null,
   );
 
 /** The box the shop's address is typed into. */

@@ -45,6 +45,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { type DashboardConfig, loadConfig } from "./config.js";
 import { keyRenewal } from "./dashboard-key.js";
 import { type Answer, type GatewayClient, gatewayFor, type Registrar } from "./gateway.js";
+import { DRAWN_FOR } from "./html.js";
 import {
   type Identity,
   identityFor,
@@ -54,7 +55,7 @@ import {
 import type { Handover, Message, Postman } from "./mail.js";
 import { buildReportIdentityApp, REPORT_IDENTITY_PATH } from "./report-identity-server.js";
 import { buildApp } from "./server.js";
-import { readable, waitingButton } from "./testing/html.js";
+import { readable, shownMarkIn, waitingButton } from "./testing/html.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
 import { memoryWooShops, type WooShops } from "./woo-shops.js";
 
@@ -492,11 +493,12 @@ async function attachedTo(
   rows: Record<string, Record<string, unknown>[]> = {},
 ): Promise<Browser> {
   const jar = new Map<string, string>();
+  let shownMark: string | undefined;
 
   const call = async (
     method: string,
     path: string,
-    form?: Record<string, string>,
+    given?: Record<string, string>,
     sent: {
       readonly cookie?: string;
       readonly origin?: string;
@@ -505,6 +507,10 @@ async function attachedTo(
     } = {},
   ): Promise<Visit> => {
     const cookie = sent.cookie ?? [...jar].map(([name, value]) => `${name}=${value}`).join("; ");
+    const form =
+      given === undefined || DRAWN_FOR in given || shownMark === undefined
+        ? given
+        : { ...given, [DRAWN_FOR]: shownMark };
     const answered = await fetch(`${url}${path}`, {
       method,
       redirect: "manual",
@@ -532,10 +538,12 @@ async function attachedTo(
       }
     }
 
+    const html = await answered.text();
+    shownMark = shownMarkIn(html) ?? shownMark;
     return {
       status: answered.status,
       headers: answered.headers,
-      html: await answered.text(),
+      html,
       to: answered.headers.get("location"),
     };
   };
@@ -557,6 +565,8 @@ async function attachedTo(
       return opened.to === null || opened.to === LATEST_REPORT ? opened : call("GET", opened.to);
     },
     async makeMerchant() {
+      // Pressed on the screen that offers it, as a person would press it.
+      await call("GET", `${basePath}/merchant`);
       const made = await call("POST", `${basePath}/merchant`, {});
       return made.to === null ? made : call("GET", made.to);
     },
@@ -991,6 +1001,7 @@ describe("the passwordless dashboard door", () => {
     const opened = await running.browser.from(running.url).post("/sign-in/open", { token });
     expect(opened.to).toBe(LATEST_REPORT);
 
+    await running.browser.get("/merchant");
     const first = await running.browser.from(running.url).post("/merchant");
     expect(first.status).toBe(503);
     expect(running.rows.cabinet_sessions).toHaveLength(1);
@@ -1246,6 +1257,37 @@ describe("one session for the whole site", () => {
   });
 });
 
+/**
+ * Every route the dashboard serves, read off its own router, with each route
+ * parameter filled with an identifier nothing has.
+ *
+ * Read rather than listed, so that a test holding a rule for every route holds
+ * it for a route added later too.
+ */
+const routesOf = (running: Running): { method: string; path: string }[] => {
+  const listed = buildApp(
+    loadConfig({
+      GATEWAY_URL: running.gateway.url,
+      DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
+      AUTH_SECRET: "x".repeat(44),
+      PAYMENT_NETWORK: "eip155:84532",
+      FACILITATOR_URL: "sandbox:scripted",
+      REGISTRATION_INVITATION: INVITATION,
+    }),
+    { identity: running.identity, wooShops: memoryWooShops() },
+  );
+  return (
+    listed.router.stack as { route?: { path: string; methods: Record<string, boolean> } }[]
+  ).flatMap(({ route }) =>
+    route === undefined
+      ? []
+      : Object.keys(route.methods).map((method) => ({
+          method,
+          path: route.path.replaceAll(/:[a-z_]+/g, "x"),
+        })),
+  );
+};
+
 describe("the operator flag", () => {
   it("is moved by no request a browser can send to the dashboard", async () => {
     // Being an operator opens the operator's dashboard, and only the terminal's
@@ -1261,27 +1303,7 @@ describe("the operator flag", () => {
     // the flag from a request, not that every line behind those refusals ran.
     const running = await started({ wooShops: memoryWooShops() });
     await running.browser.signIn();
-    const listed = buildApp(
-      loadConfig({
-        GATEWAY_URL: running.gateway.url,
-        DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
-        AUTH_SECRET: "x".repeat(44),
-        PAYMENT_NETWORK: "eip155:84532",
-        FACILITATOR_URL: "sandbox:scripted",
-        REGISTRATION_INVITATION: INVITATION,
-      }),
-      { identity: running.identity, wooShops: memoryWooShops() },
-    );
-    const routes = (
-      listed.router.stack as { route?: { path: string; methods: Record<string, boolean> } }[]
-    ).flatMap(({ route }) =>
-      route === undefined
-        ? []
-        : Object.keys(route.methods).map((method) => ({
-            method,
-            path: route.path.replaceAll(/:[a-z_]+/g, "x"),
-          })),
-    );
+    const routes = routesOf(running);
     expect(routes.filter(({ method }) => method === "post").length).toBeGreaterThan(10);
 
     // Signing out ends the session the rest are sent with, so it goes last.
@@ -3095,7 +3117,9 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     try {
       await browser.signIn();
 
-      const answered = await browser.post("/selling/pause");
+      // Pressed on a page drawn for this person before the gateway went wrong;
+      // every page drawn now is the error page, which has nothing to press.
+      const answered = await browser.post("/selling/pause", { [DRAWN_FOR]: PERSON });
 
       expect(answered.status).toBe(500);
       const text = readable(answered.html);
@@ -3513,6 +3537,159 @@ describe("a session that is ended while somebody is looking at a page", () => {
 
     expect(first).not.toBeNull();
     expect(telephone.sessionToken()).not.toBe(first);
+  });
+});
+
+/**
+ * Every form a page draws that posts: where it goes, and what it sends besides
+ * what a person types, read off the page the way a browser would read it —
+ * whatever the case of the tag or the order of its attributes.
+ */
+const postingFormsIn = (html: string): { action: string; fields: Record<string, string> }[] =>
+  [...html.matchAll(/<form\b([^>]*)>([\s\S]*?)<\/form>/gi)].flatMap(
+    ([, attributes = "", inside = ""]) => {
+      if (!/\bmethod\s*=\s*["']?post\b/i.test(attributes)) return [];
+      const action = /\baction\s*=\s*["']([^"']*)["']/i.exec(attributes)?.[1] ?? "";
+      const fields = Object.fromEntries(
+        [...inside.matchAll(/<input\b[^>]*>/gi)].flatMap(([input]) => {
+          if (!/\btype\s*=\s*["']?hidden\b/i.test(input)) return [];
+          const name = /\bname\s*=\s*["']([^"']*)["']/i.exec(input)?.[1];
+          const value = /\bvalue\s*=\s*["']([^"']*)["']/i.exec(input)?.[1] ?? "";
+          return name === undefined ? [] : [[name, value]];
+        }),
+      );
+      return [{ action, fields }];
+    },
+  );
+
+/** What the one form a page draws to `action` sends besides what a person types. */
+const hiddenIn = (html: string, action: string): Record<string, string> => {
+  const form = postingFormsIn(html).find((drawn) => drawn.action === action);
+  if (form === undefined) throw new Error(`the page draws no form sent to ${action}`);
+  return form.fields;
+};
+
+describe("a page left open while another address signs in", () => {
+  it("does nothing when pressed, and the same press from a page of the address now signed in does", async () => {
+    // People sign out to come back as another address (ADR-0026 §3), so a tab
+    // drawn for the first can still be open when the second signs in, and the
+    // browser sends the second one's cookie with the first one's form.
+    const running = await started();
+    const itemId = await publish(running.gateway, roomCard);
+    await running.identity.make(OTHER, THE_MERCHANT);
+    await running.browser.signIn();
+    const leftOpen = hiddenIn((await running.browser.get("/cards")).html, "/selling/pause");
+
+    await running.browser.post("/sign-out");
+    await running.browser.signIn(OTHER);
+    const refused = await running.browser.post("/selling/pause", leftOpen);
+
+    expect(refused.status).toBe(409);
+    const said = readable(refused.html);
+    expect(said).toContain("Nothing was changed");
+    // It names who is signed in now, and never what the form said about
+    // itself, and it leads to where that person starts.
+    expect(said).toContain(OTHER);
+    expect(said).not.toContain(PERSON);
+    expect(refused.html).toContain('href="/cards"');
+    expect(await purchasable(running.gateway, itemId)).toBe(true);
+
+    const drawnNow = hiddenIn((await running.browser.get("/cards")).html, "/selling/pause");
+    expect((await running.browser.post("/selling/pause", drawnNow)).status).toBe(303);
+    expect(await purchasable(running.gateway, itemId)).toBe(false);
+  });
+
+  it("is refused at every address behind the gate, read off the router, as is a form that says nothing", async () => {
+    // Held in the gate rather than route by route, so a route added later is
+    // held too. A form that says whom it was drawn for nothing at all is
+    // refused as well: that is what a form the marking missed would send.
+    const running = await started({ wooShops: memoryWooShops() });
+    await publish(running.gateway, roomCard);
+    await running.identity.make(OTHER, THE_MERCHANT);
+    await running.browser.signIn();
+    const leftOpen = hiddenIn((await running.browser.get("/cards")).html, "/selling/pause");
+    await running.browser.post("/sign-out");
+    await running.browser.signIn(OTHER);
+
+    // ADR-0009 §2's list: these answer without a session, and the sign-out
+    // signs this browser out whichever page it was pressed on.
+    const above = new Set(["/sign-in", "/sign-in/open", "/sign-out", "/woocommerce/callback"]);
+    const behind = routesOf(running).filter(
+      ({ method, path }) => method === "post" && !above.has(path),
+    );
+    expect(behind.length).toBeGreaterThan(10);
+    const silently = async (path: string): Promise<Visit> =>
+      await running.browser.postRaw(path, "application/x-www-form-urlencoded", "");
+    const refusal = await silently("/selling/pause");
+    expect(refusal.status).toBe(409);
+    for (const { path } of behind) {
+      for (const answer of [await running.browser.post(path, leftOpen), await silently(path)]) {
+        expect({ status: answer.status, html: answer.html }, path).toStrictEqual({
+          status: 409,
+          html: refusal.html,
+        });
+      }
+    }
+  });
+
+  it("lets every form the working screens draw through for the address they were drawn for", async () => {
+    // Each form is sent exactly as its page drew it, by the browser it was
+    // drawn for, and must not get the refusal: a form the marking missed would.
+    // The screens are the ones a merchant with a card, an unset name and a shop
+    // to connect sees, and the screen offering a merchant to somebody new.
+    const running = await started({ wooShops: memoryWooShops() });
+    await publish(running.gateway, roomCard);
+    await running.browser.signIn();
+    const pages = ["/cards", "/keys", "/settings", "/integrations", "/woocommerce", "/nowhere"];
+    const drawn = [];
+    for (const path of pages) drawn.push(...postingFormsIn((await running.browser.get(path)).html));
+    await unname(running);
+    drawn.push(...postingFormsIn((await running.browser.get("/choose-name")).html));
+    const fresh = await running.another();
+    await fresh.signIn(FRESH.email);
+    const offered = postingFormsIn((await fresh.get("/merchant")).html);
+
+    const actions = new Set([...drawn, ...offered].map(({ action }) => action));
+    for (const action of [
+      "/selling/pause",
+      "/keys",
+      "/settings",
+      "/settings/payout-wallet",
+      "/settings/sign-out-others",
+      "/woocommerce/connect",
+      "/choose-name",
+      "/merchant",
+    ]) {
+      expect(actions, action).toContain(action);
+    }
+
+    // Sent raw, so that what goes is what the page drew and nothing the test's
+    // browser adds on its own.
+    const asDrawn = async (browser: Browser, action: string, fields: Record<string, string>) =>
+      await browser.postRaw(
+        action,
+        "application/x-www-form-urlencoded",
+        new URLSearchParams(fields).toString(),
+      );
+    const refusal = await asDrawn(running.browser, "/selling/pause", {});
+    expect(refusal.status).toBe(409);
+    for (const { action, fields } of drawn.filter(({ action }) => action !== "/sign-out")) {
+      const answer = await asDrawn(running.browser, action, fields);
+      expect(answer.status === 409 && answer.html === refusal.html, action).toBe(false);
+    }
+    // Still signed in: a form above that ended the session would have turned
+    // every later answer into the sign-in, which is not the refusal either.
+    expect((await running.browser.get("/cards")).status).toBe(200);
+
+    const freshRefusal = await asDrawn(fresh, "/selling/pause", {});
+    // Somebody with no merchant is not offered the seller dashboard's screens
+    // on the way out of it, only the way to where they start.
+    expect(freshRefusal.html).toContain(`href="${LATEST_REPORT}"`);
+    expect(freshRefusal.html).not.toContain('href="/cards"');
+    for (const { action, fields } of offered.filter(({ action }) => action !== "/sign-out")) {
+      const answer = await asDrawn(fresh, action, fields);
+      expect(answer.status === 409 && answer.html === freshRefusal.html, action).toBe(false);
+    }
   });
 });
 

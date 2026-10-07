@@ -22,7 +22,18 @@ import {
   type ReceiptList,
 } from "@nuanu-ai/agentify-contracts";
 import { RESUME_ALL_SELLING, STOP_ALL_SELLING } from "./control-labels.js";
-import { escaped, momentCell, page, type Row, state, type Tab, table, when } from "./html.js";
+import {
+  bare,
+  brandLockup,
+  escaped,
+  momentCell,
+  page,
+  type Row,
+  state,
+  type Tab,
+  table,
+  when,
+} from "./html.js";
 import type { PayoutWallet } from "./payout-wallet.js";
 // A type and nothing else, so this leaves no import behind once it is compiled
 // and the two files are not a cycle at run time. The shape belongs beside the
@@ -705,3 +716,36 @@ export const notFoundScreen = (viewer: Viewer): string =>
   </div>
 `,
   });
+
+/**
+ * The answer to a form whose page was not drawn for the address signed in now.
+ *
+ * Nothing it sent was done. The words say the page could not be matched rather
+ * than that it was drawn for somebody else, because a tab drawn before forms
+ * were marked, and its own owner pressing it, gets this page too. The page names the address signed in now and not
+ * the one the old page was drawn for: that one is whatever the form carried,
+ * and a page is no place to repeat what a request says about itself. It is a
+ * bare page rather than the dashboard's frame, because the person signed in
+ * now may own no merchant, and the frame's menu would offer them screens that
+ * are not theirs; its one button leads to wherever this person starts.
+ */
+export const notDrawnForYouScreen = (
+  base: string,
+  mode: SurfaceMode,
+  who: string,
+  start: string,
+): string =>
+  bare(
+    base,
+    "Nothing was changed",
+    `<div class="gate">
+${brandLockup("/")}
+<div class="gate-card">
+  <h1>Nothing was changed</h1>
+  <p>What you pressed was not done, because the page it came from could not be matched to the address signed in on this browser now, <strong>${escaped(who)}</strong>. Open the screen again to make the change as this address.</p>
+  <a class="button button-primary" href="${escaped(start)}">Continue</a>
+</div>
+</div>`,
+    mode,
+    null,
+  );
