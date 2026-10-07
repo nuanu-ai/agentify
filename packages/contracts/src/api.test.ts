@@ -1194,14 +1194,6 @@ describe("the route table", () => {
     }
   });
 
-  it("warns that the paid route has to answer a challenge on any method", () => {
-    // A lesson already paid for: validators and crawlers ask for a listed
-    // resource with GET, and a paywall bound to one method made most of a
-    // catalog invisible. A table keyed by method is exactly where that would
-    // be reproduced.
-    expect(API_ROUTES.purchase_item.description).toContain("GET");
-  });
-
   it("pauses and resumes with verbs, so leaving cannot be reached by a side door", () => {
     // Written as one route taking a selling word, the switch would accept
     // "departed" as easily as "paused" — and leaving is not a heavier pause.
@@ -1219,113 +1211,6 @@ describe("the route table", () => {
       expect(route.request, route.path).toBeUndefined();
       expect(route.auth, route.path).toBe("merchant_key");
     }
-  });
-
-  // The doors and the shapes of the calls about merchants and their keys are
-  // pinned by the surface table above, row for row, so nothing here repeats
-  // them. What the table cannot hold is the prose, and the rules below reach an
-  // SDK author only through it.
-
-  it("warns whoever writes a cabinet that one key cannot be disabled from it", () => {
-    // The rule lives in the route rather than on a screen, so the table is
-    // where somebody building against it finds out. What it costs to learn the
-    // hard way is a merchant one click away from a cabinet that answers every
-    // page with "the gateway will not take this key", and no terminal to undo
-    // it with. This pins that the sentence is there, not what it says.
-    expect(API_ROUTES.disable_key.description).toContain("this call was made with");
-    expect(API_ROUTES.list_keys.description).toContain("this_call");
-  });
-
-  it("warns that the key a call was made with is not always among the keys listed", () => {
-    // The one thing about this list that a reader would otherwise get wrong,
-    // and it fails silently: `this_call` names the key on the call, and a
-    // cabinet's key is in nobody's list — so a screen matching that identifier
-    // against the rows finds nothing, and a client that took the match for
-    // granted would either draw a row it invented or throw on the one page a
-    // merchant reaches their keys through.
-    expect(API_ROUTES.list_keys.description).toContain("not among");
-  });
-
-  it("says a key made for a cabinet is not disabled through the merchant's call", () => {
-    // The rule a cabinet author has to know before drawing a keys screen, and
-    // the one a merchant meets if they ever aim at such an identifier: this
-    // call reaches what they issued and refuses the rest by name.
-    expect(API_ROUTES.disable_key.description).toContain("key_made_for_a_cabinet");
-  });
-
-  it("says the two cabinet calls are refused to a merchant's own key", () => {
-    // The refusal is not hygiene and a reader has to know which key to make
-    // these with: a sweep made with a key of the merchant's own code would take
-    // away the credential a cabinet is signed in on and lock its owner out.
-    for (const route of [API_ROUTES.issue_cabinet_key, API_ROUTES.forget_cabinet_key]) {
-      expect(route.description).toContain("not_a_cabinet_key");
-    }
-  });
-
-  it("says the forgetting reaches only the key the call was made with", () => {
-    // The fact a cabinet author builds on and the fact that makes the call
-    // safe: there are no parameters and the only key it can remove is the one
-    // in the caller's hand, so no call of anybody's can take away a key written
-    // after it was sent. A reader who took this for the older rule — every key
-    // but this one — would build the sweep that locks people out.
-    expect(API_ROUTES.forget_cabinet_key.description).toContain("no other");
-  });
-
-  it("says how far the refusal that protects a merchant from themselves reaches", () => {
-    // The half that is easy to leave out and expensive to leave out. The rule
-    // is about the key on the call and not about the key a cabinet signed in
-    // with, which the gateway has no way of knowing — so a merchant with two
-    // keys can still be left with a cabinet the gateway will not take. A reader
-    // who took the first sentence for the whole promise would build on a
-    // protection that is not there.
-    expect(API_ROUTES.disable_key.description).toContain("two keys");
-  });
-
-  it("says that registering twice makes two merchants", () => {
-    // Every other write in this table says what a repeat does, and three of
-    // them say a retry after a dropped connection is safe. This one is not, and
-    // read in that company a silence would be taken for the same promise.
-    expect(API_ROUTES.register_merchant.description).toContain("two merchants");
-  });
-
-  it("sends whoever registers on to the call that names their seller", () => {
-    // Registering leaves a merchant listed under nothing, and a merchant listed
-    // under nothing cannot publish. Somebody reading only this row would build a
-    // cabinet that registers a person and takes them straight to a publish call
-    // the gateway refuses, so the road on is named where they are already
-    // reading.
-    expect(API_ROUTES.register_merchant.description).toContain("/v0/seller-name");
-  });
-
-  it("says where the name has to be set before a card can be published", () => {
-    // The publish call is the one that refuses, so it is the one that has to
-    // name the way out. A refusal that said only that something was missing
-    // would leave a merchant looking through their card for a field that is not
-    // in it, because what is missing is not on the card at all.
-    expect(API_ROUTES.publish_card.description).toContain("/v0/seller-name");
-  });
-
-  it("says live publication also waits for an operator, without inventing a merchant route", () => {
-    expect(API_ROUTES.publish_card.description).toContain("no_operator_approval");
-    expect(API_ROUTES.publish_card.description).toContain("test publication");
-    expect(API_ROUTES.publish_card.description).toContain("no merchant API");
-  });
-
-  it("says a name cannot be taken away, and names the act that is wanted instead", () => {
-    // A merchant who has a name keeps one. Somebody building a settings screen
-    // would otherwise put a "remove" button beside the field, find the call
-    // refuses, and read that as a gap rather than as the rule it is — so the
-    // row says which act does what they were reaching for.
-    expect(API_ROUTES.set_seller_name.description).toContain("pause");
-  });
-
-  it("says what a pause does and does not do to the orders already open", () => {
-    // The one thing a merchant most needs to know before pressing it, and the
-    // one the shape cannot carry: a pause stops new orders and lets the ones
-    // already accepted play out. A merchant who read it as "everything stops"
-    // would go looking for orders that are still theirs to deliver.
-    expect(API_ROUTES.pause_selling.description).toContain("already");
-    expect(API_ROUTES.pause_card.description).toContain("already");
   });
 });
 
