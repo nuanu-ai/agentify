@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { runVerify, VERIFY_EXIT } from "./verify.js";
+import { runVerify } from "./verify.js";
 
 const validCard = {
   merchant_item_id: "access-monthly",
@@ -30,6 +30,10 @@ afterEach(() => {
   directory = undefined;
 });
 
+// The answers are written out as numbers rather than read from the module.
+// They are what a merchant's build branches on and what the usage text
+// promises, and a test comparing the answer with the constant that produced it
+// would stay green when the number moved.
 const verifying = async (...argv: string[]): Promise<{ code: number; said: string }> => {
   const lines: string[] = [];
   const code = await runVerify(argv, (line) => lines.push(line));
@@ -47,7 +51,7 @@ describe("agentify verify", () => {
     expect(said).toMatch(/access-monthly/);
     expect(said).toMatch(/complete/i);
     expect(said).toMatch(/could not be run/i);
-    expect(code).toBe(VERIFY_EXIT.COULD_NOT_RUN);
+    expect(code).toBe(3);
   });
 
   it("names exactly what is missing for the idempotency run rather than a shrug", async () => {
@@ -67,7 +71,7 @@ describe("agentify verify", () => {
 
     expect(said).toMatch(/title/);
     expect(said).toMatch(/price\.amount/);
-    expect(code).toBe(VERIFY_EXIT.PROBLEMS);
+    expect(code).toBe(1);
   });
 
   it("checks every card it was given, not just the first that failed", async () => {
@@ -81,7 +85,7 @@ describe("agentify verify", () => {
 
     expect(said).toMatch(/result/);
     expect(said).toMatch(/fulfillment/);
-    expect(code).toBe(VERIFY_EXIT.PROBLEMS);
+    expect(code).toBe(1);
   });
 
   it("says a card file that is not JSON is a finding about that card", async () => {
@@ -89,7 +93,7 @@ describe("agentify verify", () => {
 
     expect(said).toMatch(/card\.json/);
     expect(said).toMatch(/JSON/);
-    expect(code).toBe(VERIFY_EXIT.PROBLEMS);
+    expect(code).toBe(1);
   });
 
   it("warns that a card which failed its shape may have more findings behind it", async () => {
@@ -131,21 +135,21 @@ describe("agentify verify", () => {
     expect(said).toMatch(/where you keep the cards\s+you\s+publish from/);
     expect(said).not.toMatch(/a merchant/);
     expect(said).toMatch(/Name the card files instead/);
-    expect(code).toBe(VERIFY_EXIT.COULD_NOT_RUN);
+    expect(code).toBe(3);
   });
 
   it("says which file it could not find", async () => {
     const { code, said } = await verifying("verify", join(tmpdir(), "no-such-card-file.json"));
 
     expect(said).toMatch(/no-such-card-file\.json/);
-    expect(code).toBe(VERIFY_EXIT.USAGE);
+    expect(code).toBe(2);
   });
 
   it("answers an unknown word with what it does know", async () => {
     const { code, said } = await verifying("publish", "card.json");
 
     expect(said).toMatch(/verify/);
-    expect(code).toBe(VERIFY_EXIT.USAGE);
+    expect(code).toBe(2);
   });
 
   it("never answers with success while a check cannot be run", async () => {
@@ -166,6 +170,6 @@ describe("agentify verify", () => {
       verifying("publish"),
     ]);
 
-    expect(answers.map((answer) => answer.code)).not.toContain(VERIFY_EXIT.PASSED);
+    expect(answers.map((answer) => answer.code)).not.toContain(0);
   });
 });
