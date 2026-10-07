@@ -402,10 +402,14 @@ retry of ours. Pass the idempotency key on into your own delivery system and
 answer with the earlier result under it. If your API already takes a key like
 that, ours is the one to give it.
 
-One order goes to one instance of the handler. Run three processes and three
-subscriptions divide the stream between them, and no order lands in two
-processes at once. Within one instance the orders are worked through one at a
-time; a parameter for taking several at once is among the things not settled.
+One delivery of an order goes to one instance of the handler. Run three
+processes and three subscriptions divide the stream between them, and each
+delivery lands in one of them. A handler slower than our wait for its answer can
+have the same order delivered again to another instance while it is still
+working on it ([Running the handler in several
+instances](/orders#running-the-handler-in-several-instances)). Within one
+instance the orders are worked through one at a time; a parameter for taking
+several at once is among the things not settled.
 
 We remember where the orders stand as well, so after a restart you do not have
 to rebuild the picture from your own database alone: the open orders can be
