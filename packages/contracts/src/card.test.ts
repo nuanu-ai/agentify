@@ -10,6 +10,8 @@ import {
   PublicCardSchema,
   publicCardOf,
   purchaseCheckFor,
+  SellerSchema,
+  SellerSiteSchema,
   ServiceNameSchema,
 } from "./card.js";
 import { toJsonSchemas } from "./index.js";
@@ -330,7 +332,11 @@ describe("the card an agent reads", () => {
   // the projection names what it copies rather than removing what it must not.
 
   const published = CardSchema.parse({ ...syncCard, price_check: "handler" });
-  const issued = { id: "itm_4d21bb", as_of: "2026-08-26T09:00:00Z" };
+  const issued = {
+    id: "itm_4d21bb",
+    as_of: "2026-08-26T09:00:00Z",
+    seller: { name: "Freeland", site: "https://freeland.example" },
+  };
   const publicCard = publicCardOf(published, issued);
 
   it("is a document an agent can buy from", () => {
@@ -351,8 +357,29 @@ describe("the card an agent reads", () => {
       "price",
       "price_checked_at_purchase",
       "result",
+      "seller",
       "title",
     ]);
+  });
+
+  it("names who sells, in the words the merchant gave", () => {
+    // The agent with a question the order cannot answer — a parcel that did
+    // not arrive, a return, the terms of what it bought — is sent to the
+    // shop's own site rather than to a channel of ours (ADR-0034). The pair is
+    // the merchant's and nobody checked it, which the schema's description
+    // says where an agent reads it.
+    expect(publicCard.seller).toStrictEqual({ name: "Freeland", site: "https://freeland.example" });
+    expect(PublicCardSchema.description).toContain("did not check");
+  });
+
+  it("says a merchant gave no site rather than leaving the field out", () => {
+    const unsited = publicCardOf(published, {
+      ...issued,
+      seller: { name: "Freeland", site: null },
+    });
+
+    expect(PublicCardSchema.parse(unsited).seller).toStrictEqual({ name: "Freeland", site: null });
+    expectMissingFieldRejected(PublicCardSchema, publicCard, "seller");
   });
 
   it("hands the agent our catalog identifier and not the merchant's own key", () => {
@@ -674,6 +701,72 @@ describe("the name a seller is listed under", () => {
     expect(ServiceNameSchema.safeParse("").success).toBe(false);
     expect(ServiceNameSchema.safeParse("   ").success).toBe(false);
   });
+
+  it("refuses markup and character references, which every agent reading the name would be shown", () => {
+    // The name now reaches every agent on every card and order of the
+    // merchant's (ADR-0034), so it is held to the card's own plain-text rule
+    // (ADR-0017): refused and named rather than cleaned into words the
+    // merchant never wrote.
+    expect(errorOf(ServiceNameSchema, "<b>Freeland</b>")).toContain("HTML markup");
+    expect(errorOf(ServiceNameSchema, "Tom &amp; Jerry")).toContain("character reference");
+    expect(ServiceNameSchema.parse("Tom & Jerry")).toBe("Tom & Jerry");
+  });
+});
+
+describe("the address of a seller's own site", () => {
+  // The promise: an agent sent to the shop is sent to the shop and to nothing
+  // else. A path, a query or a fragment would carry whatever the merchant
+  // typed to every agent reading the card, so only the bare https origin is
+  // taken, written the one way a browser writes it.
+  it("takes the scheme and the host", () => {
+    expect(SellerSiteSchema.parse("https://freeland.example")).toBe("https://freeland.example");
+    expect(SellerSiteSchema.parse("https://shop.freeland.example")).toBe(
+      "https://shop.freeland.example",
+    );
+  });
+
+  it("refuses anything after the host, and says what it takes instead", () => {
+    for (const site of [
+      "https://freeland.example/",
+      "https://freeland.example/about",
+      "https://freeland.example?ref=agent",
+      "https://freeland.example#contact",
+    ]) {
+      expect(errorOf(SellerSiteSchema, site), site).toContain("https://");
+    }
+  });
+
+  it("refuses an address that is not the shop's https origin", () => {
+    for (const site of [
+      "http://freeland.example",
+      "freeland.example",
+      "https://seller@freeland.example",
+      "https://freeland.example:8443",
+      "https://Freeland.example",
+      "",
+    ]) {
+      expect(SellerSiteSchema.safeParse(site).success, site).toBe(false);
+    }
+  });
+});
+
+describe("who sells, as an agent reads it", () => {
+  it("carries the name and the site, either of which may be missing", () => {
+    expect(SellerSchema.parse({ name: "Freeland", site: null })).toStrictEqual({
+      name: "Freeland",
+      site: null,
+    });
+    expect(SellerSchema.parse({ name: null, site: null })).toStrictEqual({
+      name: null,
+      site: null,
+    });
+    expectMissingFieldRejected(SellerSchema, { name: "Freeland", site: null }, "site");
+    expectMissingFieldRejected(SellerSchema, { name: "Freeland", site: null }, "name");
+  });
+
+  it("tells the agent whose word it is", () => {
+    expect(SellerSchema.description).toContain("did not check");
+  });
 });
 
 describe("a card as a discovery channel reads it", () => {
@@ -891,6 +984,7 @@ describe("the description a listing carries", () => {
       ...publicCardOf(CardSchema.parse(syncCard), {
         id: "itm_4d21bb",
         as_of: "2026-08-26T09:00:00Z",
+        seller: { name: "Freeland", site: null },
       }),
       description: tooLong,
     });
@@ -941,7 +1035,11 @@ describe("a card written short", () => {
     fulfillment: "sync",
   };
 
-  const issued = { id: "itm_9f2c4a", as_of: "2026-08-26T10:00:00Z" };
+  const issued = {
+    id: "itm_9f2c4a",
+    as_of: "2026-08-26T10:00:00Z",
+    seller: { name: "Freeland", site: null },
+  };
 
   it("becomes exactly the card its long form produces", () => {
     // The whole mechanism in one assertion. Two spellings, one card: anything

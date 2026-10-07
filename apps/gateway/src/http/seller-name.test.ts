@@ -63,7 +63,7 @@ const bearer = (key: string): Record<string, string> => ({ authorization: `Beare
 const sellerName = async (served: Served, key: string) => {
   const answered = await served.call("GET", "/v0/seller-name", { headers: bearer(key) });
   expect(answered.status, JSON.stringify(answered.body)).toBe(200);
-  return answered.body as { seller_name: string | null };
+  return answered.body as { seller_name: string | null; seller_site: string | null };
 };
 
 const setSellerName = async (served: Served, key: string, name: string | null) =>
@@ -108,7 +108,7 @@ describe("the name a merchant is listed under", () => {
     const { served } = await started();
     const key = await nameless(served);
 
-    expect(await sellerName(served, key)).toStrictEqual({ seller_name: null });
+    expect(await sellerName(served, key)).toStrictEqual({ seller_name: null, seller_site: null });
   });
 
   it("sets a name and hands back what was written rather than what was sent", async () => {
@@ -117,11 +117,12 @@ describe("the name a merchant is listed under", () => {
     const answered = await setSellerName(served, harnessed.merchant.key, "Someone's shop");
 
     expect(answered.status, JSON.stringify(answered.body)).toBe(200);
-    expect(answered.body).toStrictEqual({ seller_name: "Someone's shop" });
+    expect(answered.body).toStrictEqual({ seller_name: "Someone's shop", seller_site: null });
     // And it is there on the next call, which is what makes the answer above a
     // read of the row rather than an echo of the request.
     expect(await sellerName(served, harnessed.merchant.key)).toStrictEqual({
       seller_name: "Someone's shop",
+      seller_site: null,
     });
   });
 
@@ -145,6 +146,7 @@ describe("the name a merchant is listed under", () => {
     // the removal would be worse than no rule at all.
     expect(await sellerName(served, harnessed.merchant.key)).toStrictEqual({
       seller_name: "Someone's shop",
+      seller_site: null,
     });
   });
 
@@ -159,6 +161,7 @@ describe("the name a merchant is listed under", () => {
     expect(renamed.status, JSON.stringify(renamed.body)).toBe(200);
     expect(await sellerName(served, harnessed.merchant.key)).toStrictEqual({
       seller_name: "The shop on the corner",
+      seller_site: null,
     });
   });
 
@@ -174,6 +177,7 @@ describe("the name a merchant is listed under", () => {
 
     expect(await sellerName(served, first.key)).toStrictEqual({
       seller_name: "The first shop's name",
+      seller_site: null,
     });
     expect((await sellerName(served, second.key)).seller_name).not.toBe("The first shop's name");
   });
@@ -193,6 +197,7 @@ describe("the name a merchant is listed under", () => {
     // And nothing was written, so the merchant keeps the name they had.
     expect(await sellerName(served, harnessed.merchant.key)).toStrictEqual({
       seller_name: "Someone's shop",
+      seller_site: null,
     });
   });
 
@@ -211,6 +216,7 @@ describe("the name a merchant is listed under", () => {
     expect(empty.status).toBe(400);
     expect(await sellerName(served, harnessed.merchant.key)).toStrictEqual({
       seller_name: "Someone's shop",
+      seller_site: null,
     });
   });
 
@@ -249,6 +255,117 @@ describe("the name a merchant is listed under", () => {
     await setSellerName(served, harnessed.merchant.key, "The shop on the corner");
 
     expect(await sellerInTheChallenge(served, itemId)).toBe("The shop on the corner");
+  });
+});
+
+describe("the site of a merchant's own shop", () => {
+  const setSellerSite = async (served: Served, key: string, site: string | null) =>
+    served.call("POST", "/v0/seller-name", { body: { seller_site: site }, headers: bearer(key) });
+
+  it("is given where the name is set, and read back with it", async () => {
+    // ADR-0034: the merchant gives the shop's site wherever they set the name
+    // they sell under. The name a request leaves out stays as it was, so a
+    // dashboard can give the site without sending the name again.
+    const { served, harnessed } = await started();
+    await setSellerName(served, harnessed.merchant.key, "Someone's shop");
+
+    const answered = await setSellerSite(
+      served,
+      harnessed.merchant.key,
+      "https://someones.example",
+    );
+
+    expect(answered.status, JSON.stringify(answered.body)).toBe(200);
+    expect(answered.body).toStrictEqual({
+      seller_name: "Someone's shop",
+      seller_site: "https://someones.example",
+    });
+    expect(await sellerName(served, harnessed.merchant.key)).toStrictEqual({
+      seller_name: "Someone's shop",
+      seller_site: "https://someones.example",
+    });
+  });
+
+  it("refuses an address with anything after the host, and keeps the site there was", async () => {
+    // A path or a query would carry whatever the merchant typed to every agent
+    // reading their cards. Refused, the merchant is told the form it takes.
+    const { served, harnessed } = await started();
+    await setSellerSite(served, harnessed.merchant.key, "https://someones.example");
+
+    const pathed = await setSellerSite(
+      served,
+      harnessed.merchant.key,
+      "https://someones.example/about",
+    );
+
+    expect(pathed.status).toBe(400);
+    expect(JSON.stringify(pathed.body)).toContain("https://");
+    expect((await sellerName(served, harnessed.merchant.key)).seller_site).toBe(
+      "https://someones.example",
+    );
+  });
+
+  it("refuses to take a site away, and keeps the one there was", async () => {
+    const { served, harnessed } = await started();
+    await setSellerSite(served, harnessed.merchant.key, "https://someones.example");
+
+    const cleared = await setSellerSite(served, harnessed.merchant.key, null);
+
+    expect(cleared.status).toBe(400);
+    expect((await sellerName(served, harnessed.merchant.key)).seller_site).toBe(
+      "https://someones.example",
+    );
+  });
+
+  it("refuses a name with markup in it, which every agent would be shown", async () => {
+    const { served, harnessed } = await started();
+    await setSellerName(served, harnessed.merchant.key, "Someone's shop");
+
+    const marked = await setSellerName(served, harnessed.merchant.key, "<b>Someone</b>");
+
+    expect(marked.status).toBe(400);
+    expect((await sellerName(served, harnessed.merchant.key)).seller_name).toBe("Someone's shop");
+  });
+
+  it("names the seller to an agent on every card, and follows a change with no republishing", async () => {
+    // The agent with a question the order cannot answer is sent to the shop's
+    // own site. The pair is read when the catalog is, so a merchant who gives
+    // a site later is found by it on every card they already sell.
+    const { served, harnessed } = await started();
+    await setSellerName(served, harnessed.merchant.key, "Someone's shop");
+    const itemId = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));
+    const sellerOnTheCard = async () =>
+      (
+        (await served.call("GET", "/x402/catalog")).body as {
+          items: { id: string; seller: unknown }[];
+        }
+      ).items.find((item) => item.id === itemId)?.seller;
+
+    expect(await sellerOnTheCard()).toStrictEqual({ name: "Someone's shop", site: null });
+
+    await setSellerSite(served, harnessed.merchant.key, "https://someones.example");
+
+    expect(await sellerOnTheCard()).toStrictEqual({
+      name: "Someone's shop",
+      site: "https://someones.example",
+    });
+  });
+
+  it("names the seller on the status of an order", async () => {
+    const { served, harnessed } = await started();
+    await setSellerName(served, harnessed.merchant.key, "Someone's shop");
+    await setSellerSite(served, harnessed.merchant.key, "https://someones.example");
+    const itemId = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+
+    const status = await served.call("GET", `/x402/orders/${offered.order.order.id}/status`);
+
+    expect(status.status, JSON.stringify(status.body)).toBe(200);
+    expect((status.body as { seller: unknown }).seller).toStrictEqual({
+      name: "Someone's shop",
+      site: "https://someones.example",
+    });
   });
 });
 

@@ -392,6 +392,20 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         );
         expect(entries.find((entry) => entry.card.merchantId === B)?.serviceName).toBeNull();
       });
+
+      it("carries each card's merchant's site, and nothing where nobody gave one", async () => {
+        const store = await twoMerchants();
+        await store.publishCard(A, card("sku-1", "A's room"), 10_000);
+        await store.publishCard(B, card("sku-1", "B's room"), 20_000);
+        await store.setSellerSite(A, "https://a.example", 30_000);
+
+        const entries = await store.catalogEntries();
+
+        expect(entries.find((entry) => entry.card.merchantId === A)?.sellerSite).toBe(
+          "https://a.example",
+        );
+        expect(entries.find((entry) => entry.card.merchantId === B)?.sellerSite).toBeNull();
+      });
     });
 
     describe("whether a merchant is selling", () => {
@@ -499,6 +513,27 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect((await store.merchantById(B))?.serviceName).toBeNull();
 
         expect(await store.setServiceName("mch_nobody", "Freeland", 5_000)).toBeNull();
+      });
+
+      it("has a shop's site only where somebody gave one, and their own", async () => {
+        // The address an agent is sent to with a question the order cannot
+        // answer (ADR-0034). A column that answered for a merchant who gave
+        // none would send agents to somebody else's shop.
+        const store = await twoMerchants();
+
+        expect((await store.merchantById(A))?.sellerSite).toBeNull();
+
+        expect((await store.setSellerSite(A, "https://freeland.example", 3_000))?.sellerSite).toBe(
+          "https://freeland.example",
+        );
+        expect((await store.merchantById(A))?.sellerSite).toBe("https://freeland.example");
+        // A site given leaves the name as it was, and the other way round.
+        expect((await store.merchantById(A))?.serviceName).toBeNull();
+        expect((await store.merchantById(B))?.sellerSite).toBeNull();
+
+        expect(
+          await store.setSellerSite("mch_nobody", "https://freeland.example", 4_000),
+        ).toBeNull();
       });
 
       it("is paid at a wallet only where somebody set one, and at their own", async () => {
