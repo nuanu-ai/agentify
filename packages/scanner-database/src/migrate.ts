@@ -6,7 +6,7 @@ import type { Database } from "./client.js";
  * Where the scanner's migrations keep their history in the one database.
  *
  * Not drizzle's default, which is the gateway's, for the reason the dashboard
- * keeps `drizzle.dashboard_migrations`: the migrator applies every file dated
+ * keeps `drizzle.cabinet_migrations`: the migrator applies every file dated
  * after the newest entry it finds and compares nothing else, so two sets
  * sharing one table would each skip the other's older files as though they
  * had run.

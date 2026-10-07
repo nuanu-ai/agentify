@@ -13,7 +13,7 @@
  *
  * The migrations generated from this file live in `drizzle/` and are applied by
  * `pnpm --filter @agentify/dashboard db:migrate`. They keep their bookkeeping in a
- * table of their own, `drizzle.dashboard_migrations`, because the gateway's
+ * table of their own, `drizzle.cabinet_migrations`, because the gateway's
  * migrations keep theirs in the default one and two independent histories
  * writing one journal would each conclude the other's migrations were its own
  * and already applied.

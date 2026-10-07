@@ -888,7 +888,7 @@ describe("the scanner's migrations in the one database", () => {
       const dashboard = async () =>
         migrate(drizzle(pool), {
           migrationsFolder: dashboardMigrations,
-          migrationsTable: "dashboard_migrations",
+          migrationsTable: "cabinet_migrations",
         });
       await gateway(gatewayMigrations);
       await dashboard();
@@ -904,7 +904,7 @@ describe("the scanner's migrations in the one database", () => {
         (
           await pool.query<{ table_name: string; count: string }>(
             `select 'gateway' as table_name, count(*)::text from drizzle.__drizzle_migrations
-             union all select 'dashboard', count(*)::text from drizzle.dashboard_migrations
+             union all select 'dashboard', count(*)::text from drizzle.cabinet_migrations
              union all select 'scanner', count(*)::text from drizzle.scanner_migrations`,
           )
         ).rows;

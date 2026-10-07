@@ -8,7 +8,7 @@
  * this runs in the `migrate` service, before the dashboard is started.
  *
  * These are the dashboard's own identity tables and their history is kept apart
- * from the gateway's, in `drizzle.dashboard_migrations` — see `database.ts` for
+ * from the gateway's, in `drizzle.cabinet_migrations` — see `database.ts` for
  * why two migration sets cannot share one journal.
  */
 

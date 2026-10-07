@@ -2,16 +2,16 @@
 -- name. They were made when the dashboard was called the cabinet, and so were
 -- their keys, constraints and indexes, which Postgres does not rename with a
 -- table. Nothing moves: every statement here is a rename, apart from the log of
--- links sent. Its rows are keyed by a hash of the address made with words that
--- carried the old name, which the code now makes with the new one; carried
--- over, those rows could be found by nothing, not the limit on sends and not
--- `pnpm forget`, which has to clear them. So the log is emptied, which restarts
--- the hourly limit on links once, and the check on its purpose allows
--- `dashboard` in place of `cabinet`.
+-- links sent, for signing in and for reports alike. Its rows are keyed by a hash
+-- of the address made with words that carried the old name, and the code now
+-- makes it with the new one, so carried over they would count toward no limit
+-- and `pnpm forget`, which has to clear an address's rows, would not find them.
+-- So the log is emptied: the limits on links, three an hour to one address and
+-- one a minute, start again once. The check on its purpose allows `dashboard`
+-- in place of `cabinet`.
 --
--- The history these migrations keep is renamed before this file runs, by the
--- dashboard itself (`database.ts`), because the migrator reads the history
--- before it applies anything.
+-- The history these migrations keep stays `drizzle.cabinet_migrations`; see
+-- `src/database.ts` for why.
 ALTER TABLE "cabinet_accounts" RENAME TO "dashboard_accounts";
 --> statement-breakpoint
 ALTER TABLE "cabinet_credentials" RENAME TO "dashboard_credentials";
