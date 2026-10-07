@@ -496,7 +496,7 @@ describe("the two calls about the key the dashboard itself holds", () => {
     const asked = await gatewayFor(url, KEY).issueDashboardKey();
 
     expect(arrived[0]?.method).toBe("POST");
-    expect(arrived[0]?.path).toBe("/v0/keys/cabinet");
+    expect(arrived[0]?.path).toBe("/v0/keys/dashboard");
     expect(arrived[0]?.key).toBe(`Bearer ${KEY}`);
     if (!asked.ok) {
       throw new Error(`no key was made: ${asked.why}`);
@@ -527,7 +527,7 @@ describe("the two calls about the key the dashboard itself holds", () => {
     const gone = await gatewayFor(url, KEY).forgetDashboardKey();
 
     expect(arrived[0]?.method).toBe("DELETE");
-    expect(arrived[0]?.path).toBe("/v0/keys/cabinet");
+    expect(arrived[0]?.path).toBe("/v0/keys/dashboard");
     expect(arrived[0]?.key).toBe(`Bearer ${KEY}`);
     expect(arrived[0]?.body).toBe("");
     expect(gone.ok).toBe(true);
@@ -548,7 +548,7 @@ describe("the two calls about the key the dashboard itself holds", () => {
     // next move turns on it: nothing was made, so nothing may be forgotten.
     const { url } = await recordingServer(403, {
       error: {
-        code: "not_a_cabinet_key",
+        code: "not_a_dashboard_key",
         message: "this call is made with the key a dashboard signs in with, and that is not one",
       },
     });

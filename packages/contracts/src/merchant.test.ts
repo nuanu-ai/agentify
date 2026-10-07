@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  CabinetKeySchema,
+  DashboardKeySchema,
   DisabledKeySchema,
-  ForgottenCabinetKeySchema,
+  ForgottenDashboardKeySchema,
   IssuedKeySchema,
   IssueKeyRequestSchema,
   MerchantKeyListSchema,
@@ -137,10 +137,10 @@ describe("the keys a merchant holds", () => {
     // The one fact the list cannot be assembled without. A merchant cannot
     // disable the key their own call was made with, so a client that did not
     // know which key that was would offer a button the route refuses. It names
-    // the key on the call and not whichever key some cabinet happens to hold,
+    // the key on the call and not whichever key some dashboard happens to hold,
     // which the gateway has no way of knowing — and a caller signed into a
-    // cabinet is named a key that is on none of the rows beside it, because the
-    // kind a cabinet holds is in no merchant's list.
+    // dashboard is named a key that is on none of the rows beside it, because the
+    // kind a dashboard holds is in no merchant's list.
     // Its absence is covered by the loop below, with every other required
     // field; what is here is that it survives a parse and that a blank one is
     // refused, because an empty identifier names no key and a client reading it
@@ -268,37 +268,37 @@ describe("a key that has been disabled", () => {
   });
 });
 
-describe("the key a cabinet holds", () => {
+describe("the key a dashboard holds", () => {
   const held = { secret };
 
   it("is the secret and nothing else", () => {
-    // A cabinet takes this key and puts it on the row of whoever signed in.
+    // A dashboard takes this key and puts it on the row of whoever signed in.
     // There is no row document beside it, unlike every other answer that makes
-    // a key, and the absence is the decision: a key made for a cabinet is in no
+    // a key, and the absence is the decision: a key made for a dashboard is in no
     // merchant's list, so an identifier here would name a row nobody can find,
     // list or revoke, and the first screen built on it would offer all three.
-    expect(CabinetKeySchema.parse(held)).toStrictEqual(held);
+    expect(DashboardKeySchema.parse(held)).toStrictEqual(held);
   });
 
   it("refuses an answer with no secret in it and names it", () => {
-    expectMissingFieldRejected(CabinetKeySchema, held, "secret");
+    expectMissingFieldRejected(DashboardKeySchema, held, "secret");
   });
 
   it("refuses a secret that could not travel as a key", () => {
-    expect(CabinetKeySchema.safeParse({ secret: "" }).success).toBe(false);
-    expect(CabinetKeySchema.safeParse({ secret: "csk_ two halves" }).success).toBe(false);
+    expect(DashboardKeySchema.safeParse({ secret: "" }).success).toBe(false);
+    expect(DashboardKeySchema.safeParse({ secret: "csk_ two halves" }).success).toBe(false);
   });
 
   it("carries no row for a key that is in no list", () => {
-    expect(errorOf(CabinetKeySchema, { ...held, key: working })).toContain("key");
+    expect(errorOf(DashboardKeySchema, { ...held, key: working })).toContain("key");
   });
 });
 
-describe("the cabinet key that was forgotten", () => {
+describe("the dashboard key that was forgotten", () => {
   const gone = { forgotten: true };
 
   it("says the key on the call is gone", () => {
-    expect(ForgottenCabinetKeySchema.parse(gone)).toStrictEqual(gone);
+    expect(ForgottenDashboardKeySchema.parse(gone)).toStrictEqual(gone);
   });
 
   it("says it in a field rather than leaving the caller to read a status", () => {
@@ -307,20 +307,20 @@ describe("the cabinet key that was forgotten", () => {
     // the key it called with is gone, instead of inferring it from a number
     // that would have to be about keys it never named. The field is required,
     // so a client that dropped it is not read as a call that did nothing.
-    expectMissingFieldRejected(ForgottenCabinetKeySchema, gone, "forgotten");
-    expect(ForgottenCabinetKeySchema.safeParse({ forgotten: false }).success).toBe(false);
+    expectMissingFieldRejected(ForgottenDashboardKeySchema, gone, "forgotten");
+    expect(ForgottenDashboardKeySchema.safeParse({ forgotten: false }).success).toBe(false);
   });
 
   it("counts nothing, because there is nothing here to count", () => {
-    // What this used to answer was how many of a merchant's other cabinet keys
+    // What this used to answer was how many of a merchant's other dashboard keys
     // it had removed — an answer only a call that reaches other people's keys
     // can give. This one removes the key in the caller's hand and no other, so
     // a count would be a claim about rows this call cannot touch.
-    expect(errorOf(ForgottenCabinetKeySchema, { ...gone, removed: 1 })).toContain("removed");
+    expect(errorOf(ForgottenDashboardKeySchema, { ...gone, removed: 1 })).toContain("removed");
   });
 
   it("names no key, because the caller is holding the only one it names", () => {
-    expect(errorOf(ForgottenCabinetKeySchema, { ...gone, key: working.id })).toContain("key");
+    expect(errorOf(ForgottenDashboardKeySchema, { ...gone, key: working.id })).toContain("key");
   });
 });
 
@@ -353,7 +353,7 @@ describe("registering a merchant", () => {
   });
 
   it("carries nothing that belongs to the account rather than the merchant", () => {
-    // The address and the password are the cabinet's, and they stay there. A
+    // The address and the password are the dashboard's, and they stay there. A
     // gateway that took either would be holding a person's credentials on the
     // money path, which is the thing this route's whole shape avoids.
     expect(
@@ -385,7 +385,7 @@ describe("what registering answers with", () => {
   }
 
   it("carries no row for the key it just handed over", () => {
-    // The key made here is a cabinet's: the merchant has no screen it sits on,
+    // The key made here is a dashboard's: the merchant has no screen it sits on,
     // and the call that revokes a key refuses its kind by name. An identifier
     // for it is therefore a value with nothing to do, so this answer does not
     // carry one, and a client that put one back is refused rather than quietly
@@ -404,8 +404,8 @@ describe("what registering answers with", () => {
   });
 
   it("names the merchant the account will be tied to", () => {
-    // Without it the cabinet has a key and nothing to say whose it is, and an
-    // account that names no merchant is the single-tenant cabinet again.
+    // Without it the dashboard has a key and nothing to say whose it is, and an
+    // account that names no merchant is the single-tenant dashboard again.
     expect(RegisteredMerchantSchema.parse(registered).merchant_id).toBe("mch_4d21bb");
     expect(RegisteredMerchantSchema.safeParse({ ...registered, merchant_id: "" }).success).toBe(
       false,

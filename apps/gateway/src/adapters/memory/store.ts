@@ -183,7 +183,7 @@ export class MemoryStore implements Store {
     // taken — because a merchant left behind by that has a generated identifier
     // nobody holds and no way in.
     try {
-      const stored = this.#writeKey({ ...key, merchantId: merchant.id, purpose: "cabinet" }, at);
+      const stored = this.#writeKey({ ...key, merchantId: merchant.id, purpose: "dashboard" }, at);
       return { merchant: storedMerchantOf(row), key: stored };
     } catch (thrown) {
       this.#merchants.delete(merchant.id);
@@ -363,7 +363,7 @@ export class MemoryStore implements Store {
 
   async forgetDashboardKey(keyId: string): Promise<boolean> {
     const going = this.#keys.get(keyId);
-    if (going === undefined || going.purpose !== "cabinet") {
+    if (going === undefined || going.purpose !== "dashboard") {
       return false;
     }
     this.#keys.delete(going.id);
@@ -388,7 +388,7 @@ export class MemoryStore implements Store {
     merchantId: string,
     id: string,
     at: number,
-  ): Promise<StoredKey | "made_for_a_cabinet" | null> {
+  ): Promise<StoredKey | "made_for_a_dashboard" | null> {
     const found = this.#keys.get(id);
     // Another merchant's key is not found rather than refused, which is what
     // makes a refusal say nothing about whose keys exist. Postgres does the same
@@ -400,7 +400,7 @@ export class MemoryStore implements Store {
     // because this one is a fact about their own row, and because revoking it
     // would sign somebody out of the dashboard they are standing in.
     if (found.purpose !== "merchant_code") {
-      return "made_for_a_cabinet";
+      return "made_for_a_dashboard";
     }
     return this.#revoke(found, at);
   }

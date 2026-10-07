@@ -263,7 +263,7 @@ export const CARD_REJECTED = "card_rejected";
  * merchant has no name set for buyers to read, no wallet set for their sales to
  * be paid into, or no approval from the operator for the live catalog. The
  * name is set with a call of the merchant's own (`POST /v0/seller-name`) or in
- * the cabinet; the wallet in the cabinet's Settings alone, since no key of the
+ * the dashboard; the wallet in the dashboard's Settings alone, since no key of the
  * merchant's code may say where the money goes; and the approval is the
  * operator's decision, with no call. The name is asked for everywhere, the
  * wallet wherever a payment settles and the approval on the live deployment

@@ -571,6 +571,28 @@ if (databaseUrl === null) {
       expect(await purposeOf("mk_same_instant")).toBe("merchant_code");
     });
 
+    it("calls the keys registration made the dashboard's once the later rename runs, and leaves the rest alone", async () => {
+      // The keys 0007 marked as the cabinet's are the dashboard's: the same
+      // credential under the product's own word, which the code reads and
+      // writes from then on. A merchant's own keys are not touched.
+      await writeKeyAsRegistrationDoes("mk_registered", AS_REGISTRATION_WROTE_IT);
+      await writeKey("mk_worker", "the worker on the small box");
+
+      for (const file of [
+        "0007_cabinet_keys.sql",
+        "0008_key_last_use.sql",
+        "0009_live_approval.sql",
+        "0010_pending_payout_wallet.sql",
+        "0011_merchant_seller_site.sql",
+        "0012_dashboard_keys.sql",
+      ]) {
+        await run(file);
+      }
+
+      expect(await purposeOf("mk_registered")).toBe("dashboard");
+      expect(await purposeOf("mk_worker")).toBe("merchant_code");
+    });
+
     it("refuses a key written afterwards that does not say what it is for", async () => {
       // The default exists for the length of the backfill and is taken away
       // again, so that this column cannot be quietly left out by anything

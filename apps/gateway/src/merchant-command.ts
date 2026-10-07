@@ -271,7 +271,7 @@ function standingOf(key: StoredKey): string {
  * which is the difference between revoking a worker and locking somebody out.
  */
 function madeFor(key: StoredKey): string {
-  return key.purpose === "cabinet" ? "dashboard" : "own code ";
+  return key.purpose === "dashboard" ? "dashboard" : "own code ";
 }
 
 /**

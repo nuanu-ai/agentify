@@ -100,7 +100,7 @@ const AnnouncedLabelSchema = z
  * more.
  */
 export const AskedWithSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("cabinet") }),
+  z.strictObject({ kind: z.literal("dashboard") }),
   z.strictObject({
     kind: z.literal("merchant_code"),
     id: z.string().min(1),

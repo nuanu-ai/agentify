@@ -174,7 +174,7 @@ export class PostgresStore implements Store {
       const keyRow = await this.#writeKey(tx, {
         ...key,
         merchantId: merchant.id,
-        purpose: "cabinet",
+        purpose: "dashboard",
         at,
       });
       return { merchant: storedMerchantOf(merchantRow), key: storedKeyOf(keyRow) };
@@ -436,7 +436,7 @@ export class PostgresStore implements Store {
     // statement invites anybody to rely on.
     const gone = await this.#db
       .delete(merchantKeys)
-      .where(and(eq(merchantKeys.id, keyId), eq(merchantKeys.purpose, "cabinet")))
+      .where(and(eq(merchantKeys.id, keyId), eq(merchantKeys.purpose, "dashboard")))
       .returning({ id: merchantKeys.id });
     return gone.length > 0;
   }
@@ -457,7 +457,7 @@ export class PostgresStore implements Store {
     merchantId: string,
     id: string,
     at: number,
-  ): Promise<StoredKey | "made_for_a_cabinet" | null> {
+  ): Promise<StoredKey | "made_for_a_dashboard" | null> {
     // The merchant and the kind are both in the predicate, so a key this call
     // may not touch is never selected rather than selected and then refused —
     // which is what makes "not yours" and "not there" one answer from where the
@@ -487,7 +487,7 @@ export class PostgresStore implements Store {
       .from(merchantKeys)
       .where(and(eq(merchantKeys.id, id), eq(merchantKeys.merchantId, merchantId)))
       .limit(1);
-    return theirs === undefined ? null : "made_for_a_cabinet";
+    return theirs === undefined ? null : "made_for_a_dashboard";
   }
 
   // --- the catalog ----------------------------------------------------------
@@ -1174,7 +1174,7 @@ function storedKeyOf(row: {
  * the other offers them the button that takes their own dashboard down.
  */
 function keyPurposeOf(word: string): KeyPurpose {
-  if (word !== "merchant_code" && word !== "cabinet") {
+  if (word !== "merchant_code" && word !== "dashboard") {
     throw new Error(`a key says it was made for ${word}, which is not a thing a key is made for`);
   }
   return word;
