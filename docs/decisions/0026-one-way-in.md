@@ -133,7 +133,7 @@ operator cannot keep up.
 **6. The operator enters through the same door.** The operator's dashboard is entered with
 the same session as everything else, and the account needs the operator
 privilege. Being an operator is a flag on the account's row in
-`cabinet_accounts`, closed to input from the browser like `merchantId`, and only
+`dashboard_accounts`, closed to input from the browser like `merchantId`, and only
 `pnpm account operator` at the server's terminal writes it, `--off` clearing it.
 An operator signs in once like anybody, writing the row, and is flagged
 afterwards; an address with no row is refused. `/admin` opens for a session

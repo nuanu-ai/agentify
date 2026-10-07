@@ -19,11 +19,11 @@ const config = loadConfig({
 
 function store() {
   const rows: Record<string, Record<string, unknown>[]> = {
-    cabinet_accounts: [],
-    cabinet_sessions: [],
-    cabinet_credentials: [],
-    cabinet_verifications: [],
-    cabinet_link_sends: [],
+    dashboard_accounts: [],
+    dashboard_sessions: [],
+    dashboard_credentials: [],
+    dashboard_verifications: [],
+    dashboard_link_sends: [],
   };
   const messages: Message[] = [];
   return {
@@ -203,12 +203,12 @@ describe("the passwordless account command", () => {
     expect(tried.code).toBe(2);
     expect(tried.said).toContain("operator");
     await expect(identity.byEmail("person@example.com")).resolves.toBeNull();
-    expect(rows.cabinet_accounts).toHaveLength(0);
+    expect(rows.dashboard_accounts).toHaveLength(0);
   });
 
   it("renders control characters from restored addresses harmlessly", async () => {
     const { identity, rows } = store();
-    rows.cabinet_accounts?.push({
+    rows.dashboard_accounts?.push({
       id: "person_unsafe",
       email: "hidden\u001b[2J@example.com",
       emailVerified: false,

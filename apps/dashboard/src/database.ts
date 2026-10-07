@@ -19,6 +19,13 @@ import { Pool } from "pg";
  * Not the default, which is the gateway's. Two independent sets of migrations
  * sharing one journal would each read the other's entries as its own and
  * conclude there was nothing to apply.
+ *
+ * The name is from before the dashboard was called the dashboard, and it stays.
+ * The migrator reads the history before it applies anything and applies every
+ * file newer than the newest entry it finds, so every revision ever released
+ * has to find the history under the one name: one that found none, an older
+ * revision put on the test channel or a laptop, would apply every file again
+ * from the first and run on empty tables beside the real ones.
  */
 const MIGRATIONS_TABLE = "cabinet_migrations";
 

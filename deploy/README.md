@@ -273,6 +273,36 @@ in the path. On PRODUCTION a snapshot of the backup holds `production.env`
 ("Backups"), so the key stays readable in the snapshots taken before the line
 went, for as long as they are kept.
 
+## The release that renames the dashboard's tables
+
+The dashboard's tables, keys and indexes were named for the cabinet, its old
+name, and from this release they are named for the dashboard: its migration
+0013 renames them, and the scanner's migration 0023 renames the one column of
+its own that was named the same way. Nothing moves. Nothing has to be done on
+either host before it or after it. The history the dashboard's migrations keep
+stays `drizzle.cabinet_migrations`, so that every revision finds it.
+
+One thing changes that a person may notice. The log of links sent, for signing
+in and for reports alike, is emptied, because its rows were keyed by a hash made
+with the old name; so the limits on links, three an hour to one address and one
+a minute, start again from nothing once, at the release.
+
+PRODUCTION refuses to move backwards. On TEST, a release of an older revision
+whose dashboard migrations are all on `main` finds every one of them in the
+history and applies none. Its dashboard then fails on the tables it looks for
+under the old names. Its scanner refuses a new request to delete a person's data
+with "Deletion could not be recorded", and a deletion already under way waits,
+retried every half minute without a word, until TEST moves forward. Moving
+`deploy-test` forward again, to `main` or a branch rebased onto it, puts TEST
+back as it was, with no restore.
+
+A branch that carries a dashboard migration of its own, not yet on `main`, is
+different: that migration runs, against tables that now have other names. If it
+changes one of them it fails, the release stops while migrating and TEST stays
+down; a release forward is then held back too, and the way out is to restore the
+restore point that release took ("Restoring"). So rebase a branch onto `main`
+before putting it on TEST once this is there.
+
 ## Releasing to production
 
 A production release starts from `main`. Every change a merchant can see in
