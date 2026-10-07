@@ -486,9 +486,33 @@ describe("the card an agent reads", () => {
       issued,
     );
 
-    expect(Object.keys(sync)).not.toContain("fulfill_deadline_seconds");
-    expect(Object.keys(sync)).not.toContain("confirm_deadline_seconds");
-    expect(Object.keys(async)).not.toContain("confirm_deadline_seconds");
+    const confirm = publicCardOf(
+      {
+        ...CardSchema.parse({ ...syncCard, fulfillment: "async" }),
+        fulfillment: "confirm",
+        confirm_deadline_seconds: 60,
+        fulfill_deadline_seconds: 900,
+      },
+      issued,
+    );
+    const common = [
+      "as_of",
+      "description",
+      "fulfillment",
+      "id",
+      "params",
+      "price",
+      "price_checked_at_purchase",
+      "result",
+      "seller",
+      "title",
+    ];
+
+    expect(Object.keys(sync).sort()).toStrictEqual(common);
+    expect(Object.keys(async).sort()).toStrictEqual([...common, "fulfill_deadline_seconds"].sort());
+    expect(Object.keys(confirm).sort()).toStrictEqual(
+      [...common, "confirm_deadline_seconds", "fulfill_deadline_seconds"].sort(),
+    );
   });
 
   it("reads a card of a mode this contract does not name yet, so an agent can pass it over", () => {
@@ -500,7 +524,11 @@ describe("the card an agent reads", () => {
 
     expect(later.success).toBe(true);
     expect(later.data?.fulfillment).toBe("by_appointment");
-    expect(PublicCardSchema.safeParse({ ...publicCard, fulfillment: "" }).success).toBe(false);
+    for (const word of ["", "By_Appointment", " async", "<i>soon</i>"]) {
+      expect(PublicCardSchema.safeParse({ ...publicCard, fulfillment: word }).success, word).toBe(
+        false,
+      );
+    }
   });
 
   it("takes a field added later, which an agent ignores", () => {

@@ -729,7 +729,17 @@ describe("the status an agent reads", () => {
       AgentOrderStatusSchema.safeParse({ ...status, status: "payment_unresolved" }).success,
     ).toBe(true);
     expect(AgentOrderStatusSchema.parse({ ...status, status: "on_hold" }).status).toBe("on_hold");
-    expect(AgentOrderStatusSchema.safeParse({ ...status, status: "" }).success).toBe(false);
+  });
+
+  it("holds a word added later to the shape of a word", () => {
+    // Open is not anything at all: a status is read by a program and shown to
+    // a person, and markup, padding or a page of text is not a word anybody
+    // added to this vocabulary.
+    for (const word of ["", " on_hold ", "On_Hold", "<b>held</b>", "w".repeat(65)]) {
+      expect(AgentOrderStatusSchema.safeParse({ ...status, status: word }).success, word).toBe(
+        false,
+      );
+    }
   });
 
   it("takes a field added later, which an agent ignores", () => {
@@ -751,17 +761,50 @@ describe("the catalog an agent reads", () => {
   });
 
   it("is read card by card, so a card an agent cannot read leaves the rest of the page", () => {
-    // ADR-0006 §5: one card a reader cannot make out — a mode or a shape this
-    // schema has not met — is passed over, and every other card stays for
-    // sale. A page refused whole would empty the catalog over one card.
-    const unreadable = { id: "itm_9a0f11", fulfillment: "by_appointment" };
-    const page = CatalogPageSchema.parse({ items: [publicCard, unreadable] });
+    // ADR-0006 §5: one card a reader cannot make out is passed over, and
+    // every other card stays for sale. A page refused whole would empty the
+    // catalog over one card.
+    const broken = { id: "itm_9a0f11", title: "No price on it" };
+    const page = CatalogPageSchema.parse({ items: [publicCard, broken] });
+
+    expect(cardsOf(page)).toStrictEqual([publicCard]);
+  });
+
+  it("passes over a card of a mode this contract does not name, however well formed", () => {
+    // A mode added later reaches this reader on a card that is otherwise whole.
+    // It cannot know when such goods arrive or when the money moves, so it
+    // must not buy on it; the rest of the page still stands.
+    const later = { ...publicCard, fulfillment: "by_appointment" };
+    const page = CatalogPageSchema.parse({ items: [later, publicCard] });
 
     expect(cardsOf(page)).toStrictEqual([publicCard]);
   });
 
   it("takes a field added later, which an agent ignores", () => {
     expect(CatalogPageSchema.safeParse({ items: [], next_page: "cursor-42" }).success).toBe(true);
+  });
+
+  it("says in the exported documents that they take what is added later", () => {
+    // The reader furthest from us holds the JSON Schema and nothing else. A
+    // document exported closed would refuse the first field or word added
+    // after it, whatever this package does in TypeScript.
+    const exported = toJsonSchemas();
+    const known = (property: unknown): unknown[] =>
+      ((property as { anyOf?: { enum?: unknown[] }[] }).anyOf ?? []).flatMap(
+        (branch) => branch.enum ?? [],
+      );
+
+    for (const name of ["catalog_page", "public_card", "agent_order_status"] as const) {
+      expect(exported[name].additionalProperties, name).not.toBe(false);
+    }
+    expect(known(exported.public_card.properties?.fulfillment)).toContain("async");
+    expect(known(exported.agent_order_status.properties?.status)).toContain("refund_due");
+    expect(
+      exported.agent_order_status.properties?.status,
+      "an open word sits beside the known ones",
+    ).toMatchObject({
+      anyOf: expect.arrayContaining([expect.objectContaining({ pattern: expect.any(String) })]),
+    });
   });
 
   it("says in the exported document that it does not claim to be the whole catalog", () => {

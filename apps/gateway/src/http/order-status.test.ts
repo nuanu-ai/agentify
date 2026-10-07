@@ -371,6 +371,22 @@ describe("a refusal the merchant made", () => {
 
     expect(later.status).toBe(200);
     expect((later.body as AgentOrderStatus).refusal).toStrictEqual(refused.refusal);
+    // The refusal is the one field this ending adds, at both doors. The
+    // agent's schema takes fields added later (ADR-0006 §5), so it cannot
+    // refuse one that leaked — a parameter the buyer sent, the merchant's own
+    // key for the product — and this list is where one would be caught.
+    for (const answered of [bought.body, later.body]) {
+      expect(Object.keys(answered as object).sort()).toStrictEqual([
+        "delivered",
+        "order_id",
+        "price",
+        "refusal",
+        "seller",
+        "status",
+        "status_url",
+        "test",
+      ]);
+    }
   });
 
   it("says nothing about a refusal on an ending nobody refused", async () => {
