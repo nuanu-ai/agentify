@@ -438,9 +438,8 @@ export type Effect =
  * or it becomes a refund owed without having been taken on. Every one of
  * those leaves the order closed, owing a refund or taken on, so the rule is
  * read off the order rather than kept beside it. It only ever goes from true
- * to false because a parcel's money moves first (`OrderMode`), so no repeat of
- * the purchase reopens such an order, and because the one hand-over that would
- * clear its acceptance is refused once the address is gone (`transition`).
+ * to false because a parcel's money moves first (`OrderMode`): no repeat of the
+ * purchase reopens such an order, and an acceptance, once given, stays.
  */
 export function holdsShipTo(order: Order): boolean {
   return (

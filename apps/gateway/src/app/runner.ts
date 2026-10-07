@@ -205,8 +205,9 @@ function carriedOutAfterwards(effect: Effect): boolean {
     case "redeliver_order":
     case "emit_merchant_event":
     case "issue_receipt":
-    // A parcel's address leaving us cannot be asked for again once the order
-    // has moved past it (ADR-0032), so it is written where the state is.
+    // A parcel's address leaving us changes the order itself, which from then
+    // on says only when it was erased, and the envelopes that carry it
+    // (ADR-0032), so it is written where the state is.
     case "erase_ship_to":
       return false;
     case "request_quote":
