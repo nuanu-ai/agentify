@@ -6,13 +6,14 @@ import type {
   WorkerEnvelope,
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FIRST_RETRY_MS } from "./backoff.js";
+import { FIRST_RETRY_MS, RETRY_CEILING_MS } from "./backoff.js";
 import { createClient, type QuoteHandler } from "./client.js";
 import { contractVersion } from "./contract.js";
 import { type FakeGateway, startFakeGateway } from "./testing/fake-gateway.js";
 import { waitUntil } from "./testing/waiting.js";
 import { batch, polling } from "./testing/worker-stream.js";
 import {
+  POLL_DEADLINE_MS,
   POLL_WAIT_SECONDS,
   QUIET_POLL_FLOOR_MS,
   startWorker,
@@ -645,6 +646,18 @@ describe("a poll that goes quiet", () => {
 
     // And it goes on asking, which is the point of giving up on one.
     await waitUntil(() => (gateway?.callsTo("poll_worker").length ?? 0) >= 2, "a further poll");
+  });
+
+  it("is given up on soon enough that a watcher can still tell an outage from a recovery", () => {
+    // A gateway that accepts a poll and never answers fails it only when the
+    // deadline runs out, so two reports of that failure are the deadline plus
+    // the longest rest apart. Whoever watches for a recovery has to wait
+    // longer than that sum before calling the quiet one: the slice's
+    // subscription line waits ninety seconds (DOUBT_MS in
+    // packages/slice/src/subscription.ts), and either term raised until the
+    // sum reaches it would read a dead subscription as one that came back. The slice pins the
+    // same sum from its side; this is the side where the two terms move.
+    expect(POLL_DEADLINE_MS + RETRY_CEILING_MS).toBeLessThan(90_000);
   });
 });
 

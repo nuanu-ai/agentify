@@ -585,7 +585,7 @@ describe("the status an agent reads", () => {
     expect(AgentOrderStatusSchema.parse({ ...status, price: null }).price).toBeNull();
   });
 
-  for (const field of ["order_id", "status", "price", "delivered", "status_url"]) {
+  for (const field of ["order_id", "status", "price", "delivered", "test", "status_url"]) {
     it(`refuses a status without ${field} and names it`, () => {
       expectMissingFieldRejected(AgentOrderStatusSchema, status, field);
     });

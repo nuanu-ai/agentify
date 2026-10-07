@@ -147,14 +147,21 @@ describe("MemoryQueue delivery", () => {
 
   it("does not send another merchant's parked worker back to an empty stream", async () => {
     // Waking every parked poll on every publish would have each of them come
-    // back with nothing, over and over, on a busy gateway.
+    // back with nothing, over and over, on a busy gateway. Coming back with
+    // nothing is also what B's poll does when its wait runs out, so what tells
+    // the two apart is when it comes back: still parked after A's publish.
     const queue = await started();
-    const parkedOnB = queue.draw(B, 10, 1_000);
+    let back = false;
+    const parkedOnB = queue.draw(B, 10, 1_000).finally(() => {
+      back = true;
+    });
 
     await vi.advanceTimersByTimeAsync(5);
     await queue.publish(A, envelope("env_1"));
-    await vi.advanceTimersByTimeAsync(995);
+    await vi.advanceTimersByTimeAsync(5);
+    expect(back).toBe(false);
 
+    await vi.advanceTimersByTimeAsync(990);
     expect(await parkedOnB).toStrictEqual([]);
   });
 });

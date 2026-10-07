@@ -195,9 +195,12 @@ describe("disabling a key", () => {
     expect(await terminal.run("disable", first?.id ?? "")).toBe(0);
 
     expect(terminal.text()).toContain("1 other key");
-    expect((await terminal.store.keysOf(merchantId))[0]?.disabledAt).toBe(terminal.at);
+    // Read again after the command: the rows taken before it are what the
+    // keys were, and say nothing about what disabling did to them.
+    const after = await terminal.store.keysOf(merchantId);
+    expect(after.find((key) => key.id === first?.id)?.disabledAt).toBe(terminal.at);
     // And the other one is untouched, which is the whole reason a key is a row.
-    expect(second?.disabledAt).toBeNull();
+    expect(after.find((key) => key.id === second?.id)?.disabledAt).toBeNull();
 
     terminal.said.length = 0;
     await terminal.run("disable", second?.id ?? "");
