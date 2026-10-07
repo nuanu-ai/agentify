@@ -3,6 +3,7 @@ import type { ZodType } from "zod";
 
 import {
   accountDataRequestSchema,
+  accountUnsubscribeRequestSchema,
   apiErrorEnvelopeSchema,
   apiErrorSchema,
   BROWSER_OBSERVATION_IDS,
@@ -351,8 +352,14 @@ const contracts = [
   {
     name: "accountDataRequestSchema",
     schema: accountDataRequestSchema,
-    valid: { type: "access" },
-    required: ["type"],
+    valid: { type: "access", signed_in_as: "owner@example.com" },
+    required: ["type", "signed_in_as"],
+  },
+  {
+    name: "accountUnsubscribeRequestSchema",
+    schema: accountUnsubscribeRequestSchema,
+    valid: { signed_in_as: "owner@example.com" },
+    required: ["signed_in_as"],
   },
   {
     name: "clientAnalyticsEventRequestSchema",

@@ -23,6 +23,7 @@ import { NextRequest } from "next/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { POST as requestDataAction } from "../../app/api/v1/account/data-request/route";
+import { POST as unsubscribeAction } from "../../app/api/v1/account/unsubscribe/route";
 import { POST as persistAttribution } from "../../app/api/v1/attribution/route";
 import { POST as persistConsent } from "../../app/api/v1/consent/route";
 import { POST as persistClientEvent } from "../../app/api/v1/events/route";
@@ -846,7 +847,7 @@ describe("P4 dashboard-owned scanner identity", () => {
               origin: "http://localhost:3000",
               "content-type": "application/json",
             },
-            body: JSON.stringify({ type: "access" }),
+            body: JSON.stringify({ type: "access", signed_in_as: "unknown@example.com" }),
           }),
         ),
       ];
@@ -882,6 +883,63 @@ describe("P4 dashboard-owned scanner identity", () => {
     }
   });
 
+  it("does nothing for a press from a page loaded for another address, and says who is signed in now", async () => {
+    // People sign out to come back as another address (ADR-0026 §3), so a data
+    // page loaded for the first can still be open when the second signs in,
+    // and its press arrives with the second one's cookie. Deleting the second
+    // person's data from the first person's page is what this stops.
+    const { scan } = await createFreshCompletedScan("loaded-for");
+    await copyChecks(scan.id);
+    const email = "loaded-for@example.com";
+    await createScannerRegistrationIntent(scan, registrationBody(email));
+    const cookie = pressLink(latestLink(email));
+    const posted = (body: object) => ({
+      method: "POST",
+      headers: { cookie, origin: "http://localhost:3000", "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const refusals = [
+      await requestDataAction(
+        new NextRequest(
+          "http://localhost:3000/api/v1/account/data-request",
+          posted({ type: "deletion", signed_in_as: "first@example.com" }),
+        ),
+      ),
+      // A page that says nothing about whom it was loaded for is not matched
+      // either: it is what a page from before this rule sends.
+      await requestDataAction(
+        new NextRequest(
+          "http://localhost:3000/api/v1/account/data-request",
+          posted({ type: "deletion" }),
+        ),
+      ),
+      await unsubscribeAction(
+        new NextRequest(
+          "http://localhost:3000/api/v1/account/unsubscribe",
+          posted({ signed_in_as: "first@example.com" }),
+        ),
+      ),
+    ];
+    for (const refused of refusals) {
+      expect(refused.status, refused.url).toBe(409);
+      const { error } = (await refused.json()) as { error: { code: string; message: string } };
+      expect(error.code).toBe("page_not_matched");
+      expect(error.message).toContain(email);
+      expect(error.message).not.toContain("first@example.com");
+    }
+    // Nothing was changed: the report is still open to the person signed in.
+    expect((await loadReportPage(scan.id, cookie)).kind).toBe("report");
+
+    // The same press from a page loaded for the address signed in now goes through.
+    const accepted = await requestDataAction(
+      new NextRequest(
+        "http://localhost:3000/api/v1/account/data-request",
+        posted({ type: "access", signed_in_as: email }),
+      ),
+    );
+    expect(accepted.status).toBe(200);
+  });
+
   it("tells a signed-in person with no reports that there is nothing to request, not to sign in", async () => {
     const answer = await requestDataAction(
       new NextRequest("http://localhost:3000/api/v1/account/data-request", {
@@ -891,7 +949,7 @@ describe("P4 dashboard-owned scanner identity", () => {
           origin: "http://localhost:3000",
           "content-type": "application/json",
         },
-        body: JSON.stringify({ type: "access" }),
+        body: JSON.stringify({ type: "access", signed_in_as: "no-reports-data@example.com" }),
       }),
     );
     expect(answer.status).toBe(404);
@@ -902,7 +960,7 @@ describe("P4 dashboard-owned scanner identity", () => {
       new NextRequest("http://localhost:3000/api/v1/account/data-request", {
         method: "POST",
         headers: { origin: "http://localhost:3000", "content-type": "application/json" },
-        body: JSON.stringify({ type: "access" }),
+        body: JSON.stringify({ type: "access", signed_in_as: "stranger@example.com" }),
       }),
     );
     expect(((await stranger.json()) as { error: { code: string } }).error.code).toBe(
