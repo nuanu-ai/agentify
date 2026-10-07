@@ -31,3 +31,7 @@ COPY deploy/Caddyfile /etc/caddy/Caddyfile
 # the addresses the route table names.
 COPY packages/visual/public /srv/assets
 COPY --from=portal /app/apps/docs/.vitepress/dist /srv/docs
+# The merchant landing at /sell (deploy/Caddyfile), with the shared palette
+# beside it, because the page asks for /sell/tokens.css.
+COPY apps/commerce-landing /srv/sell
+COPY packages/visual/tokens.css /srv/sell/tokens.css
