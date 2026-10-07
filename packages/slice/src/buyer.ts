@@ -156,11 +156,6 @@ export interface BuyerOptions {
   readonly privateKey: string;
   /** The hard ceiling on any single payment, in US dollars. */
   readonly maxUsd: number;
-  /**
-   * The fetch every request uses. It defaults to the global fetch and lets a
-   * caller show the exchange it just made.
-   */
-  readonly fetch?: typeof fetch;
 }
 
 export function makeBuyer(options: BuyerOptions): Buyer {
@@ -169,15 +164,14 @@ export function makeBuyer(options: BuyerOptions): Buyer {
   registerExactEvmScheme(client, { signer: account });
   client.setSpendControls({ maxAmountPerPayment: `$${options.maxUsd}` });
 
-  const request = options.fetch ?? fetch;
-  const payFetch = wrapFetchWithPayment((input, init) => request(input, init), client);
+  const payFetch = wrapFetchWithPayment((input, init) => fetch(input, init), client);
   const base = options.baseUrl.replace(/\/+$/, "");
 
   return {
     address: account.address,
 
     async catalog() {
-      const response = await request(`${base}/x402/catalog`, {
+      const response = await fetch(`${base}/x402/catalog`, {
         headers: { accept: "application/json" },
       });
       const page = CatalogPageSchema.parse(await response.json());
@@ -185,7 +179,7 @@ export function makeBuyer(options: BuyerOptions): Buyer {
     },
 
     async challenge(itemId) {
-      const response = await request(`${base}/x402/${encodeURIComponent(itemId)}/purchase`, {
+      const response = await fetch(`${base}/x402/${encodeURIComponent(itemId)}/purchase`, {
         headers: { accept: "application/json" },
       });
       const header = response.headers.get("payment-required");
@@ -229,7 +223,7 @@ export function makeBuyer(options: BuyerOptions): Buyer {
     },
 
     async status(statusUrl) {
-      const response = await request(statusUrl, {
+      const response = await fetch(statusUrl, {
         headers: { accept: "application/json" },
       });
 
