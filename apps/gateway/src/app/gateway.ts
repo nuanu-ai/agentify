@@ -59,7 +59,7 @@ import {
 import { type Announcement, type AskedWith, announcedLabel } from "../announcements.js";
 import type { AnnouncementOutcome } from "../ports/announcer.js";
 import { asTimestamp } from "../ports/clock.js";
-import type { Reminder } from "../ports/queue.js";
+import type { DrawnEnvelope, Reminder } from "../ports/queue.js";
 import type {
   KeyPurpose,
   StoredCard,
@@ -1527,9 +1527,38 @@ export class Gateway {
    * a merchant to work on a purchase that is over.
    */
   async poll(merchantId: string, waitMs: number): Promise<WorkerPollResponse> {
-    const { config, queue, clock } = this.runtime;
-    const drawn = await queue.draw(merchantId, 1, Math.min(waitMs, config.worker.pollWaitMs));
+    const { config, queue } = this.runtime;
+    // The window is real time, as the queue's own wait is: it bounds how long a
+    // worker's request is held, and the order clock has nothing to do with it.
+    const until = performance.now() + Math.min(waitMs, config.worker.pollWaitMs);
 
+    // An envelope turned away is drawn past rather than answered with nothing.
+    // An empty answer is what a quiet stream looks like, and a worker rests on
+    // one — the SDK for a second — so answering an order that closed in the
+    // queue with nothing would hold everything live behind it for that long,
+    // and after an outage that is a second for every order that closed in the
+    // meantime. The loop ends on the first envelope handed out or on an empty
+    // draw. Every envelope it passes is finished or put back behind a delay, so
+    // it never draws the same one twice in a row, and once the window has run
+    // out a draw waits for nothing.
+    for (;;) {
+      const drawn = await queue.draw(merchantId, 1, Math.max(0, until - performance.now()));
+      if (drawn.length === 0) {
+        return { contract_version: CONTRACT_VERSION, envelopes: [] };
+      }
+      const handing = await this.#handOut(merchantId, drawn);
+      if (handing.length > 0) {
+        return { contract_version: CONTRACT_VERSION, envelopes: handing };
+      }
+    }
+  }
+
+  /** Records the hand-over of what was drawn, and returns what may go to the worker. */
+  async #handOut(
+    merchantId: string,
+    drawn: readonly DrawnEnvelope[],
+  ): Promise<WorkerPollResponse["envelopes"]> {
+    const { config, queue, clock } = this.runtime;
     const handing: WorkerPollResponse["envelopes"] = [];
     const finished: string[] = [];
 
@@ -1638,7 +1667,7 @@ export class Gateway {
       await queue.finish(merchantId, handle);
     }
 
-    return { contract_version: CONTRACT_VERSION, envelopes: handing };
+    return handing;
   }
 
   /**
