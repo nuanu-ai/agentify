@@ -88,15 +88,16 @@ export const whatIsWrongWithTheName = (name: string): string | null =>
  * both are things a merchant would otherwise assume the other way.
  */
 export const SITE_RULE =
-  "The address of your shop's own website, as your browser shows it with nothing after the name:" +
-  " https://yourshop.com. Agents read it beside your seller name on every card and order, as where" +
-  " to go with what an order cannot answer — a parcel that did not arrive, a return, your terms." +
-  " Agentify does not check it. A card that sends a parcel cannot be published without it.";
+  "The address of your shop's own website: https:// and your domain, with nothing after it," +
+  " such as https://yourshop.com. Agents read it beside your seller name on every card and order," +
+  " as where to go with what an order cannot answer — goods that did not arrive, a return, your" +
+  " terms. Agentify does not check it.";
 
 /** What somebody is told whose address is not a site's bare https address. */
 export const SITE_REFUSED =
-  "Write the address as https:// and your shop's domain, with nothing after it: https://yourshop.com," +
-  " in lower case, with no page, query, port or slash at the end. Your site was not saved.";
+  "Write the address as https:// and your shop's public domain, with nothing after it:" +
+  " https://yourshop.com, in lower case, with no page, query, port or slash at the end." +
+  " Your site was not saved.";
 
 /**
  * What somebody is told who empties a site they already gave.

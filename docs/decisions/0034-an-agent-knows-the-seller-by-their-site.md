@@ -18,9 +18,10 @@ what the merchant's site already carries.
 
 ## Decision
 
-A merchant gives, wherever they set their seller name, the address of their
-shop's own site: an `https` origin, the scheme and the host with no path,
-query, fragment or credentials, refused at the door in any other form. The
+A merchant gives, beside their seller name in the dashboard's settings and
+through the call that sets the name, the address of their shop's own site: an
+`https` origin, the scheme and a public domain name with no path, query,
+fragment, port or credentials, refused at the door in any other form. The
 agent reads both on every card of that merchant in our catalog and on the
 status of every order, as a `seller` object of `name` and `site`, under a
 description saying the merchant gave them and Agentify did not check them;
