@@ -833,9 +833,11 @@ function fromDispatched(order: Order, event: StateEvent): TransitionResult {
         // in the handler's answer and nowhere else. Told his acceptance landed,
         // the merchant would write the order down as under way while it ran
         // out its seconds and closed with nothing sold. So the answer is
-        // refused for the mode, like the calls this mode does not have, and
-        // the order is left to the goods in a handler's answer or to its
-        // deadline.
+        // refused for the mode, like the calls this mode does not have. The
+        // gateway takes the refusal as the end of that hand-over, as it takes
+        // any answer, so the order is not sent to the handler again for it;
+        // it closes on its deadline with nothing charged, unless a repeat
+        // already on its way is answered with the goods first.
         return answer(order, NOT_IN_THIS_MODE);
       }
       // The order is his, and he is told so. The same acceptance can land more

@@ -2172,7 +2172,14 @@ describe("the merchant's calls", () => {
     // success here is a sale the merchant writes down as under way while the
     // order runs out its seconds with nothing sold; the refusal is what his
     // problem handler shows him instead.
-    const harnessed = await started();
+    const harnessed = await started({
+      // Short enough that the purchase ends inside the test, and a silence
+      // would be noticed long before it does.
+      HANDLER_ANSWER_MS: "20",
+      SYNC_RESPONSE_MS: "200",
+      SETTLE_RESPONSE_MS: "100",
+      SYNC_BUDGET_MS: "2000",
+    });
     const itemId = await published(harnessed, syncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
     if (offered.step !== "pay") throw new Error("no price was offered");
@@ -2191,11 +2198,12 @@ describe("the merchant's calls", () => {
     expect(refused.error.code).toBe("not_applicable_in_mode");
     expect(refused.error.retryable).toBe(false);
 
-    // The order is still his to answer properly, with the goods.
-    await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, {
-      delivered: { access_code: "X" },
-    });
-    expect((await buying).step).toBe("settled");
+    // What the agent sees: the purchase ends at its deadline and nothing is
+    // charged, which is what the portal tells the merchant will happen.
+    const bought = await buying;
+    if (bought.step !== "settled") throw new Error(`the purchase came back ${bought.step}`);
+    expect(bought.order.order.state).toBe("expired");
+    expect(harnessed.facilitator.settles).toHaveLength(0);
   });
 
   it("does not tell a merchant a live order is closed", async () => {
