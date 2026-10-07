@@ -868,7 +868,10 @@ export const PublicCardSchema = z
      *
      * Two branches rather than a bare string, so the known values cross into
      * the exported document as a list a client can switch over, beside the
-     * branch that reads any other word (`OpenWordSchema`).
+     * branch that reads any other word (`OpenWordSchema`). A declared field's
+     * type, inside params and result, stays a closed list: a card with a type
+     * a reader does not know is one it cannot fill in, and it is passed over
+     * like a card of an unknown mode.
      */
     fulfillment: z.union([FulfillmentSchema, OpenWordSchema]),
 
@@ -886,20 +889,22 @@ export const PublicCardSchema = z
     // narrower here than the same name means elsewhere in this contract, and a
     // reader who assumed otherwise would trust a stale number.
     description:
-      "A product an agent can buy, projected from the card its merchant published. as_of is when the price shown here was published, and nothing more: on a card whose price is checked at purchase it says nothing about how fresh that check will be — elsewhere in this contract the same name means the moment a live answer was true. price_checked_at_purchase says the merchant is asked for a price at the moment of purchase, not that they answer; what happens when they are silent depends on the mode and belongs to the gateway. The number above is what an agent compares when choosing and may not be what the sale goes through at. Two rules hold beyond the shape: a synchronous product names no delivery deadline, because it is delivered inside a response budget that is the same for every product on the platform, and only a product whose merchant is asked to confirm names a confirmation deadline. seller is who sells, as the merchant gave it: Agentify did not check the name or the site. fulfillment is a word whose known values are listed beside it, and more may be added: a reader keeps a default arm, and a card whose mode it does not know is one to pass over, not a reason to stop reading the catalog. This document may also gain fields; a reader ignores the ones it does not know.",
+      "A product an agent can buy, projected from the card its merchant published. as_of is when the price shown here was published, and nothing more: on a card whose price is checked at purchase it says nothing about how fresh that check will be — elsewhere in this contract the same name means the moment a live answer was true. price_checked_at_purchase says the merchant is asked for a price at the moment of purchase, not that they answer; what happens when they are silent depends on the mode and belongs to the gateway. The number above is what an agent compares when choosing and may not be what the sale goes through at. Two rules hold beyond the shape: a synchronous product names no delivery deadline, because it is delivered inside a response budget that is the same for every product on the platform, and only a product whose merchant is asked to confirm names a confirmation deadline. seller is who sells, as the merchant gave it: Agentify did not check the name or the site. fulfillment is a word whose known values are listed beside it, and more may be added: a reader keeps a default arm, and a card whose mode it does not know is one to pass over, not a reason to stop reading the catalog. This document and every part inside it may also gain fields; a reader ignores the ones it does not know. The type of a declared field in params and result is a closed list, and a card with a type a reader does not know is one to pass over too.",
   });
 
 export type PublicCard = z.infer<typeof PublicCardSchema>;
 
 /**
- * A card as `publicCardOf` builds it: the fields this version names and no
- * others, and a mode it knows.
+ * A card as `publicCardOf` builds it: the card's own fields without the index
+ * signature the open schema adds, and a mode this version knows.
  *
  * An agent reads a card with `PublicCardSchema`, which takes fields and modes
- * added later (ADR-0006 §5); what is built is held to the opposite. Without
- * the index signature the open schema adds, a field the projection should not
- * carry — the merchant's own key, the address of their price check — is a
- * compile error where it is written, rather than one more key on every card.
+ * added later (ADR-0006 §5); what is built is held to the opposite. The type
+ * catches part of that: an unknown field written straight into the returned
+ * object is a compile error. It does not reach inside the card's parts, which
+ * keep the open schema's index signatures, nor tie a deadline to its mode. The
+ * gateway's outbound check holds the rest, at every depth, before anything is
+ * sent (`checksBeforeSending`).
  */
 export type ProjectedCard = {
   [Field in keyof PublicCard as string extends Field ? never : Field]: PublicCard[Field];

@@ -224,7 +224,7 @@ console.log(`[buyer] ${buyer.address} against ${baseUrl}`);
 const catalog = await buyer.catalog();
 if (catalog.length === 0) {
   console.error(
-    "[buyer] the catalogue is empty — nothing has been published, so there is nothing to buy",
+    "[buyer] the catalogue has nothing this buyer can buy — nothing is published, or every card is of a mode or a shape it was not built to read",
   );
   process.exit(1);
 }

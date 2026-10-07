@@ -49,7 +49,7 @@ import {
 import express, { type Express, type Request, type Response } from "express";
 import type { ZodType } from "zod";
 import type { Gateway } from "../app/gateway.js";
-import { WRITTEN_AS } from "../app/written.js";
+import { checksBeforeSending } from "../app/written.js";
 import type { KeyPurpose } from "../ports/store.js";
 import { bearerIn } from "./auth.js";
 import { handlersFor } from "./routes.js";
@@ -439,15 +439,17 @@ async function answer(
   // response that does not match the contract is a lie the other side would
   // reject anyway, and failing on our side is how it gets found here rather
   // than in somebody's integration. A storefront document is held to its
-  // closed form instead (`written.ts`): an agent reads it open, and the open
-  // form would let anything out.
+  // closed form as well (`written.ts`): an agent reads it open, and the open
+  // form alone would let anything out.
   //
   // A handler that writes its own response — the payment exchange, and every
   // refusal — passes above and is not held to this. That is what `written`
   // means and it is the whole of the exception: a challenge is a header and an
   // empty body, and a refusal is the contract's envelope rather than the
   // route's document.
-  (WRITTEN_AS.get(route.response.document) ?? route.response.document).parse(answered.document);
+  for (const check of checksBeforeSending(route.response.document)) {
+    check.parse(answered.document);
+  }
 
   response.status(answered.status).json(answered.document);
 }

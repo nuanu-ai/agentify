@@ -87,9 +87,12 @@ the merchant's routes and is not derived from it.
    every card unreadable to an agent built before it. What a gateway writes is
    held to the opposite: the fields and words its version names, and nothing
    else, because a reader that ignores what it does not know can no longer
-   refuse a field that leaked. The merchant's schemas stay closed. The first values added this way are `ship`
-   and `shipped` (ADR-0033), and the first fields the seller's name and site
-   (ADR-0034).
+   refuse a field that leaked. A word inside a part — the type of a declared
+   field — stays a closed list: a card with a type a reader does not know is
+   one it cannot fill in, and it is passed over like a card of an unknown mode.
+   The merchant's schemas stay closed. The first values added this way are
+   `ship` and `shipped` (ADR-0033), and the first fields the seller's name and
+   site (ADR-0034).
 
    Rejected: a version segment on the storefront, on the argument that an
    incompatibly changed wire *is* a different resource to an agent and should
