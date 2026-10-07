@@ -1,7 +1,9 @@
 # 0034. An agent knows who sells by a name and the shop's own site
 
 Date: 2026-09-28
-Status: accepted (the product owner, 2026-09-28). Not built yet.
+Status: accepted (the product owner, 2026-09-28). Built 2026-10-07, except
+the finding `no_seller_site`, which arrives with the parcel cards it is about
+(ADR-0033).
 
 ## Context
 

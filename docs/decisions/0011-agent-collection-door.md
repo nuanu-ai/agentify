@@ -51,6 +51,12 @@ and a tracking link, whose carrier's page may show the buyer's city or who
 signed for it. The revisit weighs that too and writes its verdict here, and
 selling parcels on the live channel waits for it.
 
+Since ADR-0034 the same door names who sold the order: the name and the shop's
+site the merchant gave, as the catalog shows them beside the merchant's cards,
+and nothing of the merchant's account, product key or card (the product owner,
+2026-10-07). Whoever holds an identifier learns which public seller it was
+bought from; the revisit weighs that too.
+
 ## Alternatives rejected
 
 **Leave the route unmounted.** This avoids the weak door but takes money for an
