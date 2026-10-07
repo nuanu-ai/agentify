@@ -15,6 +15,7 @@
 #   AGENTIFY_FRONT_PAGE        required front-page route          no default
 #   AGENTIFY_ASSET_ROOT        the shared browser assets          /srv/assets
 #   AGENTIFY_PORTAL_ROOT       the portal's built output          /srv/docs
+#   AGENTIFY_SELL_ROOT         the merchant landing's files       /srv/sell
 #   AGENTIFY_CABINET_UPSTREAM  host:port of the cabinet process   cabinet:3001
 #   AGENTIFY_GATEWAY_UPSTREAM  host:port of the gateway process   gateway:3000
 #   AGENTIFY_SCANNER_UPSTREAM  host:port of the scanner process   scanner:3000
@@ -328,6 +329,28 @@
 			file_server {
 				status {err.status_code}
 			}
+		}
+	}
+
+	# The merchant landing, a draft the product owner shows people while the
+	# product's market positioning is being worked out (2026-10-07). It lives at
+	# /sell on a laptop and on the test channel; on the live channel the
+	# expression is false and /sell stays the scanner's, as before. Its prices
+	# are not approved and its grey notes are for choosing between them, so no
+	# search engine is asked to keep the page, and no browser keeps a stale copy.
+	# The page is a directory of files, like the portal, so the prefix is
+	# stripped and /sell/ is its index.html.
+	@sell_page {
+		path /sell /sell/*
+		expression "{$AGENTIFY_SURFACE_MODE:sandbox}" != "live"
+	}
+	handle @sell_page {
+		header Cache-Control "no-cache"
+		header X-Robots-Tag "noindex"
+		redir /sell /sell/
+		handle_path /sell/* {
+			root * {$AGENTIFY_SELL_ROOT:/srv/sell}
+			file_server
 		}
 	}
 

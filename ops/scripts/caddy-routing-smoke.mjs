@@ -24,6 +24,7 @@ const networkName = `agentify-routing-${suffix}`;
 const innerName = `agentify-routing-inner-${suffix}`;
 const edgeName = `agentify-routing-edge-${suffix}`;
 const mutatedName = `agentify-routing-mutated-${suffix}`;
+const liveName = `agentify-routing-live-${suffix}`;
 const temporary = mkdtempSync(path.join(os.tmpdir(), "agentify-routing-"));
 const upstreams = [];
 
@@ -334,7 +335,7 @@ async function expectWalletWritesClosed(baseUrl) {
   }
 }
 
-function runInner({ configPath, containerName, trustedEdge, ports }) {
+function runInner({ configPath, containerName, trustedEdge, ports, surfaceMode = "test" }) {
   docker(
     "run",
     "-d",
@@ -352,8 +353,12 @@ function runInner({ configPath, containerName, trustedEdge, ports }) {
     `${path.join(projectRoot, "packages/visual/public")}:/srv/assets:ro`,
     "-v",
     `${path.join(temporary, "docs")}:/srv/docs:ro`,
+    "-v",
+    `${path.join(temporary, "sell")}:/srv/sell:ro`,
     "-e",
     "AGENTIFY_FRONT_PAGE=scanner_front_page",
+    "-e",
+    `AGENTIFY_SURFACE_MODE=${surfaceMode}`,
     "-e",
     `AGENTIFY_TRUSTED_EDGE_CIDR=${trustedEdge}/32`,
     "-e",
@@ -371,6 +376,9 @@ try {
   mkdirSync(path.join(docsRoot, "assets"), { recursive: true });
   writeFileSync(path.join(docsRoot, "index.html"), "<p>documentation fixture</p>");
   writeFileSync(path.join(docsRoot, "guide.html"), "<p>documentation guide</p>");
+  const sellRoot = path.join(temporary, "sell");
+  mkdirSync(sellRoot, { recursive: true });
+  writeFileSync(path.join(sellRoot, "index.html"), "<p>landing fixture</p>");
   writeFileSync(path.join(docsRoot, "404.html"), "<p>documentation missing fixture</p>");
   writeFileSync(path.join(docsRoot, "assets/doc.css"), "body { color: black; }\n");
 
@@ -495,6 +503,17 @@ try {
     assert.equal(moved.status, 307, from);
     assert.equal(moved.headers.get("location"), to, from);
   }
+  // The merchant landing is served at /sell on the test channel, kept out of
+  // search engines, and is the scanner's on the live channel (below).
+  response = await fetch(`${innerBase}/sell`, { redirect: "manual" });
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get("location"), "/sell/");
+  response = await fetch(`${innerBase}/sell/`);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("x-robots-tag"), "noindex");
+  assert.match(await response.text(), /landing fixture/);
+  await expectProxy(innerBase, "/sellers", "scanner");
+
   response = await fetch(`${innerBase}/docs%2Fguide`);
   assert.equal(response.status, 200);
   assert.match(await response.text(), /documentation guide/);
@@ -543,11 +562,24 @@ try {
     "the old scanner fallback unexpectedly passed the shared browser-asset check",
   );
 
+  // On the live channel the landing is not served: /sell is the scanner's.
+  runInner({
+    configPath: sourceCaddyfile,
+    containerName: liveName,
+    trustedEdge: edgeAddress,
+    ports,
+    surfaceMode: "live",
+  });
+  const liveBase = publishedBase(liveName);
+  await waitFor(liveBase);
+  await expectProxy(liveBase, "/sell", "scanner");
+  await expectProxy(liveBase, "/sell/", "scanner");
+
   console.log(
     "PASS: actual Caddy preserves exact commerce/docs/assets routes, keeps the cabinet's own gateway calls off the public door, passes /admin to the scanner unmarked, and keeps one trusted scanner client IP",
   );
 } finally {
-  for (const container of [mutatedName, innerName, edgeName]) {
+  for (const container of [liveName, mutatedName, innerName, edgeName]) {
     dockerResult("rm", "-f", container);
   }
   dockerResult("network", "rm", networkName);
