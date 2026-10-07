@@ -84,11 +84,18 @@ describe("analytics privacy and dedup contracts", () => {
 
   it("never enables PostHog autocapture or replay", () => {
     // The options the browser runtime starts PostHog with, read through the
-    // entry the web app imports them from.
-    expect(POSTHOG_BROWSER_OPTIONS).toMatchObject({
+    // entry the web app imports them from, and all of them: a capture left out
+    // of this list is one the PostHog project can switch on by itself.
+    expect(POSTHOG_BROWSER_OPTIONS).toStrictEqual({
       autocapture: false,
+      capture_heatmaps: false,
+      capture_dead_clicks: false,
+      capture_exceptions: false,
+      capture_performance: false,
       disable_session_recording: true,
       capture_pageview: false,
+      capture_pageleave: false,
+      person_profiles: "never",
     });
   });
 
