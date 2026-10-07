@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type { AnalyticsEvent } from "./events.js";
 
 export const META_EVENT_MAPPING = {
@@ -11,9 +10,6 @@ export const META_EVENT_MAPPING = {
   card_attached: "CardAttached",
   result_shared: "ResultShared",
 } as const;
-
-export const sha256NormalizedEmail = (email: string): string =>
-  createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
 
 export const buildPosthogPayload = (event: AnalyticsEvent, projectKey: string) => ({
   api_key: projectKey,
@@ -79,16 +75,3 @@ export const buildMetaPayload = (
     ...(testEventCode ? { test_event_code: testEventCode } : {}),
   };
 };
-
-export const buildMetaPixelCommand = (event: AnalyticsEvent) => ({
-  method: ["landing_view", "results_viewed", "registration_completed"].includes(event.name)
-    ? "track"
-    : "trackCustom",
-  eventName: META_EVENT_MAPPING[event.name],
-  parameters: {
-    segment: event.segment,
-    landing_variant: event.landingVariant,
-    ...event.properties,
-  },
-  options: { eventID: event.eventId },
-});
