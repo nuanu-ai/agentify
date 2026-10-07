@@ -173,24 +173,14 @@ describe("the wallet a merchant is paid at", () => {
     });
   });
 
-  it("reads back what the merchant's wallet showed them, character for character", async () => {
-    // The reason this is the canon and not lower case. A merchant pastes forty
-    // characters out of their wallet and then looks at a settings screen: shown
-    // the same address in another spelling they cannot tell it from a different
-    // address without going character by character, and nobody does that.
-    const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
-
-    const answered = await setPayoutWallet(served, dashboard, A_WALLET);
-
-    expect(answered.status, JSON.stringify(answered.body)).toBe(200);
-    expect(answered.body).toStrictEqual({ payout_wallet: A_WALLET, pending: null });
-  });
-
   it("takes the lower-case spelling too, and answers in the one a wallet shows", async () => {
     // The other accepted spelling: a block explorer prints it, and half the
     // tooling in this world hands it to somebody. It is one address, so it is
-    // answered with in the one form anything behind the door holds.
+    // answered with in the one form anything behind the door holds — the one a
+    // wallet shows. A merchant pastes forty characters out of their wallet and
+    // then looks at a settings screen: shown the same address in another
+    // spelling, they cannot tell it from a different address without going
+    // character by character, and nobody does that.
     const { served, harnessed } = await started();
     const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
 

@@ -304,6 +304,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(again.paused).toBe(true);
         expect(again.card.title).toBe("A room, dearer");
         expect((await store.cardById(first.id))?.paused).toBe(true);
+        expect((await store.cards(A)).find((held) => held.id === first.id)?.paused).toBe(true);
       });
 
       it("goes off sale and back on, and says so about one that is not there", async () => {
@@ -1706,6 +1707,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect((await store.orderById("ord_1"))?.merchantId).toBe(A);
         expect(await idsOf(store.orders(A))).toStrictEqual(["ord_1"]);
         expect(await store.orders(B)).toStrictEqual([]);
+        expect((await store.merchantOrder(A, "ord_1"))?.order.id).toBe("ord_1");
+        expect(await store.merchantOrder(B, "ord_1")).toBeNull();
         // And the change the decision was actually making did land.
         expect((await store.orderById("ord_1"))?.order.state).toBe("quoted");
       });
@@ -1790,6 +1793,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           claimed: false,
           heldBy: "ord_1",
         });
+        // The refusal moved nothing: the order that holds it still presents it.
+        expect(await store.claimPayment("fp-1", "ord_1")).toStrictEqual({ claimed: true });
         // And a different payment is nobody's yet.
         expect(await store.claimPayment("fp-2", "ord_2")).toStrictEqual({ claimed: true });
       });
