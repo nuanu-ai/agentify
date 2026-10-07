@@ -336,8 +336,6 @@ export interface WorkingParts extends Filling {
   readonly clientFor: (key: string) => GatewayClient;
   /** How long one poll holds the stream open. */
   readonly waitSeconds?: number;
-  /** At most this many orders drawn in one turn. */
-  readonly max?: number;
   /** Fresh price/availability from Woo; supplied by production in the next boundary. */
   readonly quote?: (
     connection: WooConnection,
@@ -356,14 +354,13 @@ export interface WorkingParts extends Filling {
  */
 const WAIT_SECONDS = 5;
 
-/** At most this many orders in one turn. */
-const AT_MOST = 10;
-
 /**
  * One turn for one connected shop: draw the stream, fill what came, answer.
  *
- * It answers with how many envelopes were drawn, which is what the loop reads
- * to decide whether to come straight back.
+ * It answers with how many envelopes were drawn, events included, which is
+ * what the loop reads to decide whether to come straight back. The gateway
+ * hands out one envelope a poll, so an event is often all a turn draws, and a
+ * turn that drew one is not a quiet stream.
  */
 export const turnOnce = async (connection: WooConnection, parts: WorkingParts): Promise<number> => {
   const person = await parts.identity.byId(connection.accountId);
@@ -378,16 +375,14 @@ export const turnOnce = async (connection: WooConnection, parts: WorkingParts): 
   }
 
   const gateway = parts.clientFor(person.merchant.key);
-  const drawn = await gateway.pollWorker(parts.waitSeconds ?? WAIT_SECONDS, parts.max ?? AT_MOST);
+  const drawn = await gateway.pollWorker(parts.waitSeconds ?? WAIT_SECONDS);
   if (!drawn.ok) {
     console.error(`[dashboard] the WooCommerce worker could not draw its stream: ${drawn.why}`);
     return 0;
   }
 
-  let filled = 0;
   for (const envelope of drawn.document.envelopes) {
     if (envelope.kind === "quote_request") {
-      filled += 1;
       const answer =
         connection.permissions !== "read_write"
           ? { available: false as const, as_of: parts.now().toISOString() }
@@ -406,7 +401,6 @@ export const turnOnce = async (connection: WooConnection, parts: WorkingParts): 
     if (envelope.kind !== "order") {
       continue;
     }
-    filled += 1;
     const answer = await fillFromTheShop(envelope.payload, connection, person.email, parts);
     if (answer === null) {
       continue;
@@ -418,7 +412,7 @@ export const turnOnce = async (connection: WooConnection, parts: WorkingParts): 
       );
     }
   }
-  return filled;
+  return drawn.document.envelopes.length;
 };
 
 const quoteFromTheShop = async (

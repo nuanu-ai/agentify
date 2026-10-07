@@ -126,7 +126,8 @@ export interface GatewayClient {
    */
   publishCard(card: CardInput): Promise<Answer<PublishResult>>;
   /**
-   * Draws the next batch off this merchant's stream.
+   * Draws what is next on this merchant's stream: one envelope, or none when
+   * the wait ran out.
    *
    * The dashboard is not ordinarily a worker, and this exists for the one thing
    * that makes it one: a merchant whose catalogue came from a WooCommerce shop
@@ -134,7 +135,7 @@ export interface GatewayClient {
    * here, from the shop. Every other screen in the dashboard draws and does not
    * wait.
    */
-  pollWorker(waitSeconds: number, max: number): Promise<Answer<WorkerPollResponse>>;
+  pollWorker(waitSeconds: number): Promise<Answer<WorkerPollResponse>>;
   /** What the handler returned for one order: the goods, or a refusal. */
   answerOrder(orderId: string, answer: HandlerAnswer): Promise<Answer<OrderCallResponse>>;
   /** Reads one exact order before an operator closes its delivery debt. */
@@ -312,9 +313,9 @@ export const gatewayFor = (
       // A refused card is the answer and not the absence of one, so this is the
       // one route read through `answering` rather than through `call`.
       answering(baseUrl, key, answerWithinMs, API_ROUTES.publish_card, PublishResultSchema, card),
-    pollWorker: (waitSeconds, max) =>
+    pollWorker: (waitSeconds) =>
       call(API_ROUTES.poll_worker, WorkerPollResponseSchema, {
-        body: { wait_seconds: waitSeconds, max },
+        body: { wait_seconds: waitSeconds },
       }),
     answerOrder: (orderId, answer) =>
       call(API_ROUTES.answer_order, OrderCallResponseSchema, {
