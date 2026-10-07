@@ -63,7 +63,7 @@ import type {
   TransitionRejectionCode,
   TransitionResult,
 } from "./model.js";
-import { effectsOnQuoted } from "./model.js";
+import { effectsOnQuoted, holdsShipTo } from "./model.js";
 import { nextRedelivery } from "./redelivery.js";
 
 /**
@@ -93,6 +93,35 @@ function allowedWhileSettling(order: Order, event: OrderEvent): boolean {
 }
 
 export function transition(order: Order, event: OrderEvent): TransitionResult {
+  if (order.mode.parcel !== true) {
+    return transitionIn(order, event);
+  }
+
+  // A parcel whose address is gone is never handed to a handler again
+  // (ADR-0032): the handler would be handed a parcel with nowhere to send it.
+  // That covers a repeat already on the merchant's stream when they took the
+  // order on, and an order owing a refund, which an ordinary order is handed
+  // over again for; a merchant who ships late from their own copy of the
+  // address still closes the debt with the `deliver` call.
+  if (event.kind === "order_dispatched" && !holdsShipTo(order)) {
+    return reject(
+      order,
+      event,
+      "event_not_applicable",
+      "a parcel whose buyer's address has been erased is not handed to a handler again",
+    );
+  }
+
+  // And the moment the address stops being needed is said once, on the one
+  // transition where it stops, so the gateway erases its copy then.
+  const result = transitionIn(order, event);
+  if (result.ok && holdsShipTo(order) && !holdsShipTo(result.order)) {
+    return ok(result.order, [...result.effects, { kind: "erase_ship_to" }]);
+  }
+  return result;
+}
+
+function transitionIn(order: Order, event: OrderEvent): TransitionResult {
   if (event.kind === "deadline_expired") {
     return onDeadline(order, event);
   }

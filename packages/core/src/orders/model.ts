@@ -142,6 +142,18 @@ export type SettleTiming = (typeof SETTLE_TIMINGS)[number];
 export type OrderMode = {
   readonly needsConfirmation: boolean;
   readonly settle: SettleTiming;
+  /**
+   * The third switch: the goods are a parcel the merchant hands to a carrier
+   * (ADR-0033), recorded at purchase so a card republished in another mode
+   * changes no order in flight. A parcel's money moves as the asynchronous
+   * mode's does; what the switch adds is the buyer's address, which the order
+   * holds only until the merchant has it (`holdsShipTo`).
+   *
+   * Present only on a parcel. An order stored before the switch existed has
+   * no such field, and reading its absence as "not a parcel" is true of every
+   * one of them, so no stored order has to be rewritten for it.
+   */
+  readonly parcel?: true;
 };
 
 /** The modes a card can declare. */
@@ -403,7 +415,33 @@ export type Effect =
   | { readonly kind: "hold_fulfillment" }
   | { readonly kind: "mark_refund_due"; readonly closure: Closure }
   | { readonly kind: "emit_merchant_event"; readonly event: MerchantEvent }
-  | { readonly kind: "answer_merchant"; readonly answer: MerchantAnswer };
+  | { readonly kind: "answer_merchant"; readonly answer: MerchantAnswer }
+  /**
+   * The buyer's address is no longer needed from us: erase it from the order
+   * and from every envelope that carries it (ADR-0032). Said once per parcel,
+   * on the transition where `holdsShipTo` stops being true.
+   */
+  | { readonly kind: "erase_ship_to" };
+
+/**
+ * Whether this order still holds a buyer's address (ADR-0032).
+ *
+ * Only a parcel ever holds one, and it holds it from the priced request until
+ * the first of four moments: the merchant takes the order on (they store the
+ * address before answering `accepted`), its shipment is recorded, it closes,
+ * or it becomes a refund owed without having been taken on. Every one of
+ * those leaves the order closed, owing a refund or taken on, so the rule is
+ * read off the order rather than kept beside it, and it only ever goes from
+ * true to false.
+ */
+export function holdsShipTo(order: Order): boolean {
+  return (
+    order.mode.parcel === true &&
+    isOpen(order.state) &&
+    order.state !== "refund_due" &&
+    !order.dispatch.accepted
+  );
+}
 
 /**
  * What the gateway is asked to do the moment an order has a price.

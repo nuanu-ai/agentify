@@ -213,6 +213,9 @@ function carriedOutAfterwards(effect: Effect): boolean {
     case "hold_fulfillment":
     case "mark_refund_due":
     case "answer_merchant":
+    // On this side only until the parcel mode is taken here, which is when it
+    // is built as a write beside the state it follows (ADR-0032, ADR-0033).
+    case "erase_ship_to":
       return true;
     default:
       return assertNever(effect, "effect");
@@ -894,6 +897,16 @@ export class OrderRunner {
           // describes.
           throw new Error(
             `${effect.kind} belongs to the confirmation mode, which has no shape on the wire yet`,
+          );
+
+        case "erase_ship_to":
+          // A parcel's address leaving us (ADR-0032). No card here sells a
+          // parcel yet, so no order of this gateway's is one and nothing asks
+          // for this; reaching it means an order was made a parcel without the
+          // erasure that mode promises its buyer, which is not something to
+          // carry on past in silence.
+          throw new Error(
+            `${effect.kind} on ${record.order.id}: this gateway does not take parcels yet, so it cannot erase a buyer's address`,
           );
 
         default:
