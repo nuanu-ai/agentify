@@ -500,6 +500,7 @@ describe("the card an agent reads", () => {
 
     expect(later.success).toBe(true);
     expect(later.data?.fulfillment).toBe("by_appointment");
+    expect(PublicCardSchema.safeParse({ ...publicCard, fulfillment: "" }).success).toBe(false);
   });
 
   it("takes a field added later, which an agent ignores", () => {

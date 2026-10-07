@@ -18,7 +18,7 @@
 
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { CatalogPage } from "@nuanu-ai/agentify-contracts";
+import type { PublicCard } from "@nuanu-ai/agentify-contracts";
 import { encodePaymentRequiredHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -29,7 +29,7 @@ import {
   type ValidateAnswer,
 } from "./listing-command.js";
 
-const card = (id: string): CatalogPage["items"][number] => ({
+const card = (id: string): PublicCard => ({
   id,
   title: "A room for the night",
   description: "One night in room 101",
@@ -63,7 +63,7 @@ const priced: DoorAnswer = {
 
 /** A run: what the ways out answered, and everything the command said. */
 function aRun(options: {
-  readonly catalog?: CatalogPage | Error;
+  readonly catalog?: { items: PublicCard[] } | Error;
   readonly answers?: (resource: string, method: string) => ValidateAnswer;
   readonly door?: (resource: string) => DoorAnswer;
 }) {

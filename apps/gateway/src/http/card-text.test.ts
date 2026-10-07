@@ -12,7 +12,12 @@
  * turn one old row into a failed catalog for everybody.
  */
 
-import type { Card, CatalogPage, MerchantCardList } from "@nuanu-ai/agentify-contracts";
+import {
+  type Card,
+  CatalogPageSchema,
+  cardsOf,
+  type MerchantCardList,
+} from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { type Harness, harness, type Served, serve, theMerchantKey } from "../testing/harness.js";
 
@@ -91,7 +96,7 @@ describe("a card's own words at the publish door", () => {
 
     const listed = await served.call("GET", "/x402/catalog");
     expect(listed.status).toBe(200);
-    expect((listed.body as CatalogPage).items[0]).toMatchObject(words);
+    expect(cardsOf(CatalogPageSchema.parse(listed.body))[0]).toMatchObject(words);
   });
 
   it("keeps serving a card stored before the rule, to agents and to its merchant", async () => {
@@ -108,7 +113,7 @@ describe("a card's own words at the publish door", () => {
     const mine = await served.call("GET", "/v0/cards", { headers: asMerchant });
 
     expect(listed.status).toBe(200);
-    expect((listed.body as CatalogPage).items[0]?.title).toBe(before.title);
+    expect(cardsOf(CatalogPageSchema.parse(listed.body))[0]?.title).toBe(before.title);
     expect(mine.status).toBe(200);
     expect((mine.body as MerchantCardList).cards[0]?.card).toStrictEqual(before);
   });

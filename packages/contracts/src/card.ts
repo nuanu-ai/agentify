@@ -773,11 +773,16 @@ export const deliveryCheckFor = (card: Card): z.ZodType =>
  * gateway's, and this document does not claim to know it.
  *
  * Both deadlines stay, because they are the merchant's promise to the agent
- * about how long it may wait, and the agent is told them before it pays. They
- * sit on the modes that have them, as branches of a union rather than as a
- * rule attached to one object: JSON Schema cannot say "this field only when
- * that one has this value", and zod drops such a rule without a word, so as
- * branches the constraint crosses whole into the export.
+ * about how long it may wait, and the agent is told them before it pays. The
+ * projection writes each only on a mode that has it, and the document says so
+ * in words rather than as structure: it takes fields added later (ADR-0006
+ * §5), so a field an agent does not expect is one it ignores, not one it can
+ * refuse.
+ *
+ * The mode is a word whose known values are listed beside it, for the same
+ * reason. The storefront has no version, so a mode added later reaches agents
+ * that still hold this contract, and to them it has to be a card to pass over
+ * rather than a catalog they cannot read.
  *
  * `as_of` is added: the moment the price shown here was published. A price
  * with no moment behind it cannot be judged stale, and this is the only
@@ -795,70 +800,66 @@ export const deliveryCheckFor = (card: Card): z.ZodType =>
  * claim that either was checked. Who "we" are to the buyer is a question this
  * document still does not answer.
  */
-const PublicCardFieldsSchema = z.strictObject({
-  /** Our catalog identifier, the one a purchase, a receipt and a status use. */
-  id: IdentifierSchema,
-
-  title: TitleSchema,
-
-  description: DescriptionSchema,
-
-  /** The price in the catalog: what an agent compares when it is choosing. */
-  price: MoneySchema,
-
-  /** When the price above was published. */
-  as_of: TimestampSchema,
-
-  /** What the agent has to supply to buy. Absent when the purchase needs no input. */
-  params: ParamSpecSchema.optional(),
-
-  result: DeclaredResultSchema,
-
-  /**
-   * Whether the merchant is asked for this product's price and availability at
-   * the moment of purchase, so the sale may go through at a price other than
-   * the one above.
-   *
-   * Required rather than defaulted, because both readings of a missing flag
-   * cost the agent something: read as false it budgets against a price that is
-   * about to move, read as true it distrusts a price that never moves.
-   */
-  price_checked_at_purchase: z.boolean(),
-
-  /**
-   * Who sells this product, in the merchant's own words and unchecked. It is
-   * read with the catalog rather than copied onto the card at publishing, so
-   * a merchant who changes their name or gives a site is found by it on every
-   * card they already sell.
-   */
-  seller: SellerSchema,
-});
-
 export const PublicCardSchema = z
-  .discriminatedUnion("fulfillment", [
-    // Synchronous: the product arrives in the answer to the purchase, inside our
-    // own response budget — one number for every product on the platform, which
-    // is why no card names it and no card may name a delivery deadline instead.
-    PublicCardFieldsSchema.extend({ fulfillment: z.literal("sync") }),
+  .looseObject({
+    /** Our catalog identifier, the one a purchase, a receipt and a status use. */
+    id: IdentifierSchema,
 
-    // Asynchronous: the money moves at the purchase and the product comes later,
-    // within the merchant's own delivery deadline where they set one.
-    PublicCardFieldsSchema.extend({
-      fulfillment: z.literal("async"),
-      fulfill_deadline_seconds: z.int().positive().optional(),
-    }),
+    title: TitleSchema,
 
-    // With confirmation: the merchant is asked first and the payment follows
-    // their yes, so both waits exist. No card can be published in this mode
-    // during the pilot; the branch is here because the mode is in the
-    // vocabulary, and a branch missing from a projection would be a second gate
-    // in a second place for whoever lifts the first one.
-    PublicCardFieldsSchema.extend({
-      fulfillment: z.literal("confirm"),
-      confirm_deadline_seconds: z.int().positive().optional(),
-      fulfill_deadline_seconds: z.int().positive().optional(),
-    }),
-  ])
+    description: DescriptionSchema,
+
+    /** The price in the catalog: what an agent compares when it is choosing. */
+    price: MoneySchema,
+
+    /** When the price above was published. */
+    as_of: TimestampSchema,
+
+    /** What the agent has to supply to buy. Absent when the purchase needs no input. */
+    params: ParamSpecSchema.optional(),
+
+    result: DeclaredResultSchema,
+
+    /**
+     * Whether the merchant is asked for this product's price and availability at
+     * the moment of purchase, so the sale may go through at a price other than
+     * the one above.
+     *
+     * Required rather than defaulted, because both readings of a missing flag
+     * cost the agent something: read as false it budgets against a price that is
+     * about to move, read as true it distrusts a price that never moves.
+     */
+    price_checked_at_purchase: z.boolean(),
+
+    /**
+     * Who sells this product, in the merchant's own words and unchecked. It is
+     * read with the catalog rather than copied onto the card at publishing, so
+     * a merchant who changes their name or gives a site is found by it on every
+     * card they already sell.
+     */
+    seller: SellerSchema,
+
+    /**
+     * How the product is sold: "sync", "async" or "confirm" today, and a word
+     * added later reaches this same document. A reader keeps a default arm,
+     * and a card whose mode it does not know is one to pass over.
+     *
+     * Two branches rather than a bare string, so the known values cross into
+     * the exported document as a list a client can switch over, beside the
+     * branch that reads any other word. An empty word is still refused: it is
+     * not a mode anybody added.
+     */
+    fulfillment: z.union([
+      FulfillmentSchema,
+      z.string().regex(/\S/, "a mode is a word, not an empty string"),
+    ]),
+
+    /** On "async" and "confirm": how long the merchant has to deliver, in seconds. */
+    fulfill_deadline_seconds: z.int().positive().optional(),
+
+    /** On "confirm": how long the merchant has to say yes, in seconds. */
+    confirm_deadline_seconds: z.int().positive().optional(),
+  })
   .meta({
     // Everything below is written in prose above as well, and it has to be
     // written twice: the reader this matters most to is the one holding the
@@ -867,7 +868,7 @@ export const PublicCardSchema = z
     // narrower here than the same name means elsewhere in this contract, and a
     // reader who assumed otherwise would trust a stale number.
     description:
-      "A product an agent can buy, projected from the card its merchant published. as_of is when the price shown here was published, and nothing more: on a card whose price is checked at purchase it says nothing about how fresh that check will be — elsewhere in this contract the same name means the moment a live answer was true. price_checked_at_purchase says the merchant is asked for a price at the moment of purchase, not that they answer; what happens when they are silent depends on the mode and belongs to the gateway. The number above is what an agent compares when choosing and may not be what the sale goes through at. Two rules hold beyond the shape: a synchronous product names no delivery deadline, because it is delivered inside a response budget that is the same for every product on the platform, and only a product whose merchant is asked to confirm names a confirmation deadline. seller is who sells, as the merchant gave it: Agentify did not check the name or the site.",
+      "A product an agent can buy, projected from the card its merchant published. as_of is when the price shown here was published, and nothing more: on a card whose price is checked at purchase it says nothing about how fresh that check will be — elsewhere in this contract the same name means the moment a live answer was true. price_checked_at_purchase says the merchant is asked for a price at the moment of purchase, not that they answer; what happens when they are silent depends on the mode and belongs to the gateway. The number above is what an agent compares when choosing and may not be what the sale goes through at. Two rules hold beyond the shape: a synchronous product names no delivery deadline, because it is delivered inside a response budget that is the same for every product on the platform, and only a product whose merchant is asked to confirm names a confirmation deadline. seller is who sells, as the merchant gave it: Agentify did not check the name or the site. fulfillment is a word whose known values are listed beside it, and more may be added: a reader keeps a default arm, and a card whose mode it does not know is one to pass over, not a reason to stop reading the catalog. This document may also gain fields; a reader ignores the ones it does not know.",
   });
 
 export type PublicCard = z.infer<typeof PublicCardSchema>;

@@ -25,7 +25,6 @@ import {
   type CabinetKey,
   type CallError,
   CardSchema,
-  type CatalogPage,
   CONTRACT_VERSION,
   type Delivery,
   type DisabledKey,
@@ -43,6 +42,7 @@ import {
   type OrderCallResponse,
   type PayoutWallet,
   type Problem,
+  type PublicCard,
   type PublishResult,
   priceProblemsOf,
   publicCardOf,
@@ -462,7 +462,7 @@ export class Gateway {
    * portal tells the merchant a pause means their cards stop selling rather
    * than that they stop working.
    */
-  async catalog(): Promise<CatalogPage> {
+  async catalog(): Promise<{ readonly items: PublicCard[] }> {
     // One catalog across every merchant, which is the product (ADR-0010). The
     // selling word is read per card because it is per merchant: one merchant
     // stopping all selling takes their own cards out of this and leaves

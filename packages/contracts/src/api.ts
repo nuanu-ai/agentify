@@ -48,6 +48,7 @@
  */
 
 import { z } from "zod";
+import type { PublicCard } from "./card.js";
 import { CardSchema, MerchantCardSchema, PublicCardSchema, SellerSchema } from "./card.js";
 import { WorkerEnvelopeSchema } from "./envelope.js";
 import { AcceptanceSchema, DeliverySchema, HandlerAnswerSchema, RefusalSchema } from "./handler.js";
@@ -381,7 +382,7 @@ export const PurchaseRequestSchema = z
  * because neither was worded by anybody.
  */
 export const AgentOrderStatusSchema = z
-  .strictObject({
+  .looseObject({
     order_id: IdentifierSchema,
 
     /**
@@ -420,7 +421,19 @@ export const AgentOrderStatusSchema = z
         "an order's status address is a whole http or https address, not a path",
       ),
 
-    status: OrderStatusSchema,
+    /**
+     * Where the order stands, as a word whose known values are listed beside
+     * it (ADR-0006 §5). The storefront has no version, so a word added later
+     * reaches agents that still hold this contract: one they do not know is
+     * not an ending they know, and they ask again later rather than buy again
+     * on its strength. The merchant's own view of the order reads the same
+     * words from a closed list. Two branches, as a card's mode is
+     * (`PublicCardSchema`), so the known words still cross into the export.
+     */
+    status: z.union([
+      OrderStatusSchema,
+      z.string().regex(/\S/, "a status is a word, not an empty string"),
+    ]),
 
     /**
      * The price this order was priced at, or null where nobody ever named one
@@ -504,7 +517,7 @@ export const AgentOrderStatusSchema = z
   })
   .meta({
     description:
-      'What became of one purchase, in the words an agent and a merchant both read: where the order stands, what it was priced at, the goods once they are the buyer\'s, and why the merchant would not sell where that is what ended it. "status_url" is where this document is read again — the whole address of the order\'s status route, and the place an agent that bought goods that come later collects them. It is absolute and called as it stands, and it is the address the gateway is configured to answer as, never one taken from the request that asked. It is smaller than the merchant\'s own view of the same order on purpose — no merchant account, no merchant\'s own key for the product, none of the purchase parameters and nothing about any other order. The price is what the buyer was asked for and not proof that anything was charged: an order that was priced and then ended without a sale still carries it, and the status is what says which happened. A null price means nobody ever named one for this order, and a null delivery means there are no goods here to hand over; both fields are always present, because an absent field is a silence a reader cannot tell from an oversight. "refusal" is the exception and is present only where a merchant refused: their own short code to branch on and their own sentence to show, carried across unchanged. The code is an open set — "out_of_stock", "invalid_params" and "cannot_fulfill" are read the same way by everybody, and a merchant whose reason fits none of them sends their own word, so an unfamiliar code has to fall through to the sentence rather than break a reader. An absent "refusal" means there is no refusal to quote and never that one was dropped, which leaves two endings still coarse: "rejected" also covers a product that was gone and a payment that failed its check, and neither of those was worded by anybody — the first because a price answer of "not available" carries no words, the second because it is refused at the door in an error envelope instead. A null delivery is likewise not a promise that no goods were ever made: a purchase whose charge failed or went unanswered can leave goods the buyer has not paid for, and this document withholds them rather than describing them. Every answer says whether the money behind the purchase was real: a gateway settling against nothing produces every other field here exactly as a real charge would, so a reader taking this for proof of a payment has to read that word first. "seller" is who sold it, as the merchant gave it and as the catalog shows it beside their cards: the name and the site of their shop, which Agentify did not check, and the site is where to take what this document cannot answer.',
+      'What became of one purchase, in the words an agent and a merchant both read: where the order stands, what it was priced at, the goods once they are the buyer\'s, and why the merchant would not sell where that is what ended it. "status_url" is where this document is read again — the whole address of the order\'s status route, and the place an agent that bought goods that come later collects them. It is absolute and called as it stands, and it is the address the gateway is configured to answer as, never one taken from the request that asked. It is smaller than the merchant\'s own view of the same order on purpose — no merchant account, no merchant\'s own key for the product, none of the purchase parameters and nothing about any other order. The price is what the buyer was asked for and not proof that anything was charged: an order that was priced and then ended without a sale still carries it, and the status is what says which happened. A null price means nobody ever named one for this order, and a null delivery means there are no goods here to hand over; both fields are always present, because an absent field is a silence a reader cannot tell from an oversight. "refusal" is the exception and is present only where a merchant refused: their own short code to branch on and their own sentence to show, carried across unchanged. The code is an open set — "out_of_stock", "invalid_params" and "cannot_fulfill" are read the same way by everybody, and a merchant whose reason fits none of them sends their own word, so an unfamiliar code has to fall through to the sentence rather than break a reader. An absent "refusal" means there is no refusal to quote and never that one was dropped, which leaves two endings still coarse: "rejected" also covers a product that was gone and a payment that failed its check, and neither of those was worded by anybody — the first because a price answer of "not available" carries no words, the second because it is refused at the door in an error envelope instead. A null delivery is likewise not a promise that no goods were ever made: a purchase whose charge failed or went unanswered can leave goods the buyer has not paid for, and this document withholds them rather than describing them. Every answer says whether the money behind the purchase was real: a gateway settling against nothing produces every other field here exactly as a real charge would, so a reader taking this for proof of a payment has to read that word first. "seller" is who sold it, as the merchant gave it and as the catalog shows it beside their cards: the name and the site of their shop, which Agentify did not check, and the site is where to take what this document cannot answer. "status" is a word whose known values are listed beside it, and more may be added: a word a reader does not know is not an ending it knows, so it asks again later and does not buy again on its strength. This document may also gain fields; a reader ignores the ones it does not know.',
   });
 
 /**
@@ -515,14 +528,35 @@ export const AgentOrderStatusSchema = z
  * Until then it makes no claim about completeness, and that is stated in the
  * document itself: an agent must not read the absence of a field about paging
  * as a promise that there is nothing more.
+ *
+ * It is read card by card (ADR-0006 §5). The storefront has no version, so a
+ * card of a mode or a shape added later reaches agents that still hold this
+ * contract, and one card they cannot read must leave every other card for
+ * sale. So the page holds its items as whatever they are, and `cardsOf` reads
+ * each one on its own against the card an agent reads.
  */
 export const CatalogPageSchema = z
-  .strictObject({
-    items: z.array(PublicCardSchema),
+  .looseObject({
+    items: z.array(
+      z.unknown().meta({
+        description:
+          "One product, read on its own as a public_card. An item a reader cannot read as one is passed over, and the rest of the page stands.",
+      }),
+    ),
   })
   .meta({
     description:
-      "Products offered for sale, as an agent reads them. This document does not say whether it is the whole catalog: paging is not designed, and when it is, this object grows the field that answers it. Until then the absence of such a field is not a promise that there is no more.",
+      "Products offered for sale, as an agent reads them. This document does not say whether it is the whole catalog: paging is not designed, and when it is, this object grows the field that answers it. Until then the absence of such a field is not a promise that there is no more. Each item is read on its own as a public_card, and one a reader cannot read — a mode or a shape added after the contract it holds — is passed over while the rest of the page stands. This document may also gain fields; a reader ignores the ones it does not know.",
+  });
+
+/**
+ * The cards of a catalog page an agent can read, each read on its own; an item
+ * that is not one is passed over.
+ */
+export const cardsOf = (page: CatalogPage): PublicCard[] =>
+  page.items.flatMap((item) => {
+    const read = PublicCardSchema.safeParse(item);
+    return read.success ? [read.data] : [];
   });
 
 /**

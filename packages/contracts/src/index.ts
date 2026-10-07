@@ -129,6 +129,7 @@ export {
   API_ROUTES,
   AUTH_MODES,
   CatalogPageSchema,
+  cardsOf,
   ERROR_CODES,
   ErrorEnvelopeSchema,
   expandPath,

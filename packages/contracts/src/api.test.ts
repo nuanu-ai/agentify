@@ -667,24 +667,6 @@ describe("the status an agent reads", () => {
     }
   });
 
-  it("carries nothing about the sale that is the merchant's rather than the buyer's", () => {
-    // The buyer is owed where their order stands, what it cost and what came
-    // of it. The merchant's own key for the product, their notes and the
-    // internals of the sale are theirs, and this document is read by whoever
-    // holds an order identifier.
-    for (const theirs of [
-      { merchant_item_id: "esim-30d" },
-      { merchant_id: "mrc_1" },
-      { item_id: "item_1" },
-      { params: { email: "buyer@example.com" } },
-    ]) {
-      expect(
-        AgentOrderStatusSchema.safeParse({ ...status, ...theirs }).success,
-        JSON.stringify(theirs),
-      ).toBe(false);
-    }
-  });
-
   it("carries the merchant's own words for a refusal they made", () => {
     // The channel the vocabulary's fold was always argued on: `rejected` is
     // coarse because the reason travels separately, and this is where it

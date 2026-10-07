@@ -21,7 +21,7 @@
  * that never landed, which is the only thing that throws.
  */
 
-import { CatalogPageSchema, type PublicCard } from "@nuanu-ai/agentify-contracts";
+import { CatalogPageSchema, cardsOf, type PublicCard } from "@nuanu-ai/agentify-contracts";
 import { x402Client, x402HTTPClient } from "@x402/core/client";
 import type { PaymentRequired, SettleResponse } from "@x402/core/types";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
@@ -180,8 +180,7 @@ export function makeStandBuyer(options: StandBuyerOptions): StandBuyer {
       const response = await request(`${base}/x402/catalog`, {
         headers: { accept: "application/json" },
       });
-      const page = CatalogPageSchema.parse(await response.json());
-      return page.items;
+      return cardsOf(CatalogPageSchema.parse(await response.json()));
     },
 
     async askPrice(itemId) {
