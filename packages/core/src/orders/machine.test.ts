@@ -1191,6 +1191,48 @@ describe("the same order delivered to the handler twice", () => {
   });
 });
 
+describe("an order the merchant has taken on", () => {
+  // Taking an order on is the merchant saying he holds it. Our wait for his
+  // answer is a few seconds and his handler can be slower than that, so the
+  // silence we noticed and the acceptance that ends it can arrive in either
+  // order, and a repeat decided on in between can reach him after he has
+  // answered. Whichever way round it goes, a silence noticed once he holds the
+  // order is not a delivery he failed: counting it spends one he never missed,
+  // and enough of those close a paid order into a refund owed while he is
+  // filling it.
+  //
+  // Both orders below are on the last delivery the cap allows, so a silence
+  // that counted would not just cost a delivery but close the order, and they
+  // differ in nothing but whether the merchant has taken the order on.
+  const onTheLastDelivery = (accepted: boolean): Order => ({
+    ...walk(newOrder("async"), [
+      { kind: "payment_verified", at: T0 + 1 },
+      { kind: "payment_settled", at: T0 + 2 },
+      { kind: "order_dispatched", at: T0 + 3 },
+    ]),
+    dispatch: { attempts: 5, accepted },
+  });
+
+  it("is left as it was by a silence noticed after it", () => {
+    const held = onTheLastDelivery(true);
+    const { order, effects } = must(held, { kind: "handler_undelivered", at: T0 + 10 });
+
+    expect(effects).toStrictEqual([]);
+    expect(order).toStrictEqual(held);
+  });
+
+  it("is what keeps the same silence from closing it", () => {
+    // The negative control: the same order, the same silence, nobody holding
+    // it — and the last delivery is spent and the money is owed back.
+    const { order } = must(onTheLastDelivery(false), {
+      kind: "handler_undelivered",
+      at: T0 + 10,
+    });
+
+    expect(order.state).toBe("refund_due");
+  });
+});
+
 describe("goods handed over that were never paid for", () => {
   it("records the case and tells the merchant", () => {
     // Portal, "Выдали, а платёж не исполнился": rare, and possible only in the

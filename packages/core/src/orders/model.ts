@@ -426,7 +426,8 @@ export function effectsOnQuoted(mode: OrderMode): readonly Effect[] {
  * `handler_undelivered` is the one that carries no answer at all — an
  * exception, a dead process, a broken connection. The machine answers it with
  * another delivery, because a refusal means "this cannot be fulfilled" and
- * closes the order for good.
+ * closes the order for good — unless the merchant has already taken the order
+ * on, and the silence is only his answer coming later than we waited.
  */
 export type OrderEvent =
   | {
@@ -537,21 +538,27 @@ export type Order = {
   readonly quoteSource: QuoteSource | null;
   /**
    * How many times the order has been handed to its merchant, and whether one
-   * of those hand-overs was taken on. The two are not read the same way, and
-   * the difference is worth knowing before either is used.
+   * of those hand-overs was taken on.
    *
-   * `attempts` drives things: the backoff and the attempt cap are both counted
-   * off it. `accepted` drives nothing — nothing in this machine or in the
-   * gateway branches on it, and what actually stops an order being sent again
-   * is the gateway clearing the hand-over it was waiting on. It is here because
-   * `dispatched` covers both an order handed over and one already taken on, and
-   * without it the record cannot tell those apart.
+   * `attempts` is what the backoff and the attempt cap are both counted off.
+   * `accepted` says a handler answered that it took the order on: `dispatched`
+   * covers both an order handed over and one already taken on, and this is
+   * how the two are told apart. Once it is true a silence noticed about the
+   * order spends no delivery, because the merchant has answered — later,
+   * perhaps, than we waited for him. A repeat already on his stream by then is
+   * still handed over and counted, as every hand-over is; it is only the
+   * silence after it that no longer costs him anything.
    *
-   * So it is a fact and not a signal, and it is a coarser fact than it looks: a
-   * further hand-over of an order already taken on leaves it true, since the
-   * one thing that clears it is `dispatchedOrder`, which runs on the way in
-   * from `paid`. It says this order has been taken on, never that the hand-over
-   * now outstanding has been.
+   * Taking an order on is the asynchronous mode's answer, where the goods
+   * follow through the `deliver` call. A synchronous handler can give it too
+   * and is answered the same way, but there the call does not apply, and the
+   * order is closed only by the goods in a handler's answer or by its
+   * deadline.
+   *
+   * It is written false on the way into each round — the confirmation, the
+   * order once paid, the order once handed over from `paid` — and set only by
+   * an acceptance in `dispatched`, so it stays true for the rest of the
+   * order's life there.
    */
   readonly dispatch: { readonly attempts: number; readonly accepted: boolean };
   /**

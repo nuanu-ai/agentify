@@ -53,7 +53,13 @@ const pageText = (file: string): string =>
   readFileSync(new URL(file, repoRoot), "utf8").replace(/\s+/g, " ");
 
 /** The numbers the portal spells out, as it spells them. */
-const NUMBER_WORDS: Record<string, number> = { five: 5, eight: 8, ten: 10, thirty: 30 };
+const NUMBER_WORDS: Record<string, number> = {
+  three: 3,
+  five: 5,
+  eight: 8,
+  ten: 10,
+  thirty: 30,
+};
 
 /** The stretches of time the portal names instead of counting seconds. */
 const PERIOD_MS: Record<string, number> = { hour: 3_600_000, day: 86_400_000 };
@@ -288,6 +294,41 @@ const PINS: readonly Pin[] = [
     anchor: /a deadline of its own — an (\w+), where the card names none/,
     reads: "period",
     is: deadlines.defaultConfirmationResponseMs,
+  },
+
+  // --- how long a handler's answer is waited for before the order goes again --
+  //
+  // A handler slower than this is answered as one that crashed until its answer
+  // lands: the order is sent again in the meantime, possibly to another
+  // instance. The pages say so where a merchant decides how much work to do
+  // before answering, and where they read about instances.
+  {
+    what: "how long we wait for a handler's answer, where the three answers are set out",
+    page: "apps/docs/orders.md",
+    anchor: /We wait (\w+) seconds for a handler's answer/,
+    reads: "seconds",
+    is: deadlines.handlerAnswerMs,
+  },
+  {
+    what: "the same wait, where several instances of a handler are run",
+    page: "apps/docs/orders.md",
+    anchor: /takes longer than the (\w+) seconds we wait for an answer/,
+    reads: "seconds",
+    is: deadlines.handlerAnswerMs,
+  },
+  {
+    what: "the same wait, where the asynchronous handler is written",
+    page: "apps/docs/quickstart.md",
+    anchor: /within (\w+) seconds, which is how long we wait for a handler's answer/,
+    reads: "seconds",
+    is: deadlines.handlerAnswerMs,
+  },
+  {
+    what: "the same wait, on the page about a handler that crashed",
+    page: "apps/docs/failures.md",
+    anchor: /after (\w+) seconds without an answer we send the order again/,
+    reads: "seconds",
+    is: deadlines.handlerAnswerMs,
   },
 
   // --- how many times an order that never reached the handler is sent again --

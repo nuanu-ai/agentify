@@ -349,7 +349,10 @@ export class Gateway {
     // because we have stopped waiting for him. It does not shut the guard for
     // good: the redelivery this decides on mints a hand-over of its own the
     // moment a worker draws it and arms its own reminder against that one, so
-    // the next silence is worth a delivery in its turn.
+    // the next silence is worth a delivery in its turn. On an order the
+    // merchant has already taken on, the machine decides on nothing — his
+    // answer came, only later than we waited — and clearing the hand-over is
+    // all this does.
     await this.runner.apply(
       reminder.orderId,
       { kind: "handler_undelivered", at: this.runtime.clock() },

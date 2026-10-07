@@ -470,6 +470,89 @@ describe("when a delivery goes unanswered", () => {
     });
   });
 
+  it("does not close an order on the silence after a repeat its merchant had already taken on", async () => {
+    // Our wait for a handler's answer is a few seconds, and a merchant's handler
+    // can take longer than that to say it has taken the order on. The silence
+    // noticed in the meantime sends the order out again, and that repeat is
+    // ordinary — delivery is at least once. What must not follow is the silence
+    // after the repeat being counted as well: the merchant has answered, and a
+    // slow but willing one would otherwise run out of deliveries in seconds and
+    // see a paid order close into a refund while he is filling it.
+    //
+    // Each step is taken by hand rather than raced on timers, so the order of
+    // the silence, the acceptance and the repeat is the one written here on
+    // every run, however loaded the machine is.
+    const harnessed = await started({
+      // Long enough that the gateway's own reminders do not fire inside the
+      // test: the two silences below are the whole of the input.
+      HANDLER_ANSWER_MS: "60000",
+      REDELIVERY_BASE_DELAY_MS: "5",
+      // Two deliveries, so the silence after the repeat is the one that would
+      // spend the last of them and close the order.
+      REDELIVERY_MAX_ATTEMPTS: "2",
+      DEFAULT_ASYNC_FULFILLMENT_MS: "60000",
+    });
+    const merchantId = harnessed.merchant.id;
+    const orderId = await bought(harnessed, asyncCard);
+    await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    const openHandOver = async (): Promise<string> => {
+      const handOver = (await harnessed.store.orderById(orderId))?.openDeliveryId ?? null;
+      if (handOver === null) throw new Error("no hand-over is open to go quiet");
+      return handOver;
+    };
+
+    // The first hand-over goes quiet for longer than we wait, and the repeat
+    // is decided on.
+    expect((await harnessed.gateway.poll(merchantId, 10, 1_000)).envelopes).toHaveLength(1);
+    await harnessed.queue.remind(
+      { kind: "delivery_unanswered", orderId, handOver: await openHandOver() },
+      0,
+    );
+    await vi.waitFor(
+      async () => expect(await harnessed.queue.holdsOrder(merchantId, orderId)).toBe(true),
+      { timeout: 2_000, interval: 5 },
+    );
+
+    // Then the acceptance lands, with the repeat already on the stream, and
+    // the repeat still reaches him.
+    await harnessed.gateway.answerOrder(merchantId, orderId, { accepted: {} });
+    expect((await harnessed.gateway.poll(merchantId, 10, 1_000)).envelopes).toHaveLength(1);
+
+    // The silence after the repeat, and then the goods. The merchant cannot
+    // see a silence being weighed, so the test asks what he can see: what his
+    // delivery is told, and what reaches his stream.
+    //
+    // The order of the two is the in-memory adapters' and is relied on here.
+    // The reminder is due at once and fires on the next turn of the event
+    // loop, and it takes the order's hold as it does; the delivery made after
+    // that turn waits behind it. Were the delivery ever to go first, the order
+    // would be closed by the goods before the silence was weighed, and this
+    // would pass on the old machine as well — it cannot fail a sound one.
+    await harnessed.queue.remind(
+      { kind: "delivery_unanswered", orderId, handOver: await openHandOver() },
+      0,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const delivered = await harnessed.gateway.deliverOrder(merchantId, orderId, {
+      activation_code: "LPA:1$smdp.example$K2-1A2B3C",
+    });
+
+    // His goods close an order that was still his. Counted, the silence would
+    // have closed it into a refund owed first, and he would be told his
+    // delivery paid a debt off rather than made a sale.
+    expect(delivered).toStrictEqual({ ok: true, result: "delivered" });
+    // And nothing on his stream says otherwise. An event goes out once and is
+    // never taken back, so a refund notice sent here in error would stand in
+    // his records whatever happened to the order afterwards.
+    expect((await harnessed.queue.draw(merchantId, 10, 0)).map((d) => d.envelope)).toStrictEqual(
+      [],
+    );
+    expect((await state(harnessed, orderId))?.dispatch).toStrictEqual({
+      attempts: 2,
+      accepted: true,
+    });
+  });
+
   it("spends one delivery on one silence, though the same reminder arrives twice", async () => {
     // The queue hands a reminder out again when the process that took it never
     // answered — it died, or the completion never reached the database. That is

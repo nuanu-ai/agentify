@@ -91,6 +91,12 @@ surprises people: a handler that throws on every attempt runs out of attempts
 long before it runs out of clock, and the order then ends the same way it would
 have ended at the deadline.
 
+A handler that is only slow looks the same to us until its answer arrives:
+after three seconds without an answer we send the order again, and the answer
+that comes later still counts. In the asynchronous mode, take the order on at
+once and do the work outside the handler ([What a handler can
+answer](/orders#what-a-handler-can-answer)).
+
 What your handler threw does not travel to us or to the agent. It goes to the
 handler you registered for problems, which is also where a failed poll, a
 refused answer and a message nobody claimed arrive ([registering

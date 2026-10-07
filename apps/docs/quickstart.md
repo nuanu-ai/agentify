@@ -303,7 +303,7 @@ against the identifier you saved:
 agentify.on('order', async (order) => {
   await startProvisioning(order.params.email, { idempotencyKey: order.id })
 
-  return order.accepted({ eta_seconds: 60 })
+  return order.accepted()
 })
 
 await agentify.start()
@@ -312,10 +312,17 @@ await agentify.start()
 await agentify.orders.forId(savedId).deliver({ access_url: url })
 ```
 
-An `accepted` can name the time you expect the delivery to take, where you know
-it; an empty `accepted` is a complete answer too. Until `deliver` is called the
-order counts as accepted, and the delivery deadline named in your card is
-running on it — it started when the buyer was charged, at the moment of
+Return `accepted` within three seconds, which is how long we wait for a
+handler's answer: a handler still working after that has the order sent again
+([What a handler can answer](/orders#what-a-handler-can-answer)). The wait
+starts when your worker takes the order off the subscription, and a worker takes
+several at once and works through them in turn, so it covers the orders ahead in
+the same batch too. That is why the handler starts the work and answers, and the
+delivery happens outside it. `accepted` also takes `eta_seconds`, the time you
+expect the delivery to take, but nothing keeps that number today and the agent
+does not see it; an empty `accepted` is the complete answer. Until `deliver` is
+called the order counts as accepted, and the delivery deadline named in your
+card is running on it — it started when the buyer was charged, at the moment of
 purchase, before the order reached you. A card that names none is held to a day.
 
 A synchronous card carries no such field: how long to wait for a synchronous
