@@ -42,6 +42,7 @@ import type { Identity } from "./identity.js";
 import { productIdFromMerchantItem } from "./woo-catalog.js";
 import {
   createTheOrderInTheShop,
+  type EligibleWooProduct,
   inspectProductInTheShop,
   type OrderMade,
   type ShopKeys,
@@ -60,17 +61,18 @@ export interface Filling {
    * without a WooCommerce anywhere near it. A deployment passes nothing.
    */
   readonly placeOrder?: (keys: ShopKeys, sold: SoldItem) => Promise<OrderMade>;
-  /** The one currently supported downloadable file, after authoritative checks. */
+  /**
+   * The one currently supported downloadable file as the shop has it now,
+   * after authoritative checks, or null when the shop's answer does not show
+   * it as that — which includes a shop that did not answer.
+   *
+   * The real inspection is the default, and a price question and an order
+   * read the product the same way. A deployment passes nothing.
+   */
   readonly eligibleProduct?: (
     connection: WooConnection,
     merchantItemId: string,
-  ) => Promise<{
-    readonly productId: string;
-    readonly downloadId: string;
-    readonly fileName: string;
-    readonly price?: { readonly amount: string; readonly currency: string };
-    readonly fingerprint?: string;
-  } | null>;
+  ) => Promise<EligibleWooProduct | null>;
   /** Test seam for the durable quote binding; production reads WooShops. */
   readonly quotedProduct?: (
     connection: WooConnection,
@@ -111,16 +113,7 @@ export const fillFromTheShop = async (
   if (known?.kind === "unknown") {
     return unknownCreation(order.id, connection.shopUrl, known.attemptedAt);
   }
-  const inspected =
-    parts.eligibleProduct === undefined
-      ? await inspectProductInTheShop(connection, order.merchant_item_id)
-      : null;
-  const eligible =
-    inspected === null
-      ? ((await parts.eligibleProduct?.(connection, order.merchant_item_id)) ?? null)
-      : inspected.ok
-        ? inspected.product
-        : null;
+  const eligible = await productInTheShop(connection, order.merchant_item_id, parts);
   const quoted =
     order.price_id === undefined
       ? null
@@ -158,9 +151,8 @@ export const fillFromTheShop = async (
     };
   }
   if (
-    eligible.price !== undefined &&
-    (eligible.price.amount !== order.price.amount ||
-      eligible.price.currency !== order.price.currency)
+    eligible.price.amount !== order.price.amount ||
+    eligible.price.currency !== order.price.currency
   ) {
     await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
     return {
@@ -336,12 +328,6 @@ export interface WorkingParts extends Filling {
   readonly clientFor: (key: string) => GatewayClient;
   /** How long one poll holds the stream open. */
   readonly waitSeconds?: number;
-  /** Fresh price/availability from Woo; supplied by production in the next boundary. */
-  readonly quote?: (
-    connection: WooConnection,
-    question: QuoteRequest,
-    at: Date,
-  ) => Promise<QuoteResponse>;
 }
 
 /**
@@ -386,9 +372,7 @@ export const turnOnce = async (connection: WooConnection, parts: WorkingParts): 
       const answer =
         connection.permissions !== "read_write"
           ? { available: false as const, as_of: parts.now().toISOString() }
-          : parts.quote === undefined
-            ? await quoteFromTheShop(connection, envelope.payload, parts.now(), parts.shops)
-            : await parts.quote(connection, envelope.payload, parts.now());
+          : await quoteFromTheShop(connection, envelope.payload, parts.now(), parts);
       const said = await gateway.answerQuote(envelope.payload.price_id, answer);
       if (!said.ok) {
         console.error(
@@ -415,25 +399,48 @@ export const turnOnce = async (connection: WooConnection, parts: WorkingParts): 
   return drawn.document.envelopes.length;
 };
 
+/**
+ * What this merchant's handler answers when an agent asks for a price: the
+ * shop's own price for the product as it stands, with that product bound to
+ * the price so the order paying it can be held to it — or no price at all.
+ *
+ * A price that was already bound to another product is not moved to this one.
+ * The order comes back with the price identifier and is held to what it was
+ * first bound to, so a second answer naming a different download would be a
+ * price for goods no order could be filled against.
+ */
 const quoteFromTheShop = async (
   connection: WooConnection,
   question: QuoteRequest,
   at: Date,
-  shops: WooShops,
+  parts: Filling,
 ): Promise<QuoteResponse> => {
-  const read = await inspectProductInTheShop(connection, question.merchant_item_id);
-  if (!read.ok) return { available: false, as_of: at.toISOString() };
-  const recorded = await shops.recordQuote(
+  const product = await productInTheShop(connection, question.merchant_item_id, parts);
+  if (product === null) return { available: false, as_of: at.toISOString() };
+  const recorded = await parts.shops.recordQuote(
     connection.accountId,
     question.price_id,
     question.merchant_item_id,
-    read.product.fingerprint,
+    product.fingerprint,
     new Date(question.expires_at),
     at,
   );
   return recorded
-    ? { available: true, price: read.product.price, as_of: at.toISOString() }
+    ? { available: true, price: product.price, as_of: at.toISOString() }
     : { available: false, as_of: at.toISOString() };
+};
+
+/** The product as the shop has it now, read the one way both answers read it. */
+const productInTheShop = async (
+  connection: WooConnection,
+  merchantItemId: string,
+  parts: Filling,
+): Promise<EligibleWooProduct | null> => {
+  if (parts.eligibleProduct !== undefined) {
+    return parts.eligibleProduct(connection, merchantItemId);
+  }
+  const read = await inspectProductInTheShop(connection, merchantItemId);
+  return read.ok ? read.product : null;
 };
 
 /** A worker turning, until it is stopped. */
