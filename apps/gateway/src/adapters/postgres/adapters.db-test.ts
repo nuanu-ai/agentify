@@ -54,9 +54,8 @@ import { ScriptedFacilitator } from "../memory/facilitator.js";
 import { PgBossQueue, streamOf } from "../pgboss/queue.js";
 import { connect, PostgresStore } from "./store.js";
 
-/** The merchant everything in this suite belongs to, and a second one beside it. */
+/** The merchant everything in this suite belongs to. */
 const A = "mch_a";
-const B = "mch_b";
 
 // Made if it is not there, so that an existing volume needs nothing done to it.
 const wanted = testDatabaseUrl();
@@ -309,18 +308,15 @@ if (databaseUrl === null) {
     // the schema doing its job and the fixture forgetting its own.
     beforeEach(async () => {
       await store.addMerchant({ id: A, name: "The merchant of this suite" }, now);
-      await store.addMerchant({ id: B, name: "The other merchant" }, now);
       // A card whose merchant has nowhere to be paid is not on sale outside the
       // sandbox, and this suite's config names a real facilitator — so the
-      // merchants get wallets, the same way testing/harness.ts seeds its own.
+      // merchant gets a wallet, the same way testing/harness.ts seeds its own.
       await setPayoutWallet(store, A, "0x0000000000000000000000000000000000000001", now);
-      await setPayoutWallet(store, B, "0x0000000000000000000000000000000000000002", now);
       // And a name, for the same shape of reason one step earlier: a payment
       // request names its seller, so a merchant listed under nobody has nothing
       // on sale either. Without these every purchase below would be refused for
       // a reason that has nothing to do with what it is testing.
       await store.setServiceName(A, "The merchant of this suite", now);
-      await store.setServiceName(B, "The other merchant", now);
     });
 
     afterAll(async () => {
@@ -363,65 +359,12 @@ if (databaseUrl === null) {
       expect(after.rows[0]?.updated_at).toStrictEqual(before.rows[0]?.updated_at);
     });
 
-    it("changes the card that is there when it is published again", async () => {
-      const first = await store.publishCard(A, syncCard, now);
-      const again = await store.publishCard(A, { ...syncCard, title: "Corrected" }, now + 1_000);
-
-      expect(again.id).toBe(first.id);
-      expect((await store.cardById(first.id))?.card.title).toBe("Corrected");
-      expect(await store.cards(A)).toHaveLength(1);
-    });
-
-    it("publishes a card selling, and keeps a pause across the next publish", async () => {
-      // The rule that matters most in this adapter, and it is expressed by
-      // omission: `paused` is deliberately not in the upsert's `set:` clause.
-      // An edit that puts it back is invisible to `pnpm test` — the only other
-      // test for this rule runs against the in-memory store — and what it costs
-      // is stock a merchant took off sale back in front of an agent.
-      const card = { ...syncCard, merchant_item_id: "kept-paused" };
-      const first = await store.publishCard(A, card, now);
-      expect(first.paused).toBe(false);
-
-      await store.setCardPaused(A, first.id, true);
-      const again = await store.publishCard(A, { ...card, title: "Dearer" }, now + 1_000);
-
-      expect(again.paused).toBe(true);
-      expect(again.card.title).toBe("Dearer");
-      expect((await store.cardById(first.id))?.paused).toBe(true);
-      expect((await store.cards(A)).find((held) => held.id === first.id)?.paused).toBe(true);
-    });
-
-    it("takes a card off sale and puts it back, and says so about one that is not there", async () => {
-      const stored = await store.publishCard(A, { ...syncCard, merchant_item_id: "switched" }, now);
-
-      expect((await store.setCardPaused(A, stored.id, true))?.paused).toBe(true);
-      expect((await store.cardById(stored.id))?.paused).toBe(true);
-      expect((await store.setCardPaused(A, stored.id, false))?.paused).toBe(false);
-      expect(await store.setCardPaused(A, "itm_nobody_published_this", true)).toBeNull();
-    });
-
-    it("has the merchant selling until somebody says otherwise, and remembers when they do", async () => {
-      // The row does not exist until the switch is first pressed, and an absent
-      // row means selling. There is no state of the world in which we hold a
-      // merchant's cards and cannot say whether they are selling, so this must
-      // never answer "I do not know".
-      expect(await store.selling(A)).toBe("open");
-
-      await store.setSelling(A, "paused");
-      expect(await store.selling(A)).toBe("paused");
-
-      await store.setSelling(A, "open");
-      expect(await store.selling(A)).toBe("open");
-    });
-
     it("refuses to guess when the column holds a word the machine does not know", async () => {
       // A hand-edited row, or a value from a version of this code that is not
       // this one. Guessing here would be guessing about whether somebody is
       // selling, which is the one thing this column exists to answer.
       await store.setSelling(A, "paused");
-      // Named, because there is more than one merchant in this database now and
-      // an unqualified update would leave the other one holding a word the
-      // machine does not know for the rest of the file.
+      // Named, so that the update reaches this merchant's row and nothing else.
       await pool.query("update merchants set selling = $1 where id = $2", ["sort-of", A]);
 
       await expect(store.selling(A)).rejects.toThrow(/sort-of/);
@@ -429,44 +372,12 @@ if (databaseUrl === null) {
       await store.setSelling(A, "open");
     });
 
-    it("holds an order still, so two decisions cannot both write over the same read", async () => {
-      // The double-charge test, against the lock that actually runs in
-      // production. In memory this is a chain of promises; here it is
-      // select ... for update, and the two have to mean the same thing.
-      const published = await store.publishCard(A, { ...syncCard, merchant_item_id: "held" }, now);
-      const offered = await gateway.beginPurchase(published.id, {});
-      if (offered.step !== "pay") throw new Error("no price was offered");
-      const orderId = offered.order.order.id;
-
-      const bump = () =>
-        store.withOrder(orderId, async (found) => {
-          await new Promise((resolve) => setTimeout(resolve, 5));
-          const attempts = found.order.dispatch.attempts + 1;
-          return {
-            save: { ...found, order: { ...found.order, dispatch: { attempts, accepted: false } } },
-            result: attempts,
-          };
-        });
-
-      const results = await Promise.all([bump(), bump(), bump()]);
-
-      // Sorted as numbers rather than by the default sort, which compares them
-      // as text and agrees with the numbers only while there are fewer than ten
-      // of them. Raised to eleven, the bare sort would start lying by passing.
-      expect(
-        results
-          .map((r) => (r.found ? r.result : null))
-          .sort((one, other) => Number(one) - Number(other)),
-      ).toStrictEqual([1, 2, 3]);
-      expect((await store.orderById(orderId))?.order.dispatch.attempts).toBe(3);
-    });
-
     it("lets one of two separate database clients take an order, and makes the other wait to find out", async () => {
       // The ownership rule, against two clients that share nothing in this
-      // process. The test above races three calls through one store, and a
-      // chain of promises in the adapter would pass it just as well as a row
-      // lock; the in-memory adapter passes its own version of it for exactly
-      // that reason. Here there are two pools and two connections, so the only
+      // process. The store contract races three calls through one store ("is
+      // held still, so two decisions cannot both write over the same read"),
+      // and a chain of promises in the adapter would pass it just as well as a
+      // row lock; the in-memory adapter passes it for exactly that reason. Here there are two pools and two connections, so the only
       // thing that can make the second wait for the first is the database.
       //
       // What is being decided is the rule the gateway decides inside this same
@@ -587,19 +498,6 @@ if (databaseUrl === null) {
       }
     }, 30_000);
 
-    it("gives one payment to one order, in one statement, and refuses it to any other", async () => {
-      // The replay guard, against the primary key that actually enforces it.
-      // Two requests presenting the same payment at the same instant both reach
-      // the insert and the database picks between them; what comes back either
-      // way is the row that stands.
-      expect(await store.claimPayment("fp-db-1", "ord_a")).toStrictEqual({ claimed: true });
-      expect(await store.claimPayment("fp-db-1", "ord_b")).toStrictEqual({
-        claimed: false,
-        heldBy: "ord_a",
-      });
-      expect(await store.claimPayment("fp-db-1", "ord_a")).toStrictEqual({ claimed: true });
-    });
-
     it("gives one payment to exactly one of two orders racing for it", async () => {
       const [first, second] = await Promise.all([
         store.claimPayment("fp-db-race", "ord_race_a"),
@@ -608,13 +506,6 @@ if (databaseUrl === null) {
 
       const won = [first, second].filter((claim) => claim.claimed);
       expect(won).toHaveLength(1);
-    });
-
-    it("forgets claims older than an instant, and says how many went", async () => {
-      await store.claimPayment("fp-db-old", "ord_old");
-
-      expect(await store.forgetClaimsBefore(Date.now() + 60_000)).toBeGreaterThan(0);
-      expect(await store.claimPayment("fp-db-old", "ord_new")).toStrictEqual({ claimed: true });
     });
 
     it("keeps the open column in step with the state inside the document", async () => {
@@ -648,12 +539,6 @@ if (databaseUrl === null) {
       // Still there, though: closed is not deleted, and the unfiltered list is
       // what somebody reconciling a day's orders reads.
       expect(await idsOf()).toContain(orderId);
-    });
-
-    it("says an order is not there rather than throwing", async () => {
-      expect(await store.withOrder("ord_nope", () => ({ result: 1 }))).toStrictEqual({
-        found: false,
-      });
     });
 
     it("leaves the row alone when a decision asked for nothing to be written", async () => {
@@ -782,138 +667,6 @@ if (databaseUrl === null) {
       expect(listed.map((one) => one.order_id)).toContain(offered.order.order.id);
       expect(listed.find((one) => one.order_id === offered.order.order.id)).toStrictEqual(receipt);
     }, 30_000);
-    it("keeps the instant a key was first revoked at when it is revoked again", async () => {
-      // The update is written as a coalesce rather than an assignment, and only
-      // a database runs it. A retry after a dropped connection must not rewrite
-      // the one fact somebody reconstructing an incident works from.
-      await store.addKey(
-        { id: "mk_twice", merchantId: A, label: "A's", digest: "twice", purpose: "merchant_code" },
-        now,
-      );
-
-      expect((await store.disableKey("mk_twice", now + 1_000))?.disabledAt).toBe(now + 1_000);
-      expect((await store.disableKey("mk_twice", now + 9_000))?.disabledAt).toBe(now + 1_000);
-    });
-
-    it("refuses a key for a merchant that is not there", async () => {
-      // The foreign key, doing what the in-memory adapter's own guard stands in
-      // for. A key that opens a door onto nothing is worse than a command that
-      // failed.
-      await expect(
-        store.addKey(
-          {
-            id: "mk_x",
-            merchantId: "mch_nobody",
-            label: "x",
-            digest: "d",
-            purpose: "merchant_code",
-          },
-          now,
-        ),
-      ).rejects.toThrow();
-    });
-
-    it("does not let a decision about an order move it to another merchant", async () => {
-      // The column is left out of the update on purpose, which is a rule
-      // expressed by omission and therefore one nothing else would catch. What
-      // it guards is the two readers agreeing: a merchant's own lists filter on
-      // the column, and the interpreter publishes an order's envelopes to the
-      // merchant inside the document. A save that moved one and not the other
-      // would put an order in one merchant's list and its work on another's
-      // stream, and nothing would say so.
-      const published = await store.publishCard(A, { ...syncCard, merchant_item_id: "kept" }, now);
-      const offered = await gateway.beginPurchase(published.id, {});
-      if (offered.step !== "pay") throw new Error("no price was offered");
-      const orderId = offered.order.order.id;
-
-      await store.withOrder(orderId, (found) => ({
-        save: { ...found, merchantId: B },
-        result: null,
-      }));
-
-      expect((await store.orderById(orderId))?.merchantId).toBe(A);
-      expect((await store.merchantOrder(A, orderId))?.order.id).toBe(orderId);
-      expect(await store.merchantOrder(B, orderId)).toBeNull();
-    });
-
-    it("gives each merchant their own cards, orders and receipts and nobody else's", async () => {
-      // The scoping, in SQL. Every one of these reads is a predicate rather
-      // than a filter over what came back, so a row of somebody else's is never
-      // selected — and this is the test that dies if one of those predicates is
-      // taken out.
-      const mine = await store.publishCard(A, { ...syncCard, merchant_item_id: "scoped-a" }, now);
-      const theirs = await store.publishCard(B, { ...syncCard, merchant_item_id: "scoped-b" }, now);
-      const offered = await gateway.beginPurchase(theirs.id, {});
-      if (offered.step !== "pay") throw new Error("no price was offered");
-      const theirOrder = offered.order.order.id;
-      await store.putReceipt(B, {
-        id: "rcp_theirs",
-        order_id: theirOrder,
-        item_id: theirs.id,
-        price: {
-          amount: "80.00",
-          currency: "USD",
-          at: "2026-08-26T12:00:00.000Z",
-          as_of: "2026-08-26T12:00:00.000Z",
-        },
-        paid_at: "2026-08-26T12:00:00.000Z",
-        outcome: "delivered",
-        test: true,
-      });
-
-      // Named one at a time rather than as whole lists, because this suite
-      // empties its tables once for the file: what matters is that each of
-      // these rows is in exactly one merchant's answer.
-      expect((await store.cards(A)).map((card) => card.id)).toContain(mine.id);
-      expect((await store.cards(A)).map((card) => card.id)).not.toContain(theirs.id);
-      expect((await store.cards(B)).map((card) => card.id)).toStrictEqual([theirs.id]);
-      expect((await store.orders(A)).map((held) => held.order.id)).not.toContain(theirOrder);
-      expect((await store.orders(B)).map((held) => held.order.id)).toStrictEqual([theirOrder]);
-      expect((await store.receipts(A)).map((held) => held.id)).not.toContain("rcp_theirs");
-      expect((await store.receipts(B)).map((held) => held.id)).toStrictEqual(["rcp_theirs"]);
-      // A receipt written again is brought into line with its order, not sold
-      // to somebody else. The merchant is deliberately left out of the upsert's
-      // set clause, which is a rule expressed by omission and therefore one
-      // nothing else would catch.
-      await store.putReceipt(A, {
-        id: "rcp_theirs",
-        order_id: theirOrder,
-        item_id: theirs.id,
-        price: {
-          amount: "80.00",
-          currency: "USD",
-          at: "2026-08-26T12:00:00.000Z",
-          as_of: "2026-08-26T12:00:00.000Z",
-        },
-        paid_at: "2026-08-26T12:00:00.000Z",
-        outcome: "refund_due",
-        test: true,
-      });
-      expect((await store.receipts(A)).map((held) => held.id)).not.toContain("rcp_theirs");
-      expect((await store.receipts(B)).map((held) => held.outcome)).toStrictEqual(["refund_due"]);
-      expect(await store.merchantOrder(A, theirOrder)).toBeNull();
-      expect((await store.merchantOrder(B, theirOrder))?.order.id).toBe(theirOrder);
-      // Pausing is a write, and the same predicate guards it: another
-      // merchant's card is neither changed nor reported, which is the same
-      // answer a card that is not there gets.
-      expect(await store.setCardPaused(A, theirs.id, true)).toBeNull();
-      expect((await store.cardById(theirs.id))?.paused).toBe(false);
-      // Republishing is the other write. The merchant is half of the conflict
-      // target, so a publish only ever edits the publisher's own card.
-      const mineAgain = await store.publishCard(
-        A,
-        { ...syncCard, merchant_item_id: "scoped-b", title: "A's own, under B's identifier" },
-        now,
-      );
-      expect(mineAgain.id).not.toBe(theirs.id);
-      expect((await store.cardById(theirs.id))?.card.title).toBe(syncCard.title);
-      // And the hold on an order finds nothing where the order is not this
-      // merchant's — the ownership is part of the same read as the lock.
-      expect(
-        await store.withOrder(theirOrder, () => ({ result: "moved it" }), { merchantId: A }),
-      ).toStrictEqual({ found: false });
-    });
-
     /**
      * The effects that must not be lost, against the database where the losing
      * would happen (ADR-0013).

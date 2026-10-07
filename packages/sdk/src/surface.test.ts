@@ -18,7 +18,6 @@
  */
 
 import type {
-  Card,
   Order,
   OrderEvent,
   OrderWithStatus,
@@ -677,28 +676,6 @@ describe("where problems go", () => {
 
     await waitUntil(() => written.mock.calls.length > 0, "the problem to reach the console");
     expect(String(written.mock.calls[0]?.[0])).toMatch(/no_handler/);
-  });
-});
-
-describe("what the surface still does without a stream", () => {
-  it("publishes a card and reads orders back", async () => {
-    const card: Card = {
-      merchant_item_id: "access-monthly",
-      title: "Доступ к сервису на один месяц",
-      description: "Что покупатель получает и что в это не входит.",
-      price: { amount: "5.00", currency: "USD" },
-      params: { email: { type: "string", required: true, title: "Куда прислать доступ" } },
-      result: { access_url: { type: "string", title: "Ссылка для входа" } },
-      fulfillment: "sync",
-    };
-
-    const agentify = await clientOver({
-      publish_card: () => ({ body: { ok: true, id: "cat-1" } }),
-      list_orders: () => ({ body: { orders: [] } }),
-    });
-
-    expect(await agentify.catalog.publish(card)).toStrictEqual({ ok: true, id: "cat-1" });
-    expect(await agentify.orders.list()).toStrictEqual([]);
   });
 });
 

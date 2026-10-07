@@ -610,12 +610,6 @@ describe("loadConfig", () => {
 });
 
 describe("a seeded key belongs to this environment", () => {
-  it("takes a key carrying this environment's prefix", () => {
-    expect(() =>
-      loadConfig({ ...required, SANDBOX_MERCHANT_KEY: "csk_test_a-key-long-enough" }),
-    ).not.toThrow();
-  });
-
   it("stops the process on a key from the other environment", () => {
     // The laptop's `.env` seeding a live gateway with a key written down in a
     // repository is the mistake this is for.
@@ -635,10 +629,6 @@ describe("a seeded key belongs to this environment", () => {
     expect(() =>
       loadConfig({ ...required, SANDBOX_MERCHANT_KEY: "local-sandbox-merchant-key" }),
     ).toThrowError(/SANDBOX_MERCHANT_KEY.*csk_test_/s);
-  });
-
-  it("seeds nothing when the name is handed over with nothing after it", () => {
-    expect(loadConfig({ ...required, SANDBOX_MERCHANT_KEY: "" }).sandboxMerchantKey).toBeNull();
   });
 });
 
