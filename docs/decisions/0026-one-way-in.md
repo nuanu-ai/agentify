@@ -91,7 +91,7 @@ cancel's (ADR-0019). Because people sign out to come back as another address, a
 tab drawn for the first can still be open when the second signs in, and the
 browser sends the second one's cookie with the first one's form. So every form
 behind the gate carries the address its page was drawn for, and the gate
-refuses, with nothing done, a form that names another address or names none:
+refuses, doing nothing the form asked, a form that names another address or none:
 a form the marking missed fails where it can be seen instead of working for
 whoever is signed in. It is held at the gate rather than route by route, and
 the sign-out is not held to it: it signs this browser out from any page.

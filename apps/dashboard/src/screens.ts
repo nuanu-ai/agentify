@@ -720,7 +720,9 @@ export const notFoundScreen = (viewer: Viewer): string =>
 /**
  * The answer to a form whose page was not drawn for the address signed in now.
  *
- * Nothing it sent was done. The page names the address signed in now and not
+ * Nothing it sent was done. The words say the page could not be matched rather
+ * than that it was drawn for somebody else, because a tab drawn before forms
+ * were marked, and its own owner pressing it, gets this page too. The page names the address signed in now and not
  * the one the old page was drawn for: that one is whatever the form carried,
  * and a page is no place to repeat what a request says about itself. It is a
  * bare page rather than the dashboard's frame, because the person signed in
@@ -740,7 +742,7 @@ export const notDrawnForYouScreen = (
 ${brandLockup("/")}
 <div class="gate-card">
   <h1>Nothing was changed</h1>
-  <p>What you pressed was not done: the page it came from was not opened for the address signed in on this browser now, <strong>${escaped(who)}</strong>. Open the screen again to make the change as this address.</p>
+  <p>What you pressed was not done, because the page it came from could not be matched to the address signed in on this browser now, <strong>${escaped(who)}</strong>. Open the screen again to make the change as this address.</p>
   <a class="button button-primary" href="${escaped(start)}">Continue</a>
 </div>
 </div>`,

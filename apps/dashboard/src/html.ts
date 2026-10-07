@@ -298,7 +298,8 @@ const unnamedNote = (base: string): string => `  <div class="callout">
 `;
 
 /**
- * A page with no navigation, for a merchant who is not signed in yet.
+ * A page with no navigation: the pages in front of the gate, and the few behind
+ * it that stand outside the dashboard's frame.
  *
  * There were two of these: one that carried the theme script and one for the
  * pages whose behaviour has to be complete without JavaScript. With the theme
@@ -329,8 +330,9 @@ ${body}
 </html>
 `;
   // Asked of every caller, so a screen behind the gate cannot forget to say
-  // whom it is drawn for: null only for the pages in front of the gate, whose
-  // forms post to addresses the gate never sees.
+  // whom it is drawn for: null for the pages in front of the gate, whose forms
+  // post to addresses the gate never sees, and for pages with no form that
+  // posts.
   return who === null ? drawn : drawnFor(who, drawn);
 };
 
