@@ -644,10 +644,10 @@ and it is what the handler's idempotency by the order's identifier is for.
 
 Within one instance the orders are worked through one at a time, and the
 instance is handed the next order or question only once it has answered the one
-before, so each costs it a handler call and a trip to us and back. Running more
-instances is how to get through more of them at once. A parameter for taking
-several at once within one instance is among the things [not
-settled](/quickstart).
+before, so each costs it a handler call and two trips: its answer coming back to
+us and the poll for the next one. Running more instances is how to get through
+more of them at once. A parameter for taking several at once within one instance
+is among the things [not settled](/quickstart).
 
 ## Test orders
 
