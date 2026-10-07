@@ -495,7 +495,13 @@ describe("pressing Connect", () => {
     expect(pressed.html).toContain("permalink");
     // And nothing was written down: a Connect nobody could complete leaves no
     // token behind for anybody to post against.
-    expect(await running.shops.spendGrant(tokenIn(running.asked[0] ?? ""), new Date())).toBeNull();
+    expect(
+      await running.shops.connectFromGrant(
+        tokenIn(running.asked[0] ?? ""),
+        { consumerKey: "ck_abc", consumerSecret: "cs_def", permissions: "read_write" },
+        new Date(),
+      ),
+    ).toBeNull();
   });
 });
 
