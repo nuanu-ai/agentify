@@ -4,6 +4,9 @@ import { useState } from "react";
 
 import { useVisitor } from "../lib/visitor";
 
+/** What a press that got no answer the page can read is told. */
+const NOTHING_CHANGED = "Nothing was changed, because the site did not answer. Try again shortly.";
+
 /**
  * The account requests a person makes about their own address.
  *
@@ -19,12 +22,15 @@ export function AccountActions({ mode }: { mode: "unsubscribe" | "data" }) {
   const [message, setMessage] = useState("");
   const [confirmingDeletion, setConfirmingDeletion] = useState(false);
   const [busy, setBusy] = useState(false);
-  if (visitor.status === "loading") return <p aria-busy="true" />;
+  // Set once the site has said this page was loaded for somebody other than
+  // who is signed in now; from then on the page offers only a reload.
+  const [stale, setStale] = useState(false);
+  if (visitor.status === "loading") return <p aria-busy="true">Finding out who is signed in…</p>;
   if (visitor.status === "unknown")
     return (
       <p>
-        We cannot tell who is visiting right now, so there is nothing to press here yet. Try again
-        shortly.
+        We cannot tell who is visiting right now, so there is nothing to press here yet. Reload this
+        page shortly.
       </p>
     );
   if (visitor.status === "signed_out")
@@ -51,7 +57,7 @@ export function AccountActions({ mode }: { mode: "unsubscribe" | "data" }) {
       });
       const payload = (await response.json().catch(() => null)) as {
         status?: "requested" | "completed";
-        error?: { message?: string };
+        error?: { code?: string; message?: string };
       } | null;
       setMessage(
         response.ok
@@ -60,14 +66,26 @@ export function AccountActions({ mode }: { mode: "unsubscribe" | "data" }) {
             : action === "deletion"
               ? "Report access is closed. Deletion was requested and will finish automatically."
               : "Request recorded."
-          : (payload?.error?.message ??
-              "Sign in with the address your reports were sent to before making this request."),
+          : (payload?.error?.message ?? NOTHING_CHANGED),
       );
       if (response.ok) setConfirmingDeletion(false);
+      if (payload?.error?.code === "page_not_matched") setStale(true);
+    } catch {
+      setMessage(NOTHING_CHANGED);
     } finally {
       setBusy(false);
     }
   }
+  if (stale)
+    return (
+      <div>
+        <p aria-live="polite">{message}</p>
+        <p>
+          {/* Drawn only after a press, in the browser, so the address is there. */}
+          <a href={window.location.href}>Reload this page</a>
+        </p>
+      </div>
+    );
   return (
     <div>
       <p>
@@ -76,6 +94,7 @@ export function AccountActions({ mode }: { mode: "unsubscribe" | "data" }) {
       {mode === "unsubscribe" ? (
         <button
           className="button button-primary"
+          disabled={busy}
           onClick={() => void act("unsubscribe")}
           type="button"
         >
@@ -85,6 +104,7 @@ export function AccountActions({ mode }: { mode: "unsubscribe" | "data" }) {
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <button
             className="button button-secondary"
+            disabled={busy}
             onClick={() => void act("access")}
             type="button"
           >
