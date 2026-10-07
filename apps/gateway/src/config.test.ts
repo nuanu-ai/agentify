@@ -109,7 +109,7 @@ describe("loadConfig", () => {
   it("carries the worker window and the payment settings", () => {
     const config = loadConfig(required);
 
-    expect(config.worker).toStrictEqual({ pollWaitMs: 25_000, pollMaxEnvelopes: 32 });
+    expect(config.worker).toStrictEqual({ pollWaitMs: 25_000 });
     expect(config.publicBaseUrl).toBe("http://localhost:3000");
     expect(config.payment).toStrictEqual({
       facilitatorUrl: "https://x402.org/facilitator",

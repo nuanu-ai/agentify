@@ -315,15 +315,15 @@ await agentify.orders.forId(savedId).deliver({ access_url: url })
 Return `accepted` within three seconds, which is how long we wait for a
 handler's answer: a handler still working after that has the order sent again
 ([What a handler can answer](/orders#what-a-handler-can-answer)). The wait
-starts when your worker takes the order off the subscription, and a worker takes
-several at once and works through them in turn, so it covers the orders ahead in
-the same batch too. That is why the handler starts the work and answers, and the
-delivery happens outside it. `accepted` also takes `eta_seconds`, the time you
-expect the delivery to take, but nothing keeps that number today and the agent
-does not see it; an empty `accepted` is the complete answer. Until `deliver` is
-called the order counts as accepted, and the delivery deadline named in your
-card is running on it — it started when the buyer was charged, at the moment of
-purchase, before the order reached you. A card that names none is held to a day.
+starts when we hand the order to your worker, which is handed one at a time, so
+it covers your handler and the trip there and back, and nothing else. That is
+why the handler starts the work and answers, and the delivery happens outside
+it. `accepted` also takes `eta_seconds`, the time you expect the delivery to
+take, but nothing keeps that number today and the agent does not see it; an
+empty `accepted` is the complete answer. Until `deliver` is called the order
+counts as accepted, and the delivery deadline named in your card is running on
+it — it started when the buyer was charged, at the moment of purchase, before
+the order reached you. A card that names none is held to a day.
 
 A synchronous card carries no such field: how long to wait for a synchronous
 answer is set by us, as one number for everybody, and it is eight seconds. The

@@ -14,7 +14,12 @@
 
 import type { AddressInfo } from "node:net";
 import { type Environment, keyPrefixFor } from "@agentify/core";
-import type { HandlerAnswer, Order, QuoteResponse } from "@nuanu-ai/agentify-contracts";
+import type {
+  HandlerAnswer,
+  Order,
+  QuoteResponse,
+  WorkerPollResponse,
+} from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader, encodePaymentSignatureHeader } from "@x402/core/http";
 import type { PaymentPayload } from "@x402/core/types";
 import { RecordingAnnouncer } from "../adapters/memory/announcer.js";
@@ -389,7 +394,7 @@ export async function workOnce(
 ): Promise<number> {
   const { gateway } = worked;
   const merchantId = behaviour.merchantId ?? worked.merchant.id;
-  const { envelopes } = await gateway.poll(merchantId, 10, waitMs);
+  const { envelopes } = await gateway.poll(merchantId, waitMs);
 
   for (const envelope of envelopes) {
     if (envelope.kind === "order" && behaviour.onOrder !== undefined) {
@@ -403,6 +408,24 @@ export async function workOnce(
   }
 
   return envelopes.length;
+}
+
+/**
+ * Everything on a merchant's stream at this moment, drawn the way a worker
+ * draws it: one poll after another until one comes back empty. A poll answers
+ * with one envelope, so a test that wants what the stream holds asks this
+ * rather than reading one poll as all of it.
+ */
+export async function drawEverything(
+  worked: Worked,
+  merchantId: string = worked.merchant.id,
+): Promise<WorkerPollResponse["envelopes"]> {
+  const drawn: WorkerPollResponse["envelopes"][number][] = [];
+  for (;;) {
+    const { envelopes } = await worked.gateway.poll(merchantId, 0);
+    if (envelopes.length === 0) return drawn;
+    drawn.push(...envelopes);
+  }
 }
 
 /** Keeps a worker turning until `stop` is called, the way a subscription does. */

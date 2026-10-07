@@ -300,7 +300,7 @@ describe("what a key can do", () => {
     // Not awaited: this call is parked on the answer to the price question.
     const purchase = served.call("POST", `/x402/${cardB}/purchase`, { body: { params: {} } });
 
-    const drawn = await harnessed.gateway.poll(b.id, 10, 2_000);
+    const drawn = await harnessed.gateway.poll(b.id, 2_000);
     const question = drawn.envelopes.find((envelope) => envelope.kind === "quote_request");
     const priceId = question?.kind === "quote_request" ? question.payload.price_id : "";
     expect(priceId).not.toBe("");
@@ -398,8 +398,8 @@ describe("whose envelope a worker draws", () => {
       onOrder: () => ({ refused: { code: "out_of_stock", message: "not mine" } }),
     });
 
-    const drawnByA = await harnessed.gateway.poll(a.id, 10, 1);
-    const drawnByB = await harnessed.gateway.poll(b.id, 10, 1_000);
+    const drawnByA = await harnessed.gateway.poll(a.id, 1);
+    const drawnByB = await harnessed.gateway.poll(b.id, 1_000);
 
     expect(drawnByA.envelopes).toStrictEqual([]);
     // And it was there to be drawn the whole time, so A came back empty from a

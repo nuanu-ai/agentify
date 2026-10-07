@@ -1506,20 +1506,29 @@ export class Gateway {
   // --- the merchant's stream ------------------------------------------------
 
   /**
-   * Draws the next batch off the merchant's stream and records the hand-over of
-   * every order in it.
+   * Draws the next envelope off the merchant's stream and records the
+   * hand-over if it is an order.
+   *
+   * One envelope a poll, and the reason is the clock on the answer. The wait
+   * for a handler's answer starts here, when the order is handed over, and a
+   * worker works what it is handed one at a time. Handed a batch, the orders
+   * at the back of it waited out the handler calls ahead of them and were
+   * taken for silences before their own handler had started; each repeat sent
+   * for that cost the order a delivery, and a burst of quick answers could
+   * spend a synchronous order's last one. A price question is the same, with
+   * its own clock. The contract leaves the size of an answer to the gateway
+   * whatever a worker asks for, and this one answers with one, so the wait
+   * measures the merchant's handler and the trip to it and back, and nothing
+   * else. It was a setting once; any number above one brought the fault
+   * back, so there is nothing left to set.
    *
    * An order that has moved on since it was queued is not handed out: the
    * machine refuses the hand-over, and passing it to a handler anyway would ask
    * a merchant to work on a purchase that is over.
    */
-  async poll(merchantId: string, max: number, waitMs: number): Promise<WorkerPollResponse> {
+  async poll(merchantId: string, waitMs: number): Promise<WorkerPollResponse> {
     const { config, queue, clock } = this.runtime;
-    const drawn = await queue.draw(
-      merchantId,
-      Math.min(max, config.worker.pollMaxEnvelopes),
-      Math.min(waitMs, config.worker.pollWaitMs),
-    );
+    const drawn = await queue.draw(merchantId, 1, Math.min(waitMs, config.worker.pollWaitMs));
 
     const handing: WorkerPollResponse["envelopes"] = [];
     const finished: string[] = [];

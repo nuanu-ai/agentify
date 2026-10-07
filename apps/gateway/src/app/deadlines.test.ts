@@ -1,7 +1,13 @@
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Reminder } from "../ports/queue.js";
-import { authorisation, type Harness, harness, workUntilStopped } from "../testing/harness.js";
+import {
+  authorisation,
+  drawEverything,
+  type Harness,
+  harness,
+  workUntilStopped,
+} from "../testing/harness.js";
 
 /** The buyer, for the one test here that turns on which wallet signed. */
 const BUYER = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -188,8 +194,8 @@ describe("when the time runs out", () => {
       deadline: "async_fulfillment",
     });
 
-    const told = await harnessed.gateway.poll(harnessed.merchant.id, 10, 0);
-    const events = told.envelopes.flatMap((e) => (e.kind === "order_event" ? [e.payload] : []));
+    const told = await drawEverything(harnessed);
+    const events = told.flatMap((e) => (e.kind === "order_event" ? [e.payload] : []));
     expect(events.map((e) => e.type)).toContain("order.refund_due");
   });
 
@@ -383,7 +389,7 @@ describe("when a delivery goes unanswered", () => {
     let running = true;
     const drawing = (async () => {
       while (running) {
-        const { envelopes } = await harnessed.gateway.poll(harnessed.merchant.id, 10, 20);
+        const { envelopes } = await harnessed.gateway.poll(harnessed.merchant.id, 20);
         for (const envelope of envelopes) {
           if (envelope.kind === "order") {
             seen.push({ message: envelope.id, order: envelope.payload.id });
@@ -503,7 +509,7 @@ describe("when a delivery goes unanswered", () => {
 
     // The first hand-over goes quiet for longer than we wait, and the repeat
     // is decided on.
-    expect((await harnessed.gateway.poll(merchantId, 10, 1_000)).envelopes).toHaveLength(1);
+    expect((await harnessed.gateway.poll(merchantId, 1_000)).envelopes).toHaveLength(1);
     await harnessed.queue.remind(
       { kind: "delivery_unanswered", orderId, handOver: await openHandOver() },
       0,
@@ -516,7 +522,7 @@ describe("when a delivery goes unanswered", () => {
     // Then the acceptance lands, with the repeat already on the stream, and
     // the repeat still reaches him.
     await harnessed.gateway.answerOrder(merchantId, orderId, { accepted: {} });
-    expect((await harnessed.gateway.poll(merchantId, 10, 1_000)).envelopes).toHaveLength(1);
+    expect((await harnessed.gateway.poll(merchantId, 1_000)).envelopes).toHaveLength(1);
 
     // The silence after the repeat, and then the goods. The merchant cannot
     // see a silence being weighed, so the test asks what he can see: what his
@@ -578,7 +584,7 @@ describe("when a delivery goes unanswered", () => {
     await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
 
     // One hand-over, drawn and answered by nobody.
-    const handed = await harnessed.gateway.poll(harnessed.merchant.id, 10, 1_000);
+    const handed = await harnessed.gateway.poll(harnessed.merchant.id, 1_000);
     expect(handed.envelopes).toHaveLength(1);
     const handOver = (await harnessed.store.orderById(orderId))?.openDeliveryId ?? null;
     if (handOver === null) {
@@ -605,7 +611,7 @@ describe("when a delivery goes unanswered", () => {
 
     // One silence, one repeat. Two envelopes here is the merchant being asked
     // twice for goods he was asked for once, and two of his five attempts gone.
-    const again = await harnessed.gateway.poll(harnessed.merchant.id, 10, 100);
+    const again = await harnessed.gateway.poll(harnessed.merchant.id, 100);
     expect(again.envelopes).toHaveLength(1);
     expect((await state(harnessed, orderId))?.dispatch.attempts).toBe(2);
   });
