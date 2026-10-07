@@ -249,7 +249,7 @@
 		reverse_proxy {$AGENTIFY_DASHBOARD_UPSTREAM:dashboard:3001}
 	}
 
-	# The address the dashboard had before it was called the dashboard, on the
+	# The address the dashboard had while it was called the cabinet, on the
 	# product owner's word (2026-10-06): a bookmark, a link in a message already
 	# sent, or a shop returning from a Connect started under the old address
 	# still arrives. The same path, under the new prefix, with the query kept,

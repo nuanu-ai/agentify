@@ -10,7 +10,9 @@
  * because pnpm resolves it inside that container, against the revision that
  * was deployed last rather than against this checkout. A rename of the package
  * would otherwise break approval from every laptop until the next deployment
- * caught up.
+ * caught up. The container's own name is not so lucky: it follows the Compose
+ * service of the revision deployed there, so a checkout naming a renamed one
+ * reaches a host only once that host runs it (deploy/README.md).
  *
  * `--fail-if-no-match` is what makes that safe to rely on: a filter matching
  * nothing — a layout the container does not have, a working directory that is

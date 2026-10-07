@@ -446,7 +446,6 @@ async function finishIntentInTransaction(
     landingVariant: registrationSession?.firstLandingVariant ?? "unknown",
     properties: {
       role: intent.role,
-      auth_provider: "dashboard_report_identity",
     },
   });
   const previousCategories =

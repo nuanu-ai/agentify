@@ -58,7 +58,7 @@
 # Open http://localhost:8080/dashboard/sign-in and request a link for your email.
 # This local sandbox writes the message to the dashboard log. Open the link and
 # press its confirmation button, which makes your account; then press the one
-# control the dashboard offers, "Open my merchant dashboard", which makes your
+# control the dashboard offers, "Open my seller dashboard", which makes your
 # merchant. That is the one way in, here and on both deployed channels
 # (ADR-0014): no command makes an account or a merchant.
 #

@@ -118,9 +118,11 @@ From this release the dashboard runs as the Compose service `dashboard`, in the
 container `agentify-dashboard-1`, and the secret the gateway presents to it is
 `GATEWAY_DASHBOARD_SECRET`. Until it, they were `cabinet`,
 `agentify-cabinet-1` and `GATEWAY_CABINET_SECRET`. Nothing in the release
-carries the old names over, so two things are done by hand on each host, in
-this order, just before releasing it there, and the dashboard is down from the
-second until the release has started it again.
+carries the old names over, so three things are done by hand on each host:
+two just before releasing it there, one after. The dashboard is down from the
+second until the release has started it again, and with it the WooCommerce
+connection's fulfilment, since the dashboard is what fulfils those orders;
+an order paid in that window waits for it, or ends when its time runs out.
 
 First, the secret's line in the host's file takes the new name and keeps its
 value. The running containers are not touched: they read the file when they
@@ -134,26 +136,50 @@ ssh agentify-test sudo grep -c '^GATEWAY_DASHBOARD_SECRET=' /etc/agentify/test.e
 ssh agentify-test sudo grep -c '^GATEWAY_CABINET_SECRET=' /etc/agentify/test.env
 ```
 
-Second, the old container goes. The release stops the services it knows by
-their new names, so left in place, the old one would go on running beside the
-new one, through the dump and the migrations as well:
+Second, the old container stops, with the minute the release gives every
+service to finish what it is doing, so an order it is placing in a shop is not
+cut off halfway. The release stops the services it knows by their new names;
+left running, the old one would go on beside the new one, through the dump and
+the migrations as well, and nothing would say so. The last line prints
+`exited`:
 
 ```sh
-ssh agentify-test "sudo sh -c 'docker ps -aq --filter label=com.docker.compose.project=agentify --filter label=com.docker.compose.service=cabinet | xargs -r docker rm -f'"
+ssh agentify-test "sudo docker stop -t 60 agentify-cabinet-1"
+ssh agentify-test "sudo docker inspect -f '{{.State.Status}}' agentify-cabinet-1"
+```
+
+Then release ("Releasing to test"). On PRODUCTION the same commands run over
+`ssh agentify`, with `production.env` in place of `test.env`, just before
+`agentify-release`.
+
+Third, once the release is verified, the old container goes. Until then it is
+the way back. If the release is refused, or fails before it begins migrating,
+`sudo docker start agentify-cabinet-1` brings the old dashboard back as it was,
+since it keeps the environment it was made with, against tables the release
+has not touched. If it fails once it has begun migrating, the old dashboard no
+longer fits the tables, and the way back is the release's restore point
+("Restoring"), with the secret's line renamed back to `GATEWAY_CABINET_SECRET`
+before the previous revision is released again, since that revision asks for
+it under that name. The last line prints nothing:
+
+```sh
+ssh agentify-test "sudo docker rm agentify-cabinet-1"
 ssh agentify-test "sudo docker ps -a --filter label=com.docker.compose.service=cabinet --format '{{.Names}}'"
 ```
 
-The last line prints nothing. Then release ("Releasing to test"). On
-PRODUCTION the same commands run over `ssh agentify`, with `production.env` in
-place of `test.env`, just before `agentify-release`.
-
-A release of this revision on a host whose file still says
-`GATEWAY_CABINET_SECRET` is refused in its preflight, before anything stops.
+A release of this revision on a host whose file does not name
+`GATEWAY_DASHBOARD_SECRET` is refused in its preflight, before anything stops.
 On TEST that refusal is recorded as the revision's failure and the timer does
 not try it again; once the line is renamed, a person releases it
 (`ssh -t agentify-test sudo agentify-release <name>`). Afterwards the same
-refusal meets any older revision released on TEST, since it asks for the old
-name, so going back is refused rather than half done.
+refusal meets an older revision released on TEST, any from 2026-09-24 on,
+since each asks for the secret under an older name, so going back to one of
+those is refused before anything stops.
+
+Until a host is released, `pnpm approve` and `pnpm forget` from a checkout
+that carries this cannot reach it: they name `agentify-dashboard-1`, which is
+not there yet, and refuse with nothing done. Run them from a checkout before
+this release in the meantime.
 
 ## The release that takes the password off /admin
 
@@ -173,8 +199,8 @@ it, so the link is read with `deploy/stack.sh test logs dashboard` from the
 newest checkout. They are then flagged on the host of that channel:
 
 ```sh
-ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T dashboard pnpm --filter ./apps/dashboard --filter ./apps/cabinet --fail-if-no-match account operator you@example.com'
-ssh -t agentify 'sudo "$(ls -dt /var/lib/agentify/production/checkouts/*/ | head -n 1)deploy/stack.sh" production exec -T dashboard pnpm --filter ./apps/dashboard --filter ./apps/cabinet --fail-if-no-match account operator you@example.com'
+ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T dashboard pnpm --filter ./apps/dashboard --fail-if-no-match account operator you@example.com'
+ssh -t agentify 'sudo "$(ls -dt /var/lib/agentify/production/checkouts/*/ | head -n 1)deploy/stack.sh" production exec -T dashboard pnpm --filter ./apps/dashboard --fail-if-no-match account operator you@example.com'
 ```
 
 The scanner's header then shows them an Admin link, on the next page they
@@ -299,8 +325,10 @@ with the old name; so the limits on links, three an hour to one address and one
 a minute, start again from nothing once, at the release.
 
 PRODUCTION refuses to move backwards. On TEST, a release of an older revision
-whose dashboard migrations are all on `main` finds every one of them in the
-history and applies none. Its dashboard then fails on the tables it looks for
+from 2026-09-24 on is refused before anything stops ("The release that renames
+the dashboard's service and its secret"). One from before that, whose dashboard
+migrations are all on `main`, finds every one of them in the history and
+applies none. Its dashboard then fails on the tables it looks for
 under the old names. Its scanner refuses a new request to delete a person's data
 with "Deletion could not be recorded", and a deletion already under way waits,
 retried every half minute without a word, until TEST moves forward. Moving
