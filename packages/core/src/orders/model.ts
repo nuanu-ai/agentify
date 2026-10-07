@@ -537,21 +537,19 @@ export type Order = {
   readonly quoteSource: QuoteSource | null;
   /**
    * How many times the order has been handed to its merchant, and whether one
-   * of those hand-overs was taken on. The two are not read the same way, and
-   * the difference is worth knowing before either is used.
+   * of those hand-overs was taken on.
    *
-   * `attempts` drives things: the backoff and the attempt cap are both counted
-   * off it. `accepted` drives nothing — nothing in this machine or in the
-   * gateway branches on it, and what actually stops an order being sent again
-   * is the gateway clearing the hand-over it was waiting on. It is here because
-   * `dispatched` covers both an order handed over and one already taken on, and
-   * without it the record cannot tell those apart.
+   * `attempts` is what the backoff and the attempt cap are both counted off.
+   * `accepted` says the merchant holds the order: `dispatched` covers both an
+   * order handed over and one already taken on, and this is how the two are
+   * told apart. Once it is true a silence noticed about the order spends no
+   * delivery, because the merchant has answered — later, perhaps, than we
+   * waited for him. A repeat already on his stream by then is still handed
+   * over and counted, as every hand-over is; it is only the silence after it
+   * that no longer costs him anything.
    *
-   * So it is a fact and not a signal, and it is a coarser fact than it looks: a
-   * further hand-over of an order already taken on leaves it true, since the
-   * one thing that clears it is `dispatchedOrder`, which runs on the way in
-   * from `paid`. It says this order has been taken on, never that the hand-over
-   * now outstanding has been.
+   * It is cleared only by `dispatchedOrder`, on the way in from `paid`, so it
+   * stays true for the rest of the order's life in `dispatched`.
    */
   readonly dispatch: { readonly attempts: number; readonly accepted: boolean };
   /**
