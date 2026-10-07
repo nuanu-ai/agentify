@@ -1,8 +1,29 @@
 import type { CheckResult, Segment } from "@agentify/scanner-contracts";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { evaluateScan } from "./engine.js";
 import type { FetchArtifact, ScanArtifacts } from "./model.js";
+import { htmlSignals, parseJsonLd, parseSitemap, visibleText } from "./parsers.js";
+import { parseRobots } from "./robots.js";
 import { levelForScore, scoreChecks } from "./scoring.js";
+
+// The readers whose result checks.ts keeps for each page, each counted on its
+// way through and otherwise left exactly as it is: every call reaches the real
+// function and returns what it returns. The count is what "a scan evaluated
+// again" below reads; nothing in this file is answered by a stand-in.
+vi.mock("./parsers.js", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./parsers.js")>();
+  return {
+    ...real,
+    visibleText: vi.fn(real.visibleText),
+    htmlSignals: vi.fn(real.htmlSignals),
+    parseJsonLd: vi.fn(real.parseJsonLd),
+    parseSitemap: vi.fn(real.parseSitemap),
+  };
+});
+vi.mock("./robots.js", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./robots.js")>();
+  return { ...real, parseRobots: vi.fn(real.parseRobots) };
+});
 
 const artifact = (
   url: string,
@@ -218,38 +239,6 @@ describe("a scan of pages as large as the fetch admits", () => {
   const checkIn = (evaluation: ReturnType<typeof evaluateScan>, id: number) =>
     evaluation.checks.find((candidate) => candidate.id === id);
 
-  it("reads every page of a scan once however often the worker evaluates it", () => {
-    // The worker evaluates a scan's checks up to four times as its requests
-    // complete, over the same artifacts. Here the page, the product page, the
-    // markdown answer and both agent probes are each 2 MiB: half one-letter
-    // lines, whose every break costs the visible-text reader a replacement,
-    // and half JSON-LD. Read by every check that needs them at every
-    // evaluation, they held the worker for seconds each time; read once, the
-    // later evaluations cost a small part of the first, on any machine.
-    const script = `<script type="application/ld+json">{"@type":"Product","name":"Wool Runner","offers":{"price":"98.00","priceCurrency":"USD"}}</script>\n`;
-    const page = `${fill("a\n", pageCap / 2)}${fill(script, pageCap / 2)}`;
-    const input: ScanArtifacts = {
-      ...makeArtifacts("store"),
-      base: artifact("https://example.com/", page),
-      representative: artifact("https://example.com/product/widget", page),
-      markdown: artifact("https://example.com/", page, {
-        headers: { "content-type": "text/markdown", vary: "Accept" },
-      }),
-      agentProbes: {
-        chatgpt: artifact("https://example.com/", page),
-        claude: artifact("https://example.com/", page),
-      },
-    };
-    const first = scan(input);
-    const started = performance.now();
-    const later = [2, 3, 4].map(() => evaluateScan(input));
-    const laterMs = performance.now() - started;
-    expect(checkIn(later[2] as ReturnType<typeof evaluateScan>, 5)?.evidence).toEqual(
-      checkIn(first.evaluation, 5)?.evidence,
-    );
-    expect(laterMs).toBeLessThan(first.ms / 2);
-  }, 60_000);
-
   it("finds the feed link after link tags that run on for megabytes", () => {
     const closed = scan(
       withBase(
@@ -293,6 +282,51 @@ describe("a scan of pages as large as the fetch admits", () => {
       { value: "Adyen", confidence: "high" },
     ]);
     expect(ms).toBeLessThan(budgetMs);
+  });
+});
+
+describe("a scan evaluated again", () => {
+  // The worker evaluates a scan's checks up to four times as its requests
+  // complete. Each round hands over a new set of artifacts holding the same
+  // fetched pages, and a page of up to 2 MiB costs one of these readers tens
+  // of milliseconds on a laptop. So a reading is kept with the page itself,
+  // and a later round is answered from it.
+  //
+  // The test counts calls instead of timing the rounds, because a time is a
+  // property of the machine: a ratio of two timings went over its line under
+  // the load of the whole suite with nothing broken. What a count does not
+  // see is the work that is not kept, such as check 15 and the fingerprint
+  // going over the raw pages every round, or a new reader added without a
+  // place to keep its result.
+  const readers = { visibleText, htmlSignals, parseJsonLd, parseSitemap, parseRobots };
+  const callsSoFar = () =>
+    Object.fromEntries(
+      Object.entries(readers).map(([name, reader]) => [name, vi.mocked(reader).mock.calls.length]),
+    );
+
+  it("reads no page again when the same pages are evaluated in a later round", () => {
+    const input: ScanArtifacts = {
+      ...makeArtifacts("store"),
+      representative: artifact("https://example.com/product/widget", html),
+    };
+
+    const before = callsSoFar();
+    const first = evaluateScan(input);
+    const afterFirst = callsSoFar();
+    // A new set for every round, as the worker builds one: what carries over
+    // is the pages, not the object that holds them.
+    const later = [2, 3, 4].map(() => evaluateScan({ ...input }));
+
+    // Every reader did go over this scan's pages, or "no further calls" below
+    // would hold of a reader nothing here reaches.
+    for (const name of Object.keys(readers)) {
+      expect(afterFirst[name], name).toBeGreaterThan(before[name] ?? 0);
+    }
+    expect(callsSoFar()).toStrictEqual(afterFirst);
+    // And what was remembered is what a fresh reading would have said.
+    for (const again of later) {
+      expect(again).toStrictEqual(first);
+    }
   });
 });
 
