@@ -927,10 +927,20 @@ describe("P4 dashboard-owned scanner identity", () => {
       expect(error.message).toContain(email);
       expect(error.message).not.toContain("first@example.com");
     }
-    // Nothing was changed: the report is still open to the person signed in.
+    const { db } = getDatabase();
+    const unsubscribedAt = async () =>
+      (
+        await db
+          .select({ at: leads.unsubscribedAt })
+          .from(leads)
+          .where(eq(leads.emailLookupHash, hmacHex(tokenHmacSecret, "email", email)))
+      )[0]?.at ?? null;
+    // Nothing was changed: the report is still open to the person signed in,
+    // and they are still subscribed.
     expect((await loadReportPage(scan.id, cookie)).kind).toBe("report");
+    expect(await unsubscribedAt()).toBeNull();
 
-    // The same press from a page loaded for the address signed in now goes through.
+    // The same presses from a page loaded for the address signed in now go through.
     const accepted = await requestDataAction(
       new NextRequest(
         "http://localhost:3000/api/v1/account/data-request",
@@ -938,6 +948,14 @@ describe("P4 dashboard-owned scanner identity", () => {
       ),
     );
     expect(accepted.status).toBe(200);
+    const unsubscribed = await unsubscribeAction(
+      new NextRequest(
+        "http://localhost:3000/api/v1/account/unsubscribe",
+        posted({ signed_in_as: email }),
+      ),
+    );
+    expect(unsubscribed.status).toBe(200);
+    expect(await unsubscribedAt()).not.toBeNull();
   });
 
   it("tells a signed-in person with no reports that there is nothing to request, not to sign in", async () => {
