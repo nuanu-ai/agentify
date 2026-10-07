@@ -22,10 +22,11 @@ import type { Express } from "express";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
 import { gatewayFor } from "./gateway.js";
+import { DRAWN_FOR } from "./html.js";
 import { type Identity, identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 import { buildApp } from "./server.js";
-import { importFormOf, readable } from "./testing/html.js";
+import { importFormOf, readable, shownMarkIn } from "./testing/html.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
 import type { StoreProduct } from "./woo-catalog.js";
 import type { Preflight } from "./woo-connect.js";
@@ -309,12 +310,22 @@ const started = async (standing: Standing = {}): Promise<Running> => {
   const { port } = server.address() as AddressInfo;
   const url = `http://127.0.0.1:${port}`;
   const jar = new Map<string, string>();
+  let shownMark: string | undefined;
 
   const visit = async (
     method: string,
     path: string,
-    options: { body?: string; type?: string; noCookie?: boolean } = {},
+    given: { body?: string; type?: string; noCookie?: boolean } = {},
   ): Promise<Visit> => {
+    const form = given.body !== undefined && given.type === undefined;
+    const marked =
+      form && shownMark !== undefined && !new URLSearchParams(given.body).has(DRAWN_FOR);
+    const options = marked
+      ? {
+          ...given,
+          body: `${given.body === "" ? "" : `${given.body}&`}${new URLSearchParams({ [DRAWN_FOR]: shownMark ?? "" })}`,
+        }
+      : given;
     const answered = await fetch(`${url}${path}`, {
       method,
       redirect: "manual",
@@ -335,9 +346,11 @@ const started = async (standing: Standing = {}): Promise<Running> => {
         jar.set((pair ?? "").slice(0, at), (pair ?? "").slice(at + 1));
       }
     }
+    const html = await answered.text();
+    shownMark = shownMarkIn(html) ?? shownMark;
     return {
       status: answered.status,
-      html: await answered.text(),
+      html,
       to: answered.headers.get("location"),
     };
   };
@@ -380,9 +393,13 @@ const started = async (standing: Standing = {}): Promise<Running> => {
       const found = /(https?:\/\/\S+)/.exec(messages.at(-1)?.body ?? "")?.[1];
       if (found === undefined) throw new Error("the sign-in message carried no action URL");
       const action = new URL(found);
-      return await visit("POST", action.pathname, {
+      const opened = await visit("POST", action.pathname, {
         body: new URLSearchParams({ token: action.searchParams.get("token") ?? "" }).toString(),
       });
+      // A browser shows the screen the link leads to, and the forms a test
+      // then presses are that screen's.
+      if (opened.to?.startsWith("/") === true) await visit("GET", opened.to);
+      return opened;
     },
     async signOut() {
       await visit("POST", "/sign-out");
@@ -694,7 +711,13 @@ describe("an expired session returning to WooCommerce", () => {
 describe("importing the catalogue", () => {
   const connected = async (running: Running): Promise<void> => {
     await running.signIn();
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    // The Connect form as a page drawn for this person carries it, said here
+    // because one test below has no gateway, and with none every page drawn
+    // is the error page.
+    const pressed = await running.post("/woocommerce/connect", {
+      shop_url: SHOP,
+      [DRAWN_FOR]: PERSON,
+    });
     await running.postJson("/woocommerce/callback", {
       user_id: tokenIn(pressed.to ?? ""),
       consumer_key: "ck_a",
@@ -1045,7 +1068,7 @@ describe("importing the catalogue", () => {
     });
     await connected(running);
 
-    const imported = await running.post("/woocommerce/import");
+    const imported = await running.post("/woocommerce/import", { [DRAWN_FOR]: PERSON });
 
     expect(imported.status).toBe(502);
     expect(readable(imported.html)).toContain("could not be reached");
