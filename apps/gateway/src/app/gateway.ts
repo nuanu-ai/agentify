@@ -1695,12 +1695,14 @@ export class Gateway {
           );
         }
         // The machine will not record the hand-over, so nobody is given the
-        // order. One ending does not refuse it — an order that owes a refund is
-        // handed over again, because late goods still close the debt — but
-        // everywhere else passing it on would ask a merchant to work on a
-        // purchase that is over. A delivered order is refused here for that
-        // reason and reaches this line, which is where the second delivery seen
-        // on the stand used to leave from.
+        // order. It refuses one wherever passing it on would ask a merchant to
+        // work on a purchase that is over, or hand them a parcel whose buyer's
+        // address is already erased, an open parcel they have taken on among
+        // them. One ending is not refused: an ordinary order that owes a
+        // refund is handed over again, because late goods still close the
+        // debt. A delivered order is refused because its purchase is over and
+        // reaches this line, which is where the second delivery seen on the
+        // stand used to leave from.
         finished.push(delivery.handle);
         continue;
       }
