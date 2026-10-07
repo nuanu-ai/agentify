@@ -273,6 +273,37 @@ in the path. On PRODUCTION a snapshot of the backup holds `production.env`
 ("Backups"), so the key stays readable in the snapshots taken before the line
 went, for as long as they are kept.
 
+## The release that renames the dashboard's tables
+
+The dashboard's tables, keys and indexes were named for the cabinet, its old
+name, and from this release they are named for the dashboard: its migration
+0013 renames them, and the scanner's migration 0023 renames the one column of
+its own that was named the same way. Nothing moves. Nothing has to be done on
+either host before it or after it.
+
+Two things change that a person may notice. The log of sign-in links sent is
+emptied, because its rows were keyed by a hash made with the old name, so the
+limit of three links an hour to one address starts again from nothing once,
+at the release. And the migrations' history moves to `dashboard_migrations`:
+the dashboard renames it itself just before migrating and leaves a view under
+the old name, `drizzle.cabinet_migrations`, that reads the renamed one.
+
+That view is what makes going back safe to try on TEST. PRODUCTION refuses to
+move backwards. On TEST, a release of a revision without this one, any branch
+not rebased onto it included, runs that revision's migrations; they find the
+view, read every migration they know of as applied, and change nothing. That
+revision's dashboard then fails on the tables it looks for under the old
+names, and its scanner cannot record what the dashboard answered when an
+identity is deleted, which it retries every half minute without saying so; no
+data is lost or written twice. Moving `deploy-test` forward again, to `main`
+or a branch rebased onto it, puts TEST back as it was, with no restore. So
+rebase a branch onto `main` before putting it on TEST once this is there.
+
+The rename of the history and the view go from the dashboard's code once
+nothing can still hold a history under the old name: both channels migrated
+past 0013, the restore points and off-host snapshots taken before it aged out,
+and every laptop's database migrated.
+
 ## Releasing to production
 
 A production release starts from `main`. Every change a merchant can see in

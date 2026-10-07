@@ -29,11 +29,20 @@ const MIGRATIONS_TABLE = "dashboard_migrations";
  * cannot rename it: the migrator reads the history before it applies anything,
  * and one that found none under the new name would apply every file again from
  * the first, against tables that are already there. So the dashboard renames it
- * itself, once, before the migrator runs. Two histories at once means something
- * ran the new migrator against a database the old one had migrated; which of
- * the two is true cannot be read off either, so that is refused, not guessed.
+ * itself, once, before the migrator runs.
  *
- * This goes once both channels have been migrated past 0013.
+ * In its place it leaves a signpost: a view under the old name that reads the
+ * renamed history. A revision from before the rename, put on the test channel
+ * or a laptop afterwards, looks for its history under the old name; without the
+ * signpost it would find none, apply every file from the first and run on empty
+ * tables of the old names with every account out of sight. With it, that
+ * migrator sees everything it knows of already applied and does nothing, and
+ * its code fails on tables that are not there instead of serving empty ones.
+ *
+ * The rename and the signpost go together, once nothing can still hold a
+ * history under the old name: both channels migrated past 0013, every restore
+ * point and off-host snapshot taken before that aged out, and laptops migrated
+ * (docs/research/00-open-questions.md).
  */
 const OLD_MIGRATIONS_TABLE = "cabinet_migrations";
 
@@ -82,13 +91,14 @@ export function connect(databaseUrl: string): Pool {
 export async function migrateAccounts(pool: Pool, migrationsFolder: string): Promise<void> {
   await pool.query(`do $$
     begin
-      if to_regclass('drizzle.${OLD_MIGRATIONS_TABLE}') is not null then
-        if to_regclass('drizzle.${MIGRATIONS_TABLE}') is not null then
-          raise exception 'both drizzle.${OLD_MIGRATIONS_TABLE} and drizzle.${MIGRATIONS_TABLE} exist, so which history is true cannot be told; nothing was migrated';
-        end if;
+      if exists (
+        select from pg_class c join pg_namespace n on n.oid = c.relnamespace
+         where n.nspname = 'drizzle' and c.relname = '${OLD_MIGRATIONS_TABLE}' and c.relkind = 'r'
+      ) then
         alter table drizzle.${OLD_MIGRATIONS_TABLE} rename to ${MIGRATIONS_TABLE};
         alter sequence drizzle.${OLD_MIGRATIONS_TABLE}_id_seq rename to ${MIGRATIONS_TABLE}_id_seq;
         alter index drizzle.${OLD_MIGRATIONS_TABLE}_pkey rename to ${MIGRATIONS_TABLE}_pkey;
+        create view drizzle.${OLD_MIGRATIONS_TABLE} as select * from drizzle.${MIGRATIONS_TABLE};
       end if;
     end $$`);
   await migrate(drizzle(pool), { migrationsFolder, migrationsTable: MIGRATIONS_TABLE });

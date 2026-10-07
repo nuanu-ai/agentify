@@ -1052,16 +1052,9 @@ function goesWithTheDeletion(
   return claim?.email === email && (typeof claim.destination !== "string" || result !== "retained");
 }
 
-/**
- * How one address's link sends are keyed; `pnpm forget` clears them by the same key.
- *
- * The words hashed with the address keep the dashboard's old name on purpose:
- * every row already stored was keyed with them and lives for a week, and keyed
- * with new words those rows could not be found again, not by the limit on
- * sends and not by `pnpm forget`, which has to clear them.
- */
+/** How one address's link sends are keyed; `pnpm forget` clears them by the same key. */
 export const rateKey = (secret: string, email: string): string =>
-  createHmac("sha256", secret).update(`cabinet-link:${email}`).digest("hex");
+  createHmac("sha256", secret).update(`dashboard-link:${email}`).digest("hex");
 
 type LinkRefusal = Readonly<{ wall: LinkWall; retryAt: Date }>;
 

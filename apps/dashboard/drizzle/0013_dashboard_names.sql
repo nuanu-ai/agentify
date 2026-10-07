@@ -1,9 +1,13 @@
 -- The dashboard's tables, and everything named after them, take the dashboard's
 -- name. They were made when the dashboard was called the cabinet, and so were
 -- their keys, constraints and indexes, which Postgres does not rename with a
--- table. Nothing moves: every statement here is a rename, apart from the one
--- value stored under the old name, the purpose `cabinet` on a link sent to sign
--- into the dashboard, which becomes `dashboard` under a check that allows it.
+-- table. Nothing moves: every statement here is a rename, apart from the log of
+-- links sent. Its rows are keyed by a hash of the address made with words that
+-- carried the old name, which the code now makes with the new one; carried
+-- over, those rows could be found by nothing, not the limit on sends and not
+-- `pnpm forget`, which has to clear them. So the log is emptied, which restarts
+-- the hourly limit on links once, and the check on its purpose allows
+-- `dashboard` in place of `cabinet`.
 --
 -- The history these migrations keep is renamed before this file runs, by the
 -- dashboard itself (`database.ts`), because the migrator reads the history
@@ -96,6 +100,6 @@ ALTER INDEX "cabinet_woo_quotes_account_idx" RENAME TO "dashboard_woo_quotes_acc
 --> statement-breakpoint
 ALTER TABLE "dashboard_link_sends" DROP CONSTRAINT "cabinet_link_sends_purpose";
 --> statement-breakpoint
-UPDATE "dashboard_link_sends" SET "purpose" = 'dashboard' WHERE "purpose" = 'cabinet';
+DELETE FROM "dashboard_link_sends";
 --> statement-breakpoint
 ALTER TABLE "dashboard_link_sends" ADD CONSTRAINT "dashboard_link_sends_purpose" CHECK ("dashboard_link_sends"."purpose" in ('dashboard', 'report'));
