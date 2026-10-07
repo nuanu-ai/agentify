@@ -445,7 +445,8 @@ describe("what the answer carries", () => {
     // the name and the site the merchant gave for every agent to read on their
     // cards (ADR-0034), and nothing else about them.
     const { served, harnessed } = await started();
-    const seller = await harnessed.addMerchant("Not the harness's own seller");
+    const sellerName = "Not the harness's own seller";
+    const seller = await harnessed.addMerchant(sellerName);
     const itemId = await publish(served, laterCard, keyOf(seller));
     const orderId = await orderTakenOn(harnessed, served, itemId, seller.id);
 
@@ -465,12 +466,14 @@ describe("what the answer carries", () => {
       name: "Not the harness's own seller",
       site: null,
     });
-    const written = JSON.stringify(answered.body);
-    // Which merchant account it is, what they call the product, and which card
-    // it came from are all things a stranger holding an identifier learns
-    // nothing about.
+    // The name is there in `seller` and nowhere else; which merchant account
+    // it is, what they call the product, and which card it came from are all
+    // things a stranger holding an identifier learns nothing about.
+    const { seller: shown, ...rest } = answered.body as Record<string, unknown>;
+    const written = JSON.stringify(rest);
+    expect(JSON.stringify(shown)).not.toContain(seller.id);
     expect(written).not.toContain(seller.id);
-    expect(written).not.toContain("A seller who is not the harness's own");
+    expect(written).not.toContain(sellerName);
     expect(written).not.toContain("esim-30d");
     expect(written).not.toContain(itemId);
   });

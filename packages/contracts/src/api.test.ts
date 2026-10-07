@@ -596,7 +596,15 @@ describe("the status an agent reads", () => {
     });
   });
 
-  for (const field of ["order_id", "status", "price", "delivered", "status_url", "seller"]) {
+  for (const field of [
+    "order_id",
+    "status",
+    "price",
+    "delivered",
+    "test",
+    "status_url",
+    "seller",
+  ]) {
     it(`refuses a status without ${field} and names it`, () => {
       expectMissingFieldRejected(AgentOrderStatusSchema, status, field);
     });

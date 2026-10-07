@@ -676,7 +676,10 @@ describe("an asynchronous purchase", () => {
     await harnessed.gateway.payPurchase(orderId, "SIGNED", "SIGNED");
     const again = await harnessed.gateway.payPurchase(orderId, "SIGNED", "SIGNED");
 
-    expect(again.step).not.toBe("payment_already_spent");
+    // Where the purchase has got to, and not merely something other than a
+    // refusal: an answer that turned the owner away as a stranger would not be
+    // "payment already spent" either.
+    expect(again.step).toBe("under_way");
     expect(harnessed.facilitator.settles).toHaveLength(1);
   });
 

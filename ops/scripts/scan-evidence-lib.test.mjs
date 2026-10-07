@@ -31,11 +31,40 @@ test("accepted response analysis detects malformed and duplicate capabilities", 
   assert.equal(result.apiP95Ms, 30);
 });
 
-test("poller records first running and terminal timing for every capability", async () => {
+test("poller times a scan from acceptance to its first running poll and to its end", async () => {
+  // One scan, so the fake clock moves only when this scan sleeps: it is seen
+  // queued at 0, running at 100 and completed at 200. The queue time is the
+  // wait until work was first seen, not until the first answer of any kind.
+  let currentTime = 0;
+  const statuses = ["queued", "running", "completed"];
+  const polled = await pollAcceptedScans([{ scanId: "scan-a", acceptedAtMs: 0 }], {
+    intervalMs: 100,
+    timeoutMs: 2_000,
+    now: () => currentTime,
+    sleep: async (milliseconds) => {
+      currentTime += milliseconds;
+    },
+    fetchStatus: async () => ({
+      status: statuses.shift(),
+      progress: { completed: 18, total: 18 },
+      checks: [],
+    }),
+  });
+
+  assert.equal(polled.results.length, 1);
+  assert.equal(polled.results[0].outcome, "terminal");
+  assert.equal(polled.results[0].terminalStatus, "completed");
+  assert.equal(polled.results[0].queueMs, 100);
+  assert.equal(polled.results[0].terminalMs, 200);
+});
+
+test("poller counts the scans it saw running at the same time", async () => {
+  // Both pollers ask for their first status before either of them sleeps, and
+  // both are told "running", so both are counted as running at once.
   let currentTime = 0;
   const statuses = new Map([
-    ["scan-a", ["running", "completed"]],
-    ["scan-b", ["running", "partial"]],
+    ["scan-a", ["running", "running", "completed"]],
+    ["scan-b", ["running", "running", "partial"]],
   ]);
   const scans = [...statuses.keys()].map((scanId) => ({
     scanId,
@@ -56,14 +85,11 @@ test("poller records first running and terminal timing for every capability", as
     }),
   });
 
-  assert.equal(polled.results.length, 2);
-  assert.ok(polled.results.every((result) => result.outcome === "terminal"));
   assert.deepEqual(polled.results.map((result) => result.terminalStatus).sort(), [
     "completed",
     "partial",
   ]);
-  assert.ok(polled.observedMaxRunning <= 2);
-  assert.ok(polled.results.every((result) => result.terminalMs >= result.queueMs));
+  assert.equal(polled.observedMaxRunning, 2);
 });
 
 test("poller marks a capability lost after the bounded timeout", async () => {

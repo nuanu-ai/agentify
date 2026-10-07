@@ -91,6 +91,11 @@ const SESSION_ENDED = "/sign-in?reason=session-ended";
  */
 const LATEST_REPORT = "/report/latest";
 const SESSION_ENDED_UNSAVED = "/sign-in?reason=session-ended-unsaved";
+/**
+ * Where a form sent with no session cookie at all lands: the gate cannot say a
+ * session ended, only that what was sent was not kept.
+ */
+const UNSAVED = "/sign-in?reason=unsaved";
 
 /** The person whose account every test in this file signs in as. */
 const PERSON = "owner@example.com";
@@ -1311,10 +1316,12 @@ describe("the gate", () => {
     const running = await started({ base: "/dashboard", wooShops: memoryWooShops() });
     // A browser carrying a session cookie that no longer opens anything, so
     // that the gate's answer is its own: the sign-in with the reason the
-    // session ended, which no route above the gate ever answers with.
+    // session ended, which no route above the gate ever answers with. The
+    // shop's callback comes from the shop's server with no cookie at all, and
+    // the gate tells that apart by saying what was sent was not kept.
     const stranger = running.browser.withRawCookie(`${COOKIE}=made-up-identifier`);
     const gate = (answer: Visit): boolean =>
-      answer.status === 303 && (answer.to ?? "").includes("reason=session-ended");
+      answer.status === 303 && /reason=(session-ended|unsaved)/.test(answer.to ?? "");
 
     const above: readonly [string, () => Promise<Visit>][] = [
       ["the sign-in", () => stranger.get("/dashboard/sign-in")],
@@ -1472,7 +1479,7 @@ describe("choosing the name buyers read", () => {
     const posted = await running.browser.post("/choose-name", { seller_name: "Anybody At All" });
 
     expect(screen.to).toBe("/sign-in");
-    expect(posted.to).toBe("/sign-in");
+    expect(posted.to).toBe(UNSAVED);
   });
 });
 
@@ -3491,6 +3498,32 @@ describe("a session that is ended while somebody is looking at a page", () => {
     // tab pressed did not move.
     expect(await purchasable(gateway, itemId)).toBe(true);
     expect((await browser.get("/cards")).to).toBe("/sign-in");
+  });
+
+  it("tells a tab whose person signed out in another one that what it pressed was not saved", async () => {
+    // Signing out clears the cookie in every tab, so the gate sees no trace of
+    // the session the open tab was drawn in. A merchant who pressed "Pause all
+    // sales" there and landed on a bare sign-in would take the pause as done
+    // while agents went on buying.
+    const { browser, gateway } = await started();
+    const itemId = await publish(gateway, roomCard);
+    await browser.signIn();
+    expect((await browser.get("/cards")).status).toBe(200);
+
+    await browser.post("/sign-out");
+    const refused = await browser.post("/selling/pause");
+
+    expect(refused.status).toBe(303);
+    expect(refused.to).toBe(UNSAVED);
+    const recovery = (await browser.get(refused.to ?? "")).html;
+    // Something the person did was not kept, so it is said as a refusal, in
+    // the line the form keeps for one, not as the page's quiet first line.
+    const refusal = readable(/<p class="problem">[\s\S]*?<\/p>/.exec(recovery)?.[0] ?? "");
+    expect(refusal).toContain("not saved");
+    // The gate cannot tell a sign-out from a session that ran out, so it does
+    // not name either.
+    expect(readable(recovery)).not.toContain("Your session ended");
+    expect(await purchasable(gateway, itemId)).toBe(true);
   });
 
   it("leaves the person's other session alone", async () => {

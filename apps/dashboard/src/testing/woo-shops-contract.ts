@@ -160,7 +160,7 @@ export const wooShopsContract = (
 
     it("knows nothing about a token nobody issued", async () => {
       await using(async (shops) => {
-        expect(await shops.spendGrant("not-a-token", NOW)).toBeNull();
+        expect(await shops.connectFromGrant("not-a-token", keys, NOW)).toBeNull();
       });
     });
 
@@ -173,7 +173,8 @@ export const wooShopsContract = (
           startedAt: NOW,
           expiresAt: LATER,
         });
-        expect(await shops.spendGrant("a-token", MUCH_LATER)).toBeNull();
+        expect(await shops.connectFromGrant("a-token", keys, MUCH_LATER)).toBeNull();
+        expect(await shops.connectionOf(accounts.one)).toBeNull();
         expect((await shops.grantFor(accounts.one))?.token).toBe("a-token");
       });
     });
@@ -202,7 +203,8 @@ export const wooShopsContract = (
           expiresAt: MUCH_LATER,
         });
 
-        expect(await shops.spendGrant("first", NOW)).toBeNull();
+        expect(await shops.connectFromGrant("first", keys, NOW)).toBeNull();
+        expect(await shops.connectionOf(accounts.one)).toBeNull();
         expect((await shops.grantFor(accounts.one))?.token).toBe("second");
         expect((await shops.grantFor(accounts.other))?.token).toBe("other");
       });

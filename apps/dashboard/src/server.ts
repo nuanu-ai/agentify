@@ -184,14 +184,23 @@ const LOOKS_LIKE_AN_ADDRESS = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
  * What a person is told when the gate found no session behind their click.
  *
  * The gate cannot tell them why — the session may have gone thirty days
- * without a visit, been signed out in another tab or been revoked — so what it
- * gives is the general rule. Naming the lifetime is what makes being asked for
- * an address again read as the ordinary end of a session rather than as a
- * fault.
+ * without a visit or been ended from another device — so what it gives is the
+ * general rule. Naming the lifetime is what makes being asked for an address
+ * again read as the ordinary end of a session rather than as a fault.
  */
 const SESSION_ENDED =
   `Your session ended; a session lasts ${SESSION_DAYS} days from your last visit. ` +
   `Send yourself a new link to carry on.`;
+
+/**
+ * What a form sent with no session cookie at all is told.
+ *
+ * Signing out clears the cookie in every tab, so a form pressed in another one
+ * arrives with nothing to say a session was ever there, and the gate names no
+ * cause. What it does know is that the person sent something and it was not
+ * kept, and a merchant left to guess would take a pause for done.
+ */
+const UNSAVED = "You are not signed in, so the change you submitted was not saved.";
 
 const dashboardDestinationIn = (value: unknown): DashboardDestination =>
   value === "settings" || value === "woocommerce" ? value : "default";
@@ -625,7 +634,9 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     const problem =
       request.query.reason === "session-ended-unsaved"
         ? `${SESSION_ENDED} The change you submitted was not saved.`
-        : undefined;
+        : request.query.reason === "unsaved"
+          ? UNSAVED
+          : undefined;
     const reason = request.query.reason === "session-ended" ? SESSION_ENDED : undefined;
     response
       .type("html")
@@ -820,34 +831,27 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
           // through this gate again on every click.
           const hadIdentityCookie = carriesIdentityCookie(request.headers.cookie);
           forget(response);
-          const reason =
-            request.method === "GET" || request.method === "HEAD"
-              ? "session-ended"
-              : "session-ended-unsaved";
+          const reading = request.method === "GET" || request.method === "HEAD";
+          const reason = reading ? "session-ended" : "session-ended-unsaved";
           const destination =
-            hadIdentityCookie &&
-            (request.method === "GET" || request.method === "HEAD") &&
-            request.path === `${base}/woocommerce`
+            hadIdentityCookie && reading && request.path === `${base}/woocommerce`
               ? "&destination=woocommerce"
               : "";
           // The wallet screen is where a message about a payout wallet change
           // sends a person, with no token in it (ADR-0019), so a signed-out
           // visit there comes back there after an ordinary sign-in, cookie or
           // none.
-          const toTheWallet =
-            (request.method === "GET" || request.method === "HEAD") &&
-            request.path === `${base}/settings`;
+          const toTheWallet = reading && request.path === `${base}/settings`;
+          // A form sent without a cookie is told it was not kept. Every
+          // address below answers it alike, so the words tell a stranger
+          // nothing about which addresses this dashboard serves.
           response.redirect(
             303,
             hadIdentityCookie
               ? `${base}/sign-in?reason=${reason}${destination}${toTheWallet ? "&destination=settings" : ""}`
-              : `${base}/sign-in${
-                  toTheWallet
-                    ? "?destination=settings"
-                    : destination === ""
-                      ? ""
-                      : "?destination=woocommerce"
-                }`,
+              : !reading
+                ? `${base}/sign-in?reason=unsaved`
+                : `${base}/sign-in${toTheWallet ? "?destination=settings" : ""}`,
           );
           return;
         }
