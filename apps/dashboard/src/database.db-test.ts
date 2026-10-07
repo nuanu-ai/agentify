@@ -66,18 +66,28 @@ if (databaseUrl === null) {
 } else {
   const pool = connect(databaseUrl);
 
-  /** Every object in the database whose name still says cabinet. */
+  /**
+   * Every object in the database whose name still says cabinet, with what kind
+   * of object it is: `r` a table, `v` a view, `i` an index, `S` a sequence, `c`
+   * a constraint.
+   */
   const namedForTheCabinet = async (): Promise<string[]> => {
     const { rows } = await pool.query<{ name: string }>(
-      `select n.nspname || '.' || c.relname as name
+      `select c.relkind::text || ' ' || n.nspname || '.' || c.relname as name
          from pg_class c join pg_namespace n on n.oid = c.relnamespace
         where c.relname ilike '%cabinet%'
        union all
-       select conname::text from pg_constraint where conname ilike '%cabinet%'
+       select 'c ' || conname::text from pg_constraint where conname ilike '%cabinet%'
        order by 1`,
     );
     return rows.map((row) => row.name);
   };
+
+  /**
+   * What is left named for the cabinet on a database renamed from the old
+   * names: the signpost where the history used to be, and nothing else.
+   */
+  const ONLY_THE_SIGNPOST = ["v drizzle.cabinet_migrations"];
 
   const historyLength = async (table: string): Promise<number> => {
     const { rows } = await pool.query<{ count: string }>(
@@ -117,12 +127,15 @@ if (databaseUrl === null) {
 
       await migrateAccounts(pool, dashboardMigrations);
 
-      expect(await namedForTheCabinet()).toStrictEqual([]);
+      expect(await namedForTheCabinet()).toStrictEqual(ONLY_THE_SIGNPOST);
       expect(await historyLength("dashboard_migrations")).toBe(await journalLength());
       const accounts = await pool.query("select email from dashboard_accounts");
       expect(accounts.rows).toStrictEqual([{ email: "kept@example.com" }]);
-      const sends = await pool.query("select purpose from dashboard_link_sends");
-      expect(sends.rows).toStrictEqual([{ purpose: "dashboard" }]);
+      // The log of links sent is emptied rather than carried: its rows are
+      // keyed by a hash made with the old name, and kept they could be found by
+      // nothing, not the limit on sends and not `pnpm forget`.
+      const sends = await pool.query("select id from dashboard_link_sends");
+      expect(sends.rows).toStrictEqual([]);
 
       // The next release finds its history where this one left it, and has
       // nothing to do.
@@ -137,17 +150,31 @@ if (databaseUrl === null) {
       expect(await historyLength("dashboard_migrations")).toBe(await journalLength());
     });
 
-    it("refuses to choose between two histories rather than run on either", async () => {
-      // Two histories means something ran the new migrator against a database
-      // the old one had migrated, and which of the two is true cannot be read
-      // off either. Nothing is renamed and nothing is applied.
+    it("leaves an older revision's migrator nothing to apply, so it builds no empty tables beside the real ones", async () => {
+      // A revision from before the rename, put on the test channel or a laptop
+      // after it, looks for its history under the old name. Finding none, it
+      // would apply every file from the first and run on empty tables of the
+      // old names, with every account out of sight. It finds the signpost, sees
+      // that everything it knows of has run, and applies nothing; its code then
+      // fails on tables that are not there instead of serving empty ones.
       await migrateAsBeforeTheRename(pool);
-      await pool.query("create table drizzle.dashboard_migrations (id serial primary key)");
-
-      await expect(migrateAccounts(pool, dashboardMigrations)).rejects.toThrow(
-        /cabinet_migrations.*dashboard_migrations/,
+      await pool.query(
+        `insert into cabinet_accounts (id, email, email_verified, created_at, updated_at)
+         values ('acc_kept', 'kept@example.com', true, now(), now())`,
       );
-      expect(await historyLength("cabinet_migrations")).toBeGreaterThan(0);
+      await migrateAccounts(pool, dashboardMigrations);
+
+      await migrateAsBeforeTheRename(pool);
+
+      expect(await namedForTheCabinet()).toStrictEqual(ONLY_THE_SIGNPOST);
+      expect(await historyLength("dashboard_migrations")).toBe(await journalLength());
+      const accounts = await pool.query("select email from dashboard_accounts");
+      expect(accounts.rows).toStrictEqual([{ email: "kept@example.com" }]);
+
+      // And the next release forward finds everything where it left it.
+      await migrateAccounts(pool, dashboardMigrations);
+      expect(await namedForTheCabinet()).toStrictEqual(ONLY_THE_SIGNPOST);
+      expect(await historyLength("dashboard_migrations")).toBe(await journalLength());
     });
   });
 }
