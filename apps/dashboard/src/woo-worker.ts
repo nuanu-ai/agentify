@@ -42,9 +42,9 @@ import type { Identity } from "./identity.js";
 import { productIdFromMerchantItem } from "./woo-catalog.js";
 import {
   createTheOrderInTheShop,
-  type EligibleWooProduct,
   inspectProductInTheShop,
   type OrderMade,
+  type ProductInspection,
   type ShopKeys,
   type SoldItem,
 } from "./woo-shop.js";
@@ -62,17 +62,15 @@ export interface Filling {
    */
   readonly placeOrder?: (keys: ShopKeys, sold: SoldItem) => Promise<OrderMade>;
   /**
-   * The one currently supported downloadable file as the shop has it now,
-   * after authoritative checks, or null when the shop's answer does not show
-   * it as that — which includes a shop that did not answer.
-   *
-   * The real inspection is the default, and a price question and an order
-   * read the product the same way. A deployment passes nothing.
+   * How the shop is asked whether the product is still the one supported
+   * downloadable file, with the real inspection as the default. A price
+   * question and an order read the product the same way. A deployment passes
+   * nothing.
    */
-  readonly eligibleProduct?: (
+  readonly inspectProduct?: (
     connection: WooConnection,
     merchantItemId: string,
-  ) => Promise<EligibleWooProduct | null>;
+  ) => Promise<ProductInspection>;
   /** Test seam for the durable quote binding; production reads WooShops. */
   readonly quotedProduct?: (
     connection: WooConnection,
@@ -113,7 +111,8 @@ export const fillFromTheShop = async (
   if (known?.kind === "unknown") {
     return unknownCreation(order.id, connection.shopUrl, known.attemptedAt);
   }
-  const eligible = await productInTheShop(connection, order.merchant_item_id, parts);
+  const inspected = await productInTheShop(connection, order.merchant_item_id, parts);
+  const eligible = inspected.ok ? inspected.product : null;
   const quoted =
     order.price_id === undefined
       ? null
@@ -142,11 +141,16 @@ export const fillFromTheShop = async (
   };
   if (eligible === null) {
     await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
+    // Refused either way, and the reason is the one that is true: a shop that
+    // did not answer has said nothing about the product, so this does not say
+    // the product stopped being sold.
     return {
       refused: {
         code: "cannot_fulfill",
         message:
-          "This shop product is no longer a supported single-file download, so no WooCommerce order was created.",
+          !inspected.ok && inspected.again
+            ? "The shop did not answer when this order was placed, so no WooCommerce order was created."
+            : "This shop product is no longer a supported single-file download, so no WooCommerce order was created.",
       },
     };
   }
@@ -415,8 +419,9 @@ const quoteFromTheShop = async (
   at: Date,
   parts: Filling,
 ): Promise<QuoteResponse> => {
-  const product = await productInTheShop(connection, question.merchant_item_id, parts);
-  if (product === null) return { available: false, as_of: at.toISOString() };
+  const inspected = await productInTheShop(connection, question.merchant_item_id, parts);
+  if (!inspected.ok) return { available: false, as_of: at.toISOString() };
+  const product = inspected.product;
   const recorded = await parts.shops.recordQuote(
     connection.accountId,
     question.price_id,
@@ -431,17 +436,12 @@ const quoteFromTheShop = async (
 };
 
 /** The product as the shop has it now, read the one way both answers read it. */
-const productInTheShop = async (
+const productInTheShop = (
   connection: WooConnection,
   merchantItemId: string,
   parts: Filling,
-): Promise<EligibleWooProduct | null> => {
-  if (parts.eligibleProduct !== undefined) {
-    return parts.eligibleProduct(connection, merchantItemId);
-  }
-  const read = await inspectProductInTheShop(connection, merchantItemId);
-  return read.ok ? read.product : null;
-};
+): Promise<ProductInspection> =>
+  (parts.inspectProduct ?? inspectProductInTheShop)(connection, merchantItemId);
 
 /** A worker turning, until it is stopped. */
 export interface WooWorker {

@@ -80,7 +80,13 @@ export interface EligibleWooProduct {
 
 export type ProductInspection =
   | { readonly ok: true; readonly product: EligibleWooProduct }
-  | { readonly ok: false; readonly why: string };
+  /**
+   * No product to sell, and why. `again` says whether the shop failed to
+   * answer rather than answered no: a shop that could not be reached or was
+   * too busy has said nothing about the product, and what is told about the
+   * sale has to say that rather than a reason that is not true.
+   */
+  | { readonly ok: false; readonly why: string; readonly again: boolean };
 
 export interface WooOrderRead {
   readonly id: string;
@@ -131,7 +137,7 @@ export const inspectProductInTheShop = async (
 ): Promise<ProductInspection> => {
   const productId = productIdFromMerchantItem(keys.shopUrl, merchantItemId);
   if (productId === null) {
-    return { ok: false, why: "This card belongs to a different WooCommerce shop." };
+    return { ok: false, why: "This card belongs to a different WooCommerce shop.", again: false };
   }
   const endpoints = [
     `/wp-json/wc/v3/products/${productId}`,
@@ -155,27 +161,50 @@ export const inspectProductInTheShop = async (
       ),
     );
   } catch {
-    return { ok: false, why: "The shop did not answer the protected product check." };
+    return { ok: false, why: "The shop did not answer the protected product check.", again: true };
+  }
+  if (responses.some((response) => worthAskingAgain(response.status))) {
+    return {
+      ok: false,
+      why: "The shop was too busy to answer the protected product check.",
+      again: true,
+    };
   }
   if (responses.some((response) => !response.ok)) {
-    return { ok: false, why: "The shop refused the protected product or download-settings check." };
+    return {
+      ok: false,
+      why: "The shop refused the protected product or download-settings check.",
+      again: false,
+    };
   }
   let documents: unknown[];
   try {
     documents = await Promise.all(responses.map((response) => response.json()));
   } catch {
-    return { ok: false, why: "The shop's protected product check did not return readable JSON." };
+    return {
+      ok: false,
+      why: "The shop's protected product check did not return readable JSON.",
+      again: false,
+    };
   }
   const parsed = ProductSchema.safeParse(documents[0]);
   const settings = documents.slice(1).map((document) => SettingSchema.safeParse(document));
   if (!parsed.success) {
-    return { ok: false, why: "The shop's protected product or settings document is incomplete." };
+    return {
+      ok: false,
+      why: "The shop's protected product or settings document is incomplete.",
+      again: false,
+    };
   }
   if (settings[1]?.success !== true) {
-    return { ok: false, why: "The shop's tax calculation setting is unreadable." };
+    return { ok: false, why: "The shop's tax calculation setting is unreadable.", again: false };
   }
   if (settings.some((setting) => !setting.success)) {
-    return { ok: false, why: "The shop's protected product or settings document is incomplete." };
+    return {
+      ok: false,
+      why: "The shop's protected product or settings document is incomplete.",
+      again: false,
+    };
   }
   const product = parsed.data;
   const [currency, taxes, method, login, afterPayment, redirectFallback, decimals] = settings.map(
@@ -215,6 +244,7 @@ export const inspectProductInTheShop = async (
     return {
       ok: false,
       why: `This product cannot be imported: ${unsupported.join("; ")}.`,
+      again: false,
     };
   }
   const download = product.downloads[0];
@@ -224,11 +254,15 @@ export const inspectProductInTheShop = async (
     download.name.trim() === "" ||
     !URL.canParse(download.file)
   ) {
-    return { ok: false, why: "The product's one download does not name a readable address." };
+    return {
+      ok: false,
+      why: "The product's one download does not name a readable address.",
+      again: false,
+    };
   }
   const raw = new URL(download.file);
   if (raw.origin !== new URL(keys.shopUrl).origin) {
-    return { ok: false, why: "The downloadable file is outside this shop's origin." };
+    return { ok: false, why: "The downloadable file is outside this shop's origin.", again: false };
   }
   try {
     const exposed = await request(raw, {
@@ -236,14 +270,32 @@ export const inspectProductInTheShop = async (
       signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
     });
     await exposed.body?.cancel();
+    if (worthAskingAgain(exposed.status)) {
+      return {
+        ok: false,
+        why: "The shop's raw download protection could not be verified.",
+        again: true,
+      };
+    }
     if (exposed.status !== 401 && exposed.status !== 403) {
-      return { ok: false, why: "The downloadable file is public without an order permission." };
+      return {
+        ok: false,
+        why: "The downloadable file is public without an order permission.",
+        again: false,
+      };
     }
   } catch {
-    return { ok: false, why: "The shop's raw download protection could not be verified." };
+    // Not counted as silence: this request also fails on a public file too
+    // large to read, which is an answer, and the shop has just answered every
+    // other part of this check.
+    return {
+      ok: false,
+      why: "The shop's raw download protection could not be verified.",
+      again: false,
+    };
   }
   if (!TYPED_PRICE.test(product.price)) {
-    return { ok: false, why: "The protected product price is not a decimal amount." };
+    return { ok: false, why: "The protected product price is not a decimal amount.", again: false };
   }
   // From here on the price is the one form the card, the quote, the order and
   // WooCommerce's own order totals all speak. The fingerprint hashes that form
@@ -257,6 +309,7 @@ export const inspectProductInTheShop = async (
         `The shop's price for this product is ${product.price}, which has more than the two` +
         " decimal places a US dollar price has. It is not rounded to an amount the shop never" +
         " set; give the product a price in whole cents in WooCommerce.",
+      again: false,
     };
   }
   const fingerprint = createHash("sha256")
