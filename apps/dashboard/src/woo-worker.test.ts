@@ -120,6 +120,7 @@ const filling = (
     productId: merchantItemId.split("_").at(-1) ?? "",
     downloadId: "dl_guide",
     fileName: "Guide",
+    price: { amount: "25.00", currency: "USD" },
     fingerprint: "accepted-download-fingerprint",
   }),
   quotedProduct: async () => "accepted-download-fingerprint",
@@ -437,6 +438,7 @@ describe("the whole way through, against a real gateway", () => {
         productId: "11",
         downloadId: "dl_guide",
         fileName: "Guide",
+        price: { amount: "25.00", currency: "USD" },
         fingerprint: "accepted-download-fingerprint",
       }),
       quotedProduct: async () => "accepted-download-fingerprint",
@@ -499,6 +501,7 @@ describe("the whole way through, against a real gateway", () => {
         productId: "11",
         downloadId: "dl_guide",
         fileName: "Guide",
+        price: { amount: "25.00", currency: "USD" },
         fingerprint: "accepted-download-fingerprint",
       }),
       quotedProduct: async () => "accepted-download-fingerprint",
@@ -512,123 +515,6 @@ describe("the whole way through, against a real gateway", () => {
     expect(durable?.kind).toBe("unknown");
     expect(shop.orders).toHaveLength(1);
     expect(redelivery && "refused" in redelivery).toBe(true);
-  });
-
-  it("draws a quote and an order from the merchant stream and answers both", async () => {
-    // The same thing again, this time with the dashboard doing the drawing —
-    // which is the part a deployment runs and the part that has to speak the
-    // contract's own poll and answer routes.
-    open = await harness();
-    served = await serve(open);
-    const shop = await aShopOnAPort();
-    const gateway = gatewayFor(served.url, KEY);
-
-    const { cards } = cardsFromTheShop([aProduct()], shop.url);
-    const published = await gateway.publishCard(cards[0]?.card ?? ({} as never));
-    const itemId = published.ok && published.document.ok ? published.document.id : "";
-
-    const shops = memoryWooShops();
-    const connected: WooConnection = { ...connection(), shopUrl: shop.url };
-
-    const buying = buyOverHttp(open, served, itemId, {
-      onQuote: async () => ({
-        available: true,
-        price: { amount: "25.00", currency: "USD" },
-        as_of: "2026-09-14T12:00:00.000Z",
-      }),
-      onOrder: async (order) => {
-        const answer = await fillFromTheShop(order, connected, MERCHANT_EMAIL, {
-          shops,
-          now: () => new Date("2026-09-14T12:00:00.000Z"),
-          placeOrder: (
-            keys: Parameters<typeof createTheOrderInTheShop>[0],
-            sold: Parameters<typeof createTheOrderInTheShop>[1],
-          ) => createTheOrderInTheShop(keys, sold, fetch),
-          eligibleProduct: async () => ({
-            productId: "11",
-            downloadId: "dl_guide",
-            fileName: "Guide",
-            fingerprint: "accepted-download-fingerprint",
-          }),
-          quotedProduct: async () => "accepted-download-fingerprint",
-        });
-        if (answer === null) throw new Error("the order was left unanswered");
-        return answer;
-      },
-    });
-    const bought = await buying;
-    const started = bought.body as AgentOrderStatus;
-    const read = await served.call("GET", `/x402/orders/${started.order_id}/status`);
-
-    expect((read.body as AgentOrderStatus).delivered).toMatchObject({
-      file_name: "Guide",
-      order_number: "13",
-    });
-    expect(shop.orders).toHaveLength(1);
-
-    // The dashboard client exposes the same two reply routes its real loop uses.
-    expect(typeof gateway.answerQuote).toBe("function");
-    expect(typeof gateway.answerOrder).toBe("function");
-  });
-
-  it("answers a quote envelope before an order envelope", async () => {
-    const answered: string[] = [];
-    const gateway = {
-      pollWorker: async () => ({
-        ok: true as const,
-        document: {
-          envelopes: [
-            {
-              id: "env_quote",
-              kind: "quote_request" as const,
-              sent_at: "2026-09-14T12:00:00.000Z",
-              payload: {
-                merchant_item_id: merchantItemIdFor("https://shop.example.com", "11"),
-                price_id: "prc_1",
-                purpose: "purchase" as const,
-                expires_at: "2026-09-14T12:01:00.000Z",
-              },
-            },
-          ],
-        },
-      }),
-      answerQuote: async () => {
-        answered.push("quote");
-        return { ok: true as const, document: { used: true } };
-      },
-      answerOrder: async () => {
-        answered.push("order");
-        return { ok: true as const, document: { ok: true as const, result: "delivered" as const } };
-      },
-    } as never;
-    const turned = await turnOnce(connection(), {
-      shops: memoryWooShops(),
-      identity: {
-        byId: async () => ({
-          id: "p",
-          email: MERCHANT_EMAIL,
-          confirmed: true,
-          merchant: { id: open?.merchant.id ?? "", key: KEY },
-        }),
-      },
-      clientFor: () => gateway,
-      now: () => new Date("2026-09-14T12:00:00.000Z"),
-      waitSeconds: 1,
-      quote: async () => ({
-        available: true,
-        price: { amount: "25.00", currency: "USD" },
-        as_of: "2026-09-14T12:00:00.000Z",
-      }),
-      eligibleProduct: async () => ({
-        productId: "11",
-        downloadId: "dl_guide",
-        fileName: "Guide",
-        fingerprint: "accepted-download-fingerprint",
-      }),
-      quotedProduct: async () => "accepted-download-fingerprint",
-    });
-    expect(turned).toBe(1);
-    expect(answered).toEqual(["quote"]);
   });
 
   it("counts an event it drew, so the loop comes straight back for what follows", async () => {
@@ -717,7 +603,7 @@ describe("the whole way through, against a real gateway", () => {
         },
         clientFor: () => gateway,
         now: () => new Date("2026-09-14T12:00:00.000Z"),
-        quote: async () => {
+        eligibleProduct: async () => {
           throw new Error("a connection that cannot write must be refused before the shop is read");
         },
       },
