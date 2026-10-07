@@ -5,6 +5,7 @@ import {
   API_ROUTES,
   AUTH_MODES,
   CatalogPageSchema,
+  cardsOf,
   ERROR_CODES,
   ErrorEnvelopeSchema,
   expandPath,
@@ -736,11 +737,23 @@ describe("the status an agent reads", () => {
     expect(description).toContain("no refusal to quote");
   });
 
-  it("answers in the words both sides read, and refuses the machine's own", () => {
+  it("reads a status word added later as a word, rather than refusing the order", () => {
+    // The storefront has no version (ADR-0006 §5). An agent holding this
+    // schema meets a word it does not know, and reading it as not an ending it
+    // knows — and asking again later — is the safe reading; refusing the whole
+    // document would leave it with nothing about an order it paid for. The
+    // merchant's own view of the order stays closed.
     expect(
       AgentOrderStatusSchema.safeParse({ ...status, status: "payment_unresolved" }).success,
     ).toBe(true);
-    expect(AgentOrderStatusSchema.safeParse({ ...status, status: "paid" }).success).toBe(false);
+    expect(AgentOrderStatusSchema.parse({ ...status, status: "on_hold" }).status).toBe("on_hold");
+    expect(AgentOrderStatusSchema.safeParse({ ...status, status: "" }).success).toBe(false);
+  });
+
+  it("takes a field added later, which an agent ignores", () => {
+    expect(
+      AgentOrderStatusSchema.safeParse({ ...status, estimated_at: "2026-09-30T00:00:00Z" }).success,
+    ).toBe(true);
   });
 });
 
@@ -755,12 +768,18 @@ describe("the catalog an agent reads", () => {
     expect(errorOf(CatalogPageSchema, {})).toContain("items");
   });
 
-  it("holds every card in it to the projection an agent may see", () => {
-    // The merchant's published card is not this document. Handing one straight
-    // out would publish their own key and the address of their pricing service.
-    expect(
-      CatalogPageSchema.safeParse({ items: [{ ...publicCard, price_check: "handler" }] }).success,
-    ).toBe(false);
+  it("is read card by card, so a card an agent cannot read leaves the rest of the page", () => {
+    // ADR-0006 §5: one card a reader cannot make out — a mode or a shape this
+    // schema has not met — is passed over, and every other card stays for
+    // sale. A page refused whole would empty the catalog over one card.
+    const unreadable = { id: "itm_9a0f11", fulfillment: "by_appointment" };
+    const page = CatalogPageSchema.parse({ items: [publicCard, unreadable] });
+
+    expect(cardsOf(page)).toStrictEqual([publicCard]);
+  });
+
+  it("takes a field added later, which an agent ignores", () => {
+    expect(CatalogPageSchema.safeParse({ items: [], next_page: "cursor-42" }).success).toBe(true);
   });
 
   it("says in the exported document that it does not claim to be the whole catalog", () => {
