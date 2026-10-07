@@ -214,6 +214,15 @@ export type PurchaseAttempt =
   /** This order is somebody else's purchase, and this payment is not its own. */
   | { readonly step: "not_this_purchase" };
 
+/**
+ * How many envelopes one poll draws past without handing anything out before
+ * it answers empty. It is the batch a poll used to answer with, so one poll
+ * gets past as many closed orders as it once carried at a time; and it is few
+ * enough that a poll which can record nothing, because every write is
+ * failing, answers in a bounded time.
+ */
+const PASSED_AT_MOST = 32;
+
 export class Gateway {
   readonly runtime: Runtime;
   readonly runner: OrderRunner;
@@ -1532,25 +1541,37 @@ export class Gateway {
     const { config, queue } = this.runtime;
     // The window is real time, as the queue's own wait is: it bounds how long a
     // worker's request is held, and the order clock has nothing to do with it.
-    const until = performance.now() + Math.min(waitMs, config.worker.pollWaitMs);
+    const window = Math.min(waitMs, config.worker.pollWaitMs);
+    const until = performance.now() + window;
+    const nothing = { contract_version: CONTRACT_VERSION, envelopes: [] };
 
     // An envelope turned away is drawn past rather than answered with nothing.
     // An empty answer is what a quiet stream looks like, and a worker rests on
     // one — the SDK for a second — so answering an order that closed in the
     // queue with nothing would hold everything live behind it for that long,
     // and after an outage that is a second for every order that closed in the
-    // meantime. The loop ends on the first envelope handed out or on an empty
-    // draw. Every envelope it passes is finished or put back behind a delay, so
-    // it never draws the same one twice in a row, and once the window has run
-    // out a draw waits for nothing.
-    for (;;) {
+    // meantime.
+    //
+    // Drawing past has to end, though, and it does not end by itself. An
+    // envelope whose hand-over could not be recorded goes back on the stream
+    // behind a delay, and when every write is failing slowly that delay runs
+    // out before the others have been got through, so there is always one to
+    // draw. So a held poll stops at the end of its window, as it would have
+    // stopped on a quiet stream, and any poll stops after `PASSED_AT_MOST`
+    // envelopes turned away — the only bound a drain, whose window is nothing,
+    // has. Answered empty after its whole window, the SDK's worker does not rest
+    // before it polls again.
+    for (let passed = 1; ; passed += 1) {
       const drawn = await queue.draw(merchantId, 1, Math.max(0, until - performance.now()));
       if (drawn.length === 0) {
-        return { contract_version: CONTRACT_VERSION, envelopes: [] };
+        return nothing;
       }
       const handing = await this.#handOut(merchantId, drawn);
       if (handing.length > 0) {
         return { contract_version: CONTRACT_VERSION, envelopes: handing };
+      }
+      if (passed >= PASSED_AT_MOST || (window > 0 && performance.now() >= until)) {
+        return nothing;
       }
     }
   }
