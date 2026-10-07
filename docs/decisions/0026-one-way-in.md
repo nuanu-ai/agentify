@@ -94,7 +94,10 @@ behind the gate carries the address its page was drawn for, and the gate
 refuses, doing nothing the form asked, a form that names another address or none:
 a form the marking missed fails where it can be seen instead of working for
 whoever is signed in. It is held at the gate rather than route by route, and
-the sign-out is not held to it: it signs this browser out from any page.
+the sign-out is not held to it: it signs this browser out from any page. The
+scanner's own account requests (data access, deletion, unsubscribe) say the
+address their page showed in the same way, and their routes refuse a press
+that names another address or none.
 
 **4. The merchant is made on the dashboard's explicit request.** A person may own
 reports and no merchant. The dashboard offers a signed-in person without one a

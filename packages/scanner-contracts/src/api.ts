@@ -252,7 +252,23 @@ export const sharePreviewResponseSchema = publicShareSnapshotSchema
   .strict();
 export type SharePreviewResponse = z.infer<typeof sharePreviewResponseSchema>;
 
-export const accountDataRequestSchema = z.object({ type: z.enum(["access", "deletion"]) }).strict();
+/**
+ * The address the page making an account request was loaded for.
+ *
+ * People sign out to come back as another address (ADR-0026 §3), so a page
+ * loaded for the first can still be open when the second signs in, and its
+ * press arrives with the second one's cookie. The route acts only when this
+ * names the address signed in now.
+ */
+const signedInAsSchema = z.string().min(3);
+
+export const accountDataRequestSchema = z
+  .object({ type: z.enum(["access", "deletion"]), signed_in_as: signedInAsSchema })
+  .strict();
+
+export const accountUnsubscribeRequestSchema = z
+  .object({ signed_in_as: signedInAsSchema })
+  .strict();
 
 export const clientAnalyticsEventRequestSchema = z
   .object({

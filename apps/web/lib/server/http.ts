@@ -144,3 +144,29 @@ export function visitorUnknownResponse(request: Request) {
     30,
   );
 }
+
+/**
+ * The refusal for a press whose page was loaded for another address than the
+ * one signed in now, or null when the two match.
+ *
+ * People sign out to come back as another address (ADR-0026 §3), so a page
+ * loaded for the first can still be open when the second signs in, and its
+ * press arrives with the second one's cookie. The page sends the address it
+ * showed; a press naming another, or none, is refused with nothing changed.
+ * The words name only the address signed in now, because the other is
+ * whatever the request said about itself.
+ */
+export function pageNotMatched(request: Request, sent: unknown, email: string) {
+  const named =
+    typeof sent === "object" && sent !== null
+      ? (sent as { signed_in_as?: unknown }).signed_in_as
+      : undefined;
+  return named === email
+    ? null
+    : errorResponse(
+        request,
+        409,
+        "page_not_matched",
+        `The page this came from could not be matched to the address signed in now, ${email}, so nothing was changed. Reload the page to act as this address.`,
+      );
+}
