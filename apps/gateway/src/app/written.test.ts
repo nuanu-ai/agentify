@@ -61,13 +61,35 @@ function objectsIn(node: unknown, path: readonly (string | number)[] = []): (str
   ];
 }
 
-/** The document with one field nobody was promised added to the object at this path. */
+/**
+ * The document with one field nobody was promised added to the object at this
+ * path. Its value is an object, so a part whose names are free — a declared
+ * field, a delivery — still refuses it by the shape its values have to take.
+ */
 function leakedAt(document: unknown, path: readonly (string | number)[]): unknown {
   const copy = structuredClone(document) as Node;
   let at: Node = copy;
   for (const key of path) at = at[key] as Node;
-  at.merchant_wallet = "0x0000000000000000000000000000000000000001";
+  at.merchant_wallet = { address: "0x0000000000000000000000000000000000000001" };
   return copy;
+}
+
+/** Every record in a JSON Schema document whose values may be anything at all. */
+function freeRecordsIn(node: unknown, at: string, found: string[]): string[] {
+  if (Array.isArray(node)) {
+    for (const [index, each] of node.entries()) freeRecordsIn(each, `${at}[${index}]`, found);
+    return found;
+  }
+  if (typeof node !== "object" || node === null) return found;
+  const schema = node as Node;
+  const values = schema.additionalProperties;
+  if (values === true || (typeof values === "object" && Object.keys(values ?? {}).length === 0)) {
+    found.push(at);
+  }
+  for (const [key, value] of Object.entries(schema)) {
+    freeRecordsIn(value, `${at}.${key}`, found);
+  }
+  return found;
 }
 
 const sendable = (document: ZodType, written: unknown): boolean =>
@@ -107,6 +129,17 @@ const status = {
   seller: { name: "Freeland", site: "https://freeland.example" },
 };
 
+const { refusal: _noRefusal, ...unrefused } = status;
+
+const collected = { ...unrefused, status: "delivered", delivered: { code: "BRUNCH-4F2A" } };
+
+const confirmed = {
+  ...shown,
+  fulfillment: "confirm",
+  confirm_deadline_seconds: 600,
+  fulfill_deadline_seconds: 3600,
+};
+
 describe("what this gateway checks before it sends a document", () => {
   for (const [name, route] of Object.entries(API_ROUTES)) {
     const document = route.response.document;
@@ -119,6 +152,19 @@ describe("what this gateway checks before it sends a document", () => {
     });
   }
 
+  it("holds an agent's documents to values of a known shape, even where the names are free", () => {
+    // A delivery's names are the card's and cannot be listed here, but its
+    // values can: a declared field is a string, a number or a boolean, so a
+    // record that takes anything would carry a buyer's parameters or a
+    // merchant's object out under any name.
+    for (const document of [CatalogPageSchema, AgentOrderStatusSchema]) {
+      const closed = checksBeforeSending(document).at(-1);
+      if (closed === undefined) throw new Error("no check before sending");
+
+      expect(freeRecordsIn(asInput(closed), "$", [])).toStrictEqual([]);
+    }
+  });
+
   it("reads the storefront's documents open, so the check above is not the reader's", () => {
     // The negative control: the forms an agent reads have open objects in
     // them, and a walk that found none there would be finding nothing at all.
@@ -128,13 +174,25 @@ describe("what this gateway checks before it sends a document", () => {
 
   it("sends the documents it writes as they stand", () => {
     expect(sendable(CatalogPageSchema, page)).toBe(true);
+    expect(sendable(CatalogPageSchema, { items: [confirmed] })).toBe(true);
     expect(sendable(AgentOrderStatusSchema, status)).toBe(true);
+    expect(sendable(AgentOrderStatusSchema, collected)).toBe(true);
+  });
+
+  it("refuses to send goods on an order whose status says there are none", () => {
+    // The goods are the buyer's only once the status says delivered; on any
+    // other word there is nothing here to hand over, and something in this
+    // field would be whatever a mistake put there.
+    for (const word of ["rejected", "in_progress", "refund_due", "delivered_unpaid"]) {
+      expect(sendable(AgentOrderStatusSchema, { ...collected, status: word }), word).toBe(false);
+    }
   });
 
   it("refuses to send a field nobody was promised, wherever it is", () => {
     for (const [name, document, written] of [
       ["the catalog", CatalogPageSchema, page],
       ["an order's status", AgentOrderStatusSchema, status],
+      ["an order's goods", AgentOrderStatusSchema, collected],
     ] as const) {
       const places = objectsIn(written);
       expect(places.length, name).toBeGreaterThan(3);
