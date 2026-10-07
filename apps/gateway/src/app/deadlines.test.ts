@@ -470,6 +470,53 @@ describe("when a delivery goes unanswered", () => {
     });
   });
 
+  it("does not run out the attempts of a merchant whose acceptance came after our wait", async () => {
+    // Our wait for a handler's answer is a few seconds, and a merchant's handler
+    // can take longer than that to say it has taken the order on. The silence
+    // noticed in the meantime sends the order out again, and that repeat is
+    // ordinary — delivery is at least once. What must not follow is the silence
+    // after the repeat being counted as well: the merchant has answered, and a
+    // slow but willing one would otherwise run out of attempts in seconds and
+    // see a paid order close into a refund while he is filling it.
+    const harnessed = await started({
+      HANDLER_ANSWER_MS: "20",
+      REDELIVERY_BASE_DELAY_MS: "5",
+      REDELIVERY_MAX_ATTEMPTS: "3",
+      // Far behind every repeat the cap allows, so an ending reached before it
+      // could only be the cap, and reaching it means the repeats have had their
+      // whole life.
+      DEFAULT_ASYNC_FULFILLMENT_MS: "400",
+    });
+    const orderId = await bought(harnessed, asyncCard);
+    await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+
+    // Three times the wait, every time: each hand-over goes quiet before its
+    // acceptance lands. The worker takes one order at a time, as one process of
+    // the merchant's would.
+    let handed = 0;
+    const slow = workUntilStopped(harnessed, {
+      onOrder: async () => {
+        handed += 1;
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        return { accepted: {} };
+      },
+    });
+    await vi.waitFor(
+      async () => expect((await state(harnessed, orderId))?.state).toBe("refund_due"),
+      { timeout: 4_000, interval: 10 },
+    );
+    await slow.stop();
+
+    // The first hand-over and the one repeat that was on its way before the
+    // acceptance landed. A third is a silence counted against an order the
+    // merchant already held, and with the cap at three it is the cap, not the
+    // merchant's deadline, that closed the order.
+    const owed = await state(harnessed, orderId);
+    expect(owed?.dispatch.attempts).toBeLessThanOrEqual(2);
+    expect(handed).toBeLessThanOrEqual(2);
+    expect(owed?.dispatch.accepted).toBe(true);
+  });
+
   it("spends one delivery on one silence, though the same reminder arrives twice", async () => {
     // The queue hands a reminder out again when the process that took it never
     // answered — it died, or the completion never reached the database. That is

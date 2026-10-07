@@ -1191,6 +1191,46 @@ describe("the same order delivered to the handler twice", () => {
   });
 });
 
+describe("an order the merchant has taken on", () => {
+  // Taking an order on is the merchant saying he holds it. Our wait for his
+  // answer is a few seconds and his handler can be slower than that, so the
+  // silence we noticed and the acceptance that ends it can arrive in either
+  // order, and a repeat decided on in between can reach him after he has
+  // answered. Whichever way round it goes, a silence noticed once he holds the
+  // order is not a delivery he failed: counting it spends one he never missed,
+  // and enough of those close a paid order into a refund owed while he is
+  // filling it.
+  it("does not spend a delivery on a silence noticed after it", () => {
+    const takenOn = walk(newOrder("async"), [
+      { kind: "payment_verified", at: T0 + 1 },
+      { kind: "payment_settled", at: T0 + 2 },
+      { kind: "order_dispatched", at: T0 + 3 },
+      { kind: "handler_accepted", at: T0 + 4 },
+    ]);
+    // The last delivery the cap allows, so that counting this silence would
+    // not just cost a delivery but close the order.
+    const lastAttempt = { ...takenOn, dispatch: { attempts: 5, accepted: true } };
+    const refused = transition(lastAttempt, { kind: "handler_undelivered", at: T0 + 10 });
+
+    expect(refused.ok).toBe(false);
+    if (refused.ok) throw new Error("a silence after the acceptance was counted");
+    expect(refused.rejection.code).toBe("event_not_applicable");
+    expect(refused.rejection.retryable).toBe(false);
+  });
+
+  it("still repeats an order nobody has taken on", () => {
+    // The negative control: the rule above is about an acceptance, not about
+    // repeats in general.
+    const handedOver = walk(newOrder("async"), [
+      { kind: "payment_verified", at: T0 + 1 },
+      { kind: "payment_settled", at: T0 + 2 },
+      { kind: "order_dispatched", at: T0 + 3 },
+    ]);
+    const { effects } = must(handedOver, { kind: "handler_undelivered", at: T0 + 10 });
+    expect(effects).toStrictEqual([{ kind: "redeliver_order", attempt: 2, delayMs: 1_000 }]);
+  });
+});
+
 describe("goods handed over that were never paid for", () => {
   it("records the case and tells the merchant", () => {
     // Portal, "Выдали, а платёж не исполнился": rare, and possible only in the
