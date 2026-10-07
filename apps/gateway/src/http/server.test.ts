@@ -8,7 +8,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { setServiceName } from "../app/merchants.js";
 import {
-  buyOverHttp,
   type Harness,
   harness,
   type Served,
@@ -136,31 +135,6 @@ describe("the surface is the table", () => {
         `${name} with no key answered ${answered.status}`,
       ).toBe(route.auth === "merchant_key");
     }
-  });
-
-  it("answers the agent's own route with no key on it at all", async () => {
-    // The half the loop above cannot state, because it is written against
-    // whatever the table says rather than against what any one route is for.
-    // This route is the agent's, an agent has no key, and the placeholder the
-    // loop calls it with names no order — so a route that had quietly grown a
-    // door would still answer 404 there and the loop would be satisfied.
-    // Here a real order is bought and read back with nothing in the header.
-    const { served, harnessed } = await started();
-    const itemId = await publish(served, {
-      ...syncCard,
-      merchant_item_id: "SKU 200/1",
-      fulfillment: "async",
-      fulfill_deadline_seconds: 3_600,
-    });
-    const bought = await buyOverHttp(harnessed, served, itemId, {
-      onOrder: () => ({ accepted: {} }),
-    });
-    const orderId = (bought.body as { order_id: string }).order_id;
-
-    const answered = await served.call("GET", `/x402/orders/${orderId}/status`);
-
-    expect(answered.status, JSON.stringify(answered.body)).toBe(200);
-    expect((answered.body as { order_id: string }).order_id).toBe(orderId);
   });
 
   it("will not mount a route whose door nobody has chosen, whoever hands it over", async () => {

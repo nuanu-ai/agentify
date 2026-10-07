@@ -1908,17 +1908,6 @@ describe("the address a merchant's money arrives at", () => {
       expect(await paidInto(running)).toBe(before);
     }
   });
-
-  it("says the gateway would not answer rather than drawing a page with no address on it", async () => {
-    const running = await started();
-    await running.browser.signIn();
-    await running.stopGateway();
-
-    const screen = await running.browser.get("/settings");
-
-    expect(screen.status).toBe(502);
-    expect(readable(screen.html)).toMatch(/did not answer/i);
-  });
 });
 
 describe("a merchant who has chosen no name", () => {

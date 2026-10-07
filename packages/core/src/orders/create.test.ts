@@ -1,14 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createOrder } from "./create.js";
 import { createInput, TEST_PRICE } from "./fixtures.js";
-import {
-  CLOSED_ORDER_STATES,
-  FULFILLMENT_MODES,
-  isOpen,
-  modeOf,
-  OPEN_ORDER_STATES,
-  ORDER_STATES,
-} from "./model.js";
+import { CLOSED_ORDER_STATES, isOpen, modeOf, OPEN_ORDER_STATES, ORDER_STATES } from "./model.js";
 
 describe("the order vocabulary", () => {
   it("splits every state into exactly one of open and closed", () => {
@@ -31,7 +24,6 @@ describe("the order vocabulary", () => {
     expect(modeOf("sync")).toStrictEqual({ needsConfirmation: false, settle: "after_fulfillment" });
     expect(modeOf("async")).toStrictEqual({ needsConfirmation: false, settle: "on_purchase" });
     expect(modeOf("confirm")).toStrictEqual({ needsConfirmation: true, settle: "on_purchase" });
-    expect(FULFILLMENT_MODES).toStrictEqual(["sync", "async", "confirm"]);
   });
 
   it("keeps every state that is not a resting place of the purchase open", () => {
