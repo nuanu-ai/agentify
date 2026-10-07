@@ -45,26 +45,47 @@ const caddyfile = resolve(
  */
 const POLICIES_THAT_NULL_THE_ORIGIN = ["no-referrer"];
 
+/**
+ * Every Referrer-Policy the Caddyfile sets, wherever and however it sets it.
+ *
+ * Not only the site-wide block: a `header` line with a matcher overrides it
+ * for the pages it matches, and the page the sign-in mail links to is one of
+ * those — a page whose whole job is a form post. Caddy reads header names
+ * without regard to case and lets a value be quoted, so this does too. A line
+ * that names the header and yields no value it can read comes back whole, so
+ * that it fails the list of policies below instead of being skipped.
+ */
+const policiesSet = (): string[] =>
+  readFileSync(caddyfile, "utf8")
+    .split("\n")
+    .map((line) => line.replace(/(^|\s)#.*$/, "").trim())
+    .filter((line) => /referrer-policy/i.test(line))
+    .map((line) => /referrer-policy\s+"?([^"\s]+)"?$/i.exec(line)?.[1] ?? line);
+
 describe("the headers the edge puts on the dashboard's pages", () => {
   it("does not use a referrer policy that makes a browser hide the origin", () => {
-    const configuration = readFileSync(caddyfile, "utf8");
+    const said = policiesSet();
     // A search that found nothing to search would pass for the wrong reason.
-    expect(configuration).toContain("Referrer-Policy");
+    expect(said, "the Caddyfile sets no Referrer-Policy this test could read").not.toEqual([]);
 
-    const said = /^\s*Referrer-Policy\s+(\S+)\s*$/m.exec(configuration)?.[1];
-    expect(said, "the Caddyfile sets a Referrer-Policy this test could not read").toBeDefined();
-    expect(
-      POLICIES_THAT_NULL_THE_ORIGIN,
-      `Referrer-Policy is "${said}", and a browser then posts every form with Origin: null,` +
-        " which the dashboard refuses — nobody can sign in. Use same-origin.",
-    ).not.toContain(said);
+    for (const policy of said) {
+      expect(
+        POLICIES_THAT_NULL_THE_ORIGIN,
+        `Referrer-Policy is "${policy}", and a browser then posts every form with Origin: null,` +
+          " which the dashboard refuses — nobody can sign in. Use same-origin.",
+      ).not.toContain(policy);
+    }
   });
 
   it("still keeps a referrer off other people's sites", () => {
     // The reason the line exists at all. Dropping the header entirely would
     // also fix the sign-in, and it would send the address of a merchant's
     // dashboard page to whatever they click through to.
-    const said = /^\s*Referrer-Policy\s+(\S+)\s*$/m.exec(readFileSync(caddyfile, "utf8"))?.[1];
-    expect(["same-origin", "strict-origin", "strict-origin-when-cross-origin"]).toContain(said);
+    const said = policiesSet();
+    expect(said).not.toEqual([]);
+
+    for (const policy of said) {
+      expect(["same-origin", "strict-origin", "strict-origin-when-cross-origin"]).toContain(policy);
+    }
   });
 });
