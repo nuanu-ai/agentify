@@ -638,6 +638,66 @@ describe("when a delivery goes unanswered", () => {
   });
 });
 
+describe("a burst of orders", () => {
+  it("waits for each answer from the moment that order was handed over, not the burst", async () => {
+    // The wait for a handler's answer starts when an order is handed to the
+    // worker, and a worker works its orders one at a time. Handed a burst all
+    // at once, the orders at the back of it would be waiting out the handler
+    // calls ahead of them, and taken for silences while their own handler had
+    // not even started. A repeat sent for that costs the order one of its
+    // deliveries — and a synchronous order, which cannot be taken on, can
+    // run out of them — although every handler here answers at once.
+    const harnessed = await started({
+      // Eight times what one handler call takes, so only a wait that also
+      // covers the calls ahead of an order can run out.
+      HANDLER_ANSWER_MS: "200",
+      REDELIVERY_BASE_DELAY_MS: "5",
+      DEFAULT_ASYNC_FULFILLMENT_MS: "60000",
+    });
+    const published = await harnessed.gateway.publishCard(harnessed.merchant.id, asyncCard);
+    if (!published.ok) throw new Error("the card would not publish");
+    const orderIds: string[] = [];
+    for (let nth = 0; nth < 12; nth += 1) {
+      const offered = await harnessed.gateway.beginPurchase(published.id, {});
+      if (offered.step !== "pay") throw new Error("no price was offered");
+      // One payment buys one order, so each purchase brings its own.
+      await harnessed.gateway.payPurchase(
+        offered.order.order.id,
+        `PAYMENT-${nth}`,
+        `PAYMENT-${nth}`,
+      );
+      orderIds.push(offered.order.order.id);
+    }
+
+    const quick = workUntilStopped(harnessed, {
+      onOrder: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        return { accepted: {} };
+      },
+    });
+    // Every order taken on and nothing more on its way to anybody. A repeat
+    // decided on for any of them sits on the stream until it is drawn, so
+    // this is not reached until every repeat there was has been handed over
+    // and counted below.
+    await vi.waitFor(
+      async () => {
+        for (const orderId of orderIds) {
+          expect((await state(harnessed, orderId))?.dispatch.accepted).toBe(true);
+          expect(await harnessed.queue.holdsOrder(harnessed.merchant.id, orderId)).toBe(false);
+        }
+      },
+      { timeout: 5_000, interval: 10 },
+    );
+    await quick.stop();
+
+    const handed: Record<string, number | undefined> = {};
+    for (const orderId of orderIds) {
+      handed[orderId] = (await state(harnessed, orderId))?.dispatch.attempts;
+    }
+    expect(handed).toStrictEqual(Object.fromEntries(orderIds.map((orderId) => [orderId, 1])));
+  });
+});
+
 describe("a timer that fires at the wrong moment", () => {
   it("hands the machine's refusal back rather than closing the order on it", async () => {
     // A stale reminder off the queue, or one for a clock this order never had.
