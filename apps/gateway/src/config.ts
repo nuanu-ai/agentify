@@ -14,7 +14,7 @@ import { z } from "zod";
 /**
  * The sandbox address and the question about it are the core's, and they are
  * passed straight on from here so that nothing in this package has to know
- * that they moved. The cabinet asks the same question of the same string, and
+ * that they moved. The dashboard asks the same question of the same string, and
  * two spellings of one distinguished value is the disagreement the core module
  * exists to remove (ADR-0008, ADR-0020).
  */
@@ -288,7 +288,7 @@ const WORKER_POLL_WAIT_CEILING_MS = 40_000;
 
 /**
  * The shortest secret the gateway will present on its route into the
- * cabinet: what `openssl rand -base64 32` produces, and the floor the cabinet
+ * dashboard: what `openssl rand -base64 32` produces, and the floor the dashboard
  * holds its own internal secrets to. It catches a placeholder left in a file,
  * not a weak choice by somebody who read the sentence.
  */
@@ -328,13 +328,13 @@ const environmentSchema = z.object({
    * there already, and after that the door reads it the way it reads every
    * other key. What it buys is the sandbox in `compose.yaml`, where the same
    * string is also given to the merchant process, next to the database password
-   * and for the same reason. Not to the cabinet: it has no merchant key in its
+   * and for the same reason. Not to the dashboard: it has no merchant key in its
    * configuration at all, and holds one of its own instead, made at every
    * sign-in and typed by nobody (ADR-0014 §2).
    *
    * A deployed channel sets nothing here, and its release refuses one that
    * does. A merchant there comes into being one way: a person opens the link
-   * mailed to their address and presses the cabinet's one control (ADR-0014),
+   * mailed to their address and presses the dashboard's one control (ADR-0014),
    * and a key in an environment would be a second way, and one that cannot be
    * revoked without a deployment, which is the thing keys became rows in order
    * to fix: disabling its row stops it opening anything, and the string is
@@ -611,7 +611,7 @@ const environmentSchema = z.object({
    * truncated paste would invite them to pay nobody.
    */
   PAY_TO_ADDRESS: z.string().min(1).optional(),
-  // The cabinet applies this same rule to its mail key: Compose hands every
+  // The dashboard applies this same rule to its mail key: Compose hands every
   // service a fixed list of names, so an unset credential arrives as its name
   // with nothing after it. A zero-length credential is no credential, not a
   // malformed one that stops a stack whose facilitator asks for neither.
@@ -619,14 +619,14 @@ const environmentSchema = z.object({
   CDP_API_KEY_SECRET: emptyIsAbsent(z.string().min(1)),
 
   /**
-   * Where the cabinet is asked to tell a merchant of a change, and what it is
+   * Where the dashboard is asked to tell a merchant of a change, and what it is
    * asked with (ADR-0019). The route and the secret are the gateway's one way
-   * into the cabinet, and anything else it ever needs from the cabinet is
+   * into the dashboard, and anything else it ever needs from the dashboard is
    * asked over them too.
    *
    * On a live deployment a change of a payout wallet already set is announced
    * to every account naming the merchant before anything is written, and a new
-   * key and a cancelled change are announced once they are done. The cabinet
+   * key and a cancelled change are announced once they are done. The dashboard
    * holds the addresses, so the gateway asks it, over an internal route of its
    * own on the compose network and with a secret only the two processes hold —
    * never the scanner's route or the scanner's secret, which would give the
@@ -636,11 +636,13 @@ const environmentSchema = z.object({
    * the sandbox apply a change at once and announce nothing, so a stack of
    * either kind that names these is not asked to use them. Set to nothing reads
    * the same as never set, for the reason the facilitator's credentials above
-   * give. The secret is held to the length the cabinet's other internal secret
+   * give. The secret is held to the length the dashboard's other internal secret
    * is, and a refusal names the variable and never the value.
    */
   CABINET_INTERNAL_URL: emptyIsAbsent(
-    z.string().refine(isHttpUrl, "must be an http address of the gateway's route into the cabinet"),
+    z
+      .string()
+      .refine(isHttpUrl, "must be an http address of the gateway's route into the dashboard"),
   ),
   GATEWAY_CABINET_SECRET: emptyIsAbsent(
     z
@@ -695,10 +697,10 @@ export interface WorkerConfig {
   readonly pollMaxEnvelopes: number;
 }
 
-/** Where and with what a live gateway asks the cabinet, to tell a merchant of a change. */
-export interface CabinetRouteConfig {
+/** Where and with what a live gateway asks the dashboard, to tell a merchant of a change. */
+export interface DashboardRouteConfig {
   readonly url: string;
-  /** Presented as a bearer to the cabinet's route. Never printed. */
+  /** Presented as a bearer to the dashboard's route. Never printed. */
   readonly secret: string;
 }
 
@@ -747,13 +749,13 @@ export interface GatewayConfig {
    */
   readonly surfaceMode: SurfaceMode;
   /**
-   * Where and with what the gateway asks the cabinet over its route into it,
+   * Where and with what the gateway asks the dashboard over its route into it,
    * which is how a wallet change, a new key and a cancelled change are
    * announced, on the live deployment and nowhere else (ADR-0019). Null
    * everywhere a change applies at once and nothing is announced, whatever the
    * environment named.
    */
-  readonly cabinetRoute: CabinetRouteConfig | null;
+  readonly dashboardRoute: DashboardRouteConfig | null;
 }
 
 /**
@@ -973,7 +975,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
       problems.push(
         `PAYMENT_NETWORK is ${JSON.stringify(network)}, where the money is real, and ` +
           `${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} not set — a change of a ` +
-          "merchant's payout wallet is announced through the cabinet before it is recorded, so " +
+          "merchant's payout wallet is announced through the dashboard before it is recorded, so " +
           "without a way to ask it every such change would be refused",
       );
     }
@@ -1024,7 +1026,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
     surfaceMode: surfaceModeOf(network, environmentValues.FACILITATOR_URL),
     // Past the refusal above a live chain has both, so the only question left
     // is whether this deployment announces at all.
-    cabinetRoute:
+    dashboardRoute:
       derivedEnvironment === "live" &&
       environmentValues.CABINET_INTERNAL_URL !== undefined &&
       environmentValues.GATEWAY_CABINET_SECRET !== undefined

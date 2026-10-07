@@ -19,7 +19,7 @@ still move: the secret `ANNOUNCEMENT_SECRET` becomes `GATEWAY_CABINET_SECRET`,
 the gateway's variable `CABINET_ANNOUNCEMENT_URL` becomes
 `CABINET_INTERNAL_URL`, the path `/internal/announcements` becomes
 `/internal/gateway` on the same port 3003, and the cabinet's listener moves
-from `apps/cabinet/src/announcement-server.ts` to `gateway-server.ts`. This
+from `apps/dashboard/src/announcement-server.ts` to `gateway-server.ts`. This
 note uses the new names and cites the old files. The other branch removes
 every way a merchant comes into being except the link mailed to a person and
 the cabinet's one control; where this note depends on what it leaves behind,
@@ -47,10 +47,10 @@ then every route the contract calls mountable, which is everything under
 wakes every parked worker poll and parked purchase with nothing, so an agent
 sees a restart it can retry.
 
-The cabinet starts in `apps/cabinet/src/main.ts`. It reads its own
-configuration (`apps/cabinet/src/config.ts`), opens its own pool, builds the
+The cabinet starts in `apps/dashboard/src/main.ts`. It reads its own
+configuration (`apps/dashboard/src/config.ts`), opens its own pool, builds the
 identity component (Better Auth, ADR-0009), and opens up to three listeners.
-It also starts the WooCommerce worker (`apps/cabinet/src/woo-worker.ts`), a
+It also starts the WooCommerce worker (`apps/dashboard/src/woo-worker.ts`), a
 loop that fills the orders of merchants who connected a shop by drawing their
 stream from the gateway, the way a merchant's own worker would.
 
@@ -62,8 +62,8 @@ stream from the gateway, the way a merchant's own worker would.
 | 3003 | cabinet | `/internal/gateway` | the gateway, on the compose network | `GATEWAY_CABINET_SECRET` |
 
 The two internal listeners open only where their secret is set
-(`startReportIdentityServer` in `apps/cabinet/src/report-identity-server.ts`,
-`startAnnouncementServer` in `apps/cabinet/src/announcement-server.ts`), and
+(`startReportIdentityServer` in `apps/dashboard/src/report-identity-server.ts`,
+`startAnnouncementServer` in `apps/dashboard/src/announcement-server.ts`), and
 neither port is published on the host; the preflight refuses a cabinet that
 publishes any port (`packages/core/src/deployment/preflight.mjs`, line 352).
 
@@ -100,17 +100,17 @@ the catalog. Its `restart` and `running` helpers name both services (lines
 
 ### How the cabinet calls the gateway
 
-The cabinet's client is `apps/cabinet/src/gateway.ts`. It builds every
+The cabinet's client is `apps/dashboard/src/gateway.ts`. It builds every
 address from the contract's route table, sends the merchant key in its header,
 holds each call to ten seconds, and parses every answer against the schema the
 table names. One call carries no key: registration, which presents the
 invitation value from the cabinet's configuration. The client is built in five
 places, each from the key on the account row: the screens and registration
-(`apps/cabinet/src/server.ts`, lines 356-358), the key renewal after the
-scanner's question (`apps/cabinet/src/main.ts`, line 42), the WooCommerce
+(`apps/dashboard/src/server.ts`, lines 356-358), the key renewal after the
+scanner's question (`apps/dashboard/src/main.ts`, line 42), the WooCommerce
 worker (`main.ts`, line 65), and two terminal commands, `woo:recover`
-(`apps/cabinet/src/woo-recover.ts`, line 35) and `account add`
-(`apps/cabinet/src/account.ts`, line 84).
+(`apps/dashboard/src/woo-recover.ts`, line 35) and `account add`
+(`apps/dashboard/src/account.ts`, line 84).
 
 Each of the client's calls is one route, and each route's handler in
 `apps/gateway/src/http/routes.ts` is one call to a method of `Gateway`
@@ -144,17 +144,17 @@ transaction (`Gateway.registerMerchant`, line 636; the store writes
 `purpose: "cabinet"` in `apps/gateway/src/adapters/postgres/store.ts`, line
 177). The cabinet writes the merchant and the key, as issued, onto the
 account row (`cabinet_accounts.merchant_id` and `merchant_key`,
-`apps/cabinet/src/schema.ts`, lines 62-64, with a check that both or neither
+`apps/dashboard/src/schema.ts`, lines 62-64, with a check that both or neither
 are set). The key is renewed at every sign-in (`server.ts`, line 686) and on
 the first reading of a session's day, whether that reading is a cabinet page
-(`sessionReader`, `apps/cabinet/src/cabinet-key.ts`, line 177) or the
+(`sessionReader`, `apps/dashboard/src/dashboard-key.ts`, line 177) or the
 scanner's question about a cookie, which renews after it answers
 (`report-identity-server.ts`, lines 103-106). A renewal is three calls: ask
 for a fresh key with the one on the row, move the row to it on the condition
 that it still holds the old one, and forget the old one with itself
-(`keyRenewal`, `cabinet-key.ts`, line 93). An interruption between the second
+(`keyRenewal`, `dashboard-key.ts`, line 93). An interruption between the second
 and the third leaves a working key nobody holds, and nothing sweeps those
-(`cabinet-key.ts`, lines 65-71; ADR-0014 §5).
+(`dashboard-key.ts`, lines 65-71; ADR-0014 §5).
 
 The gateway treats the kind specially in six places. The `purpose` column
 tells the two kinds apart (`apps/gateway/src/adapters/postgres/schema.ts`,
@@ -183,10 +183,10 @@ caller; callers outside it could not be searched, but they would be refused.
 
 The gateway's port is `apps/gateway/src/ports/announcer.ts`: one method,
 `announce`, with five outcomes. The cabinet's teller
-(`tellerFor` in `apps/cabinet/src/announcement-server.ts`, lines 54-79) can
+(`tellerFor` in `apps/dashboard/src/announcement-server.ts`, lines 54-79) can
 return three of them: every account naming the merchant was sent a message the
 mail provider took, no account names the merchant, or at least one message was
-not taken. The HTTP adapter (`apps/gateway/src/adapters/cabinet/announcer.ts`)
+not taken. The HTTP adapter (`apps/gateway/src/adapters/dashboard/announcer.ts`)
 adds two: a 4xx means the listener turned the request away before telling
 anybody, and every other ending, including silence past twenty seconds, means
 the cabinet did not answer and a message may have gone out. `Gateway.#announce`
@@ -212,7 +212,7 @@ refusals:
 Two rows exist only because of the hop. In one process the teller is a
 function call, so nothing can turn the request away, and "did not answer" has
 two remaining causes. The mail provider's silence is already caught inside the
-postman and reported as a message not taken (`apps/cabinet/src/mail.ts`, lines
+postman and reported as a message not taken (`apps/dashboard/src/mail.ts`, lines
 117-159, ten seconds a message). What is left is a throw from our own code,
 the read of the addresses or a defect, before any message or between two of
 them. That is exactly "not every message was handed over, and some may have
@@ -236,7 +236,7 @@ protects anything.
 
 | | Gateway | Cabinet |
 |---|---|---|
-| Tables | `merchants`, `merchant_keys`, `cards`, `orders`, `receipts`, `payment_claims` (`apps/gateway/src/adapters/postgres/schema.ts`) | eleven `cabinet_*` tables: accounts, sessions, credentials, verifications, link sends, report identity secrets, deletion tombstones, and four for WooCommerce (`apps/cabinet/src/schema.ts`) |
+| Tables | `merchants`, `merchant_keys`, `cards`, `orders`, `receipts`, `payment_claims` (`apps/gateway/src/adapters/postgres/schema.ts`) | eleven `cabinet_*` tables: accounts, sessions, credentials, verifications, link sends, report identity secrets, deletion tombstones, and four for WooCommerce (`apps/dashboard/src/schema.ts`) |
 | Migration history | `drizzle.__drizzle_migrations`, eleven files | `drizzle.cabinet_migrations`, thirteen files |
 | Queue | pg-boss (`apps/gateway/src/adapters/pgboss/queue.ts`) | none |
 | Pools | the store's, and pg-boss's own | one, for identity and WooCommerce |
@@ -248,7 +248,7 @@ them buys nothing a person would notice.
 
 Two terminal commands already use the gateway's application code in a process
 of their own, with no HTTP and no key. `pnpm approve`
-(`apps/cabinet/src/approve.ts`) shares one pool between the cabinet's account
+(`apps/dashboard/src/approve.ts`) shares one pool between the cabinet's account
 directory and the gateway's store and calls `grantLiveApproval`. The payment
 report command (`apps/gateway/src/payment-report.ts`) starts the queue as a
 writer that sends and does not consume (`startWriter`,
@@ -289,10 +289,10 @@ gateway on a loopback port, and the HTTP tests in `apps/gateway/src/http/`
 call it there. The store's contract runs against memory and against Postgres
 (`testing/store-contract.ts`, the `*.db-test.ts` files under `pnpm test:db`).
 The HTTP announcer is tested against servers that answer badly or not at all
-(`adapters/cabinet/announcer.test.ts`).
+(`adapters/dashboard/announcer.test.ts`).
 
 The cabinet is already assembled with the gateway in one test process.
-`apps/cabinet/src/server.test.ts` starts the gateway harness, serves it on
+`apps/dashboard/src/server.test.ts` starts the gateway harness, serves it on
 loopback, and drives the cabinet's pages over HTTP against it, so every screen
 under test is drawn from what the real API produced. `gateway.test.ts` holds
 the client's own promises on the wire: that a call ends when the gateway goes
@@ -327,7 +327,7 @@ was not chosen, because it names a boundary inside one product rather than what
 the process is. A small workspace package, `apps/app`, holds only its entry
 point: it reads both configurations from one environment, starts the gateway,
 then the cabinet, and stops them in the reverse order. `apps/gateway` and
-`apps/cabinet` stay packages with their own tests, migrations and terminal
+`apps/dashboard` stay packages with their own tests, migrations and terminal
 commands, and lose their `main.ts`. The gateway's package does not import the
 cabinet's; the entry point is the one place the cabinet's teller is handed to
 the gateway as its announcer. The cabinet's package already imports the
@@ -378,7 +378,7 @@ explaining to every merchant's engineer a kind of caller none of them can be.
 The decision is the third: the cabinet calls the application, the same
 `Gateway` methods the handlers call, as the merchant named on the signed-in
 account's row. It keeps its own port, the `GatewayClient` interface in
-`apps/cabinet/src/gateway.ts`, whose methods already return the contract's
+`apps/dashboard/src/gateway.ts`, whose methods already return the contract's
 document types and already carry the refusal as a sentence a page can show. The
 port loses its two methods about the cabinet key, and its list of keys loses
 `this_call`; otherwise only the implementation behind it changes, from `fetch`
@@ -442,7 +442,7 @@ becomes a binding of an address to a merchant identifier and takes no key.
 
 Registration becomes a call to `Gateway.registerMerchant` with no invitation,
 made, as today, inside the transaction and the lock on the account that
-`attachMerchant` holds (`apps/cabinet/src/identity.ts`, line 719), followed by
+`attachMerchant` holds (`apps/dashboard/src/identity.ts`, line 719), followed by
 the cabinet's write of the merchant onto the account. The case "the gateway
 did not answer" becomes "the database did not answer", and the
 person presses again from inside the session, as ADR-0026 §4 says. The case
@@ -484,7 +484,7 @@ lost there.
 
 Every container name an operator types changes: `docker compose exec cabinet`
 and `exec gateway` in `deploy/README.md` and in the headers of
-`apps/cabinet/src/account.ts`, `apps/gateway/src/merchant.ts` and
+`apps/dashboard/src/account.ts`, `apps/gateway/src/merchant.ts` and
 `apps/gateway/src/payment-report.ts`; the container `agentify-cabinet-1` in
 `scripts/approve.mjs` and in `deploy/ansible/woo-test-hairpin.yml`; the
 upstream ports in `ops/scripts/caddy-routing-smoke.mjs`; and the
@@ -524,7 +524,7 @@ change of behaviour and the ones that change behaviour touch no deployment.
    for a cabinet, leftovers included, and the `purpose` column, and one in the
    cabinet's history drops `merchant_key` and the check beside it; the account
    directory `pnpm approve` reads treats an account as bound when it names a
-   merchant (`apps/cabinet/src/approval-directory.ts`); the three routes, their
+   merchant (`apps/dashboard/src/approval-directory.ts`); the three routes, their
    schemas and their three codes leave the contract, and `this_call` is always
    one of the listed keys. The contracts package is released.
 

@@ -118,7 +118,7 @@ describe("asking the scanner for a verification link", () => {
     expect(sent.dataset_reuse_acknowledged).toBe(true);
   });
 
-  it("says it cannot tell who is visiting when the cabinet does not answer, and offers no ask", async () => {
+  it("says it cannot tell who is visiting when the dashboard does not answer, and offers no ask", async () => {
     // Not knowing who somebody is must not look like knowing they are nobody:
     // a stranger's form here would send a link to whatever address is typed
     // over a session the page could not see (ADR-0026 §2).

@@ -13,7 +13,7 @@
     "check": "biome check .",
     "check:fix": "biome check --write .",
     "check:decisions": "./scripts/check-decisions.sh",
-    "db:migrate": "pnpm --filter @agentify/gateway db:migrate && pnpm --filter @agentify/cabinet db:migrate",
+    "db:migrate": "pnpm --filter @agentify/gateway db:migrate && pnpm --filter @agentify/dashboard db:migrate",
     "worktrees": "./scripts/worktrees.sh list",
     "worktrees:clean": "./scripts/worktrees.sh clean",
     "typecheck": "tsc --noEmit -p tsconfig.json && pnpm -r --if-present run typecheck",

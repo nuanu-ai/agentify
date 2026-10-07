@@ -11,8 +11,8 @@
  * the same reason.
  *
  * The rule this file exists for most is the smallest one to write and the
- * worst one to get wrong: a merchant cannot disable the key their own cabinet
- * is holding. Without it, one click puts a merchant in front of a cabinet that
+ * worst one to get wrong: a merchant cannot disable the key their own dashboard
+ * is holding. Without it, one click puts a merchant in front of a dashboard that
  * answers every page with "the gateway will not take this key", and the way
  * back is a terminal they do not have.
  */
@@ -68,22 +68,22 @@ interface Registered {
 }
 
 /**
- * The identifiers of the keys one merchant's cabinets are calling with.
+ * The identifiers of the keys one merchant's dashboards are calling with.
  *
  * Read out of the store, because nothing a caller is answered with carries one
  * any more: the list leaves these keys out, and registering hands back the key
  * itself and no row. A test that wants to aim at one has to reach past the
  * surface exactly as this does, which is the shape of the promise.
  */
-const cabinetKeysOf = async (harnessed: Harness, merchantId: string): Promise<string[]> =>
+const dashboardKeysOf = async (harnessed: Harness, merchantId: string): Promise<string[]> =>
   (await harnessed.store.keysOf(merchantId))
     .filter((key) => key.purpose === "cabinet")
     .map((key) => key.id);
 
-/** The one key a merchant's cabinet is calling with, where there is one. */
-const cabinetKeyOf = async (harnessed: Harness, merchantId: string): Promise<string> => {
-  const [only, ...rest] = await cabinetKeysOf(harnessed, merchantId);
-  expect(rest, "this merchant has more than one cabinet key").toStrictEqual([]);
+/** The one key a merchant's dashboard is calling with, where there is one. */
+const dashboardKeyOf = async (harnessed: Harness, merchantId: string): Promise<string> => {
+  const [only, ...rest] = await dashboardKeysOf(harnessed, merchantId);
+  expect(rest, "this merchant has more than one dashboard key").toStrictEqual([]);
   return only ?? "";
 };
 
@@ -98,7 +98,7 @@ const registered = async (served: Served): Promise<Registered> => {
 
 /**
  * What this merchant's products are sold under, and where their sales are paid,
- * set the way a cabinet sets them.
+ * set the way a dashboard sets them.
  *
  * The two travel together here because they are the two things a merchant made
  * by registering has to say before anything of theirs can be published, and
@@ -172,7 +172,7 @@ describe("registering a merchant", () => {
   it("asks for no name and lists the merchant under none", async () => {
     // The name buyers read is chosen on the screen after this one, where there
     // is room to say what it is for. A merchant who has just registered is
-    // listed under nothing, and the call that says so is the one their cabinet
+    // listed under nothing, and the call that says so is the one their dashboard
     // draws the settings screen from.
     const { served } = await started();
 
@@ -260,7 +260,7 @@ describe("registering a merchant", () => {
   });
 
   it("refuses a registration carrying a name, rather than writing one down", async () => {
-    // A cabinet still sending the field it used to send has to be told, because
+    // A dashboard still sending the field it used to send has to be told, because
     // the alternative is a name accepted, ignored and never shown again — and
     // the person who typed it believing they had chosen what buyers would read.
     const { served } = await started();
@@ -276,7 +276,7 @@ describe("registering a merchant", () => {
 describe("the keys a merchant holds", () => {
   it("lists nothing at all for a merchant who has only ever signed in", async () => {
     // The first thing a keys screen ever draws. Registering makes the key a
-    // cabinet calls with, and that is not one of the merchant's own: they did
+    // dashboard calls with, and that is not one of the merchant's own: they did
     // not ask for it, cannot disable it, and a row for it would be a row whose
     // only effect is the question of why it will not go away.
     const { served, harnessed } = await started();
@@ -287,22 +287,22 @@ describe("the keys a merchant holds", () => {
     expect(listed.keys).toStrictEqual([]);
     // And the key that made the call is named all the same, so the field means
     // the same thing on every call — it is simply not one of the rows here.
-    expect(listed.this_call).toBe(await cabinetKeyOf(harnessed, made.merchant_id));
+    expect(listed.this_call).toBe(await dashboardKeyOf(harnessed, made.merchant_id));
     expect(listed.keys.map((key) => key.id)).not.toContain(listed.this_call);
   });
 
   it("lists the keys the merchant asked for, and only those", async () => {
     // The list is what the merchant made. A key issued through the merchant's
-    // own call is on it; the credential their cabinet is calling with is not,
+    // own call is on it; the credential their dashboard is calling with is not,
     // whichever of the two the call comes in on.
     const { served } = await started();
     const made = await registered(served);
     const worker = await issued(served, made.secret, "the worker on the small box");
 
-    const asTheCabinet = await keysWith(served, made.secret);
+    const asTheDashboard = await keysWith(served, made.secret);
     const asTheWorker = await keysWith(served, worker.secret);
 
-    expect(asTheCabinet.keys.map((key) => key.id)).toStrictEqual([worker.key.id]);
+    expect(asTheDashboard.keys.map((key) => key.id)).toStrictEqual([worker.key.id]);
     expect(asTheWorker.keys.map((key) => key.id)).toStrictEqual([worker.key.id]);
   });
 
@@ -310,7 +310,7 @@ describe("the keys a merchant holds", () => {
     // The half a merchant with one key cannot show, and the whole promise of
     // the field: `this_call` is the key that opened this call rather than the
     // merchant's first, their oldest, or whichever the list happens to start
-    // with. Named wrongly, a cabinet would hide the disable button on a key
+    // with. Named wrongly, a dashboard would hide the disable button on a key
     // that works and offer it on the one the gateway answers 409 to, which is
     // the exact failure the field exists to prevent.
     const { served, harnessed } = await started();
@@ -320,7 +320,7 @@ describe("the keys a merchant holds", () => {
     const asTheFirst = await keysWith(served, made.secret);
     const asTheSecond = await keysWith(served, second.secret);
 
-    expect(asTheFirst.this_call).toBe(await cabinetKeyOf(harnessed, made.merchant_id));
+    expect(asTheFirst.this_call).toBe(await dashboardKeyOf(harnessed, made.merchant_id));
     expect(asTheSecond.this_call).toBe(second.key.id);
     // And the same keys are listed both times: which key asked decides what
     // this_call says and not who is on the list. The rows are not identical
@@ -406,7 +406,7 @@ describe("issuing another key", () => {
   });
 
   it("makes a key of the merchant's own, which is the kind that is listed", async () => {
-    // The only kind this call makes. A key made for a cabinet is in no list, so
+    // The only kind this call makes. A key made for a dashboard is in no list, so
     // a key that appears in one is a key the merchant owns — which is what
     // makes the row they are about to revoke theirs to revoke.
     const { served, harnessed } = await started();
@@ -416,7 +416,7 @@ describe("issuing another key", () => {
 
     const listed = await keysWith(served, made.secret);
     expect(listed.keys.map((key) => key.id)).toStrictEqual([second.key.id]);
-    expect(listed.this_call).toBe(await cabinetKeyOf(harnessed, made.merchant_id));
+    expect(listed.this_call).toBe(await dashboardKeyOf(harnessed, made.merchant_id));
   });
 });
 
@@ -475,8 +475,8 @@ describe("disabling a key", () => {
     expect(await opensTheDoor(served, worker.secret)).toBe(true);
   });
 
-  it("refuses to disable a key made for a cabinet, and leaves it working", async () => {
-    // A merchant switches off what they issued. The key their cabinet calls
+  it("refuses to disable a key made for a dashboard, and leaves it working", async () => {
+    // A merchant switches off what they issued. The key their dashboard calls
     // with is not that, and this call will not touch it — whoever asks and
     // however they came by the identifier, which is the point: nothing on this
     // surface hands one out, and a rule that rested on that would be a rule
@@ -484,9 +484,9 @@ describe("disabling a key", () => {
     const { served, harnessed } = await started();
     const made = await registered(served);
     const worker = await issued(served, made.secret, "the worker on the small box");
-    const theCabinets = await cabinetKeyOf(harnessed, made.merchant_id);
+    const theDashboards = await dashboardKeyOf(harnessed, made.merchant_id);
 
-    const answered = await served.call("POST", `/v0/keys/${theCabinets}/disable`, {
+    const answered = await served.call("POST", `/v0/keys/${theDashboards}/disable`, {
       headers: bearer(worker.secret),
     });
 
@@ -494,19 +494,19 @@ describe("disabling a key", () => {
     expect((answered.body as { error: { code: string } }).error.code).toBe(
       "key_made_for_a_cabinet",
     );
-    // Nothing was written: the cabinet is still signed in, which is the whole
+    // Nothing was written: the dashboard is still signed in, which is the whole
     // of what this refusal is protecting.
     expect(await opensTheDoor(served, made.secret)).toBe(true);
   });
 
-  it("refuses a cabinet's key to another cabinet's key just the same", async () => {
+  it("refuses a dashboard's key to another dashboard's key just the same", async () => {
     // The rule is about the key being aimed at rather than about who is
-    // aiming: a cabinet cannot switch off the cabinet next door either, and
+    // aiming: a dashboard cannot switch off the dashboard next door either, and
     // sweeping up after itself is the call it has for that.
     const { served, harnessed } = await started();
     const made = await registered(served);
-    const second = await cabinetKey(served, made.secret);
-    const [older] = await cabinetKeysOf(harnessed, made.merchant_id);
+    const second = await dashboardKey(served, made.secret);
+    const [older] = await dashboardKeysOf(harnessed, made.merchant_id);
 
     const answered = await served.call("POST", `/v0/keys/${older}/disable`, {
       headers: bearer(second),
@@ -522,7 +522,7 @@ describe("disabling a key", () => {
   it("answers another merchant's key exactly as a key that never existed", async () => {
     // Answered differently, this call would count somebody else's keys: a
     // stranger walking identifiers would learn which of them are real. The
-    // stranger's key here is one of their own, because a cabinet's would be
+    // stranger's key here is one of their own, because a dashboard's would be
     // told apart by the kind rather than by whose it is — and telling a
     // stranger that much is the thing this is about.
     const { served } = await started();
@@ -577,8 +577,8 @@ describe("disabling a key", () => {
   });
 });
 
-/** One key made for a cabinet through the route, with the secret read back. */
-const cabinetKey = async (served: Served, key: string): Promise<string> => {
+/** One key made for a dashboard through the route, with the secret read back. */
+const dashboardKey = async (served: Served, key: string): Promise<string> => {
   const answered = await served.call("POST", "/v0/keys/cabinet", { headers: bearer(key) });
   expect(answered.status, JSON.stringify(answered.body)).toBe(200);
   return (answered.body as { secret: string }).secret;
@@ -588,29 +588,29 @@ const cabinetKey = async (served: Served, key: string): Promise<string> => {
 const keysInAll = async (harnessed: Harness, merchantId: string): Promise<number> =>
   (await harnessed.store.keysOf(merchantId)).length;
 
-describe("the key a cabinet calls with", () => {
+describe("the key a dashboard calls with", () => {
   it("makes another one that opens the door, leaving the one that asked working", async () => {
-    // What a cabinet does on every sign-in: it asks for a credential of its
+    // What a dashboard does on every sign-in: it asks for a credential of its
     // own, and until it has swept up, both work — the one it arrived with and
     // the one it is about to keep.
     const { served } = await started();
     const made = await registered(served);
 
-    const fresh = await cabinetKey(served, made.secret);
+    const fresh = await dashboardKey(served, made.secret);
 
     expect(await opensTheDoor(served, fresh)).toBe(true);
     expect(await opensTheDoor(served, made.secret)).toBe(true);
   });
 
   it("puts the new key in no list of the merchant's", async () => {
-    // The whole point of the kind. A cabinet signing somebody in twice a day
+    // The whole point of the kind. A dashboard signing somebody in twice a day
     // would otherwise fill the one screen a merchant revokes keys on with rows
     // they never made and must not touch.
     const { served } = await started();
     const made = await registered(served);
     const worker = await issued(served, made.secret, "the worker on the small box");
 
-    await cabinetKey(served, made.secret);
+    await dashboardKey(served, made.secret);
 
     expect((await keysWith(served, made.secret)).keys.map((key) => key.id)).toStrictEqual([
       worker.key.id,
@@ -618,7 +618,7 @@ describe("the key a cabinet calls with", () => {
   });
 
   it("is refused to a key the merchant made for their own code, and makes nothing", async () => {
-    // Not hygiene. These two calls are how a cabinet holds and replaces its own
+    // Not hygiene. These two calls are how a dashboard holds and replaces its own
     // credential, and the sweep beside this one would take that credential away
     // if a key of the merchant's own could reach it — so neither of them can be
     // reached that way, and this is the one of the pair where nothing is lost
@@ -635,27 +635,27 @@ describe("the key a cabinet calls with", () => {
     expect(refused.status).toBe(403);
     expect((refused.body as { error: { code: string } }).error.code).toBe("not_a_cabinet_key");
     // Nothing was written: the count over both kinds is the only read that
-    // could see a key made for a cabinet, and it has not moved.
+    // could see a key made for a dashboard, and it has not moved.
     expect(await keysInAll(harnessed, made.merchant_id)).toBe(before);
   });
 });
 
 describe("forgetting the key a call was made with", () => {
   it("takes away the key that made the call, and nothing else of this merchant's", async () => {
-    // The whole of what this does. A cabinet that has just moved its account
+    // The whole of what this does. A dashboard that has just moved its account
     // row onto a fresh key calls this with the old one, and the old one stops
     // opening the door — gone rather than revoked, because a merchant never
     // issued it and will never read it back.
     const { served } = await started();
     const made = await registered(served);
-    const fresh = await cabinetKey(served, made.secret);
+    const fresh = await dashboardKey(served, made.secret);
 
     const gone = await served.call("DELETE", "/v0/keys/cabinet", { headers: bearer(made.secret) });
 
     expect(gone.status, JSON.stringify(gone.body)).toBe(200);
     expect(gone.body).toStrictEqual({ forgotten: true });
     expect(await opensTheDoor(served, made.secret)).toBe(false);
-    // And the key the cabinet is actually holding is untouched, because this
+    // And the key the dashboard is actually holding is untouched, because this
     // call never had it and could not have named it.
     expect(await opensTheDoor(served, fresh)).toBe(true);
   });
@@ -671,8 +671,8 @@ describe("forgetting the key a call was made with", () => {
     const { served } = await started();
     const made = await registered(served);
     const worker = await issued(served, made.secret, "the worker on the small box");
-    const older = await cabinetKey(served, made.secret);
-    const newer = await cabinetKey(served, made.secret);
+    const older = await dashboardKey(served, made.secret);
+    const newer = await dashboardKey(served, made.secret);
 
     const gone = await served.call("DELETE", "/v0/keys/cabinet", { headers: bearer(older) });
 
@@ -690,7 +690,7 @@ describe("forgetting the key a call was made with", () => {
     const { served } = await started();
     const made = await registered(served);
     const worker = await issued(served, made.secret, "the worker on the small box");
-    const fresh = await cabinetKey(served, made.secret);
+    const fresh = await dashboardKey(served, made.secret);
 
     const gone = await served.call("DELETE", "/v0/keys/cabinet", { headers: bearer(made.secret) });
 
@@ -701,7 +701,7 @@ describe("forgetting the key a call was made with", () => {
     ]);
   });
 
-  it("signs nobody else's cabinet out", async () => {
+  it("signs nobody else's dashboard out", async () => {
     // Seeded with two merchants, because a call scoped to nobody passes every
     // assertion one merchant can make about their own keys. Another merchant's
     // key is not reachable here for the same reason this merchant's other keys
@@ -710,7 +710,7 @@ describe("forgetting the key a call was made with", () => {
     const { served } = await started();
     const first = await registered(served);
     const second = await registered(served);
-    const fresh = await cabinetKey(served, first.secret);
+    const fresh = await dashboardKey(served, first.secret);
 
     await served.call("DELETE", "/v0/keys/cabinet", { headers: bearer(fresh) });
 
@@ -745,7 +745,7 @@ describe("forgetting the key a call was made with", () => {
     // the end state is the one the caller wanted.
     const { served, harnessed } = await started();
     const made = await registered(served);
-    const fresh = await cabinetKey(served, made.secret);
+    const fresh = await dashboardKey(served, made.secret);
     const before = await keysInAll(harnessed, made.merchant_id);
 
     const first = await served.call("DELETE", "/v0/keys/cabinet", { headers: bearer(made.secret) });

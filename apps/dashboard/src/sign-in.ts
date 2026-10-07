@@ -1,0 +1,341 @@
+/**
+ * The dashboard's one public door: an address and a one-time link.
+ *
+ * Asking for a link never says whether the address is new or already belongs
+ * to a merchant. Opening the URL only draws a form. The token is spent by the
+ * explicit POST from that form, so a mail preview cannot sign anybody in.
+ */
+
+import type { SurfaceMode } from "@agentify/core";
+import type { DashboardDestination, LinkWall } from "./dashboard-entry.js";
+import { bare, brandLockup, escaped } from "./html.js";
+
+const destinationInput = (destination: DashboardDestination): string =>
+  destination === "default"
+    ? ""
+    : `<input type="hidden" name="destination" value="${escaped(destination)}">`;
+
+/**
+ * The sign-in form, with what went wrong and why the person is here kept apart.
+ *
+ * A problem is a refusal of something they did — an address of the wrong
+ * shape, a change that was lost — and is drawn as one, under the box. A reason
+ * is why they are looking at this page at all, such as a session that ran its
+ * course, and is the card's first line in the ordinary voice: drawn red under
+ * an empty box it reads as a fault in a box nobody has typed in yet, which is
+ * the opposite of what that sentence is for.
+ */
+export const signInScreen = (
+  base: string,
+  mode: SurfaceMode,
+  destination: DashboardDestination = "default",
+  problem?: string,
+  email = "",
+  reason?: string,
+): string =>
+  bare(
+    base,
+    "Sign in",
+    `<div class="gate">
+${brandLockup("/")}
+<form class="gate-card" method="post" action="${escaped(base)}/sign-in">
+  <h1>Sign in</h1>
+  ${reason === undefined ? "" : `<p>${escaped(reason)}</p>`}
+  <p>Enter your email address and we will send you a sign-in link.</p>
+  <label for="email">Email address</label>
+  <input id="email" name="email" type="email" value="${escaped(email)}" autocomplete="email" autocapitalize="off" spellcheck="false" autofocus required>
+  ${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}
+  ${destinationInput(destination)}
+  <button class="button button-primary" type="submit">Send me a sign-in link</button>
+  <p class="quiet">Every sign-in gets its own link. It opens once and expires an hour after it is sent, so there is nothing to keep and no password to remember.</p>
+  <p class="quiet">New to Agentify? Use this same form. Once the link signs you in, one button opens your seller dashboard.</p>
+</form>
+</div>`,
+    mode,
+  );
+
+/**
+ * What the door answered, as the screen needs it: a wait, and which wall.
+ *
+ * Every answer carries a wait, because every answer leaves one: a refusal's is
+ * the wall it hit, and an accepted request's is the wall in front of the next
+ * link. Which arm this is has a key of its own rather than a key missing,
+ * because "accepted" written as the absence of a wall is a shape where a
+ * forgotten field reads as good news.
+ *
+ * The wall is named rather than inferred from the seconds, because the two
+ * refusals are waits of different orders and the sentences that explain them
+ * have nothing in common: a minute is a link already gone out, an hour is an
+ * allowance spent. A screen given seconds alone would have to guess.
+ */
+export type LinkAnswer =
+  | Readonly<{ sent: true; seconds: number }>
+  | Readonly<{ wall: LinkWall; seconds: number }>;
+
+const counted = (amount: number, unit: string): string =>
+  `${amount} ${unit}${amount === 1 ? "" : "s"}`;
+
+/**
+ * How long a wait is still one somebody watches a number tick away.
+ *
+ * Below it the button counts seconds, above it whole minutes. The waits this
+ * page draws are of two orders — the interval is a minute, waited out in front
+ * of the screen, and a spent hourly allowance can be most of an hour, which
+ * nobody sits through — so the line has to fall between them. Ninety seconds
+ * is above every interval wait and below any hourly one long enough to walk
+ * away from, and a seconds counter that runs for half an hour is a stopwatch
+ * rather than a control.
+ */
+const SECONDS_WORTH_WATCHING = 90;
+
+/**
+ * A wait in words, by the rule the button counts it down with.
+ *
+ * Both readings of the same number are on the page at once, so they cannot be
+ * allowed to round differently: a sentence saying "try again in 2 minutes"
+ * over a button saying "(61 s)" is a page arguing with itself, and a person
+ * reading it believes whichever is worse for them.
+ */
+const waitInWords = (seconds: number): string =>
+  seconds > SECONDS_WORTH_WATCHING
+    ? counted(Math.ceil(seconds / 60), "minute")
+    : counted(Math.max(1, Math.ceil(seconds)), "second");
+
+/**
+ * The dashboard's one script: the resend button waiting its wait out.
+ *
+ * ADR-0009 §3 — the page works without it. The button is served pressable and
+ * this takes it away; a browser that runs nothing is left with exactly the
+ * button that was there before, the press reaches the door, and the door
+ * refuses it in words. It cannot be the other way round: nothing on a page
+ * whose script did not run can lift a `disabled` attribute, so a button served
+ * disabled would be dead in the browser of the one person who most needs it —
+ * somebody who cannot get into their dashboard and has just been told to wait.
+ *
+ * So the whole of it is taking a button away and giving it back. It reads the
+ * wait from the button's own attribute rather than being written per request,
+ * which is why nothing here is interpolated from anybody's input and why there
+ * is one copy of these bytes for every page. It counts against a deadline
+ * rather than trusting its own ticks, because a background tab's timers are
+ * throttled and a counter built on them hands the button back late.
+ */
+const COUNTDOWN = `<script>
+(() => {
+  const button = document.querySelector("[data-link-wait]");
+  if (button === null) return;
+  const seconds = Number(button.getAttribute("data-link-wait"));
+  if (!(seconds > 0)) return;
+  const label = button.textContent;
+  const until = Date.now() + seconds * 1000;
+  const draw = () => {
+    const left = Math.ceil((until - Date.now()) / 1000);
+    if (left <= 0) {
+      clearInterval(tick);
+      button.disabled = false;
+      button.textContent = label;
+      return;
+    }
+    button.textContent =
+      label +
+      (left > ${SECONDS_WORTH_WATCHING}
+        ? " (" + Math.ceil(left / 60) + " min)"
+        : " (" + left + " s)");
+  };
+  button.disabled = true;
+  const tick = setInterval(draw, 1000);
+  draw();
+})();
+</script>`;
+
+/**
+ * The non-enumerating answer to a request for a link, accepted or refused.
+ *
+ * The resend is on all three versions of this page. An accepted request needs
+ * it because the one thing this page cannot know is whether the message
+ * arrived; a refused one needs it because a page that answers a refusal by
+ * removing the control leaves somebody who has just been told to wait with
+ * nothing to come back to when the wait is over. What the refusal changes is
+ * not whether the button is there but whether it can be pressed yet, and that
+ * is what the script above says with a number the person can watch run out.
+ * Both versions keep the way out for somebody who mistyped their address.
+ *
+ * Only the hourly page prints its wait in words as well. Its wait is one a
+ * person leaves the page for, so the number has to survive being carried away;
+ * the minute's does not, and a number printed into that sentence would be
+ * wrong before the sentence was read, so that page says the rule instead and
+ * leaves the counting to the button.
+ *
+ * What the interval page may say is bounded by what the rate row holds, which
+ * is an address hash, a purpose and a time. Not the destination: the link
+ * already gone out may have been asked for somewhere else in the dashboard and
+ * opens where it was asked for, so this page cannot tell somebody it is the
+ * link they just asked for. And not delivery: the door hands a message to a
+ * provider and learns nothing after that, so "on its way" is a claim about
+ * somebody else's system. The page says a link went to this address, which is
+ * what the row knows.
+ */
+export const linkRequestedScreen = (
+  base: string,
+  mode: SurfaceMode,
+  email: string,
+  destination: DashboardDestination,
+  answer: LinkAnswer,
+): string => {
+  const wall = "wall" in answer ? answer.wall : null;
+  const heading = wall === "hourly" ? "Try again later" : "Check your mail";
+  // A wait longer than the one a person watches can only be the hourly wall:
+  // the interval is a minute from a send a moment old. So on the page for a
+  // link that did go out, a long wait is this address's three spent, and the
+  // invitation to send another from this page would be an invitation to wait
+  // most of an hour for the button under it.
+  const afterTheSend =
+    answer.seconds > SECONDS_WORTH_WATCHING
+      ? "If nothing has arrived in a minute, look in your spam folder. That was the last of this address's three links for the hour, so the next one waits for the hour to turn over."
+      : "If nothing has arrived in a minute, look in your spam folder, then send another link from this page.";
+  const outcome =
+    wall === null
+      ? `<p>A sign-in link is on its way to <strong>${escaped(email)}</strong>. It opens once and expires an hour after it is sent.</p>
+  <p class="quiet">${afterTheSend}</p>`
+      : wall === "interval"
+        ? `<p>No new link was sent to <strong>${escaped(email)}</strong>. A sign-in link went to this address less than a minute ago.</p>
+  <p class="quiet">Look for it in your inbox and your spam folder. The link opens wherever it was requested, which may not be this page. One address gets one link a minute, so you can ask for another as soon as the minute is up.</p>`
+        : `<p>No new link was sent to <strong>${escaped(email)}</strong>. One email address gets three links an hour, and this one has had its three.</p>
+  <p class="problem">Try again in ${waitInWords(answer.seconds)}.</p>`;
+
+  return bare(
+    base,
+    heading,
+    `<div class="gate">
+${brandLockup("/")}
+<div class="gate-card">
+  <h1>${heading}</h1>
+  ${outcome}
+  <form method="post" action="${escaped(base)}/sign-in">
+    <input name="email" type="hidden" value="${escaped(email)}">
+    ${destinationInput(destination)}
+    <button class="button button-secondary" type="submit" data-link-wait="${Math.max(0, Math.ceil(answer.seconds))}">Send another link</button>
+  </form>
+  <form method="get" action="${escaped(base)}/sign-in">
+    ${destinationInput(destination)}
+    <button class="button button-secondary" type="submit">Use a different address</button>
+  </form>
+</div>
+${COUNTDOWN}
+</div>`,
+    mode,
+  );
+};
+
+/**
+ * A handover that failed, said without claiming to know what became of it.
+ *
+ * The postman answers "refused" both for a provider that rejected the message
+ * and for one that never answered inside the timeout, and a message of the
+ * second kind may well have been delivered. What this dashboard does know is
+ * that it cannot confirm the send and that the attempt wrote nothing down.
+ */
+export const mailUnavailableScreen = (base: string, mode: SurfaceMode): string =>
+  bare(
+    base,
+    "We could not confirm your sign-in link went out",
+    `<div class="gate">
+${brandLockup("/")}
+<form class="gate-card" method="get" action="${escaped(base)}/sign-in">
+  <h1>We could not confirm your sign-in link went out</h1>
+  <p>Something went wrong while sending the email, so we do not know whether it was delivered. No account or session was created. Try again, and check that the email address is correct.</p>
+  <button class="button button-primary" type="submit">Try again</button>
+</form>
+</div>`,
+    mode,
+  );
+
+/**
+ * The page every mailed link lands on: one control, and the address it signs in.
+ *
+ * Drawing it spends nothing; the press does. The address is on it because a
+ * link for somebody else's address, sent to a victim, would otherwise sign
+ * them in as that somebody without their noticing (ADR-0026 §1).
+ */
+export const openLinkScreen = (
+  base: string,
+  token: string,
+  email: string,
+  mode: SurfaceMode,
+): string =>
+  bare(
+    base,
+    "Sign in",
+    `<div class="gate">
+${brandLockup("/")}
+<form class="gate-card" method="post" action="${escaped(base)}/sign-in/open">
+  <h1>Sign in</h1>
+  <p>This link signs <strong>${escaped(email)}</strong> in on this browser.</p>
+  <input type="hidden" name="token" value="${escaped(token)}">
+  <button class="button button-primary" type="submit">Sign in as ${escaped(email)}</button>
+  <p class="quiet">If that is not your address, close this page. Nothing happens unless the button is pressed.</p>
+</form>
+</div>`,
+    mode,
+  );
+
+/**
+ * One refusal for a malformed, expired, already-used or unknown link.
+ *
+ * It is drawn only for a browser with no live session, which is sent to its
+ * own start instead, so it has nobody to name and says nothing about whose the
+ * link was.
+ */
+export const refusedLinkScreen = (base: string, mode: SurfaceMode): string =>
+  bare(
+    base,
+    "That link no longer works",
+    `<div class="gate">
+${brandLockup("/")}
+<div class="gate-card">
+  <h1>That link no longer works</h1>
+  <p>A sign-in link opens once and expires an hour after it is sent. This one no longer opens anything.</p>
+  <p>Nothing is lost: access belongs to your email address, not to any one link. Ask for a new one.</p>
+  <form method="get" action="${escaped(base)}/sign-in">
+    <button class="button button-secondary" type="submit">Ask for another link</button>
+  </form>
+</div>
+</div>`,
+    mode,
+  );
+
+/**
+ * The screen a signed-in person without a merchant is offered (ADR-0026 §4).
+ *
+ * One control, and only its same-origin press makes the merchant and the key
+ * the dashboard calls with. A gateway that did not answer leaves the person here,
+ * signed in, to press again.
+ */
+export const merchantSetupScreen = (
+  base: string,
+  mode: SurfaceMode,
+  email: string,
+  unavailable = false,
+): string =>
+  bare(
+    base,
+    "Open a seller dashboard",
+    `<div class="gate">
+${brandLockup("/")}
+<div class="gate-card">
+  <h1>Open a seller dashboard</h1>
+  <p>You are signed in as <strong>${escaped(email)}</strong>.</p>
+  ${
+    unavailable
+      ? `<p class="problem">The merchant could not be made because of a fault on our side. Nothing is lost, and you are still signed in, so pressing again needs no new link.</p>`
+      : `<p>A seller dashboard is where your engineer publishes what you sell to agents and where the orders arrive. Nothing is made until you press the button.</p>`
+  }
+  <form method="post" action="${escaped(base)}/merchant">
+    <button class="button button-primary" type="submit">Open my seller dashboard</button>
+  </form>
+  <form method="post" action="${escaped(base)}/sign-out">
+    <button class="button button-secondary" type="submit">Sign out</button>
+  </form>
+</div>
+</div>`,
+    mode,
+  );

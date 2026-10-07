@@ -8,7 +8,7 @@
  * assets one path at a time and this file is not among them, so a surface that
  * linked /styles/tokens.css in production would get the scanner's 404. Each
  * reader takes it at build time or off disk instead — the scanner imports it,
- * and the cabinet and the stand read it and serve it inside their own
+ * and the dashboard and the stand read it and serve it inside their own
  * responses. The marks and the font faces beside this file are the exception,
  * because a browser asks for those by address; they sit under public/ in the
  * shape the route table serves them at.
@@ -27,8 +27,8 @@
  * different buttons wearing the same word.
  *
  * What does not belong here is the layout of a page. A rule that only the
- * scanner needs lives with the scanner, and a rule that only the cabinet needs
- * lives with the cabinet.
+ * scanner needs lives with the scanner, and a rule that only the dashboard needs
+ * lives with the dashboard.
  *
  * These are the Agentify colours. The teal is dark enough to carry ordinary
  * text on paper, which is what lets one accent serve links, fills and focus
@@ -230,13 +230,13 @@ p {
 
 /*
  * One button. There were three: 48 pixels tall at weight 600 on the scanner,
- * roughly 29 at 13px in the cabinet, and a third size again on the static page
+ * roughly 29 at 13px in the dashboard, and a third size again on the static page
  * that used to stand at the front — the same word meaning three controls. This
  * is the scanner's, because the scanner is what a merchant sees first.
  *
  * The height is the whole of the argument. 48 is what a thumb can hit and what
  * puts a control's label on the same footing as the sentence next to it; the
- * console's 29 was under the 44 the cabinet's own sign-in input asks for.
+ * console's 29 was under the 44 the dashboard's own sign-in input asks for.
  */
 .button {
   min-height: 48px;
@@ -284,7 +284,7 @@ p {
 
 /*
  * The one exception to the height, and why it is a class rather than a second
- * button. A table row in the cabinet is about 56 pixels tall: a 48-pixel
+ * button. A table row in the dashboard is about 56 pixels tall: a 48-pixel
  * control dropped into it fills the row edge to edge and reads as the row
  * rather than as something in it, and a column of them turns the table into a
  * column of buttons. 36 keeps the same corner, the same border weight and the

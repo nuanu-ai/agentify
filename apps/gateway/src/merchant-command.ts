@@ -3,11 +3,11 @@
  *
  * None of them makes a merchant or issues a key. A merchant comes into being
  * one way: a person opens the link mailed to their address and presses the
- * cabinet's one control, which asks the gateway for the merchant and the key
- * the cabinet calls with (ADR-0014). A merchant issues and disables keys for
- * their own code from their cabinet, where each new key is announced to them
+ * dashboard's one control, which asks the gateway for the merchant and the key
+ * the dashboard calls with (ADR-0014). A merchant issues and disables keys for
+ * their own code from their dashboard, where each new key is announced to them
  * (ADR-0019), and sets the name their products are sold under there too. A
- * merchant who has lost every key signs in again, which renews the cabinet's
+ * merchant who has lost every key signs in again, which renews the dashboard's
  * own, and issues a new one there.
  *
  * What is left here is what those routes deliberately cannot do: listing every
@@ -20,7 +20,7 @@
  * The listing name is the one worth reading twice, because the two sides differ
  * in what they allow rather than in who they are scoped to. A merchant sets a
  * name and changes it and can never end up with none: somebody reaching for
- * that from a cabinet wants either a different name or an end to selling, and
+ * that from a dashboard wants either a different name or an end to selling, and
  * both of those are calls they already have. Here `--none` exists for the one
  * act neither of them is — a name that should never have been listed, pulled by
  * somebody with the whole database in front of them. It takes the merchant's
@@ -31,12 +31,12 @@
  * decision rather than a gap (ADR-0019). A change of it waits and is announced
  * to the merchant before anything is written, and the gateway can hold to that
  * only if every change reaches it as the one call it announces — so the wallet
- * is set by a person in the cabinet, through `/v0/payout-wallet`, and nowhere
+ * is set by a person in the dashboard, through `/v0/payout-wallet`, and nowhere
  * else, and a person at a terminal who could write it would be the one change
  * nobody was told about.
  *
  * It is a tested module with the terminal handed to it rather than a script
- * that prints as it goes, for the reason the cabinet's account command is.
+ * that prints as it goes, for the reason the dashboard's account command is.
  */
 
 import { ZodError } from "zod";
@@ -56,8 +56,8 @@ const USAGE = [
   "",
   "A merchant and a key are named by the identifiers these commands print.",
   "None of them makes a merchant or a key: a merchant is made when a person",
-  "opens the link mailed to them and presses the cabinet's one control, and",
-  "keys are issued from the merchant's cabinet.",
+  "opens the link mailed to them and presses the dashboard's one control, and",
+  "keys are issued from the merchant's dashboard.",
 ];
 
 /** Runs one command. The answer is the exit code. */
@@ -165,8 +165,8 @@ async function listMerchants(store: Store, say: (line: string) => void): Promise
   const merchants = await store.merchants();
   if (merchants.length === 0) {
     say("There are no merchants, so nothing can be published and no key opens anything.");
-    say("A merchant is made when a person opens the link the cabinet mails them and presses");
-    say("the cabinet's one control.");
+    say("A merchant is made when a person opens the link the dashboard mails them and presses");
+    say("the dashboard's one control.");
     return 0;
   }
 
@@ -267,11 +267,11 @@ function standingOf(key: StoredKey): string {
  * can type, and the keys that were written before a key said what it was for
  * carry whatever sentence made them at the time — so the label is a hint and
  * this is the answer. What the operator does with it is tell the keys a
- * merchant put in their own code from the one their cabinet is signed in with,
+ * merchant put in their own code from the one their dashboard is signed in with,
  * which is the difference between revoking a worker and locking somebody out.
  */
 function madeFor(key: StoredKey): string {
-  return key.purpose === "cabinet" ? "cabinet " : "own code";
+  return key.purpose === "cabinet" ? "dashboard" : "own code ";
 }
 
 /**
@@ -279,14 +279,14 @@ function madeFor(key: StoredKey): string {
  * answers.
  *
  * The operator asks this about the keys a merchant never sees. A merchant's own
- * screen leaves the key their cabinet signs in with off the list, so "has that
- * cabinet stopped signing in" — the thing worth knowing before a row is cleared
+ * screen leaves the key their dashboard signs in with off the list, so "has that
+ * dashboard stopped signing in" — the thing worth knowing before a row is cleared
  * away — can be read nowhere but here.
  *
  * The blank says there is no record and not that there were no calls, because
  * those are not the same thing and only one of them was checked: a key older
  * than the column carries this blank too, and nothing distinguishes it. Somebody
- * clearing away a cabinet key on the strength of "never called" would be
+ * clearing away a dashboard key on the strength of "never called" would be
  * locking a person out on the strength of a word we did not earn.
  *
  * A day rather than an instant, like the two columns before it. The mark is

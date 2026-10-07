@@ -224,7 +224,7 @@ export const makeStandMerchant = (
    *
    * The goods are made from the card's own `result` declaration, which this
    * console learns when it reads the merchant's cards. A card published
-   * somewhere else after that — from the cabinet, from another process — is one
+   * somewhere else after that — from the dashboard, from another process — is one
    * it has never read, and the fields it would fill are none. That case says so
    * rather than delivering an empty object into a refusal nobody can explain:
    * it is a gap in this console, not in the SDK, and it is one press of "Read

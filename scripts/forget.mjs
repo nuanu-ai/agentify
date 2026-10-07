@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * Forgets one address on the TEST deployment, inside the cabinet container
- * that is already running on the test host: its cabinet account and its
+ * Forgets one address on the TEST deployment, inside the dashboard's container (`agentify-cabinet-1`)
+ * that is already running on the test host: its dashboard account and its
  * merchant go, so the address signs in again as a newcomer.
  *
  * Usage: pnpm forget <email>
@@ -19,12 +19,12 @@ const [email, ...extra] = process.argv.slice(2);
 if ((email === "--help" || email === "-h") && extra.length === 0) {
   console.log("Usage: pnpm forget <email>");
   console.log(
-    "Removes one address's cabinet account and its merchant on the TEST deployment, so it signs in again as a newcomer.",
+    "Removes one address's dashboard account and its merchant on the TEST deployment, so it signs in again as a newcomer.",
   );
 } else if (email === undefined || extra.length !== 0) {
   console.error("Usage: pnpm forget <email>");
   console.error(
-    "This removes one address's cabinet account and its merchant on the TEST deployment.",
+    "This removes one address's dashboard account and its merchant on the TEST deployment.",
   );
   process.exitCode = 2;
 } else {
@@ -54,6 +54,8 @@ if ((email === "--help" || email === "-h") && extra.length === 0) {
       "-i",
       "agentify-cabinet-1",
       "pnpm",
+      "--filter",
+      "./apps/dashboard",
       "--filter",
       "./apps/cabinet",
       "--fail-if-no-match",

@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const visitor = await visitorOf(request.headers.get("cookie"));
-  // A cabinet that does not answer is not a stranger, and the page is told
+  // A dashboard that does not answer is not a stranger, and the page is told
   // so rather than being asked to confirm an address it may already have.
   if (visitor.kind === "unknown")
     return errorResponse(

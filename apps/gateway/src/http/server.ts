@@ -90,9 +90,9 @@ export interface RouteCall {
    * What the key that opened this call was made for, from the same lookup.
    *
    * Two routes need it and the reason is a rule rather than a convenience: the
-   * calls that make and sweep up the keys a cabinet holds are the cabinet's
+   * calls that make and sweep up the keys a dashboard holds are the dashboard's
    * own, and made with a key of the merchant's own code the sweep would take
-   * away the credential a cabinet is signed in on.
+   * away the credential a dashboard is signed in on.
    *
    * Null on an open route, exactly as the two above are.
    */
@@ -712,7 +712,7 @@ const RETRYABLE: Readonly<Record<ErrorCode, boolean>> = {
 
   // A payout wallet change the gateway would not record (ADR-0019). Each ends
   // in a call that works once something else has changed — an account made,
-  // mail back, a cabinet up, a merchant who has read what is now waiting —
+  // mail back, a dashboard up, a merchant who has read what is now waiting —
   // and repeating it blindly sends another message about a change nobody
   // recorded.
   wallet_change_nobody_to_tell: false,

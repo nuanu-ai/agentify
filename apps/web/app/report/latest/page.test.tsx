@@ -1,13 +1,13 @@
 /**
  * Where a signed-in person who owns no merchant starts (ADR-0026 §1).
  *
- * The cabinet sends such a person here when their link had no destination of
+ * The dashboard sends such a person here when their link had no destination of
  * its own, because the scanner is what knows whether they own a report. One
- * who owns none has to be sent back to the cabinet's start, which offers the
+ * who owns none has to be sent back to the dashboard's start, which offers the
  * one control that makes a merchant; a page that sent them anywhere else, or
  * drew itself, would leave a person who has just signed in with nowhere to go.
  *
- * Who is visiting and which report is theirs are the cabinet's and the
+ * Who is visiting and which report is theirs are the dashboard's and the
  * database's answers, so they are given here; the redirect is Next's own,
  * read back off the error it throws the way Next reads it.
  */
@@ -56,21 +56,21 @@ describe("the start of a signed-in person with no merchant", () => {
     world.reports.clear();
   });
 
-  it("sends a person whose address owns no reports back to the cabinet's start", async () => {
+  it("sends a person whose address owns no reports back to the dashboard's start", async () => {
     world.visitor = person(null);
 
     expect(await sentTo()).toBe("/dashboard/");
   });
 
-  it("sends a person whose lead has no report back to the cabinet's start as well", async () => {
+  it("sends a person whose lead has no report back to the dashboard's start as well", async () => {
     world.visitor = person("lead_without_reports");
 
     expect(await sentTo()).toBe("/dashboard/");
   });
 
-  it("sends a person who owns a report to the latest of them, never to the cabinet", async () => {
+  it("sends a person who owns a report to the latest of them, never to the dashboard", async () => {
     // The control for the two above: a page that sent everybody to the
-    // cabinet would pass both of them.
+    // dashboard would pass both of them.
     world.visitor = person("lead_with_reports");
     world.reports.set("lead_with_reports", "scan_latest");
 

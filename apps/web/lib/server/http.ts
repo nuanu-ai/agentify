@@ -131,7 +131,7 @@ export function bearerToken(request: Request): string | null {
 
 /**
  * The answer to a request whose outcome depends on who is asking, when the
- * cabinet that knows did not answer: not "there is nothing here for you",
+ * dashboard that knows did not answer: not "there is nothing here for you",
  * which would be a claim about somebody the scanner could not identify.
  */
 export function visitorUnknownResponse(request: Request) {

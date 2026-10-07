@@ -9,7 +9,7 @@
  * point: an order list is not here, because `client.orders.list` exists and a
  * console assembling that request by hand would teach an outside engineer to do
  * the same. Cards, receipts and the two selling switches are the merchant's
- * cabinet operations, which the SDK deliberately does not have.
+ * dashboard operations, which the SDK deliberately does not have.
  *
  * The fetch is handed in rather than taken from the global, and that is the
  * whole of why: the console records what crosses its edges by wrapping the

@@ -34,14 +34,14 @@ merchant reads is at [agentify.ad/docs](https://agentify.ad/docs/), built from
 A business owner arrives at the scanner, enters the address of their site and
 watches the checks run. The full report is unlocked with an email address and
 the one-time link sent to it. The same address is the key to the rest: the
-report carries one control that opens the merchant cabinet, and the cabinet's
+report carries one control that opens the merchant dashboard, and the dashboard's
 own door is that one field and that one link — there is no password and no
-invitation code (ADR-0026). The cabinet then offers one control, and its press
+invitation code (ADR-0026). The dashboard then offers one control, and its press
 creates the merchant and asks for the seller name buyers will see. That is the
 only way an account or a merchant comes into being; no command at a server's
 terminal makes either (ADR-0014).
 
-From there the merchant's engineer takes over. The cabinet issues the key
+From there the merchant's engineer takes over. The dashboard issues the key
 their code calls with, the SDK publishes the product cards and runs a handler
 beside the shop's existing API, and the first sale happens on the test
 channel, where payments settle on Base Sepolia with test funds. Publishing
@@ -52,7 +52,7 @@ whole integration, from an empty project to a test sale, is the portal's
 [quickstart](apps/docs/quickstart.md).
 
 One origin serves all of it, on a laptop and on a server alike: the scanner at
-`/`, the merchant documentation at `/docs`, the cabinet at `/dashboard`, the
+`/`, the merchant documentation at `/docs`, the dashboard at `/dashboard`, the
 merchant's own calls at `/v0` and the storefront an agent buys from under
 `/x402`.
 
@@ -82,7 +82,7 @@ open http://localhost:8080
 ```
 
 One origin, one port: the scanner at `/`, the merchant documentation at
-`/docs`, the cabinet at `/dashboard`, the merchant's own calls at `/v0`, the
+`/docs`, the dashboard at `/dashboard`, the merchant's own calls at `/v0`, the
 storefront an agent buys from under `/x402`, one Postgres behind them holding
 a database for the commerce side and a database for the scanner. A merchant
 process comes up beside it and publishes two cards — a rented phone number
@@ -99,11 +99,12 @@ pnpm buy esim                 # the one delivered later
 The gateway settles against nothing locally (ADR-0008): a purchase completes
 with no wallet, no network and no faucet, and the first line of its log says so.
 
-The cabinet is where a merchant sets the name buyers see and issues the keys
+The dashboard is where a merchant sets the name buyers see and issues the keys
 their own code calls with. Open `http://localhost:8080/dashboard/sign-in`, enter
-an email address, and take the one-time link from the cabinet's log — the
+an email address, and take the one-time link from the dashboard's log
+(`docker compose logs cabinet`, the dashboard's service) — the
 local sandbox writes the message there instead of sending it. Pressing the
-link's confirmation button signs you in, and the cabinet then offers one
+link's confirmation button signs you in, and the dashboard then offers one
 button, "Open my seller dashboard", whose press creates your merchant and asks
 for the seller name. That merchant is a new one, and it is not `the_merchant` —
 the merchant this laptop's stack seeds at start-up, whose two cards the
@@ -118,20 +119,20 @@ stack and nothing else — the buy command runs on the host and needs
 
 The scanner is in that stack and answers the front page. Submit an address and
 the worker behind it runs the scan; the report asks for an email before it
-opens in full, and the scanner asks the cabinet to send the link over the
-cabinet's private identity route rather than keeping a second account system.
-That route is the cabinet's second listener on port 3002, which nothing
+opens in full, and the scanner asks the dashboard to send the link over the
+dashboard's private identity route rather than keeping a second account system.
+That route is the dashboard's second listener on port 3002, which nothing
 publishes, and the two processes that hold its shared secret are the only ones
-that can use it. The message arrives in the cabinet's log like every other one
-here, and it lands on the cabinet's page with one button. Pressing it opens the
-one session the whole site has, the report and the cabinet alike, for thirty
+that can use it. The message arrives in the dashboard's log (`docker compose logs cabinet`) like every other one
+here, and it lands on the dashboard's page with one button. Pressing it opens the
+one session the whole site has, the report and the dashboard alike, for thirty
 days from the last visit; the scanner keeps no session of its own and asks the
-cabinet whose a cookie is. A person becomes a merchant only by pressing the one
-control the cabinet offers for it. ADR-0026 draws that boundary and ADR-0024
+dashboard whose a cookie is. A person becomes a merchant only by pressing the one
+control the dashboard offers for it. ADR-0026 draws that boundary and ADR-0024
 says what the scanner keeps of its own.
 
 The scanner's tables live in the same database as the gateway's and the
-cabinet's, `agentify`. A machine whose volume still holds them in a second
+dashboard's, `agentify`. A machine whose volume still holds them in a second
 database, `agentify_scanner`, from before they moved, would come up with empty
 scanner tables beside it, so it needs `docker compose down -v` once.
 
@@ -147,7 +148,7 @@ pnpm scanner:db:migrate
 pnpm scanner:dev
 ```
 
-Nothing published on the host reaches the cabinet's identity listener, so a
+Nothing published on the host reaches the dashboard's identity listener, so a
 scanner started this way scans and reports but cannot unlock one; that path is
 walked in the stack.
 
@@ -211,7 +212,7 @@ its own.
 | `apps/web` | The scanner: the public site, the checks, the report. |
 | `apps/scanner-worker`, `apps/browser-observer-actor` | The scanner's background process and its passive browser observation. |
 | `apps/gateway` | The payment edge, the order runner and the queue. Ports in `src/ports`, their implementations in `src/adapters`. |
-| `apps/cabinet` | The merchant's screens: sign-in, cards, orders, receipts, keys, and the identity route the scanner calls. Server-rendered, no client build (ADR-0005). |
+| `apps/dashboard` | The merchant's screens: sign-in, cards, orders, receipts, keys, and the identity route the scanner calls. Server-rendered, no client build (ADR-0005). |
 | `apps/docs` | The merchant documentation, a VitePress site served at `/docs`. Its JSON examples are test fixtures (see below). |
 | `packages/contracts` | `@nuanu-ai/agentify-contracts`: every shape that crosses a boundary, as zod schemas, and the route table both sides import instead of transcribing. |
 | `packages/core` | The order state machine: pure logic, zero IO, zero runtime dependencies. |
@@ -227,7 +228,7 @@ its own.
 | `docs/research/` | The working material behind them: research, runbooks, acceptance protocols. |
 
 One PostgreSQL, one database and one account for the whole product
-(ADR-0003). The gateway and the cabinet each own their migrations under
+(ADR-0003). The gateway and the dashboard each own their migrations under
 `drizzle/`, and `pnpm db:migrate` runs both; the scanner's schema and
 migrations live in `packages/scanner-database`, and `pnpm scanner:db:migrate`
 runs them. Each set keeps a history table of its own in the schema `drizzle`,
@@ -329,14 +330,14 @@ operator's side of both channels is the
 
 Switching a merchant on for live sales is an application command rather than a
 deployment: `pnpm approve <email>` from the operator's checkout reaches the
-production host over SSH, resolves the cabinet account's merchant and records
+production host over SSH, resolves the dashboard account's merchant and records
 its one-time approval, and it says so when the approval already exists or the
 account is unknown. Approval publishes nothing and supplies no missing seller
 name or payout wallet; the test channel never needs it.
 
 Starting an address over is a command for the test deployment only:
 `pnpm forget <email>` from the operator's checkout reaches the test host over
-SSH and removes that address's cabinet account together with the merchant it
+SSH and removes that address's dashboard account together with the merchant it
 names, the merchant's keys and cards, and the wait before the address's next
 sign-in link, so the address signs in again as if for the first time. It
 refuses, and says why, when the merchant has an order or a receipt, when

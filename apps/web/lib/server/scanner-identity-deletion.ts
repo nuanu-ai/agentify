@@ -6,10 +6,9 @@ import {
   scannerIdentityDeletionOperations,
 } from "@agentify/scanner-database";
 import { and, asc, eq, isNull, lt, or, sql } from "drizzle-orm";
-
-import { getCabinetReportIdentityClient } from "./cabinet-report-identity";
 import { getServerConfig } from "./config";
 import { decryptEmail, hmacHex, normalizeEmail } from "./crypto";
+import { getDashboardReportIdentityClient } from "./dashboard-report-identity";
 import { getDatabase } from "./database";
 import { detachLeadCardSignalsForDeletion } from "./stripe-card-signal";
 import type { StripeCardSignalProvider } from "./stripe-card-signal-provider";
@@ -18,7 +17,7 @@ const CLAIM_LEASE_MS = 2 * 60_000;
 const PROVIDER_LEASE_MS = 5 * 60_000;
 const RETRY_BATCH_SIZE = 10;
 
-type CabinetResult = "deleted" | "already_absent" | "retained";
+type DashboardResult = "deleted" | "already_absent" | "retained";
 
 export async function beginScannerIdentityDeletion(leadId: string) {
   return await getDatabase().db.transaction(async (tx) => {
@@ -75,7 +74,7 @@ export async function beginScannerIdentityDeletion(leadId: string) {
       createdAt: now,
     });
     // The lead is what gives an address its reports, so marking it closes them
-    // at once for every session of that address, whether or not the cabinet
+    // at once for every session of that address, whether or not the dashboard
     // has answered the deletion yet (ADR-0024).
     await tx.update(leads).set({ deletionRequestedAt: now }).where(eq(leads.id, leadId));
     await tx
@@ -158,22 +157,22 @@ export async function runScannerIdentityDeletionOperation(
     throw new Error("lead_email_identity_mismatch");
   }
 
-  let cabinetResult = claimed.cabinetResult as CabinetResult | null;
-  if (!cabinetResult) {
-    const response = await getCabinetReportIdentityClient().deleteUnattachedPerson({
+  let dashboardResult = claimed.dashboardResult as DashboardResult | null;
+  if (!dashboardResult) {
+    const response = await getDashboardReportIdentityClient().deleteUnattachedPerson({
       operationId: claimed.operationId,
       email,
     });
     if (response.status === "refused") return "pending";
-    cabinetResult = response.status;
+    dashboardResult = response.status;
     const stored = await getDatabase()
       .db.update(scannerIdentityDeletionOperations)
-      .set({ cabinetResult })
+      .set({ dashboardResult })
       .where(
         and(
           eq(scannerIdentityDeletionOperations.operationId, claimed.operationId),
           eq(scannerIdentityDeletionOperations.leaseToken, claimed.leaseToken),
-          isNull(scannerIdentityDeletionOperations.cabinetResult),
+          isNull(scannerIdentityDeletionOperations.dashboardResult),
           isNull(scannerIdentityDeletionOperations.completedAt),
         ),
       )
@@ -206,7 +205,7 @@ export async function runScannerIdentityDeletionOperation(
       const operation = (
         await tx
           .select({
-            cabinetResult: scannerIdentityDeletionOperations.cabinetResult,
+            dashboardResult: scannerIdentityDeletionOperations.dashboardResult,
             leaseExpiresAt: scannerIdentityDeletionOperations.leaseExpiresAt,
           })
           .from(scannerIdentityDeletionOperations)
@@ -222,7 +221,7 @@ export async function runScannerIdentityDeletionOperation(
           .for("update")
       )[0];
       if (
-        !operation?.cabinetResult ||
+        !operation?.dashboardResult ||
         !operation.leaseExpiresAt ||
         operation.leaseExpiresAt.getTime() <= now.getTime()
       ) {

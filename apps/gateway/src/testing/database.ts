@@ -5,12 +5,12 @@
  * file. `compose.yaml` publishes Postgres on a laptop's 5432 so that a terminal
  * and this suite can reach it, and the suite empties every table it finds and drops the
  * queue's schema — so pointed at the stack's own database it empties the
- * catalogue a merchant just published and the orders the cabinet is showing,
+ * catalogue a merchant just published and the orders the dashboard is showing,
  * while somebody is looking at them. That happened: a merchant process
  * published two cards and the catalogue afterwards held seven of this suite's
  * fixtures and neither of them. Nothing warned anybody, and nothing was broken
  * afterwards either, which is the worst version of it — the evening is spent
- * looking for a bug in the cabinet.
+ * looking for a bug in the dashboard.
  *
  * So the suite gets `agentify_test` beside `agentify`, on the same
  * server, and
@@ -69,7 +69,7 @@ const NO_SUCH_DATABASE = "3D000";
  * Being pointed at the stack's database is refused rather than obeyed, and
  * whichever variable did the pointing is what the refusal names. This suite
  * empties what it is given, and there is no reading of "empty the database the
- * cabinet is showing" that is worth being quietly helpful about. Point it at
+ * dashboard is showing" that is worth being quietly helpful about. Point it at
  * any other name.
  *
  * The environment is an argument, with the real one as its default, so that
@@ -89,7 +89,7 @@ export function testDatabaseUrl(
   if (database === THE_STACK_DATABASE) {
     throw new Error(
       `${variable} names "${THE_STACK_DATABASE}", which is the database docker compose runs the` +
-        ` gateway and the cabinet against. This suite empties every table it finds and drops the` +
+        ` gateway and the dashboard against. This suite empties every table it finds and drops the` +
         ` queue's schema, so it will not be pointed there. Leave ${TEST_DATABASE_URL_VARIABLE} and` +
         ` DATABASE_URL unset to use "${TEST_DATABASE}", or name any other database.`,
     );
@@ -102,7 +102,7 @@ export function testDatabaseUrl(
     throw new Error(
       `${variable} stops at the server and names no database, and Postgres fills that in with the` +
         ` name of the user connecting — "${THE_STACK_DATABASE}" here, which is the database the` +
-        ` cabinet is showing. Put the database on the end of the address:` +
+        ` dashboard is showing. Put the database on the end of the address:` +
         ` ".../${TEST_DATABASE}".`,
     );
   }

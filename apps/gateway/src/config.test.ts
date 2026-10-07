@@ -127,7 +127,7 @@ describe("loadConfig", () => {
       PAY_TO_ADDRESS: "0x0000000000000000000000000000000000000001",
       CDP_API_KEY_ID: "key-id",
       CDP_API_KEY_SECRET: "key-secret",
-      ...CABINET_ROUTE,
+      ...DASHBOARD_ROUTE,
     });
 
     expect(live.payment).toStrictEqual({
@@ -655,7 +655,7 @@ describe("the environment is derived from the chain", () => {
         FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
         CDP_API_KEY_ID: "key-id",
         CDP_API_KEY_SECRET: "secret",
-        ...CABINET_ROUTE,
+        ...DASHBOARD_ROUTE,
       }).environment,
     ).toBe("live");
   });
@@ -674,8 +674,8 @@ describe("the environment is derived from the chain", () => {
   });
 });
 
-/** Where a live gateway asks the cabinet to tell a merchant of a change, and with what. */
-const CABINET_ROUTE = {
+/** Where a live gateway asks the dashboard to tell a merchant of a change, and with what. */
+const DASHBOARD_ROUTE = {
   CABINET_INTERNAL_URL: "http://cabinet:3003",
   GATEWAY_CABINET_SECRET: "a".repeat(48),
 };
@@ -687,7 +687,7 @@ describe("a live chain is allowed exactly one facilitator", () => {
     FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
     CDP_API_KEY_ID: "key-id",
     CDP_API_KEY_SECRET: "secret",
-    ...CABINET_ROUTE,
+    ...DASHBOARD_ROUTE,
   };
 
   it("starts on Coinbase's canonical facilitator with both credentials", () => {
@@ -799,7 +799,7 @@ describe("a live chain is allowed exactly one facilitator", () => {
 
 describe("a live gateway can tell a merchant of a wallet change", () => {
   // On a live deployment a wallet change is announced before it is recorded
-  // (ADR-0019), over a route of the cabinet's own and with a secret only the
+  // (ADR-0019), over a route of the dashboard's own and with a secret only the
   // two processes hold. A live gateway without either would refuse every
   // change a merchant asks for, with nothing wrong until somebody asked — so it
   // does not start, and says which of the two is missing.
@@ -811,47 +811,48 @@ describe("a live gateway can tell a merchant of a wallet change", () => {
     CDP_API_KEY_SECRET: "secret",
   };
 
-  it("carries where the cabinet is asked and the secret it is asked with", () => {
-    expect(loadConfig({ ...live, ...CABINET_ROUTE }).cabinetRoute).toStrictEqual({
+  it("carries where the dashboard is asked and the secret it is asked with", () => {
+    expect(loadConfig({ ...live, ...DASHBOARD_ROUTE }).dashboardRoute).toStrictEqual({
       url: "http://cabinet:3003",
-      secret: CABINET_ROUTE.GATEWAY_CABINET_SECRET,
+      secret: DASHBOARD_ROUTE.GATEWAY_CABINET_SECRET,
     });
   });
 
   it("does not start without either, and names the one that is missing", () => {
-    const { GATEWAY_CABINET_SECRET, ...noSecret } = CABINET_ROUTE;
-    const { CABINET_INTERNAL_URL, ...noAddress } = CABINET_ROUTE;
+    const { GATEWAY_CABINET_SECRET, ...noSecret } = DASHBOARD_ROUTE;
+    const { CABINET_INTERNAL_URL, ...noAddress } = DASHBOARD_ROUTE;
 
     expect(refusalFor({ ...live, ...noSecret })).toMatch(/GATEWAY_CABINET_SECRET/);
     expect(refusalFor({ ...live, ...noAddress })).toMatch(/CABINET_INTERNAL_URL/);
     // Set to nothing is how a compose file says "not here", and it reads the
     // same as never set rather than as a secret of length zero.
-    expect(refusalFor({ ...live, ...CABINET_ROUTE, GATEWAY_CABINET_SECRET: "" })).toMatch(
+    expect(refusalFor({ ...live, ...DASHBOARD_ROUTE, GATEWAY_CABINET_SECRET: "" })).toMatch(
       /GATEWAY_CABINET_SECRET/,
     );
   });
 
   it("refuses a secret too short to be one, without printing it", () => {
     const short = "x".repeat(31);
-    const refused = refusalFor({ ...live, ...CABINET_ROUTE, GATEWAY_CABINET_SECRET: short });
+    const refused = refusalFor({ ...live, ...DASHBOARD_ROUTE, GATEWAY_CABINET_SECRET: short });
 
     expect(refused).toMatch(/GATEWAY_CABINET_SECRET/);
     expect(refused).not.toContain(short);
   });
 
-  it("refuses an address the cabinet cannot be asked at", () => {
-    expect(refusalFor({ ...live, ...CABINET_ROUTE, CABINET_INTERNAL_URL: "cabinet:3003" })).toMatch(
-      /CABINET_INTERNAL_URL/,
-    );
+  it("refuses an address the dashboard cannot be asked at", () => {
+    expect(
+      refusalFor({ ...live, ...DASHBOARD_ROUTE, CABINET_INTERNAL_URL: "cabinet:3003" }),
+    ).toMatch(/CABINET_INTERNAL_URL/);
   });
 
   it("asks nothing of a test deployment or a sandbox, which announce nothing", () => {
     // A change applies at once where no money is real, and nothing is sent, so
-    // neither needs a way to the cabinet — and a test stack that does name one
+    // neither needs a way to the dashboard — and a test stack that does name one
     // is not asked to use it.
-    expect(loadConfig(required).cabinetRoute).toBeNull();
+    expect(loadConfig(required).dashboardRoute).toBeNull();
     expect(
-      loadConfig({ ...required, PAYMENT_NETWORK: "eip155:84532", ...CABINET_ROUTE }).cabinetRoute,
+      loadConfig({ ...required, PAYMENT_NETWORK: "eip155:84532", ...DASHBOARD_ROUTE })
+        .dashboardRoute,
     ).toBeNull();
   });
 });

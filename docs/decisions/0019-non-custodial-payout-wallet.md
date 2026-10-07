@@ -5,7 +5,7 @@ Status: accepted (the product owner, 2026-09-24, on the wait before a change,
 as the way the money is protected; on the message, which is required and
 announces every change whichever way it is made, since to the gateway every
 change is the same API call; on where the wait holds, on production only;
-2026-09-25, on the cabinet alone setting it)
+2026-09-25, on the dashboard alone setting it)
 
 ## Context
 
@@ -25,7 +25,7 @@ that field, and the answer decides whether this is a payments business
 or a catalogue.
 
 That address is also the one setting whose change redirects money, and it
-is changed in the cabinet, so the threat to it is a session that is not the
+is changed in the dashboard, so the threat to it is a session that is not the
 owner's: one left open on a device they no longer hold, or one somebody took.
 
 ## Decision
@@ -40,13 +40,13 @@ already signed. There is no balance, no settlement run, and no moment at
 which a merchant's money is ours.
 
 The keys a merchant issues operate the shop; where its money goes is a
-person's act, done on the cabinet's Settings screen. Any key of the
-merchant's reads the address, and only the cabinet sets it, with its own key,
+person's act, done on the dashboard's Settings screen. Any key of the
+merchant's reads the address, and only the dashboard sets it, with its own key,
 from inside the stack. The public door does not route a write to
-`/v0/payout-wallet`, so a copy of a cabinet's key, which its database holds as
+`/v0/payout-wallet`, so a copy of a dashboard's key, which its database holds as
 issued, sets nothing from outside; and the gateway refuses a key made for the
 merchant's own code under `not_a_cabinet_key`, the first address too. The
-cabinet's key ends with ADR-0030, and with it this route's place on `/v0`.
+dashboard's key ends with ADR-0030, and with it this route's place on `/v0`.
 
 The address is a nullable column on the merchant, set and read through
 `/v0/payout-wallet`, held to `EvmAddressSchema` in the contracts: `0x`
@@ -101,24 +101,24 @@ been told of it, and every address set is told to them; the first is told
 afterwards, for the reason above. No terminal command
 writes the wallet, so every change reaches the gateway as the same call and the
 gateway is the one place that sees them all. Before writing anything, the
-gateway asks the cabinet, which holds the addresses, to tell every account
+gateway asks the dashboard, which holds the addresses, to tell every account
 that names the merchant, since several accounts may name one merchant, and
 the message to every one of them must be handed to the mail provider. It
 asks over an internal route of its own, reachable only on the compose
 network and authenticated by a secret that only the gateway and the
-cabinet hold. It never uses the scanner's route or secret (ADR-0026),
+dashboard hold. It never uses the scanner's route or secret (ADR-0026),
 which would give the money path the power to look up sessions and remove
 people. That route and its secret (`/internal/gateway`,
-`GATEWAY_CABINET_SECRET`) are the gateway's one way into the cabinet, and
+`GATEWAY_CABINET_SECRET`) are the gateway's one way into the dashboard, and
 are named for it: each request names its `operation`, as the scanner's
-do, and anything else the gateway ever needs from the cabinet is another
+do, and anything else the gateway ever needs from the dashboard is another
 operation on the same route with the same secret, never a second route or
 a second secret. When every message has been handed over, the gateway
 records the pending change, answers with it and counts the forty-eight hours from
 then. Otherwise it writes nothing and refuses the change in words that say
 which of three cases it met: there is nobody to tell; a message could not
-be handed over, or the cabinet turned the request away before sending any;
-or the cabinet did not answer, so a message may have gone out although
+be handed over, or the dashboard turned the request away before sending any;
+or the dashboard did not answer, so a message may have gone out although
 nothing was recorded. The third is not "not sent", and the
 refusal does not read as if it were. Changes for one merchant are
 serialized without a lock held across the announcement, which is a call to
@@ -135,17 +135,17 @@ wallet screen shows it.
 This runs the effect before the state, the reverse of ADR-0013, and on
 purpose: a change nobody was told about is the dangerous failure, while a
 message about a change that then did not land is the safe one, because
-every message says the change takes effect only if the cabinet's wallet
+every message says the change takes effect only if the dashboard's wallet
 screen shows it.
 
 The message says what changes, when — not before a moment it names, since
 the forty-eight hours are counted from after it is handed over, while the
 wallet screen shows the exact one — and that it was asked for in the
-cabinet, and links plainly
-to the cabinet's wallet screen, a named cabinet screen that an ordinary
+dashboard, and links plainly
+to the dashboard's wallet screen, a named dashboard screen that an ordinary
 sign-in reaches when the person is signed out; the message carries no
 token. That screen shows the pending change with a cancel control, a
-same-origin POST by a signed-in person. The cabinet cancels by asking the
+same-origin POST by a signed-in person. The dashboard cancels by asking the
 gateway for the address that applies now, which is what cancelling is, and
 on success ends every session of every account naming the merchant except
 the one that pressed. A cancel is never refused for want of a message,
@@ -158,7 +158,7 @@ the key never waits on its message: if there is nobody to tell or the
 message cannot be handed over, the key is issued all the same. A key moves
 no money and cannot set the wallet, and a merchant must not be kept from a
 key, their first above all,
-because mail is down. The cabinet's own key, renewed daily (ADR-0014 §2),
+because mail is down. The dashboard's own key, renewed daily (ADR-0014 §2),
 is announced to nobody. No command at a server's terminal issues a key
 (ADR-0014), so every key made for a merchant's own code is issued through the
 gateway's keys route and announced as above, the laptop sandbox's seed aside.
@@ -205,11 +205,11 @@ when mail works, or from the wallet screen, and replacing it waits like any
 other change, so they stop selling until it does. A merchant no account names
 has nobody to tell, so every replacement of its wallet is refused. A merchant is
 made only by a signed-in person's press (ADR-0014), so that is the litter of a
-press whose cabinet failed after the gateway answered, whose key nobody holds,
+press whose dashboard failed after the gateway answered, whose key nobody holds,
 or the merchant every database is created with (ADR-0010), for which no
 deployed channel seeds a key and nobody can ask for live approval. A test
 deployment never shows a pending change, so an integrator meets that shape
-only on production. A wallet change also depends on the cabinet and the
+only on production. A wallet change also depends on the dashboard and the
 mail provider being up, which is accepted: changes are rare, and a refusal
 at the door is honest where a silent change is not. An account left holding
 a key made for the merchant's own code, from before accounts were checked,

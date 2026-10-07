@@ -11,7 +11,7 @@
  * so they cannot drift from it.
  *
  * The cost is named too: nothing here can be reported on in SQL beyond those
- * columns. The trigger to revisit is the first report the cabinet needs that
+ * columns. The trigger to revisit is the first report the dashboard needs that
  * this cannot answer.
  *
  * Every table but one carries the merchant it belongs to, not null. That is
@@ -147,7 +147,7 @@ export const merchantKeys = pgTable(
     /** What it is called, so one of several can be told from the others. */
     label: text("label").notNull(),
     /**
-     * What the key was made for: the merchant's own code, or a cabinet calling
+     * What the key was made for: the merchant's own code, or a dashboard calling
      * as them.
      *
      * It decides which list the row appears in, so it is a column rather than

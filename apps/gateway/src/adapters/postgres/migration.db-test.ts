@@ -446,14 +446,14 @@ if (databaseUrl === null) {
 
   /**
    * The migration that separates the keys a merchant made from the one their
-   * cabinet calls with.
+   * dashboard calls with.
    *
    * Every key already written was made before there was any such distinction,
    * so the column arrives with a word for all of them and the rows registration
    * made are moved across. Finding those rows by their label is the part worth
    * exercising rather than trusting: the sentence it matches was written by one
    * line of code and by nobody's hand, and a migration that matched nothing
-   * would leave a cabinet's key sitting in the list a merchant revokes keys
+   * would leave a dashboard's key sitting in the list a merchant revokes keys
    * from — which is the state this whole change exists to end, arrived at
    * silently.
    */
@@ -537,7 +537,7 @@ if (databaseUrl === null) {
       );
     });
 
-    it("hands the keys registration made to the cabinet and leaves the rest alone", async () => {
+    it("hands the keys registration made to the dashboard and leaves the rest alone", async () => {
       // The one row that changes hands and the three that must not. A key a
       // merchant asked for stays theirs — it is in their own worker and on the
       // list they revoke it from — and so does the sandbox's, which is handed

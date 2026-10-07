@@ -10,7 +10,7 @@ describe("MarketingHeader", () => {
     expect(markup).toContain('href="/agentic-shop"');
   });
 
-  it("carries the doors to the documentation and the cabinet", () => {
+  it("carries the doors to the documentation and the dashboard", () => {
     const markup = renderToStaticMarkup(<MarketingHeader />);
 
     expect(markup).toContain('href="/docs/"');

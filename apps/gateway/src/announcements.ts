@@ -1,6 +1,6 @@
 /**
- * What the gateway asks the cabinet over the one internal route between them,
- * and what the cabinet answers (ADR-0005 §3, ADR-0019).
+ * What the gateway asks the dashboard over the one internal route between them,
+ * and what the dashboard answers (ADR-0005 §3, ADR-0019).
  *
  * The route and its secret are named for the gateway, not for what it asks,
  * and each request says what it asks in `operation`, the way the scanner's
@@ -8,23 +8,23 @@
  * on the live deployment a change of a payout wallet already set is announced
  * to every account that names the merchant before anything is written, and a
  * first wallet, a new key of the merchant's own and a cancelled change are
- * announced once they are done. A wallet is changed only with the cabinet's
+ * announced once they are done. A wallet is changed only with the dashboard's
  * own key (ADR-0019), so a wallet announcement names no key: it was asked for
- * through the cabinet. A new key names the key that asked,
+ * through the dashboard. A new key names the key that asked,
  * because any key of the merchant's may issue one. Anything else the gateway
- * ever needs from the cabinet is another `operation` in
+ * ever needs from the dashboard is another `operation` in
  * `GatewayRequestSchema`, over this route and with this secret, never a
  * second route or a second secret.
  *
- * The gateway knows the merchant and the change; the cabinet knows
+ * The gateway knows the merchant and the change; the dashboard knows
  * the addresses and sends the mail. This file is the wire between them, and it
  * is here rather than in the published contracts because nobody outside these
- * two processes calls it: the cabinet imports it from this package's
+ * two processes calls it: the dashboard imports it from this package's
  * `./announcements` entry, which carries this file and nothing else, so the
  * two sides read one definition.
  *
  * What a request carries is facts and no words. The message a person reads is
- * the cabinet's to write, because the cabinet is what knows where its own
+ * the dashboard's to write, because the dashboard is what knows where its own
  * screens are; the gateway says what changed, from what to what, and, for a
  * new key, which key asked. Nothing in it can open anything: there is no
  * token here, and the message built from it carries none.
@@ -33,7 +33,7 @@
 import { checksummedAddressOf, EvmAddressSchema } from "@nuanu-ai/agentify-contracts";
 import { z } from "zod";
 
-/** The path the cabinet answers the gateway on, on its own listener inside the compose network. */
+/** The path the dashboard answers the gateway on, on its own listener inside the compose network. */
 export const GATEWAY_ROUTE_PATH = "/internal/gateway";
 
 /** The port of that listener. Nothing publishes it. */
@@ -59,9 +59,9 @@ const LONGEST_ANNOUNCED_LABEL = 101;
  * A new key's label is held to that at the door, but a key written before the
  * door held labels to anything, including one a terminal command issued when
  * there was such a command, can be named anything at all — and an announcement
- * of a key issued with such a key must still be one the cabinet takes. So the
+ * of a key issued with such a key must still be one the dashboard takes. So the
  * gateway writes every label it
- * announces down to this, and the cabinet refuses anything else.
+ * announces down to this, and the dashboard refuses anything else.
  */
 export function announcedLabel(label: string): string {
   const oneLine = label.replace(/[\p{Cc}\p{Zl}\p{Zp}\s]+/gu, " ").trim();
@@ -95,8 +95,8 @@ const AnnouncedLabelSchema = z
  * A key of the merchant's own code is on that list under its label, with its
  * identifier beneath, so that is how a message names it: a person reading "the
  * key you called the stock worker" can find the row and disable it. The key the
- * cabinet signs in with is on no list, and a call made with it means a person
- * signed in to the cabinet acted — so it is named as the cabinet and nothing
+ * dashboard signs in with is on no list, and a call made with it means a person
+ * signed in to the dashboard acted — so it is named as the dashboard and nothing
  * more.
  */
 export const AskedWithSchema = z.discriminatedUnion("kind", [
@@ -109,7 +109,7 @@ export const AskedWithSchema = z.discriminatedUnion("kind", [
 ]);
 
 /**
- * A merchant's first payout wallet was set in the cabinet, and applies
+ * A merchant's first payout wallet was set in the dashboard, and applies
  * already. Sent after, and never waited on: it replaces nothing, and a new
  * merchant has to be able to start selling — but a session that is not the
  * owner's could set it, and this is how the owner hears of it.
@@ -151,7 +151,7 @@ const KeyIssuedSchema = z.strictObject({
   asked_with: AskedWithSchema,
 });
 
-/** What the gateway has the cabinet tell a merchant. */
+/** What the gateway has the dashboard tell a merchant. */
 const AnnouncementSchema = z.discriminatedUnion("kind", [
   WalletSetSchema,
   WalletChangeSchema,
@@ -162,7 +162,7 @@ const AnnouncementSchema = z.discriminatedUnion("kind", [
 const ANNOUNCE = { operation: z.literal("announce") };
 
 /**
- * Everything the gateway may ask the cabinet over its route, told apart by
+ * Everything the gateway may ask the dashboard over its route, told apart by
  * `operation`. A request to announce is an announcement with
  * `"operation": "announce"` beside its `kind`.
  */
@@ -176,7 +176,7 @@ export const GatewayRequestSchema = z.discriminatedUnion("operation", [
 ]);
 
 /**
- * What became of the messages, as the cabinet knows it.
+ * What became of the messages, as the dashboard knows it.
  *
  * `handed_over` is every account naming the merchant sent a message the mail
  * provider took. `nobody_to_tell` is no account names the merchant, so nothing

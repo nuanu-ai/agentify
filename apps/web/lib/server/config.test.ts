@@ -69,7 +69,7 @@ describe("clean-clone environment", () => {
     expect(stripe.STRIPE_PUBLISHABLE_KEY).toBeUndefined();
   });
 
-  it("allows an honest registration-off local deployment without cabinet credentials", () => {
+  it("allows an honest registration-off local deployment without dashboard credentials", () => {
     Object.assign(process.env, {
       DATABASE_URL: "postgresql://agentify:agentify@localhost:5432/agentify",
       REGISTRATION_ENABLED: "false",
@@ -78,7 +78,7 @@ describe("clean-clone environment", () => {
     expect(config.REGISTRATION_ENABLED).toBe(false);
   });
 
-  it("allows registration against a configured local cabinet", () => {
+  it("allows registration against a configured local dashboard", () => {
     Object.assign(process.env, {
       DATABASE_URL: "postgresql://agentify:agentify@localhost:5432/agentify",
       REGISTRATION_ENABLED: "true",
@@ -97,7 +97,7 @@ describe("clean-clone environment", () => {
     expect(getServerConfig().SCAN_ACCEPTANCE_ENABLED).toBe(false);
   });
 
-  it("allows production privacy cleanup with registration disabled and no cabinet credentials", () => {
+  it("allows production privacy cleanup with registration disabled and no dashboard credentials", () => {
     vi.stubEnv("NODE_ENV", "production");
     Object.assign(process.env, {
       DATABASE_URL: "postgresql://agentify:agentify@localhost:5432/agentify",
@@ -114,7 +114,7 @@ describe("clean-clone environment", () => {
     });
   });
 
-  it("fails closed when production registration lacks cabinet credentials", () => {
+  it("fails closed when production registration lacks dashboard credentials", () => {
     vi.stubEnv("NODE_ENV", "production");
     Object.assign(process.env, {
       DATABASE_URL: "postgresql://agentify:agentify@localhost:5432/agentify",
@@ -137,7 +137,7 @@ describe("clean-clone environment", () => {
     expect(() => getServerConfig()).toThrow("turnstile_enforcement_requires_both_keys");
   });
 
-  it("requires the cabinet identity URL and dedicated secret together", () => {
+  it("requires the dashboard identity URL and dedicated secret together", () => {
     Object.assign(process.env, {
       DATABASE_URL: "postgresql://agentify:agentify@localhost:5432/agentify",
       CABINET_IDENTITY_URL: "http://cabinet.internal:3002",

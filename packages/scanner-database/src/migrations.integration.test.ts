@@ -861,20 +861,20 @@ describe("initial database migration", () => {
  * every file dated after the newest entry of the history it reads and compares
  * nothing else. So each set keeps a history of its own: sharing one, a set
  * would skip the other's older files as though they had run. The gateway's
- * and the cabinet's are applied the way their own commands apply them
- * (apps/gateway/src/migrate.ts, apps/cabinet/src/database.ts).
+ * and the dashboard's are applied the way their own commands apply them
+ * (apps/gateway/src/migrate.ts, apps/dashboard/src/database.ts).
  */
 describe("the scanner's migrations in the one database", () => {
   const gatewayMigrations = fileURLToPath(
     new URL("../../../apps/gateway/drizzle", import.meta.url),
   );
-  const cabinetMigrations = fileURLToPath(
-    new URL("../../../apps/cabinet/drizzle", import.meta.url),
+  const dashboardMigrations = fileURLToPath(
+    new URL("../../../apps/dashboard/drizzle", import.meta.url),
   );
   const entries = async (folder: string): Promise<number> =>
     JSON.parse(await readFile(join(folder, "meta", "_journal.json"), "utf8")).entries.length;
 
-  it("run beside the gateway's and the cabinet's, and none of the three skips or repeats another's", async () => {
+  it("run beside the gateway's and the dashboard's, and none of the three skips or repeats another's", async () => {
     await resetDatabase();
     const { db, pool } = createDatabase(connectionString, { max: 2 });
     // A gateway migration written after the scanner's newest file but dated
@@ -883,13 +883,13 @@ describe("the scanner's migrations in the one database", () => {
     try {
       const gateway = async (folder: string) =>
         migrate(drizzle(pool), { migrationsFolder: folder });
-      const cabinet = async () =>
+      const dashboard = async () =>
         migrate(drizzle(pool), {
-          migrationsFolder: cabinetMigrations,
+          migrationsFolder: dashboardMigrations,
           migrationsTable: "cabinet_migrations",
         });
       await gateway(gatewayMigrations);
-      await cabinet();
+      await dashboard();
       await migrateDatabase(db, migrationsFolder);
 
       const tables = await pool.query<{ tablename: string }>(
@@ -908,12 +908,12 @@ describe("the scanner's migrations in the one database", () => {
         ).rows;
       expect(await histories()).toEqual([
         { table_name: "gateway", count: String(await entries(gatewayMigrations)) },
-        { table_name: "cabinet", count: String(await entries(cabinetMigrations)) },
+        { table_name: "cabinet", count: String(await entries(dashboardMigrations)) },
         { table_name: "scanner", count: String(await entries(migrationsFolder)) },
       ]);
 
       await gateway(gatewayMigrations);
-      await cabinet();
+      await dashboard();
       await migrateDatabase(db, migrationsFolder);
       const unchanged = await histories();
 

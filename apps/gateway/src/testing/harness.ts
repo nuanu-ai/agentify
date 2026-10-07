@@ -24,7 +24,7 @@ import { MemoryStore } from "../adapters/memory/store.js";
 import { Gateway } from "../app/gateway.js";
 import {
   grantLiveApproval,
-  issueCabinetKey,
+  issueDashboardKey,
   issueKey,
   keyDigest,
   setPayoutWallet,
@@ -53,7 +53,7 @@ export const countedIds = (): Ids => {
 };
 
 /**
- * What a live gateway is told about the cabinet it announces through.
+ * What a live gateway is told about the dashboard it announces through.
  *
  * A live configuration does not start without both (ADR-0019), and the harness
  * never calls the address: every harness announces through the recording
@@ -99,8 +99,8 @@ export interface Harness {
   readonly queue: MemoryQueue;
   readonly facilitator: ScriptedFacilitator;
   /**
-   * What the gateway asked the cabinet to tell a merchant, and what the cabinet
-   * answers. A harness never calls a cabinet, whatever its configuration names.
+   * What the gateway asked the dashboard to tell a merchant, and what the dashboard
+   * answers. A harness never calls a dashboard, whatever its configuration names.
    */
   readonly announcer: RecordingAnnouncer;
   readonly now: () => number;
@@ -117,11 +117,11 @@ export interface Harness {
   /** A second key for a merchant who already has one. The secret, once. */
   readonly addKey: (merchantId: string, label?: string) => Promise<string>;
   /**
-   * A key made for a cabinet to call as this merchant with, the kind a person
-   * signed in to the cabinet acts through. The payout wallet is set with this
+   * A key made for a dashboard to call as this merchant with, the kind a person
+   * signed in to the dashboard acts through. The payout wallet is set with this
    * kind and no other (ADR-0019). The secret, once.
    */
-  readonly addCabinetKey: (merchantId: string) => Promise<string>;
+  readonly addDashboardKey: (merchantId: string) => Promise<string>;
   /** Stops one key working, touching no other. */
   readonly disableKey: (keyId: string) => Promise<void>;
   /**
@@ -269,8 +269,8 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
       addMerchant: (name = `Merchant ${countedName()}`) => seed(name),
       addKey: async (merchantId, label = "another of the harness's") =>
         (await issueKey(store, ids, merchantId, label, now, config.environment)).secret,
-      addCabinetKey: async (merchantId) =>
-        (await issueCabinetKey(store, ids, merchantId, now, config.environment)).secret,
+      addDashboardKey: async (merchantId) =>
+        (await issueDashboardKey(store, ids, merchantId, now, config.environment)).secret,
       disableKey: async (keyId) => {
         const disabled = await store.disableKey(keyId, now);
         if (disabled === null) {
@@ -426,7 +426,7 @@ export function workUntilStopped(worked: Worked, behaviour: WorkerBehaviour) {
  * One purchase over HTTP, from the challenge to whatever the order came to.
  *
  * It exists so that a test whose subject is not the payment exchange can get an
- * order into a state without transcribing the x402 headers. The cabinet's tests
+ * order into a state without transcribing the x402 headers. The dashboard's tests
  * are the case in point: they need a delivered sale to draw a screen from, and
  * a second copy of the header names over there is a second place for them to
  * drift from the ones the gateway actually sets.

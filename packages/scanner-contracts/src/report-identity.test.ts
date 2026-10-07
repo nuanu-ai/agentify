@@ -43,7 +43,7 @@ const requests = [
   },
 ] as const;
 
-describe("the internal route between the scanner and the cabinet", () => {
+describe("the internal route between the scanner and the dashboard", () => {
   it("accepts the three questions the scanner asks through the one route", () => {
     for (const { schema, value } of requests) {
       expect(schema.safeParse(value).success).toBe(true);
@@ -116,7 +116,7 @@ describe("the internal route between the scanner and the cabinet", () => {
     expect(readSessionResponseSchema.safeParse(signedIn).success).toBe(true);
     expect(readSessionResponseSchema.safeParse({ ...signedIn, operator: true }).success).toBe(true);
     // The flag opens the operator's dashboard (ADR-0026 §6), so only a stored
-    // yes or no is an answer; anything else is a cabinet the scanner cannot read.
+    // yes or no is an answer; anything else is a seller dashboard the scanner cannot read.
     for (const operator of ["true", 1, null])
       expect(
         readSessionResponseSchema.safeParse({ ...signedIn, operator }).success,

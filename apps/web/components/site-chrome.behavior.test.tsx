@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 describe("the header's doors", () => {
-  it("carries the signed-in address and a sign-out that posts to the cabinet", async () => {
+  it("carries the signed-in address and a sign-out that posts to the dashboard", async () => {
     // A person signed in anywhere on the site sees who they are signed in as
     // on every page with a header, and can sign out from it (ADR-0026 §3).
     visitorIs(200, { status: "signed_in", email: "owner@example.com", operator: false });
@@ -62,7 +62,7 @@ describe("the header's doors", () => {
     }
   });
 
-  it("says it cannot tell who is visiting when the cabinet does not answer", async () => {
+  it("says it cannot tell who is visiting when the dashboard does not answer", async () => {
     visitorIs(503, { status: "unknown" });
 
     const { container } = render(<SiteDoors />);

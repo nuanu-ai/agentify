@@ -50,7 +50,7 @@ own worker makes. The fifth is what follows if neither happens: within three
 business days of the deadline, the operator contacts them and pauses their
 selling until the debt is settled. Where no payer was named, only goods close
 the debt, so the fourteen days below cannot be kept for that order. Until the
-cabinet names a way to reach the operator, a merchant who signed themselves up
+dashboard names a way to reach the operator, a merchant who signed themselves up
 can report a refund only after the operator has contacted them.
 
 The operator keeps the time, counted from the delivery deadline. After three

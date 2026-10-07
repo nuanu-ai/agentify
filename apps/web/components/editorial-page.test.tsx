@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import MethodologyPage from "../app/(trust)/methodology/page";
 
 describe("a trust page", () => {
-  it("carries the doors to the documentation and the cabinet", () => {
+  it("carries the doors to the documentation and the dashboard", () => {
     Object.assign(globalThis, { React });
     const markup = renderToStaticMarkup(<MethodologyPage />);
 

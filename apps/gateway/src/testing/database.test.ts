@@ -16,7 +16,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_TEST_DATABASE_URL, TEST_DATABASE, testDatabaseUrl } from "./database.js";
 
-/** The database the cabinet is showing. Never this suite's. */
+/** The database the dashboard is showing. Never this suite's. */
 const stack = "postgres://agentify:agentify@localhost:5432/agentify";
 
 /** A server bound where a deployment binds it rather than where a laptop does. */
@@ -63,7 +63,7 @@ describe("the database the suite is given", () => {
 
   it("is never the database the stack runs on, whichever variable names it", () => {
     // The accident this exists for: a developer with the stack up runs the
-    // suite against the database the cabinet is showing, and the suite empties
+    // suite against the database the dashboard is showing, and the suite empties
     // it without a word. Refusing is the warning — and a second way of naming
     // a database is a second way of walking into it.
     for (const variable of ["AGENTIFY_TEST_DATABASE_URL", "DATABASE_URL"]) {
@@ -98,7 +98,7 @@ describe("the database the suite is given", () => {
     // stops at the port, and one that ends in a bare slash, both connect to the
     // database named after the user — which on this stack is `agentify`. So a
     // URL that looks finished walks straight past the refusal above and empties
-    // the cabinet's database.
+    // the dashboard's database.
     for (const url of [
       "postgres://agentify:agentify@localhost:55432",
       "postgres://agentify:agentify@localhost:55432/",

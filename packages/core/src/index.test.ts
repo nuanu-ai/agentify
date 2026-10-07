@@ -51,7 +51,7 @@ describe("@agentify/core", () => {
       "isOpen",
       "assertNever",
       // What a merchant must have before their cards are sold: asked by the
-      // gateway's publish door and sale-time check and by the cabinet.
+      // gateway's publish door and sale-time check and by the dashboard.
       "readinessOf",
       // `./deployment/environment.ts` is a foundation module: its own header
       // says its callers are the keys a deployment issues and the mark its

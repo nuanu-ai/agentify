@@ -7,7 +7,7 @@ owner's word)
 ## Context
 
 The whole surface now comes up from `docker compose up` — the landing, the
-documentation, the cabinet and the gateway on one origin, with Postgres behind
+documentation, the dashboard and the gateway on one origin, with Postgres behind
 them (ADR-0005). What it cannot do is sell anything, and the reason is one
 line: `apps/gateway/src/main.ts` builds its facilitator from
 `HTTPFacilitatorClient` unconditionally, so every purchase needs the network, a
@@ -16,7 +16,7 @@ funded testnet wallet and a faucet before it can move at all.
 That is the wrong shape for the two things the local stack exists for. A
 merchant's engineer opening this repository should reach a completed purchase
 without holding a wallet; and the surfaces are empty until something sells —
-the cabinet's cards, orders and receipts have nothing to show, so the screens
+the dashboard's cards, orders and receipts have nothing to show, so the screens
 that are the point of the exercise cannot be looked at.
 
 `ScriptedFacilitator` already answers exactly these questions offline. It is
@@ -85,11 +85,11 @@ allowed here, where nothing settles, and refused everywhere else.
 ## Consequences
 
 The local stack completes a purchase with no network, no wallet and no faucet,
-which is what makes the cabinet worth opening.
+which is what makes the dashboard worth opening.
 
 Every order the pilot writes is already marked `test` — stage one sets it on
 all of them — so the receipts a sandbox writes carry the same mark the wire
-already has for them, and the cabinet showing that mark is the same work it
+already has for them, and the dashboard showing that mark is the same work it
 owes anyway. Nothing about the sandbox introduces an unmarked test payment.
 
 What this does not do is make the sandbox safe to point at a real chain. It

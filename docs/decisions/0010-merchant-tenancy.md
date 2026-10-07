@@ -14,7 +14,7 @@ receipts" return the whole store — their own descriptions admit it. For a pilo
 with one merchant that was the honest minimum.
 
 The product owner has now settled the product's shape: self-service. A
-merchant registers with an email address, comes to the cabinet, creates a
+merchant registers with an email address, comes to the dashboard, creates a
 key, integrates against the SDK themselves and starts selling. "We write
 the cards" means a generator writes them from the merchant's own site, not
 that a person does.
@@ -65,7 +65,7 @@ the same reason. The seed is the laptop's alone: a deployed channel seeds
 nothing, because a merchant there comes into being only by the one way in
 (ADR-0014).
 
-**The cabinet's accounts belong to a merchant.** Sign-in scopes every screen
+**The dashboard's accounts belong to a merchant.** Sign-in scopes every screen
 to the account's merchant. The screens for making and disabling keys follow in
 their own step — the model here is what makes them buildable.
 
@@ -96,7 +96,7 @@ deployment, nobody can revoke one key of several, and self-service dies at the
 first step: a merchant cannot make a key for themselves by editing our
 environment.
 
-**Scoping in the cabinet only.** The cabinet is one caller of a public API;
+**Scoping in the dashboard only.** The dashboard is one caller of a public API;
 scoping there leaves the API itself answering everything to anybody with any
 key. The gateway is the boundary both sides trust, so the gateway is where the
 scope lives.

@@ -1,0 +1,652 @@
+/**
+ * The screens a merchant connects a WooCommerce shop on.
+ *
+ * Four of them: before the shop knows anything about us, the moment the
+ * merchant's browser comes back through the return address, the import, and
+ * the block on the integrations screen that says which of those the account is
+ * in. None of them fetches anything or decides anything, which is what lets a
+ * test read the page a merchant would be looking at.
+ *
+ * The one thing these pages are careful about is what they claim. A merchant
+ * comes back from their own shop having pressed Approve, and the shop's
+ * redirect says `success=1` — but that is the shop telling the browser what it
+ * did, and the keys travel separately, on a request from the shop's own server
+ * to ours. The redirect is a claim and the row is the evidence: anybody can
+ * type `success=1` into an address bar, and a post that never got through
+ * leaves the same nothing here as a post never made. So the return page says
+ * what is actually here rather than what the redirect claims, and where nothing
+ * is here it says that, rather than "it failed" — which it does not know.
+ */
+
+import type { SurfaceMode } from "@agentify/core";
+import { MERCHANT_FINDINGS, type MerchantFinding } from "@nuanu-ai/agentify-contracts";
+import { bare, brandLockup, escaped, page, when } from "./html.js";
+import { refusedForNoName, type Viewer } from "./screens.js";
+import type { SkippedProduct } from "./woo-catalog.js";
+import { GRANT_MINUTES } from "./woo-connect.js";
+import { PRODUCTS_AT_MOST } from "./woo-shop.js";
+import { APPROVAL_UNREAD, UNSET_WORDS, type Unset } from "./words.js";
+
+/**
+ * A connected shop as a screen may know it.
+ *
+ * Three fields, and a shape of its own rather than the stored row for one
+ * reason: the row also holds the shop's key and its secret, and the rule that
+ * those never reach a page is worth holding in a type rather than in whoever
+ * writes the next screen remembering it (ADR-0023).
+ */
+export interface ConnectedShop {
+  readonly shopUrl: string;
+  readonly permissions: string;
+  readonly connectedAt: Date;
+}
+
+/**
+ * Where this account's WooCommerce channel has got to, in the four states a
+ * merchant can be in and can be told apart.
+ *
+ * Four of them, not two, and the two in the middle are what this shape exists
+ * for. A merchant presses Connect, approves in their own shop, and their shop
+ * then posts the keys to us from its own server — a request that can simply
+ * not arrive, and when it does not, our rows look no different from a merchant
+ * who never pressed the button. "Not connected" would cover both "you have not
+ * tried" and "you tried and nothing came", and those have different next
+ * moves: one is press the button, the other is wait, and then press it again.
+ *
+ * What the rows do not say is why nothing came. A merchant who declined in
+ * their shop, one who closed its screen, and one whose shop tried to post and
+ * failed all leave the same nothing here, so the third state names none of
+ * them: the one thing it knows is that no keys arrived in the time we hold a
+ * Connect open.
+ *
+ * The clock is read before this is built, not after, so that both screens draw
+ * one answer rather than each doing its own arithmetic on a row.
+ */
+export type ShopState =
+  /** The keys arrived. This is the only state in which anything can be sold. */
+  | { readonly kind: "connected"; readonly shop: ConnectedShop }
+  /** Approved or not, the fifteen minutes are still running. Wait, or reload. */
+  | {
+      readonly kind: "waiting";
+      readonly shopUrl: string;
+      readonly startedMinutesAgo: number;
+    }
+  /** The fifteen minutes ran out with no keys written down here. Why is not known here. */
+  | { readonly kind: "unanswered"; readonly shopUrl: string }
+  /** Nothing was ever started. */
+  | { readonly kind: "none" };
+
+/**
+ * What the settings block is drawn from: where the channel is, or that where
+ * it is could not be read just now.
+ *
+ * The fifth case is a state of what we know, not of the channel, and it stays
+ * out of `ShopState` because the shop screen is never drawn without a read. A
+ * read that fails there is the page failing, and a type that let the shop
+ * screen be handed "unread" would be a state it has no honest sentence for.
+ * The integrations screen is different: its other subject is the SDK, and our
+ * own shops table being down must not stand between a merchant and the guide
+ * and the key for that. So the block is drawn with the fifth case, saying so, rather than
+ * dropped — a block that simply vanishes reads as "no shop is connected" to a
+ * merchant who connected one yesterday, and "I don't know" has to be
+ * distinguishable from "there is none".
+ */
+export type ShopTile = ShopState | { readonly kind: "unread" };
+
+/** What the page is drawn from: where the channel is, and anything just refused. */
+export interface WooView {
+  /** Where this account's channel has got to, read off our own rows. */
+  readonly state: ShopState;
+  /** What the merchant has yet to set, as the gateway answered when the page was drawn. */
+  readonly unset?: readonly Unset[];
+  /**
+   * What a press of Import was refused for, where this page is the answer to
+   * one: what was unset at that moment, before the shop was read.
+   */
+  readonly refused?: readonly Unset[];
+  /**
+   * What the door asks of this merchant that this page could not read, which
+   * is the operator's approval wherever the door asks for it.
+   */
+  readonly unsure?: readonly MerchantFinding[];
+  /** What was wrong with what the merchant just typed, where anything was. */
+  readonly problem?: string;
+  /** What they typed, so a refusal leaves the box as they left it. */
+  readonly typed?: string;
+  /**
+   * Whether the browser reached this page through the return address.
+   *
+   * That is the whole of what it means. The return route sets it for any
+   * browser with a session, whatever query it carried or none, so a merchant
+   * who typed the address in sets it as surely as a shop that sent them — and
+   * a real return sets it only where the cookie travels (ADR-0009). It changes
+   * what the page says and nothing about what it claims: the state above is
+   * read off our own rows either way.
+   */
+  readonly cameBack?: boolean;
+}
+
+/** How long ago a Connect was pressed, as a merchant would say it. */
+const minutesAgo = (minutes: number): string =>
+  minutes < 1 ? "less than a minute ago" : `${minutes} ${minutes === 1 ? "minute" : "minutes"} ago`;
+
+/**
+ * The two sentences a Connect that produced no keys is worth.
+ *
+ * They are two and not one because the merchant's move differs. Inside the
+ * fifteen minutes the answer is to wait. Past them the request is not coming
+ * on this Connect — a post arriving now would meet an expired token and be
+ * refused — and the answer is to press Connect again.
+ *
+ * Neither sentence names a cause, because none is known here. Past the
+ * fifteen minutes there are three ways it can have gone: the merchant
+ * declined, and their shop sent the browser back with nothing posted; they
+ * closed the shop's screen; or they approved and the shop's post to us
+ * failed. The rows hold the same nothing in all three, and "your shop could
+ * not reach us", which the second sentence once said, was the third guess
+ * presented as the fact — it sent a merchant who had declined off to repair a
+ * firewall that was fine. What the sentence may say is the one thing that is
+ * WooCommerce's own behaviour rather than a guess about the merchant's
+ * network: a shop whose post fails, or whose post our own door refuses, shows
+ * the merchant an error on its own screen and deletes the key it minted
+ * (`class-wc-auth.php`, `post_consumer_data` and `maybe_delete_key`). So a
+ * merchant who saw an error there was stopped at the post, and one who was
+ * sent back here, or who closed the page, never sent anything. What the
+ * error says is not promised: on a post our door refused, WooCommerce's
+ * message names nothing.
+ */
+const noKeysYet = (state: ShopState, action = ""): string => {
+  if (state.kind === "waiting") {
+    return `  <div class="callout">
+    <div class="what">Waiting for the keys from your shop</div>
+    <div class="why">You started connecting ${escaped(state.shopUrl)} ${escaped(minutesAgo(state.startedMinutesAgo))}, and no keys have reached us yet. If you approved, your shop sends the keys in a separate request; reload in a moment to see whether they arrived. If you declined or closed the approval screen, you can start again now.</div>
+${action}
+  </div>
+`;
+  }
+  if (state.kind === "unanswered") {
+    return `  <div class="callout">
+    <div class="what">The keys from your shop did not arrive</div>
+    <div class="why">You started connecting ${escaped(state.shopUrl)}, and no keys arrived from it in the ${GRANT_MINUTES} minutes we wait for them. This page cannot tell whether approval was declined, closed or rejected before it was saved. No access from that attempt is active here. Press Connect again; if WooCommerce showed an error, it already removed the key from that attempt.</div>
+  </div>
+`;
+  }
+  return "";
+};
+
+/**
+ * What a supported product is, said once on the origin.
+ *
+ * It was said three times — here, in the import form beside it, and again in
+ * the settings block on another screen — which is three copies of one rule and
+ * two of them free to go stale. This is the copy that stays, because this is
+ * the page the Connect and the Import are on; the integrations block links here.
+ * There is no WooCommerce page in the portal and this pass does not make one:
+ * the connector is experimental and is not the acceptance gate for anything.
+ */
+const WHAT_CONNECTING_DOES = `<p>This experimental WooCommerce connector currently works in test mode only and imports one narrow configuration: a published virtual download priced in USD, with one protected file, unlimited downloads, no stock management, and shop tax calculation turned off.</p>
+  <p class="quiet">Connecting gives Agentify access to your shop, and importing publishes supported products as cards. You approve access in WooCommerce; Agentify never asks for your shop password.</p>`;
+
+/** The page a merchant connects from, and comes back to. */
+export const wooScreen = (viewer: Viewer, view: WooView): string => {
+  const { base } = viewer;
+  const body = `
+  <div class="integration-shell">
+  <div class="lede">
+    <div>
+      <h1>WooCommerce</h1>
+      ${WHAT_CONNECTING_DOES}
+    </div>
+  </div>
+${view.cameBack === true && view.state.kind === "connected" ? KEYS_ARRIVED : ""}${
+  view.state.kind === "connected"
+    ? theConnection(base, view.state.shop, view)
+    : `${noKeysYet(
+        view.state,
+        // Only the wait has a next step of its own; a Connect that ran out is
+        // answered by the form right under it.
+        view.state.kind === "waiting"
+          ? `    <div class="connect-actions"><a class="button button-secondary" href="${escaped(base)}/woocommerce">Check again</a></div>`
+          : "",
+      )}${theForm(base, view)}`
+}
+  </div>`;
+
+  return page({
+    mode: viewer.mode,
+    base,
+    who: viewer.who,
+    confirmed: viewer.confirmed,
+    tab: "integrations",
+    title: "WooCommerce",
+    unnamed: refusedForNoName(viewer),
+    body,
+  });
+};
+
+/**
+ * What the page adds when the browser came through the return address and the
+ * keys are here: the sentence a merchant went out to their shop for.
+ *
+ * It is drawn off the row, never off the redirect. WooCommerce puts
+ * `success=1` or `success=0` on its redirect and the return route reads
+ * neither, so nothing here knows what the shop said, and a merchant signed in
+ * on this browser reaches this page by typing the address in as surely as by
+ * being sent. In every other state the arrival adds nothing. "Your shop says
+ * it approved", which the page once said there, was the redirect's claim
+ * presented as read — drawn over a redirect saying `success=0` and over no
+ * redirect at all — and its honest replacement, "your browser arrived through
+ * the return address", was a sentence the page had to disclaim in the next
+ * one, and said nothing the block below does not. That block is drawn off our
+ * rows and is the same sentence on a reload and on the integrations screen, so
+ * what a merchant reads on coming back is what they read tomorrow.
+ */
+const KEYS_ARRIVED = `  <div class="callout done">
+    <div class="what">Your shop is connected: the keys came directly from its server.</div>
+  </div>
+`;
+
+/**
+ * What the return address answers a browser that arrives carrying no session.
+ *
+ * The session cookie is `SameSite=Lax` (ADR-0009 §6), so the navigation back
+ * from the merchant's own shop carries it, and a signed-in browser is sent on
+ * into the dashboard before this is drawn. What arrives here is a browser that
+ * came back without one: the session ended while the merchant was in their
+ * shop, or the shop was opened in another browser. Behind the sign-in gate
+ * that ends a working flow on a sign-in form, and a merchant reads the form as
+ * the connect having failed — which is what happened, twice, when this flow
+ * was walked by hand while the cookie was still `Strict`.
+ *
+ * So the page is drawn for anybody, and every word of it is chosen so that
+ * anybody may read it. It says what this address is for, which is true of the
+ * address rather than of the visitor; it does not say that a connection
+ * happened, because for whoever typed the address in by hand none did, and
+ * because what the shop's `success=1` claims is not something we have seen. It
+ * names no account, no shop and no key, and the same page is served whether
+ * this dashboard holds a connection or holds nothing — a stranger who walks up to
+ * this address learns that the address exists, and that is all there is here to
+ * learn.
+ *
+ * The next click goes to the dashboard, whose ordinary sign-in gate meets a
+ * browser without a session. The page does not ask for another email or
+ * interpret the untrusted redirect query.
+ */
+export const wooReturnScreen = (base: string, mode: SurfaceMode): string =>
+  bare(
+    base,
+    "Back from your shop",
+    `<div class="gate">
+  ${brandLockup("/")}
+  <form class="gate-card" method="get" action="${escaped(base)}/woocommerce">
+    <h1>Back from your shop</h1>
+    <p>Continue to your dashboard to see whether access reached Agentify. If you chose not to connect, you can try again there.</p>
+    <input type="hidden" name="from" value="shop">
+    <button class="button button-primary" type="submit">Continue to your dashboard</button>
+  </form>
+</div>`,
+    mode,
+  );
+
+/** The box the shop's address is typed into. */
+const theForm = (base: string, view: WooView): string => `  <div class="lede">
+    <div>
+      <h2>Connect your shop</h2>
+      <p>Type the address you open your own shop at. Your browser goes there next, so that WooCommerce can ask you to approve.</p>
+      <p class="quiet">Use the public https address at the root of the shop. WooCommerce permalinks must be set to anything other than Plain.</p>
+    </div>
+  </div>
+  <form class="issue" method="post" action="${escaped(base)}/woocommerce/connect">
+    <div>
+      <label for="shop_url">The address of your shop</label>
+      <input id="shop_url" name="shop_url" type="url" inputmode="url" placeholder="https://shop.example.com" value="${escaped(view.typed ?? (view.state.kind === "waiting" || view.state.kind === "unanswered" ? view.state.shopUrl : ""))}" required>
+    </div>
+    <button class="button button-primary" type="submit">Connect</button>
+    ${view.problem === undefined ? "" : `<p class="problem">${escaped(view.problem)}</p>`}
+  </form>
+`;
+
+/**
+ * What a connected shop looks like, and the two things to do with it.
+ *
+ * The refusal is drawn here as well as in the form next door, and the two are
+ * not one line in one place because they are about different things. On the
+ * form it is about what somebody just typed; here it is about what the shop
+ * answered when we went to read it, and there is no box on this page for it to
+ * sit under.
+ */
+const theConnection = (
+  base: string,
+  connection: ConnectedShop,
+  view: WooView,
+): string => `  <div class="lede">
+    <div>
+      <h2>Your shop</h2>
+      <p>${escaped(connection.shopUrl)}, connected ${when(connection.connectedAt.toISOString())}.</p>
+      ${view.problem === undefined ? "" : `<p class="problem">${escaped(view.problem)}</p>`}
+      ${
+        connection.permissions === "read_write"
+          ? ""
+          : `<p class="problem">Your shop granted ${escaped(connection.permissions)} access rather than read and write. A fresh purchase is unavailable before payment because this connection cannot create its WooCommerce order. Connect again and approve read and write access.</p>`
+      }
+    </div>
+  </div>
+  <form class="issue" method="post" action="${escaped(base)}/woocommerce/import">
+    <div>
+      <label>Import the catalog</label>
+      <p class="quiet">Reads up to ${PRODUCTS_AT_MOST} products and publishes only the product configuration currently supported by this connector, described above. Other products stay in your shop. If the shop has more than ${PRODUCTS_AT_MOST} products, the whole import is refused. Running it again updates the same cards.</p>
+      <p class="quiet">If a product is later deleted from the shop, runs out, or stops being supported, its card stays listed, but the price check refuses the purchase before payment. Pause cards you no longer want agents to see.</p>
+      ${beforeImporting(base, view)}
+    </div>
+    <button class="button button-primary" type="submit">Import the catalog</button>
+  </form>
+  <form class="issue" method="post" action="${escaped(base)}/woocommerce/disconnect">
+    <div>
+      <label>Disconnect</label>
+      <p class="quiet">Deletes the keys your shop gave us. Cards stay listed, but without a connection a new purchase cannot get a price and is refused before payment. You still have to fulfill orders that are already paid. If agents should no longer see the cards, pause them first. To revoke the keys, open WooCommerce → Settings → Advanced → REST API.</p>
+    </div>
+    <button class="button button-secondary" type="submit">Forget this shop</button>
+  </form>
+`;
+
+/**
+ * What stands between this merchant and any card an import could publish,
+ * said beside the button that would otherwise find out card by card.
+ *
+ * The publish door refuses every card of a merchant who has not set these, and
+ * its sentence ends by naming an API route, which is right for an engineer
+ * holding a response and means nothing to a merchant who connected a shop and
+ * wrote no code. So the line names the thing as the settings screen names it
+ * and links there. It is drawn before the press as well as after it, so the
+ * merchant can learn it without pressing; after a refused press it says that
+ * nothing was imported, and names what was unset at that moment rather than at
+ * the redraw. Only that answer is an alert: the same line on the page before
+ * the press is a standing notice, and a screen reader announcing it on every
+ * visit would make the one announcement that matters indistinguishable.
+ *
+ * Where the door also waits for the operator's approval of the merchant, which
+ * no route tells this dashboard about, those are not all it asks. So there the
+ * line says approval is needed too and that this page cannot see it, and does
+ * not send the merchant back to Import as though Settings were the whole of it.
+ */
+const beforeImporting = (base: string, view: WooView): string => {
+  const refused = view.refused ?? [];
+  const unset = refused.length > 0 ? refused : (view.unset ?? []);
+  if (unset.length === 0) {
+    return "";
+  }
+  const what = unset.map((one) => UNSET_WORDS[one]).join(" and ");
+  const settings = `<a href="${escaped(base)}/settings">Settings</a>`;
+  const unread = (view.unsure ?? []).includes(MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL);
+  return refused.length > 0
+    ? `<p class="problem" role="alert">Nothing was imported. Set ${what} in ${settings}${unread ? `. ${APPROVAL_UNREAD}` : ", then import again."}</p>`
+    : `<p class="problem">Import publishes nothing until you set ${what} in ${settings}.${unread ? ` ${APPROVAL_UNREAD}` : ""}</p>`;
+};
+
+/** A product an import sent through the publish door, named as the shop names it. */
+interface Sent {
+  /** The shop's own identifier for the product. */
+  readonly id: string;
+  /** The product's name in the shop. */
+  readonly title: string;
+}
+
+/** The door took it: our catalogue identifier for the card. */
+interface Published extends Sent {
+  readonly published: string;
+}
+
+/** The door refused it: what it said, word for word, one finding per field. */
+interface Refused extends Sent {
+  readonly problems: readonly string[];
+}
+
+/** The door never answered about it: what came back instead of an answer. */
+interface Unanswered extends Sent {
+  readonly failed: string;
+}
+
+/** Import stopped before this product was sent through the publish door. */
+interface NotAttempted extends Sent {
+  readonly notAttempted: true;
+}
+
+/**
+ * What came of one product sent through the publish door: one of three, and
+ * never none of them. The third is the one a merchant cannot repair in their
+ * shop, and it is a shape of its own so that no screen can fold it into the
+ * one they can.
+ */
+export type ImportOutcome = Published | Refused | Unanswered | NotAttempted;
+
+export interface ImportView {
+  readonly shopUrl: string;
+  readonly outcomes: readonly ImportOutcome[];
+  readonly skipped: readonly SkippedProduct[];
+}
+
+/**
+ * What an import came to, answered as a page rather than as a redirect.
+ *
+ * The one screen in this dashboard besides the new-key page that answers a form
+ * post with a page, and for the same kind of reason: a redirect can carry a
+ * flag and this has to carry a list. Every refusal here is the publish door's
+ * own sentence about one field of one card, which is the only thing that tells
+ * a merchant what to go and change in their shop — folded into "some cards were
+ * refused" it would be a page saying something went wrong and nothing else.
+ * And a product the door never answered about is listed apart from those,
+ * because its next move is not in the shop at all.
+ */
+export const wooImportScreen = (viewer: Viewer, view: ImportView): string => {
+  const went = view.outcomes.filter((one): one is Published => "published" in one);
+  const refused = view.outcomes.filter((one): one is Refused => "problems" in one);
+  const unanswered = view.outcomes.filter((one): one is Unanswered => "failed" in one);
+  const notAttempted = view.outcomes.filter((one): one is NotAttempted => "notAttempted" in one);
+
+  const body = `
+  <div class="lede">
+    <div>
+      <h1>What came over from ${escaped(view.shopUrl)}</h1>
+      <p>${escaped(summaryOf(went.length, refused.length, unanswered.length, notAttempted.length, view.skipped.length))}</p>
+      <p class="quiet"><a href="${escaped(viewer.base)}/cards">Your cards</a> · <a href="${escaped(viewer.base)}/woocommerce">Back to the shop</a></p>
+    </div>
+  </div>
+${went.length === 0 ? "" : publishedBlock(went)}${refused.length === 0 ? "" : refusedBlock(refused)}${
+  unanswered.length === 0 ? "" : unansweredBlock(unanswered)
+}${notAttempted.length === 0 ? "" : notAttemptedBlock(notAttempted)}${
+  view.skipped.length === 0 ? "" : skippedBlock(view.skipped)
+}`;
+
+  return page({
+    mode: viewer.mode,
+    base: viewer.base,
+    who: viewer.who,
+    confirmed: viewer.confirmed,
+    tab: "integrations",
+    title: "WooCommerce import",
+    body,
+  });
+};
+
+/** One line of counts, written so that none of the four is hidden. */
+const summaryOf = (
+  published: number,
+  refused: number,
+  unanswered: number,
+  notAttempted: number,
+  skipped: number,
+): string => {
+  const parts = [
+    `${published} ${published === 1 ? "product" : "products"} published`,
+    ...(refused === 0 ? [] : [`${refused} refused by our publishing rules`]),
+    ...(unanswered === 0 ? [] : [`${unanswered} got no verdict`]),
+    ...(notAttempted === 0 ? [] : [`${notAttempted} not attempted`]),
+    ...(skipped === 0 ? [] : [`${skipped} could not be turned into a card at all`]),
+  ];
+  return `${parts.join(", ")}.`;
+};
+
+/**
+ * The cards the door took, named for what the door did and not for what it
+ * did not. The answer to a publish carries the catalogue identifier and
+ * nothing about selling, and a card the merchant paused stays paused through a
+ * publish — so "on sale" here would be this page's guess, made over the one
+ * card a merchant went out of their way to hold back. Where the selling state
+ * is drawn is the cards screen, and the line under the heading says so.
+ */
+const publishedBlock = (outcomes: readonly Published[]): string => `  <div class="lede">
+    <div>
+      <h2>Published</h2>
+      <p class="quiet">Each is one of your cards. Whether it can be bought is on your cards screen. A card you paused stays paused through an import, and while all selling is stopped no card takes an order.</p>
+      <ul>${outcomes
+        .map(
+          (one) =>
+            `<li>${escaped(one.title)} <span class="quiet">— product ${escaped(one.id)} in your shop, card ${escaped(one.published)}</span></li>`,
+        )
+        .join("")}</ul>
+    </div>
+  </div>
+`;
+
+/**
+ * The cards the door refused, with its own words under each one.
+ *
+ * Word for word, and not summarised. What the merchant does next is go into
+ * their shop and change the thing named — a description over five hundred
+ * characters, a title the catalogue will not carry — and a paraphrase of ours
+ * would be a second description of a rule that already has one.
+ */
+const refusedBlock = (outcomes: readonly Refused[]): string => `  <div class="lede">
+    <div>
+      <h2>Refused</h2>
+      <p class="quiet">These are our own publishing rules, and the sentences under each product are the ones the publish door gave. Change what they name in your shop and import again.</p>
+      <p class="quiet">The count is of your description with markup removed, so your shop's editor shows a larger number.</p>
+      <ul>${outcomes
+        .map(
+          (
+            one,
+          ) => `<li>${escaped(one.title)} <span class="quiet">— product ${escaped(one.id)}</span>
+        <ul>${one.problems.map((problem) => `<li>${escaped(problem)}</li>`).join("")}</ul></li>`,
+        )
+        .join("")}</ul>
+    </div>
+  </div>
+`;
+
+/**
+ * The products the door never answered about, apart from the ones it refused.
+ *
+ * A refusal is a sentence about a field of the product, and the merchant's
+ * next move is in their shop. These are not that: the product may be perfect
+ * for all anybody knows, because nobody read it — the gateway was not there,
+ * or answered with something that is not its answer to a publish, a refusal
+ * of the key among them — and no move in the shop helps. Folded into the list
+ * above, this page sent a merchant to edit a product nobody had read. The
+ * line printed under each product says "the gateway", which to a WooCommerce
+ * merchant is the payment plugin on their own Payments tab, so the paragraph
+ * binds the word before the line is read.
+ */
+const unansweredBlock = (outcomes: readonly Unanswered[]): string => `  <div class="lede">
+    <div>
+      <h2>No verdict</h2>
+      <p class="quiet">Nothing here is a finding about the product, and nothing in your shop needs changing: the part of Agentify that keeps your cards — the lines below call it the gateway — did not answer when this product was sent to it, or answered with something other than its verdict. Import again later; importing again does not double cards.</p>
+      <ul>${outcomes
+        .map(
+          (
+            one,
+          ) => `<li>${escaped(one.title)} <span class="quiet">— product ${escaped(one.id)}</span>
+        <ul><li>${escaped(one.failed)}</li></ul></li>`,
+        )
+        .join("")}</ul>
+    </div>
+  </div>
+`;
+
+const notAttemptedBlock = (outcomes: readonly NotAttempted[]): string => `  <div class="lede">
+    <div>
+      <h2>Not attempted</h2>
+      <p class="quiet">Import stopped after the first product got no verdict, so these products were not sent to Agentify. Import again later.</p>
+      <ul>${outcomes
+        .map(
+          (one) =>
+            `<li>${escaped(one.title)} <span class="quiet">— product ${escaped(one.id)}</span></li>`,
+        )
+        .join("")}</ul>
+    </div>
+  </div>
+`;
+
+/**
+ * The products that never became a card at all.
+ *
+ * A different list from the one above and deliberately not folded into it. A
+ * refused card is a product we could describe and our own door would not take;
+ * these are products this dashboard could not read as a card in the first place,
+ * and the merchant's move is different in each case.
+ */
+const skippedBlock = (skipped: readonly SkippedProduct[]): string => `  <div class="lede">
+    <div>
+      <h2>Left in the shop</h2>
+      <p class="quiet">Nothing was published for these, and nothing about them was changed in your shop.</p>
+      <ul>${skipped
+        .map(
+          (one) =>
+            `<li>${escaped(one.title)} <span class="quiet">— product ${escaped(one.id)}</span><br>${escaped(one.why)}</li>`,
+        )
+        .join("")}</ul>
+    </div>
+  </div>
+`;
+
+/**
+ * The block on the integrations screen that says where the channel has got to.
+ *
+ * It draws the state rather than a standing invitation, and that is the whole
+ * of why it reads rows. A merchant comes back from approving in their own shop,
+ * opens Integrations, and finds out there whether it took; a block that says
+ * "connect a WooCommerce shop" over a shop that is already connected is not
+ * merely out of date, it is this page telling them the Connect failed and
+ * sending them round the loop again.
+ *
+ * The same four states as the shop screen and the same sentences for the two
+ * that are neither connected nor nothing, because this is the screen a merchant
+ * looks at after being sent here from the return page, and being told two
+ * different things by two pages about one row is worse than being told nothing.
+ * What a merchant does about any of it — the import, the disconnect, the form
+ * that starts another Connect — is on the shop screen, and this block is the
+ * way in from all four. The fifth case, `unread`, is this screen's alone: the
+ * rows could not be read just now, and the block says so rather than going
+ * away, because a block that vanishes reads as "no shop is connected".
+ *
+ * A shop that granted less than read and write is said here too, for the same
+ * reason the third state exists: that channel cannot deliver a single order,
+ * and a line reading only "connected" over it is this page being reassuring
+ * about something that is broken.
+ */
+export const wooSettingsBlock = (base: string, state: ShopTile): string => {
+  // The unread state is the one with no link to the shop screen. That page
+  // needs the same read and would answer with an error page, so a link would
+  // be the integrations screen offering something that cannot be drawn.
+  const said =
+    state.kind === "unread"
+      ? `<p>Whether a shop is connected to this account could not be read just now.</p>
+      <p class="quiet">The fault is on our side, not in your shop, and nothing was disconnected by it. Reload this page in a moment.</p>`
+      : state.kind === "connected"
+        ? `<p>${escaped(state.shop.shopUrl)}, connected ${when(state.shop.connectedAt.toISOString())}.</p>
+      ${
+        state.shop.permissions === "read_write"
+          ? ""
+          : `<p class="problem">Your shop granted ${escaped(state.shop.permissions)} access rather than read and write, so a fresh purchase is unavailable before payment. Connect again and approve read and write access.</p>`
+      }
+      <div class="connect-actions"><a class="button button-secondary" href="${escaped(base)}/woocommerce">Your shop</a></div>`
+        : state.kind === "none"
+          ? `<p>This experimental connector imports one narrow WooCommerce configuration, which the shop screen describes.</p>
+      <div class="connect-actions"><a class="button button-primary" href="${escaped(base)}/woocommerce">Connect a WooCommerce shop</a></div>`
+          : `${noKeysYet(state)}
+      <div class="connect-actions"><a class="button button-primary" href="${escaped(base)}/woocommerce">${state.kind === "waiting" ? "Check the connection" : "Connect again"}</a></div>`;
+
+  return `
+      <h3>WooCommerce (experimental)</h3>
+      ${said}
+`;
+};

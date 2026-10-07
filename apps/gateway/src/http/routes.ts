@@ -60,7 +60,7 @@ const NOT_FOUND = 404;
 const CONFLICT = 409;
 const UNPROCESSABLE = 422;
 /**
- * A dependency of this call did not do its part — the cabinet or the mail
+ * A dependency of this call did not do its part — the dashboard or the mail
  * provider behind a wallet change — and nothing was recorded.
  */
 const UNAVAILABLE = 503;
@@ -105,7 +105,7 @@ function callersKey({ keyId }: RouteCall): string {
  * What the key this call was made with was made for.
  *
  * Null cannot arrive here for the reason it cannot arrive above, and on the
- * cabinet's own two routes and the payout wallet the answer decides whether
+ * dashboard's own two routes and the payout wallet the answer decides whether
  * the call happens at all.
  */
 function callersPurpose({ keyPurpose }: RouteCall): KeyPurpose {
@@ -120,19 +120,19 @@ function callersPurpose({ keyPurpose }: RouteCall): KeyPurpose {
 /**
  * What a call made with the wrong kind of key is answered with.
  *
- * The two cabinet calls share it, because they are refused for one reason: they
- * are how a cabinet holds and replaces its own credential, and a key of the
+ * The two dashboard calls share it, because they are refused for one reason: they
+ * are how a dashboard holds and replaces its own credential, and a key of the
  * merchant's own code reaching either of them reaches the sweep — which would
- * take that credential away and leave somebody looking at a cabinet that no
+ * take that credential away and leave somebody looking at a dashboard that no
  * longer opens.
  */
-const notTheCabinets = (response: RouteCall["response"]): RouteAnswer =>
+const notTheDashboards = (response: RouteCall["response"]): RouteAnswer =>
   written(
     response,
     FORBIDDEN,
     refusal(
       "not_a_cabinet_key",
-      "this call is one a cabinet makes with a key of its own, and the key it was made with is one of the merchant's own code",
+      "this call is one a dashboard makes with a key of its own, and the key it was made with is one of the merchant's own code",
     ),
   );
 
@@ -140,22 +140,22 @@ const notTheCabinets = (response: RouteCall["response"]): RouteAnswer =>
  * What a key of the merchant's own code is answered with at the payout wallet.
  *
  * The public door does not route a write to this path at all (ADR-0019), so
- * what meets this is something inside the stack: a cabinet account left
+ * what meets this is something inside the stack: a dashboard account left
  * holding a key of the other kind, or a command somebody runs by hand. It
  * stays as the gateway's own word on the rule rather than the door's alone.
- * The code is the one the cabinet's key calls are refused under, because the
- * fact is the same: this call is one only a cabinet's key makes. The words are
+ * The code is the one the dashboard's key calls are refused under, because the
+ * fact is the same: this call is one only a dashboard's key makes. The words are
  * this route's, because what the caller needs is where the wallet is set and
  * why this key cannot set it. The published list of codes does not move, and
  * no worker of the SDK calls this route (ADR-0006 §2).
  */
-const walletIsSetInTheCabinet = (response: RouteCall["response"]): RouteAnswer =>
+const walletIsSetInTheDashboard = (response: RouteCall["response"]): RouteAnswer =>
   written(
     response,
     FORBIDDEN,
     refusal(
       "not_a_cabinet_key",
-      "the payout wallet is set only through the cabinet, on its Settings screen, with the key the cabinet holds, and the key this call was made with was made for the merchant's own code: a key of that kind operates the shop and cannot change where its money goes. Nothing was changed",
+      "the payout wallet is set only through the dashboard, on its Settings screen, with the key the dashboard holds, and the key this call was made with was made for the merchant's own code: a key of that kind operates the shop and cannot change where its money goes. Nothing was changed",
     ),
   );
 
@@ -166,7 +166,7 @@ const walletIsSetInTheCabinet = (response: RouteCall["response"]): RouteAnswer =
  * and whatever change was already waiting are as they were (ADR-0019). They
  * are four codes rather than one because each asks something different of
  * whoever reads it. Two of them come in two wordings, because the words say
- * what may have reached a mailbox and the code alone does not know: a cabinet
+ * what may have reached a mailbox and the code alone does not know: a dashboard
  * that turned the request away told nobody, where one whose provider refused
  * a message may have told some; a change raced after its message went out
  * has a message in an inbox, where one raced before anything was announced
@@ -177,7 +177,7 @@ const walletIsSetInTheCabinet = (response: RouteCall["response"]): RouteAnswer =
  * is why they joined the published list without moving the contract version
  * (ADR-0006 §2). None is retryable under the gateway's rule: each ends in a
  * call that works only once something else has changed — an account made,
- * mail back, a cabinet up, a merchant who has read what is waiting.
+ * mail back, a dashboard up, a merchant who has read what is waiting.
  */
 function walletChangeRefused(
   response: RouteCall["response"],
@@ -190,7 +190,7 @@ function walletChangeRefused(
         CONFLICT,
         refusal(
           "wallet_change_nobody_to_tell",
-          "a change of the payout wallet is told to every cabinet account that names this merchant before it is recorded, and no account names this merchant, so there is nobody to tell; nothing was changed and sales are paid where they were",
+          "a change of the payout wallet is told to every dashboard account that names this merchant before it is recorded, and no account names this merchant, so there is nobody to tell; nothing was changed and sales are paid where they were",
         ),
       );
     case "not_announced":
@@ -199,16 +199,16 @@ function walletChangeRefused(
         UNAVAILABLE,
         refusal(
           "wallet_change_not_announced",
-          "the message about this change could not be handed to the mail provider for every account that names this merchant, so nothing was recorded and sales are paid where they were; an account may still have received it, and it says the change takes effect only if the cabinet's wallet screen shows it, which it does not",
+          "the message about this change could not be handed to the mail provider for every account that names this merchant, so nothing was recorded and sales are paid where they were; an account may still have received it, and it says the change takes effect only if the dashboard's wallet screen shows it, which it does not",
         ),
       );
-    case "refused_by_cabinet":
+    case "refused_by_dashboard":
       return written(
         response,
         UNAVAILABLE,
         refusal(
           "wallet_change_not_announced",
-          "the cabinet that sends the message about this change turned the request away before telling anybody, so nothing was sent and nothing was recorded; sales are paid where they were",
+          "the dashboard that sends the message about this change turned the request away before telling anybody, so nothing was sent and nothing was recorded; sales are paid where they were",
         ),
       );
     case "unconfirmed":
@@ -217,7 +217,7 @@ function walletChangeRefused(
         UNAVAILABLE,
         refusal(
           "wallet_change_unconfirmed",
-          "the cabinet that sends the message about this change did not answer, so a message may have gone out although nothing was recorded; sales are paid where they were, and a message that did go out says the change takes effect only if the cabinet's wallet screen shows it, which it does not",
+          "the dashboard that sends the message about this change did not answer, so a message may have gone out although nothing was recorded; sales are paid where they were, and a message that did go out says the change takes effect only if the dashboard's wallet screen shows it, which it does not",
         ),
       );
     case "raced":
@@ -235,7 +235,7 @@ function walletChangeRefused(
         CONFLICT,
         refusal(
           "wallet_change_raced",
-          "another change of this merchant's payout wallet was recorded while this one was being announced, so this one was not recorded; its message went out and says the change takes effect only if the cabinet's wallet screen shows it, which it does not. Read the wallet and ask again if this is still the address wanted",
+          "another change of this merchant's payout wallet was recorded while this one was being announced, so this one was not recorded; its message went out and says the change takes effect only if the dashboard's wallet screen shows it, which it does not. Read the wallet and ask again if this is still the address wanted",
         ),
       );
     default: {
@@ -348,7 +348,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
           callersPurpose(call),
         );
         if (set === "not_a_cabinet_key") {
-          return walletIsSetInTheCabinet(call.response);
+          return walletIsSetInTheDashboard(call.response);
         }
         return typeof set === "string"
           ? walletChangeRefused(call.response, set)
@@ -376,9 +376,9 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
 
     issue_cabinet_key: {
       serve: async (call) => {
-        const made = await gateway.issueCabinetKey(merchantOf(call), callersPurpose(call));
+        const made = await gateway.issueDashboardKey(merchantOf(call), callersPurpose(call));
         return made === "not_a_cabinet_key"
-          ? notTheCabinets(call.response)
+          ? notTheDashboards(call.response)
           : { status: OK, document: made };
       },
     },
@@ -388,9 +388,9 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
         // No merchant is passed and none is needed: the only key this can
         // remove is the one the call was made with, and that key already says
         // whose it is.
-        const gone = await gateway.forgetCabinetKey(callersKey(call), callersPurpose(call));
+        const gone = await gateway.forgetDashboardKey(callersKey(call), callersPurpose(call));
         return gone === "not_a_cabinet_key"
-          ? notTheCabinets(call.response)
+          ? notTheDashboards(call.response)
           : { status: OK, document: gone };
       },
     },
@@ -405,7 +405,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
 
         if (disabled === "locked_out") {
           // A refusal that protects the caller from themselves rather than from
-          // anybody else. A merchant whose cabinet holds this key and disabled
+          // anybody else. A merchant whose dashboard holds this key and disabled
           // it would meet "the gateway will not take this key" on every page
           // afterwards, with no terminal to undo it from (ADR-0014 §5). It
           // reaches only the key on this call; the flow above says what that
@@ -421,7 +421,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
         }
         if (disabled === "made_for_a_cabinet") {
           // Their own key, and not one they made. A merchant switches off what
-          // they issued; this one is how a cabinet reaches the gateway for
+          // they issued; this one is how a dashboard reaches the gateway for
           // them, and revoking it signs somebody out of the page they are
           // standing on. Said in its own words rather than as "no such key",
           // because the caller is owed the reason and because the key is
@@ -431,7 +431,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
             CONFLICT,
             refusal(
               "key_made_for_a_cabinet",
-              "this key was made for a cabinet to call as this merchant with, and only the keys the merchant issued for their own code are disabled here",
+              "this key was made for a dashboard to call as this merchant with, and only the keys the merchant issued for their own code are disabled here",
             ),
           );
         }

@@ -899,7 +899,7 @@ const doAction = async (form: URLSearchParams): Promise<void> => {
       await readCards(generation);
       if (!connectionIsCurrent(generation)) return;
       // A card list read again may be a different one — somebody else's key, or
-      // the cabinet, can have published or paused since. What an agent finds is
+      // the dashboard, can have published or paused since. What an agent finds is
       // read from the gateway rather than derived from this, so it is marked as
       // owing a fresh read rather than quietly left stale.
       publicItemsRead = false;

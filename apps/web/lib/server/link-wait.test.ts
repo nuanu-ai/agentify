@@ -53,7 +53,7 @@ describe("the wait in front of the next verification link", () => {
   it("claims no cause for a wall it cannot see behind", async () => {
     const answer = await refusal(later(40_000), "unspecified", now);
 
-    // The cabinet's answer says when, never which of its two walls refused.
+    // The dashboard's answer says when, never which of its two walls refused.
     expect(answer.message).not.toMatch(/because/i);
   });
 

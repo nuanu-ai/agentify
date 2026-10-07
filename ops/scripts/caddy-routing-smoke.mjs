@@ -223,7 +223,7 @@ const MERCHANT_KEY_CALLS = [
   ["POST", "/v0/keys/cabinets"],
 ];
 
-async function expectCabinetOnlyCallsClosed(baseUrl) {
+async function expectDashboardOnlyCallsClosed(baseUrl) {
   for (const [method, rawPath] of CABINET_ONLY) {
     const answered = await rawRequest(baseUrl, method, rawPath);
     assert.notEqual(answered.role, "gateway", `${method} ${rawPath} reached the gateway`);
@@ -500,7 +500,7 @@ try {
   assert.match(await response.text(), /documentation guide/);
 
   for (const baseUrl of [innerBase, edgeBase]) {
-    await expectCabinetOnlyCallsClosed(baseUrl);
+    await expectDashboardOnlyCallsClosed(baseUrl);
     await expectSingleForwardedClient(baseUrl, "198.51.100.77");
     for (const adminPath of ["/admin", "/admin/users", "/admin%2Fusers"]) {
       await expectUnmarked(baseUrl, adminPath);

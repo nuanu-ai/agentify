@@ -31,7 +31,7 @@ Some words are used in one sense throughout. The *commerce database* is
 database* is `agentify_scanner`, which the scanner's web application
 (`apps/web`), its worker (`apps/scanner-worker`) and its nightly privacy job
 use. A *migration set* is one folder of drizzle SQL files with its journal:
-the gateway's `apps/gateway/drizzle`, the cabinet's `apps/cabinet/drizzle`
+the gateway's `apps/gateway/drizzle`, the cabinet's `apps/dashboard/drizzle`
 and the scanner's `packages/scanner-database/migrations`. A *history table*
 is the table in which drizzle's migrator records what it has applied from one
 set; the migrator runs every file whose journal timestamp is later than the
@@ -114,7 +114,7 @@ four scanner services [code].
 | Command | What it creates | History table | Database |
 |---|---|---|---|
 | `pnpm --filter @agentify/gateway db:migrate` | `cards`, `merchant_keys`, `merchants`, `orders`, `payment_claims`, `receipts` in `public` | `drizzle.__drizzle_migrations` | commerce |
-| `pnpm --filter @agentify/cabinet db:migrate` | twelve `cabinet_*` tables in `public` | `drizzle.cabinet_migrations` | commerce |
+| `pnpm --filter @agentify/dashboard db:migrate` | twelve `cabinet_*` tables in `public` | `drizzle.cabinet_migrations` | commerce |
 | `node packages/scanner-database/dist/migrate-cli.js` (Compose service `scanner-migrate`) | 26 tables and 10 enums in `public` | `drizzle.__drizzle_migrations` | scanner |
 
 The root `pnpm db:migrate`, which the Compose service `migrate` runs, is the
@@ -249,7 +249,7 @@ its own. The scanner's newest entry is dated 2026-09-21 and the gateway's
 journal timestamp falls before the other set's newest entry would be skipped
 as though it had run [code]. The cabinet already keeps its history in
 `drizzle.cabinet_migrations` for exactly this reason
-(`apps/cabinet/src/database.ts`).
+(`apps/dashboard/src/database.ts`).
 
 The second collision is the `pgboss` schema: its eleven tables and partitions,
 the enum `pgboss.job_state`, five functions, their indexes and eighteen
@@ -358,7 +358,7 @@ No runtime code of either side reads or writes the other side's database
 cabinet can open for the address the report just confirmed, and the release
 and test tooling.
 
-The identity route is served by `apps/cabinet/src/report-identity-server.ts`
+The identity route is served by `apps/dashboard/src/report-identity-server.ts`
 on port 3002 of the cabinet container, publishes no host port, and starts
 only when `REPORT_IDENTITY_SECRET` is set. The scanner reaches it through
 `CABINET_IDENTITY_URL` (`http://cabinet:3002`) with the header
@@ -608,7 +608,7 @@ enters the published SDK's dependency tree (ADR-0003, point 8).
 
 It deletes forty-one migration files and three journals in favour of one
 baseline, three history tables in favour of one, and the reasoning about
-separate histories in `apps/cabinet/src/database.ts`. The scanner's migration
+separate histories in `apps/dashboard/src/database.ts`. The scanner's migration
 test, which applies the scanner's set to an empty database, lists its tables
 and runs a hand-written down script, becomes a test of the one baseline.
 
