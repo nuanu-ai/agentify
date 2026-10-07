@@ -293,8 +293,8 @@ describe("the sweep of what an order is still owed", () => {
 
   it("leaves alone an order whose envelope is in a worker's hands", async () => {
     // The gap the queue cannot answer for. A drawn envelope is not waiting on
-    // the stream any more, and the worker holding it may simply be working
-    // through a batch. The patience is what covers that, and it is the whole of
+    // the stream any more, and the worker holding it may simply be working on
+    // it. The patience is what covers that, and it is the whole of
     // what the patience is still for.
     const harnessed = await started();
     const orderId = await quoted(harnessed, asyncCard);

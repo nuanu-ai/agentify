@@ -613,7 +613,7 @@ export class OrderRunner {
    * never written — the order stays `paid` until the hand-over is recorded
    * either way. The patience runs from the moment the money landed, not from
    * the moment the envelope was drawn, so what it actually covers is a worker
-   * who drew the order promptly and is working through a batch. A merchant
+   * who drew the order promptly and is still working on it. A merchant
    * whose worker polls once an hour draws long after the patience has run out,
    * and this sends the order again while he is holding it: two hand-overs, one
    * of which he never failed. That is a real cost and it is bounded — one extra

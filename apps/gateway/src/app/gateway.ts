@@ -1515,8 +1515,10 @@ export class Gateway {
    * at the back of it waited out the handler calls ahead of them and were
    * taken for silences before their own handler had started; each repeat sent
    * for that cost the order a delivery, and a burst of quick answers could
-   * spend a synchronous order's last one. A price question is the same, with
-   * its own clock. The contract leaves the size of an answer to the gateway
+   * spend a synchronous order's last one. A price question is different: its
+   * clock runs from the moment it is asked, so it gains nothing here, and on a
+   * single worker it waits for whatever is ahead of it on the stream either
+   * way. The contract leaves the size of an answer to the gateway
    * whatever a worker asks for, and this one answers with one, so the wait
    * measures the merchant's handler and the trip to it and back, and nothing
    * else. It was a setting once; any number above one brought the fault
@@ -1601,11 +1603,9 @@ export class Gateway {
           { merchantId },
         );
       } catch (thrown) {
-        // Recording this one hand-over failed. The rest of the batch is not
-        // taken down with it — an envelope already in this answer would
-        // otherwise be drawn, discarded with the failed response, and never
-        // seen again — and this one goes back on the stream rather than being
-        // lost with it.
+        // Recording the hand-over failed. The envelope goes back on the
+        // stream rather than being lost with a failed response, and the poll
+        // draws past it to whatever is next.
         console.error(`[gateway] could not record the hand-over of ${orderId}`, thrown);
         await queue.publish(
           merchantId,
@@ -1660,9 +1660,9 @@ export class Gateway {
       finished.push(delivery.handle);
     }
 
-    // The queue is told last, once every hand-over in the batch has been
-    // recorded. Told first, a throw part way through the batch would leave
-    // envelopes finished that nobody was ever handed.
+    // The queue is told last, once the hand-over has been recorded. Told
+    // first, a throw part way through would leave an envelope finished that
+    // nobody was ever handed.
     for (const handle of finished) {
       await queue.finish(merchantId, handle);
     }

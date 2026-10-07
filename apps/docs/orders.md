@@ -642,8 +642,12 @@ second case the same order is in two processes at once: the first is still
 working on it while the second receives the repeat. That is ordinary behaviour,
 and it is what the handler's idempotency by the order's identifier is for.
 
-Within one instance the orders are worked through one at a time. A parameter
-for taking several at once is among the things [not settled](/quickstart).
+Within one instance the orders are worked through one at a time, and the
+instance is handed the next order or question only once it has answered the one
+before, so each costs it a handler call and a trip to us and back. Running more
+instances is how to get through more of them at once. A parameter for taking
+several at once within one instance is among the things [not
+settled](/quickstart).
 
 ## Test orders
 

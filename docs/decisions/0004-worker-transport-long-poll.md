@@ -131,3 +131,27 @@ The consequence worth naming: a merchant who treats events as a complete
 notification channel will miss things, and the failure is silent on both sides.
 Whether we owe them a stronger promise than "read your open orders" is a real
 question and not one this addendum answers.
+
+## Addendum (2026-10-07): one envelope a poll
+
+§1 says a poll returns a batch. The gateway answers every poll with at most
+one envelope, whatever the worker asks for, which the contract leaves to the
+gateway. The wait for a handler's answer starts when an order is handed over,
+and a worker works what it is handed one at a time; handed a batch, the orders
+at the back of it waited out the handler calls ahead of them, were taken for
+silences and sent again, and every repeat spent one of the order's deliveries.
+One envelope a poll makes that wait measure the handler and the trip to it and
+back. A poll that draws an envelope it may not hand out, an order that closed
+while it was queued, draws again within its window rather than answering
+empty, because an empty answer sends a worker to rest.
+
+The cost is a round trip per envelope instead of per batch, so one instance
+gets through fewer envelopes a second, and a price question, whose clock runs
+from the moment it is asked, now also waits on a single instance for a round
+trip per envelope ahead of it. The portal names more instances as the remedy;
+a measured throughput need they cannot meet is the trigger this decision
+already names for revisiting the transport. Rejected: arming each order's wait
+later in proportion to its place in the batch, which guesses at handler times
+and delays noticing a dead worker; and a worker telling the gateway when it
+starts each order, a new call on the wire for what one envelope a poll already
+gives.
