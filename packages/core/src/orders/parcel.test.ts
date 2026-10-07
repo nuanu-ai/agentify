@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 import { deadlines } from "./deadlines.js";
 import { must, newOrder, sampleEvent, T0, TEST_POLICY, walk } from "./fixtures.js";
 import { transition } from "./machine.js";
-import type { Effect, Order, OrderEvent, OrderMode } from "./model.js";
+import type { Effect, Order, OrderEvent, OrderMode, TransitionResult } from "./model.js";
 import { DEADLINE_KINDS, holdsShipTo, modeOf, ORDER_EVENT_KINDS } from "./model.js";
 
 const PARCEL: OrderMode = { needsConfirmation: false, settle: "on_purchase", parcel: true };
@@ -212,6 +212,12 @@ describe("every parcel the machine can reach", () => {
       at,
     })),
     { kind: "quote_answered", at, available: false },
+    {
+      kind: "quote_answered",
+      at,
+      available: true,
+      price: { amount: "6.50", currency: "EUR", asOf: at },
+    },
     ...DEADLINE_KINDS.map(
       (deadline): OrderEvent => ({ kind: "deadline_expired", at: at + LONG_AFTER, deadline }),
     ),
@@ -233,6 +239,7 @@ describe("every parcel the machine can reach", () => {
   type Move = {
     readonly before: Order;
     readonly event: OrderEvent;
+    readonly result: TransitionResult;
     readonly after: Order | null;
     readonly effects: readonly Effect[];
   };
@@ -249,6 +256,7 @@ describe("every parcel the machine can reach", () => {
       moves.push({
         before: next.order,
         event,
+        result,
         after: result.ok ? result.order : null,
         effects: result.ok ? result.effects : [],
       });
@@ -277,24 +285,34 @@ describe("every parcel the machine can reach", () => {
     }
   });
 
+  /**
+   * What the machine decided, with the mode and the erasure taken out. A
+   * refusal is compared by everything an interpreter acts on — above all
+   * whether to send the event again — and not by its words, which are prose.
+   */
+  const decision = (result: TransitionResult) => {
+    if (!result.ok) {
+      const { message: _words, ...refusal } = result.rejection;
+      return { refusal };
+    }
+    return {
+      order: { ...result.order, mode: ORDINARY },
+      effects: result.effects.filter((effect) => effect.kind !== "erase_ship_to"),
+    };
+  };
+
   it("decides everything else exactly as it decides an ordinary asynchronous order", () => {
     // ADR-0033: a parcel adds no state. Apart from the erasure and the
     // hand-over of an order whose address is gone, the switch changes nothing
-    // the machine does, money included.
+    // the machine does, money and refusals included.
     for (const move of moves) {
-      const ordinary = transition({ ...move.before, mode: ORDINARY }, move.event);
       if (move.event.kind === "order_dispatched" && !holdsShipTo(move.before)) {
         expect(move.after, where(move)).toBeNull();
         continue;
       }
+      const ordinary = transition({ ...move.before, mode: ORDINARY }, move.event);
 
-      expect(move.after === null ? null : { ...move.after, mode: ORDINARY }, where(move)).toEqual(
-        ordinary.ok ? ordinary.order : null,
-      );
-      expect(
-        move.effects.filter((effect) => effect.kind !== "erase_ship_to"),
-        where(move),
-      ).toEqual(ordinary.ok ? ordinary.effects : []);
+      expect(decision(move.result), where(move)).toEqual(decision(ordinary));
     }
   });
 
