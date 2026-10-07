@@ -335,13 +335,11 @@ describe("the contract as JSON Schema", () => {
     // above and check nothing at all. These two are the refinements the
     // package has today, one of them nested inside another schema.
     //
-    // `card.result` is reached from two registry entries — the published card
-    // and the projection an agent reads share one instance, deliberately, so
-    // that the rule they both promise cannot be edited in one place only. The
-    // walk reports it once, under whichever entry it meets first, so this list
-    // says `card.result` rather than naming the projection too. Rename either
-    // entry so that it sorts first and the path here changes without anything
-    // being wrong; that is a reason to read the failure, not to distrust it.
+    // `card.result` and `public_card.result` are one rule on two declarations:
+    // the published card's, which is closed, and the one an agent reads, whose
+    // fields take attributes added later (ADR-0006 §5). The rule is built once
+    // and put on both, so that what they both promise cannot be edited in one
+    // place only, and the walk finds it under each.
     //
     // `card.tags` is the same story: the rule that two tags differing only in
     // case are one tag to a discovery listing cannot be said in JSON Schema,
@@ -376,6 +374,7 @@ describe("the contract as JSON Schema", () => {
       "card.tags",
       "evm_address",
       "merchant_card.card",
+      "public_card.result",
       "seller_name_request",
       "seller_name_request.seller_name",
     ]);

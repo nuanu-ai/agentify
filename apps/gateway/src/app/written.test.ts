@@ -19,7 +19,7 @@ type Node = Record<string, unknown>;
 /** Every object in a JSON Schema document that names its fields and lets others in. */
 function openObjectsIn(node: unknown, at: string, found: string[]): string[] {
   if (Array.isArray(node)) {
-    node.forEach((each, index) => openObjectsIn(each, `${at}[${index}]`, found));
+    for (const [index, each] of node.entries()) openObjectsIn(each, `${at}[${index}]`, found);
     return found;
   }
   if (typeof node !== "object" || node === null) return found;

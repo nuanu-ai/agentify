@@ -451,7 +451,7 @@ export const AgentOrderStatusSchema = z
      * field's, and a reader taking this for an amount charged would be
      * reconciling against sales that never happened.
      */
-    price: SalePriceSchema.nullable(),
+    price: SalePriceSchema.loose().nullable(),
 
     /**
      * The goods, once they are the buyer's — the delivery as the merchant
@@ -504,7 +504,7 @@ export const AgentOrderStatusSchema = z
      * present pair is always somebody's actual answer rather than a word this
      * gateway picked for them.
      */
-    refusal: RefusalSchema.optional(),
+    refusal: RefusalSchema.loose().optional(),
 
     /**
      * Who sold it: the name and the site the merchant gave, read as their
@@ -516,7 +516,7 @@ export const AgentOrderStatusSchema = z
      * shows every agent beside the merchant's cards and nothing more: not the
      * merchant's account, not their own key for the product, not the card.
      */
-    seller: SellerSchema,
+    seller: SellerSchema.loose(),
   })
   .meta({
     description:

@@ -26,8 +26,13 @@
  */
 
 import { z } from "zod";
-import type { ParamSpec, ParamSpecInput, ParamType } from "./param-spec.js";
-import { ParamSpecSchema, paramSpecToValidator } from "./param-spec.js";
+import type { FieldSpec, ParamSpec, ParamSpecInput, ParamType } from "./param-spec.js";
+import {
+  FieldSpecSchema,
+  ParamNameSchema,
+  ParamSpecSchema,
+  paramSpecToValidator,
+} from "./param-spec.js";
 import { notPlainTextIn, type TextLines } from "./plain-text.js";
 import type { Money } from "./primitives.js";
 import { IdentifierSchema, MoneySchema, OpenWordSchema, TimestampSchema } from "./primitives.js";
@@ -331,22 +336,39 @@ const DescriptionSchema = z
  * JSON Schema, so the same constraint goes into the metadata as
  * `minProperties`, where a generator can still see it.
  *
- * One schema, used by the published card and by the projection below, because
+ * One rule, held by the published card and by the projection below, because
  * the promise is the same one: what the agent reads before paying is what the
  * merchant is held to afterwards. Two copies of a refinement would be two
- * promises, and the export would carry whichever was edited last.
+ * promises, and the export would carry whichever was edited last. The two
+ * declarations it is put on differ only in what else a field may carry: the
+ * merchant's is closed, and the agent's takes what is added later
+ * (ADR-0006 §5).
  */
-const DeclaredResultSchema = ParamSpecSchema.refine(
-  // Not merely non-empty: at least one field that actually arrives. A
-  // declaration of one field marked `required: false` satisfies "at least
-  // one" and promises the agent exactly as much as an empty one does.
-  (spec) => Object.values(spec).some((field) => field.required !== false),
-  "a card declares at least one field of what the agent receives, and at least one of them arrives every time",
-).meta({
-  description:
-    "What the agent receives on delivery. At least one field, and at least one of the fields is not marked required: false — a result that might be entirely absent promises nothing.",
-  minProperties: 1,
-});
+const declaringAResult = <Declaration extends z.ZodType<Record<string, FieldSpec>>>(
+  declaration: Declaration,
+) =>
+  declaration
+    .refine(
+      // Not merely non-empty: at least one field that actually arrives. A
+      // declaration of one field marked `required: false` satisfies "at least
+      // one" and promises the agent exactly as much as an empty one does.
+      (spec) => Object.values(spec).some((field) => field.required !== false),
+      "a card declares at least one field of what the agent receives, and at least one of them arrives every time",
+    )
+    .meta({
+      description:
+        "What the agent receives on delivery. At least one field, and at least one of the fields is not marked required: false — a result that might be entirely absent promises nothing.",
+      minProperties: 1,
+    });
+
+const DeclaredResultSchema = declaringAResult(ParamSpecSchema);
+
+/**
+ * A declaration as an agent reads it: the merchant's fields, each open to what
+ * is added to a field later (ADR-0006 §5), so a new attribute of one field
+ * leaves the card readable to an agent built before it.
+ */
+const ReadDeclarationSchema = z.record(ParamNameSchema, FieldSpecSchema.loose());
 
 /**
  * The short forms a card may be written in, and the one form they all become.
@@ -810,15 +832,15 @@ export const PublicCardSchema = z
     description: DescriptionSchema,
 
     /** The price in the catalog: what an agent compares when it is choosing. */
-    price: MoneySchema,
+    price: MoneySchema.loose(),
 
     /** When the price above was published. */
     as_of: TimestampSchema,
 
     /** What the agent has to supply to buy. Absent when the purchase needs no input. */
-    params: ParamSpecSchema.optional(),
+    params: ReadDeclarationSchema.optional(),
 
-    result: DeclaredResultSchema,
+    result: declaringAResult(ReadDeclarationSchema),
 
     /**
      * Whether the merchant is asked for this product's price and availability at
@@ -837,7 +859,7 @@ export const PublicCardSchema = z
      * a merchant who changes their name or gives a site is found by it on every
      * card they already sell.
      */
-    seller: SellerSchema,
+    seller: SellerSchema.loose(),
 
     /**
      * How the product is sold: "sync", "async" or "confirm" today, and a word

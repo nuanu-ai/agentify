@@ -11,24 +11,41 @@
  * every agent reads them. It used to be the contract's own schema, and when
  * the reader opened, that check opened with it.
  *
- * Each closed document is the open one with its words narrowed and its fields
- * shut, so the two cannot name different fields: a field added to what an agent
- * reads is a field this gateway may write, and nothing else is.
+ * Each closed document is the open one with its words narrowed, its fields
+ * shut and its parts swapped for the merchant's own closed shapes of them, so
+ * the two cannot name different fields: a field added to what an agent reads is
+ * a field this gateway may write, and nothing else is. The parts have to be
+ * named one by one, because an agent reads them open too; a test walks both
+ * documents and finds every object in them shut.
  */
 
 import {
   AgentOrderStatusSchema,
   CatalogPageSchema,
   FulfillmentSchema,
+  MoneySchema,
   OrderStatusSchema,
+  ParamSpecSchema,
   PublicCardSchema,
+  RefusalSchema,
+  SalePriceSchema,
+  SellerSchema,
 } from "@nuanu-ai/agentify-contracts";
 import { type ZodType, z } from "zod";
 
-const WrittenCardSchema = PublicCardSchema.extend({ fulfillment: FulfillmentSchema }).strict();
+const WrittenCardSchema = PublicCardSchema.extend({
+  price: MoneySchema,
+  params: ParamSpecSchema.optional(),
+  result: ParamSpecSchema,
+  seller: SellerSchema,
+  fulfillment: FulfillmentSchema,
+}).strict();
 
 const WrittenOrderStatusSchema = AgentOrderStatusSchema.extend({
   status: OrderStatusSchema,
+  price: SalePriceSchema.nullable(),
+  refusal: RefusalSchema.optional(),
+  seller: SellerSchema,
 }).strict();
 
 /** An order's status as this gateway answers with it. */

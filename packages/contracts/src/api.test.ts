@@ -681,15 +681,16 @@ describe("the status an agent reads", () => {
     expect(AgentOrderStatusSchema.parse(refused)).toStrictEqual(refused);
   });
 
-  it("takes the two words the merchant wrote and nothing beside them", () => {
-    // The pair is the merchant's answer as it stands, not a place for this
-    // gateway to attach its own bookkeeping to somebody else's refusal.
+  it("takes both words the merchant wrote, and neither of them empty", () => {
+    // The pair is the merchant's answer as it stands. A field added beside it
+    // later is read past (ADR-0006 §5); that this gateway attaches no
+    // bookkeeping of its own to somebody else's refusal is held where the
+    // status is written, every object of it shut.
     for (const pair of [
       { code: "out_of_stock" },
       { message: "no seats left on that plan" },
       { code: "", message: "no seats left on that plan" },
       { code: "out_of_stock", message: "" },
-      { code: "out_of_stock", message: "no seats", cause: "merchant_refused" },
     ]) {
       expect(
         AgentOrderStatusSchema.safeParse({ ...status, refusal: pair }).success,
