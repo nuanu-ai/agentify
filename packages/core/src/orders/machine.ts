@@ -213,6 +213,17 @@ const ACCEPTANCE_LANDED: Effect = {
   answer: { ok: true, result: "accepted" },
 };
 
+/**
+ * The answer to a call or a handler answer the order's mode does not have: a
+ * separate `deliver` or `refuse`, or taking the order on, in the synchronous
+ * mode.
+ */
+const NOT_IN_THIS_MODE: MerchantAnswer = {
+  ok: false,
+  error: "not_applicable_in_mode",
+  retryable: false,
+};
+
 function closedToMerchant(order: Order): TransitionResult {
   return answer(order, { ok: false, error: "order_already_closed", retryable: false });
 }
@@ -738,7 +749,7 @@ function fromPaid(order: Order, event: StateEvent): TransitionResult {
         // answered and nothing else happens. In particular the order does not
         // acquire a record of having been handed to a merchant on the strength
         // of a call the machine just refused.
-        return answer(order, { ok: false, error: "not_applicable_in_mode", retryable: false });
+        return answer(order, NOT_IN_THIS_MODE);
       }
       // A call can be made from anywhere at any time and proves nothing about
       // whether the order round ever reached his handler — in the confirm mode
@@ -746,6 +757,13 @@ function fromPaid(order: Order, event: StateEvent): TransitionResult {
       // answered where it lands, and the delivery counter is left alone.
       return fromDispatched({ ...order, state: "dispatched" }, event);
     case "handler_accepted":
+      if (order.mode.settle === "after_fulfillment") {
+        // Refused for the mode, as in `dispatched`, and refused here before
+        // the hand-over is inferred, for the reason the calls above give: no
+        // record of one is written on the strength of an answer turned away.
+        return answer(order, NOT_IN_THIS_MODE);
+      }
+      return fromDispatched(handedOver(order), event);
     case "handler_delivered":
     case "handler_refused":
     case "handler_undelivered":
@@ -809,6 +827,17 @@ function handedOver(order: Order): Order {
 function fromDispatched(order: Order, event: StateEvent): TransitionResult {
   switch (event.kind) {
     case "handler_accepted":
+      if (order.mode.settle === "after_fulfillment") {
+        // Taking an order on promises the goods later, through the `deliver`
+        // call, and the synchronous mode has no such call: its goods travel
+        // in the handler's answer and nowhere else. Told his acceptance landed,
+        // the merchant would write the order down as under way while it ran
+        // out its seconds and closed with nothing sold. So the answer is
+        // refused for the mode, like the calls this mode does not have, and
+        // the order is left to the goods in a handler's answer or to its
+        // deadline.
+        return answer(order, NOT_IN_THIS_MODE);
+      }
       // The order is his, and he is told so. The same acceptance can land more
       // than once — an answer posted again after a dropped connection, the
       // `accept` call made beside the handler's own — and is answered the same
@@ -856,13 +885,13 @@ function fromDispatched(order: Order, event: StateEvent): TransitionResult {
       // In the synchronous mode the handler answers with the goods themselves
       // and there is no separate call at all.
       return order.mode.settle === "after_fulfillment"
-        ? answer(order, { ok: false, error: "not_applicable_in_mode", retryable: false })
+        ? answer(order, NOT_IN_THIS_MODE)
         : deliverGoods(order, event.at, [
             { kind: "answer_merchant", answer: { ok: true, result: "delivered" } },
           ]);
     case "refuse_called": {
       if (order.mode.settle === "after_fulfillment") {
-        return answer(order, { ok: false, error: "not_applicable_in_mode", retryable: false });
+        return answer(order, NOT_IN_THIS_MODE);
       }
       const refused = resolveFulfillmentFailure(order, {
         cause: "merchant_refused",
@@ -933,7 +962,7 @@ function fromFulfilled(order: Order, event: StateEvent): TransitionResult {
     case "refuse_called":
       // This state belongs to the synchronous mode, where the handler refuses
       // by answering and there is no separate call at all.
-      return answer(order, { ok: false, error: "not_applicable_in_mode", retryable: false });
+      return answer(order, NOT_IN_THIS_MODE);
     case "purchase_repeated":
       return ok(order);
     // Both entrances to this state go through `startSettle`, so an order here
@@ -1052,7 +1081,7 @@ function fromDeliveredUnpaid(order: Order, event: StateEvent): TransitionResult 
     case "refuse_called":
       // This state belongs to the synchronous mode, where the handler refuses
       // by answering and there is no separate call at all.
-      return answer(order, { ok: false, error: "not_applicable_in_mode", retryable: false });
+      return answer(order, NOT_IN_THIS_MODE);
     case "merchant_departed":
       // He owes nothing on this order: the goods are made and it is the money
       // that never came. The portal promises the buyer can still close it with
