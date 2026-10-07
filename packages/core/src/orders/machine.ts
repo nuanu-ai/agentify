@@ -817,13 +817,14 @@ function fromDispatched(order: Order, event: StateEvent): TransitionResult {
       // From here on the order is held, and the flag set here is what says so:
       // a silence noticed after it spends no delivery (the arm for
       // `handler_undelivered` below). The gateway also clears the hand-over it
-      // was waiting on when it applies this event (`openDeliveryId`, read by
-      // `Gateway#onReminder`), and that alone is not enough. Our wait for an
-      // answer is a few seconds and a handler can take longer to give this
-      // one, so a repeat decided on in the meantime is already on the
-      // merchant's stream when it lands. That repeat is still handed over —
-      // delivery is at least once, and the merchant tells it apart by the
-      // order's identifier — but the silence after it must not count.
+      // was waiting on when it applies this event (`openDeliveryId`, held by
+      // the runner against the reminder that names it), and that alone is not
+      // enough. Our wait for an answer is a few seconds and a handler can take
+      // longer to give this one, so a repeat decided on in the meantime is
+      // already on the merchant's stream when it lands. That repeat is still
+      // handed over — delivery is at least once, and the merchant tells it
+      // apart by the order's identifier — but the silence after it must not
+      // count.
       return ok({ ...order, dispatch: { ...order.dispatch, accepted: true } }, [ACCEPTANCE_LANDED]);
     case "handler_delivered":
       return deliverGoods(order, event.at);
@@ -837,16 +838,11 @@ function fromDispatched(order: Order, event: StateEvent): TransitionResult {
       // A silence noticed about an order already taken on is not a delivery
       // that failed: the merchant answered, only later than we waited.
       // Counting it would spend a delivery he never missed, and enough of
-      // those close a paid order into a refund while he is filling it. What
-      // holds him to his word from here is the order's own deadline.
-      if (order.dispatch.accepted) {
-        return reject(
-          order,
-          event,
-          "event_not_applicable",
-          "a silence spends no delivery on an order its merchant has taken on",
-        );
-      }
+      // those close a paid order into a refund while he is filling it. So it
+      // is taken and changes nothing, the way an order owing a refund takes
+      // one: the hand-over it names is over all the same, and what holds him
+      // to his word from here is the order's own deadline.
+      if (order.dispatch.accepted) return ok(order);
       const deadline = fulfillmentDeadline(order)[0];
       return redeliver(
         order,

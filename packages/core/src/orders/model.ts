@@ -426,7 +426,8 @@ export function effectsOnQuoted(mode: OrderMode): readonly Effect[] {
  * `handler_undelivered` is the one that carries no answer at all — an
  * exception, a dead process, a broken connection. The machine answers it with
  * another delivery, because a refusal means "this cannot be fulfilled" and
- * closes the order for good.
+ * closes the order for good — unless the merchant has already taken the order
+ * on, and the silence is only his answer coming later than we waited.
  */
 export type OrderEvent =
   | {
@@ -540,16 +541,24 @@ export type Order = {
    * of those hand-overs was taken on.
    *
    * `attempts` is what the backoff and the attempt cap are both counted off.
-   * `accepted` says the merchant holds the order: `dispatched` covers both an
-   * order handed over and one already taken on, and this is how the two are
-   * told apart. Once it is true a silence noticed about the order spends no
-   * delivery, because the merchant has answered — later, perhaps, than we
-   * waited for him. A repeat already on his stream by then is still handed
-   * over and counted, as every hand-over is; it is only the silence after it
-   * that no longer costs him anything.
+   * `accepted` says a handler answered that it took the order on: `dispatched`
+   * covers both an order handed over and one already taken on, and this is
+   * how the two are told apart. Once it is true a silence noticed about the
+   * order spends no delivery, because the merchant has answered — later,
+   * perhaps, than we waited for him. A repeat already on his stream by then is
+   * still handed over and counted, as every hand-over is; it is only the
+   * silence after it that no longer costs him anything.
    *
-   * It is cleared only by `dispatchedOrder`, on the way in from `paid`, so it
-   * stays true for the rest of the order's life in `dispatched`.
+   * Taking an order on is the asynchronous mode's answer, where the goods
+   * follow through the `deliver` call. A synchronous handler can give it too
+   * and is answered the same way, but there the call does not apply, and the
+   * order is closed only by the goods in a handler's answer or by its
+   * deadline.
+   *
+   * It is written false on the way into each round — the confirmation, the
+   * order once paid, the order once handed over from `paid` — and set only by
+   * an acceptance in `dispatched`, so it stays true for the rest of the
+   * order's life there.
    */
   readonly dispatch: { readonly attempts: number; readonly accepted: boolean };
   /**
