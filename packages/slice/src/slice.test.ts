@@ -295,10 +295,12 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     // The answer is the buyer's own and not the merchant's: the fields an
     // agent is owed and nothing beside them. A door that handed over more
     // would be a way of reading somebody else's business off an identifier.
+    // Who sold it is among them, as the catalog shows it (ADR-0034).
     expect(Object.keys(fields(collected.body)).sort()).toStrictEqual([
       "delivered",
       "order_id",
       "price",
+      "seller",
       "status",
       "status_url",
       "test",
@@ -384,7 +386,7 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     if (bought.statusUrl === null) throw new Error("the purchase named nowhere to read it again");
 
     const collected = await buyer.status(bought.statusUrl);
-    const owed = ["delivered", "order_id", "price", "status", "status_url", "test"];
+    const owed = ["delivered", "order_id", "price", "seller", "status", "status_url", "test"];
 
     expect(Object.keys(purchased).sort()).toStrictEqual(owed);
     expect(Object.keys(fields(collected.body)).sort()).toStrictEqual(owed);

@@ -881,6 +881,7 @@ describe("the scanner's migrations in the one database", () => {
     // A gateway migration written after the scanner's newest file but dated
     // before it, as a branch that waited in review would be.
     const later = await mkdtemp(join(tmpdir(), "gateway-migrations-"));
+    const scannerLater = await mkdtemp(join(tmpdir(), "scanner-migrations-"));
     try {
       const gateway = async (folder: string) =>
         migrate(drizzle(pool), { migrationsFolder: folder });
@@ -916,11 +917,41 @@ describe("the scanner's migrations in the one database", () => {
       await gateway(gatewayMigrations);
       await dashboard();
       await migrateDatabase(db, migrationsFolder);
+      // The scanner's newest migration has to be dated after the gateway's
+      // newest for the case below to exist at all, and the real files say
+      // nothing either way: each side adds migrations on its own calendar, and
+      // a gateway migration newer than the scanner's newest once made the case
+      // impossible to build, so the gateway skipped the migration by its own
+      // rule and the test read that as the scanner's doing. So the scanner is
+      // given one more migration of its own, dated after both sides' newest.
+      const newestOf = async (folder: string): Promise<number> =>
+        JSON.parse(await readFile(join(folder, "meta", "_journal.json"), "utf8")).entries.at(-1)
+          .when;
+      const scannerNewest =
+        Math.max(await newestOf(migrationsFolder), await newestOf(gatewayMigrations)) + 120_000;
+      await cp(migrationsFolder, scannerLater, { recursive: true });
+      const scannerJournal = JSON.parse(
+        await readFile(join(scannerLater, "meta", "_journal.json"), "utf8"),
+      );
+      scannerJournal.entries.push({
+        idx: scannerJournal.entries.length,
+        version: "7",
+        when: scannerNewest,
+        tag: "9998_after_the_gateway",
+        breakpoints: true,
+      });
+      await writeFile(join(scannerLater, "meta", "_journal.json"), JSON.stringify(scannerJournal));
+      await writeFile(
+        join(scannerLater, "9998_after_the_gateway.sql"),
+        'CREATE TABLE "after_the_gateway" ("id" integer);',
+      );
+      await migrateDatabase(db, scannerLater);
       const unchanged = await histories();
+      expect(unchanged).toContainEqual({
+        table_name: "scanner",
+        count: String((await entries(migrationsFolder)) + 1),
+      });
 
-      const scannerNewest = JSON.parse(
-        await readFile(join(migrationsFolder, "meta", "_journal.json"), "utf8"),
-      ).entries.at(-1).when;
       await cp(gatewayMigrations, later, { recursive: true });
       const journal = JSON.parse(await readFile(join(later, "meta", "_journal.json"), "utf8"));
       journal.entries.push({
@@ -948,6 +979,7 @@ describe("the scanner's migrations in the one database", () => {
       );
     } finally {
       await rm(later, { recursive: true, force: true });
+      await rm(scannerLater, { recursive: true, force: true });
       await pool.end();
       await resetDatabase();
     }

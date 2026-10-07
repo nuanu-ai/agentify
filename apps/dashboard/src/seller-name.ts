@@ -14,7 +14,7 @@
  * test read the page a merchant would be looking at.
  */
 
-import { ServiceNameSchema } from "@nuanu-ai/agentify-contracts";
+import { SellerSiteSchema, ServiceNameSchema } from "@nuanu-ai/agentify-contracts";
 import { accountSettings } from "./account-settings.js";
 import { STOP_ALL_SELLING } from "./control-labels.js";
 import { bare, brandLockup, escaped, page } from "./html.js";
@@ -36,8 +36,8 @@ import { wooSettingsBlock } from "./woo-screens.js";
  * so that the common case is a name that fits.
  */
 export const NAME_RULE =
-  "Use 1 to 32 characters of printable ASCII: Latin letters, numbers, spaces or common punctuation." +
-  " Spaces at either end are removed.";
+  "Use 1 to 32 characters of printable ASCII: Latin letters, numbers, spaces or common punctuation," +
+  " as plain text, without HTML tags or codes such as &amp;. Spaces at either end are removed.";
 
 /**
  * What somebody is told whose name the catalogue would not carry.
@@ -54,7 +54,7 @@ export const NAME_RULE =
  */
 export const NAME_REFUSED =
   "Use 1 to 32 characters of printable ASCII (Latin letters, numbers, spaces or common punctuation)" +
-  ". Your name was not saved.";
+  " as plain text, without HTML tags or codes such as &amp;. Your name was not saved.";
 
 /** What somebody who pressed the button with an empty box is told, first time. */
 export const NAME_NEEDED =
@@ -78,6 +78,46 @@ export const NAME_CANNOT_BE_TAKEN_AWAY =
 /** What is wrong with a name somebody typed, in a sentence, or null. */
 export const whatIsWrongWithTheName = (name: string): string | null =>
   ServiceNameSchema.safeParse(name).success ? null : NAME_REFUSED;
+
+/**
+ * What the shop's site is for and the form it takes, before anybody types.
+ *
+ * The form is the contract's `SellerSiteSchema` (ADR-0034), asked rather than
+ * written out again; the sentence is for the person filling the box, and it
+ * says what agents do with the address and that nobody checks it, because
+ * both are things a merchant would otherwise assume the other way.
+ */
+export const SITE_RULE =
+  "The address of your shop's own website: https:// and your domain, with nothing after it," +
+  " such as https://yourshop.com. Agents read it beside your seller name on every card and order," +
+  " as where to go with what an order cannot answer — goods that did not arrive, a return, your" +
+  " terms. Agentify does not check it.";
+
+/** What somebody is told whose address is not a site's bare https address. */
+export const SITE_REFUSED =
+  "Write the address as https:// and your shop's domain name, with nothing after it:" +
+  " https://yourshop.com, in lower case, with no page, query, port or slash at the end." +
+  " Your site was not saved.";
+
+/**
+ * What somebody is told who empties a site they already gave.
+ *
+ * Refused for the reason the gateway refuses it: an agent holding an order
+ * that named the site has been told where to go, and a site that vanished
+ * would leave it nowhere. A shop that moved gives the address it moved to.
+ */
+export const SITE_CANNOT_BE_TAKEN_AWAY =
+  "A site cannot be removed once given, only changed: type the address your shop has moved to.";
+
+/** What is wrong with a site somebody typed, in a sentence, or null. */
+export const whatIsWrongWithTheSite = (site: string): string | null =>
+  SellerSiteSchema.safeParse(site).success ? null : SITE_REFUSED;
+
+/** A refused site, and what was typed, for the settings screen to draw. */
+export interface RefusedSite {
+  readonly problem: string;
+  readonly typed: string;
+}
 
 /**
  * What the name is for, and what one looks like.
@@ -155,9 +195,15 @@ ${brandLockup("/")}
  * keeps the rejected value so the merchant can correct it; the heading still
  * says which name is actually saved.
  */
-export const settingsScreen = (viewer: Viewer, problem?: string, typedName?: string): string => {
+export const settingsScreen = (
+  viewer: Viewer,
+  problem?: string,
+  typedName?: string,
+  refusedSite?: RefusedSite,
+): string => {
   const { base } = viewer;
   const name = viewer.sellerName ?? null;
+  const site = viewer.sellerSite ?? null;
 
   const body = `
   <div class="lede">
@@ -195,6 +241,16 @@ export const settingsScreen = (viewer: Viewer, problem?: string, typedName?: str
     <button class="button button-primary" type="submit">Save</button>
   </form>
   <div class="panel-messages">${problem === undefined ? "" : `<p class="problem">${escaped(problem)}</p>`}</div>
+  <h2>Your shop's site</h2>
+  <p class="quiet">${escaped(SITE_RULE)}</p>
+  <form class="issue" method="post" action="${escaped(base)}/settings/site">
+    <div>
+      <label for="seller_site">Your shop's site</label>
+      <input id="seller_site" name="seller_site" type="url" autocomplete="url" inputmode="url" placeholder="https://yourshop.com" value="${escaped(refusedSite?.typed ?? site ?? "")}" required>
+    </div>
+    <button class="button button-primary" type="submit">Save</button>
+  </form>
+  <div class="panel-messages">${refusedSite === undefined ? "" : `<p class="problem">${escaped(refusedSite.problem)}</p>`}</div>
   </section>
   <section class="settings-panel settings-pair">${payoutWalletBlock(viewer)}</section>
   <section class="settings-panel settings-wide settings-account">${accountSettings(viewer)}</section>

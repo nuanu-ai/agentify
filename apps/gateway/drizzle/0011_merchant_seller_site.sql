@@ -1,0 +1,1 @@
+ALTER TABLE "merchants" ADD COLUMN "seller_site" text;

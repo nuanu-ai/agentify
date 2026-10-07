@@ -353,11 +353,12 @@ describe("the HTTP surface, carrying this catalog rather than the portal's", () 
   };
 
   it("shows all three products to an agent without showing how the merchant is asked for a price", () => {
+    const seller = { name: "Freeland", site: null };
     const catalog = {
       items: [
-        publicCardOf(number, { id: "itm_1a00b2", as_of: "2026-08-26T09:00:00Z" }),
-        publicCardOf(esim, { id: "itm_4d21bb", as_of: "2026-08-26T09:00:00Z" }),
-        publicCardOf(vpn, { id: "itm_6c0f39", as_of: "2026-08-20T09:00:00Z" }),
+        publicCardOf(number, { id: "itm_1a00b2", as_of: "2026-08-26T09:00:00Z", seller }),
+        publicCardOf(esim, { id: "itm_4d21bb", as_of: "2026-08-26T09:00:00Z", seller }),
+        publicCardOf(vpn, { id: "itm_6c0f39", as_of: "2026-08-20T09:00:00Z", seller }),
       ],
     };
 

@@ -227,6 +227,15 @@ export class PostgresStore implements Store {
     return row === undefined ? null : storedMerchantOf(row);
   }
 
+  async setSellerSite(id: string, sellerSite: string, at: number): Promise<StoredMerchant | null> {
+    const [row] = await this.#db
+      .update(merchants)
+      .set({ sellerSite, updatedAt: new Date(at) })
+      .where(eq(merchants.id, id))
+      .returning();
+    return row === undefined ? null : storedMerchantOf(row);
+  }
+
   async setPayoutWallet(
     id: string,
     expected: StoredPayoutWallet,
@@ -542,6 +551,7 @@ export class PostgresStore implements Store {
         pendingPayoutWallet: merchants.pendingPayoutWallet,
         pendingPayoutWalletFrom: merchants.pendingPayoutWalletFrom,
         serviceName: merchants.serviceName,
+        sellerSite: merchants.sellerSite,
         liveApprovedAt: merchants.liveApprovedAt,
       })
       .from(cards)
@@ -552,6 +562,7 @@ export class PostgresStore implements Store {
       merchant: sellingWordOf(row.selling),
       payoutWallet: payoutWalletOf(row),
       serviceName: row.serviceName,
+      sellerSite: row.sellerSite,
       liveApprovedAt: row.liveApprovedAt?.getTime() ?? null,
     }));
   }
@@ -1103,6 +1114,7 @@ function storedMerchantOf(
     id: string;
     name: string;
     serviceName: string | null;
+    sellerSite: string | null;
     liveApprovedAt: Date | null;
     selling: string;
     createdAt: Date;
@@ -1112,6 +1124,7 @@ function storedMerchantOf(
     id: row.id,
     name: row.name,
     serviceName: row.serviceName,
+    sellerSite: row.sellerSite,
     payoutWallet: payoutWalletOf(row),
     liveApprovedAt: row.liveApprovedAt?.getTime() ?? null,
     selling: sellingWordOf(row.selling),

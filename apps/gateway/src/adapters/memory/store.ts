@@ -91,6 +91,8 @@ interface MerchantRow {
   selling: MerchantSelling;
   /** The name this seller is listed under in a catalog, where one is named. */
   serviceName: string | null;
+  /** The site of this seller's own shop, where one was given. */
+  sellerSite: string | null;
   /** Where this merchant's sales are paid, and any change waiting beside it. */
   payoutWallet: StoredPayoutWallet;
   /** The first operator grant for live publication, where one was made. */
@@ -143,6 +145,7 @@ export class MemoryStore implements Store {
       createdAt: at,
       selling: "open",
       serviceName: null,
+      sellerSite: null,
       payoutWallet: NO_WALLET,
       liveApprovedAt: null,
     };
@@ -167,6 +170,7 @@ export class MemoryStore implements Store {
       createdAt: at,
       selling: "open",
       serviceName: null,
+      sellerSite: null,
       payoutWallet: NO_WALLET,
       liveApprovedAt: null,
     };
@@ -219,6 +223,15 @@ export class MemoryStore implements Store {
       return null;
     }
     row.serviceName = serviceName;
+    return storedMerchantOf(row);
+  }
+
+  async setSellerSite(id: string, sellerSite: string, _at: number): Promise<StoredMerchant | null> {
+    const row = this.#merchants.get(id);
+    if (row === undefined) {
+      return null;
+    }
+    row.sellerSite = sellerSite;
     return storedMerchantOf(row);
   }
 
@@ -432,6 +445,7 @@ export class MemoryStore implements Store {
       merchant: this.#sellingOf(card.merchantId),
       payoutWallet: this.#merchants.get(card.merchantId)?.payoutWallet ?? NO_WALLET,
       serviceName: this.#merchants.get(card.merchantId)?.serviceName ?? null,
+      sellerSite: this.#merchants.get(card.merchantId)?.sellerSite ?? null,
       liveApprovedAt: this.#merchants.get(card.merchantId)?.liveApprovedAt ?? null,
     }));
   }
@@ -725,6 +739,7 @@ function storedMerchantOf(row: MerchantRow): StoredMerchant {
     id: row.id,
     name: row.name,
     serviceName: row.serviceName,
+    sellerSite: row.sellerSite,
     payoutWallet: row.payoutWallet,
     liveApprovedAt: row.liveApprovedAt,
     selling: row.selling,

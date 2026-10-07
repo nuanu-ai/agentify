@@ -30,6 +30,7 @@ import { assertNever, type Environment, keyPrefixFor, type SurfaceMode } from "@
 import {
   checksummedAddressOf,
   EvmAddressSchema,
+  SellerSiteSchema,
   ServiceNameSchema,
 } from "@nuanu-ai/agentify-contracts";
 import type { Ids } from "../ports/clock.js";
@@ -95,6 +96,26 @@ export async function setServiceName(
     ServiceNameSchema.parse(serviceName);
   }
   return store.setServiceName(merchantId, serviceName, at);
+}
+
+/**
+ * Sets the site of a merchant's own shop, and hands back the merchant as they
+ * now stand. Null where there is no such merchant.
+ *
+ * Checked here and thrown on for the reason the name is: this is the one place
+ * a site is written, and an address an agent is sent to that is not the bare
+ * https origin of a shop would carry whatever the merchant typed after the
+ * host to every agent reading their cards (ADR-0034).
+ */
+export async function setSellerSite(
+  store: Store,
+  merchantId: string,
+  sellerSite: string,
+  at: number,
+): Promise<StoredMerchant | null> {
+  // Throws with the schema's own words, which say the form the site takes.
+  SellerSiteSchema.parse(sellerSite);
+  return store.setSellerSite(merchantId, sellerSite, at);
 }
 
 /**

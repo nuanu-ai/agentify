@@ -661,6 +661,10 @@ const unname = async (running: Running): Promise<void> => {
 const listedAs = async (running: Running): Promise<string | null> =>
   (await running.harnessed.store.merchantById(running.harnessed.merchant.id))?.serviceName ?? null;
 
+/** The shop's site this merchant gave, read out of the same row. */
+const sitedAt = async (running: Running): Promise<string | null> =>
+  (await running.harnessed.store.merchantById(running.harnessed.merchant.id))?.sellerSite ?? null;
+
 /** Where the gateway would pay this merchant, read out of the same row. */
 const paidInto = async (running: Running): Promise<string | null> =>
   (await running.harnessed.store.merchantById(running.harnessed.merchant.id))?.payoutWallet
@@ -1568,6 +1572,60 @@ describe("the settings screen", () => {
     expect(text).toMatch(/stop.*selling/i);
     // And the rule, on the page rather than only in a refusal.
     expect(text).toMatch(/32 characters/);
+  });
+
+  it("takes the shop's site beside the name, and the gateway has it afterwards", async () => {
+    // ADR-0034: the site is given where the name is set, and it is what an
+    // agent with a question the order cannot answer is sent to.
+    const running = await started();
+    await running.browser.signIn();
+
+    const before = await running.browser.get("/settings");
+    expect(before.html).toContain('id="seller_site"');
+
+    const saved = await running.browser.post("/settings/site", {
+      seller_site: "https://brightdataplans.example",
+    });
+
+    expect(saved.status).toBe(303);
+    expect(saved.to).toBe("/settings");
+    expect(await sitedAt(running)).toBe("https://brightdataplans.example");
+    // The name is left as it was: giving a site is not renaming anybody.
+    expect(await listedAs(running)).toBe(running.harnessed.merchant.name);
+    const after = await running.browser.get("/settings");
+    expect(after.html).toContain('value="https://brightdataplans.example"');
+  });
+
+  it("refuses a site with anything after the host, says the form it takes, and keeps the one there was", async () => {
+    const running = await started();
+    await running.browser.signIn();
+    await running.browser.post("/settings/site", {
+      seller_site: "https://brightdataplans.example",
+    });
+
+    const answered = await running.browser.post("/settings/site", {
+      seller_site: "https://brightdataplans.example/contact",
+    });
+
+    expect(answered.status).toBe(400);
+    expect(readable(answered.html)).toMatch(/not saved/i);
+    expect(readable(answered.html)).toContain("https://");
+    // What was typed stays in the box to be corrected.
+    expect(answered.html).toContain('value="https://brightdataplans.example/contact"');
+    expect(await sitedAt(running)).toBe("https://brightdataplans.example");
+  });
+
+  it("refuses an emptied site box rather than reading it as taking the site away", async () => {
+    const running = await started();
+    await running.browser.signIn();
+    await running.browser.post("/settings/site", {
+      seller_site: "https://brightdataplans.example",
+    });
+
+    const emptied = await running.browser.post("/settings/site", { seller_site: "" });
+
+    expect(emptied.status).toBe(400);
+    expect(await sitedAt(running)).toBe("https://brightdataplans.example");
   });
 
   it("refuses a name outside the rule and leaves the one there was", async () => {
@@ -3037,6 +3095,8 @@ describe("when something goes wrong that the merchant has to get out of", () => 
           receipts: answer,
           sellerName: answer,
           setSellerName: answer,
+          seller: answer,
+          setSellerSite: answer,
           payoutWallet: answer,
           // The two the sign-in makes about this dashboard's own key answer the
           // same way as everything else here. A merchant whose gateway is

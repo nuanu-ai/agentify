@@ -423,8 +423,8 @@ describe("the name buyers read beside a merchant's products", () => {
   // The promise: a merchant can find out what they are listed under and change
   // it. What they cannot do is have none once they have one, and the two
   // documents differ in exactly that.
-  const named = { seller_name: "Someone's shop" };
-  const unnamed = { seller_name: null };
+  const named = { seller_name: "Someone's shop", seller_site: "https://someones.example" };
+  const unnamed = { seller_name: null, seller_site: null };
 
   it("carries the name a merchant chose", () => {
     expect(SellerNameSchema.parse(named)).toStrictEqual(named);
@@ -444,16 +444,33 @@ describe("the name buyers read beside a merchant's products", () => {
     expectMissingFieldRejected(SellerNameSchema, named, "seller_name");
   });
 
+  it("refuses a document without seller_site and names it", () => {
+    // The same fact for the site as for the name: null is "none given", which
+    // is every merchant until they give one, and an absent field is a silence.
+    expectMissingFieldRejected(SellerNameSchema, named, "seller_site");
+  });
+
+  it("holds the site to the rule an agent's link is held to", () => {
+    expect(
+      SellerNameSchema.safeParse({ ...named, seller_site: "https://someones.example/about" })
+        .success,
+    ).toBe(false);
+  });
+
   it("holds the name to the rule of the catalogue that will carry it", () => {
     // The same rule the catalogue applies before it drops what it cannot
     // render. Refused here, a merchant is told what is wrong with the name they
     // typed; accepted here, they trade under a mangled version of it and
     // nothing anywhere says so.
-    expect(SellerNameSchema.safeParse({ seller_name: "" }).success).toBe(false);
-    expect(SellerNameSchema.safeParse({ seller_name: "x".repeat(33) }).success).toBe(false);
-    expect(SellerNameSchema.safeParse({ seller_name: "Магазин" }).success).toBe(false);
-    expect(SellerNameSchema.safeParse({ seller_name: " padded " }).success).toBe(false);
-    expect(SellerNameSchema.safeParse({ seller_name: "x".repeat(32) }).success).toBe(true);
+    expect(SellerNameSchema.safeParse({ ...unnamed, seller_name: "" }).success).toBe(false);
+    expect(SellerNameSchema.safeParse({ ...unnamed, seller_name: "x".repeat(33) }).success).toBe(
+      false,
+    );
+    expect(SellerNameSchema.safeParse({ ...unnamed, seller_name: "Магазин" }).success).toBe(false);
+    expect(SellerNameSchema.safeParse({ ...unnamed, seller_name: " padded " }).success).toBe(false);
+    expect(SellerNameSchema.safeParse({ ...unnamed, seller_name: "x".repeat(32) }).success).toBe(
+      true,
+    );
   });
 
   it("refuses a field it does not know", () => {
@@ -495,15 +512,39 @@ describe("what a merchant sends to change that name", () => {
     expect(complaint).not.toContain("expected string");
   });
 
-  it("refuses a document without seller_name and names it", () => {
-    expectMissingFieldRejected(SellerNameRequestSchema, asked, "seller_name");
+  it("takes the site alone, the name alone, or both", () => {
+    // A merchant gives the site where they set the name (ADR-0034), and the
+    // one call carries either. A client written before the site existed sends
+    // the name alone and is answered as it always was.
+    const site = { seller_site: "https://someones.example" };
+
+    expect(SellerNameRequestSchema.parse(site)).toStrictEqual(site);
+    expect(SellerNameRequestSchema.parse({ ...asked, ...site })).toStrictEqual({
+      ...asked,
+      ...site,
+    });
+    expect(SellerNameRequestSchema.parse(asked)).toStrictEqual(asked);
   });
 
-  it("complains about a missing field in its own words, not the ones about null", () => {
+  it("refuses a request that changes nothing, and says what it takes", () => {
+    const complaint = errorOf(SellerNameRequestSchema, {});
+
+    expect(complaint).toContain("seller_name");
+    expect(complaint).toContain("seller_site");
     // A client that dropped the field has a bug, and a client that sent null
     // has a misunderstanding. Told the same sentence, whoever wrote the first
     // one would go looking for a decision nobody made.
-    expect(errorOf(SellerNameRequestSchema, {})).not.toContain("pause");
+    expect(complaint).not.toContain("pause");
+  });
+
+  it("refuses null for the site, because a site cannot be taken away either, only changed", () => {
+    expect(errorOf(SellerNameRequestSchema, { seller_site: null })).toContain("changed");
+  });
+
+  it("holds the site to the rule an agent's link is held to", () => {
+    expect(
+      SellerNameRequestSchema.safeParse({ seller_site: "http://someones.example" }).success,
+    ).toBe(false);
   });
 
   it("refuses a field it does not know", () => {

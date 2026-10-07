@@ -78,8 +78,10 @@ import {
   integrationsScreen,
   NAME_CANNOT_BE_TAKEN_AWAY,
   NAME_NEEDED,
+  SITE_CANNOT_BE_TAKEN_AWAY,
   settingsScreen,
   whatIsWrongWithTheName,
+  whatIsWrongWithTheSite,
 } from "./seller-name.js";
 import {
   type LinkAnswer,
@@ -358,6 +360,7 @@ const people = new WeakMap<Request, Person>();
  */
 interface Settings {
   readonly sellerName: string | null;
+  readonly sellerSite: string | null;
   readonly payoutWallet: PayoutWalletDocument;
 }
 
@@ -1055,9 +1058,9 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
    */
   const settingsOf = async (request: Request): Promise<Answer<Settings>> => {
     const gateway = gatewayAs(request);
-    const [name, wallet] = await Promise.all([gateway.sellerName(), gateway.payoutWallet()]);
-    if (!name.ok) {
-      return name;
+    const [seller, wallet] = await Promise.all([gateway.seller(), gateway.payoutWallet()]);
+    if (!seller.ok) {
+      return seller;
     }
     if (!wallet.ok) {
       return wallet;
@@ -1065,7 +1068,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     return {
       ok: true,
       document: {
-        sellerName: name.document,
+        sellerName: seller.document.name,
+        sellerSite: seller.document.site,
         payoutWallet: wallet.document,
       },
     };
@@ -1137,6 +1141,38 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     noted(whoIs(request), "changed the name their products are sold under");
     // Back to the page rather than answered with one, so that a reload does not
     // send the name again.
+    response.redirect(303, `${base}/settings`);
+  });
+
+  app.post(`${base}/settings/site`, async (request, response) => {
+    const typed = siteIn(request);
+    // Empty is a merchant trying to take the site away, which the route
+    // refuses; refused here, the sentence says what to do instead.
+    const wrong = typed === "" ? SITE_CANNOT_BE_TAKEN_AWAY : whatIsWrongWithTheSite(typed);
+    if (wrong !== null) {
+      // Drawn from what the gateway has, with what was typed kept in the box to
+      // be corrected, as a refused name is.
+      const settings = await settingsOf(request);
+      if (!settings.ok) {
+        return trouble(response, base, settings);
+      }
+      response
+        .status(400)
+        .type("html")
+        .send(
+          settingsScreen(viewingSettings(request, base, settings.document), undefined, undefined, {
+            problem: wrong,
+            typed,
+          }),
+        );
+      return;
+    }
+
+    const set = await gatewayAs(request).setSellerSite(typed);
+    if (!set.ok) {
+      return trouble(response, base, set);
+    }
+    noted(whoIs(request), "changed the site of their shop");
     response.redirect(303, `${base}/settings`);
   });
 
@@ -2174,6 +2210,7 @@ const viewingSettingsAt = (
   walletTyped?: string,
 ): Viewer => ({
   ...viewingAt(request, base, mode, settings.sellerName),
+  sellerSite: settings.sellerSite,
   payout: {
     wallet: settings.payoutWallet.payout_wallet,
     pending:
@@ -2199,6 +2236,12 @@ const viewingSettingsAt = (
 const nameIn = (request: Request): string => {
   const form = (request.body ?? {}) as { seller_name?: unknown };
   return typeof form.seller_name === "string" ? form.seller_name.trim() : "";
+};
+
+/** The shop's site in a form post, with the space at either end taken off, as the name is. */
+const siteIn = (request: Request): string => {
+  const form = (request.body ?? {}) as { seller_site?: unknown };
+  return typeof form.seller_site === "string" ? form.seller_site.trim() : "";
 };
 
 /**

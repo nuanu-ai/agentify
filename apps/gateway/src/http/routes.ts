@@ -24,6 +24,7 @@ import type {
   PurchaseRequest,
   RegistrationRequest,
   RouteName,
+  Seller,
   SellerNameRequest,
   WorkerPollRequest,
 } from "@nuanu-ai/agentify-contracts";
@@ -320,10 +321,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
       // are one schema rather than two copies of a number.
       serve: async (call) => ({
         status: OK,
-        document: await gateway.setSellerName(
-          merchantOf(call),
-          (call.body as SellerNameRequest).seller_name,
-        ),
+        document: await gateway.setSellerName(merchantOf(call), call.body as SellerNameRequest),
       }),
     },
 
@@ -642,7 +640,14 @@ async function orderStatus(
     return written(response, NOT_FOUND, refusal("no_such_order", "there is no such order"));
   }
 
-  return { status: OK, document: agentOrderStatusOf(record, gateway.runtime.config) };
+  return {
+    status: OK,
+    document: agentOrderStatusOf(
+      record,
+      await gateway.sellerOf(record.merchantId),
+      gateway.runtime.config,
+    ),
+  };
 }
 
 /**
@@ -868,6 +873,10 @@ async function purchase(
   if (presented !== null && presented !== "unreadable" && presented.orderId !== null) {
     const named = await gateway.orderById(presented.orderId);
     if (named !== null) {
+      // Who sold it, read before the payment is: the answer to a paid purchase
+      // carries it, and a read that failed after the money moved would leave a
+      // paid agent with an error and no address to come back to.
+      const seller = await gateway.sellerOf(named.merchantId);
       return answerPurchase(
         gateway,
         edge,
@@ -877,6 +886,7 @@ async function purchase(
           presented.raw,
           paymentFingerprint(presented.payload, edge.token()),
         ),
+        seller,
       );
     }
   }
@@ -899,6 +909,11 @@ async function purchase(
     edge,
     response,
     attempt,
+    // No payment is presented on this path. An answer below can still carry
+    // an order's status — an order that closed at its price question, or one
+    // already under way — and then the seller is read there, with no money
+    // having moved on this call.
+    null,
     // Why this call did not return the resource, in the shortest words that are
     // true (ADR-0021). Three cases arrive here and they are not one: nothing was
     // presented, which needs no explaining; something was presented and could
@@ -920,6 +935,7 @@ async function answerPurchase(
   edge: PaymentEdge,
   response: RouteCall["response"],
   attempt: PurchaseAttempt,
+  seller: Seller | null,
   why?: string,
 ): Promise<RouteAnswer> {
   switch (attempt.step) {
@@ -1063,7 +1079,11 @@ async function answerPurchase(
       // already holds spells the door that hands the goods over.
       return {
         status: attempt.order.order.mode.settle === "after_fulfillment" ? CONFLICT : OK,
-        document: agentOrderStatusOf(attempt.order, gateway.runtime.config),
+        document: agentOrderStatusOf(
+          attempt.order,
+          seller ?? (await gateway.sellerOf(attempt.order.merchantId)),
+          gateway.runtime.config,
+        ),
       };
 
     case "settled": {
@@ -1085,7 +1105,11 @@ async function answerPurchase(
 
       return {
         status: outcomeFor(attempt.order.order) === "delivered" ? OK : CONFLICT,
-        document: agentOrderStatusOf(attempt.order, gateway.runtime.config),
+        document: agentOrderStatusOf(
+          attempt.order,
+          seller ?? (await gateway.sellerOf(attempt.order.merchantId)),
+          gateway.runtime.config,
+        ),
       };
     }
   }

@@ -437,11 +437,13 @@ describe("the door on the agent's route", () => {
 });
 
 describe("what the answer carries", () => {
-  it("reads an order whichever merchant sold it, and names none of them", async () => {
+  it("reads an order whichever merchant sold it, and names the seller only as the catalog does", async () => {
     // The route has no key, so it has no merchant to be scoped to, and it must
-    // not become a way of learning who the merchants are or what they call
-    // their products. What comes back is the buyer's own purchase: where it
-    // stands, what it cost, and the goods.
+    // not become a way of learning what the merchants are inside this system
+    // or what they call their products. What comes back is the buyer's own
+    // purchase: where it stands, what it cost, the goods, and who sold it —
+    // the name and the site the merchant gave for every agent to read on their
+    // cards (ADR-0034), and nothing else about them.
     const { served, harnessed } = await started();
     const sellerName = "Not the harness's own seller";
     const seller = await harnessed.addMerchant(sellerName);
@@ -455,13 +457,21 @@ describe("what the answer carries", () => {
       "delivered",
       "order_id",
       "price",
+      "seller",
       "status",
       "status_url",
       "test",
     ]);
-    const written = JSON.stringify(answered.body);
-    // Whose sale it is, what they call the product, and which card it came from
-    // are all things a stranger holding an identifier learns nothing about.
+    expect((answered.body as { seller: unknown }).seller).toStrictEqual({
+      name: "Not the harness's own seller",
+      site: null,
+    });
+    // The name is there in `seller` and nowhere else; which merchant account
+    // it is, what they call the product, and which card it came from are all
+    // things a stranger holding an identifier learns nothing about.
+    const { seller: shown, ...rest } = answered.body as Record<string, unknown>;
+    const written = JSON.stringify(rest);
+    expect(JSON.stringify(shown)).not.toContain(seller.id);
     expect(written).not.toContain(seller.id);
     expect(written).not.toContain(sellerName);
     expect(written).not.toContain("esim-30d");
@@ -558,6 +568,7 @@ describe("the goods as the merchant wrote them", () => {
       // of a purchase says so — every other field here reads the same whether
       // the charge was real or not.
       test: true,
+      seller: { name: "The merchant", site: null },
     });
   });
 });

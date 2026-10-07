@@ -335,6 +335,12 @@ export interface StoredMerchant {
    */
   readonly serviceName: string | null;
   /**
+   * The https origin of this merchant's own shop, where an agent takes what an
+   * order cannot answer (ADR-0034), or nothing where none was given. Held to
+   * its rule before it is written, by `setSellerSite` in `app/merchants.ts`.
+   */
+  readonly sellerSite: string | null;
+  /**
    * The address on the chain that this merchant's sales are paid into, or
    * nothing at all where nobody has set one.
    *
@@ -472,6 +478,11 @@ export interface CatalogEntry {
    * listing it would invite an agent to pay somebody the request does not name.
    */
   readonly serviceName: string | null;
+  /**
+   * That merchant's shop's site, or nothing where none was given: an agent
+   * reads it beside the name on every card in the catalog.
+   */
+  readonly sellerSite: string | null;
   /** The operator's live grant, or null; ignored outside the live surface. */
   readonly liveApprovedAt: number | null;
 }
@@ -560,6 +571,15 @@ export interface Store {
     serviceName: string | null,
     at: number,
   ): Promise<StoredMerchant | null>;
+
+  /**
+   * Sets the site of one merchant's own shop, and hands back the merchant as
+   * they now stand. Null where there is no such merchant.
+   *
+   * The value is expected to have been held to its rule already, by
+   * `setSellerSite` in `app/merchants.ts`.
+   */
+  setSellerSite(id: string, sellerSite: string, at: number): Promise<StoredMerchant | null>;
 
   /**
    * Writes where one merchant's sales are paid, and any change waiting beside

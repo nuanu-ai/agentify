@@ -215,7 +215,10 @@ describe("the calls behind the name buyers read", () => {
     // Unwrapped by the client rather than by the screen. The wrapper exists so
     // the answer can grow a field beside the name without every reader
     // changing; a page reaching through it is a page to edit the day it does.
-    const { url, arrived } = await recordingServer(200, { seller_name: "A shop with a name" });
+    const { url, arrived } = await recordingServer(200, {
+      seller_name: "A shop with a name",
+      seller_site: null,
+    });
 
     const read = await gatewayFor(url, KEY).sellerName();
 
@@ -234,7 +237,7 @@ describe("the calls behind the name buyers read", () => {
     // of, so it has to arrive as an answer and not as a missing field. A client
     // that folded the two would leave the screens unable to tell "no name" from
     // "the call went wrong".
-    const { url } = await recordingServer(200, { seller_name: null });
+    const { url } = await recordingServer(200, { seller_name: null, seller_site: null });
 
     const read = await gatewayFor(url, KEY).sellerName();
 
@@ -246,7 +249,10 @@ describe("the calls behind the name buyers read", () => {
   });
 
   it("sends the name a merchant typed and hands back what was written", async () => {
-    const { url, arrived } = await recordingServer(200, { seller_name: "A shop with a name" });
+    const { url, arrived } = await recordingServer(200, {
+      seller_name: "A shop with a name",
+      seller_site: null,
+    });
 
     const set = await gatewayFor(url, KEY).setSellerName("A shop with a name");
 

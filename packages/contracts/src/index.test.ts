@@ -358,12 +358,26 @@ describe("the contract as JSON Schema", () => {
     // card does, and not the rule that a card's words are plain text, which is
     // the publish door's alone — so it is a schema of its own rather than the
     // published card's instance, and the walk finds it separately.
+    //
+    // `agent_order_status.seller.site` is a seller's site (ADR-0034): a pattern
+    // says it is an https address with nothing after the host, and only the
+    // URL parser can say it is written as its own origin — in lower case, with
+    // no default port spelled out. It is reported under the first entry that
+    // reaches it; the catalog's cards and the seller-name documents share it.
+    //
+    // `seller_name_request` is the rule that a request names the name, the
+    // site or both, which compares two fields; `seller_name_request.seller_name`
+    // is the name's plain-text rule, the door's alone, reached through the one
+    // request that writes a name.
     expect(refinedSchemaPaths().sort()).toStrictEqual([
+      "agent_order_status.seller.site",
       "card",
       "card.result",
       "card.tags",
       "evm_address",
       "merchant_card.card",
+      "seller_name_request",
+      "seller_name_request.seller_name",
     ]);
   });
 

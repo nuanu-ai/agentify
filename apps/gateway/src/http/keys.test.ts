@@ -179,7 +179,7 @@ describe("registering a merchant", () => {
     const made = await registered(served);
 
     const listed = await served.call("GET", "/v0/seller-name", { headers: bearer(made.secret) });
-    expect(listed.body).toStrictEqual({ seller_name: null });
+    expect(listed.body).toStrictEqual({ seller_name: null, seller_site: null });
   });
 
   it("lists the new merchant under the name they choose afterwards", async () => {

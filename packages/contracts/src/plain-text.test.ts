@@ -374,6 +374,7 @@ describe("a card stored before the rule", () => {
     const projected = publicCardOf(stored as never, {
       id: "item_4d21bb",
       as_of: "2026-08-26T09:00:00Z",
+      seller: { name: "Freeland", site: null },
     });
 
     expect(PublicCardSchema.parse(projected).title).toBe(stored.title);

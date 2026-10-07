@@ -192,6 +192,17 @@ same card again gets the same refusal, and the error says as much: its
 `retryable` flag is false, because what changes the answer is fixing what the
 findings name.
 
+Beside the name you can give the address of your shop's own website, in the same
+settings or with the same call: `POST /v0/seller-name` with `seller_site` — the
+name, the site or both, and a field you leave out stays as it was. The site is
+the https address of your shop and nothing after it, written as your browser
+shows it, such as `https://yourshop.com`. Every agent reads your name and your
+site beside each of your cards and on the status of each order, as where to take
+what an order cannot answer — goods that did not arrive, a return, your terms —
+and is told that you gave them and we did not check them. Either can be changed
+and neither can be removed once given. The name is plain text: HTML tags and
+codes such as `&amp;` are refused, and an ampersand written as text passes.
+
 A call that fails for some other reason — a key we do not accept, an address
 that does not answer — does throw, as an `AgentifyError`. It carries a `code`.
 Where we refused the call in words, that word is the code: a key we will not

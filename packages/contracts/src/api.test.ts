@@ -59,7 +59,7 @@ const publicCard = publicCardOf(
     result: { access_url: { type: "string", title: "Ссылка для входа" } },
     fulfillment: "sync",
   }),
-  { id: "itm_4d21bb", as_of: "2026-08-26T09:00:00Z" },
+  { id: "itm_4d21bb", as_of: "2026-08-26T09:00:00Z", seller: { name: "Freeland", site: null } },
 );
 
 const orderEnvelope = {
@@ -561,6 +561,7 @@ describe("the status an agent reads", () => {
     delivered: null,
     test: true,
     status_url: "https://agentify.ad/x402/orders/ord_7c1e05/status",
+    seller: { name: "Freeland", site: "https://freeland.example" },
   };
 
   it("names the order it is about", () => {
@@ -585,7 +586,25 @@ describe("the status an agent reads", () => {
     expect(AgentOrderStatusSchema.parse({ ...status, price: null }).price).toBeNull();
   });
 
-  for (const field of ["order_id", "status", "price", "delivered", "test", "status_url"]) {
+  it("names who sold it, so an agent with a question the order cannot answer knows where to go", () => {
+    // ADR-0034: the shop's own site is where a parcel that did not arrive, a
+    // return or the terms of the sale are taken, and the order is where an
+    // agent holding nothing else looks for it.
+    expect(AgentOrderStatusSchema.parse(status).seller).toStrictEqual({
+      name: "Freeland",
+      site: "https://freeland.example",
+    });
+  });
+
+  for (const field of [
+    "order_id",
+    "status",
+    "price",
+    "delivered",
+    "test",
+    "status_url",
+    "seller",
+  ]) {
     it(`refuses a status without ${field} and names it`, () => {
       expectMissingFieldRejected(AgentOrderStatusSchema, status, field);
     });
