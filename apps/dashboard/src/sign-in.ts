@@ -338,4 +338,5 @@ ${brandLockup("/")}
 </div>
 </div>`,
     mode,
+    email,
   );

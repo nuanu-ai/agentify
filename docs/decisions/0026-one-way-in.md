@@ -87,7 +87,13 @@ dashboard's Settings screen carries the other half (the product owner,
 that ends every other session of this account, keeps this one and says how many
 it ended. It reaches this account only, never another account naming the same
 merchant, and touches no key; ending every account's sessions is the wallet
-cancel's (ADR-0019).
+cancel's (ADR-0019). Because people sign out to come back as another address, a
+tab drawn for the first is often still open when the second signs in, and the
+browser sends the second one's cookie with the first one's form. So every form
+behind the gate carries the address its page was drawn for, and a form drawn
+for another address is refused with nothing done, at every address behind the
+gate rather than route by route. The sign-out itself is not held to it: it
+signs this browser out whichever page it was pressed on.
 
 **4. The merchant is made on the dashboard's explicit request.** A person may own
 reports and no merchant. The dashboard offers a signed-in person without one a

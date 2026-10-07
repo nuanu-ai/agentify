@@ -22,6 +22,30 @@ export const escaped = (value: string): string =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 
+/**
+ * The field every form behind the gate carries: the address its page was
+ * drawn for.
+ *
+ * People mostly sign out to come back as another address (ADR-0026 §3), and
+ * a tab drawn for the first is often still open when the second signs in. The
+ * browser then sends the second one's cookie with the first one's form, so the
+ * cookie alone cannot say whose page was pressed; this field can, and the gate
+ * refuses a form whose page was drawn for somebody else.
+ */
+export const DRAWN_FOR = "signed_in_as";
+
+/**
+ * A page with every form that posts saying whom it was drawn for.
+ *
+ * Done to the whole page rather than written into each form, so a form added
+ * later carries it without anybody remembering to.
+ */
+const drawnFor = (who: string, html: string): string =>
+  html.replaceAll(
+    /<form\b[^>]*\bmethod="post"[^>]*>/g,
+    (tag) => `${tag}<input type="hidden" name="${DRAWN_FOR}" value="${escaped(who)}">`,
+  );
+
 /** Which of the screens with navigation on them is being looked at. */
 export type Tab = "cards" | "orders" | "receipts" | "integrations" | "keys" | "settings";
 
@@ -179,7 +203,9 @@ export const page = (chrome: Chrome): string => {
   const heading = /<h1>([\s\S]*?)<\/h1>/.exec(chrome.body);
   const body = heading === null ? chrome.body : chrome.body.replace(heading[0], "");
   const title = heading?.[1] ?? escaped(chrome.title);
-  return `<!doctype html>
+  return drawnFor(
+    chrome.who,
+    `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -217,7 +243,8 @@ ${accountRow(chrome.base, chrome.who)}      </div></header>
 ${FOOT}</div>
 </body>
 </html>
-`;
+`,
+  );
 };
 
 /**
@@ -270,8 +297,14 @@ const unnamedNote = (base: string): string => `  <div class="callout">
  * gone there is no script on any of them, so the two were the same page written
  * twice.
  */
-export const bare = (base: string, title: string, body: string, mode: SurfaceMode): string =>
-  `<!doctype html>
+export const bare = (
+  base: string,
+  title: string,
+  body: string,
+  mode: SurfaceMode,
+  who?: string,
+): string => {
+  const drawn = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -287,6 +320,10 @@ ${body}
 </body>
 </html>
 `;
+  // Only a page behind the gate knows whom it is drawn for; the sign-in pages
+  // in front of it post to addresses the gate never sees.
+  return who === undefined ? drawn : drawnFor(who, drawn);
+};
 
 /**
  * An instant as a page prints it, and the only way a page prints one.

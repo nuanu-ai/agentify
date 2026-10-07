@@ -705,3 +705,32 @@ export const notFoundScreen = (viewer: Viewer): string =>
   </div>
 `,
   });
+
+/**
+ * The answer to a form pressed on a page drawn for another address.
+ *
+ * Nothing it sent was done. The page names the address signed in now and not
+ * the one the old page was drawn for: that one is whatever the form carried,
+ * and a page is no place to repeat what a request says about itself.
+ */
+export const drawnForSomebodyElseScreen = (viewer: Viewer): string =>
+  page({
+    mode: viewer.mode,
+    base: viewer.base,
+    who: viewer.who,
+    confirmed: viewer.confirmed,
+    tab: null,
+    title: "Nothing was changed",
+    home: `${viewer.base}/cards`,
+    body: `
+  <div class="lede">
+    <div>
+      <h1>Nothing was changed</h1>
+      <p>That page was opened while another address was signed in on this browser. You are signed in as ${escaped(viewer.who)} now, so what you pressed there was not done. Open the screen again if you meant to make the change as ${escaped(viewer.who)}.</p>
+    </div>
+  </div>
+  <div class="connect-actions">
+    <a class="button button-primary" href="${escaped(viewer.base)}/cards">Back to the dashboard</a>
+  </div>
+`,
+  });

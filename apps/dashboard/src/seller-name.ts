@@ -104,6 +104,7 @@ const WHAT_IT_IS_FOR = `<p>Buyers see this seller name beside your products and 
 export const chooseNameScreen = (
   base: string,
   mode: Viewer["mode"],
+  who: string,
   problem?: string,
   typed = "",
 ): string =>
@@ -126,6 +127,7 @@ ${brandLockup("/")}
 </form>
 </div>`,
     mode,
+    who,
   );
 
 /**

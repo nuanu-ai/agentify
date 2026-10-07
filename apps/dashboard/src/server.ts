@@ -55,7 +55,7 @@ import {
   type Registrar,
   registrarFor,
 } from "./gateway.js";
-import { bare, brandLockup, escaped } from "./html.js";
+import { bare, brandLockup, DRAWN_FOR, escaped } from "./html.js";
 import { SESSION_DAYS } from "./identity.js";
 import { keysScreen, newKeyScreen } from "./keys.js";
 import {
@@ -66,6 +66,7 @@ import {
 import { printable } from "./printable.js";
 import {
   cardsScreen,
+  drawnForSomebodyElseScreen,
   notFoundScreen,
   ordersScreen,
   receiptsScreen,
@@ -822,13 +823,13 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     void (async () => {
       try {
         const session = await sessionIn(request.headers.cookie);
+        const reading = request.method === "GET" || request.method === "HEAD";
         if (session === null) {
           // The cookies are cleared on the way out, so somebody whose session
           // was ended lands on a sign-in they can use rather than being bounced
           // through this gate again on every click.
           const hadIdentityCookie = carriesIdentityCookie(request.headers.cookie);
           forget(response);
-          const reading = request.method === "GET" || request.method === "HEAD";
           const reason = reading ? "session-ended" : "session-ended-unsaved";
           const destination =
             hadIdentityCookie && reading && request.path === `${base}/woocommerce`
@@ -861,6 +862,19 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         // cache (ADR-0026 §3).
         response.setHeader("cache-control", "private, no-store");
         people.set(request, session.person);
+        // A form whose page was drawn for another address is refused before
+        // any handler reads it (DRAWN_FOR). One without the field goes on: no
+        // page drawn now sends one, a tab drawn before the field existed is
+        // the only thing that does, and a stranger's page is already stopped
+        // by the same-origin rule above.
+        const drawnFor = (request.body as Record<string, unknown> | undefined)?.[DRAWN_FOR];
+        if (!reading && drawnFor !== undefined && drawnFor !== session.person.email) {
+          response
+            .status(409)
+            .type("html")
+            .send(drawnForSomebodyElseScreen(viewing(request, base)));
+          return;
+        }
         next();
       } catch (thrown) {
         next(thrown);
@@ -934,8 +948,8 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
    * gets the same form, and using it sets the name the same way the settings
    * page does.
    */
-  app.get(`${base}/choose-name`, (_request, response) => {
-    response.type("html").send(chooseNameScreen(base, config.surfaceMode));
+  app.get(`${base}/choose-name`, (request, response) => {
+    response.type("html").send(chooseNameScreen(base, config.surfaceMode, whoIs(request).email));
   });
 
   app.post(`${base}/choose-name`, async (request, response) => {
@@ -948,7 +962,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       response
         .status(400)
         .type("html")
-        .send(chooseNameScreen(base, config.surfaceMode, wrong, typed));
+        .send(chooseNameScreen(base, config.surfaceMode, whoIs(request).email, wrong, typed));
       return;
     }
 
