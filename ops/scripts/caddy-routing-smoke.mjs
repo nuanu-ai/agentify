@@ -209,9 +209,9 @@ const CABINET_ONLY = [
   ["POST", "/v0/keys/dashboard"],
   ["DELETE", "/v0/keys/dashboard"],
   ["POST", "/v0/keys/dashboard/"],
-  ["POST", "/V0/KEYS/CABINET"],
-  ["DELETE", "/v0/keys%2Fcabinet"],
-  ["POST", "/v0/keys/./cabinet"],
+  ["POST", "/V0/KEYS/DASHBOARD"],
+  ["DELETE", "/v0/keys%2Fdashboard"],
+  ["POST", "/v0/keys/./dashboard"],
 ];
 
 /** The gateway's neighbours of those paths, which stay the gateway's. */
