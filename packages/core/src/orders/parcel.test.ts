@@ -142,16 +142,6 @@ describe("a parcel's address", () => {
     expect(erasures(effects)).toBe(0);
     expect(erasures(must(order, { kind: "deliver_called", at: T0 + 6 }).effects)).toBe(0);
   });
-
-  it("is a parcel's only when its money moves first", () => {
-    // A synchronous order holds finished goods across a repeat of the
-    // purchase, which would bring an erased address back; the type leaves no
-    // way to write such a parcel.
-    // @ts-expect-error a parcel's money moves as the asynchronous mode's does
-    const synchronous: OrderMode = { ...modeOf("sync"), parcel: true };
-
-    expect(synchronous.parcel).toBe(true);
-  });
 });
 
 describe("a parcel whose address is gone", () => {
@@ -320,3 +310,30 @@ describe("every parcel the machine can reach", () => {
     expect([...lettingGoFrom].sort()).toEqual(["created", "dispatched", "paid", "quoted"]);
   });
 });
+
+/**
+ * What the compiler refuses, written as code because the compiler is the only
+ * thing that can assert it. None of this runs: `tsc` fails the build the day
+ * a line under a `@ts-expect-error` starts compiling.
+ *
+ * A parcel's money moves as the asynchronous mode's does (ADR-0033), and the
+ * type allows it nowhere else. A synchronous order keeps finished goods for a
+ * repeat of the purchase, and that repeat would bring an erased address back
+ * to a parcel that had let it go. Each of the two switches is held on its own.
+ */
+const compilerHoldsTheseTrue = (): void => {
+  const settledAfterTheGoods = {
+    needsConfirmation: false,
+    settle: "after_fulfillment",
+    parcel: true,
+  } as const;
+  const confirmedFirst = { needsConfirmation: true, settle: "on_purchase", parcel: true } as const;
+
+  // @ts-expect-error a parcel's money moves before the goods
+  const late: OrderMode = settledAfterTheGoods;
+  // @ts-expect-error and nobody is asked before it moves
+  const asked: OrderMode = confirmedFirst;
+  void [late, asked];
+};
+
+void compilerHoldsTheseTrue;
