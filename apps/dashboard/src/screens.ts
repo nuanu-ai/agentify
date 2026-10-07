@@ -71,6 +71,12 @@ export interface Viewer {
    */
   readonly sellerName?: string | null;
   /**
+   * The https address of the merchant's own shop, or null where none was
+   * given (ADR-0034). Present only on the settings screen, which asks for it
+   * and draws the box it is changed in.
+   */
+  readonly sellerSite?: string | null;
+  /**
    * The address this merchant's money arrives at, and anything wrong with what
    * was just typed into the box for it.
    *

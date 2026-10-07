@@ -67,6 +67,13 @@ export const merchants = pgTable(
      */
     serviceName: text("service_name"),
     /**
+     * The https origin of this seller's own shop, where anybody has given one
+     * (ADR-0034). Null is the ordinary state. An agent reads it beside the
+     * name on every card and order of theirs, as where to take what an order
+     * cannot answer.
+     */
+    sellerSite: text("seller_site"),
+    /**
      * The address on the chain this merchant's sales are paid into, where
      * somebody has set one. Null is the ordinary state.
      *

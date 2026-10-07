@@ -66,6 +66,7 @@ import {
   type Order as OrderDocument,
   type Receipt,
   type SalePrice,
+  type Seller,
   type WorkerEnvelope,
 } from "@nuanu-ai/agentify-contracts";
 import type { GatewayConfig } from "../config.js";
@@ -1145,6 +1146,7 @@ export function salePriceOf(record: StoredOrder): SalePrice | null {
  */
 export function agentOrderStatusOf(
   record: StoredOrder,
+  seller: Seller,
   config: Pick<GatewayConfig, "publicBaseUrl">,
 ): AgentOrderStatus {
   const status = outcomeFor(record.order);
@@ -1187,6 +1189,11 @@ export function agentOrderStatusOf(
     // reads the same whether the charge was real or not, so a buyer with no
     // way to ask would be holding what looks like proof of a payment.
     test: record.order.test,
+    // Who sold it, as the catalog shows the merchant beside their cards and
+    // read as they stand now (ADR-0034): where an agent takes a question this
+    // document cannot answer. Passed in rather than looked up here, so that
+    // building the document stays a reading of what the caller holds.
+    seller,
     // The merchant's own two words for why they would not sell, where that is
     // what closed the order. They are copied and not rephrased: the code is
     // what the agent branches on and the sentence is what it shows a person,

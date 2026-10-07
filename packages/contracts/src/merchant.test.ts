@@ -462,11 +462,15 @@ describe("the name buyers read beside a merchant's products", () => {
     // render. Refused here, a merchant is told what is wrong with the name they
     // typed; accepted here, they trade under a mangled version of it and
     // nothing anywhere says so.
-    expect(SellerNameSchema.safeParse({ seller_name: "" }).success).toBe(false);
-    expect(SellerNameSchema.safeParse({ seller_name: "x".repeat(33) }).success).toBe(false);
-    expect(SellerNameSchema.safeParse({ seller_name: "Магазин" }).success).toBe(false);
-    expect(SellerNameSchema.safeParse({ seller_name: " padded " }).success).toBe(false);
-    expect(SellerNameSchema.safeParse({ seller_name: "x".repeat(32) }).success).toBe(true);
+    expect(SellerNameSchema.safeParse({ ...unnamed, seller_name: "" }).success).toBe(false);
+    expect(SellerNameSchema.safeParse({ ...unnamed, seller_name: "x".repeat(33) }).success).toBe(
+      false,
+    );
+    expect(SellerNameSchema.safeParse({ ...unnamed, seller_name: "Магазин" }).success).toBe(false);
+    expect(SellerNameSchema.safeParse({ ...unnamed, seller_name: " padded " }).success).toBe(false);
+    expect(SellerNameSchema.safeParse({ ...unnamed, seller_name: "x".repeat(32) }).success).toBe(
+      true,
+    );
   });
 
   it("refuses a field it does not know", () => {

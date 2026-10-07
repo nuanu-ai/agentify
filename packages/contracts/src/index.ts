@@ -45,6 +45,8 @@ import {
   MerchantCardSchema,
   PriceCheckSchema,
   PublicCardSchema,
+  SellerSchema,
+  SellerSiteSchema,
   ServiceNameSchema,
   TagsSchema,
 } from "./card.js";
@@ -156,6 +158,7 @@ export type {
   MerchantCard,
   PriceCheck,
   PublicCard,
+  Seller,
 } from "./card.js";
 export {
   bazaarDeclarationOf,
@@ -167,6 +170,8 @@ export {
   PublicCardSchema,
   publicCardOf,
   purchaseCheckFor,
+  SellerSchema,
+  SellerSiteSchema,
   ServiceNameSchema,
   TagsSchema,
 } from "./card.js";
@@ -362,9 +367,11 @@ export const schemas = Object.freeze({
   refusal: RefusalSchema,
   refusal_code: RefusalCodeSchema,
   sale_price: SalePriceSchema,
+  seller: SellerSchema,
   seller_name: SellerNameSchema,
   seller_name_request: SellerNameRequestSchema,
   selling_state: SellingStateSchema,
+  seller_site: SellerSiteSchema,
   service_name: ServiceNameSchema,
   tags: TagsSchema,
   timestamp: TimestampSchema,

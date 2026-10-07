@@ -109,6 +109,13 @@ export interface GatewayClient {
   /** The name buyers read beside this merchant's products, or null for none. */
   sellerName(): Promise<Answer<string | null>>;
   setSellerName(name: string): Promise<Answer<string | null>>;
+  /**
+   * The name and the shop's site together, as one read of the one route, for
+   * the screen that draws both (ADR-0034). Either is null where none was given.
+   */
+  seller(): Promise<Answer<{ readonly name: string | null; readonly site: string | null }>>;
+  /** Gives or changes the shop's site, leaving the name as it was. */
+  setSellerSite(site: string): Promise<Answer<string | null>>;
   /** Where this merchant's money arrives now, and any change of it that waits. */
   payoutWallet(): Promise<Answer<PayoutWallet>>;
   setPayoutWallet(address: string): Promise<Answer<PayoutWallet>>;
@@ -298,6 +305,21 @@ export const gatewayFor = (
         body: { seller_name: name },
       });
       return answered.ok ? { ok: true, document: answered.document.seller_name } : answered;
+    },
+    seller: async () => {
+      const answered = await call(API_ROUTES.get_seller_name, SellerNameSchema);
+      return answered.ok
+        ? {
+            ok: true,
+            document: { name: answered.document.seller_name, site: answered.document.seller_site },
+          }
+        : answered;
+    },
+    setSellerSite: async (site) => {
+      const answered = await call(API_ROUTES.set_seller_name, SellerNameSchema, {
+        body: { seller_site: site },
+      });
+      return answered.ok ? { ok: true, document: answered.document.seller_site } : answered;
     },
     // The whole document rather than the address alone, unlike the name above:
     // the answer grew the field it was wrapped for, and the screen that draws

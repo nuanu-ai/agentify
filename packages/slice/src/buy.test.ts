@@ -72,6 +72,7 @@ const orderAt = (
     },
     delivered,
     test: true,
+    seller: { name: "The pilot merchant", site: null },
   });
 
 beforeEach(async () => {
@@ -86,7 +87,13 @@ beforeEach(async () => {
       response.end(
         JSON.stringify(
           CatalogPageSchema.parse({
-            items: [publicCardOf(EUROPE_ESIM, { id: ITEM, as_of: "2026-09-23T10:00:00.000Z" })],
+            items: [
+              publicCardOf(EUROPE_ESIM, {
+                id: ITEM,
+                as_of: "2026-09-23T10:00:00.000Z",
+                seller: { name: "The pilot merchant", site: null },
+              }),
+            ],
           }),
         ),
       );

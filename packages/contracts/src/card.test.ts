@@ -532,7 +532,7 @@ describe("the card an agent reads", () => {
     expect(description).toContain("when the price shown here was published");
     expect(description).toContain("says nothing about how fresh that check will be");
     expect(description).toContain("not that they answer");
-    expect(description).toContain("who is selling");
+    expect(description).toContain("did not check the name or the site");
   });
 
   it("projects every card of the pilot merchant's catalog into something an agent can read", () => {

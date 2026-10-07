@@ -320,10 +320,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
       // are one schema rather than two copies of a number.
       serve: async (call) => ({
         status: OK,
-        document: await gateway.setSellerName(
-          merchantOf(call),
-          (call.body as SellerNameRequest).seller_name,
-        ),
+        document: await gateway.setSellerName(merchantOf(call), call.body as SellerNameRequest),
       }),
     },
 
@@ -642,7 +639,14 @@ async function orderStatus(
     return written(response, NOT_FOUND, refusal("no_such_order", "there is no such order"));
   }
 
-  return { status: OK, document: agentOrderStatusOf(record, gateway.runtime.config) };
+  return {
+    status: OK,
+    document: agentOrderStatusOf(
+      record,
+      await gateway.sellerOf(record.merchantId),
+      gateway.runtime.config,
+    ),
+  };
 }
 
 /**
@@ -1063,7 +1067,11 @@ async function answerPurchase(
       // already holds spells the door that hands the goods over.
       return {
         status: attempt.order.order.mode.settle === "after_fulfillment" ? CONFLICT : OK,
-        document: agentOrderStatusOf(attempt.order, gateway.runtime.config),
+        document: agentOrderStatusOf(
+          attempt.order,
+          await gateway.sellerOf(attempt.order.merchantId),
+          gateway.runtime.config,
+        ),
       };
 
     case "settled": {
@@ -1085,7 +1093,11 @@ async function answerPurchase(
 
       return {
         status: outcomeFor(attempt.order.order) === "delivered" ? OK : CONFLICT,
-        document: agentOrderStatusOf(attempt.order, gateway.runtime.config),
+        document: agentOrderStatusOf(
+          attempt.order,
+          await gateway.sellerOf(attempt.order.merchantId),
+          gateway.runtime.config,
+        ),
       };
     }
   }

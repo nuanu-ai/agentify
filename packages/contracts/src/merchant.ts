@@ -26,7 +26,7 @@
  */
 
 import { z } from "zod";
-import { ServiceNameSchema } from "./card.js";
+import { SellerSchema, SellerSiteSchema, ServiceNameSchema } from "./card.js";
 import { EvmAddressSchema } from "./evm-address.js";
 import { IdentifierSchema, TimestampSchema } from "./primitives.js";
 
@@ -315,12 +315,21 @@ export const ForgottenCabinetKeySchema = z
  */
 export const SellerNameSchema = z
   .strictObject({
-    /** What buyers read beside this merchant's products, or nothing. */
-    seller_name: ServiceNameSchema.nullable(),
+    /**
+     * What buyers read beside this merchant's products, or nothing — read back
+     * by the rule an agent's `seller` reads it by, which leaves the plain-text
+     * rule to the door that writes it.
+     */
+    seller_name: SellerSchema.shape.name,
+    /**
+     * The https address of the merchant's own shop, where an agent takes what
+     * an order cannot answer (ADR-0034), or nothing where none was given.
+     */
+    seller_site: SellerSiteSchema.nullable(),
   })
   .meta({
     description:
-      "The name a merchant's products are sold under: what a discovery catalog lists them under and what a buyer's agent is shown beside the price. Null means nobody has chosen one, which is where every merchant starts. The field is always present rather than left out when there is no name: an absent field would be indistinguishable from a client that dropped it. What a name may be is the catalog's rule rather than ours — at most 32 characters of printable ASCII — because a name outside it is dropped there in silence, so it is refused here where somebody is told. A merchant with no name cannot publish a card: a card published without one reaches a buyer's agent inside a payment request that names no seller at all.",
+      "The name a merchant's products are sold under: what a discovery catalog lists them under and what a buyer's agent is shown beside the price. Null means nobody has chosen one, which is where every merchant starts. The field is always present rather than left out when there is no name: an absent field would be indistinguishable from a client that dropped it. What a name may be is the catalog's rule rather than ours — at most 32 characters of printable ASCII — because a name outside it is dropped there in silence, so it is refused here where somebody is told. A merchant with no name cannot publish a card: a card published without one reaches a buyer's agent inside a payment request that names no seller at all. seller_site is the https address of the merchant's own shop, which every agent reads beside the name on their cards and orders as where to take what an order cannot answer; null means none was given.",
   });
 
 /**
@@ -344,7 +353,8 @@ export const SellerNameSchema = z
 export const SellerNameRequestSchema = z
   .strictObject({
     /**
-     * What buyers are to read beside this merchant's products.
+     * What buyers are to read beside this merchant's products, where it is
+     * changing.
      *
      * The rule lives once, in `ServiceNameSchema`, and this reaches it through
      * a string that carries its own words for "this is not a name at all". A
@@ -353,20 +363,40 @@ export const SellerNameRequestSchema = z
      */
     seller_name: z
       .string({
-        // A field that is missing is a client with a bug and a field holding
-        // null is a client with a misunderstanding. Only the second gets this
-        // sentence; the first falls through to the ordinary words about a
-        // field that is not there, which is what its author needs to read.
+        // A field holding null is a client with a misunderstanding, and only
+        // that gets this sentence.
         error: (issue) =>
           issue.input === undefined
             ? undefined
             : "a seller name cannot be taken away, only changed: a merchant who wants to stop being listed pauses their selling, which leaves their cards where they can put them back on sale",
       })
-      .pipe(ServiceNameSchema),
+      .pipe(ServiceNameSchema)
+      .optional(),
+    /**
+     * The https address of the merchant's own shop, where it is changing
+     * (ADR-0034). Like the name it is changed and never taken away: an agent
+     * holding an order that named a site has been told where to go, and a
+     * site that vanished from the same order would leave it nowhere.
+     */
+    seller_site: z
+      .string({
+        error: (issue) =>
+          issue.input === undefined
+            ? undefined
+            : "a seller's site cannot be taken away, only changed: send the address it has moved to",
+      })
+      .pipe(SellerSiteSchema)
+      .optional(),
+  })
+  .refine((asked) => asked.seller_name !== undefined || asked.seller_site !== undefined, {
+    // A client that dropped both fields has a bug, and is told what this call
+    // takes rather than anything about taking a name away.
+    message:
+      "a request names seller_name, seller_site or both: one that names neither changes nothing",
   })
   .meta({
     description:
-      "What a merchant sends to change the name their products are sold under. The same rule as the answer — at most 32 characters of printable ASCII, the catalog's rule rather than ours — and one difference: null is refused. A merchant goes from no name to a name and from one name to another, never back to none, because a payment request names the seller and there would be nobody to name: every card they have published would come off sale, which is an end to their selling arriving under the name of editing a setting. Somebody reaching for null wants one of two other things: a different name, which is this call with a different value, or an end to selling, which is the pause.",
+      "What a merchant sends to change the name their products are sold under, the address of their shop's own site, or both; a field left out stays as it was, and one of the two has to be there. The name is held to the catalog's rule rather than ours — at most 32 characters of printable ASCII — and is plain text. The site is an https origin and nothing after it, such as https://shop.example. Null is refused for either. A merchant goes from no name to a name and from one name to another, never back to none, because a payment request names the seller and there would be nobody to name: every card they have published would come off sale, which is an end to their selling arriving under the name of editing a setting. Somebody reaching for null wants one of two other things: a different name, which is this call with a different value, or an end to selling, which is the pause. A site is changed the same way and never taken away.",
   });
 
 /**

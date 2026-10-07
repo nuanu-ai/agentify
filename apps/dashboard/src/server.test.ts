@@ -3066,6 +3066,8 @@ describe("when something goes wrong that the merchant has to get out of", () => 
           receipts: answer,
           sellerName: answer,
           setSellerName: answer,
+          seller: answer,
+          setSellerSite: answer,
           payoutWallet: answer,
           // The two the sign-in makes about this dashboard's own key answer the
           // same way as everything else here. A merchant whose gateway is

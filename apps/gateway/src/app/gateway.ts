@@ -52,7 +52,9 @@ import {
   type ReceiptList,
   type Refusal,
   type RegisteredMerchant,
+  type Seller,
   type SellerName,
+  type SellerNameRequest,
   type WorkerEnvelope,
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
@@ -75,6 +77,7 @@ import {
   keyDigest,
   payoutWalletFrom,
   registerMerchant,
+  setSellerSite,
   setServiceName,
 } from "./merchants.js";
 import { OrderRunner, orderDocumentOf, SWEEP_EFFECTS } from "./runner.js";
@@ -476,6 +479,7 @@ export class Gateway {
           publicCardOf(entry.card.card, {
             id: entry.card.id,
             as_of: asTimestamp(entry.card.asOf),
+            seller: { name: entry.serviceName, site: entry.sellerSite },
           }),
         ),
     };
@@ -687,7 +691,21 @@ export class Gateway {
         `the key on this call resolved to ${merchantId}, and there is no such merchant`,
       );
     }
-    return { seller_name: merchant.serviceName };
+    return { seller_name: merchant.serviceName, seller_site: merchant.sellerSite };
+  }
+
+  /**
+   * Who sold an order, as an agent reads it on the order's status (ADR-0034):
+   * the name and site the merchant gave, read as they stand now rather than
+   * as they stood at the sale, the way the catalog reads them.
+   *
+   * A merchant who is gone reads as nobody rather than failing the order's
+   * whole status: the agent still has its purchase to read, and a seller
+   * with no name and no site is the honest answer about whom to ask.
+   */
+  async sellerOf(merchantId: string): Promise<Seller> {
+    const merchant = await this.runtime.store.merchantById(merchantId);
+    return { name: merchant?.serviceName ?? null, site: merchant?.sellerSite ?? null };
   }
 
   /**
@@ -710,19 +728,26 @@ export class Gateway {
    * What comes back is read off the row that was written, not off the argument.
    * Echoed, this answer would look identical whether the write landed or not.
    */
-  async setSellerName(merchantId: string, sellerName: string): Promise<SellerName> {
-    const named = await setServiceName(
-      this.runtime.store,
-      merchantId,
-      sellerName,
-      this.runtime.clock(),
-    );
-    if (named === null) {
+  async setSellerName(merchantId: string, asked: SellerNameRequest): Promise<SellerName> {
+    // The name and the site are written one after the other, each through the
+    // one function that checks it, and only what the request names: a field
+    // left out stays as it was, so a screen that gives the site does not have
+    // to send the name again. The route has already held both to the contract,
+    // so a throw from either is a caller that skipped it.
+    const at = this.runtime.clock();
+    let merchant = await this.runtime.store.merchantById(merchantId);
+    if (asked.seller_name !== undefined) {
+      merchant = await setServiceName(this.runtime.store, merchantId, asked.seller_name, at);
+    }
+    if (asked.seller_site !== undefined) {
+      merchant = await setSellerSite(this.runtime.store, merchantId, asked.seller_site, at);
+    }
+    if (merchant === null) {
       throw new Error(
         `the key on this call resolved to ${merchantId}, and there is no such merchant`,
       );
     }
-    return { seller_name: named.serviceName };
+    return { seller_name: merchant.serviceName, seller_site: merchant.sellerSite };
   }
 
   /**

@@ -37,6 +37,7 @@ const card = (id: string): CatalogPage["items"][number] => ({
   as_of: "2026-08-27T09:00:00Z",
   result: { access_code: { type: "string" } },
   price_checked_at_purchase: false,
+  seller: { name: "Freeland", site: null },
   fulfillment: "sync",
 });
 

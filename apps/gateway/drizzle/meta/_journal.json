@@ -78,6 +78,13 @@
       "when": 1790256428102,
       "tag": "0010_pending_payout_wallet",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791367732030,
+      "tag": "0011_merchant_seller_site",
+      "breakpoints": true
     }
   ]
 }

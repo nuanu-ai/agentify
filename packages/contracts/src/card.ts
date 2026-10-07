@@ -132,10 +132,84 @@ const listedText = (what: string) =>
  * holds it is the merchants table, so this schema is the rule alone, applied
  * wherever a merchant's listing name is written down.
  */
-export const ServiceNameSchema = listedText("service name").meta({
-  description:
-    "The name a seller is listed under in a discovery catalog. At most 32 characters of printable ASCII, because that is what the catalog carries; a name outside that is refused here rather than truncated there, where nobody would be told.",
-});
+export const ServiceNameSchema = listedText("service name")
+  .superRefine((name, ctx) => {
+    // Every agent reads the name on every card and order of the merchant's
+    // (ADR-0034), so the door holds it to the card's own plain-text rule
+    // (ADR-0017): markup and character references are refused and named,
+    // not cleaned into words the merchant never wrote.
+    for (const phrase of notPlainTextIn(name, "one line")) {
+      ctx.addIssue({
+        code: "custom",
+        message: `this service name carries ${phrase}, and a service name is plain text, which an agent reads exactly as it is written`,
+      });
+    }
+  })
+  .meta({
+    description:
+      "The name a seller is listed under in a discovery catalog and shown to every agent beside their products. At most 32 characters of printable ASCII, because that is what the catalog carries; a name outside that is refused here rather than truncated there, where nobody would be told. It is plain text: HTML markup and character references such as &amp; are refused, and an ampersand written as text passes.",
+  });
+
+/**
+ * The name as it is stored and read back: every rule the door holds it to
+ * except that it is plain text.
+ *
+ * That rule belongs to the door and not to the reader, for the reason the
+ * card's own words give (ADR-0017): a name stored before the rule may carry
+ * markup, every answer is held to its contract on the way out, and one old row
+ * would fail every card and order of its merchant's instead of being put right
+ * the next time the merchant sets their name.
+ */
+const StoredServiceNameSchema = listedText("service name");
+
+/** What a seller's site is held to, said once for the refusal and the description. */
+const SITE_FORM =
+  "a seller's site is the https address of their shop and nothing after it, written as a browser writes it — https://shop.example: in lower case, with no path, query, fragment, port, credentials or trailing slash";
+
+/**
+ * The address of a seller's own shop on the web, where an agent takes what an
+ * order cannot answer (ADR-0034).
+ *
+ * Only an https origin, because anything after the host — a path, a query, a
+ * fragment — would be text of the merchant's own reaching every agent that
+ * reads the card, which is the free text the decision refuses. Written the one
+ * way a browser writes an origin, so a string either is its own origin or is
+ * refused: the pattern says the shape in a form the JSON Schema export keeps,
+ * and asking the URL parser for the origin catches what a pattern cannot, such
+ * as a host in capitals or a default port written out.
+ */
+export const SellerSiteSchema = z
+  .string()
+  .regex(/^https:\/\/[^/?#@:\s]+$/, SITE_FORM)
+  .refine((site) => {
+    try {
+      return new URL(site).origin === site;
+    } catch {
+      return false;
+    }
+  }, SITE_FORM)
+  .meta({ description: `The https origin of a seller's own shop: ${SITE_FORM}.` });
+
+/**
+ * Who sells, as an agent reads it beside a product and on an order: the name
+ * the merchant sells under and the site of their shop (ADR-0034).
+ *
+ * Both are the merchant's own word and nothing here checked either, which the
+ * description says to the reader who acts on it — a name and a site can be
+ * anybody's. Null is "none given": a merchant who gave no site has none here,
+ * and a name is missing only from an order whose merchant has since lost it.
+ */
+export const SellerSchema = z
+  .strictObject({
+    name: StoredServiceNameSchema.nullable(),
+    site: SellerSiteSchema.nullable(),
+  })
+  .meta({
+    description:
+      "Who sells: the name the merchant sells under and the https address of their shop's own site, both as the merchant gave them. Agentify did not check either, so a name and a site can be anybody's. The site is where to take what an order cannot answer — a parcel that did not arrive, a return, the shop's terms. Either is null where the merchant has given none.",
+  });
+
+export type Seller = z.infer<typeof SellerSchema>;
 
 /**
  * The words a merchant puts on one product so an agent searching a catalog can
@@ -702,14 +776,10 @@ export const deliveryCheckFor = (card: Card): z.ZodType =>
  * page — so carrying them here would put a foreign catalog's constraint in
  * front of a reader who has no use for it.
  *
- * One thing an agent might reasonably want is not here, and saying so is
- * better than leaving it to be discovered: nothing in this document names who
- * is selling. There is a shape in this contract for one name a seller carries —
- * `ServiceNameSchema`, the name a discovery catalog lists them under — and it
- * is deliberately not this. That name exists to satisfy one channel's rules,
- * a merchant may have none, and standing it in for a public identity would
- * answer a question — who "we" are to the buyer, and who the merchant is —
- * that is still open.
+ * Who sells is here as the merchant gave it, a name and the site of their
+ * shop (ADR-0034), and as nothing more: no profile, no contact of ours, and no
+ * claim that either was checked. Who "we" are to the buyer is a question this
+ * document still does not answer.
  */
 const PublicCardFieldsSchema = z.strictObject({
   /** Our catalog identifier, the one a purchase, a receipt and a status use. */
@@ -740,6 +810,14 @@ const PublicCardFieldsSchema = z.strictObject({
    * about to move, read as true it distrusts a price that never moves.
    */
   price_checked_at_purchase: z.boolean(),
+
+  /**
+   * Who sells this product, in the merchant's own words and unchecked. It is
+   * read with the catalog rather than copied onto the card at publishing, so
+   * a merchant who changes their name or gives a site is found by it on every
+   * card they already sell.
+   */
+  seller: SellerSchema,
 });
 
 export const PublicCardSchema = z
@@ -775,7 +853,7 @@ export const PublicCardSchema = z
     // narrower here than the same name means elsewhere in this contract, and a
     // reader who assumed otherwise would trust a stale number.
     description:
-      "A product an agent can buy, projected from the card its merchant published. as_of is when the price shown here was published, and nothing more: on a card whose price is checked at purchase it says nothing about how fresh that check will be — elsewhere in this contract the same name means the moment a live answer was true. price_checked_at_purchase says the merchant is asked for a price at the moment of purchase, not that they answer; what happens when they are silent depends on the mode and belongs to the gateway. The number above is what an agent compares when choosing and may not be what the sale goes through at. Two rules hold beyond the shape: a synchronous product names no delivery deadline, because it is delivered inside a response budget that is the same for every product on the platform, and only a product whose merchant is asked to confirm names a confirmation deadline. No field here names who is selling: this contract has no shape for a merchant's public identity.",
+      "A product an agent can buy, projected from the card its merchant published. as_of is when the price shown here was published, and nothing more: on a card whose price is checked at purchase it says nothing about how fresh that check will be — elsewhere in this contract the same name means the moment a live answer was true. price_checked_at_purchase says the merchant is asked for a price at the moment of purchase, not that they answer; what happens when they are silent depends on the mode and belongs to the gateway. The number above is what an agent compares when choosing and may not be what the sale goes through at. Two rules hold beyond the shape: a synchronous product names no delivery deadline, because it is delivered inside a response budget that is the same for every product on the platform, and only a product whose merchant is asked to confirm names a confirmation deadline. seller is who sells, as the merchant gave it: Agentify did not check the name or the site.",
   });
 
 export type PublicCard = z.infer<typeof PublicCardSchema>;
@@ -790,15 +868,17 @@ export type PublicCard = z.infer<typeof PublicCardSchema>;
  * every agent by default, and the first anybody heard of it would be a
  * merchant's pricing address in a public catalog.
  *
- * The two things the card cannot know are passed in: the catalog identifier we
- * issued when it was published, and the moment its price was published.
+ * The three things the card cannot know are passed in: the catalog identifier
+ * we issued when it was published, the moment its price was published, and
+ * who sells it as their merchant stands now.
  */
 export const publicCardOf = (
   card: Card,
-  issued: { readonly id: string; readonly as_of: string },
+  issued: { readonly id: string; readonly as_of: string; readonly seller: Seller },
 ): PublicCard => {
   const common = {
     id: issued.id,
+    seller: issued.seller,
     title: card.title,
     description: card.description,
     price: card.price,
