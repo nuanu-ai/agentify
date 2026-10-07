@@ -89,6 +89,7 @@ import {
   CurrencyCodeSchema,
   IdentifierSchema,
   MoneySchema,
+  OpenWordSchema,
   SalePriceSchema,
   TimestampSchema,
 } from "./primitives.js";
@@ -158,6 +159,7 @@ export type {
   Fulfillment,
   MerchantCard,
   PriceCheck,
+  ProjectedCard,
   PublicCard,
   Seller,
 } from "./card.js";
@@ -255,6 +257,7 @@ export type {
   CurrencyCode,
   Identifier,
   Money,
+  OpenWord,
   SalePrice,
   Timestamp,
 } from "./primitives.js";
@@ -263,6 +266,7 @@ export {
   CurrencyCodeSchema,
   IdentifierSchema,
   MoneySchema,
+  OpenWordSchema,
   SalePriceSchema,
   TimestampSchema,
 } from "./primitives.js";
@@ -335,6 +339,7 @@ export const schemas = Object.freeze({
   merchant_key: MerchantKeySchema,
   merchant_key_list: MerchantKeyListSchema,
   money: MoneySchema,
+  open_word: OpenWordSchema,
   order: OrderSchema,
   order_accept_response: OrderAcceptResponseSchema,
   order_call_response: OrderCallResponseSchema,

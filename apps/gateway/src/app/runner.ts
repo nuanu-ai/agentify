@@ -59,7 +59,6 @@ import {
   transition,
 } from "@agentify/core";
 import {
-  type AgentOrderStatus,
   API_ROUTES,
   type Delivery,
   expandPath,
@@ -81,6 +80,7 @@ import type {
 } from "../ports/store.js";
 import type { Runtime } from "./runtime.js";
 import { purchaseOf, Waiting } from "./waiting.js";
+import type { WrittenOrderStatus } from "./written.js";
 
 /** The queue's name for the daily sweep of what an order is still owed. */
 export const SWEEP_EFFECTS = "agentify_sweep_effects";
@@ -1165,7 +1165,7 @@ export function agentOrderStatusOf(
   record: StoredOrder,
   seller: Seller,
   config: Pick<GatewayConfig, "publicBaseUrl">,
-): AgentOrderStatus {
+): WrittenOrderStatus {
   const status = outcomeFor(record.order);
   const closure = record.order.closure;
 

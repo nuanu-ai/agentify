@@ -30,7 +30,7 @@ import type { ParamSpec, ParamSpecInput, ParamType } from "./param-spec.js";
 import { ParamSpecSchema, paramSpecToValidator } from "./param-spec.js";
 import { notPlainTextIn, type TextLines } from "./plain-text.js";
 import type { Money } from "./primitives.js";
-import { IdentifierSchema, MoneySchema, TimestampSchema } from "./primitives.js";
+import { IdentifierSchema, MoneySchema, OpenWordSchema, TimestampSchema } from "./primitives.js";
 import { SellingStateSchema } from "./selling.js";
 
 /**
@@ -846,13 +846,9 @@ export const PublicCardSchema = z
      *
      * Two branches rather than a bare string, so the known values cross into
      * the exported document as a list a client can switch over, beside the
-     * branch that reads any other word. An empty word is still refused: it is
-     * not a mode anybody added.
+     * branch that reads any other word (`OpenWordSchema`).
      */
-    fulfillment: z.union([
-      FulfillmentSchema,
-      z.string().regex(/\S/, "a mode is a word, not an empty string"),
-    ]),
+    fulfillment: z.union([FulfillmentSchema, OpenWordSchema]),
 
     /** On "async" and "confirm": how long the merchant has to deliver, in seconds. */
     fulfill_deadline_seconds: z.int().positive().optional(),
@@ -874,6 +870,20 @@ export const PublicCardSchema = z
 export type PublicCard = z.infer<typeof PublicCardSchema>;
 
 /**
+ * A card as `publicCardOf` builds it: the fields this version names and no
+ * others, and a mode it knows.
+ *
+ * An agent reads a card with `PublicCardSchema`, which takes fields and modes
+ * added later (ADR-0006 §5); what is built is held to the opposite. Without
+ * the index signature the open schema adds, a field the projection should not
+ * carry — the merchant's own key, the address of their price check — is a
+ * compile error where it is written, rather than one more key on every card.
+ */
+export type ProjectedCard = {
+  [Field in keyof PublicCard as string extends Field ? never : Field]: PublicCard[Field];
+} & { readonly fulfillment: Fulfillment };
+
+/**
  * The card as an agent reads it, built from the card the merchant published.
  *
  * It exists so there is one projection rather than one per caller. The
@@ -890,7 +900,7 @@ export type PublicCard = z.infer<typeof PublicCardSchema>;
 export const publicCardOf = (
   card: Card,
   issued: { readonly id: string; readonly as_of: string; readonly seller: Seller },
-): PublicCard => {
+): ProjectedCard => {
   const common = {
     id: issued.id,
     seller: issued.seller,

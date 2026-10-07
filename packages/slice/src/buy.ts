@@ -39,6 +39,7 @@
  * later one.
  */
 
+import { ORDER_STATUSES } from "@nuanu-ai/agentify-contracts";
 import { makeBuyer, type OrderStatus } from "./buyer.js";
 
 /**
@@ -86,9 +87,12 @@ const OWES_A_REFUND = "refund_due";
  * order whose goods have not come — its deadline passed, or the merchant
  * refused or left — and it is here because it is not an ending: the merchant
  * owes the buyer the goods or the money back, a late delivery is accepted and
- * settles that debt, and the goods then appear at the same address. Every other word is an ending of some kind, so watching
- * stops on it and the command prints whatever it was told rather than deciding
- * what it meant.
+ * settles that debt, and the goods then appear at the same address. Every other
+ * word of the vocabulary this buyer was built with is an ending of some kind,
+ * so watching stops on it and the command prints whatever it was told rather
+ * than deciding what it meant. A word it was not built with is not one of
+ * those: the storefront's words grow without a version (ADR-0006 §5), and a
+ * word nobody here knows is not an ending anybody here knows.
  */
 const GOODS_CAN_STILL_ARRIVE: readonly string[] = ["in_progress", OWES_A_REFUND];
 
@@ -173,14 +177,17 @@ const refusedAs = (body: unknown): string | null => {
  * to wait for.
  *
  * Two answers end the watching: a word from the status vocabulary under which
- * no goods can arrive any more, and the gateway's own refusal, which no amount
+ * no goods can arrive any more — one this buyer knows — and the gateway's own
+ * refusal, which no amount
  * of asking again will turn into an order. Everything else — an error page, a body with
  * no state in it, a 502 from something in the middle — is not an answer about
  * the order at all, so the watching goes on. A door that answered badly once
  * has not told us the purchase is over.
  */
 const isAnEnding = (seen: OrderStatus): boolean =>
-  (seen.state !== null && !GOODS_CAN_STILL_ARRIVE.includes(seen.state)) ||
+  (seen.state !== null &&
+    (ORDER_STATUSES as readonly string[]).includes(seen.state) &&
+    !GOODS_CAN_STILL_ARRIVE.includes(seen.state)) ||
   refusedAs(seen.body) === NO_SUCH_ORDER;
 
 /** An answer written out for a reader, cut where it is too long to be read. */

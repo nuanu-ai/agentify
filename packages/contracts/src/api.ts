@@ -48,8 +48,14 @@
  */
 
 import { z } from "zod";
-import type { PublicCard } from "./card.js";
-import { CardSchema, MerchantCardSchema, PublicCardSchema, SellerSchema } from "./card.js";
+import type { Fulfillment, PublicCard } from "./card.js";
+import {
+  CardSchema,
+  FulfillmentSchema,
+  MerchantCardSchema,
+  PublicCardSchema,
+  SellerSchema,
+} from "./card.js";
 import { WorkerEnvelopeSchema } from "./envelope.js";
 import { AcceptanceSchema, DeliverySchema, HandlerAnswerSchema, RefusalSchema } from "./handler.js";
 import {
@@ -69,7 +75,7 @@ import {
 import { OrderSchema } from "./order.js";
 import { OrderStatusSchema } from "./order-status.js";
 import { ParamNameSchema } from "./param-spec.js";
-import { IdentifierSchema, SalePriceSchema } from "./primitives.js";
+import { IdentifierSchema, OpenWordSchema, SalePriceSchema } from "./primitives.js";
 import { QuoteResponseSchema } from "./quote.js";
 import { ReceiptSchema } from "./receipt.js";
 import { CallErrorSchema, OrderCallResultSchema, PublishResultSchema } from "./results.js";
@@ -430,10 +436,7 @@ export const AgentOrderStatusSchema = z
      * words from a closed list. Two branches, as a card's mode is
      * (`PublicCardSchema`), so the known words still cross into the export.
      */
-    status: z.union([
-      OrderStatusSchema,
-      z.string().regex(/\S/, "a status is a word, not an empty string"),
-    ]),
+    status: z.union([OrderStatusSchema, OpenWordSchema]),
 
     /**
      * The price this order was priced at, or null where nobody ever named one
@@ -550,13 +553,22 @@ export const CatalogPageSchema = z
   });
 
 /**
- * The cards of a catalog page an agent can read, each read on its own; an item
- * that is not one is passed over.
+ * The cards of a catalog page a reader of this contract can buy from, each read
+ * on its own.
+ *
+ * Two kinds of item are passed over, and the rest of the page stands. One that
+ * does not read as a card at all, and one that does but is sold in a mode this
+ * contract does not name: its reader cannot know when such goods arrive or when
+ * the money moves, so it must not buy on it.
  */
-export const cardsOf = (page: CatalogPage): PublicCard[] =>
+export const cardsOf = (
+  page: CatalogPage,
+): (PublicCard & { readonly fulfillment: Fulfillment })[] =>
   page.items.flatMap((item) => {
     const read = PublicCardSchema.safeParse(item);
-    return read.success ? [read.data] : [];
+    if (!read.success) return [];
+    const mode = FulfillmentSchema.safeParse(read.data.fulfillment);
+    return mode.success ? [{ ...read.data, fulfillment: mode.data }] : [];
   });
 
 /**
