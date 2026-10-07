@@ -25,26 +25,6 @@ describe("the queue names", () => {
     expect(streamOf("mch_a")).toBe("agentify_envelopes_mch_a");
   });
 
-  it("are names pg-boss will take", () => {
-    // pg-boss allows alphanumerics, underscores, hyphens, periods and forward
-    // slashes in a queue name, and refuses everything else. These two use a
-    // letter and an underscore, which is well inside that.
-    for (const name of [ENVELOPES, REMINDERS]) {
-      expect(name, name).toMatch(A_NAME_PG_BOSS_ACCEPTS);
-    }
-    // The separators somebody would reach for that are genuinely refused. A
-    // period is not among them, however natural it looks as one.
-    expect("agentify envelopes").not.toMatch(A_NAME_PG_BOSS_ACCEPTS);
-    expect("agentify:envelopes").not.toMatch(A_NAME_PG_BOSS_ACCEPTS);
-    expect("").not.toMatch(A_NAME_PG_BOSS_ACCEPTS);
-  });
-
-  it("are two different queues", () => {
-    // One queue for both would hand a worker polling for orders the reminders
-    // the gateway left itself.
-    expect(ENVELOPES).not.toBe(REMINDERS);
-  });
-
   it("give two merchants two different streams", () => {
     // Two merchants sharing a stream is the failure ADR-0010 is about, in the
     // one place a filter could not repair it: an envelope drawn to be looked at

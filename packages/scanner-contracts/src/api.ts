@@ -219,14 +219,6 @@ export type RemediationPromptResponse = z.infer<typeof remediationPromptResponse
 export const createShareRequestSchema = z
   .object({ allow_indexing: z.boolean().default(false) })
   .strict();
-export const createShareResponseSchema = z
-  .object({
-    slug: z.string().min(32),
-    public_url: z.url(),
-    status: z.literal("published"),
-  })
-  .strict();
-
 export const publicShareSnapshotSchema = z
   .object({
     host: z.string().min(1),

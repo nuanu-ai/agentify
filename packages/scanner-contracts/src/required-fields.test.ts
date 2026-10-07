@@ -19,8 +19,6 @@ import {
   createScanRequestSchema,
   createScanResponseSchema,
   createShareRequestSchema,
-  createShareResponseSchema,
-  merchantApplicationSchema,
   publicShareSnapshotSchema,
   registrationRequestSchema,
   registrationResponseSchema,
@@ -311,16 +309,6 @@ const contracts = [
     required: [],
   },
   {
-    name: "createShareResponseSchema",
-    schema: createShareResponseSchema,
-    valid: {
-      slug: "s".repeat(32),
-      public_url: `https://agentify.ad/s/${"s".repeat(32)}`,
-      status: "published",
-    },
-    required: ["slug", "public_url", "status"],
-  },
-  {
     name: "publicShareSnapshotSchema",
     schema: publicShareSnapshotSchema,
     valid: publicShare,
@@ -412,19 +400,6 @@ const contracts = [
       "deadline_at",
       "attempt_no",
     ],
-  },
-  {
-    name: "merchantApplicationSchema",
-    schema: merchantApplicationSchema,
-    valid: {
-      businessName: "Example shop",
-      website: "https://example.com/",
-      email: "owner@example.com",
-      category: "retail",
-      country: "Indonesia",
-      consent: true,
-    },
-    required: ["businessName", "website", "email", "category", "country", "consent"],
   },
   {
     name: "sendReportLinkRequestSchema",

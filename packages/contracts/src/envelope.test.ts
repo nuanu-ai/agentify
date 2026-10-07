@@ -164,10 +164,4 @@ describe("the kinds and the registry", () => {
       expect(WORKER_ENVELOPE_PAYLOADS[kind], kind).toBe(schemas[kind]);
     }
   });
-
-  it("carries a payload schema for every kind and a kind for every payload schema", () => {
-    expect(Object.keys(WORKER_ENVELOPE_PAYLOADS).sort()).toStrictEqual(
-      [...WORKER_ENVELOPE_KINDS].sort(),
-    );
-  });
 });

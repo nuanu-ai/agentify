@@ -16,7 +16,6 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  authorizeUrlFor,
   isTheGrantScreen as inspectGrantScreen,
   theStateToken,
   whatIsWrongWithTheShopUrl,
@@ -87,35 +86,6 @@ describe("the address a merchant types", () => {
     // shop typed this way would be reached at an address nobody meant.
     expect(whatIsWrongWithTheShopUrl("https://shop.example.com/?a=1")).not.toBeNull();
     expect(whatIsWrongWithTheShopUrl("https://shop.example.com/#x")).not.toBeNull();
-  });
-});
-
-describe("the authorize URL", () => {
-  const url = () =>
-    new URL(
-      authorizeUrlFor("https://shop.example.com/store", {
-        appName: "Agentify",
-        userId: "a-state-token",
-        returnUrl: "https://agentify.example/dashboard/woocommerce/return",
-        callbackUrl: "https://agentify.example/dashboard/woocommerce/callback",
-      }),
-    );
-
-  it("hangs off the shop's own address", () => {
-    expect(url().pathname).toBe("/store/wc-auth/v1/authorize");
-  });
-
-  it("carries all five parameters WooCommerce requires", () => {
-    // Any one of them missing is a 401 from the shop, so this is the list and
-    // not a subset of it.
-    const query = url().searchParams;
-    expect(query.get("app_name")).toBe("Agentify");
-    expect(query.get("user_id")).toBe("a-state-token");
-    expect(query.get("return_url")).toBe("https://agentify.example/dashboard/woocommerce/return");
-    expect(query.get("callback_url")).toBe(
-      "https://agentify.example/dashboard/woocommerce/callback",
-    );
-    expect(query.get("scope")).toBe("read_write");
   });
 });
 

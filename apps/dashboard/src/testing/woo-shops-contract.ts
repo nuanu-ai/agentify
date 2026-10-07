@@ -83,6 +83,9 @@ export const wooShopsContract = (
         expect(connected?.revision).toBe("a-token");
         expect((await shops.connectionOf(accounts.one))?.shopUrl).toBe("https://shop.example.com");
         expect(await shops.grantFor(accounts.one)).toBeNull();
+        // The callback is unauthenticated by nature, so this is the whole of
+        // what stops somebody who saw a token planting a second pair of keys
+        // on that account afterwards.
         expect(await shops.connectFromGrant("a-token", keys, NOW)).toBeNull();
       });
     });
@@ -97,64 +100,14 @@ export const wooShopsContract = (
           expiresAt: MUCH_LATER,
         });
 
+        // Sequential calls pass with a read followed by a write, and these do
+        // not: two callbacks in flight together would both read a live row
+        // and both write a connection.
         const connected = await Promise.all(
           Array.from({ length: 10 }, () => shops.connectFromGrant("a-token", keys, NOW)),
         );
 
         expect(connected.filter((one) => one !== null)).toHaveLength(1);
-      });
-    });
-
-    it("hands back the Connect the token names", async () => {
-      await using(async (shops, accounts) => {
-        await shops.beginGrant({
-          token: "a-token",
-          accountId: accounts.one,
-          shopUrl: "https://shop.example.com",
-          startedAt: NOW,
-          expiresAt: MUCH_LATER,
-        });
-        const spent = await shops.spendGrant("a-token", NOW);
-        expect(spent?.accountId).toBe(accounts.one);
-        expect(spent?.shopUrl).toBe("https://shop.example.com");
-      });
-    });
-
-    it("spends a token once and never again", async () => {
-      // The callback is unauthenticated by nature, so this is the whole of what
-      // stops somebody who saw a token planting a second pair of keys on that
-      // account afterwards.
-      await using(async (shops, accounts) => {
-        await shops.beginGrant({
-          token: "a-token",
-          accountId: accounts.one,
-          shopUrl: "https://shop.example.com",
-          startedAt: NOW,
-          expiresAt: MUCH_LATER,
-        });
-        expect(await shops.spendGrant("a-token", NOW)).not.toBeNull();
-        expect(await shops.spendGrant("a-token", NOW)).toBeNull();
-      });
-    });
-
-    it("spends a token once even when several callbacks arrive at the same moment", async () => {
-      // The sequential case above passes with a read followed by a write, and
-      // this one does not: two callbacks in flight together would both read a
-      // live row and both write a connection, which is how a token that is
-      // supposed to work once works twice. What makes it hold is that the
-      // spending is one statement, and that cannot be seen one call at a time.
-      await using(async (shops, accounts) => {
-        await shops.beginGrant({
-          token: "a-token",
-          accountId: accounts.one,
-          shopUrl: "https://shop.example.com",
-          startedAt: NOW,
-          expiresAt: MUCH_LATER,
-        });
-        const arrived = await Promise.all(
-          Array.from({ length: 10 }, () => shops.spendGrant("a-token", NOW)),
-        );
-        expect(arrived.filter((one) => one !== null)).toHaveLength(1);
       });
     });
 
@@ -279,21 +232,6 @@ export const wooShopsContract = (
         });
 
         expect(await shops.grantFor(accounts.one)).not.toBeNull();
-      });
-    });
-
-    it("has nothing for an account whose Connect was spent", async () => {
-      await using(async (shops, accounts) => {
-        await shops.beginGrant({
-          token: "a-token",
-          accountId: accounts.one,
-          shopUrl: "https://shop.example.com",
-          startedAt: NOW,
-          expiresAt: MUCH_LATER,
-        });
-        await shops.spendGrant("a-token", NOW);
-
-        expect(await shops.grantFor(accounts.one)).toBeNull();
       });
     });
   });
