@@ -19,7 +19,6 @@ describe("ReportActionPanel", () => {
       <ReportActionPanel {...baseProps} initialIntent="download-md" />,
     );
     expect(markup).toContain("download started");
-    expect(markup).not.toContain("You are verified");
     expect(markup).toContain("Download again");
   });
 

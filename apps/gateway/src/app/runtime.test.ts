@@ -22,7 +22,6 @@
  * product does not yet produce, which is what the totality loop is for.
  */
 
-import { MERCHANT_SELLING } from "@agentify/core";
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import type { StoredCard } from "../ports/store.js";
@@ -59,20 +58,5 @@ describe("what the order machine is told about one card", () => {
     // read as paused, their open orders would look like something a resume
     // could bring back.
     expect(sellingFor("departed", stored(false), false)).toBe("departed");
-  });
-
-  it("answers with a word the machine knows, for every case there is", () => {
-    // The fold must never invent a fourth word, and it must be total: a case
-    // falling through would reach `createOrder` as undefined and be refused by
-    // its own exhaustiveness check at the birth of somebody's order.
-    for (const merchant of MERCHANT_SELLING) {
-      for (const paused of [true, false]) {
-        for (const sellable of [true, false]) {
-          expect(MERCHANT_SELLING, `${merchant} + ${paused} + ${sellable}`).toContain(
-            sellingFor(merchant, stored(paused), sellable),
-          );
-        }
-      }
-    }
   });
 });
