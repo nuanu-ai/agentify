@@ -541,7 +541,7 @@ describe("the card an agent reads", () => {
     const params = publicCard.params ?? {};
     const [name, spec] = Object.entries(params)[0] ?? [];
     if (name === undefined || spec === undefined) throw new Error("the card declares no input");
-    const [resultName, resultSpec] = Object.entries(publicCard.result)[0] ?? [];
+    const [resultName, resultSpec] = Object.entries(publicCard.result ?? {})[0] ?? [];
     if (resultName === undefined || resultSpec === undefined) {
       throw new Error("the card declares no result");
     }
@@ -1336,8 +1336,8 @@ describe("a card written short", () => {
         ),
       );
 
-      expect(Object.keys(parsed.result)).toStrictEqual(["access_url"]);
-      expect(Object.getPrototypeOf(parsed.result)).toBe(Object.prototype);
+      expect(Object.keys(parsed.result ?? {})).toStrictEqual(["access_url"]);
+      expect(Object.getPrototypeOf(parsed.result ?? {})).toBe(Object.prototype);
     });
   });
 });

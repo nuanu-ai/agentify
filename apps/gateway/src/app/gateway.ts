@@ -23,6 +23,7 @@ import {
   type Acceptance,
   CARD_REJECTED,
   type CallError,
+  type Card,
   CardSchema,
   CONTRACT_VERSION,
   type DashboardKey,
@@ -439,7 +440,7 @@ export class Gateway {
     }
     // Asked of the card as it was opened out, so a price written as one string
     // meets the same rule in the same words as one written as two fields.
-    const unsellable = priceProblemsOf(parsed.data.price);
+    const unsellable = [...priceProblemsOf(parsed.data.price), ...notYetSold(parsed.data)];
     if (missing.length > 0 || unsellable.length > 0) {
       return cardRejected(missing, unsellable);
     }
@@ -2394,6 +2395,28 @@ function misfitsIn(findings: readonly Problem[]): string {
  * fault, because a card can have a dozen findings and one of them can be as
  * long as what the merchant sent.
  */
+/**
+ * A card in a mode this gateway cannot yet carry to its end, said as a finding
+ * on the mode rather than discovered by the first buyer.
+ *
+ * A parcel's order ends when its shipment is recorded, and recording one is not
+ * built yet (ADR-0033). A parcel card published now would take orders and the
+ * buyer's money with no way for its merchant to finish them, so it is refused
+ * with words that say why, until it can be.
+ */
+function notYetSold(card: Card): Problem[] {
+  return card.fulfillment === "ship"
+    ? [
+        {
+          path: ["fulfillment"],
+          code: "not_sold_yet",
+          message:
+            'a parcel\'s card, fulfillment "ship", cannot be published yet: its order ends when its shipment is recorded, and this gateway cannot record a shipment yet',
+        },
+      ]
+    : [];
+}
+
 function cardRejected(
   merchant: readonly MerchantFinding[],
   card: readonly Problem[],

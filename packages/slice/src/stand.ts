@@ -245,7 +245,11 @@ const readCards = async (generation: number): Promise<void> => {
   }
   cards = parsed.data.cards;
   selling = parsed.data.selling;
-  for (const one of cards) merchant.learn(one.card.merchant_item_id, one.card.result);
+  // A parcel's card declares no goods to make: what its buyer receives is the
+  // record of its shipment, which the stand's merchant does not send yet.
+  for (const one of cards) {
+    if (one.card.result !== undefined) merchant.learn(one.card.merchant_item_id, one.card.result);
+  }
 };
 
 /**

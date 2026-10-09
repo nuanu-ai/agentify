@@ -69,6 +69,12 @@ const WrittenCardSchema = z
         fulfill_deadline_seconds: deadline,
       })
       .strict(),
+    // A parcel names its time to ship and no result: what its buyer receives
+    // is the record of its shipment (ADR-0033).
+    writtenCardFields
+      .omit({ result: true })
+      .extend({ fulfillment: z.literal("ship"), ship_within_seconds: z.int().positive() })
+      .strict(),
   ])
   .superRefine((card, context) => {
     const read = PublicCardSchema.safeParse(card);

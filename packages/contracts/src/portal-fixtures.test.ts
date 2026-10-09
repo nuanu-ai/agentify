@@ -248,7 +248,7 @@ describe("the pages agree with each other", () => {
     expect(calls.length, "the orders page shows no delivery at all").toBeGreaterThan(0);
 
     for (const call of calls) {
-      for (const name of Object.keys(card.result)) {
+      for (const name of Object.keys(card.result ?? {})) {
         expect(
           new RegExp(`(?<![\\w$])${name}\\s*:`).test(call),
           `the orders page delivers without "${name}", which the card example declares: ${call}`,
