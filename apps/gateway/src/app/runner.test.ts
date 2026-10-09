@@ -118,6 +118,117 @@ describe("an order that cannot be true", () => {
   });
 });
 
+/**
+ * The same last check for a buyer's address (ADR-0032): a parcel's order holds
+ * the whole of it exactly while the merchant does not have it yet, and only
+ * when it was erased afterwards; no other order holds one. The machine never
+ * produces anything else, so the orders here are built by hand, as the money's
+ * are above.
+ */
+describe("an order that holds an address it should not", () => {
+  /** An address in a real place, with the person and the number taken out of it. */
+  const address = {
+    name: "The buyer",
+    line_one: "Jl. Raya Kediri, Beraban",
+    city: "Tabanan",
+    country: "ID",
+    phone_number: "+62 000 0000 0000",
+  };
+
+  /** A parcel the merchant has taken on, as an order of one is. */
+  const takenOn = (): StoredOrder => {
+    const record = impossible();
+    return {
+      ...record,
+      order: {
+        ...record.order,
+        id: "ord_parcel",
+        state: "dispatched",
+        payment: "settled",
+        mode: { needsConfirmation: false, settle: "on_purchase", parcel: true },
+        dispatch: { attempts: 1, accepted: true },
+      },
+    };
+  };
+
+  it("is not written down once the merchant has it, and the words do not repeat it", async () => {
+    // A parcel taken on whose address is still here: an order from a version
+    // of this code that kept it, or a defect that skipped the erasure. Writing
+    // it down again would keep a buyer's address nobody here needs.
+    open = await harness();
+    await open.store.addOrder({ ...takenOn(), shipTo: address });
+
+    const applied = open.gateway.runner.apply("ord_parcel", {
+      kind: "handler_accepted",
+      at: open.now(),
+    });
+
+    await expect(applied).rejects.toThrow(/still holds the buyer's address/);
+    const thrown = await applied.catch((error: unknown) => String(error));
+    for (const part of [address.name, address.line_one, address.phone_number]) {
+      expect(thrown).not.toContain(part);
+    }
+  });
+
+  it("is written down once the address is only when it was erased", async () => {
+    // The negative control: the same order with the address erased is an
+    // ordinary one, so the refusal above is about the address and nothing else.
+    open = await harness();
+    await open.store.addOrder({ ...takenOn(), shipTo: { erasedAt: 0 } });
+
+    const applied = await open.gateway.runner.apply("ord_parcel", {
+      kind: "handler_accepted",
+      at: open.now(),
+    });
+
+    expect(applied.outcome).toBe("moved");
+  });
+
+  it("is not created without the address a parcel's merchant still needs", async () => {
+    // Paid and not yet handed over: the merchant has not had the address, so
+    // an order with none, or with only the instant it was erased, would hand
+    // them a parcel with nowhere to send it.
+    open = await harness();
+    const parcel = takenOn();
+    const waiting: StoredOrder = {
+      ...parcel,
+      order: {
+        ...parcel.order,
+        state: "paid",
+        dispatch: { attempts: 0, accepted: false },
+        timestamps: { ...parcel.order.timestamps, dispatchedAt: null },
+      },
+    };
+
+    await expect(open.gateway.runner.create(waiting, [], open.now())).rejects.toThrow(
+      /is a parcel with no address/,
+    );
+    await expect(
+      open.gateway.runner.create({ ...waiting, shipTo: { erasedAt: 0 } }, [], open.now()),
+    ).rejects.toThrow(/has erased the address its merchant still needs/);
+    expect(await open.store.orderById("ord_parcel")).toBeNull();
+  });
+
+  it("is not created as anything but a parcel with an address on it", async () => {
+    open = await harness();
+    const ordinary = impossible();
+    const paid: StoredOrder = {
+      ...ordinary,
+      order: {
+        ...ordinary.order,
+        state: "paid",
+        payment: "verified",
+        dispatch: { attempts: 0, accepted: false },
+      },
+      shipTo: address,
+    };
+
+    await expect(open.gateway.runner.create(paid, [], open.now())).rejects.toThrow(
+      /holds an address and is not a parcel/,
+    );
+  });
+});
+
 describe("an effect that must be written down, asked for at the birth of an order", () => {
   it("stops before the order exists rather than after", async () => {
     // Creation is the one path with nowhere to write such an effect: `addOrder`
