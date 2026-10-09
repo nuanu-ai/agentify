@@ -450,8 +450,11 @@ export class OrderRunner {
           payTo,
           paidBy: owner,
           ...this.#alsoSaid(found, word),
-          ...addressToKeep(effects, at),
         };
+        // A verified payment never ends a parcel's need for its address — its
+        // money moves first and the order stays open — so nothing here erases
+        // it. Were the machine to change that, this stops the write rather than
+        // keep an address past its time.
         refuseToKeepAnAddressPastItsTime(next);
 
         // The clocks are armed before the change is committed, for the same

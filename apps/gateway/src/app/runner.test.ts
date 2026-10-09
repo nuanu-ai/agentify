@@ -170,6 +170,28 @@ describe("an order that holds an address it should not", () => {
     }
   });
 
+  it("is not written down by a payment either", async () => {
+    // Waiting to be paid with the address already erased: the merchant would
+    // be handed a parcel with nowhere to send it once the money moved.
+    open = await harness();
+    const parcel = takenOn();
+    await open.store.addOrder({
+      ...parcel,
+      order: {
+        ...parcel.order,
+        state: "quoted",
+        payment: "none",
+        dispatch: { attempts: 0, accepted: false },
+        timestamps: { ...parcel.order.timestamps, paidAt: null, dispatchedAt: null },
+      },
+      shipTo: { erasedAt: 0 },
+    });
+
+    await expect(
+      open.gateway.runner.presentVerifiedPayment("ord_parcel", PAID_AT, "a-payment", PAID_AT, 0),
+    ).rejects.toThrow(/has erased the address its merchant still needs/);
+  });
+
   it("is written down once the address is only when it was erased", async () => {
     // The negative control: the same order with the address erased is an
     // ordinary one, so the refusal above is about the address and nothing else.
