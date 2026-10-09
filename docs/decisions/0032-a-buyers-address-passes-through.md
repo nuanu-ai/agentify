@@ -2,8 +2,9 @@
 
 Date: 2026-09-28
 Status: accepted (the product owner, 2026-09-28, after two rounds of
-adversarial review). Built so far: no error leaving the store or the queue
-carries a bound parameter. The address itself is not built yet.
+adversarial review). Built: no error leaving the store or the queue carries a
+bound parameter, and the address is taken, priced by its locality, handed over
+once paid and erased. No parcel is sold until ADR-0033's shipment is built.
 
 ## Context
 
