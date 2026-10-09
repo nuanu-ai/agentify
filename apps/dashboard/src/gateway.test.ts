@@ -1,611 +1,223 @@
 /**
- * What the dashboard actually sends the gateway, and what it does with what comes
- * back.
+ * The dashboard's way to the money path: the gateway's application, called
+ * inside the process as the merchant on the signed-in account's row (ADR-0030).
  *
- * Two things are held here. The first is that a call ends: a gateway that
- * accepts the connection and then says nothing is not the same failure as one
- * that is down, and it is the worse one — a refused connection comes back at
- * once, while a half-open one holds the request until something else gives up.
- * The screen a merchant is holding at that moment may be the one that stops
- * their selling, so a call with no deadline is a merchant who cannot stop.
+ * The screens are driven in `server.test.ts` over this client and the real
+ * application. What is held here is what a page relies on and no screen test
+ * can pin down by itself: that what goes in is held to the contract's request
+ * schema before anything is done; that a refusal reaches a page in the words
+ * and under the status the route at the door gives the same refusal; that a
+ * call that does not finish is given up on at its deadline and said to be
+ * possibly done, while a failure of ours is not dressed up as an answer; and
+ * that the account a session is signed in as is the one a message names.
  *
- * The second is the six calls ADR-0014 adds: registering, listing keys,
- * issuing one and revoking one, and the two the dashboard makes about the key it
- * signs in with. The screens above them are driven in `server.test.ts` against
- * a client the test supplies, so nothing there ever sends a request — what a
- * `POST /v0/keys` actually puts on the wire, and what the dashboard does with an
- * answer the contract refuses, is held here instead.
- *
- * The server on the other end records what arrived and answers what the test
- * says. What it is not is a gateway: it agrees with whatever is sent, so these
- * hold the dashboard's half of the call — the address, the method, the key header
- * or its absence, the body — and, on the way back, that an answer the contract
- * would not recognise stops here rather than reaching a page.
+ * The application is the real one on the gateway's in-memory harness, and the
+ * route it is compared against is that harness's real HTTP surface.
  */
 
-import { createServer, type IncomingMessage, type Server } from "node:http";
+import type { Gateway } from "@agentify/gateway";
+import { type Harness, harness, type Served, serve } from "@agentify/gateway/testing";
 import { afterEach, describe, expect, it } from "vitest";
-import { gatewayFor, registrarFor } from "./gateway.js";
+import { gatewayFor } from "./gateway.js";
 
-let held: Server | null = null;
-
-/** A server that accepts the connection and never answers it. */
-const silentServer = async (): Promise<string> => {
-  const server = createServer(() => {
-    // Deliberately no response, and no timeout of its own: the point is that
-    // the caller is the one who has to give up.
-  });
-  held = server;
-  await new Promise<void>((ready) => server.listen(0, "127.0.0.1", ready));
-  const address = server.address();
-  if (address === null || typeof address === "string") {
-    throw new Error("the silent server did not take a port");
-  }
-  return `http://127.0.0.1:${address.port}`;
+/** What makes a harness live: Base mainnet and its one facilitator. */
+const LIVE = {
+  PAYMENT_NETWORK: "eip155:8453",
+  FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+  CDP_API_KEY_ID: "key-id",
+  CDP_API_KEY_SECRET: "key-secret",
 };
 
-afterEach(() => {
-  held?.closeAllConnections();
-  held?.close();
-  held = null;
-});
+const OWNER = "owner@example.com";
+const A_WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 
-/** One request as it arrived, so a test can read what was actually sent. */
-interface Arrived {
-  readonly method: string;
-  readonly path: string;
-  /** The merchant key header, or null where the request carried none. */
-  readonly key: string | null;
-  readonly body: string;
-}
+let open: { harnessed: Harness; served: Served | null } | null = null;
 
-/** A server that records what arrived and answers with what it was given. */
-const recordingServer = async (
-  status: number,
-  answer: unknown,
-): Promise<{ url: string; arrived: Arrived[] }> => {
-  const arrived: Arrived[] = [];
-  const server = createServer((request: IncomingMessage, response) => {
-    let body = "";
-    request.on("data", (chunk: Buffer) => {
-      body += chunk.toString();
-    });
-    request.on("end", () => {
-      arrived.push({
-        method: request.method ?? "",
-        path: request.url ?? "",
-        key: request.headers.authorization ?? null,
-        body,
-      });
-      response.writeHead(status, { "content-type": "application/json" });
-      response.end(JSON.stringify(answer));
-    });
-  });
-  held = server;
-  await new Promise<void>((ready) => server.listen(0, "127.0.0.1", ready));
-  const address = server.address();
-  if (address === null || typeof address === "string") {
-    throw new Error("the recording server did not take a port");
-  }
-  return { url: `http://127.0.0.1:${address.port}`, arrived };
+const started = async (overrides: Record<string, string> = {}) => {
+  const harnessed = await harness(overrides);
+  open = { harnessed, served: null };
+  return harnessed;
 };
 
-const KEY = "a-merchant-key-long-enough";
-
-/** A key document of the shape the gateway answers with. */
-const aKey = (over: Record<string, unknown> = {}) => ({
-  id: "key_the_first_one",
-  label: "the first key",
-  created_at: "2026-08-28T09:00:00.000Z",
-  last_used_at: null,
-  disabled_at: null,
-  ...over,
+afterEach(async () => {
+  await open?.served?.close();
+  await open?.harnessed.stop();
+  open = null;
 });
 
-describe("a gateway that answers nothing", () => {
-  it("gives up rather than holding the merchant's page open", async () => {
-    // The promise: every call this client makes ends. Without a deadline this
-    // test does not fail — it hangs until the runner's own timeout kills the
-    // file, which is the same thing happening to a merchant with no runner to
-    // rescue them.
-    // Fifty milliseconds rather than the ten seconds a merchant gets, so the
-    // suite stays fast; what is under test is that the deadline exists at all.
-    const gateway = gatewayFor(await silentServer(), "a-merchant-key-long-enough", 50);
+/** The client of the harness's merchant, as its owner's session. */
+const asTheOwner = (harnessed: Harness, answerWithinMs?: number) =>
+  gatewayFor(
+    harnessed.gateway,
+    { merchantId: harnessed.merchant.id, email: OWNER },
+    answerWithinMs,
+  );
 
-    const answered = await gateway.cards();
+/** The application with every call it is asked to make waiting for good. */
+const silenced = (application: Gateway): Gateway =>
+  new Proxy(application, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? () => new Promise(() => undefined) : value;
+    },
+  });
+
+/** The application with one call answered the way a test says. */
+const answering = (application: Gateway, name: keyof Gateway, answer: () => unknown): Gateway =>
+  new Proxy(application, {
+    get(target, property, receiver) {
+      if (property === name) {
+        return async () => answer();
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+
+describe("what goes in", () => {
+  it("refuses an address that is not one in the schema's words, and changes nothing", async () => {
+    // The page checks the address before sending it; this is the second line,
+    // and it says what the contract says rather than something of its own.
+    const harnessed = await started();
+
+    const refused = await asTheOwner(harnessed).setPayoutWallet("0x1234");
+
+    expect(refused).toMatchObject({ ok: false, status: 400, code: "malformed_body" });
+    expect(refused.ok ? "" : refused.why).toMatch(/40 hexadecimal|address/i);
+    expect((await harnessed.store.merchantById(harnessed.merchant.id))?.payoutWallet.address).toBe(
+      harnessed.merchant.wallet,
+    );
+  });
+
+  it("refuses a key name of two lines, and issues nothing", async () => {
+    const harnessed = await started();
+    const before = (await harnessed.store.keysOf(harnessed.merchant.id)).length;
+
+    const refused = await asTheOwner(harnessed).issueKey("the stock worker\nhttps://example.com");
+
+    expect(refused).toMatchObject({ ok: false, status: 400, code: "malformed_body" });
+    expect((await harnessed.store.keysOf(harnessed.merchant.id)).length).toBe(before);
+  });
+});
+
+describe("a refusal", () => {
+  it("reaches the page in the words and under the status the route at the door gives it", async () => {
+    // One fact, two readers: a merchant on the wallet screen and their
+    // engineer reading the API are told the same thing. On the live
+    // deployment no account names this merchant, so there is nobody to tell.
+    const harnessed = await started(LIVE);
+    harnessed.announcer.answer = "nobody_to_tell";
+    const served = await serve(harnessed);
+    if (open !== null) open.served = served;
+    const dashboardKey = await harnessed.addDashboardKey(harnessed.merchant.id);
+
+    const onThePage = await asTheOwner(harnessed).setPayoutWallet(A_WALLET);
+    const atTheDoor = await served.call("POST", "/v0/payout-wallet", {
+      body: { payout_wallet: A_WALLET },
+      headers: { authorization: `Bearer ${dashboardKey}` },
+    });
+
+    const refused = (atTheDoor.body as { error: { code: string; message: string } }).error;
+    expect(onThePage).toStrictEqual({
+      ok: false,
+      status: atTheDoor.status,
+      code: refused.code,
+      why: refused.message,
+    });
+    expect(refused.code).toBe("wallet_change_nobody_to_tell");
+  });
+
+  it("answers an order of another merchant's as one that is not there", async () => {
+    const harnessed = await started();
+
+    const read = await asTheOwner(harnessed).getOrder("ord_somebody_elses");
+
+    expect(read).toStrictEqual({
+      ok: false,
+      status: 404,
+      code: "no_such_order",
+      why: "there is no such order",
+    });
+  });
+});
+
+describe("a call that does not finish", () => {
+  it("is given up on at its deadline, saying what was asked may have been done", async () => {
+    // The work behind it is not stopped: a database that answers late still
+    // writes. So the page must not say nothing happened.
+    const harnessed = await started();
+    const client = gatewayFor(
+      silenced(harnessed.gateway),
+      { merchantId: harnessed.merchant.id, email: OWNER },
+      50,
+    );
+
+    const answered = await client.setSelling(false);
 
     expect(answered.ok).toBe(false);
-    if (answered.ok) {
-      throw new Error("the silent gateway answered");
-    }
-    expect(answered.status).toBe(0);
-    // The two silences are told apart, because only one of them is worth
-    // trying again in a moment.
-    expect(answered.why).toMatch(/in time/);
+    expect(answered.ok ? 0 : answered.status).toBe(0);
+    expect(answered.ok ? "" : answered.why).toMatch(
+      /did not answer.*may or may not have been done/,
+    );
   });
 
-  it("tells a gateway that is not there from one that will not answer", async () => {
-    // Nothing is listening on this port, so the connection is refused at once
-    // and the wording is the other one.
-    const gateway = gatewayFor("http://127.0.0.1:1", "a-merchant-key-long-enough");
+  it("is not answered for when it fails in our own code, since it may have failed after the work", async () => {
+    // A thrown error goes on to the page's own handler, which says something in
+    // the dashboard is broken; turned into a refusal here it would have to say
+    // what was or was not done, which nobody knows.
+    const harnessed = await started();
+    const client = gatewayFor(
+      answering(harnessed.gateway, "setSelling", () => {
+        throw new Error("the database went away after the write");
+      }),
+      { merchantId: harnessed.merchant.id, email: OWNER },
+    );
 
-    const answered = await gateway.cards();
-
-    expect(answered.ok).toBe(false);
-    if (answered.ok) {
-      throw new Error("a port with nothing on it answered");
-    }
-    expect(answered.why).toBe("the gateway could not be reached");
-  });
-});
-
-describe("the call that makes a merchant", () => {
-  it("goes to the registration route with the invitation alone and no key at all", async () => {
-    // No key, and that is the whole shape of this call: nobody registering has
-    // one. A key header here would be a header carrying nothing, and the
-    // gateway reads an empty bearer token as a key it does not know — which
-    // would turn "you are not invited" into "your key is wrong" for somebody
-    // who has neither.
-    //
-    // And no name either. The name buyers read is chosen after the account
-    // exists, so a registration that sent one would be sending a field the
-    // route does not take.
-    const { url, arrived } = await recordingServer(200, {
-      merchant_id: "mer_the_merchant",
-      secret: "the-secret-shown-once",
-    });
-
-    const made = await registrarFor(url).register("the-invitation");
-
-    expect(made.ok).toBe(true);
-    expect(arrived[0]?.method).toBe("POST");
-    expect(arrived[0]?.path).toBe("/v0/merchants");
-    expect(arrived[0]?.key).toBeNull();
-    expect(JSON.parse(arrived[0]?.body ?? "{}")).toStrictEqual({ invitation: "the-invitation" });
+    await expect(client.setSelling(false)).rejects.toThrow(/database went away/);
   });
 
-  it("hands back the merchant and the secret the account is written with", async () => {
-    const { url } = await recordingServer(200, {
-      merchant_id: "mer_the_merchant",
-      secret: "the-secret-shown-once",
-    });
+  it("does not hand a page a document the contract would not recognise", async () => {
+    const harnessed = await started();
+    const client = gatewayFor(
+      answering(harnessed.gateway, "merchantCards", () => ({ cards: [{ not: "a card" }] })),
+      { merchantId: harnessed.merchant.id, email: OWNER },
+    );
 
-    const made = await registrarFor(url).register("the-invitation");
-
-    if (!made.ok) {
-      throw new Error(`the registration was refused: ${made.why}`);
-    }
-    expect(made.document.merchant_id).toBe("mer_the_merchant");
-    expect(made.document.secret).toBe("the-secret-shown-once");
-  });
-
-  it("refuses an answer with no secret in it rather than writing an account with none", async () => {
-    // The one field the dashboard cannot do without: it is what goes on the row,
-    // and an account carrying an empty key is an account that signs in and then
-    // meets a 401 on every screen, with nothing on the page to say why. Held to
-    // the contract's shape here, so it fails at the call rather than three
-    // screens later.
-    const { url } = await recordingServer(200, { merchant_id: "mer_the_merchant" });
-
-    await expect(registrarFor(url).register("the-invitation")).rejects.toThrow();
-  });
-
-  it("carries the gateway's own status through, so a refusal can be told from a fault", async () => {
-    // 403 is the invitation being refused and a registration that is not open,
-    // deliberately indistinguishable from each other; anything else is not
-    // about what the person typed. The screen decides what to say, and it can
-    // only do that if the status arrives.
-    const { url } = await recordingServer(403, {
-      error: { code: "not_invited", message: "that is not an invitation we accept" },
-    });
-
-    const refused = await registrarFor(url).register("not-the-code");
-
-    expect(refused.ok).toBe(false);
-    if (refused.ok) {
-      throw new Error("a refused registration answered as made");
-    }
-    expect(refused.status).toBe(403);
-    expect(refused.why).toBe("that is not an invitation we accept");
+    await expect(client.cards()).rejects.toThrow();
   });
 });
 
-describe("the calls behind the name buyers read", () => {
-  it("reads the name as the merchant whose key it holds, and hands back the name itself", async () => {
-    // Unwrapped by the client rather than by the screen. The wrapper exists so
-    // the answer can grow a field beside the name without every reader
-    // changing; a page reaching through it is a page to edit the day it does.
-    const { url, arrived } = await recordingServer(200, {
-      seller_name: "A shop with a name",
-      seller_site: null,
-    });
+describe("who asks", () => {
+  it("is named in the message about a wallet change by the account the session is signed in as", async () => {
+    const harnessed = await started(LIVE);
 
-    const read = await gatewayFor(url, KEY).sellerName();
+    const asked = await asTheOwner(harnessed).setPayoutWallet(A_WALLET);
 
-    expect(arrived[0]?.method).toBe("GET");
-    expect(arrived[0]?.path).toBe("/v0/seller-name");
-    expect(arrived[0]?.key).toBe(`Bearer ${KEY}`);
-    expect(read.ok).toBe(true);
-    if (!read.ok) {
-      throw new Error(`reading the name failed: ${read.why}`);
-    }
-    expect(read.document).toBe("A shop with a name");
+    expect(asked.ok).toBe(true);
+    expect(harnessed.announcer.announced).toMatchObject([
+      { kind: "wallet_change", asked_with: { kind: "signed_in", email: OWNER } },
+    ]);
   });
 
-  it("reads a merchant who has chosen no name as null rather than as an absence", async () => {
-    // Null is the state every screen in this dashboard exists to get somebody out
-    // of, so it has to arrive as an answer and not as a missing field. A client
-    // that folded the two would leave the screens unable to tell "no name" from
-    // "the call went wrong".
-    const { url } = await recordingServer(200, { seller_name: null, seller_site: null });
+  it("is named in the message about a new key the same way", async () => {
+    const harnessed = await started(LIVE);
 
-    const read = await gatewayFor(url, KEY).sellerName();
+    const issued = await asTheOwner(harnessed).issueKey("the stock worker");
 
-    expect(read.ok).toBe(true);
-    if (!read.ok) {
-      throw new Error(`reading the name failed: ${read.why}`);
-    }
-    expect(read.document).toBeNull();
+    expect(issued.ok).toBe(true);
+    // The message about a key is sent after it is issued and never waited on.
+    await new Promise((settled) => setImmediate(settled));
+    expect(harnessed.announcer.announced).toMatchObject([
+      { kind: "key_issued", asked_with: { kind: "signed_in", email: OWNER } },
+    ]);
   });
 
-  it("sends the name a merchant typed and hands back what was written", async () => {
-    const { url, arrived } = await recordingServer(200, {
-      seller_name: "A shop with a name",
-      seller_site: null,
-    });
+  it("holds no key, so it can disable the one the merchant's own code is calling with", async () => {
+    const harnessed = await started();
 
-    const set = await gatewayFor(url, KEY).setSellerName("A shop with a name");
+    const disabled = await asTheOwner(harnessed).disableKey(harnessed.merchant.keyId);
 
-    expect(arrived[0]?.method).toBe("POST");
-    expect(arrived[0]?.path).toBe("/v0/seller-name");
-    expect(arrived[0]?.key).toBe(`Bearer ${KEY}`);
-    expect(JSON.parse(arrived[0]?.body ?? "{}")).toStrictEqual({
-      seller_name: "A shop with a name",
-    });
-    expect(set.ok).toBe(true);
-    if (!set.ok) {
-      throw new Error(`setting the name failed: ${set.why}`);
-    }
-    expect(set.document).toBe("A shop with a name");
-  });
-
-  it("refuses an answer with no name field in it rather than reading one as null", async () => {
-    // The difference between a document that says "no name" and one that does
-    // not mention names is the difference between a banner a merchant can act
-    // on and a banner shown to somebody who has already done the thing.
-    const { url } = await recordingServer(200, {});
-
-    await expect(gatewayFor(url, KEY).sellerName()).rejects.toThrow();
-  });
-
-  it("carries a refusal of the name through with the gateway's status on it", async () => {
-    // The screen has its own sentence for a name outside the rule and needs to
-    // know it was refused rather than written.
-    const { url } = await recordingServer(400, {
-      error: { code: "invalid_request", message: "that name is not one the catalogue carries" },
-    });
-
-    const set = await gatewayFor(url, KEY).setSellerName("x".repeat(33));
-
-    expect(set.ok).toBe(false);
-    if (set.ok) {
-      throw new Error("a refused name answered as written");
-    }
-    expect(set.status).toBe(400);
-    expect(set.why).toBe("that name is not one the catalogue carries");
-  });
-});
-
-describe("the calls behind the address a merchant's money arrives at", () => {
-  const SHAPED = "0x0123456789abcdef0123456789abcdef01234567";
-
-  it("reads the address as the merchant whose key it holds, and hands back the address", async () => {
-    const { url, arrived } = await recordingServer(200, { payout_wallet: SHAPED, pending: null });
-
-    const read = await gatewayFor(url, KEY).payoutWallet();
-
-    expect(arrived[0]?.method).toBe("GET");
-    expect(arrived[0]?.path).toBe("/v0/payout-wallet");
-    expect(arrived[0]?.key).toBe(`Bearer ${KEY}`);
-    expect(read.ok).toBe(true);
-    if (!read.ok) {
-      throw new Error(`reading the address failed: ${read.why}`);
-    }
-    expect(read.document).toStrictEqual({ payout_wallet: SHAPED, pending: null });
-  });
-
-  it("reads a merchant who has set no address as null rather than as an absence", async () => {
-    // The screen draws one block for "you have not said where to send it" and
-    // another for "here is where it goes". A client that folded the absent
-    // field into null would draw the first for a merchant whose answer simply
-    // did not arrive.
-    const { url } = await recordingServer(200, { payout_wallet: null, pending: null });
-
-    const read = await gatewayFor(url, KEY).payoutWallet();
-
-    expect(read.ok).toBe(true);
-    if (!read.ok) {
-      throw new Error(`reading the address failed: ${read.why}`);
-    }
-    expect(read.document).toStrictEqual({ payout_wallet: null, pending: null });
-  });
-
-  it("sends the address a merchant pasted and hands back what was written", async () => {
-    const { url, arrived } = await recordingServer(200, { payout_wallet: SHAPED, pending: null });
-
-    const set = await gatewayFor(url, KEY).setPayoutWallet(SHAPED);
-
-    expect(arrived[0]?.method).toBe("POST");
-    expect(arrived[0]?.path).toBe("/v0/payout-wallet");
-    expect(arrived[0]?.key).toBe(`Bearer ${KEY}`);
-    expect(JSON.parse(arrived[0]?.body ?? "{}")).toStrictEqual({ payout_wallet: SHAPED });
-    expect(set.ok).toBe(true);
-    if (!set.ok) {
-      throw new Error(`setting the address failed: ${set.why}`);
-    }
-    expect(set.document).toStrictEqual({ payout_wallet: SHAPED, pending: null });
-  });
-
-  it("refuses an answer with no address field in it rather than reading one as null", async () => {
-    const { url } = await recordingServer(200, {});
-
-    await expect(gatewayFor(url, KEY).payoutWallet()).rejects.toThrow();
-  });
-
-  it("refuses an answer whose address is not one, rather than showing it back", async () => {
-    // The one thing this screen promises is that what it shows is where the
-    // money goes. An answer carrying something that is not an address is a
-    // gateway we cannot draw that page from, and stopping here is how that is
-    // found rather than as forty characters a merchant checks against nothing.
-    const { url } = await recordingServer(200, { payout_wallet: "not-an-address", pending: null });
-
-    await expect(gatewayFor(url, KEY).payoutWallet()).rejects.toThrow();
-  });
-
-  it("carries a refusal of the address through with the gateway's status on it", async () => {
-    const { url } = await recordingServer(400, {
-      error: { code: "invalid_request", message: "that is not an address" },
-    });
-
-    const set = await gatewayFor(url, KEY).setPayoutWallet(SHAPED);
-
-    expect(set.ok).toBe(false);
-    if (set.ok) {
-      throw new Error("a refused address answered as written");
-    }
-    expect(set.status).toBe(400);
-    expect(set.why).toBe("that is not an address");
-  });
-});
-
-describe("the calls a merchant makes about their keys", () => {
-  it("asks for the list with the merchant's key on it", async () => {
-    const { url, arrived } = await recordingServer(200, {
-      keys: [aKey()],
-      this_call: "key_the_first_one",
-    });
-
-    const listed = await gatewayFor(url, KEY).keys();
-
-    expect(listed.ok).toBe(true);
-    expect(arrived[0]?.method).toBe("GET");
-    expect(arrived[0]?.path).toBe("/v0/keys");
-    expect(arrived[0]?.key).toBe(`Bearer ${KEY}`);
-  });
-
-  it("refuses a list that does not say which key the call was made with", async () => {
-    // Without it the screen cannot tell which row to leave without a control,
-    // and a screen that guessed would offer the one click that costs a merchant
-    // the way back into their own dashboard (ADR-0014 §5).
-    const { url } = await recordingServer(200, { keys: [aKey()] });
-
-    await expect(gatewayFor(url, KEY).keys()).rejects.toThrow();
-  });
-
-  it("sends the label as a document, and hands back the key with its secret", async () => {
-    const { url, arrived } = await recordingServer(200, {
-      key: aKey({ label: "the worker on the small box" }),
-      secret: "the-secret-shown-once",
-    });
-
-    const issued = await gatewayFor(url, KEY).issueKey("the worker on the small box");
-
-    expect(arrived[0]?.method).toBe("POST");
-    expect(arrived[0]?.path).toBe("/v0/keys");
-    expect(JSON.parse(arrived[0]?.body ?? "{}")).toStrictEqual({
-      label: "the worker on the small box",
-    });
-    if (!issued.ok) {
-      throw new Error(`the key was not issued: ${issued.why}`);
-    }
-    expect(issued.document.secret).toBe("the-secret-shown-once");
-  });
-
-  it("refuses an answer to issuing that carries no secret", async () => {
-    // The secret is answered once and never again, so an answer without one is
-    // a key the merchant can never be given. Better a page that says something
-    // here is broken than a page that shows them an empty box and lets them
-    // believe they have copied it.
-    const { url } = await recordingServer(200, { key: aKey() });
-
-    await expect(gatewayFor(url, KEY).issueKey("the worker")).rejects.toThrow();
-  });
-
-  it("puts the key's identifier into the address it posts to", async () => {
-    const { url, arrived } = await recordingServer(200, {
-      key: aKey({ disabled_at: "2026-08-28T12:00:00.000Z" }),
-    });
-
-    const stopped = await gatewayFor(url, KEY).disableKey("key_the_workers_use");
-
-    expect(arrived[0]?.method).toBe("POST");
-    expect(arrived[0]?.path).toBe("/v0/keys/key_the_workers_use/disable");
-    expect(arrived[0]?.key).toBe(`Bearer ${KEY}`);
-    if (!stopped.ok) {
-      throw new Error(`the key was not revoked: ${stopped.why}`);
-    }
-    // The key itself comes back rather than the object it arrived wrapped in,
-    // so the one screen that draws it is not reaching through a wrapper.
-    expect(stopped.document.disabled_at).toBe("2026-08-28T12:00:00.000Z");
-  });
-
-  it("carries through the gateway's refusal to revoke the key the call was made with", async () => {
-    // The screen offers no control for that key, so this is what a merchant who
-    // reached the address another way is answered with. The gateway's own
-    // sentence, under its own status: nothing is claimed about what did or did
-    // not happen beyond what it said.
-    const { url } = await recordingServer(409, {
-      error: {
-        code: "key_opened_this_call",
-        message:
-          "this call was made with that key, so disabling it would close the door behind you",
-      },
-    });
-
-    const refused = await gatewayFor(url, KEY).disableKey("key_the_dashboard_is_using");
-
-    expect(refused.ok).toBe(false);
-    if (refused.ok) {
-      throw new Error("a refused revocation answered as done");
-    }
-    expect(refused.status).toBe(409);
-    expect(refused.why).toContain("disabling it would close the door behind you");
-  });
-
-  it("refuses a key document that says nothing about whether the key was revoked", async () => {
-    // `disabled_at` is required and nullable rather than optional, and the
-    // reason is the reading of an absent one: "this key works" and "nobody
-    // wrote it down" are not the same, and a screen that guessed the first
-    // would show a revoked key as live beside a Revoke button.
-    const { url } = await recordingServer(200, {
-      keys: [{ id: "key_one", label: "the worker", created_at: "2026-08-28T09:00:00.000Z" }],
-      this_call: "key_one",
-    });
-
-    await expect(gatewayFor(url, KEY).keys()).rejects.toThrow();
-  });
-});
-
-describe("the two calls about the key the dashboard itself holds", () => {
-  it("asks for a fresh one at the dashboard's own address, with the key it is holding now", async () => {
-    // Made with the key on the account row rather than with anything else,
-    // because the gateway answers this only to a key of that kind — and
-    // because the whole point is a merchant asking for another of their own.
-    const { url, arrived } = await recordingServer(200, { secret: "the-next-one" });
-
-    const asked = await gatewayFor(url, KEY).issueDashboardKey();
-
-    expect(arrived[0]?.method).toBe("POST");
-    expect(arrived[0]?.path).toBe("/v0/keys/dashboard");
-    expect(arrived[0]?.key).toBe(`Bearer ${KEY}`);
-    if (!asked.ok) {
-      throw new Error(`no key was made: ${asked.why}`);
-    }
-    // The secret itself and not the object it arrived in: what the caller does
-    // with this is write it onto a row, and a caller reaching through a wrapper
-    // is a caller to edit the day the wrapper grows a field.
-    expect(asked.document).toBe("the-next-one");
-  });
-
-  it("refuses an answer with no secret in it rather than writing an empty key onto a row", async () => {
-    // The one field this call exists for. An answer without it, taken at its
-    // word, would put an empty string where the credential goes — and the next
-    // request that person makes would meet a 401 with nothing on the page to
-    // say why.
-    const { url } = await recordingServer(200, {});
-
-    await expect(gatewayFor(url, KEY).issueDashboardKey()).rejects.toThrow();
-  });
-
-  it("forgets a key by making the call with it, and names no key at all", async () => {
-    // The key that goes is the key on the call, so the client is bound to
-    // whichever key is being put beyond use and the request carries nothing
-    // else. A body naming a key would be a client that could reach one it is
-    // not holding.
-    const { url, arrived } = await recordingServer(200, { forgotten: true });
-
-    const gone = await gatewayFor(url, KEY).forgetDashboardKey();
-
-    expect(arrived[0]?.method).toBe("DELETE");
-    expect(arrived[0]?.path).toBe("/v0/keys/dashboard");
-    expect(arrived[0]?.key).toBe(`Bearer ${KEY}`);
-    expect(arrived[0]?.body).toBe("");
-    expect(gone.ok).toBe(true);
-  });
-
-  it("refuses an answer that does not say the key is gone", async () => {
-    // The one field the document has. Taken as done on a silence, a dashboard
-    // would believe it had put a key beyond use while the key went on working.
-    const { url } = await recordingServer(200, {});
-
-    await expect(gatewayFor(url, KEY).forgetDashboardKey()).rejects.toThrow();
-  });
-
-  it("carries through the gateway's refusal to make one of these for a merchant's own key", async () => {
-    // The account row can hold a key of the merchant's own — somebody at a
-    // terminal put one there — and the gateway refuses both of these calls to
-    // it by name. The refusal has to arrive as a refusal, because the caller's
-    // next move turns on it: nothing was made, so nothing may be forgotten.
-    const { url } = await recordingServer(403, {
-      error: {
-        code: "not_a_dashboard_key",
-        message: "this call is made with the key a dashboard signs in with, and that is not one",
-      },
-    });
-
-    const refused = await gatewayFor(url, KEY).issueDashboardKey();
-
-    expect(refused.ok).toBe(false);
-    if (refused.ok) {
-      throw new Error("a refused call answered as though a key had been made");
-    }
-    expect(refused.status).toBe(403);
-    expect(refused.why).toContain("that is not one");
-  });
-});
-
-describe("the private late-delivery recovery calls", () => {
-  it("reads one exact merchant order", async () => {
-    const document = {
-      id: "ord_1",
-      merchant_item_id: "woo_merchant_22",
-      params: {},
-      price: {
-        amount: "0.01",
-        currency: "USD",
-        at: "2026-09-18T09:59:00.000Z",
-        as_of: "2026-09-18T09:58:00.000Z",
-      },
-      test: true,
-      status: "refund_due",
-    };
-    const { url, arrived } = await recordingServer(200, document);
-
-    const read = await gatewayFor(url, KEY).getOrder("ord_1");
-
-    expect(read).toEqual({ ok: true, document });
-    expect(arrived[0]).toMatchObject({
-      method: "GET",
-      path: "/v0/orders/ord_1",
-      key: `Bearer ${KEY}`,
-    });
-  });
-
-  it("delivers saved goods on the existing order rather than answering a worker envelope", async () => {
-    const { url, arrived } = await recordingServer(200, {
-      ok: true,
-      result: "debt_closed_by_delivery",
-    });
-    const delivery = { download_url: "https://shop.example.com/?permission=secret" };
-
-    const delivered = await gatewayFor(url, KEY).deliverOrder("ord_1", delivery);
-
-    expect(delivered.ok).toBe(true);
-    expect(arrived[0]).toMatchObject({
-      method: "POST",
-      path: "/v0/orders/ord_1/deliver",
-      key: `Bearer ${KEY}`,
-    });
-    expect(JSON.parse(arrived[0]?.body ?? "{}")).toEqual(delivery);
+    expect(disabled.ok).toBe(true);
+    expect(disabled.ok ? disabled.document.disabled_at : null).not.toBeNull();
   });
 });
