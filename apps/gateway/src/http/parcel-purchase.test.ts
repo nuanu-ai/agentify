@@ -13,8 +13,9 @@
  * gateway lets go of it: the order says only when, and nothing on the
  * merchant's stream carries any of it any more.
  *
- * Nothing can publish a parcel's card yet, so each test puts one in the store
- * directly, as a card already published would be.
+ * Each test puts the parcel's card in the store directly, as a card already
+ * published would be, so that what a test is about is the purchase and not the
+ * publishing door.
  */
 
 import {
@@ -571,5 +572,109 @@ describe("the address on a payment", () => {
     expect(paid.status).toBe(422);
     expect((paid.body as Refused).error.code).toBe("ship_to_does_not_fit");
     expect(harnessed.facilitator.verifies).toHaveLength(0);
+  });
+});
+
+describe("the shipment", () => {
+  /** A real carrier, and a number with its digits taken out. */
+  const shipment = { carrier: "JNE", tracking_number: "0000000000000000" };
+
+  /** A parcel paid for and taken on, as its merchant has it once they stored the address. */
+  const takenOn = async () => {
+    const { harnessed, served, itemId } = await started();
+    await pricedThenPaid(harnessed, served, itemId, {
+      priced: { params: {}, ship_to: address },
+      paid: { params: {}, ship_to: address },
+    });
+    const orderId = (await theOrder(served)).id;
+    await served.call("POST", `/v0/orders/${orderId}/accept`, { headers: asMerchant, body: {} });
+    return { harnessed, served, orderId };
+  };
+
+  const ship = (served: Served, orderId: string, body: unknown) =>
+    served.call("POST", `/v0/orders/${orderId}/deliver`, { headers: asMerchant, body });
+
+  const statusOf = async (served: Served, orderId: string) =>
+    (await served.call("GET", `/x402/orders/${orderId}/status`)).body as Record<string, unknown>;
+
+  it("is recorded by the deliver call, and the agent reads that the parcel shipped", async () => {
+    const { harnessed, served, orderId } = await takenOn();
+
+    const shipped = await ship(served, orderId, shipment);
+
+    expect(shipped.status).toBe(200);
+    const status = await statusOf(served, orderId);
+    expect(status.status).toBe("shipped");
+    // Nothing reached the agent: the goods field stays empty, and the shipment
+    // is where the parcel's record is, stamped with when it was recorded.
+    expect(status.delivered).toBeNull();
+    expect(status.shipment).toStrictEqual({
+      ...shipment,
+      shipped_at: new Date(harnessed.now()).toISOString(),
+    });
+    expect((await theOrder(served)).status).toBe("shipped");
+    expect((await harnessed.store.receiptForOrder(orderId))?.outcome).toBe("shipped");
+  });
+
+  it("tells the agent the time to ship by once the order is paid, and that nothing has shipped", async () => {
+    const { harnessed, served, itemId } = await started();
+    await pricedThenPaid(harnessed, served, itemId, {
+      priced: { params: {}, ship_to: address },
+      paid: { params: {}, ship_to: address },
+    });
+    const order = await harnessed.store.orderById((await theOrder(served)).id);
+    const paidAt = order?.order.timestamps.paidAt ?? 0;
+
+    const status = await statusOf(served, order?.order.id ?? "");
+
+    expect(status.status).toBe("in_progress");
+    expect(status.shipment).toBeNull();
+    expect(status.ship_by).toBe(new Date(paidAt + 172_800_000).toISOString());
+  });
+
+  it("answers the same shipment again as recorded, and refuses a different one", async () => {
+    // A parcel cannot be sent twice safely, so a repeat is ordinary and a
+    // second, different shipment is refused rather than taken in silence: a
+    // corrected number would otherwise vanish without a word.
+    const { served, orderId } = await takenOn();
+    await ship(served, orderId, shipment);
+
+    const again = await ship(served, orderId, shipment);
+    const other = await ship(served, orderId, { ...shipment, tracking_number: "1111111111111111" });
+
+    expect(again.status).toBe(200);
+    expect(other.status).toBe(409);
+    const refused = other.body as { error: { code: string; retryable: boolean } };
+    expect(refused.error.code).toBe("shipment_already_recorded");
+    expect(refused.error.retryable).toBe(false);
+    expect(
+      ((await statusOf(served, orderId)).shipment as Record<string, unknown>).tracking_number,
+    ).toBe(shipment.tracking_number);
+  });
+
+  it("refuses goods in place of a shipment, and a shipment that says when it shipped", async () => {
+    const { served, orderId } = await takenOn();
+
+    const goods = await ship(served, orderId, { access_code: "SESAME" });
+    const dated = await ship(served, orderId, { ...shipment, shipped_at: "2026-08-20T00:00:00Z" });
+
+    for (const refused of [goods, dated]) {
+      expect(refused.status).toBe(409);
+      expect((refused.body as Refused).error.code).toBe("delivery_does_not_match_card");
+    }
+    expect((await statusOf(served, orderId)).status).toBe("in_progress");
+  });
+
+  it("is recorded from the handler's own answer as well", async () => {
+    const { harnessed, served, itemId } = await started();
+    await pricedThenPaid(harnessed, served, itemId, {
+      priced: { params: {}, ship_to: address },
+      paid: { params: {}, ship_to: address },
+    });
+
+    await workOnce(harnessed, { onOrder: () => ({ delivered: shipment }) });
+
+    const orderId = (await theOrder(served)).id;
+    expect((await statusOf(served, orderId)).status).toBe("shipped");
   });
 });
