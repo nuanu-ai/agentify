@@ -87,6 +87,8 @@ export function withoutValues(thrown: unknown, doing: string): unknown {
  * A wrapper around the whole object rather than a line in each method, because
  * a method added later is covered without anybody remembering to. Each method
  * runs on the object itself, so its private fields are where it expects them.
+ * Every method that reaches the database is asynchronous, so a failure arrives
+ * as a rejection, and that is the only place one is looked for.
  */
 export function failingWithoutValues<T extends object>(target: T, what: string): T {
   return new Proxy(target, {
@@ -97,12 +99,7 @@ export function failingWithoutValues<T extends object>(target: T, what: string):
       }
       const doing = `${what}'s ${String(key)}`;
       return (...args: unknown[]): unknown => {
-        let result: unknown;
-        try {
-          result = Reflect.apply(value, object, args);
-        } catch (thrown) {
-          throw withoutValues(thrown, doing);
-        }
+        const result: unknown = Reflect.apply(value, object, args);
         return result instanceof Promise
           ? result.catch((thrown: unknown) => {
               throw withoutValues(thrown, doing);

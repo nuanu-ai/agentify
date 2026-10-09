@@ -64,6 +64,23 @@ describe("a database failure leaving the store or the queue", () => {
     expect(message).toContain("orders_record_check");
   });
 
+  it("leaves out the database's own sentence, which can quote a value too", () => {
+    // Not every value Postgres repeats is in the detail: a value of the wrong
+    // type is quoted in the message itself.
+    const refused = new DatabaseError(
+      `invalid input syntax for type uuid: "${BUYER}"`,
+      90,
+      "error",
+    );
+    refused.severity = "ERROR";
+    refused.code = "22P02";
+
+    const told = withoutValues(refused, "the store's orderById");
+
+    expect(printed(told)).not.toContain(BUYER);
+    expect((told as Error).message).toContain("22P02");
+  });
+
   it("strips a refusal the driver raised on its own, as the queue meets one", () => {
     const told = withoutValues(refusedRow(), "the queue's publish");
 
