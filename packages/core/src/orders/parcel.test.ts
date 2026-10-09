@@ -16,6 +16,7 @@ import { must, newOrder, sampleEvent, T0, TEST_POLICY, walk } from "./fixtures.j
 import { transition } from "./machine.js";
 import type { Effect, Order, OrderEvent, OrderMode, TransitionResult } from "./model.js";
 import { DEADLINE_KINDS, holdsShipTo, modeOf, ORDER_EVENT_KINDS } from "./model.js";
+import { outcomeFor } from "./outcome.js";
 
 const PARCEL: OrderMode = { needsConfirmation: false, settle: "on_purchase", parcel: true };
 
@@ -43,6 +44,31 @@ const takenOn = (): Order =>
 
 const erasures = (effects: readonly Effect[]): number =>
   effects.filter((effect) => effect.kind === "erase_ship_to").length;
+
+describe("what the agent is told about a parcel", () => {
+  it("is that it shipped once its shipment is recorded, and not that it was delivered", () => {
+    // The parcel is with the carrier and the money with the merchant; nothing
+    // reached the agent, so the word for goods in hand would be a claim
+    // beyond what anybody here knows (ADR-0033).
+    const shipped = must(takenOn(), { kind: "deliver_called", at: T0 + 60 }).order;
+
+    expect(shipped.state).toBe("delivered");
+    expect(outcomeFor(shipped)).toBe("shipped");
+  });
+
+  it("is the same when a late shipment closes a refund owed", () => {
+    const owed = must(handedOver(parcel()), {
+      kind: "deadline_expired",
+      at: T0 + 999_999_999,
+      deadline: "async_fulfillment",
+    }).order;
+    expect(owed.state).toBe("refund_due");
+
+    const shipped = must(owed, { kind: "deliver_called", at: T0 + 1_000_000_000 }).order;
+
+    expect(outcomeFor(shipped)).toBe("shipped");
+  });
+});
 
 describe("a parcel's address", () => {
   it("is held from the priced request until the merchant has it", () => {
