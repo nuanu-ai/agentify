@@ -20,8 +20,32 @@ export interface Person {
   readonly merchant: AccountMerchant | null;
 }
 
-/** The dashboard screens a link asked for on the sign-in page may lead to. */
-export type DashboardDestination = "default" | "settings" | "woocommerce";
+/**
+ * The dashboard screens a link asked for on the sign-in page may lead to, each
+ * by the address it is served at; "default" is the person's start, which for a
+ * merchant is the card list.
+ *
+ * One list, read wherever a section travels: the gate that names the one a
+ * signed-out person was going to, the sign-in form that carries it, the link's
+ * stored claim that keeps it, and the redirect that follows it. Anything else
+ * is the start, so a value a browser sends can lead nowhere this list does not
+ * name.
+ */
+export const DASHBOARD_DESTINATIONS = [
+  "default",
+  "orders",
+  "receipts",
+  "integrations",
+  "keys",
+  "settings",
+  "woocommerce",
+] as const;
+
+export type DashboardDestination = (typeof DASHBOARD_DESTINATIONS)[number];
+
+/** A section named by a browser or a stored claim, or the start for anything else. */
+export const dashboardDestinationIn = (value: unknown): DashboardDestination =>
+  DASHBOARD_DESTINATIONS.find((destination) => destination === value) ?? "default";
 
 /**
  * Every place a link may lead once it is opened: a dashboard screen, or the full

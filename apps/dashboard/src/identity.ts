@@ -28,18 +28,19 @@ import { and, asc, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import type { DashboardConfig } from "./config.js";
-import type {
-  AttachMerchantResult,
-  DashboardDestination,
-  DashboardIdentity,
-  DashboardLinkResult,
-  LinkDestination,
-  LinkRequestResult,
-  LinkWall,
-  LiveSession,
-  MerchantPerson,
-  Person,
-  UnattachedPerson,
+import {
+  type AttachMerchantResult,
+  DASHBOARD_DESTINATIONS,
+  type DashboardDestination,
+  type DashboardIdentity,
+  type DashboardLinkResult,
+  type LinkDestination,
+  type LinkRequestResult,
+  type LinkWall,
+  type LiveSession,
+  type MerchantPerson,
+  type Person,
+  type UnattachedPerson,
 } from "./dashboard-entry.js";
 import { type Message, type Postman, postmanFor } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
@@ -972,8 +973,9 @@ function claimOf(value: Record<string, unknown>): LinkClaim | null {
   const request = value.request ?? null;
   if (request !== null && (typeof request !== "string" || !UUID.test(request))) return null;
   const destination = value.destination;
-  if (destination === "default" || destination === "settings" || destination === "woocommerce") {
-    return { email: value.email, destination, request };
+  if (typeof destination === "string") {
+    const known = DASHBOARD_DESTINATIONS.find((one) => one === destination);
+    return known === undefined ? null : { email: value.email, destination: known, request };
   }
   if (typeof destination !== "object" || destination === null) return null;
   const keys = Object.keys(destination);
