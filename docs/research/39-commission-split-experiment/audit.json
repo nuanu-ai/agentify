@@ -1,0 +1,435 @@
+{
+  "at": "2026-10-09T12:03:08.353Z",
+  "network": "eip155:84532",
+  "blockNumber": "47889540",
+  "transactions": [
+    {
+      "label": "pay S",
+      "hash": "0xcd9a34c8da4eeadd3140c5412a541fc0cc5b2240ad6aaba68bf1361430e96bda",
+      "gasUsed": "102832",
+      "block": "47889027",
+      "split": "S",
+      "status": "success",
+      "from": "0xd407e409e34e0b9afb99ecceb609bdbcd5e7f1bf",
+      "to": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+      "effectiveGasPrice": "6000000",
+      "l1Fee": "190",
+      "executionFee": "616992000000",
+      "transfers": [
+        {
+          "from": "0x334bD2f4c4be711E0be7533f0d78040B5f071981",
+          "to": "0xa7Dcb5354F2a7e28761A23881D54bC0b31479c57",
+          "value": "1000000"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-09T11:46:30Z",
+      "stage": "tx",
+      "label": "createSplitDeterministic",
+      "hash": "0x0920a3e2cf447668bd0c3084def3a65463b2cadd72c1a69be7343fcbe0b59427",
+      "status": "success",
+      "gasUsed": "145214",
+      "block": "47889049",
+      "source": "recovered from Blockscout after the run stopped at withdraw M",
+      "from": "0xf029d915c69c1902bb09a86c801c8226825f265c",
+      "to": "0x6b9118074ab15142d7524e8c4ea8f62a3bdb98f1",
+      "effectiveGasPrice": "6000000",
+      "l1Fee": "183",
+      "executionFee": "871284000000",
+      "transfers": []
+    },
+    {
+      "at": "2026-10-09T11:46:30Z",
+      "stage": "tx",
+      "label": "distribute",
+      "hash": "0xfe0fc82713d310fa67e8da3fa952f5dbde69787b339b69818f88f3c089ad7946",
+      "status": "success",
+      "gasUsed": "175842",
+      "block": "47889050",
+      "source": "recovered from Blockscout after the run stopped at withdraw M",
+      "from": "0xf029d915c69c1902bb09a86c801c8226825f265c",
+      "to": "0xa7dcb5354f2a7e28761a23881d54bc0b31479c57",
+      "effectiveGasPrice": "6000000",
+      "l1Fee": "177",
+      "executionFee": "1055052000000",
+      "transfers": [
+        {
+          "from": "0xa7Dcb5354F2a7e28761A23881D54bC0b31479c57",
+          "to": "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8",
+          "value": "999999"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-09T11:47:14.111Z",
+      "stage": "tx",
+      "label": "withdraw M",
+      "hash": "0xd88bad409f322342486ffa2e4d1014080b779a0c2393dc2bbd2dd2151f1af538",
+      "status": "success",
+      "gasUsed": "79363",
+      "block": "47889074",
+      "from": "0xf029d915c69c1902bb09a86c801c8226825f265c",
+      "to": "0x8fb66f38cf86a3d5e8768f8f1754a24a6c661fb8",
+      "effectiveGasPrice": "6000000",
+      "l1Fee": "92",
+      "executionFee": "476178000000",
+      "transfers": [
+        {
+          "from": "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8",
+          "to": "0xde3F8C4422A7F8C94bce9Cc2Ec118665108148EF",
+          "value": "969998"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-09T11:47:18.291Z",
+      "stage": "tx",
+      "label": "withdraw A",
+      "hash": "0xd22ed364902646e1c4b8139a0706715422e052a6bc67e4db737435eb0dfa3d53",
+      "status": "success",
+      "gasUsed": "79363",
+      "block": "47889076",
+      "from": "0xf029d915c69c1902bb09a86c801c8226825f265c",
+      "to": "0x8fb66f38cf86a3d5e8768f8f1754a24a6c661fb8",
+      "effectiveGasPrice": "6000000",
+      "l1Fee": "92",
+      "executionFee": "476178000000",
+      "transfers": [
+        {
+          "from": "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8",
+          "to": "0xd111fcC29f658b2f53ee7BEA09f5Ccd7140Ee960",
+          "value": "29998"
+        }
+      ]
+    },
+    {
+      "label": "pay S",
+      "hash": "0x9bcff0b17ce2728bf4122fd89245b0a61e25a05a32ac69db7f42129b307c80b7",
+      "gasUsed": "85752",
+      "block": "47889091",
+      "split": "S",
+      "status": "success",
+      "from": "0xd407e409e34e0b9afb99ecceb609bdbcd5e7f1bf",
+      "to": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+      "effectiveGasPrice": "6000000",
+      "l1Fee": "190",
+      "executionFee": "514512000000",
+      "transfers": [
+        {
+          "from": "0x334bD2f4c4be711E0be7533f0d78040B5f071981",
+          "to": "0xa7Dcb5354F2a7e28761A23881D54bC0b31479c57",
+          "value": "1000000"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-09T11:47:56.478Z",
+      "stage": "tx",
+      "label": "distribute",
+      "hash": "0xaa76ada64c7ce3a9431565542eb2d8be3441ab0e22b5293b1acfc614c2313e57",
+      "status": "success",
+      "gasUsed": "100394",
+      "block": "47889095",
+      "from": "0xf029d915c69c1902bb09a86c801c8226825f265c",
+      "to": "0xa7dcb5354f2a7e28761a23881d54bc0b31479c57",
+      "effectiveGasPrice": "6000000",
+      "l1Fee": "177",
+      "executionFee": "602364000000",
+      "transfers": [
+        {
+          "from": "0xa7Dcb5354F2a7e28761A23881D54bC0b31479c57",
+          "to": "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8",
+          "value": "1000000"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-09T11:48:00.492Z",
+      "stage": "tx",
+      "label": "withdraw M",
+      "hash": "0x16ae19d2482219556ad33b1d9471eeae83e4285f2b543bb799ab9204861c2196",
+      "status": "success",
+      "gasUsed": "62263",
+      "block": "47889097",
+      "from": "0xf029d915c69c1902bb09a86c801c8226825f265c",
+      "to": "0x8fb66f38cf86a3d5e8768f8f1754a24a6c661fb8",
+      "effectiveGasPrice": "6000000",
+      "l1Fee": "92",
+      "executionFee": "373578000000",
+      "transfers": [
+        {
+          "from": "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8",
+          "to": "0xde3F8C4422A7F8C94bce9Cc2Ec118665108148EF",
+          "value": "970000"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-09T11:48:04.454Z",
+      "stage": "tx",
+      "label": "withdraw A",
+      "hash": "0x613ffcc866cd1eed41bcf36291a1eec944cf11eb85ac3464a4c0dda3f0886f20",
+      "status": "success",
+      "gasUsed": "62263",
+      "block": "47889099",
+      "from": "0xf029d915c69c1902bb09a86c801c8226825f265c",
+      "to": "0x8fb66f38cf86a3d5e8768f8f1754a24a6c661fb8",
+      "effectiveGasPrice": "6000000",
+      "l1Fee": "92",
+      "executionFee": "373578000000",
+      "transfers": [
+        {
+          "from": "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8",
+          "to": "0xd111fcC29f658b2f53ee7BEA09f5Ccd7140Ee960",
+          "value": "30000"
+        }
+      ]
+    },
+    {
+      "label": "pay S2",
+      "hash": "0x435459a2de40afeaa75f4268478a5adc9064a3e97eecca0d8ace01917ed46c91",
+      "gasUsed": "103354",
+      "block": "47889453",
+      "split": "S2",
+      "status": "success",
+      "from": "0x67b9ce703d9ce658d7c4ac3c289cea112fe662af",
+      "to": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+      "effectiveGasPrice": "10000000",
+      "l1Fee": "214",
+      "executionFee": "1033540000000",
+      "transfers": [
+        {
+          "from": "0x334bD2f4c4be711E0be7533f0d78040B5f071981",
+          "to": "0x32F48d0Cf68942E60134670833dfdE7d0fbA865E",
+          "value": "1000000"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-09T12:00:20.500Z",
+      "stage": "tx",
+      "label": "createSplitDeterministic",
+      "hash": "0x80003e1fa5ff9df61f44252aa02a0d2ebda22f8f420d2143e1a3b5e8998dbfb7",
+      "status": "success",
+      "gasUsed": "145214",
+      "block": "47889467",
+      "from": "0xf029d915c69c1902bb09a86c801c8226825f265c",
+      "to": "0x6b9118074ab15142d7524e8c4ea8f62a3bdb98f1",
+      "effectiveGasPrice": "6000000",
+      "l1Fee": "186",
+      "executionFee": "871284000000",
+      "transfers": []
+    },
+    {
+      "at": "2026-10-09T12:00:24.097Z",
+      "stage": "tx",
+      "label": "distribute",
+      "hash": "0xa02c96d452912448055119439806724c2bc12fdc80c7e607c45aa3f6c9814d43",
+      "status": "success",
+      "gasUsed": "141642",
+      "block": "47889469",
+      "from": "0xf029d915c69c1902bb09a86c801c8226825f265c",
+      "to": "0x32f48d0cf68942e60134670833dfde7d0fba865e",
+      "effectiveGasPrice": "6000000",
+      "l1Fee": "180",
+      "executionFee": "849852000000",
+      "transfers": [
+        {
+          "from": "0x32F48d0Cf68942E60134670833dfdE7d0fbA865E",
+          "to": "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8",
+          "value": "999999"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-09T12:00:28.368Z",
+      "stage": "tx",
+      "label": "withdraw M",
+      "hash": "0x7c6e58ac8c72c521246fc41e22bed3e283737d6078278357d31946d38c972428",
+      "status": "success",
+      "gasUsed": "62263",
+      "block": "47889471",
+      "from": "0xf029d915c69c1902bb09a86c801c8226825f265c",
+      "to": "0x8fb66f38cf86a3d5e8768f8f1754a24a6c661fb8",
+      "effectiveGasPrice": "6000000",
+      "l1Fee": "94",
+      "executionFee": "373578000000",
+      "transfers": [
+        {
+          "from": "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8",
+          "to": "0xde3F8C4422A7F8C94bce9Cc2Ec118665108148EF",
+          "value": "969999"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-09T12:00:32.466Z",
+      "stage": "tx",
+      "label": "withdraw A",
+      "hash": "0x388e8134f16cf9ab08e67c46e1f8dfe8016bf07dd173430ce8717b1fa913f172",
+      "status": "success",
+      "gasUsed": "62263",
+      "block": "47889473",
+      "from": "0xf029d915c69c1902bb09a86c801c8226825f265c",
+      "to": "0x8fb66f38cf86a3d5e8768f8f1754a24a6c661fb8",
+      "effectiveGasPrice": "6000000",
+      "l1Fee": "94",
+      "executionFee": "373578000000",
+      "transfers": [
+        {
+          "from": "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8",
+          "to": "0xd111fcC29f658b2f53ee7BEA09f5Ccd7140Ee960",
+          "value": "29999"
+        }
+      ]
+    },
+    {
+      "label": "pay S2",
+      "hash": "0x211c2b6628ae101d8e949700aa4025ac734c94666ef43775c879aca0507b97cc",
+      "gasUsed": "86262",
+      "block": "47889497",
+      "split": "S2",
+      "status": "success",
+      "from": "0x8f5cb67b49555e614892b7233cfddebfb746e531",
+      "to": "0x036cbd53842c5426634e7929541ec2318f3dcf7e",
+      "effectiveGasPrice": "10000000",
+      "l1Fee": "214",
+      "executionFee": "862620000000",
+      "transfers": [
+        {
+          "from": "0x334bD2f4c4be711E0be7533f0d78040B5f071981",
+          "to": "0x32F48d0Cf68942E60134670833dfdE7d0fbA865E",
+          "value": "1000000"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-09T12:02:38.141Z",
+      "stage": "tx",
+      "label": "distribute",
+      "hash": "0x126c8d49d1e80341424320a8a4881b6b58d118d9afe187bbbb787d3c2d6d2ef3",
+      "status": "success",
+      "gasUsed": "100394",
+      "block": "47889536",
+      "from": "0xf029d915c69c1902bb09a86c801c8226825f265c",
+      "to": "0x32f48d0cf68942e60134670833dfde7d0fba865e",
+      "effectiveGasPrice": "6000000",
+      "l1Fee": "180",
+      "executionFee": "602364000000",
+      "transfers": [
+        {
+          "from": "0x32F48d0Cf68942E60134670833dfdE7d0fbA865E",
+          "to": "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8",
+          "value": "1000000"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-09T12:02:42.283Z",
+      "stage": "tx",
+      "label": "withdraw M",
+      "hash": "0x8ebb8898fce369599fa86279811b87e617577ff59af40d64afa3e80263e28341",
+      "status": "success",
+      "gasUsed": "62263",
+      "block": "47889538",
+      "from": "0xf029d915c69c1902bb09a86c801c8226825f265c",
+      "to": "0x8fb66f38cf86a3d5e8768f8f1754a24a6c661fb8",
+      "effectiveGasPrice": "6000000",
+      "l1Fee": "94",
+      "executionFee": "373578000000",
+      "transfers": [
+        {
+          "from": "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8",
+          "to": "0xde3F8C4422A7F8C94bce9Cc2Ec118665108148EF",
+          "value": "970000"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-09T12:02:46.266Z",
+      "stage": "tx",
+      "label": "withdraw A",
+      "hash": "0xc550d5e27ceec9b0dc3383d0ff98c09b039b809036b6df75dafe0bd308d3ff7f",
+      "status": "success",
+      "gasUsed": "62263",
+      "block": "47889540",
+      "from": "0xf029d915c69c1902bb09a86c801c8226825f265c",
+      "to": "0x8fb66f38cf86a3d5e8768f8f1754a24a6c661fb8",
+      "effectiveGasPrice": "6000000",
+      "l1Fee": "94",
+      "executionFee": "373578000000",
+      "transfers": [
+        {
+          "from": "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8",
+          "to": "0xd111fcC29f658b2f53ee7BEA09f5Ccd7140Ee960",
+          "value": "30000"
+        }
+      ]
+    }
+  ],
+  "paymentSnapshots": [
+    {
+      "hash": "0xcd9a34c8da4eeadd3140c5412a541fc0cc5b2240ad6aaba68bf1361430e96bda",
+      "split": "S",
+      "deployedBefore": false,
+      "buyer": "19000000",
+      "splitBalance": "1000000"
+    },
+    {
+      "hash": "0x9bcff0b17ce2728bf4122fd89245b0a61e25a05a32ac69db7f42129b307c80b7",
+      "split": "S",
+      "deployedBefore": true,
+      "buyer": "18000000",
+      "splitBalance": "1000001"
+    },
+    {
+      "hash": "0x435459a2de40afeaa75f4268478a5adc9064a3e97eecca0d8ace01917ed46c91",
+      "split": "S2",
+      "deployedBefore": false,
+      "buyer": "17000000",
+      "splitBalance": "1000000"
+    },
+    {
+      "hash": "0x211c2b6628ae101d8e949700aa4025ac734c94666ef43775c879aca0507b97cc",
+      "split": "S2",
+      "deployedBefore": true,
+      "buyer": "16000000",
+      "splitBalance": "1000001"
+    }
+  ],
+  "immutable": [
+    {
+      "split": "S",
+      "owner": "0x0000000000000000000000000000000000000000",
+      "splitHash": "0x25c3464feb99f1cd5161d0025a2e9eb3eccb4bf756eb2e9f0949f9375d06f3a4"
+    },
+    {
+      "split": "S2",
+      "owner": "0x0000000000000000000000000000000000000000",
+      "splitHash": "0x25c3464feb99f1cd5161d0025a2e9eb3eccb4bf756eb2e9f0949f9375d06f3a4"
+    }
+  ],
+  "usdc": {
+    "buyer": "16000000",
+    "M": "3879997",
+    "A": "119997",
+    "S": "1",
+    "S2": "1",
+    "D": "0"
+  },
+  "warehouse": {
+    "S": "1",
+    "S2": "1",
+    "M": "1",
+    "A": "1"
+  },
+  "initialBuyer": "20000000",
+  "spent": "4000000",
+  "accounted": "4000000",
+  "gas": {
+    "all": "1719204",
+    "distributor": "1341004",
+    "payments": "378200"
+  }
+}
