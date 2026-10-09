@@ -389,9 +389,9 @@ describe("once the address is gone, nothing puts it back", () => {
     await harnessed.gateway.runner.sweep();
 
     const [again] = await harnessed.queue.draw(harnessed.merchant.id, 10, 0);
-    expect(again?.envelope.kind).toBe("order");
-    expect((again?.envelope.payload as Order).id).toBe(orderId);
-    expect((again?.envelope.payload as Order).ship_to).toStrictEqual(address);
+    if (again?.envelope.kind !== "order") throw new Error("no hand-over went out again");
+    expect(again.envelope.payload.id).toBe(orderId);
+    expect(again.envelope.payload.ship_to).toStrictEqual(address);
   });
 
   it("is put back by a poll whose hand-over failed while the address is still held", async () => {
