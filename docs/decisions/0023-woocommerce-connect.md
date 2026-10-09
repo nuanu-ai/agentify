@@ -49,10 +49,9 @@ and not forced to the billing address. Its card ships (ADR-0033) with seven
 days to ship from one constant in the connector: Agentify's stand-in, stated on
 the import screen, until parcels sell on the live channel and the time comes
 from the merchant. Its price is the goods and the cheapest rate the shop's cart
-gives for the question's locality; no rate is no price. The rate is not bound,
-since it says where the buyer is (ADR-0032): the order asks again, and ships at
-the rate costing what was paid above the goods or is refused before the shop
-is called. It is taken on only once the shop's answer shows the address as
+gives for the question's locality; no rate is no price. The rate is not
+bound: the order asks again, and ships at the rate costing what was paid above
+the goods or is refused before the shop is called. It is taken on only once the shop's answer shows the address as
 sent, and Completed in the shop is its shipment. The connector keeps and logs
 nothing of the address; the mechanics are in research 41.
 
@@ -82,10 +81,12 @@ payment, and a change after the quote becomes a refund owed, as does a
 parcel's rate changed in between. A parcel's price question leaves a two-day
 guest session with the locality in the shop, a state WooCommerce writes its own
 way (`DE-BE`) is no price, and Completed tells the buyer it shipped, for good.
+A parcel's order the shop made but did not confirm is refused while the shop
+holds it paid, and the merchant is told not to ship it.
 Rejected: a plugin of ours, which stock WooCommerce makes unnecessary; a buyer's
 email, which buyers do not give; the raw file URL; the order number alone; a
 scan inferring an unknown order is absent, which risks a second order in
 somebody's shop; shop credentials in the gateway; the rate stored with the
-price, which would keep where the buyer is; zones matched by a matcher of ours,
+price, a new column for what asking again gives; zones matched by a matcher of ours,
 error-prone (research 37); and a time to ship stated per shop or none at all,
 which the product owner put after the test.

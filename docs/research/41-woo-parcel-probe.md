@@ -232,8 +232,9 @@ for order 30 read back with `status: "fulfilled"`, `is_fulfilled` as the string
 These are the mechanics ADR-0023 leaves to this note.
 
 The price question reads the product and asks the cart at the same time, and
-answers within four seconds of drawing the question or answers that the parcel
-is not available, because the gateway waits five. Pickup methods
+answers within four seconds of drawing the question or answers that the
+product is not available, because the gateway waits five; a download's price
+question has the same four seconds, and both log why they named no price. Pickup methods
 (`local_pickup`, `pickup_location`) are left out of the rates, a cart pricing
 one product as more than one package is refused, and a rate that is not an
 untaxed US dollar amount at two decimals refuses the whole answer rather than
@@ -254,11 +255,20 @@ is read back with `shipping` among its fields. The order is taken on only if
 every field of the shipping block came back as sent; otherwise it is treated as
 an order whose creation is unknown, never posted again. The answer and the
 shop's own error messages, which may name the address, are compared in memory
-and kept nowhere.
+and kept nowhere. An order the shop made whose answer does not match the sale,
+or whose answer never came, may sit paid in the shop with the address while
+the sale is refused as a refund owed; the log names the shop's order where the
+shop named it, and the import screen tells the merchant not to ship such an
+order. Recovery handles downloads only.
 
 A placed parcel is followed every five minutes, in a loop of its own beside
-the shops' turns. Its order is read without the address. Completed is the
-shipment: a single fulfilled fulfilment gives the carrier, the tracking number
+the shops' turns, for thirty days from being placed, the longest time to ship a
+card may name; a shipment recorded late still closes a refund owed while the
+refund is unpaid (ADR-0028). It is read only in the shop it was sold from, and
+its order is this sale's only if it carries the sale's identifier as its
+transaction id, because a shop connected in its place, or the same shop
+rebuilt, numbers its orders afresh. The order is read without the address.
+Completed is the shipment: a single fulfilled fulfilment gives the carrier, the tracking number
 and the tracking address, and without one the carrier is the order's single
 shipping line's method title, with no tracking number. Several fulfilments, or
 several shipping lines with no fulfilment, are not chosen among. What the shop
@@ -266,8 +276,9 @@ wrote is held to the shipment's rules: a tracking address that fails them is
 left out, and a carrier or a number that is not plain text records nothing, so
 the order waits. An order the shop cancels, refunds, fails, trashes or no
 longer has is let go with nothing told to the gateway. A gateway that does not
-answer the shipment is asked again on the next pass; one that refuses it is
-not, and the refusal goes to the log. The ledger marks a parcel `shipped` or
+answer the shipment, or answers that the payment is still settling, is asked
+again on the next pass; one that refuses it otherwise is not, and the refusal
+goes to the log. The ledger marks a parcel `shipped` or
 `closed` when it is let go, after `placed`.
 
 The Shipment Tracking extension, which keeps tracking in an order's meta, is
