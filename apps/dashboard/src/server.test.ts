@@ -3766,25 +3766,21 @@ describe("a wallet change waiting on the live deployment", () => {
     );
   };
 
-  /**
-   * A dashboard in front of a live gateway. A live door refuses a key carrying
-   * the test prefix, which is what this file's accounts hold, so every test
-   * here puts a dashboard key that gateway made on the rows before signing in.
-   */
+  /** A dashboard in front of a live gateway, where a change is announced and waits. */
   const live = async (options: Starting = {}): Promise<Running> =>
     await started({ ...options, gateway: LIVE_GATEWAY, dashboard: LIVE_DASHBOARD });
 
   /**
-   * A replacement asked for from another session of the dashboard, on a key of
-   * its own: the session somebody forgot to sign out of, or never owned.
+   * A replacement asked for from another session of the dashboard: the
+   * session somebody forgot to sign out of, or never owned.
    */
   const aChangeWaits = async (running: Running): Promise<void> => {
-    const elsewhere = await running.harnessed.addDashboardKey(running.harnessed.merchant.id);
-    const asked = await running.gateway.call("POST", "/v0/payout-wallet", {
-      body: { payout_wallet: WAITING },
-      headers: { authorization: `Bearer ${elsewhere}` },
-    });
-    expect(asked.status, JSON.stringify(asked.body)).toBe(200);
+    const asked = await running.harnessed.gateway.setPayoutWallet(
+      running.harnessed.merchant.id,
+      WAITING,
+      { kind: "signed_in", email: PERSON },
+    );
+    expect(typeof asked, JSON.stringify(asked)).toBe("object");
   };
 
   /** The address a payment request names right now, as the gateway answers it. */
@@ -3805,6 +3801,26 @@ describe("a wallet change waiting on the live deployment", () => {
         })
       ).body as { pending: unknown }
     ).pending;
+
+  it("names, in the message, the account the session that asked is signed in as", async () => {
+    // Two people at one merchant: the change is asked from the second one's
+    // session, and every account is told whose session it was (ADR-0019).
+    const running = await live();
+    await running.identity.make(OTHER, running.theMerchant);
+    const other = await running.another();
+    await other.signIn(OTHER);
+    const screen = await other.get("/settings");
+
+    const asked = await other.post("/settings/payout-wallet", {
+      ...fromTheWalletForm(screen),
+      payout_wallet: WAITING,
+    });
+
+    expect(asked.status, asked.html).toBe(303);
+    expect(running.harnessed.announcer.announced).toMatchObject([
+      { kind: "wallet_change", to: WAITING, asked_with: { kind: "signed_in", email: OTHER } },
+    ]);
+  });
 
   it("shows the address waiting, the moment it takes effect, and a control to cancel it", async () => {
     const running = await live();

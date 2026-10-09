@@ -16,7 +16,8 @@
  */
 
 import type { Gateway } from "@agentify/gateway";
-import { type Harness, harness, type Served, serve } from "@agentify/gateway/testing";
+import { type Harness, harness, type Served, serve, workOnce } from "@agentify/gateway/testing";
+import type { Card } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { gatewayFor } from "./gateway.js";
 
@@ -52,6 +53,27 @@ const asTheOwner = (harnessed: Harness, answerWithinMs?: number) =>
     { merchantId: harnessed.merchant.id, email: OWNER },
     answerWithinMs,
   );
+
+/** A card whose goods arrive after the purchase, which is the kind late goods are for. */
+const AN_ESIM: Card = {
+  merchant_item_id: "esim-7d",
+  title: "A seven day eSIM",
+  description: "Seven days of data",
+  price: { amount: "12.00", currency: "USD" },
+  result: { activation_code: { type: "string" } },
+  fulfillment: "async",
+  fulfill_deadline_seconds: 3_600,
+};
+
+/** A paid order of this merchant's for that card, and its identifier. */
+const aPaidOrder = async (harnessed: Harness, merchantId: string): Promise<string> => {
+  const published = await harnessed.gateway.publishCard(merchantId, AN_ESIM);
+  if (!published.ok) throw new Error(`the card was refused: ${JSON.stringify(published)}`);
+  const offered = await harnessed.gateway.beginPurchase(published.id, {});
+  if (offered.step !== "pay") throw new Error("no price was offered");
+  await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+  return offered.order.order.id;
+};
 
 /** The application with every call it is asked to make waiting for good. */
 const silenced = (application: Gateway): Gateway =>
@@ -128,9 +150,13 @@ describe("a refusal", () => {
   });
 
   it("answers an order of another merchant's as one that is not there", async () => {
+    // The same answer an identifier naming nothing gets, so reading orders is
+    // not a way of finding out what somebody else sold.
     const harnessed = await started();
+    const other = await harnessed.addMerchant();
+    const theirs = await aPaidOrder(harnessed, other.id);
 
-    const read = await asTheOwner(harnessed).getOrder("ord_somebody_elses");
+    const read = await asTheOwner(harnessed).getOrder(theirs);
 
     expect(read).toStrictEqual({
       ok: false,
@@ -138,6 +164,27 @@ describe("a refusal", () => {
       code: "no_such_order",
       why: "there is no such order",
     });
+    const asTheirs = gatewayFor(harnessed.gateway, {
+      merchantId: other.id,
+      email: "other@example.com",
+    });
+    expect((await asTheirs.getOrder(theirs)).ok).toBe(true);
+  });
+});
+
+describe("late goods", () => {
+  it("are delivered to the order they name, which then has them", async () => {
+    // What `woo:recover` does for an order whose goods the shop owed.
+    const harnessed = await started();
+    const orderId = await aPaidOrder(harnessed, harnessed.merchant.id);
+    await workOnce(harnessed, { onOrder: () => ({ accepted: {} }) });
+
+    const delivered = await asTheOwner(harnessed).deliverOrder(orderId, {
+      activation_code: "LPA:1$X",
+    });
+
+    expect(delivered).toStrictEqual({ ok: true, document: { ok: true, result: "delivered" } });
+    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("delivered");
   });
 });
 
