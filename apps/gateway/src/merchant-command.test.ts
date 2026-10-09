@@ -15,7 +15,7 @@
 
 import { describe, expect, it } from "vitest";
 import { MemoryStore } from "./adapters/memory/store.js";
-import { issueDashboardKey, issueKey } from "./app/merchants.js";
+import { issueKey } from "./app/merchants.js";
 import { runMerchant } from "./merchant-command.js";
 import { countedIds } from "./testing/harness.js";
 
@@ -122,39 +122,10 @@ describe("listing a merchant's keys", () => {
     expect(terminal.text()).toContain("the worker's");
   });
 
-  it("shows the keys a dashboard holds beside the merchant's own, and says which", async () => {
-    // This list is the operator's and it is the only place either kind is
-    // printed. Two things ride on it. A dashboard's key opens the door, so a
-    // listing that left it out would let somebody revoke the merchant's last
-    // worker believing they had another; and which key is which is what stands
-    // between revoking a worker and locking a person out of their dashboard, so
-    // it is said in a column rather than left to a label anybody can type.
-    const terminal = aTerminal();
-    const merchantId = await terminal.aMerchant("Someone's shop");
-    await terminal.aKey(merchantId, "the worker's");
-    await issueDashboardKey(terminal.store, terminal.ids, merchantId, terminal.at, "test");
-
-    expect(await terminal.run("keys", merchantId)).toBe(0);
-
-    // The column, not the label: the dashboard key's label says "dashboard"
-    // too, so a word anywhere in the line would prove nothing. And one width
-    // for both words, or the columns after it no longer line up.
-    const rows = terminal
-      .text()
-      .split("\n")
-      .filter((line) => line.startsWith("mk_"));
-    const madeFor = rows.map((row) => row.split(/ {2,}/)[3]?.trim());
-    expect(madeFor.sort()).toStrictEqual(["dashboard", "own code"]);
-    expect(new Set(rows.map((row) => row.indexOf("no calls recorded"))).size).toBe(1);
-  });
-
   it("says which of a merchant's keys anything is still calling with", async () => {
     // The operator's question about a key is the merchant's question about
-    // theirs — is anything still calling with this — and here it is asked about
-    // the one kind that is on no merchant's screen: the key a dashboard signs in
-    // with. A dashboard that stopped signing in weeks ago is a fact somebody
-    // wants before they clear anything away, and this list is the only place it
-    // can be read.
+    // theirs — is anything still calling with this — and the answer is wanted
+    // before anything is revoked.
     //
     // The call is put on a different day from the one the keys were made on, so
     // that a line printing the wrong instant in the right place cannot pass.
@@ -171,11 +142,8 @@ describe("listing a merchant's keys", () => {
       terminal.said.find((line) => line.includes(label)) ?? `no line for ${label}`;
     expect(lineFor("the worker's")).toContain("2026-08-29");
     expect(lineFor("the one nobody calls")).not.toContain("2026-08-29");
-    // And the blank claims a missing record rather than an absent call. The
-    // same word is wrong here for a worse reason than on a merchant's screen:
-    // the row somebody clears away on the strength of "never called" can be the
-    // key a person's dashboard signs in with, and the gateway checked no such
-    // thing — it wrote down the calls it saw, and a key older than the writing
+    // And the blank claims a missing record rather than an absent call: the
+    // gateway wrote down the calls it saw, and a key older than the writing
     // looks exactly like this one.
     expect(lineFor("the one nobody calls")).not.toMatch(/never/i);
     expect(lineFor("the one nobody calls")).toMatch(/record/i);

@@ -32,7 +32,6 @@ const dashboardMigrations = join(here, "..", "drizzle");
 
 const MERCHANT = "mch_approval_operator";
 const EMAIL = "merchant@example.com";
-const KEY = "dashboard-secret-that-must-never-be-printed";
 const FIRST_GRANT = Date.parse("2026-09-17T10:00:00.000Z");
 
 if (databaseUrl === null) {
@@ -57,17 +56,12 @@ if (databaseUrl === null) {
     await migrateAccounts(connected.pool, dashboardMigrations);
   });
 
-  const account = async (
-    id: string,
-    email: string,
-    merchantId: string | null,
-    merchantKey: string | null,
-  ): Promise<void> => {
+  const account = async (id: string, email: string, merchantId: string | null): Promise<void> => {
     await connected.pool.query(
       `insert into dashboard_accounts
-         (id, email, email_verified, name, created_at, updated_at, merchant_id, merchant_key)
-       values ($1, $2, false, '', now(), now(), $3, $4)`,
-      [id, email, merchantId, merchantKey],
+         (id, email, email_verified, name, created_at, updated_at, merchant_id)
+       values ($1, $2, false, '', now(), now(), $3)`,
+      [id, email, merchantId],
     );
   };
 
@@ -94,7 +88,7 @@ if (databaseUrl === null) {
         FIRST_GRANT - 2_000,
       );
       await store.setServiceName(MERCHANT, "The public seller", FIRST_GRANT - 1_000);
-      await account("acc_merchant", EMAIL, MERCHANT, KEY);
+      await account("acc_merchant", EMAIL, MERCHANT);
 
       const result = spawnSync(
         process.execPath,
@@ -117,7 +111,6 @@ if (databaseUrl === null) {
       expect(output).toMatch(/approved now/i);
       expect(output).toContain(EMAIL);
       expect(output).toContain(MERCHANT);
-      expect(output).not.toContain(KEY);
       expect(output).not.toContain(databaseUrl);
       expect((await store.merchantById(MERCHANT))?.liveApprovedAt).not.toBeNull();
     });
@@ -129,7 +122,7 @@ if (databaseUrl === null) {
       );
       expect(made?.liveApprovedAt).toBeNull();
       await store.setServiceName(MERCHANT, "The public seller", FIRST_GRANT - 1_000);
-      await account("acc_merchant", EMAIL, MERCHANT, KEY);
+      await account("acc_merchant", EMAIL, MERCHANT);
 
       const first = await run("  Merchant@Example.COM\n", FIRST_GRANT);
       const repeated = await run(EMAIL, FIRST_GRANT + 60_000);
@@ -140,16 +133,15 @@ if (databaseUrl === null) {
       expect(first.output).toContain(EMAIL);
       expect(first.output).toContain("The public seller");
       expect(first.output).toContain(MERCHANT);
-      expect(first.output).not.toContain(KEY);
       expect(repeated.code).toBe(0);
       expect(repeated.output).toMatch(/already approved/i);
       expect(stored?.liveApprovedAt).toBe(FIRST_GRANT);
     });
 
     it("returns at most two normalized matches so ambiguous history cannot select a merchant", async () => {
-      await account("acc_one", EMAIL, "mch_one", "key-one");
-      await account("acc_two", " MERCHANT@example.com ", "mch_two", "key-two");
-      await account("acc_three", "MERCHANT@EXAMPLE.COM", "mch_three", "key-three");
+      await account("acc_one", EMAIL, "mch_one");
+      await account("acc_two", " MERCHANT@example.com ", "mch_two");
+      await account("acc_three", "MERCHANT@EXAMPLE.COM", "mch_three");
 
       const matches = await directory.resolve(" merchant@example.com ");
       let grants = 0;
@@ -172,31 +164,11 @@ if (databaseUrl === null) {
       expect(grants).toBe(0);
     });
 
-    it("rejects a new partial binding at the database boundary", async () => {
-      await expect(
-        account("acc_partial", "partial@example.com", MERCHANT, null),
-      ).rejects.toMatchObject({
-        code: "23514",
-        constraint: "dashboard_accounts_complete_merchant",
-      });
-      await expect(directory.resolve("partial@example.com")).resolves.toStrictEqual([]);
-    });
-
-    it("distinguishes absent and unconstrained partial bindings without returning a merchant key", async () => {
-      // The schema refuses half a merchant binding, and approval does not lean
-      // on that: a row that got past the constraint is reported as it is
-      // rather than fixed by guessing the missing half.
-      await connected.pool.query(
-        "alter table dashboard_accounts drop constraint dashboard_accounts_complete_merchant",
-      );
-      await account("acc_unbound", "unbound@example.com", null, null);
-      await account("acc_partial", "partial@example.com", MERCHANT, null);
+    it("reports an account with no merchant as unbound", async () => {
+      await account("acc_unbound", "unbound@example.com", null);
 
       await expect(directory.resolve("UNBOUND@example.com")).resolves.toStrictEqual([
         { email: "unbound@example.com", binding: "unbound" },
-      ]);
-      await expect(directory.resolve("partial@example.com")).resolves.toStrictEqual([
-        { email: "partial@example.com", binding: "partial" },
       ]);
     });
   });

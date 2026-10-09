@@ -29,7 +29,6 @@ import { MemoryStore } from "../adapters/memory/store.js";
 import { Gateway } from "../app/gateway.js";
 import {
   grantLiveApproval,
-  issueDashboardKey,
   issueKey,
   keyDigest,
   setPayoutWallet,
@@ -107,12 +106,6 @@ export interface Harness {
   readonly addMerchant: (name?: string) => Promise<SeededMerchant>;
   /** A second key for a merchant who already has one. The secret, once. */
   readonly addKey: (merchantId: string, label?: string) => Promise<string>;
-  /**
-   * A key made for a dashboard to call as this merchant with, the kind a person
-   * signed in to the dashboard acts through. The payout wallet is set with this
-   * kind and no other (ADR-0019). The secret, once.
-   */
-  readonly addDashboardKey: (merchantId: string) => Promise<string>;
   /** Stops one key working, touching no other. */
   readonly disableKey: (keyId: string) => Promise<void>;
   /**
@@ -256,8 +249,6 @@ export async function harness(overrides: Record<string, string> = {}): Promise<H
       addMerchant: (name = `Merchant ${countedName()}`) => seed(name),
       addKey: async (merchantId, label = "another of the harness's") =>
         (await issueKey(store, ids, merchantId, label, now, config.environment)).secret,
-      addDashboardKey: async (merchantId) =>
-        (await issueDashboardKey(store, ids, merchantId, now, config.environment)).secret,
       disableKey: async (keyId) => {
         const disabled = await store.disableKey(keyId, now);
         if (disabled === null) {
@@ -295,9 +286,6 @@ async function addKnownKey(
       merchantId,
       label: "the harness's known key",
       digest: keyDigest(secret),
-      // A key of the merchant's own: it stands in for the one a merchant puts
-      // in their worker, which is what almost every test here is calling as.
-      purpose: "merchant_code",
     },
     at,
   );

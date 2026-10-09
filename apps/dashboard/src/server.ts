@@ -672,13 +672,13 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       .send(linkRequestedScreen(base, config.surfaceMode, email, destination, answer));
   });
 
-  const registerMerchant = async (): Promise<{ id: string; key: string } | null> => {
+  const registerMerchant = async (): Promise<string | null> => {
     const made = await registrar.register();
     if (!made.ok) {
       console.error(`[dashboard] no merchant was made: ${made.why}`);
       return null;
     }
-    return { id: made.document.merchant_id, key: made.document.secret };
+    return made.document;
   };
 
   const attachMerchant = async (person: Person) =>
@@ -882,7 +882,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   /**
    * The screen a signed-in person without a merchant is offered, with the one
    * control that makes it (ADR-0026 §4). Drawing it makes nothing: only the
-   * same-origin press below asks the gateway for the merchant and its key.
+   * same-origin press below asks the gateway for the merchant.
    */
   app.get(`${base}/merchant`, (request, response) => {
     const person = whoIs(request);

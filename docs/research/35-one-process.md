@@ -526,10 +526,14 @@ change of behaviour and the ones that change behaviour touch no deployment.
    for a cabinet, leftovers included, and the `purpose` column, and one in the
    cabinet's history drops `merchant_key` and the check beside it; the account
    directory `pnpm approve` reads treats an account as bound when it names a
-   merchant (`apps/dashboard/src/approval-directory.ts`); the three routes, their
-   schemas and their three codes leave the contract, with the gateway's
-   `REGISTRATION_INVITATION`, and `this_call` is always one of the listed keys.
-   The contracts package is released.
+   merchant (`apps/dashboard/src/approval-directory.ts`); four routes leave the
+   contract with their schemas and the codes only they returned — registration,
+   the two at `/v0/keys/dashboard`, and the wallet write at
+   `/v0/payout-wallet`, which only the cabinet's key reached — with the
+   gateway's `REGISTRATION_INVITATION`; the wallet refusals are worded in the
+   cabinet and carry no code; Caddy stops fencing those paths off, since the
+   gateway no longer has them; and `this_call` is always one of the listed
+   keys. The contracts package is released.
 
 The contract version does not move in steps 2 and 4: no SDK worker calls
 these routes or reads these codes, and moving it would stop every installed
@@ -616,7 +620,9 @@ and might describe a registration that change does not leave.
   and "a key made for a dashboard is never announced" go, and the refusal of a
   key made for the merchant's own code is said for a gateway that knows no
   other kind.
-- ADR-0030: the status line says the move is built.
+- ADR-0030: the status line says the move is built, and the wallet write is
+  among what went.
+- `deploy/README.md`: a release section for the two one-way migrations.
 
 ## What was not verified
 
@@ -641,11 +647,9 @@ removed went under the names `GATEWAY_DASHBOARD_SECRET` and
 `DASHBOARD_INTERNAL_URL`. The decisions have since been shortened, and the
 step 4 list above names their sentences as they now read.
 
-Step 4 has not landed, and what it removes still exists: the key made for a
-dashboard, which registration still writes and nothing calls with or renews,
-its routes at `/v0/keys/dashboard` with their refusals, and the `merchant_key`
-column; and the registration route at `/v0/merchants`, closed since no
-deployment carries an invitation, with the gateway's `REGISTRATION_INVITATION`.
-Production takes steps 3 and 4 together (`deploy/README.md`). Step 4 edits, in
-the same change, the paragraphs of other decisions listed for it above, and
-does not move the contract version.
+Step 4 is the change that removes the key made for a dashboard, its routes at
+`/v0/keys/dashboard`, the `merchant_key` column, the registration route with
+the gateway's `REGISTRATION_INVITATION`, and the wallet write at
+`/v0/payout-wallet`, by two one-way migrations; it edits the decisions listed
+for it above and does not move the contract version. Production takes steps 3
+and 4 together (`deploy/README.md`).

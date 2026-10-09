@@ -1,10 +1,8 @@
 # 0030. The gateway and the dashboard are one process
 
 Date: 2026-09-25
-Status: accepted (the product owner, 2026-09-25). Built up to the dashboard
-calling the application; the key made for a dashboard, its routes and the
-registration route remain until the last step in
-`docs/research/35-one-process.md` lands.
+Status: accepted (the product owner, 2026-09-25). Built, to the last step in
+`docs/research/35-one-process.md`, 2026-10-09.
 
 ## Context
 
@@ -26,10 +24,11 @@ names: port 3000 serves `/v0`, `/x402` and `/healthz`, port 3001 serves
 3002 stays the scanner's route to the dashboard (ADR-0026 §2); the scanner
 stays apart, and Caddy is the one door.
 
-The dashboard calls the application, not the HTTP API. Its screens, its
-WooCommerce worker and its registration call the `Gateway` methods the `/v0`
-handlers call, as the signed-in account's merchant, held to the contract's
-schemas, and the message about a payout wallet change, asked for only in the
+The dashboard calls the application, not the HTTP API. Its screens and its
+WooCommerce worker call the `Gateway` methods the `/v0` handlers call, as the
+signed-in account's merchant, held to the contract's schemas. Registering and
+setting the payout wallet (ADR-0019) are the dashboard's alone and have no
+route, and their address and answer are held to the same schemas. The message about a payout wallet change, asked for only in the
 dashboard (ADR-0019), names the signed-in person. The dashboard then proves
 that the application and the contract's documents can draw every screen. What
 proves the HTTP API is what a merchant's engineer uses: the SDK's tests, the
@@ -39,12 +38,15 @@ needs what a merchant's code could need still gets a contract route.
 
 Inside the process nothing between the two needs a credential: the gateway
 tells the dashboard by a call, with no route, secret or refusal for silence.
-The dashboard key goes, with its routes at `/v0/keys/dashboard`, their refusals
-and the `merchant_key` column, so that every key the gateway knows is one the
-merchant issued, and the registration route and its invitation code go too. Of
-the payout wallet refusals, only the race and those about the mail provider,
-still outside, remain. No SDK worker calls these routes or reads these codes,
-so the contract version does not move: ADR-0006 §2's exception widens to them.
+No key is made for the dashboard, so every key the gateway knows is one the
+merchant issued: there are no routes at `/v0/keys/dashboard`, no
+`merchant_key` column, no registration route or invitation code, and no wallet
+write on `/v0`, which only such a key reached. Of the payout wallet refusals,
+only the race and those about the mail provider, still outside, remain, worded
+by the dashboard with no published code. No SDK worker called those routes or
+read those codes, so the contract version does not move: ADR-0006 §2's
+exception widens to them. The key's rows and column were deleted by two
+migrations that a restore point alone undoes.
 
 ## Consequences
 

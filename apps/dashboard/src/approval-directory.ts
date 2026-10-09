@@ -2,9 +2,7 @@
  * The dashboard side of production approval identity.
  *
  * Email stays here. The gateway receives only the merchant identifier already
- * bound to exactly one dashboard account, and the merchant key is reduced to a
- * presence bit inside the query so this operator can never print or use it as
- * authority.
+ * bound to exactly one dashboard account.
  */
 
 import type { Pool } from "pg";
@@ -13,7 +11,6 @@ import { emailAs } from "./identity.js";
 
 interface AccountBindingRow {
   readonly merchantId: string | null;
-  readonly hasMerchantKey: boolean;
 }
 
 export class PostgresApprovalDirectory implements ApprovalDirectory {
@@ -26,23 +23,17 @@ export class PostgresApprovalDirectory implements ApprovalDirectory {
   async resolve(rawEmail: string): Promise<readonly ApprovalDirectoryEntry[]> {
     const email = emailAs(rawEmail);
     const found = await this.#pool.query<AccountBindingRow>(
-      `select merchant_id as "merchantId",
-              merchant_key is not null and merchant_key <> '' as "hasMerchantKey"
+      `select merchant_id as "merchantId"
          from dashboard_accounts
         where lower(btrim(email)) = $1
         limit 2`,
       [email],
     );
 
-    return found.rows.map((row) => {
-      const hasMerchantId = row.merchantId !== null && row.merchantId !== "";
-      if (hasMerchantId && row.hasMerchantKey) {
-        return { email, binding: "bound", merchantId: row.merchantId };
-      }
-      if (!hasMerchantId && !row.hasMerchantKey) {
-        return { email, binding: "unbound" };
-      }
-      return { email, binding: "partial" };
-    });
+    return found.rows.map((row) =>
+      row.merchantId !== null && row.merchantId !== ""
+        ? { email, binding: "bound", merchantId: row.merchantId }
+        : { email, binding: "unbound" },
+    );
   }
 }

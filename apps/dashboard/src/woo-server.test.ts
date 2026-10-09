@@ -179,15 +179,12 @@ const LIVE_GATEWAY_ONLY = {
  * A merchant made the way the dashboard's press makes one, and named or not.
  * Nothing else is set on them.
  */
-const registered = async (
-  application: Gateway,
-  named: boolean,
-): Promise<{ readonly id: string; readonly key: string }> => {
+const registered = async (application: Gateway, named: boolean): Promise<string> => {
   const made = await application.registerMerchant();
   if (named) {
-    await application.setSellerName(made.merchant_id, { seller_name: "Their own shop" });
+    await application.setSellerName(made, { seller_name: "Their own shop" });
   }
-  return { id: made.merchant_id, key: made.secret };
+  return made;
 };
 
 /** The application, with every call it is asked to make waiting for good. */
@@ -232,11 +229,11 @@ const started = async (standing: Standing = {}): Promise<Running> => {
   });
   const merchant =
     standing.fresh === undefined
-      ? { id: harnessed.merchant.id, key: harnessed.merchant.key }
+      ? harnessed.merchant.id
       : await registered(harnessed.gateway, standing.fresh === "named");
   // A key of the merchant's own, for the calls a test makes as their code.
   const ownKey =
-    standing.fresh === undefined ? harnessed.merchant.key : await harnessed.addKey(merchant.id);
+    standing.fresh === undefined ? harnessed.merchant.key : await harnessed.addKey(merchant);
   const person = await identity.make(PERSON, merchant);
   if (person === null) {
     throw new Error("the test account could not be made");

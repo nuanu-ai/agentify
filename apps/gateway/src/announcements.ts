@@ -56,19 +56,15 @@ export function announcedLabel(label: string): string {
 
 /**
  * Who asked for a change the wallet screen makes: a session in the dashboard,
- * or a call with a key made for a dashboard.
+ * which is the one place a wallet is set.
  *
  * The dashboard calls the gateway inside the process the two share, as the
  * merchant on the signed-in account's row (ADR-0030), so what the gateway
  * knows of such a call is that account's address. It is named as the account
  * a session is signed in as and not as a person, because a session somebody
- * else took is signed in as the owner all the same. A key made for a dashboard
- * still opens the API, though nothing in the dashboard calls with one, and a
- * call made with it is named as that key: nothing more is known of it.
+ * else took is signed in as the owner all the same.
  */
-export type AskedInTheDashboard =
-  | { readonly kind: "signed_in"; readonly email: string }
-  | { readonly kind: "dashboard" };
+export type AskedInTheDashboard = { readonly kind: "signed_in"; readonly email: string };
 
 /**
  * Who asked for a new key: anything that may change the wallet, or a key of

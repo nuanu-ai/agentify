@@ -1,12 +1,14 @@
 /**
- * The wallet a merchant's sales are paid into, over the real HTTP surface.
+ * The wallet a merchant's sales are paid into.
  *
  * It is the second thing a merchant sets about themselves rather than about a
  * card, and it is the one with money on it: the address a merchant writes here
  * is the address a buyer's agent is told to pay, directly, with nothing of ours
- * in between and nothing afterwards that can call the payment back. Everything
- * here goes through `serve`, so the door, the mounting loop and the flows all
- * run, and what is asserted is the answer a merchant's own dashboard would get.
+ * in between and nothing afterwards that can call the payment back. It is set
+ * the one way it can be, by a person signed in to the dashboard, which calls
+ * the gateway inside the process (ADR-0019, ADR-0030); everything else here —
+ * reading it, publishing, the payment request an agent is sent — goes through
+ * `serve`, so the door, the mounting loop and the flows all run.
  *
  * Two rules are what this file exists for, and both cost somebody money when
  * they are wrong. A card published by a merchant with no wallet would be offered
@@ -32,8 +34,8 @@ import { PAYMENT_REQUIRED_HEADER } from "./x402.js";
 /** The address the gateway itself is configured with: the operator's, not a merchant's. */
 const CONFIGURED_PAY_TO = "0x0000000000000000000000000000000000000001";
 
-/** The code this suite's gateway is configured to accept. */
-const INVITATION = "the-code-from-the-invitation";
+/** The session every wallet change here is made as, the way the dashboard makes one. */
+const SIGNED_IN = { kind: "signed_in", email: "owner@example.com" } as const;
 
 /**
  * Two addresses that are addresses, and are not each other, written the way the
@@ -62,11 +64,7 @@ const cardFor = (merchantItemId: string, title: string): Card => ({
 let open: { harnessed: Harness; served: Served } | null = null;
 
 const started = async (overrides: Record<string, string> = {}) => {
-  const harnessed = await harness({
-    PAY_TO_ADDRESS: CONFIGURED_PAY_TO,
-    REGISTRATION_INVITATION: INVITATION,
-    ...overrides,
-  });
+  const harnessed = await harness({ PAY_TO_ADDRESS: CONFIGURED_PAY_TO, ...overrides });
   const served = await serve(harnessed);
   open = { harnessed, served };
   return open;
@@ -87,35 +85,25 @@ const payoutWallet = async (served: Served, key: string) => {
   return answered.body as { payout_wallet: string | null; pending: unknown };
 };
 
-const setPayoutWallet = async (served: Served, key: string, wallet: string | null) =>
-  served.call("POST", "/v0/payout-wallet", {
-    body: { payout_wallet: wallet },
-    headers: bearer(key),
-  });
+/** Sets the wallet the way the dashboard's Settings screen does. */
+const setPayoutWallet = (harnessed: Harness, merchantId: string, wallet: string) =>
+  harnessed.gateway.setPayoutWallet(merchantId, wallet, SIGNED_IN);
 
 /**
  * A merchant with no wallet and no name, made the only way one comes to exist
- * outside the harness: by registering. This is the state a real merchant is in
- * between signing up and setting either.
+ * outside the harness: by registering in the dashboard, with a key for their
+ * own code issued from there. This is the state a real merchant is in between
+ * signing up and setting either.
  */
-const fresh = async (served: Served): Promise<string> => {
-  const answered = await served.call("POST", "/v0/merchants", { body: { invitation: INVITATION } });
-  expect(answered.status, JSON.stringify(answered.body)).toBe(200);
-  return (answered.body as { secret: string }).secret;
+const fresh = async (harnessed: Harness): Promise<{ merchantId: string; key: string }> => {
+  const merchantId = await harnessed.gateway.registerMerchant();
+  const issued = await harnessed.gateway.issueMerchantKey(
+    merchantId,
+    "the stock worker",
+    SIGNED_IN,
+  );
+  return { merchantId, key: issued.secret };
 };
-
-/** A key for the merchant's own code, issued the way the dashboard's keys screen issues one. */
-const ownKeyOf = async (served: Served, dashboardKey: string): Promise<string> => {
-  const issued = await served.call("POST", "/v0/keys", {
-    body: { label: "the stock worker" },
-    headers: bearer(dashboardKey),
-  });
-  expect(issued.status, JSON.stringify(issued.body)).toBe(200);
-  return (issued.body as { secret: string }).secret;
-};
-
-const refusalOf = (body: unknown) =>
-  (body as { error: { code: string; message: string; retryable: boolean } }).error;
 
 /** One merchant ready to sell but for the wallet: named, and nothing else. */
 const named = async (served: Served, key: string, name: string): Promise<void> => {
@@ -151,20 +139,18 @@ describe("the wallet a merchant is paid at", () => {
     // wallet exists and has a settings page to draw, and the shape it draws
     // from has to say "there is none" in a way nobody can mistake for "I could
     // not find you".
-    const { served } = await started();
-    const key = await fresh(served);
+    const { served, harnessed } = await started();
+    const { key } = await fresh(harnessed);
 
     expect(await payoutWallet(served, key)).toStrictEqual({ payout_wallet: null, pending: null });
   });
 
   it("sets a wallet and hands back what was written rather than what was sent", async () => {
     const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
 
-    const answered = await setPayoutWallet(served, dashboard, A_WALLET);
+    const answered = await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
 
-    expect(answered.status, JSON.stringify(answered.body)).toBe(200);
-    expect(answered.body).toStrictEqual({ payout_wallet: A_WALLET, pending: null });
+    expect(answered).toStrictEqual({ payout_wallet: A_WALLET, pending: null });
     // And it is there on the next call, which is what makes the answer above a
     // read of the row rather than an echo of the request.
     expect(await payoutWallet(served, harnessed.merchant.key)).toStrictEqual({
@@ -181,32 +167,32 @@ describe("the wallet a merchant is paid at", () => {
     // then looks at a settings screen: shown the same address in another
     // spelling, they cannot tell it from a different address without going
     // character by character, and nobody does that.
-    const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
+    const { harnessed } = await started();
 
-    const answered = await setPayoutWallet(served, dashboard, A_WALLET_IN_LOWER);
+    const answered = await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET_IN_LOWER);
 
-    expect(answered.status, JSON.stringify(answered.body)).toBe(200);
-    expect(answered.body).toStrictEqual({ payout_wallet: A_WALLET, pending: null });
+    expect(answered).toStrictEqual({ payout_wallet: A_WALLET, pending: null });
     expect(A_WALLET_IN_LOWER).not.toBe(A_WALLET);
   });
 
-  it("refuses an address whose own letters disagree with it, and writes nothing", async () => {
-    // The refusal with the most on it in this file. Those capitals are a
-    // checksum, and letters that do not agree with the digits mean a character
-    // is wrong — and an address that is wrong is another good address belonging
-    // to somebody else, which nothing downstream would ever notice.
+  it("writes nothing for a value that is not an address, whoever skipped holding it", async () => {
+    // The dashboard holds what a person typed to the address rule before it
+    // asks, and says what is wrong in words; this is the gateway's own hold
+    // behind it. An address whose capitals disagree with its digits has a
+    // character wrong, and an address that is wrong is another good address
+    // belonging to somebody else, which nothing downstream would ever notice.
     const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
-    await setPayoutWallet(served, dashboard, A_WALLET);
+    await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
 
-    const refused = await setPayoutWallet(
-      served,
-      harnessed.merchant.key,
-      "0x5aaeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
-    );
+    await expect(
+      setPayoutWallet(
+        harnessed,
+        harnessed.merchant.id,
+        "0x5aaeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+      ),
+    ).rejects.toThrow();
+    await expect(setPayoutWallet(harnessed, harnessed.merchant.id, "0x1234")).rejects.toThrow();
 
-    expect(refused.status).toBe(400);
     // And the wallet they had is still theirs: a refusal that had already
     // written would be worse than no rule at all.
     expect(await payoutWallet(served, harnessed.merchant.key)).toStrictEqual({
@@ -215,67 +201,28 @@ describe("the wallet a merchant is paid at", () => {
     });
   });
 
-  it("refuses something that is not an address, and says so in words", async () => {
-    const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
-
-    const short = await setPayoutWallet(served, dashboard, "0x1234");
-    const prefixless = await setPayoutWallet(served, dashboard, A_WALLET.slice(2));
-
-    expect(short.status).toBe(400);
-    expect(prefixless.status).toBe(400);
-    const { error } = short.body as { error: { problems: { message: string }[] } };
-    expect(error.problems.map((problem) => problem.message).join(" ")).toContain("forty");
-    // And nothing was written: the merchant is still paid where they were.
-    expect(await payoutWallet(served, harnessed.merchant.key)).toStrictEqual({
-      payout_wallet: harnessed.merchant.wallet,
-      pending: null,
-    });
-  });
-
-  it("refuses to take a wallet away, and says what to do instead", async () => {
-    // The one thing this call will not do. A merchant left with cards on sale
-    // and no address has products a payment request cannot be written for at
-    // all, and nothing afterwards says so — while what they were reaching for,
-    // stopping their selling, is a control they already have.
-    const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
-    await setPayoutWallet(served, dashboard, A_WALLET);
-
-    const cleared = await setPayoutWallet(served, dashboard, null);
-
-    expect(cleared.status).toBe(400);
-    const { error } = cleared.body as { error: { problems: { message: string }[] } };
-    expect(error.problems.map((problem) => problem.message).join(" ")).toContain("pause");
-    expect(await payoutWallet(served, harnessed.merchant.key)).toStrictEqual({
-      payout_wallet: A_WALLET,
-      pending: null,
-    });
-  });
-
   it("changes a wallet that is already set, which is what a merchant wanted anyway", async () => {
     const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
-    await setPayoutWallet(served, dashboard, A_WALLET);
+    await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
 
-    const moved = await setPayoutWallet(served, dashboard, ANOTHER_WALLET);
+    const moved = await setPayoutWallet(harnessed, harnessed.merchant.id, ANOTHER_WALLET);
 
-    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+    expect(moved).toStrictEqual({ payout_wallet: ANOTHER_WALLET, pending: null });
     expect(await payoutWallet(served, harnessed.merchant.key)).toStrictEqual({
       payout_wallet: ANOTHER_WALLET,
       pending: null,
     });
   });
 
-  it("pays the merchant whose key the call was made with and nobody else", async () => {
-    // Seeded with two, because one proves nothing: a route that wrote the
+  it("pays the merchant the change was made for and nobody else", async () => {
+    // Seeded with two, because one proves nothing: a write that put the
     // address onto every merchant would pass every assertion one merchant can
     // make about their own.
     const { served, harnessed } = await started();
     const first = await harnessed.addMerchant("First shop");
     const second = await harnessed.addMerchant("Second shop");
 
-    await setPayoutWallet(served, await harnessed.addDashboardKey(first.id), A_WALLET);
+    await setPayoutWallet(harnessed, first.id, A_WALLET);
 
     expect(await payoutWallet(served, first.key)).toStrictEqual({
       payout_wallet: A_WALLET,
@@ -284,84 +231,18 @@ describe("the wallet a merchant is paid at", () => {
     expect((await payoutWallet(served, second.key)).payout_wallet).not.toBe(A_WALLET);
   });
 
-  it("takes no wallet from a caller who presents no key", async () => {
-    const { served } = await started();
-
-    expect((await served.call("GET", "/v0/payout-wallet")).status).toBe(401);
-    expect(
-      (await served.call("POST", "/v0/payout-wallet", { body: { payout_wallet: A_WALLET } }))
-        .status,
-    ).toBe(401);
-  });
-});
-
-describe("who may set it", () => {
-  // Keys operate the shop; where its money goes is changed only by a person
-  // signed in to the dashboard (ADR-0019). A key of the merchant's own code
-  // lives in a server's environment, and whoever holds a copy of it must not
-  // be able to send the merchant's takings anywhere.
-
-  it("refuses a key of the merchant's own code, points to the dashboard's settings, and writes nothing", async () => {
-    const { served, harnessed } = await started();
-
-    const refused = await setPayoutWallet(served, harnessed.merchant.key, A_WALLET);
-
-    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
-    const error = refusalOf(refused.body);
-    expect(error.code).toBe("not_a_dashboard_key");
-    expect(error.retryable).toBe(false);
-    // Where the caller goes instead, which is the whole use of the refusal.
-    expect(error.message).toMatch(/dashboard/i);
-    expect(error.message).toMatch(/settings/i);
-    expect(await payoutWallet(served, harnessed.merchant.key)).toStrictEqual({
-      payout_wallet: harnessed.merchant.wallet,
-      pending: null,
-    });
-  });
-
-  it("refuses the first address from a key of the merchant's own code too", async () => {
-    // The first address replaces nothing, and it is still where every sale
-    // goes: set by a key that leaked before its owner chose one, it would be
-    // the address the merchant's first takings are paid to.
-    const { served } = await started();
-    const dashboard = await fresh(served);
-    const own = await ownKeyOf(served, dashboard);
-
-    const refused = await setPayoutWallet(served, own, A_WALLET);
-
-    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
-    expect(refusalOf(refused.body).code).toBe("not_a_dashboard_key");
-    // There is no wallet yet, so the refusal must not say sales are being paid
-    // anywhere.
-    expect(refusalOf(refused.body).message).not.toMatch(/paid where/i);
-    expect(await payoutWallet(served, dashboard)).toStrictEqual({
-      payout_wallet: null,
-      pending: null,
-    });
-  });
-
-  it("sets it with the key a dashboard holds", async () => {
-    const { served } = await started();
-    const dashboard = await fresh(served);
-
-    const answered = await setPayoutWallet(served, dashboard, A_WALLET);
-
-    expect(answered.status, JSON.stringify(answered.body)).toBe(200);
-    expect(answered.body).toStrictEqual({ payout_wallet: A_WALLET, pending: null });
-  });
-
-  it("reads it with any key of the merchant's", async () => {
+  it("reads it with any key of the merchant's, and with no key not at all", async () => {
     // Reading moves no money, and a merchant's own code has good reason to
     // know where the takings go: a reconciliation, a check before selling.
-    const { served } = await started();
-    const dashboard = await fresh(served);
-    const own = await ownKeyOf(served, dashboard);
-    await setPayoutWallet(served, dashboard, A_WALLET);
+    const { served, harnessed } = await started();
+    const { merchantId, key } = await fresh(harnessed);
+    await setPayoutWallet(harnessed, merchantId, A_WALLET);
 
-    expect(await payoutWallet(served, own)).toStrictEqual({
+    expect(await payoutWallet(served, key)).toStrictEqual({
       payout_wallet: A_WALLET,
       pending: null,
     });
+    expect((await served.call("GET", "/v0/payout-wallet")).status).toBe(401);
   });
 });
 
@@ -370,8 +251,8 @@ describe("publishing before a wallet has been set", () => {
     // The rule this half of the file exists for. A card published with no
     // address behind it is a product offered for sale with nowhere for the
     // money from it to go.
-    const { served } = await started();
-    const key = await fresh(served);
+    const { served, harnessed } = await started();
+    const { key } = await fresh(harnessed);
     await named(served, key, "Their own shop");
 
     const refused = await publishing(served, key, cardFor("a-room", "A room"));
@@ -392,8 +273,8 @@ describe("publishing before a wallet has been set", () => {
   });
 
   it("writes nothing, so the card is not there afterwards", async () => {
-    const { served } = await started();
-    const key = await fresh(served);
+    const { served, harnessed } = await started();
+    const { key } = await fresh(harnessed);
     await named(served, key, "Their own shop");
 
     await publishing(served, key, cardFor("a-room", "A room"));
@@ -405,12 +286,12 @@ describe("publishing before a wallet has been set", () => {
   it("lets a merchant publish as soon as they set one", async () => {
     // The road out of the refusal, walked end to end. A rule a merchant cannot
     // get past is not a rule, it is a wall.
-    const { served } = await started();
-    const key = await fresh(served);
+    const { served, harnessed } = await started();
+    const { merchantId, key } = await fresh(harnessed);
     await named(served, key, "Their own shop");
     expect((await publishing(served, key, cardFor("a-room", "A room"))).status).toBe(422);
 
-    await setPayoutWallet(served, key, A_WALLET);
+    await setPayoutWallet(harnessed, merchantId, A_WALLET);
 
     const itemId = await publish(served, key, cardFor("a-room", "A room"));
     expect(await payToInTheChallenge(served, itemId)).toBe(A_WALLET);
@@ -420,8 +301,7 @@ describe("publishing before a wallet has been set", () => {
 describe("who an agent is told to pay", () => {
   it("names the wallet of the merchant who published the card", async () => {
     const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
-    await setPayoutWallet(served, dashboard, A_WALLET);
+    await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
     const itemId = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));
 
     expect(await payToInTheChallenge(served, itemId)).toBe(A_WALLET);
@@ -435,8 +315,8 @@ describe("who an agent is told to pay", () => {
     const { served, harnessed } = await started();
     const first = await harnessed.addMerchant("First shop");
     const second = await harnessed.addMerchant("Second shop");
-    await setPayoutWallet(served, await harnessed.addDashboardKey(first.id), A_WALLET);
-    await setPayoutWallet(served, await harnessed.addDashboardKey(second.id), ANOTHER_WALLET);
+    await setPayoutWallet(harnessed, first.id, A_WALLET);
+    await setPayoutWallet(harnessed, second.id, ANOTHER_WALLET);
 
     const theirs = await publish(served, first.key, cardFor("a-room", "A room"));
     const others = await publish(served, second.key, cardFor("a-desk", "A desk"));
@@ -454,11 +334,10 @@ describe("who an agent is told to pay", () => {
     // copying it onto each card as it is published. A merchant whose wallet was
     // compromised moves it once and every card of theirs moves with it.
     const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
-    await setPayoutWallet(served, dashboard, A_WALLET);
+    await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
     const itemId = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));
 
-    await setPayoutWallet(served, dashboard, ANOTHER_WALLET);
+    await setPayoutWallet(harnessed, harnessed.merchant.id, ANOTHER_WALLET);
 
     expect(await payToInTheChallenge(served, itemId)).toBe(ANOTHER_WALLET);
   });
@@ -468,8 +347,8 @@ describe("who an agent is told to pay", () => {
     // a placeholder rather than a destination — but a challenge has to name
     // one, and the deployment's own configured address is the only one there is
     // when the merchant has set none.
-    const { served } = await started({ FACILITATOR_URL: SANDBOX_FACILITATOR });
-    const key = await fresh(served);
+    const { served, harnessed } = await started({ FACILITATOR_URL: SANDBOX_FACILITATOR });
+    const { key } = await fresh(harnessed);
     await named(served, key, "Their own shop");
     const itemId = await publish(served, key, cardFor("a-room", "A room"));
 
@@ -482,8 +361,7 @@ describe("who an agent is told to pay", () => {
     // different one in the challenge has been told something untrue about what
     // will happen when the same card is sold for real.
     const { served, harnessed } = await started({ FACILITATOR_URL: SANDBOX_FACILITATOR });
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
-    await setPayoutWallet(served, dashboard, A_WALLET);
+    await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
     const itemId = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));
 
     expect(await payToInTheChallenge(served, itemId)).toBe(A_WALLET);
@@ -507,18 +385,14 @@ const soldWithNowhereToPay = async (
   served: Served,
   merchantItemId = "a-room",
 ): Promise<{ readonly itemId: string; readonly key: string; readonly merchantId: string }> => {
-  const key = await fresh(served);
+  const { merchantId, key } = await fresh(harnessed);
   await named(served, key, "A shop that set no wallet");
-  const opened = await harnessed.gateway.keyBehind(key);
-  if (opened === null) {
-    throw new Error("the key this test just registered opens nothing");
-  }
   const stored = await harnessed.store.publishCard(
-    opened.merchantId,
+    merchantId,
     cardFor(merchantItemId, "A room"),
     harnessed.now(),
   );
-  return { itemId: stored.id, key, merchantId: opened.merchantId };
+  return { itemId: stored.id, key, merchantId };
 };
 
 describe("a card whose merchant has nowhere to be paid", () => {
@@ -601,10 +475,10 @@ describe("a card whose merchant has nowhere to be paid", () => {
     // A rule a merchant cannot get out of is a wall. Setting the address is the
     // whole of the repair, and it takes no republishing.
     const { served, harnessed } = await started();
-    const { itemId, key } = await soldWithNowhereToPay(harnessed, served);
+    const { itemId, merchantId } = await soldWithNowhereToPay(harnessed, served);
     expect((await served.call("GET", `/x402/${itemId}/purchase`)).status).toBe(409);
 
-    await setPayoutWallet(served, key, A_WALLET);
+    await setPayoutWallet(harnessed, merchantId, A_WALLET);
 
     expect(await payToInTheChallenge(served, itemId)).toBe(A_WALLET);
   });
@@ -620,13 +494,12 @@ describe("a wallet that moves while a sale is in flight", () => {
     // against another is refused by the payment layer after the goods have
     // already gone out: the merchant has delivered and cannot be paid.
     const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
-    await setPayoutWallet(served, dashboard, A_WALLET);
+    await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
     const itemId = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));
 
     const bought = await buyOverHttp(harnessed, served, itemId, {
       onOrder: async () => {
-        await setPayoutWallet(served, dashboard, ANOTHER_WALLET);
+        await setPayoutWallet(harnessed, harnessed.merchant.id, ANOTHER_WALLET);
         return { delivered: { access_code: "SESAME" } };
       },
     });
@@ -648,12 +521,11 @@ describe("a wallet that moves while a sale is in flight", () => {
     // is exercised in its own suite; what this pins is which address the
     // question carries.)
     const { served, harnessed } = await started();
-    const dashboard = await harnessed.addDashboardKey(harnessed.merchant.id);
-    await setPayoutWallet(served, dashboard, A_WALLET);
+    await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
     const itemId = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));
     expect(await payToInTheChallenge(served, itemId)).toBe(A_WALLET);
 
-    await setPayoutWallet(served, dashboard, ANOTHER_WALLET);
+    await setPayoutWallet(harnessed, harnessed.merchant.id, ANOTHER_WALLET);
     await buyOverHttp(harnessed, served, itemId, {
       onOrder: () => ({ delivered: { access_code: "SESAME" } }),
     });

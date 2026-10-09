@@ -130,7 +130,6 @@ describe("MemoryStore, where it is not like the other one", () => {
           merchantId: "mch_nobody",
           label: "one",
           digest: "d",
-          purpose: "merchant_code",
         },
         1_000,
       ),

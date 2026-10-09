@@ -12,16 +12,6 @@ export interface AccountMerchant {
   readonly id: string;
 }
 
-/**
- * A merchant registering has just made, with the key it made beside it for a
- * dashboard. The account row keeps the key with the merchant, and nothing
- * reads it: the dashboard calls the gateway inside the process (ADR-0030).
- */
-export interface MadeMerchant {
-  readonly id: string;
-  readonly key: string;
-}
-
 /** A dashboard person. A null merchant is the authenticated P1 state. */
 export interface Person {
   readonly id: string;
@@ -126,7 +116,7 @@ export interface DashboardIdentity {
 
   attachMerchant(
     personId: string,
-    register: () => Promise<MadeMerchant | null>,
+    register: () => Promise<string | null>,
   ): Promise<AttachMerchantResult>;
 
   /**

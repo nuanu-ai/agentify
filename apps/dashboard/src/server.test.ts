@@ -45,7 +45,6 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type DashboardConfig, loadConfig } from "./config.js";
-import type { MadeMerchant } from "./dashboard-entry.js";
 import {
   type Acting,
   type Answer,
@@ -125,13 +124,9 @@ const FRESH = { email: "fresh-merchant@example.com" };
  *
  * One merchant with two people at it, where a test makes the second, is not a
  * shape anything sets up on purpose — it is here because "somebody else's
- * session" cannot be tested with one account. The key beside it is what
- * registering writes onto a row and nothing reads.
+ * session" cannot be tested with one account.
  */
-const theMerchant = (harnessed: Harness): MadeMerchant => ({
-  id: harnessed.merchant.id,
-  key: "the-key-registering-wrote-and-nothing-reads",
-});
+const theMerchant = (harnessed: Harness): string => harnessed.merchant.id;
 
 /**
  * The dashboard's identity under test: the real component on its memory store,
@@ -145,7 +140,7 @@ const theMerchant = (harnessed: Harness): MadeMerchant => ({
 const withIdentity = async (
   config: DashboardConfig,
   postman: Postman,
-  merchant: MadeMerchant,
+  merchant: string,
 ): Promise<{
   identity: Identity;
   forgetMerchant: (email: string) => void;
@@ -164,7 +159,6 @@ const withIdentity = async (
     for (const row of rows.dashboard_accounts ?? []) {
       if (row.email === email) {
         row.merchantId = null;
-        row.merchantKey = null;
       }
     }
   };
@@ -264,7 +258,7 @@ interface Running {
   /** The rows the component wrote, for the two assertions that read one. */
   readonly rows: Record<string, Record<string, unknown>[]>;
   /** The merchant the accounts of this file name, as an account row holds it. */
-  readonly theMerchant: MadeMerchant;
+  readonly theMerchant: string;
   /** Every message the dashboard handed over while this test ran. */
   readonly mails: Message[];
   /** A second browser on the same dashboard, for two people or two devices. */
@@ -382,7 +376,7 @@ afterEach(async () => {
 /** The dashboard on a port, and a cookie jar of one. */
 async function visiting(
   application: Gateway,
-  merchant: MadeMerchant,
+  merchant: string,
   basePath: string,
   mails: Message[],
   options: Starting,
@@ -916,7 +910,7 @@ describe("the passwordless dashboard door", () => {
     const registrar: Registrar = {
       register: async () => {
         registered.push("asked");
-        return { ok: true, document: { merchant_id: "mer_never", secret: "never-made" } };
+        return { ok: true, document: "mer_never" };
       },
     };
     const running = await started({ registrar });
@@ -962,10 +956,7 @@ describe("the passwordless dashboard door", () => {
     const registrar: Registrar = {
       register: async () =>
         available
-          ? {
-              ok: true,
-              document: { merchant_id: "mer_after_retry", secret: "the-key-after-retry" },
-            }
+          ? { ok: true, document: "mer_after_retry" }
           : { ok: false, status: 0, why: "Agentify did not answer within ten seconds" },
     };
     const running = await started({ registrar });
@@ -2584,9 +2575,6 @@ describe("the receipts screen", () => {
 });
 
 describe("the keys screen", () => {
-  /**
-   * The key the dashboard's own calls are made with, which is on no row here.
-   */
   /** A key something is calling with, which is the ordinary row. */
   const NIGHTLY: MerchantKey = {
     id: "key_the_nightly_job",

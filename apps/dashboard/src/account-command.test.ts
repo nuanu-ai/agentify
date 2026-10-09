@@ -5,7 +5,6 @@ import { type Identity, identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
 
-const KEY = "the-merchants-own-key-long-enough";
 const MERCHANT = "mer_the_merchant";
 const NOON = new Date("2026-09-17T12:00:00.000Z");
 
@@ -78,9 +77,9 @@ const rowOf = (listed: Run, email: string): string => {
 };
 
 describe("the passwordless account command", () => {
-  it("lists confirmation, merchant and live session count without the key", async () => {
+  it("lists confirmation, merchant and live session count", async () => {
     const { identity, messages } = store();
-    await identity.make("person@example.com", { id: MERCHANT, key: KEY });
+    await identity.make("person@example.com", MERCHANT);
     await identity.requestLink("person@example.com", "default");
     const token = new URL(
       messages[0]?.body.match(/https?:\/\/\S+/)?.[0] ?? "wrong:",
@@ -95,12 +94,11 @@ describe("the passwordless account command", () => {
     expect(listed.said).toContain("1 session open");
     expect(listed.said).toContain("address confirmed");
     expect(listed.said).toContain(MERCHANT);
-    expect(listed.said).not.toContain(KEY);
   });
 
   it("revokes every session while retaining the person and merchant", async () => {
     const { identity, messages, rows } = store();
-    await identity.make("person@example.com", { id: MERCHANT, key: KEY });
+    await identity.make("person@example.com", MERCHANT);
     for (let index = 0; index < 2; index += 1) {
       // Two sessions means two links, and the door keeps a minute between
       // them; this test is about what revoking does, not about that minute.
@@ -215,7 +213,6 @@ describe("the passwordless account command", () => {
       createdAt: NOON,
       updatedAt: NOON,
       merchantId: MERCHANT,
-      merchantKey: KEY,
     });
 
     const listed = await running(identity, ["list"]);

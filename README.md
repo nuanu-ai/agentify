@@ -109,9 +109,8 @@ button, "Open my seller dashboard", whose press creates your merchant and asks
 for the seller name. That merchant is a new one, and it is not `the_merchant` —
 the merchant this laptop's stack seeds at start-up, whose two cards the
 merchant process publishes and `pnpm buy` buys. A deployed channel seeds
-nothing. Somebody who has just signed in has no cards and no keys of their
-own, which is the truth about a merchant who has written no code yet
-(ADR-0014).
+nothing. Somebody who has just signed in has no cards and no keys, which is
+the truth about a merchant who has written no code yet (ADR-0014).
 
 If port 8080 is taken, `AGENTIFY_HOST_PORT=8090 docker compose up` moves the
 stack and nothing else — the buy command runs on the host and needs

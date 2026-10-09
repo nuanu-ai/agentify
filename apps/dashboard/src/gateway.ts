@@ -8,13 +8,18 @@
  * refusal comes back as the sentence and the status the route at the door
  * answers the same refusal with, worded once in the gateway's
  * `merchant-answers.ts`, so a merchant reads on a page what their engineer
- * reads from the API. A body the request schema refuses is the one exception
- * in wording: same code and status, and the schema's own problems as the
+ * reads from the API. A body the request schema refuses is one exception in
+ * wording: same code and status, and the schema's own problems as the
  * sentence, where the door's sentence points at a list a page does not show.
+ * A wallet change is the other: no route at the door makes one, so its
+ * refusals are worded here, for the one screen that asks.
  *
  * What goes in is held to the request schema the contract's route table names
  * for the same call, and what comes back to the response schema, before
- * anything is drawn. The door holds both on the API, and a page drawn from a
+ * anything is drawn. Two calls have no route at the door: registering, which
+ * answers a merchant's identifier and nothing to hold, and setting the wallet,
+ * whose address is held to the contract's address rule and whose answer to the
+ * document the wallet is read in. The door holds both on the API, and a page drawn from a
  * document the contract would not recognise is a page that cannot be trusted;
  * failing here is how that is found rather than as a blank cell in front of a
  * merchant. So the dashboard still proves that the application and the
@@ -24,12 +29,11 @@
  * test of every route.
  */
 
-import type { Caller, Gateway } from "@agentify/gateway";
+import type { Caller, Gateway, WalletChangeRefusal } from "@agentify/gateway";
 import {
   bodyRefused,
   CONFLICT,
   hold,
-  KEY_MADE_FOR_A_DASHBOARD,
   merchantDeparted,
   merchantOrderAnswer,
   merchantOrderList,
@@ -37,12 +41,12 @@ import {
   NO_SUCH_KEY,
   NO_SUCH_ORDER,
   type Refused,
-  walletChangeRefused,
 } from "@agentify/gateway";
 import {
   API_ROUTES,
   type CardInput,
   type Delivery,
+  EvmAddressSchema,
   type HandlerAnswer,
   type IssuedKey,
   type MerchantCard,
@@ -57,7 +61,6 @@ import {
   type QuoteAnswerAck,
   type QuoteResponse,
   type ReceiptList,
-  type RegisteredMerchant,
   type RouteDefinition,
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
@@ -110,6 +113,10 @@ export interface GatewayClient {
   setSellerSite(site: string): Promise<Answer<string | null>>;
   /** Where this merchant's money arrives now, and any change of it that waits. */
   payoutWallet(): Promise<Answer<PayoutWallet>>;
+  /**
+   * Sets the address, or asks for a change of it to wait (ADR-0019), as the
+   * signed-in account. The one way a wallet is set: no route at the door does.
+   */
   setPayoutWallet(address: string): Promise<Answer<PayoutWallet>>;
   /**
    * Publishes one card, and hands back what was said about it — including its
@@ -153,7 +160,8 @@ export interface GatewayClient {
  * one would be a method whose merchant is ignored.
  */
 export interface Registrar {
-  register(): Promise<Answer<RegisteredMerchant>>;
+  /** The new merchant's identifier, which the account is then written onto. */
+  register(): Promise<Answer<string>>;
 }
 
 /**
@@ -207,6 +215,66 @@ const refusedAs = (refused: Refused): Answer<never> => ({
 });
 
 const done = <T>(document: T): Answer<T> => ({ ok: true, document });
+
+/**
+ * The status a wallet change is refused under when the telling behind it did
+ * not do its part: a dependency of the call rather than the call itself, and
+ * nothing was recorded.
+ */
+const UNAVAILABLE = 503;
+
+/**
+ * What a wallet change the gateway would not record comes to, on the one screen
+ * that asks for one.
+ *
+ * In every case nothing was written: the address paid now and whatever change
+ * was already waiting are as they were (ADR-0019). The four ask different
+ * things of whoever reads them. A message that could not be confirmed as sent
+ * to every account may still have reached some, whether the provider refused
+ * one, the telling failed part of the way or it did not finish in time, and the
+ * words say so without naming a cause the gateway cannot know. The race comes
+ * in two wordings, because the words say what may have reached a mailbox: a
+ * change raced after its message went out has a message in an inbox, where one
+ * raced before anything was announced has none. A merchant who has read a
+ * message about a change must not be told nothing was sent, and one who has
+ * none must not be sent looking for it.
+ *
+ * The statuses are the ones a page tells a refusal from a call nobody answered
+ * by; there is no code, because no screen reads one and nothing outside this
+ * process meets these.
+ */
+const walletRefusedAs = (why: WalletChangeRefusal): Answer<never> => {
+  switch (why) {
+    case "nobody_to_tell":
+      return {
+        ok: false,
+        status: CONFLICT,
+        why: "a change of the payout wallet is told to every dashboard account that names this merchant before it is recorded, and no account names this merchant, so there is nobody to tell; nothing was changed and sales are paid where they were",
+      };
+    case "not_announced":
+      return {
+        ok: false,
+        status: UNAVAILABLE,
+        why: "the message about this change could not be confirmed as sent to every account that names this merchant, so nothing was recorded and sales are paid where they were; an account may still have received it, and it says the change takes effect only if the dashboard's wallet screen shows it, which it does not",
+      };
+    case "raced":
+      return {
+        ok: false,
+        status: CONFLICT,
+        why: "another change of this merchant's payout wallet was recorded between reading the wallet and writing this one, so this one was not recorded; read the wallet and ask again if this is still the address wanted",
+      };
+    case "raced_after_announcing":
+      return {
+        ok: false,
+        status: CONFLICT,
+        why: "another change of this merchant's payout wallet was recorded while this one was being announced, so this one was not recorded; its message went out and says the change takes effect only if the dashboard's wallet screen shows it, which it does not. Read the wallet and ask again if this is still the address wanted",
+      };
+    default: {
+      const unanswered: never = why;
+      throw new Error(`there are no words for the wallet refusal ${String(unanswered)}`);
+    }
+  }
+};
 
 /**
  * One call, within the deadline.
@@ -299,7 +367,8 @@ export const gatewayFor = (
   answerWithinMs: number = ANSWER_WITHIN_MS,
 ): GatewayClient => {
   const { merchantId } = acting;
-  const caller: Caller = { kind: "signed_in", email: acting.email };
+  const session = { kind: "signed_in", email: acting.email } as const;
+  const caller: Caller = session;
   const call = <T>(name: string, work: () => Promise<Answer<T>>): Promise<Answer<T>> =>
     within(name, answerWithinMs, work);
 
@@ -350,7 +419,6 @@ export const gatewayFor = (
         if (disabled === "locked_out") {
           throw new Error("a session holds no key, and disabling was refused as its own");
         }
-        if (disabled === "made_for_a_dashboard") return refusedAs(KEY_MADE_FOR_A_DASHBOARD);
         if (disabled === null) return refusedAs(NO_SUCH_KEY);
         // Unwrapped here rather than at the screen. The contract wraps the key
         // so that the answer can grow a field beside it without changing shape
@@ -403,21 +471,16 @@ export const gatewayFor = (
       call("reading the payout wallet", async () =>
         answered(API_ROUTES.get_payout_wallet, await application.payoutWallet(merchantId)),
       ),
+    // What goes in is held to the address rule the contract publishes, and
+    // what comes back to the document the wallet is read in.
     setPayoutWallet: (address) =>
       call("setting the payout wallet", async () => {
-        const asked = sent(API_ROUTES.set_payout_wallet, { payout_wallet: address });
-        if (!asked.ok) return asked.refused;
-        const set = await application.setPayoutWallet(
-          merchantId,
-          asked.value.payout_wallet,
-          caller,
-        );
-        if (set === "not_a_dashboard_key") {
-          throw new Error("a session was refused the wallet as a key of the merchant's own code");
-        }
+        const asked = hold(EvmAddressSchema, address);
+        if (!asked.ok) return refusedAs(bodyRefused(asked.problems));
+        const set = await application.setPayoutWallet(merchantId, asked.value as string, session);
         return typeof set === "string"
-          ? refusedAs(walletChangeRefused(set))
-          : answered(API_ROUTES.set_payout_wallet, set);
+          ? walletRefusedAs(set)
+          : answered(API_ROUTES.get_payout_wallet, set);
       }),
     // A refused card is the answer and not the absence of one: the flow
     // checks the card itself and answers with its findings, as it does at the
@@ -471,9 +534,8 @@ export const gatewayFor = (
 };
 
 /**
- * Registration, inside the process: a merchant and a key made for a dashboard
- * beside it, for a signed-in person who pressed for one (ADR-0026 §4). No
- * invitation is asked for here, because nothing crosses a door.
+ * Registration, inside the process: a merchant for a signed-in person who
+ * pressed for one (ADR-0026 §4), answered with its identifier.
  */
 export const registrarFor = (
   application: Gateway,
@@ -481,6 +543,6 @@ export const registrarFor = (
 ): Registrar => ({
   register: () =>
     within("registering a merchant", answerWithinMs, async () =>
-      answered(API_ROUTES.register_merchant, await application.registerMerchant()),
+      done(await application.registerMerchant()),
     ),
 });

@@ -15,10 +15,7 @@ import { describe, expect, it } from "vitest";
 import { MemoryStore } from "../adapters/memory/store.js";
 import { countedIds } from "../testing/harness.js";
 import {
-  DASHBOARD_KEY_LABEL,
   grantLiveApproval,
-  invitationAccepted,
-  issueDashboardKey,
   issueKey,
   keyDigest,
   newKeySecret,
@@ -120,38 +117,6 @@ describe("a key", () => {
     expect((await store.workingKey(keyDigest(issued.secret)))?.merchantId).toBe("mch_1");
     // And the key itself is not what anything is looked up by.
     expect(await store.workingKey(issued.secret)).toBeNull();
-  });
-
-  it("is made for the merchant's own code unless a dashboard asked for it", async () => {
-    // The two verbs are two verbs rather than one with a word in it, because
-    // what separates them is not a setting: one makes a key the merchant sees,
-    // names and revokes, and the other makes the credential a dashboard calls
-    // with, which the merchant never asked for and never sees. A caller reaching
-    // for the wrong one is reaching for a different act.
-    const store = aStore();
-    const ids = countedIds();
-    await store.addMerchant({ id: "mch_1", name: "A merchant" }, 1_000);
-
-    const theirs = await issueKey(store, ids, "mch_1", "the worker's", 1_000, "test");
-    const dashboard = await issueDashboardKey(store, ids, "mch_1", 2_000, "test");
-
-    expect((await store.codeKeysOf("mch_1")).map((key) => key.id)).toStrictEqual([theirs.key.id]);
-    expect(dashboard.key.purpose).toBe("dashboard");
-    // Both open the door. What differs is whose list they are in.
-    expect((await store.workingKey(keyDigest(dashboard.secret)))?.id).toBe(dashboard.key.id);
-  });
-
-  it("is labelled by whoever made it, and a dashboard's says what it is", async () => {
-    // A dashboard's key is made at every sign-in and shown to nobody, so nobody
-    // types its label. It still needs one, because a person at a terminal
-    // reading the whole of a merchant's keys sees this text and has to be able
-    // to tell what the row is without knowing this design.
-    const store = aStore();
-    await store.addMerchant({ id: "mch_1", name: "A merchant" }, 1_000);
-
-    const dashboard = await issueDashboardKey(store, countedIds(), "mch_1", 1_000, "test");
-
-    expect(dashboard.key.label).toBe(DASHBOARD_KEY_LABEL);
   });
 });
 
@@ -397,70 +362,18 @@ describe("seeding the sandbox", () => {
   });
 });
 
-describe("the code in the door of registration", () => {
-  // The promise: this call is not a way of finding out whether registration is
-  // open here, nor of learning a character of the code one attempt at a time.
-
-  it("accepts the code the gateway was configured with and nothing else", () => {
-    expect(invitationAccepted("the-code", "the-code")).toBe(true);
-    expect(invitationAccepted("the-code", "the-cod")).toBe(false);
-    expect(invitationAccepted("the-code", "the-codE")).toBe(false);
-    expect(invitationAccepted("the-code", "the-code ")).toBe(false);
-    expect(invitationAccepted("the-code", "")).toBe(false);
-  });
-
-  it("accepts nothing at all where no code is configured", () => {
-    // Registration closed, and closed for every value anybody could present —
-    // including the empty one, which is what a caller sending no code at all
-    // would come down to if the shape of the request let it through.
-    expect(invitationAccepted(null, "")).toBe(false);
-    expect(invitationAccepted(null, "the-code")).toBe(false);
-    expect(invitationAccepted(null, "any string whatsoever")).toBe(false);
-  });
-
-  it("answers a code of the wrong length rather than throwing on it", () => {
-    // What this pins and what it does not are worth telling apart, because the
-    // reason the code is written the way it is goes further than the assertion
-    // can. The comparison is over two digests rather than two codes, and
-    // `timingSafeEqual` refuses two buffers of different lengths outright — so
-    // comparing the codes themselves would throw on exactly the guesses that
-    // are the wrong length, and a caller would learn the length one attempt at
-    // a time. That is the mutation these two lines kill.
-    //
-    // How long the comparison takes is not tested here and could not usefully
-    // be: a timing assertion in a unit suite measures the machine it runs on.
-    // An implementation that compared the two codes with `===` would pass this.
-    expect(invitationAccepted("short", "a very much longer guess indeed")).toBe(false);
-    expect(invitationAccepted("a very much longer code indeed", "short")).toBe(false);
-  });
-});
-
 describe("registering a merchant", () => {
-  it("makes the merchant and issues one key, in one act", async () => {
-    // Both in one act (ADR-0014 §1): a merchant written without a key is a
-    // merchant nobody can reach, under an identifier that was generated inside
-    // this call and that nobody outside it ever held.
+  it("makes the merchant and no key", async () => {
+    // A key is issued when the merchant asks for one, from their dashboard,
+    // which is where they are after registering: the account the dashboard
+    // writes the merchant onto is the way in, not a key. So the new merchant's
+    // list of keys is empty, which is the first thing their keys screen draws.
     const store = aStore();
 
-    const made = await registerMerchant(store, countedIds(), 1_000, "test");
+    const made = await registerMerchant(store, countedIds(), 1_000);
 
-    expect((await store.workingKey(keyDigest(made?.secret ?? "")))?.merchantId).toBe(
-      made?.merchant.id,
-    );
-    expect(await store.keysOf(made?.merchant.id ?? "")).toHaveLength(1);
-  });
-
-  it("gives the dashboard its own key and the merchant no keys of their own", async () => {
-    // Whoever registers is a dashboard, and what it walks away with is the
-    // credential it will call as this merchant with — not the first of the
-    // merchant's own keys. So the new merchant's own list is empty, which is
-    // the first thing their keys screen ever draws.
-    const store = aStore();
-
-    const made = await registerMerchant(store, countedIds(), 1_000, "test");
-
-    expect(made?.key.purpose).toBe("dashboard");
-    expect(await store.codeKeysOf(made?.merchant.id ?? "")).toStrictEqual([]);
+    expect(await store.merchantById(made?.id ?? "")).not.toBeNull();
+    expect(await store.keysOf(made?.id ?? "")).toStrictEqual([]);
   });
 
   it("lists the new merchant under nothing at all", async () => {
@@ -469,48 +382,32 @@ describe("registering a merchant", () => {
     // front of every buyer who reads a catalogue.
     const store = aStore();
 
-    const made = await registerMerchant(store, countedIds(), 1_000, "test");
+    const made = await registerMerchant(store, countedIds(), 1_000);
 
-    expect(made?.merchant.serviceName).toBeNull();
+    expect(made?.serviceName).toBeNull();
   });
 
   it("gives the row a name that says nobody typed one", async () => {
     // The merchant row carries a name a person reads at a terminal, and this
-    // merchant was made by a route rather than by somebody typing. Left empty
+    // merchant was made by a press rather than by somebody typing. Left empty
     // it would be a blank column in every listing; filled with a word that
     // looks chosen, it would be a name somebody goes looking for the owner of.
     const store = aStore();
 
-    const made = await registerMerchant(store, countedIds(), 1_000, "test");
+    const made = await registerMerchant(store, countedIds(), 1_000);
 
-    expect(made?.merchant.name).toBe(REGISTERED_MERCHANT_NAME);
-    expect(made?.merchant.name).not.toBe("");
-  });
-
-  it("generates the key rather than taking one", async () => {
-    // Nothing in the request names a secret and nothing here reads one back:
-    // what a registration hands over is generated, and its digest is what is
-    // written down. That the row it comes back beside cannot carry the secret
-    // is the document's own promise and is held in `merchant.test.ts`.
-    const store = aStore();
-    const ids = countedIds();
-
-    const first = await registerMerchant(store, ids, 1_000, "test");
-    const second = await registerMerchant(store, ids, 1_000, "test");
-
-    expect(first?.secret.startsWith("csk_test_")).toBe(true);
-    expect(second?.secret.startsWith("csk_test_")).toBe(true);
-    expect(first?.secret).not.toBe(second?.secret);
+    expect(made?.name).toBe(REGISTERED_MERCHANT_NAME);
+    expect(made?.name).not.toBe("");
   });
 
   it("gives every registration its own merchant", async () => {
     const store = aStore();
     const ids = countedIds();
 
-    const first = await registerMerchant(store, ids, 1_000, "test");
-    const second = await registerMerchant(store, ids, 2_000, "test");
+    const first = await registerMerchant(store, ids, 1_000);
+    const second = await registerMerchant(store, ids, 2_000);
 
-    expect(first?.merchant.id).not.toBe(second?.merchant.id);
+    expect(first?.id).not.toBe(second?.id);
     expect((await store.merchants()).length).toBe(2);
   });
 });

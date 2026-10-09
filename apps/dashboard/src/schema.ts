@@ -35,8 +35,8 @@ const moment = (column: string) =>
  * fit inside that gap.
  *
  * There is no password here. `dashboard_credentials` remains only because it is
- * part of Better Auth's complete schema and is empty after cutover. The two
- * merchant columns are ours rather than the component's.
+ * part of Better Auth's complete schema and is empty after cutover. The
+ * merchant column is ours rather than the component's.
  */
 export const accounts = pgTable(
   "dashboard_accounts",
@@ -60,8 +60,6 @@ export const accounts = pgTable(
     updatedAt: moment("updated_at"),
     /** Null while an authenticated P1 waits to attach their first merchant. */
     merchantId: text("merchant_id"),
-    /** The gateway key is a secret at rest and never reaches a page or log. */
-    merchantKey: text("merchant_key"),
     /**
      * Whether this person may read the operator's dashboard (ADR-0026 §6).
      *
@@ -71,15 +69,12 @@ export const accounts = pgTable(
      */
     operator: boolean("operator").notNull().default(false),
   },
+  // An account names a merchant or none; an empty identifier is neither, and the
+  // code reading a row refuses one rather than guessing.
   (table) => [
     check(
-      "dashboard_accounts_complete_merchant",
-      sql`(
-        (${table.merchantId} is null and ${table.merchantKey} is null)
-        or
-        (${table.merchantId} is not null and ${table.merchantKey} is not null
-          and ${table.merchantId} <> '' and ${table.merchantKey} <> '')
-      )`,
+      "dashboard_accounts_merchant_named",
+      sql`${table.merchantId} is null or ${table.merchantId} <> ''`,
     ),
   ],
 );

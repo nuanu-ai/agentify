@@ -20,7 +20,7 @@ const migrationsIn = join(here, "..", "drizzle");
 const EMAIL = "owner@example.com";
 const SCAN = "019b41a0-7c51-7d63-84bd-a5a20faef497";
 const REQUEST = "019b41a0-7c51-7d63-84bd-a5a20faef498";
-const MERCHANT = { id: "mer_owner", key: "the-owner-gateway-key" };
+const MERCHANT = "mer_owner";
 const OPERATION_ONE = "019b41a0-7c51-7d63-84bd-a5a20faef497";
 const OPERATION_TWO = "019b41a0-7c52-7d63-84bd-a5a20faef497";
 const NOW = new Date("2026-09-17T12:00:00.000Z");
@@ -313,7 +313,7 @@ if (databaseUrl === null) {
           email: EMAIL,
         }),
       ).resolves.toStrictEqual({ status: "retained" });
-      expect(await identity.byEmail(EMAIL)).toMatchObject({ merchant: { id: MERCHANT.id } });
+      expect(await identity.byEmail(EMAIL)).toMatchObject({ merchant: { id: MERCHANT } });
       expect(
         (
           await pool.query(
@@ -425,7 +425,7 @@ if (databaseUrl === null) {
 
       await expect(attaching).resolves.toMatchObject({ status: "attached" });
       await expect(deleting).resolves.toStrictEqual({ status: "retained" });
-      expect(await identity.byId(person.id)).toMatchObject({ merchant: { id: MERCHANT.id } });
+      expect(await identity.byId(person.id)).toMatchObject({ merchant: { id: MERCHANT } });
     });
 
     it("replays a deleted tombstone after credential rotation without touching a replacement", async () => {
@@ -455,7 +455,7 @@ if (databaseUrl === null) {
       await expect(restarted.deleteUnattachedPerson(request)).resolves.toStrictEqual({
         status: "deleted",
       });
-      expect(await restarted.byId(replacement.id)).toMatchObject({ merchant: { id: MERCHANT.id } });
+      expect(await restarted.byId(replacement.id)).toMatchObject({ merchant: { id: MERCHANT } });
       await expect(restarted.openLink(replacementLink)).resolves.toMatchObject({
         status: "opened",
       });
@@ -484,7 +484,7 @@ if (databaseUrl === null) {
       await expect(restarted.deleteUnattachedPerson(request)).resolves.toStrictEqual({
         status: "retained",
       });
-      expect(await restarted.byId(person.id)).toMatchObject({ merchant: { id: MERCHANT.id } });
+      expect(await restarted.byId(person.id)).toMatchObject({ merchant: { id: MERCHANT } });
       await expect(restarted.openLink(newLink)).resolves.toMatchObject({ status: "opened" });
     });
 
@@ -505,7 +505,7 @@ if (databaseUrl === null) {
       await expect(
         identity.deleteUnattachedPerson({ ...request, email: "other@example.com" }),
       ).resolves.toStrictEqual({ status: "refused" });
-      expect(await identity.byId(made.id)).toMatchObject({ merchant: { id: MERCHANT.id } });
+      expect(await identity.byId(made.id)).toMatchObject({ merchant: { id: MERCHANT } });
       await expect(identity.openLink(dashboardToken)).resolves.toMatchObject({ status: "opened" });
       expect(
         (
