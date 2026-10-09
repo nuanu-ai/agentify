@@ -26,7 +26,7 @@ import {
   type ShipTo,
 } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader, encodePaymentSignatureHeader } from "@x402/core/http";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buyOverHttp,
   drawEverything,
@@ -73,6 +73,7 @@ const priced: QuoteResponse = {
 let open: { harnessed: Harness; served: Served } | null = null;
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await open?.served.close();
   await open?.harnessed.stop();
   open = null;
@@ -265,21 +266,37 @@ describe("buying a parcel", () => {
   });
 });
 
+/** Everything the gateway keeps about one order, as one string to search. */
+const keptOf = async (harnessed: Harness, orderId: string) =>
+  JSON.stringify(await harnessed.store.orderById(orderId));
+
+/** The parts of the address that say who and where, none of which may be kept. */
+const whoAndWhere = [address.name, address.line_one, address.city, address.phone_number];
+
+const theOrder = async (served: Served) => {
+  const listed = await served.call("GET", "/v0/orders", { headers: asMerchant });
+  const [order] = (listed.body as { orders: Order[] }).orders;
+  if (order === undefined) throw new Error("the merchant has no order");
+  return order;
+};
+
+/**
+ * Everything on the merchant's stream, read off the queue itself rather than
+ * through a poll: a poll hands nobody a parcel whose address is gone, so it
+ * cannot show whether an envelope carrying that address is still there.
+ */
+const onTheStream = async (harnessed: Harness) =>
+  JSON.stringify(
+    (await harnessed.queue.draw(harnessed.merchant.id, 100, 0)).map((drawn) => drawn.envelope),
+  );
+
+const expectNothingOfTheAddressIn = (text: string) => {
+  for (const part of whoAndWhere) {
+    expect(text, part).not.toContain(part);
+  }
+};
+
 describe("once the merchant has the address", () => {
-  /** Everything the gateway keeps about one order, as one string to search. */
-  const keptOf = async (harnessed: Harness, orderId: string) =>
-    JSON.stringify(await harnessed.store.orderById(orderId));
-
-  /** The parts of the address that say who and where, none of which may be kept. */
-  const whoAndWhere = [address.name, address.line_one, address.city, address.phone_number];
-
-  const theOrder = async (served: Served) => {
-    const listed = await served.call("GET", "/v0/orders", { headers: asMerchant });
-    const [order] = (listed.body as { orders: Order[] }).orders;
-    if (order === undefined) throw new Error("the merchant has no order");
-    return order;
-  };
-
   it("erases it when they take the order on, and the order then says only when", async () => {
     const { harnessed, served, itemId } = await started();
     await pricedThenPaid(harnessed, served, itemId, {
@@ -315,10 +332,8 @@ describe("once the merchant has the address", () => {
     });
     expect(accepted.status).toBe(200);
 
-    const left = JSON.stringify(await drawEverything(harnessed));
-    for (const part of whoAndWhere) {
-      expect(left, part).not.toContain(part);
-    }
+    expect(await harnessed.queue.holdsOrder(harnessed.merchant.id, order.id)).toBe(false);
+    expectNothingOfTheAddressIn(await onTheStream(harnessed));
     expect((await theOrder(served)).ship_to).toStrictEqual({ erased_at: expect.any(String) });
   });
 
@@ -343,5 +358,164 @@ describe("once the merchant has the address", () => {
     for (const part of whoAndWhere) {
       expect(kept, part).not.toContain(part);
     }
+  });
+});
+
+describe("once the address is gone, nothing puts it back", () => {
+  /** A parcel paid for and waiting on the merchant's stream, with no worker turning. */
+  const paidAndWaiting = async (overrides: Record<string, string> = {}) => {
+    const { harnessed, served, itemId } = await started(overrides);
+    await pricedThenPaid(harnessed, served, itemId, {
+      priced: { params: {}, ship_to: address },
+      paid: { params: {}, ship_to: address },
+    });
+    const order = await theOrder(served);
+    return { harnessed, served, orderId: order.id };
+  };
+
+  const takeOn = (served: Served, orderId: string) =>
+    served.call("POST", `/v0/orders/${orderId}/accept`, { headers: asMerchant, body: {} });
+
+  it("is not sent again by a sweep that read the order before it was taken on", async () => {
+    // The sweep reads every open order first and works through the list, so an
+    // order can be taken on between the reading and the sending. Sent from
+    // what was read, the hand-over would go back on the stream with the
+    // buyer's name, street and phone after the gateway had let go of them.
+    const { harnessed, served, orderId } = await paidAndWaiting();
+    const readBefore = await harnessed.store.openOrders();
+    await takeOn(served, orderId);
+    vi.spyOn(harnessed.store, "openOrders").mockResolvedValueOnce(readBefore);
+    harnessed.advance(harnessed.runtime.config.sweepDispatchGraceMs + 60_000);
+
+    await harnessed.gateway.runner.sweep();
+
+    expect(await harnessed.queue.holdsOrder(harnessed.merchant.id, orderId)).toBe(false);
+    expectNothingOfTheAddressIn(await onTheStream(harnessed));
+  });
+
+  it("is not put back by a poll whose hand-over failed while the order was taken on", async () => {
+    // A poll that cannot record a hand-over puts the envelope it drew back on
+    // the stream. That envelope was built when the order was handed over, with
+    // the whole address in it, and the merchant may take the order on while
+    // the poll is failing.
+    const { harnessed, served, orderId } = await paidAndWaiting();
+    const deciding = harnessed.store.withOrder.bind(harnessed.store);
+    let first = true;
+    vi.spyOn(harnessed.store, "withOrder").mockImplementation(async (id, change, scope) => {
+      if (first) {
+        first = false;
+        await takeOn(served, orderId);
+        throw new Error("the database timed out");
+      }
+      return deciding(id, change, scope);
+    });
+
+    await harnessed.gateway.poll(harnessed.merchant.id, 0);
+    await new Promise((resolve) =>
+      setTimeout(resolve, harnessed.runtime.config.settleInFlightRetryMs + 20),
+    );
+
+    expect(await harnessed.queue.holdsOrder(harnessed.merchant.id, orderId)).toBe(false);
+    expectNothingOfTheAddressIn(await onTheStream(harnessed));
+  });
+
+  it("does not leave a price question that landed after its order ended", async () => {
+    // The question goes out after the order is written. Should it land late —
+    // the stream slow to take it — the order can end on the gateway's patience
+    // first, its address erased, and a question written afterwards would carry
+    // the place the parcel goes for as long as the queue keeps it.
+    const { harnessed, served, itemId } = await started({ QUOTE_RESPONSE_MS: "50" });
+    const staging = harnessed.queue.stage.bind(harnessed.queue);
+    harnessed.queue.stage = async (merchantId, envelope, afterMs) => {
+      if (envelope.kind === "quote_request") {
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+      return staging(merchantId, envelope, afterMs);
+    };
+
+    await served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {}, ship_to: address },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const [record] = await harnessed.store.orders(harnessed.merchant.id);
+    expect(record?.shipTo).toStrictEqual({ erasedAt: expect.any(Number) });
+    expect(await onTheStream(harnessed)).toBe("[]");
+  });
+
+  it("erases it when the time to ship runs out with the order never taken on", async () => {
+    // The order comes to owe a refund without the merchant ever having had the
+    // address, and the gateway lets go of it all the same: nobody can use it
+    // now. The instant it reads is when it was erased, which is later than the
+    // deadline it was erased for.
+    const { harnessed, served } = await started();
+    const quick = await harnessed.store.publishCard(
+      harnessed.merchant.id,
+      { ...parcelCard, merchant_item_id: "beans-quick", ship_within_seconds: 1 },
+      harnessed.now(),
+    );
+    await pricedThenPaid(harnessed, served, quick.id, {
+      priced: { params: {}, ship_to: address },
+      paid: { params: {}, ship_to: address },
+    });
+    const orderId = (await theOrder(served)).id;
+    harnessed.advance(5_000);
+
+    await vi.waitFor(
+      async () =>
+        expect((await harnessed.store.orderById(orderId))?.order.state).toBe("refund_due"),
+      { timeout: 3_000, interval: 20 },
+    );
+
+    const order = await theOrder(served);
+    expect(order.ship_to).toStrictEqual({ erased_at: expect.any(String) });
+    expect(Date.parse((order.ship_to as { erased_at: string }).erased_at)).toBe(harnessed.now());
+    expect(await harnessed.queue.holdsOrder(harnessed.merchant.id, orderId)).toBe(false);
+    expectNothingOfTheAddressIn(await keptOf(harnessed, orderId));
+  });
+});
+
+describe("the address on a payment", () => {
+  it("refuses a payment carrying an address that is not one, before anything else", async () => {
+    const { harnessed, served, itemId } = await started();
+
+    const paid = await buyOverHttp(
+      harnessed,
+      served,
+      itemId,
+      { onQuote: () => priced },
+      {
+        priced: { params: {}, ship_to: address },
+        paid: { params: {}, ship_to: { ...address, country: "Indonesia" } },
+      },
+    );
+
+    expect(paid.status).toBe(400);
+    expect(JSON.stringify(paid.body)).toContain("country");
+    expect(harnessed.facilitator.verifies).toHaveLength(0);
+  });
+
+  it("refuses an address on a payment for a product that is not shipped", async () => {
+    const { harnessed, served } = await started();
+    const ordinary = await harnessed.gateway.publishCard(harnessed.merchant.id, {
+      merchant_item_id: "room-101",
+      title: "A room for the night",
+      description: "One night in room 101",
+      price: "80.00 USD",
+      result: { access_code: "string" },
+    });
+    if (!ordinary.ok) throw new Error("the ordinary card would not publish");
+
+    const paid = await buyOverHttp(
+      harnessed,
+      served,
+      ordinary.id,
+      {},
+      { priced: { params: {} }, paid: { params: {}, ship_to: address } },
+    );
+
+    expect(paid.status).toBe(422);
+    expect((paid.body as Refused).error.code).toBe("ship_to_does_not_fit");
+    expect(harnessed.facilitator.verifies).toHaveLength(0);
   });
 });
