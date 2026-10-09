@@ -457,17 +457,22 @@ export class Gateway {
     // missing.
     const missing = missingFrom(merchant, this.runtime.config);
 
-    if (!parsed.success) {
-      return cardRejected(missing, findingsOf(parsed.error.issues));
-    }
     // A parcel's card asks one more thing of its merchant, which no other card
     // does: the site of their shop, where a buyer takes a parcel that did not
     // arrive (ADR-0033). It is asked here, with the card in hand, rather than
-    // by the rule every card meets.
+    // by the rule every card meets — and of the card as it was sent, so that a
+    // card refused for something else still names it, rather than leave the
+    // merchant to learn it on the next round trip.
     const parcelWithoutSite =
-      parsed.data.fulfillment === "ship" && merchant.sellerSite === null
+      typeof body === "object" &&
+      body !== null &&
+      (body as { readonly fulfillment?: unknown }).fulfillment === "ship" &&
+      merchant.sellerSite === null
         ? [MERCHANT_FINDINGS.NO_SELLER_SITE]
         : [];
+    if (!parsed.success) {
+      return cardRejected([...missing, ...parcelWithoutSite], findingsOf(parsed.error.issues));
+    }
     // Asked of the card as it was opened out, so a price written as one string
     // meets the same rule in the same words as one written as two fields.
     const unsellable = [

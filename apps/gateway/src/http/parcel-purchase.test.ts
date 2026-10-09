@@ -110,6 +110,9 @@ async function pricedThenPaid(
   const worker = workUntilStopped(harnessed, { onQuote: () => priced });
   const challenge = await served.call("POST", `/x402/${itemId}/purchase`, { body: body.priced });
   await worker.stop();
+  // An agent takes a moment to sign, so the instant the order was paid is not
+  // the one it was priced at, and a test reading either can tell them apart.
+  harnessed.advance(5_000);
   const requirements = decodePaymentRequiredHeader(
     challenge.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
   ).accepts[0];

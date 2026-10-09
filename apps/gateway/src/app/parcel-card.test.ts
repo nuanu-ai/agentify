@@ -78,6 +78,20 @@ describe("a card for a parcel", () => {
     );
   });
 
+  it("names the missing site even when the card is refused for something else", async () => {
+    open = await harness();
+
+    const published = await open.gateway.publishCard(open.merchant.id, {
+      ...parcelCard,
+      price: { amount: "not a number", currency: "USD" },
+    });
+
+    if (published.ok) throw new Error("a card with no price was published");
+    expect(published.error.problems).toContainEqual(
+      expect.objectContaining({ path: [], code: "no_seller_site" }),
+    );
+  });
+
   it("asks no site of a merchant publishing anything but a parcel", async () => {
     open = await harness();
 

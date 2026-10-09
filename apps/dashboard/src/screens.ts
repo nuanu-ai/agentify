@@ -578,7 +578,12 @@ export const receiptsScreen = (
   receipts: ReceiptList,
 ): string => {
   const titles = new Map(cards.cards.map((entry) => [entry.id, entry.card.title]));
-  const delivered = receipts.receipts.filter((receipt) => receipt.outcome === "delivered").length;
+  // A shipped parcel is a sale as much as goods handed over: the money is the
+  // merchant's and the receipt is written (ADR-0033). The tile says both words,
+  // because a parcel with a carrier has not been delivered.
+  const delivered = receipts.receipts.filter(
+    (receipt) => receipt.outcome === "delivered" || receipt.outcome === "shipped",
+  ).length;
 
   const rows = receipts.receipts.map(
     (receipt): Row => ({
@@ -616,13 +621,13 @@ export const receiptsScreen = (
            claim that there is none, printed on the screen where a merchant
            looks for money they are owed. What cannot be counted here is said in
            words above the table instead, with the place it can be counted. -->
-      <div class="label">Delivered</div>
+      <div class="label">Delivered or shipped</div>
       <div class="figure${delivered === 0 ? "" : " ok"}">${delivered}</div>
       <div class="aside">of ${countOf(receipts.receipts.length, "receipt")}</div>
     </div>
   </div>
   <div class="summary-text">
-    <p>A receipt appears when the product is released to the buyer. It shows the amount and three times: Paid, Price set, and Price as of. When the price is checked at the purchase, these times can be a few minutes apart.${restOf(
+    <p>A receipt appears when the product is released to the buyer, or a parcel is handed to a carrier. It shows the amount and three times: Paid, Price set, and Price as of. When the price is checked at the purchase, these times can be a few minutes apart.${restOf(
       "/docs/money#what-proves-a-sale-happened",
       "What a receipt records, and which moment each column is",
     )}</p>
