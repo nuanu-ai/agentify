@@ -637,10 +637,21 @@ describe("the shipment", () => {
     // second, different shipment is refused rather than taken in silence: a
     // corrected number would otherwise vanish without a word.
     const { served, orderId } = await takenOn();
-    await ship(served, orderId, shipment);
+    const window = { earliest: "2026-10-12T00:00:00Z", latest: "2026-10-14T00:00:00Z" };
+    await ship(served, orderId, { ...shipment, estimated_delivery: window });
 
-    const again = await ship(served, orderId, shipment);
-    const other = await ship(served, orderId, { ...shipment, tracking_number: "1111111111111111" });
+    // The same shipment, written in another order at every depth, as a
+    // merchant's code that built it again would write it.
+    const again = await ship(served, orderId, {
+      estimated_delivery: { latest: window.latest, earliest: window.earliest },
+      tracking_number: shipment.tracking_number,
+      carrier: shipment.carrier,
+    });
+    const other = await ship(served, orderId, {
+      ...shipment,
+      estimated_delivery: window,
+      tracking_number: "1111111111111111",
+    });
 
     expect(again.status).toBe(200);
     expect(other.status).toBe(409);
