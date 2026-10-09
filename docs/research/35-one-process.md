@@ -626,3 +626,24 @@ without surprises, though both packages pin the same express, 5.2.1. Whether
 outside this repository ever called the cabinet-key routes or registration;
 the argument that none could rests on their refusals, read in `routes.ts`. The
 names from the rename branch were read from uncommitted work.
+
+## Where the move stands
+
+Read on 2026-10-09 at `main` 5412b719. ADR-0030 records the decision and its
+security boundary; the order of the move, above, is this note's.
+
+Steps 1 and 2 have landed, as pull requests #90 and #91, together with the
+edits to other decisions listed for them. The cabinet has since been renamed
+the dashboard (`apps/dashboard`, served at `/dashboard`), so what step 2
+removed went under the names `GATEWAY_DASHBOARD_SECRET` and
+`DASHBOARD_INTERNAL_URL`.
+
+Steps 3 and 4 have not landed, and what they remove still exists: the
+dashboard's HTTP client and `GATEWAY_URL` in `apps/dashboard/src/config.ts`;
+the dashboard key with its renewal in `apps/dashboard/src/dashboard-key.ts`,
+its routes at `/v0/keys/dashboard` with their refusals, and the
+`merchant_key` column; and the registration route at `/v0/merchants` with its
+invitation code, which `registerMerchant` in `apps/gateway/src/app/gateway.ts`
+serves. Each of the two remaining pull requests still edits, in the same
+change, the paragraphs of other decisions listed for its step above and none
+earlier, and neither moves the contract version.
