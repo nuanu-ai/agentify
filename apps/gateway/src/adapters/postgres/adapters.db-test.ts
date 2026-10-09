@@ -285,7 +285,7 @@ if (databaseUrl === null) {
       });
       // The queue is made first because the store writes through it: an
       // envelope that must not be lost goes into the same transaction as the
-      // order that implies it (ADR-0013), which is the arrangement `main.ts`
+      // order that implies it (ADR-0013), which is the arrangement `start.ts`
       // makes and the one the tests below are about.
       store = PostgresStore.over(connected.db, countedIds(), queue.envelopes());
       facilitator = new ScriptedFacilitator();

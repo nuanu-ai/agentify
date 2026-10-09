@@ -8,8 +8,7 @@
  */
 export interface ResolvedCompose {
   readonly services: {
-    readonly gateway: ResolvedService;
-    readonly dashboard: ResolvedService;
+    readonly app: ResolvedService;
     readonly web: ResolvedService;
     readonly postgres: ResolvedService;
   } & Record<string, ResolvedService | undefined>;

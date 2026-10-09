@@ -1,13 +1,14 @@
-# The image four of compose.yaml's services run from: the gateway, the dashboard,
-# the mock merchant, and the migration that runs to completion before them.
+# The image three of compose.yaml's services run from: the application (the
+# gateway and the dashboard in one process, ADR-0030), the mock merchant, and
+# the migration that runs to completion before them.
 #
-# One image rather than four, because they are four entry points into one
+# One image rather than three, because they are three entry points into one
 # workspace and share every dependency below their own file. Which of them a
 # container is decides at `command`, not at build time — an image per service
-# would be the same layers four times and one more thing to keep in step.
+# would be the same layers three times and one more thing to keep in step.
 #
 # There is no compile step. Node runs the TypeScript through tsx, the way
-# `pnpm --filter @agentify/gateway start` does on a laptop (ADR-0003 §1), so
+# `pnpm --filter @agentify/app start` does on a laptop (ADR-0003 §1), so
 # what runs in the container is the same source a developer edits and there is
 # no build output to be stale.
 
@@ -39,10 +40,10 @@ RUN pnpm fetch
 COPY . .
 RUN pnpm install --frozen-lockfile --offline
 
-# Not root. Two of the four are reached from outside through Caddy, and none of
-# them has any reason to be able to write to its own source.
+# Not root. The application is reached from outside through Caddy, and none of
+# the three has any reason to be able to write to its own source.
 USER node
 RUN test -r packages/core/src/deployment/preflight.mjs
 
 # Overridden by compose; named here so the image is runnable on its own.
-CMD ["pnpm", "--filter", "@agentify/gateway", "start"]
+CMD ["pnpm", "--filter", "@agentify/app", "start"]

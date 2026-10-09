@@ -204,7 +204,7 @@ export async function bootGateway(
     await gateway.start();
     started = gateway;
 
-    // The merchant and its key, seeded exactly as `main.ts` seeds the sandbox's:
+    // The merchant and its key, seeded exactly as `start.ts` seeds the sandbox's:
     // one function, so a key that works here is a key that works there.
     //
     // A boot with nothing to seed is refused rather than allowed to come up

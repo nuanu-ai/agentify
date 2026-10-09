@@ -3,12 +3,10 @@
  * receipts and the keys, rendered on the server, behind a sign-in that knows
  * who a person is — and a registration that makes the merchant behind it.
  *
- * It is its own process rather than a part of the gateway, and it reaches the
- * gateway through the same public API a merchant's own tooling uses (ADR-0005
- * §2). Pages for people change for reasons that have nothing to do with money,
- * and the deal is that the money path never pays for that churn — while the
- * dashboard, by being an ordinary consumer of the API, cannot draw a screen the
- * merchant could not have built themselves.
+ * It runs in one process with the gateway, on a listener of its own (ADR-0030),
+ * and it reaches the gateway through the same public API a merchant's own
+ * tooling uses (ADR-0005 §3): by being an ordinary consumer of the API, it
+ * cannot draw a screen the merchant could not have built themselves.
  *
  * Its identity tables are its own: the people who sign in, their sessions,
  * one-time links and privacy-bounded send evidence. The component's credential

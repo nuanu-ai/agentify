@@ -57,10 +57,10 @@ database is a boundary against the network, not against a host, and the day
 that stops being enough the fix is one, not a cleverer column.
 
 **3. The registration route is internal, behind an invitation code.** Only
-the dashboard calls it, at the gateway's name on the stack's own network, and
-the site answers it from outside as a path it does not have, as it answers the
-two calls at `/v0/keys/dashboard` (§5): the code is a value in the dashboard's and
-the gateway's configuration guarding the wire between two processes of ours,
+the dashboard calls it, at the gateway's listener in the process the two
+share (ADR-0030), and the site answers it from outside as a path it does not
+have, as it answers the two calls at `/v0/keys/dashboard` (§5): the code is a
+value in the application's configuration guarding a wire inside it,
 and a copy of that configuration must not be a way to make a merchant. People
 never type it; ADR-0026 retired it for them, and the door stands at live
 publication. What follows is why the route is built as it is. The route

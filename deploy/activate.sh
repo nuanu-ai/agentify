@@ -9,8 +9,9 @@
 # way (the lock, another unfinished transition, images that did not arrive)
 # and nothing was stopped.
 #
-# Everything that can refuse runs before anything stops. Then the four
-# applications stop for about a minute: a restore point of the database, the
+# Everything that can refuse runs before anything stops. Then the three
+# applications (the gateway and the dashboard in one, the scanner and its
+# worker) stop for about a minute: a restore point of the database, the
 # migrations, the start of the new release. Before the stop, the channel's
 # transition record (deploy/transition) is written, and it follows the run:
 # stopped, dumped, migrating, and started, which is on disk before the new
@@ -25,7 +26,7 @@
 #                        start again, and the transition ends, or, when this
 #                        was a fix-forward, the unverified release it was to
 #                        fix gets its record back.
-#   migrating            leaves the four applications stopped and the record
+#   migrating            leaves the three applications stopped and the record
 #                        as it is: the channel is down, and a person either
 #                        runs the same release again or restores.
 #   started              restores nothing, ever.
@@ -54,8 +55,8 @@ at() { step="$1"; echo "activate: $step" >&2; }
 stack() { "$root/deploy/stack.sh" "$channel" "$@"; }
 transition() { "$root/deploy/transition" "$record" "$@"; }
 named() { local tags; tags="$(transition tags "$1")"; echo "$1${tags:+ ($tags)}"; }
-restart() { mapfile -t old < <(stack ps -aq gateway dashboard scanner scanner-worker); ((${#old[@]} == 0)) || docker start "${old[@]}" >/dev/null; }
-running() { stack ps --status running --format '{{.Service}}' gateway dashboard scanner scanner-worker | sort | paste -sd ' ' -; }
+restart() { mapfile -t old < <(stack ps -aq app scanner scanner-worker); ((${#old[@]} == 0)) || docker start "${old[@]}" >/dev/null; }
+running() { stack ps --status running --format '{{.Service}}' app scanner scanner-worker | sort | paste -sd ' ' -; }
 fail() {
   local code=$?
   ((BASH_SUBSHELL == 0)) || exit "$code"
@@ -79,7 +80,7 @@ fail() {
       fi
       echo "activate: $step failed before any migration, so the databases are as they were; running now: $(running)$move." >&2 ;;
     migrating)
-      echo "activate: $step failed while migrating, so the databases may hold part of $(named "$revision")'s migrations; gateway, dashboard, scanner and scanner-worker stay stopped, and the channel is down. Nothing restores by itself. Once the cause is fixed, release $(named "$revision") again, which carries the migrations on; or put the databases back as they were before them with  sudo agentify-release --restore $backup" >&2 ;;
+      echo "activate: $step failed while migrating, so the databases may hold part of $(named "$revision")'s migrations; app, scanner and scanner-worker stay stopped, and the channel is down. Nothing restores by itself. Once the cause is fixed, release $(named "$revision") again, which carries the migrations on; or put the databases back as they were before them with  sudo agentify-release --restore $backup" >&2 ;;
     started)
       if [[ $mode == reverify ]]; then
         echo "activate: $step failed while checking $(named "$revision") again; nothing was stopped or restored, and running now: $(running)." >&2
@@ -127,7 +128,7 @@ open="$(transition show)" \
 IFS='|' read -r was to point reached kept restoring was_tags to_tags <<<"$open"
 if [[ -n $restoring || ( -n $to && $reached != started ) ]]; then
   now="$(running)"
-  down=" ${restoring:+A restore of $point}${restoring:-The release of $(named "$to")} is unfinished, and ${now:+running now: $now}${now:-none of gateway, dashboard, scanner and scanner-worker runs, so the channel is down}."
+  down=" ${restoring:+A restore of $point}${restoring:-The release of $(named "$to")} is unfinished, and ${now:+running now: $now}${now:-none of app, scanner and scanner-worker runs, so the channel is down}."
 fi
 if [[ -n $restoring ]]; then
   later "a restore of $point began and did not finish; run  sudo agentify-release --restore $point  until it succeeds"
@@ -253,7 +254,7 @@ fi
 
 previous="$(docker ps -aq --filter "label=com.docker.compose.project=$project" | xargs -r docker inspect -f '{{.Image}}')"
 if [[ $mode == release || $mode == resume ]]; then
-  at "stopping gateway, dashboard, scanner and scanner-worker"
+  at "stopping app, scanner and scanner-worker"
   phase=stopped
   [[ $reached != migrating ]] || phase=migrating
   if [[ $mode == release ]]; then
@@ -261,7 +262,7 @@ if [[ $mode == release || $mode == resume ]]; then
     transition set from="$from" to="$revision" restore="$backup" phase=stopped cards="$cards" \
       from_tags="$(transition tags "$from")" to_tags="$(transition tags "$revision")"
   fi
-  stack stop --timeout 60 gateway dashboard scanner scanner-worker
+  stack stop --timeout 60 app scanner scanner-worker
   at "starting the database"
   stack up -d --wait --no-deps postgres
   if [[ -d $backup ]]; then
@@ -296,11 +297,11 @@ fi
 phase=started
 at "starting the scanner"
 # A scanner that will not start must not keep commerce down as well, so the
-# gateway, the dashboard and the route table start whatever it did.
+# application and the route table start whatever it did.
 scanner=started
 stack up -d --wait --no-deps scanner scanner-worker || scanner=failed
 at "starting commerce and the route table"
-stack up -d --wait --no-deps gateway dashboard web
+stack up -d --wait --no-deps app web
 [[ $scanner == started ]] \
   || refuse "the scanner did not start, for the reasons above; commerce runs $revision, and releasing it again after the fix finishes the release."
 if [[ $channel == production ]]; then

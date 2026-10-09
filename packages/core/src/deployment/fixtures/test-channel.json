@@ -12,18 +12,14 @@
     }
   },
   "services": {
-    "dashboard": {
+    "app": {
       "command": [
         "pnpm",
         "--filter",
-        "@agentify/dashboard",
+        "@agentify/app",
         "start"
       ],
       "depends_on": {
-        "gateway": {
-          "condition": "service_started",
-          "required": true
-        },
         "migrate": {
           "condition": "service_completed_successfully",
           "required": true
@@ -35,70 +31,24 @@
       },
       "entrypoint": null,
       "environment": {
-        "GATEWAY_DASHBOARD_SECRET": "fixture-gateway-dashboard-secret-of-more-than-thirty-two-characters",
         "AUTH_SECRET": "fixture-auth-secret",
         "BASE_PATH": "/dashboard",
+        "CDP_API_KEY_ID": "",
+        "CDP_API_KEY_SECRET": "",
         "COOKIE_SECURE": "true",
+        "DASHBOARD_INTERNAL_URL": "http://127.0.0.1:3003",
         "DATABASE_URL": "postgres://agentify:agentify@postgres:5432/agentify",
         "FACILITATOR_URL": "https://x402.org/facilitator",
-        "GATEWAY_URL": "http://gateway:3000",
+        "GATEWAY_DASHBOARD_SECRET": "fixture-gateway-dashboard-secret-of-more-than-thirty-two-characters",
+        "GATEWAY_URL": "http://127.0.0.1:3000",
         "MAIL_API_KEY": "",
         "MAIL_FROM": "Agentify <no-reply@localhost>",
         "MAIL_URL": "sandbox:log",
         "PAYMENT_NETWORK": "eip155:84532",
-        "PORT": "3001",
-        "PUBLIC_BASE_URL": "https://test.agentify.ad",
-        "REGISTRATION_INVITATION": "fixture-invitation",
-        "REPORT_IDENTITY_SECRET": "fixture-report-identity-secret-of-64-hexish-characters-0000000000"
-      },
-      "healthcheck": {
-        "test": [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:3001/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-        ],
-        "timeout": "3s",
-        "interval": "3s",
-        "retries": 15,
-        "start_period": "15s"
-      },
-      "image": "ghcr.io/nuanu-ai/agentify-app:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "networks": {
-        "default": null
-      },
-      "restart": "unless-stopped"
-    },
-    "gateway": {
-      "command": [
-        "pnpm",
-        "--filter",
-        "@agentify/gateway",
-        "start"
-      ],
-      "depends_on": {
-        "migrate": {
-          "condition": "service_completed_successfully",
-          "required": true
-        },
-        "postgres": {
-          "condition": "service_healthy",
-          "required": true
-        }
-      },
-      "entrypoint": null,
-      "environment": {
-        "GATEWAY_DASHBOARD_SECRET": "fixture-gateway-dashboard-secret-of-more-than-thirty-two-characters",
-        "DASHBOARD_INTERNAL_URL": "http://dashboard:3003",
-        "CDP_API_KEY_ID": "",
-        "CDP_API_KEY_SECRET": "",
-        "DATABASE_URL": "postgres://agentify:agentify@postgres:5432/agentify",
-        "FACILITATOR_URL": "https://x402.org/facilitator",
-        "PAYMENT_NETWORK": "eip155:84532",
         "PAY_TO_ADDRESS": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
-        "PORT": "3000",
         "PUBLIC_BASE_URL": "https://test.agentify.ad",
         "REGISTRATION_INVITATION": "fixture-invitation",
+        "REPORT_IDENTITY_SECRET": "fixture-report-identity-secret-of-64-hexish-characters-0000000000",
         "SANDBOX_MERCHANT_KEY": ""
       },
       "healthcheck": {
@@ -106,7 +56,7 @@
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+          "Promise.all(['http://127.0.0.1:3000/healthz','http://127.0.0.1:3001/healthz'].map(u=>fetch(u))).then(rs=>process.exit(rs.every(r=>r.ok)?0:1)).catch(()=>process.exit(1))"
         ],
         "timeout": "3s",
         "interval": "3s",
@@ -181,7 +131,7 @@
     "scanner": {
       "command": null,
       "depends_on": {
-        "dashboard": {
+        "app": {
           "condition": "service_started",
           "required": true
         },
@@ -202,7 +152,7 @@
         "APIFY_BROWSER_MODE": "off",
         "APP_BASE_URL": "https://test.agentify.ad",
         "BENCHMARK_ENABLED": "false",
-        "DASHBOARD_IDENTITY_URL": "http://dashboard:3002",
+        "DASHBOARD_IDENTITY_URL": "http://app:3002",
         "CARD_SIGNAL_ENABLED": "false",
         "DATABASE_URL": "postgres://agentify:agentify@postgres:5432/agentify",
         "EMAIL_ENCRYPTION_KEY": "ZmluZS1zeW50aGV0aWMtZml4dHVyZS1lbmNyeXB0aW9u",
@@ -331,11 +281,7 @@
     "web": {
       "command": null,
       "depends_on": {
-        "dashboard": {
-          "condition": "service_healthy",
-          "required": false
-        },
-        "gateway": {
+        "app": {
           "condition": "service_healthy",
           "required": false
         },

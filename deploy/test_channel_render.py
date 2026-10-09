@@ -112,18 +112,17 @@ class ChannelRender(unittest.TestCase):
         for channel in CHANNELS:
             with self.subTest(channel=channel):
                 document = self.render(channel)
-                self.assertEqual(document["services"]["gateway"]["environment"].get("SANDBOX_MERCHANT_KEY"), "")
+                self.assertEqual(document["services"]["app"]["environment"].get("SANDBOX_MERCHANT_KEY"), "")
                 checked = self.preflight(channel, document)
                 self.assertEqual(checked.returncode, 0, checked.stderr)
 
     def test_a_channel_whose_file_still_names_a_seed_seeds_nothing_and_passes(self):
-        # The line stays in a host's file until a release is verified, so that
-        # an older revision, whose preflight requires a seed, can still be
-        # released back onto the channel.
+        # A host's file may name it, by mistake or from before seeding ended;
+        # the overlay empties it all the same.
         for channel in CHANNELS:
             with self.subTest(channel=channel):
                 document = self.render(channel, {"AGENTIFY_SEED_KEY": SEED[channel]})
-                self.assertEqual(document["services"]["gateway"]["environment"].get("SANDBOX_MERCHANT_KEY"), "")
+                self.assertEqual(document["services"]["app"]["environment"].get("SANDBOX_MERCHANT_KEY"), "")
                 self.assertNotIn(SEED[channel], json.dumps(document))
                 checked = self.preflight(channel, document)
                 self.assertEqual(checked.returncode, 0, checked.stderr)
@@ -134,10 +133,10 @@ class ChannelRender(unittest.TestCase):
         for channel in CHANNELS:
             with self.subTest(channel=channel):
                 document = self.render(channel)
-                document["services"]["gateway"]["environment"]["SANDBOX_MERCHANT_KEY"] = SEED[channel]
+                document["services"]["app"]["environment"]["SANDBOX_MERCHANT_KEY"] = SEED[channel]
                 checked = self.preflight(channel, document)
                 self.assertEqual(checked.returncode, 65)
-                self.assertIn("gateway: SANDBOX_MERCHANT_KEY", checked.stderr)
+                self.assertIn("app: SANDBOX_MERCHANT_KEY", checked.stderr)
                 self.assertNotIn(SEED[channel], checked.stderr + checked.stdout)
 
     def test_a_channel_whose_file_lacks_the_dashboard_secret_is_refused_by_the_preflight(self):

@@ -8,11 +8,12 @@
     ".": "./src/index.ts",
     "./announcements": "./src/announcements.ts",
     "./testing": "./src/testing/harness.ts",
-    "./testing/database": "./src/testing/database.ts"
+    "./testing/database": "./src/testing/database.ts",
+    "./config": "./src/config.ts",
+    "./start": "./src/start.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "start": "tsx src/main.ts",
     "merchant": "tsx src/merchant.ts",
     "report-payment": "tsx src/payment-report.ts",
     "db:generate": "drizzle-kit generate",

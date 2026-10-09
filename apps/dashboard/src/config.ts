@@ -92,14 +92,6 @@ const environmentSchema = z.object({
     .string({ error: absentOrWrong("must be a string") })
     .refine(isPostgresUrl, "must be an address of the form postgres://user@host:port/database"),
 
-  /** The port the dashboard answers on; from outside it is behind Caddy. */
-  PORT: z
-    .string({ error: absentOrWrong("must be a string") })
-    .regex(/^\d+$/, "must be a whole number")
-    .transform(Number)
-    .refine((port) => port >= 1 && port <= 65535, "must be within the range 1..65535")
-    .default(3001),
-
   /**
    * Where the gateway answers. Every screen is drawn from calls to this, so a
    * dashboard pointed at nothing draws nothing and says so.
@@ -281,7 +273,6 @@ function emptyIsAbsent(rule: z.ZodType<string, string>) {
 
 export interface DashboardConfig {
   readonly surfaceMode: SurfaceMode;
-  readonly port: number;
   readonly gatewayUrl: string;
   /** The process secret used only for gateway merchant registration. */
   readonly gatewayInvitation: string;
@@ -404,7 +395,6 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
 
   return {
     surfaceMode,
-    port: values.PORT,
     // A trailing slash on the gateway address and the leading slash on every
     // contract path would make every call a double slash, which some proxies
     // route somewhere else entirely.

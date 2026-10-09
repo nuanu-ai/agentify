@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
 /**
- * Forgets one address on the TEST deployment, inside the dashboard's container (`agentify-dashboard-1`)
- * that is already running on the test host: its dashboard account and its
- * merchant go, so the address signs in again as a newcomer.
+ * Forgets one address on the TEST deployment, inside the application's
+ * container (`agentify-app-1`), where the dashboard runs, already running on the
+ * test host: its dashboard account and its merchant go, so the address signs
+ * in again as a newcomer.
  *
  * Usage: pnpm forget <email>
  *
@@ -52,7 +53,7 @@ if ((email === "--help" || email === "-h") && extra.length === 0) {
       "docker",
       "exec",
       "-i",
-      "agentify-dashboard-1",
+      "agentify-app-1",
       "pnpm",
       "--filter",
       "./apps/dashboard",
