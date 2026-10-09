@@ -419,9 +419,18 @@ describe("no laptop default survived", () => {
     },
   );
 
-  it("takes an invitation set to nothing, which is a stack that takes no registrations", () => {
-    const closed = withEnv(PRODUCTION_CHANNEL, "app", "REGISTRATION_INVITATION", "");
-    expect(problemsWith("production", closed)).toEqual([]);
+  it("refuses a channel with no registration invitation, which the application would not start without", () => {
+    // The dashboard presents it to make a merchant and refuses to start
+    // without one, and in one process with the gateway (ADR-0030) that would
+    // stop sales too, after the stop and the migrations rather than before.
+    for (const nothing of [null, ""]) {
+      expect(
+        problemsWith(
+          "production",
+          withEnv(PRODUCTION_CHANNEL, "app", "REGISTRATION_INVITATION", nothing),
+        ),
+      ).toContainEqual(expect.stringMatching(/^app: REGISTRATION_INVITATION/));
+    }
   });
 
   it("refuses a cookie that is not marked Secure", () => {
