@@ -653,7 +653,12 @@ describe("the shipment", () => {
       tracking_number: "1111111111111111",
     });
 
+    // And sent back exactly as the agent's status shows it, with the instant
+    // Agentify stamped on it: still the same shipment.
+    const echoed = await ship(served, orderId, (await statusOf(served, orderId)).shipment);
+
     expect(again.status).toBe(200);
+    expect(echoed.status).toBe(200);
     expect(other.status).toBe(409);
     const refused = other.body as { error: { code: string; retryable: boolean } };
     expect(refused.error.code).toBe("shipment_already_recorded");
