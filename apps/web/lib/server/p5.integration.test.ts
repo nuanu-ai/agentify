@@ -55,7 +55,7 @@ const tokenHmacSecret = "p5-integration-hmac-secret-with-at-least-32-bytes";
 process.env.TOKEN_HMAC_SECRET = tokenHmacSecret;
 process.env.EMAIL_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
 process.env.REPORT_IDENTITY_SECRET = "d".repeat(32);
-process.env.CABINET_IDENTITY_URL = "http://127.0.0.1:1";
+process.env.DASHBOARD_IDENTITY_URL = "http://127.0.0.1:1";
 process.env.CARD_SIGNAL_ENABLED = "true";
 process.env.STRIPE_ADAPTER = "local";
 const stripeWebhookSecret = "p5-webhook-secret";
@@ -220,7 +220,7 @@ beforeAll(async () => {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("server_address");
-  process.env.CABINET_IDENTITY_URL = `http://127.0.0.1:${address.port}`;
+  process.env.DASHBOARD_IDENTITY_URL = `http://127.0.0.1:${address.port}`;
 }, 30_000);
 
 afterAll(async () => {

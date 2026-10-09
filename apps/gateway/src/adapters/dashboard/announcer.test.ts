@@ -16,7 +16,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Announcement, GATEWAY_ROUTE_PATH } from "../../announcements.js";
 import { DashboardAnnouncer } from "./announcer.js";
 
-const SECRET = "the-gateway-cabinet-secret-this-suite-presents";
+const SECRET = "the-gateway-dashboard-secret-this-suite-presents";
 
 const ANNOUNCEMENT: Announcement = {
   kind: "wallet_change",
@@ -134,7 +134,7 @@ describe("a dashboard that turned the request away", () => {
       error.mockRestore();
     }
 
-    expect(said.join("\n")).toContain("GATEWAY_CABINET_SECRET");
+    expect(said.join("\n")).toContain("GATEWAY_DASHBOARD_SECRET");
     expect(said.join("\n")).not.toContain(SECRET);
   });
 });

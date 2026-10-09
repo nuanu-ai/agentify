@@ -109,7 +109,7 @@ network and authenticated by a secret that only the gateway and the
 dashboard hold. It never uses the scanner's route or secret (ADR-0026),
 which would give the money path the power to look up sessions and remove
 people. That route and its secret (`/internal/gateway`,
-`GATEWAY_CABINET_SECRET`) are the gateway's one way into the dashboard, and
+`GATEWAY_DASHBOARD_SECRET`) are the gateway's one way into the dashboard, and
 are named for it: each request names its `operation`, as the scanner's
 do, and anything else the gateway ever needs from the dashboard is another
 operation on the same route with the same secret, never a second route or

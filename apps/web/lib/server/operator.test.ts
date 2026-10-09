@@ -59,7 +59,7 @@ async function sellerDashboard(
 const servers: Server[] = [];
 
 function askingAt(url: string) {
-  vi.stubEnv("CABINET_IDENTITY_URL", url);
+  vi.stubEnv("DASHBOARD_IDENTITY_URL", url);
 }
 
 beforeEach(() => {
@@ -118,7 +118,7 @@ describe("whether the operator's dashboard opens for a request", () => {
     askingAt("http://127.0.0.1:1");
     await expect(isOperator(`${SESSION}=operator`)).resolves.toBe(false);
 
-    vi.stubEnv("CABINET_IDENTITY_URL", "");
+    vi.stubEnv("DASHBOARD_IDENTITY_URL", "");
     vi.stubEnv("REPORT_IDENTITY_SECRET", "");
     await expect(isOperator(`${SESSION}=operator`)).resolves.toBe(false);
   });

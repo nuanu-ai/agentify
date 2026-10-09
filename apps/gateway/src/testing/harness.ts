@@ -67,8 +67,8 @@ export const countedIds = (): Ids => {
  * configuration check, nothing else.
  */
 export const ANNOUNCING = {
-  CABINET_INTERNAL_URL: "http://cabinet:3003",
-  GATEWAY_CABINET_SECRET: "the-harness-gateway-cabinet-secret-nobody-reuses",
+  DASHBOARD_INTERNAL_URL: "http://dashboard:3003",
+  GATEWAY_DASHBOARD_SECRET: "the-harness-gateway-dashboard-secret-nobody-reuses",
 } as const;
 
 export const testConfig = (overrides: Record<string, string> = {}): GatewayConfig =>

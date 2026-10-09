@@ -24,7 +24,7 @@ const SESSION_QUESTION_TIMEOUT_MS = 3_000;
 
 export class DashboardIdentityUnavailableError extends Error {
   constructor() {
-    super("cabinet_identity_unavailable");
+    super("dashboard_identity_unavailable");
     this.name = "DashboardIdentityUnavailableError";
   }
 }
@@ -117,11 +117,11 @@ export function createDashboardReportIdentityClient(options: ClientOptions): Cli
 
 export function getDashboardReportIdentityClient(): Client {
   const config = getServerConfig();
-  if (!config.CABINET_IDENTITY_URL || !config.REPORT_IDENTITY_SECRET) {
+  if (!config.DASHBOARD_IDENTITY_URL || !config.REPORT_IDENTITY_SECRET) {
     throw new DashboardIdentityUnavailableError();
   }
   return createDashboardReportIdentityClient({
-    baseUrl: config.CABINET_IDENTITY_URL,
+    baseUrl: config.DASHBOARD_IDENTITY_URL,
     secret: config.REPORT_IDENTITY_SECRET,
   });
 }

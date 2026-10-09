@@ -16,7 +16,7 @@ services:
 
   # A deployed channel seeds no merchant (ADR-0014). A merchant comes into
   # being one way: a person opens the link mailed to their address and presses
-  # the cabinet's one control. The base file seeds the laptop's key by default,
+  # the dashboard's one control. The base file seeds the laptop's key by default,
   # so this puts nothing in its place, and says nothing rather than reading a
   # variable: a channel's environment file may still name AGENTIFY_SEED_KEY,
   # because an older revision, whose preflight requires a seed, can be released
@@ -40,14 +40,14 @@ services:
     #
     # What this keeps out is the deployment: no public stack runs that process
     # on its own, unattended. Starting it by hand against a stack takes a key
-    # a merchant issued in their own cabinet, because no deployed channel
+    # a merchant issued in their own dashboard, because no deployed channel
     # seeds one.
     profiles: ["fixtures"]
 
   scanner:
     # Closed unless the channel's own file says otherwise. The laptop has this
     # on, because the whole path a reader walks — a scan, a mailed link, the
-    # cabinet door — has to work from one command there. What a public site
+    # dashboard door — has to work from one command there. What a public site
     # accepts from strangers is a different question with a different answer,
     # and it is the operator's to write down rather than the packaging's to
     # decide: a channel that names nothing here takes no registrations.

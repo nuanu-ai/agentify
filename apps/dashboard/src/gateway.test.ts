@@ -462,7 +462,7 @@ describe("the calls a merchant makes about their keys", () => {
       },
     });
 
-    const refused = await gatewayFor(url, KEY).disableKey("key_the_cabinet_is_using");
+    const refused = await gatewayFor(url, KEY).disableKey("key_the_dashboard_is_using");
 
     expect(refused.ok).toBe(false);
     if (refused.ok) {

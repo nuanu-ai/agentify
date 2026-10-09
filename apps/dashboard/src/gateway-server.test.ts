@@ -23,7 +23,7 @@ import { buildGatewayApp, startGatewayServer, tellerFor } from "./gateway-server
 import { identityFor } from "./identity.js";
 import type { Handover, Message } from "./mail.js";
 
-const SECRET = "the-gateway-cabinet-secret-this-suite-presents";
+const SECRET = "the-gateway-dashboard-secret-this-suite-presents";
 const REPORT_IDENTITY_SECRET = "the-scanner-report-identity-secret-32-characters";
 const PATH = "/internal/gateway";
 
@@ -37,7 +37,7 @@ const config = () =>
     DATABASE_URL: "postgres://unused.example/unused",
     AUTH_SECRET: "a".repeat(44),
     REPORT_IDENTITY_SECRET,
-    GATEWAY_CABINET_SECRET: SECRET,
+    GATEWAY_DASHBOARD_SECRET: SECRET,
     PAYMENT_NETWORK: "eip155:8453",
     FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
     REGISTRATION_INVITATION: "the-existing-gateway-invitation",
@@ -111,7 +111,7 @@ describe("who may ask", () => {
 
   it.each([
     ["no secret", null],
-    ["a wrong one", "a-wrong-gateway-cabinet-secret-nobody-holds"],
+    ["a wrong one", "a-wrong-gateway-dashboard-secret-nobody-holds"],
     ["the scanner's", REPORT_IDENTITY_SECRET],
   ])("refuses a request carrying %s, and tells nobody", async (_what, secret) => {
     const { url, sent } = await listening([["owner@example.com", MERCHANT]]);

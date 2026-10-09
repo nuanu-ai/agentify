@@ -188,14 +188,14 @@ function rawRequest(baseUrl, method, rawPath) {
 }
 
 /**
- * The calls only the cabinet makes to the gateway, which it makes over the
+ * The calls only the dashboard makes to the gateway, which it makes over the
  * stack's own network: registering a merchant, and making and forgetting the
- * key a cabinet calls with. From outside they are paths this site does not
+ * key a dashboard calls with. From outside they are paths this site does not
  * have, so they go where every such path goes, the scanner and its missing
  * page, and never to the gateway — whatever the method, case, encoding or
  * spelling of the path (ADR-0014).
  */
-const CABINET_ONLY = [
+const DASHBOARD_ONLY = [
   ["POST", "/v0/merchants"],
   ["GET", "/v0/merchants"],
   ["POST", "/v0/merchants/"],
@@ -225,7 +225,7 @@ const MERCHANT_KEY_CALLS = [
 ];
 
 async function expectDashboardOnlyCallsClosed(baseUrl) {
-  for (const [method, rawPath] of CABINET_ONLY) {
+  for (const [method, rawPath] of DASHBOARD_ONLY) {
     const answered = await rawRequest(baseUrl, method, rawPath);
     assert.notEqual(answered.role, "gateway", `${method} ${rawPath} reached the gateway`);
     assert.equal(answered.role, "scanner", `${method} ${rawPath} answered ${answered.status}`);
@@ -287,7 +287,7 @@ function whoTakes(baseUrl, method, rawPath) {
 }
 
 /**
- * Setting the payout wallet is not on the public door: only the cabinet sets
+ * Setting the payout wallet is not on the public door: only the dashboard sets
  * it, over the stack's own network (ADR-0019). Every way of writing to that
  * path from outside — any method but a read, any case, encoding or spelling of
  * the path — falls through to the site's ordinary missing page. Reading it
@@ -364,7 +364,7 @@ function runInner({ configPath, containerName, trustedEdge, ports, surfaceMode =
     "-e",
     `AGENTIFY_SCANNER_UPSTREAM=host.docker.internal:${ports.scanner}`,
     "-e",
-    `AGENTIFY_CABINET_UPSTREAM=host.docker.internal:${ports.cabinet}`,
+    `AGENTIFY_DASHBOARD_UPSTREAM=host.docker.internal:${ports.dashboard}`,
     "-e",
     `AGENTIFY_GATEWAY_UPSTREAM=host.docker.internal:${ports.gateway}`,
     CADDY_IMAGE,
@@ -384,7 +384,7 @@ try {
 
   const ports = {
     scanner: await listen("scanner"),
-    cabinet: await listen("cabinet"),
+    dashboard: await listen("dashboard"),
     gateway: await listen("gateway"),
   };
   const edgeAdapt = dockerResult(
@@ -433,9 +433,9 @@ try {
     ["/", "scanner"],
     ["/owner", "scanner"],
     ["/api/health", "scanner"],
-    ["/dashboard", "cabinet"],
-    ["/dashboard/sign-in", "cabinet"],
-    ["/dashboard/healthz", "cabinet"],
+    ["/dashboard", "dashboard"],
+    ["/dashboard/sign-in", "dashboard"],
+    ["/dashboard/healthz", "dashboard"],
     ["/v0", "gateway"],
     ["/v0/cards", "gateway"],
     ["/x402", "gateway"],
@@ -478,20 +478,20 @@ try {
 
   for (const [requestPath, role] of [
     ["/missing", "scanner"],
-    ["/dashboard/missing", "cabinet"],
+    ["/dashboard/missing", "dashboard"],
     ["/x402/missing", "gateway"],
   ]) {
     await expectUpstreamMissing(innerBase, requestPath, role);
   }
 
   for (const [encodedEdge, role] of [
-    ["/dashboard%2Fsign-in", "cabinet"],
+    ["/dashboard%2Fsign-in", "dashboard"],
     ["/v0%2Fcards", "gateway"],
     ["/x402%2Fcatalog", "gateway"],
   ]) {
     await expectProxy(innerBase, encodedEdge, role);
   }
-  // The address the cabinet had before /dashboard answers with the same path
+  // The address the dashboard had before /dashboard answers with the same path
   // under the new prefix, query kept, and 307 so a posted form is posted again.
   for (const [from, to] of [
     ["/cabinet", "/dashboard"],
@@ -576,7 +576,7 @@ try {
   await expectProxy(liveBase, "/sell/", "scanner");
 
   console.log(
-    "PASS: actual Caddy preserves exact commerce/docs/assets routes, keeps the cabinet's own gateway calls off the public door, passes /admin to the scanner unmarked, and keeps one trusted scanner client IP",
+    "PASS: actual Caddy preserves exact commerce/docs/assets routes, keeps the dashboard's own gateway calls off the public door, passes /admin to the scanner unmarked, and keeps one trusted scanner client IP",
   );
 } finally {
   for (const container of [liveName, mutatedName, innerName, edgeName]) {

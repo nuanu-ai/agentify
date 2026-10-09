@@ -173,7 +173,7 @@ const environmentSchema = z.object({
       `must be at least ${SHORTEST_SECRET} characters; make one with: openssl rand -base64 32`,
     ),
 
-  /** Dedicated bearer for the unproxied scanner-to-cabinet identity route. */
+  /** Dedicated bearer for the unproxied scanner-to-dashboard identity route. */
   REPORT_IDENTITY_SECRET: emptyIsAbsent(
     z
       .string()
@@ -191,7 +191,7 @@ const environmentSchema = z.object({
    * scanner's route is a different door with a different holder, and the
    * money path must not be able to reach it. Absent, no listener opens.
    */
-  GATEWAY_CABINET_SECRET: emptyIsAbsent(
+  GATEWAY_DASHBOARD_SECRET: emptyIsAbsent(
     z
       .string()
       .refine(
@@ -384,16 +384,16 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
   }
 
   if (
-    values.GATEWAY_CABINET_SECRET !== undefined &&
+    values.GATEWAY_DASHBOARD_SECRET !== undefined &&
     [
       values.AUTH_SECRET,
       values.REGISTRATION_INVITATION,
       values.MAIL_API_KEY,
       values.REPORT_IDENTITY_SECRET,
-    ].includes(values.GATEWAY_CABINET_SECRET)
+    ].includes(values.GATEWAY_DASHBOARD_SECRET)
   ) {
     throw new Error(
-      "The dashboard cannot start, GATEWAY_CABINET_SECRET must be dedicated to the gateway's" +
+      "The dashboard cannot start, GATEWAY_DASHBOARD_SECRET must be dedicated to the gateway's" +
         " listener",
     );
   }
@@ -415,7 +415,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
     databaseUrl: values.DATABASE_URL,
     authSecret: values.AUTH_SECRET,
     reportIdentitySecret: values.REPORT_IDENTITY_SECRET ?? null,
-    gatewayDashboardSecret: values.GATEWAY_CABINET_SECRET ?? null,
+    gatewayDashboardSecret: values.GATEWAY_DASHBOARD_SECRET ?? null,
     publicBaseUrl: values.PUBLIC_BASE_URL,
     mailUrl: values.MAIL_URL,
     mailApiKey: values.MAIL_API_KEY ?? null,

@@ -3,7 +3,7 @@
 -- `pnpm test:db` drops the queue's schema and truncates every table it finds,
 -- and `pnpm scanner:test:db` drops and remakes every schema it is given. Given
 -- the stack's own database they do that to the catalogue a merchant has just
--- published and the orders the cabinet is showing, while somebody is looking at
+-- published and the orders the dashboard is showing, while somebody is looking at
 -- them, and say nothing about it afterwards.
 --
 -- Postgres runs the files in /docker-entrypoint-initdb.d only when it

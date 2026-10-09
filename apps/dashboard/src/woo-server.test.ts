@@ -36,7 +36,7 @@ import { memoryWooShops, type WooShops } from "./woo-shops.js";
 
 const PERSON = "owner@example.com";
 const SHOP = "https://shop.example.com";
-const PUBLIC = "https://cabinet.example.com";
+const PUBLIC = "https://dashboard.example.com";
 
 const aProduct = (overrides: Partial<StoreProduct> = {}): StoreProduct => ({
   id: 11,
