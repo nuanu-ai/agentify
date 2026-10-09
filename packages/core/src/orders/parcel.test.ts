@@ -144,6 +144,14 @@ describe("a parcel's address", () => {
   });
 });
 
+describe("a card sold as a parcel", () => {
+  it("makes a parcel order, whose money moves as the asynchronous mode's does", () => {
+    // The mode a card names is what the order records at purchase (ADR-0033),
+    // so a republished card changes no order in flight.
+    expect(modeOf("ship")).toStrictEqual(PARCEL);
+  });
+});
+
 describe("a parcel whose address is gone", () => {
   it("is not handed to a handler again once the merchant has taken it on", () => {
     // A repeat already on the merchant's stream when the acceptance landed

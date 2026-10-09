@@ -28,8 +28,8 @@ const syncCard = {
 };
 
 describe("fulfillment mode", () => {
-  it("is one of the three modes the agent is told about before paying", () => {
-    for (const mode of ["sync", "async", "confirm"]) {
+  it("is one of the four modes the agent is told about before paying", () => {
+    for (const mode of ["sync", "async", "confirm", "ship"]) {
       expect(FulfillmentSchema.safeParse(mode).success, mode).toBe(true);
     }
     for (const mode of ["synchronous", "SYNC", "manual", ""]) {
@@ -303,11 +303,11 @@ describe("what the exported document says about the mode", () => {
   // would offer a mode that fails on the first publish, and the reason would
   // be nowhere in the document they were working from.
 
-  it("keeps all three modes in the enumeration", () => {
+  it("keeps every mode in the enumeration", () => {
     // The value is not removed: the mode exists in the model, the machine
     // knows it, and taking it out of the vocabulary would be a different and
     // larger claim than "not yet".
-    expect(toJsonSchemas().fulfillment.enum).toStrictEqual(["sync", "async", "confirm"]);
+    expect(toJsonSchemas().fulfillment.enum).toStrictEqual(["sync", "async", "confirm", "ship"]);
   });
 
   it("says in the fulfillment document that one of them cannot be published", () => {
@@ -428,7 +428,6 @@ describe("the card an agent reads", () => {
     "description",
     "price",
     "as_of",
-    "result",
     "fulfillment",
     "price_checked_at_purchase",
   ]) {
@@ -1340,5 +1339,104 @@ describe("a card written short", () => {
       expect(Object.keys(parsed.result)).toStrictEqual(["access_url"]);
       expect(Object.getPrototypeOf(parsed.result)).toBe(Object.prototype);
     });
+  });
+});
+
+describe("a card for a parcel", () => {
+  // ADR-0033: goods handed to a carrier. Money moves as in the asynchronous
+  // mode; the card names the time to ship rather than a time to deliver, the
+  // merchant's price handler answers the whole price with shipping, and the
+  // mode fixes what the agent receives, so the card declares no result.
+  const parcelCard = {
+    merchant_item_id: "beans-1kg",
+    title: "Coffee beans, one kilogram",
+    description: "Roasted in Bali this week and sent by courier.",
+    price: { amount: "18.00", currency: "USD" },
+    fulfillment: "ship",
+    ship_within_seconds: 172_800,
+    price_check: "handler",
+  };
+
+  it("is accepted with a time to ship and the merchant's price handler", () => {
+    expect(CardSchema.safeParse(parcelCard).success).toBe(true);
+  });
+
+  it("names the time to ship, within thirty days", () => {
+    expect(errorOf(CardSchema, { ...parcelCard, ship_within_seconds: undefined })).toContain(
+      "ship_within_seconds",
+    );
+    expect(CardSchema.safeParse({ ...parcelCard, ship_within_seconds: 2_592_000 }).success).toBe(
+      true,
+    );
+    expect(errorOf(CardSchema, { ...parcelCard, ship_within_seconds: 2_592_001 })).toContain(
+      "ship_within_seconds",
+    );
+  });
+
+  it("writes the ceiling into the exported document, where a generated client sees it", () => {
+    expect(toJsonSchemas().card.properties?.ship_within_seconds).toMatchObject({
+      maximum: 2_592_000,
+    });
+  });
+
+  it("declares no result, which the mode fixes", () => {
+    expect(
+      errorOf(CardSchema, { ...parcelCard, result: { access_url: { type: "string" } } }),
+    ).toContain("result");
+  });
+
+  it("names no delivery deadline, which would read as the time the parcel arrives", () => {
+    expect(errorOf(CardSchema, { ...parcelCard, fulfill_deadline_seconds: 900 })).toContain(
+      "fulfill_deadline_seconds",
+    );
+  });
+
+  it("is priced by the merchant's handler, which answers with shipping included", () => {
+    const { price_check: _check, ...unpriced } = parcelCard;
+
+    expect(errorOf(CardSchema, unpriced)).toContain("price_check");
+    expect(
+      errorOf(CardSchema, { ...parcelCard, price_check: { url: "https://pricing.example/quote" } }),
+    ).toContain("price_check");
+  });
+
+  it("asks for no address among its parameters, which the mode carries on its own", () => {
+    expect(
+      errorOf(CardSchema, {
+        ...parcelCard,
+        params: { ship_to: { type: "string", required: true } },
+      }),
+    ).toContain("ship_to");
+  });
+
+  it("is the only kind of card that names a time to ship", () => {
+    expect(errorOf(CardSchema, { ...syncCard, ship_within_seconds: 3600 })).toContain(
+      "ship_within_seconds",
+    );
+    expect(
+      errorOf(CardSchema, { ...syncCard, fulfillment: "async", ship_within_seconds: 3600 }),
+    ).toContain("ship_within_seconds");
+  });
+
+  it("is shown to an agent with its time to ship and without a result", () => {
+    const shown = publicCardOf(CardSchema.parse(parcelCard), {
+      id: "itm_beans",
+      as_of: "2026-10-09T09:00:00Z",
+      seller: { name: "A roastery", site: "https://roastery.example" },
+    });
+
+    expect(Object.keys(shown).sort()).toStrictEqual([
+      "as_of",
+      "description",
+      "fulfillment",
+      "id",
+      "price",
+      "price_checked_at_purchase",
+      "seller",
+      "ship_within_seconds",
+      "title",
+    ]);
+    expect(shown.fulfillment).toBe("ship");
+    expect(PublicCardSchema.parse(shown).ship_within_seconds).toBe(172_800);
   });
 });
