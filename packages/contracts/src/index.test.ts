@@ -370,15 +370,18 @@ describe("the contract as JSON Schema", () => {
     // request that writes a name.
     //
     // `agent_order_status.shipment.carrier` and `.tracking_number` are a
-    // parcel's shipment held to plain text (ADR-0033), and
-    // `.estimated_delivery` compares its two ends; the shipment the merchant
-    // sends and the recorded one share all three, and they are reported under
-    // the entry the walk meets first.
+    // parcel's shipment held to plain text (ADR-0033), `.tracking_url` to an
+    // address and nothing else, and `.estimated_delivery` compares its two
+    // ends. The shipment the merchant sends and the recorded one share them,
+    // reported under the entry the walk meets first — all but the window,
+    // which an agent reads open and which is therefore a schema of its own,
+    // met again under `shipment`.
     expect(refinedSchemaPaths().sort()).toStrictEqual([
       "agent_order_status.seller.site",
       "agent_order_status.shipment.carrier",
       "agent_order_status.shipment.estimated_delivery",
       "agent_order_status.shipment.tracking_number",
+      "agent_order_status.shipment.tracking_url",
       "card",
       "card.result",
       "card.tags",
@@ -387,6 +390,7 @@ describe("the contract as JSON Schema", () => {
       "public_card.result",
       "seller_name_request",
       "seller_name_request.seller_name",
+      "shipment.estimated_delivery",
     ]);
   });
 

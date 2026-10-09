@@ -403,6 +403,16 @@ export const PurchaseRequestSchema = z
  * payment that failed its check both still arrive as a bare `rejected`,
  * because neither was worded by anybody.
  */
+/**
+ * A shipment's expected window as an agent reads it: open, as the shipment
+ * around it is, so a field added to the window later is ignored by an agent
+ * built before it rather than making the whole status unreadable (ADR-0006
+ * §5). Opening it makes a new schema, which carries none of the old one's
+ * description, so the description is carried across.
+ */
+const closedWindow = RecordedShipmentSchema.shape.estimated_delivery.unwrap();
+const openWindow = closedWindow.loose().meta(closedWindow.meta() ?? {});
+
 export const AgentOrderStatusSchema = z
   .looseObject({
     order_id: IdentifierSchema,
@@ -491,7 +501,10 @@ export const AgentOrderStatusSchema = z
      * `delivered` stays null on a parcel for that reason. It is the last thing
      * Agentify knows about the parcel.
      */
-    shipment: RecordedShipmentSchema.loose().nullable().optional(),
+    shipment: RecordedShipmentSchema.extend({ estimated_delivery: openWindow.optional() })
+      .loose()
+      .nullable()
+      .optional(),
 
     /**
      * When a parcel has to be with its carrier by, as an absolute instant: the
