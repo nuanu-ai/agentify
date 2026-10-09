@@ -62,7 +62,6 @@ import {
   type WorkerEnvelope,
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
-import { z } from "zod";
 import { type Announcement, type AskedWith, announcedLabel } from "../announcements.js";
 import type { AnnouncementOutcome } from "../ports/announcer.js";
 import { asTimestamp } from "../ports/clock.js";
@@ -2258,15 +2257,20 @@ export class Gateway {
     // from. A card that no longer declares the goods this order was sold
     // with cannot hold them to anything, and says so.
     const parcel = record.order.mode.parcel === true;
-    const check = parcel
-      ? ShipmentSchema
-      : stored.card.result === undefined
-        ? z.never({
-            error:
-              "this order was sold for goods, and its card has since been republished as a parcel's, which declares none to hold these to",
-          })
-        : deliveryCheckFor(stored.card);
-    const fit = check.safeParse(delivery);
+    if (!parcel && stored.card.result === undefined) {
+      // Nothing sent again can clear this, so it is not marked as worth
+      // sending again: the card declares no goods any more, and only putting
+      // them back on it, or refusing the order, moves this sale.
+      const why =
+        "this order was sold for goods, and its card has since been republished as a parcel's, which declares no goods to hold these to";
+      return {
+        code: "delivery_does_not_match_card",
+        message: `${why}: nothing was written down, and no delivery can be taken for it until the card declares the goods again or the order is refused`,
+        retryable: false,
+        problems: [{ path: [], code: "card_declares_no_goods", message: why }],
+      };
+    }
+    const fit = (parcel ? ShipmentSchema : deliveryCheckFor(stored.card)).safeParse(delivery);
     if (fit.success) {
       return null;
     }
@@ -2605,11 +2609,12 @@ function canonical(value: unknown): string {
  * mode rather than discovered by the first buyer.
  *
  * A parcel sells on the test channel and not on the live one (ADR-0033). What
- * a lost parcel needs is not running there yet: the operator's command that
+ * a lost parcel needs is not built anywhere yet: the operator's command that
  * records its refund, the merchant's view of whom to pay back, and the rule
- * about who may read a parcel's tracking. A parcel card on the live channel
- * would take real money with none of that behind it, so it is refused with
- * words that say why, until it can be.
+ * about who may read a parcel's tracking. On the test channel the money is not
+ * real, so a parcel lost there costs nobody; on the live one it would take real
+ * money with none of that behind it, so it is refused with words that say why,
+ * until it can be.
  */
 function notOnThisChannel(card: Card, environment: Environment): Problem[] {
   return card.fulfillment === "ship" && environment === "live"
@@ -2618,7 +2623,7 @@ function notOnThisChannel(card: Card, environment: Environment): Problem[] {
           path: ["fulfillment"],
           code: "not_sold_yet",
           message:
-            'a parcel\'s card, fulfillment "ship", is not sold on the live channel yet: the refund of a lost parcel is not recorded here yet, so publish it on the test channel',
+            'a parcel\'s card, fulfillment "ship", is not sold on the live channel yet: the refund of a lost parcel cannot be recorded anywhere yet, so publish it on the test channel, where the money is not real',
         },
       ]
     : [];
