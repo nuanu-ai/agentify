@@ -283,7 +283,7 @@ services:
       # reader's own computer.
       PUBLIC_BASE_URL: "${AGENTIFY_PUBLIC_ORIGIN:-http://localhost:${AGENTIFY_HOST_PORT:-8080}}"
       # The laptop's values are the defaults, and they are the reason this is a
-      # variable at all: no chain behind this stack (ADR-0008), so a purchase
+      # variable at all: no chain behind this stack (ADR-0020), so a purchase
       # completes here with no network, no wallet and no faucet. A public
       # deployment names its own pair in its `.env`, and the release preflight
       # holds each channel to the pair it declared — because a test chain must
@@ -294,7 +294,7 @@ services:
       PAYMENT_NETWORK: "${AGENTIFY_PAYMENT_NETWORK:-eip155:84532}"
       # Absent on a laptop and on the test site, which settle through
       # facilitators that ask for nothing, and required on a live chain, where
-      # the gateway refuses to start without both (ADR-0008). The dash carries
+      # the gateway refuses to start without both (ADR-0020). The dash carries
       # no colon for the reason SANDBOX_MERCHANT_KEY gives above, and the name
       # with nothing after it reads as no credential at all — which is what
       # every stack but the live one hands this service.

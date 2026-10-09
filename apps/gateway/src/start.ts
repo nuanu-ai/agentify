@@ -46,7 +46,7 @@ export const GATEWAY_PORT = 3000;
 const QUEUE_POLL_INTERVAL_MS = 250;
 
 /**
- * The payment layer, real or none at all (ADR-0008).
+ * The payment layer, real or none at all (ADR-0020).
  *
  * The sandbox is a value of the facilitator's address rather than a flag beside
  * it, so this is a fork between two addresses and not between two modes. A

@@ -1,64 +1,70 @@
-# 0018. One error envelope, one order document
+# 0018. Every call says no in one shape, and an order is one document
 
 Date: 2026-08-28
-Status: accepted
+Status: accepted; merges what was ADR-0022
 
 ## Context
 
-The agent-facing surface had grown four shapes for saying "no" and four
-shapes for describing an order, each the local invention of the route
-that sent it. An agent integrating against the gateway had to learn all
-of them, and the differences carried no meaning — they were sediment,
-not signal. Two of the order shapes also leaked the merchant's private
-naming to the buyer: `merchant_item_id`, `params`, `price_id` and the
-raw receipt are the merchant's bookkeeping, not the buyer's business.
+A stranger's engineer integrates against the merchant's routes and the agent's.
+Each difference in how two routes say "no" or describe one order is a lesson
+with no meaning, and each shape is a wire contract that changes, once a
+consumer we do not control reads it, only by moving the contract version
+(ADR-0006). Two traps shape the details: an object under a key is falsy in
+Python and in PHP, so success marked by a key's presence reads as yes for one
+answer and no for another; and a key that may be absent exports nothing for a
+generated client to switch on.
 
 ## Decision
 
-Every error the gateway sends travels in one envelope:
-`{ error: { code, message, retryable, ... } }`. On our side the
-vocabulary of codes is closed — a refusal is built by one function that
-takes a code from `ERROR_CODES`, and the compiler refuses a word that
-is not in the dictionary. On the wire the code stays an open string, so
-a reader parses an unfamiliar code as the failure it is and loses only
-the meaning, never the message.
+Why a call did not go through is one object on every route: a `code` to branch
+on, a `message` a person can act on, and `retryable`, all three required. A
+refused call answers `{ error: { ... } }` with nothing beside it, never under a
+success status, and a reader that does not know a further field inside `error`
+still reads the three. The code is open on the wire and closed on our side:
+`ERROR_CODES` in the contracts package lists the codes the gateway sends, to
+switch over rather than to validate against, and every refusal is built by one
+function that accepts only a code from that list. An unknown code still parses
+as the failure it is.
 
-`retryable` answers one question — could this same call succeed if it
-were made again — and it is required, because both readings of a
-missing flag are expensive and a caller left to guess turns one of them
-into a retry loop and the other into an abandoned call. It is a fact
-about the refusal and not an instruction: how long to wait and whether
-to bother stay with the caller, who knows what the call was worth. The
-gateway assigns it per code, in a table the compiler forces every code
-to appear in, and the rule is conservative — true only where repeating
-the call is itself the way through, false for everything settled and
-everything merely arguable. Two refusals carry what the payment layer
-said about one payment instead, because a table cannot know it. This
-closes the gap the SDK had been papering over: it was claiming every
-refusal retryable, having no way to tell a defect from a locked door.
+`retryable` says whether this same call could succeed if made again — a fact,
+not an instruction — and is required because a caller left to guess turns one
+reading into a retry loop and the other into an abandoned call. The gateway
+sets it per code, in a table the compiler forces every code into, true only
+where repeating the call is itself the way through and false otherwise; the two
+refusals about a payment carry what the payment layer said instead.
 
-A purchase answers with the same order document the status route
-serves. What an agent learns once — what it bought, the price it was
-charged, whether the money behind it was real, and how the order can
-end — is the whole of what any route tells it. The fields that named
-the merchant's private world are gone from that document.
+Publishing a card and answering, delivering, refusing or taking on an order end
+in outcomes the merchant's code branches on, so these calls return a failure
+rather than throw it, in one envelope: `ok` is the literal `true` or `false`
+and exports as a `const` on each branch, a success carries its own fields
+beside it, and a failure carries one `error`, never under a success status.
+
+`error` is why a call did not go through, always one; `problems` is the list of
+findings about what was sent — a path, a code and a message each — inside
+`error` and never empty when present. A refused publish is `card_rejected`,
+always carries findings and is never retryable, since the same card gets the
+same answer; a delivery that does not match its card carries them too, and the
+SDK's local `checkCard` reports findings in the same shape.
+
+What the SDK throws, `AgentifyError`, carries the same `code` and `retryable`
+and the route: the gateway's own where it refused in words, otherwise one of
+three codes the SDK makes for an answer that never came or could not be read,
+which are retryable. A client built wrong throws a `TypeError`.
+
+A purchase answers with the same order document the status route serves: what
+was bought, the price, whether the money was real and how the order can end.
+The merchant's item id, parameters, price id and receipt stay out of it.
 
 ## Consequences
 
-What this buys: one error-handling branch and one success shape in a
-stranger's integration, and nothing in an agent's view to leak. What it
-costs: adding an error code now means adding it to the dictionary
-first, and any route that wants to say something new about an order
-must say it in the shared document or not at all. Both are wire
-contracts — withdrawing either after the first external consumer is a
-breaking change, which is why this is a decision and not a note.
+One branch for "no", one success shape per route, a discriminator that behaves
+alike in every language, and nothing in an agent's view to leak. A new code
+costs a step: it enters the dictionary and the retry table first.
 
-Rejected: per-route error shapes, documented well — documentation does
-not shrink a surface, and every route stays a new lesson. Closing the
-code vocabulary on the wire too — an error nobody anticipated must
-reach the reader in its own words rather than be flattened into the
-nearest known code, and the version handshake (0006-wire-version.md) is
-not yet the place to catch a new word. A purchase response of its own
-beside the status document — two shapes for one fact drift apart, and
-the agent that bought and the agent that polls would each believe a
-different account of the same order.
+Rejected: per-route shapes documented well — documentation does not shrink a
+surface. A vocabulary closed on the wire — an error nobody anticipated must
+reach the reader in its own words, and every new code would move the version.
+Success marked by a key's presence, for the traps above. Refusals thrown as
+exceptions — the failure branch of a money call must be unskippable in the
+types. A purchase response of its own — two shapes for one fact drift apart,
+and the agent that bought and the one that polls would read different orders.

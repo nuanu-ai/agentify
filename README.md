@@ -96,7 +96,7 @@ pnpm buy                      # the first card in the catalogue
 pnpm buy esim                 # the one delivered later
 ```
 
-The gateway settles against nothing locally (ADR-0008): a purchase completes
+The gateway settles against nothing locally (ADR-0020): a purchase completes
 with no wallet, no network and no faucet, and the first line of its log says so.
 
 The dashboard is where a merchant sets the name buyers see and issues the keys

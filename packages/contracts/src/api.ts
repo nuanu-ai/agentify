@@ -520,7 +520,7 @@ export const AgentOrderStatusSchema = z
      *
      * The receipt a merchant reads carries this word already, and the buyer's
      * own view of the same purchase is the one place it matters more: a
-     * sandbox settles against nothing (ADR-0008) and every other field here
+     * sandbox settles against nothing (ADR-0020) and every other field here
      * reads exactly as it would after a real charge. Without it, this document
      * is indistinguishable from proof of a purchase that moved money, which is
      * the one thing it must never be mistaken for.

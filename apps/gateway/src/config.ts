@@ -16,7 +16,7 @@ import { z } from "zod";
  * passed straight on from here so that nothing in this package has to know
  * that they moved. The dashboard asks the same question of the same string, and
  * two spellings of one distinguished value is the disagreement the core module
- * exists to remove (ADR-0008, ADR-0020).
+ * exists to remove (ADR-0020).
  */
 export { isSandboxFacilitator, SANDBOX_FACILITATOR };
 
@@ -148,7 +148,7 @@ const isOtherCoinbaseHost = (facilitatorUrl: string): boolean => {
  *
  * This is a narrower question than `isCdpFacilitator` and does not replace it.
  * That one asks who may be handed credentials, which is a question about a host
- * (ADR-0008); this one asks what a chain where the money is real may settle
+ * (ADR-0020); this one asks what a chain where the money is real may settle
  * through, which is a question about one endpoint (ADR-0020).
  */
 function isTheLiveFacilitator(facilitatorUrl: string): boolean {
@@ -555,7 +555,7 @@ const environmentSchema = z.object({
 
   /**
    * The facilitator, or the one address that means there is no chain behind
-   * this gateway at all (ADR-0008). It is one field with one value on purpose:
+   * this gateway at all (ADR-0020). It is one field with one value on purpose:
    * a deployment that names a real facilitator cannot also be in the sandbox,
    * because there is no second flag to disagree with the first.
    *
@@ -769,7 +769,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
   // The mistake worth catching here is a production environment file copied
   // onto a sandbox. A facilitator's credentials exist only to talk to a real
   // facilitator, so beside an address that settles against nothing they are
-  // somebody's leftovers and not a choice (ADR-0008).
+  // somebody's leftovers and not a choice (ADR-0020).
   //
   // PAY_TO_ADDRESS is deliberately not part of this: the payment challenge
   // cannot be built without one (`http/x402.ts`), so a sandbox that refused it
