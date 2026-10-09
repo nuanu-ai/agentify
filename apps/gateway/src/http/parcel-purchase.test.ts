@@ -689,3 +689,106 @@ describe("the shipment", () => {
     expect((await statusOf(served, orderId)).status).toBe("shipped");
   });
 });
+
+describe("a shipment against a card republished since the sale", () => {
+  // A merchant may republish under the same key while an order of theirs is
+  // in flight, and the catalog keeps one version per key. The order recorded
+  // at purchase whether it is a parcel (ADR-0033), so what its delivery is
+  // held to comes from the order and not from the card as it stands now.
+  const shipment = { carrier: "JNE", tracking_number: null };
+
+  it("still takes a parcel's shipment when its card has become one that delivers goods", async () => {
+    const { harnessed, served, itemId } = await started();
+    await pricedThenPaid(harnessed, served, itemId, {
+      priced: { params: {}, ship_to: address },
+      paid: { params: {}, ship_to: address },
+    });
+    const orderId = (await theOrder(served)).id;
+    await harnessed.store.publishCard(
+      harnessed.merchant.id,
+      CardSchema.parse({
+        merchant_item_id: parcelCard.merchant_item_id,
+        title: "Coffee beans, one kilogram",
+        description: "Now a voucher for a kilogram at the roastery.",
+        price: { amount: "18.00", currency: "USD" },
+        fulfillment: "async",
+        fulfill_deadline_seconds: 3_600,
+        result: { code: { type: "string" } },
+      }),
+      harnessed.now(),
+    );
+
+    const goods = await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, {
+      code: "ABC",
+    });
+    const shipped = await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, shipment);
+
+    expect(goods?.ok).toBe(false);
+    expect(shipped?.ok).toBe(true);
+    const status = await served.call("GET", `/x402/orders/${orderId}/status`);
+    expect(status.status).toBe(200);
+    expect((status.body as { status: string }).status).toBe("shipped");
+  });
+
+  it("refuses a shipment for goods whose card has become a parcel's, in words", async () => {
+    const { harnessed, served } = await started();
+    const ordinary = await harnessed.gateway.publishCard(harnessed.merchant.id, {
+      merchant_item_id: "voucher-1kg",
+      title: "A voucher for a kilogram",
+      description: "Collected at the roastery.",
+      price: "18.00 USD",
+      fulfillment: "async",
+      fulfill_deadline_seconds: 3_600,
+      result: { code: "string" },
+    });
+    if (!ordinary.ok) throw new Error("the ordinary card would not publish");
+    const offered = await harnessed.gateway.beginPurchase(ordinary.id, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    const orderId = offered.order.order.id;
+    await harnessed.gateway.payPurchase(orderId, "PAYMENT-VOUCHER", "PAYMENT-VOUCHER");
+    await harnessed.store.publishCard(
+      harnessed.merchant.id,
+      { ...parcelCard, merchant_item_id: "voucher-1kg" },
+      harnessed.now(),
+    );
+
+    const refused = await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, shipment);
+
+    expect(refused?.ok).toBe(false);
+    expect(refused !== null && !refused.ok ? refused.error.code : "").toBe(
+      "delivery_does_not_match_card",
+    );
+    const status = await served.call("GET", `/x402/orders/${orderId}/status`);
+    expect(status.status).toBe(200);
+    expect((status.body as { status: string }).status).toBe("in_progress");
+  });
+});
+
+describe("two shipments at once", () => {
+  it("records one and refuses the other, rather than answering both as success", async () => {
+    // The comparison with a recorded shipment has to be made under the hold on
+    // the order: read before it, two different shipments both find nothing
+    // recorded, and the second is answered as a repeat while its number
+    // vanishes.
+    const { harnessed, served, itemId } = await started();
+    await pricedThenPaid(harnessed, served, itemId, {
+      priced: { params: {}, ship_to: address },
+      paid: { params: {}, ship_to: address },
+    });
+    const orderId = (await theOrder(served)).id;
+
+    const answers = await Promise.all(
+      ["0000000000000001", "0000000000000002"].map((tracking_number) =>
+        harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, {
+          carrier: "JNE",
+          tracking_number,
+        }),
+      ),
+    );
+
+    const codes = answers.map((answer) =>
+      answer === null ? "none" : answer.ok ? "ok" : answer.error.code,
+    );
+    expect(codes.sort()).toStrictEqual(["ok", "shipment_already_recorded"]);
+  });
+});
