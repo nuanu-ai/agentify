@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { PurchaseRequestSchema } from "./api.js";
+import { OrderSchema } from "./order.js";
+import { QuoteRequestSchema } from "./quote.js";
 import { ErasedShipToSchema, localityOf, ShipToLocalitySchema, ShipToSchema } from "./ship-to.js";
 import { errorOf, expectMissingFieldRejected } from "./testing/expect-schema.js";
 
@@ -111,5 +114,65 @@ describe("an address that has been erased", () => {
       { erased_at: "2026-10-09T10:00:00Z" },
       "erased_at",
     );
+  });
+});
+
+describe("the address on the documents that carry it", () => {
+  const address = {
+    name: "The buyer",
+    line_one: "Jl. Raya Kediri, Beraban",
+    city: "Tabanan",
+    country: "ID",
+    phone_number: "+62 000 0000 0000",
+  };
+
+  it("rides beside a purchase's parameters", () => {
+    expect(PurchaseRequestSchema.parse({ params: {}, ship_to: address }).ship_to).toStrictEqual(
+      address,
+    );
+    expect(
+      PurchaseRequestSchema.safeParse({ params: {}, ship_to: { country: "ID" } }).success,
+    ).toBe(false);
+  });
+
+  it("reaches a price question as its locality, and never as the whole of it", () => {
+    const question = {
+      merchant_item_id: "beans-1kg",
+      price_id: "prc_1",
+      purpose: "purchase",
+      expires_at: "2026-10-09T10:00:00Z",
+    };
+
+    expect(
+      QuoteRequestSchema.safeParse({ ...question, ship_to: localityOf(address) }).success,
+    ).toBe(true);
+    expect(QuoteRequestSchema.safeParse({ ...question, ship_to: address }).success).toBe(false);
+  });
+
+  it("reads on the merchant's order as the place, the whole address, or when it was erased", () => {
+    const order = {
+      id: "ord_1",
+      merchant_item_id: "beans-1kg",
+      params: {},
+      price: {
+        amount: "21.00",
+        currency: "USD",
+        at: "2026-10-09T09:01:00Z",
+        as_of: "2026-10-09T09:01:00Z",
+      },
+      test: true,
+    };
+
+    for (const ship_to of [localityOf(address), address, { erased_at: "2026-10-09T09:05:00Z" }]) {
+      expect(OrderSchema.safeParse({ ...order, ship_to }).success, JSON.stringify(ship_to)).toBe(
+        true,
+      );
+    }
+    expect(
+      OrderSchema.safeParse({
+        ...order,
+        ship_to: { ...localityOf(address), erased_at: "2026-10-09T09:05:00Z" },
+      }).success,
+    ).toBe(false);
   });
 });

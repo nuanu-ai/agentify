@@ -469,11 +469,16 @@ export async function buyOverHttp(
   served: Served,
   itemId: string,
   behaviour: WorkerBehaviour,
+  /** What the agent sends to ask the price, and then again with its payment. */
+  body: { readonly priced: unknown; readonly paid: unknown } = {
+    priced: { params: {} },
+    paid: { params: {} },
+  },
 ): Promise<Call> {
   const worker = workUntilStopped(worked, behaviour);
   try {
     const priced = await served.call("POST", `/x402/${itemId}/purchase`, {
-      body: { params: {} },
+      body: body.priced,
     });
     const requirements = decodePaymentRequiredHeader(
       priced.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
@@ -483,7 +488,7 @@ export async function buyOverHttp(
     }
 
     return await served.call("POST", `/x402/${itemId}/purchase`, {
-      body: { params: {} },
+      body: body.paid,
       headers: {
         [PAYMENT_SIGNATURE_HEADER]: encodePaymentSignatureHeader({
           x402Version: 2,
