@@ -190,6 +190,10 @@ describe("an order that holds an address it should not", () => {
     await expect(
       open.gateway.runner.presentVerifiedPayment("ord_parcel", PAID_AT, "a-payment", PAID_AT, 0),
     ).rejects.toThrow(/has erased the address its merchant still needs/);
+    // Nothing of the payment was written: no owner, and no money under way.
+    const kept = await open.store.orderById("ord_parcel");
+    expect(kept?.paidBy).toBeNull();
+    expect(kept?.order.payment).toBe("none");
   });
 
   it("is written down once the address is only when it was erased", async () => {
