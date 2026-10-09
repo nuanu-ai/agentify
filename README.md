@@ -101,9 +101,9 @@ with no wallet, no network and no faucet, and the first line of its log says so.
 
 The dashboard is where a merchant sets the name buyers see and issues the keys
 their own code calls with. Open `http://localhost:8080/dashboard/sign-in`, enter
-an email address, and take the one-time link from the dashboard's log
-(`docker compose logs dashboard`, the dashboard's service) — the
-local sandbox writes the message there instead of sending it. Pressing the
+an email address, and take the one-time link from the application's log
+(`docker compose logs app`, where the gateway and the dashboard run as one
+process) — the local sandbox writes the message there instead of sending it. Pressing the
 link's confirmation button signs you in, and the dashboard then offers one
 button, "Open my seller dashboard", whose press creates your merchant and asks
 for the seller name. That merchant is a new one, and it is not `the_merchant` —
@@ -122,9 +122,9 @@ the worker behind it runs the scan; the report asks for an email before it
 opens in full, and the scanner asks the dashboard to send the link over the
 dashboard's private identity route rather than keeping a second account system.
 That route is the dashboard's second listener on port 3002, which nothing
-publishes, and the two processes that hold its shared secret are the only ones
-that can use it. The message arrives in the dashboard's log (`docker compose logs dashboard`) like every other one
-here, and it lands on the dashboard's page with one button. Pressing it opens the
+publishes, and the two services that hold its shared secret, the application
+and the scanner, are the only ones that can use it. The message arrives in the
+application's log (`docker compose logs app`) like every other one here, and it lands on the dashboard's page with one button. Pressing it opens the
 one session the whole site has, the report and the dashboard alike, for thirty
 days from the last visit; the scanner keeps no session of its own and asks the
 dashboard whose a cookie is. A person becomes a merchant only by pressing the one

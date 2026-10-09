@@ -20,7 +20,7 @@ services:
   # so this puts nothing in its place, and says nothing rather than reading a
   # variable, so a channel's environment file that names AGENTIFY_SEED_KEY seeds
   # nothing either. The release's preflight refuses a rendered seed all the same.
-  gateway:
+  app:
     environment:
       SANDBOX_MERCHANT_KEY: ""
 

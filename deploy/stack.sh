@@ -2,7 +2,7 @@
 # The one Compose command line for a release channel.
 #
 #   sudo deploy/stack.sh test ps
-#   sudo deploy/stack.sh production logs --tail 100 gateway
+#   sudo deploy/stack.sh production logs --tail 100 app
 #
 # A channel is one Compose project with one environment file (ADR-0016), and
 # this is the only place that spells either out: activation, the nightly

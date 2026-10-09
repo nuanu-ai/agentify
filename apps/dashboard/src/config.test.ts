@@ -208,7 +208,7 @@ describe("where the dashboard thinks it is mounted", () => {
     // The engineer bringing the dashboard up learns the whole list in one go.
     const thrown = (): string => {
       try {
-        loadConfig({ BASE_PATH: "//evil.com", PORT: "no", GATEWAY_URL: "not a url" });
+        loadConfig({ BASE_PATH: "//evil.com", COOKIE_SECURE: "no", GATEWAY_URL: "not a url" });
         return "";
       } catch (error) {
         return String(error);
@@ -217,7 +217,7 @@ describe("where the dashboard thinks it is mounted", () => {
 
     const said = thrown();
     expect(said).toContain("BASE_PATH");
-    expect(said).toContain("PORT");
+    expect(said).toContain("COOKIE_SECURE");
     expect(said).toContain("GATEWAY_URL");
     expect(said).toContain("DATABASE_URL");
   });
@@ -330,7 +330,7 @@ describe("what the configuration says about itself", () => {
     const thrown = (): string => {
       try {
         loadConfig({
-          ...given({ PORT: "no" }),
+          ...given({ COOKIE_SECURE: "no" }),
           DATABASE_URL: "postgres://agentify:s3cret-database-password@postgres:5432/agentify",
         });
         return "";
@@ -340,7 +340,7 @@ describe("what the configuration says about itself", () => {
     };
 
     const said = thrown();
-    expect(said).toContain("PORT");
+    expect(said).toContain("COOKIE_SECURE");
     expect(said).not.toContain("s3cret-database-password");
   });
 
@@ -350,7 +350,7 @@ describe("what the configuration says about itself", () => {
     const thrown = (): string => {
       try {
         loadConfig({
-          ...given({ PORT: "no" }),
+          ...given({ COOKIE_SECURE: "no" }),
           AUTH_SECRET: "s3cret-signing-value-of-at-least-32-characters",
         });
         return "";
@@ -360,7 +360,7 @@ describe("what the configuration says about itself", () => {
     };
 
     const said = thrown();
-    expect(said).toContain("PORT");
+    expect(said).toContain("COOKIE_SECURE");
     expect(said).not.toContain("s3cret-signing-value-of-at-least-32-characters");
   });
 });

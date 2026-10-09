@@ -19,11 +19,7 @@ services:
     environment:
       DATABASE_URL: "postgres://agentify:${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}@postgres:5432/agentify"
 
-  gateway:
-    environment:
-      DATABASE_URL: "postgres://agentify:${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}@postgres:5432/agentify"
-
-  dashboard:
+  app:
     environment:
       DATABASE_URL: "postgres://agentify:${AGENTIFY_DB_PASSWORD:?set a new URL-safe database password}@postgres:5432/agentify"
 

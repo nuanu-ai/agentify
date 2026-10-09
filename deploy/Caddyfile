@@ -16,8 +16,8 @@
 #   AGENTIFY_ASSET_ROOT        the shared browser assets          /srv/assets
 #   AGENTIFY_PORTAL_ROOT       the portal's built output          /srv/docs
 #   AGENTIFY_SELL_ROOT         the merchant landing's files       /srv/sell
-#   AGENTIFY_DASHBOARD_UPSTREAM  host:port of the dashboard process   dashboard:3001
-#   AGENTIFY_GATEWAY_UPSTREAM  host:port of the gateway process   gateway:3000
+#   AGENTIFY_DASHBOARD_UPSTREAM  the dashboard's listener         app:3001
+#   AGENTIFY_GATEWAY_UPSTREAM  the gateway's listener             app:3000
 #   AGENTIFY_SCANNER_UPSTREAM  host:port of the scanner process   scanner:3000
 #   AGENTIFY_SURFACE_MODE      what the static pages say           sandbox
 #
@@ -230,15 +230,16 @@
 		}
 	}
 	handle @gateway {
-		reverse_proxy {$AGENTIFY_GATEWAY_UPSTREAM:gateway:3000}
+		reverse_proxy {$AGENTIFY_GATEWAY_UPSTREAM:app:3000}
 	}
 
-	# The dashboard, its own process rather than part of the gateway (ADR-0005
-	# §2). The prefix is passed through rather than stripped, deliberately: the
-	# dashboard then reads its own mount point off the request it is answering
-	# and builds its links from the same string, instead of being told the
-	# prefix out of band and having to prepend it to every href. So the dashboard
-	# routes on /dashboard, /dashboard/orders, /dashboard/receipts as written.
+	# The dashboard, on its own listener in the application, beside the
+	# gateway's (ADR-0030). The prefix is passed through rather than stripped,
+	# deliberately: the dashboard then reads its own mount point off the request
+	# it is answering and builds its links from the same string, instead of
+	# being told the prefix out of band and having to prepend it to every href.
+	# So the dashboard routes on /dashboard, /dashboard/orders, /dashboard/receipts
+	# as written.
 	#
 	# The prefix is spelled as two exact paths rather than one /dashboard* glob
 	# so that it claims the dashboard and its pages and nothing else: a scanner
@@ -246,7 +247,7 @@
 	@dashboard path /dashboard /dashboard/*
 	handle @dashboard {
 		header @dashboard_link Referrer-Policy strict-origin
-		reverse_proxy {$AGENTIFY_DASHBOARD_UPSTREAM:dashboard:3001}
+		reverse_proxy {$AGENTIFY_DASHBOARD_UPSTREAM:app:3001}
 	}
 
 	# The address the dashboard had while it was called the cabinet, on the

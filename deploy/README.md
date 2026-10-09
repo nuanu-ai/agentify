@@ -90,8 +90,9 @@ release's own preflight over the channel's rendered configuration, then the
 scanner image started alone with that configuration and no network, which has
 to pass its own start-up checks and its configuration check at
 `/api/health/live` — the very code the scanner runs when it starts. Then it
-writes the channel's transition record, stops the gateway, the dashboard, the
-scanner and its worker, takes a restore point of the database, runs the
+writes the channel's transition record, stops the application (the gateway
+and the dashboard in one process, ADR-0030), the scanner and its worker, takes
+a restore point of the database, runs the
 migrations, starts everything again, on PRODUCTION installs the edge's route
 table, which the edge's own Caddy has validated before the stop, checks eleven
 public routes, checks that every card on sale before the stop is still on sale
@@ -111,6 +112,78 @@ push to `main`, `main`'s CI run for the commit has to have succeeded, and the
 commit has to move forward from the one the host runs. TEST takes a tag, a
 branch or a full commit SHA, as long as exactly one image build of it
 succeeded.
+
+## The release that runs the gateway and the dashboard as one process
+
+From this release the gateway and the dashboard run in one process, the
+Compose service `app`, in the container `agentify-app-1` (ADR-0030). Until it
+they were the services `gateway` and `dashboard`, in `agentify-gateway-1` and
+`agentify-dashboard-1`. Nothing in the release carries the old names over, so
+two things are done by hand on each host: one just before releasing it there,
+one after. Nothing in the host's file changes. Sales, the dashboard and the
+WooCommerce connection's fulfilment are down from the first step until the
+release has started `app`, a window that includes pulling the images; an
+order paid in it waits, or ends when its time runs out.
+
+First, the cards on sale are written down, because the release's own check of
+them reads the catalog only after the gateway is already stopped, and so
+compares nothing at this release. On the machine the release is run from:
+
+```sh
+curl -sS https://test.agentify.ad/x402/catalog | python3 -c 'import json, sys; print("\n".join(sorted(item["id"] for item in json.load(sys.stdin)["items"])))' > cards-before-test
+```
+
+Then the two old containers stop, the dashboard before the gateway, the order
+Compose stopped them in, so the dashboard's WooCommerce worker does not lose
+the gateway in the middle of an order; each with the minute the release gives
+every service to finish what it is doing, so a purchase or an order being
+placed in a shop is not cut off halfway. The release stops the services it
+knows by their new name; left running, the old two would go on beside the new
+application, taking work off the same queue, through the dump and the
+migrations as well, and nothing would say so. The last line prints `exited`
+twice:
+
+```sh
+ssh agentify-test "sudo docker stop -t 60 agentify-dashboard-1"
+ssh agentify-test "sudo docker stop -t 60 agentify-gateway-1"
+ssh agentify-test "sudo docker inspect -f '{{.Name}} {{.State.Status}}' agentify-gateway-1 agentify-dashboard-1"
+```
+
+Then release ("Releasing to test"). On PRODUCTION the same commands run over
+`ssh agentify`, with `https://agentify.ad` and a file of its own, just before
+`agentify-release`. Once the release is verified, the same catalog read
+compared with the file prints nothing when every card on sale before is on
+sale still:
+
+```sh
+curl -sS https://test.agentify.ad/x402/catalog | python3 -c 'import json, sys; print("\n".join(sorted(item["id"] for item in json.load(sys.stdin)["items"])))' | diff cards-before-test - | grep '^<'
+```
+
+Second, once the release is verified, the old containers go. Until then they
+are the way back. If the release is refused, or fails before it begins
+migrating, `sudo docker start agentify-gateway-1 agentify-dashboard-1` brings
+the old release back as it was, against tables the release has not touched.
+If it fails once it has begun migrating, the way back is the release's restore
+point ("Restoring"), and the previous revision released again. The last line
+prints nothing:
+
+```sh
+ssh agentify-test "sudo docker rm agentify-gateway-1 agentify-dashboard-1"
+ssh agentify-test "sudo docker ps -a --filter name=^agentify-gateway-1$ --filter name=^agentify-dashboard-1$ --format '{{.Names}}'"
+```
+
+Until a host is released, `pnpm approve` and `pnpm forget` from a checkout
+that carries this cannot reach it: they name `agentify-app-1`, which is not
+there yet, and refuse with nothing done. Run them from a checkout before this
+release in the meantime.
+
+Afterwards the same thing can happen the other way on TEST, which takes any
+branch: a revision without this change stops `gateway` and `dashboard`, which
+are not there, and starts them beside the `app` it does not know, which goes
+on running, two gateways on one queue. So rebase a branch onto `main` before
+putting it on TEST once this is there. To put an older revision on TEST all
+the same, stop `agentify-app-1` first, the way the two were stopped above,
+and remove it once that release is verified.
 
 ## Releasing to production
 
@@ -155,7 +228,7 @@ of that unit scrolls by. The command prints
 activation prints one line per step, each beginning `activate:` — pulling the
 images; checking the channel's configuration, followed by the preflight's own
 `preflight: the production channel is what it claims to be` (the scanner's own
-check runs inside this step); stopping the four applications; taking the
+check runs inside this step); stopping the three applications; taking the
 restore point, with its directory; the two migrations; starting the scanner;
 starting commerce and the route table; installing the edge's route table;
 checking the public routes; checking the cards on sale, followed by how many
@@ -234,7 +307,7 @@ returned 75 through the unit and recorded nothing as failed. Both are in the
 journal: a person's runs under `agentify-release-<channel>.service`, TEST's
 timer's under `agentify-release.service`.
 
-A refusal before the four applications stop changes nothing: the previous
+A refusal before the three applications stop changes nothing: the previous
 release keeps running as it was. This covers a name the channel does not take;
 a build that failed or was not listed, CI that failed or has not finished, a
 move backwards; images that did not arrive within 30 minutes or do not carry
@@ -248,7 +321,7 @@ command again.
 
 ### The transition record
 
-From just before the four applications stop until the release is verified, the
+From just before the three applications stop until the release is verified, the
 channel has a transition record, `/var/lib/agentify/<channel>/transition`. It
 is a small JSON file that names the revision that ran before (`from`), the one
 being released (`to`) and the `app-v*` tags of each, its restore point
@@ -279,7 +352,7 @@ whether the channel is down:
   start, the record stays, and running the same revision again carries the
   release on.
 - `migrating`: the databases may hold part of the new release's migrations,
-  so all four applications stay stopped and the record stays: the channel is
+  so all three applications stay stopped and the record stays: the channel is
   down until a person acts. There are two ways out, and the message prints
   both. Once the cause is fixed, run the same release again: it carries the
   migrations on from the same record and starts the release. Or put the
@@ -324,14 +397,14 @@ ssh -t agentify-test sudo mv /var/lib/agentify/test/transition /var/lib/agentify
 ```
 
 Before releasing anything after that, check that `current` names the
-revision whose data the databases hold. The gateway's image names the
+revision whose data the databases hold. The application's image names the
 revision that last started, and `docker ps` shows whether the applications
 run; when the two disagree with `current`, write the revision that ran into
 `current` by hand, since the next release decides between checking again and
 migrating by it:
 
 ```sh
-ssh -t agentify-test 'sudo docker inspect -f "{{index .Config.Labels \"org.opencontainers.image.revision\"}}" $(sudo docker inspect -f "{{.Image}}" agentify-gateway-1)'
+ssh -t agentify-test 'sudo docker inspect -f "{{index .Config.Labels \"org.opencontainers.image.revision\"}}" $(sudo docker inspect -f "{{.Image}}" agentify-app-1)'
 ```
 
 With no record open, running the revision the channel already runs stops
@@ -362,7 +435,7 @@ so a dropped connection does not stop it halfway, and it waits while a release
 runs. It restores every database the directory holds a dump of,
 `<database>.dump`; a release's restore point holds `agentify.dump`. It checks
 that the database volume has room for a second copy of it, marks the record as
-restoring, which holds every release back, stops the four applications,
+restoring, which holds every release back, stops the three applications,
 restores each dump into a scratch database, and only when all are whole swaps
 them in, in one transaction. The databases it replaced stay beside them as
 `<database>_replaced_<time>` until the next verified release drops them, so a
@@ -586,13 +659,13 @@ the operator flag, and answers everybody else with the site's 404 page
 (ADR-0026 §6). Nobody is flagged on a new channel, so it opens for nobody until
 somebody is. The person who is to read it signs in once at
 `/dashboard/sign-in`, which makes their account; on TEST the dashboard writes
-its mail to its log rather than sending it, so the link is read with
-`deploy/stack.sh test logs dashboard` from the newest checkout. They are then
+its mail to the application's log rather than sending it, so the link is read
+with `deploy/stack.sh test logs app` from the newest checkout. They are then
 flagged on the host of that channel:
 
 ```sh
-ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T dashboard pnpm --filter ./apps/dashboard --fail-if-no-match account operator you@example.com'
-ssh -t agentify 'sudo "$(ls -dt /var/lib/agentify/production/checkouts/*/ | head -n 1)deploy/stack.sh" production exec -T dashboard pnpm --filter ./apps/dashboard --fail-if-no-match account operator you@example.com'
+ssh -t agentify-test 'sudo "$(ls -dt /var/lib/agentify/test/checkouts/*/ | head -n 1)deploy/stack.sh" test exec -T app pnpm --filter ./apps/dashboard --fail-if-no-match account operator you@example.com'
+ssh -t agentify 'sudo "$(ls -dt /var/lib/agentify/production/checkouts/*/ | head -n 1)deploy/stack.sh" production exec -T app pnpm --filter ./apps/dashboard --fail-if-no-match account operator you@example.com'
 ```
 
 The scanner's header then shows them an Admin link, on the next page they

@@ -53,16 +53,18 @@ page for a person, so the shape of that is a decision rather than a detail.
    outside it, and this endpoint reports only the gateway's own readiness. It
    sits outside both of the gateway's prefixes because those are the contract,
    and an operational probe is not part of what a merchant's code calls. It
-   answers for the gateway alone: not for the dashboard, which reports itself at
-   `/dashboard/healthz`, and not for Postgres. There is deliberately no aggregate
-   health document — a single verdict over several services is read as one and
-   is wrong the first time one of them goes down by itself.
+   answers for the gateway's listener in the application, and the dashboard's
+   listener in the same process answers at `/dashboard/healthz` (ADR-0030):
+   each proves its own surface can be reached, and neither speaks for
+   Postgres or the scanner. There is deliberately no aggregate health
+   document — a single verdict over several services is read as one and is
+   wrong the first time one of them goes down by itself.
 
-2. **The dashboard is its own process (`apps/dashboard`), not a part of the
-   gateway.** The gateway is the money path: a resident process whose surface
-   is the contract's route table, mounted in one generic loop. Pages for people
-   change for reasons that have nothing to do with money, and mixing the two
-   audiences in one process puts that churn on the payment path.
+2. **The dashboard (`apps/dashboard`) runs in one process with the gateway,
+   on a listener of its own (ADR-0030).** The gateway's surface stays the
+   contract's route table, mounted in one generic loop, and the pages for
+   people stay a package of their own; what sharing a process costs, and why
+   it is accepted, is ADR-0030's.
 
 3. **The dashboard reaches the gateway through the public API with a merchant
    key** — the same door a merchant's own tooling uses. It holds no database
@@ -137,8 +139,6 @@ page for a person, so the shape of that is a decision rather than a detail.
 
 ## Rejected alternatives
 
-- **The dashboard inside the gateway** — fewer processes, but it mixes the
-  machine contract with human pages and puts UI churn on the money path.
 - **A single-page application (React or similar)** — a build pipeline and a
   dependency tree bought before any screen needs them. The trigger to revisit
   is named above.

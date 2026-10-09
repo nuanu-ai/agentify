@@ -33,6 +33,19 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@26.3.0)(jsdom@30.1.0(@noble/hashes@2.4.0))(vite@8.2.2(@types/node@26.3.0)(esbuild@0.28.2)(tsx@4.23.12)(yaml@2.9.0))
 
+  apps/app:
+    dependencies:
+      '@agentify/dashboard':
+        specifier: workspace:*
+        version: link:../dashboard
+      '@agentify/gateway':
+        specifier: workspace:*
+        version: link:../gateway
+    devDependencies:
+      tsx:
+        specifier: ^4.23.12
+        version: 4.23.12
+
   apps/browser-observer-actor:
     dependencies:
       '@agentify/scanner':

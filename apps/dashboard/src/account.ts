@@ -6,7 +6,7 @@
  * opens the link the dashboard mails to their address (ADR-0026 §1). In the
  * local stack it is one line, run against the dashboard that is already up:
  *
- *   docker compose exec dashboard \
+ *   docker compose exec app \
  *     pnpm --filter @agentify/dashboard account list
  *
  * Outside Docker it needs the same configuration the dashboard itself is given,

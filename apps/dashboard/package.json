@@ -5,11 +5,12 @@
   "type": "module",
   "description": "Agentify seller dashboard — cards, orders and receipts, server-rendered",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./config": "./src/config.ts",
+    "./start": "./src/start.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "start": "tsx src/main.ts",
     "account": "tsx src/account.ts",
     "approve": "tsx src/approve.ts",
     "forget": "tsx src/forget.ts",

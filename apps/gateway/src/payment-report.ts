@@ -3,7 +3,7 @@
  *
  * Run on the gateway that is already up, the same way the merchant command is:
  *
- *   docker compose exec gateway \
+ *   docker compose exec app \
  *     pnpm --filter @agentify/gateway report-payment <order>
  *
  * It writes through the order machine. It does not start the reminder worker:

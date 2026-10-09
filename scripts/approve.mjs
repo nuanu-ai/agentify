@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
 /**
- * PRODUCTION live approval for one merchant, granted inside the dashboard's
- * container (`agentify-dashboard-1`) that is already running on the host.
+ * PRODUCTION live approval for one merchant, granted inside the application's
+ * container (`agentify-app-1`), where the dashboard runs, already running on
+ * the host.
  *
  * Usage: pnpm approve <email>
  *
@@ -56,7 +57,7 @@ if ((email === "--help" || email === "-h") && extra.length === 0) {
       "docker",
       "exec",
       "-i",
-      "agentify-dashboard-1",
+      "agentify-app-1",
       "pnpm",
       "--filter",
       "./apps/dashboard",

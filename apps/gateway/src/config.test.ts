@@ -33,9 +33,6 @@ describe("loadConfig", () => {
     // Nothing is seeded unless somebody asks for it. A gateway that made a key
     // from a default would be a gateway with a key nobody meant to issue.
     expect(config.sandboxMerchantKey).toBeNull();
-    expect(config.port).toBe(3000);
-
-    expect(loadConfig({ ...required, PORT: "8080" }).port).toBe(8080);
   });
 
   it("carries every deadline the order machine asks for, and none of them is invented in code", () => {
@@ -376,16 +373,13 @@ describe("loadConfig", () => {
     // The promise to the engineer: the whole list of what is missing arrives in
     // one go rather than one variable per restart, and "not set" sounds
     // different from "set wrong".
-    const bothBroken = () => loadConfig({ PORT: "not a number" });
+    const bothBroken = () => loadConfig({ QUOTE_RESPONSE_MS: "not a number" });
     expect(bothBroken).toThrowError(/DATABASE_URL: the variable is not set/);
-    expect(bothBroken).toThrowError(/PORT: must be a whole number/);
+    expect(bothBroken).toThrowError(/QUOTE_RESPONSE_MS: must be a whole number of milliseconds/);
 
     expect(() =>
       loadConfig({ ...required, DATABASE_URL: "mysql://localhost/agentify" }),
     ).toThrowError(/DATABASE_URL: must be an address of the form postgres/);
-    expect(() => loadConfig({ ...required, PORT: "70000" })).toThrowError(
-      /PORT: must be within the range/,
-    );
   });
 
   it("refuses an address the money could not reach", () => {
